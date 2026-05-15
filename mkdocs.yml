@@ -1,0 +1,77 @@
+site_name: DFIR-Nexus
+site_description: AI-assisted, MCP-powered, human-in-the-loop DFIR investigation platform
+site_author: Unallocated Inc
+copyright: MIT-licensed. (c) 2026 Unallocated Inc and DFIR-Nexus contributors. See LICENSE.
+
+repo_url: https://github.com/Unallocated/DFIR-Nexus
+edit_uri: edit/main/Docs/
+
+docs_dir: Docs
+
+theme:
+  name: material
+  features:
+    - navigation.instant
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.tabs.link
+    - toc.integrate
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  icon:
+    repo: fontawesome/brands/github
+
+nav:
+  - Home: index.md
+  - Workflow guide: guide.md
+  - CLI reference: CLI.md
+  - Architecture: ARCHITECTURE.md
+  - Comparison vs. upstream: COMPARISON.md
+  - FAQ: FAQ.md
+  - Changelog: CHANGELOG.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+plugins:
+  - search
+
+extra:
+  generator: false
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/Unallocated/DFIR-Nexus

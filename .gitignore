@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual env
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Nexus runtime
+~/.nexus/
+*.sqlite
+nexus-config.json
+pipeline.sqlite
+
+# Test artifacts (USERPROFILE redirect for the integration suite)
+.testhome/
+.home/
+.home2/
+
+# MkDocs build output
+_site/
+site/
+
+# Session / scratch
+.session_state.md
+*.bak
+*.tmp
+*.orig
+
+# Env
+.env
+.env.*
