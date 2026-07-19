@@ -1,0 +1,21 @@
+services:
+  dfir-nexus:
+    build: .
+    container_name: dfir-nexus
+    ports:
+      - "4508:4508"
+    environment:
+      - NEXUS_EXAMINER=dfir-nexus
+    volumes:
+      - nexus-data:/root/.nexus
+      - ./evidence:/evidence:ro
+    command: ["serve", "--http", "--port", "4508", "--host", "0.0.0.0"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4508/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  nexus-data:

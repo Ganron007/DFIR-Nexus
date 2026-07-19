@@ -1,12 +1,8 @@
 # DFIR-Nexus Setup Guide
 
-> **Companion to** [guide.md](guide.md) (examiner workflow) · [CLI.md](CLI.md)
-> (command reference) · [ARCHITECTURE.md](ARCHITECTURE.md) (trust model)
+> **Companion to** [guide.md](guide.md) (examiner workflow) · [CLI.md](CLI.md) (command reference) · [ARCHITECTURE.md](ARCHITECTURE.md) (trust model)
 
-This guide walks you from a bare system to a running DFIR-Nexus
-investigation. It covers every install path, client wiring option, and
-verification step. Most readers can skip to their segment and stop
-reading once the server starts.
+This guide walks you from a bare system to a running DFIR-Nexus investigation. It covers every install path, external forensic tool requirements, multi-machine virtual machine (VM) wiring options, and environment configuration.
 
 ---
 
@@ -14,62 +10,37 @@ reading once the server starts.
 
 | Reader | Goal | Sections needed |
 |--------|------|-----------------|
-| **Solo Linux examiner** (SIFT VM, Ubuntu desktop, REMnux) | Local stdio install, one analyst | 1 → 2 → 3 → 5a → 7 → 8 |
-| **Solo Windows examiner** (analyst workstation) | Run on Windows, native Zimmerman / KAPE tools | 1 → 2 → 3 → 5a → 7 → 8 |
-| **Multi-machine lab** (SIFT + Windows VMs, one LLM client) | One LLM, two `nexus serve --http` instances | 1 → 2 → 3 → 4 → 5b → 7 → 8 |
-| **Headless / CI install** | Automated, no interactive prompts | 1 → 2 (`--skip-init --skip-password`) → 8 verification |
-| **MCP integrator** (writing another agent) | Just the API surface | 1 → 2 → 5 (skip 7) → API exploration |
+| **Solo Linux examiner** (SIFT VM, Ubuntu desktop, REMnux) | Local stdio install, one analyst | 1 → 2 → 3 → 5 → 8 → 9 |
+| **Solo Windows examiner** (analyst workstation) | Run on Windows, native Zimmerman / KAPE tools | 1 → 2 → 3 → 4 → 8 → 9 |
+| **Multi-machine lab** (SIFT + Windows VMs, one LLM client) | One LLM, two `nexus serve --http` instances | 1 → 2 → 3 → 4 → 6 → 7 → 8 → 9 |
+| **Headless / CI install** | Automated, no interactive prompts | 1 → 2 (`--skip-init --skip-password`) → 9 (verification) |
+| **MCP integrator** (writing another agent) | Just the API surface | 1 → 2 → 3 (skip 5) → API exploration |
 
-If you are a solo Linux or Windows examiner — ~80 % of readers — skip
-§4 (multi-machine) and §6 (Claude Code skill). You can be at "first
-case" in about 10 minutes.
+If you are a solo Linux or Windows examiner — ~80% of readers — skip §6 (multi-machine wiring) and §7b (multi-nexus client). You can be at "first case" in about 15 minutes.
 
 ---
 
-## 1. System prerequisites
+## 1. System Prerequisites
 
-| Dependency | Minimum | Linux | macOS | Windows |
-|-----------|---------|-------|-------|---------|
-| Python | 3.12+ | `apt install python3.12 python3.12-venv` (Debian/Ubuntu); pre-installed on SIFT 2024+ | `brew install python@3.12` | `winget install Python.Python.3.12` or python.org installer (tick **Add to PATH**) |
-| `pip` | bundled | bundled with Python | bundled | bundled |
-| Git | any | `apt install git` | `xcode-select --install` | `winget install Git.Git` |
-| build-essential | — | `apt install build-essential` | n/a (Xcode CLT) | n/a (wheels ship prebuilt) |
-| Docker (optional) | any | `apt install docker.io` | Docker Desktop | Docker Desktop |
-| PowerShell 7+ (optional) | 7.x | `apt install powershell` | `brew install powershell` | `winget install Microsoft.PowerShell` |
+DFIR-Nexus orchestrates other forensic utilities. To run those tools, your system needs basic prerequisites:
 
-**Linux notes:**
+| Dependency | Minimum | Linux | macOS | Windows | Mapped Feature |
+|-----------|---------|-------|-------|---------|----------------|
+| **Python** | 3.12+ | `apt install python3.12 python3.12-venv` | `brew install python@3.12` | `winget install Python.Python.3.12` | Core server & CLI |
+| **`pip`** | bundled | bundled with Python | bundled | bundled | Package manager |
+| **Git** | any | `apt install git` | `xcode-select --install` | `winget install Git.Git` | Installation & source updates |
+| **build-essential** | — | `apt install build-essential` | n/a (Xcode CLT) | n/a (wheels ship prebuilt) | RAG / SQLite compile fallbacks |
+| **Docker (optional)** | any | `apt install docker.io` | Docker Desktop | Docker Desktop | Running integrations (OSearch) |
+| **PowerShell 7+** | 7.x | `apt install powershell` | `brew install powershell` | Pre-installed / `winget install Microsoft.PowerShell` | Setup scripts & Windows commands |
 
-- SIFT Workstation 2024+ ships Python 3.12 pre-installed. Verify with
-  `python3 --version`.
-- On Ubuntu 22.04 you may need the deadsnakes PPA:
-  ```bash
-  sudo apt install software-properties-common
-  sudo add-apt-repository ppa:deadsnakes/ppa
-  sudo apt install python3.12 python3.12-venv
-  ```
-
-**Windows notes:**
-
-- The `winget` commands require Windows 10 1809+ with the App Installer
-  package. Alternatively, download from python.org.
-- The setup script (`setup-windows.ps1`) requires PowerShell 7+. Install
-  with `winget install Microsoft.PowerShell` or from GitHub.
-
-**macOS notes:**
-
-- On Apple Silicon, Rosetta 2 is not needed — DFIR-Nexus runs natively
-  on ARM. Python 3.12 is available via Homebrew.
-- Xcode Command Line Tools provide Git and compilers.
-
-**Exit condition:** `python3 --version` shows ≥ 3.12.
+**Exit condition:** `python3 --version` (or `python --version` on Windows) shows ≥ 3.12.
 
 ---
 
-## 2. Install the package
+## 2. Install the DFIR-Nexus Package
 
 ### 2a. Setup script (recommended)
-
-One command, per OS, from the repo root:
+Execute the appropriate script from the repository root:
 
 ```bash
 # Linux (SIFT, Ubuntu, REMnux, Debian — any Bash-capable host)
@@ -83,231 +54,288 @@ One command, per OS, from the repo root:
 ```
 
 **What each script does:**
+1. Verifies Python 3.12+ is installed and on the PATH.
+2. Creates a virtual environment at `.venv/` (unless `--no-venv` is passed).
+3. Installs DFIR-Nexus and all extras via `pip install -e .[all]`.
+4. Prompts for **examiner identity** (`nexus config --examiner "..."`).
+5. Prompts for **approval password** (`nexus config --setup-password`).
+6. Runs `nexus init` to verify SQLite and write basic configuration.
 
-1. Verifies Python 3.12+
-2. Creates a virtual environment at `.venv/` (unless `--no-venv`)
-3. Runs `pip install -e .[all]` — all optional extras included
-4. Prompts for **examiner identity** (`nexus config --examiner "..."`)
-5. Prompts for **approval password** (`nexus config --setup-password`)
-6. Runs `nexus init` — connectivity test + LLM client config snippet
+**Flags** (can be passed in any order):
+- `--skip-init`: Stop immediately after package installation (ideal for automated CI).
+- `--skip-password`: Skip setting up the approval password (you must run `nexus config --setup-password` later).
+- `--no-venv`: Install package into your active global/user Python environment instead of creating `.venv/`.
 
-**Flags** (any order, all OSes):
-
-| Flag | Effect |
-|------|--------|
-| `--skip-init` | Stop after install — useful for CI |
-| `--skip-password` | Skip the password prompt; set later with `nexus config --setup-password` |
-| `--no-venv` | Install into the active interpreter without creating `.venv/` |
-
-### 2b. Pip install (for users who prefer manual control)
-
+### 2b. Pip install (manual control)
+If you prefer not to use setup scripts, run:
 ```bash
 pip install dfir-nexus[all]
 ```
+The `[all]` extras bundle contains:
+- `[http]`: Starlette + Uvicorn (needed for the Examiner Portal web dashboard).
+- `[rag]`: ChromaDB + sentence-transformers (needed for forensic knowledge semantic search).
+- `[triage]`: orjson + zstandard (needed for matching Windows baselines).
+- `[opensearch]`: OpenSearch integration client.
+- `[opencti]`: OpenCTI threat intelligence client.
+- `[encrypt]`: Cryptography (for encrypted case exports).
+- `[detection]`: PySigma (for translating Sigma rules to KQL/Splunk/etc.).
+- `[pipeline]`: LangGraph (for multi-agentic orchestration).
 
-The `[all]` extras bundle:
-
-| Extra | Pulls in | Typical size |
-|-------|----------|-------------|
-| `[http]` | Starlette + uvicorn (Examiner Portal) | ~5 MB |
-| `[rag]` | ChromaDB + sentence-transformers | ~600 MB |
-| `[triage]` | orjson + zstandard (`.tar.zst` baseline DBs) | ~2 MB |
-| `[opensearch]` | opensearch-py | ~2 MB |
-| `[opencti]` | pycti | ~3 MB |
-| `[encrypt]` | cryptography (`nexus export --encrypt`) | ~8 MB |
-
-Install à la carte if `[all]` is too heavy:
-
-```bash
-pip install dfir-nexus[http,rag]
-```
-
-Then set your identity and password:
-
+Configure identity and approval password manually:
 ```bash
 nexus config --examiner "alice"
-nexus config --setup-password    # required before you can approve
+nexus config --setup-password    # Prompts for approval password
 nexus init
 ```
 
 ### 2c. From source (contributors)
-
 ```bash
 git clone https://github.com/Unallocated/DFIR-Nexus.git
 cd DFIR-Nexus
 python -m venv .venv
 source .venv/bin/activate      # Linux / macOS
-.venv\Scripts\activate.ps1     # Windows (PowerShell)
+.venv\Scripts\Activate.ps1     # Windows (PowerShell)
 
 pip install -e .[all]
 ```
 
-This installs in editable mode — any change to `src/` is reflected
-immediately when you restart the server.
-
-**Exit condition:** `nexus --version` prints a version string.
+**Exit condition:** `nexus --version` prints the version string.
 
 ---
 
-## 3. Configure identity + secrets
+## 3. Install Forensic Tools
 
-Both steps are required before the first case is opened. Both are
-terminal-only for security — no web UI sets the password.
+DFIR-Nexus wraps external forensic command-line tools. **If a tool is not installed on your system or not on the PATH, calling it via DFIR-Nexus will return "Tool not found".**
+
+### 3a. Windows Forensic Tools Installation
+
+To run Zimmerman tools, KAPE, Hayabusa, Chainsaw, Capa, and Yara natively on Windows, follow these installation procedures.
+
+#### Option A: Installing via Chocolatey (Simplest)
+Chocolatey is a Windows package manager. If you do not have it, install it by opening an administrator PowerShell prompt and running:
+```powershell
+Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+```
+Once Chocolatey is installed, run the following commands to install the required forensic tools:
+```powershell
+# Eric Zimmerman's Tools (PECmd, MFTECmd, RECmd, SBECmd, etc.)
+choco install ericzimmerman -y
+
+# KAPE (Kroll Artifact Parser and Extractor)
+choco install kape -y
+
+# Sigma / Event Log Hunting Tools
+choco install hayabusa -y
+choco install chainsaw -y
+
+# Static Analysis and Threat Hunting
+choco install yara -y
+```
+
+#### Option B: Manual Installation
+If you cannot use Chocolatey, download the tools manually:
+1. **Zimmerman Tools**: Download Eric Zimmerman's tools downloader script [Get-ZimmermanTools.ps1](https://f001.backblazeb0.com/file/EricZimmermanTools/Get-ZimmermanTools.ps1) and run it in a directory (e.g. `C:\Forensics\Zimmerman`).
+2. **KAPE**: Download KAPE from [Kroll's official site](https://www.kroll.com/en/services/cyber-risk/incident-response-litigation-support/kroll-artifact-parser-extractor) and extract it to `C:\Forensics\kape`.
+3. **Hayabusa / Chainsaw**: Download from their respective GitHub Release pages ([Yamato-Security/hayabusa](https://github.com/Yamato-Security/hayabusa/releases) and [WithSecureLabs/chainsaw](https://github.com/WithSecureLabs/chainsaw/releases)) and extract them.
+4. **Capa**: Install via python: `pip install flare-capa`.
+5. **Memory Acquisition & Analysis (WinPmem, DumpIt, Moneta)**:
+   - WinPmem: Download from [Velocidex/WinPmem](https://github.com/Velocidex/WinPmem/releases) and place `winpmem.exe` in your path.
+   - Moneta: Download from [forrest-orr/moneta](https://github.com/forrest-orr/moneta/releases).
+
+---
+
+### 3b. Linux / SIFT Workstation Installation
+
+To run Volatility, Plaso, SleuthKit, Zeek, Yara, and other command-line utilities, you need a Linux environment.
+
+#### Option A: Using SANS SIFT Workstation VM (Recommended)
+The **SIFT (SANS Investigative Forensic Toolkit)** Workstation VM contains almost all these tools pre-configured:
+1. Download the prebuilt SIFT Workstation Virtual Appliance (OVA format) from the [SANS Portal](https://www.sans.org/tools/sift-workstation/).
+2. Import it into VMware Workstation, VMware Fusion, or VirtualBox.
+3. SIFT 2024+ includes Python 3.12 out-of-the-box. Run setup scripts directly inside the VM.
+
+*Alternatively, install SIFT tools onto a clean Ubuntu 22.04 LTS system using the SIFT CLI:*
+```bash
+wget https://github.com/sans-dfir/sift-cli/releases/download/v1.14.0/sift-cli-linux
+chmod +x sift-cli-linux
+sudo mv sift-cli-linux /usr/local/bin/sift
+sudo sift install
+```
+
+#### Option B: Manual Tool Installation on Ubuntu 22.04 / 24.04
+If you are using a standard Ubuntu host and do not want to install the entire SIFT suite, install individual packages:
+```bash
+# 1. Install SleuthKit, Yara, Tshark, and bulk_extractor
+sudo apt update && sudo apt install -y sleuthkit yara tshark bulk-extractor
+
+# 2. Install Plaso (log2timeline) via the GIFT PPA repository
+sudo add-apt-repository ppa:gift/stable -y
+sudo apt update && sudo apt install -y plaso-tools
+
+# 3. Install Volatility 3
+git clone https://github.com/volatilityfoundation/volatility3.git /opt/volatility3
+cd /opt/volatility3 && pip install -r requirements.txt
+sudo ln -s /opt/volatility3/vol.py /usr/local/bin/vol
+
+# 4. Install Hayabusa
+wget https://github.com/Yamato-Security/hayabusa/releases/download/v2.18.0/hayabusa-2.18.0-lin-x64.zip
+unzip hayabusa-2.18.0-lin-x64.zip -d /opt/hayabusa
+sudo ln -s /opt/hayabusa/hayabusa /usr/local/bin/hayabusa
+```
+
+---
+
+### 3c. How DFIR-Nexus Resolves Executables
+
+DFIR-Nexus resolves binaries when you call `run_command` (Linux) or `run_windows_command` (Windows):
+1. It queries the system environment `PATH` (`shutil.which`). If the tool is in your path, it is matched automatically.
+2. If not found, it iterates through directories defined in the `NEXUS_TOOL_PATHS` environment variable or the `tool_paths` array in `~/.nexus/config.yaml`.
+3. Specialized checks occur for variables like `NEXUS_HAYABUSA_DIR` (defaults to `/opt/hayabusa`).
+
+#### Setting up `NEXUS_TOOL_PATHS`
+If you installed your forensic tools in a custom directory (e.g. `C:\ForensicTools` on Windows or `/opt/forensics` on Linux), configure the path so DFIR-Nexus can find them:
+
+*On Windows (PowerShell):*
+```powershell
+# Set for current session
+$env:NEXUS_TOOL_PATHS = "C:\ForensicTools;C:\Program Files\KAPE"
+# Or write to configuration file permanently:
+nexus config --show # Find config path
+```
+
+*On Linux (Bash):*
+```bash
+export NEXUS_TOOL_PATHS="/opt/forensics:/opt/volatility3"
+```
+> [!NOTE]
+> When defining multiple directories in `NEXUS_TOOL_PATHS` via environment variables, use the system PATH separator: `;` on Windows, `:` on Linux. In `config.yaml` it is represented as a YAML list.
+
+---
+
+## 4. Configure Identity & Secrets
+
+Both steps are required before the first case is opened. Both are terminal-only for security — no Web UI or LLM client can set your password.
 
 ### Set your examiner name
-
 ```bash
-nexus config --examiner "alice"
+nexus config --examiner "alicesmith"
 ```
-
-This writes `~/.nexus/config.yaml` with your examiner slug. The slug
-is lowercased and sanitised (`Alice Smith` → `alicesmith`, `Al-ice`
-→ `al-ice`). It is used in finding IDs (`F-alice-001`), timeline
-event IDs, audit IDs, and the HMAC verification ledger.
+This writes `~/.nexus/config.yaml` with your examiner identifier. This identifier is converted to a lowercase, sanitized slug (e.g., `Alice Smith` → `alicesmith`). It is embedded in finding IDs (`F-alicesmith-001`), timeline events, audit trails, and HMAC signatures.
 
 ### Set the approval password
-
 ```bash
 nexus config --setup-password
 ```
-
-You are prompted **twice** via `getpass` — no echo. The password:
-
+You are prompted **twice** via `getpass` (no echo). The password:
 - Must be at least **8 characters**.
-- Is hashed with **PBKDF2-SHA256** (600 000 iterations, 32-byte random
-  salt) and stored at `~/.nexus/passwords/<examiner>.json` (`0o600`).
+- Is hashed with **PBKDF2-SHA256** (600,000 iterations, 32-byte random salt) and stored at `~/.nexus/passwords/<examiner>.json` (`0o600`).
 - Is never stored in plaintext.
 
-**Why this matters.** The approval password is the human-in-the-loop
-trust boundary. Without it, `nexus approve` and the Portal commit
-workflow refuse to run. No DRAFT finding can become APPROVED without
-this password. The AI cannot bypass it.
-
-### View current config
-
-```bash
-nexus config --show
-```
-
-Prints: examiner, password-set flag, cases root, data root, and server
-settings.
-
-### Rotate the password (optional)
-
-```bash
-nexus config --setup-password
-```
-
-Run the same command again. It prompts for the **old password** first,
-then the new one. On success it re-signs every HMAC verification ledger
-entry for this examiner with the new key — no existing approvals are
-invalidated.
+> [!WARNING]
+> The approval password is the human-in-the-loop trust boundary. Without it, `nexus approve` and the portal commit workflow refuse to run. The AI cannot bypass this block.
 
 **Exit condition:** `nexus config --show` shows `password_set: true`.
 
 ---
 
-## 4. Multi-machine wiring (skip if solo)
+## 5. VM and Lab Network Setup
 
-Only needed when you run DFIR-Nexus on **more than one host**. The
-solo path (one machine) is actually a subset of this — just run
-§1→§3→§5a (stdio) or §1→§3→§5a (HTTP) on a single host.
-
-### Topology
+In a professional environment (or when testing the CADRE-Platform ecosystem), you will run DFIR-Nexus across distinct Virtual Machines (SIFT VM for Linux analysis, Windows Analyst VM for Zimmerman/KAPE parsing, and a Host/Client machine for the LLM agent).
 
 ```
-                   ┌──────────────────────┐
-                   │  LLM client          │
-                   │  (Claude Code, etc.) │
-                   └────┬──────────┬──────┘
-                        │          │
-         ┌──────────────┘          └──────────────┐
-         ▼                                        ▼
-┌──────────────────────┐                ┌──────────────────────┐
-│ SIFT VM (Linux)      │                │ Windows analyst WM  │
-│                      │                │                      │
-│ nexus serve --http   │                │ nexus serve --http   │
-│ --host 0.0.0.0       │                │ --host 0.0.0.0       │
-│ :4508                │                │ :4508                │
-│                      │                │                      │
-│ Exposes: sift tools, │                │ Exposes: windows     │
-│ case, forensic, rag, │                │ tools, case, forensic│
-│ triage, opencti      │                │ rag, triage, opencti │
-└──────────────────────┘                └──────────────────────┘
+                     ┌──────────────────────┐
+                     │  LLM client          │
+                     │  (Claude Code, etc.) │
+                     │  IP: 192.168.77.1    │
+                     └────┬──────────┬──────┘
+                          │          │
+           ┌──────────────┘          └──────────────┐
+           ▼ (HTTPS / Port 4508)                    ▼ (HTTPS / Port 4508)
+  ┌──────────────────────┐                 ┌──────────────────────┐
+  │ SIFT VM (Linux)      │                 │ Windows Analyst VM   │
+  │ IP: 192.168.77.41    │                 │ IP: 192.168.77.42    │
+  │                      │                 │                      │
+  │ nexus serve --http   │                 │ nexus serve --http   │
+  │ --host 0.0.0.0       │                 │ --host 0.0.0.0       │
+  │                      │                 │                      │
+  │ Mounts: /evidence/   │                 │ Shares: C:\evidence  │
+  └──────────────────────┘                 └──────────────────────┘
 ```
 
-### Per-host bring-up
+### 5a. Network Configuration
+1. Ensure your VMs are configured with **Host-Only** or **Bridged** networking in VMware Workstation / VirtualBox so they can ping one another.
+2. Determine the IP addresses of your VMs:
+   - SIFT IP: `192.168.77.41`
+   - Windows IP: `192.168.77.42`
+3. Configure the firewall on both VMs to allow incoming TCP traffic on port `4508`.
+   - On Linux (SIFT): `sudo ufw allow 4508/tcp`
+   - On Windows: Add an Inbound Rule in Windows Advanced Firewall for Port `4508`.
 
-On **each** forensic host (SIFT VM, Windows workstation):
+### 5b. Evidence Share Setup (Samba / CIFS)
+Because SIFT and Windows run on different hosts, they must have access to the same evidence path (e.g. `/evidence/image.dd` or `C:\evidence\image.dd`) so that path strings matched by agents point to the same content.
 
-```bash
-# 1. Install + configure (run §1–§3 on each machine)
-./setup-linux.sh   # or .\setup-windows.ps1
-
-# 2. Start the HTTP server (bind all interfaces)
-nexus serve --http --host 0.0.0.0 --port 4508
-```
-
-Port 4508 is the convention but any port works.
-
-### Authentication for network exposure
-
-For any deploy beyond local loopback, set a bearer token per host:
-
-```bash
-# Generate a random token (Linux/macOS)
-export NEXUS_BEARER_TOKEN="$(openssl rand -hex 32)"
-
-# Or on Windows, set the env var manually before starting:
-$env:NEXUS_BEARER_TOKEN = "your-generated-token-here"
-
-nexus serve --http --host 0.0.0.0 --port 4508
-```
-
-### Generate the LLM client config
-
-From your LLM client machine (could be a third host or one of the
-two forensic hosts):
-
-```bash
-nexus setup client --sift 10.0.0.2:4508 --windows 10.0.0.5:4508
-```
-
-This writes `.mcp.json` with both servers and `~/.claude/settings.json`
-with deny rules that protect case files from AI modification.
-
-To also add the bearer token:
-
-```bash
-nexus setup client --sift 10.0.0.2:4508 --windows 10.0.0.5:4508 \
-  --bearer "your-token"
-```
-
-**Exit condition:** `curl http://<host>:4508/mcp` returns HTTP 200
-from each host, and your LLM client shows tools from all servers.
+1. **On Windows**, create a directory `C:\evidence`, right-click → **Properties** → **Sharing** → **Advanced Sharing**, share the folder as `evidence`, and ensure the examiner user has Read/Write permissions.
+2. **On SIFT Linux VM**, mount this directory to `/evidence`:
+   ```bash
+   sudo mkdir -p /evidence
+   sudo mount -t cifs -o username=examiner,password=password,domain=cadre.local //192.168.77.42/evidence /evidence
+   ```
+3. Set the `share_root` parameter in `~/.nexus/config.yaml` or set `NEXUS_SHARE_ROOT` to `/evidence` (on Linux) or `C:\evidence` (on Windows).
 
 ---
 
-## 5. Wire your LLM client
+## 6. Multi-Machine Wiring
 
-### 5a. Single nexus (solo examiner)
+For network security, always configure a bearer token before exposing DFIR-Nexus over the network.
 
-#### Claude Code — stdio (zero config)
+### Step 1: Start servers with Bearer Authentication
+Run these commands on their respective VM hosts.
 
+*On SIFT VM (Linux):*
+```bash
+export NEXUS_BEARER_TOKEN="secure-passphrase-token-sift"
+nexus serve --http --host 0.0.0.0 --port 4508
+```
+
+*On Windows VM:*
+```powershell
+$env:NEXUS_BEARER_TOKEN = "secure-passphrase-token-windows"
+nexus serve --http --host 0.0.0.0 --port 4508
+```
+
+### Step 2: Generate the Client configuration
+On your examiner/client host (running Claude Code or Cursor), configure the client to communicate with both servers:
+```bash
+nexus setup client --sift 192.168.77.41:4508 --windows 192.168.77.42:4508 --bearer "secure-passphrase-token-sift"
+```
+*(If SIFT and Windows tokens differ, edit the generated `.mcp.json` or global configuration file manually to assign respective bearer header tokens)*.
+
+---
+
+## 7. Wire your LLM Client
+
+### 7a. Single Host (Solo Examiner)
+
+#### Claude Code — Stdio transport (Zero Config)
+Claude Code spawns DFIR-Nexus as a local subprocess. No network port is exposed. Add this to your project's `.mcp.json` or globally in `~/.claude/settings.json`:
 ```json
 {
   "mcpServers": {
-    "dfir-nexus": { "command": "nexus", "args": ["serve"] }
+    "dfir-nexus": {
+      "command": "nexus",
+      "args": ["serve"]
+    }
   }
 }
 ```
 
-Place this in `.mcp.json` (project-level) or `~/.claude/settings.json`
-(global). No port, no network, no config — Claude spawns nexus as a
-subprocess.
-
-#### Claude Code — HTTP (multi-client, Portal)
-
+#### Claude Code — HTTP transport (For Examiner Portal)
+If you want the Examiner Portal web dashboard (`/portal`) running alongside the LLM, use the HTTP transport.
+Start the server in a terminal:
+```bash
+nexus serve --http --port 4508
+```
+Then write this in `.mcp.json` / `~/.claude/settings.json`:
 ```json
 {
   "mcpServers": {
@@ -319,352 +347,66 @@ subprocess.
 }
 ```
 
-Requires `nexus serve --http --port 4508` running in another terminal
-or as a service.
+---
 
-#### Cursor
+### 7b. Multi-Nexus Fleet Configuration (Lab / VM Topology)
 
-`~/.cursor/mcp.json` (same JSON shape as Claude):
-
-```json
-{
-  "mcpServers": {
-    "dfir-nexus": { "command": "nexus", "args": ["serve"] }
-  }
-}
-```
-
-#### Cline (VS Code extension)
-
-VS Code settings → `claude-dev.mcpServers`:
-
-```json
-{
-  "claude-dev.mcpServers": {
-    "dfir-nexus": { "command": "nexus", "args": ["serve"] }
-  }
-}
-```
-
-#### LibreChat
-
-`librechat.yaml`:
-
-```yaml
-mcpServers:
-  dfir-nexus:
-    type: streamable-http
-    url: http://127.0.0.1:4508/mcp
-```
-
-### 5b. Multi-nexus (lab / fleet)
-
-After running `nexus setup client --sift ... --windows ...`, your
-`.mcp.json` looks like this:
-
+After running the client setup wizard (`nexus setup client`), your global `.mcp.json` is generated to aggregate both SIFT and Windows endpoints:
 ```json
 {
   "mcpServers": {
     "dfir-nexus-sift": {
       "type": "streamable-http",
-      "url": "http://10.0.0.2:4508/mcp"
+      "url": "http://192.168.77.41:4508/mcp",
+      "headers": {
+        "Authorization": "Bearer secure-passphrase-token-sift"
+      }
     },
     "dfir-nexus-windows": {
       "type": "streamable-http",
-      "url": "http://10.0.0.5:4508/mcp"
+      "url": "http://192.168.77.42:4508/mcp",
+      "headers": {
+        "Authorization": "Bearer secure-passphrase-token-windows"
+      }
     }
   }
 }
 ```
 
-The same config generator also writes `~/.claude/settings.json` with
-**deny rules** that prevent the AI from directly editing files in the
-case directory:
-
+Additionally, `~/.claude/settings.json` is configured with directory security deny rules to protect case files from arbitrary modifications by the LLM:
+```json
+{
+  "denyRules": [
+    "Edit(**/CASE.yaml)",
+    "Write(**/findings.json)",
+    "Bash(nexus approve*)",
+    "Edit(**/.nexus/**)"
+  ]
+}
 ```
-Edit(**/CASE.yaml) …, Write(**/findings.json) …,
-Bash(nexus approve*) …, Edit(**/.nexus/**) …
-```
 
-The LLM client automatically routes tool calls to the right server:
-SIFT tools (`run_command`, `list_available_tools`) go to the Linux
-host, Windows tools (`run_windows_command`, `list_windows_tools`) go
-to the Windows host, and universal tools (case, report, RAG, triage,
-OpenCTI) can go to either.
-
-**Exit condition:** The LLM client shows `mcp__dfir-nexus*` tools
-available in its tool list.
+**Exit condition:** The LLM client shows both `dfir-nexus-sift` and `dfir-nexus-windows` tools loaded.
 
 ---
 
-## 6. (Optional) Install the Claude Code skill bundle
+## 8. Download Baseline Databases
 
-Curates a tuned system prompt, hooks, and slash commands for Claude
-Code. Two variants:
+Certain features (like process triage validation and RAG knowledge search) remain dormant until you retrieve their static databases. Run these commands from your LLM Client:
 
-**Lite** (single-machine examiner):
-```bash
-cp -r claude-code/lite ~/.claude/skills/dfir-nexus
-chmod +x ~/.claude/skills/dfir-nexus/hooks/*.sh
-```
-
-**Full** (multi-host, stricter sandbox):
-```bash
-cp -r claude-code/full ~/.claude/skills/dfir-nexus
-chmod +x ~/.claude/skills/dfir-nexus/hooks/*.sh
-```
-
-Restart Claude Code, then verify from any project:
-
-```text
-/welcome
-```
-
-**What the skill gives you beyond vanilla MCP:**
-
-| Asset | Purpose |
-|-------|---------|
-| `CLAUDE.md` | System prompt with "display plan before action" rule and DFIR discipline reminders |
-| `forensic-audit.sh` | PostToolUse hook — every Bash command gets logged to `<case>/audit/claude-code.jsonl` with audit_id |
-| `case-data-guard.sh` | PreToolUse hook — blocks `rm`, `mv`, `find -delete` on protected case files (findings.json, audit/*.jsonl, transparency.jsonl, etc.) |
-| `/welcome` | Version check, baseline status, quickstart links |
-| `/case` | Create or switch cases |
-| `/approve` | Interactive finding approval (password prompt) |
-| `/report` | Generate and save reports |
-| Templates | `ACTIONS.md`, `FINDINGS.md`, `TIMELINE.md` for structured case notes |
-
-See [claude-code/README.md](../claude-code/README.md) for the full
-breakdown.
-
-**Exit condition:** The skill is in `~/.claude/skills/dfir-nexus/`,
-hooks are executable, and `/welcome` responds.
+| Feature | MCP Tool | Size | Description |
+|---------|----------|------|-------------|
+| **RAG Knowledge Base** | `forensic_rag_download()` | ~600 MB | ChromaDB semantic index containing SANS material, Sigma rules, MITRE ATT&CK techniques, LOLBAS, and KAPE targets. |
+| **Windows Triage Baselines** | `triage_download()` | ~2 GB | SQLite known-good baselines compiled from 2.6M+ clean Windows installations, process models, and named pipes. |
 
 ---
 
-## 7. (Optional) Download baseline databases
+## 9. Verification & Troubleshooting
 
-Some modules are dormant until their data is downloaded. Do this from
-your LLM client (not the terminal):
+Check off items to ensure setup is functional:
+- [ ] `nexus --version` outputs a valid version.
+- [ ] `nexus config --show` prints configuration details with `password_set: true`.
+- [ ] `nexus serve --http` runs successfully on port 4508.
+- [ ] `nexus portal` opens the portal correctly in a web browser.
+- [ ] CLI command integrity check: `nexus review verify` evaluates successfully.
 
-| Module | Tool to call | Size | What you get |
-|--------|-------------|------|--------------|
-| RAG (forensic knowledge) | `forensic_rag_download()` | ~600 MB | ChromaDB index with 23K+ records from 23 sources (Sigma, MITRE ATT&CK, Atomic Red Team, KAPE, LOLBAS, GTFOBins, …) |
-| Windows triage baseline | `triage_download()` | ~2 GB | `known_good.db` + `context.db` — 2.6M+ records from clean Windows installs; LOLBins, vulnerable drivers, process rules, named pipes |
-| OpenCTI (live) | n/a — needs env vars | depends on your instance | Connect to your OpenCTI server |
-| OpenSearch (live) | n/a — needs env vars | depends on your cluster | Index and search evidence at scale |
-
-**Environment variables for live modules:**
-
-```bash
-# OpenCTI
-export OPENCTI_URL="https://your-cti.example.com"
-export OPENCTI_TOKEN="your-token"
-
-# OpenSearch
-export OPENSEARCH_HOST="127.0.0.1"
-export OPENSEARCH_PORT="9200"
-# Optional: OPENSEARCH_USER, OPENSEARCH_PASSWORD, OPENSEARCH_SSL=true
-```
-
-**Check what's installed:**
-
-From your LLM client:
-
-```text
-forensic_rag_status()    → "status": "ready" + record count
-triage_status()          → "status": "present" + DB file sizes
-opencti_status()         → "connected": true
-idx_status()             → "connected": true + indices list
-```
-
-**Why this is §7 not §2:** Findings, case management, reporting, and
-the approval chain all work without these databases. RAG and triage
-are "richer queries / offline baseline validation" — valuable but
-optional. Only install what you need.
-
-**Exit condition:** The assets you want are downloaded; the ones you
-skip are cleanly reported as `UNKNOWN` or `not_installed`.
-
----
-
-## 8. Your first case (10‑minute walkthrough)
-
-With the server running and your LLM client connected, run this
-conversation:
-
-```text
-1. case_init("Ransomware-2026-001")
-   → Creates INC-20260514091530 with platform capabilities listed
-
-2. evidence_register(path="/evidence/triage/", description="EDR triage collection")
-   → SHA-256 hashes each file, registers in evidence_registry.json
-
-3. run_command("fls -f ntfs /evidence/image.dd")          # Linux / SIFT
-   # OR
-   run_windows_command("MFTECmd -f C:\Evidence\$MFT")     # Windows
-
-   → Returns {"audit_id": "nexus-exam-20260514-001", ...}
-   → ⚠ CAPTURE THIS audit_id — you need it for the next step
-
-4. record_finding(
-       title="EVIL.EXE launched from AppData",
-       observation="MFT shows EVIL.EXE with timestamps consistent with execution",
-       interpretation="User-writable directory execution consistent with initial access via phishing",
-       confidence="MEDIUM",
-       confidence_justification="MFT $STANDARD_INFORMATION + $FILE_NAME timestamps corroborate execution within the suspect window",
-       event_timestamp="2026-01-15T14:32:00Z",
-       artifacts=[{"audit_id": "nexus-exam-20260514-001"}]
-   )
-   → Returns {"status": "STAGED", "finding_id": "F-exam-001", "provenance_grade": "FULL", …}
-
-   If you invented an audit_id instead of using the one from step 3:
-   → Returns {"status": "REJECTED", "error": "Finding rejected: invalid or missing evidence trail"}
-   → That's the provenance check working — not a bug.
-```
-
-Now approve as a human:
-
-```bash
-# Terminal (password required — blocks AI approval)
-nexus approve --interactive
-```
-
-Walk through the DRAFT finding. Enter your approval password. The
-finding moves to APPROVED, an HMAC entry is written to the verification
-ledger, and a hash-chained entry is appended to the transparency log.
-
-```bash
-# Generate the report
-nexus report --full --save report.json
-```
-
-The report reconciles every APPROVED finding against the HMAC ledger.
-If a finding is APPROVED but missing from the ledger (or vice versa),
-the report's `verification_alerts` will flag it.
-
-**Provenance chain recap:**
-
-```
-run_command(...)
-  → audit_id
-    → record_finding(artifacts=[{audit_id}])
-      → STAGED as DRAFT
-        → nexus approve --interactive (terminal, password required)
-          → APPROVED + HMAC ledger entry + transparency log entry
-            → generate_report(profile="full")
-```
-
----
-
-## 9. Verification checklist + troubleshooting
-
-### Verification checklist
-
-Run through these steps to confirm the chain is working end-to-end:
-
-```
-[ ] nexus --version                      → version string
-[ ] nexus config --show                  → examiner + password_set: true
-[ ] nexus serve --http                   → starts on :4508
-[ ] curl http://127.0.0.1:4508/mcp       → HTTP 200
-[ ] LLM client shows mcp__dfir-nexus__* tools
-[ ] case_init("test")                    → returns a case_id
-[ ] log_external_action(command="echo test", purpose="verify")
-    → returns an audit_id
-[ ] record_finding(title="Test", observation="Verification",
-    interpretation="Check", artifacts=[{"audit_id": "<from above>"}])
-    → returns STAGED (not REJECTED)
-[ ] nexus approve --interactive          → finds DRAFT, approves it
-[ ] generate_report(profile="status")    → shows 1 approved finding,
-    no verification_alerts
-[ ] transparency_verify()                → returns "valid": true
-```
-
-If every box is ticked, the chain is working end-to-end.
-
-### Troubleshooting
-
-| Symptom | Likely cause | Fix |
-|---------|-------------|-----|
-| `nexus: command not found` | Package not installed or venv not activated | `pip install dfir-nexus` or activate `.venv/bin/activate` |
-| Tools not showing in LLM client | Wrong MCP transport or server not running | Check stdio vs HTTP config; verify `nexus serve` (stdio) or `nexus serve --http` |
-| Findings rejected (`REJECTED`) | Missing `audit_id` in artifacts | Run a tool first, capture its returned `audit_id`, pass it in `artifacts` |
-| `VALIDATION_FAILED` on record_finding | Missing `confidence_justification` or `interpretation` | Both are required — provide a one-sentence justification |
-| `REJECTED` with `missing_audit_ids` | `audit_id` references entries from a different case | Ensure the tool ran while the current case was active |
-| SIFT tools not available | Not running on Linux | `sift.py` registers only when `sys.platform == "linux"` |
-| Windows tools not available | Not running on Windows | `windows.py` registers only when `sys.platform == "win32"` |
-| RAG search fails | No index downloaded | Call `forensic_rag_download()` from your LLM client |
-| Triage returns UNKNOWN | No database installed | Call `triage_download()` from your LLM client |
-| Audit trail empty | No active case | Create case with `case_init()` first |
-| Portal not loading | HTTP mode not enabled | Use `nexus serve --http` instead of stdio |
-| Password not accepted | Locked out after 3 failures | Wait 15 minutes for lockout to expire |
-| `nexus export --encrypt` errors | `cryptography` not installed | `pip install dfir-nexus[encrypt]` (or `[all]`) |
-| `transparency_verify()` returns tampered index | Hash chain broken — investigate | Compare `~/.nexus/cases/<id>/transparency.jsonl` against case audit log; restore from backup; do not ship report until reconciled |
-| Claude Code hooks not firing | Scripts not executable or `$CLAUDE_PROJECT_DIR` not set | `chmod +x ~/.claude/skills/dfir-nexus/hooks/*.sh` |
-| Audit log empty after Bash invocations | Skill bundle installed but no active case | `nexus case init <name>` first — the hook needs an active case to write to |
-| `nexus init` says baselines missing | RAG / triage DBs not downloaded yet | From LLM client: `triage_download()` and `forensic_rag_download()` |
-| Service won't start | PID file from a previous run | `nexus service stop <name>` clears stale PID files |
-
----
-
-## 10. Where am I, what's next
-
-### Linear decision tree
-
-```
-Have Python 3.12+?
-  no  → §1 Prerequisites
-  yes ↓
-Have nexus on PATH?
-  no  → §2 Install (recommend setup-*.sh script)
-  yes ↓
-nexus config --show confirms password_set: true?
-  no  → §3 Configure (examiner + password)
-  yes ↓
-Single host?
-  yes → §5a Wire one nexus (stdio or HTTP)
-  no  → §4 Multi-machine + §5b Multi-nexus config
-Want Claude Code skill bundle?
-  yes → §6 Install skill (copy hooks + CLAUDE.md)
-  no  ↓
-Want RAG / triage baselines?
-  yes → §7 Download optional databases
-  no  ↓
-⟶  §8 Run your first case
-Something broken ⟶ §9 Verify + troubleshoot
-```
-
-### State → action table
-
-| Current state (what's true) | Next action | Section |
-|---|---|---|
-| Fresh repo clone, nothing installed | Run `./setup-linux.sh` (or OS equivalent) | §2a |
-| `pip install` done, no examiner set | `nexus config --examiner "..." && nexus config --setup-password` | §3 |
-| Examiner + password set, single host | Wire LLM client (stdio or HTTP config) | §5a |
-| Examiner + password set, multi-host | Per-host bring-up + token → `nexus setup client` | §4 + §5b |
-| LLM client wired, tools showing | Run `case_init("test")` or `/welcome` (if skill installed) | §6 → §8 |
-| `record_finding` returns REJECTED | You invented an audit_id — run a tool first, capture the real ID | §8 |
-| Findings stuck in DRAFT | Terminal: `nexus approve --interactive` (password required) | §8 |
-| Report shows `verification_alerts` | Ledger drift — `transparency_verify()` and reconcile | §9 |
-
----
-
-## 11. What this guide does NOT cover
-
-Some topics are deliberately excluded to keep the setup guide focused.
-Each has a canonical home elsewhere in the docs:
-
-| Topic | Where it lives |
-|-------|---------------|
-| Full 97-tool catalog | `get_tool_help(name)` per-tool · `README.md` summary table |
-| 14 forensic discipline rules | `get_rules()` MCP tool · `claude-code/lite/FORENSIC_DISCIPLINE.md` |
-| Architecture diagram | `ARCHITECTURE.md` |
-| Comparison vs upstream | `COMPARISON.md` |
-| Per-CLI-command reference | `CLI.md` (single source of truth) |
-| Examiner workflow / walkthrough | `guide.md` |
-| LangGraph pipeline | `langgraph/LANGGRAPH_INTEGRATION.md` |
-| Security / vulnerability disclosure | `SECURITY.md` |
-| Contributing / PR flow | `CONTRIBUTING.md` |
-
-The setup guide's tone is "do this, then this, then this." Reference
-material goes elsewhere.
+For runtime issues, evidence workflows, and hands-on practice, proceed to **[guide.md](guide.md)**.

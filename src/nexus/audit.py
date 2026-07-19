@@ -16,6 +16,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from nexus.config import settings
+
 logger = logging.getLogger(__name__)
 
 _EXAMINER_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,19}$")
@@ -147,7 +149,7 @@ class AuditWriter:
             except OSError:
                 content = ""
             if content:
-                case_dir = Path(content) if os.path.isabs(content) else Path.home() / ".nexus" / "cases" / content
+                case_dir = Path(content) if os.path.isabs(content) else settings.cases_root / content
                 if case_dir.is_dir():
                     return case_dir / "audit"
         return None

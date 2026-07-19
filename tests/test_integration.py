@@ -42,13 +42,9 @@ r = tools["log_external_action"].fn(
     purpose="MFT analysis for evidence",
 )
 _audit_id = r.get("audit_id", "")
-has_audit = _audit_id is not None and _audit_id != ""
-if not has_audit:
-    check("log_external_action (for finding)", True, f"(known Python 3.14 issue — audit_id=None)")
-else:
-    check("log_external_action (for finding)", True, f"audit_id={_audit_id}")
+check("log_external_action (for finding)", _audit_id is not None and _audit_id != "", f"audit_id={_audit_id}")
 
-# 4. record_finding with provenance (handles audit failure gracefully)
+# 4. record_finding with provenance
 r = tools["record_finding"].fn(
     title="Suspicious execution from AppData",
     observation="MFT shows EVIL.EXE launched from AppData",
@@ -57,11 +53,9 @@ r = tools["record_finding"].fn(
     confidence_justification="MFT $STANDARD_INFORMATION and $FILE_NAME timestamps corroborate execution",
     host="DC-01",
     event_timestamp="2026-01-15T14:32:00Z",
-    artifacts=[{"audit_id": _audit_id, "type": "mft", "value": "C:\\Evidence\\MFT"}] if has_audit else None,
+    artifacts=[{"audit_id": _audit_id, "type": "mft", "value": "C:\\Evidence\\MFT"}],
 )
-# Accept both STAGED (with provenance) and REJECTED (without audit trail on broken platform)
-status_ok = r.get("status") in ("STAGED", "REJECTED")
-check("record_finding", status_ok, f"status={r.get('status')} id={r.get('finding_id', r.get('error', ''))}")
+check("record_finding", r.get("status") == "STAGED", f"status={r.get('status')} id={r.get('finding_id', r.get('error', ''))}")
 
 # 5. record_timeline_event
 r = tools["record_timeline_event"].fn(
@@ -71,10 +65,9 @@ r = tools["record_timeline_event"].fn(
 )
 check("record_timeline_event", r["status"] == "STAGED", f"ID={r['event_id']}")
 
-# 6. get_findings (0 if audit failed, 1 if provenance chain works)
+# 6. get_findings
 r = tools["get_findings"].fn(status="DRAFT")
-expected = 1 if has_audit else 0
-check("get_findings", r["total"] == expected, f"{r['total']} findings (expected {expected})")
+check("get_findings", r["total"] == 1, f"{r['total']} findings (expected 1)")
 
 # 7. add_todo
 r = tools["add_todo"].fn("Review MFT analysis", priority="high")
@@ -219,8 +212,7 @@ else:
 
 # 35. get_findings (with no status = all)
 r = tools["get_findings"].fn()
-expected_total = 1 if has_audit else 0
-check("get_findings (all)", r["total"] == expected_total, f"{r['total']} total (expected {expected_total})")
+check("get_findings (all)", r["total"] == 1, f"{r['total']} total (expected 1)")
 
 # Cleanup
 os.unlink(ev_path)

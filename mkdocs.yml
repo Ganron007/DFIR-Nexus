@@ -41,10 +41,10 @@ theme:
 
 nav:
   - Home: index.md
+  - Setup: SETUP.md
   - Workflow guide: guide.md
   - CLI reference: CLI.md
   - Architecture: ARCHITECTURE.md
-  - Comparison vs. upstream: COMPARISON.md
   - FAQ: FAQ.md
   - Changelog: CHANGELOG.md
 

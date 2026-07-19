@@ -11,6 +11,7 @@ Provides run_command with:
 import csv
 import hashlib
 import io
+import json
 import logging
 import os
 import re
@@ -241,7 +242,9 @@ def _validate_input_path(path: str) -> None:
         try:
             if p.is_relative_to(bp):
                 raise ValueError(f"Input path blocked: {path} is under {bp}")
-        except (ValueError, AttributeError):
+        except ValueError:
+            raise
+        except AttributeError:
             continue
 
 
@@ -251,6 +254,9 @@ def _sanitize_extra_args(extra_args: list[str], tool_name: str) -> list[str]:
     for arg in extra_args:
         if _SHELL_METACHARS.search(arg):
             raise ValueError(f"Argument contains shell metacharacters: {arg}")
+        arg_lower = arg.lower()
+        if arg_lower in _DANGEROUS_FLAGS or arg in _DANGEROUS_FLAGS:
+            raise ValueError(f"Dangerous flag blocked: {arg}")
         safe.append(arg)
     return safe
 
@@ -390,9 +396,10 @@ def _execute(cmd_list: list[str], timeout: int = 600,
 
 # ── Enrichment ─────────────────────────────────────────────────────────
 
-def _build_response(tool_name: str, result: dict, audit_id: str,
+def _build_response(tool_name: str, result: dict, audit_id: str | None,
                     artifact_context: str = "") -> dict:
     """Build FK-enriched response envelope with knowledge enrichment."""
+    audit_id = audit_id or ""
     tool_def = _get_tool_def(tool_name)
     tool_lower = tool_name.lower()
 
@@ -439,7 +446,7 @@ def _build_response(tool_name: str, result: dict, audit_id: str,
         # Add evidence standards and checklist
         standards = fk.get_evidence_standards()
         if standards:
-            result.get("_enrich", {})["standards"] = standards
+            result.setdefault("_enrich", {})["standards"] = standards
 
     if tool_def and decay:
         if tool_def.get("caveats"):

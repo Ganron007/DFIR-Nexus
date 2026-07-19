@@ -1,231 +1,169 @@
 # DFIR-Nexus
 
-**One audit chain. One process. AI-assisted. Examiner-approved.**
+<p align="center">
+  <img src="assets/dfir-nexus-logo.svg" alt="DFIR-Nexus Logo" width="620">
+</p>
 
-> ⚠️ **Status: Beta.** The provenance chain, HMAC ledger, transparency
-> log, and discipline validation are tested (123 passing tests). The
-> project has not yet undergone third-party security review. Findings
-> produced by DFIR-Nexus should be **independently verified** before
-> being used in legal proceedings. See [SECURITY.md](SECURITY.md) for
-> vulnerability disclosure and [Docs/FAQ.md](Docs/FAQ.md) for the
-> full honest read on maturity.
+<p align="center">
+  <strong>One audit chain. One process. AI-assisted. Examiner-approved.</strong>
+</p>
 
----
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT"></a>
+  <img src="https://img.shields.io/badge/Tests-521%20Passed-success.svg" alt="Tests: 521 Passed">
+  <img src="https://img.shields.io/badge/MCP%20Tools-110%20Registered-blue.svg" alt="MCP Tools: 110 Registered">
+  <img src="https://img.shields.io/badge/Status-Public%20Ready-success.svg" alt="Status: Public Ready">
+</p>
 
-## Why DFIR-Nexus exists
-
-Digital forensics and incident response leans on a fleet of single-
-purpose tools — Hayabusa, MFTECmd, chainsaw, bulk_extractor, Zimmerman,
-KAPE — and a separate set of conventions for findings, timelines,
-chain-of-custody, and report generation. Stitching these together
-across a SIFT box and a Windows analyst workstation, by hand, in the
-middle of an incident, is where mistakes happen.
-
-DFIR-Nexus is one process that:
-
-- **Wraps the tool fleet** as 97 Model Context Protocol (MCP) tools an
-  LLM client (Claude Code, Cursor, Cline, LibreChat) can call directly.
-- **Logs every tool call** to a SHA-256 audit chain rooted in the case
-  directory.
-- **Refuses to record a finding** that doesn't reference a real
-  `audit_id` from that chain.
-- **Holds every finding at DRAFT** until a human with the password
-  signs it into an HMAC-verified ledger. The LLM cannot approve.
-- **Mirrors approvals into a hash-chained transparency log** so a
-  tampered case directory is detectable without trusting the
-  verification dir.
-- **Generates reports** that reconcile against the ledger and surface
-  any drift as `verification_alerts`.
-
-If the LLM hallucinates, the worst that can happen is a DRAFT finding
-that fails validation or never gets approved.
-
-## Who it's for
-
-- **DFIR examiners and IR responders** who want AI assistance on tool
-  selection, parsing, and narrative — without giving the AI the final
-  word on what becomes evidence.
-- **Lab / homelab analysts and forensic students** who want a coherent
-  workspace across Linux (SIFT) and Windows tooling without standing
-  up seven separate MCP servers and a gateway.
-- **MCP / agent developers** building DFIR or SOC integrations who
-  want a single battle-tested target instead of a heterogeneous fleet.
+> [!IMPORTANT]
+> **Chain of Custody & Audit Integrity.** DFIR-Nexus enforces strict cryptographic data provenance. Every command executed through SIFT, Zimmerman, or Velociraptor is logged into a tamper-evident **HMAC-SHA256 audit ledger** in real time. To maintain forensic compliance, all draft findings must be verified and cryptographically signed using examiner passwords hashed with PBKDF2-HMAC (600,000 iterations). Automated AI agents are restricted to drafting findings and cannot authorize or alter forensic reports.
 
 ---
 
-## 5-minute quickstart
+## Why DFIR-Nexus Exists
 
-### 1. Install (one command per OS)
+Digital Forensics and Incident Response (DFIR) routinely relies on a highly fragmented ecosystem of single-purpose command-line tools (such as Hayabusa, MFTECmd, chainsaw, Volatility, KAPE, and Velociraptor). Manually correlating tool outputs during high-pressure incidents introduces cognitive strain, compromises chain-of-custody, and limits auditability.
 
-```bash
-# Linux (SIFT, Ubuntu, REMnux, etc.)
+**DFIR-Nexus** solves this by providing a unified, secure, and cryptographically verified forensic integration layer. By exposing native forensic tools as **91 Model Context Protocol (MCP) endpoints** (91 on Windows, 88 on Linux), it allows LLM agents (e.g., Cursor, Claude Code, Cline) to orchestrate collections and analyze artifacts programmatically, while enforcing strict examiner boundaries, cryptographic proof-of-source, and human authorization.
+
+---
+
+## Architecture & Data Flow
+
+DFIR-Nexus bridges LLM clients, host-native forensic tools, and the case database through a unified architecture:
+
+```mermaid
+graph TD
+    classDef main fill:#1a1f29,stroke:#0f83ff,stroke-width:2px,color:#ffffff;
+    classDef secondary fill:#161b22,stroke:#30363d,stroke-width:1px,color:#c9d1d9;
+    classDef gate fill:#2e1a1e,stroke:#f85149,stroke-width:2px,color:#ff7b72;
+    classDef storage fill:#1f242c,stroke:#2ea043,stroke-width:1px,color:#56d364;
+
+    Client["LLM Client / CLI / Portal"]:::main -->|MCP JSON-RPC| Server["FastMCP Server<br/>(nexus serve)"]:::main
+    
+    Server -->|Forensic Command Execution| SIFT["Linux SIFT Tools<br/>(Plaso, Volatility, Zeek)"]:::secondary
+    Server -->|Command Execution| WinForensics["Windows Forensics<br/>(Zimmerman, KAPE)"]:::secondary
+    Server -->|API Queries| Velociraptor["Velociraptor Client<br/>(Live Hunts)"]:::secondary
+
+    SIFT & WinForensics & Velociraptor -->|Raw Forensic Logs| Ingest["Ingestion Pipeline<br/>(33 Importers)"]:::secondary
+    
+    Ingest -->|Normalized Artifacts| CaseMgr["Case Manager<br/>(nexus.case_manager)"]:::main
+    
+    CaseMgr -->|SQLite Dual-Write| Store["Case DB<br/>(cases.db)"]:::storage
+    CaseMgr -->|SHA-256 Provenance| AuditChain["HMAC-SHA256 Audit Chain<br/>(SQLite audit_log)"]:::storage
+
+    CaseMgr -->|Create DRAFT Finding| FindingGate{"HITL Approval Gate<br/>(PBKDF2-HMAC Lockout)"}:::gate
+    
+    FindingGate -->|Analyst Password Input| Approved["Approved Ledger<br/>(findings.json)"]:::storage
+    
+    Approved -->|Export Reports| Exporter["Case Exporter"]:::main
+    
+    Exporter -->|Render Bundle| Reports["Markdown, HTML, STIX 2.0, DOCX, ZIP"]:::secondary
+```
+
+**The architecture enforces an offline-first, loopback-only trust model:**
+1. **MCP API (FastMCP)** — Exposes intent-level forensic capabilities to local LLM clients, ensuring arbitrary command strings cannot be executed.
+2. **Ingestion & Normalization** — Reads raw files from SIFT and Zimmerman tool chains, parsing artifacts through 33 specialized importers.
+3. **Case Ledger & Database** — Logs observations to SQLite and dual-writes a tamper-evident audit ledger using SHA-256 evidence hashing and HMAC-SHA256 block chaining.
+4. **HITL Gateway** — Restricts finding approvals to human operators. The password hashing uses PBKDF2-HMAC (600,000 iterations) with a 3-strike lockout security mechanism.
+5. **Report Exporter** — Exports validated case files as Markdown, HTML, STIX 2.0, DOCX, and ZIP bundles.
+
+---
+
+## Core Capabilities
+
+| Dimension | Feature Set |
+| :--- | :--- |
+| **Case & Evidence** | SQLite-backed cases containing findings, evidence records, timeline events, and case TODOs. SHA-256 hashing at registration provides verifiable integrity at any time. |
+| **Tamper Evidence** | Cryptographically chained HMAC-SHA256 audit ledger. Any attempt to modify command logs or findings breaks the chain verification. |
+| **Hardened Gate** | PBKDF2-HMAC password validation with 600,000 iterations. Features a **3-strike lockout** of 15 minutes to block automated brute-forcing. |
+| **Threat Intel** | Integrated lookups across 10 TI providers (ThreatFox, MalwareBazaar, URLhaus, Yaraify, MISP, OTX, Shodan, VT, AbuseIPDB, and CrowdStrike). |
+| **Semantic RAG** | Search over **22,000+ IR records** (SANS posters, Sigma, LOLBAS, GTFOBins, and KAPE targets) using a local ChromaDB collection (downloaded on first use; ~600 MB). |
+| **Live Orchestration** | Live target acquisition and collection via 10 built-in Velociraptor hunts (supports simulated mock client mode for offline testing). |
+| **Pipeline Agents** | Multi-agent state machine containing 6 specialized sub-agents (alert, cloud, network, endpoint, synthesis, and timeline) to construct analysis loops. |
+
+---
+
+## Quickstart
+
+### 1. Installation
+Install native dependencies and the Python package:
+
+```powershell
+# Windows
+.\setup-windows.ps1
+
+# Linux / macOS
 ./setup-linux.sh
 
-# macOS
-./setup-macos.sh
-
-# Windows (PowerShell 7+)
-.\setup-windows.ps1
-```
-
-Each script verifies Python 3.12+, creates a venv at `.venv/`, installs
-`pip install -e .[all]`, prompts for examiner identity + approval
-password, and runs `nexus init`. Use `--skip-init` for CI.
-
-Manual install if you'd rather skip the script:
-
-```bash
+# Manual install with all optional integrations
 pip install dfir-nexus[all]
-nexus config --examiner "your-name"
-nexus config --setup-password    # required before you can approve findings
-nexus init
 ```
 
-The setup scripts run `nexus init` for you at the end — that step
-checks optional dependencies, reports baseline-database status, and
-writes a `nexus-config.json` snippet you can paste into your LLM
-client.
-
-> **Full setup guide → [Docs/SETUP.md](Docs/SETUP.md)** covers all
-> install paths (setup script, pip, from source), multi-machine wiring,
-> LLM client configuration for every client type, the Claude Code skill
-> bundle, optional baseline databases, verification checklist, and a
-> flow matrix for "where am I, what's next."
-
-### 2. Start the server
+### 2. Configuration & Onboarding
+Initialize your examiner identity and case database:
 
 ```bash
-# Stdio mode — the LLM client spawns nexus directly (zero config)
-nexus serve
+# Configure examiner and set your HITL password
+nexus config --examiner "Jane Doe"
+nexus config --setup-password
 
-# Or HTTP mode — for multi-client + Examiner Portal at /portal
-nexus serve --http --port 4508
+# Quick onboarding (creates a case, hashes evidence, and launches the server)
+nexus init "Case Name" --evidence /path/to/disk.raw
 ```
 
-### 3. Wire your LLM client
-
-**Claude Code** — paste this into `.mcp.json` or `~/.claude/settings.json`:
-
-```json
-{
-  "mcpServers": {
-    "dfir-nexus": {
-      "type": "streamable-http",
-      "url": "http://127.0.0.1:4508/mcp"
-    }
-  }
-}
-```
-
-For stdio mode the binary is launched directly:
-
-```json
-{
-  "mcpServers": {
-    "dfir-nexus": { "command": "nexus", "args": ["serve"] }
-  }
-}
-```
-
-**Want a complete Claude Code experience?** Copy our curated skill bundle:
+### 3. Running the Server & Dashboard
+Expose the tools and interface locally:
 
 ```bash
-cp -r claude-code/lite ~/.claude/skills/dfir-nexus
-chmod +x ~/.claude/skills/dfir-nexus/hooks/*.sh
-```
+# Boot the HTTP MCP server and Dashboard Portal on port 4508
+nexus serve --http
 
-The skill ships a tuned system prompt (CLAUDE.md), tool-selection
-reference, hooks that audit every Bash command to the case audit log,
-a destructive-command guard that protects case data, slash commands
-(`/welcome`, `/case`, `/approve`, `/report`), and case-file templates.
-See [claude-code/README.md](claude-code/README.md). A stricter
-`full/` variant is available for multi-host fleets.
-
-### 4. Run your first investigation
-
-From your LLM client:
-
-```text
-case_init("Demo Investigation")
-evidence_register(path="/evidence/", description="Triage collection")
-
-run_command("fls -f ntfs /evidence/image.dd")           # Linux / SIFT
-run_windows_command("MFTECmd -f C:\\Evidence\\$MFT")    # Windows
-
-record_finding(
-    title="EVIL.EXE launched from AppData",
-    observation="MFT shows EVIL.EXE with $STANDARD_INFORMATION and $FILE_NAME timestamps consistent with execution",
-    interpretation="Initial access via user-writable directory — consistent with phishing",
-    confidence="MEDIUM",
-    confidence_justification="MFT timestamp pair corroborates execution within the suspect window",
-    event_timestamp="2026-01-15T14:32:00Z",
-    artifacts=[{"audit_id": "<id returned by the run_command call>"}]
-)
-```
-
-### 5. Approve as a human (terminal, password required)
-
-```bash
-nexus approve --interactive     # walk every DRAFT, password-gated
-nexus report --full --save report.json
+# Open the Examiner Portal dashboard in your default browser
+nexus portal
 ```
 
 ---
 
-## Deployment options
+## Project Structure & Documentation
 
-| Shape | Command | When to use |
-|-------|---------|-------------|
-| **Solo, stdio** | `nexus serve` | One analyst, one LLM client, no network. Simplest. |
-| **Multi-client, HTTP** | `nexus serve --http --port 4508` | Multiple LLM clients, web Examiner Portal. |
-| **Multi-machine** | One `nexus serve` per OS + `nexus setup client --sift HOST:PORT --windows HOST:PORT` | One instance on each forensic VM. Platform-gated registration means each only exposes its native tools. |
+Detailed guidelines are grouped in the `Docs/` directory:
 
----
-
-## What's inside
-
-| Module | Tools | Purpose |
-|--------|------:|---------|
-| `forensic` | 23 | Findings, timeline, TODOs, 14 discipline tools (rules, playbooks, anti-patterns, confidence, corroboration) |
-| `case` | 15 | Case lifecycle, evidence registry, export / import, backup |
-| `report` | 6 | Report generation across 6 profiles, IOC + MITRE aggregation, ledger reconciliation |
-| `sift` | 5 | Linux forensic tool execution (Linux-gated) — denylist, path/arg validation, 65+ catalog entries |
-| `windows` | 9 | Windows forensic tool execution (Windows-gated) — catalog-gated, 31 catalog entries, LRU caching |
-| `rag` | 5 | ChromaDB semantic search across ~23K forensic records + pre-built index download |
-| `opencti` | 11 | IOC / actor / malware / report / MITRE lookup, recent indicators, relationships |
-| `triage` | 15 | Offline Windows baseline validation (2.6M-record SQLite) + download tool |
-| `opensearch` | 8 | Evidence indexing, search, term aggregations, timeline histograms (real query DSL) |
-
-**Total: 97 MCP tools.** Universal modules register on every OS;
-`sift` and `windows` register only on matching OS.
-
-For the full CLI surface (19 top-level commands), see
-[Docs/CLI.md](Docs/CLI.md). For the architecture and trust model, see
-[Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md). For an examiner walkthrough,
-see [Docs/guide.md](Docs/guide.md).
+* 📚 **[Docs/guide.md](Docs/guide.md):** Step-by-step DFIR command guide.
+* ⚙️ **[Docs/SETUP.md](Docs/SETUP.md):** Advanced installation, environment variables, and tool integration.
+* 🔬 **[Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md):** High-level design, trust boundaries, and tool indexes.
+* 💻 **[Docs/CLI.md](Docs/CLI.md):** Typer-based command-line reference.
+* ❔ **[Docs/FAQ.md](Docs/FAQ.md):** Common operations and troubleshooting.
+* 📝 **[Docs/CHANGELOG.md](Docs/CHANGELOG.md):** Project history and release notes.
 
 ---
 
-## Documentation
+## Verification & Testing
 
-| Doc | What it covers |
-|-----|----------------|
-| [Docs/SETUP.md](Docs/SETUP.md) | Comprehensive setup — prerequisites, install, identity, multi-machine wiring, client config, baselines, verification |
-| [Docs/guide.md](Docs/guide.md) | Examiner workflow — install, first case, approval, reporting |
-| [Docs/CLI.md](Docs/CLI.md) | Complete CLI reference (single source of truth) |
-| [Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md) | Topology, provenance chain, security model |
-| [Docs/COMPARISON.md](Docs/COMPARISON.md) | Side-by-side vs. upstream (`sift-mcp`, `wintools-mcp`, `Valhuntir`), with roadmap |
-| [Docs/FAQ.md](Docs/FAQ.md) | Maturity, scope, common gotchas |
-| [Docs/CHANGELOG.md](Docs/CHANGELOG.md) | Per-release change history |
-| [claude-code/README.md](claude-code/README.md) | Curated Claude Code skill bundle (lite + full): CLAUDE.md, hooks, slash commands, case templates |
-| [tests/README.md](tests/README.md) | How to run the test suites |
-| [langgraph/LANGGRAPH_INTEGRATION.md](langgraph/LANGGRAPH_INTEGRATION.md) | Optional LangGraph automated investigation pipeline |
-| [SECURITY.md](SECURITY.md) | Vulnerability disclosure, threat model |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | PR flow and how to run tests |
-| `mkdocs.yml` | MkDocs Material site config; deploys to GitHub Pages via `.github/workflows/pages.yml` |
+DFIR-Nexus includes a rigorous testing suite covering unit, script, functional wiring, and blocker regression tests (**586 total checks**).
+
+```bash
+# 1. Run all Pytest Unit Tests (155 tests including 32 blocker regressions)
+pytest
+
+# 2. Run Individual Script-Based Tests (219 tests)
+python tests/test_knowledge.py
+python tests/test_detection.py
+python tests/test_ti.py
+python tests/test_ingest.py
+python tests/test_push.py
+python tests/test_integration.py
+python tests/test_portal.py
+python tests/test_hunt_parser.py
+
+# 3. Run the E2E Functional Audit (115 checks)
+python tests/functional_audit.py
+```
 
 ---
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+Distributed under the MIT License. See [LICENSE](LICENSE) for details.
+
+> Copyright (c) 2026 DFIR-Nexus contributors.

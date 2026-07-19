@@ -26,6 +26,8 @@ SUSPICIOUS_DIRECTORIES = [
     "\\downloads", "\\desktop", "\\perflogs", "\\intel", "\\recycler", "\\$recycle.bin",
 ]
 
+_ENCODED_PS = re.compile(r"-enc(odedcommand)?\s+[A-Za-z0-9+/=]{20,}", re.I)
+
 
 def normalize_path(path: str) -> str:
     if not path:
@@ -383,6 +385,7 @@ _MASQUERADE_TARGETS = {
 
 class Verdict(Enum):
     SUSPICIOUS = "SUSPICIOUS"
+    MALICIOUS = "MALICIOUS"
     EXPECTED_LOLBIN = "EXPECTED_LOLBIN"
     EXPECTED = "EXPECTED"
     UNKNOWN = "UNKNOWN"
@@ -512,3 +515,22 @@ def calculate_hash_verdict(is_vulnerable_driver=False, driver_info=None, is_lolb
         return VerdictResult(Verdict.EXPECTED_LOLBIN, reasons, "medium")
     reasons.append("Hash not found in local databases (neutral). For threat intel, query OpenCTI.")
     return VerdictResult(Verdict.UNKNOWN, reasons, "low")
+
+
+def merge_verdicts(*results: VerdictResult) -> VerdictResult:
+    if not results:
+        return VerdictResult(Verdict.UNKNOWN, ["No data"], "low")
+    rank = {
+        Verdict.MALICIOUS: 4,
+        Verdict.SUSPICIOUS: 3,
+        Verdict.EXPECTED_LOLBIN: 2,
+        Verdict.UNKNOWN: 1,
+        Verdict.EXPECTED: 0,
+    }
+    worst = max(results, key=lambda r: rank.get(r.verdict, -1))
+    all_reasons: list[str] = []
+    for r in results:
+        all_reasons.extend(r.reasons)
+    confidences = [r.confidence for r in results]
+    merged_conf = "high" if "high" in confidences else "medium" if "medium" in confidences else "low"
+    return VerdictResult(worst.verdict, all_reasons[:10], merged_conf)

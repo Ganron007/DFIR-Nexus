@@ -1,47 +1,140 @@
-# Python
+# ── Python ──────────────────────────────────────────────────────────
 __pycache__/
+**/__pycache__/
 *.py[cod]
+*$py.class
+*.so
+.Python
 *.egg-info/
+*.egg
 dist/
 build/
+.eggs/
+wheels/
+.installed.cfg
+
+# ── Virtual envs ────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ── Test / lint / coverage caches ───────────────────────────────────
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.cover
+.hypothesis/
 
-# Virtual env
-.venv/
-venv/
-
-# IDE
+# ── IDE / editors ───────────────────────────────────────────────────
 .vscode/
 .idea/
+*.swp
+*.swo
 .claude/
 
-# OS
+# ── OS junk ─────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
+Desktop.ini
 
-# Nexus runtime
-~/.nexus/
-*.sqlite
-nexus-config.json
+# ── Secrets & local env (never push) ────────────────────────────────
+.env
+.env.*
+!.env.example
+secrets.yaml
+secrets.json
+**/secrets.env
+**/secrets.local.*
+*.pem
+*.key
+!*.key.example
+# Keep Python modules named secrets.py (e.g. src/nexus/case/secrets.py)
+!**/secrets.py
+
+# ── Runtime / case data (lives under ~/.nexus by default) ───────────
+.nexus/
+cases/
+data/
+smoke_test_data/
 pipeline.sqlite
+nexus-config.json
 
-# Test artifacts (USERPROFILE redirect for the integration suite)
+# Local test USERPROFILE redirects
 .testhome/
 .home/
 .home2/
 
-# MkDocs build output
+# ── Large downloaded / generated forensic corpora (NOT source) ──────
+# RAG Chroma index + archives (~600 MB when downloaded)
+**/rag-index.tar.zst
+**/rag-checksums.sha256
+**/chroma/
+**/.chroma/
+chroma.sqlite3
+
+# Triage baselines (~2 GB when downloaded)
+**/known_good.db
+**/known_good.db.zst
+**/context.db
+**/context.db.zst
+**/registry.db
+**/registry.db.zst
+**/checksums.sha256
+**/triage.db
+**/triage/data/
+
+# NSRL / other bulk hash DBs
+**/nsrl.sqlite
+**/nsrl*.db
+**/*nsrl*.zip
+
+# Generic DB / WAL sidecars that appear at runtime
+*.sqlite
+*.db
+*.db-shm
+*.db-wal
+*.edb
+
+# Compressed release assets if dropped into the tree by mistake
+*.tar.zst
+*.zst
+
+# HuggingFace / sentence-transformers model caches (if created in-repo)
+.cache/
+**/torch_cache/
+**/huggingface/
+**/.hf_cache/
+*.gguf
+*.onnx
+*.safetensors
+*.bin
+!**/package-lock.bin
+
+# Logs
+*.log
+*.mcp.lock
+
+# ── Build / docs site output ────────────────────────────────────────
 _site/
 site/
 
-# Session / scratch
+# ── Scratch ─────────────────────────────────────────────────────────
 .session_state.md
 *.bak
 *.tmp
 *.orig
+*.swp
 
-# Env
-.env
-.env.*
+# ── Private-repo policy ─────────────────────────────────────────────
+# Docs/internal/ IS tracked (REVAMP plans, audits, checklists).
+# Strip/archive those only before public release — not now.
+#
+# Override global ignore of AGENTS.md for this repo (needed for agents).
+!AGENTS.md

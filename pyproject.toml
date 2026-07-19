@@ -40,6 +40,17 @@ opencti = [
 encrypt = [
     "cryptography>=42.0",
 ]
+detection = [
+    "pysigma>=0.11",
+    "pysigma-backend-elastic>=1.0",
+    "pysigma-backend-splunk>=1.0",
+]
+pipeline = [
+    "langgraph>=0.2",
+    "langchain-anthropic>=0.1",
+    "langchain-openai>=0.1",
+    "langchain-mcp-adapters>=0.0.1",
+]
 all = [
     "dfir-nexus[http]",
     "dfir-nexus[rag]",
@@ -47,6 +58,8 @@ all = [
     "dfir-nexus[opensearch]",
     "dfir-nexus[opencti]",
     "dfir-nexus[encrypt]",
+    "dfir-nexus[detection]",
+    "dfir-nexus[pipeline]",
 ]
 
 [project.urls]
@@ -74,3 +87,20 @@ ignore = ["E501", "E402"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+python_files = [
+    "test_case_*.py",
+    "test_utils_*.py",
+    "test_llm_*.py",
+    "test_mitre.py",
+    "test_integration_modules.py",
+    "test_blocker_regressions.py",
+    "test_beacon.py",
+    "test_gap_analysis.py",
+    "test_deobfuscate.py",
+    "test_playbook.py",
+    "test_adversary.py",
+    "test_detect.py",
+    "test_declarative.py",
+    "test_correlate.py",
+    "test_evidence_graph.py",
+]

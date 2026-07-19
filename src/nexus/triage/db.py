@@ -630,4 +630,4 @@ class ContextDB:
         return stats
 
 
-import re as _re
+import re

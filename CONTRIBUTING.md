@@ -28,47 +28,68 @@ pip install -e .[all]
 
 ## Running tests
 
-Three suites, all runnable as plain scripts. Expected total:
-**51 + 41 + 31 = 123 passing**.
+**Total: 489 checks (155 pytest + 219 script + 115 functional audit).**
+
+### Pytest suite (155 tests)
+```bash
+pytest
+```
+
+### Script-based tests (219 tests)
+```bash
+python tests/test_knowledge.py         # 51 tests — knowledge loader
+python tests/test_hunt_parser.py       # 31 tests — hunt output parser
+python tests/test_integration.py       # 41 tests — MCP tool E2E
+python tests/test_detection.py         # 21 tests — Sigma rule detection
+python tests/test_ti.py                # 26 tests — threat intel providers
+python tests/test_ingest.py            # 14 tests — ingest importers
+python tests/test_push.py              # 17 tests — push server
+python tests/test_portal.py            # 18 tests — portal middleware
+```
+
+### Functional audit (115 checks)
+```bash
+python tests/functional_audit.py       # End-to-end wiring verification
+```
 
 The integration suite writes a case directory under `~/.nexus/`. To
 keep it out of your real home directory, redirect `USERPROFILE`:
-
 ```bash
 # Windows (PowerShell)
 $env:USERPROFILE = "$PWD/.testhome"
-python tests/test_knowledge.py
 python tests/test_integration.py
-python tests/test_hunt_parser.py
 
 # macOS / Linux
-USERPROFILE="$PWD/.testhome" python tests/test_knowledge.py
 USERPROFILE="$PWD/.testhome" python tests/test_integration.py
-USERPROFILE="$PWD/.testhome" python tests/test_hunt_parser.py
 ```
-
-See [`tests/README.md`](tests/README.md) for what each suite covers.
 
 ## Pull-request checklist
 
-- [ ] All three test suites pass on your platform.
-- [ ] New MCP tools include a docstring, an `examiner` field in the
-      response envelope, and a `data_provenance` string literal.
-- [ ] Tools accepting user-supplied paths go through the existing
-      validation in `nexus/tools/sift.py` or `nexus/tools/windows.py`
-      — do not add a parallel one.
+- [ ] All test suites pass on your platform.
+- [ ] `python -m compileall src/nexus` is clean.
+- [ ] No remaining `dfir_nexus` references in `src/nexus/`.
+- [ ] New MCP tools include a docstring and `audit_id` recording.
+- [ ] Tools accepting user-supplied paths go through path validation
+      in `nexus/utils/paths.py`.
 - [ ] If you change the audit log, HMAC ledger, approval flow, or
       transparency log, `Docs/ARCHITECTURE.md` is updated to match,
       and `SECURITY.md` "in scope" list reviewed.
 - [ ] No new top-level dependencies without justification in the PR
       description. Optional extras (`[rag]`, `[opencti]`,
       `[opensearch]`, `[triage]`) are preferred over baseline deps.
-- [ ] Docs follow the single-source-of-truth rule: CLI surface lives
-      in `Docs/CLI.md` only; README and `Docs/guide.md` link to it.
+- [ ] Docs follow the single-source rule: CLI surface in
+      `Docs/CLI.md`; workflow in `Docs/guide.md`.
+
+## Module structure
+
+New modules should follow the existing pattern:
+- `src/nexus/<module>/__init__.py` — public API exports
+- `src/nexus/<module>/schemas.py` — dataclasses and enums (if needed)
+- Tests in `tests/test_<module>.py`
 
 ## Commit style
 
-Short subject (≤72 chars), imperative mood. Body explains the *why*
+Short subject (<=72 chars), imperative mood. Body explains the *why*
 when not obvious from the diff. Reference an issue when one exists.
 
 ## Code style
@@ -76,8 +97,6 @@ when not obvious from the diff. Reference an issue when one exists.
 - Python 3.12+. Use type hints on public functions.
 - Stdlib-first. Avoid pulling in a library to do something stdlib
   can do in five lines.
-- Prefer Edit-tool-style narrow changes over wholesale rewrites of
-  existing modules.
 - No emojis in code, comments, or docs unless explicitly requested.
 
 ## License

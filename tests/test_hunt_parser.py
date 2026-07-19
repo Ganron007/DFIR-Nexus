@@ -1,30 +1,20 @@
-"""Unit tests for langgraph/hunt_parser.py.
+"""Unit tests for nexus.langgraph.hunt_parser.
 
 Exercises every parse path so we know stage_findings's placeholder
-fallback fires only when it should. Loaded by file path to avoid the
-local `langgraph/` directory colliding with the third-party package
-of the same name.
+fallback fires only when it should.
 
 Run as a script: `python tests/test_hunt_parser.py`.
 """
 
 from __future__ import annotations
 
-import importlib.util
 import sys
-from pathlib import Path
+import os
 from types import SimpleNamespace
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-PARSER_PATH = REPO_ROOT / "langgraph" / "hunt_parser.py"
-
-_spec = importlib.util.spec_from_file_location("hunt_parser", PARSER_PATH)
-hp = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(hp)
-
-parse_hunt_candidates = hp.parse_hunt_candidates
-normalize_candidate = hp.normalize_candidate
+from nexus.langgraph.hunt_parser import parse_hunt_candidates, normalize_candidate
 
 
 passed = 0

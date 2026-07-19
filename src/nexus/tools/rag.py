@@ -456,10 +456,12 @@ def register_tools(server: FastMCP, audit: AuditWriter):
 
     @server.tool()
     def forensic_rag_rebuild(data_dir: str = "") -> dict:
-        """Rebuild RAG index from source data (slow: 5-15 min).
+        """Local source-to-index rebuild (deferred).
 
-        This clones and parses 23 upstream sources (Sigma, MITRE, Atomic Red
-        Team, etc.) to build a fresh ChromaDB index.
+        Building a fresh index from the 23 upstream sources requires a
+        dedicated ingest pipeline that is not yet part of the standalone
+        package. For now, use `forensic_rag_download()` to fetch the
+        pre-built index.
 
         Args:
             data_dir: Optional custom data directory for sources cache
@@ -471,13 +473,14 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         audit.log(
             tool="forensic_rag_rebuild",
             params={"data_dir": data_dir},
-            result_summary={"status": "rebuilt"},
+            result_summary={"status": "deferred"},
         )
         return {
-            "status": "not_implemented_local",
+            "status": "deferred",
             "message": (
-                "Local rebuild requires the full forensic-rag build pipeline. "
-                "Use forensic_rag_download() instead for a pre-built index."
+                "Local source-to-index rebuild is not yet implemented in the "
+                "standalone package. Use forensic_rag_download() for the "
+                "pre-built index."
             ),
         }
 

@@ -32,7 +32,12 @@ for arg in "$@"; do
 done
 
 REPO_ROOT=$(cd "$(dirname "$0")" && pwd)
-cd "$REPO_ROOT"
+pushd "$REPO_ROOT" >/dev/null || exit 1
+
+cleanup() {
+    popd >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
 
 echo "==> DFIR-Nexus setup (Linux)"
 echo "    Repo: $REPO_ROOT"

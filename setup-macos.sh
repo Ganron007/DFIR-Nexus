@@ -26,14 +26,19 @@ for arg in "$@"; do
 done
 
 REPO_ROOT=$(cd "$(dirname "$0")" && pwd)
-cd "$REPO_ROOT"
+pushd "$REPO_ROOT" >/dev/null || exit 1
+
+cleanup() {
+    popd >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
 
 echo "==> DFIR-Nexus setup (macOS)"
 echo "    Repo: $REPO_ROOT"
 
 # Pick the best Python on PATH
 PY_BIN=""
-for cand in python3.12 python3.13 python3; do
+for cand in python3.12 python3.13 python3.14 python3; do
     if command -v "$cand" >/dev/null 2>&1; then
         PY_BIN="$cand"
         break

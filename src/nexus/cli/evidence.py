@@ -1,39 +1,45 @@
-"""Evidence management — register, list, verify, lock, unlock."""
+"""Evidence management — register, list, verify, lock, unlock.
+
+Backed by the SQLite case stack.
+"""
 
 import hashlib
-import json
-import os
 import stat
-import typer
-from datetime import datetime, timezone
 from pathlib import Path
+
+import typer
 
 app = typer.Typer(help="Manage evidence files")
 
+_ACTIVE_CASE_FILE = Path.home() / ".nexus" / "active_case"
 
-def _get_case_dir(case_id: str = "") -> Path | None:
-    active = Path.home() / ".nexus" / "active_case"
-    if case_id:
-        d = Path.home() / ".nexus" / "cases" / case_id
-        return d if d.exists() else None
-    if active.exists():
-        content = active.read_text().strip()
+
+def _get_active_case_id() -> str | None:
+    if _ACTIVE_CASE_FILE.exists():
+        content = _ACTIVE_CASE_FILE.read_text().strip()
         if content:
-            d = Path(content) if Path(content).is_absolute() else Path.home() / ".nexus" / "cases" / content
-            return d if d.exists() else None
-    typer.echo("No active case. Use 'nexus case activate'", err=True)
+            return content
     return None
+
+
+def _get_sqlite_mgr():
+    from nexus.case import CaseManager
+    from nexus.config import settings
+    db_path = settings.cases_root / "cases.db"
+    return CaseManager(db_path)
 
 
 @app.command()
 def register(
     path: str = typer.Argument(..., help="Path to evidence file"),
     description: str = typer.Option("", "--description", "-d", help="Evidence description"),
-    case_id: str = typer.Option("", "--case", help="Case ID"),
+    case_id: str = typer.Option("", "--case", help="Case ID (defaults to active)"),
 ):
     """Register an evidence file with SHA-256 hash."""
-    case_dir = _get_case_dir(case_id)
-    if not case_dir:
+    if not case_id:
+        case_id = _get_active_case_id() or ""
+    if not case_id:
+        typer.echo("No active case. Use 'nexus case activate' first.", err=True)
         raise typer.Exit(1)
 
     fpath = Path(path)
@@ -47,18 +53,14 @@ def register(
             sha256.update(chunk)
     digest = sha256.hexdigest()
 
-    registry_path = case_dir / "evidence_registry.json"
-    registry = json.loads(registry_path.read_text()) if registry_path.exists() else []
-
-    entry = {
-        "path": str(fpath.resolve()),
-        "sha256": digest,
-        "description": description,
-        "size": fpath.stat().st_size,
-        "registered_at": datetime.now(timezone.utc).isoformat(),
-    }
-    registry.append(entry)
-    registry_path.write_text(json.dumps(registry, indent=2, default=str))
+    mgr = _get_sqlite_mgr()
+    mgr.add_evidence(
+        case_id=case_id,
+        name=fpath.name,
+        description=description,
+        file_path=str(fpath.resolve()),
+        file_hash_sha256=digest,
+    )
 
     typer.echo(f"Registered: {fpath.name}")
     typer.echo(f"  SHA-256: {digest}")
@@ -67,51 +69,54 @@ def register(
 
 @app.command()
 def list(
-    case_id: str = typer.Option("", "--case", help="Case ID"),
+    case_id: str = typer.Option("", "--case", help="Case ID (defaults to active)"),
 ):
     """List registered evidence files."""
-    case_dir = _get_case_dir(case_id)
-    if not case_dir:
+    if not case_id:
+        case_id = _get_active_case_id() or ""
+    if not case_id:
+        typer.echo("No active case. Use 'nexus case activate' first.", err=True)
         raise typer.Exit(1)
 
-    registry_path = case_dir / "evidence_registry.json"
-    if not registry_path.exists():
+    mgr = _get_sqlite_mgr()
+    if mgr.get_case(case_id) is None:
+        typer.echo(f"Case not found: {case_id}", err=True)
+        raise typer.Exit(1)
+
+    evidence_list = mgr.list_evidence(case_id)
+    if not evidence_list:
         typer.echo("No evidence registered")
         return
 
-    registry = json.loads(registry_path.read_text())
-    if not registry:
-        typer.echo("No evidence registered")
-        return
-
-    for e in registry:
-        p = Path(e.get("path", "?"))
-        sha = e.get("sha256", "")[:16]
-        desc = e.get("description", "")[:40]
-        ts = e.get("registered_at", "")[:10]
-        typer.echo(f"  {p.name:30s} {sha}...  {desc}  {ts}")
+    for ev in evidence_list:
+        fname = Path(ev.file_path).name if ev.file_path else ev.name
+        sha = (ev.file_hash_sha256 or "")[:16]
+        desc = ev.description[:40] if ev.description else ""
+        typer.echo(f"  {fname:30s} {sha}...  {desc}")
 
 
 @app.command()
 def verify(
-    case_id: str = typer.Option("", "--case", help="Case ID"),
+    case_id: str = typer.Option("", "--case", help="Case ID (defaults to active)"),
 ):
     """Re-hash registered evidence to verify integrity."""
-    case_dir = _get_case_dir(case_id)
-    if not case_dir:
+    if not case_id:
+        case_id = _get_active_case_id() or ""
+    if not case_id:
+        typer.echo("No active case. Use 'nexus case activate' first.", err=True)
         raise typer.Exit(1)
 
-    registry_path = case_dir / "evidence_registry.json"
-    if not registry_path.exists():
+    mgr = _get_sqlite_mgr()
+    evidence_list = mgr.list_evidence(case_id)
+    if not evidence_list:
         typer.echo("No evidence registered")
         return
 
-    registry = json.loads(registry_path.read_text())
     all_ok = True
-    for e in registry:
-        fpath = Path(e["path"])
-        if not fpath.exists():
-            typer.echo(f"  MISSING: {fpath.name}")
+    for ev in evidence_list:
+        fpath = Path(ev.file_path) if ev.file_path else None
+        if fpath is None or not fpath.exists():
+            typer.echo(f"  MISSING: {ev.name}")
             all_ok = False
             continue
 
@@ -121,10 +126,10 @@ def verify(
                 sha256.update(chunk)
         digest = sha256.hexdigest()
 
-        if digest == e["sha256"]:
-            typer.echo(f"  ✓ {fpath.name}")
+        if digest == ev.file_hash_sha256:
+            typer.echo(f"  OK {ev.name}")
         else:
-            typer.echo(f"  ✗ HASH MISMATCH: {fpath.name}")
+            typer.echo(f"  HASH MISMATCH: {ev.name}")
             all_ok = False
 
     if all_ok:
@@ -133,57 +138,43 @@ def verify(
 
 @app.command()
 def lock(
-    case_id: str = typer.Option("", "--case", help="Case ID"),
+    case_id: str = typer.Option("", "--case", help="Case ID (defaults to active)"),
 ):
     """Lock evidence directory to read-only to prevent tampering."""
-    case_dir = _get_case_dir(case_id)
-    if not case_dir:
-        raise typer.Exit(1)
-
-    registry_path = case_dir / "evidence_registry.json"
-    if not registry_path.exists():
-        typer.echo("No evidence registered")
-        return
-
-    registry = json.loads(registry_path.read_text())
+    if not case_id:
+        case_id = _get_active_case_id() or ""
+    mgr = _get_sqlite_mgr()
+    evidence_list = mgr.list_evidence(case_id)
     count = 0
-    for e in registry:
-        fpath = Path(e["path"])
-        if fpath.exists():
+    for ev in evidence_list:
+        fpath = Path(ev.file_path) if ev.file_path else None
+        if fpath and fpath.exists():
             try:
                 current = stat.S_IMODE(fpath.stat().st_mode)
                 fpath.chmod(current & ~stat.S_IWUSR & ~stat.S_IWGRP & ~stat.S_IWOTH)
                 count += 1
             except OSError as err:
                 typer.echo(f"  Could not lock {fpath.name}: {err}")
-
     typer.echo(f"Locked {count} evidence files (read-only)")
 
 
 @app.command()
 def unlock(
-    case_id: str = typer.Option("", "--case", help="Case ID"),
+    case_id: str = typer.Option("", "--case", help="Case ID (defaults to active)"),
 ):
     """Unlock evidence directory for new files."""
-    case_dir = _get_case_dir(case_id)
-    if not case_dir:
-        raise typer.Exit(1)
-
-    registry_path = case_dir / "evidence_registry.json"
-    if not registry_path.exists():
-        typer.echo("No evidence registered")
-        return
-
-    registry = json.loads(registry_path.read_text())
+    if not case_id:
+        case_id = _get_active_case_id() or ""
+    mgr = _get_sqlite_mgr()
+    evidence_list = mgr.list_evidence(case_id)
     count = 0
-    for e in registry:
-        fpath = Path(e["path"])
-        if fpath.exists():
+    for ev in evidence_list:
+        fpath = Path(ev.file_path) if ev.file_path else None
+        if fpath and fpath.exists():
             try:
                 current = stat.S_IMODE(fpath.stat().st_mode)
                 fpath.chmod(current | stat.S_IWUSR)
                 count += 1
             except OSError as err:
                 typer.echo(f"  Could not unlock {fpath.name}: {err}")
-
     typer.echo(f"Unlocked {count} evidence files")

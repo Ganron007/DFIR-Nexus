@@ -1,8 +1,9 @@
 """Examiner configuration management with approval password support."""
 
 import getpass
-import typer
 from pathlib import Path
+
+import typer
 
 app = typer.Typer(help="Manage examiner configuration")
 
@@ -29,10 +30,18 @@ def set(
         typer.echo(f"Examiner set to: {examiner}")
 
     if setup_password:
-        from nexus.auth import has_password, setup_password, reset_password, _MIN_PASSWORD_LENGTH
+        import os
 
-        analyst = examiner or "default"
-        if has_password(analyst):
+        from nexus.auth import has_password as _has_password
+        from nexus.auth import reset_password as _do_reset_password
+        from nexus.auth import setup_password as _do_setup_password
+        from nexus.config import settings
+
+        analyst = examiner or settings.examiner or os.environ.get("USER") or os.environ.get("USERNAME") or ""
+        if not analyst:
+            typer.echo("No examiner identity. Use --examiner or set NEXUS_EXAMINER.", err=True)
+            raise typer.Exit(1)
+        if _has_password(analyst):
             typer.echo(f"Password already configured for {analyst}")
             reset = typer.confirm("Reset password?", default=False)
             if reset:
@@ -42,7 +51,7 @@ def set(
                 if new_pw != confirm:
                     typer.echo("Passwords do not match", err=True)
                     raise typer.Exit(1)
-                result = reset_password(analyst, old_pw, new_pw)
+                result = _do_reset_password(analyst, old_pw, new_pw)
                 if result["status"] == "ok":
                     typer.echo(f"Password rotated. {result.get('re_signed', 0)} ledger entries re-signed.")
                 else:
@@ -59,7 +68,7 @@ def set(
             raise typer.Exit(1)
 
         try:
-            result = setup_password(analyst, pw)
+            result = _do_setup_password(analyst, pw)
             typer.echo(f"Password configured ({result['status']})")
             typer.echo("This password is now required for approve/reject operations")
         except ValueError as e:

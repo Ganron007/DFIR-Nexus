@@ -15,7 +15,8 @@ from pathlib import Path
 
 from nexus.auth import (
     has_password, verify_password, check_lockout, record_failure, clear_failures,
-    setup_password, derive_hmac_key, compute_hmac, write_verification_entry,
+    setup_password, derive_hmac_key, derive_purpose_key, compute_hmac,
+    write_verification_entry, SIGNING_PURPOSE,
 )
 from nexus.config import settings
 from nexus.cli.main import _resolve_case
@@ -52,13 +53,15 @@ def _require_approval_auth(analyst: str) -> str | None:
 
 
 def _hmac_signing_key(password: str, analyst: str) -> bytes | None:
-    """Derive HMAC key from password + stored salt."""
-    from nexus.auth import _load_password_entry, PBKDF2_ITERATIONS
+    """Derive HMAC key from stored_hash + purpose tag (matches portal)."""
+    from nexus.auth import _load_password_entry
     entry = _load_password_entry(analyst)
     if not entry:
         return None
-    salt = entry.get("salt", "")
-    return derive_hmac_key(password, salt)
+    stored_hash = entry.get("hash", "")
+    if not stored_hash:
+        return None
+    return derive_purpose_key(bytes.fromhex(stored_hash), SIGNING_PURPOSE)
 
 
 def approve_finding(

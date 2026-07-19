@@ -14,7 +14,6 @@ import secrets
 import tempfile
 import time
 from pathlib import Path
-from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +88,9 @@ def verify_password(analyst: str, password: str) -> bool:
     """Verify password against stored hash. Returns True/False."""
     entry = _load_password_entry(analyst)
     if not entry:
+        # Dummy verification to prevent timing attack / username enumeration
+        dummy_salt = "0000000000000000000000000000000000000000000000000000000000000000"
+        hashlib.pbkdf2_hmac("sha256", password.encode(), dummy_salt.encode(), PBKDF2_ITERATIONS)
         return False
     stored_hash = entry["hash"]
     salt = entry["salt"]
@@ -219,6 +221,18 @@ def _validate_case_id(case_id: str) -> None:
 
 def derive_hmac_key(password: str, salt: str) -> bytes:
     return hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), PBKDF2_ITERATIONS)
+
+
+def derive_purpose_key(base_key: bytes, purpose: str) -> bytes:
+    """Derive a purpose-specific key from base key material using HMAC-SHA256.
+
+    Provides key separation without requiring HKDF / the cryptography package.
+    """
+    return hmac.new(base_key, purpose.encode("utf-8"), hashlib.sha256).digest()
+
+
+SIGNING_PURPOSE = "nexus-approval-signing-v1"
+CHALLENGE_PURPOSE = "nexus-challenge-response-v1"
 
 
 def compute_hmac(derived_key: bytes, content: str) -> str:

@@ -62,7 +62,8 @@ def status(
                 pidfile.unlink(missing_ok=True)
 
         status_str = "RUNNING" if running else "STOPPED"
-        typer.echo(f"  {svc_name:20s} [{status_str:8s}]  PID={pid or '-':>6s}  {info.get('type', '?')}  {info.get('description', '')}")
+        pid_str = str(pid) if pid else "-"
+        typer.echo(f"  {svc_name:20s} [{status_str:8s}]  PID={pid_str:>6s}  {info.get('type', '?')}  {info.get('description', '')}")
 
 
 @app.command()

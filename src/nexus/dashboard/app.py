@@ -8,13 +8,14 @@ for browser-based finding approval.
 
 import hashlib
 import hmac as hmac_mod
+import html
 import json
 import logging
 import os
 import secrets
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +33,23 @@ _COMMIT_LOCKOUT_SECONDS = 900
 _LOCKOUT_FILE = Path.home() / ".nexus" / ".commit_lockout"
 
 _PASSWORDS_DIR = Path.home() / ".nexus" / "passwords"
+
+
+def _atomic_write_json(path: Path, data: Any) -> None:
+    """Write JSON atomically to avoid corruption on crash."""
+    import tempfile
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+    try:
+        os.close(fd)
+        with open(tmp, "w") as f:
+            json.dump(data, f, indent=2, default=str)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def _get_case_dir() -> Path | None:
@@ -200,18 +218,22 @@ async def post_commit(request) -> JSONResponse:
     if challenge["examiner"] != examiner:
         return JSONResponse({"error": "Challenge/examiner mismatch"}, status_code=401)
 
-    # Verify response: HMAC(stored_pbkdf2_hash, nonce)
+    # Verify response: HMAC(stored_hash_bytes, nonce_bytes)
     entry = _load_password_entry(examiner)
     if not entry:
         return JSONResponse({"error": "No password configured"}, status_code=403)
 
-    stored_hash = entry.get("hash", "")
-    expected = hashlib.pbkdf2_hmac(
-        "sha256",
-        stored_hash.encode(),
-        challenge["nonce"].encode(),
-        1,  # single round — stored_hash is already PBKDF2 output
-    ).hex()
+    stored_hash_hex = entry.get("hash", "")
+    try:
+        stored_hash_bytes = bytes.fromhex(stored_hash_hex)
+    except ValueError:
+        return JSONResponse({"error": "Corrupted password entry"}, status_code=500)
+
+    expected = hmac_mod.new(
+        stored_hash_bytes,
+        challenge["nonce"].encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
 
     if not hmac_mod.compare_digest(expected, response_hmac):
         _record_commit_failure(examiner)
@@ -224,19 +246,19 @@ async def post_commit(request) -> JSONResponse:
 
     _clear_commit_failures(examiner)
 
-    # If finding_ids is empty, approve all DRAFT findings
+    # If finding_ids is empty, reject — do not auto-approve all DRAFTs
     if not finding_ids:
-        findings_path = case_dir / "findings.json"
-        if findings_path.exists():
-            findings = json.loads(findings_path.read_text())
-            finding_ids = [f.get("id", f.get("finding_id", "")) for f in findings if f.get("status") == "DRAFT"]
+        return JSONResponse(
+            {"error": "finding_ids is required — select at least one finding"},
+            status_code=400,
+        )
 
     # Approve findings and write HMAC verification ledger
     approved = []
     errors = []
     for fid in finding_ids:
         try:
-            result = _approve_finding(case_dir, fid, examiner, stored_hash, entry.get("salt", ""))
+            result = _approve_finding(case_dir, fid, examiner, stored_hash_hex, entry.get("salt", ""))
             if result.get("status") == "APPROVED":
                 approved.append(fid)
             else:
@@ -252,7 +274,7 @@ async def post_commit(request) -> JSONResponse:
     })
 
 
-def _approve_finding(case_dir: Path, finding_id: str, examiner: str, stored_hash: str, salt: str) -> dict:
+def _approve_finding(case_dir: Path, finding_id: str, examiner: str, stored_hash_hex: str, salt: str) -> dict:
     """Approve a single finding and write HMAC verification ledger entry."""
     findings_path = case_dir / "findings.json"
     if not findings_path.exists():
@@ -264,16 +286,18 @@ def _approve_finding(case_dir: Path, finding_id: str, examiner: str, stored_hash
         if fid == finding_id and f.get("status") == "DRAFT":
             f["status"] = "APPROVED"
             f["approved_by"] = examiner
-            f["approved_at"] = datetime.now(timezone.utc).isoformat()
-            findings_path.write_text(json.dumps(findings, indent=2, default=str))
+            f["approved_at"] = datetime.now(UTC).isoformat()
+            _atomic_write_json(findings_path, findings)
 
-            # Write HMAC verification ledger entry
             from nexus.auth import (
-                derive_hmac_key, compute_hmac, write_verification_entry
+                SIGNING_PURPOSE,
+                compute_hmac,
+                derive_purpose_key,
+                write_verification_entry,
             )
             from nexus.transparency import transparency_append
-            # Use stored_hash as the signing material (password-derived PBKDF2 output)
-            derived_key = derive_hmac_key(stored_hash, salt)
+            base_key = bytes.fromhex(stored_hash_hex)
+            derived_key = derive_purpose_key(base_key, SIGNING_PURPOSE)
             content = json.dumps(f, sort_keys=True, default=str)
             hmac_val = compute_hmac(derived_key, content)
             case_id = case_dir.name
@@ -356,14 +380,20 @@ pre {{ background: #161b22; padding: 0.5rem; border-radius: 4px; overflow-x: aut
 </html>"""
 
 
+def _e(value: str) -> str:
+    """HTML-escape a string for safe embedding in HTML."""
+    return html.escape(str(value), quote=True)
+
+
 def _badge(confidence: str) -> str:
     c = confidence.lower()
     cls = "badge-high" if c in ("high", "critical") else "badge-medium" if c == "medium" else "badge-low"
-    return f'<span class="badge {cls}">{confidence}</span>'
+    return f'<span class="badge {cls}">{_e(confidence)}</span>'
 
 
 def _status_tag(status: str) -> str:
-    return f'<span class="status-{status}">{status}</span>'
+    safe = _e(status)
+    return f'<span class="status-{safe}">{safe}</span>'
 
 
 async def overview(request):
@@ -379,10 +409,10 @@ async def overview(request):
     recent = sorted(findings, key=lambda f: f.get("ts", ""), reverse=True)[:5]
     recent_rows = ""
     for f in recent:
-        title = f.get("title", "")[:80]
+        title = _e(f.get("title", "")[:80])
         status = f.get("status", "DRAFT")
         conf = f.get("confidence", "MEDIUM")
-        recent_rows += f"<tr><td>{_status_tag(status)}</td><td>{title}</td><td>{_badge(conf)}</td><td>{f.get('ts', '')[:10]}</td></tr>"
+        recent_rows += f"<tr><td>{_status_tag(status)}</td><td>{title}</td><td>{_badge(conf)}</td><td>{_e(f.get('ts', '')[:10])}</td></tr>"
 
     todo_open = sum(1 for t in todos if t.get("status") != "completed")
     tl_count = len(timeline)
@@ -413,12 +443,12 @@ async def findings_page(request):
         status = f.get("status", "DRAFT")
         if status_filter and status != status_filter:
             continue
-        title = f.get("title", "")[:100]
+        title = _e(f.get("title", "")[:100])
         conf = f.get("confidence", "MEDIUM")
-        host = f.get("host", "")
-        finding_type = f.get("type", "")
-        mitre = ", ".join(f.get("mitre_ids", []))
-        rows += f"<tr><td>{_status_tag(status)}</td><td>{title}</td><td>{_badge(conf)}</td><td>{finding_type}</td><td>{host}</td><td>{mitre}</td><td>{f.get('ts', '')[:10]}</td></tr>"
+        host = _e(f.get("host", ""))
+        finding_type = _e(f.get("type", ""))
+        mitre = _e(", ".join(f.get("mitre_ids", [])))
+        rows += f"<tr><td>{_status_tag(status)}</td><td>{title}</td><td>{_badge(conf)}</td><td>{finding_type}</td><td>{host}</td><td>{mitre}</td><td>{_e(f.get('ts', '')[:10])}</td></tr>"
 
     status_links = ''.join(f'<a href="/portal/findings?status={s}" style="margin-right:0.5rem">{s}</a>' for s in ["DRAFT", "APPROVED", "REJECTED"])
     content = f"""
@@ -436,11 +466,11 @@ async def approve_page(request):
 
     rows = ""
     for f in drafts:
-        fid = f.get("id") or f.get("finding_id", "")
-        title = f.get("title", "")[:80]
+        fid = _e(f.get("id") or f.get("finding_id", ""))
+        title = _e(f.get("title", "")[:80])
         conf = f.get("confidence", "MEDIUM")
-        finding_type = f.get("type", "")
-        host = f.get("host", "")
+        finding_type = _e(f.get("type", ""))
+        host = _e(f.get("host", ""))
         rows += f'''
 <tr>
   <td><input type="checkbox" class="finding-check" value="{fid}" checked></td>
@@ -540,11 +570,11 @@ async def timeline_page(request):
     events = _load_json("timeline.json")
     rows = ""
     for e in sorted(events, key=lambda x: x.get("timestamp", "")):
-        ts = e.get("timestamp", "")[:19]
-        desc = e.get("description", "")[:120]
-        ev_type = e.get("event_type", "")
-        host = e.get("host", "")
-        source = e.get("source", "")
+        ts = _e(e.get("timestamp", "")[:19])
+        desc = _e(e.get("description", "")[:120])
+        ev_type = _e(e.get("event_type", ""))
+        host = _e(e.get("host", ""))
+        source = _e(e.get("source", ""))
         rows += f"<tr><td>{ts}</td><td>{desc}</td><td>{ev_type}</td><td>{host}</td><td>{source}</td></tr>"
     content = f"""
 <h1>Timeline <span style="font-size:0.8rem;font-weight:normal">({len(events)} events)</span></h1>
@@ -557,11 +587,11 @@ async def evidence_page(request):
     ev = _load_json("evidence_registry.json")
     rows = ""
     for e in ev:
-        path = e.get("path", "")
-        sha = (e.get("sha256", "") or e.get("hash", ""))[:16]
-        desc = e.get("description", "")[:60]
-        ts = e.get("registered_at", e.get("ts", ""))[:10]
-        rows += f"<tr><td class='evidence-path'>{path[:80]}</td><td><code>{sha}...</code></td><td>{desc}</td><td>{ts}</td></tr>"
+        path = _e(e.get("path", ""))[:80]
+        sha = _e((e.get("sha256", "") or e.get("hash", ""))[:16])
+        desc = _e(e.get("description", "")[:60])
+        ts = _e(e.get("registered_at", e.get("ts", ""))[:10])
+        rows += f"<tr><td class='evidence-path'>{path}</td><td><code>{sha}...</code></td><td>{desc}</td><td>{ts}</td></tr>"
     content = f"""
 <h1>Evidence Registry <span style="font-size:0.8rem;font-weight:normal">({len(ev)} files)</span></h1>
 <table><tr><th>Path</th><th>SHA-256</th><th>Description</th><th>Registered</th></tr>{rows}</table>
@@ -580,9 +610,9 @@ async def iocs_page(request):
 
     rows = ""
     for ioc in iocs:
-        value = ioc.get("value", ioc.get("indicator", ""))
-        ioc_type = ioc.get("type", "")
-        context = ioc.get("context", "")
+        value = _e(ioc.get("value", ioc.get("indicator", "")))
+        ioc_type = _e(ioc.get("type", ""))
+        context = _e(ioc.get("context", ""))
         rows += f"<tr><td><code>{value}</code></td><td>{ioc_type}</td><td>{context}</td><td>{_status_tag(ioc.get('finding_status', ''))}</td></tr>"
     content = f"""
 <h1>Indicators of Compromise <span style="font-size:0.8rem;font-weight:normal">({len(iocs)} total)</span></h1>
@@ -595,11 +625,11 @@ async def todos_page(request):
     todos = _load_json("todos.json")
     rows = ""
     for t in todos:
-        tid = t.get("todo_id", t.get("id", ""))
-        desc = t.get("description", "")[:80]
-        status = t.get("status", "open")
-        prio = t.get("priority", "medium")
-        assignee = t.get("assignee", "")
+        tid = _e(t.get("todo_id", t.get("id", "")))
+        desc = _e(t.get("description", "")[:80])
+        status = _e(t.get("status", "open"))
+        prio = _e(t.get("priority", "medium"))
+        assignee = _e(t.get("assignee", ""))
         rows += f"<tr><td>{tid}</td><td>{desc}</td><td>{_badge(prio.capitalize())}</td><td>{status}</td><td>{assignee}</td></tr>"
     content = f"""
 <h1>TODOs <span style="font-size:0.8rem;font-weight:normal">({len(todos)} items)</span></h1>
@@ -711,8 +741,14 @@ async def api_transparency(request):
     return JSONResponse(result)
 
 
+async def health(request):
+    """Lightweight health endpoint for load balancers and Docker healthchecks."""
+    return JSONResponse({"status": "ok", "service": "dfir-nexus"})
+
+
 def create_dashboard():
     return [
+        Route("/health", endpoint=health, methods=["GET"]),
         Route("/portal", endpoint=overview),
         Route("/portal/", endpoint=overview),
         Route("/portal/findings", endpoint=findings_page),

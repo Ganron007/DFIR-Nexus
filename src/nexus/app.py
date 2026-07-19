@@ -81,6 +81,10 @@ def create_server() -> FastMCP:
     from nexus.triage import register_tools as triage_register
     triage_register(server, audit)
 
+    # ── Advanced analysis (REVAMP-V2 features) ──
+    from nexus.tools import analysis
+    analysis.register_tools(server, audit)
+
     # ── Platform-specific modules ──
 
     if _IS_LINUX:

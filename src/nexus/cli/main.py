@@ -40,25 +40,25 @@ Usage:
     nexus update                           Pull latest code
 """
 
-import importlib
 import os
 import subprocess
 import sys
-import typer
 from pathlib import Path
 
-from nexus.cli.report import app as report_app
+import typer
+
+from nexus.cli.audit_cmd import app as audit_app
 from nexus.cli.backup import app as backup_app
 from nexus.cli.case_cmd import app as case_app
-from nexus.cli.evidence import app as evidence_app
-from nexus.cli.review import app as review_app
 from nexus.cli.config_cmd import app as config_app
+from nexus.cli.evidence import app as evidence_app
+from nexus.cli.exec_cmd import app as exec_app
+from nexus.cli.init_cmd import app as init_app
+from nexus.cli.report import app as report_app
+from nexus.cli.review import app as review_app
 from nexus.cli.service import app as service_app
 from nexus.cli.sync import app as sync_app
-from nexus.cli.exec_cmd import app as exec_app
-from nexus.cli.audit_cmd import app as audit_app
 from nexus.cli.todo import app as todo_app
-from nexus.cli.init_cmd import app as init_app
 
 app = typer.Typer(name="nexus", help="DFIR-Nexus — unified DFIR investigation platform")
 
@@ -137,8 +137,8 @@ def approve(
 
 def _interactive_approve(analyst: str):
     """Walk through DRAFT findings for interactive review."""
-    from nexus.cli.approve import _require_approval_auth, approve_finding, _display_item
-    import getpass
+
+    from nexus.cli.approve import _display_item, _require_approval_auth, approve_finding
 
     password = _require_approval_auth(analyst)
     if not password:
@@ -181,6 +181,7 @@ def _interactive_approve(analyst: str):
 
 
 import json
+from datetime import UTC
 
 
 @app.command()
@@ -235,14 +236,14 @@ def _reject_finding(case_dir: Path, finding_id: str, analyst: str, reason: str) 
         if fid == finding_id and f.get("status") == "DRAFT":
             f["status"] = "REJECTED"
             f["rejected_by"] = analyst
-            f["rejected_at"] = datetime.now(timezone.utc).isoformat()
+            f["rejected_at"] = datetime.now(UTC).isoformat()
             f["rejection_reason"] = reason
             findings_path.write_text(json.dumps(findings, indent=2, default=str))
             return {"finding_id": finding_id, "status": "REJECTED"}
     return {"error": f"Finding {finding_id} not found or not DRAFT"}
 
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 
 @app.command()
@@ -257,15 +258,55 @@ def serve(
     if http:
         import uvicorn
         from starlette.applications import Starlette
+        from starlette.middleware import Middleware
         from starlette.routing import Mount
+
         from nexus.dashboard.app import create_dashboard
-        routes = [Mount("/", app=server.sse_app())]
+        from nexus.portal import PortalRateLimitMiddleware, SecurityHeadersMiddleware
+        from nexus.utils.constants import check_required_env
+        try:
+            warnings = check_required_env(host=host, port=port)
+            for w in warnings:
+                typer.echo(f"  WARNING: {w} not set (loopback — OK for local use)")
+        except Exception as exc:
+            typer.echo(f"  ERROR: {exc}", err=True)
+            raise typer.Exit(1)
+
+        dashboard_security_headers = {
+            "X-Frame-Options": "DENY",
+            "X-Content-Type-Options": "nosniff",
+            "Referrer-Policy": "no-referrer",
+            "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'",
+        }
+        routes: list = []
         dashboard_routes = create_dashboard()
         if dashboard_routes:
             routes.extend(dashboard_routes)
-        starlette_app = Starlette(routes=routes)
+        try:
+            mcp_app = server.streamable_http_app()
+            routes.append(Mount("/mcp", app=mcp_app))
+            typer.echo(f"  MCP: http://{host}:{port}/mcp (streamable-http)")
+        except AttributeError:
+            routes.append(Mount("/mcp", app=server.sse_app()))
+            typer.echo(f"  MCP: http://{host}:{port}/mcp (SSE fallback)")
+        starlette_app = Starlette(
+            routes=routes,
+            middleware=[
+                Middleware(
+                    PortalRateLimitMiddleware,
+                    limit_per_minute=120,
+                    auth_limit_per_minute=30,
+                    path_prefix="/portal",
+                    auth_path_prefix="/portal/api/commit",
+                ),
+                Middleware(
+                    SecurityHeadersMiddleware,
+                    path_prefix="/portal",
+                    headers=dashboard_security_headers,
+                ),
+            ],
+        )
         typer.echo(f"Starting DFIR-Nexus HTTP server on {host}:{port}")
-        typer.echo(f"  MCP: http://{host}:{port}/mcp")
         typer.echo(f"  Portal: http://{host}:{port}/portal")
         uvicorn.run(starlette_app, host=host, port=port)
     else:
@@ -281,6 +322,42 @@ def portal():
     typer.echo(f"Opening Examiner Portal at {url}")
     typer.echo("(Start the server first with: nexus serve --http)")
     webbrowser.open(url)
+
+
+@app.command()
+def pipeline(
+    case: str = typer.Option("", "--case", help="Path to evidence directory or file"),
+    resume: bool = typer.Option(False, "--resume", help="Resume from last checkpoint after human approval"),
+    model: str = typer.Option("", "--model", help="LLM model (e.g. openai/gpt-4o, ollama/qwen2.5:32b-instruct)"),
+    thread: str = typer.Option("", "--thread", help="Thread ID for checkpoint persistence"),
+):
+    """Run the LLM-driven investigation pipeline.
+
+    Connects to the MCP server, drives a 6-node investigation graph
+    using an LLM (Anthropic/OpenAI/Ollama), stages DRAFT findings,
+    pauses for human approval, then generates a report.
+
+    Requires: pip install dfir-nexus[pipeline]
+
+    Environment variables:
+        NEXUS_MODEL — model identifier (default: claude-sonnet-4-20250514)
+        NEXUS_GATEWAY_URL — HTTP URL for MCP server (default: stdio)
+        NEXUS_BEARER_TOKEN — bearer token for HTTP mode
+    """
+    import asyncio
+    try:
+        from nexus.langgraph.llm_pipeline import run_pipeline
+    except ImportError:
+        typer.echo("Pipeline dependencies not installed.", err=True)
+        typer.echo("Run: pip install dfir-nexus[pipeline]", err=True)
+        raise typer.Exit(1)
+
+    asyncio.run(run_pipeline(
+        evidence_path=case,
+        resume=resume,
+        thread_id=thread,
+        model_name=model,
+    ))
 
 
 @app.command()
@@ -357,7 +434,6 @@ def setup(
 
 def _run_connectivity_test():
     """Test connectivity to the MCP server and key services."""
-    import urllib.request
 
     typer.echo("\n=== Connectivity Test ===\n")
     results = []

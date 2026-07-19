@@ -564,7 +564,8 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         results = []
         for f in files:
             if f.is_file():
-                cmd = f"{tool} -f \"{f}\""
+                safe_path = str(f).replace('"', '\\"')
+                cmd = f"{tool} -f \"{safe_path}\""
                 res = run_windows_command(cmd, "", timeout)
                 results.append({"file": f.name, "success": res.get("success", False)})
 

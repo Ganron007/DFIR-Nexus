@@ -1,8 +1,7 @@
 # DFIR-Nexus Architecture
 
 > **Related:** [CLI.md](CLI.md) — command surface · [guide.md](guide.md) —
-> examiner workflow · [COMPARISON.md](COMPARISON.md) — vs. upstream ·
-> [FAQ.md](FAQ.md) · [../SECURITY.md](../SECURITY.md)
+> examiner workflow · [FAQ.md](FAQ.md) · [../SECURITY.md](../SECURITY.md)
 
 ## Design Principle
 
@@ -191,7 +190,7 @@ Tool execution → audit_id → record_finding(artifacts=[{audit_id}])
 
 > Full side-by-side, including data/control-flow differences, LangGraph
 > parity, what we already do better, what upstream still does better,
-> and the prioritised roadmap: **[COMPARISON.md](./COMPARISON.md)**.
+> and the prioritised roadmap: see `Docs/internal/COMPARISON.md` (internal).
 
 
 

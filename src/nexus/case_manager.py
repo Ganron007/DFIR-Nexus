@@ -433,6 +433,30 @@ class CaseManager:
             except ImportError:
                 pass
 
+        # SQLite dual-write (populates case stack for CLI and push server)
+        try:
+            from nexus.case.compat import dict_to_case, dict_to_finding, get_sqlite_manager
+            sql_mgr = get_sqlite_manager()
+            if sql_mgr.get_case(case_dir.name) is None:
+                case_dict = {"id": case_dir.name, "case_id": case_dir.name,
+                             "name": case_dir.name, "status": "open"}
+                meta_path = case_dir / "CASE.yaml"
+                if meta_path.exists():
+                    import yaml as _yaml
+                    try:
+                        meta = _yaml.safe_load(meta_path.read_text(encoding="utf-8")) or {}
+                        case_dict.update(meta)
+                    except Exception:
+                        pass
+                case_obj = dict_to_case(case_dict)
+                sql_mgr.store.save_case(case_obj)
+            finding_dict = dict(entry)
+            finding_dict["case_id"] = case_dir.name
+            finding_obj = dict_to_finding(finding_dict)
+            sql_mgr.store.save_finding(finding_obj)
+        except Exception:
+            pass  # dual-write is best-effort; never break the flat-JSON path
+
         return result
 
     def _detect_conflicts(self, new_finding: dict, existing_findings: list) -> list[dict]:
