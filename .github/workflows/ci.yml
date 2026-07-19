@@ -18,27 +18,24 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
+          cache: pip
 
-      - name: Install dependencies (Ubuntu/macOS)
-        if: runner.os != 'Windows'
+      - name: Install package + CI extras
+        shell: bash
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[all]"
+          pip install -e ".[ci]"
 
-      - name: Install dependencies (Windows)
-        if: runner.os == 'Windows'
+      - name: Run script tests
+        shell: bash
         run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[all]"
-
-      - name: Run tests
-        run: |
+          set -euo pipefail
           python tests/test_knowledge.py
           python tests/test_hunt_parser.py
           python tests/test_integration.py
@@ -48,4 +45,7 @@ jobs:
           python tests/test_push.py
           python tests/functional_audit.py
           python tests/test_portal.py
-          python -m pytest -q
+
+      - name: Run pytest
+        shell: bash
+        run: python -m pytest -q --tb=short

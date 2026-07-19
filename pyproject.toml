@@ -42,7 +42,7 @@ encrypt = [
 ]
 detection = [
     "pysigma>=0.11",
-    "pysigma-backend-elastic>=1.0",
+    "pysigma-backend-elasticsearch>=1.0",
     "pysigma-backend-splunk>=1.0",
 ]
 pipeline = [
@@ -50,6 +50,20 @@ pipeline = [
     "langchain-anthropic>=0.1",
     "langchain-openai>=0.1",
     "langchain-mcp-adapters>=0.0.1",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+]
+# Lean install for GitHub Actions — skips heavy RAG (torch/chroma) and OpenCTI.
+ci = [
+    "dfir-nexus[http]",
+    "dfir-nexus[triage]",
+    "dfir-nexus[opensearch]",
+    "dfir-nexus[encrypt]",
+    "dfir-nexus[detection]",
+    "dfir-nexus[pipeline]",
+    "dfir-nexus[dev]",
 ]
 all = [
     "dfir-nexus[http]",
@@ -60,6 +74,7 @@ all = [
     "dfir-nexus[encrypt]",
     "dfir-nexus[detection]",
     "dfir-nexus[pipeline]",
+    "dfir-nexus[dev]",
 ]
 
 [project.urls]

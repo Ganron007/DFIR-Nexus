@@ -15,6 +15,7 @@ wheels/
 
 # ── Virtual envs ────────────────────────────────────────────────────
 .venv/
+.ci-venv/
 venv/
 env/
 ENV/

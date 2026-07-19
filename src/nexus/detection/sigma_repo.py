@@ -154,18 +154,18 @@ def mitre_navigator_layer(
 
 
 def sigma_to_kql(yaml_content: str) -> str:
-    """Translate Sigma YAML to Elastic KQL (requires pysigma)."""
+    """Translate Sigma YAML to Elastic Lucene/KQL (requires pysigma)."""
     try:
-        from sigma.backends.elastic import ElasticLuceneBackend
+        from sigma.backends.elasticsearch import LuceneBackend
         from sigma.collection import SigmaCollection
     except ImportError as e:
         raise ImportError("Install dfir-nexus[detection] for Sigma translation") from e
 
     collection = SigmaCollection.from_yaml(yaml_content)
-    backend = ElasticLuceneBackend()
+    backend = LuceneBackend()
     lines = []
     for rule in collection.rules:
-        converted = backend.convert_rule(rule, output_format="default")
+        converted = backend.convert_rule(rule)
         if converted:
             lines.append(str(converted[0]))
     return "\n".join(lines)
