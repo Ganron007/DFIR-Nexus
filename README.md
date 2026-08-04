@@ -17,6 +17,9 @@
 
 Part of the [CADRE](https://github.com/Ganron007/CADRE) platform — consumes lab attack telemetry and host/network evidence for examiner-led DFIR.
 
+> [!NOTE]
+> **Feature testing in progress.** MCP tools, case custody, and the examiner loop are usable for practice, but live CADRE log corpus ingest, connector hardening, and end-to-end case workflows are still being validated. Expect APIs, importers, and docs to keep evolving.
+
 > [!IMPORTANT]
 > **Chain of Custody & Audit Integrity.** DFIR-Nexus enforces strict cryptographic data provenance. Every command executed through SIFT, Zimmerman, or Velociraptor is logged into a tamper-evident **HMAC-SHA256 audit ledger** in real time. To maintain forensic compliance, all draft findings must be verified and cryptographically signed using examiner passwords hashed with PBKDF2-HMAC (600,000 iterations). Automated AI agents are restricted to drafting findings and cannot authorize or alter forensic reports.
 
