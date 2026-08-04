@@ -35,7 +35,7 @@ Digital Forensics and Incident Response (DFIR) routinely relies on a highly frag
 One linear workflow — collect, ledger, human gate, export:
 
 <p align="center">
-  <img src="assets/dfir-nexus-workflow.svg" alt="DFIR-Nexus workflow: Client → FastMCP → Collect → Case Ledger → Human Gate → Reports" width="980">
+  <img src="assets/dfir-nexus-workflow.png" alt="DFIR-Nexus workflow: Client → FastMCP → Collect → Case Ledger → Human Gate → Reports" width="980">
 </p>
 
 **Trust model (offline-first, loopback-only):**

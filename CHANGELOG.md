@@ -3,7 +3,7 @@
 ## Unreleased
 
 ### Documentation
-- Replaced README architecture mermaid with a logo-matched SVG workflow diagram (`assets/dfir-nexus-workflow.svg`): Client → FastMCP → Collect → Case Ledger → Human Gate → Reports.
+- Replaced README architecture mermaid with a logo-matched workflow diagram (`assets/dfir-nexus-workflow.png`; SVG source kept for edits).
 - Consolidated showcase validation into `Docs/internal/PRE-RELEASE-TEST-PLAN.md`.
 - Retained `Docs/internal/LEARN-TEST-SHOWCASE-PUBLISH.md` as the operator learning and showcase runbook.
 - Added `Docs/internal/CORPUS-CHECKLIST.md` — full evidence pack: mega sources, folder layout, 45-importer matrix, non-ingest lanes, CADRE pull map, acquisition order.
