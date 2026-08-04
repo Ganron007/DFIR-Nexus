@@ -32,43 +32,18 @@ Digital Forensics and Incident Response (DFIR) routinely relies on a highly frag
 
 ## Architecture & Data Flow
 
-DFIR-Nexus bridges LLM clients, host-native forensic tools, and the case database through a unified architecture:
+One linear workflow — collect, ledger, human gate, export:
 
-```mermaid
-graph TD
-    classDef main fill:#1a1f29,stroke:#0f83ff,stroke-width:2px,color:#ffffff;
-    classDef secondary fill:#161b22,stroke:#30363d,stroke-width:1px,color:#c9d1d9;
-    classDef gate fill:#2e1a1e,stroke:#f85149,stroke-width:2px,color:#ff7b72;
-    classDef storage fill:#1f242c,stroke:#2ea043,stroke-width:1px,color:#56d364;
+<p align="center">
+  <img src="assets/dfir-nexus-workflow.svg" alt="DFIR-Nexus workflow: Client → FastMCP → Collect → Case Ledger → Human Gate → Reports" width="980">
+</p>
 
-    Client["LLM Client / CLI / Portal"]:::main -->|MCP JSON-RPC| Server["FastMCP Server<br/>(nexus serve)"]:::main
-    
-    Server -->|Forensic Command Execution| SIFT["Linux SIFT Tools<br/>(Plaso, Volatility, Zeek)"]:::secondary
-    Server -->|Command Execution| WinForensics["Windows Forensics<br/>(Zimmerman, KAPE)"]:::secondary
-    Server -->|API Queries| Velociraptor["Velociraptor Client<br/>(Live Hunts)"]:::secondary
-
-    SIFT & WinForensics & Velociraptor -->|Raw Forensic Logs| Ingest["Ingestion Pipeline<br/>(36 Importers)"]:::secondary
-    
-    Ingest -->|Normalized Artifacts| CaseMgr["Case Manager<br/>(nexus.case_manager)"]:::main
-    
-    CaseMgr -->|SQLite Dual-Write| Store["Case DB<br/>(cases.db)"]:::storage
-    CaseMgr -->|SHA-256 Provenance| AuditChain["HMAC-SHA256 Audit Chain<br/>(SQLite audit_log)"]:::storage
-
-    CaseMgr -->|Create DRAFT Finding| FindingGate{"HITL Approval Gate<br/>(PBKDF2-HMAC Lockout)"}:::gate
-    
-    FindingGate -->|Analyst Password Input| Approved["Approval Ledger<br/>(HMAC verification)"]:::storage
-    
-    Approved -->|Export Reports| Exporter["Case Exporter"]:::main
-    
-    Exporter -->|Render Bundle| Reports["Markdown, HTML, STIX 2.0/2.1, DOCX, ZIP"]:::secondary
-```
-
-**The architecture enforces an offline-first, loopback-only trust model:**
-1. **MCP API (FastMCP)** — Exposes intent-level forensic capabilities to local LLM clients, ensuring arbitrary command strings cannot be executed.
-2. **Ingestion & Normalization** — Reads raw files from SIFT and Zimmerman tool chains, parsing artifacts through 36 registered importers.
-3. **Case Ledger & Database** — Logs observations to SQLite and dual-writes a tamper-evident audit ledger using SHA-256 evidence hashing and HMAC-SHA256 block chaining.
-4. **HITL Gateway** — Restricts finding approvals to human operators. The password hashing uses PBKDF2-HMAC (600,000 iterations) with a 3-strike lockout security mechanism.
-5. **Report Exporter** — Exports validated case files as Markdown, HTML, STIX 2.0/2.1, DOCX, and ZIP bundles.
+**Trust model (offline-first, loopback-only):**
+1. **MCP API (FastMCP)** — Intent-level tools for LLM / CLI / Portal; no arbitrary shell.
+2. **Collect + ingest** — Host tools plus **36** registered importers normalize evidence into the case.
+3. **Case ledger** — SQLite case state dual-written with an **HMAC-SHA256** audit chain.
+4. **Human gate** — Findings stay **DRAFT** until examiner approval (PBKDF2-HMAC, 3-strike lockout).
+5. **Reports** — Approved cases export as Markdown, HTML, STIX 2.0/2.1, DOCX, and ZIP.
 
 ---
 

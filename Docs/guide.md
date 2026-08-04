@@ -19,7 +19,7 @@ Run forensic tools → Evidence ingested → Findings recorded (DRAFT)
 
 **What you get:**
 - **Findings** — structured observations with MITRE ATT&CK technique mapping, severity, confidence, and provenance links back to the raw evidence
-- **Reports** — Markdown, HTML, JSON, STIX 2.0, CSV, ZIP, DOCX
+- **Reports** — Markdown, HTML, JSON, STIX 2.0/2.1, CSV, ZIP, DOCX
 - **Audit Trail** — every action (tool run, finding record, approval) is HMAC-chained. Tamper-evident and independently verifiable
 - **Evidence Registry** — every file registered has its SHA-256 recorded and can be verified at any time
 - **Timeline** — all events in chronological order, filterable by type and date range
@@ -133,7 +133,7 @@ DFIR-Nexus wraps your existing forensic tools as MCP tools. Every tool run is au
 | **Case** | `case_init`, `case_activate`, `case_list`, `case_status`, `evidence_register`, `evidence_list`, `evidence_verify`, `export_bundle`, `import_bundle`, `audit_summary`, `record_action`, `log_reasoning`, `log_external_action` | Case lifecycle management. |
 | **Forensic** | `record_finding`, `record_timeline_event`, `get_findings`, `get_timeline`, `add_todo`, `list_todos`, `update_todo`, `complete_todo` + 14 discipline tools | Investigation records and forensic discipline enforcement. |
 | **Report** | `generate_report`, `set_case_metadata`, `get_case_metadata`, `list_profiles`, `save_report`, `list_reports` | Report generation in 6 profiles (full, executive, timeline, ioc, findings, status). |
-| **Analysis (REVAMP-V2)** | `ingest_auto`, `analyze_gaps`, `deobfuscate_command`, `check_kev`, `predict_techniques`, `create_playbook`, `build_asset_graph`, `anonymize_text`, `deanonymize_text`, `export_stix_bundle`, `export_navigator_layer`, `export_blocklist`, `translate_query`, `suggest_fleet_hunts`, `check_nsrl`, `get_knowledge_graph_stats`, `get_dynamic_tables`, `list_query_templates`, `generate_sigma_rule` | Advanced analysis — auto-format detection, beacon/C2, gap analysis, deobfuscation, KEV, adversary emulation, playbooks, correlation, evidence graph, STIX/Navigator export, NL query. |
+| **Analysis & correlation** | `ingest_auto`, `analyze_gaps`, `deobfuscate_command`, `check_kev`, `predict_techniques`, `create_playbook`, `build_asset_graph`, `anonymize_text`, `deanonymize_text`, `export_stix_bundle`, `export_navigator_layer`, `export_blocklist`, `translate_query`, `suggest_fleet_hunts`, `check_nsrl`, `get_knowledge_graph_stats`, `get_dynamic_tables`, `list_query_templates`, `generate_sigma_rule` | Advanced analysis — auto-format detection, beacon/C2, gap analysis, deobfuscation, KEV, adversary emulation, playbooks, correlation, evidence graph, STIX/Navigator export, NL query. |
 | **OpenSearch** | `idx_search`, `idx_aggregate`, `idx_timeline`, `idx_status`, `idx_case_summary`, `idx_enrich_triage`, `idx_enrich_intel`, `idx_ingest` | Evidence indexing and search via OpenSearch (optional). |
 | **OpenCTI** | `search_threat_intel`, `search_entity`, `lookup_ioc`, `get_entity`, `get_relationships`, `get_recent_indicators`, `search_reports`, `search_threat_actor`, `search_malware`, `search_mitre_technique` | Threat intelligence via OpenCTI (optional). |
 | **RAG** | `forensic_rag_search`, `forensic_rag_list_sources`, `forensic_rag_status`, `forensic_rag_download`, `forensic_rag_rebuild` | Semantic search over ~22K forensic records (downloaded on first use). |
@@ -317,7 +317,7 @@ triage_check_file(file_path="C:\\Windows\\System32\\svchost.exe")
 
 ## 10. Ingest Pipeline
 
-DFIR-Nexus can import forensic data from 33 importer classes:
+DFIR-Nexus can import forensic data from 36 registered importer classes:
 
 **Import from a file:**
 ```

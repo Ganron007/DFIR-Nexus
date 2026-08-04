@@ -22,16 +22,17 @@ machine and configure the LLM client to connect to all of them.
 │                                                                             │
 │  Universal modules (everywhere):                                            │
 │   forensic.py — 23 tools  (findings, timeline, TODOs + 14 discipline)       │
-│   case.py     — 15 tools  (case lifecycle, evidence, export, backup)        │
+│   case.py     — 13 tools  (case lifecycle, evidence, export, backup)        │
 │   report.py   — 6 tools   (report generation, 6 profiles)                  │
 │   rag.py      — 5 tools   (ChromaDB semantic search + download)             │
 │   opencti.py  — 11 tools  (IOC/threat actor/malware/report lookup)          │
 │   opensearch.py — 8 tools (evidence indexing, search, aggregation)          │
 │   triage/     — 15 tools  (offline baseline validation + download)           │
+│   analysis.py — 19 tools  (correlation, graphs, exports, detection helpers) │
 │                                                                             │
 │  Platform-gated (register only on matching OS):                             │
-│   sift.py    — 5 tools  (Linux only — security-gated subprocess executor)   │
-│   windows.py — 9 tools  (Windows only — catalog-gated executor, 31 tools)   │
+│   sift.py    — 7 tools  (Linux only — security-gated subprocess executor)   │
+│   windows.py — 10 tools (Windows only — catalog-gated executor)             │
 │                                                                             │
 │  Infrastructure:                                                            │
 │   audit.py         — SHA-256 audit logging (last_audit_id tracking)         │
@@ -163,7 +164,8 @@ Tool execution → audit_id → record_finding(artifacts=[{audit_id}])
 ├── passwords/               # PBKDF2-SHA256 password hashes (0o600)
 ├── verification/            # HMAC verification ledger (one file per approval)
 ├── cases/
-│   └── CASE-001/
+│   ├── cases.db             # SQLite case stack (canonical persistence)
+│   └── CASE-001/            # Legacy JSON compatibility case directory
 │       ├── CASE.yaml
 │       ├── findings.json
 │       ├── timeline.json
@@ -198,7 +200,7 @@ Tool execution → audit_id → record_finding(artifacts=[{audit_id}])
 |--------|-------------------|-------------|
 | Processes | 11+ separate MCP servers + gateway | 1 FastMCP server |
 | Packages | sift-mcp (11 packages) + wintools-mcp + vhir-cli | 1 package |
-| MCP Tools | 83 across all packages | 97 (83 ported + 8 opensearch + 6 extras) |
+| MCP Tools | 83 across all packages | 110 on Windows / 107 on Linux |
 | CLI Commands | 46 (vhir) | 19 (nexus) |
 | Gateway | Required for multi-server | Built-in HTTP mode |
 | Dashboard | Separate Flask/Starlette app | Same process |

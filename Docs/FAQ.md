@@ -79,7 +79,7 @@ A: Yes. The audit chain + per-finding HMAC signatures provide cryptographic proo
 ## Tools & Data
 
 **Q: What forensic tools does DFIR-Nexus support?**
-A: It wraps your existing tools — NOT replaces them. Supported: SIFT workstation tools, Zimmerman tools, Sysinternals, KAPE, YARA, Volatility 3, Plaso, Hayabusa, Velociraptor, Suricata, Zeek, Elastic, and more. 91 MCP tools (Windows) / 88 (Linux).
+A: It wraps your existing tools — NOT replaces them. Supported: SIFT workstation tools, Zimmerman tools, Sysinternals, KAPE, YARA, Volatility 3, Plaso, Hayabusa, Velociraptor, Suricata, Zeek, Elastic, and more. 110 MCP tools (Windows) / 107 (Linux).
 
 **Q: Do I need to install the forensic tools separately?**
 A: Yes. DFIR-Nexus discovers tools on your PATH or at configured paths. If SIFT tools are on a VM, point `nexus setup client --sift <ip>:4508`.
@@ -94,7 +94,7 @@ A: Yes, one-time: `forensic_rag_download()` (~600 MB). Findings, cases, and repo
 A: Checks files/processes/services against Windows baselines (KnownGoodDB + ContextDB + RegistryDB). Tells you if something is legitimate, a LOLBin, or suspicious. One-time download: `triage_download()` (~2 GB).
 
 **Q: What data formats can I ingest?**
-A: 33 importer classes — Suricata, Zeek, Elastic, Splunk, EVTX, Prefetch, Amcache, Shimcache, Shellbags, LNK, Registry, WMI, Volatility 3, Plaso, Hayabusa, MISP, OTX, VirusTotal, CloudTrail, Azure, GCP, Auditd, Authlog, Syslog, Bash History, and generic JSONL/CSV.
+A: 36 registered importer classes — Suricata, Zeek, Elastic, Splunk, EVTX, Prefetch, Amcache, Shimcache, Shellbags, LNK, Registry, WMI, Volatility 3, Plaso, Hayabusa, MISP, OTX, VirusTotal, CloudTrail, Azure, GCP, Auditd, Authlog, Syslog, Bash History, and generic JSONL/CSV.
 
 **Q: Can I search my detection rules?**
 A: Yes. Index your Sigma/Hayabusa rules with `detection_sigma_install()`, then search by technique, severity, or keyword. Get MITRE coverage heatmaps and gap analysis.
@@ -107,7 +107,7 @@ A: Yes. 10 pre-built hunts + 5 custom artifacts. Mock mode works out of the box 
 ## Reports & Export
 
 **Q: What report formats are available?**
-A: Markdown, HTML, JSON, STIX 2.0, CSV, DOCX, ZIP (bundle), SVG (swimlane + asset graph).
+A: Markdown, HTML, JSON, STIX 2.0/2.1, CSV, DOCX, ZIP (bundle), SVG (swimlane + asset graph).
 
 **Q: Can I share cases with other analysts?**
 A: Yes. Export to JSON/STIX and merge on another DFIR-Nexus instance with `nexus merge bundle.json`.

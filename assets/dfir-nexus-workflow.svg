@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="340" viewBox="0 0 1080 340" role="img" aria-label="DFIR-Nexus workflow">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#07111f"/>
+      <stop offset="100%" stop-color="#030712"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1e3a8a"/>
+      <stop offset="100%" stop-color="#172554"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#60a5fa"/>
+      <stop offset="100%" stop-color="#2563eb"/>
+    </linearGradient>
+    <linearGradient id="gate" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1d4ed8"/>
+      <stop offset="100%" stop-color="#1e3a8a"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 1 L9 5 L0 9 Z" fill="#60a5fa"/>
+    </marker>
+  </defs>
+
+  <!-- Canvas -->
+  <rect width="1080" height="340" rx="18" fill="url(#bg)"/>
+  <rect x="1" y="1" width="1078" height="338" rx="18" fill="none" stroke="#1e3a8a" stroke-width="1.5"/>
+
+  <!-- Title -->
+  <text x="40" y="42" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="20" font-weight="700" fill="#60a5fa">DFIR-Nexus Workflow</text>
+  <text x="40" y="66" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="13" fill="#93c5fd" opacity="0.85">Evidence in ’ tools &amp; ingest ’ DRAFT findings ’ human approval ’ signed reports</text>
+
+  <!-- Flow connectors -->
+  <g fill="none" stroke="#60a5fa" stroke-width="2.2" marker-end="url(#arrow)" opacity="0.9">
+    <path d="M198 180 H236"/>
+    <path d="M368 180 H406"/>
+    <path d="M538 180 H576"/>
+    <path d="M708 180 H746"/>
+    <path d="M878 180 H916"/>
+  </g>
+
+  <!-- Card 1: Client -->
+  <g transform="translate(40,110)">
+    <rect width="158" height="140" rx="14" fill="url(#card)" stroke="#60a5fa" stroke-width="1.5"/>
+    <circle cx="79" cy="36" r="16" fill="none" stroke="#93c5fd" stroke-width="2"/>
+    <path d="M68 36 h22 M79 25 v22" stroke="#93c5fd" stroke-width="2" stroke-linecap="round"/>
+    <text x="79" y="72" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#ffffff">Client</text>
+    <text x="79" y="94" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11" fill="#bfdbfe">LLM · CLI · Portal</text>
+    <text x="79" y="116" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="10" fill="#93c5fd">MCP / HTTP</text>
+  </g>
+
+  <!-- Card 2: Server -->
+  <g transform="translate(210,110)">
+    <rect width="158" height="140" rx="14" fill="url(#card)" stroke="#60a5fa" stroke-width="1.5"/>
+    <rect x="55" y="22" width="48" height="28" rx="6" fill="none" stroke="#93c5fd" stroke-width="2"/>
+    <path d="M63 36 h32" stroke="#93c5fd" stroke-width="2" stroke-linecap="round"/>
+    <text x="79" y="72" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#ffffff">FastMCP</text>
+    <text x="79" y="94" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11" fill="#bfdbfe">nexus serve</text>
+    <text x="79" y="116" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="10" fill="#93c5fd">110 / 107 tools</text>
+  </g>
+
+  <!-- Card 3: Tools + Ingest -->
+  <g transform="translate(380,110)">
+    <rect width="158" height="140" rx="14" fill="url(#card)" stroke="#60a5fa" stroke-width="1.5"/>
+    <path d="M55 24 h48 v20 h-48 z" fill="none" stroke="#93c5fd" stroke-width="2"/>
+    <path d="M63 34 h16 M63 40 h28" stroke="#93c5fd" stroke-width="1.8" stroke-linecap="round"/>
+    <text x="79" y="72" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#ffffff">Collect</text>
+    <text x="79" y="94" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11" fill="#bfdbfe">Tools + Ingest</text>
+    <text x="79" y="116" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="10" fill="#93c5fd">36 importers</text>
+  </g>
+
+  <!-- Card 4: Case + Audit -->
+  <g transform="translate(550,110)">
+    <rect width="158" height="140" rx="14" fill="url(#card)" stroke="#60a5fa" stroke-width="1.5"/>
+    <rect x="58" y="22" width="42" height="28" rx="4" fill="none" stroke="#93c5fd" stroke-width="2"/>
+    <path d="M58 30 h42 M58 38 h42" stroke="#93c5fd" stroke-width="1.5"/>
+    <text x="79" y="72" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#ffffff">Case Ledger</text>
+    <text x="79" y="94" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11" fill="#bfdbfe">SQLite + HMAC</text>
+    <text x="79" y="116" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="10" fill="#93c5fd">audit chain</text>
+  </g>
+
+  <!-- Card 5: HITL gate (emphasized) -->
+  <g transform="translate(720,110)">
+    <rect width="158" height="140" rx="14" fill="url(#gate)" stroke="#93c5fd" stroke-width="2.5"/>
+    <circle cx="79" cy="34" r="14" fill="none" stroke="#fde68a" stroke-width="2.2"/>
+    <path d="M79 28 v8 M79 40 v2" stroke="#fde68a" stroke-width="2.2" stroke-linecap="round"/>
+    <text x="79" y="72" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#ffffff">Human Gate</text>
+    <text x="79" y="94" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11" fill="#bfdbfe">PBKDF2 approve</text>
+    <text x="79" y="116" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="10" fill="#fde68a">DRAFT ’ APPROVED</text>
+  </g>
+
+  <!-- Card 6: Reports -->
+  <g transform="translate(890,110)">
+    <rect width="150" height="140" rx="14" fill="url(#card)" stroke="#60a5fa" stroke-width="1.5"/>
+    <path d="M58 22 h34 l12 12 v28 h-46 z" fill="none" stroke="#93c5fd" stroke-width="2"/>
+    <path d="M92 22 v12 h12" fill="none" stroke="#93c5fd" stroke-width="2"/>
+    <text x="75" y="72" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="14" font-weight="700" fill="#ffffff">Reports</text>
+    <text x="75" y="94" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="11" fill="#bfdbfe">MD · HTML · STIX</text>
+    <text x="75" y="116" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="10" fill="#93c5fd">DOCX · ZIP</text>
+  </g>
+
+  <!-- Footer strip -->
+  <rect x="40" y="278" width="1000" height="36" rx="10" fill="#0b1b33" stroke="#1e3a8a" stroke-width="1"/>
+  <text x="540" y="301" text-anchor="middle" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="12" fill="#93c5fd">Offline-first · Loopback trust · AI may draft · Only examiners approve</text>
+</svg>
