@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixes
+- Pin `mcp>=1.26,<2` so CI does not install breaking `mcp 2.0.0` (removed `mcp.server.fastmcp`).
+- Resolve both sides in `_validate_input_path` so macOS `/etc` → `/private/etc` still blocks system paths.
+
 ### Documentation
 - Created custom high-resolution logo-color-matched architecture flow diagrams ([assets/dfir-nexus-architecture.svg](file:///c:/STUDY/Github/CADRE-Platform/DFIR-Nexus/assets/dfir-nexus-architecture.svg) and [assets/dfir-nexus-architecture.png](file:///c:/STUDY/Github/CADRE-Platform/DFIR-Nexus/assets/dfir-nexus-architecture.png)) using exact logo shades (`#1e3a8a`, `#2563eb`, `#60a5fa`, `#0f172a`, `#10b981`, `#f59e0b`).
 - Linked the architecture diagram in [README.md](file:///c:/STUDY/Github/CADRE-Platform/DFIR-Nexus/README.md) and [Docs/ARCHITECTURE.md](file:///c:/STUDY/Github/CADRE-Platform/DFIR-Nexus/Docs/ARCHITECTURE.md), completely replacing raw Mermaid code blocks.

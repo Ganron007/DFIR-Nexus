@@ -232,20 +232,20 @@ def _is_denied(binary: str) -> bool:
 
 
 def _validate_input_path(path: str) -> None:
-    """Block paths in system directories."""
+    """Block paths in system directories.
+
+    Compare resolved paths so macOS symlink farms (e.g. /etc → /private/etc)
+    still match the block list.
+    """
     p = Path(path).resolve()
-    blocked_prefixes = [
-        Path("/etc"), Path("/proc"), Path("/sys"),
-        Path("/dev"), Path("/boot"), Path("/root"),
-    ]
+    blocked_prefixes = ("/etc", "/proc", "/sys", "/dev", "/boot", "/root")
     for bp in blocked_prefixes:
         try:
-            if p.is_relative_to(bp):
-                raise ValueError(f"Input path blocked: {path} is under {bp}")
-        except ValueError:
-            raise
-        except AttributeError:
-            continue
+            bp_resolved = Path(bp).resolve()
+        except OSError:
+            bp_resolved = Path(bp)
+        if p == bp_resolved or p.is_relative_to(bp_resolved):
+            raise ValueError(f"Input path blocked: {path} is under {bp}")
 
 
 def _sanitize_extra_args(extra_args: list[str], tool_name: str) -> list[str]:
