@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Documentation consolidation
+- Consolidated showcase validation into `Docs/internal/PRE-RELEASE-TEST-PLAN.md`.
+- Retained `Docs/internal/LEARN-TEST-SHOWCASE-PUBLISH.md` as the operator learning and showcase runbook.
+- Added `Docs/internal/CORPUS-CHECKLIST.md` — full evidence pack: mega sources, folder layout, 45-importer matrix, non-ingest lanes, CADRE pull map, acquisition order.
+- Staged local-only `Evidence-files/` corpus (gitignored): Yamato EVTX, SigmaHQ, ThreatFox/URLhaus/MB, tcpreplay PCAPs, synthetic lane fixtures; fetch script `_tools/fetch-public.ps1`.
+- Renamed the completed revamp tracker to `Docs/internal/REVAMP-CLOSEOUT.md`.
+- Archived superseded revamp plans, session logs, showcase plans, and deferred enhancement proposals under `Docs/internal/archive/2026-07-revamp/`.
+- Corrected public documentation to consistently describe 110 Windows / 107 Linux MCP tools and 36 registered importers.
+- Changed the README release indicator from “Public Ready” to “Public Beta” until manual release gates are complete.
+
 ## 2026-07-17 — REVAMP-V2: Security Fixes, Feature Parity, and Showcase Readiness
 
 **17 security blockers fixed. 30 new modules. 110 MCP tools. 586 checks passing. All docs corrected.**
@@ -90,9 +102,9 @@
 - **Docs/ARCHITECTURE.md** — tool counts corrected (case=13, sift=7, windows=10)
 - **Docs/CLI.md** — report profiles corrected (status, not status_brief)
 - **Docs/COMPARISON.md** — updated to compare against all 4 CADRE repos; stale Gap entries corrected to Parity/Done
-- **Docs/internal/REVAMP-V2-PLAN.md** — all 30 items tracked with completion status
+- **Docs/internal/archive/2026-07-revamp/REVAMP-V2-PLAN.md** — historical record of the 30-item expansion
 - **Docs/internal/PRE-RELEASE-TEST-PLAN.md** — all stale entries updated (586 checks, 110 tools, 36 importers)
-- **Docs/internal/SHOWCASE-TEST-PLAN.md** — updated with current metrics
+- **Former `Docs/internal/SHOWCASE-TEST-PLAN.md`** — its validation matrix was later merged into `Docs/internal/PRE-RELEASE-TEST-PLAN.md`
 - **claude-code/** — recovered from git (27 files); stale "97 tools" → "110 tools"; `status_brief` → `status`; README.md updated to reference AGENTS.md
 
 ### LangGraph Pipeline Merge

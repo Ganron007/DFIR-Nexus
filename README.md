@@ -10,10 +10,12 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/Tests-521%20Passed-success.svg" alt="Tests: 521 Passed">
+  <img src="https://img.shields.io/badge/Tests-586%20Passed-success.svg" alt="Tests: 586 Passed">
   <img src="https://img.shields.io/badge/MCP%20Tools-110%20Registered-blue.svg" alt="MCP Tools: 110 Registered">
-  <img src="https://img.shields.io/badge/Status-Public%20Ready-success.svg" alt="Status: Public Ready">
+  <img src="https://img.shields.io/badge/Status-Public%20Beta-blue.svg" alt="Status: Public Beta">
 </p>
+
+Part of the [CADRE](https://github.com/Ganron007/CADRE) platform — consumes lab attack telemetry and host/network evidence for examiner-led DFIR.
 
 > [!IMPORTANT]
 > **Chain of Custody & Audit Integrity.** DFIR-Nexus enforces strict cryptographic data provenance. Every command executed through SIFT, Zimmerman, or Velociraptor is logged into a tamper-evident **HMAC-SHA256 audit ledger** in real time. To maintain forensic compliance, all draft findings must be verified and cryptographically signed using examiner passwords hashed with PBKDF2-HMAC (600,000 iterations). Automated AI agents are restricted to drafting findings and cannot authorize or alter forensic reports.
@@ -24,7 +26,7 @@
 
 Digital Forensics and Incident Response (DFIR) routinely relies on a highly fragmented ecosystem of single-purpose command-line tools (such as Hayabusa, MFTECmd, chainsaw, Volatility, KAPE, and Velociraptor). Manually correlating tool outputs during high-pressure incidents introduces cognitive strain, compromises chain-of-custody, and limits auditability.
 
-**DFIR-Nexus** solves this by providing a unified, secure, and cryptographically verified forensic integration layer. By exposing native forensic tools as **91 Model Context Protocol (MCP) endpoints** (91 on Windows, 88 on Linux), it allows LLM agents (e.g., Cursor, Claude Code, Cline) to orchestrate collections and analyze artifacts programmatically, while enforcing strict examiner boundaries, cryptographic proof-of-source, and human authorization.
+**DFIR-Nexus** solves this by providing a unified, secure, and cryptographically verified forensic integration layer. By exposing native forensic tools as **110 Model Context Protocol (MCP) endpoints on Windows and 107 on Linux**, it allows LLM agents (e.g., Cursor, Claude Code, Cline) to orchestrate collections and analyze artifacts programmatically, while enforcing strict examiner boundaries, cryptographic proof-of-source, and human authorization.
 
 ---
 
@@ -45,7 +47,7 @@ graph TD
     Server -->|Command Execution| WinForensics["Windows Forensics<br/>(Zimmerman, KAPE)"]:::secondary
     Server -->|API Queries| Velociraptor["Velociraptor Client<br/>(Live Hunts)"]:::secondary
 
-    SIFT & WinForensics & Velociraptor -->|Raw Forensic Logs| Ingest["Ingestion Pipeline<br/>(33 Importers)"]:::secondary
+    SIFT & WinForensics & Velociraptor -->|Raw Forensic Logs| Ingest["Ingestion Pipeline<br/>(36 Importers)"]:::secondary
     
     Ingest -->|Normalized Artifacts| CaseMgr["Case Manager<br/>(nexus.case_manager)"]:::main
     
@@ -54,19 +56,19 @@ graph TD
 
     CaseMgr -->|Create DRAFT Finding| FindingGate{"HITL Approval Gate<br/>(PBKDF2-HMAC Lockout)"}:::gate
     
-    FindingGate -->|Analyst Password Input| Approved["Approved Ledger<br/>(findings.json)"]:::storage
+    FindingGate -->|Analyst Password Input| Approved["Approval Ledger<br/>(HMAC verification)"]:::storage
     
     Approved -->|Export Reports| Exporter["Case Exporter"]:::main
     
-    Exporter -->|Render Bundle| Reports["Markdown, HTML, STIX 2.0, DOCX, ZIP"]:::secondary
+    Exporter -->|Render Bundle| Reports["Markdown, HTML, STIX 2.0/2.1, DOCX, ZIP"]:::secondary
 ```
 
 **The architecture enforces an offline-first, loopback-only trust model:**
 1. **MCP API (FastMCP)** — Exposes intent-level forensic capabilities to local LLM clients, ensuring arbitrary command strings cannot be executed.
-2. **Ingestion & Normalization** — Reads raw files from SIFT and Zimmerman tool chains, parsing artifacts through 33 specialized importers.
+2. **Ingestion & Normalization** — Reads raw files from SIFT and Zimmerman tool chains, parsing artifacts through 36 registered importers.
 3. **Case Ledger & Database** — Logs observations to SQLite and dual-writes a tamper-evident audit ledger using SHA-256 evidence hashing and HMAC-SHA256 block chaining.
 4. **HITL Gateway** — Restricts finding approvals to human operators. The password hashing uses PBKDF2-HMAC (600,000 iterations) with a 3-strike lockout security mechanism.
-5. **Report Exporter** — Exports validated case files as Markdown, HTML, STIX 2.0, DOCX, and ZIP bundles.
+5. **Report Exporter** — Exports validated case files as Markdown, HTML, STIX 2.0/2.1, DOCX, and ZIP bundles.
 
 ---
 
@@ -134,7 +136,7 @@ Detailed guidelines are grouped in the `Docs/` directory:
 * 🔬 **[Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md):** High-level design, trust boundaries, and tool indexes.
 * 💻 **[Docs/CLI.md](Docs/CLI.md):** Typer-based command-line reference.
 * ❔ **[Docs/FAQ.md](Docs/FAQ.md):** Common operations and troubleshooting.
-* 📝 **[Docs/CHANGELOG.md](Docs/CHANGELOG.md):** Project history and release notes.
+* 📝 **[CHANGELOG.md](CHANGELOG.md):** Project history and release notes.
 
 ---
 
@@ -143,7 +145,7 @@ Detailed guidelines are grouped in the `Docs/` directory:
 DFIR-Nexus includes a rigorous testing suite covering unit, script, functional wiring, and blocker regression tests (**586 total checks**).
 
 ```bash
-# 1. Run all Pytest Unit Tests (155 tests including 32 blocker regressions)
+# 1. Run the pytest suite (252-test release baseline, including blocker regressions)
 pytest
 
 # 2. Run Individual Script-Based Tests (219 tests)

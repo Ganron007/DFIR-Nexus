@@ -133,6 +133,12 @@ site/
 *.orig
 *.swp
 
+# ── Local forensic evidence corpus (never commit samples / EVTX / PCAP / malware) ──
+# Stage public + CADRE pulls under Evidence-files/. Only the README/MANIFEST are tracked.
+Evidence-files/**
+!Evidence-files/README.md
+!Evidence-files/MANIFEST.md
+
 # ── Private-repo policy ─────────────────────────────────────────────
 # Docs/internal/ IS tracked (REVAMP plans, audits, checklists).
 # Strip/archive those only before public release — not now.
