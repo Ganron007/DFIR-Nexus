@@ -32,10 +32,12 @@ Digital Forensics and Incident Response (DFIR) routinely relies on a highly frag
 
 ## Architecture & Data Flow
 
-One linear workflow — collect, ledger, human gate, export:
+DFIR-Nexus operates as a single, platform-aware FastMCP process with strict cryptographic trust boundaries, evidence provenance rules (FD-001..007), and a mandatory human authorization gate:
 
 <p align="center">
-  <img src="assets/dfir-nexus-workflow.png" alt="DFIR-Nexus workflow: Client → FastMCP → Collect → Case Ledger → Human Gate → Reports" width="980">
+  <a href="assets/dfir-nexus-architecture.svg">
+    <img src="assets/dfir-nexus-architecture.png" alt="DFIR-Nexus Architecture &amp; Data Flow: Clients → FastMCP Engine → Discipline &amp; Provenance → HITL Gate → Storage &amp; Exporters" width="1000">
+  </a>
 </p>
 
 **Trust model (offline-first, loopback-only):**

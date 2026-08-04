@@ -1,0 +1,337 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="820" viewBox="0 0 1400 820" role="img" aria-label="DFIR-Nexus Architecture and Data Flow">
+  <defs>
+    <!-- Background Gradients -->
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#030712"/>
+      <stop offset="40%" stop-color="#09132b"/>
+      <stop offset="100%" stop-color="#030712"/>
+    </linearGradient>
+
+    <linearGradient id="headerGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#1e3a8a"/>
+      <stop offset="50%" stop-color="#2563eb"/>
+      <stop offset="100%" stop-color="#1d4ed8"/>
+    </linearGradient>
+
+    <!-- Card Fill Gradients -->
+    <linearGradient id="cardBlue" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1e3a8a" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#0f172a" stop-opacity="0.95"/>
+    </linearGradient>
+
+    <linearGradient id="cardCore" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1d4ed8" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#0f172a" stop-opacity="0.90"/>
+    </linearGradient>
+
+    <linearGradient id="cardDraft" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#78350f" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#451a03" stop-opacity="0.7"/>
+    </linearGradient>
+
+    <linearGradient id="cardGate" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#065f46" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#022c22" stop-opacity="0.8"/>
+    </linearGradient>
+
+    <linearGradient id="cardStorage" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1e293b" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#0f172a" stop-opacity="0.95"/>
+    </linearGradient>
+
+    <!-- Logo Shield Gradient -->
+    <linearGradient id="logoShield" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#2563eb"/>
+      <stop offset="55%" stop-color="#1e3a8a"/>
+      <stop offset="100%" stop-color="#030712"/>
+    </linearGradient>
+
+    <!-- Connectors Marker -->
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0 1 L9 5 L0 9 Z" fill="#60a5fa"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0 1 L9 5 L0 9 Z" fill="#34d399"/>
+    </marker>
+    <marker id="arrowAmber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0 1 L9 5 L0 9 Z" fill="#f59e0b"/>
+    </marker>
+
+    <!-- Filters for Glow -->
+    <filter id="glowBlue" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+    <filter id="glowGreen" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <!-- Base Canvas Background -->
+  <rect width="1400" height="820" rx="20" fill="url(#bgGrad)"/>
+  <rect x="1.5" y="1.5" width="1397" height="817" rx="19" fill="none" stroke="#1e3a8a" stroke-width="2" opacity="0.8"/>
+
+  <!-- ================= TOP HEADER BAR ================= -->
+  <g transform="translate(45, 26)">
+    <!-- Mini Shield Icon -->
+    <g transform="scale(0.38)">
+      <path d="M55 0 L110 18 V62 C110 100 86 128 55 145 C24 128 0 100 0 62 V18 Z" fill="url(#logoShield)" stroke="#091a3a" stroke-width="2"/>
+      <path d="M78 26 Q78 34 86 34 Q78 34 78 42 Q78 34 70 34 Q78 34 78 26 Z" fill="#ffffff" opacity="0.9"/>
+      <circle cx="50" cy="62" r="22" fill="none" stroke="#ffffff" stroke-width="4.5" opacity="0.95"/>
+      <line x1="65" y1="77" x2="85" y2="97" stroke="#ffffff" stroke-width="6.5" stroke-linecap="round" opacity="0.95"/>
+    </g>
+
+    <!-- Header Title with tspan to prevent any overlap -->
+    <text x="54" y="30" font-family="'Segoe UI', Inter, system-ui, sans-serif" font-size="24" letter-spacing="-0.3">
+      <tspan font-weight="800" fill="#ffffff">DFIR-Nexus</tspan>
+      <tspan font-weight="600" fill="#60a5fa"> — Architecture &amp; Data Flow</tspan>
+    </text>
+    <text x="54" y="52" font-family="'Segoe UI', Inter, system-ui, sans-serif" font-size="13" font-weight="500" fill="#93c5fd" opacity="0.85">Single FastMCP Process • Cryptographic Audit Chain • 110/107 MCP Endpoints • Human-in-the-Loop Gate</text>
+
+    <!-- Header Badges -->
+    <g transform="translate(930, 10)">
+      <rect x="0" y="0" width="130" height="26" rx="13" fill="#1e3a8a" stroke="#3b82f6" stroke-width="1"/>
+      <text x="65" y="17" font-family="'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#60a5fa" text-anchor="middle">OFFLINE-FIRST</text>
+
+      <rect x="140" y="0" width="120" height="26" rx="13" fill="#065f46" stroke="#10b981" stroke-width="1"/>
+      <text x="200" y="17" font-family="'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#34d399" text-anchor="middle">HITL GATED</text>
+
+      <rect x="270" y="0" width="100" height="26" rx="13" fill="#1e293b" stroke="#64748b" stroke-width="1"/>
+      <text x="320" y="17" font-family="'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#cbd5e1" text-anchor="middle">FD-001..007</text>
+    </g>
+  </g>
+
+  <!-- Divider Line -->
+  <line x1="45" y1="100" x2="1355" y2="100" stroke="#1e3a8a" stroke-width="1.5" opacity="0.6"/>
+
+  <!-- ================= MAIN ARCHITECTURE COLUMNS ================= -->
+
+  <!-- ------------ COLUMN 1: CLIENTS & INTERFACES (X: 45, W: 250) ------------ -->
+  <g transform="translate(45, 120)">
+    <!-- Container Box -->
+    <rect width="250" height="490" rx="14" fill="url(#cardBlue)" stroke="#3b82f6" stroke-width="1.5"/>
+    <rect x="0" y="0" width="250" height="38" rx="14" fill="#1e3a8a"/>
+    <rect x="0" y="24" width="250" height="14" fill="#1e3a8a"/>
+    <text x="125" y="24" font-family="'Segoe UI', Inter, sans-serif" font-size="14" font-weight="700" fill="#ffffff" text-anchor="middle">1. Clients &amp; Interface Layer</text>
+
+    <!-- Client Item 1: LLM Clients -->
+    <g transform="translate(15, 55)">
+      <rect width="220" height="120" rx="10" fill="#0f172a" stroke="#2563eb" stroke-width="1.2"/>
+      <text x="15" y="25" font-family="'Segoe UI', sans-serif" font-size="14" font-weight="700" fill="#60a5fa">🤖 LLM Agents / Clients</text>
+      <text x="15" y="46" font-family="'Segoe UI', sans-serif" font-size="12" fill="#e2e8f0">• Claude Code (Skill Bundle)</text>
+      <text x="15" y="64" font-family="'Segoe UI', sans-serif" font-size="12" fill="#e2e8f0">• LibreChat / Cursor / Cline</text>
+      <rect x="15" y="78" width="190" height="28" rx="6" fill="#1e3a8a" opacity="0.7"/>
+      <text x="110" y="96" font-family="'Segoe UI', sans-serif" font-size="11" font-weight="600" fill="#93c5fd" text-anchor="middle">Stdio / MCP HTTP (:4508)</text>
+    </g>
+
+    <!-- Client Item 2: Nexus CLI -->
+    <g transform="translate(15, 190)">
+      <rect width="220" height="130" rx="10" fill="#0f172a" stroke="#2563eb" stroke-width="1.2"/>
+      <text x="15" y="25" font-family="'Segoe UI', sans-serif" font-size="14" font-weight="700" fill="#60a5fa">💻 Nexus CLI</text>
+      <text x="15" y="46" font-family="'Segoe UI', sans-serif" font-size="12" fill="#e2e8f0">• Typer Engine (19 Commands)</text>
+      <text x="15" y="64" font-family="'Segoe UI', sans-serif" font-size="12" fill="#e2e8f0">• Onboarding: nexus init</text>
+      <text x="15" y="82" font-family="'Segoe UI', sans-serif" font-size="12" fill="#e2e8f0">• Approvals: nexus approve</text>
+      <rect x="15" y="94" width="190" height="24" rx="6" fill="#1e3a8a" opacity="0.7"/>
+      <text x="110" y="110" font-family="'Segoe UI', sans-serif" font-size="11" font-weight="600" fill="#93c5fd" text-anchor="middle">Direct Python API / Local</text>
+    </g>
+
+    <!-- Client Item 3: Examiner Portal -->
+    <g transform="translate(15, 335)">
+      <rect width="220" height="140" rx="10" fill="#0f172a" stroke="#2563eb" stroke-width="1.2"/>
+      <text x="15" y="25" font-family="'Segoe UI', sans-serif" font-size="14" font-weight="700" fill="#60a5fa">🌐 Examiner Portal</text>
+      <text x="15" y="46" font-family="'Segoe UI', sans-serif" font-size="12" fill="#e2e8f0">• Starlette Dashboard UI</text>
+      <text x="15" y="64" font-family="'Segoe UI', sans-serif" font-size="12" fill="#e2e8f0">• Interactive Case Inspection</text>
+      <text x="15" y="82" font-family="'Segoe UI', sans-serif" font-size="12" fill="#e2e8f0">• Web Crypto HMAC Challenge</text>
+      <rect x="15" y="98" width="190" height="28" rx="6" fill="#065f46" opacity="0.9"/>
+      <text x="110" y="116" font-family="'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#34d399" text-anchor="middle">http://127.0.0.1:4508/portal</text>
+    </g>
+  </g>
+
+  <!-- Connectors C1 -> C2 -->
+  <g fill="none" stroke="#60a5fa" stroke-width="2" marker-end="url(#arrowBlue)">
+    <path d="M295 235 H325"/>
+    <path d="M295 375 H325"/>
+    <path d="M295 515 H325"/>
+  </g>
+
+  <!-- ------------ COLUMN 2: FASTMCP CORE ENGINE (X: 335, W: 420) ------------ -->
+  <g transform="translate(335, 120)">
+    <!-- Container Box -->
+    <rect width="420" height="490" rx="14" fill="url(#cardCore)" stroke="#60a5fa" stroke-width="2" filter="url(#glowBlue)"/>
+    <rect x="0" y="0" width="420" height="42" rx="14" fill="#1e3a8a"/>
+    <rect x="0" y="26" width="420" height="16" fill="#1e3a8a"/>
+    <text x="210" y="27" font-family="'Segoe UI', Inter, sans-serif" font-size="15" font-weight="700" fill="#ffffff" text-anchor="middle">2. FastMCP Single-Process Engine (app.py)</text>
+
+    <!-- Sub-Section: Integrated Tool Modules -->
+    <rect x="15" y="55" width="390" height="255" rx="10" fill="#0f172a" stroke="#1e3a8a" stroke-width="1.5"/>
+    <text x="30" y="78" font-family="'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#60a5fa">⚡ 110 Windows / 107 Linux MCP Endpoints</text>
+
+    <!-- Module Row 1: Forensics -->
+    <g transform="translate(30, 92)">
+      <rect width="360" height="48" rx="6" fill="#1e3a8a" opacity="0.6"/>
+      <text x="12" y="20" font-family="'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#ffffff">Forensics &amp; Case Ops</text>
+      <text x="12" y="36" font-family="'Segoe UI', sans-serif" font-size="11" fill="#93c5fd">• forensic.py (23)  • case.py (13)  • report.py (6)</text>
+    </g>
+
+    <!-- Module Row 2: Threat Intel & RAG -->
+    <g transform="translate(30, 147)">
+      <rect width="360" height="48" rx="6" fill="#1e3a8a" opacity="0.6"/>
+      <text x="12" y="20" font-family="'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#ffffff">RAG &amp; Threat Intelligence</text>
+      <text x="12" y="36" font-family="'Segoe UI', sans-serif" font-size="11" fill="#93c5fd">• rag.py (22k RAG)  • triage/ (2.6M)  • ti/ (10 TI Providers)</text>
+    </g>
+
+    <!-- Module Row 3: Platform Executors -->
+    <g transform="translate(30, 202)">
+      <rect width="360" height="48" rx="6" fill="#1e3a8a" opacity="0.6"/>
+      <text x="12" y="20" font-family="'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#ffffff">Platform Executors &amp; Hunting</text>
+      <text x="12" y="36" font-family="'Segoe UI', sans-serif" font-size="11" fill="#93c5fd">• sift.py (Linux Subprocess)  • windows.py  • vr/ Hunts</text>
+    </g>
+
+    <!-- Sub-Section: Ingestion Engine -->
+    <g transform="translate(15, 325)">
+      <rect width="390" height="145" rx="10" fill="#0f172a" stroke="#2563eb" stroke-width="1.2"/>
+      <text x="15" y="25" font-family="'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#60a5fa">📥 Ingestion &amp; Evidence Normalizer</text>
+      <text x="15" y="46" font-family="'Segoe UI', sans-serif" font-size="12" fill="#e2e8f0">• 36 Registered Importers across 7 categories</text>
+      <text x="15" y="64" font-family="'Segoe UI', sans-serif" font-size="11" fill="#94a3b8">(MFT, EVTX, Volatility, Zeek, Suricata, PCAP, KAPE, Prefetch...)</text>
+
+      <rect x="15" y="78" width="360" height="52" rx="6" fill="#1d4ed8" opacity="0.3"/>
+      <text x="25" y="98" font-family="'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#38bdf8">Proof-of-Source Hashing:</text>
+      <text x="25" y="116" font-family="'Segoe UI', sans-serif" font-size="11" fill="#e0f2fe">SHA-256 evidence hashing at initial registration</text>
+    </g>
+  </g>
+
+  <!-- Connectors C2 -> C3 -->
+  <g fill="none" stroke="#60a5fa" stroke-width="2" marker-end="url(#arrowBlue)">
+    <path d="M755 240 H785"/>
+    <path d="M755 420 H785"/>
+  </g>
+
+  <!-- ------------ COLUMN 3: DISCIPLINE & PROVENANCE ENGINE (X: 795, W: 260) ------------ -->
+  <g transform="translate(795, 120)">
+    <!-- Container Box -->
+    <rect width="260" height="490" rx="14" fill="url(#cardBlue)" stroke="#38bdf8" stroke-width="1.5"/>
+    <rect x="0" y="0" width="260" height="38" rx="14" fill="#0f172a"/>
+    <rect x="0" y="24" width="260" height="14" fill="#0f172a"/>
+    <text x="130" y="24" font-family="'Segoe UI', Inter, sans-serif" font-size="14" font-weight="700" fill="#ffffff" text-anchor="middle">3. Integrity &amp; Discipline</text>
+
+    <!-- Item 1: SHA-256 Audit Logger -->
+    <g transform="translate(15, 55)">
+      <rect width="230" height="95" rx="8" fill="#0f172a" stroke="#38bdf8" stroke-width="1"/>
+      <text x="12" y="22" font-family="'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#38bdf8">📜 SHA-256 Audit Logger</text>
+      <text x="12" y="42" font-family="'Segoe UI', sans-serif" font-size="11" fill="#e0f2fe">• audit.py tool execution log</text>
+      <text x="12" y="58" font-family="'Segoe UI', sans-serif" font-size="11" fill="#e0f2fe">• Tracks last_audit_id chain</text>
+      <text x="12" y="74" font-family="'Segoe UI', sans-serif" font-size="11" fill="#e0f2fe">• Tamper-evident record</text>
+    </g>
+
+    <!-- Item 2: Discipline Rules -->
+    <g transform="translate(15, 160)">
+      <rect width="230" height="135" rx="8" fill="#0f172a" stroke="#38bdf8" stroke-width="1"/>
+      <text x="12" y="22" font-family="'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#38bdf8">🛡️ Discipline Rules (FD-001..007)</text>
+      <text x="12" y="42" font-family="'Segoe UI', sans-serif" font-size="11" fill="#e0f2fe">• FD-001: Evidence Before Claims</text>
+      <text x="12" y="58" font-family="'Segoe UI', sans-serif" font-size="11" fill="#e0f2fe">• FD-004: UNKNOWN is Neutral</text>
+      <text x="12" y="74" font-family="'Segoe UI', sans-serif" font-size="11" fill="#e0f2fe">• FD-005: Confidence Justification</text>
+      <text x="12" y="90" font-family="'Segoe UI', sans-serif" font-size="11" fill="#e0f2fe">• Provenance scoring:</text>
+      <text x="12" y="106" font-family="'Segoe UI', sans-serif" font-size="10" font-weight="700" fill="#93c5fd">  mcp &gt; hook &gt; shell &gt; none (REJECT)</text>
+    </g>
+
+    <!-- Item 3: Staged Findings (DRAFT) -->
+    <g transform="translate(15, 305)">
+      <rect width="230" height="165" rx="8" fill="url(#cardDraft)" stroke="#f59e0b" stroke-width="1.8"/>
+      <text x="12" y="25" font-family="'Segoe UI', sans-serif" font-size="13" font-weight="800" fill="#fef3c7">⏳ Staged Findings (DRAFT)</text>
+      <text x="12" y="46" font-family="'Segoe UI', sans-serif" font-size="11" fill="#fde68a">• All AI findings stage as DRAFT</text>
+      <text x="12" y="64" font-family="'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#f59e0b">• AI CANNOT self-approve</text>
+      <text x="12" y="82" font-family="'Segoe UI', sans-serif" font-size="11" fill="#fde68a">• Cannot alter forensic records</text>
+      
+      <rect x="12" y="96" width="206" height="52" rx="6" fill="#451a03" stroke="#d97706" stroke-width="1"/>
+      <text x="103" y="116" font-family="'Segoe UI', sans-serif" font-size="11" font-weight="800" fill="#fbbf24" text-anchor="middle">BLOCKED FROM EXPORT</text>
+      <text x="103" y="134" font-family="'Segoe UI', sans-serif" font-size="10" fill="#fde68a" text-anchor="middle">Awaits Human Examiner Gate</text>
+    </g>
+  </g>
+
+  <!-- Connectors C3 -> C4 -->
+  <g fill="none" stroke="#f59e0b" stroke-width="2" stroke-dasharray="5,4" marker-end="url(#arrowAmber)">
+    <path d="M1055 385 H1085"/>
+  </g>
+
+  <!-- ------------ COLUMN 4: HUMAN APPROVAL GATE (X: 1095, W: 260) ------------ -->
+  <g transform="translate(1095, 120)">
+    <!-- Container Box -->
+    <rect width="260" height="490" rx="14" fill="url(#cardGate)" stroke="#10b981" stroke-width="2.5" filter="url(#glowGreen)"/>
+    <rect x="0" y="0" width="260" height="42" rx="14" fill="#065f46"/>
+    <rect x="0" y="26" width="260" height="16" fill="#065f46"/>
+    <text x="130" y="27" font-family="'Segoe UI', Inter, sans-serif" font-size="15" font-weight="800" fill="#ffffff" text-anchor="middle">4. Human Approval Gate</text>
+
+    <!-- Gate Core Box -->
+    <g transform="translate(15, 60)">
+      <rect width="230" height="230" rx="10" fill="#022c22" stroke="#34d399" stroke-width="1.5"/>
+      <text x="115" y="28" font-family="'Segoe UI', sans-serif" font-size="15" font-weight="800" fill="#34d399" text-anchor="middle">🔐 Human Gate (HITL)</text>
+      
+      <text x="15" y="55" font-family="'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#a7f3d0">• Verified Invocations:</text>
+      <text x="25" y="73" font-family="'Segoe UI', sans-serif" font-size="11" fill="#ecfdf5">CLI: nexus approve</text>
+      <text x="25" y="91" font-family="'Segoe UI', sans-serif" font-size="11" fill="#ecfdf5">Web: /portal/api/commit</text>
+
+      <text x="15" y="118" font-family="'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#a7f3d0">• Security Controls:</text>
+      <text x="25" y="136" font-family="'Segoe UI', sans-serif" font-size="11" fill="#ecfdf5">PBKDF2-HMAC-SHA256</text>
+      <text x="25" y="152" font-family="'Segoe UI', sans-serif" font-size="10" fill="#6ee7b7">  (600,000 iterations)</text>
+      <text x="25" y="170" font-family="'Segoe UI', sans-serif" font-size="11" fill="#ecfdf5">3-Strike 15-min Lockout</text>
+
+      <rect x="15" y="184" width="200" height="34" rx="6" fill="#047857"/>
+      <text x="115" y="205" font-family="'Segoe UI', sans-serif" font-size="11" font-weight="800" fill="#ffffff" text-anchor="middle">Cryptographic Promotion</text>
+    </g>
+
+    <!-- Verified Signature Output Box -->
+    <g transform="translate(15, 310)">
+      <rect width="230" height="160" rx="10" fill="#064e3b" stroke="#10b981" stroke-width="1.5"/>
+      <text x="115" y="28" font-family="'Segoe UI', sans-serif" font-size="13" font-weight="800" fill="#34d399" text-anchor="middle">✅ APPROVED STATE</text>
+      <text x="15" y="52" font-family="'Segoe UI', sans-serif" font-size="11" fill="#ecfdf5">• Examiner Signed Entry</text>
+      <text x="15" y="70" font-family="'Segoe UI', sans-serif" font-size="11" fill="#ecfdf5">• PBKDF2 Derived Purpose Key</text>
+      <text x="15" y="88" font-family="'Segoe UI', sans-serif" font-size="11" fill="#ecfdf5">• Append to Verification Ledger</text>
+
+      <rect x="15" y="104" width="200" height="42" rx="6" fill="#047857" stroke="#34d399" stroke-width="1"/>
+      <text x="115" y="122" font-family="'Segoe UI', sans-serif" font-size="12" font-weight="800" fill="#ffffff" text-anchor="middle">DRAFT ➔ APPROVED</text>
+      <text x="115" y="138" font-family="'Segoe UI', sans-serif" font-size="10" fill="#a7f3d0" text-anchor="middle">Unlocks Report Exporters</text>
+    </g>
+  </g>
+
+  <!-- Connectors C4 -> Row 5 (Storage/Ledger) -->
+  <g fill="none" stroke="#34d399" stroke-width="2" marker-end="url(#arrowGreen)">
+    <path d="M1225 610 V635"/>
+  </g>
+  <g fill="none" stroke="#60a5fa" stroke-width="2">
+    <path d="M545 610 V635"/>
+  </g>
+
+  <!-- ================= BOTTOM ROW: CASE STORAGE & VERIFICATION LEDGER (X: 45, Y: 635, W: 1310, H: 150) ================= -->
+  <g transform="translate(45, 635)">
+    <rect width="1310" height="150" rx="14" fill="url(#cardStorage)" stroke="#3b82f6" stroke-width="1.5"/>
+    <rect x="0" y="0" width="1310" height="34" rx="14" fill="#1e293b"/>
+    <rect x="0" y="20" width="1310" height="14" fill="#1e293b"/>
+    <text x="655" y="22" font-family="'Segoe UI', Inter, sans-serif" font-size="14" font-weight="700" fill="#ffffff" text-anchor="middle">5. Case Storage, Cryptographic Verification Ledger &amp; Report Exporters</text>
+
+    <!-- Component 5A: SQLite Case Store -->
+    <g transform="translate(25, 48)">
+      <rect width="380" height="85" rx="8" fill="#0f172a" stroke="#3b82f6" stroke-width="1.2"/>
+      <text x="15" y="24" font-family="'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#60a5fa">💾 SQLite Case Stack (cases.db)</text>
+      <text x="15" y="44" font-family="'Segoe UI', sans-serif" font-size="11" fill="#e2e8f0">• Canonical Persistence: findings, evidence, timeline, TODOs</text>
+      <text x="15" y="62" font-family="'Segoe UI', sans-serif" font-size="11" fill="#94a3b8">• Backward Dual-Write Bridge (CaseManager legacy JSON compatibility)</text>
+    </g>
+
+    <!-- Component 5B: Transparency Log -->
+    <g transform="translate(430, 48)">
+      <rect width="420" height="85" rx="8" fill="#0f172a" stroke="#38bdf8" stroke-width="1.2"/>
+      <text x="15" y="24" font-family="'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#38bdf8">🔗 Hash-Chained Transparency Log</text>
+      <text x="15" y="44" font-family="'Segoe UI', sans-serif" font-size="11" fill="#e0f2fe">• transparency.jsonl — Hash-chained audit append for every approval</text>
+      <text x="15" y="62" font-family="'Segoe UI', sans-serif" font-size="11" fill="#e0f2fe">• transparency_verify() walks chain to detect tampering</text>
+    </g>
+
+    <!-- Component 5C: Verified Report Exporters -->
+    <g transform="translate(875, 48)">
+      <rect width="410" height="85" rx="8" fill="#022c22" stroke="#10b981" stroke-width="1.2"/>
+      <text x="15" y="24" font-family="'Segoe UI', sans-serif" font-size="13" font-weight="700" fill="#34d399">📄 Verified Report Exporters</text>
+      <text x="15" y="44" font-family="'Segoe UI', sans-serif" font-size="11" fill="#ecfdf5">• Exports ONLY approved findings (6 Profiles)</text>
+      <text x="15" y="62" font-family="'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#a7f3d0">• Markdown • HTML • STIX 2.0/2.1 • DOCX • Encrypted ZIP</text>
+    </g>
+  </g>
+
+</svg>

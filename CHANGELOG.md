@@ -3,7 +3,8 @@
 ## Unreleased
 
 ### Documentation
-- Replaced README architecture mermaid with a logo-matched workflow diagram (`assets/dfir-nexus-workflow.png`; SVG source kept for edits).
+- Created custom high-resolution logo-color-matched architecture flow diagrams ([assets/dfir-nexus-architecture.svg](file:///c:/STUDY/Github/CADRE-Platform/DFIR-Nexus/assets/dfir-nexus-architecture.svg) and [assets/dfir-nexus-architecture.png](file:///c:/STUDY/Github/CADRE-Platform/DFIR-Nexus/assets/dfir-nexus-architecture.png)) using exact logo shades (`#1e3a8a`, `#2563eb`, `#60a5fa`, `#0f172a`, `#10b981`, `#f59e0b`).
+- Linked the architecture diagram in [README.md](file:///c:/STUDY/Github/CADRE-Platform/DFIR-Nexus/README.md) and [Docs/ARCHITECTURE.md](file:///c:/STUDY/Github/CADRE-Platform/DFIR-Nexus/Docs/ARCHITECTURE.md), completely replacing raw Mermaid code blocks.
 - Consolidated showcase validation into `Docs/internal/PRE-RELEASE-TEST-PLAN.md`.
 - Retained `Docs/internal/LEARN-TEST-SHOWCASE-PUBLISH.md` as the operator learning and showcase runbook.
 - Added `Docs/internal/CORPUS-CHECKLIST.md` — full evidence pack: mega sources, folder layout, 45-importer matrix, non-ingest lanes, CADRE pull map, acquisition order.

@@ -14,6 +14,79 @@ machine and configure the LLM client to connect to all of them.
 
 ## Topology
 
+```mermaid
+flowchart TD
+    %% DFIR-Nexus Architecture Diagram - Logo Matched (#1e3a8a, #2563eb, #60a5fa, #0f172a)
+    classDef clientStyle fill:#0f172a,stroke:#3b82f6,stroke-width:2px,color:#f8fafc;
+    classDef serverStyle fill:#1e3a8a,stroke:#60a5fa,stroke-width:2.5px,color:#ffffff;
+    classDef toolStyle fill:#1d4ed8,stroke:#93c5fd,stroke-width:1.5px,color:#ffffff;
+    classDef disciplineStyle fill:#1e293b,stroke:#38bdf8,stroke-width:1.5px,color:#f0f9ff;
+    classDef draftStyle fill:#78350f,stroke:#f59e0b,stroke-width:2px,color:#fef3c7;
+    classDef gateStyle fill:#065f46,stroke:#34d399,stroke-width:2.5px,color:#ecfdf5;
+    classDef storageStyle fill:#0f172a,stroke:#64748b,stroke-width:1.5px,color:#f1f5f9;
+
+    subgraph CLIENTS [" Client & Interface Layer "]
+        LLM["🤖 LLM Clients<br/><i>(Claude Code, LibreChat, Cursor, Cline)</i>"]:::clientStyle
+        CLI["💻 Nexus CLI<br/><i>(nexus typer — 19 commands)</i>"]:::clientStyle
+        WEB["🌐 Examiner Portal<br/><i>(Browser UI :4508/portal)</i>"]:::clientStyle
+    end
+
+    subgraph CORE [" FastMCP Single-Process Engine (app.py) "]
+        MCP["⚡ FastMCP Server Process<br/><i>(Stdio & Uvicorn HTTP :4508)</i>"]:::serverStyle
+        
+        subgraph MODULES [" Integrated Tool Engine (110 Win / 107 Linux Endpoints) "]
+            direction LR
+            CORE_TOOLS["<b>Forensics & Case Ops</b><br/>• forensic.py (23 tools)<br/>• case.py (13 tools)<br/>• report.py (6 tools)"]:::toolStyle
+            INTEL_TOOLS["<b>RAG & Threat Intel</b><br/>• rag.py (ChromaDB 22k records)<br/>• triage/ (2.6M baselines)<br/>• ti/ (10 TI Providers)"]:::toolStyle
+            EXEC_TOOLS["<b>Executors & Hunters</b><br/>• sift.py (Linux Subprocess)<br/>• windows.py (Win Catalog)<br/>• vr/ (Velociraptor Hunts)"]:::toolStyle
+        end
+    end
+
+    subgraph DISCIPLINE [" Cryptographic Integrity & Discipline Engine "]
+        AUDIT["📜 SHA-256 Audit Logger<br/><i>(audit.py — Tool Call Ledger)</i>"]:::disciplineStyle
+        RULES["🛡️ Discipline Rules (FD-001..007)<br/><i>(discipline.py — Provenance Scoring)</i>"]:::disciplineStyle
+        DRAFT["⏳ Staged Findings (DRAFT)<br/><i>(AI Cannot Self-Approve)</i>"]:::draftStyle
+    end
+
+    subgraph HITL [" Human-in-the-Loop Approval Gate "]
+        GATE["🔐 Human Approval Gate<br/><i>(nexus approve / Web Crypto HMAC)</i><br/>• PBKDF2-SHA256 (600k iterations)<br/>• 3-Strike 15-min Lockout"]:::gateStyle
+    end
+
+    subgraph LEDGER [" Case Storage & Verification Ledger "]
+        INGEST["📥 Ingest Engine<br/><i>(36 registered importers)</i>"]:::storageStyle
+        DB[("💾 Case Store<br/><i>(SQLite cases.db & Dual-Write)</i>")]:::storageStyle
+        TRANSPARENCY["🔗 Transparency Log<br/><i>(transparency.jsonl HMAC chain)</i>"]:::storageStyle
+        REPORTS["📄 Verified Reports<br/><i>(MD, HTML, STIX 2.0/2.1, DOCX, ZIP)</i>"]:::storageStyle
+    end
+
+    %% Flow Connections
+    LLM -->|Stdio / MCP HTTP| MCP
+    CLI -->|Python Direct / REST| MCP
+    WEB -->|REST / Web Crypto| MCP
+
+    MCP --> MODULES
+    MODULES --> INGEST
+    INGEST --> DB
+
+    MODULES -->|Every Tool Exec| AUDIT
+    AUDIT --> RULES
+    RULES -->|Enforce Evidence & Justification| DRAFT
+
+    DRAFT -.->|Blocked from Report Export| GATE
+    GATE -->|Password Verified Signature| TRANSPARENCY
+    TRANSPARENCY -->|Promote DRAFT → APPROVED| DB
+    DB --> REPORTS
+
+    %% Apply Styles
+    class LLM,CLI,WEB clientStyle;
+    class MCP serverStyle;
+    class CORE_TOOLS,INTEL_TOOLS,EXEC_TOOLS toolStyle;
+    class AUDIT,RULES disciplineStyle;
+    class DRAFT draftStyle;
+    class GATE gateStyle;
+    class INGEST,DB,TRANSPARENCY,REPORTS storageStyle;
+```
+
 ```
 ┌────────────────────────────────────────────────────────────────────────────┐
 │                         DFIR-Nexus (single process)                        │
