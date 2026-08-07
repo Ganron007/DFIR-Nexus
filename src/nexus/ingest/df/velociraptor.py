@@ -49,9 +49,19 @@ class VelociraptorImporter(Importer):
         return "velociraptor" in head.lower() or "_Source" in head or "Artifact" in head and "Records" in head
 
     def parse(self, path: Path) -> Iterator[Artifact]:
-        """Yield Artifact objects from a Velociraptor JSON export."""
-        with path.open("r", encoding="utf-8", errors="replace") as f:
-            data = json.load(f)
+        """Yield Artifact objects from a Velociraptor JSON export.
+
+        Falls back to line-delimited parsing for NDJSON/JSONL hunt exports
+        (one JSON record per line).
+        """
+        try:
+            with path.open("r", encoding="utf-8", errors="replace") as f:
+                data = json.load(f)
+        except json.JSONDecodeError:
+            for _n, record in self.read_jsonl(path):
+                if isinstance(record, dict):
+                    yield self._record_to_artifact(record)
+            return
         records = self._extract_records(data)
         for record in records:
             yield self._record_to_artifact(record)

@@ -36,56 +36,92 @@ def detect_format(path: Path) -> ArtifactSource | None:
 
     name_lower = path.name.lower()
 
-    # --- Filename-based fast path ---
-    _FILENAME_HINTS: dict[str, ArtifactSource] = {
-        "evtx": ArtifactSource.EVTX,
-        ".evtx": ArtifactSource.EVTX,
-        "prefetch": ArtifactSource.PREFETCH,
-        ".pf": ArtifactSource.PREFETCH,
-        "amcache": ArtifactSource.AMCACHE,
-        "amcache.hve": ArtifactSource.AMCACHE,
-        "shimcache": ArtifactSource.AMCACHE,
-        "lnk": ArtifactSource.LNK,
-        ".lnk": ArtifactSource.LNK,
-        "ntuser.dat": ArtifactSource.WINDOWS_REGISTRY,
-        "system": ArtifactSource.WINDOWS_REGISTRY,
-        "software": ArtifactSource.WINDOWS_REGISTRY,
-        "sam": ArtifactSource.WINDOWS_REGISTRY,
-        "security": ArtifactSource.WINDOWS_REGISTRY,
-        "syslog": ArtifactSource.SYSLOG,
-        "messages": ArtifactSource.SYSLOG,
-        "auth.log": ArtifactSource.AUTHLOG,
-        "secure": ArtifactSource.AUTHLOG,
-        ".bash_history": ArtifactSource.BASH_HISTORY,
-        "audit.log": ArtifactSource.AUDITD,
-        "suricata": ArtifactSource.SURICATA,
-        "eve.json": ArtifactSource.SURICATA,
-        "conn.log": ArtifactSource.ZEEK,
-        "dns.log": ArtifactSource.ZEEK,
-        "http.log": ArtifactSource.ZEEK,
-        "tls.log": ArtifactSource.ZEEK,
-        "cloudtrail": ArtifactSource.CLOUDTRAIL,
-        "thehive": ArtifactSource.THEHIVE,
-        "hayabusa": ArtifactSource.HAYABUSA,
-        "kape": ArtifactSource.KAPE,
-        "velociraptor": ArtifactSource.VELOCIRAPTOR,
-        "volatility": ArtifactSource.VOLATILITY,
-    }
-
-    for hint, source in _FILENAME_HINTS.items():
-        if hint in name_lower:
-            return source
-
-    # --- Extension-based hints ---
+    # --- Extension-based hints (unambiguous formats first) ---
     suffix = path.suffix.lower()
     _EXT_HINTS: dict[str, ArtifactSource] = {
         ".evtx": ArtifactSource.EVTX,
         ".pf": ArtifactSource.PREFETCH,
         ".lnk": ArtifactSource.LNK,
         ".hve": ArtifactSource.AMCACHE,
+        # Shared lanes — registry.resolve() disambiguates via can_handle()
+        ".eml": ArtifactSource.GENERIC_JSONL,
+        ".msg": ArtifactSource.GENERIC_JSONL,
+        ".zip": ArtifactSource.GENERIC_JSONL,
+        ".tar": ArtifactSource.GENERIC_JSONL,
+        ".tgz": ArtifactSource.GENERIC_JSONL,
+        ".gz": ArtifactSource.GENERIC_JSONL,
     }
     if suffix in _EXT_HINTS:
         return _EXT_HINTS[suffix]
+    if name_lower.endswith((".tar.gz", ".tar.xz", ".tar.bz2")):
+        return ArtifactSource.GENERIC_JSONL
+
+    # --- Exact filename hints ---
+    # NOTE: exact match only. Substring matching misroutes files whose names
+    # merely contain a hint token (e.g. "cloudtrail-*sample*.json" contains
+    # "sam" and was routed to the Windows registry importer).
+    _EXACT_NAME_HINTS: dict[str, ArtifactSource] = {
+        "eve.json": ArtifactSource.SURICATA,
+        "conn.log": ArtifactSource.ZEEK,
+        "dns.log": ArtifactSource.ZEEK,
+        "http.log": ArtifactSource.ZEEK,
+        "tls.log": ArtifactSource.ZEEK,
+        "ssl.log": ArtifactSource.ZEEK,
+        "audit.log": ArtifactSource.AUDITD,
+        "auth.log": ArtifactSource.AUTHLOG,
+        "secure": ArtifactSource.AUTHLOG,
+        "syslog": ArtifactSource.SYSLOG,
+        "messages": ArtifactSource.SYSLOG,
+        "journal.json": ArtifactSource.SYSLOG,
+        "sam": ArtifactSource.WINDOWS_REGISTRY,
+        "system": ArtifactSource.WINDOWS_REGISTRY,
+        "software": ArtifactSource.WINDOWS_REGISTRY,
+        "security": ArtifactSource.WINDOWS_REGISTRY,
+        "ntuser.dat": ArtifactSource.WINDOWS_REGISTRY,
+        "usrclass.dat": ArtifactSource.WINDOWS_REGISTRY,
+        ".bash_history": ArtifactSource.BASH_HISTORY,
+        "bash_history": ArtifactSource.BASH_HISTORY,
+    }
+    if name_lower in _EXACT_NAME_HINTS:
+        return _EXACT_NAME_HINTS[name_lower]
+    if name_lower.startswith("eve.json."):
+        return ArtifactSource.SURICATA
+
+    # --- Prefix hints (long distinctive tokens + separator) ---
+    _PREFIX_HINTS: list[tuple[str, ArtifactSource]] = [
+        ("cloudtrail", ArtifactSource.CLOUDTRAIL),
+        ("hayabusa", ArtifactSource.HAYABUSA),
+        ("velociraptor", ArtifactSource.VELOCIRAPTOR),
+        ("volatility", ArtifactSource.VOLATILITY),
+        ("thehive", ArtifactSource.THEHIVE),
+        ("kape", ArtifactSource.KAPE),
+        ("plaso", ArtifactSource.PLASO),
+        ("cybertriage", ArtifactSource.CYBERTRIAGE),
+        ("suricata", ArtifactSource.SURICATA),
+        ("socrates", ArtifactSource.SURICATA),
+        ("sysdig", ArtifactSource.SURICATA),
+        ("falco", ArtifactSource.SURICATA),
+        ("zeek", ArtifactSource.ZEEK),
+        ("bro", ArtifactSource.ZEEK),
+        ("wazuh", ArtifactSource.ELASTIC),
+        ("elastic", ArtifactSource.ELASTIC),
+        ("splunk", ArtifactSource.SPLUNK),
+        ("azure", ArtifactSource.AZURE),
+        ("m365", ArtifactSource.AZURE),
+        ("o365", ArtifactSource.AZURE),
+        ("entra", ArtifactSource.AZURE),
+        ("misp", ArtifactSource.MISP),
+        ("otx", ArtifactSource.OTX),
+        ("threatfox", ArtifactSource.THREATFOX),
+        ("journal", ArtifactSource.SYSLOG),
+        ("iris", ArtifactSource.THEHIVE),
+        ("sandbox", ArtifactSource.CROWDSTRIKE),
+        ("cape", ArtifactSource.CROWDSTRIKE),
+    ]
+    for token, source in _PREFIX_HINTS:
+        if name_lower.startswith(token + "-") or name_lower.startswith(token + "_") \
+                or name_lower.startswith(token + "."):
+            return source
 
     # --- Content signature matching ---
     try:
@@ -96,36 +132,49 @@ def detect_format(path: Path) -> ArtifactSource | None:
     if not head.strip():
         return None
 
-    # JSON-based formats (check most-specific first)
-    if head.lstrip().startswith("{") or head.lstrip().startswith("["):
-        try:
-            sample = json.loads(head)
+    # Binary content: skip all text-format branches and fall straight to
+    # registry autodetect (prevents CSV/JSON importers from chewing on
+    # PCAPs and other binary blobs).
+    is_binary = "\x00" in head[:4096]
+
+    if not is_binary:
+        # JSON-based formats (check most-specific first). For NDJSON the
+        # whole head is not valid JSON — sniff the first non-empty line.
+        stripped = head.lstrip()
+        if stripped.startswith("{") or stripped.startswith("["):
+            sample = None
+            try:
+                sample = json.loads(head)
+            except json.JSONDecodeError:
+                first_line = next((ln for ln in head.splitlines() if ln.strip()), "")
+                try:
+                    sample = json.loads(first_line)
+                except json.JSONDecodeError:
+                    sample = None
             if isinstance(sample, dict):
                 return _detect_json_format(sample, name_lower)
-            elif isinstance(sample, list) and sample:
-                if isinstance(sample[0], dict):
-                    return _detect_json_format(sample[0], name_lower)
-        except json.JSONDecodeError:
-            pass
+            elif isinstance(sample, list) and sample and isinstance(sample[0], dict):
+                return _detect_json_format(sample[0], name_lower)
 
-    # CSV/TSV-based formats
-    if "\t" in head[:2000] and "\n" in head[:2000]:
-        return _detect_tsv_format(head, name_lower)
-    if "," in head[:2000] and "\n" in head[:2000]:
-        return _detect_csv_format(head, name_lower)
+        # CSV/TSV-based formats
+        if "\t" in head[:2000] and "\n" in head[:2000]:
+            return _detect_tsv_format(head, name_lower)
+        if "," in head[:2000] and "\n" in head[:2000]:
+            return _detect_csv_format(head, name_lower)
 
-    # XML-based formats
-    if head.lstrip().startswith("<?xml") or head.lstrip().startswith("<Task"):
-        if "<Task" in head or "<Exec" in head:
+        # XML-based formats
+        stripped_head = head.lstrip()
+        if (stripped_head.startswith("<?xml") or stripped_head.startswith("<Task")) \
+                and ("<Task" in head or "<Exec" in head):
             return ArtifactSource.SCHEDULED_TASKS
 
-    # Syslog/Authlog pattern
-    import re
-    if re.match(r"^\w{3}\s+\d+\s+\d{2}:\d{2}:\d{2}\s+", head):
-        auth_filename = any(kw in name_lower for kw in ("auth", "secure"))
-        if auth_filename and any(kw in head for kw in ("sshd", "sudo", "su[", "login", "pam_unix")):
-            return ArtifactSource.AUTHLOG
-        return ArtifactSource.SYSLOG
+        # Syslog/Authlog pattern
+        import re
+        if re.match(r"^\w{3}\s+\d+\s+\d{2}:\d{2}:\d{2}\s+", head):
+            auth_filename = any(kw in name_lower for kw in ("auth", "secure"))
+            if auth_filename and any(kw in head for kw in ("sshd", "sudo", "su[", "login", "pam_unix")):
+                return ArtifactSource.AUTHLOG
+            return ArtifactSource.SYSLOG
 
     # Fallback to registry autodetect
     from nexus.ingest.registry import get_registry
@@ -149,6 +198,11 @@ def _detect_json_format(sample: dict, name: str) -> ArtifactSource | None:
     if "Records" in keys and isinstance(sample.get("Records"), list) and sample.get("Records"):
         return ArtifactSource.CLOUDTRAIL
 
+    # M365 Unified Audit Log: RecordType + UserId (shared AZURE lane —
+    # registry.resolve() picks M365Importer via can_handle)
+    if "RecordType" in keys and "UserId" in keys:
+        return ArtifactSource.AZURE
+
     # Azure: has operationName or caller
     if "operationName" in keys or "caller" in keys:
         return ArtifactSource.AZURE
@@ -165,21 +219,32 @@ def _detect_json_format(sample: dict, name: str) -> ArtifactSource | None:
     if "tlp" in keys and ("title" in keys or "case" in keys):
         return ArtifactSource.THEHIVE
 
+    # DFIR-IRIS: case + iocs (shared THEHIVE lane — resolve() picks IRIS)
+    if "iocs" in keys and ("case" in keys or "cases" in keys):
+        return ArtifactSource.THEHIVE
+
+    # Sandbox report (CAPE-style): score + signatures + target/behavior
+    # (shared CROWDSTRIKE lane — resolve() picks SandboxImporter)
+    if "score" in keys and "signatures" in keys and ("target" in keys or "behavior" in keys):
+        return ArtifactSource.CROWDSTRIKE
+
     # Hayabusa: has RuleTitle or Level
     if "RuleTitle" in keys or "Level" in keys:
         return ArtifactSource.HAYABUSA
 
+    # AbuseIPDB: data wrapper carrying abuseConfidenceScore (check before VT —
+    # both use a top-level "data" dict)
+    data = sample.get("data")
+    if isinstance(data, dict) and "abuseConfidenceScore" in data:
+        return ArtifactSource.ABUSEIPDB
+
     # VirusTotal: has data.attributes
-    if "data" in keys and isinstance(sample.get("data"), dict):
+    if isinstance(data, dict):
         return ArtifactSource.VIRUSTOTAL
 
-    # OTX: has pulse_info
-    if "pulse_info" in keys:
+    # OTX: has pulse_info, or the export shape with indicators + name
+    if "pulse_info" in keys or ("indicators" in keys and "name" in keys):
         return ArtifactSource.OTX
-
-    # AbuseIPDB: has abuseConfidenceScore
-    if "abuseConfidenceScore" in keys or "data" in keys:
-        return ArtifactSource.ABUSEIPDB
 
     # MISP: has Event or Attribute
     if "Event" in keys or "Attribute" in keys:

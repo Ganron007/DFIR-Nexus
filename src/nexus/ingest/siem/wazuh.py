@@ -60,9 +60,17 @@ class WazuhImporter(Importer):
             log.warning("Failed to parse Wazuh file %s", path, exc_info=True)
 
     def _parse_json(self, path: Path) -> Iterator[Artifact]:
-        """Parse a single JSON file."""
-        with path.open("r", encoding="utf-8", errors="replace") as f:
-            data = json.load(f)
+        """Parse a single JSON file.
+
+        Falls back to line-delimited parsing when the file is NDJSON with a
+        plain ``.json`` extension (Wazuh ``alerts.json`` is NDJSON).
+        """
+        try:
+            with path.open("r", encoding="utf-8", errors="replace") as f:
+                data = json.load(f)
+        except json.JSONDecodeError:
+            yield from self._parse_jsonl(path)
+            return
         alerts = self._extract_alerts(data)
         for alert in alerts:
             artifact = self._alert_to_artifact(alert)

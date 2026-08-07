@@ -197,13 +197,18 @@ class EVTXImporter(Importer):
             )
             return
 
-        for record in EvtxModule.Evtx(path):
-            try:
-                xml_str = record.xml()
-                yield self._xml_to_artifact(xml_str, path)
-            except Exception as e:  # noqa: BLE001
-                log.debug("Failed to parse EVTX record in %s: %s", path, e)
-                continue
+        try:
+            with EvtxModule.Evtx(str(path)) as log_file:
+                for record in log_file.records():
+                    try:
+                        xml_str = record.xml()
+                        yield self._xml_to_artifact(xml_str, path)
+                    except Exception as e:  # noqa: BLE001
+                        log.debug("Failed to parse EVTX record in %s: %s", path, e)
+                        continue
+        except Exception as e:  # noqa: BLE001
+            log.warning("Failed to open EVTX file %s: %s", path, e)
+            return
 
     @staticmethod
     def _xml_to_artifact(xml_str: str, path: Path) -> Artifact:

@@ -4,8 +4,9 @@ Parses Windows shortcut files (.lnk) which record what was opened, where
 from, when, and (on Windows 7+) the target's MAC address and volume serial
 number. Critical for user activity reconstruction.
 
-Uses `lnkfile` (Python lib by Erik Bik, https://pypi.org/project/lnkfile/).
-Falls back to minimal parsing if the lib is not installed.
+Uses `lnkfile` if installed, falling back to `pylnk3`
+(https://pypi.org/project/pylnk3/). Logs a clear error when neither is
+available.
 """
 
 from __future__ import annotations
@@ -49,65 +50,115 @@ class LNKFileImporter(Importer):
         except OSError:
             return False
 
-    def parse(self, path: Path) -> Iterator[Artifact]:
-        """Yield one Artifact per LNK file."""
+    @staticmethod
+    def _empty_fields() -> dict:
+        return {
+            "target_path": "",
+            "arguments": "",
+            "working_dir": "",
+            "icon_location": "",
+            "drive_serial": "",
+            "host": None,
+            "timestamp": None,
+        }
+
+    def _extract_fields(self, path: Path) -> dict | None:
+        """Extract normalized LNK fields via lnkfile or pylnk3.
+
+        Returns None (and logs) when no parser library is installed or the
+        file cannot be parsed.
+        """
         try:
             from lnkfile import LnkFile
         except ImportError:
-            log.error("Cannot parse .lnk file: install lnkfile (pip install lnkfile)")
-            return
+            LnkFile = None  # noqa: N806
+        if LnkFile is not None:
+            try:
+                lnk = LnkFile(str(path))
+            except Exception as e:  # noqa: BLE001
+                log.warning("Failed to parse LNK %s: %s", path, e)
+                return None
+            fields = self._empty_fields()
+            try:
+                if lnk.link_target:
+                    fields["target_path"] = lnk.link_target.get("name", "") or ""
+                    if lnk.link_target.get("local"):
+                        local = lnk.link_target["local"]
+                        fields["target_path"] = local.get("path", "") or fields["target_path"]
+                        if local.get("hostname"):
+                            fields["host"] = local["hostname"]
+            except (AttributeError, KeyError, TypeError):
+                pass
+            try:
+                if lnk.arguments:
+                    fields["arguments"] = str(lnk.arguments)
+                if lnk.working_dir:
+                    fields["working_dir"] = str(lnk.working_dir)
+                if lnk.icon_location:
+                    fields["icon_location"] = str(lnk.icon_location)
+            except (AttributeError, TypeError):
+                pass
+            try:
+                ts = lnk.get_creation_time() or lnk.get_modification_time() \
+                    or lnk.get_access_time()
+                if ts:
+                    fields["timestamp"] = ts
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                if hasattr(lnk, "drive_serial_number"):
+                    fields["drive_serial"] = str(lnk.drive_serial_number)
+            except (AttributeError, TypeError):
+                pass
+            return fields
 
         try:
-            lnk = LnkFile(str(path))
+            import pylnk3
+        except ImportError:
+            log.error(
+                "Cannot parse .lnk file: install pylnk3 (pip install pylnk3)"
+            )
+            return None
+        try:
+            lnk = pylnk3.parse(str(path))
         except Exception as e:  # noqa: BLE001
             log.warning("Failed to parse LNK %s: %s", path, e)
+            return None
+        fields = self._empty_fields()
+        fields["target_path"] = str(getattr(lnk, "path", "") or "")
+        try:
+            fields["arguments"] = str(getattr(lnk, "arguments", "") or "")
+            fields["working_dir"] = str(getattr(lnk, "work_dir", "") or "")
+            fields["icon_location"] = str(getattr(lnk, "icon", "") or "")
+        except (AttributeError, TypeError):
+            pass
+        for attr in ("creation_time", "modification_time", "access_time"):
+            ts = getattr(lnk, attr, None)
+            if isinstance(ts, datetime):
+                fields["timestamp"] = ts
+                break
+        try:
+            link_info = getattr(lnk, "_link_info", None)
+            serial = getattr(link_info, "drive_serial", None)
+            if serial:
+                fields["drive_serial"] = str(serial)
+        except (AttributeError, TypeError):
+            pass
+        return fields
+
+    def parse(self, path: Path) -> Iterator[Artifact]:
+        """Yield one Artifact per LNK file."""
+        fields = self._extract_fields(path)
+        if fields is None:
             return
 
-        # Extract key fields
-        target_path = ""
-        try:
-            if lnk.link_target:
-                target_path = lnk.link_target.get("name", "") or ""
-                if lnk.link_target.get("local"):
-                    target_path = lnk.link_target["local"].get("path", "") or target_path
-        except (AttributeError, KeyError, TypeError):
-            pass
-
-        # Arguments
-        arguments = ""
-        try:
-            if lnk.arguments:
-                arguments = str(lnk.arguments)
-        except (AttributeError, TypeError):
-            pass
-
-        # Working directory
-        working_dir = ""
-        try:
-            if lnk.working_dir:
-                working_dir = str(lnk.working_dir)
-        except (AttributeError, TypeError):
-            pass
-
-        # Icon location
-        icon_location = ""
-        try:
-            if lnk.icon_location:
-                icon_location = str(lnk.icon_location)
-        except (AttributeError, TypeError):
-            pass
-
-        # Timestamps
-        ts = None
-        try:
-            if lnk.get_creation_time():
-                ts = lnk.get_creation_time()
-            elif lnk.get_modification_time():
-                ts = lnk.get_modification_time()
-            elif lnk.get_access_time():
-                ts = lnk.get_access_time()
-        except Exception:  # noqa: BLE001
-            ts = None
+        target_path = fields["target_path"]
+        arguments = fields["arguments"]
+        working_dir = fields["working_dir"]
+        icon_location = fields["icon_location"]
+        drive_serial = fields["drive_serial"]
+        host = fields["host"]
+        ts = fields["timestamp"]
         if ts is None:
             try:
                 ts = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
@@ -115,24 +166,6 @@ class LNKFileImporter(Importer):
                 ts = datetime.now(UTC)
         elif ts.tzinfo is None:
             ts = ts.replace(tzinfo=UTC)
-
-        # Volume info (for forensic correlation)
-        drive_serial = ""
-        try:
-            if hasattr(lnk, "drive_serial_number"):
-                drive_serial = str(lnk.drive_serial_number)
-        except (AttributeError, TypeError):
-            pass
-
-        # Host
-        host = None
-        try:
-            if lnk.link_target and lnk.link_target.get("local"):
-                local = lnk.link_target["local"]
-                if local.get("hostname"):
-                    host = local["hostname"]
-        except (AttributeError, KeyError, TypeError):
-            pass
 
         # Severity
         severity = Severity.INFORMATIONAL

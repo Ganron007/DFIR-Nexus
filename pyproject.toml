@@ -46,6 +46,17 @@ detection = [
     "pysigma-backend-elasticsearch>=1.0",
     "pysigma-backend-splunk>=1.0",
 ]
+dfir = [
+    # Host-artifact parsers used by the ingest importers (EVTX, registry,
+    # LNK). Importers degrade gracefully when these are absent.
+    # NOTE: PyPI `lnkfile` has a broken sdist (build fails); pylnk3 is the
+    # maintained pure-Python LNK parser. `prefetch-parser` is excluded
+    # because it compiles libscca from source (no Windows wheels) — install
+    # it manually where a C toolchain is available.
+    "python-evtx>=0.7",
+    "regipy>=2.0",
+    "pylnk3>=0.4",
+]
 pipeline = [
     "langgraph>=0.2",
     "langchain-anthropic>=0.1",
@@ -74,6 +85,7 @@ all = [
     "dfir-nexus[opencti]",
     "dfir-nexus[encrypt]",
     "dfir-nexus[detection]",
+    "dfir-nexus[dfir]",
     "dfir-nexus[pipeline]",
     "dfir-nexus[dev]",
 ]
@@ -119,4 +131,6 @@ python_files = [
     "test_declarative.py",
     "test_correlate.py",
     "test_evidence_graph.py",
+    "test_ingest_regressions.py",
+    "test_bridge_regressions.py",
 ]

@@ -62,9 +62,18 @@ class JournaldImporter(Importer):
             log.warning("Failed to parse journald file %s", path, exc_info=True)
 
     def _parse_json(self, path: Path) -> Iterator[Artifact]:
-        """Parse a JSON file (single object or array)."""
-        with path.open("r", encoding="utf-8", errors="replace") as f:
-            data = json.load(f)
+        """Parse a JSON file (single object or array).
+
+        Falls back to line-delimited parsing when the file is NDJSON with a
+        plain ``.json`` extension (``journalctl -o json`` emits one JSON
+        object per line).
+        """
+        try:
+            with path.open("r", encoding="utf-8", errors="replace") as f:
+                data = json.load(f)
+        except json.JSONDecodeError:
+            yield from self._parse_jsonl(path)
+            return
         entries = self._extract_entries(data)
         for entry in entries:
             artifact = self._entry_to_artifact(entry)

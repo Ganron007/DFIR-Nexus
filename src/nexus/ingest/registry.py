@@ -1,9 +1,13 @@
 """Importer registry: dispatches a file/dir to the right importer.
 
-All 33 importer classes are registered. Importers that require optional
-binary dependencies (python-evtx, python-registry, regipy, lnkfile, etc.)
-gracefully degrade when their deps are missing — they log a warning and
-yield zero artifacts rather than crashing.
+All importer classes are registered. Multiple importers may share one
+``ArtifactSource`` (e.g. Suricata/SocRates/Sysdig all map to SURICATA);
+the first registered class for a source is the primary, and
+``resolve()`` disambiguates at import time via ``can_handle()``.
+Importers that require optional binary dependencies (python-evtx,
+python-registry, regipy, lnkfile, etc.) gracefully degrade when their
+deps are missing — they log a warning and yield zero artifacts rather
+than crashing.
 """
 
 from __future__ import annotations
@@ -29,23 +33,57 @@ def _safe_import(module_path: str, class_name: str) -> type[Importer] | None:
 
 
 class ImporterRegistry:
-    """Maps source types to concrete importer classes."""
+    """Maps source types to concrete importer classes.
+
+    Several importers may share one ``ArtifactSource`` (shared lanes such as
+    SURICATA for Suricata/SocRates/Sysdig, or GENERIC_JSONL for
+    JSONL/Email/Archive). The first class registered for a source is the
+    primary; ``resolve()`` picks the best candidate for a concrete path via
+    ``can_handle()`` so shared lanes do not clobber each other.
+    """
 
     def __init__(self) -> None:
         self._importers: dict[ArtifactSource, type[Importer]] = {}
+        self._candidates: dict[ArtifactSource, list[type[Importer]]] = {}
         self._autodetect_order: list[type[Importer]] = []
 
     def register(self, importer_cls: type[Importer]) -> type[Importer]:
         """Register an importer class. Returns it (decorator-friendly)."""
-        self._importers[importer_cls.source_class()] = importer_cls
+        source = importer_cls.source_class()
+        self._candidates.setdefault(source, []).append(importer_cls)
+        if source not in self._importers:
+            self._importers[source] = importer_cls
         self._autodetect_order.append(importer_cls)
         return importer_cls
 
     def get(self, source: ArtifactSource) -> type[Importer]:
-        """Get an importer class by its source enum."""
+        """Get the primary importer class for a source enum."""
         if source not in self._importers:
             raise KeyError(f"No importer registered for {source}")
         return self._importers[source]
+
+    def candidates(self, source: ArtifactSource) -> list[type[Importer]]:
+        """All importer classes registered for a source (registration order)."""
+        return list(self._candidates.get(source, []))
+
+    def resolve(self, source: ArtifactSource, path: Path) -> type[Importer]:
+        """Pick the best importer for a source + concrete path.
+
+        Prefers the first candidate whose ``can_handle(path)`` is True;
+        falls back to the primary (first registered) importer.
+        """
+        cands = self._candidates.get(source, [])
+        if not cands:
+            raise KeyError(f"No importer registered for {source}")
+        if len(cands) == 1:
+            return cands[0]
+        for cls in cands:
+            try:
+                if cls.can_handle(path):
+                    return cls
+            except Exception:  # noqa: BLE001
+                continue
+        return cands[0]
 
     def all_sources(self) -> list[ArtifactSource]:
         """Return all registered source types."""
@@ -72,7 +110,7 @@ class ImporterRegistry:
             return result
 
         if source is not None:
-            importer_cls: type[Importer] | None = self.get(source)
+            importer_cls: type[Importer] | None = self.resolve(source, path)
         else:
             importer_cls = self.autodetect(path)
 

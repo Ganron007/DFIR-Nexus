@@ -97,6 +97,13 @@ class IRISImporter(Importer):
                     return [c for c in data[key] if isinstance(c, dict)]
             if "case_name" in data or "case_id" in data:
                 return [data]
+            # Wrapped export: {"case": {...}, "iocs"/"assets"/"timeline": [...]}
+            if "case" in data and isinstance(data["case"], dict):
+                case = dict(data["case"])
+                for key in ("iocs", "assets", "timeline"):
+                    if key in data and isinstance(data[key], list):
+                        case.setdefault(key, data[key])
+                return [case]
         return []
 
     def _case_to_artifacts(self, case: dict[str, Any]) -> Iterator[Artifact]:

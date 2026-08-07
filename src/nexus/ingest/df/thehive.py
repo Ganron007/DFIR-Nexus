@@ -77,6 +77,13 @@ class TheHiveImporter(Importer):
                     return [c for c in data[key] if isinstance(c, dict)]
             if "title" in data and "tlp" in data:
                 return [data]
+            # Wrapped export: {"case": {...}, "artifacts"/"observables": [...]}
+            if "case" in data and isinstance(data["case"], dict):
+                case = dict(data["case"])
+                for obs_key in ("observables", "artifacts"):
+                    if obs_key in data and isinstance(data[obs_key], list):
+                        case.setdefault("observables", data[obs_key])
+                return [case]
         return []
 
     def _case_to_artifacts(self, case: dict[str, Any]) -> Iterator[Artifact]:
