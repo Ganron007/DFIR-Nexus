@@ -473,7 +473,7 @@ async def run_pipeline(
             approvals_file = case_dir / "approvals.jsonl"
             if approvals_file.exists():
                 try:
-                    with open(approvals_file) as f:
+                    with open(approvals_file, encoding="utf-8") as f:
                         for line in f:
                             entry = json.loads(line.strip())
                             if entry.get("action") in ("APPROVED", "approved"):

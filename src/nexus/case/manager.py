@@ -30,6 +30,64 @@ from nexus.ingest.schemas import Artifact
 log = logging.getLogger(__name__)
 
 
+def materialize_case_dir(case: Case) -> Path:
+    """Create the on-disk case directory + CASE.yaml for a SQLite case.
+
+    The flat-file consumers (MCP case tools, ``nexus approve``, the Examiner
+    Portal, backup, per-case audit dir) all resolve a case through
+    ``~/.nexus/active_case`` -> ``cases_root/<case_id>/`` and require the
+    directory + CASE.yaml to exist. Materializing them here keeps the SQLite
+    stack and the flat stack pointed at the same case (bridge for the
+    split-brain issue; SQLite remains the system of record for case status).
+    """
+    import yaml as _yaml
+
+    from nexus.config import settings
+
+    case_dir = settings.cases_root / case.id
+    case_dir.mkdir(parents=True, exist_ok=True)
+    meta_path = case_dir / "CASE.yaml"
+    if not meta_path.exists():
+        meta = {
+            "id": case.id,
+            "case_id": case.id,
+            "name": case.name,
+            "description": case.description,
+            "status": case.status.value,
+            "severity": case.severity.value,
+            "created_at": case.created_at.isoformat() if case.created_at else "",
+            "created_by": case.created_by,
+        }
+        meta_path.write_text(_yaml.safe_dump(meta, sort_keys=False), encoding="utf-8")
+    return case_dir
+
+
+def _sync_case_yaml_status(case: Case) -> None:
+    """Best-effort sync of the case status into CASE.yaml.
+
+    Keeps the flat stack's closed-case guard (``require_active_case``)
+    consistent with the SQLite status. Missing dir/file is not an error —
+    legacy flat cases keep working as before.
+    """
+    import yaml as _yaml
+
+    from nexus.config import settings
+
+    meta_path = settings.cases_root / case.id / "CASE.yaml"
+    if not meta_path.exists():
+        return
+    try:
+        meta = _yaml.safe_load(meta_path.read_text(encoding="utf-8")) or {}
+        meta["status"] = case.status.value
+        if case.closed_at is not None:
+            meta["closed_at"] = case.closed_at.isoformat()
+        if case.closed_by:
+            meta["closed_by"] = case.closed_by
+        meta_path.write_text(_yaml.safe_dump(meta, sort_keys=False), encoding="utf-8")
+    except (OSError, _yaml.YAMLError) as exc:
+        log.warning("Could not sync CASE.yaml status for %s: %s", case.id, exc)
+
+
 class CaseManager:
     """High-level case management.
 
@@ -63,10 +121,22 @@ class CaseManager:
         created_by: str = "system",
         tags: list[str] | None = None,
         metadata: dict[str, Any] | None = None,
+        case_id: str = "",
     ) -> Case:
-        """Create a new case and append a CASE_CREATED entry to the audit chain."""
+        """Create a new case and append a CASE_CREATED entry to the audit chain.
+
+        A custom ``case_id`` may be supplied (validated); otherwise a new
+        ID is generated.
+        """
+        if case_id:
+            from nexus.discipline import validate_case_id
+            err = validate_case_id(case_id)
+            if err:
+                raise ValueError(err)
+            if self.store.get_case(case_id) is not None:
+                raise ValueError(f"Case already exists: {case_id}")
         case = Case(
-            id=Case.new_id(),
+            id=case_id or Case.new_id(),
             name=name,
             description=description,
             status=CaseStatus.OPEN,
@@ -77,6 +147,10 @@ class CaseManager:
             metadata=dict(metadata or {}),
         )
         self.store.save_case(case)
+        try:
+            materialize_case_dir(case)
+        except OSError as exc:
+            log.warning("Could not materialize case dir for %s: %s", case.id, exc)
         chain = self._load_audit_chain(case.id)
         chain.append(
             AuditAction.CASE_CREATED,
@@ -112,6 +186,7 @@ class CaseManager:
         old_status = case.status
         case.status = status
         self.store.save_case(case)
+        _sync_case_yaml_status(case)
         chain = self._load_audit_chain(case_id)
         chain.append(
             AuditAction.CASE_STATUS_CHANGED,
@@ -136,6 +211,7 @@ class CaseManager:
         case.closed_at = datetime.now(UTC)
         case.closed_by = closed_by
         self.store.save_case(case)
+        _sync_case_yaml_status(case)
         chain = self._load_audit_chain(case_id)
         chain.append(
             AuditAction.CASE_CLOSED,

@@ -110,11 +110,12 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         verdict = calculate_file_verdict(
             path_in_baseline=path_in_baseline,
             filename_in_baseline=filename_in_baseline,
-            is_system_path=is_sys_path,
+            is_sys_path=is_sys_path,
             filename_findings=filename_findings,
             lolbin_info=lolbin_info,
             is_protected_process=is_protected,
             directory_known_for_file=directory_known,
+            dir_normalized=dir_normalized,
             filename=filename,
         )
 

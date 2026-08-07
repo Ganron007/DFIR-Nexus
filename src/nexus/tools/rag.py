@@ -203,7 +203,7 @@ class RAGIndex:
         metadata_file = self.index_dir / "metadata.json"
         if metadata_file.exists():
             try:
-                with open(metadata_file) as f:
+                with open(metadata_file, encoding="utf-8") as f:
                     meta = json.load(f)
                     self.available_sources = meta.get("sources", [])
                     if self.available_sources:
@@ -226,7 +226,7 @@ class RAGIndex:
             return
         lookup: dict[str, str] = {}
         try:
-            with open(mitre_jsonl) as f:
+            with open(mitre_jsonl, encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
                     if not line:

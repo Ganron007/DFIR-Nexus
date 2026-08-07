@@ -115,7 +115,7 @@ def _load_catalog() -> dict[str, dict]:
             if yaml_file.name == "security.yaml":
                 continue
             try:
-                with open(yaml_file) as f:
+                with open(yaml_file, encoding="utf-8") as f:
                     data = yaml.safe_load(f) or {}
             except Exception:
                 continue

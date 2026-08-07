@@ -246,6 +246,65 @@ def _reject_finding(case_dir: Path, finding_id: str, analyst: str, reason: str) 
 from datetime import datetime
 
 
+def build_http_app(server, host: str = "127.0.0.1", port: int = 4508):
+    """Compose the Starlette app for `serve --http` (portal + MCP transport).
+
+    Extracted from the serve command so the route layout is testable.
+
+    NOTE: mcp 1.x `streamable_http_app()` already serves its endpoint at
+    `/mcp`, so it is mounted at `/` here. Mounting it under `/mcp` again
+    would move the real endpoint to `/mcp/mcp` and break every MCP client
+    configured against `http://host:port/mcp`.
+    """
+    from starlette.applications import Starlette
+    from starlette.middleware import Middleware
+    from starlette.routing import Mount
+
+    from nexus.dashboard.app import create_dashboard
+    from nexus.portal import PortalRateLimitMiddleware, SecurityHeadersMiddleware
+
+    dashboard_security_headers = {
+        "X-Frame-Options": "DENY",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "no-referrer",
+        "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'",
+    }
+    routes: list = []
+    dashboard_routes = create_dashboard()
+    if dashboard_routes:
+        routes.extend(dashboard_routes)
+    lifespan = None
+    try:
+        mcp_app = server.streamable_http_app()
+        routes.append(Mount("/", app=mcp_app))
+        # Starlette does not run a mounted sub-app's lifespan, so run the
+        # MCP session manager from the parent app (otherwise every request
+        # fails with "Task group is not initialized").
+        lifespan = lambda app: server.session_manager.run()  # noqa: E731
+        typer.echo(f"  MCP: http://{host}:{port}/mcp (streamable-http)")
+    except AttributeError:
+        routes.append(Mount("/mcp", app=server.sse_app()))
+        typer.echo(f"  MCP: http://{host}:{port}/mcp (SSE fallback)")
+    return Starlette(
+        routes=routes,
+        lifespan=lifespan,
+        middleware=[
+            Middleware(
+                PortalRateLimitMiddleware,
+                limit_per_minute=120,
+                auth_limit_per_minute=30,
+                path_prefix="/portal",
+                auth_path_prefix="/portal/api/commit",
+            ),
+            Middleware(
+                SecurityHeadersMiddleware,
+                path_prefix="/portal",
+                headers=dashboard_security_headers,
+            ),
+        ],
+    )
+
+
 @app.command()
 def serve(
     http: bool = typer.Option(False, "--http", help="Run as HTTP server"),
@@ -257,12 +316,7 @@ def serve(
     server = create_server()
     if http:
         import uvicorn
-        from starlette.applications import Starlette
-        from starlette.middleware import Middleware
-        from starlette.routing import Mount
 
-        from nexus.dashboard.app import create_dashboard
-        from nexus.portal import PortalRateLimitMiddleware, SecurityHeadersMiddleware
         from nexus.utils.constants import check_required_env
         try:
             warnings = check_required_env(host=host, port=port)
@@ -272,40 +326,7 @@ def serve(
             typer.echo(f"  ERROR: {exc}", err=True)
             raise typer.Exit(1)
 
-        dashboard_security_headers = {
-            "X-Frame-Options": "DENY",
-            "X-Content-Type-Options": "nosniff",
-            "Referrer-Policy": "no-referrer",
-            "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'",
-        }
-        routes: list = []
-        dashboard_routes = create_dashboard()
-        if dashboard_routes:
-            routes.extend(dashboard_routes)
-        try:
-            mcp_app = server.streamable_http_app()
-            routes.append(Mount("/mcp", app=mcp_app))
-            typer.echo(f"  MCP: http://{host}:{port}/mcp (streamable-http)")
-        except AttributeError:
-            routes.append(Mount("/mcp", app=server.sse_app()))
-            typer.echo(f"  MCP: http://{host}:{port}/mcp (SSE fallback)")
-        starlette_app = Starlette(
-            routes=routes,
-            middleware=[
-                Middleware(
-                    PortalRateLimitMiddleware,
-                    limit_per_minute=120,
-                    auth_limit_per_minute=30,
-                    path_prefix="/portal",
-                    auth_path_prefix="/portal/api/commit",
-                ),
-                Middleware(
-                    SecurityHeadersMiddleware,
-                    path_prefix="/portal",
-                    headers=dashboard_security_headers,
-                ),
-            ],
-        )
+        starlette_app = build_http_app(server, host=host, port=port)
         typer.echo(f"Starting DFIR-Nexus HTTP server on {host}:{port}")
         typer.echo(f"  Portal: http://{host}:{port}/portal")
         uvicorn.run(starlette_app, host=host, port=port)

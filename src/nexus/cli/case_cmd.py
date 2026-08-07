@@ -37,7 +37,11 @@ def init(
 ):
     """Create a new investigation case."""
     mgr = _get_sqlite_mgr()
-    case = mgr.create_case(name=name, description=f"Case: {name}")
+    try:
+        case = mgr.create_case(name=name, description=f"Case: {name}", case_id=case_id)
+    except ValueError as e:
+        typer.echo(str(e), err=True)
+        raise typer.Exit(1) from None
     _set_active_case(case.id)
     typer.echo(f"Case '{name}' created (ID: {case.id})")
     typer.echo(f"Active case set to: {case.id}")

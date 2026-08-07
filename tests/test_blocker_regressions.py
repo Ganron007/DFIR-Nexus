@@ -283,8 +283,8 @@ class TestBlocker10Transport:
 
     def test_cli_main_has_streamable_http(self) -> None:
         import inspect
-        from nexus.cli.main import serve
-        source = inspect.getsource(serve)
+        from nexus.cli.main import build_http_app
+        source = inspect.getsource(build_http_app)
         assert "streamable_http_app" in source
         assert "/mcp" in source
 

@@ -166,6 +166,32 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         except OSError as e:
             return {"error": f"Failed to write case metadata: {e}"}
 
+        # Bridge: register the case in the SQLite stack too, so CLI
+        # commands (case list / approve / review) see MCP-created cases.
+        try:
+            from nexus.case import CaseManager as _SQLiteCaseManager
+            from nexus.case.schemas import (
+                Case as _SQLiteCase,
+                CaseStatus as _SQLiteCaseStatus,
+                FindingSeverity as _SQLiteSeverity,
+            )
+            _mgr = _SQLiteCaseManager(settings.cases_root / "cases.db")
+            try:
+                if _mgr.get_case(cid) is None:
+                    _mgr.store.save_case(_SQLiteCase(
+                        id=cid,
+                        name=name.strip(),
+                        description=description.strip(),
+                        status=_SQLiteCaseStatus.OPEN,
+                        severity=_SQLiteSeverity.MEDIUM,
+                        created_at=datetime.now(timezone.utc),
+                        created_by=exam,
+                    ))
+            finally:
+                _mgr.close()
+        except Exception:  # noqa: BLE001
+            logger.debug("SQLite case registration skipped", exc_info=True)
+
         try:
             _ACTIVE_CASE_FILE.parent.mkdir(parents=True, exist_ok=True)
             _ACTIVE_CASE_FILE.write_text(str(case_dir))
