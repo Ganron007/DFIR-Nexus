@@ -25,7 +25,7 @@ def test_is_loopback_bind_loopback() -> None:
 
 def test_is_loopback_bind_non_loopback() -> None:
     assert is_loopback_bind("0.0.0.0", port=8000) is False
-    assert is_loopback_bind("192.168.77.10", port=8000) is False
+    assert is_loopback_bind("192.0.2.10", port=8000) is False
 
 
 def test_check_required_env_loopback_returns_missing() -> None:

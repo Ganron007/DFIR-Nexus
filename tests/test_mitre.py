@@ -22,9 +22,9 @@ def test_list_actors_seed_count() -> None:
     assert len(list_actors()) >= 6
 
 
-def test_match_actors_cadre_ad() -> None:
+def test_match_actors_lab_ad() -> None:
     matches = match_actors(["T1558.003", "T1003.006", "T1482"], min_overlap=2)
-    assert matches[0]["actor_id"] == "cadre-default-ad"
+    assert matches[0]["actor_id"] == "nexus-default-ad"
 
 
 def test_rba_score_high_tier() -> None:
@@ -40,7 +40,7 @@ def test_rba_score_high_tier() -> None:
 
 
 def test_get_actor() -> None:
-    actor = get_actor("cadre-ransomware")
+    actor = get_actor("nexus-ransomware")
     assert actor is not None
     assert "T1486" in actor.technique_ids
 

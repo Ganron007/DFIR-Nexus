@@ -176,7 +176,7 @@ check("get_actor apt29", actor is not None)
 check("actor techniques >= 5", len(actor.technique_ids) >= 5 if actor else False, str(len(actor.technique_ids) if actor else 0))
 
 matches = svc.match_actors(["T1558.003", "T1003.006", "T1482"], min_overlap=2)
-check("match_actors cadre-ad", bool(matches) and matches[0]["actor_id"] == "cadre-default-ad")
+check("match_actors nexus-ad", bool(matches) and matches[0]["actor_id"] == "nexus-default-ad")
 
 scorer = create_rba_scorer()
 score = scorer.score(technique_ids=["T1003.001", "T1486"], severities=["critical", "high"])
@@ -211,7 +211,7 @@ check("vr_hunts >= 8", len(hunts) >= 8, str(len(hunts)))
 suggested = vr_svc.suggest_hunts(["T1003.001", "T1003.002"])
 check("vr_suggest_hunts", len(suggested) > 0, str(suggested))
 
-result = vr_svc.run_hunt("cadre-process-tree", "C.mbr01")
+result = vr_svc.run_hunt("nexus-process-tree", "C.mbr01")
 check("vr_run_hunt", result is not None and result.row_count >= 2, str(result.row_count if result else None))
 
 # ──────────────────────────────────────────────

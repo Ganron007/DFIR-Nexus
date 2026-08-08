@@ -8,7 +8,7 @@ from typing import Any
 
 @dataclass
 class VRCatalogEntry:
-    """A CADRE hunt or custom artifact catalog row."""
+    """A Velociraptor hunt or custom artifact catalog row."""
 
     id: str
     artifact_name: str
@@ -32,7 +32,7 @@ class VRCatalogEntry:
 
 @dataclass
 class VRClientInfo:
-    """Enrolled Velociraptor client (CADRE lab host)."""
+    """Enrolled Velociraptor client."""
 
     client_id: str
     hostname: str

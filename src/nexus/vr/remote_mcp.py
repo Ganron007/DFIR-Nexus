@@ -1,4 +1,4 @@
-"""CADRE Velociraptor MCP HTTP bridge (192.168.77.51:8002)."""
+"""Velociraptor MCP HTTP bridge for remote (live) VR endpoints."""
 
 from __future__ import annotations
 
@@ -14,8 +14,8 @@ from nexus.integration.vql_runner import VQLQuerySpec, VQLResult
 log = logging.getLogger(__name__)
 
 
-class CADREMCPClient:
-    """HTTP client for the CADRE VR MCP endpoint (Plan 7 bridge)."""
+class RemoteVRMCPClient:
+    """HTTP client for a remote Velociraptor MCP endpoint."""
 
     def __init__(
         self,
@@ -75,7 +75,7 @@ class CADREMCPClient:
             )
         except httpx.HTTPError as exc:
             duration_ms = int((time.time() - start) * 1000)
-            log.warning("CADRE MCP VQL failed: %s", exc)
+            log.warning("Remote VR MCP VQL failed: %s", exc)
             return VQLResult(
                 query_name=spec.name,
                 rows=[],

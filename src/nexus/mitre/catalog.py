@@ -1,4 +1,4 @@
-"""MITRE ATT&CK threat actor seed profiles (CADRE-aligned)."""
+"""MITRE ATT&CK threat actor seed profiles for adversary prediction."""
 
 from __future__ import annotations
 
@@ -6,36 +6,36 @@ from typing import Any
 
 from nexus.mitre.schemas import ThreatActorProfile
 
-CADRE_ACTORS: list[ThreatActorProfile] = [
+SEED_ACTORS: list[ThreatActorProfile] = [
     ThreatActorProfile(
-        id="cadre-default-ad",
-        name="CADRE Default AD Campaign",
-        aliases=["CADRE-Spine"],
-        description="Canonical CADRE 8-phase AD attack spine (Kerberoast → privesc → domain dominance).",
+        id="nexus-default-ad",
+        name="Lab AD Attack Spine (seed profile)",
+        aliases=["AD-Spine"],
+        description="Canonical 8-phase lab AD attack spine (Kerberoast → privesc → domain dominance).",
         motivation=["espionage", "domain-dominance"],
         technique_ids=[
             "T1558.003", "T1003.001", "T1003.006", "T1482", "T1068",
             "T1558.004", "T1550.002", "T1021.002", "T1021.006",
         ],
-        campaigns=["CADRE-main"],
+        campaigns=["lab-main"],
     ),
     ThreatActorProfile(
-        id="cadre-ransomware",
-        name="CADRE Ransomware Operator",
-        aliases=["CADRE-Impact"],
+        id="nexus-ransomware",
+        name="Ransomware Operator (seed profile)",
+        aliases=["Impact-Seed"],
         description="Post-domain ransomware / impact path (WT093, encryption staging).",
         motivation=["financial"],
         technique_ids=["T1486", "T1490", "T1070.001", "T1021.001", "T1059.001"],
-        campaigns=["CADRE-E"],
+        campaigns=["lab-E"],
     ),
     ThreatActorProfile(
-        id="cadre-supply-chain",
-        name="CADRE Supply-Chain Actor",
+        id="nexus-supply-chain",
+        name="Supply-Chain Actor (seed profile)",
         aliases=["Shai-Hulud-style"],
-        description="npm / CI supply-chain emulation (Campaign F).",
+        description="npm / CI supply-chain emulation (lab campaign F).",
         motivation=["financial", "espionage"],
         technique_ids=["T1195.002", "T1071.001", "T1059.007", "T1552.001", "T1078"],
-        campaigns=["CADRE-F"],
+        campaigns=["lab-F"],
     ),
     ThreatActorProfile(
         id="apt29",
@@ -59,21 +59,21 @@ CADRE_ACTORS: list[ThreatActorProfile] = [
         campaigns=["reference"],
     ),
     ThreatActorProfile(
-        id="cadre-linux",
-        name="CADRE Linux Substrate",
-        aliases=["linux01-attacker"],
+        id="nexus-linux",
+        name="Linux Substrate (seed profile)",
+        aliases=["linux-attacker"],
         description="Linux AD-joined attacks: Kerberos, MSSQL, container escape.",
         motivation=["espionage"],
         technique_ids=["T1550.003", "T1558", "T1078", "T1611", "T1059.004"],
-        campaigns=["CADRE-D"],
+        campaigns=["lab-D"],
     ),
 ]
 
-_ACTOR_BY_ID = {a.id: a for a in CADRE_ACTORS}
+_ACTOR_BY_ID = {a.id: a for a in SEED_ACTORS}
 
 
 def list_actors() -> list[ThreatActorProfile]:
-    return list(CADRE_ACTORS)
+    return list(SEED_ACTORS)
 
 
 def get_actor(actor_id: str) -> ThreatActorProfile | None:
@@ -91,7 +91,7 @@ def _technique_matches(observed_tid: str, catalog_tid: str) -> bool:
 def match_actors(technique_ids: list[str], *, min_overlap: int = 1) -> list[dict[str, Any]]:
     observed = {t.strip().upper() for t in technique_ids if t.strip()}
     ranked: list[dict[str, Any]] = []
-    for actor in CADRE_ACTORS:
+    for actor in SEED_ACTORS:
         overlap: set[str] = set()
         for obs in observed:
             for at in actor.technique_ids:

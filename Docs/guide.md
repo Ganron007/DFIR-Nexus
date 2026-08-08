@@ -162,7 +162,7 @@ finding = record_finding(
     interpretation="Attacker established persistence via scheduled task executing beacon DLL",
     mitre_ids=["T1053.005"],
     audit_ids=["audit-abc123", "audit-def456"],  # MUST reference real audit_ids
-    host="dc01.cadre.local",
+    host="dc01.lab.example",
     artifacts=[
         {"type": "memory_dump", "value": "lsass.dmp", "audit_id": "audit-abc123"},
         {"type": "network_capture", "value": "dc01_traffic.pcap", "audit_id": "audit-def456"},
@@ -335,7 +335,7 @@ DFIR-Nexus can orchestrate Velociraptor hunts and artifact collections across yo
 ```
 vr_list_clients()                                    → show enrolled hosts
 vr_list_hunts()                                      → show available hunts
-vr_run_hunt("cadre-process-tree", "C.mbr01")         → collect from C.mbr01
+vr_run_hunt("nexus-process-tree", "C.mbr01")         → collect from C.mbr01
 ```
 *Note: Velociraptor comes with a built-in Mock Mode (force-mocked by default) that returns synthetic, structured forensic data. You can test and practice hunts without setting up a Velociraptor server.*
 
@@ -585,7 +585,7 @@ python tests/test_integration.py
 python tests/test_portal.py
 python tests/test_hunt_parser.py
 ```
-**Total:** 607 checks. All tests must report `PASS` / Exit Code `0`.
+**Total:** 609 checks. All tests must report `PASS` / Exit Code `0`.
 
 ---
 

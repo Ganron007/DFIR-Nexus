@@ -240,20 +240,20 @@ You are prompted **twice** via `getpass` (no echo). The password:
 
 ## 5. VM and Lab Network Setup
 
-In a professional environment (or when testing the CADRE-Platform ecosystem), you will run DFIR-Nexus across distinct Virtual Machines (SIFT VM for Linux analysis, Windows Analyst VM for Zimmerman/KAPE parsing, and a Host/Client machine for the LLM agent).
+In a professional environment (or when testing a multi-VM lab ecosystem), you will run DFIR-Nexus across distinct Virtual Machines (SIFT VM for Linux analysis, Windows Analyst VM for Zimmerman/KAPE parsing, and a Host/Client machine for the LLM agent).
 
 ```
                      ┌──────────────────────┐
                      │  LLM client          │
                      │  (Claude Code, etc.) │
-                     │  IP: 192.168.77.1    │
+                     │  IP: 192.0.2.1    │
                      └────┬──────────┬──────┘
                           │          │
            ┌──────────────┘          └──────────────┐
            ▼ (HTTPS / Port 4508)                    ▼ (HTTPS / Port 4508)
   ┌──────────────────────┐                 ┌──────────────────────┐
   │ SIFT VM (Linux)      │                 │ Windows Analyst VM   │
-  │ IP: 192.168.77.41    │                 │ IP: 192.168.77.42    │
+  │ IP: 192.0.2.41    │                 │ IP: 192.0.2.42    │
   │                      │                 │                      │
   │ nexus serve --http   │                 │ nexus serve --http   │
   │ --host 0.0.0.0       │                 │ --host 0.0.0.0       │
@@ -265,8 +265,8 @@ In a professional environment (or when testing the CADRE-Platform ecosystem), yo
 ### 5a. Network Configuration
 1. Ensure your VMs are configured with **Host-Only** or **Bridged** networking in VMware Workstation / VirtualBox so they can ping one another.
 2. Determine the IP addresses of your VMs:
-   - SIFT IP: `192.168.77.41`
-   - Windows IP: `192.168.77.42`
+   - SIFT IP: `192.0.2.41`
+   - Windows IP: `192.0.2.42`
 3. Configure the firewall on both VMs to allow incoming TCP traffic on port `4508`.
    - On Linux (SIFT): `sudo ufw allow 4508/tcp`
    - On Windows: Add an Inbound Rule in Windows Advanced Firewall for Port `4508`.
@@ -278,7 +278,7 @@ Because SIFT and Windows run on different hosts, they must have access to the sa
 2. **On SIFT Linux VM**, mount this directory to `/evidence`:
    ```bash
    sudo mkdir -p /evidence
-   sudo mount -t cifs -o username=examiner,password=password,domain=cadre.local //192.168.77.42/evidence /evidence
+   sudo mount -t cifs -o username=examiner,password=password,domain=lab.example.local //192.0.2.42/evidence /evidence
    ```
 3. Set the `share_root` parameter in `~/.nexus/config.yaml` or set `NEXUS_SHARE_ROOT` to `/evidence` (on Linux) or `C:\evidence` (on Windows).
 
@@ -306,7 +306,7 @@ nexus serve --http --host 0.0.0.0 --port 4508
 ### Step 2: Generate the Client configuration
 On your examiner/client host (running Claude Code or Cursor), configure the client to communicate with both servers:
 ```bash
-nexus setup client --sift 192.168.77.41:4508 --windows 192.168.77.42:4508 --bearer "secure-passphrase-token-sift"
+nexus setup client --sift 192.0.2.41:4508 --windows 192.0.2.42:4508 --bearer "secure-passphrase-token-sift"
 ```
 *(If SIFT and Windows tokens differ, edit the generated `.mcp.json` or global configuration file manually to assign respective bearer header tokens)*.
 
@@ -357,14 +357,14 @@ After running the client setup wizard (`nexus setup client`), your global `.mcp.
   "mcpServers": {
     "dfir-nexus-sift": {
       "type": "streamable-http",
-      "url": "http://192.168.77.41:4508/mcp",
+      "url": "http://192.0.2.41:4508/mcp",
       "headers": {
         "Authorization": "Bearer secure-passphrase-token-sift"
       }
     },
     "dfir-nexus-windows": {
       "type": "streamable-http",
-      "url": "http://192.168.77.42:4508/mcp",
+      "url": "http://192.0.2.42:4508/mcp",
       "headers": {
         "Authorization": "Bearer secure-passphrase-token-windows"
       }

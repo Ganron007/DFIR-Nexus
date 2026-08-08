@@ -3,9 +3,7 @@
 Every external configuration point (env var, default path, port) lives here
 so the gateway, portal, CLI, and tests all agree on the same names.
 
-CADRE-specific defaults (e.g. hard-coded lab Velociraptor hosts) have been
-removed or made configurable. All environment variables use the ``NEXUS_``
-prefix so the package is usable outside the CADRE ecosystem.
+All external defaults are env-var driven (``NEXUS_`` prefix); nothing is\nhard-coded to a specific lab or deployment.
 """
 
 from __future__ import annotations

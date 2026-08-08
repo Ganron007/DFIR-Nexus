@@ -1,4 +1,4 @@
-"""Velociraptor service — catalog, hunt orchestration, CADRE .51 client selection."""
+"""Velociraptor service — catalog, hunt orchestration, client selection."""
 
 from __future__ import annotations
 
@@ -16,9 +16,8 @@ from nexus.integration.vql_runner import (
 )
 from nexus.utils.constants import ENV_VR_MCP_URL, ENV_VR_USE_MOCK
 from nexus.vr import catalog
-from nexus.vr.cadre_mcp import CADREMCPClient
 from nexus.vr.constants import (
-    CADRE_VR_HOST,
+    VR_HOST,
     default_api_key,
     default_mcp_api_key,
     default_mcp_url,
@@ -26,6 +25,7 @@ from nexus.vr.constants import (
     default_vr_endpoint,
     vr_mock_enabled,
 )
+from nexus.vr.remote_mcp import RemoteVRMCPClient
 from nexus.vr.schemas import VRClientInfo, VRHuntRunResult
 
 log = logging.getLogger(__name__)
@@ -68,7 +68,7 @@ def create_vr_client(config: MonitorConfig, *, force_mock: bool | None = None) -
     mcp_url = os.environ.get(ENV_VR_MCP_URL, default_mcp_url())
     mcp_key = default_mcp_api_key()
     if mcp_url and mcp_key:
-        return CADREMCPClient(
+        return RemoteVRMCPClient(
             mcp_url,
             mcp_key,
             timeout_seconds=config.timeout_seconds,
@@ -83,8 +83,8 @@ def create_vr_client(config: MonitorConfig, *, force_mock: bool | None = None) -
         return create_velociraptor_client(config)
 
     endpoint = (config.endpoint or "").lower()
-    if (CADRE_VR_HOST in endpoint or "192.168.77.51" in endpoint) and not config.api_key:
-        log.info("CADRE VR endpoint without API key — using enhanced mock client")
+    if VR_HOST in endpoint and not config.api_key:
+        log.info("Local VR endpoint without API key — using enhanced mock client")
         return EnhancedMockVelociraptorClient(config)
     return create_velociraptor_client(config)
 
@@ -113,7 +113,7 @@ class VRService:
         mcp_url = os.environ.get(ENV_VR_MCP_URL, default_mcp_url())
         detail: dict[str, Any] = {
             "endpoint": self._config.endpoint,
-            "cadre_vr_host": CADRE_VR_HOST,
+            "VR_HOST": VR_HOST,
             "mcp_url": mcp_url,
             "api_key_set": bool(self._config.api_key),
             "mcp_api_key_set": bool(default_mcp_api_key()),
@@ -121,7 +121,7 @@ class VRService:
             "mock_mode": self.use_mock,
             "client_type": type(self._client).__name__,
         }
-        if isinstance(self._client, CADREMCPClient):
+        if isinstance(self._client, RemoteVRMCPClient):
             detail["mcp_health"] = self._client.health()
         return detail
 
@@ -134,7 +134,7 @@ class VRService:
                 ip=str(row.get("ip", "")),
                 online=bool(row.get("online", True)),
             )
-            for row in catalog.CADRE_CLIENTS
+            for row in catalog.VR_MOCK_CLIENTS
         ]
 
     def list_hunts(self, *, technique_id: str | None = None) -> list[dict[str, Any]]:
