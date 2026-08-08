@@ -42,7 +42,6 @@ jobs:
           python tests/test_detection.py
           python tests/test_ti.py
           python tests/test_ingest.py
-          python tests/test_push.py
           python tests/functional_audit.py
           python tests/test_portal.py
 

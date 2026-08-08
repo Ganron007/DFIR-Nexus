@@ -32,9 +32,6 @@ triage = [
     "orjson>=3.0",
     "zstandard>=0.20",
 ]
-opensearch = [
-    "opensearch-py>=2.0",
-]
 opencti = [
     "pycti>=6.0",
 ]
@@ -71,7 +68,6 @@ dev = [
 ci = [
     "dfir-nexus[http]",
     "dfir-nexus[triage]",
-    "dfir-nexus[opensearch]",
     "dfir-nexus[encrypt]",
     "dfir-nexus[detection]",
     "dfir-nexus[pipeline]",
@@ -81,7 +77,6 @@ all = [
     "dfir-nexus[http]",
     "dfir-nexus[rag]",
     "dfir-nexus[triage]",
-    "dfir-nexus[opensearch]",
     "dfir-nexus[opencti]",
     "dfir-nexus[encrypt]",
     "dfir-nexus[detection]",

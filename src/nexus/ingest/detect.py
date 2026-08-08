@@ -40,7 +40,6 @@ def detect_format(path: Path) -> ArtifactSource | None:
     suffix = path.suffix.lower()
     _EXT_HINTS: dict[str, ArtifactSource] = {
         ".evtx": ArtifactSource.EVTX,
-        ".pf": ArtifactSource.PREFETCH,
         ".lnk": ArtifactSource.LNK,
         ".hve": ArtifactSource.AMCACHE,
         # Shared lanes — registry.resolve() disambiguates via can_handle()

@@ -139,7 +139,6 @@ _ALL_IMPORTERS: list[tuple[str, str]] = [
     ("nexus.ingest.df.kape", "KAPEImporter"),
     ("nexus.ingest.df.lnkfile", "LNKFileImporter"),
     ("nexus.ingest.df.plaso", "PlasoImporter"),
-    ("nexus.ingest.df.prefetch", "PrefetchImporter"),
     ("nexus.ingest.df.registry", "WindowsRegistryImporter"),
     ("nexus.ingest.df.scheduled_tasks", "ScheduledTasksImporter"),
     ("nexus.ingest.df.services", "WindowsServicesImporter"),

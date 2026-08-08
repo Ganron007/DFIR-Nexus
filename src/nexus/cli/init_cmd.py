@@ -158,7 +158,6 @@ def _check_dependencies():
     results = []
     for mod_name, pip_name in [
         ("chromadb", "dfir-nexus[rag]"),
-        ("opensearchpy", "dfir-nexus[opensearch]"),
         ("pycti", "dfir-nexus[opencti]"),
     ]:
         try:

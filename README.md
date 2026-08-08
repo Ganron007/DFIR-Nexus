@@ -10,8 +10,8 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/Tests-586%20Passed-success.svg" alt="Tests: 586 Passed">
-  <img src="https://img.shields.io/badge/MCP%20Tools-110%20Registered-blue.svg" alt="MCP Tools: 110 Registered">
+  <img src="https://img.shields.io/badge/Tests-607%20Passed-success.svg" alt="Tests: 607 Passed">
+  <img src="https://img.shields.io/badge/MCP%20Tools-102%20Registered-blue.svg" alt="MCP Tools: 102 Registered">
   <img src="https://img.shields.io/badge/Status-Public%20Beta-blue.svg" alt="Status: Public Beta">
 </p>
 
@@ -29,7 +29,7 @@ Part of the [CADRE](https://github.com/Ganron007/CADRE) platform — consumes la
 
 Digital Forensics and Incident Response (DFIR) routinely relies on a highly fragmented ecosystem of single-purpose command-line tools (such as Hayabusa, MFTECmd, chainsaw, Volatility, KAPE, and Velociraptor). Manually correlating tool outputs during high-pressure incidents introduces cognitive strain, compromises chain-of-custody, and limits auditability.
 
-**DFIR-Nexus** solves this by providing a unified, secure, and cryptographically verified forensic integration layer. By exposing native forensic tools as **110 Model Context Protocol (MCP) endpoints on Windows and 107 on Linux**, it allows LLM agents (e.g., Cursor, Claude Code, Cline) to orchestrate collections and analyze artifacts programmatically, while enforcing strict examiner boundaries, cryptographic proof-of-source, and human authorization.
+**DFIR-Nexus** solves this by providing a unified, secure, and cryptographically verified forensic integration layer. By exposing native forensic tools as **102 Model Context Protocol (MCP) endpoints on Windows and 99 on Linux**, it allows LLM agents (e.g., Cursor, Claude Code, Cline) to orchestrate collections and analyze artifacts programmatically, while enforcing strict examiner boundaries, cryptographic proof-of-source, and human authorization.
 
 ---
 
@@ -122,18 +122,17 @@ Detailed guidelines are grouped in the `Docs/` directory:
 
 ## Verification & Testing
 
-DFIR-Nexus includes a rigorous testing suite covering unit, script, functional wiring, and blocker regression tests (**586 total checks**).
+DFIR-Nexus includes a rigorous testing suite covering unit, script, functional wiring, and blocker regression tests (**607 total checks**).
 
 ```bash
-# 1. Run the pytest suite (252-test release baseline, including blocker regressions)
+# 1. Run the pytest suite (290 tests, including blocker regressions)
 pytest
 
-# 2. Run Individual Script-Based Tests (219 tests)
+# 2. Run Individual Script-Based Tests (202 tests)
 python tests/test_knowledge.py
 python tests/test_detection.py
 python tests/test_ti.py
 python tests/test_ingest.py
-python tests/test_push.py
 python tests/test_integration.py
 python tests/test_portal.py
 python tests/test_hunt_parser.py

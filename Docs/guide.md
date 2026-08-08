@@ -581,12 +581,11 @@ python tests/test_knowledge.py
 python tests/test_detection.py
 python tests/test_ti.py
 python tests/test_ingest.py
-python tests/test_push.py
 python tests/test_integration.py
 python tests/test_portal.py
 python tests/test_hunt_parser.py
 ```
-**Total:** 586 checks. All tests must report `PASS` / Exit Code `0`.
+**Total:** 607 checks. All tests must report `PASS` / Exit Code `0`.
 
 ---
 

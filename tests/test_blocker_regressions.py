@@ -365,7 +365,12 @@ class TestBlocker13CI:
             pytest.skip("CI file not in expected location")
         content = ci_path.read_text()
         assert "test_push_gateway" not in content
-        assert "test_push.py" in content
+        # Push feature removed 2026-08 — CI must not reference the deleted file.
+        assert "test_push.py" not in content
+        # Every script test CI runs must exist on disk.
+        import re
+        for ref in re.findall(r"python (tests/test_\w+\.py|tests/functional_audit\.py)", content):
+            assert (Path(__file__).parent.parent / ref).exists(), f"CI references missing file: {ref}"
 
 
 # ---------------------------------------------------------------------------

@@ -55,7 +55,6 @@ def _detect_capabilities() -> dict:
         "sift_tools": sys.platform.startswith("linux"),
         "windows_tools": sys.platform.startswith("win"),
         "forensic_rag": _has("chromadb"),
-        "opensearch": _has("opensearchpy"),
         "opencti": _has("pycti"),
         "triage_baseline": _has("zstandard"),
         "remnux": _detect_external_mcp("remnux"),
@@ -95,8 +94,6 @@ def _build_guidance(caps: dict) -> str:
         lines.append("- Windows forensic tools via run_windows_command (31 catalog entries)")
     if caps.get("forensic_rag"):
         lines.append("- Knowledge search: forensic_rag_search (Sigma, MITRE, KAPE; install: pip install dfir-nexus[rag])")
-    if caps.get("opensearch"):
-        lines.append("- Evidence indexing: idx_ingest for structured querying at scale (install: pip install dfir-nexus[opensearch])")
     if caps.get("opencti"):
         lines.append("- Threat intel: lookup_indicator on OpenCTI (install: pip install dfir-nexus[opencti])")
     if caps.get("triage_baseline"):

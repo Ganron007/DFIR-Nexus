@@ -44,7 +44,7 @@ DFIR-Nexus is a unified digital forensic investigation platform.
 INVESTIGATION WORKFLOW
 1. case_init("Case Name")       — create a case
 2. evidence_register(path)      — hash evidence, establish chain of custody
-3. idx_ingest / run_command     — analyze evidence (OpenSearch or direct)
+3. ingest_auto / run_command    — analyze evidence (auto-detect parser or direct tool)
 4. record_finding(title, ...)   — stage finding as DRAFT
 5. record_timeline_event(...)   — chronological narrative
 6. nexus approve                — human reviews and APPROVES/REJECTS
@@ -72,10 +72,9 @@ def create_server() -> FastMCP:
     report.register_tools(server, audit)
 
     # ── Knowledge base tools ──
-    from nexus.tools import rag, opencti, opensearch
+    from nexus.tools import rag, opencti
     rag.register_tools(server, audit)
     opencti.register_tools(server, audit)
-    opensearch.register_tools(server, audit)
 
     # ── Triage (cross-platform, uses SQLite baselines) ──
     from nexus.triage import register_tools as triage_register

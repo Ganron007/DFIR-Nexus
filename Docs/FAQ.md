@@ -112,7 +112,7 @@ A: Markdown, HTML, JSON, STIX 2.0/2.1, CSV, DOCX, ZIP (bundle), SVG (swimlane + 
 **Q: Can I share cases with other analysts?**
 A: Yes. Export to JSON/STIX and merge on another DFIR-Nexus instance with `nexus merge bundle.json`.
 
-**Q: Can I push findings to external platforms?**
+**Q: Can I send findings to external platforms?**
 A: Yes. Built-in exporters for Timesketch (timeline), MISP (attributes), and DFIR-IRIS (case notes). Slack/Teams/Discord/Telegram/SMTP notifications also available.
 
 ---

@@ -475,17 +475,6 @@ def _run_connectivity_test():
         results.append(("Chromadb (RAG)", False, "pip install dfir-nexus[rag]"))
 
     try:
-        from opensearchpy import OpenSearch
-        results.append(("opensearch-py", True, ""))
-        client = OpenSearch(hosts=[{"host": "127.0.0.1", "port": 9200}], verify_certs=False)
-        info = client.info()
-        results.append(("OpenSearch connection", True, info.get("version", {}).get("number", "")))
-    except ImportError:
-        results.append(("opensearch-py", False, "pip install dfir-nexus[opensearch]"))
-    except Exception as e:
-        results.append(("OpenSearch connection", False, str(e)))
-
-    try:
         from pycti import OpenCTIApiClient
         results.append(("pycti (OpenCTI)", True, ""))
     except ImportError:
