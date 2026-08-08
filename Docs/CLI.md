@@ -86,7 +86,20 @@ nexus todo complete TODO-analyst-001      # Mark complete
 nexus config --examiner "alice"           # Set examiner identity
 nexus config --setup-password             # Set approval password
 nexus config --show                       # Show current config
+# Subcommand form also works: nexus config set --examiner "alice" / nexus config show
 ```
+
+## Onboarding (quickstart)
+
+```bash
+nexus init                                # Environment check + client config
+nexus init "Case Name" --evidence /path/to/disk.raw   # Also creates the case
+nexus init "Case" --evidence a.evtx --evidence b.pcap # Repeatable evidence
+```
+
+Creates the case in the SQLite stack, registers + SHA-256 hashes each evidence
+file, checks triage baselines / RAG index, and writes `nexus-config.json` for
+your LLM client.
 
 ## Server & Services
 

@@ -1,4 +1,13 @@
-"""Examiner configuration management with approval password support."""
+"""Examiner configuration management with approval password support.
+
+Supports both invocation styles:
+
+    nexus config --examiner "Jane Doe"      # documented quickstart form
+    nexus config --setup-password
+    nexus config --show
+    nexus config set --examiner "Jane Doe"  # subcommand form
+    nexus config show
+"""
 
 import getpass
 from pathlib import Path
@@ -8,12 +17,7 @@ import typer
 app = typer.Typer(help="Manage examiner configuration")
 
 
-@app.command()
-def set(
-    examiner: str = typer.Option("", "--examiner", "-e", help="Examiner name"),
-    setup_password: bool = typer.Option(False, "--setup-password", help="Set approval password"),
-):
-    """Set examiner identity or configure approval password."""
+def _run_set(examiner: str, setup_password: bool) -> None:
     config_path = Path.home() / ".nexus" / "config.yaml"
     config_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -73,12 +77,10 @@ def set(
             typer.echo("This password is now required for approve/reject operations")
         except ValueError as e:
             typer.echo(f"Error: {e}", err=True)
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
 
 
-@app.command()
-def show():
-    """Show current configuration."""
+def _run_show() -> None:
     config_path = Path.home() / ".nexus" / "config.yaml"
     if config_path.exists():
         import yaml
@@ -92,3 +94,36 @@ def show():
         typer.echo("No config file found")
     typer.echo(f"Config path: {config_path}")
     typer.echo(f"Data root: {Path.home() / '.nexus' / 'data'}")
+
+
+@app.callback(invoke_without_command=True)
+def _config_callback(
+    ctx: typer.Context,
+    examiner: str = typer.Option("", "--examiner", "-e", help="Examiner name"),
+    setup_password: bool = typer.Option(False, "--setup-password", help="Set approval password"),
+    show: bool = typer.Option(False, "--show", help="Show current configuration"),
+):
+    """Manage examiner configuration (also: nexus config set / show)."""
+    if ctx.invoked_subcommand is not None:
+        return
+    if examiner or setup_password:
+        _run_set(examiner, setup_password)
+    elif show:
+        _run_show()
+    else:
+        typer.echo(ctx.get_help())
+
+
+@app.command()
+def set(
+    examiner: str = typer.Option("", "--examiner", "-e", help="Examiner name"),
+    setup_password: bool = typer.Option(False, "--setup-password", help="Set approval password"),
+):
+    """Set examiner identity or configure approval password."""
+    _run_set(examiner, setup_password)
+
+
+@app.command()
+def show():
+    """Show current configuration."""
+    _run_show()

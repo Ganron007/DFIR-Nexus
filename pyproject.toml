@@ -133,4 +133,5 @@ python_files = [
     "test_evidence_graph.py",
     "test_ingest_regressions.py",
     "test_bridge_regressions.py",
+    "test_cli_onboarding_regressions.py",
 ]

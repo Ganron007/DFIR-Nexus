@@ -53,7 +53,7 @@ from nexus.cli.case_cmd import app as case_app
 from nexus.cli.config_cmd import app as config_app
 from nexus.cli.evidence import app as evidence_app
 from nexus.cli.exec_cmd import app as exec_app
-from nexus.cli.init_cmd import app as init_app
+from nexus.cli.init_cmd import init as init_cmd
 from nexus.cli.report import app as report_app
 from nexus.cli.review import app as review_app
 from nexus.cli.service import app as service_app
@@ -74,7 +74,9 @@ app.add_typer(sync_app, name="merge", help="Merge case bundle")
 app.add_typer(exec_app, name="exec", help="Execute forensic command with audit trail")
 app.add_typer(audit_app, name="audit", help="View audit trail")
 app.add_typer(todo_app, name="todo", help="Manage TODO items")
-app.add_typer(init_app, name="init", help="Quickstart — one-command onboarding")
+# Registered as a direct command (not a sub-group) so the documented
+# `nexus init "Case" --evidence ...` form works.
+app.command(name="init", help="Quickstart — one-command onboarding")(init_cmd)
 
 _ACTIVE_CASE_FILE = Path.home() / ".nexus" / "active_case"
 
