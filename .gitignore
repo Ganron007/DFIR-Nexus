@@ -134,16 +134,16 @@ site/
 *.swp
 
 # ── Local forensic evidence corpus (never commit samples / EVTX / PCAP / malware) ──
-# Stage public + CADRE pulls under Evidence-files/. Only the README/MANIFEST are tracked.
-Evidence-files/**
-!Evidence-files/README.md
-!Evidence-files/MANIFEST.md
+# Entirely local — including README/MANIFEST.
+Evidence-files/
 
 # ── Private-repo policy ─────────────────────────────────────────────
 # Internal planning / audit / checklist docs are LOCAL ONLY — never published.
 Docs/internal/
 # Local scratch space (audit scripts, temp renders, working notes).
 scratch/
+# Claude Code skill bundle — local only while rebranding is in progress.
+claude-code/
 #
 # Override global ignore of AGENTS.md for this repo (needed for agents).
 !AGENTS.md
