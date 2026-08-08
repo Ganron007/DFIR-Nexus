@@ -68,3 +68,19 @@ DFIR-Nexus assumes:
 
 See `Docs/ARCHITECTURE.md` (Security Model section) for the per-layer
 control matrix.
+
+## Dependency security
+
+pip-audit is run against the full dependency set. Status (2026-08-08):
+
+- **Fixed & pinned:** aiohttp >= 3.14.3 (PYSEC-2026-3545/46/47) and
+  cryptography >= 50.0.0 (PYSEC-2026-3552) are pinned in the extras that
+  pull them in.
+- **Accepted — chromadb 1.5.9 (PYSEC-2026-311):** no fixed release exists
+  upstream (1.5.9 is the latest). ChromaDB is used purely as a local
+  persistent vector store for the RAG index; it does not parse untrusted
+  input. Monitored for an upstream fix.
+- **Accepted — setuptools 82.0.1 (PYSEC-2026-3447):** the optional
+  `[opencti]` extra (pycti) pins setuptools ~= 82.0.0, blocking the 83.0.0
+  fix. setuptools is build/install-time tooling, not a runtime attack
+  surface here. Revisit when pycti relaxes the pin.
