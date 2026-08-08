@@ -210,7 +210,14 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         if user and exp:
             valid_users = exp.get("valid_users")
             if valid_users:
-                user_valid = user.lower() in (u.lower() for u in valid_users)
+                u = user.lower()
+                # Baseline entries are fully qualified ("NT AUTHORITY\SYSTEM");
+                # callers often pass bare names ("SYSTEM"). Accept an exact
+                # match or a bare name matching the suffix after the domain.
+                user_valid = any(
+                    u == v.lower() or ("\\" not in u and v.lower().endswith("\\" + u))
+                    for v in valid_users
+                )
 
         parent_valid = True
         if exp:
