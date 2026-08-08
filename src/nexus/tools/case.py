@@ -311,8 +311,10 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         except (ValueError, FileNotFoundError) as e:
             return {"error": str(e)}
 
-        audit.log(tool="evidence_register", params={"path": path, "description": description},
-                  result_summary=result)
+        audit_id = audit.log(tool="evidence_register", params={"path": path, "description": description},
+                             result_summary=result)
+        if audit_id:
+            result["audit_id"] = audit_id
         return result
 
     @server.tool()

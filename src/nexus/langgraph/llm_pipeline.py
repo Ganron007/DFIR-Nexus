@@ -10,11 +10,22 @@ a ReAct agent to pick analysis tools.
 Usage:
     nexus pipeline --case /path/to/evidence
     nexus pipeline --resume
-    nexus pipeline --model openai/gpt-4o --case /path/to/evidence
+    nexus pipeline --model step-3.7-flash --case /path/to/evidence
 
-Environment variables:
-    NEXUS_MODEL — model identifier (default: claude-sonnet-4-20250514)
-        Examples: "openai/gpt-4o", "ollama/qwen2.5:32b-instruct"
+LLM configuration (.env in the working directory, or environment):
+    NEXUS_LLM_MODEL      Model name, e.g. "step-3.7-flash", "gpt-4o"
+    NEXUS_LLM_BASE_URL   OpenAI-compatible endpoint URL (optional; required
+                         for self-hosted / third-party-compatible providers)
+    NEXUS_LLM_API_KEY    API key (optional for local endpoints like Ollama)
+    NEXUS_LLM_PROVIDER   openai-compatible (default when BASE_URL is set) |
+                         openai | anthropic | ollama
+    NEXUS_LLM_REASONING  Optional reasoning effort passed through to the
+                         model (provider-dependent, e.g. "high")
+
+Legacy: NEXUS_MODEL="provider/model" prefix form still works
+(e.g. "openai/gpt-4o", "ollama/qwen2.5:32b-instruct").
+
+MCP connection:
     NEXUS_GATEWAY_URL — HTTP URL for MCP server (default: stdio)
     NEXUS_BEARER_TOKEN — bearer token for HTTP mode
     NEXUS_STDIO_CMD — command for stdio mode (default: "nexus")
@@ -32,6 +43,38 @@ from pathlib import Path
 from typing import Annotated, Any, TypedDict
 
 log = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# .env loading (no external dependency)
+# ---------------------------------------------------------------------------
+
+def _load_dotenv() -> None:
+    """Load KEY=*** pairs from .env (CWD first, then repo root).
+
+    Existing environment variables always win. Values may be quoted.
+    """
+    candidates = [
+        Path.cwd() / ".env",
+        Path(__file__).resolve().parents[3] / ".env",
+    ]
+    for candidate in candidates:
+        if not candidate.is_file():
+            continue
+        try:
+            lines = candidate.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = value
+        break
 
 
 # ---------------------------------------------------------------------------
@@ -75,25 +118,74 @@ def make_initial_state(evidence_path: str = "") -> InvestigationState:
 # ---------------------------------------------------------------------------
 
 def get_model(model_name: str = ""):
-    """Get an LLM model instance based on NEXUS_MODEL env var or explicit name.
+    """Create the LLM instance from the NEXUS_LLM_* configuration.
 
-    Supports: anthropic/*, openai/*, ollama/*, or default (Anthropic).
+    Contract (.env or environment):
+      NEXUS_LLM_MODEL      model name (required unless legacy NEXUS_MODEL set)
+      NEXUS_LLM_BASE_URL   OpenAI-compatible endpoint (optional)
+      NEXUS_LLM_API_KEY    API key (optional for local endpoints)
+      NEXUS_LLM_PROVIDER   openai-compatible (default when BASE_URL set) |
+                           openai | anthropic | ollama
+      NEXUS_LLM_REASONING  optional reasoning effort passthrough
+
+    Legacy NEXUS_MODEL="provider/model" prefix routing still works.
     """
-    provider = (model_name or os.environ.get("NEXUS_MODEL") or "").lower()
+    _load_dotenv()
 
-    if "openai" in provider:
-        from langchain_openai import ChatOpenAI
-        name = provider.replace("openai/", "")
-        return ChatOpenAI(model=name or "gpt-4o")
+    model = model_name or os.environ.get("NEXUS_LLM_MODEL", "")
+    base_url = os.environ.get("NEXUS_LLM_BASE_URL", "")
+    api_key = os.environ.get("NEXUS_LLM_API_KEY", "")
+    provider = os.environ.get("NEXUS_LLM_PROVIDER", "").lower()
+    reasoning = os.environ.get("NEXUS_LLM_REASONING", "")
 
-    if "ollama" in provider:
-        from langchain_ollama import ChatOllama
-        name = provider.replace("ollama/", "")
-        return ChatOllama(model=name or "qwen2.5:32b-instruct")
+    if not model:
+        # Legacy prefix form: "openai/gpt-4o", "ollama/qwen...", anthropic name
+        legacy = os.environ.get("NEXUS_MODEL", "")
+        if legacy.startswith("openai/"):
+            from langchain_openai import ChatOpenAI
+            return ChatOpenAI(model=legacy[len("openai/"):] or "gpt-4o")
+        if legacy.startswith("ollama/"):
+            try:
+                from langchain_ollama import ChatOllama
+            except ImportError:
+                raise RuntimeError(
+                    "langchain-ollama not installed — run: pip install langchain-ollama"
+                ) from None
+            return ChatOllama(model=legacy[len("ollama/"):])
+        if legacy:
+            from langchain_anthropic import ChatAnthropic
+            return ChatAnthropic(model=legacy)
+        raise RuntimeError(
+            "No LLM configured. Create a .env with NEXUS_LLM_MODEL (plus "
+            "NEXUS_LLM_BASE_URL / NEXUS_LLM_API_KEY for hosted providers), "
+            "or set NEXUS_MODEL."
+        )
 
-    from langchain_anthropic import ChatAnthropic
-    name = provider or "claude-sonnet-4-20250514"
-    return ChatAnthropic(model=name)
+    if provider == "anthropic" and not base_url:
+        from langchain_anthropic import ChatAnthropic
+        kwargs: dict[str, Any] = {}
+        if api_key:
+            kwargs["api_key"] = api_key
+        return ChatAnthropic(model=model, **kwargs)
+
+    if provider == "ollama" and not base_url:
+        try:
+            from langchain_ollama import ChatOllama
+        except ImportError:
+            raise RuntimeError(
+                "langchain-ollama not installed — run: pip install langchain-ollama"
+            ) from None
+        return ChatOllama(model=model)
+
+    # Default: any OpenAI-compatible endpoint (StepFun, OpenAI, LiteLLM,
+    # vLLM, Ollama /v1, ...)
+    from langchain_openai import ChatOpenAI
+    kwargs = {"model": model, "api_key": api_key or "not-needed"}
+    if base_url:
+        kwargs["base_url"] = base_url
+    if reasoning:
+        kwargs["extra_body"] = {"reasoning_effort": reasoning}
+    return ChatOpenAI(**kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -141,6 +233,36 @@ _REQUIRED_TOOLS = {
 }
 
 
+def _parse_tool_result(result: Any) -> dict:
+    """Normalize an MCP-adapter tool result into a dict.
+
+    langchain-mcp-adapters returns tool output as a list of content blocks
+    (or a raw string), not the tool's dict. Extract the text payload and
+    JSON-decode it when possible.
+    """
+    if isinstance(result, dict):
+        return result
+    text: str | None = None
+    if isinstance(result, str):
+        text = result
+    elif isinstance(result, list):
+        parts: list[str] = []
+        for block in result:
+            if isinstance(block, dict) and block.get("type") == "text":
+                parts.append(str(block.get("text", "")))
+            elif isinstance(block, str):
+                parts.append(block)
+            elif hasattr(block, "text"):
+                parts.append(str(getattr(block, "text", "")))
+        text = "\n".join(parts)
+    if text:
+        with contextlib.suppress(json.JSONDecodeError, ValueError):
+            parsed = json.loads(text)
+            if isinstance(parsed, dict):
+                return parsed
+    return {}
+
+
 def validate_tools(tools_by_name: dict[str, Any]) -> list[str]:
     missing = [name for name in _REQUIRED_TOOLS if name not in tools_by_name]
     if missing:
@@ -158,11 +280,11 @@ async def register_evidence(state: InvestigationState, tools: dict) -> dict:
     if not case_tool:
         return {"error": "case_init tool not available"}
 
-    result = await case_tool.ainvoke({
+    result = _parse_tool_result(await case_tool.ainvoke({
         "name": f"LangGraph Investigation - {Path(state['evidence_path']).name}",
         "description": "Automated investigation via LangGraph pipeline",
-    })
-    if isinstance(result, dict) and result.get("error"):
+    }))
+    if result.get("error"):
         return {"error": f"case_init failed: {result['error']}"}
 
     case_id = result.get("case_id", "unknown")
@@ -170,15 +292,14 @@ async def register_evidence(state: InvestigationState, tools: dict) -> dict:
 
     ev_tool = tools.get("evidence_register")
     if ev_tool and state["evidence_path"]:
-        ev_result = await ev_tool.ainvoke({
+        ev_result = _parse_tool_result(await ev_tool.ainvoke({
             "path": state["evidence_path"],
             "description": "Evidence for automated investigation",
-        })
+        }))
         audit_ids = []
-        if isinstance(ev_result, dict):
-            aid = ev_result.get("audit_id") or ev_result.get("sha256", "")
-            if aid:
-                audit_ids.append(aid)
+        aid = ev_result.get("audit_id") or ev_result.get("sha256", "")
+        if aid:
+            audit_ids.append(aid)
         return {
             "case_id": case_id,
             "evidence_audit_ids": audit_ids,
@@ -287,11 +408,11 @@ async def stage_findings(state: InvestigationState, tools: dict) -> dict:
     if candidates:
         for candidate in candidates:
             try:
-                result = await finding_tool.ainvoke(candidate)
-                if isinstance(result, dict) and result.get("finding_id"):
+                result = _parse_tool_result(await finding_tool.ainvoke(candidate))
+                if result.get("finding_id"):
                     draft_ids.append(result["finding_id"])
                     log.info("Finding staged: %s", result["finding_id"])
-                elif isinstance(result, dict) and result.get("error"):
+                elif result.get("error"):
                     errors.append(result["error"])
             except Exception as e:
                 errors.append(str(e))
@@ -302,29 +423,39 @@ async def stage_findings(state: InvestigationState, tools: dict) -> dict:
                 if not ts:
                     continue
                 try:
-                    result = await timeline_tool.ainvoke({
+                    result = _parse_tool_result(await timeline_tool.ainvoke({
                         "timestamp": ts,
                         "description": c.get("observation", c.get("title", ""))[:500],
                         "event_type": c.get("type", "execution"),
                         "host": c.get("host", ""),
-                    })
-                    if isinstance(result, dict) and result.get("event_id"):
+                    }))
+                    if result.get("event_id"):
                         timeline_ids.append(result["event_id"])
                 except Exception as e:
                     errors.append(str(e))
     else:
         host = state["hosts"][0] if state.get("hosts") else ""
-        result = await finding_tool.ainvoke({
+        placeholder: dict[str, Any] = {
             "title": f"Automated analysis for {state['case_id']}",
             "observation": "LangGraph pipeline completed initial analysis",
             "interpretation": "Reviewer should examine findings in Examiner Portal",
             "confidence": "MEDIUM",
+            "confidence_justification": "Pipeline placeholder for examiner review",
             "host": host,
             "event_timestamp": datetime.now(UTC).isoformat(),
-        })
-        if isinstance(result, dict) and result.get("finding_id"):
+        }
+        # FD-001: reference the evidence registration audit trail so the
+        # placeholder stages as DRAFT instead of being rejected.
+        if state.get("evidence_audit_ids"):
+            placeholder["artifacts"] = [
+                {"audit_id": aid} for aid in state["evidence_audit_ids"]
+            ]
+        result = _parse_tool_result(await finding_tool.ainvoke(placeholder))
+        if result.get("finding_id"):
             draft_ids.append(result["finding_id"])
             log.info("Placeholder finding staged: %s", result["finding_id"])
+        elif result.get("error"):
+            errors.append(result["error"])
 
     log_msg = [f"Staged {len(draft_ids)} findings, {len(timeline_ids)} timeline events"]
     if errors:
@@ -371,12 +502,12 @@ async def generate_report(state: InvestigationState, tools: dict) -> dict:
 
     profile = "findings" if state["approved_finding_ids"] else "status"
 
-    result = await report_tool.ainvoke({
+    result = _parse_tool_result(await report_tool.ainvoke({
         "profile": profile,
         "case_id": state["case_id"],
         "finding_ids": state["approved_finding_ids"] or None,
-    })
-    if isinstance(result, dict) and result.get("error"):
+    }))
+    if result.get("error"):
         return {"error": result["error"]}
 
     return {"step_log": [f"Report generated ({profile} profile)"]}
@@ -443,7 +574,7 @@ async def run_pipeline(
 
     config = get_mcp_config()
     client = MultiServerMCPClient(config)
-    tools_list = await client.__aenter__()
+    tools_list = await client.get_tools()
     tools_by_name = {t.name: t for t in tools_list}
 
     validate_tools(tools_by_name)
