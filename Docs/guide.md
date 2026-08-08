@@ -123,26 +123,30 @@ nexus evidence verify     # re-hash and check for tampering
 
 DFIR-Nexus wraps your existing forensic tools as MCP tools. Every tool run is audited and returns an `audit_id`. **This is the key concept — every action gets a unique audit_id that findings must reference:**
 
-**Tools available (110 total across categories):**
+**Tools available (103 on Windows / 100 on Linux):**
 
 | Category | Tools | When to use |
 |----------|-------|-------------|
-| **Triage** | `triage_check_file`, `triage_check_process`, `triage_check_service`, `triage_check_hash`, `triage_check_autorun`, `triage_check_task`, `triage_check_lolbin`, `triage_analyze_path`, `triage_get_health`, `triage_status`, `triage_download` | Quick triage — validate a file/process/hash against Windows baselines. Use early in investigation to separate legitimate from suspicious. |
-| **SIFT (Linux)** | `run_command`, `list_available_tools`, `get_tool_help`, `check_tools`, `suggest_tools`, `get_environment`, `reset_counters` | Deep-dive analysis on a Linux/SIFT VM. 60+ cataloged forensic tools (Volatility, Plaso, Zeek, Sleuth Kit, YARA, etc.) |
+| **Triage** | `check_file`, `check_process_tree`, `check_service`, `check_scheduled_task`, `check_autorun`, `check_registry`, `check_hash`, `check_lolbin`, `check_hijackable_dll`, `check_pipe`, `analyze_filename_triage`, `triage_status`, `triage_download` | Quick triage - validate a file/process/hash against Windows baselines. Use early in investigation to separate legitimate from suspicious. |
+| **SIFT (Linux only)** | `run_command`, `list_available_tools`, `get_tool_help`, `check_tools`, `suggest_tools`, `get_environment`, `reset_counters` | Deep-dive analysis on a Linux/SIFT VM. 60+ cataloged forensic tools (Volatility, Plaso, Zeek, Sleuth Kit, YARA, etc.) |
 | **Windows** | `run_windows_command`, `scan_tools`, `list_windows_tools`, `list_missing_windows_tools`, `check_windows_tools`, `get_windows_tool_help`, `suggest_windows_tools`, `get_share_info`, `list_kape_targets`, `batch_scan` | Run Zimmerman tools, KAPE, Sysinternals directly. 31 cataloged tools across 7 categories. |
-| **Case** | `case_init`, `case_activate`, `case_list`, `case_status`, `evidence_register`, `evidence_list`, `evidence_verify`, `export_bundle`, `import_bundle`, `audit_summary`, `record_action`, `log_reasoning`, `log_external_action` | Case lifecycle management. |
+| **Case** | `case_init`, `case_activate`, `case_close`, `case_list`, `case_status`, `evidence_register`, `evidence_list`, `evidence_verify`, `backup_case`, `export_case`, `import_case`, `get_case_actions`, `audit_summary`, `record_action`, `log_reasoning`, `log_external_action` | Case lifecycle management. |
 | **Forensic** | `record_finding`, `record_timeline_event`, `get_findings`, `get_timeline`, `add_todo`, `list_todos`, `update_todo`, `complete_todo` + 14 discipline tools | Investigation records and forensic discipline enforcement. |
 | **Report** | `generate_report`, `set_case_metadata`, `get_case_metadata`, `list_profiles`, `save_report`, `list_reports` | Report generation in 6 profiles (full, executive, timeline, ioc, findings, status). |
-| **Analysis & correlation** | `ingest_auto`, `analyze_gaps`, `deobfuscate_command`, `check_kev`, `predict_techniques`, `create_playbook`, `build_asset_graph`, `anonymize_text`, `deanonymize_text`, `export_stix_bundle`, `export_navigator_layer`, `export_blocklist`, `translate_query`, `suggest_fleet_hunts`, `check_nsrl`, `get_knowledge_graph_stats`, `get_dynamic_tables`, `list_query_templates`, `generate_sigma_rule` | Advanced analysis — auto-format detection, beacon/C2, gap analysis, deobfuscation, KEV, adversary emulation, playbooks, correlation, evidence graph, STIX/Navigator export, NL query. |
-| **OpenSearch** | `idx_search`, `idx_aggregate`, `idx_timeline`, `idx_status`, `idx_case_summary`, `idx_enrich_triage`, `idx_enrich_intel`, `idx_ingest` | Evidence indexing and search via OpenSearch (optional). |
-| **OpenCTI** | `search_threat_intel`, `search_entity`, `lookup_ioc`, `get_entity`, `get_relationships`, `get_recent_indicators`, `search_reports`, `search_threat_actor`, `search_malware`, `search_mitre_technique` | Threat intelligence via OpenCTI (optional). |
-| **RAG** | `forensic_rag_search`, `forensic_rag_list_sources`, `forensic_rag_status`, `forensic_rag_download`, `forensic_rag_rebuild` | Semantic search over ~22K forensic records (downloaded on first use). |
+| **Analysis & correlation** | `ingest_auto`, `convert_pcap`, `analyze_gaps`, `deobfuscate_command`, `check_kev`, `check_nsrl`, `predict_techniques`, `create_playbook`, `build_asset_graph`, `anonymize_text`, `deanonymize_text`, `export_stix_bundle`, `export_navigator_layer`, `export_blocklist`, `translate_query`, `suggest_fleet_hunts`, `get_knowledge_graph_stats`, `get_dynamic_tables`, `list_query_templates`, `generate_sigma_rule` | Advanced analysis - auto-format detection, PCAP conversion (tshark), gap analysis, deobfuscation, KEV/NSRL, adversary emulation, playbooks, correlation, evidence graph, STIX/Navigator export, NL query. |
+| **OpenCTI** | `search_threat_intel`, `search_entity`, `lookup_indicator`, `get_entity`, `get_relationships`, `get_recent_indicators`, `search_reports`, `search_threat_actor`, `search_malware`, `search_mitre_technique`, `opencti_status` | Threat intelligence via OpenCTI (optional). |
+| **RAG** | `forensic_rag_search`, `forensic_rag_list_sources`, `forensic_rag_status`, `forensic_rag_download`, `forensic_rag_rebuild` | Semantic search over ~22K forensic records (index downloaded or self-built; embedding model configurable via `NEXUS_RAG_MODEL`). |
 | **TI** | `ti_lookup`, `ti_fanout`, `ti_list_providers` | Threat intelligence enrichment: abuse.ch, MISP, OTX, Shodan, VT, AbuseIPDB, CrowdStrike. |
-| **Velociraptor** | `vr_list_clients`, `vr_list_hunts`, `vr_run_hunt`, `vr_collect_artifact`, `vr_suggest_hunts`, `vql_query` | Remote live-response collection. 10 pre-built hunts. |
+
+Velociraptor live-response tooling (`vr_list_clients`, `vr_list_hunts`,
+`vr_run_hunt`, `vr_collect_artifact`, `vr_suggest_hunts`, `vql_query`) ships as
+a **separate MCP server** (`nexus.integration.velociraptor_mcp_server`) — run it
+alongside the main server when live collection is needed; mock mode works
+offline via `NEXUS_VR_USE_MOCK=1`.
 
 **Example workflow:**
 ```
-Tool: triage_check_file → confirms the binary is not in Windows baseline
+Tool: check_file → confirms the binary is not in Windows baseline
 Tool: sift_yara_scan     → finds Cobalt Strike signature
 Tool: vr_run_hunt        → collects process tree from compromised host
 Tool: ingest_from_source  → parses Suricata/Zeek pcaps into artifacts
@@ -309,8 +313,8 @@ The triage subsystem validates processes, files, services, tasks, autoruns, and 
 
 **How to use (MCP):**
 ```
-triage_check_lolbin(binary="rundll32.exe")
-triage_check_file(file_path="C:\\Windows\\System32\\svchost.exe")
+check_lolbin(binary="rundll32.exe")
+check_file(file_path="C:\\Windows\\System32\\svchost.exe")
 ```
 
 ---
@@ -476,7 +480,7 @@ If you have downloaded the triage databases, run a triage query. This will hit t
 
 *Via MCP:*
 ```json
-// Tool: triage_check_lolbin
+// Tool: check_lolbin
 {
   "binary": "rundll32.exe"
 }

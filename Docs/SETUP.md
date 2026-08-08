@@ -75,11 +75,11 @@ The `[all]` extras bundle contains:
 - `[http]`: Starlette + Uvicorn (needed for the Examiner Portal web dashboard).
 - `[rag]`: ChromaDB + sentence-transformers (needed for forensic knowledge semantic search).
 - `[triage]`: orjson + zstandard (needed for matching Windows baselines).
-- `[opensearch]`: OpenSearch integration client.
+- `[dfir]`: Native artifact parsers — python-evtx (EVTX), regipy (registry hives), pylnk3 (LNK shortcuts).
 - `[opencti]`: OpenCTI threat intelligence client.
 - `[encrypt]`: Cryptography (for encrypted case exports).
 - `[detection]`: PySigma (for translating Sigma rules to KQL/Splunk/etc.).
-- `[pipeline]`: LangGraph (for multi-agentic orchestration).
+- `[pipeline]`: LangGraph + LangChain providers (for the LLM-driven investigation pipeline).
 
 Configure identity and approval password manually:
 ```bash
@@ -87,6 +87,37 @@ nexus config --examiner "alice"
 nexus config --setup-password    # Prompts for approval password
 nexus init
 ```
+
+### 2d. LLM pipeline configuration (optional, agentic mode)
+
+The `nexus pipeline` command drives an LLM investigation graph (evidence →
+hunt → DRAFT findings → your approval). Create a `.env` in the working
+directory (gitignored — never commit it):
+
+```bash
+NEXUS_LLM_MODEL=your-model-name          # e.g. gpt-4o, step-3.7-flash
+NEXUS_LLM_BASE_URL=https://your-endpoint/v1   # any OpenAI-compatible API
+NEXUS_LLM_API_KEY=***                    # optional for local endpoints
+NEXUS_LLM_PROVIDER=openai-compatible     # or: openai | anthropic | ollama
+NEXUS_LLM_REASONING=high                 # optional reasoning passthrough
+```
+
+`NEXUS_LLM_PROVIDER` is optional — it defaults to `openai-compatible` whenever
+`NEXUS_LLM_BASE_URL` is set, which works with any OpenAI-compatible service
+(OpenAI, StepFun, LiteLLM, vLLM, Ollama `/v1`, ...). Legacy
+`NEXUS_MODEL="provider/model"` routing still works.
+
+### 2e. RAG index and triage baselines
+
+Both knowledge stores are looked for locally first (`~/.nexus/data/rag`,
+`~/.nexus/data/triage`) — copy or build your own, or download the prebuilt
+releases via `forensic_rag_download()` / `triage_download()`.
+
+- `NEXUS_RAG_MODEL` — embedding model (HuggingFace ID or local directory).
+  Must match the embeddings in the index. Hosting the model is the
+  operator's responsibility.
+- `NEXUS_RAG_RELEASE_REPO` / `NEXUS_TRIAGE_RELEASE_REPO` — point at your own
+  GitHub release assets (`owner/repo`) instead of the default source.
 
 ### 2c. From source (contributors)
 ```bash

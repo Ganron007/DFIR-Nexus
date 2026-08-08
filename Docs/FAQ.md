@@ -29,7 +29,8 @@ A: `[all]` installs everything. Subsets let you skip what you don't need:
 - `[http]` — web server for Portal
 - `[rag]` — ChromaDB + sentence-transformers (~600 MB)
 - `[triage]` — orjson + zstandard (~2 GB baseline DBs)
-- `[opensearch]` — OpenSearch client
+- `[dfir]` — native artifact parsers (EVTX, registry hives, LNK)
+- `[pipeline]` — LangGraph + LangChain for the LLM investigation pipeline
 - `[opencti]` — OpenCTI client
 - `[encrypt]` — encryption for export bundles
 
@@ -79,7 +80,7 @@ A: Yes. The audit chain + per-finding HMAC signatures provide cryptographic proo
 ## Tools & Data
 
 **Q: What forensic tools does DFIR-Nexus support?**
-A: It wraps your existing tools — NOT replaces them. Supported: SIFT workstation tools, Zimmerman tools, Sysinternals, KAPE, YARA, Volatility 3, Plaso, Hayabusa, Velociraptor, Suricata, Zeek, Elastic, and more. 110 MCP tools (Windows) / 107 (Linux).
+A: It wraps your existing tools — NOT replaces them. Supported: SIFT workstation tools, Zimmerman tools, Sysinternals, KAPE, YARA, Volatility 3, Plaso, Hayabusa, Velociraptor, Suricata, Zeek, Elastic, and more. 103 MCP tools (Windows) / 100 (Linux).
 
 **Q: Do I need to install the forensic tools separately?**
 A: Yes. DFIR-Nexus discovers tools on your PATH or at configured paths. If SIFT tools are on a VM, point `nexus setup client --sift <ip>:4508`.
@@ -94,7 +95,7 @@ A: Yes, one-time: `forensic_rag_download()` (~600 MB). Findings, cases, and repo
 A: Checks files/processes/services against Windows baselines (KnownGoodDB + ContextDB + RegistryDB). Tells you if something is legitimate, a LOLBin, or suspicious. One-time download: `triage_download()` (~2 GB).
 
 **Q: What data formats can I ingest?**
-A: 36 registered importer classes — Suricata, Zeek, Elastic, Splunk, EVTX, Prefetch, Amcache, Shimcache, Shellbags, LNK, Registry, WMI, Volatility 3, Plaso, Hayabusa, MISP, OTX, VirusTotal, CloudTrail, Azure, GCP, Auditd, Authlog, Syslog, Bash History, and generic JSONL/CSV.
+A: 36 registered importers — Suricata, Zeek, Elastic, Splunk, Wazuh, EVTX, Amcache, Shimcache, Shellbags, LNK, Registry, WMI, Volatility 3, Plaso, Hayabusa, KAPE, MISP, OTX, VirusTotal, ThreatFox, AbuseIPDB, CloudTrail, Azure, M365, Auditd, Authlog, Syslog, Journald, Bash History, TheHive, IRIS, CyberTriage, sandbox reports, email (.eml), archives, and generic JSONL/CSV. Prefetch is parsed via PECmd through run_windows_command.
 
 **Q: Can I search my detection rules?**
 A: Yes. Index your Sigma/Hayabusa rules with `detection_sigma_install()`, then search by technique, severity, or keyword. Get MITRE coverage heatmaps and gap analysis.

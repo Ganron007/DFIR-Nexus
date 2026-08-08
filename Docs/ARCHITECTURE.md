@@ -34,7 +34,7 @@ flowchart TD
     subgraph CORE [" FastMCP Single-Process Engine (app.py) "]
         MCP["⚡ FastMCP Server Process<br/><i>(Stdio & Uvicorn HTTP :4508)</i>"]:::serverStyle
         
-        subgraph MODULES [" Integrated Tool Engine (110 Win / 107 Linux Endpoints) "]
+        subgraph MODULES [" Integrated Tool Engine (103 Win / 100 Linux Endpoints) "]
             direction LR
             CORE_TOOLS["<b>Forensics & Case Ops</b><br/>• forensic.py (23 tools)<br/>• case.py (13 tools)<br/>• report.py (6 tools)"]:::toolStyle
             INTEL_TOOLS["<b>RAG & Threat Intel</b><br/>• rag.py (ChromaDB 22k records)<br/>• triage/ (2.6M baselines)<br/>• ti/ (10 TI Providers)"]:::toolStyle
@@ -99,7 +99,6 @@ flowchart TD
 │   report.py   — 6 tools   (report generation, 6 profiles)                  │
 │   rag.py      — 5 tools   (ChromaDB semantic search + download)             │
 │   opencti.py  — 11 tools  (IOC/threat actor/malware/report lookup)          │
-│   opensearch.py — 8 tools (evidence indexing, search, aggregation)          │
 │   triage/     — 15 tools  (offline baseline validation + download)           │
 │   analysis.py — 19 tools  (correlation, graphs, exports, detection helpers) │
 │                                                                             │

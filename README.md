@@ -60,9 +60,9 @@ DFIR-Nexus operates as a single, platform-aware FastMCP process with strict cryp
 | **Tamper Evidence** | Cryptographically chained HMAC-SHA256 audit ledger. Any attempt to modify command logs or findings breaks the chain verification. |
 | **Hardened Gate** | PBKDF2-HMAC password validation with 600,000 iterations. Features a **3-strike lockout** of 15 minutes to block automated brute-forcing. |
 | **Threat Intel** | Integrated lookups across 10 TI providers (ThreatFox, MalwareBazaar, URLhaus, Yaraify, MISP, OTX, Shodan, VT, AbuseIPDB, and CrowdStrike). |
-| **Semantic RAG** | Search over **22,000+ IR records** (SANS posters, Sigma, LOLBAS, GTFOBins, and KAPE targets) using a local ChromaDB collection (downloaded on first use; ~600 MB). |
-| **Live Orchestration** | Live target acquisition and collection via 10 built-in Velociraptor hunts (supports simulated mock client mode for offline testing). |
-| **Pipeline Agents** | Multi-agent state machine containing 6 specialized sub-agents (alert, cloud, network, endpoint, synthesis, and timeline) to construct analysis loops. |
+| **Semantic RAG** | Search over **22,000+ IR records** (SANS posters, Sigma, LOLBAS, GTFOBins, and KAPE targets) using a local ChromaDB collection. Bring your own index, download the prebuilt release, or rebuild from your own sources; embedding model is operator-configurable (`NEXUS_RAG_MODEL`). |
+| **Live Orchestration** | Live target acquisition and collection via 10 built-in Velociraptor hunts (simulated mock client mode for offline testing), plus `convert_pcap` for turning raw captures into ingestible JSON via tshark. |
+| **Pipeline Agents** | Two analysis loops: an offline 6-agent heuristic graph (alert, cloud, network, endpoint, synthesis, timeline) and an **LLM-driven pipeline** (`nexus pipeline`) that hunts evidence via ReAct tool-calling against any OpenAI-compatible model, stages DRAFT findings, and pauses at the human-approval gate. |
 
 ---
 
@@ -140,6 +140,24 @@ python tests/test_hunt_parser.py
 # 3. Run the E2E Functional Audit (115 checks)
 python tests/functional_audit.py
 ```
+
+---
+
+## Knowledge-base data — attribution & roadmap
+
+The prebuilt **RAG index** (~22,000 IR records) and **Windows triage
+baselines** currently offered through `forensic_rag_download()` /
+`triage_download()` are built and published by
+[Applied Incident Response](https://github.com/AppliedIR/sift-mcp) under the
+**MIT License** (Copyright (c) 2026 AppliedIncidentResponse.com). Full credit
+to the AppliedIR team for that corpus — DFIR-Nexus fetches those release
+assets as-is and does not redistribute them.
+
+**In progress:** we are building our own large-scale RAG and triage corpus
+(expanded DFIR knowledge sources, lab-derived Windows baselines, and
+detection-oriented records). As it lands, `forensic_rag_rebuild()` and the
+`NEXUS_RAG_RELEASE_REPO` / `NEXUS_TRIAGE_RELEASE_REPO` overrides let you
+point DFIR-Nexus at our releases — or at your own.
 
 ---
 
