@@ -26,6 +26,108 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         return _ingest(Path(path))
 
     @server.tool()
+    def convert_pcap(
+        pcap_path: str,
+        display_filter: str = "",
+        max_packets: int = 0,
+    ) -> dict:
+        """Convert a raw PCAP/PCAPNG capture to tshark JSON for ingestion.
+
+        Raw packet captures are not parsed natively. This tool runs tshark
+        (Wireshark CLI) to produce a JSON export, which ingest_auto() then
+        parses via the Wireshark importer.
+
+        Args:
+            pcap_path: Path to the .pcap/.pcapng file.
+            display_filter: Optional tshark display filter (e.g. "dns",
+                "http.request"). Recommended for large captures.
+            max_packets: Optional packet limit (0 = all).
+        """
+        import re
+        import shutil
+        import subprocess
+
+        from nexus.config import settings
+
+        src = Path(pcap_path)
+        if not src.is_file():
+            return {"success": False, "error": f"File not found: {pcap_path}"}
+
+        tshark = shutil.which("tshark") or shutil.which("tshark.exe")
+        if not tshark:
+            return {
+                "success": False,
+                "error": "tshark not found on PATH. Install Wireshark "
+                         "(e.g. choco install wireshark) first.",
+            }
+
+        out_dir = src.parent
+        try:
+            from nexus.case_manager import CaseManager
+            out_dir = CaseManager().require_active_case() / "extractions"
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            out_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            return {"success": False, "error": f"Cannot create output dir: {e}"}
+
+        safe_stem = re.sub(r"[^a-zA-Z0-9._-]", "_", src.stem)
+        out_path = out_dir / f"{safe_stem}.tshark.json"
+
+        cmd = [tshark, "-r", str(src), "-T", "json"]
+        if display_filter:
+            cmd += ["-Y", display_filter]
+        if max_packets and max_packets > 0:
+            cmd += ["-c", str(int(max_packets))]
+
+        result: dict = {"pcap": str(src), "output_path": str(out_path)}
+        if src.stat().st_size > 100 * 1024 * 1024 and not display_filter and not max_packets:
+            result["warning"] = (
+                "Large capture without a filter — JSON output can be several "
+                "times the pcap size. Consider display_filter or max_packets."
+            )
+
+        try:
+            with open(out_path, "wb") as out_f:
+                proc = subprocess.run(
+                    cmd,
+                    stdout=out_f,
+                    stderr=subprocess.PIPE,
+                    timeout=settings.command_timeout,
+                )
+        except subprocess.TimeoutExpired:
+            result.update({"success": False,
+                           "error": f"tshark timed out after {settings.command_timeout}s"})
+            result["audit_id"] = audit.log(
+                tool="convert_pcap", params={"pcap_path": str(src)},
+                result_summary={"success": False, "error": "timeout"})
+            return result
+        except OSError as e:
+            return {"success": False, "error": f"tshark execution failed: {e}"}
+
+        if proc.returncode != 0:
+            stderr = proc.stderr.decode("utf-8", errors="replace")[:500]
+            result.update({"success": False, "error": stderr})
+            result["audit_id"] = audit.log(
+                tool="convert_pcap", params={"pcap_path": str(src)},
+                result_summary={"success": False, "error": stderr[:200]})
+            return result
+
+        result.update({
+            "success": True,
+            "size_bytes": out_path.stat().st_size,
+            "next_step": f'ingest_auto("{out_path}")',
+        })
+        result["audit_id"] = audit.log(
+            tool="convert_pcap",
+            params={"pcap_path": str(src), "display_filter": display_filter,
+                    "max_packets": max_packets},
+            result_summary={"success": True, "output_path": str(out_path),
+                            "size_bytes": result["size_bytes"]})
+        return result
+
+    @server.tool()
     def analyze_gaps(min_gap_seconds: int = 300) -> dict:
         """Detect suspicious gaps in the forensic timeline.
 

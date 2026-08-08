@@ -124,6 +124,26 @@ class TestDetectFilenameHints:
         assert detect_format(p) != ArtifactSource.GENERIC_CSV
 
 
+class TestTsharkJsonDetection:
+    """convert_pcap output (pretty-printed tshark JSON) must route to wireshark."""
+
+    def test_tshark_json_by_content(self, tmp_path):
+        p = tmp_path / "capture.tshark.json"
+        p.write_text(
+            '[\n  {\n    "_index": "packets-0001",\n'
+            '    "_source": {\n      "layers": {\n'
+            '        "frame": {"frame.time_epoch": "1700000000"}\n'
+            "      }\n    }\n  }\n]\n",
+            encoding="utf-8",
+        )
+        assert detect_format(p) == ArtifactSource.WIRESHARK
+
+    def test_tshark_json_suffix_hint(self, tmp_path):
+        p = tmp_path / "weird-name.tshark.json"
+        p.write_text("not json at all", encoding="utf-8")
+        assert detect_format(p) == ArtifactSource.WIRESHARK
+
+
 class TestNdjsonWithJsonExtension:
     """G1-class: NDJSON content behind a .json extension must parse."""
 

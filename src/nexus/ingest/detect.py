@@ -52,6 +52,8 @@ def detect_format(path: Path) -> ArtifactSource | None:
     }
     if suffix in _EXT_HINTS:
         return _EXT_HINTS[suffix]
+    if name_lower.endswith(".tshark.json"):
+        return ArtifactSource.WIRESHARK
     if name_lower.endswith((".tar.gz", ".tar.xz", ".tar.bz2")):
         return ArtifactSource.GENERIC_JSONL
 
@@ -154,6 +156,11 @@ def detect_format(path: Path) -> ArtifactSource | None:
                 return _detect_json_format(sample, name_lower)
             elif isinstance(sample, list) and sample and isinstance(sample[0], dict):
                 return _detect_json_format(sample[0], name_lower)
+
+        # tshark / Wireshark JSON export — pretty-printed, so the whole-head
+        # parse above usually fails on truncation; sniff the shape directly.
+        if '"_source"' in head and '"layers"' in head:
+            return ArtifactSource.WIRESHARK
 
         # CSV/TSV-based formats
         if "\t" in head[:2000] and "\n" in head[:2000]:
