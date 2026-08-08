@@ -24,9 +24,16 @@ _EXAMINER_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,19}$")
 
 
 def resolve_examiner() -> str:
-    """Resolve examiner identity from env vars or OS username."""
+    """Resolve examiner identity.
+
+    Precedence: NEXUS_EXAMINER env -> configured examiner (config.yaml /
+    settings) -> OS username -> "unknown". The configured examiner is what
+    `nexus config --examiner` sets, so audit rows carry the identity the
+    examiner actually chose.
+    """
     raw = (
         os.environ.get("NEXUS_EXAMINER")
+        or (settings.examiner if settings.examiner else "")
         or os.environ.get("USER")
         or os.environ.get("USERNAME")
         or "unknown"

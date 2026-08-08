@@ -54,12 +54,14 @@ def register(
     digest = sha256.hexdigest()
 
     mgr = _get_sqlite_mgr()
+    from nexus.audit import resolve_examiner
     mgr.add_evidence(
         case_id=case_id,
         name=fpath.name,
         description=description,
         file_path=str(fpath.resolve()),
         file_hash_sha256=digest,
+        collected_by=resolve_examiner(),
     )
 
     typer.echo(f"Registered: {fpath.name}")

@@ -1,6 +1,5 @@
 """Case lifecycle commands — backed by the SQLite case stack."""
 
-import os
 from pathlib import Path
 
 import typer
@@ -68,7 +67,8 @@ def close(case_id: str = typer.Argument("", help="Case ID to close (defaults to 
         typer.echo("No case specified and no active case", err=True)
         raise typer.Exit(1)
     mgr = _get_sqlite_mgr()
-    analyst = os.environ.get("USER") or os.environ.get("USERNAME") or "system"
+    from nexus.audit import resolve_examiner
+    analyst = resolve_examiner()
     closed = mgr.close_case(case_id, closed_by=analyst)
     if closed is None:
         typer.echo(f"Case not found: {case_id}", err=True)

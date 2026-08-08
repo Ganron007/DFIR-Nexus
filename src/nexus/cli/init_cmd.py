@@ -91,6 +91,7 @@ def init(
             description="Registered by nexus init",
             file_path=str(fpath.resolve()),
             file_hash_sha256=digest,
+            collected_by=resolve_examiner(),
         )
         typer.echo(f"  Evidence registered: {fpath.name} (SHA-256: {digest[:16]}…)")
     mgr.close()
