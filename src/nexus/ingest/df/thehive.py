@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, ClassVar
 
-from nexus.ingest.base import Importer
+from nexus.ingest.base import Importer, ImporterError
 from nexus.ingest.schemas import (
     Artifact,
     ArtifactSource,
@@ -60,8 +60,11 @@ class TheHiveImporter(Importer):
 
     def parse(self, path: Path) -> Iterator[Artifact]:
         """Yield one Artifact per TheHive case/observable/task."""
-        with path.open("r", encoding="utf-8", errors="replace") as f:
-            data = json.load(f)
+        try:
+            with path.open("r", encoding="utf-8", errors="replace") as f:
+                data = json.load(f)
+        except json.JSONDecodeError as e:
+            raise ImporterError(f"Invalid JSON in {path.name}: {e}") from e
         cases = self._extract_cases(data)
         for case in cases:
             yield from self._case_to_artifacts(case)

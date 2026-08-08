@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from nexus.ingest.base import Importer
+from nexus.ingest.base import Importer, ImporterError
 from nexus.ingest.schemas import (
     Artifact,
     ArtifactSource,
@@ -51,8 +51,11 @@ class MISPImporter(Importer):
 
     def parse(self, path: Path) -> Iterator[Artifact]:
         """Yield Artifact objects from a MISP event JSON."""
-        with path.open("r", encoding="utf-8", errors="replace") as f:
-            data = json.load(f)
+        try:
+            with path.open("r", encoding="utf-8", errors="replace") as f:
+                data = json.load(f)
+        except json.JSONDecodeError as e:
+            raise ImporterError(f"Invalid JSON in {path.name}: {e}") from e
         events = self._extract_events(data)
         for event in events:
             yield from self._event_to_artifacts(event)

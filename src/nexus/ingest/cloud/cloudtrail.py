@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, ClassVar
 
-from nexus.ingest.base import Importer
+from nexus.ingest.base import Importer, ImporterError
 from nexus.ingest.schemas import (
     Artifact,
     ArtifactSource,
@@ -78,8 +78,11 @@ class CloudTrailImporter(Importer):
 
     def _parse_file(self, file: Path) -> Iterator[Artifact]:
         """Parse a single CloudTrail JSON file."""
-        with file.open("r", encoding="utf-8", errors="replace") as f:
-            data = json.load(f)
+        try:
+            with file.open("r", encoding="utf-8", errors="replace") as f:
+                data = json.load(f)
+        except json.JSONDecodeError as e:
+            raise ImporterError(f"Invalid JSON in {file.name}: {e}") from e
         records = self._extract_records(data)
         for record in records:
             if isinstance(record, dict):
