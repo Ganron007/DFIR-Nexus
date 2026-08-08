@@ -62,7 +62,7 @@ advisories:
 quick_start: "vol -f memory_dump.raw windows.info"
 
 investigation_sequence:
-  - "Start with windows.info to identify the OS version and profile (via sift-mcp)"
+  - "Start with windows.info to identify the OS version and profile (via run_command)"
   - "Run windows.pslist and windows.pstree to enumerate running processes"
   - "Run windows.netscan for network connection analysis"
   - "Run windows.cmdline to see command-line arguments for all processes"

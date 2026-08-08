@@ -30,7 +30,7 @@ advisories:
 quick_start: "AppCompatCacheParser.exe -f SYSTEM --csv output/"
 
 investigation_sequence:
-  - "Parse the SYSTEM hive to extract ShimCache entries (via sift-mcp or wintools-mcp)"
+  - "Parse the SYSTEM hive to extract ShimCache entries (via run_command / run_windows_command)"
   - "Review all entries including cache position — lower positions are more recent"
   - "On Windows 10+, ShimCache entries indicate file PRESENCE, not execution"
   - "Cross-reference with Amcache and Prefetch for corroboration"

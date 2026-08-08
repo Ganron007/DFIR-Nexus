@@ -38,17 +38,30 @@ except ImportError:
 MAX_TEXT_LENGTH = 1500
 MAX_TOP_K = 50
 MAX_RETRIEVE = 500
+# Default embedding model used by the prebuilt index. Hosting a model is
+# the operator's responsibility: set NEXUS_RAG_MODEL to a HuggingFace model
+# ID or a local model directory. The model MUST match the embeddings stored
+# in the index (the prebuilt index uses the default below).
 DEFAULT_MODEL_NAME = "BAAI/bge-base-en-v1.5"
-ALLOWED_MODELS = frozenset({
-    "BAAI/bge-base-en-v1.5", "BAAI/bge-small-en-v1.5", "BAAI/bge-large-en-v1.5",
-    "sentence-transformers/all-MiniLM-L6-v2", "sentence-transformers/all-mpnet-base-v2",
-})
 
 MITRE_ID_PATTERN = re.compile(r"\b(T\d{4}(?:\.\d{3})?)\b", re.IGNORECASE)
 
-REPO = "AppliedIR/sift-mcp"
+# Prebuilt index release assets are currently fetched from this upstream
+# GitHub repository. Operators can host their own release and point here
+# instead via NEXUS_RAG_RELEASE_REPO ("owner/repo").
+_DEFAULT_RELEASE_REPO = "AppliedIR/sift-mcp"
 CHUNK_SIZE = 1024 * 1024
 _ASSETS = ("rag-index.tar.zst", "rag-checksums.sha256")
+
+
+def _release_repo() -> str:
+    """GitHub repo (owner/name) hosting the RAG index release assets."""
+    return os.environ.get("NEXUS_RAG_RELEASE_REPO") or _DEFAULT_RELEASE_REPO
+
+
+def _rag_model_name() -> str:
+    """Embedding model ID or local path used to embed RAG queries."""
+    return os.environ.get("NEXUS_RAG_MODEL") or DEFAULT_MODEL_NAME
 
 
 def _get_index_dir() -> Path:
@@ -78,7 +91,7 @@ def _github_headers() -> dict[str, str]:
 
 def _fetch_latest_release() -> dict:
     headers = _github_headers()
-    url = f"https://api.github.com/repos/{REPO}/releases?per_page=100"
+    url = f"https://api.github.com/repos/{_release_repo()}/releases?per_page=100"
     req = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(req, timeout=30) as resp:
         releases = json.loads(resp.read())
@@ -190,7 +203,7 @@ class RAGIndex:
                 "RAG index not found. Run forensic_rag_rebuild() or "
                 "forensic_rag_download() to install."
             )
-        self.model = SentenceTransformer(DEFAULT_MODEL_NAME)
+        self.model = SentenceTransformer(_rag_model_name())
         client = chromadb.PersistentClient(path=str(chroma_path))
         self.collection = client.get_collection("ir_knowledge")
         self._load_available_sources()
@@ -347,7 +360,7 @@ class RAGIndex:
             "document_count": self.collection.count(),
             "source_count": len(self.available_sources),
             "sources": self.available_sources,
-            "model": DEFAULT_MODEL_NAME,
+            "model": _rag_model_name(),
         }
 
 
@@ -507,13 +520,13 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         dest = _get_index_dir()
         dest.mkdir(parents=True, exist_ok=True)
 
-        print(f"Fetching release info from {REPO}...")
+        print(f"Fetching release info from {_release_repo()}...")
         try:
             if tag == "latest":
                 release = _fetch_latest_release()
             else:
                 headers = _github_headers()
-                url = f"https://api.github.com/repos/{REPO}/releases/tags/{tag}"
+                url = f"https://api.github.com/repos/{_release_repo()}/releases/tags/{tag}"
                 req = urllib.request.Request(url, headers=headers)
                 with urllib.request.urlopen(req, timeout=30) as resp:
                     release = json.loads(resp.read())

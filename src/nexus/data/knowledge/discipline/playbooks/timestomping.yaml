@@ -12,7 +12,7 @@ triggers:
 phases:
   - phase: "Identify"
     steps:
-      - "Parse MFT with MFTECmd (via sift-mcp or wintools-mcp) comparing $STANDARD_INFORMATION vs $FILE_NAME timestamps"
+      - "Parse MFT with MFTECmd (via run_command / run_windows_command) comparing $STANDARD_INFORMATION vs $FILE_NAME timestamps"
       - "Flag entries where $SI Created timestamp is earlier than $FN Created timestamp"
       - "Check for nanosecond fields of zero which indicate programmatic timestamp modification"
   - phase: "Verify"

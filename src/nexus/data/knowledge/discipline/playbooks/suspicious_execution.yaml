@@ -13,9 +13,9 @@ triggers:
 phases:
   - phase: "Identify"
     steps:
-      - "Parse Prefetch with PECmd (via wintools-mcp) — note run count, timestamps, and loaded files/directories"
-      - "Check Amcache with AmcacheParser (via sift-mcp or wintools-mcp) for file presence records and SHA1 hashes"
-      - "Check Shimcache with AppCompatCacheParser (via sift-mcp or wintools-mcp) for additional execution evidence"
+      - "Parse Prefetch with PECmd (via run_windows_command) — note run count, timestamps, and loaded files/directories"
+      - "Check Amcache with AmcacheParser (via run_command / run_windows_command) for file presence records and SHA1 hashes"
+      - "Check Shimcache with AppCompatCacheParser (via run_command / run_windows_command) for additional execution evidence"
   - phase: "Validate"
     steps:
       - "Check executable against Windows baseline (windows-triage: check_file)"
@@ -29,7 +29,7 @@ phases:
     steps:
       - "If suspicious, submit to REMnux for static analysis (remnux: analyze_file)"
       - "Check parent process if Sysmon data available (windows-triage: check_process_tree)"
-      - "Check capabilities with capa (via sift-mcp or wintools-mcp) for behavioral indicators"
+      - "Check capabilities with capa (via run_command / run_windows_command) for behavioral indicators"
   - phase: "Scope"
     steps:
       - "Search for same executable on other systems if multi-system investigation"

@@ -32,7 +32,7 @@ advisories:
 quick_start: "EvtxECmd.exe -d evtx_directory/ --csv output/"
 
 investigation_sequence:
-  - "Parse all available EVTX log files, not just Security.evtx (via sift-mcp or wintools-mcp)"
+  - "Parse all available EVTX log files, not just Security.evtx (via run_command / run_windows_command)"
   - "Review all events across all severity levels — informational events provide critical context"
   - "Use event log maps for structured field extraction"
   - "Correlate event timestamps across multiple log channels for timeline construction"

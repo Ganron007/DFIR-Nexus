@@ -14,7 +14,7 @@ triggers:
 phases:
   - phase: "Identify"
     steps:
-      - "Analyze PCAP or Zeek logs using tshark or zeek (via sift-mcp)"
+      - "Analyze PCAP or Zeek logs using tshark or zeek (via run_command)"
       - "Check conversation statistics for beaconing patterns — regular intervals, consistent payload sizes"
       - "Identify top talkers and unusual protocol usage"
   - phase: "Threat Intel"
@@ -23,12 +23,12 @@ phases:
       - "Search for C2 communication patterns and known malware profiles (forensic-rag: search)"
   - phase: "Process Mapping"
     steps:
-      - "If process data available, identify which process made the connection using Volatility3 netscan (via sift-mcp)"
+      - "If process data available, identify which process made the connection using Volatility3 netscan (via run_command)"
       - "Check Sysmon Event ID 3 for network connection events with process context"
       - "Verify processes against baseline (windows-triage: check_process_tree)"
   - phase: "Payload"
     steps:
-      - "Extract HTTP objects from PCAP using tshark --export-objects (via sift-mcp)"
+      - "Extract HTTP objects from PCAP using tshark --export-objects (via run_command)"
       - "Check DNS queries for tunneling indicators — long labels, high query volume, TXT records"
       - "Analyze extracted payloads for malicious content (remnux: analyze_file)"
   - phase: "Record"

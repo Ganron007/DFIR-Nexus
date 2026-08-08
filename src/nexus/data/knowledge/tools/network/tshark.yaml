@@ -36,7 +36,7 @@ advisories:
 quick_start: "tshark -r capture.pcap"
 
 investigation_sequence:
-  - "Open the PCAP file to review packet summary with default output (via sift-mcp)"
+  - "Open the PCAP file to review packet summary with default output (via run_command)"
   - "Use -Y display filters to focus on protocols or hosts of interest"
   - "Use -T fields -e for structured field extraction of specific protocol fields"
   - "Review all traffic types — even benign-looking protocols may carry malicious payloads"

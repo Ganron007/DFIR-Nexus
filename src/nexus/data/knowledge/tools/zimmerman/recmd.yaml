@@ -32,7 +32,7 @@ advisories:
 quick_start: "RECmd.exe -f NTUSER.DAT --bn BatchExamples/RECmd_Batch_MC.reb --csv output/"
 
 investigation_sequence:
-  - "Parse registry hives using batch files for structured extraction (via sift-mcp or wintools-mcp)"
+  - "Parse registry hives using batch files for structured extraction (via run_command / run_windows_command)"
   - "Use appropriate batch files (--bn) for the hive type being analyzed"
   - "Review all extracted values — registry contains extensive system and user configuration data"
   - "Cross-reference NTUSER.DAT findings with SYSTEM and SOFTWARE hive data"

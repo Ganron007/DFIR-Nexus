@@ -14,18 +14,18 @@ triggers:
 phases:
   - phase: "Identify"
     steps:
-      - "Parse Security event logs with Hayabusa (via sift-mcp or wintools-mcp) filtering for logon events (4624, 4625, 4648)"
+      - "Parse Security event logs with Hayabusa (via run_command / run_windows_command) filtering for logon events (4624, 4625, 4648)"
       - "Filter by target account, source address, and logon type to isolate suspicious entries"
       - "Record evidence IDs for all relevant log entries"
   - phase: "Baseline"
     steps:
-      - "Check the account's previous logon history on this system using EvtxECmd (via sift-mcp or wintools-mcp) filtered by account name"
+      - "Check the account's previous logon history on this system using EvtxECmd (via run_command / run_windows_command) filtered by account name"
       - "Determine normal logon patterns — usual times, source systems, logon types"
       - "If available, check same account on other systems to establish cross-system baseline"
   - phase: "Context"
     steps:
-      - "Check process execution around logon time using PECmd (via wintools-mcp) to identify what was run"
-      - "Check file creation around logon time using MFTECmd (via sift-mcp or wintools-mcp)"
+      - "Check process execution around logon time using PECmd (via run_windows_command) to identify what was run"
+      - "Check file creation around logon time using MFTECmd (via run_command / run_windows_command)"
       - "Check for new services or tasks created using windows-triage (check_service, check_scheduled_task)"
   - phase: "Lateral Check"
     steps:

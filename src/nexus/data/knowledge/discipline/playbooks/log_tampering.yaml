@@ -13,7 +13,7 @@ triggers:
 phases:
   - phase: "Identify"
     steps:
-      - "Parse event logs with Hayabusa (via sift-mcp or wintools-mcp) for log clearing events — Event IDs 1102, 104"
+      - "Parse event logs with Hayabusa (via run_command / run_windows_command) for log clearing events — Event IDs 1102, 104"
       - "Check for time gaps in event sequence numbers across all log channels"
       - "Compare expected log volume against actual for the investigation timeframe"
   - phase: "Timeline"
@@ -23,7 +23,7 @@ phases:
       - "Check if clearing coincides with other suspicious activity"
   - phase: "Alternative Sources"
     steps:
-      - "Check USN Journal for file system activity during the gap using MFTECmd (via sift-mcp or wintools-mcp)"
+      - "Check USN Journal for file system activity during the gap using MFTECmd (via run_command / run_windows_command)"
       - "Check Sysmon logs which are stored in a separate event log channel"
       - "Check PowerShell transcripts and PSReadLine history for command activity"
       - "Check network logs and PCAP for activity during the gap period"

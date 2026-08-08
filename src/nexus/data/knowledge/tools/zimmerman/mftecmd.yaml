@@ -32,7 +32,7 @@ advisories:
 quick_start: "MFTECmd.exe -f '$MFT' --csv output/"
 
 investigation_sequence:
-  - "Parse the $MFT to extract complete file system metadata (via sift-mcp or wintools-mcp)"
+  - "Parse the $MFT to extract complete file system metadata (via run_command / run_windows_command)"
   - "For $J (USN Journal), use --csv to extract change journal records"
   - "Review all entries including resident data for small file content recovery"
   - "Compare $SI and $FN timestamps — discrepancies may indicate timestomping"

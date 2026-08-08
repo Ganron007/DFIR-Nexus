@@ -1,7 +1,7 @@
 """Windows forensic tool execution — catalog-gated, platform-gated.
 
-Matches the original wintools-mcp with all 10 MCP tools, full catalog
-(31 tools across 7 categories), result caching, and output parsing.
+Catalog-driven execution of 31 Windows forensic tools across 7
+categories, with result caching and structured output parsing.
 """
 
 import json

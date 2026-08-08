@@ -13,7 +13,7 @@ triggers:
 phases:
   - phase: "Identify"
     steps:
-      - "Parse PowerShell event logs with EvtxECmd (via sift-mcp or wintools-mcp) — Event IDs 4103 (module logging), 4104 (script block logging)"
+      - "Parse PowerShell event logs with EvtxECmd (via run_command / run_windows_command) — Event IDs 4103 (module logging), 4104 (script block logging)"
       - "Parse Security event logs for process creation with command line — Event ID 4688"
       - "Check PowerShell transcripts if enabled (check PSReadLine history and transcript paths)"
   - phase: "Decode"

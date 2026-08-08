@@ -261,27 +261,6 @@ Tool execution → audit_id → record_finding(artifacts=[{audit_id}])
 `nexus-config.json` is written to the current working directory by
 `nexus init` (LLM client config snippet — copy into `.mcp.json`).
 
-## Comparison to Original Upstream
-
-> Full side-by-side, including data/control-flow differences, LangGraph
-> parity, what we already do better, what upstream still does better,
-> and the prioritised roadmap: see `Docs/internal/COMPARISON.md` (internal).
-
-
-
-| Aspect | Original (3 repos) | DFIR-Nexus |
-|--------|-------------------|-------------|
-| Processes | 11+ separate MCP servers + gateway | 1 FastMCP server |
-| Packages | sift-mcp (11 packages) + wintools-mcp + vhir-cli | 1 package |
-| MCP Tools | 83 across all packages | 110 on Windows / 107 on Linux |
-| CLI Commands | 46 (vhir) | 19 (nexus) |
-| Gateway | Required for multi-server | Built-in HTTP mode |
-| Dashboard | Separate Flask/Starlette app | Same process |
-| File sharing | SMB between Windows and SIFT | Direct HTTP per instance |
-| Case state | Separate forensic-mcp + case-mcp + vhir | Unified CaseManager |
-| Audit trails | Per-server JSONL files | Per-server namespaced in one process |
-| Knowledge base | PyPI package (forensic-knowledge) | Local YAML files (91) |
-
 ## LLM Client Setup
 
 ```bash

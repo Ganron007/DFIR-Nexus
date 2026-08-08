@@ -23,7 +23,7 @@ advisories:
 quick_start: "AmcacheParser.exe -f Amcache.hve --csv output/"
 
 investigation_sequence:
-  - "Parse Amcache.hve to extract all file presence records (via sift-mcp or wintools-mcp)"
+  - "Parse Amcache.hve to extract all file presence records (via run_command / run_windows_command)"
   - "Review all entries including both associated and unassociated file entries"
   - "Note that Amcache records indicate file PRESENCE on the system, not execution"
   - "Cross-reference with Prefetch (PECmd) and UserAssist to confirm execution"

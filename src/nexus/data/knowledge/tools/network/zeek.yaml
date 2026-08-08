@@ -35,7 +35,7 @@ advisories:
 quick_start: "zeek -r capture.pcap"
 
 investigation_sequence:
-  - "Process the PCAP file with Zeek to generate protocol-level log files (via sift-mcp)"
+  - "Process the PCAP file with Zeek to generate protocol-level log files (via run_command)"
   - "Review conn.log first for a summary of all network connections"
   - "Check dns.log for domain resolution activity and potential C2 domains"
   - "Review http.log for web requests including URIs, user agents, and response codes"

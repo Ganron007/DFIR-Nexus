@@ -34,7 +34,7 @@ advisories:
 quick_start: "hayabusa csv-timeline -d evtx_directory/ -o output.csv"
 
 investigation_sequence:
-  - "Run csv-timeline to generate a detection-based timeline of all EVTX files (via sift-mcp or wintools-mcp)"
+  - "Run csv-timeline to generate a detection-based timeline of all EVTX files (via run_command / run_windows_command)"
   - "Review critical and high severity detections first for rapid triage"
   - "Do not discard lower severity results — informational and low events frequently contain valuable context and supporting evidence for the investigation"
   - "Use logon-summary for rapid authentication analysis"

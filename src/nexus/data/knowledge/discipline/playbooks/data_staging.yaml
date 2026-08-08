@@ -13,22 +13,22 @@ triggers:
 phases:
   - phase: "Identify"
     steps:
-      - "Check Prefetch for archive tool execution using PECmd (via wintools-mcp) — look for 7z.exe, rar.exe, WinRAR.exe, compact.exe"
-      - "Check MFT for large file creation in temp or staging paths using MFTECmd (via sift-mcp or wintools-mcp)"
+      - "Check Prefetch for archive tool execution using PECmd (via run_windows_command) — look for 7z.exe, rar.exe, WinRAR.exe, compact.exe"
+      - "Check MFT for large file creation in temp or staging paths using MFTECmd (via run_command / run_windows_command)"
       - "Check USN Journal for file rename and creation operations around staging time"
   - phase: "Content"
     steps:
-      - "Check Shellbags for folder access patterns using RECmd (via sift-mcp or wintools-mcp)"
-      - "Check Jump Lists for recent file access using JLECmd (via sift-mcp or wintools-mcp)"
+      - "Check Shellbags for folder access patterns using RECmd (via run_command / run_windows_command)"
+      - "Check Jump Lists for recent file access using JLECmd (via run_command / run_windows_command)"
       - "Determine what data was accessed before the staging activity"
   - phase: "Exfiltration"
     steps:
-      - "Check network connections around staging time using tshark or zeek (via sift-mcp) if PCAP available"
-      - "Check for cloud upload activity in browser history using Hindsight (via sift-mcp)"
-      - "Check for large outbound data transfers in SRUM using SrumECmd (via sift-mcp or wintools-mcp)"
+      - "Check network connections around staging time using tshark or zeek (via run_command) if PCAP available"
+      - "Check for cloud upload activity in browser history using Hindsight (via run_command)"
+      - "Check for large outbound data transfers in SRUM using SrumECmd (via run_command / run_windows_command)"
   - phase: "USB Check"
     steps:
-      - "Check USB device connections around staging time — MountPoints2 in registry via RECmd (via sift-mcp or wintools-mcp)"
+      - "Check USB device connections around staging time — MountPoints2 in registry via RECmd (via run_command / run_windows_command)"
       - "Check USBSTOR registry entries for device serial numbers and connection times"
   - phase: "Record"
     steps:

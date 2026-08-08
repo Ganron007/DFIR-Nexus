@@ -31,7 +31,7 @@ advisories:
 quick_start: "PECmd.exe -d \"C:/Windows/Prefetch\" --csv output/"
 
 investigation_sequence:
-  - "Parse all Prefetch files to identify program execution history (via wintools-mcp)"
+  - "Parse all Prefetch files to identify program execution history (via run_windows_command)"
   - "Review all entries — Prefetch provides direct evidence of EXECUTION with timestamps"
   - "Note the run count and last 8 execution timestamps for each program"
   - "Review files loaded by each program — these appear in the file references"

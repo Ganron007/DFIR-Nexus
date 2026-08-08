@@ -1,6 +1,7 @@
 """Download pre-built triage databases from GitHub releases.
 
-Downloads known_good.db.zst and context.db.zst from AppliedIR/sift-mcp releases.
+Downloads known_good.db.zst and context.db.zst from the configured
+release repository (see ``_release_repo``).
 """
 
 import hashlib
@@ -18,10 +19,18 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-REPO = "AppliedIR/sift-mcp"
+# Prebuilt triage baselines are currently published under this upstream
+# GitHub repository. Operators can host their own release and override it
+# via NEXUS_TRIAGE_RELEASE_REPO ("owner/repo").
+_DEFAULT_RELEASE_REPO = "AppliedIR/sift-mcp"
 ASSETS = ("known_good.db.zst", "context.db.zst", "checksums.sha256")
 MAX_ATTEMPTS = 3
 CHUNK_SIZE = 1024 * 1024
+
+
+def _release_repo() -> str:
+    """GitHub repo (owner/name) hosting the triage baseline release assets."""
+    return os.environ.get("NEXUS_TRIAGE_RELEASE_REPO") or _DEFAULT_RELEASE_REPO
 
 
 def _github_headers() -> dict[str, str]:
@@ -94,9 +103,9 @@ def download_databases(dest_dir: str | Path) -> bool:
     dest = Path(dest_dir)
     dest.mkdir(parents=True, exist_ok=True)
 
-    print(f"Fetching release info from {REPO}...")
+    print(f"Fetching release info from {_release_repo()}...")
     headers = _github_headers()
-    url = f"https://api.github.com/repos/{REPO}/releases?per_page=100"
+    url = f"https://api.github.com/repos/{_release_repo()}/releases?per_page=100"
     req = urllib.request.Request(url, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:

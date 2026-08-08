@@ -20,7 +20,7 @@ workflow:
   - step: "Analyze"
     description: "Run tools via the appropriate MCP — responses include caveats and corroboration"
     when: "At the start of each investigative question or when new evidence surfaces"
-    how: "Choose the right MCP based on tool availability and suitability: sift-mcp for Linux-native tools and multi-platform artifact parsers, wintools-mcp for Windows-native tools (.NET, Sysinternals). Both MCPs access the same shared case folder. Also use: forensic-rag for DFIR knowledge search (Sigma, MITRE, LOLBAS), windows-triage for Windows baseline validation, opencti for threat intelligence lookups, remnux for malware analysis. Read the full response including caveats and corroboration suggestions before drawing any conclusions."
+    how: "Choose the right tool based on availability and suitability: run_command for Linux-native tools and multi-platform artifact parsers, run_windows_command for Windows-native tools (.NET, Sysinternals). Both access the same shared case folder. Also use: forensic_rag_search for DFIR knowledge search (Sigma, MITRE, LOLBAS), check_file / check_process_tree for Windows baseline validation, lookup_indicator for threat intelligence lookups, and a REMnux workstation for malware analysis. Read the full response including caveats and corroboration suggestions before drawing any conclusions."
   - step: "Collect"
     description: "Note audit_ids from every tool call"
     when: "After every tool call that produces results"

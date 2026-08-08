@@ -13,9 +13,9 @@ triggers:
 phases:
   - phase: "Identify Method"
     steps:
-      - "Check for PsExec service install — Event ID 7045 with service name PSEXESVC using Hayabusa (via sift-mcp or wintools-mcp)"
+      - "Check for PsExec service install — Event ID 7045 with service name PSEXESVC using Hayabusa (via run_command / run_windows_command)"
       - "Check for RDP logons — Event ID 4624 Type 10, Event ID 1149 in TerminalServices-RemoteConnectionManager"
-      - "Check for WMI events — Event IDs 5857-5861 using EvtxECmd (via sift-mcp or wintools-mcp)"
+      - "Check for WMI events — Event IDs 5857-5861 using EvtxECmd (via run_command / run_windows_command)"
       - "Check for WinRM connections in Windows Remote Management event logs"
   - phase: "Source Analysis"
     steps:
@@ -24,9 +24,9 @@ phases:
       - "Check source IP against threat intelligence (opencti: lookup_ioc)"
   - phase: "Execution Context"
     steps:
-      - "Check what was executed after remote access using PECmd (via wintools-mcp)"
+      - "Check what was executed after remote access using PECmd (via run_windows_command)"
       - "Verify process execution trees around remote access time (windows-triage: check_process_tree)"
-      - "Check for tools transferred to the system using MFTECmd (via sift-mcp or wintools-mcp)"
+      - "Check for tools transferred to the system using MFTECmd (via run_command / run_windows_command)"
   - phase: "Scope"
     steps:
       - "Map all systems accessed via the same remote access method"
