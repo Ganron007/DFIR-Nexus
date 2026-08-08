@@ -4,9 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-import pytest
-
-from nexus.ingest.correlate import correlate, CorrelationResult, CorrelatedEvent
+from nexus.ingest.correlate import correlate
 from nexus.ingest.schemas import Artifact, ArtifactSource, ArtifactType, Severity
 
 

@@ -8,6 +8,7 @@ Parses systemd journal entries exported via ``journalctl -o json`` or
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 from collections.abc import Iterator
@@ -157,11 +158,8 @@ class JournaldImporter(Importer):
             pid = None
             raw_pid = entry.get("_PID") or entry.get("SYSLOG_PID")
             if raw_pid is not None:
-                try:
+                with contextlib.suppress(ValueError, TypeError):
                     pid = int(raw_pid)
-                except (ValueError, TypeError):
-                    pass
-            uid = entry.get("_UID")
             unit = str(entry.get("_SYSTEMD_UNIT", "")) or ""
 
             proc_name = comm or identifier or None

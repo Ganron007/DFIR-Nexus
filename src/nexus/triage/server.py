@@ -4,25 +4,31 @@ Integrates with KnownGoodDB (file/service/task/autorun baselines) and
 ContextDB (LOLBins, vulnerable drivers, process rules, named pipes).
 """
 
-import asyncio
-import json
 import logging
-import time
 from pathlib import Path
-from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
 from nexus.audit import AuditWriter
 from nexus.config import settings
+
 from .analysis import (
-    analyze_filename, check_process_name_spoofing, check_suspicious_path,
-    calculate_file_verdict, calculate_process_verdict, calculate_service_verdict,
-    calculate_hash_verdict, detect_hash_algorithm, is_system_path,
-    normalize_hash, normalize_path, extract_filename, extract_directory,
-    parse_service_binary_path, Verdict,
+    analyze_filename,
+    calculate_file_verdict,
+    calculate_hash_verdict,
+    calculate_process_verdict,
+    calculate_service_verdict,
+    check_process_name_spoofing,
+    check_suspicious_path,
+    detect_hash_algorithm,
+    extract_directory,
+    extract_filename,
+    is_system_path,
+    normalize_hash,
+    normalize_path,
+    parse_service_binary_path,
 )
-from .db import KnownGoodDB, ContextDB, RegistryDB
+from .db import ContextDB, KnownGoodDB, RegistryDB
 from .download import download_databases
 
 logger = logging.getLogger(__name__)
@@ -188,8 +194,6 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             protected = context.get_protected_process_names()
             spoofing = check_process_name_spoofing(process_name, protected)
             findings.extend(spoofing)
-
-        parent_exp = context.get_expected_process(parent_name)
 
         if exp:
             never_spawns = exp.get("never_spawns_children", 0)

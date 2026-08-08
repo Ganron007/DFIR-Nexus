@@ -4,12 +4,9 @@ from __future__ import annotations
 
 import base64
 
-import pytest
-
 from nexus.ingest.deobfuscate import (
-    deobfuscate_command,
     deobfuscate_artifacts,
-    DeobfuscationResult,
+    deobfuscate_command,
 )
 from nexus.ingest.schemas import Artifact, ArtifactSource, ArtifactType, Severity
 

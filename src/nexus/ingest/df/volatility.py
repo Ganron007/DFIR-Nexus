@@ -40,7 +40,7 @@ def _severity_for_plugin(plugin: str, row: dict[str, Any]) -> Severity:
 def _classify_rows(rows: list[dict[str, Any]], plugin_hint: str = "") -> str:
     if not rows:
         return "unknown"
-    cols = {k.lower() for k in rows[0].keys()}
+    cols = {k.lower() for k in rows[0]}
     if MALFIND_COLS.issubset(cols) or "malfind" in plugin_hint.lower():
         return "malfind"
     if NETSCAN_COLS & cols:

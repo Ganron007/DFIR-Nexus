@@ -1,7 +1,9 @@
 """Phase 1-4 functional audit — verifies wiring, not stubs."""
-import sys, json, tempfile, os
+import json
+import os
+import sys
+import tempfile
 from pathlib import Path
-from datetime import UTC, datetime
 
 passed = 0
 failed = 0
@@ -63,7 +65,7 @@ for mod_name, symbols in MODULES:
 # 2. Case stack — create case, finding, evidence, audit chain
 # ──────────────────────────────────────────────
 print("\n=== 2. Case stack (SQLite) ===")
-from nexus.case import CaseManager, CaseStatus, FindingSeverity, ApprovalState, ApprovalWorkflow
+from nexus.case import ApprovalState, ApprovalWorkflow, CaseManager, CaseStatus, FindingSeverity
 
 db = Path(tempfile.gettempdir()) / f"audit_{os.getpid()}.db"
 mgr = CaseManager(db, secret_key=b"audit-test")
@@ -98,7 +100,7 @@ db.unlink(missing_ok=True)
 # 3. Approval workflow — set password, approve, verify signature
 # ──────────────────────────────────────────────
 print("\n=== 3. Approval workflow ===")
-from nexus.case import Case, Finding, ApprovalWorkflow, ApprovalLockedError, ApprovalPasswordError
+from nexus.case import ApprovalPasswordError
 
 db2 = Path(tempfile.gettempdir()) / f"approval_{os.getpid()}.db"
 mgr2 = CaseManager(db2, secret_key=b"audit-test")
@@ -137,7 +139,7 @@ db2.unlink(missing_ok=True)
 # 4. Legacy JSON importer
 # ──────────────────────────────────────────────
 print("\n=== 4. Legacy JSON importer ===")
-from nexus.case import LegacyJsonImporter, get_sqlite_manager
+from nexus.case import LegacyJsonImporter
 
 tmp = Path(tempfile.gettempdir()) / f"legacy_{os.getpid()}"
 case_dir = tmp / "LEGACY-CASE"
@@ -156,15 +158,14 @@ findings_list = importer_mgr.list_findings("LEGACY-CASE")
 check("legacy_import_findings", len(findings_list) == 1)
 
 importer_mgr.close()
-import shutil; shutil.rmtree(tmp, ignore_errors=True)
+import shutil
+shutil.rmtree(tmp, ignore_errors=True)
 
 # ──────────────────────────────────────────────
 # 5. MITRE — actors, match, RBA, navigator layers
 # ──────────────────────────────────────────────
 print("\n=== 5. MITRE module ===")
-from nexus.mitre import (create_mitre_service, create_rba_scorer, match_actors,
-                         build_observed_layer)
-from nexus.mitre.catalog import list_actors
+from nexus.mitre import build_observed_layer, create_mitre_service, create_rba_scorer
 
 svc = create_mitre_service()
 actors = svc.list_actors()
@@ -192,14 +193,14 @@ check("observed_layer metadata", len(observed["techniques"]) == 1)
 # 6. VR — Velociraptor catalog and service
 # ──────────────────────────────────────────────
 print("\n=== 6. VR module ===")
-from nexus.vr import create_vr_service, suggest_hunt_ids, VRCatalogEntry
+from nexus.vr import create_vr_service
 
 vr_svc = create_vr_service(force_mock=True)
 check("vr_service created", vr_svc is not None)
-check("vr_use_mock", vr_svc.use_mock == True)
+check("vr_use_mock", bool(vr_svc.use_mock))
 
 health = vr_svc.health()
-check("vr_health", health["mock_mode"] == True)
+check("vr_health", bool(health["mock_mode"]))
 
 clients = vr_svc.list_clients()
 check("vr_clients >= 7", len(clients) >= 7, str(len(clients)))
@@ -218,8 +219,13 @@ check("vr_run_hunt", result is not None and result.row_count >= 2, str(result.ro
 # ──────────────────────────────────────────────
 print("\n=== 7. Integration/Export ===")
 from nexus.case import CaseManager as CM
-from nexus.integration.case_export import CaseExporter, export_to_json, export_to_markdown, export_to_html, export_to_stix
-from nexus.integration.export_formats import export_case_zip, export_to_docx, export_findings_csv
+from nexus.integration.case_export import (
+    export_to_html,
+    export_to_json,
+    export_to_markdown,
+    export_to_stix,
+)
+from nexus.integration.export_formats import export_case_zip, export_findings_csv, export_to_docx
 from nexus.integration.knowledge_graph import build_case_knowledge_graph
 from nexus.integration.vision import extract_iocs_from_text
 
@@ -269,7 +275,14 @@ db4.unlink(missing_ok=True)
 # 8. RAG types
 # ──────────────────────────────────────────────
 print("\n=== 8. RAG types ===")
-from nexus.rag import RAGDocument, SearchHit, validate_query, validate_top_k, score_quality, MatchQuality
+from nexus.rag import (
+    MatchQuality,
+    RAGDocument,
+    SearchHit,
+    score_quality,
+    validate_query,
+    validate_top_k,
+)
 
 try:
     validate_query("valid query")
@@ -315,7 +328,7 @@ for mod_name in CLI_MODULES:
 # 10. Triage analysis
 # ──────────────────────────────────────────────
 print("\n=== 10. Triage analysis ===")
-from nexus.triage.analysis import Verdict, merge_verdicts, VerdictResult
+from nexus.triage.analysis import Verdict, VerdictResult, merge_verdicts
 
 check("Verdict.MALICIOUS", hasattr(Verdict, "MALICIOUS"))
 

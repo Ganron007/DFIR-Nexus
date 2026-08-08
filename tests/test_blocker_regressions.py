@@ -26,7 +26,6 @@ class TestBlocker1PassTheHash:
     and challenge verification must use HMAC, not PBKDF2(stored_hash, nonce)."""
 
     def test_challenge_verification_is_hmac_not_pbkdf2(self) -> None:
-        from nexus.auth import derive_purpose_key
         stored_hash_hex = hashlib.pbkdf2_hmac(
             "sha256", b"testpass", b"salt123", 600_000
         ).hex()
@@ -38,7 +37,7 @@ class TestBlocker1PassTheHash:
         assert len(expected) == 64
 
     def test_signing_key_derived_from_stored_hash(self) -> None:
-        from nexus.auth import derive_purpose_key, SIGNING_PURPOSE
+        from nexus.auth import SIGNING_PURPOSE, derive_purpose_key
         stored_hash = hashlib.pbkdf2_hmac(
             "sha256", b"pw", b"salt", 600_000
         ).hex()
@@ -105,7 +104,9 @@ class TestBlocker4KeySeparation:
 
     def test_signing_vs_challenge_keys_differ(self) -> None:
         from nexus.auth import (
-            SIGNING_PURPOSE, CHALLENGE_PURPOSE, derive_purpose_key,
+            CHALLENGE_PURPOSE,
+            SIGNING_PURPOSE,
+            derive_purpose_key,
         )
         base = b"\x00" * 32
         signing = derive_purpose_key(base, SIGNING_PURPOSE)
@@ -239,9 +240,9 @@ class TestBlocker8Backup:
         active_file.write_text(str(case_dir))
 
         with patch("nexus.cli.backup._resolve_case_dir", return_value=case_dir):
-            from nexus.cli.backup import _verify_backup
             from typer.testing import CliRunner
-            from nexus.cli.backup import app
+
+            from nexus.cli.backup import _verify_backup, app
             runner = CliRunner()
             result = runner.invoke(app, ["create", str(backup_path)])
             assert result.exit_code == 0, result.output
@@ -283,6 +284,7 @@ class TestBlocker10Transport:
 
     def test_cli_main_has_streamable_http(self) -> None:
         import inspect
+
         from nexus.cli.main import build_http_app
         source = inspect.getsource(build_http_app)
         assert "streamable_http_app" in source
@@ -396,6 +398,7 @@ class TestBlocker15ShodanKeyLeak:
     @pytest.mark.asyncio
     async def test_shodan_http_error_sanitized(self) -> None:
         import httpx
+
         from nexus.ti.router import TIRouter
         test_key = "shodan_test_key_12345"
         router = TIRouter(force_mock=False)
@@ -413,11 +416,11 @@ class TestBlocker15ShodanKeyLeak:
                 pass
             get = fake_get
 
-        with patch.dict(os.environ, {"NEXUS_TI_SHODAN_API_KEY": test_key}):
-            with patch("nexus.ti.providers.optional.httpx.AsyncClient", return_value=FakeClient()):
-                result = await router.query_provider("shodan", "1.2.3.4")
-                error_str = result.get("error", "")
-                assert test_key not in error_str
+        with patch.dict(os.environ, {"NEXUS_TI_SHODAN_API_KEY": test_key}), \
+                patch("nexus.ti.providers.optional.httpx.AsyncClient", return_value=FakeClient()):
+            result = await router.query_provider("shodan", "1.2.3.4")
+            error_str = result.get("error", "")
+            assert test_key not in error_str
 
 
 # ---------------------------------------------------------------------------
@@ -428,12 +431,14 @@ class TestBlocker16CLIFixes:
 
     def test_service_status_format(self) -> None:
         import inspect
+
         from nexus.cli.service import status
         source = inspect.getsource(status)
         assert "pid_str" in source or "str(pid)" in source
 
     def test_exec_has_audit(self) -> None:
         import inspect
+
         from nexus.cli.exec_cmd import run
         source = inspect.getsource(run)
         assert "sha256" in source
@@ -478,9 +483,10 @@ class TestBlockerBugFixes:
 
     @pytest.mark.asyncio
     async def test_b2_vql_injection_collect_artifact(self) -> None:
-        from nexus.integration.velociraptor_mcp_server import create_velociraptor_server
+
         from mcp.types import CallToolRequest, CallToolRequestParams
-        from unittest.mock import patch
+
+        from nexus.integration.velociraptor_mcp_server import create_velociraptor_server
         
         server = create_velociraptor_server()
         handler = server.request_handlers[CallToolRequest]
@@ -513,9 +519,10 @@ class TestBlockerBugFixes:
         assert "Invalid parameter name" in res.root.content[0].text
 
     def test_b3_zeek_ts_hyphen_handling(self) -> None:
+        from pathlib import Path
+
         from nexus.ingest.network.zeek import ZeekImporter
         from nexus.ingest.schemas import ArtifactType
-        from pathlib import Path
         
         importer = ZeekImporter()
         record = {
@@ -545,9 +552,10 @@ class TestBlockerBugFixes:
         assert HayabusaImporter._event_id_to_type("4625", "Security") == ArtifactType.AUTH
 
     def test_b7_skipped_lines_tracking(self) -> None:
-        from nexus.ingest.base import Importer
-        from nexus.ingest.schemas import ArtifactSource, Artifact, ArtifactType, Severity
         from collections.abc import Iterator
+
+        from nexus.ingest.base import Importer
+        from nexus.ingest.schemas import Artifact, ArtifactSource, ArtifactType, Severity
         
         # Test that skipped_lines is correctly wired
         class MockImporter(Importer):

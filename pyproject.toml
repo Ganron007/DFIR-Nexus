@@ -113,6 +113,13 @@ line-length = 100
 select = ["E", "F", "I", "UP", "B", "SIM"]
 ignore = ["E501", "E402"]
 
+[tool.ruff.lint.per-file-ignores]
+# Typer declares options/arguments as function-parameter defaults — B008 is
+# the framework's idiom, not a bug.
+"src/nexus/cli/*.py" = ["B008"]
+# Step-by-step audit script imports modules at the point of use, on purpose.
+"tests/functional_audit.py" = ["I001", "E402"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

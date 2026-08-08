@@ -5,7 +5,6 @@ builds from YAML data. Searches cover: Sigma rules, MITRE ATT&CK, Atomic Red
 Team, Splunk, KAPE, Velociraptor, LOLBAS, GTFOBins, and more.
 """
 
-import asyncio
 import hashlib
 import json
 import logging
@@ -15,7 +14,6 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
-import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -152,13 +150,12 @@ def _verify_checksums(temp_dir: Path) -> bool:
 def _extract_bundle(src: Path, dest: Path) -> None:
     import zstandard as zstd
     dctx = zstd.ZstdDecompressor()
-    with open(src, "rb") as compressed:
-        with dctx.stream_reader(compressed) as reader:
-            with tarfile.open(fileobj=reader, mode="r|") as tar:
-                if hasattr(tarfile, "data_filter"):
-                    tar.extractall(path=dest, filter="data")
-                else:
-                    tar.extractall(path=dest)
+    with open(src, "rb") as compressed, dctx.stream_reader(compressed) as reader, \
+            tarfile.open(fileobj=reader, mode="r|") as tar:
+        if hasattr(tarfile, "data_filter"):
+            tar.extractall(path=dest, filter="data")
+        else:
+            tar.extractall(path=dest)
 
 
 def _verify_index(data_dir: Path) -> bool:
@@ -249,9 +246,9 @@ class RAGIndex:
                         meta = record.get("metadata", {})
                         title = meta.get("title", "")
                         tid = meta.get("mitre_techniques", "")
-                        if tid and title and re.match(r"^T\d{4}(\.\d{3})?$", tid.strip().upper()):
-                            if not title.endswith(" Mitigation"):
-                                lookup[tid.strip().upper()] = title
+                        if tid and title and re.match(r"^T\d{4}(\.\d{3})?$", tid.strip().upper()) \
+                                and not title.endswith(" Mitigation"):
+                            lookup[tid.strip().upper()] = title
                     except json.JSONDecodeError:
                         continue
         except OSError:

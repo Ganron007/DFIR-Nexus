@@ -1,10 +1,12 @@
 """Debug YAML data structures to fix loader issues."""
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-import yaml
 from pathlib import Path
+
+import yaml
 
 data_dir = Path("src/nexus/data/knowledge")
 
@@ -49,7 +51,7 @@ if isinstance(d, dict):
 # 6. Count artifacts
 win = list((data_dir / "artifacts" / "windows").glob("*.yaml"))
 lin = list((data_dir / "artifacts" / "linux").glob("*.yaml"))
-print(f"\n=== Artifact counts ===")
+print("\n=== Artifact counts ===")
 print(f"  Windows: {len(win)} files")
 print(f"  Linux:   {len(lin)} files")
 print(f"  Total:   {len(win) + len(lin)} files")
@@ -64,4 +66,4 @@ for f in sorted(win) + sorted(lin):
 if bad:
     print(f"  Parse errors: {bad}")
 else:
-    print(f"  All parse OK")
+    print("  All parse OK")

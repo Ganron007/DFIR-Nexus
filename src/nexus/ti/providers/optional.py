@@ -122,7 +122,7 @@ async def query_shodan(ip: str, *, mock: bool) -> TIResult:
                     request=exc.request,
                     response=exc.response,
                 ) from None
-            except httpx.HTTPError as exc:
+            except httpx.HTTPError:
                 raise httpx.HTTPError("Shodan request failed") from None
     ports = raw.get("ports", [])
     return _result(

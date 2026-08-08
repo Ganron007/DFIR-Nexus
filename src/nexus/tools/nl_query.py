@@ -10,7 +10,7 @@ Pure function — no side effects, no I/O.
 from __future__ import annotations
 
 import re
-from typing import Any, Literal
+from typing import Literal
 
 TargetFormat = Literal["vql", "kql", "spl", "sigma", "yara"]
 
@@ -496,7 +496,7 @@ def _extract_keywords(description: str) -> list[str]:
         "these", "those", "it", "its", "i", "me", "my", "we", "our", "you",
         "your", "he", "him", "his", "she", "her", "they", "them", "their",
         "find", "show", "look", "search", "detect", "get", "list", "any",
-        "some", "me", "any", "events", "activity", "logs", "events",
+        "some", "events", "activity", "logs",
     }
     words = re.findall(r"[a-zA-Z0-9_.-]+", description.lower())
     return [w for w in words if w not in stopwords and len(w) > 2]

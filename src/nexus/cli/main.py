@@ -326,7 +326,7 @@ def serve(
                 typer.echo(f"  WARNING: {w} not set (loopback — OK for local use)")
         except Exception as exc:
             typer.echo(f"  ERROR: {exc}", err=True)
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
 
         starlette_app = build_http_app(server, host=host, port=port)
         typer.echo(f"Starting DFIR-Nexus HTTP server on {host}:{port}")
@@ -373,7 +373,7 @@ def pipeline(
     except ImportError:
         typer.echo("Pipeline dependencies not installed.", err=True)
         typer.echo("Run: pip install dfir-nexus[pipeline]", err=True)
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
     asyncio.run(run_pipeline(
         evidence_path=case,
@@ -463,21 +463,20 @@ def _run_connectivity_test():
 
     from nexus.app import create_server
     try:
-        server = create_server()
+        create_server()
         results.append(("Server creation", True, ""))
     except Exception as e:
         results.append(("Server creation", False, str(e)))
 
-    try:
-        import chromadb
+    import importlib.util
+    if importlib.util.find_spec("chromadb") is not None:
         results.append(("Chromadb (RAG)", True, ""))
-    except ImportError:
+    else:
         results.append(("Chromadb (RAG)", False, "pip install dfir-nexus[rag]"))
 
-    try:
-        from pycti import OpenCTIApiClient
+    if importlib.util.find_spec("pycti") is not None:
         results.append(("pycti (OpenCTI)", True, ""))
-    except ImportError:
+    else:
         results.append(("pycti (OpenCTI)", False, "pip install dfir-nexus[opencti]"))
 
     triage_db = Path.home() / ".nexus" / "data" / "triage"

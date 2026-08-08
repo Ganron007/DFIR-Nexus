@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import pytest
-
 from nexus.mitre.adversary import (
-    predict_next_techniques,
-    match_observed_to_groups,
     _GROUP_TECHNIQUES,
+    match_observed_to_groups,
+    predict_next_techniques,
 )
 
 
@@ -24,7 +22,6 @@ class TestAdversaryEmulation:
         """Observed techniques flagged as observed_in_case."""
         observed = ["T1566.001", "T1059.001"]
         predictions = predict_next_techniques(observed, top_n=20)
-        observed_preds = [p for p in predictions if p.observed_in_case]
         unobserved = [p for p in predictions if not p.observed_in_case]
         assert len(unobserved) > 0
 

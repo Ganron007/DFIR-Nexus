@@ -9,6 +9,7 @@ Parses malware sandbox reports from:
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 from collections.abc import Iterator
@@ -86,7 +87,6 @@ class SandboxImporter(Importer):
         info: dict[str, Any] = data.get("info") or {}
         behavior: dict[str, Any] = data.get("behavior") or {}
         network: dict[str, Any] = data.get("network") or {}
-        target: dict[str, Any] = data.get("target") or {}
         dropped: list[dict[str, Any]] = data.get("dropped") or []
 
         ts = self.normalize_timestamp(info.get("started") or info.get("ended"))
@@ -169,10 +169,8 @@ class SandboxImporter(Importer):
         proc_pid = None
         raw_pid = proc.get("pid")
         if raw_pid is not None:
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 proc_pid = int(raw_pid)
-            except (ValueError, TypeError):
-                pass
 
         if proc_name:
             yield Artifact(
@@ -243,7 +241,6 @@ class SandboxImporter(Importer):
         # Summary
         sha256 = str(sandbox.get("sha256") or sandbox.get("file_sha256", "")) or None
         filename = str(sandbox.get("filename") or sandbox.get("file_name", "")) or None
-        filetype = str(sandbox.get("file_type") or sandbox.get("type", "")) or None
 
         yield Artifact(
             id=Artifact.new_id(),

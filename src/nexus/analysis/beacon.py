@@ -18,6 +18,7 @@ Algorithm:
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from collections import defaultdict
 from statistics import mean, stdev
@@ -114,17 +115,13 @@ class BeaconDetector:
             raw = a.raw if isinstance(a.raw, dict) else {}
             for key in ("bytes_up", "src_bytes", "orig_bytes"):
                 if key in raw:
-                    try:
+                    with contextlib.suppress(ValueError, TypeError):
                         bytes_up += int(float(raw[key]))
-                    except (ValueError, TypeError):
-                        pass
                     break
             for key in ("bytes_down", "resp_bytes", "dst_bytes"):
                 if key in raw:
-                    try:
+                    with contextlib.suppress(ValueError, TypeError):
                         bytes_down += int(float(raw[key]))
-                    except (ValueError, TypeError):
-                        pass
                     break
 
         first_seen = timestamps[0]

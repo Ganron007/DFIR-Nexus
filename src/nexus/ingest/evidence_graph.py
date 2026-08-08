@@ -330,8 +330,6 @@ def build_evidence_graph(artifacts: list[Artifact]) -> EvidenceGraph:
         src_ip, dst_ip = parts[0], parts[1]
         src_nodes = [nid for nid, n in graph.nodes.items()
                      if n.host and n.source_ip == src_ip]
-        dst_nodes = [nid for nid, n in graph.nodes.items()
-                     if n.host and n.dest_ip == dst_ip]
         net_id = f"net:{src_ip}->{dst_ip}:{parts[2]}"
         if src_nodes:
             graph.add_edge(GraphEdge(

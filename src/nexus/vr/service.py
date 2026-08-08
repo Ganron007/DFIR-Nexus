@@ -83,10 +83,9 @@ def create_vr_client(config: MonitorConfig, *, force_mock: bool | None = None) -
         return create_velociraptor_client(config)
 
     endpoint = (config.endpoint or "").lower()
-    if CADRE_VR_HOST in endpoint or "192.168.77.51" in endpoint:
-        if not config.api_key:
-            log.info("CADRE VR endpoint without API key — using enhanced mock client")
-            return EnhancedMockVelociraptorClient(config)
+    if (CADRE_VR_HOST in endpoint or "192.168.77.51" in endpoint) and not config.api_key:
+        log.info("CADRE VR endpoint without API key — using enhanced mock client")
+        return EnhancedMockVelociraptorClient(config)
     return create_velociraptor_client(config)
 
 

@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from nexus.ingest.beacon import detect_beacons, BeaconCandidate
+from nexus.ingest.beacon import detect_beacons
 from nexus.ingest.schemas import Artifact, ArtifactSource, ArtifactType, Severity
 
 

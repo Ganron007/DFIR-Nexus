@@ -20,7 +20,7 @@ import hashlib
 import json
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -47,7 +47,7 @@ def transparency_append(case_id: str, entry: dict) -> dict | None:
 
         # Read previous hash from last line
         previous_hash = _get_last_hash(path)
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
 
         envelope = {
             "entry": entry,

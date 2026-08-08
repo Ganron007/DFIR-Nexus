@@ -49,7 +49,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from nexus.ingest.base import Importer, ImportResult
+from nexus.ingest.base import Importer
 from nexus.ingest.schemas import (
     Artifact,
     ArtifactSource,
@@ -114,9 +114,9 @@ class DeclarativeImporter(Importer):
                 if isinstance(data, dict):
                     if all(k in data for k in content_keys):
                         return True
-                elif isinstance(data, list) and data and isinstance(data[0], dict):
-                    if all(k in data[0] for k in content_keys):
-                        return True
+                elif isinstance(data, list) and data and isinstance(data[0], dict) \
+                        and all(k in data[0] for k in content_keys):
+                    return True
             except (json.JSONDecodeError, OSError):
                 pass
 
@@ -241,10 +241,7 @@ class DeclarativeImporter(Importer):
             raw_sev = self._map_field(record, "severity", sev_field)
             if raw_sev:
                 mapped = self._severity_map.get(str(raw_sev).lower())
-                if mapped:
-                    severity = Severity.normalize(mapped)
-                else:
-                    severity = Severity.normalize(raw_sev)
+                severity = Severity.normalize(mapped) if mapped else Severity.normalize(raw_sev)
 
         description = ""
         desc_field = self._field_map.get("description", "")

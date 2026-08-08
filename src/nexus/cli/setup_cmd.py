@@ -10,9 +10,9 @@ Usage:
     nexus setup client --uninstall        # Remove config
 """
 
+import contextlib
 import json
 import os
-import shutil
 import sys
 from pathlib import Path
 
@@ -142,11 +142,11 @@ def _resolve_sift(args, auto: bool) -> str:
     is_sift = os.path.exists("/usr/share/sift") or os.path.exists("/opt/sift")
     default = "http://127.0.0.1:4508"
     if is_sift:
-        print(f"\n--- SIFT Workstation ---")
+        print("\n--- SIFT Workstation ---")
         print(f"  DFIR-Nexus detected on SIFT. Default URL: {default}")
     else:
-        print(f"\n--- SIFT Workstation (Forensic Analysis) ---")
-        print(f"  If you run DFIR-Nexus on a SIFT workstation,")
+        print("\n--- SIFT Workstation (Forensic Analysis) ---")
+        print("  If you run DFIR-Nexus on a SIFT workstation,")
         print(f"  enter its URL. Default: {default}")
     answer = _prompt("\nSIFT DFIR-Nexus URL", default)
     if answer.lower() == "skip":
@@ -163,17 +163,17 @@ def _resolve_windows(args, auto: bool) -> str:
         return ""
     is_win = sys.platform == "win32"
     if is_win:
-        print(f"\n--- Windows Forensic Workstation ---")
-        print(f"  DFIR-Nexus detected on Windows. Default URL: http://127.0.0.1:4508")
+        print("\n--- Windows Forensic Workstation ---")
+        print("  DFIR-Nexus detected on Windows. Default URL: http://127.0.0.1:4508")
         answer = _prompt("Windows DFIR-Nexus URL", "http://127.0.0.1:4508")
         if answer.lower() == "skip":
             return ""
         return answer
-    print(f"\n--- Windows Forensic Workstation ---")
-    print(f"  If you run DFIR-Nexus on a Windows machine with")
-    print(f"  forensic tools (Zimmerman, Sysinternals, KAPE),")
-    print(f"  enter its URL. This gives your LLM access to")
-    print(f"  Windows forensic capabilities.")
+    print("\n--- Windows Forensic Workstation ---")
+    print("  If you run DFIR-Nexus on a Windows machine with")
+    print("  forensic tools (Zimmerman, Sysinternals, KAPE),")
+    print("  enter its URL. This gives your LLM access to")
+    print("  Windows forensic capabilities.")
     answer = _prompt("\nWindows DFIR-Nexus URL (or 'skip')", "skip")
     if answer.lower() == "skip":
         return ""
@@ -187,10 +187,10 @@ def _resolve_remnux(args, auto: bool) -> str:
         return val
     if auto:
         return ""
-    print(f"\n--- REMnux Malware Analysis ---")
-    print(f"  If you run DFIR-Nexus on a REMnux VM with")
-    print(f"  malware analysis tools (capa, YARA),")
-    print(f"  enter its URL.")
+    print("\n--- REMnux Malware Analysis ---")
+    print("  If you run DFIR-Nexus on a REMnux VM with")
+    print("  malware analysis tools (capa, YARA),")
+    print("  enter its URL.")
     answer = _prompt("\nREMnux DFIR-Nexus URL (or 'skip')", "skip")
     if answer.lower() == "skip":
         return ""
@@ -256,10 +256,8 @@ def _gen_claude_code(servers: dict[str, dict]) -> None:
 
     existing = {}
     if settings_path.exists():
-        try:
+        with contextlib.suppress(json.JSONDecodeError, OSError):
             existing = json.loads(settings_path.read_text())
-        except (json.JSONDecodeError, OSError):
-            pass
 
     existing["mcpServers"] = mcp_config["mcpServers"]
     existing["allow"] = list(set(existing.get("allow", []) + [f"mcp__{n}__*" for n in servers]))
@@ -303,10 +301,8 @@ def _write_protected(path: Path, content: str) -> None:
             f.write(content)
         os.replace(tmp, path)
     except BaseException:
-        try:
+        with contextlib.suppress(OSError):
             os.unlink(tmp)
-        except OSError:
-            pass
         raise
 
 

@@ -8,7 +8,7 @@ Exposes 8 tools matching the original opencti-mcp server.
 
 import logging
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
@@ -68,12 +68,10 @@ def _cti_retry(client, method_name: str, *args, **kwargs):
         logger.warning(f"OpenCTI method not found: {method_name}")
         return None
 
-    last_error = None
     for attempt in range(1, _RETRY_MAX + 1):
         try:
             return method(*args, **kwargs)
         except Exception as e:
-            last_error = e
             if attempt < _RETRY_MAX:
                 delay = _RETRY_BACKOFF ** attempt
                 logger.debug(f"OpenCTI {method_name} attempt {attempt} failed, retrying in {delay:.1f}s: {e}")
@@ -384,7 +382,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         elif limit > 100:
             limit = 100
 
-        since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        since = (datetime.now(UTC) - timedelta(days=days)).isoformat()
 
         try:
             results = client.indicator.list(
@@ -444,9 +442,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
 
         if direction not in ("from", "to", "both"):
             direction = "both"
-        if limit < 1:
-            limit = 50
-        elif limit > 50:
+        if limit < 1 or limit > 50:
             limit = 50
 
         try:

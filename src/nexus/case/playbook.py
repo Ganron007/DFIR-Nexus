@@ -205,7 +205,6 @@ def create_ir_playbook() -> Playbook:
 def create_ransomware_playbook() -> Playbook:
     """Create a ransomware-specific incident response playbook."""
     tasks = []
-    task_num = 0
 
     items = [
         ("contain", "Isolate ALL affected endpoints immediately", TaskPriority.CRITICAL),
@@ -227,8 +226,7 @@ def create_ransomware_playbook() -> Playbook:
         ("lessons_learned", "Update detection rules for observed IOCs/TTPs", TaskPriority.MEDIUM),
     ]
 
-    for phase, title, priority in items:
-        task_num += 1
+    for task_num, (phase, title, priority) in enumerate(items, start=1):
         tasks.append(PlaybookTask(
             id=f"RW-{task_num:03d}",
             title=title,

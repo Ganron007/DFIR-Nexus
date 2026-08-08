@@ -45,9 +45,7 @@ class SplunkImporter(Importer):
                 head = f.read(4096)
         except OSError:
             return False
-        if "_time" in head or "sourcetype" in head:
-            return True
-        return False
+        return bool("_time" in head or "sourcetype" in head)
 
     def parse(self, path: Path) -> Iterator[Artifact]:
         """Yield Artifact objects from a Splunk export."""

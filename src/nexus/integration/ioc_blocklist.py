@@ -47,9 +47,7 @@ def _is_plausible_ioc(token: str) -> bool:
         token,
     ):
         return True
-    if re.match(r"^https?://", token, re.I):
-        return True
-    return False
+    return bool(re.match(r"^https?://", token, re.I))
 
 
 def _normalize_ioc(ioc: str) -> str:

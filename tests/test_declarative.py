@@ -6,14 +6,10 @@ import json
 import tempfile
 from pathlib import Path
 
-import pytest
-
 from nexus.ingest.declarative import (
     DeclarativeImporter,
     load_declarative_specs,
-    register_declarative,
 )
-
 
 SAMPLE_SPEC = {
     "name": "test_custom_scanner",

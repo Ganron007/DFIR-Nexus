@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 log = logging.getLogger(__name__)
@@ -161,7 +161,6 @@ def predict_next_techniques(
         for tech in group_data["techniques"]:
             technique_group_count[tech] = technique_group_count.get(tech, 0) + 1
 
-    all_techniques = set(technique_group_count.keys())
     idf: dict[str, float] = {}
     for tech, count in technique_group_count.items():
         idf[tech] = math.log(total_groups / count) + 1

@@ -69,10 +69,7 @@ class CloudTrailImporter(Importer):
 
     def parse(self, path: Path) -> Iterator[Artifact]:
         """Yield one Artifact per CloudTrail record."""
-        if path.is_dir():
-            files = sorted(path.rglob("*.json"))
-        else:
-            files = [path]
+        files = sorted(path.rglob("*.json")) if path.is_dir() else [path]
         for file in files:
             yield from self._parse_file(file)
 

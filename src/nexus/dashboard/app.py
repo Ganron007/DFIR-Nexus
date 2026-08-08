@@ -6,6 +6,7 @@ evidence, IOCs, todos, and the commit challenge-response workflow
 for browser-based finding approval.
 """
 
+import contextlib
 import hashlib
 import hmac as hmac_mod
 import html
@@ -45,10 +46,8 @@ def _atomic_write_json(path: Path, data: Any) -> None:
             json.dump(data, f, indent=2, default=str)
         os.replace(tmp, path)
     except BaseException:
-        try:
+        with contextlib.suppress(OSError):
             os.unlink(tmp)
-        except OSError:
-            pass
         raise
 
 
@@ -107,10 +106,8 @@ def _commit_failure_count(examiner: str) -> int:
 def _record_commit_failure(examiner: str) -> None:
     data = {}
     if _LOCKOUT_FILE.exists():
-        try:
+        with contextlib.suppress(OSError, json.JSONDecodeError):
             data = json.loads(_LOCKOUT_FILE.read_text())
-        except (OSError, json.JSONDecodeError):
-            pass
     failures = data.get(examiner, [])
     failures.append(time.time())
     data[examiner] = failures

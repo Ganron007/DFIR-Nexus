@@ -9,8 +9,9 @@ Each MCP tool call creates a span with the tool name and audit_id attribute.
 
 import logging
 import os
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Any, Generator
+from typing import Any
 
 logger = logging.getLogger(__name__)
 

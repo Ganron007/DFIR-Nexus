@@ -4,15 +4,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-import pytest
-
 from nexus.ingest.evidence_graph import (
-    build_evidence_graph,
-    EvidenceGraph,
     EdgeType,
-    GraphNode,
-    GraphEdge,
-    Confidence,
+    build_evidence_graph,
 )
 from nexus.ingest.schemas import Artifact, ArtifactSource, ArtifactType, Severity
 

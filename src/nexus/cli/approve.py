@@ -8,18 +8,20 @@ Supports: specific IDs, interactive review, HMAC signed verification ledger.
 
 import getpass
 import json
-import sys
-import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from nexus.auth import (
-    has_password, verify_password, check_lockout, record_failure, clear_failures,
-    setup_password, derive_hmac_key, derive_purpose_key, compute_hmac,
-    write_verification_entry, SIGNING_PURPOSE,
+    SIGNING_PURPOSE,
+    check_lockout,
+    clear_failures,
+    compute_hmac,
+    derive_purpose_key,
+    has_password,
+    record_failure,
+    verify_password,
+    write_verification_entry,
 )
-from nexus.config import settings
-from nexus.cli.main import _resolve_case
 
 
 def _require_approval_auth(analyst: str) -> str | None:
@@ -82,7 +84,7 @@ def approve_finding(
         if fid == finding_id and f.get("status") == "DRAFT":
             f["status"] = "APPROVED"
             f["approved_by"] = analyst
-            f["approved_at"] = datetime.now(timezone.utc).isoformat()
+            f["approved_at"] = datetime.now(UTC).isoformat()
             if note:
                 f.setdefault("notes", []).append({"text": note, "author": analyst, "at": f["approved_at"]})
 
@@ -126,7 +128,7 @@ def approve_timeline_event(
         if eid == event_id and e.get("status") in ("DRAFT", None):
             e["status"] = "APPROVED"
             e["approved_by"] = analyst
-            e["approved_at"] = datetime.now(timezone.utc).isoformat()
+            e["approved_at"] = datetime.now(UTC).isoformat()
             tl_path.write_text(json.dumps(events, indent=2, default=str))
             return {"event_id": event_id, "status": "APPROVED"}
     return {"error": f"Event {event_id} not found or not DRAFT"}

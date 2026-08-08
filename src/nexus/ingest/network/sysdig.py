@@ -8,6 +8,7 @@ Critical, Error, Warning, Notice, Informational, Debug.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 from collections.abc import Iterator
@@ -128,10 +129,8 @@ class SysdigImporter(Importer):
             proc_pid = None
             raw_pid = output_fields.get("proc.pid") or event.get("pid")
             if raw_pid is not None:
-                try:
+                with contextlib.suppress(ValueError, TypeError):
                     proc_pid = int(raw_pid)
-                except (ValueError, TypeError):
-                    pass
 
             container = str(output_fields.get("container.name")) or None
 

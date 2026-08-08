@@ -110,7 +110,6 @@ def _suggest_lateral_movement_hunts(graph: EvidenceGraph) -> list[HuntSuggestion
     """Suggest hunts based on observed lateral movement patterns."""
     suggestions: list[HuntSuggestion] = []
 
-    network_edges = graph.edges_of_type("connected_to")
     hosts = {n.id: n for n in graph.nodes_of_type("host")}
 
     if len(hosts) >= 2:
@@ -393,10 +392,6 @@ def _suggest_defense_evasion_hunts(graph: EvidenceGraph) -> list[HuntSuggestion]
     suggestions: list[HuntSuggestion] = []
 
     process_nodes = graph.nodes_of_type("process")
-    evasion_indicators = {
-        "powershell", "cmd", "certutil", "bitsadmin", "mshta",
-        "regsvr32", "rundll32", "wscript", "cscript",
-    }
 
     encoded_cmd_pattern = re.compile(
         r"-(?:e|ec|enc|encodedcommand)\s+[A-Za-z0-9+/]{20,}", re.I

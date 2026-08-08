@@ -5,9 +5,11 @@ MCP tools that wrap the new analysis modules from REVAMP-V2.
 
 from __future__ import annotations
 
+from datetime import UTC
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
+
 from nexus.audit import AuditWriter
 
 
@@ -137,19 +139,20 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         Args:
             min_gap_seconds: Minimum gap duration to flag (default 300).
         """
-        from nexus.ingest.gap_analysis import analyze_gaps as _analyze
         from nexus.case_manager import CaseManager
+        from nexus.ingest.gap_analysis import analyze_gaps as _analyze
         mgr = CaseManager()
         timeline = mgr.get_timeline()
         artifacts = []
         for entry in timeline:
+            from datetime import datetime
+
             from nexus.ingest.schemas import Artifact, ArtifactSource, ArtifactType, Severity
-            from datetime import datetime, timezone
             ts = entry.get("timestamp", "")
             try:
                 dt = datetime.fromisoformat(ts)
             except (ValueError, TypeError):
-                dt = datetime.now(timezone.utc)
+                dt = datetime.now(UTC)
             artifacts.append(Artifact(
                 id=entry.get("id", Artifact.new_id()),
                 artifact_type=ArtifactType.UNKNOWN,
@@ -204,8 +207,8 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             observed_techniques: List of observed MITRE technique IDs.
             top_n: Number of predictions to return (default 10).
         """
-        from nexus.mitre.adversary import predict_next_techniques as _predict
         from nexus.mitre.adversary import match_observed_to_groups as _match
+        from nexus.mitre.adversary import predict_next_techniques as _predict
         predictions = _predict(observed_techniques, top_n=top_n)
         groups = _match(observed_techniques, min_overlap=2)
         return {
@@ -223,10 +226,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             playbook_type: Type of playbook ('ir' or 'ransomware').
         """
         from nexus.case.playbook import create_ir_playbook, create_ransomware_playbook
-        if playbook_type == "ransomware":
-            pb = create_ransomware_playbook()
-        else:
-            pb = create_ir_playbook()
+        pb = create_ransomware_playbook() if playbook_type == "ransomware" else create_ir_playbook()
         return pb.to_dict()
 
     @server.tool()
@@ -240,14 +240,15 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         from nexus.ingest.asset_graph import build_asset_graph as _build
         mgr = CaseManager()
         timeline = mgr.get_timeline()
+        from datetime import datetime
+
         from nexus.ingest.schemas import Artifact, ArtifactSource, ArtifactType, Severity
-        from datetime import datetime, timezone
         artifacts = []
         for entry in timeline:
             try:
                 dt = datetime.fromisoformat(entry.get("timestamp", ""))
             except (ValueError, TypeError):
-                dt = datetime.now(timezone.utc)
+                dt = datetime.now(UTC)
             artifacts.append(Artifact(
                 id=entry.get("id", ""), artifact_type=ArtifactType.UNKNOWN,
                 source=ArtifactSource.UNKNOWN, timestamp=dt,
@@ -338,18 +339,19 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         to propose proactive fleet-wide hunts.
         """
         from nexus.case_manager import CaseManager
-        from nexus.tools.fleet_hunts import suggest_hunts
         from nexus.ingest.evidence_graph import build_evidence_graph
+        from nexus.tools.fleet_hunts import suggest_hunts
         mgr = CaseManager()
         timeline = mgr.get_timeline()
+        from datetime import datetime
+
         from nexus.ingest.schemas import Artifact, ArtifactSource, ArtifactType, Severity
-        from datetime import datetime, timezone
         artifacts = []
         for entry in timeline:
             try:
                 dt = datetime.fromisoformat(entry.get("timestamp", ""))
             except (ValueError, TypeError):
-                dt = datetime.now(timezone.utc)
+                dt = datetime.now(UTC)
             artifacts.append(Artifact(
                 id=entry.get("id", ""), artifact_type=ArtifactType.UNKNOWN,
                 source=ArtifactSource.UNKNOWN, timestamp=dt,
@@ -370,8 +372,8 @@ def register_tools(server: FastMCP, audit: AuditWriter):
     @server.tool()
     def get_knowledge_graph_stats() -> dict:
         """Get statistics about the knowledge graph (entity/relation counts)."""
-        from nexus.knowledge.graph import KnowledgeGraph
         from nexus.config import settings
+        from nexus.knowledge.graph import KnowledgeGraph
         db_path = settings.data_root / "knowledge_graph.db"
         if not db_path.exists():
             return {"status": "empty", "entities": 0, "relations": 0}
@@ -383,8 +385,8 @@ def register_tools(server: FastMCP, audit: AuditWriter):
     @server.tool()
     def get_dynamic_tables() -> dict:
         """List all LLM-created dynamic tables."""
-        from nexus.knowledge.dynamic_tables import DynamicTableManager
         from nexus.config import settings
+        from nexus.knowledge.dynamic_tables import DynamicTableManager
         db_path = settings.data_root / "dynamic_tables.db"
         if not db_path.exists():
             return {"status": "empty", "tables": []}
@@ -394,8 +396,8 @@ def register_tools(server: FastMCP, audit: AuditWriter):
     @server.tool()
     def list_query_templates() -> dict:
         """List saved query templates."""
-        from nexus.knowledge.query_templates import QueryTemplateManager
         from nexus.config import settings
+        from nexus.knowledge.query_templates import QueryTemplateManager
         db_path = settings.data_root / "query_templates.db"
         if not db_path.exists():
             return {"status": "empty", "templates": []}

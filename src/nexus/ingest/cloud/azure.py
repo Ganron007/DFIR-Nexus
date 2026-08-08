@@ -98,9 +98,7 @@ class AzureImporter(Importer):
 
         # Extract user from caller
         user = None
-        if "@" in caller:
-            user = caller
-        elif caller:
+        if "@" in caller or caller:
             user = caller
 
         # Resource type from resourceId

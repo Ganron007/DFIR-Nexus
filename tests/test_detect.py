@@ -6,8 +6,6 @@ import json
 import tempfile
 from pathlib import Path
 
-import pytest
-
 from nexus.ingest.detect import detect_format, ingest_auto
 from nexus.ingest.schemas import ArtifactSource
 

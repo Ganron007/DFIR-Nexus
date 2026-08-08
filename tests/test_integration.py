@@ -1,10 +1,9 @@
 """Quick integration test for DFIR-Nexus — tests all tool modules end-to-end."""
 
 import os
-import sys
-import json
-import tempfile
 import shutil
+import sys
+import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 os.environ["NEXUS_CASES_ROOT"] = tempfile.mkdtemp(prefix="nexus_test_")
@@ -105,7 +104,7 @@ else:
 def _try_tool(name, *args, **kwargs):
     if name in tools:
         r = tools[name].fn(*args, **kwargs)
-        check(name, True, f"ok")
+        check(name, True, "ok")
         return r
     else:
         check(name, True, f"(skipped - {name} not available on this platform)")
@@ -169,7 +168,7 @@ for _name in _check_tools:
     if _name in tools:
         _try_tool(_name, "prefetch" if _name == "suggest_tools" else (["mftecmd", "hayabusa"] if _name == "check_tools" else "python --version" if _name == "run_command" else "mftecmd" if _name == "get_tool_help" else ""))
     else:
-        check(_name, True, f"(skipped - not on Linux)")
+        check(_name, True, "(skipped - not on Linux)")
 
 # 27. record_action
 r = tools["record_action"].fn("Reviewed initial findings")

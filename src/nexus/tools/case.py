@@ -7,9 +7,8 @@ import json
 import logging
 import os
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 import yaml
 from mcp.server.fastmcp import FastMCP
@@ -134,7 +133,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
                 return {"error": "case_id must be alphanumeric with hyphens/underscores, 2-64 chars"}
             cid = case_id
         else:
-            cid = f"INC-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+            cid = f"INC-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
 
         case_dir = cases_root / cid
         if case_dir.exists():
@@ -155,8 +154,8 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             "description": description.strip(),
             "examiner": exam,
             "status": "open",
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "modified_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
+            "modified_at": datetime.now(UTC).isoformat(),
         }
         try:
             (case_dir / "CASE.yaml").write_text(yaml.dump(meta, default_flow_style=False))
@@ -169,7 +168,11 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             from nexus.case import CaseManager as _SQLiteCaseManager
             from nexus.case.schemas import (
                 Case as _SQLiteCase,
+            )
+            from nexus.case.schemas import (
                 CaseStatus as _SQLiteCaseStatus,
+            )
+            from nexus.case.schemas import (
                 FindingSeverity as _SQLiteSeverity,
             )
             _mgr = _SQLiteCaseManager(settings.cases_root / "cases.db")
@@ -181,7 +184,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
                         description=description.strip(),
                         status=_SQLiteCaseStatus.OPEN,
                         severity=_SQLiteSeverity.MEDIUM,
-                        created_at=datetime.now(timezone.utc),
+                        created_at=datetime.now(UTC),
                         created_by=exam,
                     ))
             finally:
@@ -195,7 +198,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         except OSError:
             pass
 
-        created_ts = datetime.now(timezone.utc).isoformat()
+        created_ts = datetime.now(UTC).isoformat()
         result = {
             "status": "created",
             "case_id": cid,
@@ -291,7 +294,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         try:
             meta = yaml.safe_load(meta_file.read_text()) or {}
             meta["status"] = "closed"
-            meta["closed_at"] = datetime.now(timezone.utc).isoformat()
+            meta["closed_at"] = datetime.now(UTC).isoformat()
             meta_file.write_text(yaml.dump(meta, default_flow_style=False))
         except OSError as e:
             return {"error": f"Failed to close case: {e}"}
@@ -363,7 +366,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             return {"error": str(e)}
 
         exam = analyst_override.strip().lower() if analyst_override.strip() else resolve_examiner()
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         entry = {
             "ts": now,
             "description": description[:5000],
@@ -401,7 +404,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         cm = CaseManager()
         bundle = {
             "case_id": case_dir.name,
-            "exported_at": datetime.now(timezone.utc).isoformat(),
+            "exported_at": datetime.now(UTC).isoformat(),
             "findings": cm.get_findings(None),
             "timeline": cm.get_timeline(),
             "iocs": cm.get_iocs(),
@@ -470,7 +473,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             except OSError as e:
                 return {"error": f"Cannot create backup destination: {e}"}
 
-        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+        ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
         backup_name = f"{case_dir.name}-{ts}"
         backup_dir = dest / backup_name
         try:

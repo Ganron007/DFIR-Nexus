@@ -22,14 +22,14 @@ Environment variables:
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
 from datetime import UTC, datetime
+from operator import add
 from pathlib import Path
 from typing import Annotated, Any, TypedDict
-
-from operator import add
 
 log = logging.getLogger(__name__)
 
@@ -211,10 +211,8 @@ async def scope(state: InvestigationState, tools: dict, model) -> dict:
             pass
 
     if rag_tool and case_id:
-        try:
+        with contextlib.suppress(Exception):
             await rag_tool.ainvoke({"query": f"investigation guidance for case {case_id}"})
-        except Exception:
-            pass
 
     return {
         "hosts": hosts,
@@ -229,7 +227,6 @@ async def hunt(state: InvestigationState, tools: dict, model) -> dict:
     except ImportError:
         return {"error": "langgraph not installed — run: pip install dfir-nexus[pipeline]"}
 
-    from nexus.langgraph.hunt_parser import parse_hunt_candidates
 
     hunt_tools_list = []
     for name in ("run_command", "run_windows_command", "suggest_tools",

@@ -8,6 +8,7 @@ individual Artifacts.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 from collections.abc import Iterator
@@ -251,10 +252,8 @@ class IRISImporter(Importer):
             severity_raw = entry.get("severity_id") or entry.get("severity")
             severity = Severity.INFORMATIONAL
             if severity_raw is not None:
-                try:
+                with contextlib.suppress(ValueError, TypeError):
                     severity = self.SEVERITY_MAP.get(int(severity_raw), Severity.INFORMATIONAL)
-                except (ValueError, TypeError):
-                    pass
 
             tags = ["iris", "timeline", f"case.{case_id}"]
             if event_cat:

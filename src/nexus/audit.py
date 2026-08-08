@@ -11,8 +11,7 @@ import logging
 import os
 import re
 import threading
-import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -95,7 +94,7 @@ class AuditWriter:
                 audit_id = self._next_audit_id(examiner)
 
             entry: dict[str, Any] = {
-                "ts": datetime.now(timezone.utc).isoformat(),
+                "ts": datetime.now(UTC).isoformat(),
                 "mcp": self.mcp_name,
                 "tool": tool,
                 "audit_id": audit_id,
@@ -125,11 +124,10 @@ class AuditWriter:
             audit_dir.mkdir(parents=True, exist_ok=True)
             log_path = audit_dir / f"{self.mcp_name}.jsonl"
 
-            with self._lock:
-                with open(log_path, "a", encoding="utf-8") as f:
-                    f.write(json.dumps(entry, default=str) + "\n")
-                    f.flush()
-                    os.fsync(f.fileno())
+            with self._lock, open(log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, default=str) + "\n")
+                f.flush()
+                os.fsync(f.fileno())
 
             self._last_audit_id = audit_id
             return audit_id
@@ -162,7 +160,7 @@ class AuditWriter:
         return None
 
     def _next_audit_id(self, examiner: str) -> str:
-        date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
+        date_str = datetime.now(UTC).strftime("%Y%m%d")
         with self._seq_lock:
             key = f"{date_str}"
             seq = self._seq_cache.get(key, 0)

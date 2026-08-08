@@ -80,11 +80,6 @@ def generate(
     approved = [f for f in findings_list if f.approval_state.value == "approved"]
     evidence_list = mgr.list_evidence(case_id)
 
-    if profile and profile != "full":
-        profile_filter = {"status": profile} if profile in ("draft", "approved", "rejected") else {}
-    else:
-        profile_filter = {}
-
     date_filter_from = None
     date_filter_to = None
     if from_date:
@@ -92,13 +87,13 @@ def generate(
             date_filter_from = datetime.fromisoformat(from_date)
         except ValueError:
             typer.echo(f"Invalid --from date: {from_date}", err=True)
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
     if to_date:
         try:
             date_filter_to = datetime.fromisoformat(to_date)
         except ValueError:
             typer.echo(f"Invalid --to date: {to_date}", err=True)
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
 
     if date_filter_from or date_filter_to:
         approved = [

@@ -14,16 +14,12 @@ import tarfile
 import tempfile
 import zipfile
 from collections.abc import Iterator
-from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 from nexus.ingest.base import Importer
 from nexus.ingest.schemas import (
     Artifact,
     ArtifactSource,
-    ArtifactType,
-    Severity,
 )
 
 log = logging.getLogger(__name__)

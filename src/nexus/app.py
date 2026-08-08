@@ -30,7 +30,6 @@ import sys
 
 from mcp.server.fastmcp import FastMCP
 
-from nexus.config import settings
 from nexus.audit import AuditWriter
 
 logger = logging.getLogger(__name__)
@@ -66,13 +65,13 @@ def create_server() -> FastMCP:
     audit = AuditWriter("nexus")
 
     # ── Universal modules (pure Python, any platform) ──
-    from nexus.tools import forensic, case, report
+    from nexus.tools import case, forensic, report
     forensic.register_tools(server, audit)
     case.register_tools(server, audit)
     report.register_tools(server, audit)
 
     # ── Knowledge base tools ──
-    from nexus.tools import rag, opencti
+    from nexus.tools import opencti, rag
     rag.register_tools(server, audit)
     opencti.register_tools(server, audit)
 

@@ -1,8 +1,8 @@
 """Audit trail CLI — view and summarize audit entries."""
 
 import json
+
 import typer
-from pathlib import Path
 
 app = typer.Typer(help="View and analyze audit trail")
 

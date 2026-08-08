@@ -12,8 +12,8 @@ from pathlib import Path
 from typing import Any
 
 from .analysis import (
-    check_process_name_spoofing, extract_directory, extract_filename,
-    normalize_path, get_hash_column,
+    get_hash_column,
+    normalize_path,
 )
 
 logger = logging.getLogger(__name__)

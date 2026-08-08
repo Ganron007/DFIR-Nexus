@@ -4,9 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-import pytest
-
-from nexus.ingest.gap_analysis import analyze_gaps, GapAnalysisResult, LogGap
+from nexus.ingest.gap_analysis import LogGap, analyze_gaps
 from nexus.ingest.schemas import Artifact, ArtifactSource, ArtifactType, Severity
 
 

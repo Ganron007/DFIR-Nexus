@@ -8,23 +8,19 @@ Provides run_command with:
 5. FK-enriched response envelopes with caveats/advisories
 """
 
-import csv
 import hashlib
-import io
 import json
 import logging
 import os
 import re
 import shlex
-import sys
 import shutil
-import signal
 import subprocess
+import sys
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 import yaml
 from mcp.server.fastmcp import FastMCP
@@ -218,7 +214,7 @@ def _get_tool_def(name: str) -> dict | None:
     name_lower = name.lower()
     if name_lower in catalog:
         return catalog[name_lower]
-    for tname, tdef in catalog.items():
+    for _tname, tdef in catalog.items():
         if tdef.get("binary", "").lower() == name_lower:
             return tdef
     return None
@@ -299,10 +295,6 @@ def _execute(cmd_list: list[str], timeout: int = 600,
 
     stdout_chunks: list[bytes] = []
     stderr_chunks: list[bytes] = []
-    stdout_total = 0
-    stderr_total = 0
-    stdout_truncated = False
-    stderr_truncated = False
     mutex = threading.Lock()
 
     try:
@@ -364,7 +356,7 @@ def _execute(cmd_list: list[str], timeout: int = 600,
         return {
             "exit_code": -9,
             "stdout": b"".join(stdout_chunks).decode("utf-8", errors="replace")[:response_budget],
-            "stderr": "TIMEOUT: Process killed after {}s".format(elapsed),
+            "stderr": f"TIMEOUT: Process killed after {elapsed}s",
             "elapsed_seconds": round(elapsed, 1),
             "command": " ".join(cmd_list),
             "truncated": True,
@@ -448,9 +440,8 @@ def _build_response(tool_name: str, result: dict, audit_id: str | None,
         if standards:
             result.setdefault("_enrich", {})["standards"] = standards
 
-    if tool_def and decay:
-        if tool_def.get("caveats"):
-            caveats.extend(tool_def["caveats"] if isinstance(tool_def["caveats"], list) else [tool_def["caveats"]])
+    if tool_def and decay and tool_def.get("caveats"):
+        caveats.extend(tool_def["caveats"] if isinstance(tool_def["caveats"], list) else [tool_def["caveats"]])
 
     # Auto-parse structured output (JSON/CSV)
     stdout_raw = result.get("stdout", "")
@@ -459,7 +450,8 @@ def _build_response(tool_name: str, result: dict, audit_id: str | None,
         try:
             parsed_data = json.loads(stdout_raw)
         except (json.JSONDecodeError, ValueError):
-            import csv, io
+            import csv
+            import io
             if "," in stdout_raw[:200] and "\n" in stdout_raw[:2000]:
                 try:
                     reader = csv.DictReader(io.StringIO(stdout_raw))
@@ -610,7 +602,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         if case_dir and result.get("stdout_full_length", 0) > settings.response_byte_budget:
             try:
                 safe_name = re.sub(r"[^a-zA-Z0-9._-]", "_", base_binary)
-                ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+                ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
                 extractions_dir = Path(case_dir) / "extractions"
                 extractions_dir.mkdir(parents=True, exist_ok=True)
                 output_path = extractions_dir / f"{ts}_{safe_name}_stdout.txt"
@@ -644,13 +636,6 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             input_sha256s=input_sha256s or None,
             extra={"output_file": output_file} if output_file else None,
         )
-
-        metadata = {
-            "audit_id": audit_id,
-            "exit_code": result.get("exit_code"),
-            "elapsed": result.get("elapsed_seconds"),
-            "output_file": output_file,
-        }
 
         # FK-enriched response (caveats, advisories, corroboration)
         response = _build_response(base_binary, result, audit_id, purpose)
@@ -795,10 +780,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         fk_artifact = fk.get_artifact(at)
         if fk_artifact and fk_artifact.get("related_tools"):
             fk_tools = fk_artifact["related_tools"]
-            if not tool_names:
-                tool_names = fk_tools
-            else:
-                tool_names = list(dict.fromkeys(fk_tools + tool_names))
+            tool_names = fk_tools if not tool_names else list(dict.fromkeys(fk_tools + tool_names))
 
         if not tool_names:
             # FK artifact name search (may differ from alias key)

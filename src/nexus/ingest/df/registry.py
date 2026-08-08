@@ -124,9 +124,7 @@ class WindowsRegistryImporter(Importer):
                 or re.search(r"CurrentControlSet\\Services\\", head) is not None
             )
         # Or files named SYSTEM, SOFTWARE, SAM, NTUSER, etc. (no extension)
-        if name_lower in {"system", "software", "sam", "security", "ntuser.dat", "usrclass.dat", "amcache.hve", "amcache"}:
-            return True
-        return False
+        return name_lower in {"system", "software", "sam", "security", "ntuser.dat", "usrclass.dat", "amcache.hve", "amcache"}
 
     def parse(self, path: Path) -> Iterator[Artifact]:
         """Yield Artifact objects from a registry file."""

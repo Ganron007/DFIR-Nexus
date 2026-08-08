@@ -4,6 +4,7 @@ All data is persisted to the active case directory as JSON files.
 """
 
 from mcp.server.fastmcp import FastMCP
+
 from nexus.audit import AuditWriter
 from nexus.case_manager import CaseManager
 from nexus.knowledge import loader as fk

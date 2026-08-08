@@ -4,12 +4,12 @@ Generates structured report data from approved findings using
 profile-based filtering and Zeltser IR Writing guidance.
 """
 
-import json
+import contextlib
 import logging
 import os
 import re
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -138,10 +138,8 @@ def _atomic_write(path: Path, content: str) -> None:
             os.fsync(f.fileno())
         os.replace(tmp, path)
     except BaseException:
-        try:
+        with contextlib.suppress(OSError):
             os.unlink(tmp)
-        except OSError:
-            pass
         raise
 
 
@@ -286,10 +284,8 @@ def _generate(profile_name: str, case_dir: Path, finding_ids: list[str] | None =
     meta_path = case_dir / "CASE.yaml"
     metadata = {}
     if meta_path.exists():
-        try:
+        with contextlib.suppress(Exception):
             metadata = yaml.safe_load(meta_path.read_text()) or {}
-        except Exception:
-            pass
 
     findings = manager.get_findings()
     timeline = manager.get_timeline()
@@ -299,7 +295,6 @@ def _generate(profile_name: str, case_dir: Path, finding_ids: list[str] | None =
     approved_timeline = [e for e in timeline if e.get("status") == "APPROVED"]
 
     evidence = manager.list_evidence()
-    iocs = manager.get_iocs()
 
     # Apply findings_mode
     mode = profile.get("findings_mode", "all")
@@ -318,9 +313,7 @@ def _generate(profile_name: str, case_dir: Path, finding_ids: list[str] | None =
 
     # Apply timeline_mode
     tl_mode = profile.get("timeline_mode", "all")
-    if tl_mode == "count":
-        report_timeline = []
-    elif tl_mode == "none":
+    if tl_mode == "count" or tl_mode == "none":
         report_timeline = []
     elif tl_mode == "referenced":
         report_timeline = approved_timeline
@@ -349,7 +342,7 @@ def _generate(profile_name: str, case_dir: Path, finding_ids: list[str] | None =
 
     report_data: dict[str, Any] = {
         "profile": profile["name"],
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "case_id": case_dir.name,
     }
     for key in profile.get("data_keys", []):
@@ -445,7 +438,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         except Exception:
             meta = {}
         meta[field] = value
-        meta["modified_at"] = datetime.now(timezone.utc).isoformat()
+        meta["modified_at"] = datetime.now(UTC).isoformat()
         _atomic_write(meta_path, yaml.dump(meta, default_flow_style=False))
 
         audit.log(tool="set_case_metadata", params={"field": field},
@@ -535,7 +528,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         for f in sorted(reports_dir.iterdir()):
             if f.is_file():
                 try:
-                    ctime = datetime.fromtimestamp(f.stat().st_ctime, tz=timezone.utc).isoformat()
+                    ctime = datetime.fromtimestamp(f.stat().st_ctime, tz=UTC).isoformat()
                 except OSError:
                     ctime = ""
                 result.append({

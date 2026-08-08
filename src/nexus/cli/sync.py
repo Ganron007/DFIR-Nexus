@@ -3,8 +3,9 @@
 import base64
 import json
 import os
-import typer
 from pathlib import Path
+
+import typer
 
 app = typer.Typer(help="Export and merge case bundles")
 
@@ -138,7 +139,7 @@ def merge(
             bundle = json.loads(bundle_path.read_text())
     except Exception as e:
         typer.echo(f"Failed to read bundle: {e}", err=True)
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
     merged = {}
     for name in ("findings", "timeline", "todos", "iocs"):

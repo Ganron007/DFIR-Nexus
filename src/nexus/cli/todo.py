@@ -1,9 +1,9 @@
 """TODO management CLI."""
 
 import json
+from datetime import UTC, datetime
+
 import typer
-from pathlib import Path
-from datetime import datetime, timezone
 
 app = typer.Typer(help="Manage TODO items")
 
@@ -55,7 +55,7 @@ def add(
     todos.append({
         "todo_id": tid, "description": description, "assignee": assignee,
         "priority": priority, "status": "open",
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
     })
     path.write_text(json.dumps(todos, indent=2, default=str))
     typer.echo(f"Added: {tid}")
@@ -79,7 +79,7 @@ def complete(
     for t in todos:
         if t.get("todo_id") == todo_id or t.get("id") == todo_id:
             t["status"] = "completed"
-            t["completed_at"] = datetime.now(timezone.utc).isoformat()
+            t["completed_at"] = datetime.now(UTC).isoformat()
             path.write_text(json.dumps(todos, indent=2, default=str))
             typer.echo(f"Completed: {todo_id}")
             return

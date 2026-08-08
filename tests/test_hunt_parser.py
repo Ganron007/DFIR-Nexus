@@ -8,14 +8,13 @@ Run as a script: `python tests/test_hunt_parser.py`.
 
 from __future__ import annotations
 
-import sys
 import os
+import sys
 from types import SimpleNamespace
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from nexus.langgraph.hunt_parser import parse_hunt_candidates, normalize_candidate
-
+from nexus.langgraph.hunt_parser import normalize_candidate, parse_hunt_candidates
 
 passed = 0
 failed = 0

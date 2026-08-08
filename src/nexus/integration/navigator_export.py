@@ -9,7 +9,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-
 _SEVERITY_COLORS: dict[str, str] = {
     "critical": "#e22121",
     "high": "#f5864a",

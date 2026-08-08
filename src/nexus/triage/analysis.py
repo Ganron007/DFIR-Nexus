@@ -41,7 +41,7 @@ def normalize_path(path: str) -> str:
         path = path[2:]
     path = path.replace("/", "\\")
     stripped = path.rstrip("\\")
-    return "\\" if not stripped else stripped
+    return stripped if stripped else "\\"
 
 
 def extract_filename(path: str) -> str:

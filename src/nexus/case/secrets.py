@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import secrets
@@ -50,10 +51,8 @@ def get_audit_secret() -> bytes:
         with open(tmp, "w") as f:
             f.write(generated)
         os.replace(tmp, _PERSISTED_SECRET_PATH)
-        try:
+        with contextlib.suppress(OSError):
             os.chmod(_PERSISTED_SECRET_PATH, 0o600)
-        except OSError:
-            pass
     except OSError as exc:
         log.error("Failed to persist audit secret: %s", exc)
     return generated.encode("utf-8")

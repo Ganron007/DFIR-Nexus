@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from nexus.mitre import (
     build_observed_layer,
     create_rba_scorer,

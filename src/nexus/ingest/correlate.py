@@ -20,7 +20,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from nexus.ingest.schemas import Artifact, ArtifactSource
+from nexus.ingest.schemas import Artifact
 
 log = logging.getLogger(__name__)
 
@@ -178,7 +178,7 @@ def correlate(
                 uf.union(indices[0], indices[j])
 
     # Build merged events
-    for root, members in uf.groups().items():
+    for _root, members in uf.groups().items():
         group_artifacts = [artifacts[i] for i in members]
         merged = CorrelatedEvent(group_artifacts)
         result.merged.append(merged)

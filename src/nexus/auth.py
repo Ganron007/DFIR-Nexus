@@ -5,6 +5,7 @@ This is the key structural human-in-the-loop enforcement — blocks both
 AI-via-Bash AND expect-style terminal automation from approving findings.
 """
 
+import contextlib
 import hashlib
 import hmac
 import json
@@ -66,10 +67,8 @@ def _save_password_entry(analyst: str, entry: dict) -> None:
             json.dump(entry, f)
         os.replace(tmp, path)
     except BaseException:
-        try:
+        with contextlib.suppress(OSError):
             os.unlink(tmp)
-        except OSError:
-            pass
         raise
 
 
@@ -117,10 +116,8 @@ def record_failure(analyst: str) -> None:
     """Record a failed password attempt."""
     data = {}
     if _LOCKOUT_FILE.exists():
-        try:
+        with contextlib.suppress(OSError, json.JSONDecodeError):
             data = json.loads(_LOCKOUT_FILE.read_text())
-        except (OSError, json.JSONDecodeError):
-            pass
     failures = data.get(analyst, [])
     failures.append(time.time())
     data[analyst] = failures
@@ -196,10 +193,8 @@ def reset_password(analyst: str, old_password: str, new_password: str) -> dict:
                     f.write(json.dumps(entry) + "\n")
             os.replace(tmp, path)
         except BaseException:
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(tmp)
-            except OSError:
-                pass
             raise
 
     return {"status": "ok", "analyst": analyst, "re_signed": re_signed}

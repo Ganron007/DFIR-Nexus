@@ -4,22 +4,22 @@ All investigation data lives in flat JSON files within the case directory.
 This module provides atomic read/write access with SHA-256 content hashing.
 """
 
+import contextlib
 import hashlib
 import json
 import logging
 import os
 import re
 import tempfile
-import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import yaml
 
 from nexus.audit import resolve_examiner
-from nexus.discipline import validate_finding
 from nexus.config import settings
+from nexus.discipline import validate_finding
 
 logger = logging.getLogger(__name__)
 
@@ -42,10 +42,8 @@ def _atomic_write(path: Path, content: str) -> None:
             os.fsync(f.fileno())
         os.replace(tmp_path, path)
     except BaseException:
-        try:
+        with contextlib.suppress(OSError):
             os.unlink(tmp_path)
-        except OSError:
-            pass
         raise
 
 
@@ -186,7 +184,6 @@ class CaseManager:
         return data if isinstance(data, list) else data.get("findings", [])
 
     def _save_findings(self, case_dir: Path, findings: list[dict]) -> None:
-        from nexus.audit import AuditWriter
         path = case_dir / "findings.json"
         content = json.dumps(findings, indent=2, default=str)
         _atomic_write(path, content)
@@ -217,7 +214,7 @@ class CaseManager:
         findings = self._load_findings(case_dir)
         seq = _next_seq(findings, "id", "F", exam)
         finding_id = f"F-{exam}-{seq:03d}"
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
 
         sanitized = {k: v for k, v in finding.items()
                      if k in {"title", "observation", "interpretation", "confidence",
@@ -497,20 +494,20 @@ class CaseManager:
                     pass
             e_conf = (existing.get("confidence") or "MEDIUM").upper()
             conf_ranks = {"LOW": 0, "MEDIUM": 1, "HIGH": 2}
-            if new_type in ("exclusion", "conclusion") or e_type in ("exclusion", "conclusion"):
-                if abs(conf_ranks.get(new_conf, 1) - conf_ranks.get(e_conf, 1)) >= 1:
-                    conflicts.append({
-                        "existing_finding": existing.get("id", ""),
-                        "existing_title": existing.get("title", "")[:100],
-                        "existing_confidence": e_conf,
-                        "new_confidence": new_conf,
-                        "basis": (
-                            f"'{new_type}' finding on same host conflicts with "
-                            f"APPROVED '{e_type}' finding ({existing.get('id', '')}). "
-                            "Resolve before proceeding."
-                        ),
-                    })
-                    break
+            if (new_type in ("exclusion", "conclusion") or e_type in ("exclusion", "conclusion")) \
+                    and abs(conf_ranks.get(new_conf, 1) - conf_ranks.get(e_conf, 1)) >= 1:
+                conflicts.append({
+                    "existing_finding": existing.get("id", ""),
+                    "existing_title": existing.get("title", "")[:100],
+                    "existing_confidence": e_conf,
+                    "new_confidence": new_conf,
+                    "basis": (
+                        f"'{new_type}' finding on same host conflicts with "
+                        f"APPROVED '{e_type}' finding ({existing.get('id', '')}). "
+                        "Resolve before proceeding."
+                    ),
+                })
+                break
             if new_type == "exclusion" and e_type in ("execution", "persistence", "attribution"):
                 conflicts.append({
                     "existing_finding": existing.get("id", ""),
@@ -581,10 +578,7 @@ class CaseManager:
 
         found = len(found_ids)
         if len(none_ids) == 0 and found > 0:
-            if hook_ids or shell_ids:
-                summary = "MIXED"
-            else:
-                summary = "MCP"
+            summary = "MIXED" if hook_ids or shell_ids else "MCP"
             grade = "FULL"
         elif found > 0:
             summary = "MIXED" if (hook_ids or shell_ids) else "PARTIAL"
@@ -634,7 +628,7 @@ class CaseManager:
         events = self._load_timeline(case_dir)
         seq = _next_seq(events, "id", "T", exam)
         event_id = f"T-{exam}-{seq:03d}"
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         entry = {
             "id": event_id,
             "status": "DRAFT",
@@ -710,7 +704,7 @@ class CaseManager:
         todos = self._load_todos(case_dir)
         seq = _next_seq(todos, "id", "TODO", exam)
         todo_id = f"TODO-{exam}-{seq:03d}"
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         entry = {
             "id": todo_id,
             "todo_id": todo_id,
@@ -749,14 +743,14 @@ class CaseManager:
                 if status:
                     todo["status"] = status
                     if status == "completed":
-                        todo["completed_at"] = datetime.now(timezone.utc).isoformat()
+                        todo["completed_at"] = datetime.now(UTC).isoformat()
                 if note:
                     todo.setdefault("notes", []).append(note)
                 if assignee:
                     todo["assignee"] = assignee
                 if priority and priority in ("high", "medium", "low"):
                     todo["priority"] = priority
-                todo["modified_at"] = datetime.now(timezone.utc).isoformat()
+                todo["modified_at"] = datetime.now(UTC).isoformat()
                 self._save_todos(case_dir, todos)
                 return {"status": "updated", "todo_id": todo_id}
         return {"status": "not_found", "todo_id": todo_id}
@@ -791,11 +785,11 @@ class CaseManager:
                 sf = ioc.get("source_finding", "")
                 if sf and sf not in existing_by_value[val].get("source_findings", []):
                     existing_by_value[val].setdefault("source_findings", []).append(sf)
-                existing_by_value[val]["modified_at"] = datetime.now(timezone.utc).isoformat()
+                existing_by_value[val]["modified_at"] = datetime.now(UTC).isoformat()
             else:
                 ioc["status"] = "DRAFT"
                 ioc["source_findings"] = [ioc.get("source_finding", "")]
-                now = datetime.now(timezone.utc).isoformat()
+                now = datetime.now(UTC).isoformat()
                 ioc["created_at"] = now
                 existing.append(ioc)
         self._save_iocs(case_dir, existing)
@@ -873,7 +867,7 @@ class CaseManager:
                     h.update(chunk)
             sha256_hash = h.hexdigest()
 
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         entry = {
             "path": str(evidence_path),
             "sha256": sha256_hash,

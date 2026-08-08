@@ -4,10 +4,9 @@ Catalog-driven execution of 31 Windows forensic tools across 7
 categories, with result caching and structured output parsing.
 """
 
+import hashlib
 import json
 import logging
-import hashlib
-import os
 import shlex
 import shutil
 import subprocess
@@ -262,7 +261,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         for name in tool_names:
             found = _find_binary(name) is not None
             entry = {"name": name, "installed": found}
-            for key, info in _WIN_CATALOG.items():
+            for _key, info in _WIN_CATALOG.items():
                 if info["name"].lower() == name.lower():
                     entry["category"] = info["category"]
                     entry["description"] = info["description"]

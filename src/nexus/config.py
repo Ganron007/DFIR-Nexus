@@ -5,10 +5,9 @@ Reads from environment variables with NEXUS_ prefix, and from
 """
 
 import os
-import yaml
 from pathlib import Path
-from typing import Any
 
+import yaml
 from pydantic import BaseModel
 
 

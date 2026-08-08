@@ -166,9 +166,7 @@ def is_internal_ip(ip: str) -> bool:
         return True
     if a == 172 and 16 <= b <= 31:
         return True
-    if a == 100 and 64 <= b <= 127:
-        return True
-    return False
+    return bool(a == 100 and 64 <= b <= 127)
 
 
 def is_noise_domain(domain: str) -> bool:

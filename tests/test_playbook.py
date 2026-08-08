@@ -2,19 +2,16 @@
 
 from __future__ import annotations
 
-import json
 import tempfile
 from pathlib import Path
 
-import pytest
-
 from nexus.case.playbook import (
-    create_ir_playbook,
-    create_ransomware_playbook,
     Playbook,
     PlaybookTask,
-    TaskStatus,
     TaskPriority,
+    TaskStatus,
+    create_ir_playbook,
+    create_ransomware_playbook,
 )
 
 

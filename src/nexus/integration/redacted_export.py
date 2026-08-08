@@ -151,9 +151,7 @@ def _redact_findings(
     for finding in findings:
         new_finding: dict[str, Any] = {}
         for key, value in finding.items():
-            if key in sensitive_fields and isinstance(value, str):
-                new_finding[key] = _redact_text(value, rmap)
-            elif isinstance(value, str):
+            if key in sensitive_fields and isinstance(value, str) or isinstance(value, str):
                 new_finding[key] = _redact_text(value, rmap)
             else:
                 new_finding[key] = _redact_value(value, rmap)

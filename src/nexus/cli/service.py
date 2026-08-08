@@ -8,8 +8,9 @@ import os
 import signal
 import subprocess
 import sys
-import typer
 from pathlib import Path
+
+import typer
 
 app = typer.Typer(help="Manage MCP services")
 
@@ -111,7 +112,7 @@ def start(
         typer.echo(f"{name} started (PID: {proc.pid})")
     except FileNotFoundError:
         typer.echo(f"Command not found: {args[0]}", err=True)
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
 
 @app.command()

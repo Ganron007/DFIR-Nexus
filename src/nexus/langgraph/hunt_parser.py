@@ -16,7 +16,6 @@ import json as _json
 import re as _re
 from typing import Any
 
-
 _FENCE_RE = _re.compile(r'```(?:json)?\s*\n?(.*?)```', _re.DOTALL)
 
 
@@ -54,9 +53,7 @@ def _looks_like_finding(obj: Any, *, require_observation: bool) -> bool:
         return False
     if not obj.get("title"):
         return False
-    if require_observation and not obj.get("observation"):
-        return False
-    return True
+    return not (require_observation and not obj.get("observation"))
 
 
 def parse_hunt_candidates(messages: list) -> list[dict]:
