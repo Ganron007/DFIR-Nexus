@@ -78,6 +78,46 @@ def test_plan_sift_no_full_tree_plaso(monkeypatch):
     assert not any(j.tool == "log2timeline" for j in jobs)
 
 
+def test_empty_usnjrnl_is_skipped_not_scheduled(tmp_path: Path):
+    root = tmp_path / "C"
+    (root / "Windows" / "System32").mkdir(parents=True)
+    ext = root / "$Extend"
+    ext.mkdir()
+    (ext / "$UsnJrnl").write_bytes(b"")
+    jobs = plan_windows_triage(str(root), tmp_path / "ex")
+    pending_usn = [
+        j for j in jobs
+        if j.status == "PENDING" and "USN" in (j.purpose or "")
+    ]
+    assert pending_usn == []
+    skipped = [j for j in jobs if j.tool == "mftecmd-usn" and j.status == "SKIP"]
+    assert skipped
+
+
+def test_usable_usn_j_is_scheduled(tmp_path: Path):
+    root = tmp_path / "C"
+    (root / "Windows" / "System32").mkdir(parents=True)
+    ext = root / "$Extend"
+    ext.mkdir()
+    (ext / "$J").write_bytes(b"x" * 8192)
+    jobs = plan_windows_triage(str(root), tmp_path / "ex")
+    pending = [
+        j for j in jobs
+        if j.tool == "mftecmd" and j.status == "PENDING" and "USN" in j.purpose
+    ]
+    assert len(pending) == 1
+    assert str(ext / "$J") in pending[0].argv
+
+
+def test_mactime_not_in_default_sift_plan(monkeypatch):
+    """mactime is injected only when NEXUS_SIFT_MACTIME=1 (full-MFT stdout deadlocks MCP)."""
+    monkeypatch.delenv("NEXUS_SIFT_E01", raising=False)
+    monkeypatch.delenv("NEXUS_SIFT_PLASO", raising=False)
+    monkeypatch.delenv("NEXUS_SIFT_MACTIME", raising=False)
+    jobs = plan_sift_triage("/home/sansforensics/Evidence-files/pack")
+    assert not any(j.tool == "mactime" for j in jobs)
+
+
 def test_plan_sift_plaso_opt_in(monkeypatch):
     monkeypatch.delenv("NEXUS_SIFT_E01", raising=False)
     monkeypatch.setenv("NEXUS_SIFT_PLASO", "1")

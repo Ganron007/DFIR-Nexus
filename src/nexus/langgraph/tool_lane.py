@@ -261,21 +261,34 @@ def plan_windows_triage(
 
     usn = None
     for cand in (
-        root / "$Extend" / "$UsnJrnl:$J",
         root / "$Extend" / "$J",
         root / "$J",
+        root / "$Extend" / "$UsnJrnl:$J",
     ):
-        if cand.is_file():
-            usn = cand
-            break
+        try:
+            if cand.is_file() and cand.stat().st_size >= 4096:
+                usn = cand
+                break
+        except OSError:
+            continue
     if usn is None:
         ext = root / "$Extend"
         if ext.is_dir():
             try:
                 for p in ext.iterdir():
-                    if p.is_file() and "usn" in p.name.lower():
-                        usn = p
-                        break
+                    try:
+                        if (
+                            p.is_file()
+                            and p.stat().st_size >= 4096
+                            and (
+                                p.name in ("$J", "$UsnJrnl")
+                                or "usn" in p.name.lower()
+                            )
+                        ):
+                            usn = p
+                            break
+                    except OSError:
+                        continue
             except OSError:
                 pass
     if usn is not None and usn.is_file() and not quick:
@@ -290,7 +303,7 @@ def plan_windows_triage(
     elif quick:
         skip("mftecmd-usn", "skipped (NEXUS_TOOL_LANE_QUICK=1)")
     else:
-        skip("mftecmd-usn", "no $UsnJrnl:$J / $J on this image")
+        skip("mftecmd-usn", "no usable $J (Samba $UsnJrnl is often 0 bytes)")
 
     if recycle.is_dir():
         d = extractions / "rbcmd"
@@ -922,23 +935,22 @@ async def run_tool_lane(
         except Exception as exc:  # noqa: BLE001
             pushed = False
             log.warning("bodyfile push failed: %s", exc)
-        if pushed:
+        # Default: do not run mactime. A full-MFT bodyfile is hundreds of MB;
+        # mactime -d writes a multi-GB CSV to stdout, fills the MCP pipe, and
+        # deadlocks until timeout. The bodyfile itself is the examiner artifact.
+        mactime_on = os.environ.get("NEXUS_SIFT_MACTIME", "").strip().lower() in (
+            "1", "true", "yes",
+        )
+        if mactime_on and pushed:
             sift_jobs.append(ToolJob(
                 host="sift",
                 tool="mactime",
                 argv=["mactime", "-b", remote_body, "-d", "-z", "UTC"],
-                purpose="TSK mactime from MFTECmd bodyfile (FOR508 timeline)",
+                purpose="TSK mactime from MFTECmd bodyfile (NEXUS_SIFT_MACTIME=1)",
                 timeout=1800,
             ))
-        else:
-            sift_jobs.append(ToolJob(
-                host="sift",
-                tool="mactime",
-                argv=[],
-                purpose="TSK mactime from MFTECmd bodyfile",
-                status="FAIL",
-                reason=f"could not push bodyfile {bodyfiles[0]} to SIFT",
-            ))
+        elif mactime_on and not pushed:
+            log.warning("NEXUS_SIFT_MACTIME=1 but bodyfile push failed; not FAIL")
 
     for job in sift_jobs:
         await _run_one(job)

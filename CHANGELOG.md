@@ -20,7 +20,7 @@ All notable changes to DFIR-Nexus are documented here.
 ### Pipeline honesty (Rocba / dual-MCP)
 
 - **E01/`fls` opt-in** — KAPE triage pack uses Windows share + SIFT memory; set `NEXUS_SIFT_E01` only when you want fls.
-- **No full-tree plaso** — MFTECmd `--body` → SIFT `mactime`.
+- **No full-tree plaso** — MFTECmd `--body` is the timeline artifact. SIFT `mactime` is opt-in (`NEXUS_SIFT_MACTIME=1`); a full-MFT CSV deadlocks MCP stdout.
 - **RAG embedder** resolves `BAAI/bge-base-en-v1.5` from the local HuggingFace hub cache (`local_files_only`).
 - Rocba script: `--mode tools` needs no LLM; strict FAIL abort is tools-only.
 

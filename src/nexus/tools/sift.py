@@ -345,8 +345,34 @@ def _execute(cmd_list: list[str], timeout: int = 600,
     stderr_thread.start()
 
     start_time = time.time()
+    # Poll so a filled stdout cap cannot deadlock wait() (writer blocked on pipe).
     try:
-        proc.wait(timeout=timeout)
+        while True:
+            elapsed = time.time() - start_time
+            remaining = timeout - elapsed
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(cmd_list, timeout)
+            if stdout_truncated_arr[0] or stderr_truncated_arr[0]:
+                proc.kill()
+                proc.wait()
+                stdout_thread.join(timeout=2)
+                stderr_thread.join(timeout=2)
+                return {
+                    "exit_code": -9,
+                    "stdout": b"".join(stdout_chunks).decode("utf-8", errors="replace")[:response_budget],
+                    "stderr": (
+                        f"TRUNCATED: output exceeded cap ({max_bytes} bytes); "
+                        "process killed to avoid pipe deadlock"
+                    ),
+                    "elapsed_seconds": round(time.time() - start_time, 1),
+                    "command": " ".join(cmd_list),
+                    "truncated": True,
+                }
+            try:
+                proc.wait(timeout=min(1.0, max(remaining, 0.05)))
+                break
+            except subprocess.TimeoutExpired:
+                continue
     except subprocess.TimeoutExpired:
         proc.kill()
         proc.wait()

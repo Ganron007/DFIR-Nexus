@@ -129,7 +129,7 @@ def test_usn_schedules_mftecmd_when_j_present(tmp_path: Path):
     root = _win_root(tmp_path)
     j = root / "$Extend" / "$J"
     j.parent.mkdir(parents=True)
-    j.write_bytes(b"usn")
+    j.write_bytes(b"usn" * 2000)  # usable $J, not a 0-byte Samba stub
     jobs = plan_windows_triage(str(root), tmp_path / "ex")
     usn = [
         j for j in jobs
