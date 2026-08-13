@@ -1,0 +1,19 @@
+name: Suzaku
+category: timeline
+description: "Yamato Suzaku — fast EVTX / JSONL timeline and Sigma hunt (Hayabusa-family alternative)"
+platform: [windows, linux]
+artifacts_parsed:
+  - event_logs_security
+  - event_logs_system
+  - event_logs_powershell
+  - event_logs_sysmon
+caveats:
+  - "Alternative to Hayabusa for the same EVTX directory — not a second mandatory lane parser"
+  - "Rule coverage differs from Hayabusa; compare hits rather than treating either as complete"
+output_notes:
+  format: csv_or_json
+quick_start: "suzaku timeline -d \"C:/Windows/System32/winevt/Logs\" -o suzaku.csv"
+advisories:
+  - "Use as a design-mode extra or examiner follow-up after the Hayabusa/EvtxECmd lane"
+references:
+  - "SANS FOR508 - Advanced Incident Response"

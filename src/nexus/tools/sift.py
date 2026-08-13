@@ -596,20 +596,23 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         cmd_list = [resolved] + safe_args
         result = _execute(cmd_list, timeout=cmd_timeout)
 
-        # Save output to case dir if large
-        case_dir = os.environ.get("NEXUS_CASE_DIR")
-        output_file = None
-        if case_dir and result.get("stdout_full_length", 0) > settings.response_byte_budget:
-            try:
-                safe_name = re.sub(r"[^a-zA-Z0-9._-]", "_", base_binary)
-                ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
-                extractions_dir = Path(case_dir) / "extractions"
-                extractions_dir.mkdir(parents=True, exist_ok=True)
-                output_path = extractions_dir / f"{ts}_{safe_name}_stdout.txt"
-                output_path.write_text(result.get("stdout", ""))
-                output_file = str(output_path)
-            except OSError:
-                pass
+        # Design contract: always persist tool output into the active case
+        from nexus.case.outputs import persist_tool_output, resolve_active_case_dir
+
+        persisted = persist_tool_output(
+            tool_key=base_binary,
+            stdout=result.get("stdout", "") or "",
+            stderr=result.get("stderr", "") or "",
+            command=command,
+            purpose=purpose,
+            case_dir=resolve_active_case_dir(),
+            register_evidence=True,
+        )
+        output_files = persisted.get("output_files") or []
+        output_file = next(
+            (f["path"] for f in output_files if f.get("kind") == "stdout"),
+            None,
+        )
 
         # Audit log
         input_sha256s = []
@@ -631,6 +634,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
                 "exit_code": result.get("exit_code"),
                 "elapsed_seconds": result.get("elapsed_seconds"),
                 "stdout_bytes": result.get("stdout_full_length", len(result.get("stdout", ""))),
+                "output_files": output_files,
             },
             input_files=input_files,
             input_sha256s=input_sha256s or None,
@@ -641,27 +645,40 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         response = _build_response(base_binary, result, audit_id, purpose)
         response["data"] = result.get("stdout", "")
         response["stderr"] = result.get("stderr", "")[:2000] or ""
+        response["output_files"] = output_files
+        if output_file:
+            response["output_saved_to"] = output_file
+        if persisted.get("warning"):
+            response["persist_warning"] = persisted["warning"]
+        if persisted.get("evidence_register"):
+            response["evidence_register"] = persisted["evidence_register"]
 
-        # Trim output if preview_lines set
+        # Trim preview returned to the LLM; full output is on disk
         output = result.get("stdout", "")
         if preview_lines > 0 and not result.get("truncated"):
             lines = output.split("\n")
             if len(lines) > preview_lines:
                 output = "\n".join(lines[:preview_lines])
-                output += f"\n... ({len(lines) - preview_lines} more lines. Use save_output or increase preview_lines)"
+                output += (
+                    f"\n... ({len(lines) - preview_lines} more lines. "
+                    f"Full output saved to: {output_file or 'case/extractions/'})"
+                )
                 response["data"] = output
 
         if result.get("truncated"):
             response["truncation_note"] = (
                 f"Output exceeds response budget. "
-                f"Full size: {result.get('stdout_full_length', 0)} bytes."
+                f"Full size: {result.get('stdout_full_length', 0)} bytes. "
+                f"Saved to: {output_file or 'case/extractions/'}"
             )
-            if output_file:
-                response["output_saved_to"] = output_file
 
         response["elapsed_seconds"] = round(time.time() - start_time, 1)
-        if output_file:
-            response["output_files"] = [output_file]
+        response["field_meanings"] = {
+            **(response.get("field_meanings") or {}),
+            "audit_id": "Pass to record_finding(audit_ids=[...]) / artifacts",
+            "output_saved_to": "Full stdout path under active case extractions/",
+            "output_files": "stdout/stderr/meta paths + sha256 for FD-001 citations",
+        }
 
         return response
 

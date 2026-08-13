@@ -48,7 +48,7 @@ corroborate_with:
   for_presence: [mft, usn_journal]
   for_timeline: [event_logs_security, event_logs_sysmon, event_logs_system]
 
-related_tools: [autoruns, wmi_persistence.py, Get-WMIObject]
+related_tools: [RECmd, autorunsc, EvtxECmd, Hayabusa]
 
 cross_mcp_checks:
   - mcp: "windows-triage"

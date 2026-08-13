@@ -91,10 +91,15 @@ async def query_threatfox(
             api_key,
         )
     hits = raw.get("data") or []
+    if isinstance(hits, str):
+        hits = []
+    if not isinstance(hits, list):
+        hits = []
+    first = hits[0] if hits and isinstance(hits[0], dict) else {}
     mal = bool(hits)
     summary = f"ThreatFox: {len(hits)} hit(s)" if hits else "ThreatFox: no hits"
-    if hits:
-        summary = f"ThreatFox: {hits[0].get('threat_type', 'unknown')} / {hits[0].get('malware', 'n/a')}"
+    if first:
+        summary = f"ThreatFox: {first.get('threat_type', 'unknown')} / {first.get('malware', 'n/a')}"
     return _abuse_result(
         "threatfox",
         tf_type,
@@ -103,7 +108,7 @@ async def query_threatfox(
         malicious=mal if hits else None,
         confidence=0.75 if hits else 0.0,
         summary=summary,
-        tags=[str(hits[0].get("malware"))] if hits and hits[0].get("malware") else [],
+        tags=[str(first.get("malware"))] if first.get("malware") else [],
     )
 
 

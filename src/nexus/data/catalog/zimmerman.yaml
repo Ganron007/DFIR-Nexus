@@ -176,6 +176,20 @@ tools:
         description: "Output directory for CSV"
         required: true
 
+  - name: WxTCmd
+    binary: WxTCmd
+    input_style: flag
+    input_flag: "-f"
+    output_format: csv
+    timeout_seconds: 300
+    interactive: false
+    description: "Parse Windows Timeline ActivitiesCache.db"
+    fk_tool_name: WxTCmd
+    common_flags:
+      - flag: "--csv"
+        description: "Output directory for CSV"
+        required: true
+
   - name: bstrings
     binary: bstrings
     input_style: flag

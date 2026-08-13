@@ -74,7 +74,7 @@ class AmCacheImporter(Importer):
     def _parse_binary(self, path: Path) -> Iterator[Artifact]:
         """Parse Amcache.hve (requires python-registry)."""
         try:
-            from Registry import Registry
+            from Registry.Registry import Registry
         except ImportError:
             log.error("Cannot parse Amcache.hve: install python-registry")
             return

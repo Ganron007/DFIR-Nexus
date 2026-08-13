@@ -3,7 +3,7 @@ category: zimmerman
 description: "Parse Windows Event Log files (.evtx) with map support for structured field extraction"
 platform: [windows, linux, macos]
 platform_notes: ".NET tool. Runs natively as .exe on Windows. On Linux/macOS, runs via dotnet CLI. Same flags, same output. Parses Windows artifacts regardless of host OS."
-artifacts_parsed: [event_logs_security, event_logs_system, event_logs_powershell, event_logs_sysmon]
+artifacts_parsed: [event_logs_security, event_logs_system, event_logs_powershell, event_logs_sysmon, event_logs_rdp, event_logs_wmi, event_logs_defender, event_logs_firewall, event_logs_services, event_logs_task_scheduler, event_logs_network_share]
 
 caveats:
   - "Event logs can be cleared by administrators or attackers; check Event ID 1102 (Security) and 104 (System) for evidence of clearing"

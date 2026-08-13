@@ -41,7 +41,7 @@ corroborate_with:
   for_presence: [mft, amcache, shimcache]
   for_timeline: [event_logs_system, usn_journal, prefetch]
 
-related_tools: [RECmd, autoruns]
+related_tools: [RECmd, autorunsc]
 
 cross_mcp_checks:
   - mcp: "windows-triage"

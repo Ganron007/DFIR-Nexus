@@ -61,9 +61,12 @@ secrets.json
 
 # ── Runtime / case data (lives under ~/.nexus by default) ───────────
 .nexus/
-cases/
-data/
+# Repo-root only — do not ignore src/nexus/data (knowledge YAML) or Docs/cases (maps)
+/cases/
+/data/
 smoke_test_data/
+# Per-run examiner exports (maps + README in Docs/cases stay tracked)
+Docs/cases/INC-*/
 pipeline.sqlite
 nexus-config.json
 
@@ -121,10 +124,17 @@ chroma.sqlite3
 # Logs
 *.log
 *.mcp.lock
+# Generated LLM client config (contains lab IPs)
+.mcp.json
 
 # ── Build / docs site output ────────────────────────────────────────
 _site/
 site/
+
+# Local Windows/Linux forensic binaries (downloaded; never commit)
+Tools/windows/
+Tools/linux/
+!Tools/README.md
 
 # ── Scratch ─────────────────────────────────────────────────────────
 .session_state.md

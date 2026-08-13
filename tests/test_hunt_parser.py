@@ -134,12 +134,15 @@ r = parse_hunt_candidates([
 ])
 check("candidates across messages", len(r) == 2, f"got {len(r)}")
 
-# 17. Only the LAST 5 messages are scanned (older ones must be ignored)
-older = [{"role": "ai", "content": '```json\n{"title": "old"}\n```'}] * 3
-recent = [{"role": "ai", "content": '```json\n{"title": "recent"}\n```'}] * 5
+# 17. Only the LAST scan_last messages are scanned (default 20)
+older = [{"role": "ai", "content": '```json\n{"title": "old"}\n```'}] * 5
+recent = [{"role": "ai", "content": '```json\n{"title": "recent"}\n```'}] * 20
 r = parse_hunt_candidates(older + recent)
-check("only last 5 scanned", len(r) == 5 and all(c["title"] == "recent" for c in r),
-      f"got {len(r)} candidates, titles={[c['title'] for c in r]}")
+check("only last 20 scanned (default)", len(r) == 20 and all(c["title"] == "recent" for c in r),
+      f"got {len(r)} candidates, titles={set(c['title'] for c in r)}")
+r = parse_hunt_candidates(older + recent, scan_last=5)
+check("scan_last=5 honored", len(r) == 5 and all(c["title"] == "recent" for c in r),
+      f"got {len(r)}")
 
 # 18. LangChain-style message object (has .content attribute, not dict)
 msg = SimpleNamespace(content='```json\n{"title": "from object"}\n```')
@@ -159,9 +162,9 @@ check("plain string message", len(r) == 1 and r[0]["title"] == "plain string")
 n = normalize_candidate({"title": "x" * 500, "observation": "y"})
 check("title clamped to 200", len(n["title"]) == 200, f"got len={len(n['title'])}")
 
-# 21. Observation clamped to 2000 chars
-n = normalize_candidate({"title": "t", "observation": "y" * 5000})
-check("observation clamped to 2000", len(n["observation"]) == 2000, f"got len={len(n['observation'])}")
+# 21. Observation clamped to 8000 chars
+n = normalize_candidate({"title": "t", "observation": "y" * 12000})
+check("observation clamped to 8000", len(n["observation"]) == 8000, f"got len={len(n['observation'])}")
 
 # 22. `description` aliases `observation` when observation missing
 n = normalize_candidate({"title": "t", "description": "fallback obs"})

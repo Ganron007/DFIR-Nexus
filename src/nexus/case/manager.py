@@ -46,6 +46,13 @@ def materialize_case_dir(case: Case) -> Path:
 
     case_dir = settings.cases_root / case.id
     case_dir.mkdir(parents=True, exist_ok=True)
+    # Parity with MCP case_init layout — tool outputs + reports + audit belong here
+    for sub in ("extractions", "reports", "audit", "evidence"):
+        (case_dir / sub).mkdir(exist_ok=True)
+    for empty in ("findings.json", "timeline.json", "evidence.json", "iocs.json", "todos.json"):
+        p = case_dir / empty
+        if not p.exists():
+            p.write_text("[]\n", encoding="utf-8")
     meta_path = case_dir / "CASE.yaml"
     if not meta_path.exists():
         meta = {
@@ -108,6 +115,14 @@ class CaseManager:
     def close(self) -> None:
         """Close the underlying database."""
         self.store.close()
+
+    def _sync_flat(self, case_id: str) -> None:
+        """Best-effort mirror SQLite → flat JSON (portal + MCP generate_report)."""
+        try:
+            from nexus.case.compat import sync_sqlite_to_flat
+            sync_sqlite_to_flat(case_id, mgr=self)
+        except Exception as exc:
+            log.warning("flat-JSON sync failed for %s: %s", case_id, exc)
 
     # =============================================================
     # Case operations
@@ -279,6 +294,7 @@ class CaseManager:
             },
         )
         self._save_audit_chain(chain)
+        self._sync_flat(case_id)
         return finding
 
     def list_findings(self, case_id: str) -> list[Finding]:
@@ -332,6 +348,7 @@ class CaseManager:
             },
         )
         self._save_audit_chain(chain)
+        self._sync_flat(case.id)
         return finding
 
     def reject_finding(
@@ -362,6 +379,7 @@ class CaseManager:
             },
         )
         self._save_audit_chain(chain)
+        self._sync_flat(case.id)
         return finding
 
     def list_review_queue(
@@ -449,6 +467,7 @@ class CaseManager:
             },
         )
         self._save_audit_chain(chain)
+        self._sync_flat(case_id)
         return evidence
 
     def add_evidence_from_artifact(

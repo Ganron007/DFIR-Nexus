@@ -43,6 +43,8 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         audit_ids: list[str] | None = None,
         analyst_override: str = "",
         finding: dict | None = None,
+        itm_stage: str = "",
+        itm_objects: list[str] | None = None,
     ) -> dict:
         """Stage a finding as DRAFT for human review.
 
@@ -86,6 +88,10 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             finding_data["iocs"] = iocs
         if audit_ids:
             finding_data["audit_ids"] = audit_ids
+        if itm_stage:
+            finding_data["itm_stage"] = itm_stage
+        if itm_objects:
+            finding_data["itm_objects"] = itm_objects
 
         try:
             result = manager.record_finding(

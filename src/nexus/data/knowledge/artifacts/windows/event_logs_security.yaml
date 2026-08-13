@@ -42,7 +42,7 @@ corroborate_with:
   for_presence: [mft, amcache]
   for_timeline: [prefetch, event_logs_system, event_logs_powershell, srum]
 
-related_tools: [EvtxECmd, Hayabusa]
+related_tools: [EvtxECmd, Hayabusa, Suzaku, Chainsaw]
 
 cross_mcp_checks:
   - mcp: "windows-triage"

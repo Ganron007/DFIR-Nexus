@@ -13,8 +13,8 @@ from nexus.case.approval import (
     get_default_workflow,
 )
 from nexus.case.audit import AuditChain, AuditChainError
-from nexus.case.compat import LegacyJsonImporter, get_sqlite_manager
-from nexus.case.manager import CaseManager
+from nexus.case.compat import LegacyJsonImporter, get_sqlite_manager, sync_sqlite_to_flat
+from nexus.case.manager import CaseManager, materialize_case_dir
 from nexus.case.schemas import (
     ApprovalState,
     AuditAction,
@@ -52,4 +52,6 @@ __all__ = [
     "get_audit_secret",
     "get_default_workflow",
     "get_sqlite_manager",
+    "materialize_case_dir",
+    "sync_sqlite_to_flat",
 ]

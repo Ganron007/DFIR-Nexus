@@ -3,6 +3,7 @@ description: "Sigma-based detection alerts from Hayabusa rule engine"
 category: detection
 platform: windows
 source_tool: hayabusa
+related_tools: [Hayabusa]
 
 does_not_prove:
   - "Malicious activity occurred — alerts require analyst validation"

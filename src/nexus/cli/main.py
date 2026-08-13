@@ -33,6 +33,9 @@ Usage:
     nexus portal                           Open Examiner Portal
     nexus setup client                     Generate LLM client config
     nexus setup test                       Test connectivity
+    nexus ingest <path> [--recursive]      Auto-detect and ingest a file or tree
+    nexus doctor                           Report extras / tools / indexes / keys
+    nexus data download-rag|triage|fixtures  Indexes / fixture pointer
     nexus service status                   Check service status
     nexus service start                    Start service
     nexus service stop                     Stop service
@@ -59,6 +62,7 @@ from nexus.cli.review import app as review_app
 from nexus.cli.service import app as service_app
 from nexus.cli.sync import app as sync_app
 from nexus.cli.todo import app as todo_app
+from nexus.cli.data_cmd import app as data_app
 
 app = typer.Typer(name="nexus", help="DFIR-Nexus — unified DFIR investigation platform")
 
@@ -74,9 +78,16 @@ app.add_typer(sync_app, name="merge", help="Merge case bundle")
 app.add_typer(exec_app, name="exec", help="Execute forensic command with audit trail")
 app.add_typer(audit_app, name="audit", help="View audit trail")
 app.add_typer(todo_app, name="todo", help="Manage TODO items")
+app.add_typer(data_app, name="data", help="Download RAG / triage / fixtures")
 # Registered as a direct command (not a sub-group) so the documented
 # `nexus init "Case" --evidence ...` form works.
 app.command(name="init", help="Quickstart — one-command onboarding")(init_cmd)
+
+from nexus.cli.ingest_cmd import ingest as ingest_cmd
+from nexus.cli.doctor_cmd import doctor as doctor_cmd
+
+app.command(name="ingest", help="Auto-detect and ingest a forensic file or tree")(ingest_cmd)
+app.command(name="doctor", help="Report extras, catalog binaries, indexes, optional keys")(doctor_cmd)
 
 _ACTIVE_CASE_FILE = Path.home() / ".nexus" / "active_case"
 
@@ -315,10 +326,13 @@ def serve(
 ):
     """Start the DFIR-Nexus MCP server."""
     from nexus.app import create_server
-    server = create_server()
+    # Pass bind host into FastMCP so DNS-rebinding allowlist matches
+    # client Host headers (fixes SIFT /mcp HTTP 421 for lab IPs).
+    server = create_server(host=host)
     if http:
         import uvicorn
 
+        from nexus.mcp_security import build_allowed_hosts
         from nexus.utils.constants import check_required_env
         try:
             warnings = check_required_env(host=host, port=port)
@@ -331,6 +345,9 @@ def serve(
         starlette_app = build_http_app(server, host=host, port=port)
         typer.echo(f"Starting DFIR-Nexus HTTP server on {host}:{port}")
         typer.echo(f"  Portal: http://{host}:{port}/portal")
+        allowed = build_allowed_hosts(host)
+        typer.echo(f"  MCP Host allowlist: {', '.join(allowed[:8])}{'…' if len(allowed) > 8 else ''}")
+        typer.echo("  (extra hosts: NEXUS_MCP_ALLOWED_HOSTS=ip1,ip2)")
         uvicorn.run(starlette_app, host=host, port=port)
     else:
         typer.echo("Starting DFIR-Nexus in stdio mode...", err=True)
@@ -353,17 +370,31 @@ def pipeline(
     resume: bool = typer.Option(False, "--resume", help="Resume from last checkpoint after human approval"),
     model: str = typer.Option("", "--model", help="LLM model (e.g. openai/gpt-4o, ollama/qwen2.5:32b-instruct)"),
     thread: str = typer.Option("", "--thread", help="Thread ID for checkpoint persistence"),
+    mode: str = typer.Option(
+        "",
+        "--mode",
+        help=(
+            "Pipeline mode: design | coverage | tools "
+            "(tools = force-run lane, no LLM)"
+        ),
+    ),
 ):
-    """Run the LLM-driven investigation pipeline.
+    """Run the investigation pipeline.
 
-    Connects to the MCP server, drives a 6-node investigation graph
-    using an LLM (Anthropic/OpenAI/Ollama), stages DRAFT findings,
-    pauses for human approval, then generates a report.
+    Modes:
+      design (default) — ReAct agent selects and runs MCP tools (product design)
+      coverage         — deterministic tool lane; LLM interprets ledger+snippets
+      tools            — deterministic tool lane only; TOOL-RUN report; no LLM
+
+    Also set via NEXUS_PIPELINE_MODE=design|coverage|tools
+    (aliases: react/hunt → design; debug/full/lane → coverage;
+     tools_only/no_llm → tools).
 
     Requires: pip install dfir-nexus[pipeline]
 
     Environment variables:
-        NEXUS_MODEL — model identifier (default: claude-sonnet-4-20250514)
+        NEXUS_LLM_MODEL / NEXUS_MODEL — model identifier (not required for tools)
+        NEXUS_PIPELINE_MODE — design|coverage|tools
         NEXUS_GATEWAY_URL — HTTP URL for MCP server (default: stdio)
         NEXUS_BEARER_TOKEN — bearer token for HTTP mode
     """
@@ -380,6 +411,7 @@ def pipeline(
         resume=resume,
         thread_id=thread,
         model_name=model,
+        mode=mode or None,
     ))
 
 

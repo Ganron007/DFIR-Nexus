@@ -140,22 +140,37 @@ class WindowsRegistryImporter(Importer):
 
     def _parse_binary(self, path: Path) -> Iterator[Artifact]:
         """Parse a binary registry hive. Requires python-registry or regipy."""
+        py_reg = None
         try:
-            from Registry import Registry as PyRegistry
+            from Registry.Registry import Registry as PyRegistry
+            py_reg = PyRegistry
+        except ImportError:
+            py_reg = None
+
+        arts: list[Artifact] = []
+        if py_reg is not None:
+            try:
+                arts = list(self._parse_binary_python_registry(path, py_reg))
+            except Exception as e:  # noqa: BLE001
+                log.warning("python-registry failed on %s: %s; trying regipy", path, e)
+                arts = []
+            if arts:
+                yield from arts
+                return
+
+        try:
+            from regipy.registry import RegistryHive as RegipyRegistry
         except ImportError:
             try:
-                from regipy.registry import (
-                    Registry as RegipyRegistry,
-                )
+                from regipy.registry import Registry as RegipyRegistry  # older regipy
             except ImportError:
-                log.error(
-                    "Cannot parse binary registry hive: install python-registry or regipy "
-                    "(pip install python-registry)"
-                )
+                if py_reg is None:
+                    log.error(
+                        "Cannot parse binary registry hive: install python-registry or regipy "
+                        "(pip install python-registry)"
+                    )
                 return
-            yield from self._parse_binary_regipy(path, RegipyRegistry)
-            return
-        yield from self._parse_binary_python_registry(path, PyRegistry)
+        yield from self._parse_binary_regipy(path, RegipyRegistry)
 
     def _parse_binary_python_registry(
         self, path: Path, registry_cls: Any
@@ -187,29 +202,49 @@ class WindowsRegistryImporter(Importer):
     def _parse_binary_regipy(
         self, path: Path, registry_cls: Any
     ) -> Iterator[Artifact]:
-        """Parse using regipy library (when available)."""
+        """Parse using regipy (RegistryHive.recurse_subkeys)."""
         try:
             reg = registry_cls(str(path))
         except Exception as e:  # noqa: BLE001
             log.warning("Failed to open hive %s: %s", path, e)
             return
-        # regipy uses .root() differently
         try:
-            root = reg.root
-            yield from self._walk_regipy(root, str(path))
+            recurse = getattr(reg, "recurse_subkeys", None)
+            if recurse is None:
+                root = getattr(reg, "root", None)
+                if root is not None:
+                    yield from self._walk_regipy(root, str(path))
+                return
+            for subkey in recurse():
+                sub_path = str(getattr(subkey, "path", "") or "")
+                lower = sub_path.lower()
+                for pattern, info in self.INTERESTING_KEYS.items():
+                    if pattern.lower() in lower:
+                        for value in getattr(subkey, "values", None) or []:
+                            name = getattr(value, "name", "")
+                            val = getattr(value, "value", "")
+                            yield self._make_registry_artifact(
+                                sub_path, str(name), str(val), info, str(path)
+                            )
+                        break
         except Exception as e:  # noqa: BLE001
             log.warning("Failed to walk regipy hive %s: %s", path, e)
 
     def _walk_regipy(self, key: Any, path: Path | str) -> Iterator[Artifact]:
-        """Walk a regipy key tree."""
+        """Walk a legacy regipy key tree (iter_subkeys)."""
         for subkey in key.iter_subkeys():
-            sub_path = subkey.path
-            lower = sub_path.lower()
+            sub_path = getattr(subkey, "path", None) or getattr(subkey, "name", "")
+            lower = str(sub_path).lower()
             for pattern, info in self.INTERESTING_KEYS.items():
                 if pattern.lower() in lower:
-                    for value in subkey.iter_values():
+                    values = subkey.iter_values() if hasattr(subkey, "iter_values") else []
+                    for value in values:
                         yield self._make_registry_artifact(
-                            sub_path, value.name, str(value.value), info, str(path)
+                            str(sub_path),
+                            str(getattr(value, "name", "")),
+                            str(getattr(value, "value", "")),
+                            info,
+                            str(path),
                         )
                     break
             yield from self._walk_regipy(subkey, path)
@@ -241,10 +276,16 @@ class WindowsRegistryImporter(Importer):
             @="default value"
         """
         try:
-            text = path.read_text(encoding="utf-8", errors="replace")
+            raw = path.read_bytes()
         except OSError as e:
             log.warning("Failed to read %s: %s", path, e)
             return
+        if raw.startswith(b"\xff\xfe") or raw.startswith(b"\xfe\xff"):
+            text = raw.decode("utf-16", errors="replace")
+        elif raw.startswith(b"\xef\xbb\xbf"):
+            text = raw.decode("utf-8-sig", errors="replace")
+        else:
+            text = raw.decode("utf-8", errors="replace")
 
         current_key: str | None = None
         for raw_line in text.splitlines():

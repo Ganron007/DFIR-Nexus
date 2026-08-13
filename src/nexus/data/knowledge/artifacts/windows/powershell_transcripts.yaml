@@ -5,7 +5,7 @@ platform: windows
 locations:
   - path: "C:\\Users\\<username>\\Documents\\PowerShell_transcript*.txt"
     os_versions: ["Windows 7+", "Windows 10", "Windows 11"]
-    notes: "Default location for Start-Transcript output. Filename includes hostname, username, and timestamp."
+    notes: "Default location for Start-Transcript output. Filename includes hostname, username, and timestamp. The lane copies matching files into extractions; they are not a parser job."
   - path: "Configured via Group Policy: Computer Configuration > Administrative Templates > Windows Components > Windows PowerShell > Turn on PowerShell Transcription"
     os_versions: ["Windows 10+", "Windows 11"]
     notes: "Group policy can specify a custom output directory and enable invocation headers. Often configured to write to a network share."
@@ -45,7 +45,7 @@ corroborate_with:
   for_presence: [mft, usn_journal]
   for_timeline: [event_logs_powershell, event_logs_security]
 
-related_tools: [EvtxECmd]
+related_tools: []
 
 cross_mcp_checks:
   - mcp: "windows-triage"

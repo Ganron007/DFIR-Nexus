@@ -39,7 +39,7 @@ corroborate_with:
   for_presence: [mft, usn_journal, ntfs_i30]
   for_timeline: [usn_journal, mft]
 
-related_tools: [MFTECmd, NTFS Log Tracker]
+related_tools: [LogFileParser]
 
 cross_mcp_checks:
   - mcp: "windows-triage"
@@ -54,9 +54,9 @@ cross_mcp_checks:
 
 known_gaps:
   - artifact: "$LogFile"
-    status: "Not parsed by platform"
-    tools: "LogFileParser, NTFS Log Tracker (not in catalog)"
-    note: "For deep anti-forensics investigation, $LogFile may contain transaction records flushed from USN Journal. Manual extraction and parsing required."
+    status: "Cataloged; not auto-run until CLI is verified on a fetched binary"
+    tools: "LogFileParser (Windows catalog). NTFS Log Tracker GUI is not wired."
+    note: "On a live NTFS volume the journal is not a normal file. KAPE/image extraction required. Circular 64MB buffer. Do not guess argv."
 
 references:
   - "SANS FOR508 - Advanced Incident Response"

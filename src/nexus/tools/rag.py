@@ -36,10 +36,11 @@ except ImportError:
 MAX_TEXT_LENGTH = 1500
 MAX_TOP_K = 50
 MAX_RETRIEVE = 500
-# Default embedding model used by the prebuilt index. Hosting a model is
-# the operator's responsibility: set NEXUS_RAG_MODEL to a HuggingFace model
-# ID or a local model directory. The model MUST match the embeddings stored
-# in the index (the prebuilt index uses the default below).
+# Default embedding model used by the prebuilt index. Every operator uses
+# this HuggingFace id; SentenceTransformer resolves it from the local hub
+# cache when present (no network). Override with NEXUS_RAG_MODEL (or the
+# alias NEXUS_RAG_EMBED_MODEL) to a HuggingFace id or a snapshot directory.
+# The model MUST match the embeddings stored in the index.
 DEFAULT_MODEL_NAME = "BAAI/bge-base-en-v1.5"
 
 MITRE_ID_PATTERN = re.compile(r"\b(T\d{4}(?:\.\d{3})?)\b", re.IGNORECASE)
@@ -58,8 +59,83 @@ def _release_repo() -> str:
 
 
 def _rag_model_name() -> str:
-    """Embedding model ID or local path used to embed RAG queries."""
-    return os.environ.get("NEXUS_RAG_MODEL") or DEFAULT_MODEL_NAME
+    """Configured embedding model id or explicit local directory."""
+    return (
+        os.environ.get("NEXUS_RAG_MODEL")
+        or os.environ.get("NEXUS_RAG_EMBED_MODEL")
+        or DEFAULT_MODEL_NAME
+    ).strip()
+
+
+def _hf_home() -> Path:
+    raw = os.environ.get("HF_HOME") or os.environ.get("HUGGINGFACE_HUB_CACHE")
+    if raw:
+        p = Path(raw)
+        # HUGGINGFACE_HUB_CACHE may already be .../hub
+        return p if p.name == "hub" else p
+    return Path.home() / ".cache" / "huggingface"
+
+
+def resolve_hf_snapshot(model_id: str) -> Path | None:
+    """Return the local HuggingFace hub snapshot dir for ``org/name``, if cached."""
+    if not model_id or model_id.startswith(".") or Path(model_id).is_absolute():
+        return None
+    if "/" not in model_id and not model_id.startswith("models--"):
+        return None
+    hf = _hf_home()
+    hub = hf / "hub" if hf.name != "hub" else hf
+    repo = "models--" + model_id.replace("/", "--")
+    base = hub / repo
+    if not base.is_dir():
+        return None
+    revision = (os.environ.get("NEXUS_RAG_MODEL_REVISION") or "main").strip()
+    ref_file = base / "refs" / revision
+    snap_id = ""
+    if ref_file.is_file():
+        snap_id = ref_file.read_text(encoding="utf-8").strip()
+    snap_root = base / "snapshots"
+    if snap_id:
+        candidate = snap_root / snap_id
+        if candidate.is_dir():
+            return candidate
+    if snap_root.is_dir():
+        dirs = sorted(p for p in snap_root.iterdir() if p.is_dir())
+        if len(dirs) == 1:
+            return dirs[0]
+    return None
+
+
+def resolve_embedding_source() -> dict[str, Any]:
+    """Resolve how SentenceTransformer should load the RAG embedder.
+
+    Preference:
+      1. NEXUS_RAG_MODEL / NEXUS_RAG_EMBED_MODEL pointing at an existing dir
+      2. HuggingFace id with a local hub snapshot (offline)
+      3. HuggingFace id (may download on first use)
+    """
+    configured = _rag_model_name() or DEFAULT_MODEL_NAME
+    as_path = Path(configured)
+    if as_path.is_dir():
+        return {
+            "model_id": DEFAULT_MODEL_NAME if configured == str(as_path) else configured,
+            "load_path": str(as_path.resolve()),
+            "local_files_only": True,
+            "source": "explicit_dir",
+        }
+    snap = resolve_hf_snapshot(configured)
+    if snap is not None:
+        return {
+            "model_id": configured,
+            "load_path": str(snap.resolve()),
+            "local_files_only": True,
+            "source": "hf_hub_cache",
+        }
+    return {
+        "model_id": configured,
+        "load_path": configured,
+        "local_files_only": False,
+        "source": "huggingface_id",
+    }
 
 
 def _get_index_dir() -> Path:
@@ -185,6 +261,7 @@ class RAGIndex:
         self.available_sources: list[str] = []
         self._mitre_lookup: dict[str, str] = {}
         self._loaded = False
+        self._embed_source: dict[str, Any] | None = None
 
     @property
     def is_loaded(self) -> bool:
@@ -200,7 +277,19 @@ class RAGIndex:
                 "RAG index not found. Run forensic_rag_rebuild() or "
                 "forensic_rag_download() to install."
             )
-        self.model = SentenceTransformer(_rag_model_name())
+        source = resolve_embedding_source()
+        self._embed_source = source
+        logger.info(
+            "RAG embedder: id=%s path=%s source=%s local_only=%s",
+            source["model_id"],
+            source["load_path"],
+            source["source"],
+            source["local_files_only"],
+        )
+        st_kwargs: dict[str, Any] = {}
+        if source["local_files_only"]:
+            st_kwargs["local_files_only"] = True
+        self.model = SentenceTransformer(source["load_path"], **st_kwargs)
         client = chromadb.PersistentClient(path=str(chroma_path))
         self.collection = client.get_collection("ir_knowledge")
         self._load_available_sources()
@@ -353,11 +442,15 @@ class RAGIndex:
     def get_stats(self) -> dict[str, Any]:
         if not self._loaded:
             self.load()
+        src = self._embed_source or resolve_embedding_source()
         return {
             "document_count": self.collection.count(),
             "source_count": len(self.available_sources),
             "sources": self.available_sources,
-            "model": _rag_model_name(),
+            "model": src["model_id"],
+            "model_load_path": src["load_path"],
+            "model_source": src["source"],
+            "local_files_only": src["local_files_only"],
         }
 
 

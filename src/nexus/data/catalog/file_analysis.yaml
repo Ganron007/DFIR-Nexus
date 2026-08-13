@@ -9,3 +9,13 @@ tools:
     interactive: false
     description: "Record carving from disk images and unallocated space"
     fk_tool_name: bulk_extractor
+
+  - name: bmc-tools
+    binary: bmc-tools.py
+    input_style: flag
+    input_flag: "-s"
+    output_format: text
+    timeout_seconds: 600
+    interactive: false
+    description: "Reconstruct RDP bitmap cache tiles"
+    fk_tool_name: bmc-tools

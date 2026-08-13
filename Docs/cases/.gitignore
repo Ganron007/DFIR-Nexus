@@ -1,0 +1,8 @@
+# Case exports — keep structure + reports; omit huge raw CSVs from git
+**/extractions/**/mft.csv
+**/extractions/**/*_sample.csv
+!**/.gitkeep
+**/extractions/**/*.csv
+!**/extractions/**/*_head.csv
+**/sift/**/*.csv
+**/INVENTORY.json

@@ -47,7 +47,7 @@ corroborate_with:
   for_presence: [registry_run_keys, mft]
   for_timeline: [event_logs_security, event_logs_system, bam]
 
-related_tools: [EvtxECmd, Hayabusa]
+related_tools: [EvtxECmd, Hayabusa, Suzaku, Chainsaw]
 
 cross_mcp_checks:
   - mcp: "windows-triage"

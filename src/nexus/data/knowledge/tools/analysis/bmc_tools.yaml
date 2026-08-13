@@ -1,0 +1,13 @@
+name: bmc-tools
+category: analysis
+description: "ANSSI tool that reconstructs RDP bitmap-cache tiles from .bmc/.bin files"
+platform: [windows, linux]
+artifacts_parsed: [rdp_bitmap_cache]
+caveats:
+  - "Tiles are fragments, not full screenshots"
+  - "Requires Python on the analysis host"
+quick_start: "python bmc-tools.py -s CacheDir -d output_dir"
+advisories:
+  - "Pair with RDP event logs for session time and destination"
+references:
+  - "SANS FOR508 - Advanced Incident Response"

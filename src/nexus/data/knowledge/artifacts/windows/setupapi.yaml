@@ -1,0 +1,28 @@
+name: SetupAPI Device Log
+description: "setupapi.dev.log records PnP device installation including USB first-seen timestamps"
+platform: windows
+
+locations:
+  - path: "C:\\Windows\\INF\\setupapi.dev.log"
+    os_versions: ["Windows Vista+", "Windows 10", "Windows 11"]
+    notes: "Plain text. First USB connection often appears here before MountPoints2 last-write."
+
+proves:
+  - "A device (including USB) was installed or enumerated on this host"
+  - "Approximate first-seen time for that device instance"
+
+does_not_prove:
+  - "Files copied to or from the device"
+  - "Which user was interactively logged on"
+
+corroborate_with:
+  for_presence: [mountpoints2, lnk_files]
+  for_timeline: [event_logs_system, mft]
+
+related_tools: []
+
+notes: |
+  Plain text. The lane copies this file into extractions; it is not a parser job.
+
+references:
+  - "SANS FOR500 - Windows Forensic Analysis"

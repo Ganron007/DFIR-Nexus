@@ -42,7 +42,7 @@ corroborate_with:
   for_presence: [mft, usn_journal, ntfs_logfile]
   for_timeline: [mft, usn_journal]
 
-related_tools: [MFTECmd, INDXParse.py, fls]
+related_tools: [MFTECmd]
 
 cross_mcp_checks:
   - mcp: "windows-triage"

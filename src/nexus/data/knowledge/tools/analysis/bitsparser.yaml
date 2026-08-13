@@ -1,0 +1,14 @@
+name: BitsParser
+category: analysis
+description: "Parse BITS job queues from qmgr.db / qmgr0.dat on a dead image (not bitsadmin)"
+platform: [windows, linux]
+artifacts_parsed: [bits_jobs]
+caveats:
+  - "bitsadmin is live-only and is denied by the Windows MCP sandbox"
+  - "Completed jobs may already have been purged from the queue"
+quick_start: "python BitsParser.py -i qmgr.db -o bits.json"
+advisories:
+  - "Look for unexpected remote URLs and NotifyCmdLine persistence"
+references:
+  - "SANS FOR508 - Advanced Incident Response"
+  - "MITRE ATT&CK T1197"

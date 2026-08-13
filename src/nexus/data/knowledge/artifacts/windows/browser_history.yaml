@@ -58,7 +58,7 @@ corroborate_with:
   for_presence: [mft, usn_journal]
   for_timeline: [event_logs_security, srum, event_logs_sysmon]
 
-related_tools: [BrowsingHistoryView, Hindsight, DB Browser for SQLite]
+related_tools: [SQLECmd, Hindsight]
 
 cross_mcp_checks:
   - mcp: "opencti"

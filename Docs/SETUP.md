@@ -113,11 +113,22 @@ Both knowledge stores are looked for locally first (`~/.nexus/data/rag`,
 `~/.nexus/data/triage`) — copy or build your own, or download the prebuilt
 releases via `forensic_rag_download()` / `triage_download()`.
 
-- `NEXUS_RAG_MODEL` — embedding model (HuggingFace ID or local directory).
-  Must match the embeddings in the index. Hosting the model is the
-  operator's responsibility.
+RAG is served **only on the Windows examiner MCP** (`nexus serve --http`).
+SIFT does not load torch/Chroma. The pipeline (and any other client) calls
+`forensic_rag_search` over HTTP on the Windows host.
+
+- `NEXUS_RAG_MODEL` (alias `NEXUS_RAG_EMBED_MODEL`) — HuggingFace id **or**
+  a local snapshot directory. Default: `BAAI/bge-base-en-v1.5`.
+  This **must** match the embeddings in the Chroma index (`metadata.json`
+  → `"model"`). On first load, DFIR-Nexus resolves the id against the local
+  HuggingFace hub cache (`~/.cache/huggingface/hub/models--BAAI--bge-base-en-v1.5`)
+  and sets `local_files_only=True` so it does not hit the network.
+- `NEXUS_RAG_MODEL_REVISION` — hub ref (default `main`).
 - `NEXUS_RAG_RELEASE_REPO` / `NEXUS_TRIAGE_RELEASE_REPO` — point at your own
   GitHub release assets (`owner/repo`) instead of the default source.
+
+`forensic_rag_status()` reports `model`, `model_load_path`, `model_source`
+(`hf_hub_cache` | `explicit_dir` | `huggingface_id`), and `local_files_only`.
 
 ### 2c. From source (contributors)
 ```bash
@@ -219,9 +230,9 @@ sudo ln -s /opt/hayabusa/hayabusa /usr/local/bin/hayabusa
 ### 3c. How DFIR-Nexus Resolves Executables
 
 DFIR-Nexus resolves binaries when you call `run_command` (Linux) or `run_windows_command` (Windows):
-1. It queries the system environment `PATH` (`shutil.which`). If the tool is in your path, it is matched automatically.
-2. If not found, it iterates through directories defined in the `NEXUS_TOOL_PATHS` environment variable or the `tool_paths` array in `~/.nexus/config.yaml`.
-3. Specialized checks occur for variables like `NEXUS_HAYABUSA_DIR` (defaults to `/opt/hayabusa`).
+1. **Windows:** `NEXUS_TOOL_PATHS` / `tool_paths` in `~/.nexus/config.yaml`, then the repo folder `Tools/windows/` (including Zimmerman `net9/` and versioned Hayabusa/Suzaku names). System `PATH` is **not** searched — personal copies of PECmd/EvtxECmd elsewhere are ignored.
+2. **Linux/SIFT:** `PATH` (`shutil.which`), then `NEXUS_TOOL_PATHS` / `tool_paths`.
+3. Specialized checks occur for variables like `NEXUS_HAYABUSA_DIR` (defaults to `/opt/hayabusa` on Linux).
 
 #### Setting up `NEXUS_TOOL_PATHS`
 If you installed your forensic tools in a custom directory (e.g. `C:\ForensicTools` on Windows or `/opt/forensics` on Linux), configure the path so DFIR-Nexus can find them:
@@ -302,16 +313,42 @@ In a professional environment (or when testing a multi-VM lab ecosystem), you wi
    - On Linux (SIFT): `sudo ufw allow 4508/tcp`
    - On Windows: Add an Inbound Rule in Windows Advanced Firewall for Port `4508`.
 
-### 5b. Evidence Share Setup (Samba / CIFS)
-Because SIFT and Windows run on different hosts, they must have access to the same evidence path (e.g. `/evidence/image.dd` or `C:\evidence\image.dd`) so that path strings matched by agents point to the same content.
+### 5b. Evidence share (Windows owns the mount; SIFT maps it)
 
-1. **On Windows**, create a directory `C:\evidence`, right-click → **Properties** → **Sharing** → **Advanced Sharing**, share the folder as `evidence`, and ensure the examiner user has Read/Write permissions.
-2. **On SIFT Linux VM**, mount this directory to `/evidence`:
-   ```bash
-   sudo mkdir -p /evidence
-   sudo mount -t cifs -o username=examiner,password=password,domain=lab.example.local //192.0.2.42/evidence /evidence
-   ```
-3. Set the `share_root` parameter in `~/.nexus/config.yaml` or set `NEXUS_SHARE_ROOT` to `/evidence` (on Linux) or `C:\evidence` (on Windows).
+**Design decision:** the KAPE/triage volume is mounted **once on Windows**
+(e.g. `H:\C`). Windows **SMB-shares** that tree. SIFT **CIFS-mounts** it at
+`/mnt/windows_mount` (the stock SIFT mount point). Both toolsets then see
+the **same bytes**:
+
+| Host | Path | Tools |
+|------|------|--------|
+| Windows | `H:\C` (`NEXUS_SHARE_ROOT`) | Zimmerman, Hayabusa, … |
+| SIFT | `/mnt/windows_mount` (`NEXUS_SIFT_TRIAGE_ROOT`) | Plaso `log2timeline`/`psort`, TSK, RegRipper |
+
+SIFT already exports Samba `[cases]` (`/cases`, writable) and `[mnt]`
+(`/mnt`, read-only). Use `\\<sift>\cases` from Windows to read Plaso output.
+Do **not** put the HuggingFace/Chroma RAG index on this share.
+
+Lab helper (elevated): `scripts/lab_share_kape.ps1` creates share `kape` on
+`H:\C` and mounts it on SIFT. SCP is fallback only.
+
+```powershell
+# Windows (elevated)
+.\scripts\lab_share_kape.ps1
+$env:NEXUS_SHARE_ROOT = "H:\C"
+```
+
+```bash
+# SIFT (if the script did not mount)
+sudo mkdir -p /mnt/windows_mount
+sudo mount -t cifs //192.168.77.1/kape /mnt/windows_mount -o guest,ro,vers=3.0,uid=1000,gid=1000
+export NEXUS_SIFT_TRIAGE_ROOT=/mnt/windows_mount
+export NEXUS_SHARE_ROOT=/mnt/windows_mount
+```
+
+Super-timeline (FOR508): `log2timeline.py --parsers 'win7,!filestat'` against
+the **mounted triage directory**. It does **not** need an E01. Full-disk E01
+is a different investigation.
 
 ---
 

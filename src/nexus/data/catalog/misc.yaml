@@ -82,3 +82,12 @@ tools:
     interactive: false
     description: "Mount VSS snapshots as raw devices"
     fk_tool_name: vshadowmount
+
+  - name: esedbexport
+    binary: esedbexport
+    input_style: positional
+    output_format: text
+    timeout_seconds: 1800
+    interactive: false
+    description: "Export tables from ESE databases (BITS qmgr.db, UAL SUM/*.mdb)"
+    fk_tool_name: esedbexport

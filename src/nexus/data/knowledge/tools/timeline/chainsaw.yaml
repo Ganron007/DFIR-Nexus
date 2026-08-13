@@ -1,0 +1,19 @@
+name: Chainsaw
+category: timeline
+description: "EVTX hunting with Sigma rules (WithSecure Chainsaw)"
+platform: [windows, linux]
+artifacts_parsed:
+  - event_logs_security
+  - event_logs_system
+  - event_logs_powershell
+  - event_logs_sysmon
+caveats:
+  - "Requires a Sigma rule pack on disk — empty ruleset yields empty hunts"
+  - "Alternative to Hayabusa; do not force-run both in the mandatory lane"
+output_notes:
+  format: csv_or_json
+quick_start: "chainsaw hunt -d \"C:/Windows/System32/winevt/Logs\" --mapping mappings/sigma-event-logs-all.yml -s sigma/ --csv --output chainsaw.csv"
+advisories:
+  - "Design-mode extra after Hayabusa/EvtxECmd have already parsed the same Logs directory"
+references:
+  - "SANS FOR508 - Advanced Incident Response"

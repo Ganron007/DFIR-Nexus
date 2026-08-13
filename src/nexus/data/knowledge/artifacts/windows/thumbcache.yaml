@@ -1,0 +1,30 @@
+name: Thumbcache
+description: "Windows Explorer thumbnail cache databases (thumbcache_*.db) recording visual previews of files the user viewed"
+platform: windows
+
+locations:
+  - path: "C:\\Users\\<user>\\AppData\\Local\\Microsoft\\Windows\\Explorer\\thumbcache_*.db"
+    os_versions: ["Windows Vista+", "Windows 10", "Windows 11"]
+    notes: "Per-user. Multiple size buckets (16/32/48/96/256/1024). IconCache.db is a related store in the same directory."
+
+proves:
+  - "A thumbnail was generated for a file the Explorer shell rendered"
+  - "Approximate visual content of images/documents that were browsed"
+
+does_not_prove:
+  - "The file still exists on disk"
+  - "The file was opened in an application (Explorer folder view is enough)"
+  - "Who viewed the file if the profile is shared"
+
+corroborate_with:
+  for_presence: [lnk_files, jump_lists, user_activity_mru, mft]
+  for_timeline: [lnk_files, prefetch]
+
+related_tools: [thumbcache_viewer_cmd]
+
+references:
+  - "SANS FOR500 - Windows Forensic Analysis"
+
+notes: |
+  Cataloged (thumbcache_viewer_cmd) but not auto-run — CLI flags are not verified
+  on our fetched binary yet. Design-mode extra or examiner run after fetch.

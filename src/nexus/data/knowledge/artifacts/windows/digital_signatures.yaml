@@ -42,7 +42,7 @@ corroborate_with:
   for_presence: [mft, usn_journal]
   for_timeline: [amcache, event_logs_sysmon]
 
-related_tools: [sigcheck, osslsigncode, exiftool]
+related_tools: [sigcheck, exiftool]
 
 cross_mcp_checks:
   - mcp: "windows-triage"

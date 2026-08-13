@@ -3,7 +3,7 @@ category: timeline
 description: "Windows event log fast forensics timeline generator and threat hunting tool using Sigma-based detection rules"
 platform: [windows, linux, macos]
 platform_notes: "Rust binary with pre-built releases for each platform. Same flags and output. Analyzes Windows EVTX files regardless of host OS."
-artifacts_parsed: [event_logs_security, event_logs_system, event_logs_powershell, event_logs_sysmon]
+artifacts_parsed: [event_logs_security, event_logs_system, event_logs_powershell, event_logs_sysmon, event_logs_rdp, event_logs_wmi, event_logs_defender, event_logs_firewall, event_logs_services, event_logs_task_scheduler, event_logs_network_share]
 
 caveats:
   - "Detection is rule-based (Sigma + Hayabusa rules) — only known attack patterns are detected"

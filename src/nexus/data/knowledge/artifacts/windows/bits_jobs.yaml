@@ -40,7 +40,7 @@ corroborate_with:
   for_presence: [mft, usn_journal]
   for_timeline: [event_logs_system, event_logs_security]
 
-related_tools: [bitsadmin, KAPE]
+related_tools: [BitsParser, esedbexport]
 
 cross_mcp_checks:
   - mcp: "windows-triage"

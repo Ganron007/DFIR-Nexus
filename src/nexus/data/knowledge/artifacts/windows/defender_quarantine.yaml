@@ -40,7 +40,7 @@ corroborate_with:
   for_presence: [mft, usn_journal]
   for_timeline: [event_logs_defender, event_logs_sysmon]
 
-related_tools: [EvtxECmd, Hayabusa]
+related_tools: [EvtxECmd, Hayabusa, maldump]
 
 cross_mcp_checks:
   - mcp: "windows-triage"

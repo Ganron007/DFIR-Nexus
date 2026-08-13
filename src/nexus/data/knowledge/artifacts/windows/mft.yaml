@@ -56,7 +56,7 @@ corroborate_with:
   for_presence: [shimcache, amcache, usn_journal]
   for_timeline: [usn_journal, event_logs_security, prefetch]
 
-related_tools: [MFTECmd, istat, fls]
+related_tools: [MFTECmd, mactime, fls]
 
 cross_mcp_checks:
   - mcp: "windows-triage"

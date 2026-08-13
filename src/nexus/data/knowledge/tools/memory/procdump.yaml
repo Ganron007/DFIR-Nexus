@@ -1,0 +1,11 @@
+name: ProcDump
+category: sysinternals
+description: "Sysinternals ProcDump — capture a process memory dump on a live Windows host"
+platform: [windows]
+artifacts_parsed: []
+caveats:
+  - "Live-response / acquisition. The resulting dump is then parsed with Volatility, not ProcDump."
+  - "Catalog binary is procdump64"
+quick_start: "procdump64.exe -accepteula -ma <pid> dump.dmp"
+advisories:
+  - "After capture, run vol -f dump.dmp windows.pslist / cmdline / malfind"

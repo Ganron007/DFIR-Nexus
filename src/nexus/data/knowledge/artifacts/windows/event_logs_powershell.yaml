@@ -43,7 +43,7 @@ corroborate_with:
   for_presence: [mft, usn_journal]
   for_timeline: [event_logs_security, event_logs_sysmon, srum]
 
-related_tools: [EvtxECmd, Hayabusa]
+related_tools: [EvtxECmd, Hayabusa, Suzaku, Chainsaw]
 
 cross_mcp_checks:
   - mcp: "windows-triage"

@@ -1,0 +1,14 @@
+name: LogFileParser
+category: analysis
+description: "Parse the NTFS $LogFile transaction journal (jschicht LogFileParser)"
+platform: [windows]
+artifacts_parsed: [ntfs_logfile]
+caveats:
+  - "Circular 64MB buffer — hours to days of history, not a full volume history"
+  - "Needs $LogFile extracted as a file (KAPE / image mount). Not the same as MFTECmd $MFT parse"
+  - "Confirm CLI flags against the fetched binary if a run FAILs"
+quick_start: "LogFileParser64.exe -f $LogFile -o logfile.csv"
+advisories:
+  - "Use with USN $J and $MFT for timestomp / recent delete reconstruction"
+references:
+  - "SANS FOR500 - Windows Forensic Analysis"

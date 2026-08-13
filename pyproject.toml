@@ -55,6 +55,7 @@ dfir = [
     # because it compiles libscca from source (no Windows wheels) — install
     # it manually where a C toolchain is available.
     "python-evtx>=0.7",
+    "python-registry>=1.3",
     "regipy>=2.0",
     "pylnk3>=0.4",
 ]

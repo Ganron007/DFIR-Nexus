@@ -40,7 +40,7 @@ corroborate_with:
   for_presence: [mft, usn_journal, defender_quarantine]
   for_timeline: [event_logs_security, event_logs_powershell]
 
-related_tools: [EvtxECmd, Hayabusa]
+related_tools: [EvtxECmd, Hayabusa, Suzaku, Chainsaw]
 
 cross_mcp_checks:
   - mcp: "windows-triage"

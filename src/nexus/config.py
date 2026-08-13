@@ -41,7 +41,13 @@ class Settings(BaseModel):
         if v := os.environ.get("NEXUS_COMMAND_TIMEOUT") or os.environ.get("SIFT_TIMEOUT"):
             self.command_timeout = int(v)
         if v := os.environ.get("NEXUS_TOOL_PATHS") or os.environ.get("SIFT_TOOL_PATHS"):
-            self.tool_paths = [p.strip() for p in v.split(":") if p.strip()]
+            sep = os.pathsep
+            # Accept both ; and : so a Windows path like C:\Tools is not split on ':'
+            if os.name == "nt" and ";" in v:
+                parts = v.split(";")
+            else:
+                parts = v.split(sep)
+            self.tool_paths = [p.strip() for p in parts if p.strip()]
         if v := os.environ.get("NEXUS_HAYABUSA_DIR") or os.environ.get("SIFT_HAYABUSA_DIR"):
             self.hayabusa_dir = v
         if v := os.environ.get("NEXUS_SHARE_ROOT"):

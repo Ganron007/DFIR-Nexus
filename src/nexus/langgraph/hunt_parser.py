@@ -34,16 +34,69 @@ def _message_content(msg: Any) -> str:
 
 def normalize_candidate(data: dict) -> dict:
     """Clamp and coerce a parsed candidate to record_finding's input shape."""
+    audit_ids = data.get("audit_ids") or []
+    if isinstance(audit_ids, str):
+        audit_ids = [audit_ids]
+    artifacts = data.get("artifacts") or []
+    if not isinstance(artifacts, list):
+        artifacts = []
+    for aid in audit_ids:
+        if aid and not any(isinstance(a, dict) and a.get("audit_id") == aid for a in artifacts):
+            artifacts.append({"audit_id": str(aid), "type": "audit"})
+    # Optional extraction paths from the LLM (output_saved_to / output_files)
+    for key in ("output_paths", "extraction_paths", "output_files"):
+        raw = data.get(key) or []
+        if isinstance(raw, str):
+            raw = [raw]
+        if not isinstance(raw, list):
+            continue
+        for item in raw:
+            path = item.get("path") if isinstance(item, dict) else item
+            if path and not any(
+                isinstance(a, dict) and a.get("path") == path for a in artifacts
+            ):
+                artifacts.append({"path": str(path), "type": "extraction"})
+    saved = data.get("output_saved_to")
+    if saved and not any(
+        isinstance(a, dict) and a.get("path") == saved for a in artifacts
+    ):
+        artifacts.append({"path": str(saved), "type": "extraction"})
+    itm_stage = str(data.get("itm_stage") or data.get("itm") or "").strip()
+    itm_objects = data.get("itm_objects") or data.get("itm_ids") or []
+    if isinstance(itm_objects, str):
+        itm_objects = [itm_objects]
+    itm_objects = [str(x) for x in itm_objects if x][:12]
+    interpretation = str(
+        data.get("interpretation")
+        or data.get("observation")
+        or data.get("description")
+        or "See observation / tool outputs."
+    )
+    if itm_stage or itm_objects:
+        mapped = ", ".join(itm_objects) if itm_objects else "(objects not named)"
+        interpretation = (
+            f"{interpretation.rstrip()}\n\n"
+            f"Insider Threat Matrix ({itm_stage or 'unspecified'}): {mapped}. "
+            "https://insiderthreatmatrix.org/"
+        )
     return {
         "title": str(data.get("title", ""))[:200],
-        "observation": str(data.get("observation", data.get("description", "")))[:2000],
-        "interpretation": str(data.get("interpretation", ""))[:2000],
+        "observation": str(data.get("observation", data.get("description", "")))[:8000],
+        "interpretation": interpretation[:8000],
         "confidence": str(data.get("confidence", "MEDIUM")).upper(),
+        "confidence_justification": str(
+            data.get("confidence_justification")
+            or "Grounded in MCP tool audit_ids from this investigation."
+        )[:2000],
         "host": str(data.get("host", ""))[:200],
         "event_timestamp": str(data.get("event_timestamp", data.get("timestamp", ""))),
-        "type": str(data.get("type", "")),
+        "type": str(data.get("type", "") or "finding"),
         "attack_ids": data.get("attack_ids") or data.get("mitre_ids") or [],
         "iocs": data.get("iocs") or [],
+        "audit_ids": [str(a) for a in audit_ids if a][:20],
+        "artifacts": artifacts[:20],
+        "itm_stage": itm_stage[:80],
+        "itm_objects": itm_objects,
     }
 
 
@@ -56,31 +109,42 @@ def _looks_like_finding(obj: Any, *, require_observation: bool) -> bool:
     return not (require_observation and not obj.get("observation"))
 
 
-def parse_hunt_candidates(messages: list) -> list[dict]:
-    """Extract finding candidates from the last few hunt-agent messages.
+def parse_hunt_candidates(messages: list, *, scan_last: int = 20) -> list[dict]:
+    """Extract finding candidates from the last hunt-agent messages.
 
-    Scans the last 5 messages for either (a) a single JSON object as the
-    full content (requires `title` + `observation`), or (b) JSON inside
-    markdown ```json``` fences (requires only `title`). Malformed JSON,
-    non-dict payloads, and dicts missing the required keys are skipped
-    silently so the caller can rely on the empty-list signal to trigger
-    the placeholder fallback in stage_findings.
+    Scans the last ``scan_last`` messages (default 20 — long ReAct hunts
+    bury the final findings JSON) for either (a) a single JSON object as
+    the full content (requires `title` + `observation`), (b) a JSON array
+    of finding objects as the full content, or (c) JSON inside markdown
+    ```json``` fences (requires only `title`). Malformed JSON, non-dict
+    payloads, and dicts missing the required keys are skipped silently so
+    the caller can rely on the empty-list signal to trigger the
+    placeholder fallback in stage_findings.
     """
     candidates: list[dict] = []
     if not messages:
         return candidates
 
-    for msg in messages[-5:]:
+    window = max(1, int(scan_last))
+    for msg in messages[-window:]:
         content = _message_content(msg)
         if not content:
             continue
 
-        # (a) whole-content JSON — stricter: needs title + observation
+        # (a) whole-content JSON — object or array of findings
         try:
             data = _json.loads(content)
         except (_json.JSONDecodeError, ValueError, TypeError):
             data = None
-        if _looks_like_finding(data, require_observation=True):
+        if isinstance(data, list):
+            added = False
+            for item in data:
+                if _looks_like_finding(item, require_observation=True):
+                    candidates.append(normalize_candidate(item))
+                    added = True
+            if added:
+                continue
+        elif _looks_like_finding(data, require_observation=True):
             candidates.append(normalize_candidate(data))
             continue
 

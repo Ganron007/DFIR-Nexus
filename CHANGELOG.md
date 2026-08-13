@@ -2,6 +2,28 @@
 
 All notable changes to DFIR-Nexus are documented here.
 
+## Unreleased
+
+### Pipeline modes wired as one product (not a one-report patch)
+
+- **`tools`** — mandatory parser lane only: no RAG, no LLM, no HITL; `TOOL-RUN.md`.
+- **`coverage`** — same lane; RAG loads for interpret; lane FAIL does not abort interpret.
+- **`design`** — RAG + mandatory lane **first**; ReAct may add playbook extras only.
+- YAML artifact map (`artifact_map.py`) + **all user profiles** (not first `Users\*`).
+- EVTX: Hayabusa/EvtxECmd `-d Logs`. Completeness table from knowledge YAML.
+- Case intake (`timezone`, `window`, `subjects`, `question`, `playbooks`) on `CASE.yaml`.
+- `Docs/cases/TOOL-EVIDENCE-MAP.md` is the examiner contract.
+- Knowledge YAML aligned to wired tools (FOR500 MRU/SetupAPI/USN; EVTX alternatives documented, not force-run). Complete map: `Docs/cases/TOOL-CATALOG-MAP.md`.
+- Gap parsers: only when the artifact is present **and** the binary is installed. Plain text is copied, not run through `strings`. Unverified CLIs (Thumbcache Viewer CMD, LogFileParser) stay cataloged, not auto-run. No live-acq SKIP spam on image triage.
+- Interpret/report contract documented in `Docs/cases/TOOL-EVIDENCE-MAP.md`. Test order for the four pipeline modes (tools → coverage → from-case → design) lives in `Docs/internal/COMPLETE-TO-SHIP.md` M6a–d. `CHANGELOG.md` remains the public change log; COMPLETE-TO-SHIP remains the ship ledger (do not start a second tracker).
+
+### Pipeline honesty (Rocba / dual-MCP)
+
+- **E01/`fls` opt-in** — KAPE triage pack uses Windows share + SIFT memory; set `NEXUS_SIFT_E01` only when you want fls.
+- **No full-tree plaso** — MFTECmd `--body` → SIFT `mactime`.
+- **RAG embedder** resolves `BAAI/bge-base-en-v1.5` from the local HuggingFace hub cache (`local_files_only`).
+- Rocba script: `--mode tools` needs no LLM; strict FAIL abort is tools-only.
+
 ## 0.9.0-beta — 2026-08-08
 
 First public beta. Unified forensic integration layer: 103 MCP tools on Windows,

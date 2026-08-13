@@ -221,7 +221,8 @@ class CaseManager:
                               "confidence_justification", "type", "mitre_ids",
                               "mitre_techniques", "host", "event_timestamp",
                               "affected_account", "attack_ids", "audit_ids", "iocs",
-                              "event_type", "artifact_ref", "related_findings"}}
+                              "event_type", "artifact_ref", "related_findings",
+                              "itm_stage", "itm_objects"}}
         if sanitized.get("host"):
             sanitized["host"] = str(sanitized["host"])[:200]
         if sanitized.get("affected_account"):
@@ -303,6 +304,8 @@ class CaseManager:
             "event_timestamp": sanitized.get("event_timestamp", ""),
             "attack_ids": sanitized.get("attack_ids") or sanitized.get("mitre_ids") or [],
             "audit_ids": audit_ids,
+            "itm_stage": sanitized.get("itm_stage") or "",
+            "itm_objects": sanitized.get("itm_objects") or [],
             "mitre_techniques": sanitized.get("mitre_techniques") or [],
             "iocs": sanitized.get("iocs") or [],
             "artifacts": validated_artifacts,

@@ -52,7 +52,7 @@ corroborate_with:
   for_presence: [mft, amcache, shimcache]
   for_timeline: [event_logs_security, usn_journal, event_logs_sysmon]
 
-related_tools: [RECmd, autoruns]
+related_tools: [RECmd, autorunsc]
 
 cross_mcp_checks:
   - mcp: "windows-triage"

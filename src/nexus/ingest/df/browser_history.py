@@ -72,8 +72,9 @@ class BrowserHistoryImporter(Importer):
         if not path.is_file():
             return False
         name_lower = path.name.lower()
-        # Chrome/Edge: "History" (no extension) or Chrome/Edge default names
-        if name_lower in {"history", "places.sqlite"}:
+        # Chrome/Edge: "History" (no extension), KAPE "Chrome-History" / "Edge-History"
+        if name_lower in {"history", "places.sqlite", "chrome-history", "edge-history"} \
+                or name_lower.endswith("-history"):
             return cls._probe_sqlite(path)
         # Generic
         if name_lower.endswith((".sqlite", ".sqlite3", ".db")):

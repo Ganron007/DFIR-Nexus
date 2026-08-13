@@ -3,7 +3,7 @@ category: zimmerman
 description: "Registry Explorer command-line tool for batch processing registry hives with plugin support"
 platform: [windows, linux, macos]
 platform_notes: ".NET tool. Runs natively as .exe on Windows. On Linux/macOS, runs via dotnet CLI. Same flags, same output. Parses Windows artifacts regardless of host OS."
-artifacts_parsed: [userassist, bam, registry_run_keys, registry_services, shellbags]
+artifacts_parsed: [userassist, bam, registry_run_keys, registry_services, shellbags, mountpoints2, user_activity_mru]
 
 caveats:
   - "Batch mode requires a BatchMC file (--bn) that defines which keys/values to extract"

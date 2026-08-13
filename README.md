@@ -62,7 +62,7 @@ DFIR-Nexus operates as a single, platform-aware FastMCP process with strict cryp
 | **Threat Intel** | Integrated lookups across 10 TI providers (ThreatFox, MalwareBazaar, URLhaus, Yaraify, MISP, OTX, Shodan, VT, AbuseIPDB, and CrowdStrike). |
 | **Semantic RAG** | Search over **22,000+ IR records** (SANS posters, Sigma, LOLBAS, GTFOBins, and KAPE targets) using a local ChromaDB collection. Bring your own index, download the prebuilt release, or rebuild from your own sources; embedding model is operator-configurable (`NEXUS_RAG_MODEL`). |
 | **Live Orchestration** | Live target acquisition and collection via 10 built-in Velociraptor hunts (simulated mock client mode for offline testing), plus `convert_pcap` for turning raw captures into ingestible JSON via tshark. |
-| **Pipeline Agents** | Two analysis loops: an offline 6-agent heuristic graph (alert, cloud, network, endpoint, synthesis, timeline) and an **LLM-driven pipeline** (`nexus pipeline`) that hunts evidence via ReAct tool-calling against any OpenAI-compatible model, stages DRAFT findings, and pauses at the human-approval gate. |
+| **Pipeline Agents** | Two analysis loops: an offline 6-agent heuristic graph (alert, cloud, network, endpoint, synthesis, timeline) and an **LLM-driven pipeline** (`nexus pipeline`) with four modes — **tools** (mandatory parsers only; no RAG, no LLM; `TOOL-RUN.md`), **coverage** (same lane, then LLM interprets), **design** (lane first, then ReAct may add corroboration), **interpret** (reuse a finished tool-run case; no re-parse). Coverage, design, and interpret stage DRAFT findings and pause at the human-approval gate. The LLM does not pick or skip parsers for artifacts that are present. |
 
 ---
 

@@ -18,11 +18,9 @@ Usage:
 
 Multi-machine:
     # On SIFT (Linux):
-    nexus serve --http --port 4508
-    # On Windows:
-    nexus serve --http --port 4508
-    # From LLM client:
-    nexus setup client --sift 10.0.0.2:4508 --windows 10.0.0.5:4508
+    nexus serve --http --host 0.0.0.0 --port 4508
+    # On Windows examiner host:
+    nexus setup client --sift http://192.168.77.135:4508/mcp
 """
 
 import logging
@@ -60,8 +58,23 @@ must reference audit_id values from the audit log.
 """
 
 
-def create_server() -> FastMCP:
-    server = FastMCP("dfir-nexus", instructions=_INSTRUCTIONS)
+def create_server(host: str = "127.0.0.1") -> FastMCP:
+    """Create the MCP server.
+
+    ``host`` is the client-facing bind identity used for MCP DNS-rebinding
+    Host allowlisting. Pass the same value as ``nexus serve --host`` so
+    remote lab clients (SIFT IP) are accepted. Extra hosts via
+    ``NEXUS_MCP_ALLOWED_HOSTS`` (comma-separated).
+    """
+    from nexus.mcp_security import build_transport_security
+
+    transport_security = build_transport_security(host)
+    server = FastMCP(
+        "dfir-nexus",
+        instructions=_INSTRUCTIONS,
+        host=host,
+        transport_security=transport_security,
+    )
     audit = AuditWriter("nexus")
 
     # ── Universal modules (pure Python, any platform) ──
@@ -83,6 +96,11 @@ def create_server() -> FastMCP:
     from nexus.tools import analysis
     analysis.register_tools(server, audit)
 
+    from nexus.tools import detection_tools, ti_tools, vr_tools
+    ti_tools.register_tools(server, audit)
+    detection_tools.register_tools(server, audit)
+    vr_tools.register_tools(server, audit)
+
     # ── Platform-specific modules ──
 
     if _IS_LINUX:
@@ -100,7 +118,16 @@ def create_server() -> FastMCP:
         logger.info("Not on Windows — skipping Windows tools")
 
     tool_count = _count_tools(server)
-    logger.info(f"DFIR-Nexus ready: {tool_count} tools registered on {sys.platform}")
+    logger.info("DFIR-Nexus ready: %s tools registered on %s (host=%s)", tool_count, sys.platform, host)
+
+    import os
+    if os.environ.get("NEXUS_RAG_PRELOAD", "1").strip().lower() in ("1", "true", "yes"):
+        try:
+            from nexus.tools.rag import _get_index
+            _get_index().load()
+            logger.info("RAG embedder preloaded (NEXUS_RAG_PRELOAD)")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("RAG preload failed: %s", exc)
 
     return server
 
@@ -108,7 +135,7 @@ def create_server() -> FastMCP:
 def _count_tools(server: FastMCP) -> int:
     """Count registered tools."""
     try:
-        tools = server._tool_manager._tools if hasattr(server, '_tool_manager') else []
+        tools = server._tool_manager._tools if hasattr(server, "_tool_manager") else []
         return len(tools)
     except Exception:
         return 0

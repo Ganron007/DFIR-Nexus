@@ -38,7 +38,7 @@ corroborate_with:
   for_presence: [mft, ntfs_i30, usn_journal]
   for_timeline: [mft, usn_journal]
 
-related_tools: [fls, MFTECmd, streams.exe]
+related_tools: [MFTECmd, fls]
 
 cross_mcp_checks:
   - mcp: "windows-triage"

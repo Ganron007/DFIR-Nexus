@@ -6,6 +6,7 @@ Zeek logs are tab-separated, with a `#fields` header line defining the columns.
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Iterator
 from datetime import UTC, datetime
@@ -25,10 +26,10 @@ log = logging.getLogger(__name__)
 
 
 class ZeekImporter(Importer):
-    """Parser for Zeek TSV logs.
+    """Parser for Zeek TSV (`#fields`) and Zeek 8+ JSON-lines logs.
 
     Handles all standard Zeek log types: conn, dns, http, ssl, notice, ssh,
-    smtp, rdp, files, etc. Field names are read from the `#fields` header.
+    smtp, rdp, files, kerberos, etc.
     """
 
     # Known Zeek log types and their corresponding artifact types
@@ -74,6 +75,10 @@ class ZeekImporter(Importer):
                         break
                     if line.startswith("#fields"):
                         return True
+                    # Zeek 8+ default JSON logging (CADRE monitor spool)
+                    if line.lstrip().startswith("{"):
+                        if '"uid"' in line and ("id.orig_h" in line or "id.resp_h" in line or '"ts"' in line):
+                            return True
         except OSError:
             return False
         return False
@@ -102,6 +107,18 @@ class ZeekImporter(Importer):
                         break
                     line = line.rstrip("\n\r")
                     if not line.strip():
+                        continue
+                    if line.lstrip().startswith("{"):
+                        try:
+                            rec = json.loads(line)
+                        except json.JSONDecodeError:
+                            if hasattr(self, "skipped_lines"):
+                                self.skipped_lines += 1
+                            continue
+                        if not isinstance(rec, dict):
+                            continue
+                        record = {str(k): "" if v is None else str(v) for k, v in rec.items()}
+                        yield self._record_to_artifact(record, log_type, artifact_type, path)
                         continue
                     if line.startswith("#fields"):
                         fields = line.split("\t")[1:]

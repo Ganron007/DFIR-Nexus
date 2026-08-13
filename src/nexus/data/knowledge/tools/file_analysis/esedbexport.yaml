@@ -1,0 +1,11 @@
+name: esedbexport
+category: analysis
+description: "libesedb exporter — dump ESE tables (BITS, UAL) on SIFT when Python parsers are unavailable"
+platform: [linux]
+artifacts_parsed: [bits_jobs, ual]
+caveats:
+  - "Raw table dump — schema interpretation still needed"
+  - "On-demand / design extra; Windows lane prefers BitsParser and KStrike"
+quick_start: "esedbexport -t bits /path/to/qmgr.db"
+advisories:
+  - "Do not confuse with SrumECmd — SRUM is a different ESE database"

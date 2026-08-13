@@ -45,7 +45,7 @@ def detect_format(path: Path) -> ArtifactSource | None:
         # Shared lanes — registry.resolve() disambiguates via can_handle()
         ".eml": ArtifactSource.GENERIC_JSONL,
         ".msg": ArtifactSource.GENERIC_JSONL,
-        ".zip": ArtifactSource.GENERIC_JSONL,
+        ".zip": ArtifactSource.GENERIC_JSONL,  # ArchiveImporter.source_class()
         ".tar": ArtifactSource.GENERIC_JSONL,
         ".tgz": ArtifactSource.GENERIC_JSONL,
         ".gz": ArtifactSource.GENERIC_JSONL,
@@ -54,6 +54,12 @@ def detect_format(path: Path) -> ArtifactSource | None:
         return _EXT_HINTS[suffix]
     if name_lower.endswith(".tshark.json"):
         return ArtifactSource.WIRESHARK
+    # Volatility 3 plugin dumps: windows.psscan.json / windows.pslist.txt
+    if name_lower.startswith("windows.") and suffix in {".json", ".jsonl", ".txt", ".log"}:
+        return ArtifactSource.VOLATILITY
+    if name_lower in {"history", "places.sqlite", "chrome-history", "edge-history"} \
+            or (name_lower.endswith("-history") and suffix == ""):
+        return ArtifactSource.BROWSER_HISTORY
     if name_lower.endswith((".tar.gz", ".tar.xz", ".tar.bz2")):
         return ArtifactSource.GENERIC_JSONL
 
@@ -68,6 +74,13 @@ def detect_format(path: Path) -> ArtifactSource | None:
         "http.log": ArtifactSource.ZEEK,
         "tls.log": ArtifactSource.ZEEK,
         "ssl.log": ArtifactSource.ZEEK,
+        "notice.log": ArtifactSource.ZEEK,
+        "ssh.log": ArtifactSource.ZEEK,
+        "weird.log": ArtifactSource.ZEEK,
+        "kerberos.log": ArtifactSource.ZEEK,
+        "files.log": ArtifactSource.ZEEK,
+        "smtp.log": ArtifactSource.ZEEK,
+        "ftp.log": ArtifactSource.ZEEK,
         "audit.log": ArtifactSource.AUDITD,
         "auth.log": ArtifactSource.AUTHLOG,
         "secure": ArtifactSource.AUTHLOG,
@@ -80,6 +93,8 @@ def detect_format(path: Path) -> ArtifactSource | None:
         "security": ArtifactSource.WINDOWS_REGISTRY,
         "ntuser.dat": ArtifactSource.WINDOWS_REGISTRY,
         "usrclass.dat": ArtifactSource.WINDOWS_REGISTRY,
+        "wmi_subscriptions.csv": ArtifactSource.WMI_SUBSCRIPTIONS,
+        "wmi_subscriptions.mof": ArtifactSource.WMI_SUBSCRIPTIONS,
         ".bash_history": ArtifactSource.BASH_HISTORY,
         "bash_history": ArtifactSource.BASH_HISTORY,
     }
@@ -87,6 +102,13 @@ def detect_format(path: Path) -> ArtifactSource | None:
         return _EXACT_NAME_HINTS[name_lower]
     if name_lower.startswith("eve.json."):
         return ArtifactSource.SURICATA
+    # Zeek rotated spool: conn-20260803.log / kerberos-20260804.log
+    _ZEEK_ROTATED = (
+        "conn-", "dns-", "http-", "tls-", "ssl-", "notice-", "ssh-",
+        "weird-", "kerberos-", "files-", "smtp-", "ftp-",
+    )
+    if name_lower.endswith(".log") and name_lower.startswith(_ZEEK_ROTATED):
+        return ArtifactSource.ZEEK
 
     # --- Prefix hints (long distinctive tokens + separator) ---
     _PREFIX_HINTS: list[tuple[str, ArtifactSource]] = [
@@ -99,6 +121,7 @@ def detect_format(path: Path) -> ArtifactSource | None:
         ("plaso", ArtifactSource.PLASO),
         ("cybertriage", ArtifactSource.CYBERTRIAGE),
         ("suricata", ArtifactSource.SURICATA),
+        ("security_onion", ArtifactSource.SECURITY_ONION),
         ("socrates", ArtifactSource.SURICATA),
         ("sysdig", ArtifactSource.SURICATA),
         ("falco", ArtifactSource.SURICATA),
@@ -156,6 +179,15 @@ def detect_format(path: Path) -> ArtifactSource | None:
                 return _detect_json_format(sample, name_lower)
             elif isinstance(sample, list) and sample and isinstance(sample[0], dict):
                 return _detect_json_format(sample[0], name_lower)
+            # Truncated pretty-printed JSON array (vol3 / tshark). Do not
+            # fall through to CSV just because the snippet contains commas.
+            if stripped.startswith("["):
+                first_obj = _first_json_object(head)
+                if isinstance(first_obj, dict):
+                    detected = _detect_json_format(first_obj, name_lower)
+                    if detected:
+                        return detected
+                return ArtifactSource.GENERIC_JSONL
 
         # tshark / Wireshark JSON export — pretty-printed, so the whole-head
         # parse above usually fails on truncation; sniff the shape directly.
@@ -192,6 +224,38 @@ def detect_format(path: Path) -> ArtifactSource | None:
     return None
 
 
+def _first_json_object(text: str) -> dict | None:
+    """Best-effort first object from a truncated JSON array dump."""
+    start = text.find("{")
+    if start < 0:
+        return None
+    depth = 0
+    in_str = False
+    escape = False
+    for i, ch in enumerate(text[start:], start=start):
+        if in_str:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                try:
+                    obj = json.loads(text[start:i + 1])
+                except json.JSONDecodeError:
+                    return None
+                return obj if isinstance(obj, dict) else None
+    return None
+
+
 def _detect_json_format(sample: dict, name: str) -> ArtifactSource | None:
     """Detect format from JSON object keys."""
     keys = set(sample.keys())
@@ -212,6 +276,17 @@ def _detect_json_format(sample: dict, name: str) -> ArtifactSource | None:
     # Azure: has operationName or caller
     if "operationName" in keys or "caller" in keys:
         return ArtifactSource.AZURE
+
+    # Zeek 8+ JSON logging (CADRE monitor default)
+    if "uid" in keys and ("id.orig_h" in keys or "id.resp_h" in keys or "id.orig_p" in keys):
+        return ArtifactSource.ZEEK
+
+    # Security Onion ECS
+    event_obj = sample.get("event")
+    if isinstance(event_obj, dict) and (
+        "severity_label" in event_obj or event_obj.get("kind") == "alert"
+    ):
+        return ArtifactSource.SECURITY_ONION
 
     # Suricata: has event_type and alert
     if "event_type" in keys and "alert" in keys:
@@ -259,6 +334,13 @@ def _detect_json_format(sample: dict, name: str) -> ArtifactSource | None:
     # ThreatFox: has id and ioc_type
     if "id" in keys and "ioc_type" in keys:
         return ArtifactSource.THREATFOX
+
+    # Volatility 3 JSON renderer (windows.pslist / psscan / cmdline / malfind)
+    vol_keys = {k.lower() for k in keys}
+    if {"pid", "imagefilename"} <= vol_keys or {"pid", "ppid", "offset(v)"} <= vol_keys:
+        return ArtifactSource.VOLATILITY
+    if "malfind" in name or ("protection" in vol_keys and "commit_charge" in vol_keys):
+        return ArtifactSource.VOLATILITY
 
     # Generic JSONL
     return ArtifactSource.GENERIC_JSONL

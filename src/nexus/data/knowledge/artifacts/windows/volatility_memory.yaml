@@ -1,6 +1,7 @@
 name: Memory Analysis (Volatility)
 description: "RAM dump analysis via Volatility 3 — process tree, code injection, network connections, handles"
 platform: windows
+related_tools: [Volatility3, vol]
 
 does_not_prove:
   - "Process is malicious — memory artifacts require contextual analysis"

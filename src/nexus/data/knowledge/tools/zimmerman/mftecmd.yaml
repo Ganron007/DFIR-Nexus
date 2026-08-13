@@ -3,7 +3,7 @@ category: zimmerman
 description: "Parse NTFS $MFT, $UsnJrnl, $J, $Boot, and $SDS files"
 platform: [windows, linux, macos]
 platform_notes: ".NET tool. Runs natively as .exe on Windows. On Linux/macOS, runs via dotnet CLI. Same flags, same output. Parses Windows artifacts regardless of host OS."
-artifacts_parsed: [mft, usn_journal]
+artifacts_parsed: [mft, usn_journal, ntfs_i30, ntfs_resident_data, alternate_data_streams]
 
 caveats:
   - "The $MFT only reflects the CURRENT state of files; deleted file records may be overwritten"

@@ -1,0 +1,13 @@
+name: thumbcache_viewer_cmd
+category: analysis
+description: "CLI extractor for Explorer thumbcache_*.db thumbnail databases"
+platform: [windows]
+artifacts_parsed: [thumbcache]
+caveats:
+  - "GUI Thumbcache Viewer is not used in the lane — this is the cmd build"
+  - "Not auto-run: confirm argv on a fetched binary before adding to the lane"
+quick_start: "thumbcache_viewer_cmd.exe -o output_dir thumbcache_256.db"
+advisories:
+  - "A thumbnail proves Explorer rendered a preview, not that a document was opened in Word"
+references:
+  - "SANS FOR500 - Windows Forensic Analysis"

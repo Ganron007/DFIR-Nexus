@@ -34,7 +34,7 @@ corroborate_with:
   for_presence: [prefetch, amcache]
   for_timeline: [event_logs_security, event_logs_system]
 
-related_tools: [EvtxECmd, Hayabusa]
+related_tools: [EvtxECmd, Hayabusa, Suzaku, Chainsaw]
 
 cross_mcp_checks:
   - mcp: "windows-triage"

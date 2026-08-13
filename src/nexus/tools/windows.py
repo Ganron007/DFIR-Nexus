@@ -1,12 +1,13 @@
 """Windows forensic tool execution — catalog-gated, platform-gated.
 
-Catalog-driven execution of 31 Windows forensic tools across 7
+Catalog-driven execution of Windows forensic tools across 7
 categories, with result caching and structured output parsing.
 """
 
 import hashlib
 import json
 import logging
+import os
 import shlex
 import shutil
 import subprocess
@@ -19,7 +20,6 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from nexus.audit import AuditWriter
-from nexus.case_manager import CaseManager
 from nexus.config import settings
 
 logger = logging.getLogger(__name__)
@@ -74,6 +74,8 @@ _WIN_CATALOG = {
                         "description": "Scan for hollowed/injected processes"},
     "hayabusa": {"name": "Hayabusa", "category": "timeline",
                   "description": "EVTX timeline analysis with Sigma rules"},
+    "suzaku": {"name": "suzaku", "category": "timeline",
+               "description": "Yamato Suzaku — fast EVTX / JSONL timeline + Sigma hunt"},
     "chainsaw": {"name": "chainsaw", "category": "timeline",
                   "description": "EVTX hunting with Sigma rules"},
     "mactime": {"name": "mactime.pl", "category": "timeline",
@@ -86,8 +88,18 @@ _WIN_CATALOG = {
              "description": "Pattern matching for malware identification"},
     "densityscout": {"name": "densityscout", "category": "analysis",
                       "description": "Measure entropy/compression to find packed/encrypted data"},
-    "get_injectedthreadex": {"name": "Get-InjectedThreadEx.ps1", "category": "scripts",
-                              "description": "Detect injected threads via PowerShell"},
+    "get_injectedthreadex": {"name": "Get-InjectedThreadEx", "category": "scripts",
+                              "description": "Detect injected threads (Get-InjectedThreadEx.exe / .ps1)"},
+    "thumbcache_viewer": {"name": "thumbcache_viewer_cmd", "category": "analysis",
+                           "description": "Extract Explorer thumbcache_*.db thumbnails (CLI)"},
+    "bmc-tools": {"name": "bmc-tools.py", "category": "analysis",
+                  "description": "Reconstruct RDP bitmap cache tiles (ANSSI bmc-tools)"},
+    "bitsparser": {"name": "BitsParser.py", "category": "analysis",
+                   "description": "Parse BITS qmgr.db / qmgr*.dat job queues from an image"},
+    "kstrike": {"name": "KStrike.py", "category": "analysis",
+                "description": "Parse Windows Server User Access Logging (UAL) ESE databases"},
+    "logfileparser": {"name": "LogFileParser64", "category": "analysis",
+                      "description": "Parse NTFS $LogFile transaction journal"},
 }
 
 _CACHE_TTL = 86400
@@ -112,11 +124,99 @@ def _cache_put(key: str, result: dict) -> None:
     _result_cache[key] = (time.monotonic(), result)
 
 
+def _catalog_key(token: str) -> str | None:
+    """Map EvtxECmd.exe / hayabusa-4.0.0-win-x64 → catalog key."""
+    stem = Path(token).stem.lower()
+    stem_norm = stem.replace("-", "_")
+    if stem in _WIN_CATALOG:
+        return stem
+    if stem_norm in _WIN_CATALOG:
+        return stem_norm
+    for key in _WIN_CATALOG:
+        if stem == key or stem_norm == key or stem.startswith(f"{key}-") or stem.startswith(f"{key}_"):
+            return key
+        pretty = _WIN_CATALOG[key]["name"].lower()
+        pretty_stem = Path(pretty).stem
+        if stem == pretty or stem == pretty_stem or stem.startswith(f"{pretty}-") or stem.startswith(f"{pretty_stem}-"):
+            return key
+    return None
+
+
+def _name_matches(filename: str, wanted: str) -> bool:
+    f = filename.lower()
+    w = Path(wanted).name.lower()
+    wstem = Path(w).stem.lower()
+    if f == w or f == f"{wstem}.exe" or f == f"{wstem}.ps1" or f == f"{wstem}.pl" or f == f"{wstem}.py":
+        return True
+    # hayabusa-4.0.0-win-x64.exe / suzaku-2.0.0-win-x64.exe
+    if f.startswith(f"{wstem}-") and f.endswith(".exe"):
+        return True
+    if f.startswith(f"{wstem}_") and f.endswith(".exe"):
+        return True
+    return False
+
+
+def _prefer_binary(paths: list[Path]) -> Path | None:
+    if not paths:
+        return None
+    rank = {".exe": 0, ".cmd": 1, ".bat": 1, ".ps1": 3, ".pl": 4, ".py": 4}
+
+    def _key(p: Path) -> tuple[int, str]:
+        return (rank.get(p.suffix.lower(), 2 if not p.suffix else 5), str(p).lower())
+
+    return sorted(paths, key=_key)[0]
+
+
 def _find_binary(name: str) -> str | None:
-    return shutil.which(name)
+    """Resolve a catalog binary from NEXUS_TOOL_PATHS, then repo Tools/windows.
+
+    Does not search PATH. Walks a few levels so Zimmerman net9/EvtxeCmd/EvtxECmd.exe
+    and versioned Hayabusa/Suzaku names resolve. Skips rule/sigma trees.
+    """
+    if not name:
+        return None
+    candidates = [name]
+    stem = Path(name).stem
+    key = _catalog_key(name)
+    if os.name == "nt" and not name.lower().endswith(".exe"):
+        candidates.append(f"{name}.exe")
+    if key:
+        pretty = _WIN_CATALOG[key]["name"]
+        candidates.extend([pretty, f"{pretty}.exe", key, f"{key}.exe"])
+
+    seen: set[str] = set()
+    for cand in candidates:
+        low = cand.lower()
+        if low in seen:
+            continue
+        seen.add(low)
+
+    extra_dirs = [Path(p) for p in settings.tool_paths if p]
+    repo_win = Path(__file__).resolve().parents[3] / "Tools" / "windows"
+    if repo_win.is_dir():
+        extra_dirs.append(repo_win)
+
+    skip_dirs = {"rules", "sigma", ".git", "html_report", "__pycache__"}
+    hits: list[Path] = []
+    for root in extra_dirs:
+        if not root.exists():
+            continue
+        for dirpath, dirnames, filenames in os.walk(root):
+            rel = Path(dirpath).relative_to(root)
+            if len(rel.parts) > 5:
+                dirnames.clear()
+                continue
+            dirnames[:] = [d for d in dirnames if d.lower() not in skip_dirs]
+            for fn in filenames:
+                if any(_name_matches(fn, cand) for cand in seen):
+                    hits.append(Path(dirpath) / fn)
+    chosen = _prefer_binary(hits)
+    return str(chosen) if chosen else None
 
 
-def _parse_output(stdout: str, stderr: str) -> dict:
+def _parse_output(stdout: str | None, stderr: str | None) -> dict:
+    stdout = "" if stdout is None else stdout
+    stderr = "" if stderr is None else stderr
     result: dict[str, Any] = {"stdout": stdout, "stderr": stderr}
     if not stdout.strip():
         return result
@@ -155,10 +255,9 @@ def _hash_file(path: str) -> str:
 
 
 def _active_case_dir() -> Path | None:
-    try:
-        return CaseManager().resolve_case_dir()
-    except ValueError:
-        return None
+    from nexus.case.outputs import resolve_active_case_dir
+
+    return resolve_active_case_dir()
 
 
 def register_tools(server: FastMCP, audit: AuditWriter):
@@ -233,12 +332,18 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         install_hints = {
             "amcacheparser": "choco install amcacheparser",
             "evtxecmd": "choco install ericzimmerman",
-            "hayabusa": "choco install hayabusa",
-            "chainsaw": "choco install chainsaw",
-            "kape": "choco install kape",
+            "hayabusa": "pwsh -File Tools/fetch-windows-tools.ps1  (GitHub Yamato-Security/hayabusa latest)",
+            "suzaku": "pwsh -File Tools/fetch-windows-tools.ps1  (GitHub Yamato-Security/suzaku latest)",
+            "chainsaw": "pwsh -File Tools/fetch-windows-tools.ps1  (GitHub WithSecureLabs/chainsaw latest)",
+            "kape": "Download current KAPE from Kroll (not redistributable). Unpack to Tools/windows/kape/",
             "capa": "pip install flare-capa",
             "yara": "choco install yara",
             "winpmem": "https://github.com/Velocidex/WinPmem/releases",
+            "thumbcache_viewer": "pwsh -File Tools/fetch-windows-tools.ps1  (GitHub thumbcacheviewer/thumbcacheviewer)",
+            "bmc-tools": "pwsh -File Tools/fetch-windows-tools.ps1  (GitHub ANSSI-FR/bmc-tools)",
+            "bitsparser": "pwsh -File Tools/fetch-windows-tools.ps1  (GitHub mandiant/BitsParser)",
+            "kstrike": "pwsh -File Tools/fetch-windows-tools.ps1  (GitHub BrandonLeBlanc/KStrike)",
+            "logfileparser": "pwsh -File Tools/fetch-windows-tools.ps1  (GitHub jschicht/LogFileParser)",
         }
         for key, info in sorted(_WIN_CATALOG.items()):
             if _find_binary(info["name"]) is None:
@@ -299,14 +404,14 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         suggestions = {
             "mft": ["MFTECmd"],
             "prefetch": ["PECmd"],
-            "evtx": ["EvtxECmd", "Hayabusa", "chainsaw"],
+            "evtx": ["EvtxECmd", "Hayabusa", "suzaku", "chainsaw"],
             "registry": ["RECmd"],
             "shellbags": ["SBECmd"],
             "jumplist": ["JLECmd"],
             "lnk": ["LECmd"],
             "amcache": ["AmcacheParser"],
             "shimcache": ["AppCompatCacheParser"],
-            "timeline": ["Hayabusa", "chainsaw", "mactime"],
+            "timeline": ["Hayabusa", "suzaku", "chainsaw", "mactime"],
             "malware": ["capa", "yara", "sigcheck"],
             "autoruns": ["autorunsc"],
             "strings": ["bstrings", "strings"],
@@ -314,9 +419,32 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             "collection": ["kape"],
             "recycle": ["RBCmd"],
             "srum": ["SrumECmd"],
+            "thumbcache": ["thumbcache_viewer_cmd"],
+            "bits": ["BitsParser.py"],
+            "ual": ["KStrike.py"],
+            "rdp": ["bmc-tools.py", "EvtxECmd", "Hayabusa"],
+            "logfile": ["LogFileParser64", "MFTECmd"],
         }
         at = artifact_type.lower().strip()
         tool_names = suggestions.get(at, [])
+        try:
+            from nexus import knowledge as fk
+            art = fk.get_artifact(at)
+            if art and art.get("related_tools"):
+                tool_names = list(dict.fromkeys(
+                    list(art["related_tools"]) + tool_names
+                ))
+            else:
+                for cand in fk.list_artifacts(platform="windows"):
+                    name = (cand.get("name") or "").lower()
+                    slug = name.replace(" ", "_")
+                    if at in name or at == slug:
+                        tool_names = list(dict.fromkeys(
+                            list(cand.get("related_tools") or []) + tool_names
+                        ))
+                        break
+        except Exception:
+            pass
         return [
             {"name": tn, "installed": _find_binary(tn) is not None}
             for tn in tool_names
@@ -334,14 +462,16 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         kape_bin = _find_binary("kape.exe") or _find_binary("KAPE") or _find_binary("kape")
         if not kape_bin:
             return [{"error": "KAPE not found. Install via: choco install kape"}]
-        kape_dir = Path(kape_bin).parent.parent
-        list_dir = kape_dir / (f"{list_type.capitalize()}" if list_type in ("targets", "modules") else "Targets")
-        if not list_dir.exists():
-            list_dir = kape_dir / list_type.capitalize()
-        if not list_dir.exists():
-            return [{"error": f"KAPE {list_type} directory not found at {list_dir}"}]
+        kape_home = Path(kape_bin).parent
+        kind = "Targets" if str(list_type).lower().startswith("target") else (
+            "Modules" if str(list_type).lower().startswith("module") else "Targets"
+        )
+        candidates = [kape_home / kind, kape_home.parent / kind]
+        list_dir = next((p for p in candidates if p.is_dir()), None)
+        if list_dir is None:
+            return [{"error": f"KAPE {kind} directory not found at {kape_home / kind}"}]
         result = []
-        for f in sorted(list_dir.glob("*.tkape")) + sorted(list_dir.glob("*.mkape")):
+        for f in sorted(list_dir.rglob("*.tkape")) + sorted(list_dir.rglob("*.mkape")):
             try:
                 text = f.read_text(encoding="utf-8", errors="replace")[:2000]
                 categories = []
@@ -362,7 +492,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         command: str | list[str],
         purpose: str = "",
         timeout: int = 600,
-        save_output: bool = False,
+        save_output: bool = True,
         input_files: list[str] | None = None,
     ) -> dict:
         """Execute a catalog-approved forensic tool.
@@ -371,7 +501,8 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             command: Command list or string (tool + args). Must start with a cataloged tool.
             purpose: Why this command is being run (for audit trail)
             timeout: Max execution time in seconds (default: 600)
-            save_output: Whether to save output to a timestamped file
+            save_output: Persist stdout/stderr under active case extractions/
+                (default True — designed contract; set False only for dry probes)
             input_files: Files this command reads; auto-detected as a fallback
         """
         if not _IS_WINDOWS:
@@ -388,12 +519,12 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         if not parts:
             return {"success": False, "error": "Empty command"}
         binary = parts[0]
-        binary_key = Path(binary).stem.lower()
+        binary_key = _catalog_key(binary) or Path(binary).stem.lower()
 
         denied = {"cmd", "powershell", "pwsh", "wscript", "cscript",
                   "mshta", "rundll32", "regsvr32", "certutil", "bitsadmin",
                   "msiexec", "bash", "wsl", "sh", "ncat", "nc"}
-        if binary_key in denied:
+        if Path(binary).stem.lower() in denied:
             audit_id = audit.log(
                 tool="run_windows_command_blocked",
                 params={"command": command_text[:500], "purpose": purpose[:200]},
@@ -408,6 +539,60 @@ def register_tools(server: FastMCP, audit: AuditWriter):
                 result_summary={"error": f"Tool not in allowlist: {binary}"},
             )
             return {"success": False, "error": f"Tool not in allowlist: {binary}", "audit_id": audit_id}
+
+        resolved = _find_binary(binary) or _find_binary(_WIN_CATALOG[binary_key]["name"])
+        if resolved:
+            parts[0] = resolved
+        else:
+            audit_id = audit.log(
+                tool="run_windows_command",
+                params={"command": command_text[:500], "purpose": purpose[:200]},
+                result_summary={"error": f"Tool not found: {binary}"},
+            )
+            return {
+                "success": False,
+                "error": f"Tool not found: {binary}. Put it under Tools/windows/ or set NEXUS_TOOL_PATHS.",
+                "audit_id": audit_id,
+            }
+
+        resolved_path = Path(parts[0])
+        extra_args = parts[1:]
+        if resolved_path.suffix.lower() == ".ps1":
+            ps = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+            parts = [str(ps), "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+                     "-File", str(resolved_path), *extra_args]
+        elif resolved_path.suffix.lower() == ".pl":
+            perl = shutil.which("perl") or shutil.which("perl.exe")
+            if not perl:
+                audit_id = audit.log(
+                    tool="run_windows_command",
+                    params={"command": command_text[:500], "purpose": purpose[:200]},
+                    result_summary={"error": "perl required to run mactime.pl"},
+                )
+                return {
+                    "success": False,
+                    "error": "perl is required to run mactime.pl on Windows (not found on PATH).",
+                    "audit_id": audit_id,
+                }
+            parts = [perl, str(resolved_path), *extra_args]
+        elif resolved_path.suffix.lower() == ".py":
+            py = (
+                shutil.which("python")
+                or shutil.which("python3")
+                or shutil.which("py")
+            )
+            if not py:
+                audit_id = audit.log(
+                    tool="run_windows_command",
+                    params={"command": command_text[:500], "purpose": purpose[:200]},
+                    result_summary={"error": "python required to run catalog .py tools"},
+                )
+                return {
+                    "success": False,
+                    "error": "python is required to run BitsParser/KStrike/bmc-tools (not found on PATH).",
+                    "audit_id": audit_id,
+                }
+            parts = [py, str(resolved_path), *extra_args]
 
         detected_inputs = list(input_files or [])
         if not detected_inputs:
@@ -428,6 +613,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         try:
             proc = subprocess.run(
                 parts, capture_output=True, text=True,
+                encoding="utf-8", errors="replace",
                 timeout=timeout, shell=False
             )
         except FileNotFoundError:
@@ -441,6 +627,17 @@ def register_tools(server: FastMCP, audit: AuditWriter):
                 input_sha256s=list(input_hashes.values()) or None,
             )
             return {"success": False, "error": f"Tool not found: {binary}", "audit_id": audit_id}
+        except PermissionError:
+            elapsed = (time.monotonic() - start) * 1000
+            audit_id = audit.log(
+                tool="run_windows_command",
+                params={"command": command_text[:500], "purpose": purpose[:200]},
+                result_summary={"error": f"Permission denied: {binary}"},
+                elapsed_ms=elapsed,
+                input_files=list(input_hashes) or None,
+                input_sha256s=list(input_hashes.values()) or None,
+            )
+            return {"success": False, "error": f"Permission denied: {binary}", "audit_id": audit_id}
         except subprocess.TimeoutExpired:
             elapsed = (time.monotonic() - start) * 1000
             audit_id = audit.log(
@@ -453,46 +650,53 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             )
             return {"success": False, "error": f"Command timed out after {timeout}s",
                     "exit_code": -9, "audit_id": audit_id}
-        except PermissionError:
+        except OSError as exc:
             elapsed = (time.monotonic() - start) * 1000
             audit_id = audit.log(
                 tool="run_windows_command",
                 params={"command": command_text[:500], "purpose": purpose[:200]},
-                result_summary={"error": f"Permission denied: {binary}"},
+                result_summary={"error": str(exc), "winerror": getattr(exc, "winerror", None)},
                 elapsed_ms=elapsed,
-                input_files=list(input_hashes) or None,
-                input_sha256s=list(input_hashes.values()) or None,
             )
-            return {"success": False, "error": f"Permission denied: {binary}", "audit_id": audit_id}
+            return {
+                "success": False,
+                "error": str(exc),
+                "audit_id": audit_id,
+                "winerror": getattr(exc, "winerror", None),
+            }
 
-        parsed = _parse_output(proc.stdout, proc.stderr)
+        stdout = "" if proc.stdout is None else proc.stdout
+        stderr = "" if proc.stderr is None else proc.stderr
+        parsed = _parse_output(stdout, stderr)
         elapsed = (time.monotonic() - start) * 1000
 
-        output_files = []
+        output_files: list[dict] = []
         save_warning = ""
+        output_saved_to = None
         if save_output:
-            case_dir = _active_case_dir()
-            if case_dir:
-                out_dir = case_dir / "extractions"
-                out_dir.mkdir(parents=True, exist_ok=True)
-                ts = time.strftime("%Y%m%dT%H%M%S", time.gmtime())
-                base = f"{ts}_{binary_key}"
-                stdout_path = out_dir / f"{base}_stdout.txt"
-                stderr_path = out_dir / f"{base}_stderr.txt"
-                if proc.stdout:
-                    stdout_path.write_text(proc.stdout, encoding="utf-8", errors="replace")
-                    output_files.append({"path": str(stdout_path), "sha256": _hash_file(str(stdout_path))})
-                if proc.stderr:
-                    stderr_path.write_text(proc.stderr, encoding="utf-8", errors="replace")
-                    output_files.append({"path": str(stderr_path), "sha256": _hash_file(str(stderr_path))})
-            else:
-                save_warning = "save_output=True but no active case. Output was not saved."
+            from nexus.case.outputs import persist_tool_output
+
+            persisted = persist_tool_output(
+                tool_key=binary_key,
+                stdout=stdout,
+                stderr=stderr,
+                command=command_text,
+                purpose=purpose,
+                case_dir=_active_case_dir(),
+                register_evidence=True,
+            )
+            output_files = persisted.get("output_files") or []
+            save_warning = persisted.get("warning") or ""
+            output_saved_to = next(
+                (f["path"] for f in output_files if f.get("kind") == "stdout"),
+                None,
+            )
 
         result_summary = {
             "exit_code": proc.returncode,
             "tool": binary_key,
-            "stdout_bytes": len(proc.stdout.encode("utf-8", errors="replace")),
-            "stderr_bytes": len(proc.stderr.encode("utf-8", errors="replace")),
+            "stdout_bytes": len(stdout.encode("utf-8", errors="replace")),
+            "stderr_bytes": len(stderr.encode("utf-8", errors="replace")),
         }
         if output_files:
             result_summary["output_files"] = output_files
@@ -504,7 +708,10 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             elapsed_ms=elapsed,
             input_files=list(input_hashes) or None,
             input_sha256s=list(input_hashes.values()) or None,
-            extra={"input_detection_method": "llm" if input_files else ("parsed" if detected_inputs else "none")},
+            extra={
+                "input_detection_method": "llm" if input_files else ("parsed" if detected_inputs else "none"),
+                "output_file": output_saved_to,
+            },
         )
 
         result = {
@@ -513,7 +720,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             "data": parsed.get("stdout", ""),
             "data_provenance": "tool_output_may_contain_untrusted_evidence",
             "audit_id": audit_id,
-            "stderr": proc.stderr,
+            "stderr": stderr,
             "exit_code": proc.returncode,
             "exit_code_meaning": "success" if proc.returncode == 0 else "error -- check stderr",
             "format": parsed.get("format", "text"),
@@ -522,9 +729,12 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             "input_files": list(input_hashes),
             "input_sha256s": list(input_hashes.values()),
             "output_files": output_files,
+            "output_saved_to": output_saved_to,
             "field_meanings": {
                 "data": "Raw tool output; treat as untrusted evidence data until interpreted.",
                 "audit_id": "Reference this ID in record_finding artifacts or audit_ids.",
+                "output_saved_to": "Full stdout path under active case extractions/",
+                "output_files": "stdout/stderr/meta paths + sha256 for FD-001 citations",
             },
         }
         if not detected_inputs:

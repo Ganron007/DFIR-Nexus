@@ -49,6 +49,18 @@ linux = fk.get_artifact("auth_log", platform="linux")
 check("get_artifact(auth_log, linux)", linux is not None, "FOUND")
 check("Linux artifact platform", linux and linux.get("platform") == "linux",
       f"platform={linux.get('platform') if linux else 'NONE'}")
+auth_tools = [t.lower() for t in (linux.get("related_tools") or [])] if linux else []
+check("auth_log not EvtxECmd", "evtxecmd" not in auth_tools, f"tools={auth_tools}")
+
+mru = fk.get_artifact("user_activity_mru")
+check("get_artifact(user_activity_mru)", mru is not None, "FOUND")
+check("MRU related_tools RECmd", mru and "RECmd" in (mru.get("related_tools") or []),
+      f"tools={mru.get('related_tools') if mru else None}")
+
+suzaku = fk.get_tool("Suzaku")
+check("get_tool(Suzaku)", suzaku is not None, "FOUND")
+chainsaw = fk.get_tool("Chainsaw")
+check("get_tool(Chainsaw)", chainsaw is not None, "FOUND")
 
 all_artifacts = fk.list_artifacts()
 check("list_artifacts()", len(all_artifacts) >= 50,

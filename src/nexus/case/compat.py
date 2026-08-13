@@ -36,6 +36,147 @@ def get_sqlite_manager(db_path: Path | str | None = None) -> CaseManager:
     return CaseManager(path)
 
 
+def _atomic_json(path: Path, payload: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+    tmp.replace(path)
+
+
+def sync_sqlite_to_flat(
+    case_id: str,
+    mgr: CaseManager | None = None,
+    case_dir: Path | None = None,
+) -> Path | None:
+    """Mirror SQLite findings/evidence into flat JSON for portal + MCP report.
+
+    LangGraph / ``nexus.case.CaseManager`` persist to SQLite. MCP
+    ``generate_report`` and the Examiner Portal read ``findings.json`` /
+    ``evidence.json`` / ``timeline.json`` under the case directory.
+    Without this sync, an orchestrated case has approved findings in SQLite
+    and an empty examiner report.
+    """
+    close_mgr = False
+    if mgr is None:
+        mgr = get_sqlite_manager()
+        close_mgr = True
+    try:
+        case = mgr.get_case(case_id)
+        if case is None:
+            return None
+        dest = Path(case_dir) if case_dir else settings.cases_root / case_id
+        dest.mkdir(parents=True, exist_ok=True)
+
+        from nexus.case.manager import materialize_case_dir
+        try:
+            materialize_case_dir(case)
+        except OSError as exc:
+            log.warning("materialize_case_dir failed for %s: %s", case_id, exc)
+
+        findings_out: list[dict[str, Any]] = []
+        for f in mgr.list_findings(case_id):
+            status = f.approval_state.value.upper()
+            meta = dict(f.metadata or {})
+            obs = str(meta.get("observation") or "").strip()
+            interp = str(meta.get("interpretation") or "").strip()
+            if not obs and not interp:
+                obs = f.description or ""
+                interp = f.description or ""
+            elif not obs:
+                obs = f.description if f.description != interp else ""
+            elif not interp:
+                interp = f.description if f.description != obs else ""
+            findings_out.append({
+                "id": f.id,
+                "case_id": f.case_id,
+                "status": status,
+                "approval_state": status,
+                "title": f.title,
+                "observation": obs,
+                "interpretation": interp,
+                "confidence": str(meta.get("confidence") or "MEDIUM"),
+                "confidence_justification": str(
+                    meta.get("confidence_justification") or ""
+                ),
+                "severity": f.severity.value,
+                "type": str(meta.get("type") or "finding"),
+                "host": str(meta.get("host") or ""),
+                "attack_ids": list(f.technique_ids),
+                "mitre_ids": list(f.technique_ids),
+                "mitre_techniques": list(f.technique_ids),
+                "audit_ids": list(meta.get("audit_ids") or []),
+                "itm_stage": str(meta.get("itm_stage") or ""),
+                "itm_objects": list(meta.get("itm_objects") or []),
+                "iocs": list(meta.get("iocs") or []),
+                "created_by": f.created_by,
+                "created_at": f.created_at.isoformat() if f.created_at else "",
+                "approved_by": f.approved_by,
+                "approved_at": f.approved_at.isoformat() if f.approved_at else None,
+                "hmac_signature": bool(f.hmac_signature),
+            })
+
+        evidence_out: list[dict[str, Any]] = []
+        timeline_out: list[dict[str, Any]] = []
+        iocs: dict[str, list[dict[str, Any]]] = {"ip": [], "host": [], "hash": []}
+        seen_ioc: set[str] = set()
+
+        for i, ev in enumerate(mgr.list_evidence(case_id), start=1):
+            meta = dict(ev.metadata or {})
+            evidence_out.append({
+                "id": ev.id,
+                "path": ev.file_path or "",
+                "sha256": ev.file_hash_sha256 or "",
+                "description": ev.description or ev.name,
+                "examiner": ev.collected_by,
+                "registered_at": ev.collected_at.isoformat() if ev.collected_at else "",
+                "status": "registered",
+                "name": ev.name,
+                "host": meta.get("host") or "",
+                "user": meta.get("user") or "",
+                "source_ip": meta.get("source_ip") or "",
+                "dest_ip": meta.get("dest_ip") or "",
+                "process_name": meta.get("process_name") or "",
+                "technique_ids": meta.get("technique_ids") or [],
+            })
+            ts = meta.get("timestamp") or (ev.collected_at.isoformat() if ev.collected_at else "")
+            timeline_out.append({
+                "id": f"T-EV-{i:03d}",
+                "status": "APPROVED",
+                "timestamp": ts,
+                "description": ev.description or ev.name,
+                "event_type": "evidence",
+                "source": (ev.name.split(":")[0] if ev.name else ""),
+                "artifact_ref": ev.artifact_id or "",
+                "related_findings": [],
+                "host": meta.get("host") or "",
+                "affected_account": meta.get("user") or "",
+                "examiner": ev.collected_by,
+                "created_at": ev.collected_at.isoformat() if ev.collected_at else "",
+                "staged": True,
+            })
+            for key, ioc_type in (("dest_ip", "ip"), ("source_ip", "ip"), ("host", "host")):
+                val = meta.get(key)
+                if val and str(val) not in seen_ioc:
+                    seen_ioc.add(str(val))
+                    iocs[ioc_type].append({"value": str(val), "source_findings": [], "source": "evidence"})
+            if ev.file_hash_sha256:
+                hv = ev.file_hash_sha256
+                if hv not in seen_ioc:
+                    seen_ioc.add(hv)
+                    iocs["hash"].append({"value": hv, "source_findings": [], "source": "evidence"})
+
+        _atomic_json(dest / "findings.json", findings_out)
+        _atomic_json(dest / "evidence.json", evidence_out)
+        _atomic_json(dest / "timeline.json", timeline_out)
+        _atomic_json(dest / "iocs.json", iocs)
+        if not (dest / "todos.json").exists():
+            _atomic_json(dest / "todos.json", [])
+        return dest
+    finally:
+        if close_mgr:
+            mgr.close()
+
+
 # ------------------------------------------------------------------
 # Dict → Dataclass converters (legacy flat JSON → SQLite)
 # ------------------------------------------------------------------
@@ -98,17 +239,47 @@ def dict_to_finding(d: dict[str, Any]) -> Finding:
         approval_state = ApprovalState.DRAFT
     created_at = _opt_iso_to_dt(d.get("created_at")) or datetime.now(UTC)
     created_by = d.get("created_by") or d.get("examiner") or "system"
+    obs = str(d.get("observation") or "")
+    interp = str(d.get("interpretation") or "")
+    meta = dict(d.get("metadata") or {})
+    if obs:
+        meta.setdefault("observation", obs)
+    if interp:
+        meta.setdefault("interpretation", interp)
+    if d.get("confidence"):
+        meta.setdefault("confidence", d.get("confidence"))
+    if d.get("confidence_justification"):
+        meta.setdefault("confidence_justification", d.get("confidence_justification"))
+    if d.get("host"):
+        meta.setdefault("host", d.get("host"))
+    if d.get("type"):
+        meta.setdefault("type", d.get("type"))
+    if d.get("audit_ids"):
+        meta.setdefault("audit_ids", d.get("audit_ids"))
+    if d.get("itm_stage"):
+        meta.setdefault("itm_stage", d.get("itm_stage"))
+    if d.get("itm_objects"):
+        meta.setdefault("itm_objects", d.get("itm_objects"))
+    if d.get("iocs"):
+        meta.setdefault("iocs", d.get("iocs"))
+    tech = d.get("attack_ids") or d.get("mitre_ids") or d.get("technique_ids") or []
+    if not tech:
+        mt = d.get("mitre_techniques") or []
+        if mt and isinstance(mt[0], str):
+            tech = mt
+        elif mt and isinstance(mt[0], dict):
+            tech = [x.get("id") for x in mt if isinstance(x, dict) and x.get("id")]
     return Finding(
         id=fid,
         case_id=d.get("case_id", ""),
         title=d.get("title") or d.get("observation", ""),
-        description=d.get("interpretation") or d.get("observation") or "",
+        description=interp or obs or d.get("description") or "",
         severity=severity,
         artifact_id=d.get("artifact_ref"),
-        technique_ids=d.get("mitre_techniques") or d.get("technique_ids") or [],
+        technique_ids=list(tech or []),
         created_at=created_at,
         created_by=created_by,
-        metadata=d.get("metadata", {}),
+        metadata=meta,
         approval_state=approval_state,
         approved_by=d.get("approved_by"),
         approved_at=_opt_iso_to_dt(d.get("approved_at")),

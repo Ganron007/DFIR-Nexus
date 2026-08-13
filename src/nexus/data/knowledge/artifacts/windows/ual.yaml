@@ -39,7 +39,7 @@ corroborate_with:
   for_presence: []
   for_timeline: [event_logs_security, event_logs_system]
 
-related_tools: [SrumECmd, KStrike]
+related_tools: [KStrike, esedbexport]
 
 cross_mcp_checks:
   - mcp: "opencti"

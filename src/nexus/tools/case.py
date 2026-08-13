@@ -88,9 +88,9 @@ def _detect_external_mcp(prefix: str) -> bool:
 def _build_guidance(caps: dict) -> str:
     lines = ["Available investigation capabilities:", ""]
     if caps.get("sift_tools"):
-        lines.append("- SIFT forensic tools via run_command (65+ catalog entries, Linux)")
+        lines.append("- SIFT forensic tools via run_command (68 catalog entries, Linux)")
     if caps.get("windows_tools"):
-        lines.append("- Windows forensic tools via run_windows_command (31 catalog entries)")
+        lines.append("- Windows forensic tools via run_windows_command (37 catalog entries)")
     if caps.get("forensic_rag"):
         lines.append("- Knowledge search: forensic_rag_search (Sigma, MITRE, KAPE; install: pip install dfir-nexus[rag])")
     if caps.get("opencti"):

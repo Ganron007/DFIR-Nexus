@@ -1,0 +1,39 @@
+name: User Activity MRU
+description: "Per-user Explorer MRU keys — RecentDocs, TypedPaths, WordWheelQuery, OpenSavePidlMRU, LastVisitedPidlMRU, RunMRU"
+platform: windows
+
+locations:
+  - path: "NTUSER.DAT\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\RecentDocs"
+    os_versions: ["Windows XP+", "Windows 10", "Windows 11"]
+    notes: "Files opened via Explorer; extension subkeys plus MRUListEx"
+  - path: "NTUSER.DAT\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\TypedPaths"
+    os_versions: ["Windows 7+", "Windows 10", "Windows 11"]
+    notes: "Paths typed into Explorer address bar"
+  - path: "NTUSER.DAT\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\WordWheelQuery"
+    os_versions: ["Windows 7+", "Windows 10", "Windows 11"]
+    notes: "Explorer search terms"
+  - path: "NTUSER.DAT\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\ComDlg32\\OpenSavePidlMRU"
+    os_versions: ["Windows Vista+", "Windows 10", "Windows 11"]
+    notes: "Common-dialog Open/Save targets"
+  - path: "NTUSER.DAT\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\RunMRU"
+    os_versions: ["Windows XP+", "Windows 10", "Windows 11"]
+    notes: "Win+R Run dialog history"
+
+proves:
+  - "A specific user interacted with named files, folders, or search terms via Explorer/common dialogs"
+  - "Relative order of those interactions (MRUListEx)"
+
+does_not_prove:
+  - "The file was executed"
+  - "The file still exists"
+  - "Command-line or service activity"
+
+corroborate_with:
+  for_execution: [prefetch, userassist, bam]
+  for_presence: [lnk_files, jump_lists, shellbags, mft]
+  for_timeline: [lnk_files, jump_lists, event_logs_security]
+
+related_tools: [RECmd]
+
+references:
+  - "SANS FOR500 - Windows Forensic Analysis"

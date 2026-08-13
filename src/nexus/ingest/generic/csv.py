@@ -80,7 +80,7 @@ class CSVImporter(Importer):
         # Description
         description = row.get("message") or row.get("Message") or row.get("Description") or row.get("msg") or row.get("Details") or ""
         if not description:
-            description = f"CSV record: {', '.join(list(row.keys())[:5])}"
+            description = f"CSV record: {', '.join(str(k) for k in list(row.keys())[:5] if k is not None)}"
 
         return Artifact(
             id=Artifact.new_id(),

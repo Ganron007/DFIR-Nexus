@@ -5,7 +5,7 @@ platform: windows
 locations:
   - path: "C:\\Users\\<user>\\AppData\\Roaming\\Microsoft\\Windows\\PowerShell\\PSReadLine\\ConsoleHost_history.txt"
     os_versions: ["Windows 10+"]
-    notes: "Plain text file. PSReadLine module included by default in PowerShell 5.0+."
+    notes: "Plain text file. PSReadLine module included by default in PowerShell 5.0+. The lane copies it into extractions; it is not a parser job."
 
 proves:
   - "PowerShell commands typed by the user"
@@ -37,7 +37,7 @@ corroborate_with:
   for_presence: [prefetch, amcache]
   for_timeline: [event_logs_security, event_logs_sysmon]
 
-related_tools: [strings, EvtxECmd]
+related_tools: []
 
 cross_mcp_checks:
   - mcp: "windows-triage"

@@ -1,0 +1,13 @@
+name: KStrike
+category: analysis
+description: "Parse Windows Server User Access Logging ESE databases (SUM/*.mdb)"
+platform: [windows, linux]
+artifacts_parsed: [ual]
+caveats:
+  - "UAL exists on Windows Server 2012+, not on Windows 10/11 clients"
+  - "First/Last seen are coarse (often daily), not per-session"
+quick_start: "python KStrike.py Current.mdb"
+advisories:
+  - "Use esedbexport on SIFT if KStrike is not installed — raw tables, same ESE file"
+references:
+  - "SANS FOR508 - Advanced Incident Response"

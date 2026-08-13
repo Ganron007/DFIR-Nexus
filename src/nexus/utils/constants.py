@@ -118,8 +118,13 @@ ENV_SIGMAHQ_REPO = "NEXUS_SIGMAHQ_REPO"
 ENV_RAG_DATA = "NEXUS_RAG_DATA"
 ENV_RAG_BUNDLES = "NEXUS_RAG_BUNDLES"
 ENV_RAG_PERSIST = "NEXUS_RAG_PERSIST"
+ENV_RAG_MODEL = "NEXUS_RAG_MODEL"
+"""Canonical embedding-model env var (HuggingFace id or local directory)."""
 ENV_RAG_EMBED_MODEL = "NEXUS_RAG_EMBED_MODEL"
+"""Alias of NEXUS_RAG_MODEL (kept for older docs / shells)."""
 ENV_RAG_RELEASE_REPO = "NEXUS_RAG_RELEASE_REPO"
+DEFAULT_RAG_EMBED_MODEL = "BAAI/bge-base-en-v1.5"
+"""Must match the prebuilt Chroma index (see ~/.nexus/data/rag/metadata.json)."""
 
 
 # ============================================================================

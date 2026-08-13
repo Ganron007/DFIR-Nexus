@@ -41,17 +41,26 @@ def _classify_rows(rows: list[dict[str, Any]], plugin_hint: str = "") -> str:
     if not rows:
         return "unknown"
     cols = {k.lower() for k in rows[0]}
-    if MALFIND_COLS.issubset(cols) or "malfind" in plugin_hint.lower():
+    hint = plugin_hint.lower()
+    if MALFIND_COLS.issubset(cols) or "malfind" in hint:
         return "malfind"
-    if NETSCAN_COLS & cols:
+    if "psscan" in hint or "pslist" in hint or "pstree" in hint:
+        return "pslist"
+    if "cmdline" in hint:
+        return "cmdline"
+    # Require an address column — pid alone matches almost every plugin.
+    if {"localaddress", "foreignaddress"} & cols or "netscan" in hint or "netstat" in hint:
         return "netscan"
-    if PSLIST_COLS & cols or "pslist" in plugin_hint.lower() or "pstree" in plugin_hint.lower():
+    if PSLIST_COLS & cols:
         return "pslist"
     return plugin_hint or "volatility"
 
 
 def _row_to_artifact(row: dict[str, Any], plugin: str, path: Path) -> Artifact:
-    proc = str(
+    def _s(val: Any) -> str:
+        return "" if val is None else str(val)
+
+    proc = _s(
         row.get("ImageFileName")
         or row.get("ImageName")
         or row.get("Process")
@@ -59,8 +68,9 @@ def _row_to_artifact(row: dict[str, Any], plugin: str, path: Path) -> Artifact:
         or row.get("Owner")
         or ""
     )
-    parent = str(row.get("ParentImageFileName") or row.get("Parent") or row.get("ppid") or "")
-    cmd = str(row.get("Args") or row.get("CommandLine") or row.get("cmdline") or "")
+    ppid = row.get("PPID", row.get("ppid"))
+    parent = _s(row.get("ParentImageFileName") or row.get("Parent") or ("" if ppid is None else ppid))
+    cmd = _s(row.get("Args") or row.get("CommandLine") or row.get("cmdline") or "")
     pid = row.get("PID") or row.get("pid")
     desc = f"Volatility {plugin}: {proc or 'memory row'}"
     if pid:
