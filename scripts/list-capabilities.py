@@ -9,13 +9,13 @@ sys.path.insert(0, str(ROOT / "src"))
 
 
 def main() -> int:
-    from nexus.app import create_server, _count_tools
+    from nexus.app import _count_tools, create_server
     from nexus.cli.main import app as cli
     from nexus.ingest.registry import get_registry
     from nexus.tools.windows import _WIN_CATALOG
 
     server = create_server()
-    mcp_names = sorted(getattr(server, "_tool_manager")._tools.keys())
+    mcp_names = sorted(server._tool_manager._tools.keys())
     mcp_n = _count_tools(server)
 
     cli_cmds: list[str] = []
