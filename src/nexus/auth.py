@@ -137,6 +137,16 @@ def clear_failures(analyst: str) -> None:
         pass
 
 
+def clear_lockout(analyst: str | None = None) -> None:
+    """Drop lockout for one examiner, or delete the lockout file entirely."""
+    if analyst:
+        clear_failures(analyst)
+        return
+    with contextlib.suppress(OSError):
+        if _LOCKOUT_FILE.exists():
+            _LOCKOUT_FILE.unlink()
+
+
 def reset_password(analyst: str, old_password: str, new_password: str) -> dict:
     """Reset password. Verifies old password, then re-HMACs all ledger entries
     for this analyst with the new key. Reuses the existing PBKDF2 salt

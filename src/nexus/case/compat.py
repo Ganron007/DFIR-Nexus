@@ -108,6 +108,7 @@ def sync_sqlite_to_flat(
                 "itm_stage": str(meta.get("itm_stage") or ""),
                 "itm_objects": list(meta.get("itm_objects") or []),
                 "iocs": list(meta.get("iocs") or []),
+                "evidence": list(meta.get("evidence") or []),
                 "created_by": f.created_by,
                 "created_at": f.created_at.isoformat() if f.created_at else "",
                 "approved_by": f.approved_by,
@@ -260,6 +261,8 @@ def dict_to_finding(d: dict[str, Any]) -> Finding:
         meta.setdefault("itm_stage", d.get("itm_stage"))
     if d.get("itm_objects"):
         meta.setdefault("itm_objects", d.get("itm_objects"))
+    if d.get("evidence"):
+        meta.setdefault("evidence", d.get("evidence"))
     if d.get("iocs"):
         meta.setdefault("iocs", d.get("iocs"))
     tech = d.get("attack_ids") or d.get("mitre_ids") or d.get("technique_ids") or []

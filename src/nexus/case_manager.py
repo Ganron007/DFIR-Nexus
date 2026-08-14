@@ -222,7 +222,7 @@ class CaseManager:
                               "mitre_techniques", "host", "event_timestamp",
                               "affected_account", "attack_ids", "audit_ids", "iocs",
                               "event_type", "artifact_ref", "related_findings",
-                              "itm_stage", "itm_objects"}}
+                              "itm_stage", "itm_objects", "evidence"}}
         if sanitized.get("host"):
             sanitized["host"] = str(sanitized["host"])[:200]
         if sanitized.get("affected_account"):

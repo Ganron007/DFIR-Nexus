@@ -362,7 +362,8 @@ pre {{ background: #161b22; padding: 0.5rem; border-radius: 4px; overflow-x: aut
 </head>
 <body>
 <nav>
-<a href="/portal" class="active">Overview</a>
+<a href="/portal">Overview</a>
+<a href="/portal/steer">Steer</a>
 <a href="/portal/findings">Findings</a>
 <a href="/portal/approve">Approve</a>
 <a href="/portal/timeline">Timeline</a>
@@ -635,6 +636,141 @@ async def todos_page(request):
     return HTMLResponse(_TEMPLATE.format(content=content))
 
 
+def _list_case_ids() -> list[str]:
+    from nexus.config import settings
+    root = settings.cases_root
+    if not root.is_dir():
+        return []
+    return sorted(p.name for p in root.iterdir() if p.is_dir() and (p / "CASE.yaml").is_file())
+
+
+def _active_case_id() -> str:
+    case_dir = _get_case_dir()
+    return case_dir.name if case_dir else ""
+
+
+async def steer_page(request):
+    """N1 intake + case switch + add evidence + N4 rerun (HITL redirect)."""
+    import yaml
+
+    cases = _list_case_ids()
+    active = _active_case_id()
+    intake = {}
+    case_dir = _get_case_dir()
+    if case_dir and (case_dir / "CASE.yaml").is_file():
+        meta = yaml.safe_load((case_dir / "CASE.yaml").read_text(encoding="utf-8")) or {}
+        if isinstance(meta.get("intake"), dict):
+            intake = meta["intake"]
+    options = "".join(
+        f'<option value="{_e(c)}"{" selected" if c == active else ""}>{_e(c)}</option>'
+        for c in cases
+    )
+    q = _e(str(intake.get("question") or ""))
+    window = _e(str(intake.get("window") or ""))
+    extras = _e(str(intake.get("extras") or ""))
+    content = f"""
+<h1>Steer case</h1>
+<p>Active: <code>{_e(active) or '(none)'}</code>. HITL redirect re-runs N4 without re-parsing.</p>
+<h2>Pick case</h2>
+<p><select id="case">{options}</select>
+<button class="action-btn" onclick="post('/portal/api/case/activate', {{case_id: document.getElementById('case').value}})">Activate</button></p>
+<h2>N1 intake</h2>
+<p>Question<br><textarea id="question" rows="3" style="width:100%;background:#161b22;color:#c9d1d9">{q}</textarea></p>
+<p>Window<br><input id="window" style="width:100%;background:#161b22;color:#c9d1d9" value="{window}"></p>
+<p>Extras (chrome_profiles,drivefs,email,usb_serial)<br>
+<input id="extras" style="width:100%;background:#161b22;color:#c9d1d9" value="{extras}"></p>
+<p><button class="action-btn" onclick="post('/portal/api/intake', {{question: qv('question'), window: qv('window'), extras: qv('extras')}})">Save intake</button></p>
+<h2>Add evidence root</h2>
+<p><input id="evpath" style="width:70%;background:#161b22;color:#c9d1d9" placeholder="C:\\\\path\\\\to\\\\pack or conn.log">
+<button class="action-btn" onclick="post('/portal/api/evidence', {{path: qv('evpath')}})">Register</button></p>
+<h2>Redirect N4</h2>
+<p><button class="action-btn" onclick="post('/portal/api/query-rerun', {{}})">Re-run query pack</button></p>
+<pre id="out"></pre>
+<script>
+function qv(id) {{ return document.getElementById(id).value; }}
+async function post(url, body) {{
+  const r = await fetch(url, {{method:'POST', headers:{{'Content-Type':'application/json'}}, body: JSON.stringify(body)}});
+  document.getElementById('out').textContent = await r.text();
+}}
+</script>
+"""
+    return HTMLResponse(_TEMPLATE.format(content=content))
+
+
+async def api_cases(request):
+    return JSONResponse({"cases": _list_case_ids(), "active": _active_case_id()})
+
+
+async def api_activate_case(request):
+    body = await request.json()
+    case_id = str(body.get("case_id") or "").strip()
+    from nexus.config import settings
+    path = settings.cases_root / case_id
+    if not path.is_dir():
+        return JSONResponse({"ok": False, "error": "case not found"}, status_code=404)
+    active = Path.home() / ".nexus" / "active_case"
+    active.parent.mkdir(parents=True, exist_ok=True)
+    active.write_text(case_id, encoding="utf-8")
+    return JSONResponse({"ok": True, "active": case_id})
+
+
+async def api_intake(request):
+    body = await request.json()
+    case_dir = _get_case_dir()
+    if not case_dir:
+        return JSONResponse({"ok": False, "error": "no active case"}, status_code=400)
+    from nexus.langgraph.case_intake import persist_case_intake
+    written = persist_case_intake(case_dir, {
+        k: str(body.get(k) or "")
+        for k in ("question", "window", "extras", "playbooks", "subjects", "hypothesis")
+        if body.get(k)
+    })
+    return JSONResponse({"ok": True, "intake": written})
+
+
+async def api_register_evidence(request):
+    body = await request.json()
+    path = str(body.get("path") or "").strip()
+    case_dir = _get_case_dir()
+    if not case_dir:
+        return JSONResponse({"ok": False, "error": "no active case"}, status_code=400)
+    if not path or not Path(path).exists():
+        return JSONResponse({"ok": False, "error": "path missing"}, status_code=400)
+    import hashlib
+    from nexus.case import CaseManager
+    from nexus.config import settings
+    from nexus.audit import resolve_examiner
+    fpath = Path(path)
+    h = hashlib.sha256()
+    if fpath.is_dir():
+        h.update(str(fpath.resolve()).encode())
+        digest = h.hexdigest()
+    else:
+        with open(fpath, "rb") as fh:
+            for chunk in iter(lambda: fh.read(65536), b""):
+                h.update(chunk)
+        digest = h.hexdigest()
+    mgr = CaseManager(settings.cases_root / "cases.db")
+    mgr.add_evidence(
+        case_id=case_dir.name,
+        name=fpath.name,
+        description="portal register",
+        file_path=str(fpath.resolve()),
+        file_hash_sha256=digest,
+        collected_by=resolve_examiner(),
+    )
+    return JSONResponse({"ok": True, "path": str(fpath), "sha256": digest})
+
+
+async def api_query_rerun(request):
+    case_dir = _get_case_dir()
+    if not case_dir:
+        return JSONResponse({"ok": False, "error": "no active case"}, status_code=400)
+    from nexus.langgraph.query_pack import write_query_pack
+    path = write_query_pack(case_dir)
+    return JSONResponse({"ok": True, "query_pack": str(path)})
+
+
 async def api_findings(request):
     """GET /portal/api/findings?status=DRAFT&limit=20"""
     findings = _load_json("findings.json")
@@ -754,15 +890,21 @@ def create_dashboard():
         Route("/portal/evidence", endpoint=evidence_page),
         Route("/portal/iocs", endpoint=iocs_page),
         Route("/portal/todos", endpoint=todos_page),
+        Route("/portal/steer", endpoint=steer_page),
         # API endpoints
         Route("/portal/api/commit/challenge", get_commit_challenge, methods=["GET"]),
         Route("/portal/api/commit", post_commit, methods=["POST"]),
         Route("/portal/api/findings", api_findings, methods=["GET"]),
         Route("/portal/api/timeline", api_timeline, methods=["GET"]),
         Route("/portal/api/evidence", api_evidence, methods=["GET"]),
+        Route("/portal/api/evidence", api_register_evidence, methods=["POST"]),
         Route("/portal/api/iocs", api_iocs, methods=["GET"]),
         Route("/portal/api/todos", api_todos, methods=["GET"]),
         Route("/portal/api/audit/{finding_id}", api_audit_for_finding, methods=["GET"]),
         Route("/portal/api/summary", api_summary, methods=["GET"]),
         Route("/portal/api/transparency", api_transparency, methods=["GET"]),
+        Route("/portal/api/cases", api_cases, methods=["GET"]),
+        Route("/portal/api/case/activate", api_activate_case, methods=["POST"]),
+        Route("/portal/api/intake", api_intake, methods=["POST"]),
+        Route("/portal/api/query-rerun", api_query_rerun, methods=["POST"]),
     ]

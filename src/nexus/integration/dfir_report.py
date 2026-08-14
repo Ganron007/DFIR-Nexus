@@ -11,6 +11,7 @@ from collections import defaultdict
 from ast import literal_eval
 from datetime import UTC, datetime
 from typing import Any
+import re
 
 
 def _format_rag_notes(rag_notes: list[str]) -> list[str]:
@@ -45,6 +46,102 @@ def _format_rag_notes(rag_notes: list[str]) -> list[str]:
     return out
 
 
+def _split_questions(text: str) -> list[str]:
+    raw = (text or "").strip()
+    if not raw:
+        return []
+    parts = re.split(r"\?\s*|;\s*|\band what\b|\band\b(?=\s+what\b)", raw, flags=re.I)
+    out = []
+    for p in parts:
+        q = re.sub(r"\s+", " ", p).strip(" .,;?")
+        if len(q) >= 12:
+            if not re.match(r"^(what|how|does|is|are|which)\b", q, re.I):
+                q = "What " + q[0].lower() + q[1:]
+            out.append(q + "?")
+    return out[:6] or [raw if raw.endswith("?") else raw.rstrip(" .,;") + "?"]
+
+
+def build_qa_spine(
+    questions: list[str],
+    findings: list[dict[str, Any]],
+) -> list[dict[str, str]]:
+    """N8: each N1 question is answered from findings or INSUFFICIENT."""
+    rows: list[dict[str, str]] = []
+
+    def _blob(f: dict[str, Any]) -> str:
+        return " ".join(
+            str(f.get(k) or "") for k in ("title", "observation", "description", "interpretation")
+        ).lower()
+
+    def _negative(f: dict[str, Any]) -> bool:
+        b = _blob(f)
+        if any(w in b for w in (
+            "no host", "insufficient", "does not support", "not support",
+            "no query pack", "does not corroborate", "no malicious",
+            "lack intrusion", "not supported by the evidence",
+            "do not include indicators of malware",
+            "no malware", "no c2", "no beacon", "no intrusion",
+            "no mimikatz", "no cobalt",
+            "does not show remote", "do not show remote",
+        )):
+            return True
+        return bool(re.search(
+            r"\bno\s+(?:host|malware|c2|beacon|intrusion|mimikatz|cobalt)\b",
+            b,
+        ))
+
+    for q in questions:
+        low = q.lower()
+        keys = []
+        if any(w in low for w in ("insider", "staging", "misuse", "wipe", "pst", "exfil")):
+            keys = ["sdelete", "pst", "recycle", "drive", "staging"]
+        elif any(w in low for w in ("external", "compromise", "c2", "malware", "intrusion")):
+            # Dual-lens prose uses "C2" / "external" while refuting them — do not
+            # treat those words as positive intrusion evidence.
+            keys = ["mimikatz", "rubeus", "cobalt", "beacon", "psexec", "encodedcommand"]
+        else:
+            keys = [t for t in re.findall(r"[a-z0-9]{4,}", low) if t not in {
+                "what", "host", "activity", "supports", "refutes", "with", "from",
+            }][:6]
+        external_q = any(w in low for w in ("external", "compromise", "c2", "malware", "intrusion"))
+        matched: list[str] = []
+        cited = ""
+        for f in findings:
+            b = _blob(f)
+            hits = [k for k in keys if k in b]
+            # Refute/absence prose must not count as intrusion evidence.
+            # Do not skip the same row for insider keys (sdelete/PST/Drive).
+            if external_q and _negative(f):
+                if not cited:
+                    cited = str(f.get("id") or f.get("title") or "")
+                continue
+            if not hits:
+                continue
+            matched.extend(hits)
+            if not cited:
+                cited = str(f.get("id") or f.get("title") or "")
+        matched = list(dict.fromkeys(matched))
+        if external_q and not matched:
+            rows.append({
+                "question": q,
+                "answer": "INSUFFICIENT — approved findings do not corroborate this on host artifacts.",
+                "cite": cited,
+            })
+        elif matched:
+            rows.append({
+                "question": q,
+                "answer": f"Supported by approved findings (terms: {', '.join(matched)}).",
+                "cite": cited,
+            })
+        else:
+            rows.append({
+                "question": q,
+                "answer": "INSUFFICIENT — no approved finding rows matched this question.",
+                "cite": "",
+            })
+    return rows
+
+
 def _sev_rank(sev: str) -> int:
     order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "informational": 4}
     return order.get((sev or "").lower(), 9)
@@ -66,8 +163,13 @@ def build_dfir_markdown(
     severity: str = "high",
     case_summary: str = "",
     tool_ledger: list[dict[str, Any]] | None = None,
+    finding_ids: list[str] | None = None,
+    questions: list[str] | None = None,
 ) -> str:
     """Render a detailed DFIR-style Markdown report from approved case data."""
+    if finding_ids:
+        want = set(finding_ids)
+        findings = [f for f in findings if f.get("id") in want]
     approved = [
         f for f in findings
         if str(f.get("status") or f.get("approval_state") or "").upper() in ("APPROVED",)
@@ -158,6 +260,17 @@ def build_dfir_markdown(
             )
     lines.append("")
 
+    # N8 Q&A spine
+    qs = list(questions or [])
+    if qs:
+        lines.append("## Examiner questions")
+        lines.append("")
+        for row in build_qa_spine(qs, approved):
+            lines.append(f"- **Q:** {row['question']}")
+            cite = f" (`{row['cite']}`)" if row.get("cite") else ""
+            lines.append(f"  - **A:** {row['answer']}{cite}")
+        lines.append("")
+
     # Case Summary
     lines.append("## Case Summary")
     lines.append("")
@@ -195,6 +308,7 @@ def build_dfir_markdown(
     lines.append("")
     for item in (
         "Key Takeaways",
+        "Examiner questions",
         "Case Summary",
         "Findings (Evidence-Backed)",
         "Network",
@@ -231,9 +345,17 @@ def build_dfir_markdown(
         lines.append("")
         obs = str(f.get("observation") or f.get("description") or "").strip()
         interp = str(f.get("interpretation") or "").strip()
-        if obs:
-            lines.append("**Observation**")
-            lines.append("")
+        from nexus.integration.evidence_table import (
+            normalize_evidence_rows,
+            render_evidence_table,
+        )
+
+        rows = normalize_evidence_rows(f)
+        lines.append("**Evidence**")
+        lines.append("")
+        if rows:
+            lines.extend(render_evidence_table(rows))
+        elif obs:
             lines.append(obs)
             lines.append("")
         if interp and interp != obs:
@@ -241,7 +363,7 @@ def build_dfir_markdown(
             lines.append("")
             lines.append(interp)
             lines.append("")
-        elif not obs and interp:
+        elif not obs and not rows and interp:
             lines.append(interp)
             lines.append("")
 
@@ -256,9 +378,9 @@ def build_dfir_markdown(
             return
         for f in matched:
             lines.append(f"- **{f.get('title')}** (`{f.get('id')}`)")
-            desc = (f.get("observation") or f.get("description") or f.get("interpretation") or "").strip()
-            if desc:
-                lines.append(f"  - {desc}")
+            interp = (f.get("interpretation") or "").strip().split("\n")[0].strip()
+            if interp:
+                lines.append(f"  - {interp[:280]}")
         lines.append("")
 
     _section(
@@ -352,6 +474,21 @@ def build_dfir_markdown(
         if len(events) > 80:
             lines.append("")
             lines.append(f"_… {len(events) - 80} additional timeline rows omitted._")
+        i1_events = [
+            e for e in events
+            if str(e.get("source") or "").lower().startswith("i1")
+        ]
+        if i1_events:
+            lines.append("")
+            lines.append("### Import/ingest (I1)")
+            lines.append("")
+            lines.append("| Timestamp | Description | Source |")
+            lines.append("|-----------|-------------|--------|")
+            for e in i1_events[:40]:
+                ts = str(e.get("timestamp") or "")[:25]
+                desc = str(e.get("description") or "").replace("|", "/")[:120]
+                src = str(e.get("source") or "").replace("|", "/")
+                lines.append(f"| {ts} | {desc} | {src} |")
     lines.append("")
 
     # Indicators
@@ -470,7 +607,7 @@ def build_dfir_markdown(
         lines.append(
             f"**{ok_n} OK** · **{fail_n} FAIL** · **{skip_n} SKIP** "
             f"(total {len(tool_ledger)}). Every OK extraction was available to "
-            "the interpretation agent (see `analysis/snippets.md`)."
+            "the interpretation agent (see `analysis/query_pack.md`)."
         )
         lines.append("")
         lines.append("| Host | Tool | Status | Purpose | audit_id |")

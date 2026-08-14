@@ -109,22 +109,44 @@ def _resolve_case(case_id: str = "") -> Path | None:
     return None
 
 
+def _resolve_analyst(explicit: str = "") -> str:
+    from nexus.config import settings
+
+    return (
+        (explicit or "").strip()
+        or settings.examiner
+        or os.environ.get("NEXUS_EXAMINER")
+        or os.environ.get("USER")
+        or os.environ.get("USERNAME")
+        or "unknown"
+    )
+
+
 @app.command()
 def approve(
     finding_ids: list[str] = typer.Argument(None, help="Finding IDs to approve"),
     note: str = typer.Option("", "--note", help="Examiner note"),
     interactive: bool = typer.Option(False, "--interactive", "-i", help="Interactive review mode"),
+    examiner: str = typer.Option("", "--examiner", "-e", help="Examiner identity (password file name)"),
+    clear_lockout: bool = typer.Option(False, "--clear-lockout", help="Clear 15-minute lockout and exit"),
 ):
     """Approve DRAFT findings (requires password — blocks AI approval)."""
-    from nexus.config import settings
-    analyst = settings.examiner or os.environ.get("USER") or os.environ.get("USERNAME") or "unknown"
+    analyst = _resolve_analyst(examiner)
+
+    if clear_lockout:
+        from nexus.auth import clear_lockout as _clear_lockout
+
+        _clear_lockout(analyst if analyst != "unknown" else None)
+        typer.echo(f"Approval lockout cleared ({analyst}).")
+        if not finding_ids and not interactive:
+            return
 
     if interactive:
         _interactive_approve(analyst)
         return
 
     if not finding_ids:
-        typer.echo("Usage: nexus approve <finding_id> [finding_id...] or nexus approve --interactive")
+        typer.echo("Usage: nexus approve --examiner e2e_host <finding_id>...")
         raise typer.Exit(1)
 
     from nexus.cli.approve import _require_approval_auth, approve_finding
@@ -367,6 +389,7 @@ def portal():
 @app.command()
 def pipeline(
     case: str = typer.Option("", "--case", help="Path to evidence directory or file"),
+    also: list[str] = typer.Option([], "--also", help="Additional evidence roots on the same case"),
     resume: bool = typer.Option(False, "--resume", help="Resume from last checkpoint after human approval"),
     model: str = typer.Option("", "--model", help="LLM model (e.g. openai/gpt-4o, ollama/qwen2.5:32b-instruct)"),
     thread: str = typer.Option("", "--thread", help="Thread ID for checkpoint persistence"),
@@ -412,6 +435,7 @@ def pipeline(
         thread_id=thread,
         model_name=model,
         mode=mode or None,
+        evidence_paths=also or None,
     ))
 
 

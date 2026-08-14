@@ -11,6 +11,7 @@ def ingest(
     path: Path = typer.Argument(..., exists=True, readable=True, help="File or directory"),
     recursive: bool = typer.Option(False, "--recursive", "-r", help="Walk a directory"),
     limit: int = typer.Option(50, "--limit", help="Max files when walking a directory"),
+    case_id: str = typer.Option("", "--case", help="Merge onto this case (I3) when set"),
 ) -> None:
     """Auto-detect format and ingest. Prints source, artifact count, errors."""
     from nexus.ingest.detect import ingest_auto
@@ -26,8 +27,20 @@ def ingest(
 
     any_fail = False
     total = 0
+    case_dir = None
+    if case_id:
+        from nexus.config import settings
+        case_dir = settings.cases_root / case_id
+        if not case_dir.is_dir():
+            typer.echo(f"Case directory missing: {case_dir}", err=True)
+            raise typer.Exit(1)
     for t in targets:
-        result = ingest_auto(t)
+        if case_dir is not None:
+            from nexus.langgraph.timeline_merge import ingest_into_case
+
+            result = ingest_into_case(t, case_dir, limit=400)
+        else:
+            result = ingest_auto(t)
         ok = bool(result.get("success"))
         n = int(result.get("artifacts") or 0)
         total += n
@@ -41,6 +54,11 @@ def ingest(
         for e in errs[:3]:
             typer.echo(f"       {e}")
             any_fail = True
+    if case_dir is not None:
+        from nexus.langgraph.timeline_merge import rebuild_case_timeline
+
+        events = rebuild_case_timeline(case_dir)
+        typer.echo(f"I3 merged timeline events={len(events)}")
     typer.echo(f"total_artifacts={total} files={len(targets)}")
     if any_fail:
         raise typer.Exit(1)

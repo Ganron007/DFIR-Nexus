@@ -45,6 +45,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         finding: dict | None = None,
         itm_stage: str = "",
         itm_objects: list[str] | None = None,
+        evidence: list[dict] | None = None,
     ) -> dict:
         """Stage a finding as DRAFT for human review.
 
@@ -92,6 +93,8 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             finding_data["itm_stage"] = itm_stage
         if itm_objects:
             finding_data["itm_objects"] = itm_objects
+        if evidence:
+            finding_data["evidence"] = evidence[:12]
 
         try:
             result = manager.record_finding(

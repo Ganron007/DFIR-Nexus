@@ -8,6 +8,7 @@ Supports: specific IDs, interactive review, HMAC signed verification ledger.
 
 import getpass
 import json
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -26,13 +27,36 @@ from nexus.auth import (
 
 def _require_approval_auth(analyst: str) -> str | None:
     """Require password confirmation. Returns None on failure, password on success."""
+    print(f"Examiner identity: {analyst}")
     if not has_password(analyst):
-        print("No approval password configured. Run: nexus config --setup-password")
+        print(
+            f"No password file for {analyst} "
+            f"({Path.home() / '.nexus' / 'passwords' / (analyst + '.json')})."
+        )
+        print("This Windows login is not the lab examiner.")
+        print("Use: nexus approve --examiner e2e_host ...")
+        print("  or: $env:NEXUS_EXAMINER = 'e2e_host'")
+        print("Do not run: nexus config --setup-password for a new identity.")
         return None
 
     if check_lockout(analyst):
         print("Too many failed attempts. Locked out for 15 minutes.")
+        print("Unlock: nexus approve --clear-lockout --examiner", analyst)
         return None
+
+    env_pw = (os.environ.get("NEXUS_APPROVAL_PASSWORD") or "").strip()
+    if env_pw:
+        if verify_password(analyst, env_pw):
+            clear_failures(analyst)
+            return env_pw
+        record_failure(analyst)
+        print("NEXUS_APPROVAL_PASSWORD did not match. Getpass is skipped.")
+        print("Cursor/PowerShell often cannot paste into a hidden password prompt.")
+        return None
+
+    print("Hidden prompt: paste often fails in Cursor. Prefer:")
+    print("  $env:NEXUS_APPROVAL_PASSWORD = '<password>'")
+    print("  then re-run nexus approve --examiner e2e_host ...")
 
     for attempt in range(3):
         try:
@@ -50,6 +74,7 @@ def _require_approval_auth(analyst: str) -> str | None:
             print(f"Incorrect password. {remaining} attempt(s) remaining.")
         else:
             print("Locked out for 15 minutes.")
+            print("Unlock: nexus approve --clear-lockout --examiner", analyst)
 
     return None
 

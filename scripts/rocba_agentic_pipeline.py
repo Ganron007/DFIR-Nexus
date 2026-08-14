@@ -10,7 +10,7 @@ Modes (same as ``nexus pipeline --mode``):
 Usage:
   python scripts/rocba_agentic_pipeline.py --mode tools
   python scripts/rocba_agentic_pipeline.py --from-case INC-20260812165727
-  python scripts/rocba_agentic_pipeline.py --mode coverage --insider-threat
+  python scripts/rocba_agentic_pipeline.py --mode coverage
   python scripts/rocba_agentic_pipeline.py --mode design
 """
 from __future__ import annotations
@@ -25,35 +25,42 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 os.chdir(ROOT)
 
-DEFAULT_EVIDENCE = Path(r"R:\windows_mount")  # SIFT-mounted E01 via Samba
-if not DEFAULT_EVIDENCE.exists():
-    DEFAULT_EVIDENCE = Path("H:/C")
-if not DEFAULT_EVIDENCE.exists():
-    DEFAULT_EVIDENCE = ROOT / "Evidence-files" / "showcase" / "rocba-500"
+def _pick_kape_root() -> Path:
+    """Prefer the live Windows-root mount (Samba R: full NTFS, else KAPE H:\\C)."""
+    candidates = (Path(r"R:\windows_mount"), Path("H:/C"))
+    for cand in candidates:
+        if (cand / "Windows").is_dir() or (cand / "Users").is_dir():
+            return cand
+    return ROOT / "Evidence-files" / "showcase" / "rocba-500"
+
+
+DEFAULT_EVIDENCE = _pick_kape_root()
 
 EXAMINER = "e2e_host"
 APPROVE_PW = "E2E-Host-Test-2026!"
 
-INSIDER_CONTEXT = {
-    "name": "Rocba-500 — Insider Threat Hypothesis",
+CASE_CONTEXT = {
+    "name": "Rocba-500 — Insider misuse or external compromise",
     "description": (
-        "FOR508 Rocba host triage pack. Examiner hypothesis: insider-threat "
-        "(authorized user misuse / data staging / unusual after-hours or "
-        "privileged activity). Evidence from tools wins over this hypothesis."
+        "FOR508 Rocba host triage pack. Dual examiner hypothesis: (1) insider "
+        "misuse — authorized user abusing access / data staging; (2) external "
+        "compromise — intrusion, malware, persistence, or C2. Evidence from "
+        "tools chooses which lens fits. Do not invent an APT name."
     ),
-    "hypothesis": "insider-threat",
+    "hypothesis": "insider-threat or external compromise",
     "question": (
-        "What host activity supports or refutes insider-threat / data staging?"
+        "What host activity supports or refutes insider misuse / data staging, "
+        "and what supports or refutes external compromise?"
     ),
     "timezone": "UTC",
     "window": "examiner-supplied; evidence timestamps win",
     "subjects": "rocba host user profiles",
-    "playbooks": "usb_activity,data_staging",
+    "playbooks": "usb_activity,data_staging,external_compromise",
     "notes": (
-        "Interpret Windows host artifacts + SIFT memory under an insider-threat "
-        "lens using https://insiderthreatmatrix.org/ (Motive/Means/Preparation/"
-        "Infringement/Anti-Forensics). Do not invent external APT campaigns. "
-        "Benign authorized activity is a valid outcome when evidence supports it. "
+        "Interpret Windows host artifacts + SIFT memory under BOTH lenses. "
+        "ITM (https://insiderthreatmatrix.org/) when facts support authorized-"
+        "user abuse. MITRE ATT&CK when facts support intrusion. Benign "
+        "authorized activity is a valid outcome. Do not invent APT campaigns. "
         "Use MFTECmd bodyfile + TSK mactime for the filesystem timeline (do not "
         "run full-tree plaso — SIFT disk cannot hold a 4G store). Cloud audit "
         "CSVs live on SIFT at /home/sansforensics/Evidence-files/rocba-500/*.csv."
@@ -82,12 +89,12 @@ async def main() -> int:
         "--insider-threat",
         action="store_true",
         default=True,
-        help="Pass insider-threat case_context (default: on)",
+        help="Pass dual insider+external case_context (default: on)",
     )
     ap.add_argument(
         "--no-insider-threat",
         action="store_true",
-        help="Omit insider-threat case_context",
+        help="Omit examiner case_context (generic host-triage only)",
     )
     ap.add_argument(
         "--auto-approve",
@@ -118,7 +125,7 @@ async def main() -> int:
         "/home/sansforensics/Evidence-files/rocba-500/memory/Rocba-Memory.raw",
     )
     os.environ.setdefault("NEXUS_SIFT_TRIAGE_ROOT", "/mnt/windows_mount1/C")
-    os.environ.setdefault("NEXUS_SHARE_ROOT", r"R:\windows_mount")
+    os.environ["NEXUS_SHARE_ROOT"] = str(Path(args.evidence))
     os.environ.setdefault("NEXUS_RAG_MODEL", "BAAI/bge-base-en-v1.5")
     os.environ.setdefault("NEXUS_MCP_SSE_READ_TIMEOUT", "7200")
     os.environ.setdefault("NEXUS_MCP_HTTP_TIMEOUT", "120")
@@ -162,8 +169,8 @@ async def main() -> int:
         os.environ["NEXUS_TOOL_LANE_STRICT"] = "1"
     else:
         os.environ.pop("NEXUS_TOOL_LANE_STRICT", None)
-    use_insider = args.insider_threat and not args.no_insider_threat
-    case_context = dict(INSIDER_CONTEXT) if use_insider else {}
+    use_context = args.insider_threat and not args.no_insider_threat
+    case_context = dict(CASE_CONTEXT) if use_context else {}
     auto_approve = (
         mode != "tools"
         and args.auto_approve
@@ -171,7 +178,7 @@ async def main() -> int:
     )
 
     print("Mode:", mode, flush=True)
-    print("Insider context:", use_insider, flush=True)
+    print("Case context (insider+external):", use_context, flush=True)
     print("Auto-approve (operator HITL):", auto_approve, flush=True)
     print("E01/fls:", bool(os.environ.get("NEXUS_SIFT_E01")), flush=True)
     print("MCP config:", get_mcp_config(), flush=True)
