@@ -17,17 +17,19 @@ because YAML `quick_start` is not structured enough to execute.
 | Mode | RAG | LLM | Mandatory lane | After the lane |
 |------|-----|-----|----------------|----------------|
 | **tools** | no | no | yes — every present artifact | `TOOL-RUN.md` ledger. STOP. No HITL. |
-| **coverage** (`debug`) | yes, before interpret | interpret only | same lane | RAG + LLM write findings from snippets. LLM does **not** pick parsers. |
+| **coverage** (`debug`) | yes, before interpret | interpret only | same lane | RAG + LLM write findings from **N4 query pack hits**. LLM does **not** pick parsers. |
 | **design** | yes, whole process | extras + interpret | same lane **first** | ReAct may **add** playbook/corroboration tools. Must not skip present artifacts or report with zero tool `audit_id`s. |
 | **interpret** | yes | interpret | no (reuse ledger) | `--from-case` |
 
-**Relevant** = artifact **present on this evidence**. SKIP = absent, or an optional
-parser is not installed (one row, fetch script in the reason). FAIL = present,
-parser ran and broke (tools mode is not 100%). Do not FAIL because a binary was
-never fetched. Do not SKIP-spam live-acq tools on an image.
+**Relevant** = artifact **present on this evidence**. SKIP = absent, or an
+unverified CLI (Thumbcache / LogFileParser). FAIL = present, parser ran and
+broke. **Do not SKIP because a portable parser was never fetched** — run
+`tools/fetch-windows-tools.ps1` / `tools/fetch-linux-tools.sh` and `nexus doctor`
+before the pipeline. Do not SKIP-spam live-acq tools on an image.
 
 Hypothesis / playbooks change **interpretation** and **extra** design jobs.
-They never replace the base lane.
+They never replace the base lane. Tools mode writes a deterministic
+case-context overlay on `TOOL-RUN.md` (read-order hints only, no findings).
 
 ## Case intake (all modes)
 
@@ -60,7 +62,7 @@ All **user profiles** (not the first `Users\*` directory). Default/Public skippe
 | USN Journal | `$Extend\$J` / `$UsnJrnl:$J` if extracted | MFTECmd `-f` (skip if missing) |
 | SetupAPI / PS transcripts / PSReadLine | those files | **copy** into extractions (already text — no strings) |
 | Thumbcache / `$LogFile` | present | cataloged, **not auto-run** until CLI is verified |
-| RDP bitmap / BITS / UAL | cache tiles / qmgr.db / SUM `*.mdb` | bmc-tools / BitsParser / KStrike **only if installed** |
+| RDP bitmap / BITS / UAL | cache tiles / qmgr.db / SUM `*.mdb` | bmc-tools / BitsParser / KStrike — **must be fetched** (UAL only if `*.mdb` exists) |
 | `$I30` file | extracted `$I30` only | MFTECmd `-f` |
 | Named samples | intake `sample_files` | capa / densityscout / yara only when named (and installed) |
 | Live response | `NEXUS_LIVE_RESPONSE=1` | autorunsc / handle / Get-InjectedThreadEx; memory only if `NEXUS_LIVE_ACQUIRE_MEMORY=1` |
@@ -91,12 +93,11 @@ interpret: RAG → load existing ledger → interpret → DRAFT → HITL → REP
 ### Interpret (LLM)
 
 1. Reads the tool-lane ledger (OK / FAIL / SKIP + `audit_id` + saved path).
-2. Builds bounded heads of stdout/CSV into `analysis/snippets.md` (60 KB cap —
-   not the full Hayabusa/MFT CSV).
-3. Requires RAG ready (`forensic_rag_status`), then `forensic_rag_search`.
-4. Emits a JSON array of findings: observation (facts from snippets) vs
+2. Builds **N4 query pack** `analysis/query_pack.md` — rows matching intake window + playbook `query_terms` (not CSV heads). `analysis/snippets.md` remains an examiner appendix.
+3. Requires RAG ready (`forensic_rag_status`), then `forensic_rag_search` **scoped to hit families**.
+4. Emits a JSON array of findings: observation (facts from **query pack hits**) vs
    interpretation (what they mean). Hypothesis loses to evidence.
-5. FAIL/SKIP are coverage gaps. They are not compromise.
+5. FAIL/SKIP are coverage gaps. Empty query hits + OK ledger = INSUFFICIENT rows, not a coverage gap.
 
 The LLM does **not** pick or skip parsers. It does **not** write `REPORT.md`.
 

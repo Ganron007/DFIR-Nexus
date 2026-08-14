@@ -16,7 +16,14 @@ nexus case close                          # Close active case (or --case-id)
 nexus case reopen                         # Reopen closed case
 nexus case migrate                        # Import legacy flat-JSON cases into SQLite
 nexus case migrate --dry-run              # Preview migration
+
+nexus case intake --question "..." --window 2020-11-14 --extras chrome_profiles
+nexus case index INC-...                  # N3: index this case's extractions (needs NEXUS_ES_URL)
+nexus case query INC-... --backend auto   # Rebuild N4 pack (auto|csv|es)
+nexus case detections INC-... --finding-ids F-009,F-010   # D1 drafts for SIEM (not N5)
 ```
+
+Portal `/portal/steer` picks a case, saves intake, registers evidence paths, and re-runs the N4 pack.
 
 ## Evidence
 

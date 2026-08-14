@@ -145,9 +145,28 @@ pip install -e .[all]
 
 ---
 
+## 2.5 Environment before any investigation (required)
+
+Do this **once per analysis host** before `nexus pipeline`, Rocba, or MCP clients.
+A missing parser is a **setup failure**, not an acceptable SKIP in the tool ledger.
+
+| Order | What | How you know it worked |
+|------|------|------------------------|
+| 1 | Package + extras | `pip install -e ".[all]"` — includes LangGraph / LangChain (`[pipeline]`) |
+| 2 | Portable forensic binaries | Windows: `pwsh -File tools/fetch-windows-tools.ps1`. SIFT: `bash tools/fetch-linux-tools.sh`. Layout: [tools/README.md](../tools/README.md) |
+| 3 | Python deps for those parsers | Fetch vendors ANSSI `bits`+`construct` **inside** `Tools/.../BitsParser/` (do not `pip install bits_parser` into the Nexus interpreter — it pins `construct==2.8.12` and breaks `regipy`). KStrike needs `pip install libesedb-python` in the `nexus serve` interpreter |
+| 4 | Core SIFT packages | `vol`, `fls`, `mactime` on PATH (SIFT VM / apt). Not optional for memory/disk jobs |
+| 5 | Doctor | `nexus doctor` → `golden-path: ok`. Core EZ/Hayabusa **and** `bmc-tools.py` / `BitsParser.py` must resolve |
+| 6 | MCP | `nexus serve --http` on each analysis host (`127.0.0.1:4508` Windows, SIFT on its lab IP) |
+| 7 | RAG (coverage/design only) | Windows MCP `forensic_rag_status` = ready. Tools mode does not load RAG |
+
+KAPE stays operator-downloaded (Kroll). Thumbcache Viewer CMD and LogFileParser stay cataloged until their CLI is verified — they are not silent SKIPs for missing bits/RDP parsers.
+
+---
+
 ## 3. Install Forensic Tools
 
-DFIR-Nexus wraps external forensic command-line tools. **If a tool is not installed on your system or not on the PATH, calling it via DFIR-Nexus will return "Tool not found".**
+DFIR-Nexus wraps external forensic command-line tools. Put portable copies under `Tools/windows/` or `Tools/linux/` (gitignored) using the fetch scripts in §2.5. **Do not treat "tool not installed" as a successful run.**
 
 ### 3a. Windows Forensic Tools Installation
 

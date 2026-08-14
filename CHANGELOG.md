@@ -4,6 +4,48 @@ All notable changes to DFIR-Nexus are documented here.
 
 ## Unreleased
 
+### Examiner-readable evidence tables (2026-08-13)
+
+- Findings in `REPORT.md` render **Evidence** as `Time | Source | Artifact / path | What it shows`, then **Interpretation**. No more one-paragraph parser dumps.
+- Existing observation walls are split into rows; N4 USB CSV lines drop garbage glyphs. New findings may carry a structured `evidence` array (LLM + N4 salvage).
+- Regenerated `Docs/cases/INC-20260813122635/reports/REPORT.md` (`F-e2e-host-021`…`028`).
+
+### Rocba this-run REPORT (lab auto-approve, 2026-08-13)
+
+- Operator authorized lab auto-approve for this test run (not 12-pass HITL). `F-e2e-host-021`…`028` on `INC-20260813122635`. Examiner copy: `Docs/cases/INC-20260813122635/reports/REPORT.md`.
+- N8: insider Supported (pst/drive/staging/sdelete/recycle); external INSUFFICIENT.
+- D1 needles: sdelete / DriveFS / PST paths (not `_stdout.txt`). Still noisy (`compact.exe`, `C:\Windows\System32`).
+
+### N5 salvage: N4 hits, not parser-OK (2026-08-13)
+
+- Interpret no longer stages “tool completed OK” collection stubs when the LLM emits no findings JSON.
+- Fallback is `n4_finding_candidates`: one finding per query-pack claim cluster (sdelete / PST / Drive / USB…), quoting hit rows. Empty pack → 0 findings (INSUFFICIENT), not placeholders.
+- D1 `_needles` ignore `_stdout.txt` / `.nexus\cases` / `extractions` paths.
+- Hunt parser recovers unfenced JSON arrays in prose. Interpret prompt puts the query pack first; ledger is audit_ids only.
+- Live re-prove: `--from-case INC-20260813122635` staged `F-e2e-host-013`…`020` (sdelete / PST / Drive). D1 needles are host paths, not extraction stdout. Lab auto-approve is not 12-pass HITL.
+- N8 Q&A: “no malware or C2 beaconing” is INSUFFICIENT for the external question (do not match `beacon` inside refute prose). LLM coverage-gap stubs are dropped; uncovered N4 clusters (USBSTOR) are merged in.
+
+### Architecture #1–#7 wired (2026-08-13)
+
+- **#1 N4** — `--from-case` interpret on `INC-20260813063432` accepted: this-run REPORT is F-009…F-014 (sdelete / PST / Drive). Acrobat-high and fake coverage-gap rows stay in SQLite HMAC but are filtered out of this-pass export.
+- **#2 N3** — per-case Elasticsearch (`nexus-case-<id>`, `NEXUS_ES_URL`). Same `n4_hits(..., backend=auto|csv|es)` API. Wildcard `text.wc` + per-strong-term search so SRUM volume cannot bury Prefetch sdelete. Live: pecmd sdelete 9/9 vs CSV; Acrobat 0/0; MFT is an ES superset. Not CADRE elk `.50`.
+- **#3 I3** — `nexus ingest --case` writes `ingest/artifacts.jsonl`; N7 merges `n4` + `i1:zeek` onto `timeline.json`.
+- **#4 N7/N8** — chronology + Examiner questions on REPORT (insider Supported; external INSUFFICIENT). Dual-lens “C2” prose is not treated as intrusion evidence.
+- **#5** — `/portal/steer` + `nexus case intake`; evidence register accepts directories; pipeline `--also` extra roots.
+- **#6** — N2 extras gated (`chrome_profiles` / `drivefs` / `email` / `usb_serial`); pack lists honest gaps until requested.
+- **#7 D1** — `nexus case detections --finding-ids` drafts Sigma/KQL/Suricata after N7, not inside N5.
+- CLI: `nexus case index|query|detections|intake`. 12-pass ledger unchanged.
+
+### N4 query pack (architecture #1)
+
+- Interpret payload is `analysis/query_pack.md`: CSV/txt rows matching intake window + playbook `query_terms` (not file heads). Hits are ranked (wipe/PST/C2 before cloud/USB before generic OneDrive/recycle). Tool stdout/meta logs are skipped. `snippets.md` remains an appendix.
+- Playbooks `data_staging` / `usb_activity` / `email_compromise` / `external_compromise` now carry `query_terms`. RAG at interpret is scoped to hit families.
+- Tracker split: INTERPRET-HITL-CONTEXT-PLAN §4 = architecture; COMPLETE-TO-SHIP = 12-pass. Architecture D1 ≠ Sigma ledger D1.
+
+### Architecture direction (2026-08-13)
+
+- Trackers: INTERPRET-HITL-CONTEXT-PLAN §4 = architecture; COMPLETE-TO-SHIP = 12-pass; ACTIVE.md = session pointer.
+
 ### Pipeline modes wired as one product (not a one-report patch)
 
 - **`tools`** — mandatory parser lane only: no RAG, no LLM, no HITL; `TOOL-RUN.md`.
