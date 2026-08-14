@@ -4,14 +4,14 @@ Connects to the DFIR-Nexus MCP server (via stdio or HTTP), drives a
 StateGraph investigation flow. Three switchable modes (no hybrid graph):
 
   tools            — mandatory parser lane only; **no RAG, no LLM**; TOOL-RUN.md
-  coverage (debug) — same mandatory lane; RAG+LLM interpret ledger+snippets
+  coverage (debug) — same mandatory lane; RAG+LLM interpret ledger + N4 query pack
   design           — RAG load, mandatory lane, then ReAct may **add** extras
   interpret        — reuse an existing tool-run case (``--from-case``)
 
   REPORT.md (coverage/design/interpret) is a **deterministic template** from
   APPROVED findings — the LLM fills observation/interpretation, not the file
-  structure. Huge tool CSVs are never fully injected into the LLM (bounded
-  snippets only). See Docs/cases/TOOL-EVIDENCE-MAP.md.
+  structure. N5 reads ``analysis/query_pack.md`` (filtered hits), not CSV heads.
+  See Docs/cases/TOOL-EVIDENCE-MAP.md.
 
 Switch:
     nexus pipeline --mode design|coverage|tools --case /path/to/evidence
@@ -135,6 +135,7 @@ def _load_dotenv() -> None:
 class InvestigationState(TypedDict):
     case_id: str
     evidence_path: str
+    evidence_paths: list[str]
     evidence_audit_ids: Annotated[list[str], add]
     hosts: list[str]
     draft_finding_ids: Annotated[list[str], add]
@@ -159,10 +160,15 @@ def make_initial_state(
     case_context: dict[str, str] | None = None,
     pipeline_mode: str | None = None,
     case_id: str = "",
+    evidence_paths: list[str] | None = None,
 ) -> InvestigationState:
+    paths = [p for p in (evidence_paths or []) if str(p).strip()]
+    if evidence_path and evidence_path not in paths:
+        paths = [evidence_path] + paths
     return {
         "case_id": case_id,
-        "evidence_path": evidence_path,
+        "evidence_path": evidence_path or (paths[0] if paths else ""),
+        "evidence_paths": paths,
         "evidence_audit_ids": [],
         "hosts": [],
         "draft_finding_ids": [],
@@ -185,7 +191,7 @@ def _format_case_context(ctx: dict[str, str] | None) -> str:
     ctx = ctx or {}
     keys = (
         "name", "description", "hypothesis", "notes", "host",
-        "timezone", "window", "subjects", "known_good", "question", "playbooks",
+        "timezone", "window", "subjects", "known_good", "question", "playbooks", "extras",
     )
     if not any(str(ctx.get(k) or "").strip() for k in keys):
         return (
@@ -218,27 +224,32 @@ def _format_case_context(ctx: dict[str, str] | None) -> str:
 
 _INTERPRETATION_RULES = (
     "Interpretation rules (product contract):\n"
-    "1) Evidence before narrative — every claim cites audit_id and/or output_saved_to "
-    "from tool results (design mode) or the tool-lane ledger (coverage/tools/interpret).\n"
+    "1) Evidence before narrative — every claim cites QUERY PACK hits plus audit_ids "
+    "from the tool-lane ledger. Do not cite extraction stdout/stderr paths as facts.\n"
     "2) RAG MUST be loaded (forensic_rag_status ready) before you interpret. "
-    "Call forensic_rag_search for methodology AND insider-threat / data-staging / "
-    "cloud-sync / SRUM / LNK / EVTX patterns. Use ALL tool-output snippets, not one tool.\n"
-    "3) Map every finding to the Insider Threat Matrix "
-    "(https://insiderthreatmatrix.org/) with itm_stage + itm_objects.\n"
+    "Call forensic_rag_search only for artifact families listed in the QUERY PACK "
+    "hit families (how to read Prefetch vs JumpList vs Recycle vs SRUM). "
+    "Do not search unrelated detection topics. Facts come from QUERY PACK hits, "
+    "not CSV heads and not RAG.\n"
+    "3) Dual hypothesis: insider-misuse AND external compromise. Map ITM "
+    "(itm_stage + itm_objects) only when facts support authorized-user abuse. "
+    "Map MITRE attack_ids only when facts support intrusion. A finding may "
+    "use one lens, both, or neither (benign). Do not force every row onto ITM.\n"
     "4) If optional case context is present, use it only as a hypothesis — if tool "
     "outputs contradict it, say so explicitly.\n"
     "5) Separate observation (what the tool showed) from interpretation (what it means). "
     "Confidence MUST be one of HIGH, MEDIUM, LOW, SPECULATIVE (never N/A).\n"
     "6) MITRE IDs only when justified by the observation; omit rather than guess.\n"
     "7) Ordinary/authorized activity may appear in host artifacts — do not escalate "
-    "to compromise without corroborating evidence, but still record the artifact "
-    "and ITM object.\n"
-    "8) Finish with a ```json fenced array of findings: title, observation, "
+    "to compromise or insider-misuse without corroborating evidence, but still "
+    "record the artifact.\n"
+    "8) Finish with a ```json fenced array of findings: title, evidence "
+    "[{time, source, artifact, detail}], observation (one sentence), "
     "interpretation, confidence, confidence_justification, host, attack_ids, "
     "itm_stage, itm_objects, audit_ids, artifacts (paths/audit_ids). "
-    "Emit multiple findings covering EVTX, execution (prefetch/amcache), "
-    "user-access (LNK/jumplist/shellbags), SRUM/network, registry, memory, "
-    "recycle-bin — skip a family only if that snippet is empty."
+    "Never dump multiple hits into one observation paragraph. "
+    "Emit multiple findings covering families that appear in QUERY PACK hits. "
+    "Skip a family when it has no hits. Do not pad with Acrobat/Office from file heads."
 )
 
 _COVERAGE_MODE_RULES = (
@@ -246,14 +257,17 @@ _COVERAGE_MODE_RULES = (
     "Condition you MUST treat as true: every applicable host-triage tool was already "
     "force-executed against available evidence before this step. You do NOT select "
     "triage tools. The ledger is the inventory of what ran (OK/FAIL/SKIP).\n"
-    "You MUST read the tool OUTPUT SNIPPETS (CSV/stdout heads) provided in the human "
-    "message. Findings must cite CONCRETE facts from those snippets "
+    "You MUST read the QUERY PACK hits provided in the human message "
+    "(filtered rows, not CSV heads). Findings must cite CONCRETE facts from those hits "
     "(usernames, process names, paths, timestamps, event IDs, URLs). "
-    "FORBIDDEN titles: 'Successful … Extraction', 'Tool X completed'. "
-    "FORBIDDEN: empty interpretation. "
+    "FORBIDDEN: high severity on routine Office/Acrobat unless wipe, staging, "
+    "USB, PST/cloud copy, or C2 appears in the hits. "
+    "Empty hits + OK ledger = INSUFFICIENT EVIDENCE for that question, "
+    "not a coverage gap.\n"
     "FAIL/SKIP are coverage gaps only — do not invent compromise from a FAIL. "
-    "Severity: low for routine artifacts; medium/high only when snippet facts "
-    "support insider-misuse / staging / anomalous privilege under the hypothesis."
+    "Severity: low for routine artifacts; medium/high only when hit facts "
+    "support insider-misuse, data staging, or external compromise "
+    "(malware/C2/persistence/anomalous privilege) under the examiner hypothesis."
 )
 
 _DESIGN_MODE_RULES = (
@@ -342,8 +356,23 @@ def get_model(model_name: str = ""):
     kwargs = {"model": model, "api_key": api_key or "not-needed"}
     if base_url:
         kwargs["base_url"] = base_url
+    # reasoning_effort is an OpenAI-only param. Compatible hosts (e.g.
+    # StepFun) reject it as "no active step plan subscription".
     if reasoning:
-        kwargs["extra_body"] = {"reasoning_effort": reasoning}
+        host = ""
+        try:
+            from urllib.parse import urlparse
+            host = (urlparse(base_url).hostname or "").lower()
+        except Exception:
+            host = ""
+        openai_like = (
+            provider == "openai"
+            or host.endswith("openai.com")
+            or host.endswith("openai.azure.com")
+            or (not base_url and not provider)
+        )
+        if openai_like:
+            kwargs["extra_body"] = {"reasoning_effort": reasoning}
     return ChatOpenAI(**kwargs)
 
 
@@ -548,21 +577,32 @@ async def register_evidence(state: InvestigationState, tools: dict) -> dict:
         )
 
     ev_tool = tools.get("evidence_register")
-    if ev_tool and state["evidence_path"]:
-        ev_result = _parse_tool_result(await ev_tool.ainvoke({
-            "path": state["evidence_path"],
-            "description": "Evidence for automated investigation",
-        }))
-        audit_ids = []
-        aid = ev_result.get("audit_id") or ev_result.get("sha256", "")
-        if aid:
-            audit_ids.append(aid)
-        step_log.append("Evidence registered on case-authority host")
-        return {
-            "case_id": case_id,
-            "evidence_audit_ids": audit_ids,
-            "step_log": step_log,
-        }
+    audit_ids = []
+    paths = list(state.get("evidence_paths") or [])
+    primary = state.get("evidence_path") or ""
+    if primary and primary not in paths:
+        paths = [primary] + paths
+    if ev_tool:
+        for p in paths:
+            if not p:
+                continue
+            ev_result = _parse_tool_result(await ev_tool.ainvoke({
+                "path": p,
+                "description": "Evidence for automated investigation",
+            }))
+            aid = ev_result.get("audit_id") or ev_result.get("sha256", "")
+            if aid:
+                audit_ids.append(aid)
+            if ev_result.get("error"):
+                step_log.append(f"Evidence register warning ({p}): {ev_result.get('error')}")
+            else:
+                step_log.append(f"Evidence registered: {p}")
+        if audit_ids:
+            return {
+                "case_id": case_id,
+                "evidence_audit_ids": audit_ids,
+                "step_log": step_log,
+            }
 
     return {
         "case_id": case_id,
@@ -625,6 +665,31 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
         skip_rag=True,
         pipeline_mode=mode,
     )
+    extra_paths = [
+        p for p in (state.get("evidence_paths") or [])
+        if p and p != (state.get("evidence_path") or "")
+    ]
+    if extra_paths:
+        from nexus.config import settings as _settings
+        from nexus.langgraph.tool_lane import find_windows_root
+        from nexus.langgraph.timeline_merge import ingest_into_case, rebuild_case_timeline
+
+        case_dir = _settings.cases_root / case_id
+        steps = list(result.get("step_log") or [])
+        for p in extra_paths:
+            if find_windows_root(Path(p)) is not None:
+                steps.append(f"Extra Windows root registered (not re-parsed this pass): {p}")
+                continue
+            info = ingest_into_case(Path(p), case_dir)
+            steps.append(
+                f"I1 ingest extra path {p}: {info.get('source')} "
+                f"artifacts={info.get('artifacts')} ok={info.get('success')}"
+            )
+        try:
+            rebuild_case_timeline(case_dir)
+        except Exception as exc:  # noqa: BLE001
+            steps.append(f"I3 merge after extra ingest skipped: {exc}")
+        result["step_log"] = steps
     steps = list(result.get("step_log") or [])
     label = "tools mode" if mode == "tools" else "coverage mode"
     steps.insert(0, f"{label}: deterministic tool lane")
@@ -679,9 +744,11 @@ async def ensure_rag_ready(state: InvestigationState, tools: dict) -> dict:
 
 
 async def load_existing_case(state: InvestigationState, tools: dict) -> dict:
-    """Reuse a completed tool-run case (ledger + snippets) for interpretation."""
+    """Reuse a completed tool-run case (ledger + query pack) for interpretation."""
     import json
+
     from nexus.config import settings
+    from nexus.langgraph.query_pack import load_case_intake, write_query_pack
     from nexus.langgraph.snippets import write_snippets
 
     case_id = (state.get("case_id") or "").strip()
@@ -708,12 +775,18 @@ async def load_existing_case(state: InvestigationState, tools: dict) -> dict:
     if not ledger:
         return {"error": f"No tool-lane ledger in {case_dir}"}
     write_snippets(case_dir, ledger)
+    write_query_pack(case_dir, ledger)
+    intake = load_case_intake(case_dir)
+    ctx = dict(state.get("case_context") or {})
+    for key, val in intake.items():
+        ctx.setdefault(key, val)
     aids = [str(r.get("audit_id")) for r in ledger if r.get("audit_id")]
     step_log.append(f"Loaded {len(ledger)} ledger rows, {len(aids)} audit_ids")
     return {
         "case_id": case_id,
         "tool_run_ledger": ledger,
         "evidence_audit_ids": aids,
+        "case_context": ctx,
         "step_log": step_log,
     }
 
@@ -770,6 +843,14 @@ def _format_tool_run_markdown(state: InvestigationState) -> str:
         "`REPORT.md` is templated from APPROVED findings — not from raw CSVs.",
         "",
     ])
+    try:
+        from nexus.langgraph.tool_context import build_tool_context_markdown
+        lines.append(build_tool_context_markdown(
+            state.get("case_context") or {},
+            ledger,
+        ))
+    except Exception:  # noqa: BLE001
+        pass
     case_id = state.get("case_id") or ""
     if case_id:
         try:
@@ -781,7 +862,8 @@ def _format_tool_run_markdown(state: InvestigationState) -> str:
                     "## Artifact completeness (YAML map)",
                     "",
                     "SKIP/ABSENT = artifact not on this pack (OK). "
-                    "PRESENT_NO_PARSER = present but no argv builder. "
+                    "STAGED = present and copied (plain text, no parser). "
+                    "PRESENT_NO_PARSER = present but no argv builder or parser missing. "
                     "SCHEDULED = parser was queued.",
                     "",
                     "| Artifact | Status | Tools | Hits | Reason |",
@@ -943,11 +1025,25 @@ async def hunt(state: InvestigationState, tools: dict, model) -> dict:
     }
 
 
-async def interpret(state: InvestigationState, tools: dict, model) -> dict:
-    """Coverage mode: LLM + RAG interpret tool outputs into finding candidates.
+def _n5_query_payload(case_dir, ledger: list) -> str:
+    """N5 reads the query pack; CSV heads are examiner appendix only."""
+    from pathlib import Path
 
-    Tools already ran. Reads ledger + analysis/snippets.md (tool stdout/CSV heads).
-    """
+    from nexus.langgraph.query_pack import write_query_pack
+
+    case_dir = Path(case_dir)
+    qp = case_dir / "analysis" / "query_pack.md"
+    try:
+        write_query_pack(case_dir, ledger)
+    except Exception as exc:  # noqa: BLE001
+        return f"(query pack build failed: {exc})"
+    if qp.is_file():
+        return qp.read_text(encoding="utf-8", errors="replace")[:60000]
+    return "(query pack missing)"
+
+
+async def interpret(state: InvestigationState, tools: dict, model) -> dict:
+    """Coverage/interpret: LLM + RAG on N4 query-pack hits (not CSV heads)."""
     try:
         from langgraph.prebuilt import create_react_agent
     except ImportError:
@@ -974,33 +1070,20 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
     ledger_summary = []
     for row in ledger:
         ledger_summary.append({
-            "host": row.get("host"),
             "tool": row.get("tool"),
             "status": row.get("status"),
-            "reason": row.get("reason", "")[:200],
             "audit_id": row.get("audit_id"),
-            "output_saved_to": row.get("output_saved_to"),
-            "purpose": row.get("purpose", "")[:120],
+            "purpose": str(row.get("purpose") or "")[:80],
         })
-    ledger_json = json.dumps(ledger_summary, indent=2)[:24000]
+    ledger_json = json.dumps(ledger_summary, indent=2)[:4000]
     ctx_block = _format_case_context(state.get("case_context") or {})
     rag_prior = "\n".join(state.get("rag_notes") or [])[:1500]
 
-    snippets = ""
+    query_pack = ""
     case_id = state.get("case_id") or ""
     if case_id:
         from nexus.config import settings
-        snip_path = settings.cases_root / case_id / "analysis" / "snippets.md"
-        if snip_path.is_file():
-            snippets = snip_path.read_text(encoding="utf-8", errors="replace")[:60000]
-        else:
-            try:
-                from nexus.langgraph.snippets import write_snippets
-                write_snippets(settings.cases_root / case_id, ledger)
-                if snip_path.is_file():
-                    snippets = snip_path.read_text(encoding="utf-8", errors="replace")[:60000]
-            except Exception as exc:  # noqa: BLE001
-                snippets = f"(snippet build failed: {exc})"
+        query_pack = _n5_query_payload(settings.cases_root / case_id, ledger)
 
     from nexus.langgraph.itm import itm_prompt_block
 
@@ -1015,9 +1098,10 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
             f"{itm_prompt_block()}\n"
             f"{_INTERPRETATION_RULES}\n"
             "FIRST call forensic_rag_status (must be ready). "
-            "THEN forensic_rag_search at least twice (host triage + insider threat / "
-            "data staging / cloud exfil). THEN emit findings JSON covering every "
-            "OK tool family in the snippets. Do NOT re-run host triage tools."
+            "THEN forensic_rag_search once per QUERY PACK hit family "
+            "(methodology for those artifacts only). "
+            "THEN emit findings JSON from QUERY PACK hits. "
+            "Do NOT re-run host triage tools. Do NOT treat CSV heads as facts."
         ),
     )
 
@@ -1028,19 +1112,23 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
                     "role": "human",
                     "content": (
                         f"Interpret coverage results for case {state['case_id']}.\n"
-                        f"Evidence path: {state.get('evidence_path')}\n"
+                        f"N4 QUERY PACK (ONLY source of host facts):\n{query_pack or '(none)'}\n\n"
                         f"Prior RAG notes:\n{rag_prior or '(none)'}\n\n"
-                        f"Tool lane ledger:\n```json\n{ledger_json}\n```\n\n"
-                        f"TOOL OUTPUT SNIPPETS (facts must come from here):\n{snippets or '(none)'}\n\n"
+                        f"OK/FAIL ledger (audit_ids only — not facts):\n```json\n{ledger_json}\n```\n\n"
                         "Emit a ```json array of findings. Each finding MUST have:\n"
                         "- title naming the analytic claim (not 'Successful Tool')\n"
-                        "- observation quoting concrete snippet facts\n"
-                        "- interpretation (non-empty) under the examiner hypothesis\n"
-                        "- itm_stage + itm_objects from https://insiderthreatmatrix.org/\n"
+                        "- evidence: array of {time, source, artifact, detail} "
+                        "(one row per timestamped hit; never a prose dump)\n"
+                        "- observation: one-sentence summary only (the table is evidence)\n"
+                        "- interpretation (non-empty) under the examiner hypothesis "
+                        "(insider-misuse AND/OR external compromise — evidence chooses)\n"
+                        "- itm_stage + itm_objects only when insider-misuse is justified; "
+                        "otherwise leave them empty\n"
+                        "- attack_ids (MITRE) only when intrusion facts justify them\n"
                         "- confidence + confidence_justification\n"
                         "- audit_ids from the OK ledger rows that support the claim\n"
-                        "- attack_ids only when justified by those facts\n"
-                        "Cover ALL OK extraction families present in the snippets.\n"
+                        "Cover families that appear in QUERY PACK hits. "
+                        "Do not invent a coverage gap when the ledger is OK.\n"
                     ),
                 }],
             },
@@ -1165,6 +1253,9 @@ def _finding_tool_payload(candidate: dict, trail: list[str]) -> dict:
         "audit_ids": aids,
         "artifacts": arts[:10],
     }
+    ev_rows = candidate.get("evidence")
+    if isinstance(ev_rows, list) and ev_rows:
+        payload["evidence"] = ev_rows[:12]
     itm_stage = str(candidate.get("itm_stage") or "").strip()
     if itm_stage:
         payload["itm_stage"] = itm_stage[:80]
@@ -1174,74 +1265,87 @@ def _finding_tool_payload(candidate: dict, trail: list[str]) -> dict:
     return payload
 
 
+def _is_collection_stub(candidate: dict) -> bool:
+    """True for parser-OK / coverage-placeholder rows — never IR claims."""
+    title = str(candidate.get("title") or "")
+    blob = (
+        f"{title} {candidate.get('observation', '')} "
+        f"{candidate.get('interpretation', '')}"
+    ).lower()
+    if "completed ok" in blob:
+        return True
+    if "coverage/collection evidence" in blob:
+        return True
+    if "placeholder only" in blob:
+        return True
+    if title.lower().startswith("coverage gap") or "coverage gap:" in blob:
+        return True
+    if "/" in title and ": " in title:
+        left = title.split(": ", 1)[0].strip()
+        if (
+            "/" in left
+            and " " not in left
+            and "sdelete" not in title.lower()
+            and ".pst" not in title.lower()
+        ):
+            return True
+    return False
+
+
 def _fallback_candidates_from_state(
     state: InvestigationState,
     trail: list[str],
     host_default: str,
 ) -> list[dict]:
-    """Build staging candidates from the tool-lane ledger when LLM JSON is missing."""
-    ledger = state.get("tool_run_ledger") or []
-    ok_rows = [r for r in ledger if r.get("status") == "OK" and r.get("audit_id")]
-    ctx = state.get("case_context") or {}
-    hyp = str(ctx.get("hypothesis") or "").strip()
-    hyp_note = (
-        f" Examiner hypothesis '{hyp}' is context only — evidence from this tool wins."
-        if hyp else ""
-    )
-    out: list[dict] = []
-    if ok_rows:
-        for row in ok_rows[:12]:
-            aid = str(row["audit_id"])
-            tool = row.get("tool") or "tool"
-            host = row.get("host") or host_default or ""
-            saved = row.get("output_saved_to") or ""
-            purpose = row.get("purpose") or tool
-            out.append({
-                "title": f"{host}/{tool}: {purpose}"[:200],
-                "observation": (
-                    f"Tool '{tool}' on {host or 'host'} completed OK "
-                    f"(audit_id={aid})."
-                    + (f" Output: {saved}." if saved else "")
-                ),
-                "interpretation": (
-                    f"Coverage/collection evidence for '{purpose}'. "
-                    f"Review the saved output for insider-threat or other signals."
-                    f"{hyp_note} Not itself a compromise conclusion."
-                ),
-                "confidence": "MEDIUM",
-                "confidence_justification": f"FD-001 via MCP audit_id {aid}.",
-                "host": host,
-                "type": "finding",
-                "audit_ids": [aid],
-                "artifacts": [{"audit_id": aid, "type": "audit"}],
-            })
-        return out
+    """N4 hit clusters when LLM JSON is missing. Never invent parser-OK findings."""
+    del trail, host_default
+    case_id = str(state.get("case_id") or "").strip()
+    if not case_id:
+        return []
+    from nexus.config import settings
+    from nexus.langgraph.query_pack import n4_finding_candidates
 
-    if trail:
-        mode = state.get("pipeline_mode") or "design"
-        ok_n = sum(1 for r in ledger if r.get("status") == "OK")
-        return [{
-            "title": (
-                f"Coverage tool lane complete — {state.get('case_id')} ({ok_n} OK)"
-                if mode == "coverage"
-                else f"ReAct hunt complete — {state.get('case_id')}"
-            ),
-            "observation": (
-                f"Pipeline produced {len(trail)} MCP audit_ids without parseable "
-                f"finding JSON from the LLM step."
-            ),
-            "interpretation": (
-                "Examiner should review case/extractions and the audit trail. "
-                f"Placeholder only.{hyp_note}"
-            ),
-            "confidence": "LOW",
-            "confidence_justification": "FD-001 via MCP audit_ids; LLM JSON not parsed.",
-            "host": host_default,
-            "type": "finding",
-            "audit_ids": trail[:10],
-            "artifacts": [{"audit_id": a, "type": "audit"} for a in trail[:10]],
-        }]
-    return []
+    return n4_finding_candidates(
+        settings.cases_root / case_id,
+        ledger=list(state.get("tool_run_ledger") or []),
+    )
+
+
+def _n4_claim_needles(text: str) -> set[str]:
+    t = (text or "").lower()
+    found: set[str] = set()
+    if "sdelete" in t:
+        found.add("sdelete")
+    if ".pst" in t or "pst " in t or "mailbox" in t:
+        found.add("pst")
+    if any(x in t for x in ("my drive", "googledrive", "drivefs", "google drive")):
+        found.add("drive")
+    if "usbstor" in t or " usb " in f" {t.replace('/', ' ')} " or t.startswith("usb "):
+        found.add("usb")
+    if "recycle" in t:
+        found.add("recycle")
+    if "mimikatz" in t:
+        found.add("mimikatz")
+    if "psexec" in t:
+        found.add("psexec")
+    return found
+
+
+def _merge_n4_uncovered(llm: list[dict], n4: list[dict]) -> list[dict]:
+    """Keep LLM IR rows; add N4 clusters the LLM omitted (e.g. USB after a stub gap)."""
+    covered: set[str] = set()
+    for c in llm:
+        covered |= _n4_claim_needles(
+            f"{c.get('title', '')} {c.get('observation', '')}"
+        )
+    extra = []
+    for c in n4:
+        needles = _n4_claim_needles(str(c.get("title") or ""))
+        if not needles or needles & covered:
+            continue
+        extra.append(c)
+        covered |= needles
+    return list(llm) + extra
 
 
 async def stage_findings(state: InvestigationState, tools: dict) -> dict:
@@ -1277,10 +1381,15 @@ async def stage_findings(state: InvestigationState, tools: dict) -> dict:
 
     ctx = state.get("case_context") or {}
     host_default = str(ctx.get("host") or "").strip()
-    candidates = parse_hunt_candidates(state.get("messages", []))
-    # If LLM JSON missing/unparseable, synthesize candidates from ledger / trail
-    if not candidates and trail:
-        candidates = _fallback_candidates_from_state(state, trail, host_default)
+    candidates = [
+        c for c in parse_hunt_candidates(state.get("messages", []))
+        if not _is_collection_stub(c)
+    ]
+    n4 = _fallback_candidates_from_state(state, trail, host_default)
+    if not candidates:
+        candidates = n4
+    else:
+        candidates = _merge_n4_uncovered(candidates, n4)
 
     async def _stage_one(candidate: dict) -> None:
         nonlocal draft_ids
@@ -1308,9 +1417,9 @@ async def stage_findings(state: InvestigationState, tools: dict) -> dict:
         for candidate in candidates:
             await _stage_one(candidate)
 
-        # Last resort: LLM candidates all failed but we still have tool audit_ids
-        if not draft_ids and trail:
-            errors.append("LLM/parsed candidates failed staging — using ledger fallback")
+        # Last resort: LLM candidates all failed staging — N4 hits, not parser-OK
+        if not draft_ids:
+            errors.append("LLM/parsed candidates failed staging — using N4 hit salvage")
             for candidate in _fallback_candidates_from_state(state, trail, host_default):
                 await _stage_one(candidate)
 
@@ -1406,7 +1515,9 @@ async def generate_report(state: InvestigationState, tools: dict) -> dict:
         import yaml
         from nexus.config import settings
         from nexus.cli.report import _extraction_notes, _load_flat_evidence
-        from nexus.integration.dfir_report import build_dfir_markdown
+        from nexus.integration.dfir_report import _split_questions, build_dfir_markdown
+        from nexus.langgraph.timeline_merge import rebuild_case_timeline
+        from nexus.detection.draft_from_findings import draft_from_approved
 
         case_dir = settings.cases_root / state["case_id"]
         findings_path = case_dir / "findings.json"
@@ -1417,10 +1528,23 @@ async def generate_report(state: InvestigationState, tools: dict) -> dict:
         case_yaml = case_dir / "CASE.yaml"
         if case_yaml.is_file():
             meta = yaml.safe_load(case_yaml.read_text(encoding="utf-8")) or {}
-        timeline = []
-        tl_path = case_dir / "timeline.json"
-        if tl_path.is_file():
-            timeline = _json.loads(tl_path.read_text(encoding="utf-8"))
+        try:
+            timeline = rebuild_case_timeline(case_dir)
+            step_log.append(f"N7 chronology: {len(timeline)} events")
+        except Exception as exc:  # noqa: BLE001
+            step_log.append(f"N7 chronology skipped: {exc}")
+            timeline = []
+            tl_path = case_dir / "timeline.json"
+            if tl_path.is_file():
+                timeline = _json.loads(tl_path.read_text(encoding="utf-8"))
+        try:
+            this_run = list(state.get("approved_finding_ids") or [])
+            d1 = draft_from_approved(case_dir, findings, finding_ids=this_run or None)
+            step_log.append(f"D1 drafts: {d1.get('dir')} needles={d1.get('needles')}")
+        except Exception as exc:  # noqa: BLE001
+            step_log.append(f"D1 draft skipped: {exc}")
+        intake = meta.get("intake") if isinstance(meta.get("intake"), dict) else {}
+        questions = _split_questions(str((intake or {}).get("question") or meta.get("question") or ""))
         # Prefer sift/ notes when pulled; else windows extractions
         sift_notes = _extraction_notes(case_dir / "sift" / "extractions")
         if not sift_notes:
@@ -1456,15 +1580,22 @@ async def generate_report(state: InvestigationState, tools: dict) -> dict:
             status=str(meta.get("status") or "open"),
             case_summary=str(meta.get("description") or ""),
             tool_ledger=ledger,
+            finding_ids=list(state.get("approved_finding_ids") or []) or None,
+            questions=questions,
         )
-        # Append analysis snippets pointer for examiners
-        snip = case_dir / "analysis" / "snippets.md"
-        if snip.is_file():
-            md += (
-                "\n\n## Analysis Snippets\n\n"
-                "Full tool-output heads used for LLM interpretation are in "
-                "`analysis/snippets.md` (also exported under the repo case tree).\n"
+        # Append analysis pointers for examiners
+        qp = case_dir / "analysis" / "query_pack.md"
+        extra = []
+        if qp.is_file():
+            extra.append(
+                "N4 query pack (LLM facts) is `analysis/query_pack.md`."
             )
+        if (case_dir / "analysis" / "chronology.md").is_file():
+            extra.append("N7 chronology is `analysis/chronology.md`.")
+        if (case_dir / "analysis" / "detections" / "README.md").is_file():
+            extra.append("D1 SIEM drafts are `analysis/detections/` (not N5 facts).")
+        if extra:
+            md += "\n\n## Analysis artifacts\n\n" + " ".join(extra) + "\n"
         out = case_dir / "reports" / "REPORT.md"
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(md, encoding="utf-8")
@@ -1655,6 +1786,7 @@ async def run_pipeline(
     model_name: str = "",
     case_context: dict[str, str] | None = None,
     mode: str | None = None,
+    evidence_paths: list[str] | None = None,
 ):
     """Run the DFIR-Nexus LangGraph investigation pipeline."""
     from langgraph.checkpoint.memory import MemorySaver
@@ -1727,6 +1859,7 @@ async def run_pipeline(
         evidence_path=evidence_path,
         case_context=case_context,
         pipeline_mode=pipeline_mode,
+        evidence_paths=evidence_paths,
     )
     result = await compiled.ainvoke(initial, config=cfg)
 

@@ -5,9 +5,9 @@ without importing langgraph / langchain.
 
 The hunt node in llm_pipeline.py invokes a ReAct agent that may emit findings
 as: (a) a single JSON object as the whole message, (b) one or more
-```json fenced blocks, (c) prose with no machine-readable findings. Cases
-(a) and (b) feed real candidates into stage_findings; case (c) triggers
-the placeholder fallback.
+```json fenced blocks, (c) a JSON array/object buried in prose, (d) no
+machine-readable findings. Cases (a)–(c) feed real candidates into
+stage_findings; case (d) returns [] so the caller can salvage N4 hits.
 """
 
 from __future__ import annotations
@@ -17,6 +17,25 @@ import re as _re
 from typing import Any
 
 _FENCE_RE = _re.compile(r'```(?:json)?\s*\n?(.*?)```', _re.DOTALL)
+
+
+def _recover_json_blob(content: str) -> Any:
+    """Parse a JSON array/object buried in prose (LLM often omits fences)."""
+    if '"title"' not in content:
+        return None
+    blobs: list[str] = []
+    start_a, end_a = content.find("["), content.rfind("]")
+    if start_a != -1 and end_a > start_a:
+        blobs.append(content[start_a : end_a + 1])
+    start_o, end_o = content.find("{"), content.rfind("}")
+    if start_o != -1 and end_o > start_o:
+        blobs.append(content[start_o : end_o + 1])
+    for blob in blobs:
+        try:
+            return _json.loads(blob)
+        except (_json.JSONDecodeError, ValueError, TypeError):
+            continue
+    return None
 
 
 def _message_content(msg: Any) -> str:
@@ -97,6 +116,10 @@ def normalize_candidate(data: dict) -> dict:
         "artifacts": artifacts[:20],
         "itm_stage": itm_stage[:80],
         "itm_objects": itm_objects,
+        "evidence": [
+            item for item in (data.get("evidence") or [])
+            if isinstance(item, dict)
+        ][:12],
     }
 
 
@@ -116,10 +139,10 @@ def parse_hunt_candidates(messages: list, *, scan_last: int = 20) -> list[dict]:
     bury the final findings JSON) for either (a) a single JSON object as
     the full content (requires `title` + `observation`), (b) a JSON array
     of finding objects as the full content, or (c) JSON inside markdown
-    ```json``` fences (requires only `title`). Malformed JSON, non-dict
-    payloads, and dicts missing the required keys are skipped silently so
-    the caller can rely on the empty-list signal to trigger the
-    placeholder fallback in stage_findings.
+    ```json``` fences (requires only `title`), or (d) a JSON array/object
+    buried in prose. Malformed JSON, non-dict payloads, and dicts missing
+    the required keys are skipped silently so the caller can rely on the
+    empty-list signal to salvage N4 hits (never parser-OK placeholders).
     """
     candidates: list[dict] = []
     if not messages:
@@ -149,6 +172,7 @@ def parse_hunt_candidates(messages: list, *, scan_last: int = 20) -> list[dict]:
             continue
 
         # (b) fenced JSON blocks — title alone is enough
+        before = len(candidates)
         for match in _FENCE_RE.finditer(content):
             block = match.group(1).strip()
             if not block:
@@ -163,5 +187,16 @@ def parse_hunt_candidates(messages: list, *, scan_last: int = 20) -> list[dict]:
                 for item in parsed:
                     if _looks_like_finding(item, require_observation=False):
                         candidates.append(normalize_candidate(item))
+        if len(candidates) > before:
+            continue
+
+        # (c) buried JSON in prose (unfenced array/object with title)
+        recovered = _recover_json_blob(content)
+        if isinstance(recovered, list):
+            for item in recovered:
+                if _looks_like_finding(item, require_observation=True):
+                    candidates.append(normalize_candidate(item))
+        elif _looks_like_finding(recovered, require_observation=True):
+            candidates.append(normalize_candidate(recovered))
 
     return candidates

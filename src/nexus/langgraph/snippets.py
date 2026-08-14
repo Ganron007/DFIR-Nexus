@@ -108,4 +108,12 @@ def write_snippets(case_dir: Path, ledger: list[dict[str, Any]] | None = None) -
     md = build_snippets_markdown(case_dir, ledger)
     path = out_dir / "snippets.md"
     path.write_text(md, encoding="utf-8")
+    try:
+        from nexus.langgraph.query_pack import write_query_pack
+
+        write_query_pack(case_dir, ledger)
+    except Exception as exc:  # noqa: BLE001
+        import logging
+
+        logging.getLogger(__name__).warning("query pack write failed: %s", exc)
     return path

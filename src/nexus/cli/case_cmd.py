@@ -153,3 +153,98 @@ def migrate(
         typer.echo(f"\n{pending} cases would be imported (remove --dry-run to execute)")
     else:
         typer.echo("\nMigration complete.")
+
+
+def _case_dir(case_id: str = "") -> Path:
+    from nexus.config import settings
+
+    cid = case_id or _get_active_case_id() or ""
+    if not cid:
+        typer.echo("No case specified and no active case", err=True)
+        raise typer.Exit(1)
+    path = settings.cases_root / cid
+    if not path.is_dir():
+        typer.echo(f"Case directory missing: {path}", err=True)
+        raise typer.Exit(1)
+    return path
+
+
+@app.command("index")
+def index_case(
+    case_id: str = typer.Argument("", help="Case ID (defaults to active)"),
+):
+    """N3: index this case's processed outputs into Elasticsearch (NEXUS_ES_URL)."""
+    from nexus.langgraph.case_index import es_available, es_url, index_case as _index
+    from nexus.langgraph.query_pack import collect_query_terms, load_case_intake
+
+    if not es_url():
+        typer.echo("NEXUS_ES_URL is empty — CSV pack remains the N4 backend.", err=True)
+        raise typer.Exit(2)
+    if not es_available():
+        typer.echo(f"Elasticsearch not reachable at {es_url()}", err=True)
+        raise typer.Exit(2)
+    case_dir = _case_dir(case_id)
+    terms = collect_query_terms(load_case_intake(case_dir))
+    meta = _index(case_dir, extra_needles=terms)
+    typer.echo(f"Indexed {meta.get('docs')} docs into {meta.get('index')}")
+
+
+@app.command("query")
+def query_case(
+    case_id: str = typer.Argument("", help="Case ID (defaults to active)"),
+    backend: str = typer.Option("auto", "--backend", help="auto | csv | es"),
+):
+    """Rebuild the N4 query pack (CSV pack or Elasticsearch)."""
+    from nexus.langgraph.query_pack import write_query_pack
+
+    case_dir = _case_dir(case_id)
+    import os
+    if backend:
+        os.environ["NEXUS_N4_BACKEND"] = backend
+    path = write_query_pack(case_dir)
+    typer.echo(f"Wrote {path}")
+
+
+@app.command("detections")
+def detections_case(
+    case_id: str = typer.Argument("", help="Case ID (defaults to active)"),
+    finding_ids: str = typer.Option(
+        "",
+        "--finding-ids",
+        help="Comma-separated this-run finding IDs (skip leftover APPROVED rows)",
+    ),
+):
+    """D1: draft Sigma/KQL/Suricata from APPROVED findings (file for SIEM, not N5)."""
+    from nexus.detection.draft_from_findings import draft_from_approved
+
+    case_dir = _case_dir(case_id)
+    ids = [x.strip() for x in finding_ids.split(",") if x.strip()] or None
+    meta = draft_from_approved(case_dir, finding_ids=ids)
+    typer.echo(f"Drafted {meta.get('dir')} from {meta.get('approved')} APPROVED findings")
+    if meta.get("needles"):
+        typer.echo("Needles: " + ", ".join(meta["needles"]))
+
+
+@app.command("intake")
+def intake_case(
+    case_id: str = typer.Option("", "--case", help="Case ID (defaults to active)"),
+    question: str = typer.Option("", "--question"),
+    window: str = typer.Option("", "--window"),
+    extras: str = typer.Option("", "--extras", help="chrome_profiles,drivefs,email,usb_serial"),
+    playbooks: str = typer.Option("", "--playbooks"),
+):
+    """Update N1 intake on CASE.yaml (does not re-parse)."""
+    from nexus.langgraph.case_intake import persist_case_intake
+
+    case_dir = _case_dir(case_id)
+    ctx = {}
+    if question:
+        ctx["question"] = question
+    if window:
+        ctx["window"] = window
+    if extras:
+        ctx["extras"] = extras
+    if playbooks:
+        ctx["playbooks"] = playbooks
+    written = persist_case_intake(case_dir, ctx)
+    typer.echo(f"Intake fields: {', '.join(written) or '(none)'}")
