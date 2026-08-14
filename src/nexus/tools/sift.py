@@ -260,17 +260,33 @@ def _sanitize_extra_args(extra_args: list[str], tool_name: str) -> list[str]:
 # ── Binary Resolution ──────────────────────────────────────────────────
 
 def _find_binary(name: str) -> str | None:
-    """Find a binary on PATH or in configured tool paths."""
+    """Find a binary on PATH, NEXUS_TOOL_PATHS, or repo Tools/linux."""
     resolved = shutil.which(name)
     if resolved:
         return resolved
-    for extra_path in settings.tool_paths:
-        candidate = Path(extra_path) / name
-        if candidate.is_file() and os.access(candidate, os.X_OK):
+    want = {name.lower(), f"{name.lower()}.py", Path(name).name.lower()}
+    roots: list[Path] = [Path(p) for p in settings.tool_paths if p]
+    repo_lin = Path(__file__).resolve().parents[3] / "Tools" / "linux"
+    if repo_lin.is_dir():
+        roots.append(repo_lin)
+    for root in roots:
+        if not root.exists():
+            continue
+        candidate = root / name
+        if candidate.is_file():
             return str(candidate)
-        alt = Path(extra_path) / name / name
-        if alt.is_file() and os.access(alt, os.X_OK):
+        alt = root / name / name
+        if alt.is_file():
             return str(alt)
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = [d for d in dirnames if d not in {".git", "__pycache__"}]
+            rel = Path(dirpath).relative_to(root)
+            if len(rel.parts) > 5:
+                dirnames.clear()
+                continue
+            for fn in filenames:
+                if fn.lower() in want:
+                    return str(Path(dirpath) / fn)
     if name.lower() == "hayabusa":
         hayabusa_bin = Path(settings.hayabusa_dir) / "hayabusa"
         if hayabusa_bin.is_file():
@@ -618,9 +634,21 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         except ValueError as e:
             return {"success": False, "error": str(e)}
 
-        # Execute
-        cmd_list = [resolved] + safe_args
-        result = _execute(cmd_list, timeout=cmd_timeout)
+        # Execute (portable .py parsers under Tools/linux need python3 + script dir)
+        resolved_path = Path(resolved)
+        exec_cwd = None
+        if resolved_path.suffix.lower() == ".py":
+            py = shutil.which("python3") or shutil.which("python")
+            if not py:
+                return {
+                    "success": False,
+                    "error": "python3 is required to run catalog .py tools (bmc-tools/BitsParser/KStrike).",
+                }
+            cmd_list = [py, resolved] + safe_args
+            exec_cwd = str(resolved_path.parent)
+        else:
+            cmd_list = [resolved] + safe_args
+        result = _execute(cmd_list, timeout=cmd_timeout, cwd=exec_cwd)
 
         # Design contract: always persist tool output into the active case
         from nexus.case.outputs import persist_tool_output, resolve_active_case_dir

@@ -1,6 +1,11 @@
 name: "USB Activity Investigation"
 description: "Investigate USB device connections and removable media activity for data theft or malware delivery"
 mitre: ["T1052.001", "T1091"]
+query_terms:
+  - usbstor
+  - mountpoints2
+  - removable
+  - setupapi
 sources:
   - "SANS FOR500 — Windows Forensic Analysis"
   - "MITRE ATT&CK T1052.001 — Exfiltration Over USB"

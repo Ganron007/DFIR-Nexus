@@ -70,12 +70,14 @@ def doctor() -> None:
         core = {
             "evtxecmd", "pecmd", "recmd", "lecmd", "mftecmd",
             "amcacheparser", "hayabusa", "suzaku",
+            "bmc-tools", "bitsparser",
         }
         for key, info in sorted(_WIN_CATALOG.items()):
             hit = _find_binary(info["name"]) or _find_binary(key)
             optional = key in {
                 "kape", "yara", "winpmem", "dumpit", "moneta",
                 "hollows_hunter", "densityscout", "get_injectedthreadex", "mactime",
+                "kstrike", "thumbcache_viewer", "logfileparser",
             }
             if hit:
                 found += 1
@@ -90,6 +92,24 @@ def doctor() -> None:
             rows.append(("windows core tools", False, "missing: " + ", ".join(missing_core)))
     else:
         rows.append(("windows catalog", True, "OS-GATE — not Windows"))
+        try:
+            from nexus.tools.sift import _find_binary as _sift_find
+        except Exception as exc:  # noqa: BLE001
+            rows.append(("sift resolver", False, str(exc)))
+            golden_fail = True
+        else:
+            for name in ("vol", "fls", "mactime"):
+                hit = _sift_find(name)
+                rows.append((f"sift.{name}", bool(hit), hit or "MISSING — SIFT/apt"))
+                if not hit:
+                    golden_fail = True
+            for name in ("esedbexport", "bmc-tools.py", "BitsParser.py", "KStrike.py"):
+                hit = _sift_find(name)
+                rows.append((
+                    f"sift.{name}",
+                    True,
+                    hit or "MISSING (optional portable — bash tools/fetch-linux-tools.sh)",
+                ))
 
     for env_name in (
         "NEXUS_TI_ABUSECH_API_KEY",

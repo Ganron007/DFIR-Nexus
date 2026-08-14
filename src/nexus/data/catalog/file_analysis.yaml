@@ -19,3 +19,22 @@ tools:
     interactive: false
     description: "Reconstruct RDP bitmap cache tiles"
     fk_tool_name: bmc-tools
+
+  - name: bitsparser
+    binary: BitsParser.py
+    input_style: flag
+    input_flag: "-i"
+    output_format: json
+    timeout_seconds: 600
+    interactive: false
+    description: "Parse BITS job queues from qmgr.db / qmgr0.dat"
+    fk_tool_name: BitsParser
+
+  - name: kstrike
+    binary: KStrike.py
+    input_style: positional
+    output_format: text
+    timeout_seconds: 600
+    interactive: false
+    description: "Parse User Access Logging ESE databases (SUM/*.mdb)"
+    fk_tool_name: KStrike

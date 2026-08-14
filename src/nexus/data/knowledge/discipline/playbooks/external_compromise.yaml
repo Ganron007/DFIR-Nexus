@@ -1,0 +1,23 @@
+name: "External Compromise Investigation"
+description: "Investigate intrusion, malware, persistence, and C2 on a host or from SIEM/EDR exports"
+mitre: ["T1078", "T1059", "T1547"]
+query_terms:
+  - mimikatz
+  - cobalt
+  - beacon
+  - psexec
+  - encodedcommand
+sources:
+  - "MITRE ATT&CK — Initial Access / Execution / Persistence"
+triggers:
+  - "Unknown process or LOLBAS execution in the investigation window"
+  - "Credential dumping or persistence artifacts"
+  - "Outbound C2-like connections"
+phases:
+  - phase: "Identify"
+    steps:
+      - "Review Prefetch / AmCache / EVTX for unexpected executables"
+      - "Check persistence (Run keys, services, scheduled tasks) via RECmd"
+  - phase: "Record"
+    steps:
+      - "Record finding with audit_ids. Do not force an APT name."

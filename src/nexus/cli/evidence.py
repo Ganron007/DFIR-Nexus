@@ -44,14 +44,32 @@ def register(
 
     fpath = Path(path)
     if not fpath.exists():
-        typer.echo(f"File not found: {path}", err=True)
+        typer.echo(f"Path not found: {path}", err=True)
         raise typer.Exit(1)
 
     sha256 = hashlib.sha256()
-    with open(fpath, "rb") as f:
-        for chunk in iter(lambda: f.read(65536), b""):
-            sha256.update(chunk)
-    digest = sha256.hexdigest()
+    if fpath.is_dir():
+        sha256.update(str(fpath.resolve()).encode())
+        n = 0
+        for child in sorted(fpath.rglob("*")):
+            if not child.is_file():
+                continue
+            rel = str(child.relative_to(fpath)).encode()
+            sha256.update(rel)
+            sha256.update(str(child.stat().st_size).encode())
+            n += 1
+            if n >= 400:
+                break
+        digest = sha256.hexdigest()
+        size = n
+        size_label = f"{n} files (dir fingerprint)"
+    else:
+        with open(fpath, "rb") as f:
+            for chunk in iter(lambda: f.read(65536), b""):
+                sha256.update(chunk)
+        digest = sha256.hexdigest()
+        size = fpath.stat().st_size
+        size_label = f"{size:,} bytes"
 
     mgr = _get_sqlite_mgr()
     from nexus.audit import resolve_examiner
@@ -66,7 +84,7 @@ def register(
 
     typer.echo(f"Registered: {fpath.name}")
     typer.echo(f"  SHA-256: {digest}")
-    typer.echo(f"  Size: {fpath.stat().st_size:,} bytes")
+    typer.echo(f"  Size: {size_label}")
 
 
 @app.command()

@@ -99,25 +99,50 @@ try {
     $script:Versions += "thumbcache_viewer`t$($tv.Tag)`t$($tv.Asset.browser_download_url)"
 } catch { Write-Host "    thumbcache_viewer skipped: $_" }
 
-Write-Host "==> bmc-tools.py (ANSSI)"
+Write-Host "==> bmc-tools.py (ANSSI — standalone portable)"
 try {
     $bmc = Join-Path $Ext "bmc-tools.py"
     Invoke-WebRequest -Uri "https://raw.githubusercontent.com/ANSSI-FR/bmc-tools/master/bmc-tools.py" -OutFile $bmc
     $script:Versions += "bmc-tools`tmaster`thttps://github.com/ANSSI-FR/bmc-tools"
 } catch { Write-Host "    bmc-tools skipped: $_" }
 
-Write-Host "==> BitsParser.py (Mandiant)"
+Write-Host "==> BitsParser (FireEye tree + vendored ANSSI bits/construct — not pip'd into Nexus)"
 try {
-    $bp = Join-Path $Ext "BitsParser.py"
-    Invoke-WebRequest -Uri "https://raw.githubusercontent.com/mandiant/BitsParser/master/BitsParser.py" -OutFile $bp
-    $script:Versions += "bitsparser`tmaster`thttps://github.com/mandiant/BitsParser"
+    # Single-file raw download is not enough (imports ese + bits).
+    # mandiant/BitsParser 404s; FireEye tree is the current source.
+    # bits_parser pins construct==2.8.12 which breaks regipy — vendor into the tree.
+    $bpZip = Join-Path $env:TEMP "BitsParser-master.zip"
+    Invoke-WebRequest -Uri "https://github.com/fireeye/BitsParser/archive/refs/heads/master.zip" -OutFile $bpZip
+    $bpDest = Join-Path $Ext "BitsParser"
+    if (Test-Path $bpDest) { Remove-Item $bpDest -Recurse -Force }
+    Expand-Archive -Path $bpZip -DestinationPath $env:TEMP -Force
+    $unpacked = Join-Path $env:TEMP "BitsParser-master"
+    Move-Item $unpacked $bpDest -Force
+    $orphan = Join-Path $Ext "BitsParser.py"
+    if (Test-Path $orphan) { Remove-Item $orphan -Force }
+
+    $venv = Join-Path $env:TEMP "nexus-bits-venv"
+    if (Test-Path $venv) { Remove-Item $venv -Recurse -Force }
+    $pyHost = (Get-Command python -ErrorAction SilentlyContinue)
+    if (-not $pyHost) { $pyHost = Get-Command python3 -ErrorAction SilentlyContinue }
+    if (-not $pyHost) { throw "python required to vendor bits_parser into BitsParser/" }
+    & $pyHost.Source -m venv $venv
+    & (Join-Path $venv "Scripts\python.exe") -m pip install --quiet bits_parser
+    $sp = Join-Path $venv "Lib\site-packages"
+    foreach ($pkg in @("bits", "construct")) {
+        $src = Join-Path $sp $pkg
+        $dst = Join-Path $bpDest $pkg
+        if (Test-Path $dst) { Remove-Item $dst -Recurse -Force }
+        Copy-Item $src $dst -Recurse -Force
+    }
+    $script:Versions += "bitsparser`tmaster+vendored-bits_parser`thttps://github.com/fireeye/BitsParser"
 } catch { Write-Host "    BitsParser skipped: $_" }
 
-Write-Host "==> KStrike.py"
+Write-Host "==> KStrike.py (BriMor Labs UAL parser)"
 try {
     $ks = Join-Path $Ext "KStrike.py"
-    Invoke-WebRequest -Uri "https://raw.githubusercontent.com/BrandonLeBlanc/KStrike/master/KStrike.py" -OutFile $ks
-    $script:Versions += "kstrike`tmaster`thttps://github.com/BrandonLeBlanc/KStrike"
+    Invoke-WebRequest -Uri "https://raw.githubusercontent.com/brimorlabs/KStrike/master/KStrike.py" -OutFile $ks
+    $script:Versions += "kstrike`tmaster`thttps://github.com/brimorlabs/KStrike"
 } catch { Write-Host "    KStrike skipped: $_" }
 
 Write-Host "==> LogFileParser (jschicht, if a Windows zip is published)"
@@ -134,6 +159,16 @@ $kapeNote = "KAPE is not fetched (Kroll registration). Download current from htt
 Write-Host "==> KAPE: $kapeNote"
 $script:Versions += "kape`tNOT-FETCHED`thttps://www.kroll.com/ (operator download)"
 
+Write-Host "==> Python dep for KStrike (pyesedb via libesedb-python)"
+$py = Get-Command python -ErrorAction SilentlyContinue
+if (-not $py) { $py = Get-Command python3 -ErrorAction SilentlyContinue }
+if ($py) {
+    & $py.Source -m pip install --upgrade libesedb-python
+    $script:Versions += "pip`tlibesedb-python`tpypi"
+} else {
+    Write-Host "    python not on PATH — install libesedb-python into the interpreter that runs nexus serve"
+}
+
 $verFile = Join-Path $Win "VERSIONS.txt"
 @(
     "DFIR-Nexus Tools/windows — fetched $(Get-Date -Format o)"
@@ -142,3 +177,4 @@ $verFile = Join-Path $Win "VERSIONS.txt"
 ) + $script:Versions | Set-Content -Path $verFile -Encoding UTF8
 Write-Host "Wrote $verFile"
 Write-Host "Done. Binaries under $Win"
+Write-Host "Then: nexus doctor   (bmc-tools.py + BitsParser.py must be found)"

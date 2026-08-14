@@ -22,6 +22,7 @@ INTAKE_KEYS = (
     "question",
     "playbooks",
     "sample_files",
+    "extras",
     "sift_evidence_root",
     "sift_triage_root",
 )
@@ -39,6 +40,16 @@ def extra_playbook_names(ctx: dict[str, Any] | None) -> list[str]:
         names.append("usb_activity")
     if any(k in hyp for k in ("staging", "exfil", "insider", "data theft")):
         names.append("data_staging")
+    if any(
+        k in hyp
+        for k in (
+            "external", "compromise", "intrusion", "malware", "c2",
+            "phishing", "initial access", "persistence",
+        )
+    ):
+        names.append("external_compromise")
+    if any(k in hyp for k in ("email", "pst", "outlook", "mailbox", "bec")):
+        names.append("email_compromise")
     return list(dict.fromkeys(names))
 
 
@@ -47,22 +58,23 @@ def persist_case_intake(case_dir: Path, ctx: dict[str, Any] | None) -> dict[str,
     import yaml
 
     ctx = ctx or {}
-    intake = {
-        k: str(ctx.get(k) or "").strip()
-        for k in INTAKE_KEYS
-        if str(ctx.get(k) or "").strip()
-    }
-    playbooks = extra_playbook_names(ctx)
-    if playbooks:
-        intake["playbooks"] = ",".join(playbooks)
-    if not intake:
-        return {}
+    intake = {}
     meta_path = case_dir / "CASE.yaml"
     meta: dict[str, Any] = {}
     if meta_path.is_file():
         loaded = yaml.safe_load(meta_path.read_text(encoding="utf-8")) or {}
         if isinstance(loaded, dict):
             meta = loaded
+            if isinstance(meta.get("intake"), dict):
+                intake = {str(k): str(v) for k, v in meta["intake"].items() if v is not None}
+    for k in INTAKE_KEYS:
+        if str(ctx.get(k) or "").strip():
+            intake[k] = str(ctx.get(k)).strip()
+    playbooks = extra_playbook_names({**intake, **ctx})
+    if playbooks:
+        intake["playbooks"] = ",".join(playbooks)
+    if not intake:
+        return {}
     meta["intake"] = intake
     meta_path.parent.mkdir(parents=True, exist_ok=True)
     meta_path.write_text(yaml.dump(meta, default_flow_style=False), encoding="utf-8")

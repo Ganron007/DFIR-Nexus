@@ -72,6 +72,7 @@ def plan_windows_triage(
     evidence_path: str,
     extractions: Path,
     sample_files: list[str] | None = None,
+    extras: list[str] | None = None,
 ) -> list[ToolJob]:
     """Build Windows host-triage jobs from YAML discovery + all user profiles."""
     from nexus.langgraph.artifact_map import user_profile_dirs
@@ -456,6 +457,7 @@ def plan_windows_triage(
         root, users, extractions, add, skip, quick,
         sample_files=sample_files,
     )
+    _plan_n2_extras(root, users, extractions, add, skip, extras or [])
     return jobs
 
 
@@ -477,6 +479,110 @@ def _copy_text(extractions: Path, rel: str, src: Path) -> None:
     dest = extractions / rel
     dest.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, dest)
+
+
+def _plan_n2_extras(
+    root: Path,
+    users: list[Path],
+    extractions: Path,
+    add,
+    skip,
+    extras: list[str],
+) -> None:
+    """Examiner-gated parsers. Default lane stays Default-profile / setupapi copy."""
+    wanted = {e.strip().lower() for e in extras if e.strip()}
+    if not wanted:
+        return
+
+    if "chrome_profiles" in wanted:
+        n = 0
+        d_sql = extractions / "sqlecmd"
+        for user in users:
+            chrome_ud = user / "AppData/Local/Google/Chrome/User Data"
+            if not chrome_ud.is_dir():
+                continue
+            for prof in chrome_ud.iterdir():
+                if not prof.is_dir():
+                    continue
+                if prof.name.lower() in {"default", "system profile", "guest profile"}:
+                    continue
+                hist = prof / "History"
+                if not hist.is_file():
+                    continue
+                d_sql.mkdir(parents=True, exist_ok=True)
+                label = f"{user.name}-{prof.name}-chrome-history"
+                add(
+                    "sqlecmd",
+                    ["sqlecmd", "-f", str(hist), "--csv", str(d_sql)],
+                    f"Browser SQLite extra profile ({label})",
+                    300,
+                )
+                n += 1
+        if not n:
+            skip("chrome_profiles", "no Chrome Profile*/History besides Default")
+
+    if "drivefs" in wanted:
+        n = 0
+        for user in users:
+            gdfs = user / "AppData/Local/Google/DriveFS"
+            if not gdfs.is_dir():
+                continue
+            dest = extractions / "drivefs" / user.name
+            dest.mkdir(parents=True, exist_ok=True)
+            for logf in list(gdfs.rglob("*.log"))[:20] + list(gdfs.rglob("*.txt"))[:20]:
+                if logf.is_file() and logf.stat().st_size < 20 * 1024 * 1024:
+                    _copy_text(dest, logf.name, logf)
+                    n += 1
+        if not n:
+            skip("drivefs", "no Google DriveFS logs under user profiles")
+
+    if "email" in wanted:
+        n = 0
+        dest = extractions / "email"
+        for user in users:
+            for folder in (
+                user / "Documents",
+                user / "AppData/Local/Microsoft/Outlook",
+                user / "AppData/Roaming/Microsoft/Outlook",
+            ):
+                if not folder.is_dir():
+                    continue
+                for pat in ("*.pst", "*.ost"):
+                    for mail in folder.glob(pat):
+                        if mail.is_file() and mail.stat().st_size < 80 * 1024 * 1024:
+                            dest.mkdir(parents=True, exist_ok=True)
+                            _copy_text(dest, f"{user.name}-{mail.name}", mail)
+                            n += 1
+        if not n:
+            skip("email", "no PST/OST under Documents/Outlook")
+
+    if "usb_serial" in wanted:
+        setupapi = extractions / "setupapi" / "setupapi.dev.log"
+        src = setupapi if setupapi.is_file() else root / "Windows/INF/setupapi.dev.log"
+        if src.is_file():
+            serials = _usb_serials_from_setupapi(src)
+            outp = extractions / "usb" / "setupapi-serials.txt"
+            outp.parent.mkdir(parents=True, exist_ok=True)
+            outp.write_text("\n".join(serials) + ("\n" if serials else ""), encoding="utf-8")
+            if not serials:
+                skip("usb_serial", "setupapi present but no USBSTOR serial lines")
+        else:
+            skip("usb_serial", "setupapi.dev.log not present")
+
+
+def _usb_serials_from_setupapi(path: Path) -> list[str]:
+    found: list[str] = []
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return found
+    for line in text.splitlines():
+        low = line.lower()
+        if "usbstor" in low or "serial number" in low or "usb\\vid_" in low:
+            found.append(line.strip()[:240])
+            if len(found) >= 80:
+                break
+    return found
 
 
 def _plan_gap_parsers(
@@ -525,7 +631,7 @@ def _plan_gap_parsers(
 
     def add_installed(key: str, argv: list[str], purpose: str, timeout: int = 600) -> bool:
         if not _windows_tool_available(key):
-            skip(key, f"{key} not installed — fetch with Tools/fetch-windows-tools.ps1")
+            skip(key, f"{key} not installed — run tools/fetch-windows-tools.ps1 then nexus doctor")
             return False
         add(key, argv, purpose, timeout)
         return True
@@ -545,7 +651,7 @@ def _plan_gap_parsers(
             bmc_jobs.append((user, cache, tiles))
     if bmc_jobs:
         if not _windows_tool_available("bmc-tools"):
-            skip("bmc-tools", "bmc-tools not installed — fetch with Tools/fetch-windows-tools.ps1")
+            skip("bmc-tools", "bmc-tools not installed — run tools/fetch-windows-tools.ps1 then nexus doctor")
         else:
             for user, cache, tiles in bmc_jobs:
                 out = extractions / "bmc-tools" / user.name
@@ -578,7 +684,7 @@ def _plan_gap_parsers(
     mdbs = sorted(sum_dir.glob("*.mdb")) if sum_dir.is_dir() else []
     if mdbs:
         if not _windows_tool_available("kstrike"):
-            skip("kstrike", "KStrike not installed — fetch with Tools/fetch-windows-tools.ps1")
+            skip("kstrike", "KStrike not installed — run tools/fetch-windows-tools.ps1 then nexus doctor")
         else:
             for mdb in mdbs[:4]:
                 add("kstrike", ["kstrike", str(mdb)], f"UAL ESE ({mdb.name})", 600)
@@ -819,6 +925,11 @@ async def run_tool_lane(
         sample_files=[
             p.strip()
             for p in str(ctx.get("sample_files") or "").replace(";", ",").split(",")
+            if p.strip()
+        ],
+        extras=[
+            p.strip()
+            for p in str(ctx.get("extras") or "").replace(";", ",").split(",")
             if p.strip()
         ],
     )

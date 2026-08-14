@@ -1,6 +1,11 @@
 name: "Email Compromise Investigation"
 description: "Investigate email account takeover, mailbox rule manipulation, and business email compromise"
 mitre: ["T1114", "T1534"]
+query_terms:
+  - .pst
+  - outlook
+  - mailbox
+  - ost
 sources:
   - "SANS FOR509 — Enterprise Cloud Forensics and Incident Response"
   - "MITRE ATT&CK T1114 — Email Collection"

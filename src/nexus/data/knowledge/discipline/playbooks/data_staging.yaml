@@ -1,6 +1,21 @@
 name: "Data Staging Investigation"
 description: "Investigate data collection and staging activity indicating preparation for exfiltration"
-mitre: ["T1074", "T1560"]
+mitre: ["T1074", "T1560", "T1070.004"]
+query_terms:
+  - sdelete
+  - cipher.exe
+  - 7z.exe
+  - winrar
+  - rar.exe
+  - .pst
+  - googledrive
+  - drivefs
+  - onedrive
+  - my drive
+  - rclone
+  - robocopy
+  - recycle.bin
+  - $recycle
 sources:
   - "SANS FOR508 — Windows Enterprise Incident Response"
   - "MITRE ATT&CK T1074 — Data Staged"

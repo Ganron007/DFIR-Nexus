@@ -1,6 +1,7 @@
 # Local forensic binaries
 
 This folder is **local-only**. Binaries under `windows/` and `linux/` are gitignored.
+**Fetch them before any pipeline run.** `nexus doctor` must be golden-path ok.
 
 Default Windows layout (what `run_windows_command` searches):
 
@@ -9,27 +10,41 @@ Tools/windows/zimmerman/     Eric Zimmerman (Get-ZimmermanTools, latest net9)
 Tools/windows/sysinternals/  Sysinternals Suite (live zip)
 Tools/windows/hayabusa/      Hayabusa (GitHub latest)
 Tools/windows/suzaku/        Suzaku (GitHub latest / Yamato 2.x)
-Tools/windows/extra/         chainsaw, capa, yara (GitHub latest)
+Tools/windows/extra/         chainsaw, capa, yara, bmc-tools.py, KStrike.py,
+                             BitsParser/ (FireEye tree — not a single file)
 Tools/windows/kape/          KAPE — operator download from Kroll only
 Tools/windows/VERSIONS.txt   What was fetched + URLs
 ```
 
-Refresh from official internet URLs only (see fetch script). Do not point Nexus at unrelated personal tool trees.
+Default Linux / SIFT layout (what `run_command` searches after PATH):
 
-Refresh Windows downloads:
-
-```powershell
-pwsh -File Tools/fetch-windows-tools.ps1
+```
+Tools/linux/extra/           bmc-tools.py, BitsParser/, KStrike.py
+Tools/linux/VERSIONS.txt
 ```
 
-Then point Nexus at the tree (semicolon on Windows):
+Core SIFT binaries (`vol`, `fls`, `mactime`, `esedbexport`) come from the SIFT
+workstation / apt. The fetch script only vendors the same portable Python
+parsers the Windows lane uses.
+
+Refresh from official internet URLs only. Do not point Nexus at unrelated
+personal tool trees.
 
 ```powershell
-$root = (Resolve-Path .\Tools\windows).Path
-$env:NEXUS_TOOL_PATHS = "$root\zimmerman;$root\sysinternals;$root\hayabusa;$root\kape;$root\extra"
+# Windows examiner host
+pwsh -File tools/fetch-windows-tools.ps1
+nexus doctor
 ```
 
-Or set `tool_paths` in `~/.nexus/config.yaml`. The Windows resolver also auto-scans `Tools/windows/*` when that directory exists.
+```bash
+# SIFT / Linux analysis host
+bash tools/fetch-linux-tools.sh
+nexus doctor
+```
+
+The Windows resolver auto-scans `Tools/windows/*` when that directory exists.
+The SIFT resolver auto-scans `Tools/linux/*` in addition to `PATH`.
+You can still set `NEXUS_TOOL_PATHS` / `tool_paths` in `~/.nexus/config.yaml`.
 
 Official sources:
 
@@ -43,3 +58,6 @@ Official sources:
 | Chainsaw | https://github.com/WithSecureLabs/chainsaw/releases |
 | YARA | https://github.com/VirusTotal/yara/releases |
 | capa | https://github.com/mandiant/capa/releases |
+| bmc-tools | https://github.com/ANSSI-FR/bmc-tools (portable `.py`) |
+| BitsParser | https://github.com/fireeye/BitsParser (full tree). Fetch vendors ANSSI `bits`+`construct` 2.8 **inside that folder** — do not pip-install `bits_parser` into Nexus |
+| KStrike | https://github.com/brimorlabs/KStrike + `pip install libesedb-python` (Nexus interpreter) |

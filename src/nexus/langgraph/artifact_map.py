@@ -306,6 +306,11 @@ def invokable_tool_key(name: str) -> str:
         "logfileparser": "logfileparser",
         "logfileparser64": "logfileparser",
         "esedbexport": "esedbexport",
+        "tshark": "tshark",
+        "exiftool": "exiftool",
+        "vssadmin": "vssadmin",
+        "yara": "yara",
+        "strings": "strings",
     }
     return aliases.get(n, n)
 
@@ -321,6 +326,9 @@ def completeness_table(hits: list[ArtifactHit], scheduled_tools: set[str]) -> li
             status = "ABSENT"
         elif covered:
             status = "SCHEDULED"
+        elif not keys:
+            # Plain-text copy (SetupAPI, transcripts, PSReadLine) — no parser.
+            status = "STAGED"
         else:
             status = "PRESENT_NO_PARSER"
         rows.append({

@@ -340,9 +340,9 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             "yara": "choco install yara",
             "winpmem": "https://github.com/Velocidex/WinPmem/releases",
             "thumbcache_viewer": "pwsh -File Tools/fetch-windows-tools.ps1  (GitHub thumbcacheviewer/thumbcacheviewer)",
-            "bmc-tools": "pwsh -File Tools/fetch-windows-tools.ps1  (GitHub ANSSI-FR/bmc-tools)",
-            "bitsparser": "pwsh -File Tools/fetch-windows-tools.ps1  (GitHub mandiant/BitsParser)",
-            "kstrike": "pwsh -File Tools/fetch-windows-tools.ps1  (GitHub BrandonLeBlanc/KStrike)",
+            "bmc-tools": "pwsh -File tools/fetch-windows-tools.ps1  (GitHub ANSSI-FR/bmc-tools)",
+            "bitsparser": "pwsh -File tools/fetch-windows-tools.ps1  (GitHub fireeye/BitsParser; bits vendored in-tree)",
+            "kstrike": "pwsh -File tools/fetch-windows-tools.ps1  (GitHub brimorlabs/KStrike + pip libesedb-python)",
             "logfileparser": "pwsh -File Tools/fetch-windows-tools.ps1  (GitHub jschicht/LogFileParser)",
         }
         for key, info in sorted(_WIN_CATALOG.items()):
@@ -594,6 +594,15 @@ def register_tools(server: FastMCP, audit: AuditWriter):
                 }
             parts = [py, str(resolved_path), *extra_args]
 
+        run_env = None
+        run_cwd = None
+        if resolved_path.suffix.lower() == ".py":
+            run_cwd = str(resolved_path.parent)
+            run_env = os.environ.copy()
+            parent = str(resolved_path.parent)
+            existing = run_env.get("PYTHONPATH", "")
+            run_env["PYTHONPATH"] = parent + (os.pathsep + existing if existing else "")
+
         detected_inputs = list(input_files or [])
         if not detected_inputs:
             for token in parts[1:]:
@@ -614,7 +623,8 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             proc = subprocess.run(
                 parts, capture_output=True, text=True,
                 encoding="utf-8", errors="replace",
-                timeout=timeout, shell=False
+                timeout=timeout, shell=False,
+                cwd=run_cwd, env=run_env,
             )
         except FileNotFoundError:
             elapsed = (time.monotonic() - start) * 1000
