@@ -11,3 +11,6 @@ def test_itm_prompt_contains_stages_and_url():
     assert "Infringement" in block
     assert "Anti-Forensics" in block
     assert "Data Staging" in block
+    assert "HYPOTHESIS LENSES" in block
+    assert "external compromise" in block.lower()
+    assert "QUERY PACK" in block

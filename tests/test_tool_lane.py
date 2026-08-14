@@ -192,3 +192,21 @@ def test_live_response_off_does_not_mention_winpmem(tmp_path: Path, monkeypatch)
     (root / "Windows" / "System32").mkdir(parents=True)
     jobs = plan_windows_triage(str(root), tmp_path / "ex")
     assert not any(j.tool == "winpmem" for j in jobs)
+
+
+def test_n2_extras_gated_chrome_profile(tmp_path: Path):
+    root = tmp_path / "C"
+    (root / "Windows" / "System32").mkdir(parents=True)
+    default = root / "Users/alice/AppData/Local/Google/Chrome/User Data/Default"
+    prof = root / "Users/alice/AppData/Local/Google/Chrome/User Data/Profile 2"
+    default.mkdir(parents=True)
+    prof.mkdir(parents=True)
+    (default / "History").write_bytes(b"sql")
+    (prof / "History").write_bytes(b"sql")
+    jobs_off = plan_windows_triage(str(root), tmp_path / "ex")
+    extra_off = [j for j in jobs_off if "extra profile" in (j.purpose or "")]
+    assert extra_off == []
+    jobs_on = plan_windows_triage(str(root), tmp_path / "ex2", extras=["chrome_profiles"])
+    extra_on = [j for j in jobs_on if "extra profile" in (j.purpose or "") and j.status == "PENDING"]
+    assert len(extra_on) == 1
+    assert "Profile 2" in extra_on[0].purpose

@@ -143,4 +143,13 @@ python_files = [
     "test_ingest_regressions.py",
     "test_bridge_regressions.py",
     "test_cli_onboarding_regressions.py",
+    "test_artifact_map.py",
+    "test_tool_lane.py",
+    "test_tool_context.py",
+    "test_itm.py",
+    "test_query_pack.py",
+    "test_case_index.py",
+    "test_timeline_merge.py",
+    "test_draft_detections.py",
+    "test_steer_portal.py",
 ]

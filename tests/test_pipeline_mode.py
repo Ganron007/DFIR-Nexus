@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from nexus.langgraph.llm_pipeline import (
@@ -9,6 +11,9 @@ from nexus.langgraph.llm_pipeline import (
     get_mcp_config,
     make_initial_state,
     resolve_pipeline_mode,
+    _fallback_candidates_from_state,
+    _is_collection_stub,
+    _merge_n4_uncovered,
 )
 from nexus.langgraph.tool_lane import plan_sift_triage
 
@@ -130,3 +135,71 @@ def test_get_mcp_config_sse_read_timeout(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("NEXUS_MCP_SSE_READ_TIMEOUT", "900")
     cfg2 = get_mcp_config()
     assert cfg2["nexus-windows"]["sse_read_timeout"] == 900.0
+
+
+def test_collection_stub_filter():
+    assert _is_collection_stub({
+        "title": "rocba/pecmd: prefetch",
+        "observation": "Tool 'pecmd' on rocba completed OK (audit_id=x).",
+        "interpretation": "Coverage/collection evidence for 'prefetch'.",
+    })
+    assert not _is_collection_stub({
+        "title": "sdelete wipe / secure-delete on host",
+        "observation": "N4 hits: pecmd sdelete.exe",
+        "interpretation": "Insider / data-staging lens.",
+    })
+    assert _is_collection_stub({
+        "title": "Coverage gap: no USB/physical-media artifacts",
+        "observation": "mftecmd-usn SKIP",
+        "interpretation": "This is a coverage gap, not evidence of compromise.",
+    })
+
+
+def test_merge_n4_adds_usb_when_llm_omitted_it():
+    llm = [{
+        "title": "sdelete wipe / secure-delete on host",
+        "observation": "pecmd hit sdelete.exe",
+    }]
+    n4 = [
+        {"title": "sdelete wipe / secure-delete on host", "observation": "dup"},
+        {"title": "USB / USBSTOR activity", "observation": "USBSTOR Disk&Ven"},
+    ]
+    merged = _merge_n4_uncovered(llm, n4)
+    titles = [c["title"] for c in merged]
+    assert titles.count("sdelete wipe / secure-delete on host") == 1
+    assert any("USB" in t for t in titles)
+
+
+def test_fallback_uses_n4_hits_not_parser_ok(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from nexus.config import settings
+
+    case_id = "INC-TESTN4"
+    case = tmp_path / "cases" / case_id
+    pecmd = case / "extractions" / "pecmd"
+    pecmd.mkdir(parents=True)
+    (pecmd / "prefetch_Timeline.csv").write_text(
+        "RunTime,ExecutableName\n"
+        "2020-11-14 04:49:43,ACRORD32.EXE\n"
+        "2020-11-14 13:42:11,sdelete.exe\n",
+        encoding="utf-8",
+    )
+    (case / "CASE.yaml").write_text(
+        "intake:\n  playbooks: data_staging\n  host: rocba\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(settings, "cases_root", tmp_path / "cases")
+    ledger = [{
+        "status": "OK",
+        "tool": "windows/pecmd",
+        "audit_id": "win-e-20260101-001",
+        "purpose": "prefetch",
+        "output_saved_to": str(pecmd / "stdout.txt"),
+    }]
+    state = {"case_id": case_id, "tool_run_ledger": ledger}
+    cands = _fallback_candidates_from_state(state, ["win-e-20260101-001"], "rocba")
+    assert cands
+    blob = " ".join(f"{c['title']} {c['observation']}" for c in cands).lower()
+    assert "sdelete" in blob
+    assert "completed ok" not in blob
+    assert "acrord32" not in blob
+    assert not any(_is_collection_stub(c) for c in cands)

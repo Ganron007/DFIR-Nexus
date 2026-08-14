@@ -59,6 +59,20 @@ def test_playbook_hints_from_hypothesis():
     assert "data_staging" in names
 
 
+def test_playbook_hints_external_compromise():
+    names = extra_playbook_names({
+        "hypothesis": "external compromise malware persistence",
+    })
+    assert "external_compromise" in names
+
+
+def test_playbook_hints_email_compromise():
+    names = extra_playbook_names({
+        "question": "was a pst mailbox copied off host",
+    })
+    assert "email_compromise" in names
+
+
 def test_persist_case_intake(tmp_path: Path):
     case_dir = tmp_path / "INC-1"
     case_dir.mkdir()
@@ -139,6 +153,19 @@ def test_usn_schedules_mftecmd_when_j_present(tmp_path: Path):
     arts = discover_windows_artifacts(root)
     usn_art = next(a for a in arts if a.slug == "usn_journal")
     assert usn_art.present
+
+
+def test_plain_text_copy_is_staged_not_missing_parser(tmp_path: Path):
+    root = _win_root(tmp_path)
+    log = root / "Windows" / "INF" / "setupapi.dev.log"
+    log.parent.mkdir(parents=True)
+    log.write_text("usb device", encoding="utf-8")
+    arts = discover_windows_artifacts(root)
+    setup = next(a for a in arts if "setupapi" in a.slug or "setupapi" in a.name.lower())
+    assert setup.present
+    table = completeness_table(arts, set())
+    row = next(r for r in table if r["artifact"] == setup.name)
+    assert row["status"] == "STAGED"
 
 
 def test_windows_catalog_has_knowledge_cards():

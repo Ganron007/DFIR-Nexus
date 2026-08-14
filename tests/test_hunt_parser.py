@@ -31,7 +31,7 @@ def check(label, condition, detail=""):
 
 
 # ---------------------------------------------------------------------------
-# Fallback path — these MUST return [] so stage_findings stages a placeholder
+# Fallback path — these MUST return [] so stage_findings can salvage N4 hits
 # ---------------------------------------------------------------------------
 
 # 1. Empty input
@@ -212,6 +212,17 @@ r = parse_hunt_candidates([
     {"role": "ai", "content": '```json\n{"title": "no close fence"'},
 ])
 check("unclosed fence -> []", r == [], f"got {len(r)} candidates")
+
+# 31. Unfenced JSON array buried in prose
+r = parse_hunt_candidates([{
+    "role": "ai",
+    "content": (
+        "Here are the findings:\n"
+        '[{"title": "sdelete wipe", "observation": "pecmd hit sdelete.exe"}]\n'
+    ),
+}])
+check("buried JSON array -> 1 candidate", len(r) == 1 and "sdelete" in r[0]["title"],
+      f"got {len(r)}")
 
 
 print()
