@@ -22,10 +22,7 @@ def _get_active_case_id() -> str | None:
 def _finding_dicts(findings) -> list[dict]:
     out = []
     for f in findings:
-        if hasattr(f, "to_dict"):
-            d = f.to_dict()
-        else:
-            d = dict(f)
+        d = f.to_dict() if hasattr(f, "to_dict") else dict(f)
         # Normalize approval for DFIR renderer
         state = getattr(getattr(f, "approval_state", None), "value", None) or d.get("status") or d.get("approval_state")
         if state:
@@ -46,10 +43,7 @@ def _finding_dicts(findings) -> list[dict]:
 def _evidence_dicts(evidence_list) -> list[dict]:
     out = []
     for ev in evidence_list:
-        if hasattr(ev, "to_dict"):
-            d = ev.to_dict()
-        else:
-            d = dict(ev)
+        d = ev.to_dict() if hasattr(ev, "to_dict") else dict(ev)
         meta = dict(getattr(ev, "metadata", None) or d.get("metadata") or {})
         d["name"] = getattr(ev, "name", None) or d.get("name")
         d["path"] = getattr(ev, "file_path", None) or d.get("file_path") or d.get("path")

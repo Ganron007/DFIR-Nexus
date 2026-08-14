@@ -76,9 +76,10 @@ class ZeekImporter(Importer):
                     if line.startswith("#fields"):
                         return True
                     # Zeek 8+ default JSON logging (CADRE monitor spool)
-                    if line.lstrip().startswith("{"):
-                        if '"uid"' in line and ("id.orig_h" in line or "id.resp_h" in line or '"ts"' in line):
-                            return True
+                    if line.lstrip().startswith("{") and '"uid"' in line and (
+                        "id.orig_h" in line or "id.resp_h" in line or '"ts"' in line
+                    ):
+                        return True
         except OSError:
             return False
         return False

@@ -174,7 +174,8 @@ def index_case(
     case_id: str = typer.Argument("", help="Case ID (defaults to active)"),
 ):
     """N3: index this case's processed outputs into Elasticsearch (NEXUS_ES_URL)."""
-    from nexus.langgraph.case_index import es_available, es_url, index_case as _index
+    from nexus.langgraph.case_index import es_available, es_url
+    from nexus.langgraph.case_index import index_case as _index
     from nexus.langgraph.query_pack import collect_query_terms, load_case_intake
 
     if not es_url():
@@ -192,17 +193,41 @@ def index_case(
 @app.command("query")
 def query_case(
     case_id: str = typer.Argument("", help="Case ID (defaults to active)"),
+    needles: str = typer.Option(
+        "",
+        "--needles",
+        help="Extra search terms (comma-separated). Searches processed output, not raw evidence.",
+    ),
+    persist: bool = typer.Option(
+        True,
+        "--persist/--no-persist",
+        help="Save needles on CASE.yaml intake.query_extra and rebuild query_pack.md",
+    ),
+    limit: int = typer.Option(50, "--limit", help="Max hits to print"),
     backend: str = typer.Option("auto", "--backend", help="auto | csv | es"),
 ):
-    """Rebuild the N4 query pack (CSV pack or Elasticsearch)."""
-    from nexus.langgraph.query_pack import write_query_pack
+    """N4: search this case's processed outputs (CSV pack or Elasticsearch)."""
+    from nexus.langgraph.query_pack import _parse_needles, run_ad_hoc_query
 
     case_dir = _case_dir(case_id)
-    import os
-    if backend:
-        os.environ["NEXUS_N4_BACKEND"] = backend
-    path = write_query_pack(case_dir)
-    typer.echo(f"Wrote {path}")
+    extras = _parse_needles(needles)
+    result = run_ad_hoc_query(
+        case_dir,
+        extra_needles=extras,
+        persist=persist,
+        backend=backend,
+        limit=limit,
+    )
+    typer.echo(
+        f"backend={result.get('backend')} hits={result.get('count')} "
+        f"terms={len(result.get('terms') or [])} persist={result.get('persisted')}"
+    )
+    if result.get("empty"):
+        typer.echo("No rows matched. INSUFFICIENT — do not invent findings.")
+        return
+    for hit in result.get("hits") or []:
+        loc = f"{hit.get('file')}:{hit.get('line')}"
+        typer.echo(f"{hit.get('family')}\t{loc}\t{hit.get('terms')}\t{hit.get('text')}")
 
 
 @app.command("detections")
@@ -232,6 +257,7 @@ def intake_case(
     window: str = typer.Option("", "--window"),
     extras: str = typer.Option("", "--extras", help="chrome_profiles,drivefs,email,usb_serial"),
     playbooks: str = typer.Option("", "--playbooks"),
+    query_extra: str = typer.Option("", "--query-extra", help="Persistent N4 needles"),
 ):
     """Update N1 intake on CASE.yaml (does not re-parse)."""
     from nexus.langgraph.case_intake import persist_case_intake
@@ -246,5 +272,7 @@ def intake_case(
         ctx["extras"] = extras
     if playbooks:
         ctx["playbooks"] = playbooks
+    if query_extra:
+        ctx["query_extra"] = query_extra
     written = persist_case_intake(case_dir, ctx)
     typer.echo(f"Intake fields: {', '.join(written) or '(none)'}")

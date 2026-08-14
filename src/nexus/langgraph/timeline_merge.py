@@ -7,8 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from nexus.langgraph.query_pack import _DATE_RE, load_case_intake, parse_window
 from nexus.ingest.schemas import Artifact
+from nexus.langgraph.query_pack import _DATE_RE, load_case_intake, parse_window
 
 
 def _parse_ts(text: str) -> str | None:

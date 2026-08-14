@@ -23,6 +23,7 @@ INTAKE_KEYS = (
     "playbooks",
     "sample_files",
     "extras",
+    "query_extra",
     "sift_evidence_root",
     "sift_triage_root",
 )

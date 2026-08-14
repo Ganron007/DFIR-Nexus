@@ -43,10 +43,7 @@ class Settings(BaseModel):
         if v := os.environ.get("NEXUS_TOOL_PATHS") or os.environ.get("SIFT_TOOL_PATHS"):
             sep = os.pathsep
             # Accept both ; and : so a Windows path like C:\Tools is not split on ':'
-            if os.name == "nt" and ";" in v:
-                parts = v.split(";")
-            else:
-                parts = v.split(sep)
+            parts = v.split(";") if os.name == "nt" and ";" in v else v.split(sep)
             self.tool_paths = [p.strip() for p in parts if p.strip()]
         if v := os.environ.get("NEXUS_HAYABUSA_DIR") or os.environ.get("SIFT_HAYABUSA_DIR"):
             self.hayabusa_dir = v

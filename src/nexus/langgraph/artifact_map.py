@@ -309,8 +309,6 @@ def invokable_tool_key(name: str) -> str:
         "tshark": "tshark",
         "exiftool": "exiftool",
         "vssadmin": "vssadmin",
-        "yara": "yara",
-        "strings": "strings",
     }
     return aliases.get(n, n)
 

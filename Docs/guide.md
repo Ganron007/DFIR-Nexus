@@ -138,19 +138,19 @@ DFIR-Nexus wraps your existing forensic tools as MCP tools. Every tool run is au
 | **RAG** | `forensic_rag_search`, `forensic_rag_list_sources`, `forensic_rag_status`, `forensic_rag_download`, `forensic_rag_rebuild` | Semantic search over ~22K forensic records (index downloaded or self-built; embedding model configurable via `NEXUS_RAG_MODEL`). |
 | **TI** | `ti_lookup`, `ti_fanout`, `ti_list_providers` | Threat intelligence enrichment: abuse.ch, MISP, OTX, Shodan, VT, AbuseIPDB, CrowdStrike. |
 
-Velociraptor live-response tooling (`vr_list_clients`, `vr_list_hunts`,
-`vr_run_hunt`, `vr_collect_artifact`, `vr_suggest_hunts`, `vql_query`) ships as
-a **separate MCP server** (`nexus.integration.velociraptor_mcp_server`) — run it
-alongside the main server when live collection is needed; mock mode works
-offline via `NEXUS_VR_USE_MOCK=1`.
+Velociraptor live-response tooling ships on the **main server** as
+`vr_health`, `vr_list_hunts`, `vr_list_clients`, `vr_run_hunt`, and
+`vr_vql_query` (ad-hoc VQL, policy-gated). Mock mode works offline via
+`NEXUS_VR_USE_MOCK=1`; live collection is optional via `NEXUS_VR_ENDPOINT` /
+`NEXUS_VR_MCP_URL` and is a documented gate, not a requirement.
 
 **Example workflow:**
 ```
-Tool: check_file → confirms the binary is not in Windows baseline
-Tool: sift_yara_scan     → finds Cobalt Strike signature
-Tool: vr_run_hunt        → collects process tree from compromised host
-Tool: ingest_from_source  → parses Suricata/Zeek pcaps into artifacts
-Tool: ti_lookup          → enriches IOCs via ThreatFox
+Tool: check_file           → confirms the binary is not in Windows baseline
+Tool: run_windows_command  → runs yara64, finds Cobalt Strike signature
+Tool: vr_run_hunt          → collects process tree from compromised host
+Tool: ingest_auto          → parses Suricata/Zeek logs into artifacts
+Tool: ti_lookup            → enriches IOCs via ThreatFox
 ```
 
 ### Step 4: Record Findings
@@ -325,8 +325,8 @@ DFIR-Nexus can import forensic data from 36 registered importer classes:
 
 **Import from a file:**
 ```
-ingest_detect_and_parse("/case/evidence/zeek_conn.log")
-ingest_from_source("/case/evidence/alerts.json", source="elastic")
+ingest_auto("/case/evidence/zeek_conn.log")          # auto-detect format
+ingest_auto("/case/evidence/alerts.json")            # Elastic/SIEM export
 ```
 
 ---

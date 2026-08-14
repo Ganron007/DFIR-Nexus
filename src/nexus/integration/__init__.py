@@ -24,16 +24,6 @@ from nexus.integration.exporters import (
 )
 from nexus.integration.knowledge_graph import build_case_knowledge_graph
 from nexus.integration.notifications import notify_channel
-from nexus.integration.vision import (
-    IOC_PATTERNS,
-    VisionAnalyzer,
-    VisionError,
-    VisionResult,
-    detect_mime_type,
-    extract_iocs_from_text,
-    get_vision_analyzer,
-    set_vision_analyzer,
-)
 from nexus.integration.vql_runner import (
     HTTPVelociraptorClient,
     MockVelociraptorClient,
@@ -46,19 +36,14 @@ from nexus.integration.vql_runner import (
 __all__ = [
     "CaseExporter",
     "HTTPVelociraptorClient",
-    "IOC_PATTERNS",
     "MockVelociraptorClient",
     "MonitorConfig",
     "VQLQuerySpec",
     "VQLResult",
     "VQLRunner",
-    "VisionAnalyzer",
-    "VisionError",
-    "VisionResult",
     "build_case_knowledge_graph",
     "build_misp_attributes",
     "build_timesketch_timeline",
-    "detect_mime_type",
     "export_case_zip",
     "export_findings_csv",
     "export_to_docx",
@@ -66,11 +51,8 @@ __all__ = [
     "export_to_json",
     "export_to_markdown",
     "export_to_stix",
-    "extract_iocs_from_text",
-    "get_vision_analyzer",
     "notify_channel",
     "push_iris",
     "push_misp",
     "push_timesketch",
-    "set_vision_analyzer",
 ]

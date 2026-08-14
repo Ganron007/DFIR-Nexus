@@ -54,6 +54,7 @@ from nexus.cli.audit_cmd import app as audit_app
 from nexus.cli.backup import app as backup_app
 from nexus.cli.case_cmd import app as case_app
 from nexus.cli.config_cmd import app as config_app
+from nexus.cli.data_cmd import app as data_app
 from nexus.cli.evidence import app as evidence_app
 from nexus.cli.exec_cmd import app as exec_app
 from nexus.cli.init_cmd import init as init_cmd
@@ -62,7 +63,6 @@ from nexus.cli.review import app as review_app
 from nexus.cli.service import app as service_app
 from nexus.cli.sync import app as sync_app
 from nexus.cli.todo import app as todo_app
-from nexus.cli.data_cmd import app as data_app
 
 app = typer.Typer(name="nexus", help="DFIR-Nexus — unified DFIR investigation platform")
 
@@ -83,8 +83,8 @@ app.add_typer(data_app, name="data", help="Download RAG / triage / fixtures")
 # `nexus init "Case" --evidence ...` form works.
 app.command(name="init", help="Quickstart — one-command onboarding")(init_cmd)
 
-from nexus.cli.ingest_cmd import ingest as ingest_cmd
 from nexus.cli.doctor_cmd import doctor as doctor_cmd
+from nexus.cli.ingest_cmd import ingest as ingest_cmd
 
 app.command(name="ingest", help="Auto-detect and ingest a forensic file or tree")(ingest_cmd)
 app.command(name="doctor", help="Report extras, catalog binaries, indexes, optional keys")(doctor_cmd)
@@ -390,6 +390,11 @@ def portal():
 def pipeline(
     case: str = typer.Option("", "--case", help="Path to evidence directory or file"),
     also: list[str] = typer.Option([], "--also", help="Additional evidence roots on the same case"),
+    from_case: str = typer.Option(
+        "",
+        "--from-case",
+        help="Existing case_id: reuse the tool ledger (implies --mode interpret, no re-parse)",
+    ),
     resume: bool = typer.Option(False, "--resume", help="Resume from last checkpoint after human approval"),
     model: str = typer.Option("", "--model", help="LLM model (e.g. openai/gpt-4o, ollama/qwen2.5:32b-instruct)"),
     thread: str = typer.Option("", "--thread", help="Thread ID for checkpoint persistence"),
@@ -397,27 +402,28 @@ def pipeline(
         "",
         "--mode",
         help=(
-            "Pipeline mode: design | coverage | tools "
-            "(tools = force-run lane, no LLM)"
+            "Pipeline mode: design | coverage | tools | interpret "
+            "(tools = parsers only; interpret = reuse --from-case)"
         ),
     ),
 ):
     """Run the investigation pipeline.
 
     Modes:
-      design (default) — ReAct agent selects and runs MCP tools (product design)
-      coverage         — deterministic tool lane; LLM interprets ledger+snippets
-      tools            — deterministic tool lane only; TOOL-RUN report; no LLM
+      tools            — deterministic tool lane only; TOOL-RUN.md; no LLM
+      coverage         — same lane; LLM interprets N4 hits → DRAFT
+      design           — lane first, then ReAct extras, then interpret
+      interpret        — reuse an existing tool-run case (--from-case)
 
-    Also set via NEXUS_PIPELINE_MODE=design|coverage|tools
+    Also set via NEXUS_PIPELINE_MODE=design|coverage|tools|interpret
     (aliases: react/hunt → design; debug/full/lane → coverage;
-     tools_only/no_llm → tools).
+     tools_only/no_llm → tools; from_case → interpret).
 
     Requires: pip install dfir-nexus[pipeline]
 
     Environment variables:
         NEXUS_LLM_MODEL / NEXUS_MODEL — model identifier (not required for tools)
-        NEXUS_PIPELINE_MODE — design|coverage|tools
+        NEXUS_PIPELINE_MODE — design|coverage|tools|interpret
         NEXUS_GATEWAY_URL — HTTP URL for MCP server (default: stdio)
         NEXUS_BEARER_TOKEN — bearer token for HTTP mode
     """
@@ -429,13 +435,24 @@ def pipeline(
         typer.echo("Run: pip install dfir-nexus[pipeline]", err=True)
         raise typer.Exit(1) from None
 
+    cid = (from_case or "").strip()
+    resolved_mode = mode or None
+    if cid:
+        resolved_mode = "interpret"
+        if not (case or "").strip():
+            typer.echo(f"Interpret from existing case {cid} (no re-parse)")
+    elif resolved_mode in {"interpret", "from_case", "from-case"} and not cid:
+        typer.echo("interpret mode needs --from-case <case_id>", err=True)
+        raise typer.Exit(1)
+
     asyncio.run(run_pipeline(
         evidence_path=case,
         resume=resume,
         thread_id=thread,
         model_name=model,
-        mode=mode or None,
+        mode=resolved_mode,
         evidence_paths=also or None,
+        case_id=cid,
     ))
 
 

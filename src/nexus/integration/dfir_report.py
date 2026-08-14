@@ -7,11 +7,11 @@ spirit of https://thedfirreport.com/reports/ — lab-scoped and evidence-backed.
 
 from __future__ import annotations
 
-from collections import defaultdict
+import re
 from ast import literal_eval
+from collections import defaultdict
 from datetime import UTC, datetime
 from typing import Any
-import re
 
 
 def _format_rag_notes(rag_notes: list[str]) -> list[str]:
@@ -233,8 +233,8 @@ def build_dfir_markdown(
     lines.append(f"**Generated:** {generated}  ")
     lines.append("")
     lines.append(
-        "> Lab IR report in the style of public intrusion write-ups "
-        "([The DFIR Report](https://thedfirreport.com/reports/)): key takeaways, "
+        "> Lab IR report from **APPROVED** findings (template, not an LLM file). "
+        "Key takeaways, "
         "case summary, evidence-backed sections, timeline, indicators, detections, MITRE."
     )
     lines.append("")

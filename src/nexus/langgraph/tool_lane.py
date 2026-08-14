@@ -17,13 +17,15 @@ The LLM does **not** choose whether mandatory parsers run.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import shlex
 import shutil
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 log = logging.getLogger(__name__)
 
@@ -204,10 +206,8 @@ def plan_windows_triage(
                     continue
                 dst = work / src.name
                 _shutil.copy2(src, dst)
-                try:
+                with contextlib.suppress(OSError):
                     os.chmod(dst, 0o666)
-                except OSError:
-                    pass
             try:
                 _sp.run(
                     ["esentutl.exe", "/r", "sru", "/i"],
@@ -935,6 +935,7 @@ async def run_tool_lane(
     )
     try:
         import json as _json
+
         from nexus.langgraph.artifact_map import (
             completeness_table,
             discover_windows_artifacts,
@@ -1140,10 +1141,8 @@ def _soft_fail_reason(result: dict[str, Any]) -> str:
     )
     saved = str(result.get("output_saved_to") or "")
     if saved and Path(saved).is_file():
-        try:
+        with contextlib.suppress(OSError):
             blob += "\n" + Path(saved).read_text(encoding="utf-8", errors="replace")[:8000]
-        except OSError:
-            pass
     markers = (
         "Error processing file!",
         "Error reading image file",

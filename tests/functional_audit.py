@@ -36,7 +36,7 @@ MODULES = [
     ("nexus.llm", ["LLMRouter", "LLMProvider", "ChatMessage", "ChatResponse",
                    "ProviderNotFoundError", "OpenAICompatProvider"]),
     ("nexus.utils", ["run_async", "resolve_read_path", "resolve_write_path"]),
-    ("nexus.integration", ["CaseExporter", "VQLRunner", "VisionAnalyzer",
+    ("nexus.integration", ["CaseExporter", "VQLRunner",
                            "build_case_knowledge_graph", "notify_channel",
                            "export_to_json", "export_to_markdown", "export_to_html",
                            "export_to_stix", "export_case_zip", "export_to_docx"]),
@@ -227,7 +227,7 @@ from nexus.integration.case_export import (
 )
 from nexus.integration.export_formats import export_case_zip, export_findings_csv, export_to_docx
 from nexus.integration.knowledge_graph import build_case_knowledge_graph
-from nexus.integration.vision import extract_iocs_from_text
+from nexus.ingest.cti_ingestion import _extract_iocs_from_text
 
 db4 = Path(tempfile.gettempdir()) / f"export_{os.getpid()}.db"
 emgr = CM(db4, secret_key=b"export-test")
@@ -264,9 +264,9 @@ kg = build_case_knowledge_graph(bundle)
 check("knowledge_graph entities", len(kg.entities) > 0)
 check("knowledge_graph relations", len(kg.relations) > 0)
 
-iocs = extract_iocs_from_text("evil at 10.0.0.1 hash " + "f" * 64)
-check("extract_iocs ipv4", "10.0.0.1" in iocs.get("ipv4", []))
-check("extract_iocs sha256", ("f" * 64) in iocs.get("sha256", []))
+iocs = _extract_iocs_from_text("evil at 10.0.0.1 hash " + "f" * 64)
+check("extract_iocs ipv4", "10.0.0.1" in iocs)
+check("extract_iocs sha256", ("f" * 64) in iocs)
 
 emgr.close()
 db4.unlink(missing_ok=True)

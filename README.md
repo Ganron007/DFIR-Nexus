@@ -111,6 +111,7 @@ nexus portal
 
 Detailed guidelines are grouped in the `Docs/` directory:
 
+* 🧭 **[Docs/NEXUS-MODE.md](Docs/NEXUS-MODE.md):** Investigation loop (process → query → interpret → approve → export).
 * 📚 **[Docs/guide.md](Docs/guide.md):** Step-by-step DFIR command guide.
 * ⚙️ **[Docs/SETUP.md](Docs/SETUP.md):** Advanced installation, environment variables, and tool integration.
 * 🔬 **[Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md):** High-level design, trust boundaries, and tool indexes.

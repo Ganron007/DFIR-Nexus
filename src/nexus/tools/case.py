@@ -505,3 +505,50 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         audit.log(tool="backup_case", params={"destination": destination, "purpose": purpose},
                   result_summary=result)
         return result
+
+    @server.tool()
+    def query_case_hits(
+        needles: str = "",
+        persist: bool = False,
+        limit: int = 40,
+        case_id: str = "",
+    ) -> dict:
+        """Search THIS CASE's processed outputs (N4). Never invent rows.
+
+        Needles are comma-separated terms (sdelete, .pst, USBSTOR). The search
+        runs on parsed CSVs / the per-case index, not raw Evidence-files.
+        Empty hits means INSUFFICIENT — do not fabricate findings from RAG.
+        persist=true saves needles on intake for the next interpret pass.
+        """
+        from nexus.config import settings
+        from nexus.langgraph.query_pack import _parse_needles, run_ad_hoc_query
+
+        cid = (case_id or "").strip()
+        if cid:
+            case_dir = settings.cases_root / cid
+        else:
+            try:
+                case_dir = manager.require_active_case()
+            except ValueError as e:
+                return {"error": str(e)}
+        if not case_dir.is_dir():
+            return {"error": f"Case directory missing: {case_dir}"}
+        extras = _parse_needles(needles)
+        result = run_ad_hoc_query(
+            case_dir,
+            extra_needles=extras,
+            persist=persist and bool(extras),
+            limit=limit,
+        )
+        result["case_id"] = case_dir.name
+        if result.get("empty"):
+            result["note"] = (
+                "No rows matched. Return INSUFFICIENT. Do not invent hosts, "
+                "times, or malware from RAG or playbook prose."
+            )
+        audit.log(
+            tool="query_case_hits",
+            params={"needles": needles, "persist": persist, "case_id": case_dir.name},
+            result_summary={"count": result.get("count"), "empty": result.get("empty")},
+        )
+        return result

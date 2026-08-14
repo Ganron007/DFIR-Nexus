@@ -226,3 +226,34 @@ def test_n4_finding_candidates_empty_without_hits(tmp_path: Path):
         encoding="utf-8",
     )
     assert n4_finding_candidates(tmp_path, ledger=[]) == []
+
+
+def test_query_extra_needles_and_ingest_root(tmp_path: Path):
+    from nexus.langgraph.query_pack import run_ad_hoc_query
+
+    ext = tmp_path / "extractions" / "pecmd"
+    ext.mkdir(parents=True)
+    (ext / "prefetch_Timeline.csv").write_text(
+        "RunTime,ExecutableName\n2020-11-14 13:00:00,notepad.exe\n",
+        encoding="utf-8",
+    )
+    ingest = tmp_path / "ingest"
+    ingest.mkdir()
+    (ingest / "conn.log").write_text(
+        "ts,id.orig_h\n2020-11-14 13:01:00,192.168.77.62\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "CASE.yaml").write_text(
+        "intake:\n  playbooks: data_staging\n  query_extra: notepad.exe\n",
+        encoding="utf-8",
+    )
+    md = build_query_pack_markdown(tmp_path, ledger=[])
+    assert "notepad.exe" in md.lower()
+    result = run_ad_hoc_query(
+        tmp_path, extra_needles=["192.168.77.62"], persist=True, limit=20
+    )
+    assert result["count"] >= 1
+    texts = " ".join(h["text"] for h in result["hits"])
+    assert "192.168.77.62" in texts
+    yaml_text = (tmp_path / "CASE.yaml").read_text(encoding="utf-8")
+    assert "192.168.77.62" in yaml_text

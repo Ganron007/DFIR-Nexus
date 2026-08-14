@@ -192,6 +192,7 @@ def _format_case_context(ctx: dict[str, str] | None) -> str:
     keys = (
         "name", "description", "hypothesis", "notes", "host",
         "timezone", "window", "subjects", "known_good", "question", "playbooks", "extras",
+        "query_extra",
     )
     if not any(str(ctx.get(k) or "").strip() for k in keys):
         return (
@@ -671,8 +672,8 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
     ]
     if extra_paths:
         from nexus.config import settings as _settings
-        from nexus.langgraph.tool_lane import find_windows_root
         from nexus.langgraph.timeline_merge import ingest_into_case, rebuild_case_timeline
+        from nexus.langgraph.tool_lane import find_windows_root
 
         case_dir = _settings.cases_root / case_id
         steps = list(result.get("step_log") or [])
@@ -710,7 +711,6 @@ async def ensure_rag_ready(state: InvestigationState, tools: dict) -> dict:
             status = _parse_tool_result(await status_tool.ainvoke({}))
         except Exception as exc:  # noqa: BLE001
             return {"error": f"forensic_rag_status failed: {exc}"}
-    ready = str(status.get("status") or "").lower() in ("ready", "ok", "loaded")
     if search_tool:
         try:
             for query in (
@@ -724,7 +724,6 @@ async def ensure_rag_ready(state: InvestigationState, tools: dict) -> dict:
                 notes.append(str(warm.get("results") or warm)[:2000])
             if status_tool:
                 status = _parse_tool_result(await status_tool.ainvoke({}))
-            ready = True
         except Exception as exc:  # noqa: BLE001
             return {"error": f"RAG warmup search failed: {exc}"}
     if str(status.get("status") or "").lower() in ("unavailable", "error", "not_initialized"):
@@ -892,8 +891,8 @@ async def emit_tool_report(state: InvestigationState, tools: dict) -> dict:
     report_path: str | None = None
     export_root: str | None = None
     try:
-        from nexus.config import settings
         from nexus.case.repo_export import export_case_to_repo
+        from nexus.config import settings
 
         case_dir = settings.cases_root / state["case_id"]
         md = _format_tool_run_markdown(state)
@@ -1157,7 +1156,7 @@ def _audit_ids_from_messages(messages: list[Any]) -> list[str]:
     for msg in messages or []:
         content = msg
         if hasattr(msg, "content"):
-            content = getattr(msg, "content")
+            content = msg.content
         elif isinstance(msg, dict):
             content = msg.get("content", msg)
         text = content if isinstance(content, str) else str(content)
@@ -1386,10 +1385,7 @@ async def stage_findings(state: InvestigationState, tools: dict) -> dict:
         if not _is_collection_stub(c)
     ]
     n4 = _fallback_candidates_from_state(state, trail, host_default)
-    if not candidates:
-        candidates = n4
-    else:
-        candidates = _merge_n4_uncovered(candidates, n4)
+    candidates = n4 if not candidates else _merge_n4_uncovered(candidates, n4)
 
     async def _stage_one(candidate: dict) -> None:
         nonlocal draft_ids
@@ -1512,12 +1508,14 @@ async def generate_report(state: InvestigationState, tools: dict) -> dict:
     export_root: str | None = None
     try:
         import json as _json
+
         import yaml
-        from nexus.config import settings
+
         from nexus.cli.report import _extraction_notes, _load_flat_evidence
+        from nexus.config import settings
+        from nexus.detection.draft_from_findings import draft_from_approved
         from nexus.integration.dfir_report import _split_questions, build_dfir_markdown
         from nexus.langgraph.timeline_merge import rebuild_case_timeline
-        from nexus.detection.draft_from_findings import draft_from_approved
 
         case_dir = settings.cases_root / state["case_id"]
         findings_path = case_dir / "findings.json"
@@ -1712,27 +1710,48 @@ def build_graph(tools: dict, model, mode: str | None = None):
     workflow.add_node("stage_findings", _stage_findings)
     workflow.add_node("await_approval", await_approval)
     workflow.add_node("generate_report", _generate_report)
+    workflow.add_node("emit_tool_report", _emit_tool_report)
     workflow.add_edge("ensure_rag", "register_evidence")
     workflow.add_edge("register_evidence", "scope")
+
+    def _has_intake(st: InvestigationState) -> bool:
+        """N1 gate: did the examiner supply a question or an incident window?"""
+        ctx = st.get("case_context") or {}
+        question = str(ctx.get("question") or "").strip()
+        window = str(ctx.get("window") or "").strip()
+        return bool(question or window)
+
+    def _route_after_tool_lane(st: InvestigationState) -> str:
+        # Empty intake on coverage/design degrades to TOOL-RUN only (no LLM).
+        return "interpret_path" if _has_intake(st) else "tools_only"
 
     if mode == "coverage":
         workflow.add_node("execute_tool_lane", _execute_tool_lane)
         workflow.add_node("interpret", _interpret)
         workflow.add_edge("scope", "execute_tool_lane")
-        workflow.add_edge("execute_tool_lane", "interpret")
+        workflow.add_conditional_edges(
+            "execute_tool_lane",
+            _route_after_tool_lane,
+            {"interpret_path": "interpret", "tools_only": "emit_tool_report"},
+        )
         workflow.add_edge("interpret", "stage_findings")
     else:
         workflow.add_node("execute_tool_lane", _execute_tool_lane)
         workflow.add_node("hunt", _hunt)
         workflow.add_node("interpret", _interpret)
         workflow.add_edge("scope", "execute_tool_lane")
-        workflow.add_edge("execute_tool_lane", "hunt")
+        workflow.add_conditional_edges(
+            "execute_tool_lane",
+            _route_after_tool_lane,
+            {"interpret_path": "hunt", "tools_only": "emit_tool_report"},
+        )
         workflow.add_edge("hunt", "interpret")
         workflow.add_edge("interpret", "stage_findings")
 
     workflow.add_edge("stage_findings", "await_approval")
     workflow.add_edge("await_approval", "generate_report")
     workflow.add_edge("generate_report", END)
+    workflow.add_edge("emit_tool_report", END)
 
     return workflow
 
@@ -1787,12 +1806,16 @@ async def run_pipeline(
     case_context: dict[str, str] | None = None,
     mode: str | None = None,
     evidence_paths: list[str] | None = None,
+    case_id: str = "",
 ):
     """Run the DFIR-Nexus LangGraph investigation pipeline."""
     from langgraph.checkpoint.memory import MemorySaver
     from langgraph.types import Command
 
     pipeline_mode = resolve_pipeline_mode(mode)
+    from_case = (case_id or "").strip()
+    if from_case:
+        pipeline_mode = "interpret"
     log.info("Pipeline mode: %s", pipeline_mode)
 
     config = get_mcp_config()
@@ -1860,6 +1883,7 @@ async def run_pipeline(
         case_context=case_context,
         pipeline_mode=pipeline_mode,
         evidence_paths=evidence_paths,
+        case_id=from_case,
     )
     result = await compiled.ainvoke(initial, config=cfg)
 

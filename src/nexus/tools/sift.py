@@ -19,7 +19,6 @@ import subprocess
 import sys
 import threading
 import time
-from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml

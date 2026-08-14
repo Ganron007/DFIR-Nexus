@@ -7,8 +7,8 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from nexus.langgraph.case_index import (
-    IndexMissing,
     WILDCARD_IGNORE_ABOVE,
+    IndexMissing,
     _bulk_ndjson,
     index_name,
     iter_index_docs,
@@ -71,18 +71,18 @@ def test_n4_hits_csv_backend(tmp_path: Path):
 
 
 def test_query_index_missing_raises():
-    with patch("nexus.langgraph.case_index.es_url", return_value="http://127.0.0.1:9200"):
-        with patch("nexus.langgraph.case_index._client") as client_factory:
-            client = MagicMock()
-            client.__enter__.return_value = client
-            client.__exit__.return_value = False
-            client.head.return_value.status_code = 404
-            client_factory.return_value = client
-            try:
-                query_index(Path("/tmp/no-case"), ["sdelete"], (None, None))
-                raise AssertionError("expected IndexMissing")
-            except IndexMissing:
-                pass
+    with patch("nexus.langgraph.case_index.es_url", return_value="http://127.0.0.1:9200"), \
+            patch("nexus.langgraph.case_index._client") as client_factory:
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.__exit__.return_value = False
+        client.head.return_value.status_code = 404
+        client_factory.return_value = client
+        try:
+            query_index(Path("/tmp/no-case"), ["sdelete"], (None, None))
+            raise AssertionError("expected IndexMissing")
+        except IndexMissing:
+            pass
 
 
 def test_bulk_ndjson_roundtrip():

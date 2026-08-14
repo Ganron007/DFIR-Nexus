@@ -101,15 +101,19 @@ interpret: RAG → load existing ledger → interpret → DRAFT → HITL → REP
 
 The LLM does **not** pick or skip parsers. It does **not** write `REPORT.md`.
 
-If the JSON is missing, staging falls back to one DRAFT per OK ledger row
-(collection evidence, not a compromise claim). That is honesty, not a finding.
+If the JSON is missing, staging falls back to **N4 hit clusters**
+(`n4_finding_candidates`: sdelete / PST / Drive / USB…), never “parser OK”
+placeholders.
 
 ### HITL
 
 Findings stage as **DRAFT** (`record_finding`). The graph **pauses**
 (`await_approval`). Only the examiner promotes them: `nexus approve` or the
-Examiner Portal. Then `nexus pipeline --resume` (or the rocba script’s
-operator-gated auto-approve). The agent cannot approve.
+Examiner Portal. Then `nexus pipeline --resume`. The agent cannot approve.
+
+Unhappy with the analysis? Do **not** re-parse a good ledger. Add needles
+(`nexus case query --needles …` or Portal Query), then
+`nexus pipeline --mode interpret --from-case <id>`.
 
 ### Report
 
@@ -118,15 +122,16 @@ operator-gated auto-approve). The agent cannot approve.
 the LLM filled observation/interpretation earlier. `tools` mode writes
 `TOOL-RUN.md` instead — that is a ledger, not an IR.
 
-`interpret` reuses a finished tools-mode case (do not re-run parsers). Today
-that path is `scripts/rocba_agentic_pipeline.py --from-case <id>`.
-`nexus pipeline` does not yet take a case id — tracked in
-`Docs/internal/COMPLETE-TO-SHIP.md` (M6d).
+`interpret` reuses a finished tools-mode case (do not re-run parsers):
+
+```
+nexus pipeline --mode interpret --from-case INC-20260813122635
+```
 
 ## What else exists (not pipeline modes)
 
-Do not collapse these into `tools|coverage|design`. Test them **after** the
-four pipeline modes are proven on one evidence pack.
+Do not collapse these into `tools|coverage|design`. Test them **after**
+Nexus mode is honest on one evidence pack. See [NEXUS-MODE.md](../NEXUS-MODE.md).
 
 | Surface | What it is |
 |---------|------------|

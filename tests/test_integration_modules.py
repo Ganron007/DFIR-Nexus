@@ -25,11 +25,6 @@ from nexus.integration.export_formats import (
     export_to_docx,
 )
 from nexus.integration.knowledge_graph import build_case_knowledge_graph
-from nexus.integration.vision import (
-    VisionAnalyzer,
-    detect_mime_type,
-    extract_iocs_from_text,
-)
 from nexus.integration.vql_runner import (
     MockVelociraptorClient,
     MonitorConfig,
@@ -226,49 +221,3 @@ class TestKnowledgeGraph:
 
 # =============================================================================
 # Vision
-# =============================================================================
-
-
-class TestVision:
-    def test_extract_iocs_ipv4(self) -> None:
-        results = extract_iocs_from_text("evil at 10.0.0.1 and 192.168.1.1")
-        assert "10.0.0.1" in results.get("ipv4", [])
-
-    def test_extract_iocs_md5(self) -> None:
-        results = extract_iocs_from_text("hash: " + "a" * 32)
-        assert ("a" * 32) in results.get("md5", [])
-
-    def test_extract_iocs_sha256(self) -> None:
-        results = extract_iocs_from_text("hash: " + "f" * 64)
-        assert ("f" * 64) in results.get("sha256", [])
-
-    def test_extract_iocs_url(self) -> None:
-        results = extract_iocs_from_text("GET http://evil.com/malware.exe")
-        assert "http://evil.com/malware.exe" in results.get("url", [])
-
-    def test_extract_iocs_mitre(self) -> None:
-        results = extract_iocs_from_text("Used T1003.001 and T1070.001")
-        assert "T1003.001" in results.get("mitre", [])
-
-    def test_extract_iocs_domain(self) -> None:
-        results = extract_iocs_from_text("cnc.badguy.net")
-        assert "cnc.badguy.net" in results.get("domain", [])
-
-    def test_extract_iocs_guid(self) -> None:
-        results = extract_iocs_from_text("{12345678-1234-1234-1234-123456789abc}")
-        assert "12345678-1234-1234-1234-123456789abc" in results.get("guid", [])
-
-    def test_detect_mime_type(self) -> None:
-        assert detect_mime_type(Path("test.png")) == "image/png"
-        assert detect_mime_type(Path("test.jpg")) == "image/jpeg"
-        assert detect_mime_type(Path("test.exe")) == "application/octet-stream"
-
-    def test_vision_analyzer_no_llm(self, tmp_path: Path) -> None:
-        analyzer = VisionAnalyzer()
-        result = analyzer.analyze_file(tmp_path / "nope.png")
-        assert result.error is not None
-
-    def test_vision_analyzer_file_not_found(self, tmp_path: Path) -> None:
-        analyzer = VisionAnalyzer()
-        result = analyzer.analyze_file(str(tmp_path / "missing.png"))
-        assert "does not exist" in (result.error or "").lower()

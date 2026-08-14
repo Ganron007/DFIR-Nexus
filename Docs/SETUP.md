@@ -393,9 +393,11 @@ nexus serve --http --host 0.0.0.0 --port 4508
 ### Step 2: Generate the Client configuration
 On your examiner/client host (running Claude Code or Cursor), configure the client to communicate with both servers:
 ```bash
-nexus setup client --sift 192.0.2.41:4508 --windows 192.0.2.42:4508 --bearer "secure-passphrase-token-sift"
+nexus setup client --sift 192.0.2.41:4508 --windows 192.0.2.42:4508
 ```
-*(If SIFT and Windows tokens differ, edit the generated `.mcp.json` or global configuration file manually to assign respective bearer header tokens)*.
+If the servers require a bearer token (`NEXUS_BEARER_TOKEN` set on the server),
+add an `Authorization: Bearer <token>` header to each server entry in the
+generated `.mcp.json` (or global configuration file) manually.
 
 ---
 

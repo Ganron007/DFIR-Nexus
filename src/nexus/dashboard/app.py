@@ -364,6 +364,7 @@ pre {{ background: #161b22; padding: 0.5rem; border-radius: 4px; overflow-x: aut
 <nav>
 <a href="/portal">Overview</a>
 <a href="/portal/steer">Steer</a>
+<a href="/portal/query">Query</a>
 <a href="/portal/findings">Findings</a>
 <a href="/portal/approve">Approve</a>
 <a href="/portal/timeline">Timeline</a>
@@ -697,6 +698,61 @@ async function post(url, body) {{
     return HTMLResponse(_TEMPLATE.format(content=content))
 
 
+async def query_page(request):
+    """N4 hit browser — examiner searches processed output, not raw evidence."""
+    needles = str(request.query_params.get("needles") or "")
+    persist_flag = str(request.query_params.get("persist") or "") in {"1", "true", "yes"}
+    case_dir = _get_case_dir()
+    hits: list[dict] = []
+    meta: dict = {}
+    if case_dir:
+        from nexus.langgraph.query_pack import _parse_needles, run_ad_hoc_query
+
+        meta = run_ad_hoc_query(
+            case_dir,
+            extra_needles=_parse_needles(needles),
+            persist=persist_flag and bool(needles.strip()),
+            limit=80,
+        )
+        hits = list(meta.get("hits") or [])
+    if hits:
+        rows = "".join(
+            "<tr>"
+            f"<td>{_e(h.get('family', ''))}</td>"
+            f"<td>{_e(h.get('file', ''))}:{_e(h.get('line', ''))}</td>"
+            f"<td>{_e(h.get('terms', ''))}</td>"
+            f"<td class='evidence-path'>{_e(h.get('text', ''))}</td>"
+            "</tr>"
+            for h in hits
+        )
+    else:
+        rows = (
+            "<tr><td colspan='4'>No rows matched. INSUFFICIENT — "
+            "do not invent findings. Add needles or check playbook query_terms.</td></tr>"
+        )
+    backend = _e(str(meta.get("backend") or "(no case)"))
+    count = meta.get("count", 0)
+    persist_attr = "checked" if persist_flag else ""
+    content = f"""
+<h1>Query processed evidence (N4)</h1>
+<p>This searches <strong>parsed CSVs / the case index</strong>, not Evidence-files.
+Empty hits mean INSUFFICIENT. Persist needles, then re-run interpret
+(<code>nexus pipeline --mode interpret --from-case …</code>).</p>
+<form method="get" action="/portal/query">
+<p>Needles (comma-separated)<br>
+<input name="needles" style="width:70%;background:#161b22;color:#c9d1d9" value="{_e(needles)}" placeholder="sdelete,.pst,USBSTOR">
+<label><input type="checkbox" name="persist" value="1" {persist_attr}> persist on intake</label>
+<button class="action-btn" type="submit">Search</button></p>
+</form>
+<p>backend=<code>{backend}</code> showing {len(hits)} / {count} hits.</p>
+<table>
+<tr><th>Family</th><th>File:line</th><th>Terms</th><th>Row</th></tr>
+{rows}
+</table>
+"""
+    return HTMLResponse(_TEMPLATE.format(content=content))
+
+
 async def api_cases(request):
     return JSONResponse({"cases": _list_case_ids(), "active": _active_case_id()})
 
@@ -722,7 +778,7 @@ async def api_intake(request):
     from nexus.langgraph.case_intake import persist_case_intake
     written = persist_case_intake(case_dir, {
         k: str(body.get(k) or "")
-        for k in ("question", "window", "extras", "playbooks", "subjects", "hypothesis")
+        for k in ("question", "window", "extras", "playbooks", "subjects", "hypothesis", "query_extra")
         if body.get(k)
     })
     return JSONResponse({"ok": True, "intake": written})
@@ -737,9 +793,10 @@ async def api_register_evidence(request):
     if not path or not Path(path).exists():
         return JSONResponse({"ok": False, "error": "path missing"}, status_code=400)
     import hashlib
+
+    from nexus.audit import resolve_examiner
     from nexus.case import CaseManager
     from nexus.config import settings
-    from nexus.audit import resolve_examiner
     fpath = Path(path)
     h = hashlib.sha256()
     if fpath.is_dir():
@@ -766,7 +823,19 @@ async def api_query_rerun(request):
     case_dir = _get_case_dir()
     if not case_dir:
         return JSONResponse({"ok": False, "error": "no active case"}, status_code=400)
-    from nexus.langgraph.query_pack import write_query_pack
+    from nexus.langgraph.query_pack import _parse_needles, run_ad_hoc_query, write_query_pack
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    needles = _parse_needles(str(body.get("needles") or ""))
+    persist = bool(body.get("persist")) if needles else False
+    if needles:
+        result = run_ad_hoc_query(
+            case_dir, extra_needles=needles, persist=persist, limit=int(body.get("limit") or 80)
+        )
+        return JSONResponse({"ok": True, **result})
     path = write_query_pack(case_dir)
     return JSONResponse({"ok": True, "query_pack": str(path)})
 
@@ -891,6 +960,7 @@ def create_dashboard():
         Route("/portal/iocs", endpoint=iocs_page),
         Route("/portal/todos", endpoint=todos_page),
         Route("/portal/steer", endpoint=steer_page),
+        Route("/portal/query", endpoint=query_page),
         # API endpoints
         Route("/portal/api/commit/challenge", get_commit_challenge, methods=["GET"]),
         Route("/portal/api/commit", post_commit, methods=["POST"]),

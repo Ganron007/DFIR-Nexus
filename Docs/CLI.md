@@ -19,11 +19,14 @@ nexus case migrate --dry-run              # Preview migration
 
 nexus case intake --question "..." --window 2020-11-14 --extras chrome_profiles
 nexus case index INC-...                  # N3: index this case's extractions (needs NEXUS_ES_URL)
-nexus case query INC-... --backend auto   # Rebuild N4 pack (auto|csv|es)
+nexus case query INC-... --needles sdelete,.pst --backend auto
 nexus case detections INC-... --finding-ids F-009,F-010   # D1 drafts for SIEM (not N5)
 ```
 
-Portal `/portal/steer` picks a case, saves intake, registers evidence paths, and re-runs the N4 pack.
+Portal **Steer** = intake + register. Portal **Query** = N4 hit table
+(processed CSVs / case index, not Evidence-files). Empty hits = INSUFFICIENT.
+
+Mental model: [NEXUS-MODE.md](NEXUS-MODE.md).
 
 ## Evidence
 
@@ -130,14 +133,13 @@ nexus service restart                     # Restart background service
 nexus pipeline --mode tools --case /path/to/windows/image     # parsers only → TOOL-RUN.md
 nexus pipeline --mode coverage --case /path/to/windows/image  # lane + LLM interpret → DRAFT
 nexus pipeline --mode design --case /path/to/windows/image    # lane + ReAct extras + interpret
+nexus pipeline --mode interpret --from-case INC-...           # reuse ledger, no re-parse
 nexus pipeline --resume                                       # after nexus approve (HITL)
 ```
 
 Modes: `tools` | `coverage` | `design` | `interpret` (aliases: `debug`→coverage, `react`/`hunt`→design).
-Also `NEXUS_PIPELINE_MODE`. Contract: [TOOL-EVIDENCE-MAP.md](cases/TOOL-EVIDENCE-MAP.md).
-
-`interpret` reuses an existing tool-run case (no re-parse). Until `nexus pipeline`
-gains `--from-case`, use `python scripts/rocba_agentic_pipeline.py --from-case <id>`.
+Also `NEXUS_PIPELINE_MODE`. Contract: [TOOL-EVIDENCE-MAP.md](cases/TOOL-EVIDENCE-MAP.md)
+and [NEXUS-MODE.md](NEXUS-MODE.md).
 
 Requires: `pip install dfir-nexus[pipeline]` and LLM env for coverage/design/interpret
 (`NEXUS_LLM_MODEL` / `NEXUS_LLM_BASE_URL`). `tools` needs no LLM.

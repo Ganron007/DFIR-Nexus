@@ -481,42 +481,30 @@ class TestBlockerBugFixes:
         # A nonexistent user should execute the dummy PBKDF2 hash calculation and return False
         assert verify_password("nonexistent_analyst_xyz_123", "some_password") is False
 
-    @pytest.mark.asyncio
-    async def test_b2_vql_injection_collect_artifact(self) -> None:
+    def test_b2_vql_injection_policy_gate(self) -> None:
+        # The standalone velociraptor_mcp_server was folded into the main server
+        # (vr_vql_query). Ad-hoc VQL is now policy-gated by nexus.vr.vql_policy.
+        # Destructive keywords must be rejected.
+        from nexus.vr.vql_policy import VQLPolicyError, validate_adhoc_vql
 
-        from mcp.types import CallToolRequest, CallToolRequestParams
+        for bad in (
+            "DELETE FROM clients",
+            "SELECT * FROM info(); DROP TABLE clients",
+            "INSERT INTO clients VALUES (1)",
+        ):
+            with pytest.raises(VQLPolicyError):
+                validate_adhoc_vql(bad, live_mode=True, allowed_artifacts=None)
 
-        from nexus.integration.velociraptor_mcp_server import create_velociraptor_server
-        
-        server = create_velociraptor_server()
-        handler = server.request_handlers[CallToolRequest]
-        
-        # Verify that double quotes are rejected and error is returned in TextContent
-        req = CallToolRequest(
-            params=CallToolRequestParams(
-                name="vql_collect_artifact",
-                arguments={
-                    "artifact_name": "Generic.Client.Info",
-                    "parameters": {"bad_param": 'evil"inject'}
-                }
-            )
-        )
-        res = await handler(req)
-        assert len(res.root.content) == 1
-        assert "Double quotes are not allowed" in res.root.content[0].text
-            
-        req = CallToolRequest(
-            params=CallToolRequestParams(
-                name="vql_collect_artifact",
-                arguments={
-                    "artifact_name": "Generic.Client.Info",
-                    "parameters": {"bad-param-name": "value"}
-                }
-            )
-        )
-        res = await handler(req)
-        assert len(res.root.content) == 1
-        assert "Invalid parameter name" in res.root.content[0].text
+    def test_b2_vr_vql_query_on_main_server(self) -> None:
+        # vr_vql_query is the single VR surface on the main server. In live mode
+        # (force_mock=False) ad-hoc VQL is policy-gated: with NEXUS_VR_ALLOW_ADHOC
+        # unset, destructive/ad-hoc VQL must come back as an error, not rows.
+        from nexus.vr.service import VRService
+
+        svc = VRService(force_mock=False)
+        result = svc.vql_query("DELETE FROM clients")
+        assert result.get("error"), "live ad-hoc VQL must be policy-rejected"
+        assert result.get("rows") == []
 
     def test_b3_zeek_ts_hyphen_handling(self) -> None:
         from pathlib import Path

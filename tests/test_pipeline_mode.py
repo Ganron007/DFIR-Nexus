@@ -7,13 +7,13 @@ from pathlib import Path
 import pytest
 
 from nexus.langgraph.llm_pipeline import (
+    _fallback_candidates_from_state,
+    _is_collection_stub,
+    _merge_n4_uncovered,
     build_graph,
     get_mcp_config,
     make_initial_state,
     resolve_pipeline_mode,
-    _fallback_candidates_from_state,
-    _is_collection_stub,
-    _merge_n4_uncovered,
 )
 from nexus.langgraph.tool_lane import plan_sift_triage
 
@@ -48,6 +48,9 @@ def test_make_initial_state_carries_mode():
     assert st2["pipeline_mode"] == "design"
     st3 = make_initial_state(pipeline_mode="tools")
     assert st3["pipeline_mode"] == "tools"
+    st4 = make_initial_state(pipeline_mode="interpret", case_id="INC-TEST")
+    assert st4["pipeline_mode"] == "interpret"
+    assert st4["case_id"] == "INC-TEST"
 
 
 def test_build_graph_nodes_by_mode():
@@ -79,6 +82,29 @@ def test_build_graph_nodes_by_mode():
     assert "load_existing" in interpret.nodes
     assert "interpret" in interpret.nodes
     assert "execute_tool_lane" not in interpret.nodes
+
+
+def test_n1_gate_empty_intake_degrades_to_tool_run():
+    """N1 leftover: coverage/design with no question+window must degrade to
+    TOOL-RUN only (emit_tool_report), not run interpret/hunt."""
+
+    class _DummyModel:
+        pass
+
+    for mode in ("coverage", "design"):
+        graph = build_graph({}, _DummyModel(), mode=mode)
+        # The TOOL-RUN exit node must be present as the empty-intake branch.
+        assert "emit_tool_report" in graph.nodes
+        # execute_tool_lane must carry the N1 conditional router.
+        assert "execute_tool_lane" in graph.branches, f"{mode}: no conditional edge"
+        branch = graph.branches["execute_tool_lane"]["_route_after_tool_lane"]
+        path_map = branch.ends
+        assert path_map["tools_only"] == "emit_tool_report"
+        # design routes the interpret path through hunt; coverage straight to interpret
+        if mode == "design":
+            assert path_map["interpret_path"] == "hunt"
+        else:
+            assert path_map["interpret_path"] == "interpret"
 
 
 def test_finding_payload_keeps_itm():

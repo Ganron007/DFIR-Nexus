@@ -143,6 +143,11 @@ def _dedupe(terms: list[str]) -> list[str]:
     return out
 
 
+def _parse_needles(raw: str) -> list[str]:
+    """Comma/semicolon examiner or agent needles (not free-prose)."""
+    return [t.strip() for t in (raw or "").replace(";", ",").split(",") if t.strip()]
+
+
 def collect_playbook_query_terms(intake: dict[str, str] | None) -> list[str]:
     from nexus.langgraph.case_intake import extra_playbook_names
 
@@ -154,6 +159,7 @@ def collect_query_terms(intake: dict[str, str] | None) -> list[str]:
     terms: list[str] = []
     terms.extend(collect_playbook_query_terms(intake))
     # notes/description are methodology, not search needles (paths, tool names).
+    terms.extend(_parse_needles(intake.get("query_extra", "")))
     blob = " ".join(
         intake.get(k, "")
         for k in ("question", "subjects", "hypothesis")
@@ -260,12 +266,19 @@ def iter_extraction_files(case_dir: Path) -> list[tuple[Path, Path, str]]:
     """Registered-case processed outputs only (never Evidence-files/)."""
     case_dir = Path(case_dir)
     out: list[tuple[Path, Path, str]] = []
-    roots = [case_dir / "extractions", case_dir / "sift" / "extractions"]
+    roots = [
+        case_dir / "extractions",
+        case_dir / "sift" / "extractions",
+        case_dir / "ingest",
+    ]
     for root in roots:
         if not root.is_dir():
             continue
         files: list[Path] = []
-        for pat in ("*.csv", "*.txt", "*.json"):
+        pats = ("*.csv", "*.txt", "*.json", "*.jsonl")
+        if root.name == "ingest":
+            pats = ("*.csv", "*.txt", "*.json", "*.jsonl", "*.log")
+        for pat in pats:
             files.extend(root.rglob(pat))
         for path in sorted(set(files), key=_scan_prio):
             if path.name.startswith("_"):
@@ -608,3 +621,41 @@ def write_query_pack(
     except Exception:
         pass
     return path
+
+
+def run_ad_hoc_query(
+    case_dir: Path,
+    extra_needles: list[str] | None = None,
+    persist: bool = False,
+    backend: str | None = None,
+    limit: int = 50,
+) -> dict[str, Any]:
+    """Examiner/agent N4 search over processed outputs (never invents rows)."""
+    case_dir = Path(case_dir)
+    extras = [t for t in (extra_needles or []) if str(t).strip()]
+    intake = dict(load_case_intake(case_dir))
+    if extras:
+        merged = _dedupe(_parse_needles(intake.get("query_extra", "")) + extras)
+        if persist:
+            from nexus.langgraph.case_intake import persist_case_intake
+
+            persist_case_intake(case_dir, {"query_extra": ",".join(merged)})
+            intake = load_case_intake(case_dir)
+        else:
+            intake["query_extra"] = ",".join(merged)
+    terms = collect_query_terms(intake)
+    pb_terms = collect_playbook_query_terms(intake)
+    win_text = " ".join(filter(None, [intake.get("window", ""), intake.get("question", "")]))
+    window = parse_window(win_text)
+    hits, used = n4_hits(case_dir, terms, window, priority_terms=pb_terms, backend=backend)
+    if persist:
+        write_query_pack(case_dir, intake=intake)
+    cap = max(1, min(int(limit or 50), _MAX_HITS_TOTAL))
+    return {
+        "backend": used,
+        "terms": terms,
+        "count": len(hits),
+        "hits": hits[:cap],
+        "persisted": persist,
+        "empty": not hits,
+    }

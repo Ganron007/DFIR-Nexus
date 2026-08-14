@@ -143,6 +143,8 @@ python_files = [
     "test_ingest_regressions.py",
     "test_bridge_regressions.py",
     "test_cli_onboarding_regressions.py",
+    "test_pipeline_mode.py",
+    "test_dfir_report.py",
     "test_artifact_map.py",
     "test_tool_lane.py",
     "test_tool_context.py",

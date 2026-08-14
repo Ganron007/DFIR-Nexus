@@ -107,9 +107,7 @@ def build_allowed_origins(allowed_hosts: list[str]) -> list[str]:
     ]
     for h in allowed_hosts:
         base = h[:-2] if h.endswith(":*") else h.split(":")[0]
-        if base.startswith("["):
-            origins.append(f"http://{base}:*")
-        elif base and base not in ("127.0.0.1", "localhost"):
+        if base.startswith("[") or base and base not in ("127.0.0.1", "localhost"):
             origins.append(f"http://{base}:*")
     out: list[str] = []
     seen: set[str] = set()

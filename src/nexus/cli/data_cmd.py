@@ -16,9 +16,10 @@ def download_rag(tag: str = typer.Option("latest", "--tag")) -> None:
     if dest.is_dir() and any(dest.iterdir()):
         typer.echo(f"already present: {dest}")
         return
-    from nexus.tools.rag import register_tools
-    from nexus.audit import AuditWriter
     from mcp.server.fastmcp import FastMCP
+
+    from nexus.audit import AuditWriter
+    from nexus.tools.rag import register_tools
 
     server = FastMCP("tmp")
     register_tools(server, AuditWriter("nexus"))

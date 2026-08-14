@@ -1,9 +1,10 @@
 """DFIR Report-style narrative renderer."""
 
+from datetime import UTC, datetime
+
+from nexus.ingest.schemas import Artifact, ArtifactSource, ArtifactType, Severity
 from nexus.integration.dfir_report import build_dfir_markdown
 from nexus.langgraph.agents.evidence import cite_block, finding
-from nexus.ingest.schemas import Artifact, ArtifactSource, ArtifactType, Severity
-from datetime import UTC, datetime
 
 
 def _art(**kw):

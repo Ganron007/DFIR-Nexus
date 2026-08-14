@@ -4,6 +4,14 @@ All notable changes to DFIR-Nexus are documented here.
 
 ## Unreleased
 
+### Nexus-mode query loop (2026-08-14)
+
+- Operator loop doc: `Docs/NEXUS-MODE.md` (open this if INTERPRET/COMPLETE preview crashes).
+- N4 is searchable: `nexus case query --needles …`, Portal `/portal/query`, MCP `query_case_hits`. Empty hits = INSUFFICIENT.
+- `nexus pipeline --from-case <id>` is the public interpret path (no re-parse).
+- N3/N4 also scan `ingest/` (Zeek/CSV/jsonl) on the same case. `intake.query_extra` persists redirect needles.
+- REPORT tagline is template-from-APPROVED, not a DFIR Report brand line.
+
 ### Examiner-readable evidence tables (2026-08-13)
 
 - Findings in `REPORT.md` render **Evidence** as `Time | Source | Artifact / path | What it shows`, then **Interpretation**. No more one-paragraph parser dumps.

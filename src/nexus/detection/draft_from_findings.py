@@ -26,9 +26,7 @@ def _keep_needle(token: str) -> bool:
     low = token.replace("/", "\\").lower()
     if any(j.replace("/", "\\") in low for j in _JUNK_NEEDLE):
         return False
-    if "\\.nexus\\" in low:
-        return False
-    return True
+    return "\\.nexus\\" not in low
 
 
 def _needles(findings: list[dict[str, Any]]) -> list[str]:

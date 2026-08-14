@@ -137,7 +137,7 @@ def _catalog_key(token: str) -> str | None:
             return key
         pretty = _WIN_CATALOG[key]["name"].lower()
         pretty_stem = Path(pretty).stem
-        if stem == pretty or stem == pretty_stem or stem.startswith(f"{pretty}-") or stem.startswith(f"{pretty_stem}-"):
+        if stem in (pretty, pretty_stem) or stem.startswith(f"{pretty}-") or stem.startswith(f"{pretty_stem}-"):
             return key
     return None
 
@@ -151,9 +151,7 @@ def _name_matches(filename: str, wanted: str) -> bool:
     # hayabusa-4.0.0-win-x64.exe / suzaku-2.0.0-win-x64.exe
     if f.startswith(f"{wstem}-") and f.endswith(".exe"):
         return True
-    if f.startswith(f"{wstem}_") and f.endswith(".exe"):
-        return True
-    return False
+    return bool(f.startswith(f"{wstem}_") and f.endswith(".exe"))
 
 
 def _prefer_binary(paths: list[Path]) -> Path | None:
@@ -176,7 +174,6 @@ def _find_binary(name: str) -> str | None:
     if not name:
         return None
     candidates = [name]
-    stem = Path(name).stem
     key = _catalog_key(name)
     if os.name == "nt" and not name.lower().endswith(".exe"):
         candidates.append(f"{name}.exe")
@@ -558,7 +555,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         resolved_path = Path(parts[0])
         extra_args = parts[1:]
         if resolved_path.suffix.lower() == ".ps1":
-            ps = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+            ps = Path(os.environ.get("SYSTEMROOT", r"C:\Windows")) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
             parts = [str(ps), "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
                      "-File", str(resolved_path), *extra_args]
         elif resolved_path.suffix.lower() == ".pl":

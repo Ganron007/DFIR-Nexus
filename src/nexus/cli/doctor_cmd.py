@@ -28,8 +28,6 @@ def doctor() -> None:
 
     py = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
     rows.append(("python>=3.12", sys.version_info >= (3, 12), py))
-    if sys.version_info < (3, 12):
-        golden_fail = True
 
     extras = [
         ("extra.evtx (python-evtx)", "Evtx"),
@@ -39,11 +37,31 @@ def doctor() -> None:
         ("extra.chromadb (rag)", "chromadb"),
         ("extra.pysigma (detection)", "sigma"),
     ]
+    # Golden-required parsers: EVTX and LNK are single-parser; registry hives
+    # are satisfied by python-registry OR regipy. chromadb (RAG) and pysigma
+    # (detection) are optional for the golden path.
+    golden_required = {"Evtx", "pylnk3"}
+    have: dict[str, bool] = {}
     for label, mod in extras:
         ok = _have(mod)
-        rows.append((label, ok, "installed" if ok else "missing extra"))
-        if mod in {"Evtx", "Registry", "regipy", "pylnk3"} and not ok:
-            golden_fail = True
+        have[mod] = ok
+        if ok:
+            rows.append((label, True, "installed"))
+        elif mod in golden_required:
+            rows.append((label, False, "missing extra"))
+        else:
+            note = "missing (optional)"
+            if mod in {"Registry", "regipy"}:
+                note = "missing (need one of python-registry / regipy)"
+            rows.append((label, True, note))
+
+    if not have.get("Evtx"):
+        golden_fail = True
+    if not have.get("pylnk3"):
+        golden_fail = True
+    if not (have.get("Registry") or have.get("regipy")):
+        golden_fail = True
+        rows.append(("registry parser", False, "need python-registry OR regipy"))
 
     rag = Path.home() / ".nexus" / "data" / "rag" / "chroma"
     triage = Path.home() / ".nexus" / "data" / "triage"
@@ -53,7 +71,7 @@ def doctor() -> None:
     try:
         from nexus.app import create_server
         server = create_server()
-        n = len(getattr(server, "_tool_manager")._tools)  # type: ignore[union-attr]
+        n = len(server._tool_manager._tools)  # type: ignore[union-attr]
         rows.append((f"mcp tools ({sys.platform})", n > 0, str(n)))
     except Exception as exc:
         rows.append(("mcp create_server", False, str(exc)))
@@ -125,6 +143,13 @@ def doctor() -> None:
     for name, ok, detail in rows:
         mark = "ok" if ok else "FAIL"
         typer.echo(f"  [{mark}] {name}: {detail}")
+
+    # Parked / gated surfaces (informational — not golden-path failures).
+    typer.echo("parked / gated surfaces (not required to ship):")
+    typer.echo("  [park] OpenCTI (11 tools): parked — needs OPENCTI_URL/TOKEN; org CTI graph, not findings search")
+    typer.echo("  [gate] VR live: VR-GATE — mock works offline (NEXUS_VR_USE_MOCK=1); live optional via NEXUS_VR_ENDPOINT")
+    typer.echo("  [park] analysis extras (translate_query/asset-graph/KG/dynamic-tables): parked — superseded by N4 query pack")
+
     if golden_fail:
         typer.echo("golden-path: FAIL")
         raise typer.Exit(1)

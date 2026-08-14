@@ -1,7 +1,8 @@
 """MCP Velociraptor tools on the main server (mock-safe by default).
 
-Live CADRE VR (.51) is optional via NEXUS_VR_ENDPOINT / NEXUS_VR_MCP_URL.
-This is the single story: hunts live on nexus serve, not a second process.
+Live VR is optional via NEXUS_VR_ENDPOINT / NEXUS_VR_MCP_URL.
+This is the single story: hunts and ad-hoc VQL live on nexus serve, not a
+second process. Ad-hoc VQL is policy-gated by `nexus.vr.vql_policy`.
 """
 
 from __future__ import annotations
@@ -50,3 +51,21 @@ def register_tools(server: FastMCP, audit: AuditWriter) -> None:
         payload = result.to_dict() if hasattr(result, "to_dict") else result.__dict__
         audit.log(tool="vr_run_hunt", params={"hunt_id": hunt_id}, result_summary={"rows": payload.get("row_count")})
         return payload
+
+    @server.tool()
+    def vr_vql_query(vql: str, client_id: str = "", timeout_seconds: int = 60) -> dict:
+        """Run an ad-hoc VQL query (policy-gated). Mock-safe; live requires NEXUS_VR_ALLOW_ADHOC.
+
+        Replaces the retired standalone velociraptor_mcp_server process — this is
+        now the single VR surface on the main server.
+        """
+        from nexus.vr.service import VRService
+
+        svc = VRService()
+        result = svc.vql_query(vql, client_id=client_id or None, timeout_seconds=timeout_seconds)
+        audit.log(
+            tool="vr_vql_query",
+            params={"vql": vql[:200], "client_id": client_id},
+            result_summary={"rows": result.get("result", {}).get("row_count"), "error": result.get("error")},
+        )
+        return result
