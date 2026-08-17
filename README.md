@@ -12,13 +12,15 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/Tests-609%20Passed-success.svg" alt="Tests: 609 Passed">
   <img src="https://img.shields.io/badge/MCP%20Tools-103%20Registered-blue.svg" alt="MCP Tools: 103 Registered">
-  <img src="https://img.shields.io/badge/Status-Public%20Beta-blue.svg" alt="Status: Public Beta">
+  <img src="https://img.shields.io/badge/Status-v2%20in%20development-yellow.svg" alt="Status: v2 in development">
 </p>
 
 Standalone release of the examiner-led DFIR capability developed within the [CADRE](https://github.com/Ganron007/CADRE) platform programme — consumes lab attack telemetry and host/network evidence for human-approved incident response.
 
-> [!NOTE]
-> **Feature testing in progress.** MCP tools, case custody, and the examiner loop are usable for practice, but live lab log corpus ingest, connector hardening, and end-to-end case workflows are still being validated. Expect APIs, importers, and docs to keep evolving.
+> [!WARNING]
+> **Version 2 is in active development.** The product is being re-architected for operational reliability. Live incident-response collection is moving to a **deterministic, authenticated orchestrator** (host-native collectors, no model in the collect path). Investigation then proceeds in an **examiner-led** loop: parse and query in code, optional language-model interpretation of *retrieved hits*, and cryptographic human approval before anything becomes official. Fully agentic collection and unconstrained LLM tool-selection remain **later** capabilities, not the current ship path.
+>
+> This repository is a **development snapshot**. Commands, APIs, and documentation below may change before a v2 release. Do not treat this tree as a stable public interface or a finished product.
 
 > [!IMPORTANT]
 > **Chain of Custody & Audit Integrity.** DFIR-Nexus enforces strict cryptographic data provenance. Every command executed through SIFT, Zimmerman, or Velociraptor is logged into a tamper-evident **HMAC-SHA256 audit ledger** in real time. To maintain forensic compliance, all draft findings must be verified and cryptographically signed using examiner passwords hashed with PBKDF2-HMAC (600,000 iterations). Automated AI agents are restricted to drafting findings and cannot authorize or alter forensic reports.
@@ -117,7 +119,6 @@ Detailed guidelines are grouped in the `Docs/` directory:
 * 🔬 **[Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md):** High-level design, trust boundaries, and tool indexes.
 * 💻 **[Docs/CLI.md](Docs/CLI.md):** Typer-based command-line reference.
 * ❔ **[Docs/FAQ.md](Docs/FAQ.md):** Common operations and troubleshooting.
-* 📝 **[CHANGELOG.md](CHANGELOG.md):** Project history and release notes.
 
 ---
 
