@@ -154,6 +154,6 @@ Docs/internal/
 scratch/
 # Claude Code skill bundle — local only while rebranding is in progress.
 claude-code/
-#
-# Override global ignore of AGENTS.md for this repo (needed for agents).
-!AGENTS.md
+# Agent/session notes — local only (not part of the public product).
+AGENTS.md
+.cursor/
