@@ -17,10 +17,10 @@
 
 Standalone release of the examiner-led DFIR capability developed within the [CADRE](https://github.com/Ganron007/CADRE) platform programme — consumes lab attack telemetry and host/network evidence for human-approved incident response.
 
-> [!CAUTION]
-> **Not a release. Do not download or install.** Version 2 is in active development. Do not clone this repository to run DFIR-Nexus. Do not `pip install dfir-nexus`. Do not run `setup-windows.ps1` or `setup-linux.sh`. There is no supported package, binary, or installer until v2 ships.
+> [!WARNING]
+> **Version 2 is in active development.** The product is being re-architected for operational reliability. Live incident-response collection is moving to a **deterministic, authenticated orchestrator** (host-native collectors, no model in the collect path). Investigation then proceeds in an **examiner-led** loop: parse and query in code, optional language-model interpretation of *retrieved hits*, and cryptographic human approval before anything becomes official. Fully agentic collection and unconstrained LLM tool-selection remain **later** capabilities, not the current ship path.
 >
-> This public tree is a **programme placeholder** so the product is visible in the CADRE platform. Treat everything below as design context, not an install guide. Commands, APIs, and documentation will change.
+> This repository is a **development snapshot**. Commands, APIs, and documentation below may change before a v2 release. Do not treat this tree as a stable public interface or a finished product.
 
 > [!IMPORTANT]
 > **Chain of Custody & Audit Integrity.** DFIR-Nexus enforces strict cryptographic data provenance. Every command executed through SIFT, Zimmerman, or Velociraptor is logged into a tamper-evident **HMAC-SHA256 audit ledger** in real time. To maintain forensic compliance, all draft findings must be verified and cryptographically signed using examiner passwords hashed with PBKDF2-HMAC (600,000 iterations). Automated AI agents are restricted to drafting findings and cannot authorize or alter forensic reports.
@@ -70,7 +70,42 @@ DFIR-Nexus operates as a single, platform-aware FastMCP process with strict cryp
 
 ## Quickstart
 
-**Paused.** Installation, setup scripts, and `pip install` are not offered while v2 is in development. Do not download this repository to run it. Operator access is internal until a v2 release is published.
+### 1. Installation
+Install native dependencies and the Python package:
+
+```powershell
+# Windows
+.\setup-windows.ps1
+
+# Linux / macOS
+./setup-linux.sh
+
+# Manual install with all optional integrations
+pip install dfir-nexus[all]
+```
+
+### 2. Configuration & Onboarding
+Initialize your examiner identity and case database:
+
+```bash
+# Configure examiner and set your HITL password
+nexus config --examiner "Jane Doe"
+nexus config --setup-password
+
+# Quick onboarding (creates a case, hashes evidence, and launches the server)
+nexus init "Case Name" --evidence /path/to/disk.raw
+```
+
+### 3. Running the Server & Dashboard
+Expose the tools and interface locally:
+
+```bash
+# Boot the HTTP MCP server and Dashboard Portal on port 4508
+nexus serve --http
+
+# Open the Examiner Portal dashboard in your default browser
+nexus portal
+```
 
 ---
 
