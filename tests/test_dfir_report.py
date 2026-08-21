@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 
 from nexus.ingest.schemas import Artifact, ArtifactSource, ArtifactType, Severity
-from nexus.integration.dfir_report import build_dfir_markdown
+from nexus.integration.dfir_report import build_dfir_markdown, write_findings_preview
 from nexus.langgraph.agents.evidence import cite_block, finding
 
 
@@ -242,6 +242,24 @@ def test_qa_spine_sdelete_row_still_supports_insider():
     assert "INSUFFICIENT" in rows[1]["answer"]
 
 
+def test_qa_spine_host_wipe_supports_attacker_activity():
+    from nexus.integration.dfir_report import build_qa_spine
+
+    rows = build_qa_spine(
+        ["What attacker activity is evidenced on this host?"],
+        [{
+            "id": "F-005",
+            "title": "USN overwrite of SECURITY and firewall logs",
+            "observation": "USN DataOverwrite Close on SECURITY.evtx 2023-01-23",
+            "interpretation": "Anti-forensic log wipe on the host.",
+            "status": "DRAFT",
+        }],
+    )
+    assert "Supported" in rows[0]["answer"]
+    assert "INSUFFICIENT" not in rows[0]["answer"]
+    assert "F-005" in rows[0]["cite"]
+
+
 def test_finding_evidence_renders_as_table_not_prose_wall():
     wall = (
         "Host artifacts show repeated Google Drive File Stream and OneDrive "
@@ -330,4 +348,89 @@ def test_structured_evidence_wins_over_observation():
     assert "amcache" in md
     assert "sdelete.exe" in md
     assert "ignore this wall" not in md
+
+
+def test_dfir_markdown_include_draft_watermark():
+    md = build_dfir_markdown(
+        case_id="CASE-DRAFT",
+        case_name="Draft preview",
+        findings=[{
+            "id": "F-001",
+            "title": "wacsvc accessed SRL-Eyes-Only",
+            "status": "DRAFT",
+            "severity": "high",
+            "observation": "jlecmd hit on SRL-Eyes-Only",
+            "interpretation": "Needs examiner review.",
+        }],
+        evidence=[],
+        include_draft=True,
+    )
+    assert "PREVIEW" in md
+    assert "Not HMAC-approved" in md
+    assert "wacsvc accessed SRL-Eyes-Only" in md
+    assert "**Status:** DRAFT" in md
+    assert "not HMAC-approved" in md
+    official = build_dfir_markdown(
+        case_id="CASE-DRAFT",
+        case_name="Draft preview",
+        findings=[{
+            "id": "F-001",
+            "title": "wacsvc accessed SRL-Eyes-Only",
+            "status": "DRAFT",
+            "severity": "high",
+            "observation": "jlecmd hit on SRL-Eyes-Only",
+        }],
+        evidence=[],
+        include_draft=False,
+    )
+    assert "wacsvc accessed SRL-Eyes-Only" not in official
+    assert "No APPROVED findings yet" in official
+
+
+def test_write_findings_preview(tmp_path):
+    case = tmp_path / "INC-PREVIEW"
+    (case / "reports").mkdir(parents=True)
+    (case / "CASE.yaml").write_text(
+        "case_id: INC-PREVIEW\nname: Preview\nexaminer: e2e_host\n",
+        encoding="utf-8",
+    )
+    (case / "findings.json").write_text(
+        '[{"id":"F-003","title":"USN overwrite of SECURITY","status":"DRAFT",'
+        '"severity":"high","observation":"USN close+overwrite"}]',
+        encoding="utf-8",
+    )
+    out = write_findings_preview(case)
+    assert out.name == "REPORT-DRAFT.md"
+    text = out.read_text(encoding="utf-8")
+    assert "PREVIEW" in text
+    assert "USN overwrite of SECURITY" in text
+    assert "**Status:** DRAFT" in text
+
+
+def test_dated_timeline_drops_generic_jsonl():
+    from nexus.integration.dfir_report import dated_timeline
+
+    dated, untimed = dated_timeline(
+        [
+            {
+                "timestamp": "2023-01-23",
+                "description": "Generic JSONL record",
+                "source": "i1:generic_jsonl",
+            },
+            {
+                "timestamp": "2023-01-23T06:52:00Z",
+                "description": "USN DataOverwrite SECURITY",
+                "source": "n4",
+            },
+            {
+                "timestamp": "",
+                "description": "wevtutil keyword",
+                "source": "n4",
+            },
+        ]
+    )
+    assert len(dated) == 1
+    assert "DataOverwrite" in dated[0]["description"]
+    assert len(untimed) == 1
+    assert "wevtutil" in untimed[0]["description"]
 

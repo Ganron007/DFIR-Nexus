@@ -1,6 +1,15 @@
 name: "Suspicious Execution Investigation"
 description: "Investigate unknown or unexpected program execution from forensic artifacts"
 mitre: ["T1204", "T1059"]
+query_terms:
+  - rundll32
+  - mshta
+  - wscript
+  - cscript
+  - regsvr32
+  - certutil
+  - bitsadmin
+  - encodedcommand
 sources:
   - "SANS FOR508 — Windows Enterprise Incident Response"
   - "MITRE ATT&CK T1204 — User Execution"

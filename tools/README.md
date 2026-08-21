@@ -7,13 +7,19 @@ Default Windows layout (what `run_windows_command` searches):
 
 ```
 Tools/windows/zimmerman/     Eric Zimmerman (Get-ZimmermanTools, latest net9)
-Tools/windows/sysinternals/  Sysinternals Suite (live zip)
-Tools/windows/hayabusa/      Hayabusa (GitHub latest)
-Tools/windows/suzaku/        Suzaku (GitHub latest / Yamato 2.x)
-Tools/windows/extra/         chainsaw, capa, yara, bmc-tools.py, KStrike.py,
+Tools/windows/sysinternals/  Sysinternals Suite (Stage 0 live: autorunsc, handle, tcpvcon, listdlls, pslist, psloggedon, logonsessions, pipelist)
+Tools/windows/hayabusa/      Hayabusa — N2 parser and Stage 0 live EVTX hunter
+Tools/windows/suzaku/        Suzaku — N2 parser and Stage 0 live EVTX hunter
+Tools/windows/extra/         chainsaw (+ sigma/rules sparse tree), capa, yara, bmc-tools.py, KStrike.py,
                              BitsParser/ (FireEye tree — not a single file)
 Tools/windows/kape/          KAPE — operator download from Kroll only
+Tools/windows/kansa/         Kansa (`tools/fetch-ir-collect.ps1`)
+Tools/windows/orc/           DFIR-ORC (ANSSI; same fetch script)
+Tools/windows/memory/        WinPmem (DumpIt if present is never invoked)
+Tools/linux/uac/             UAC (staged here; copied to Linux target at collect)
+Tools/linux/avml/avml        AVML Linux x86_64 (copied to target at collect)
 Tools/windows/VERSIONS.txt   What was fetched + URLs
+Tools/windows/COLLECT-VERSIONS.txt  Stage 0 fetch log
 ```
 
 Default Linux / SIFT layout (what `run_command` searches after PATH):

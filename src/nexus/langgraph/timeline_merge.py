@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from nexus.ingest.schemas import Artifact
-from nexus.langgraph.query_pack import _DATE_RE, load_case_intake, parse_window
+from nexus.ingest.schemas import Artifact, ArtifactSource
+from nexus.langgraph.query_pack import _DATE_RE, load_case_intake, parse_intake_window
+
+_HOST_RE = re.compile(
+    r"\b((?:[a-z0-9][a-z0-9-]{0,24}\.)+(?:local|lan|corp|internal|com|net|org))\b",
+    re.I,
+)
 
 
 def _parse_ts(text: str) -> str | None:
@@ -34,19 +40,36 @@ def _in_window(ts: str | None, start: datetime | None, end: datetime | None) -> 
 
 
 def hits_to_events(hits: list[dict[str, str]], source: str = "n4") -> list[dict[str, Any]]:
+    from nexus.integration.evidence_table import evidence_rows_from_n4_hits
+
     events: list[dict[str, Any]] = []
     for h in hits:
         text = h.get("text") or ""
         ts = _parse_ts(text)
+        host = ""
+        hm = _HOST_RE.search(text)
+        if hm:
+            host = hm.group(1)
+        fam = h.get("family") or "n4"
+        terms = h.get("terms") or ""
+        rows = evidence_rows_from_n4_hits([h], limit=1)
+        art = (rows[0].get("artifact") if rows else "") or ""
+        if art and art not in {"—", terms}:
+            desc = f"{fam} [{terms}]: {art}"
+        elif rows and rows[0].get("detail"):
+            desc = f"{fam} [{terms}]: {str(rows[0].get('detail'))[:120]}"
+        else:
+            desc = f"{fam} [{terms}]: {text[:120]}"
         events.append({
             "timestamp": ts or "",
-            "host": "",
-            "description": text[:240],
+            "host": host,
+            "description": desc[:240],
             "source": source,
-            "family": h.get("family") or "",
+            "family": fam,
             "file": h.get("file") or "",
             "line": h.get("line") or "",
-            "terms": h.get("terms") or "",
+            "terms": terms,
+            "artifact": art[:160] if art else "",
         })
     return events
 
@@ -54,6 +77,8 @@ def hits_to_events(hits: list[dict[str, str]], source: str = "n4") -> list[dict[
 def artifacts_to_events(artifacts: list[Artifact], source: str = "i1") -> list[dict[str, Any]]:
     events: list[dict[str, Any]] = []
     for a in artifacts:
+        if a.source == ArtifactSource.GENERIC_JSONL:
+            continue
         ts = a.timestamp.isoformat() if a.timestamp else ""
         desc = a.description or a.process_name or a.file_path or a.artifact_type.value
         events.append({
@@ -115,16 +140,28 @@ def append_ingest_artifacts(case_dir: Path, artifacts: list[Artifact]) -> Path:
     return path
 
 
-def ingest_into_case(path: Path, case_dir: Path, limit: int = 400) -> dict[str, Any]:
+def ingest_into_case(
+    path: Path,
+    case_dir: Path,
+    limit: int = 400,
+    source: str | None = None,
+) -> dict[str, Any]:
     """I1 ingest a file onto the case, then I3-ready artifact store."""
-    from nexus.ingest.detect import detect_format
+    from nexus.ingest.detect import resolve_ingest_source
     from nexus.ingest.registry import get_registry
 
     path = Path(path)
-    source = detect_format(path)
-    if source is None:
-        return {"success": False, "error": f"Could not detect format for {path.name}", "artifacts": 0}
-    result = get_registry().import_path(path, source=source)
+    resolved, err = resolve_ingest_source(path, source)
+    if err:
+        return {"success": False, "error": err, "artifacts": 0, "path": str(path)}
+    if resolved is None:
+        return {
+            "success": False,
+            "error": f"Could not detect format for {path.name}",
+            "artifacts": 0,
+            "path": str(path),
+        }
+    result = get_registry().import_path(path, source=resolved)
     arts = list(result.artifacts or [])[:limit]
     if arts:
         append_ingest_artifacts(case_dir, arts)
@@ -144,7 +181,7 @@ def rebuild_case_timeline(
     """N7: N4 hits + I1 artifacts, window-scoped, written to timeline.json."""
     case_dir = Path(case_dir)
     intake = load_case_intake(case_dir)
-    window = parse_window(" ".join(filter(None, [intake.get("window", ""), intake.get("question", "")])))
+    window = parse_intake_window(intake)
     start, end = window
     if hits is None:
         from nexus.langgraph.query_pack import (

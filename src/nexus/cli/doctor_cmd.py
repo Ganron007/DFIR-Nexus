@@ -18,7 +18,68 @@ def _key_set(name: str) -> bool:
     return bool(os.environ.get(name, "").strip())
 
 
-def doctor() -> None:
+def resolve_health_url(cli_url: str = "") -> str | None:
+    """Default loopback /health. ``skip`` / empty-after-env disables the probe."""
+    raw = (cli_url or "").strip()
+    if raw.lower() in {"skip", "off", "none"}:
+        return None
+    if raw:
+        return raw.rstrip("/")
+    env = os.environ.get("NEXUS_HEALTH_URL", "").strip()
+    if env.lower() in {"skip", "off", "none"}:
+        return None
+    if env:
+        return env.rstrip("/")
+    from nexus.config import settings
+    port = getattr(settings, "gateway_port", 4508) or 4508
+    return f"http://127.0.0.1:{port}"
+
+
+def probe_http_health(
+    base_url: str, timeout: float = 2.0
+) -> tuple[bool, bool, str]:
+    """GET ``/health``. Returns ``(print_ok, fail_golden, detail)``.
+
+    Connection refused is not a golden-path failure (serve may be down).
+    A listening server that returns a non-ok body is a golden failure.
+    """
+    import httpx
+
+    url = base_url.rstrip("/")
+    if not url.endswith("/health"):
+        url = f"{url}/health"
+    try:
+        resp = httpx.get(url, timeout=timeout)
+    except httpx.ConnectError:
+        return True, False, f"not listening (optional — nexus serve --http) [{url}]"
+    except httpx.TimeoutException:
+        return True, False, f"timeout (optional — nexus serve --http) [{url}]"
+    except httpx.HTTPError as exc:
+        return True, False, f"unreachable ({exc.__class__.__name__}) [{url}]"
+
+    if resp.status_code != 200:
+        return False, True, f"HTTP {resp.status_code} [{url}]"
+    try:
+        body = resp.json()
+    except ValueError:
+        return False, True, f"200 but non-JSON [{url}]"
+    status = str(body.get("status") or "")
+    service = str(body.get("service") or "")
+    if status.lower() != "ok":
+        return False, True, f"200 unexpected status={status!r} [{url}]"
+    return True, False, f"200 {service or 'dfir-nexus'} [{url}]"
+
+
+def doctor(
+    health_url: str = typer.Option(
+        "",
+        "--health-url",
+        help=(
+            "Probe HTTP /health. Default: NEXUS_HEALTH_URL or "
+            "http://127.0.0.1:4508. Pass skip to disable."
+        ),
+    ),
+) -> None:
     """Print found/missing extras, RAG/triage, catalog binaries, optional TI keys."""
     from nexus import __version__
     from nexus.ingest.registry import get_registry
@@ -139,6 +200,15 @@ def doctor() -> None:
         set_ = _key_set(env_name)
         rows.append((env_name, True, "set" if set_ else "unset (optional)"))
 
+    probe_url = resolve_health_url(health_url)
+    if probe_url is None:
+        rows.append(("http /health", True, "skipped"))
+    else:
+        ok, fail, detail = probe_http_health(probe_url)
+        rows.append(("http /health", ok, detail))
+        if fail:
+            golden_fail = True
+
     typer.echo(f"nexus doctor  v{__version__}  {sys.platform}")
     for name, ok, detail in rows:
         mark = "ok" if ok else "FAIL"
@@ -149,6 +219,45 @@ def doctor() -> None:
     typer.echo("  [park] OpenCTI (11 tools): parked — needs OPENCTI_URL/TOKEN; org CTI graph, not findings search")
     typer.echo("  [gate] VR live: VR-GATE — mock works offline (NEXUS_VR_USE_MOCK=1); live optional via NEXUS_VR_ENDPOINT")
     typer.echo("  [park] analysis extras (translate_query/asset-graph/KG/dynamic-tables): parked — superseded by N4 query pack")
+    try:
+        from nexus.collect.paths import (
+            avml_exe,
+            chainsaw_exe,
+            chainsaw_sigma,
+            hayabusa_exe,
+            kansa_ps1,
+            kape_exe,
+            orc_exe,
+            persistencesniper_psm1,
+            suzaku_exe,
+            sysinternals_exe,
+            uac_home,
+            winpmem_exe,
+        )
+        from nexus.collect.vr import vr_live_status
+
+        kape = kape_exe()
+        typer.echo(f"  [info] collect kape: {kape or 'MISSING — Tools/windows/kape'}")
+        typer.echo(
+            f"  [info] collect kansa.ps1: {kansa_ps1() or 'not found — builtin volatile modules used'}"
+        )
+        typer.echo(
+            f"  [info] collect dfir-orc: {orc_exe() or 'MISSING — Tools/windows/orc (run tools/fetch-ir-collect.ps1)'}"
+        )
+        typer.echo(f"  [info] collect uac: {uac_home() or 'not found — builtin POSIX volatile used'}")
+        typer.echo(f"  [info] collect hayabusa: {hayabusa_exe() or 'MISSING'}")
+        typer.echo(f"  [info] collect suzaku: {suzaku_exe() or 'MISSING'}")
+        typer.echo(f"  [info] collect chainsaw: {chainsaw_exe() or 'MISSING'}")
+        typer.echo(f"  [info] collect chainsaw sigma: {chainsaw_sigma() or 'MISSING — sparse clone SigmaHQ rules/'}")
+        typer.echo(f"  [info] collect autorunsc: {sysinternals_exe('autorunsc') or 'MISSING'}")
+        typer.echo(f"  [info] collect winpmem: {winpmem_exe() or 'MISSING'}")
+        typer.echo(f"  [info] collect avml: {avml_exe() or 'MISSING'}")
+        typer.echo(f"  [info] collect persistencesniper: {persistencesniper_psm1() or 'MISSING'}")
+        live, reason = vr_live_status()
+        mark = "ok" if live else "skip"
+        typer.echo(f"  [{mark}] collect velociraptor live: {live} — {reason}")
+    except Exception as exc:  # noqa: BLE001
+        typer.echo(f"  [info] collect inventory: {exc}")
 
     if golden_fail:
         typer.echo("golden-path: FAIL")

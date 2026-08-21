@@ -12,6 +12,7 @@ from nexus.langgraph.llm_pipeline import (
     _merge_n4_uncovered,
     build_graph,
     get_mcp_config,
+    has_examiner_intake,
     make_initial_state,
     resolve_pipeline_mode,
 )
@@ -82,6 +83,23 @@ def test_build_graph_nodes_by_mode():
     assert "load_existing" in interpret.nodes
     assert "interpret" in interpret.nodes
     assert "execute_tool_lane" not in interpret.nodes
+
+
+def test_n1_placeholder_window_is_not_intake():
+    """Boilerplate window text must not open the interpret path."""
+    assert not has_examiner_intake({})
+    assert not has_examiner_intake({"question": "", "window": ""})
+    assert not has_examiner_intake({
+        "window": "examiner-supplied; evidence timestamps win",
+    })
+    assert not has_examiner_intake({"window": "examiner-supplied"})
+    assert not has_examiner_intake({"question": "tbd", "window": "n/a"})
+    assert has_examiner_intake({"question": "who copied the PST?"})
+    assert has_examiner_intake({"window": "2020-11-14"})
+    assert has_examiner_intake({
+        "question": "Did they stage to USB?",
+        "window": "examiner-supplied; evidence timestamps win",
+    })
 
 
 def test_n1_gate_empty_intake_degrades_to_tool_run():
@@ -161,6 +179,28 @@ def test_get_mcp_config_sse_read_timeout(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("NEXUS_MCP_SSE_READ_TIMEOUT", "900")
     cfg2 = get_mcp_config()
     assert cfg2["nexus-windows"]["sse_read_timeout"] == 900.0
+
+
+def test_get_mcp_config_stdio_env_disables_rag_in_tools_mode(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("NEXUS_WINDOWS_MCP_URL", raising=False)
+    monkeypatch.delenv("NEXUS_SIFT_MCP_URL", raising=False)
+    monkeypatch.delenv("NEXUS_GATEWAY_URL", raising=False)
+    monkeypatch.setenv("NEXUS_PIPELINE_MODE", "tools")
+    monkeypatch.setenv("NEXUS_RAG_PRELOAD", "1")
+    cfg = get_mcp_config()
+    env = cfg["dfir-nexus"]["env"]
+    assert env["NEXUS_RAG_PRELOAD"] == "0"
+    assert any(k.lower() == "path" for k in env)
+
+
+def test_get_mcp_config_stdio_keeps_rag_preload_outside_tools(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("NEXUS_WINDOWS_MCP_URL", raising=False)
+    monkeypatch.delenv("NEXUS_SIFT_MCP_URL", raising=False)
+    monkeypatch.delenv("NEXUS_GATEWAY_URL", raising=False)
+    monkeypatch.setenv("NEXUS_PIPELINE_MODE", "coverage")
+    monkeypatch.setenv("NEXUS_RAG_PRELOAD", "1")
+    cfg = get_mcp_config()
+    assert cfg["dfir-nexus"]["env"]["NEXUS_RAG_PRELOAD"] == "1"
 
 
 def test_collection_stub_filter():

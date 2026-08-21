@@ -1,6 +1,6 @@
 """DFIR-Nexus CLI — human-only operations.
 
-The full CLI surface (19 top-level commands). For background on which
+The full CLI surface. For background on which
 operations are human-only and why, see Docs/ARCHITECTURE.md.
 
 Usage:
@@ -33,8 +33,9 @@ Usage:
     nexus portal                           Open Examiner Portal
     nexus setup client                     Generate LLM client config
     nexus setup test                       Test connectivity
-    nexus ingest <path> [--recursive]      Auto-detect and ingest a file or tree
-    nexus doctor                           Report extras / tools / indexes / keys
+    nexus ingest <path> [--source] [--case]  Auto-detect (or force source) and ingest
+    nexus doctor [--health-url]            Report extras / tools / indexes / /health
+    nexus collect tools|plan|run|import    Stage 0 live IR collect (SSH/WinRM/local)
     nexus data download-rag|triage|fixtures  Indexes / fixture pointer
     nexus service status                   Check service status
     nexus service start                    Start service
@@ -53,6 +54,7 @@ import typer
 from nexus.cli.audit_cmd import app as audit_app
 from nexus.cli.backup import app as backup_app
 from nexus.cli.case_cmd import app as case_app
+from nexus.cli.collect_cmd import app as collect_app
 from nexus.cli.config_cmd import app as config_app
 from nexus.cli.data_cmd import app as data_app
 from nexus.cli.evidence import app as evidence_app
@@ -79,6 +81,7 @@ app.add_typer(exec_app, name="exec", help="Execute forensic command with audit t
 app.add_typer(audit_app, name="audit", help="View audit trail")
 app.add_typer(todo_app, name="todo", help="Manage TODO items")
 app.add_typer(data_app, name="data", help="Download RAG / triage / fixtures")
+app.add_typer(collect_app, name="collect", help="Stage 0 IR orchestrator — live collect with auth")
 # Registered as a direct command (not a sub-group) so the documented
 # `nexus init "Case" --evidence ...` form works.
 app.command(name="init", help="Quickstart — one-command onboarding")(init_cmd)
@@ -93,18 +96,19 @@ _ACTIVE_CASE_FILE = Path.home() / ".nexus" / "active_case"
 
 
 def _resolve_case(case_id: str = "") -> Path | None:
+    from nexus.case.outputs import resolve_active_case_dir
+    from nexus.config import settings
+
     if case_id:
-        case_dir = Path.home() / ".nexus" / "cases" / case_id
+        p = Path(case_id)
+        case_dir = p if p.is_absolute() else settings.cases_root / case_id
         if not case_dir.exists():
             typer.echo(f"Case not found: {case_id}", err=True)
             return None
         return case_dir
-    if _ACTIVE_CASE_FILE.exists():
-        content = _ACTIVE_CASE_FILE.read_text().strip()
-        if content:
-            case_dir = Path(content) if Path(content).is_absolute() else Path.home() / ".nexus" / "cases" / content
-            if case_dir.exists():
-                return case_dir
+    case_dir = resolve_active_case_dir()
+    if case_dir:
+        return case_dir
     typer.echo("No active case. Use 'nexus case activate' or 'nexus case init'", err=True)
     return None
 
@@ -393,7 +397,7 @@ def pipeline(
     from_case: str = typer.Option(
         "",
         "--from-case",
-        help="Existing case_id: reuse the tool ledger (implies --mode interpret, no re-parse)",
+        help="Existing case_id. Default mode is interpret (no re-parse). With --mode tools|coverage|design, reuse that case and re-run the lane (prior OK jobs are skipped).",
     ),
     resume: bool = typer.Option(False, "--resume", help="Resume from last checkpoint after human approval"),
     model: str = typer.Option("", "--model", help="LLM model (e.g. openai/gpt-4o, ollama/qwen2.5:32b-instruct)"),
@@ -414,6 +418,7 @@ def pipeline(
       coverage         — same lane; LLM interprets N4 hits → DRAFT
       design           — lane first, then ReAct extras, then interpret
       interpret        — reuse an existing tool-run case (--from-case)
+      tools + --from-case — leftover parsers on the same case (prior OK skipped)
 
     Also set via NEXUS_PIPELINE_MODE=design|coverage|tools|interpret
     (aliases: react/hunt → design; debug/full/lane → coverage;
@@ -437,10 +442,12 @@ def pipeline(
 
     cid = (from_case or "").strip()
     resolved_mode = mode or None
-    if cid:
+    if cid and not resolved_mode:
         resolved_mode = "interpret"
         if not (case or "").strip():
             typer.echo(f"Interpret from existing case {cid} (no re-parse)")
+    elif cid:
+        typer.echo(f"Reusing case {cid} in mode {resolved_mode}")
     elif resolved_mode in {"interpret", "from_case", "from-case"} and not cid:
         typer.echo("interpret mode needs --from-case <case_id>", err=True)
         raise typer.Exit(1)

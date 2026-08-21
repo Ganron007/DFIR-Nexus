@@ -62,7 +62,7 @@ All **user profiles** (not the first `Users\*` directory). Default/Public skippe
 | USN Journal | `$Extend\$J` / `$UsnJrnl:$J` if extracted | MFTECmd `-f` (skip if missing) |
 | SetupAPI / PS transcripts / PSReadLine | those files | **copy** into extractions (already text — no strings) |
 | Thumbcache / `$LogFile` | present | cataloged, **not auto-run** until CLI is verified |
-| RDP bitmap / BITS / UAL | cache tiles / qmgr.db / SUM `*.mdb` | bmc-tools / BitsParser / KStrike — **must be fetched** (UAL only if `*.mdb` exists) |
+| RDP bitmap / BITS / UAL | cache tiles / qmgr.db / SUM `*.mdb` | **stage a local copy first** (mounted VHDX I/O is slow). bmc-tools on non-empty `.bmc`/`.bin` only (0-byte tiles SKIP, not FAIL); timeout scales with size. BitsParser on `qmgr.db` after the same esentutl copy+repair SRUM uses (dirty KAPE ESE hangs Impacket `getNextRow`). No `--carveall` on the tools lane. KStrike if `*.mdb` exists |
 | `$I30` file | extracted `$I30` only | MFTECmd `-f` |
 | Named samples | intake `sample_files` | capa / densityscout / yara only when named (and installed) |
 | Live response | `NEXUS_LIVE_RESPONSE=1` | autorunsc / handle / Get-InjectedThreadEx; memory only if `NEXUS_LIVE_ACQUIRE_MEMORY=1` |
@@ -73,10 +73,19 @@ That is a coverage gap, not a silent skip of a parser we own.
 
 ## SIFT lane
 
-- Volatility against `NEXUS_SIFT_MEMORY_FILE` (or `{root}/memory/Rocba-Memory.raw`)
+Scheduled only when the examiner named a SIFT root (`NEXUS_SIFT_EVIDENCE_ROOT`
+/ `case_context.sift_evidence_root`) **or** a SIFT MCP (`run_command`) is
+connected. Windows-only stdio (`nexus serve` on this workstation) does **not**
+emit a SKIP row for missing SIFT — that is not a host-image coverage hole.
+Memory dumps are operator-named (`NEXUS_SIFT_MEMORY_FILE`); they are **not**
+inferred from a KAPE `I:\C` reconstruct.
+
+If SIFT MCP is connected but no root is set, the ledger records one honest SKIP.
+
+- Volatility against `NEXUS_SIFT_MEMORY_FILE` (else `{root}/memory/Rocba-Memory.raw` convention for existing Rocba packs)
 - `fls` only if `NEXUS_SIFT_E01` is set
 - **No** full-tree `log2timeline` / plaso (disk cannot hold a multi-GB store)
-- `mactime` after MFTECmd bodyfile is pushed
+- `mactime` after MFTECmd bodyfile is pushed (`NEXUS_SIFT_MACTIME=1`)
 
 ## Interpret and report (what actually runs)
 

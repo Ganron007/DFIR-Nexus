@@ -88,7 +88,7 @@ def pull_sift_extractions(case_id: str, local_case_dir: Path) -> Path | None:
         wrap = dest.parent / "extractions_tmp"
         if wrap.exists() and wrap != dest:
             shutil.rmtree(wrap, ignore_errors=True)
-    log.info("Pulled SIFT extractions → %s", dest)
+    log.info("Pulled SIFT extractions -> %s", dest)
     return dest if dest.is_dir() else None
 
 
@@ -115,5 +115,5 @@ def push_file(local: Path, remote_path: str) -> bool:
     if proc.returncode != 0:
         log.warning("SIFT push rc=%s stderr=%s", proc.returncode, (proc.stderr or "")[:400])
         return False
-    log.info("Pushed %s → %s", local, dest)
+    log.info("Pushed %s -> %s", local, dest)
     return True

@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from nexus.langgraph.artifact_map import (
+    apply_ledger_to_completeness,
     completeness_table,
     discover_windows_artifacts,
     glob_location,
@@ -47,6 +48,16 @@ def test_discover_prefetch_present_schedules_pecmd(tmp_path: Path):
     table = completeness_table(arts, pending)
     row = next(r for r in table if r["artifact"] == "Prefetch")
     assert row["status"] == "SCHEDULED"
+    parsed = completeness_table(
+        arts, pending, ledger=[{"tool": "pecmd", "status": "OK"}],
+    )
+    prow = next(r for r in parsed if r["artifact"] == "Prefetch")
+    assert prow["status"] == "PARSED"
+    upgraded = apply_ledger_to_completeness(
+        table, [{"tool": "pecmd", "status": "OK"}],
+    )
+    urow = next(r for r in upgraded if r["artifact"] == "Prefetch")
+    assert urow["status"] == "PARSED"
 
 
 def test_playbook_hints_from_hypothesis():
@@ -64,6 +75,8 @@ def test_playbook_hints_external_compromise():
         "hypothesis": "external compromise malware persistence",
     })
     assert "external_compromise" in names
+    assert "log_tampering" in names
+    assert "suspicious_execution" in names
 
 
 def test_playbook_hints_email_compromise():

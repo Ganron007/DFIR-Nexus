@@ -47,6 +47,7 @@ MODULES = [
                    "load_jsonl", "score_quality"]),
     ("nexus.vr", ["VRService", "VRCatalogEntry", "VRClientInfo", "VRHuntRunResult",
                   "create_vr_service", "suggest_hunt_ids"]),
+    ("nexus.collect", ["plan_or_run", "import_dump", "tool_inventory", "vr_live_status"]),
     ("nexus.analysis", []),  # verify loadable, check whatever's exported
 ]
 
@@ -316,6 +317,7 @@ CLI_MODULES = [
     "nexus.cli.evidence",
     "nexus.cli.review",
     "nexus.cli.report",
+    "nexus.cli.collect_cmd",
 ]
 for mod_name in CLI_MODULES:
     try:

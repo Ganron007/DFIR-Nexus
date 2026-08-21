@@ -50,8 +50,17 @@ def _require_approval_auth(analyst: str) -> str | None:
             clear_failures(analyst)
             return env_pw
         record_failure(analyst)
-        print("NEXUS_APPROVAL_PASSWORD did not match. Getpass is skipped.")
-        print("Cursor/PowerShell often cannot paste into a hidden password prompt.")
+        pw_file = Path.home() / ".nexus" / "passwords" / f"{analyst}.json"
+        print("NEXUS_APPROVAL_PASSWORD did not match.")
+        print(f"HMAC file: {pw_file}")
+        print("That is the examiner HMAC password, not NEXUS_PORTAL_PASSWORD.")
+        print("Getpass is skipped (Cursor/PowerShell cannot paste a hidden prompt).")
+        print("Set the password you configured for this examiner, then re-run.")
+        print(f"  nexus approve --clear-lockout --examiner {analyst}")
+        print(
+            "Forgot / never set this HMAC password? "
+            f"nexus config --examiner {analyst} --setup-password --replace"
+        )
         return None
 
     print("Hidden prompt: paste often fails in Cursor. Prefer:")

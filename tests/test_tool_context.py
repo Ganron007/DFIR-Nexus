@@ -38,4 +38,7 @@ def test_external_compromise_maps_execution_tools():
     keys = relevant_tool_keys(ctx)
     assert "hayabusa" in keys
     assert "amcacheparser" in keys
-    assert extra_playbook_names(ctx) == ["external_compromise"]
+    names = extra_playbook_names(ctx)
+    assert "external_compromise" in names
+    assert "log_tampering" in names
+    assert "hayabusa" in keys

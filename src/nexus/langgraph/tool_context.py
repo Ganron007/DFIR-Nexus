@@ -25,6 +25,12 @@ _PLAYBOOK_TOOLS: dict[str, tuple[str, ...]] = {
         "hayabusa", "evtxecmd", "pecmd", "amcacheparser", "vol",
         "bitsparser", "recmd", "srumecmd", "mftecmd",
     ),
+    "log_tampering": ("hayabusa", "evtxecmd", "mftecmd"),
+    "suspicious_execution": ("pecmd", "amcacheparser", "hayabusa"),
+    "remote_access": ("hayabusa", "evtxecmd", "bmc-tools"),
+    "suspicious_autorun": ("recmd", "hayabusa"),
+    "powershell_anomaly": ("hayabusa", "evtxecmd", "wxtcmd"),
+    "credential_access": ("hayabusa", "pecmd", "vol"),
 }
 
 _KEYWORD_TOOLS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (

@@ -17,6 +17,11 @@ Run forensic tools → Evidence ingested → Findings recorded (DRAFT)
 → Human reviews & approves → Report generated → Audit chain verifiable
 ```
 
+**Stage 0 (live IR):** `nexus collect run --profile full` authenticates to Windows or Linux
+and runs every FOSS collector we can (opt out with `--profile` / `--only` / `--no-*`).
+Then `nexus case init` + `nexus evidence register`. Existing dumps: `nexus collect import`.
+See [CLI.md](CLI.md) and [NEXUS-MODE.md](NEXUS-MODE.md).
+
 **What you get:**
 - **Findings** — structured observations with MITRE ATT&CK technique mapping, severity, confidence, and provenance links back to the raw evidence
 - **Reports** — Markdown, HTML, JSON, STIX 2.0/2.1, CSV, ZIP, DOCX

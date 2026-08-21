@@ -11,6 +11,19 @@ app = typer.Typer(help="Generate investigation reports")
 _ACTIVE_CASE_FILE = Path.home() / ".nexus" / "active_case"
 
 
+def _normalize_case_ref(raw: str) -> tuple[str, Path]:
+    """Turn an ID or absolute case dir into ``(case_id, case_dir)``."""
+    from nexus.config import settings
+
+    raw = (raw or "").strip().strip('"')
+    p = Path(raw)
+    if p.is_absolute():
+        case_dir = p if p.is_dir() else settings.cases_root / p.name
+        return case_dir.name, case_dir
+    cid = Path(raw).name
+    return cid, settings.cases_root / cid
+
+
 def _get_active_case_id() -> str | None:
     if _ACTIVE_CASE_FILE.exists():
         content = _ACTIVE_CASE_FILE.read_text().strip()
@@ -111,82 +124,128 @@ def generate(
     to_date: str = typer.Option("", "--to", help="End date"),
 ):
     """Generate an IR report from approved findings."""
+    from nexus.config import settings
+
+    candidate: Path | None = None
     if not case_id:
-        case_id = _get_active_case_id() or ""
+        from nexus.case.outputs import resolve_active_case_dir
+
+        resolved = resolve_active_case_dir()
+        if resolved is not None:
+            case_id, candidate = resolved.name, resolved
+        else:
+            case_id = _get_active_case_id() or ""
     if not case_id:
         typer.echo("No active case.", err=True)
         raise typer.Exit(1)
+    if candidate is None:
+        case_id, candidate = _normalize_case_ref(case_id)
 
     from nexus.case import CaseManager
-    from nexus.config import settings
     db_path = settings.cases_root / "cases.db"
     mgr = CaseManager(db_path)
+
+    # HMAC CLI/portal write findings.json — prefer that store when present.
+    if candidate.is_dir() and (candidate / "findings.json").is_file():
+        try:
+            findings = json.loads((candidate / "findings.json").read_text())
+            evidence = _load_flat_evidence(candidate)
+            timeline = []
+            if (candidate / "timeline.json").exists():
+                timeline = json.loads((candidate / "timeline.json").read_text())
+            meta = {}
+            for name in ("CASE.yaml", "case.json"):
+                p = candidate / name
+                if p.exists():
+                    if name.endswith(".yaml"):
+                        import yaml
+                        meta = yaml.safe_load(p.read_text()) or {}
+                    else:
+                        meta = json.loads(p.read_text())
+                    break
+            intake = meta.get("intake") if isinstance(meta.get("intake"), dict) else {}
+            case_summary = (
+                str(intake.get("question") or "")
+                or meta.get("case_summary")
+                or meta.get("summary")
+                or meta.get("description")
+                or ""
+            )
+            from nexus.integration.dfir_report import (
+                _split_questions,
+                build_dfir_markdown,
+                load_case_ledger,
+                sift_notes_from_ledger,
+            )
+            questions = _split_questions(
+                str(intake.get("question") or meta.get("question") or "")
+            )
+            approved_flat = [
+                f for f in findings
+                if str(f.get("status") or f.get("approval_state") or "").upper() == "APPROVED"
+            ]
+            typer.echo(
+                f"Case {candidate.name}: {len(approved_flat)} APPROVED / {len(findings)} findings. "
+                "Rebuilding N7 timeline (CSV scan; can take a minute)..."
+            )
+            try:
+                from nexus.langgraph.timeline_merge import rebuild_case_timeline
+                timeline = rebuild_case_timeline(candidate)
+            except Exception:
+                if not isinstance(timeline, list):
+                    timeline = []
+            ledger = load_case_ledger(candidate)
+            if profile.lower() in ("dfir", "full", "narrative"):
+                report_text = build_dfir_markdown(
+                    case_id=candidate.name,
+                    case_name=meta.get("name") or candidate.name,
+                    findings=findings,
+                    evidence=evidence,
+                    timeline=timeline if isinstance(timeline, list) else [],
+                    sift_notes=sift_notes_from_ledger(ledger),
+                    examiner=meta.get("examiner") or meta.get("created_by") or "",
+                    status=str(meta.get("status") or "open"),
+                    severity=str(meta.get("severity") or "unrated"),
+                    case_summary=str(case_summary),
+                    tool_ledger=ledger,
+                    questions=questions,
+                )
+            else:
+                approved = [f for f in findings if str(f.get("status", "")).upper() == "APPROVED"]
+                lines = ["# DFIR-Nexus IR Report (flat-JSON stack)", ""]
+                lines.append(f"## Case: {candidate.name}")
+                lines.append(f"- Total findings: {len(findings)} ({len(approved)} approved)")
+                lines.append("")
+                for f in approved:
+                    lines.append(f"### {f.get('title', 'Untitled')}")
+                    lines.append(str(f.get("description") or f.get("observation") or ""))
+                    lines.append("")
+                report_text = "\n".join(lines)
+            if not approved_flat:
+                from nexus.integration.dfir_report import write_findings_preview
+                preview = write_findings_preview(candidate)
+                typer.echo(
+                    "No APPROVED findings — official REPORT.md would be empty. "
+                    f"Wrote examiner preview: {preview}",
+                    err=True,
+                )
+                return
+            if not save:
+                save = str(candidate / "reports" / "REPORT.md")
+            if save:
+                out = Path(save)
+                out.parent.mkdir(parents=True, exist_ok=True)
+                out.write_text(report_text, encoding="utf-8")
+                typer.echo(f"Saved to {out}")
+            else:
+                typer.echo(report_text)
+            return
+        except Exception as exc:
+            typer.echo(f"Flat-JSON report failed: {exc}", err=True)
 
     case = mgr.get_case(case_id)
     if case is None:
         typer.echo(f"Case not found in SQLite stack: {case_id}", err=True)
-        typer.echo("Checking flat-JSON stack...", err=True)
-        try:
-            cases_root = Path.home() / ".nexus" / "cases"
-            candidate = Path(case_id) if Path(case_id).is_absolute() else cases_root / case_id
-            if candidate.exists() and (candidate / "findings.json").exists():
-                findings = json.loads((candidate / "findings.json").read_text())
-                evidence = _load_flat_evidence(candidate)
-                timeline = []
-                if (candidate / "timeline.json").exists():
-                    timeline = json.loads((candidate / "timeline.json").read_text())
-                meta = {}
-                for name in ("CASE.yaml", "case.json"):
-                    p = candidate / name
-                    if p.exists():
-                        if name.endswith(".yaml"):
-                            import yaml
-                            meta = yaml.safe_load(p.read_text()) or {}
-                        else:
-                            meta = json.loads(p.read_text())
-                        break
-                case_summary = (
-                    meta.get("case_summary")
-                    or meta.get("summary")
-                    or meta.get("description")
-                    or ""
-                )
-                sift_notes = _extraction_notes(candidate / "extractions")
-                if profile.lower() in ("dfir", "full", "narrative"):
-                    from nexus.integration.dfir_report import build_dfir_markdown
-                    report_text = build_dfir_markdown(
-                        case_id=case_id if not Path(case_id).is_absolute() else candidate.name,
-                        case_name=meta.get("name") or candidate.name,
-                        findings=findings,
-                        evidence=evidence,
-                        timeline=timeline if isinstance(timeline, list) else [],
-                        sift_notes=sift_notes,
-                        examiner=meta.get("examiner") or meta.get("created_by") or "",
-                        status=str(meta.get("status") or "open"),
-                        severity=str(meta.get("severity") or "high"),
-                        case_summary=str(case_summary),
-                    )
-                else:
-                    approved = [f for f in findings if str(f.get("status", "")).upper() == "APPROVED"]
-                    lines = ["# DFIR-Nexus IR Report (flat-JSON stack)", ""]
-                    lines.append(f"## Case: {case_id}")
-                    lines.append(f"- Total findings: {len(findings)} ({len(approved)} approved)")
-                    lines.append("")
-                    for f in approved:
-                        lines.append(f"### {f.get('title', 'Untitled')}")
-                        lines.append(str(f.get("description") or f.get("observation") or ""))
-                        lines.append("")
-                    report_text = "\n".join(lines)
-                if save:
-                    out = Path(save)
-                    out.parent.mkdir(parents=True, exist_ok=True)
-                    out.write_text(report_text, encoding="utf-8")
-                    typer.echo(f"Saved to {out}")
-                else:
-                    typer.echo(report_text)
-                return
-        except Exception as exc:
-            typer.echo(f"Flat-JSON fallback failed: {exc}", err=True)
         typer.echo("Case not found in either stack.", err=True)
         raise typer.Exit(1)
 
@@ -223,7 +282,12 @@ def generate(
         ]
 
     if profile.lower() in ("dfir", "full", "narrative"):
-        from nexus.integration.dfir_report import build_dfir_markdown
+        from nexus.integration.dfir_report import (
+            _split_questions,
+            build_dfir_markdown,
+            load_case_ledger,
+            sift_notes_from_ledger,
+        )
         tl = []
         for e in timeline_list or []:
             if hasattr(e, "to_dict"):
@@ -231,8 +295,16 @@ def generate(
             else:
                 tl.append(dict(e) if isinstance(e, dict) else {"description": str(e)})
         flat_dir = settings.cases_root / case.id
+        try:
+            from nexus.langgraph.timeline_merge import rebuild_case_timeline
+            rebuilt = rebuild_case_timeline(flat_dir)
+            if rebuilt:
+                tl = rebuilt
+        except Exception:
+            pass
         case_summary = getattr(case, "description", "") or ""
-        sift_notes = _extraction_notes(flat_dir / "extractions") if flat_dir.is_dir() else []
+        ledger = load_case_ledger(flat_dir) if flat_dir.is_dir() else []
+        questions = _split_questions(case_summary)
         # Merge flat evidence.json extractions into registry view when present
         flat_ev = _load_flat_evidence(flat_dir) if flat_dir.is_dir() else []
         evidence_dicts = _evidence_dicts(evidence_list)
@@ -246,11 +318,13 @@ def generate(
             findings=_finding_dicts(approved),
             evidence=evidence_dicts,
             timeline=tl,
-            sift_notes=sift_notes,
+            sift_notes=sift_notes_from_ledger(ledger),
             examiner=case.created_by or "",
             status=case.status.value,
-            severity=case.severity.value,
+            severity=getattr(getattr(case, "severity", None), "value", None) or "unrated",
             case_summary=str(case_summary),
+            tool_ledger=ledger,
+            questions=questions,
         )
     else:
         # Legacy compact markdown
@@ -272,10 +346,20 @@ def generate(
             lines.append("")
         report_text = "\n".join(lines)
 
-    if save:
-        out = Path(save)
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(report_text, encoding="utf-8")
-        typer.echo(f"Saved to {out}")
-    else:
-        typer.echo(report_text)
+    if not approved:
+        from nexus.integration.dfir_report import write_findings_preview
+
+        preview = write_findings_preview(settings.cases_root / case.id)
+        typer.echo(
+            "No APPROVED findings — official REPORT.md would be empty. "
+            f"Wrote examiner preview: {preview}",
+            err=True,
+        )
+        return
+
+    if not save:
+        save = str(settings.cases_root / case.id / "reports" / "REPORT.md")
+    out = Path(save)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(report_text, encoding="utf-8")
+    typer.echo(f"Saved to {out}")

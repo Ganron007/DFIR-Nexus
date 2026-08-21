@@ -51,6 +51,7 @@ import contextlib
 import json
 import logging
 import os
+import re
 from datetime import UTC, datetime
 from operator import add
 from pathlib import Path
@@ -186,6 +187,42 @@ def make_initial_state(
     }
 
 
+def _is_placeholder_intake(text: str) -> bool:
+    """True when the string is empty or examiner boilerplate, not a real N1 value."""
+    collapsed = re.sub(r"\s+", " ", (text or "").strip()).strip(" .;:-")
+    if not collapsed:
+        return True
+    low = collapsed.lower()
+    if "evidence timestamps win" in low:
+        return True
+    if low.startswith("examiner-supplied") or low.startswith("examiner supplied"):
+        return True
+    return low in {
+        "tbd",
+        "n/a",
+        "na",
+        "none",
+        "unknown",
+        "placeholder",
+        "examiner-supplied",
+        "examiner supplied",
+    }
+
+
+def has_examiner_intake(ctx: dict[str, str] | None) -> bool:
+    """N1 gate: a real examiner question or incident window.
+
+    Placeholder window text (``examiner-supplied; evidence timestamps win``)
+    does not count as intake — coverage/design must degrade to TOOL-RUN.
+    """
+    ctx = ctx or {}
+    question = str(ctx.get("question") or "")
+    window = str(ctx.get("window") or "")
+    return (not _is_placeholder_intake(question)) or (
+        not _is_placeholder_intake(window)
+    )
+
+
 def _format_case_context(ctx: dict[str, str] | None) -> str:
     """Human-readable case intake for interpretation prompts."""
     ctx = ctx or {}
@@ -229,7 +266,7 @@ _INTERPRETATION_RULES = (
     "from the tool-lane ledger. Do not cite extraction stdout/stderr paths as facts.\n"
     "2) RAG MUST be loaded (forensic_rag_status ready) before you interpret. "
     "Call forensic_rag_search only for artifact families listed in the QUERY PACK "
-    "hit families (how to read Prefetch vs JumpList vs Recycle vs SRUM). "
+    "hit families (how to read Prefetch vs JumpList vs Recycle vs SRUM vs Hayabusa). "
     "Do not search unrelated detection topics. Facts come from QUERY PACK hits, "
     "not CSV heads and not RAG.\n"
     "3) Dual hypothesis: insider-misuse AND external compromise. Map ITM "
@@ -244,13 +281,20 @@ _INTERPRETATION_RULES = (
     "7) Ordinary/authorized activity may appear in host artifacts — do not escalate "
     "to compromise or insider-misuse without corroborating evidence, but still "
     "record the artifact.\n"
-    "8) Finish with a ```json fenced array of findings: title, evidence "
+    "8) FIRST answer each N1 examiner question as Supported or INSUFFICIENT citing "
+    "hit rows (host artifacts: execution, persistence, log wipe, remote exec, "
+    "credential access). Do not require mimikatz/beacon names. "
+    "THEN emit a small set of findings that are analytic claims "
+    "(e.g. log tampering, unexpected execution, persistence, IR collection), "
+    "each with multiple evidence rows. Do not emit one finding per parser family. "
+    "9) Velociraptor, F-Response, Kansa, and anti-malware alerts in the pack are "
+    "the collection story unless a hit shows attacker-controlled use. Do not "
+    "call them C2.\n"
+    "10) Finish with a ```json fenced array of findings: title, evidence "
     "[{time, source, artifact, detail}], observation (one sentence), "
     "interpretation, confidence, confidence_justification, host, attack_ids, "
     "itm_stage, itm_objects, audit_ids, artifacts (paths/audit_ids). "
-    "Never dump multiple hits into one observation paragraph. "
-    "Emit multiple findings covering families that appear in QUERY PACK hits. "
-    "Skip a family when it has no hits. Do not pad with Acrobat/Office from file heads."
+    "Skip a claim when it has no hits. Do not pad with Acrobat/Office from file heads."
 )
 
 _COVERAGE_MODE_RULES = (
@@ -262,7 +306,8 @@ _COVERAGE_MODE_RULES = (
     "(filtered rows, not CSV heads). Findings must cite CONCRETE facts from those hits "
     "(usernames, process names, paths, timestamps, event IDs, URLs). "
     "FORBIDDEN: high severity on routine Office/Acrobat unless wipe, staging, "
-    "USB, PST/cloud copy, or C2 appears in the hits. "
+    "USB, PST/cloud copy, log tampering, unexpected execution, persistence, "
+    "or remote exec appears in the hits. "
     "Empty hits + OK ledger = INSUFFICIENT EVIDENCE for that question, "
     "not a coverage gap.\n"
     "FAIL/SKIP are coverage gaps only — do not invent compromise from a FAIL. "
@@ -449,8 +494,27 @@ def get_mcp_config() -> dict[str, dict]:
             "transport": "stdio",
             "command": stdio_cmd,
             "args": ["serve"],
+            "env": _stdio_mcp_env(),
         }
     }
+
+
+def _stdio_mcp_env() -> dict[str, str]:
+    """Pass a full env to the stdio MCP child.
+
+    LangChain stdio spawn does not reliably inherit the parent environment.
+    Without this copy, ``NEXUS_RAG_PRELOAD=0`` is ignored and the child
+    reloads the CUDA embedder on every tool call.
+    """
+    env = {str(k): str(v) for k, v in os.environ.items()}
+    raw = env.get("NEXUS_PIPELINE_MODE", "").strip()
+    if raw:
+        try:
+            if resolve_pipeline_mode(raw) == "tools":
+                env["NEXUS_RAG_PRELOAD"] = "0"
+        except ValueError:
+            pass
+    return env
 
 
 # ---------------------------------------------------------------------------
@@ -519,10 +583,10 @@ async def register_evidence(state: InvestigationState, tools: dict) -> dict:
     from datetime import UTC, datetime
 
     ctx = state.get("case_context") or {}
-    case_id = f"INC-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
+    existing = (state.get("case_id") or "").strip()
     case_name = (
         str(ctx.get("name") or "").strip()
-        or f"LangGraph Investigation - {Path(state['evidence_path']).name}"
+        or f"LangGraph Investigation - {Path(state.get('evidence_path') or 'evidence').name}"
     )
     desc_parts = [
         str(ctx.get("description") or "").strip(),
@@ -532,18 +596,30 @@ async def register_evidence(state: InvestigationState, tools: dict) -> dict:
     ]
     case_desc = " | ".join(p for p in desc_parts if p)
 
-    result = _parse_tool_result(await case_tool.ainvoke({
-        "name": case_name,
-        "description": case_desc,
-        "case_id": case_id,
-    }))
-    if result.get("error"):
-        return {"error": f"case_init failed: {result['error']}"}
+    if existing:
+        case_id = existing
+        log.info("Reusing case (authority): %s", case_id)
+        step_log = [f"Reusing case {case_id} (no new INC id)"]
+        activate = tools.get("case_activate")
+        if activate:
+            act = _parse_tool_result(await activate.ainvoke({"case_id": case_id}))
+            if act.get("error"):
+                step_log.append(f"case_activate warning: {act.get('error')}")
+            else:
+                step_log.append(f"Activated existing case {case_id}")
+    else:
+        case_id = f"INC-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
+        result = _parse_tool_result(await case_tool.ainvoke({
+            "name": case_name,
+            "description": case_desc,
+            "case_id": case_id,
+        }))
+        if result.get("error"):
+            return {"error": f"case_init failed: {result['error']}"}
 
-    case_id = result.get("case_id", case_id)
-    log.info("Case created (authority): %s", case_id)
-
-    step_log = [f"Case {case_id} created on case-authority host"]
+        case_id = result.get("case_id", case_id)
+        log.info("Case created (authority): %s", case_id)
+        step_log = [f"Case {case_id} created on case-authority host"]
     try:
         from nexus.config import settings
         from nexus.langgraph.case_intake import persist_case_intake
@@ -555,7 +631,24 @@ async def register_evidence(state: InvestigationState, tools: dict) -> dict:
         step_log.append(f"Case intake persist skipped: {exc}")
     sift_init = tools.get("_sift_case_init")
     sift_activate = tools.get("_sift_case_activate")
-    if sift_init:
+    if existing and sift_activate:
+        act = _parse_tool_result(await sift_activate.ainvoke({"case_id": case_id}))
+        if act.get("error") and sift_init:
+            mirror = _parse_tool_result(await sift_init.ainvoke({
+                "name": case_name,
+                "description": case_desc,
+                "case_id": case_id,
+            }))
+            if mirror.get("error"):
+                step_log.append(f"SIFT case mirror warning: {mirror.get('error')}")
+            else:
+                step_log.append(f"Case {case_id} mirrored on SIFT")
+                act = _parse_tool_result(await sift_activate.ainvoke({"case_id": case_id}))
+        if act.get("error"):
+            step_log.append(f"SIFT case_activate warning: {act.get('error')}")
+        else:
+            step_log.append(f"Case {case_id} activated on SIFT")
+    elif sift_init:
         mirror = _parse_tool_result(await sift_init.ainvoke({
             "name": case_name,
             "description": case_desc,
@@ -695,6 +788,18 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
     label = "tools mode" if mode == "tools" else "coverage mode"
     steps.insert(0, f"{label}: deterministic tool lane")
     result["step_log"] = steps
+    try:
+        from nexus.config import settings as _set
+        from nexus.langgraph.query_pack import load_case_intake
+
+        ctx = dict(state.get("case_context") or {})
+        for key, val in load_case_intake(_set.cases_root / case_id).items():
+            if val and not str(ctx.get(key) or "").strip():
+                ctx[key] = val
+        if ctx:
+            result["case_context"] = ctx
+    except Exception:
+        pass
     return result
 
 
@@ -863,7 +968,9 @@ def _format_tool_run_markdown(state: InvestigationState) -> str:
                     "SKIP/ABSENT = artifact not on this pack (OK). "
                     "STAGED = present and copied (plain text, no parser). "
                     "PRESENT_NO_PARSER = present but no argv builder or parser missing. "
-                    "SCHEDULED = parser was queued.",
+                    "PARSED = a related parser ran OK. "
+                    "FAIL = parser ran and lost. "
+                    "SCHEDULED = still queued (should be empty after the lane finishes).",
                     "",
                     "| Artifact | Status | Tools | Hits | Reason |",
                     "|---|---|---|---|---|",
@@ -891,7 +998,7 @@ async def emit_tool_report(state: InvestigationState, tools: dict) -> dict:
     report_path: str | None = None
     export_root: str | None = None
     try:
-        from nexus.case.repo_export import export_case_to_repo
+        from nexus.case.repo_export import export_case_to_repo, live_case_is_in_repo
         from nexus.config import settings
 
         case_dir = settings.cases_root / state["case_id"]
@@ -901,7 +1008,6 @@ async def emit_tool_report(state: InvestigationState, tools: dict) -> dict:
         out.write_text(md, encoding="utf-8")
         step_log.append(f"Wrote {out}")
 
-        # Persist ledger for export
         ledger_dir = case_dir / "ledger"
         ledger_dir.mkdir(parents=True, exist_ok=True)
         ledger_path = ledger_dir / "_tool_lane_ledger.json"
@@ -910,9 +1016,16 @@ async def emit_tool_report(state: InvestigationState, tools: dict) -> dict:
             encoding="utf-8",
         )
 
+        if live_case_is_in_repo(case_dir):
+            step_log.append("Repo sample-export skipped (live case already in-repo)")
+            return {
+                "report_path": str(out),
+                "step_log": step_log,
+                "rag_notes": [f"live_case={case_dir}"],
+            }
+
         exported = export_case_to_repo(
             case_dir,
-            report_markdown=md,
             extra_sift_dir=case_dir / "sift" / "extractions",
         )
         export_root = str(exported)
@@ -1327,6 +1440,14 @@ def _n4_claim_needles(text: str) -> set[str]:
         found.add("mimikatz")
     if "psexec" in t:
         found.add("psexec")
+    if "wevtutil" in t or "1102" in t:
+        found.add("wevtutil")
+    if "dataoverwrite" in t or "overwrite" in t:
+        found.add("overwrite")
+    if "encodedcommand" in t:
+        found.add("encodedcommand")
+    if "lsass" in t:
+        found.add("lsass")
     return found
 
 
@@ -1446,6 +1567,16 @@ async def stage_findings(state: InvestigationState, tools: dict) -> dict:
     ]
     if errors:
         log_msg.append(f"Errors: {'; '.join(errors[:3])}")
+    try:
+        from nexus.config import settings
+        from nexus.integration.dfir_report import write_findings_preview
+
+        case_id = str(state.get("case_id") or "")
+        if case_id:
+            preview = write_findings_preview(settings.cases_root / case_id)
+            log_msg.append(f"Wrote {preview}")
+    except Exception as exc:  # noqa: BLE001
+        log_msg.append(f"Draft preview skipped: {exc}")
     return {
         "draft_finding_ids": draft_ids,
         "draft_timeline_ids": timeline_ids,
@@ -1511,10 +1642,15 @@ async def generate_report(state: InvestigationState, tools: dict) -> dict:
 
         import yaml
 
-        from nexus.cli.report import _extraction_notes, _load_flat_evidence
+        from nexus.cli.report import _load_flat_evidence
         from nexus.config import settings
         from nexus.detection.draft_from_findings import draft_from_approved
-        from nexus.integration.dfir_report import _split_questions, build_dfir_markdown
+        from nexus.integration.dfir_report import (
+            _split_questions,
+            build_dfir_markdown,
+            load_case_ledger,
+            sift_notes_from_ledger,
+        )
         from nexus.langgraph.timeline_merge import rebuild_case_timeline
 
         case_dir = settings.cases_root / state["case_id"]
@@ -1543,12 +1679,9 @@ async def generate_report(state: InvestigationState, tools: dict) -> dict:
             step_log.append(f"D1 draft skipped: {exc}")
         intake = meta.get("intake") if isinstance(meta.get("intake"), dict) else {}
         questions = _split_questions(str((intake or {}).get("question") or meta.get("question") or ""))
-        # Prefer sift/ notes when pulled; else windows extractions
-        sift_notes = _extraction_notes(case_dir / "sift" / "extractions")
-        if not sift_notes:
-            sift_notes = _extraction_notes(case_dir / "extractions")
         evidence = _load_flat_evidence(case_dir)
-        ledger = list(state.get("tool_run_ledger") or [])
+        ledger = list(state.get("tool_run_ledger") or []) or load_case_ledger(case_dir)
+        sift_notes = sift_notes_from_ledger(ledger)
         ev_path = state.get("evidence_path") or ""
         if ev_path and not any(
             (e.get("path") or "") == ev_path for e in evidence
@@ -1576,10 +1709,11 @@ async def generate_report(state: InvestigationState, tools: dict) -> dict:
             rag_notes=list(state.get("rag_notes") or []),
             examiner=str(meta.get("examiner") or ""),
             status=str(meta.get("status") or "open"),
-            case_summary=str(meta.get("description") or ""),
+            case_summary=str((intake or {}).get("question") or meta.get("description") or ""),
             tool_ledger=ledger,
             finding_ids=list(state.get("approved_finding_ids") or []) or None,
             questions=questions,
+            severity=str(meta.get("severity") or "unrated"),
         )
         # Append analysis pointers for examiners
         qp = case_dir / "analysis" / "query_pack.md"
@@ -1601,7 +1735,15 @@ async def generate_report(state: InvestigationState, tools: dict) -> dict:
         (case_dir / "reports" / "dfir-report.md").write_text(md, encoding="utf-8")
         step_log.append(f"Wrote {out}")
 
-        from nexus.case.repo_export import export_case_to_repo
+        from nexus.case.repo_export import export_case_to_repo, live_case_is_in_repo
+
+        if live_case_is_in_repo(case_dir):
+            step_log.append("Repo sample-export skipped (live case already in-repo)")
+            return {
+                "report_path": str(out),
+                "step_log": step_log,
+                "rag_notes": [f"live_case={case_dir}"],
+            }
 
         exported = export_case_to_repo(
             case_dir,
@@ -1715,14 +1857,11 @@ def build_graph(tools: dict, model, mode: str | None = None):
     workflow.add_edge("register_evidence", "scope")
 
     def _has_intake(st: InvestigationState) -> bool:
-        """N1 gate: did the examiner supply a question or an incident window?"""
-        ctx = st.get("case_context") or {}
-        question = str(ctx.get("question") or "").strip()
-        window = str(ctx.get("window") or "").strip()
-        return bool(question or window)
+        """N1 gate: did the examiner supply a real question or incident window?"""
+        return has_examiner_intake(st.get("case_context") or {})
 
     def _route_after_tool_lane(st: InvestigationState) -> str:
-        # Empty intake on coverage/design degrades to TOOL-RUN only (no LLM).
+        # Empty or placeholder intake on coverage/design degrades to TOOL-RUN.
         return "interpret_path" if _has_intake(st) else "tools_only"
 
     if mode == "coverage":
@@ -1814,8 +1953,6 @@ async def run_pipeline(
 
     pipeline_mode = resolve_pipeline_mode(mode)
     from_case = (case_id or "").strip()
-    if from_case:
-        pipeline_mode = "interpret"
     log.info("Pipeline mode: %s", pipeline_mode)
 
     config = get_mcp_config()

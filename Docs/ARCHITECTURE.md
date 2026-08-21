@@ -112,7 +112,6 @@ flowchart TD
 │   case_manager.py  — On-disk state: findings, timeline, evidence, IOCs      │
 │   discipline.py    — Finding validation rules                               │
 │   transparency.py  — Hash-chained transparency log (every commit appended)  │
-│   telemetry.py     — Optional OpenTelemetry tracing (NEXUS_OTEL_ENABLED)    │
 │   dashboard/       — In-process Starlette Examiner Portal + REST API        │
 │   config.py        — Pydantic settings (NEXUS_ env vars)                    │
 │                                                                             │

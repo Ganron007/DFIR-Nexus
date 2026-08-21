@@ -15,17 +15,27 @@ from nexus.audit import AuditWriter
 
 def register_tools(server: FastMCP, audit: AuditWriter):
     @server.tool()
-    def ingest_auto(path: str) -> dict:
+    def ingest_auto(path: str, source: str = "") -> dict:
         """Auto-detect file format and ingest forensic artifacts.
 
         Sniffs the file content to determine the correct importer
         (33 formats supported). One entry point for any file type.
+        Pass source to skip sniffing (same values as CLI --source).
 
         Args:
             path: Path to the forensic artifact file.
+            source: Optional ArtifactSource override (e.g. zeek, evtx).
         """
         from nexus.ingest.detect import ingest_auto as _ingest
-        return _ingest(Path(path))
+        result = _ingest(Path(path), source=source or None)
+        aid = audit.log(
+            "ingest_auto",
+            params={"path": path, "source": source},
+            result_summary=result,
+            input_files=[path],
+        )
+        result["audit_id"] = aid
+        return result
 
     @server.tool()
     def convert_pcap(

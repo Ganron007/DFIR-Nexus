@@ -121,7 +121,11 @@ def create_server(host: str = "127.0.0.1") -> FastMCP:
     logger.info("DFIR-Nexus ready: %s tools registered on %s (host=%s)", tool_count, sys.platform, host)
 
     import os
-    if os.environ.get("NEXUS_RAG_PRELOAD", "1").strip().lower() in ("1", "true", "yes"):
+    preload = os.environ.get("NEXUS_RAG_PRELOAD", "1").strip().lower() in ("1", "true", "yes")
+    mode = os.environ.get("NEXUS_PIPELINE_MODE", "").strip().lower()
+    if mode in {"tools", "tools_only", "toolsonly", "no_llm", "nollm"}:
+        preload = False
+    if preload:
         try:
             from nexus.tools.rag import _get_index
             _get_index().load()

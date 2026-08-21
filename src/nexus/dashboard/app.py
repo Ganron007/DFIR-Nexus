@@ -52,14 +52,9 @@ def _atomic_write_json(path: Path, data: Any) -> None:
 
 
 def _get_case_dir() -> Path | None:
-    active = Path.home() / ".nexus" / "active_case"
-    if active.exists():
-        content = active.read_text().strip()
-        if content:
-            case_dir = Path(content) if Path(content).is_absolute() else Path.home() / ".nexus" / "cases" / content
-            if case_dir.exists():
-                return case_dir
-    return None
+    from nexus.case.outputs import resolve_active_case_dir
+
+    return resolve_active_case_dir()
 
 
 def _load_json(name: str) -> list:

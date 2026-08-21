@@ -1,6 +1,13 @@
 name: "PowerShell Anomaly Investigation"
 description: "Investigate suspicious PowerShell activity including encoded commands, download cradles, and obfuscated scripts"
 mitre: ["T1059.001"]
+query_terms:
+  - encodedcommand
+  - downloadstring
+  - invoke-expression
+  - frombase64
+  - iex(
+  - -enc 
 sources:
   - "SANS FOR508 — Windows Enterprise Incident Response"
   - "MITRE ATT&CK T1059.001 — PowerShell"

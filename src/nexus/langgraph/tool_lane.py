@@ -22,6 +22,7 @@ import logging
 import os
 import shlex
 import shutil
+import subprocess
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -42,6 +43,65 @@ class ToolJob:
     audit_id: str = ""
     output_saved_to: str = ""
     output_files: list[dict] = field(default_factory=list)
+
+
+def timeout_for_bytes(
+    nbytes: int,
+    *,
+    base: int = 600,
+    per_mb: int = 30,
+    cap: int = 3600,
+) -> int:
+    """Scale a parser timeout from input size. Floor ``base``, ceiling ``cap``.
+
+    Large RDP ``Cache0000.bin`` files and dirty ESE DBs must not share the
+    default 600s with a 4 KB prefetch CSV.
+    """
+    try:
+        n = max(0, int(nbytes))
+    except (TypeError, ValueError):
+        n = 0
+    mb = n // (1024 * 1024)
+    return min(cap, max(base, base + mb * per_mb))
+
+
+def _copy_ese_siblings(src_dir: Path, work: Path, prefixes: tuple[str, ...]) -> None:
+    """Copy ESE database + log siblings onto a writable local workdir."""
+    work.mkdir(parents=True, exist_ok=True)
+    prefs = tuple(p.upper() for p in prefixes)
+    for src in src_dir.iterdir():
+        if not src.is_file():
+            continue
+        if not any(src.name.upper().startswith(p) for p in prefs):
+            continue
+        dst = work / src.name
+        shutil.copy2(src, dst)
+        with contextlib.suppress(OSError):
+            os.chmod(dst, 0o666)
+
+
+def _esentutl_repair(work: Path, *, db_name: str, log_bases: tuple[str, ...]) -> None:
+    """Soft-fail ESE recovery + repair. Missing esentutl is a warning, not SKIP."""
+    try:
+        for base in log_bases:
+            subprocess.run(
+                ["esentutl.exe", "/r", base, "/i"],
+                cwd=str(work),
+                capture_output=True,
+                text=True,
+                timeout=120,
+                check=False,
+            )
+        subprocess.run(
+            ["esentutl.exe", "/p", db_name, "/o"],
+            cwd=str(work),
+            capture_output=True,
+            text=True,
+            timeout=300,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        log.warning("esentutl repair skipped for %s: %s", db_name, exc)
 
 
 def find_windows_root(evidence: Path) -> Path | None:
@@ -191,42 +251,9 @@ def plan_windows_triage(
         d = extractions / "srum"
         d.mkdir(parents=True, exist_ok=True)
         work = d / "workdir"
-        work.mkdir(parents=True, exist_ok=True)
-        import shutil as _shutil
-        import subprocess as _sp
-
         try:
-            for src in srum.parent.iterdir():
-                if not src.is_file():
-                    continue
-                if not (
-                    src.name.upper().startswith("SRU")
-                    or src.name.upper().startswith("SRUDB")
-                ):
-                    continue
-                dst = work / src.name
-                _shutil.copy2(src, dst)
-                with contextlib.suppress(OSError):
-                    os.chmod(dst, 0o666)
-            try:
-                _sp.run(
-                    ["esentutl.exe", "/r", "sru", "/i"],
-                    cwd=str(work),
-                    capture_output=True,
-                    text=True,
-                    timeout=120,
-                    check=False,
-                )
-                _sp.run(
-                    ["esentutl.exe", "/p", "SRUDB.dat", "/o"],
-                    cwd=str(work),
-                    capture_output=True,
-                    text=True,
-                    timeout=300,
-                    check=False,
-                )
-            except (OSError, _sp.TimeoutExpired) as exc:
-                log.warning("esentutl SRUM repair skipped: %s", exc)
+            _copy_ese_siblings(srum.parent, work, ("SRU",))
+            _esentutl_repair(work, db_name="SRUDB.dat", log_bases=("sru",))
             srum_target = work / "SRUDB.dat"
             argv = ["srumecmd", "-f", str(srum_target), "--csv", str(d)]
             if software_hive.is_file():
@@ -475,10 +502,21 @@ def _windows_tool_available(key: str) -> bool:
 
 
 def _copy_text(extractions: Path, rel: str, src: Path) -> None:
-    """Stage a plain-text artifact into extractions. Not a parser."""
+    """Stage a plain-text artifact into extractions. Not a parser.
+
+    Skip if already staged (leftover re-run). KAPE/VHDX sources are often
+    ReadOnly; chmod the dest so later overwrite does not PermissionError.
+    """
     dest = extractions / rel
     dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(src, dest)
+    if dest.is_file():
+        return
+    try:
+        shutil.copy2(src, dest)
+        with contextlib.suppress(OSError):
+            os.chmod(dest, 0o666)
+    except OSError as exc:
+        log.warning("stage %s failed: %s", dest, exc)
 
 
 def _plan_n2_extras(
@@ -643,24 +681,57 @@ def _plan_gap_parsers(
         cache = user / "AppData/Local/Microsoft/Terminal Server Client/Cache"
         if not cache.is_dir():
             continue
-        tiles = [
-            p for p in cache.iterdir()
-            if p.is_file() and p.suffix.lower() in {".bmc", ".bin"}
-        ]
+        try:
+            tiles = [
+                p for p in cache.iterdir()
+                if p.is_file() and p.suffix.lower() in {".bmc", ".bin"}
+            ]
+        except OSError:
+            continue
         if tiles:
             bmc_jobs.append((user, cache, tiles))
     if bmc_jobs:
         if not _windows_tool_available("bmc-tools"):
             skip("bmc-tools", "bmc-tools not installed — run tools/fetch-windows-tools.ps1 then nexus doctor")
         else:
-            for user, cache, tiles in bmc_jobs:
-                out = extractions / "bmc-tools" / user.name
+            for user, _cache, tiles in bmc_jobs:
+                usable: list[Path] = []
+                total = 0
+                for p in tiles:
+                    try:
+                        sz = p.stat().st_size
+                    except OSError:
+                        continue
+                    if sz > 0:
+                        usable.append(p)
+                        total += sz
+                if not usable:
+                    skip(
+                        "bmc-tools",
+                        f"RDP cache present for {user.name} but all tiles are 0 bytes",
+                    )
+                    continue
+                src_dir = extractions / "bmc-tools" / user.name / "src"
+                out = extractions / "bmc-tools" / user.name / "tiles"
+                src_dir.mkdir(parents=True, exist_ok=True)
                 out.mkdir(parents=True, exist_ok=True)
+                try:
+                    for p in usable:
+                        dst = src_dir / p.name
+                        shutil.copy2(p, dst)
+                        with contextlib.suppress(OSError):
+                            os.chmod(dst, 0o666)
+                except OSError as exc:
+                    skip("bmc-tools", f"could not stage RDP cache for {user.name}: {exc}")
+                    continue
                 add(
                     "bmc-tools",
-                    ["bmc-tools", "-s", str(cache), "-d", str(out)],
-                    f"RDP bitmap cache ({user.name}, {len(tiles)} files)",
-                    600,
+                    ["bmc-tools", "-s", str(src_dir), "-d", str(out)],
+                    (
+                        f"RDP bitmap cache ({user.name}, {len(usable)} files, "
+                        f"{total} bytes staged)"
+                    ),
+                    timeout_for_bytes(total),
                 )
 
     downloader = root / "ProgramData/Microsoft/Network/Downloader"
@@ -671,14 +742,31 @@ def _plan_gap_parsers(
             qmgr = cand
             break
     if qmgr is not None:
-        out = extractions / "bitsparser"
-        out.mkdir(parents=True, exist_ok=True)
-        add_installed(
-            "bitsparser",
-            ["bitsparser", "-i", str(qmgr), "-o", str(out / "bits.json")],
-            f"BITS job queue ({qmgr.name})",
-            600,
-        )
+        if not _windows_tool_available("bitsparser"):
+            skip(
+                "bitsparser",
+                "bitsparser not installed — run tools/fetch-windows-tools.ps1 then nexus doctor",
+            )
+        else:
+            work = extractions / "bitsparser" / "workdir"
+            out = extractions / "bitsparser"
+            out.mkdir(parents=True, exist_ok=True)
+            try:
+                _copy_ese_siblings(qmgr.parent, work, ("QMGR", "EDB"))
+                _esentutl_repair(work, db_name=qmgr.name, log_bases=("edb", "qmgr"))
+                staged = work / qmgr.name
+                if not staged.is_file():
+                    skip("bitsparser", f"staged {qmgr.name} missing after copy")
+                else:
+                    sz = staged.stat().st_size
+                    add(
+                        "bitsparser",
+                        ["bitsparser", "-i", str(staged), "-o", str(out / "bits.json")],
+                        f"BITS job queue ({qmgr.name}, repaired copy)",
+                        timeout_for_bytes(sz),
+                    )
+            except OSError as exc:
+                skip("bitsparser", f"could not stage qmgr: {exc}")
 
     sum_dir = root / "Windows/System32/LogFiles/SUM"
     mdbs = sorted(sum_dir.glob("*.mdb")) if sum_dir.is_dir() else []
@@ -794,9 +882,65 @@ def _find_recmd_user_batch() -> Path | None:
     return None
 
 
+def _job_reuse_key(host: str, tool: str, purpose: str) -> tuple[str, str, str]:
+    return (host, tool, purpose)
+
+
+def apply_prior_ok(jobs: list[ToolJob], case_dir: Path) -> int:
+    """Reuse prior OK ledger rows so leftover re-runs do not re-parse Hayabusa/MFT.
+
+    Match on host+tool+purpose (argv changes when cases_root moves).
+    ``NEXUS_TOOL_LANE_RERUN=1`` disables reuse.
+    """
+    import json
+
+    if os.environ.get("NEXUS_TOOL_LANE_RERUN", "").strip().lower() in ("1", "true", "yes"):
+        return 0
+    paths = [
+        Path(case_dir) / "extractions" / "_tool_lane_ledger.json",
+        Path(case_dir) / "ledger" / "_tool_lane_ledger.json",
+    ]
+    prior: list[dict[str, Any]] = []
+    for path in paths:
+        if not path.is_file():
+            continue
+        try:
+            loaded = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(loaded, list):
+            prior = loaded
+            break
+    index: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for row in prior:
+        if row.get("status") != "OK":
+            continue
+        key = _job_reuse_key(
+            str(row.get("host") or ""),
+            str(row.get("tool") or ""),
+            str(row.get("purpose") or ""),
+        )
+        index.setdefault(key, row)
+    reused = 0
+    for job in jobs:
+        if job.status != "PENDING":
+            continue
+        old = index.get(_job_reuse_key(job.host, job.tool, job.purpose))
+        if not old:
+            continue
+        job.status = "OK"
+        job.audit_id = str(old.get("audit_id") or "")
+        job.output_saved_to = str(old.get("output_saved_to") or "")
+        job.output_files = list(old.get("output_files") or [])
+        job.reason = "reused prior OK (already in case extractions)"
+        reused += 1
+    return reused
+
+
 def plan_sift_triage(
     sift_evidence_root: str,
     triage_root: str | None = None,
+    memory_file: str | None = None,
 ) -> list[ToolJob]:
     """Build SIFT jobs when a Linux-visible evidence root is configured.
 
@@ -822,12 +966,13 @@ def plan_sift_triage(
         ))
         return jobs
 
-    # Memory: prefer NEXUS_SIFT_MEMORY_FILE; else conventional paths under root
-    mem = os.environ.get("NEXUS_SIFT_MEMORY_FILE", "").strip()
+    # Memory: env / intake, then a conventional file under the named root.
+    mem = (memory_file or "").strip() or os.environ.get("NEXUS_SIFT_MEMORY_FILE", "").strip()
     if not mem:
-        mem = f"{root}/memory/Rocba-Memory.raw"
-        if not mem:
-            mem = f"{root}/memory/Memory.raw"
+        if "rocba" in root.lower():
+            mem = f"{root}/memory/Rocba-Memory.raw"
+        else:
+            mem = f"{root}/memory/rd01-memory.img"
     for plugin, timeout in (
         ("windows.info", 1800),
         ("windows.pslist", 3600),
@@ -876,6 +1021,29 @@ def plan_sift_triage(
     return jobs
 
 
+def sift_jobs_for_lane(
+    sift_root: str,
+    *,
+    has_sift_mcp: bool,
+    triage_root: str | None = None,
+    memory_file: str | None = None,
+) -> list[ToolJob]:
+    """Schedule SIFT jobs only when a root is named or a SIFT MCP exists.
+
+    Windows-only stdio (no ``run_command``, no root) must not emit a SKIP
+    row — that looked like a coverage hole on a KAPE host-image run.
+    If SIFT MCP is connected but the root is unset, keep the honest SKIP.
+    """
+    root = (sift_root or "").strip()
+    if not root and not has_sift_mcp:
+        return []
+    return plan_sift_triage(
+        root,
+        triage_root=triage_root,
+        memory_file=memory_file,
+    )
+
+
 async def run_tool_lane(
     *,
     tools: dict[str, Any],
@@ -894,8 +1062,16 @@ async def run_tool_lane(
     """
     from nexus.config import settings
 
-    ctx = case_context or {}
+    ctx = dict(case_context or {})
     case_dir = settings.cases_root / case_id
+    try:
+        from nexus.langgraph.query_pack import load_case_intake
+
+        for key, val in load_case_intake(case_dir).items():
+            if val and not str(ctx.get(key) or "").strip():
+                ctx[key] = val
+    except Exception as exc:  # noqa: BLE001
+        log.warning("case intake merge skipped: %s", exc)
     extractions = case_dir / "extractions"
     extractions.mkdir(parents=True, exist_ok=True)
 
@@ -956,16 +1132,21 @@ async def run_tool_lane(
         str(ctx.get("sift_evidence_root") or "").strip()
         or os.environ.get("NEXUS_SIFT_EVIDENCE_ROOT", "").strip()
     )
-    jobs.extend(plan_sift_triage(
+    jobs.extend(sift_jobs_for_lane(
         sift_root,
+        has_sift_mcp=sift_tool is not None,
         triage_root=str(ctx.get("sift_triage_root") or "").strip() or None,
+        memory_file=str(ctx.get("sift_memory_file") or "").strip() or None,
     ))
+    reused = apply_prior_ok(jobs, case_dir)
+    if reused:
+        log.info("tool_lane reused %s prior OK job(s)", reused)
 
     audit_ids: list[str] = []
     ledger: list[dict[str, Any]] = []
 
     async def _run_one(job: ToolJob) -> None:
-        if job.status == "SKIP":
+        if job.status in ("SKIP", "OK"):
             ledger.append(asdict(job))
             return
         if job.host == "windows":
@@ -1028,7 +1209,7 @@ async def run_tool_lane(
             audit_ids.append(aid)
         ledger.append(asdict(job))
         log.info(
-            "tool_lane %s/%s → %s audit_id=%s saved=%s",
+            "tool_lane %s/%s -> %s audit_id=%s saved=%s",
             job.host, job.tool, job.status, aid, job.output_saved_to or "-",
         )
 
@@ -1086,6 +1267,32 @@ async def run_tool_lane(
         out.write_text(json.dumps(ledger, indent=2), encoding="utf-8")
     except OSError as exc:
         log.warning("Could not write tool lane ledger: %s", exc)
+
+    try:
+        import json as _json
+        from nexus.langgraph.artifact_map import (
+            apply_ledger_to_completeness,
+            completeness_table,
+            discover_windows_artifacts,
+        )
+
+        dest = extractions / "_artifact_completeness.json"
+        win_root = find_windows_root(Path(evidence_path))
+        if win_root is not None:
+            table = completeness_table(
+                discover_windows_artifacts(win_root),
+                {j.tool for j in jobs if j.status == "PENDING"},
+                ledger=ledger,
+            )
+            dest.write_text(_json.dumps(table, indent=2), encoding="utf-8")
+        elif dest.is_file():
+            rows = _json.loads(dest.read_text(encoding="utf-8"))
+            dest.write_text(
+                _json.dumps(apply_ledger_to_completeness(rows, ledger), indent=2),
+                encoding="utf-8",
+            )
+    except Exception as exc:  # noqa: BLE001
+        log.warning("artifact completeness refresh failed: %s", exc)
 
     # Pull SIFT extractions onto examiner case (scp) so LLM + report see them
     try:

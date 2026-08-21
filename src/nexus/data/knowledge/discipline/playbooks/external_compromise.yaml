@@ -6,7 +6,15 @@ query_terms:
   - cobalt
   - beacon
   - psexec
+  - psexesvc
   - encodedcommand
+  - wevtutil
+  - rundll32
+  - mshta
+  - certutil
+  - bitsadmin
+  - lsass
+  - schtasks
 sources:
   - "MITRE ATT&CK — Initial Access / Execution / Persistence"
 triggers:

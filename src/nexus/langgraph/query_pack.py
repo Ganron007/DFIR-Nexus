@@ -17,6 +17,11 @@ _MAX_HITS_PER_FILE = 40
 _MAX_HITS_TOTAL = 400
 _MAX_LINE = 480
 _MAX_MD = 60000
+# Full-row index/scan of small CSVs. Hayabusa/USN live above this;
+# N4 still needle-scans them up to _MAX_FILTERED_SCAN_BYTES.
+_MAX_FULL_SCAN_BYTES = 80 * 1024 * 1024
+_MAX_FILTERED_SCAN_BYTES = 400 * 1024 * 1024
+_MAX_FILES_PER_FAMILY = 120
 _DATE_RE = re.compile(r"\b(20\d{2}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2}:\d{2}))?")
 _EXE_RE = re.compile(r"\b[\w.-]+\.exe\b", re.I)
 _TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._\\:-]{2,}")
@@ -30,16 +35,27 @@ _STOP = frozenset(
         "timestamps", "win", "user", "profiles", "both", "lenses",
         "authorized", "threat", "or", "not", "invent", "name",
         "insider-threat",
+        # Collection / IR narrative in the question is not a search needle.
+        "disk", "memory", "security", "admin", "incident", "formally",
+        "called", "after", "alerts", "collected", "hired", "complete",
+        "scoping", "evidenced", "several", "days", "first", "firm",
+        "scope", "pack", "over",
+        # IR collection / question prose — not host-artifact needles.
+        "attacker", "velociraptor", "kansa", "f-response", "fresponse",
+        "hunts", "sweep", "analyst", "intrusion", "anti-malware",
+        "antimailware", "response", "collection",
     }
 )
 _FAMILY_HINTS = (
-    "pecmd", "prefetch", "jlecmd", "lecmd", "sbecmd", "rbcmd", "srum",
-    "srumecmd", "recmd", "hayabusa", "evtx", "mftecmd", "amcache",
-    "appcompat", "wxtcmd", "bits", "vol", "fls", "setupapi",
+    "hayabusa", "evtxecmd", "evtx", "pecmd", "prefetch", "jlecmd", "lecmd",
+    "sbecmd", "rbcmd", "srum", "srumecmd", "recmd", "mftecmd", "amcache",
+    "appcompat", "wxtcmd", "bits", "vol", "fls", "setupapi", "bmc-tools",
 )
 _SCAN_FIRST = (
+    "hayabusa", "evtxecmd", "evtx", "pecmd", "prefetch", "amcache",
+    "appcompat", "recmd", "mftecmd-usn", "usn",
     "userassist", "wordwheel", "recentdocs", "opensave",
-    "rbcmd", "srum", "jlecmd", "lecmd", "wxtcmd", "pecmd", "recmd",
+    "rbcmd", "srum", "jlecmd", "lecmd", "wxtcmd",
 )
 _SKIP_SUFFIXES = ("_stdout.txt", "_stderr.txt", "_meta.json")
 _MAX_COLLECT_PER_FILE = 200
@@ -49,7 +65,31 @@ _CLOUD_TERMS = frozenset({"googledrive", "drivefs", "my drive"})
 _WEAK_TERMS = frozenset({
     "onedrive", "recycle.bin", "$recycle", "removable", "setupapi",
     "winrar", "rar.exe", "7z.exe", "compact.exe", "winrar.exe",
+    # Common LOLBins — keep some hits, never ahead of wipe/C2/wevtutil.
+    "rundll32", "schtasks", "certutil", "wscript", "cscript",
+    "bitsadmin", "mshta", "regsvr32", "wmic", "winrm", "termsrv",
 })
+_NUMERIC_TERM = re.compile(r"^\d{1,5}$")
+_needle_rx: dict[str, re.Pattern[str]] = {}
+
+
+def needle_in_text(low: str, term: str) -> bool:
+    """Match a search term in a lowercased parser row.
+
+    Short numeric event IDs (``1102``, ``7045``) must not match inside
+    hashes, UUIDs, or file sizes (``f1102060``, ``704501``, ``cc1149ff``).
+    Other terms stay substring (``sdelete`` in ``sdelete.exe``).
+    """
+    t = (term or "").strip().lower()
+    if not t or not low:
+        return False
+    if _NUMERIC_TERM.fullmatch(t):
+        rx = _needle_rx.get(t)
+        if rx is None:
+            rx = re.compile(rf"(?<![0-9a-f]){re.escape(t)}(?![0-9a-f])")
+            _needle_rx[t] = rx
+        return rx.search(low) is not None
+    return t in low
 
 
 def _scan_prio(path: Path) -> tuple:
@@ -105,6 +145,15 @@ def parse_window(text: str) -> tuple[datetime | None, datetime | None]:
     if end < start:
         start, end = end, start
     return start, end
+
+
+def parse_intake_window(intake: dict[str, str] | None) -> tuple[datetime | None, datetime | None]:
+    """Prefer ``intake.window``. Do not let dates inside the question clip it."""
+    intake = intake or {}
+    dedicated = parse_window(intake.get("window") or "")
+    if dedicated[0] is not None:
+        return dedicated
+    return parse_window(intake.get("question") or "")
 
 
 def _playbook_terms(playbook_ids: list[str]) -> list[str]:
@@ -188,7 +237,10 @@ def _row_in_window(line: str, start: datetime | None, end: datetime | None) -> b
             continue
         if m.group(2):
             hh, mm, ss = (int(x) for x in m.group(2).split(":"))
-            d = d.replace(hour=hh, minute=mm, second=ss)
+            try:
+                d = d.replace(hour=hh, minute=mm, second=ss)
+            except ValueError:
+                continue
         if start <= d <= end:
             return True
     return not found  # keyword hit with no timestamp still kept
@@ -235,20 +287,28 @@ def _hits_from_file(
 ) -> list[dict[str, str]]:
     """Keep strong-term rows even when noisier matches appear first in the file."""
     raw: list[tuple[int, int, list[str], str]] = []
+    strong_n = 0
+    weak_n = 0
     with path.open(encoding="utf-8", errors="replace") as fh:
         for i, line in enumerate(fh, start=1):
             if i == 1 and ("," in line or "\t" in line):
                 continue
             low = line.lower()
-            matched = [t for t in needles if t in low]
+            matched = [t for t in needles if needle_in_text(low, t)]
             if not matched:
                 continue
             if not _row_in_window(line, start, end):
                 continue
             pri = _hit_rank(matched, strong)
+            if pri == 0:
+                if strong_n >= _MAX_COLLECT_PER_FILE:
+                    continue
+                strong_n += 1
+            else:
+                if weak_n >= _MAX_COLLECT_PER_FILE:
+                    continue
+                weak_n += 1
             raw.append((pri, i, matched, line.strip()[:_MAX_LINE]))
-            if len(raw) >= _MAX_COLLECT_PER_FILE:
-                break
     raw.sort(key=lambda row: (row[0], row[1]))
     hits: list[dict[str, str]] = []
     for _pri, i, matched, text in raw[:_MAX_HITS_PER_FILE]:
@@ -262,10 +322,18 @@ def _hits_from_file(
     return hits
 
 
-def iter_extraction_files(case_dir: Path) -> list[tuple[Path, Path, str]]:
+def iter_extraction_files(
+    case_dir: Path,
+    *,
+    max_bytes: int | None = None,
+    max_files_per_family: int | None = None,
+) -> list[tuple[Path, Path, str]]:
     """Registered-case processed outputs only (never Evidence-files/)."""
     case_dir = Path(case_dir)
+    cap = _MAX_FULL_SCAN_BYTES if max_bytes is None else max_bytes
+    file_cap = _MAX_FILES_PER_FAMILY if max_files_per_family is None else max_files_per_family
     out: list[tuple[Path, Path, str]] = []
+    fam_files: dict[str, int] = {}
     roots = [
         case_dir / "extractions",
         case_dir / "sift" / "extractions",
@@ -285,13 +353,22 @@ def iter_extraction_files(case_dir: Path) -> list[tuple[Path, Path, str]]:
                 continue
             if path.name.endswith(_SKIP_SUFFIXES):
                 continue
+            # I1 dump — processing-time JSON, not a host parser CSV. N7 reads it
+            # via load_ingest_artifacts; scanning it as N4 text matches UUIDs.
+            if path.name.lower() == "artifacts.jsonl":
+                continue
             try:
                 size = path.stat().st_size
             except OSError:
                 continue
-            if size > 80 * 1024 * 1024:
+            if size > cap:
                 continue
-            out.append((path, root, _family(path, root)))
+            fam = _family(path, root)
+            n = fam_files.get(fam, 0)
+            if n >= file_cap:
+                continue
+            fam_files[fam] = n + 1
+            out.append((path, root, fam))
     return out
 
 
@@ -382,7 +459,9 @@ def scan_extractions(
     if not needles:
         return hits
 
-    for path, root, fam in iter_extraction_files(case_dir):
+    for path, root, fam in iter_extraction_files(
+        case_dir, max_bytes=_MAX_FILTERED_SCAN_BYTES,
+    ):
         try:
             hits.extend(
                 _hits_from_file(path, root, fam, needles, strong, start, end)
@@ -401,8 +480,7 @@ def build_query_pack_markdown(
     intake = intake if intake is not None else load_case_intake(case_dir)
     terms = collect_query_terms(intake)
     pb_terms = collect_playbook_query_terms(intake)
-    win_text = " ".join(filter(None, [intake.get("window", ""), intake.get("question", "")]))
-    window = parse_window(win_text)
+    window = parse_intake_window(intake)
     hits, backend = n4_hits(case_dir, terms, window, priority_terms=pb_terms)
 
     if ledger is None:
@@ -483,6 +561,17 @@ _FAMILY_TO_TOOL = {
 # One finding per claim (first match wins for overlapping cloud/recycle keys).
 _N4_CLAIMS: tuple[tuple[str, str], ...] = (
     ("sdelete", "sdelete wipe / secure-delete on host"),
+    ("wevtutil", "event-log clearing / wevtutil"),
+    ("1102", "Security log cleared (Event ID 1102)"),
+    ("dataoverwrite", "USN DataOverwrite on logs or hives"),
+    ("encodedcommand", "PowerShell EncodedCommand"),
+    ("psexec", "PsExec / remote service exec"),
+    ("psexesvc", "PsExec service install"),
+    ("mimikatz", "credential-dump tooling on host"),
+    ("lsass", "LSASS access / dump indicators"),
+    ("rundll32", "rundll32 execution"),
+    ("schtasks", "scheduled task creation"),
+    ("bitsadmin", "BITS transfer / persistence"),
     (".pst", "PST / Outlook mailbox files accessed or staged"),
     ("my drive", "Google Drive (G:\\My Drive) copy"),
     ("googledrive", "Google Drive copy"),
@@ -491,8 +580,6 @@ _N4_CLAIMS: tuple[tuple[str, str], ...] = (
     ("mountpoints2", "Removable volume / MountPoints2"),
     ("recycle.bin", "Recycle Bin staging"),
     ("$recycle", "Recycle Bin staging"),
-    ("mimikatz", "credential-dump tooling on host"),
-    ("psexec", "PsExec / remote service exec"),
 )
 
 
@@ -520,6 +607,18 @@ def _audits_for_families(ledger: list[dict[str, Any]], families: set[str]) -> li
     return out
 
 
+def _is_process_dump_hit(h: dict[str, str]) -> bool:
+    """True when the row is I1 processing JSON, not a host parser CSV."""
+    f = str(h.get("file") or "").replace("\\", "/").lower()
+    fam = str(h.get("family") or "").lower()
+    text = str(h.get("text") or "").lower()
+    if f.endswith("artifacts.jsonl") or "/artifacts.jsonl" in f:
+        return True
+    if fam == "ingest" and "generic_jsonl" in text:
+        return True
+    return False
+
+
 def n4_finding_candidates(
     case_dir: Path,
     ledger: list[dict[str, Any]] | None = None,
@@ -533,8 +632,7 @@ def n4_finding_candidates(
     intake = intake if intake is not None else load_case_intake(case_dir)
     terms = collect_query_terms(intake)
     pb_terms = collect_playbook_query_terms(intake)
-    win_text = " ".join(filter(None, [intake.get("window", ""), intake.get("question", "")]))
-    window = parse_window(win_text)
+    window = parse_intake_window(intake)
     hits, _backend = n4_hits(case_dir, terms, window, priority_terms=pb_terms)
     if not hits:
         return []
@@ -546,6 +644,8 @@ def n4_finding_candidates(
         "drivefs": "my drive",
         "$recycle": "recycle.bin",
         "mountpoints2": "usbstor",
+        "psexesvc": "psexec",
+        "1102": "wevtutil",
     }
 
     for needle, title in _N4_CLAIMS:
@@ -553,9 +653,11 @@ def n4_finding_candidates(
             continue
         clustered = []
         for h in hits:
+            if _is_process_dump_hit(h):
+                continue
             matched = [t.strip().lower() for t in (h.get("terms") or "").split(",") if t.strip()]
-            blob = f"{h.get('text', '')} {h.get('terms', '')}".lower()
-            if needle in blob or needle in matched:
+            text_l = str(h.get("text") or "").lower()
+            if needle in matched or needle_in_text(text_l, needle):
                 clustered.append(h)
         if not clustered:
             continue
@@ -567,6 +669,20 @@ def n4_finding_candidates(
             quotes.append(f"{loc} terms={h.get('terms')}: {h.get('text', '')[:280]}")
         aids = _audits_for_families(ledger or [], families)
         fam_s = ", ".join(sorted(families))
+        if needle == "sdelete":
+            attack_ids = ["T1485"]
+        elif needle in {"wevtutil", "1102", "dataoverwrite"}:
+            attack_ids = ["T1070.001"]
+        elif needle == "encodedcommand":
+            attack_ids = ["T1059.001"]
+        elif needle in {"psexec", "psexesvc"}:
+            attack_ids = ["T1569.002"]
+        elif needle in {"mimikatz", "lsass"}:
+            attack_ids = ["T1003"]
+        elif needle in {".pst", "my drive", "googledrive", "drivefs"}:
+            attack_ids = ["T1074.001"]
+        else:
+            attack_ids = []
         out.append({
             "title": title[:200],
             "observation": (
@@ -574,29 +690,25 @@ def n4_finding_candidates(
                 + "\n".join(quotes)
             )[:8000],
             "interpretation": (
-                "These are filtered parser rows, not CSV heads. "
-                "Insider / data-staging lens: the rows are consistent with local "
-                "wipe, mailbox/cloud copy, or removable-media use. "
-                "External-compromise lens: these host rows do not show remote "
-                "access tooling or an implant. Missing families mean no matching "
-                "row in this pack, not a coverage gap."
+                "These are filtered parser rows for this claim, not CSV heads. "
+                "IR collection tools (Velociraptor, F-Response, Kansa) in the "
+                "same pack are not C2 unless the row shows attacker-controlled "
+                "use. Missing other claims mean no matching row, not a coverage gap."
             ),
             "confidence": "HIGH" if len(families) >= 3 else "MEDIUM",
             "confidence_justification": (
                 f"FD-001: {len(clustered)} N4 hits across {fam_s}; "
                 f"audit_ids from matching OK ledger tools."
             )[:2000],
-            "host": str(intake.get("host") or "rocba")[:200],
+            "host": str(intake.get("host") or "")[:200],
             "type": "finding",
             "audit_ids": aids,
             "artifacts": [{"audit_id": a, "type": "audit"} for a in aids[:10]],
             "evidence": ev_rows,
-            "attack_ids": ["T1485"] if needle == "sdelete" else (
-                ["T1074.001"] if needle in {".pst", "my drive", "googledrive", "drivefs"} else []
-            ),
+            "attack_ids": attack_ids,
         })
         emitted_keys.add(needle)
-        if len(out) >= 8:
+        if len(out) >= 10:
             break
     return out
 
@@ -645,8 +757,7 @@ def run_ad_hoc_query(
             intake["query_extra"] = ",".join(merged)
     terms = collect_query_terms(intake)
     pb_terms = collect_playbook_query_terms(intake)
-    win_text = " ".join(filter(None, [intake.get("window", ""), intake.get("question", "")]))
-    window = parse_window(win_text)
+    window = parse_intake_window(intake)
     hits, used = n4_hits(case_dir, terms, window, priority_terms=pb_terms, backend=backend)
     if persist:
         write_query_pack(case_dir, intake=intake)

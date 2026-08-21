@@ -22,6 +22,7 @@ Usage:
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import threading
@@ -117,8 +118,39 @@ class MockVelociraptorClient:
         )
 
 
+def _parse_vr_http_rows(response: httpx.Response) -> tuple[list[dict[str, Any]], str]:
+    """Accept GUI Query JSON, NDJSON, or a rows list. Never invent rows."""
+    text = (response.text or "").strip()
+    if not text:
+        return [], ""
+    try:
+        data = response.json()
+    except ValueError:
+        rows: list[dict[str, Any]] = []
+        for line in text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(obj, dict):
+                rows.append(obj)
+        return rows, ""
+    if isinstance(data, list):
+        return [row for row in data if isinstance(row, dict)], ""
+    if not isinstance(data, dict):
+        return [], ""
+    rows_raw = data.get("rows") or data.get("items") or data.get("json") or data.get("data") or []
+    if isinstance(rows_raw, dict):
+        rows_raw = [rows_raw]
+    rows = [row for row in rows_raw if isinstance(row, dict)]
+    return rows, str(data.get("response_id") or data.get("id") or "")
+
+
 class HTTPVelociraptorClient:
-    """HTTP-based Velociraptor client (placeholder)."""
+    """HTTP Velociraptor client — Query API first, VQLQuery fallback."""
 
     def __init__(self, config: MonitorConfig) -> None:
         self.config = config
@@ -133,32 +165,40 @@ class HTTPVelociraptorClient:
 
     def query(self, spec: VQLQuerySpec) -> VQLResult:
         start = time.time()
-        try:
-            response = self._client.post(
-                "/api/v1/VQLQuery",
-                json={"vql": spec.vql, "params": spec.params},
-            )
-            response.raise_for_status()
-            data = response.json()
-            rows = data.get("rows", [])
-            duration_ms = int((time.time() - start) * 1000)
-            return VQLResult(
-                query_name=spec.name,
-                rows=rows,
-                timestamp=datetime.now(UTC),
-                duration_ms=duration_ms,
-                response_id=data.get("response_id", ""),
-            )
-        except httpx.HTTPError as e:
-            duration_ms = int((time.time() - start) * 1000)
-            log.error("VQL query '%s' failed: %s", spec.name, e)
-            return VQLResult(
-                query_name=spec.name,
-                rows=[],
-                timestamp=datetime.now(UTC),
-                duration_ms=duration_ms,
-                error=str(e),
-            )
+        timeout = spec.timeout_seconds or self.config.timeout_seconds
+        attempts: list[tuple[str, dict[str, Any]]] = [
+            (
+                "/api/v1/Query",
+                {"query": [{"VQL": spec.vql}], "max_row": 10000, "org_id": spec.params.get("org_id", "")},
+            ),
+            ("/api/v1/VQLQuery", {"vql": spec.vql, "params": spec.params}),
+        ]
+        last_error = ""
+        for path, body in attempts:
+            try:
+                response = self._client.post(path, json=body, timeout=timeout)
+                response.raise_for_status()
+                rows, response_id = _parse_vr_http_rows(response)
+                duration_ms = int((time.time() - start) * 1000)
+                return VQLResult(
+                    query_name=spec.name,
+                    rows=rows,
+                    timestamp=datetime.now(UTC),
+                    duration_ms=duration_ms,
+                    response_id=response_id,
+                )
+            except httpx.HTTPError as e:
+                last_error = str(e)
+                log.debug("VQL %s via %s failed: %s", spec.name, path, e)
+        duration_ms = int((time.time() - start) * 1000)
+        log.error("VQL query '%s' failed: %s", spec.name, last_error)
+        return VQLResult(
+            query_name=spec.name,
+            rows=[],
+            timestamp=datetime.now(UTC),
+            duration_ms=duration_ms,
+            error=last_error or "velociraptor HTTP query failed",
+        )
 
     def close(self) -> None:
         self._client.close()

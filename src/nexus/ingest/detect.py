@@ -388,18 +388,44 @@ def _detect_tsv_format(head: str, name: str) -> ArtifactSource | None:
     return ArtifactSource.GENERIC_CSV
 
 
-def ingest_auto(path: Path) -> dict[str, Any]:
+def resolve_ingest_source(
+    path: Path, source: ArtifactSource | str | None = None
+) -> tuple[ArtifactSource | None, str | None]:
+    """Resolve an importer source. ``source`` overrides sniffing when set.
+
+    Returns ``(resolved, error)``. ``error`` is set when the override is
+    not a known ``ArtifactSource`` value.
+    """
+    path = Path(path)
+    if source is None or source == "":
+        return detect_format(path), None
+    if isinstance(source, ArtifactSource):
+        return source, None
+    raw = str(source).strip().lower().replace("-", "_")
+    try:
+        return ArtifactSource(raw), None
+    except ValueError:
+        known = ", ".join(sorted(s.value for s in ArtifactSource))
+        return None, f"Unknown source {source!r}. Known: {known}"
+
+
+def ingest_auto(
+    path: Path, source: ArtifactSource | str | None = None
+) -> dict[str, Any]:
     """Auto-detect format and import a file. Returns result summary.
 
     This is the "single import button" — the main entry point for
     importing any forensic file without knowing its format upfront.
+    Pass ``source`` to skip sniffing (CLI ``--source`` / MCP override).
     """
     from nexus.ingest.registry import get_registry
 
     path = Path(path)
-    source = detect_format(path)
+    resolved, err = resolve_ingest_source(path, source)
+    if err:
+        return {"success": False, "error": err, "path": str(path)}
 
-    if source is None:
+    if resolved is None:
         return {
             "success": False,
             "error": f"Could not detect format for {path.name}",
@@ -408,7 +434,7 @@ def ingest_auto(path: Path) -> dict[str, Any]:
 
     registry = get_registry()
     try:
-        result = registry.import_path(path, source=source)
+        result = registry.import_path(path, source=resolved)
         return {
             "success": result.success,
             "source": result.source.value,
@@ -419,6 +445,6 @@ def ingest_auto(path: Path) -> dict[str, Any]:
     except KeyError:
         return {
             "success": False,
-            "error": f"No importer registered for source: {source.value}",
+            "error": f"No importer registered for source: {resolved.value}",
             "path": str(path),
         }

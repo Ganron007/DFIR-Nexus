@@ -1,6 +1,14 @@
 name: "Suspicious Autorun Investigation"
 description: "Investigate unexpected persistence mechanisms including registry autoruns, services, and scheduled tasks"
 mitre: ["T1547", "T1053", "T1543"]
+query_terms:
+  - currentversion\\run
+  - runonce
+  - schtasks
+  - winlogon
+  - userinit
+  - image file execution
+  - wmi event
 sources:
   - "SANS FOR508 — Windows Enterprise Incident Response"
   - "MITRE ATT&CK T1547 — Boot or Logon Autostart Execution"

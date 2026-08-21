@@ -69,8 +69,39 @@ def test_ingest_zeek_onto_case(tmp_path: Path):
     info = ingest_into_case(conn, case)
     assert info["success"] is True
     assert info["artifacts"] >= 1
+    forced = ingest_into_case(conn, case, source="zeek")
+    assert forced["success"] is True
+    assert forced["source"] == "zeek"
     assert (case / "ingest" / "artifacts.jsonl").is_file()
     events = rebuild_case_timeline(case)
     chrono = (case / "analysis" / "chronology.md").read_text(encoding="utf-8")
     assert any("zeek" in str(e.get("source") or "") for e in events)
     assert "i1:zeek" in chrono or "zeek" in chrono
+
+
+def test_hits_to_events_are_claims_not_raw_csv():
+    evs = hits_to_events([{
+        "family": "hayabusa",
+        "file": "evtx-timeline.csv",
+        "line": "10",
+        "terms": "wevtutil,1102",
+        "text": (
+            '2023-01-23 07:19:16,"EventID 1102 wevtutil cl Security",'
+            '"rd01.shieldbase.com"'
+        ),
+    }])
+    assert evs[0]["host"] == "rd01.shieldbase.com"
+    assert evs[0]["description"].startswith("hayabusa")
+    assert "wevtutil" in evs[0]["description"].lower()
+
+
+def test_generic_jsonl_is_not_a_timeline_event():
+    art = Artifact(
+        id=Artifact.new_id(),
+        artifact_type=ArtifactType.UNKNOWN,
+        source=ArtifactSource.GENERIC_JSONL,
+        timestamp=datetime(2026, 8, 15, 8, 21, tzinfo=UTC),
+        severity=Severity.INFORMATIONAL,
+        description="Generic JSONL record",
+    )
+    assert artifacts_to_events([art]) == []

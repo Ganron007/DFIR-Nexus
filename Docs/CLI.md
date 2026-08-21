@@ -28,6 +28,31 @@ Portal **Steer** = intake + register. Portal **Query** = N4 hit table
 
 Mental model: [NEXUS-MODE.md](NEXUS-MODE.md).
 
+## Stage 0 — live IR collect
+
+This is a **live run** with authentication, not a dump-for-Nexus script.
+`nexus collect import` is only for an IR tree you already have.
+
+Default profile is **full**: every FOSS collector we can run on the target.
+Opt out with `--profile disk` (no RAM dump), `--profile volatile`, `--only kansa,kape`, or `--no-*`.
+
+```bash
+nexus collect tools                       # every collector binary + VR live status
+nexus collect plan --os windows --host <windows-host> --user analyst --identity ~/.ssh/id
+nexus collect run  --os windows --host <windows-host> --user analyst --identity ~/.ssh/id --profile full
+nexus collect run  --os linux   --host <linux-host> --user vagrant --identity ~/.ssh/id --sudo --profile full
+nexus collect run  --os windows --host localhost --no-probe --profile disk
+nexus collect import D:\kape-out --os windows --hostname rd01 --case INC-...
+```
+
+**Windows (full):** Kansa local-full module set, Sysinternals (autorunsc/handle/tcpvcon/listdlls/pslist/psloggedon/logonsessions/pipelist), PersistenceSniper, wevtutil EVTX export, Hayabusa + Suzaku timelines, Chainsaw hunt (needs Sigma `rules/` tree), KAPE `!SANS_Triage`/`!EZParser`, DFIR-ORC, WinPmem, live Velociraptor hunts.
+
+**Linux (full):** POSIX volatile snapshot, journalctl (30 days) + ausearch, UAC `-p full`, AVML, live Velociraptor hunts.
+
+`--kape-module none` acquires the triage image only. `--kape-remote-path` uses KAPE already installed on the target. `--no-memory` skips WinPmem/AVML (DumpIt is not used — commercial). `--vr-client-id` if hostname match fails. Live VR needs `NEXUS_VR_ENDPOINT` + `NEXUS_VR_API_KEY`. Password SSH/WinRM: `NEXUS_COLLECT_PASSWORD` (never `--password`). Optional extras: `pip install dfir-nexus[collect]` (paramiko / pywinrm).
+
+Missing binaries are **skipped with a reason**, not omitted silently. Then: `nexus case init "IR host"` → `nexus evidence register <pack>`.
+
 ## Evidence
 
 ```bash
@@ -94,7 +119,10 @@ nexus todo complete TODO-analyst-001      # Mark complete
 
 ```bash
 nexus config --examiner "alice"           # Set examiner identity
-nexus config --setup-password             # Set approval password
+nexus config --setup-password             # Set approval password (new identity)
+# Forgot / never set HMAC password (PowerShell — no hidden prompt):
+#   $env:NEXUS_APPROVAL_PASSWORD = '<new password>'
+#   nexus config --examiner e2e_host --setup-password --replace
 nexus config --show                       # Show current config
 # Subcommand form also works: nexus config set --examiner "alice" / nexus config show
 ```
@@ -143,6 +171,22 @@ and [NEXUS-MODE.md](NEXUS-MODE.md).
 
 Requires: `pip install dfir-nexus[pipeline]` and LLM env for coverage/design/interpret
 (`NEXUS_LLM_MODEL` / `NEXUS_LLM_BASE_URL`). `tools` needs no LLM.
+
+## Ingest & Doctor
+
+```bash
+nexus ingest conn.log                     # auto-detect format
+nexus ingest conn.log --source zeek       # skip sniffing
+nexus ingest logs/ --recursive --limit 50
+nexus ingest conn.log --case INC-20260815 --source zeek   # I3 merge; prints audit_id
+
+nexus doctor                              # extras, catalog, indexes, optional keys
+nexus doctor --health-url http://127.0.0.1:4508   # probe serve /health
+nexus doctor --health-url skip            # skip the probe
+```
+
+`/health` not listening is an optional skip (start `nexus serve --http`), not a golden-path fail.
+Collect inventory (KAPE/Kansa/DFIR-ORC/UAC/VR skip) is printed as info — missing KAPE or ORC is not a golden-path fail.
 
 ---
 

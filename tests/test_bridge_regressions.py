@@ -104,6 +104,78 @@ class TestB5HttpMount:
                 payload = resp.json()
             assert payload["result"]["serverInfo"]["name"] == "dfir-nexus"
 
+    def test_health_route_ok(self):
+        from starlette.testclient import TestClient
+
+        from nexus.app import create_server
+        from nexus.cli.main import build_http_app
+
+        app = build_http_app(create_server())
+        with TestClient(app) as client:
+            resp = client.get("/health")
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["status"] == "ok"
+            assert body["service"] == "dfir-nexus"
+
+    def test_official_mcp_client_handshake(self):
+        """Official MCP SDK ClientSession initialize + tools/list against /mcp."""
+        import asyncio
+        import socket
+        import threading
+        import time
+
+        import httpx
+        import pytest
+
+        pytest.importorskip("uvicorn")
+        uvicorn = pytest.importorskip("uvicorn")
+        from mcp.client.session import ClientSession
+        from mcp.client.streamable_http import streamable_http_client
+
+        from nexus.app import create_server
+        from nexus.cli.main import build_http_app
+
+        sock = socket.socket()
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+        sock.close()
+
+        asgi = build_http_app(create_server(host="127.0.0.1"), host="127.0.0.1", port=port)
+        config = uvicorn.Config(asgi, host="127.0.0.1", port=port, log_level="warning")
+        uv = uvicorn.Server(config)
+        thread = threading.Thread(target=uv.run, daemon=True)
+        thread.start()
+        try:
+            deadline = time.time() + 45
+            while time.time() < deadline:
+                if uv.started:
+                    try:
+                        r = httpx.get(f"http://127.0.0.1:{port}/health", timeout=1.0)
+                        if r.status_code == 200:
+                            break
+                    except httpx.HTTPError:
+                        pass
+                time.sleep(0.2)
+            else:
+                pytest.fail("HTTP server did not become ready for MCP handshake")
+
+            async def _handshake() -> int:
+                url = f"http://127.0.0.1:{port}/mcp"
+                async with streamable_http_client(url, timeout=30) as streams:
+                    read, write = streams[0], streams[1]
+                    async with ClientSession(read, write) as session:
+                        result = await session.initialize()
+                        assert result.serverInfo.name == "dfir-nexus"
+                        listed = await session.list_tools()
+                        return len(listed.tools)
+
+            n = asyncio.run(_handshake())
+            assert n > 0
+        finally:
+            uv.should_exit = True
+            thread.join(timeout=15)
+
     def test_portal_still_served(self):
         from starlette.testclient import TestClient
 

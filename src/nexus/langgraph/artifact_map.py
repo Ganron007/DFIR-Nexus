@@ -313,15 +313,33 @@ def invokable_tool_key(name: str) -> str:
     return aliases.get(n, n)
 
 
-def completeness_table(hits: list[ArtifactHit], scheduled_tools: set[str]) -> list[dict[str, str]]:
-    """Examiner rows: artifact present? parser scheduled?"""
+def completeness_table(
+    hits: list[ArtifactHit],
+    scheduled_tools: set[str],
+    ledger: list[dict[str, Any]] | None = None,
+) -> list[dict[str, str]]:
+    """Examiner rows: absent / parsed / fail / still queued / staged / no parser."""
     rows = []
-    scheduled_l = {t.lower() for t in scheduled_tools}
+    scheduled_l = {invokable_tool_key(t) for t in scheduled_tools}
+    ran: dict[str, str] = {}
+    rank = {"OK": 3, "FAIL": 2, "SKIP": 1, "PENDING": 0}
+    for row in ledger or []:
+        key = invokable_tool_key(str(row.get("tool") or ""))
+        st = str(row.get("status") or "").upper()
+        if not key or st not in rank:
+            continue
+        if rank[st] >= rank.get(ran.get(key, ""), 0):
+            ran[key] = st
     for h in hits:
         keys = {invokable_tool_key(t) for t in h.related_tools}
         covered = bool(keys & scheduled_l)
+        ran_hit = [ran[k] for k in keys if k in ran]
         if not h.present:
             status = "ABSENT"
+        elif any(s == "OK" for s in ran_hit):
+            status = "PARSED"
+        elif any(s == "FAIL" for s in ran_hit):
+            status = "FAIL"
         elif covered:
             status = "SCHEDULED"
         elif not keys:
@@ -337,3 +355,34 @@ def completeness_table(hits: list[ArtifactHit], scheduled_tools: set[str]) -> li
             "reason": h.reason,
         })
     return rows
+
+
+def apply_ledger_to_completeness(
+    rows: list[dict[str, str]],
+    ledger: list[dict[str, Any]],
+) -> list[dict[str, str]]:
+    """Upgrade SCHEDULED rows to PARSED/FAIL from a finished ledger (no remount)."""
+    rank = {"OK": 3, "FAIL": 2, "SKIP": 1, "PENDING": 0}
+    ran: dict[str, str] = {}
+    for row in ledger or []:
+        key = invokable_tool_key(str(row.get("tool") or ""))
+        st = str(row.get("status") or "").upper()
+        if not key or st not in rank:
+            continue
+        if rank[st] >= rank.get(ran.get(key, ""), 0):
+            ran[key] = st
+    out = []
+    for row in rows:
+        item = dict(row)
+        if str(item.get("status") or "") in {"ABSENT", "STAGED", "PRESENT_NO_PARSER"}:
+            out.append(item)
+            continue
+        tools = [t.strip() for t in str(item.get("tools") or "").split(",") if t.strip()]
+        keys = {invokable_tool_key(t) for t in tools}
+        ran_hit = [ran[k] for k in keys if k in ran]
+        if any(s == "OK" for s in ran_hit):
+            item["status"] = "PARSED"
+        elif any(s == "FAIL" for s in ran_hit):
+            item["status"] = "FAIL"
+        out.append(item)
+    return out

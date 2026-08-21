@@ -9,6 +9,18 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+# Host-compromise questions hunt artifacts parsers actually emit
+# (execution, persistence, log wipe, remote exec) — not only malware names.
+_HOST_HUNT_PLAYBOOKS = (
+    "external_compromise",
+    "log_tampering",
+    "suspicious_execution",
+    "remote_access",
+    "suspicious_autorun",
+    "powershell_anomaly",
+    "credential_access",
+)
+
 INTAKE_KEYS = (
     "name",
     "description",
@@ -26,6 +38,7 @@ INTAKE_KEYS = (
     "query_extra",
     "sift_evidence_root",
     "sift_triage_root",
+    "sift_memory_file",
 )
 
 
@@ -46,9 +59,10 @@ def extra_playbook_names(ctx: dict[str, Any] | None) -> list[str]:
         for k in (
             "external", "compromise", "intrusion", "malware", "c2",
             "phishing", "initial access", "persistence",
+            "attacker", "beacon",
         )
     ):
-        names.append("external_compromise")
+        names.extend(_HOST_HUNT_PLAYBOOKS)
     if any(k in hyp for k in ("email", "pst", "outlook", "mailbox", "bec")):
         names.append("email_compromise")
     return list(dict.fromkeys(names))

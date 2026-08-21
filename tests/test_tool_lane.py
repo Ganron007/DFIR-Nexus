@@ -2,7 +2,13 @@
 
 from pathlib import Path
 
-from nexus.langgraph.tool_lane import find_windows_root, plan_sift_triage, plan_windows_triage
+from nexus.langgraph.tool_lane import (
+    find_windows_root,
+    plan_sift_triage,
+    plan_windows_triage,
+    sift_jobs_for_lane,
+    timeout_for_bytes,
+)
 
 
 def test_find_windows_root(tmp_path: Path):
@@ -132,6 +138,10 @@ def test_gap_parsers_are_practical(tmp_path: Path, monkeypatch):
     monkeypatch.delenv("NEXUS_LIVE_ACQUIRE_MEMORY", raising=False)
     monkeypatch.delenv("NEXUS_SAMPLE_FILES", raising=False)
     monkeypatch.delenv("NEXUS_TOOL_LANE_QUICK", raising=False)
+    monkeypatch.setattr(
+        "nexus.langgraph.tool_lane._esentutl_repair",
+        lambda *a, **k: None,
+    )
     root = tmp_path / "C"
     (root / "Windows" / "System32").mkdir(parents=True)
     inf = root / "Windows" / "INF"
@@ -210,3 +220,195 @@ def test_n2_extras_gated_chrome_profile(tmp_path: Path):
     extra_on = [j for j in jobs_on if "extra profile" in (j.purpose or "") and j.status == "PENDING"]
     assert len(extra_on) == 1
     assert "Profile 2" in extra_on[0].purpose
+
+
+def test_timeout_for_bytes_scales_and_caps():
+    assert timeout_for_bytes(0) == 600
+    assert timeout_for_bytes(1024) == 600
+    assert timeout_for_bytes(2 * 1024 * 1024) == 660
+    assert timeout_for_bytes(200 * 1024 * 1024) == 3600
+
+
+def test_sift_jobs_for_lane_windows_only_is_silent():
+    assert sift_jobs_for_lane("", has_sift_mcp=False) == []
+
+
+def test_sift_jobs_for_lane_mcp_without_root_is_honest_skip():
+    jobs = sift_jobs_for_lane("", has_sift_mcp=True)
+    assert len(jobs) == 1
+    assert jobs[0].status == "SKIP"
+    assert "NEXUS_SIFT_EVIDENCE_ROOT" in jobs[0].reason
+
+
+def test_sift_jobs_for_lane_with_root_schedules_vol(monkeypatch):
+    monkeypatch.delenv("NEXUS_SIFT_E01", raising=False)
+    monkeypatch.delenv("NEXUS_SIFT_PLASO", raising=False)
+    jobs = sift_jobs_for_lane("/evidence/pack", has_sift_mcp=True)
+    assert any(j.tool == "vol" and j.status == "PENDING" for j in jobs)
+
+
+def test_bmc_skips_zero_byte_only_tiles(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(
+        "nexus.langgraph.tool_lane._windows_tool_available",
+        lambda key: key == "bmc-tools",
+    )
+    root = tmp_path / "C"
+    (root / "Windows" / "System32").mkdir(parents=True)
+    cache = (
+        root / "Users" / "wacsvc" / "AppData" / "Local"
+        / "Microsoft" / "Terminal Server Client" / "Cache"
+    )
+    cache.mkdir(parents=True)
+    (cache / "bcache24.bmc").write_bytes(b"")
+    jobs = plan_windows_triage(str(root), tmp_path / "ex")
+    bmc = [j for j in jobs if j.tool == "bmc-tools"]
+    assert len(bmc) == 1
+    assert bmc[0].status == "SKIP"
+    assert "0 bytes" in bmc[0].reason
+
+
+def test_bmc_stages_nonzero_and_scales_timeout(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(
+        "nexus.langgraph.tool_lane._windows_tool_available",
+        lambda key: key == "bmc-tools",
+    )
+    root = tmp_path / "C"
+    (root / "Windows" / "System32").mkdir(parents=True)
+    cache = (
+        root / "Users" / "wacsvc" / "AppData" / "Local"
+        / "Microsoft" / "Terminal Server Client" / "Cache"
+    )
+    cache.mkdir(parents=True)
+    payload = b"x" * (2 * 1024 * 1024)
+    (cache / "Cache0000.bin").write_bytes(payload)
+    (cache / "bcache24.bmc").write_bytes(b"")
+    extractions = tmp_path / "ex"
+    jobs = plan_windows_triage(str(root), extractions)
+    bmc = next(j for j in jobs if j.tool == "bmc-tools" and j.status == "PENDING")
+    src = Path(bmc.argv[bmc.argv.index("-s") + 1])
+    assert src.name == "src"
+    assert (src / "Cache0000.bin").is_file()
+    assert not (src / "bcache24.bmc").exists()
+    assert bmc.timeout == 660
+    dest = Path(bmc.argv[bmc.argv.index("-d") + 1])
+    assert dest.name == "tiles"
+
+
+def test_bitsparser_stages_repaired_copy(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(
+        "nexus.langgraph.tool_lane._windows_tool_available",
+        lambda key: key == "bitsparser",
+    )
+    called: dict = {}
+
+    def _fake_repair(work, *, db_name, log_bases):
+        called["work"] = work
+        called["db_name"] = db_name
+        called["log_bases"] = log_bases
+
+    monkeypatch.setattr(
+        "nexus.langgraph.tool_lane._esentutl_repair",
+        _fake_repair,
+    )
+    root = tmp_path / "C"
+    (root / "Windows" / "System32").mkdir(parents=True)
+    qdir = root / "ProgramData" / "Microsoft" / "Network" / "Downloader"
+    qdir.mkdir(parents=True)
+    (qdir / "qmgr.db").write_bytes(b"ese" * 100)
+    (qdir / "edb.log").write_bytes(b"log")
+    extractions = tmp_path / "ex"
+    jobs = plan_windows_triage(str(root), extractions)
+    bp = next(j for j in jobs if j.tool == "bitsparser" and j.status == "PENDING")
+    staged = Path(bp.argv[bp.argv.index("-i") + 1])
+    assert staged.name == "qmgr.db"
+    assert "workdir" in staged.parts
+    assert staged.is_file()
+    assert (staged.parent / "edb.log").is_file()
+    assert "repaired copy" in bp.purpose
+    assert "--carveall" not in bp.argv
+    assert called["db_name"] == "qmgr.db"
+    assert called["log_bases"] == ("edb", "qmgr")
+
+
+def test_apply_prior_ok_reuses_matching_purpose(tmp_path: Path, monkeypatch):
+    from nexus.langgraph.tool_lane import ToolJob, apply_prior_ok
+
+    monkeypatch.delenv("NEXUS_TOOL_LANE_RERUN", raising=False)
+    ext = tmp_path / "extractions"
+    ext.mkdir()
+    (ext / "_tool_lane_ledger.json").write_text(
+        '[{"host":"windows","tool":"hayabusa","purpose":"Hayabusa EVTX",'
+        '"status":"OK","audit_id":"a1","argv":["hayabusa","-d","old"]}]',
+        encoding="utf-8",
+    )
+    jobs = [
+        ToolJob(host="windows", tool="hayabusa", argv=["hayabusa", "-d", "new"], purpose="Hayabusa EVTX"),
+        ToolJob(host="windows", tool="bitsparser", argv=["bitsparser"], purpose="BITS job queue"),
+    ]
+    assert apply_prior_ok(jobs, tmp_path) == 1
+    assert jobs[0].status == "OK"
+    assert jobs[0].audit_id == "a1"
+    assert jobs[0].reason.startswith("reused prior OK")
+    assert jobs[1].status == "PENDING"
+
+
+def test_apply_prior_ok_rerun_env_disables(tmp_path: Path, monkeypatch):
+    from nexus.langgraph.tool_lane import ToolJob, apply_prior_ok
+
+    monkeypatch.setenv("NEXUS_TOOL_LANE_RERUN", "1")
+    ext = tmp_path / "extractions"
+    ext.mkdir()
+    (ext / "_tool_lane_ledger.json").write_text(
+        '[{"host":"windows","tool":"hayabusa","purpose":"Hayabusa EVTX","status":"OK"}]',
+        encoding="utf-8",
+    )
+    jobs = [
+        ToolJob(host="windows", tool="hayabusa", argv=["hayabusa"], purpose="Hayabusa EVTX"),
+    ]
+    assert apply_prior_ok(jobs, tmp_path) == 0
+    assert jobs[0].status == "PENDING"
+
+
+def test_plan_sift_memory_file_overrides_default(monkeypatch):
+    monkeypatch.delenv("NEXUS_SIFT_MEMORY_FILE", raising=False)
+    monkeypatch.delenv("NEXUS_SIFT_E01", raising=False)
+    monkeypatch.delenv("NEXUS_SIFT_PLASO", raising=False)
+    jobs = plan_sift_triage(
+        "/mnt/srl_rd01",
+        memory_file="/mnt/srl_rd01/memory/rd01-memory.img",
+    )
+    vol = next(j for j in jobs if j.tool == "vol")
+    assert "/mnt/srl_rd01/memory/rd01-memory.img" in vol.argv
+    assert "Rocba-Memory.raw" not in vol.argv
+
+
+def test_plan_sift_rocba_root_keeps_rocba_dump(monkeypatch):
+    monkeypatch.delenv("NEXUS_SIFT_MEMORY_FILE", raising=False)
+    monkeypatch.delenv("NEXUS_SIFT_E01", raising=False)
+    monkeypatch.delenv("NEXUS_SIFT_PLASO", raising=False)
+    jobs = plan_sift_triage("/home/sansforensics/Evidence-files/rocba-500")
+    vol = next(j for j in jobs if j.tool == "vol")
+    assert any("Rocba-Memory.raw" in a for a in vol.argv)
+
+
+def test_copy_text_skips_existing_readonly(tmp_path: Path):
+    from nexus.langgraph.tool_lane import _copy_text
+
+    src = tmp_path / "setupapi.dev.log"
+    src.write_text("usb", encoding="utf-8")
+    dest_dir = tmp_path / "ex"
+    dest = dest_dir / "setupapi" / "setupapi.dev.log"
+    dest.parent.mkdir(parents=True)
+    dest.write_text("already", encoding="utf-8")
+    dest.chmod(0o444)
+    _copy_text(dest_dir, "setupapi/setupapi.dev.log", src)
+    assert dest.read_text(encoding="utf-8") == "already"
+    from nexus.tools.windows import _hash_file
+
+    d = tmp_path / "Cache"
+    d.mkdir()
+    assert _hash_file(str(d)) == ""
+    f = d / "x.bin"
+    f.write_bytes(b"abc")
+    digest = _hash_file(str(f))
+    assert len(digest) == 64

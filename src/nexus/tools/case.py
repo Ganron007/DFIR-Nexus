@@ -237,7 +237,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
 
         try:
             _ACTIVE_CASE_FILE.parent.mkdir(parents=True, exist_ok=True)
-            _ACTIVE_CASE_FILE.write_text(case_id)
+            _ACTIVE_CASE_FILE.write_text(str(case_dir))
         except OSError as e:
             return {"error": f"Failed to write active case: {e}"}
 

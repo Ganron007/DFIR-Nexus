@@ -244,8 +244,11 @@ def _parse_output(stdout: str | None, stderr: str | None) -> dict:
 
 
 def _hash_file(path: str) -> str:
+    p = Path(path)
+    if not p.is_file():
+        return ""
     h = hashlib.sha256()
-    with open(path, "rb") as f:
+    with p.open("rb") as f:
         for chunk in iter(lambda: f.read(65536), b""):
             h.update(chunk)
     return h.hexdigest()
@@ -606,7 +609,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
                 if token.startswith("-"):
                     continue
                 candidate = token.strip("\"'")
-                if candidate and Path(candidate).exists():
+                if candidate and Path(candidate).is_file():
                     detected_inputs.append(candidate)
 
         input_hashes: dict[str, str] = {}

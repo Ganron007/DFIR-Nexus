@@ -16,6 +16,8 @@ from urllib.parse import urlparse
 
 from nexus.langgraph.query_pack import (
     _DATE_RE,
+    _MAX_FILTERED_SCAN_BYTES,
+    _MAX_FULL_SCAN_BYTES,
     _MAX_LINE,
     _SKIP_SUFFIXES,
     _family,
@@ -23,14 +25,20 @@ from nexus.langgraph.query_pack import (
     _scan_prio,
     finalize_hits,
     iter_extraction_files,
+    needle_in_text,
 )
 
 _LARGE_NEEDLES = (
     "sdelete", ".pst", ".ost", "drivefs", "googledrive", "my drive",
-    "usbstor", "prefetch", ".exe", "mimikatz", "rubeus", "psexec",
+    "usbstor", "mimikatz", "rubeus", "psexec", "psexesvc",
+    "wevtutil", "1102", "encodedcommand", "dataoverwrite",
+    "rundll32", "mshta", "lsass", "schtasks", "bitsadmin",
+    "security.evtx",
 )
-_MAX_LARGE = 400 * 1024 * 1024
+_MAX_LARGE = _MAX_FILTERED_SCAN_BYTES
 _MAX_DOCS = 250_000
+_MAX_DOCS_SMALL = 150_000
+_MAX_DOCS_PER_FAMILY = 12_000
 _MAX_DOCS_PER_FILE = 80_000
 WILDCARD_IGNORE_ABOVE = 32766
 
@@ -83,9 +91,26 @@ def _ts_from_line(line: str) -> str | None:
 
 
 def _should_keep_large_line(low: str, extra_needles: list[str]) -> bool:
-    if any(n in low for n in extra_needles):
+    if any(needle_in_text(low, n) for n in extra_needles):
         return True
-    return any(n in low for n in _LARGE_NEEDLES)
+    return any(needle_in_text(low, n) for n in _LARGE_NEEDLES)
+
+
+def _index_small_prio(path: Path) -> tuple:
+    n = str(path).lower()
+    if "bmc-tools" in n or "bitmap" in n:
+        return (90, n)
+    return _scan_prio(path)
+
+
+def _index_large_prio(path: Path) -> tuple:
+    n = str(path).lower()
+    for i, hint in enumerate(
+        ("hayabusa", "evtx", "usn", "mftecmd", "pecmd", "amcache", "srum")
+    ):
+        if hint in n:
+            return (i, n)
+    return (40, n)
 
 
 def iter_index_docs(
@@ -117,35 +142,47 @@ def iter_index_docs(
             doc["ts"] = ts
         docs.append(doc)
 
-    for path, root, fam in iter_extraction_files(case_dir):
-        if len(docs) >= _MAX_DOCS:
+    family_counts: dict[str, int] = {}
+
+    small_files = list(iter_extraction_files(case_dir))
+    small_files.sort(key=lambda item: _index_small_prio(item[0]))
+    for path, root, fam in small_files:
+        if len(docs) >= _MAX_DOCS_SMALL:
             break
+        if family_counts.get(fam, 0) >= _MAX_DOCS_PER_FAMILY:
+            continue
         try:
             with path.open(encoding="utf-8", errors="replace") as fh:
                 for i, line in enumerate(fh, start=1):
                     if i == 1 and ("," in line or "\t" in line):
                         continue
+                    if family_counts.get(fam, 0) >= _MAX_DOCS_PER_FAMILY:
+                        break
+                    before = len(docs)
                     _add(path, root, fam, i, line)
-                    if i >= _MAX_DOCS_PER_FILE or len(docs) >= _MAX_DOCS:
+                    if len(docs) > before:
+                        family_counts[fam] = family_counts.get(fam, 0) + 1
+                    if i >= _MAX_DOCS_PER_FILE or len(docs) >= _MAX_DOCS_SMALL:
                         break
         except OSError:
             continue
 
-    # MFT-class files skipped by the CSV pack: index matching rows only.
+    # Hayabusa / MFT / EVTX above the small-file cap: index matching rows only.
+    # Always reserved — small CSVs must not consume the whole 250k budget.
     for root in (case_dir / "extractions", case_dir / "sift" / "extractions"):
         if not root.is_dir() or len(docs) >= _MAX_DOCS:
             break
         files: list[Path] = []
         for pat in ("*.csv", "*.txt"):
             files.extend(root.rglob(pat))
-        for path in sorted(set(files), key=_scan_prio):
+        for path in sorted(set(files), key=_index_large_prio):
             if path.name.startswith("_") or path.name.endswith(_SKIP_SUFFIXES):
                 continue
             try:
                 size = path.stat().st_size
             except OSError:
                 continue
-            if size <= 80 * 1024 * 1024 or size > _MAX_LARGE:
+            if size <= _MAX_FULL_SCAN_BYTES or size > _MAX_LARGE:
                 continue
             fam = _family(path, root)
             kept = 0
@@ -325,7 +362,7 @@ def query_index(
         if start is not None and end is not None and not _row_in_window(text, start, end):
             continue
         low = text.lower()
-        matched = [t for t in needles if t in low]
+        matched = [t for t in needles if needle_in_text(low, t)]
         if not matched:
             continue
         key = (str(src.get("file") or ""), str(src.get("line") or 0))

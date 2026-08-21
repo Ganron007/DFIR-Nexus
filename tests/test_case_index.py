@@ -100,3 +100,37 @@ def test_scan_and_docs_same_sdelete_file(tmp_path: Path):
     docs = iter_index_docs(case)
     assert any("sdelete" in h["text"].lower() for h in hits)
     assert any("sdelete" in d["text"].lower() for d in docs)
+
+
+def test_large_hayabusa_matching_rows_indexed(tmp_path: Path, monkeypatch):
+    import os
+    from pathlib import Path as P
+
+    hay = tmp_path / "extractions" / "hayabusa"
+    hay.mkdir(parents=True)
+    csv = hay / "evtx-timeline.csv"
+    csv.write_text(
+        "Timestamp,Rule\n2023-01-23 07:00:00,wevtutil cl Security 1102\n",
+        encoding="utf-8",
+    )
+    pecmd = tmp_path / "extractions" / "pecmd"
+    pecmd.mkdir()
+    (pecmd / "prefetch.csv").write_text("a,b\nnotepad,1\n", encoding="utf-8")
+
+    real_stat = P.stat
+
+    def fake_stat(self, *args, **kwargs):
+        st = real_stat(self, *args, **kwargs)
+        if self.name == "evtx-timeline.csv":
+            return os.stat_result((
+                st.st_mode, st.st_ino, st.st_dev, st.st_nlink,
+                st.st_uid, st.st_gid, 120 * 1024 * 1024,
+                st.st_atime, st.st_mtime, st.st_ctime,
+            ))
+        return st
+
+    monkeypatch.setattr(P, "stat", fake_stat)
+    docs = iter_index_docs(tmp_path, extra_needles=["wevtutil"])
+    texts = " ".join(d["text"] for d in docs)
+    assert "wevtutil" in texts.lower()
+    assert any(d.get("family") == "hayabusa" for d in docs)

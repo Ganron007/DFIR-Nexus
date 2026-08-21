@@ -159,6 +159,12 @@ $kapeNote = "KAPE is not fetched (Kroll registration). Download current from htt
 Write-Host "==> KAPE: $kapeNote"
 $script:Versions += "kape`tNOT-FETCHED`thttps://www.kroll.com/ (operator download)"
 
+Write-Host "==> Stage 0 IR collectors (Kansa / UAC / AVML)"
+try {
+    & (Join-Path $Root "fetch-ir-collect.ps1")
+    $script:Versions += "ir-collect`tfetch-ir-collect.ps1`ttools/fetch-ir-collect.ps1"
+} catch { Write-Host "    ir-collect skipped: $_" }
+
 Write-Host "==> Python dep for KStrike (pyesedb via libesedb-python)"
 $py = Get-Command python -ErrorAction SilentlyContinue
 if (-not $py) { $py = Get-Command python3 -ErrorAction SilentlyContinue }

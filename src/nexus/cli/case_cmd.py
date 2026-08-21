@@ -25,8 +25,11 @@ def _get_active_case_id() -> str | None:
 
 
 def _set_active_case(case_id: str) -> None:
+    from nexus.config import settings
+
     _ACTIVE_CASE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    _ACTIVE_CASE_FILE.write_text(case_id)
+    case_dir = settings.cases_root / case_id
+    _ACTIVE_CASE_FILE.write_text(str(case_dir) if case_dir.is_dir() else case_id)
 
 
 @app.command()

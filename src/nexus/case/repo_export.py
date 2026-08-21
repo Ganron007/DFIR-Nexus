@@ -84,6 +84,20 @@ def _copy_or_sample(src: Path, dest: Path, inventory: list[dict[str, Any]]) -> N
     inventory.append(entry)
 
 
+def live_case_is_in_repo(case_dir: Path) -> bool:
+    """True when the live case already lives under this git repo (no sample mirror)."""
+    case_dir = Path(case_dir).resolve()
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "pyproject.toml").is_file() and (parent / "Docs").is_dir():
+            try:
+                case_dir.relative_to(parent.resolve())
+                return True
+            except ValueError:
+                return False
+    return False
+
+
 def export_case_to_repo(
     case_dir: Path,
     *,
@@ -164,5 +178,5 @@ def export_case_to_repo(
         f"- SIFT pull: `sift/`\n",
         encoding="utf-8",
     )
-    log.info("Exported case %s → %s", case_id, root)
+    log.info("Exported case %s -> %s", case_id, root)
     return root

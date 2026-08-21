@@ -95,15 +95,24 @@ def build_qa_spine(
         keys = []
         if any(w in low for w in ("insider", "staging", "misuse", "wipe", "pst", "exfil")):
             keys = ["sdelete", "pst", "recycle", "drive", "staging"]
-        elif any(w in low for w in ("external", "compromise", "c2", "malware", "intrusion")):
-            # Dual-lens prose uses "C2" / "external" while refuting them — do not
-            # treat those words as positive intrusion evidence.
-            keys = ["mimikatz", "rubeus", "cobalt", "beacon", "psexec", "encodedcommand"]
+        elif any(w in low for w in (
+            "external", "compromise", "c2", "malware", "intrusion", "attacker",
+        )):
+            # Host-artifact evidence can support an intrusion/attacker-activity
+            # question. Dual-lens prose using "C2" to refute still uses _negative.
+            keys = [
+                "mimikatz", "rubeus", "cobalt", "beacon", "psexec", "psexesvc",
+                "encodedcommand", "wevtutil", "1102", "overwrite", "usn",
+                "rundll32", "mshta", "lsass", "schtasks", "persistence",
+                "autorun", "wacsvc",
+            ]
         else:
             keys = [t for t in re.findall(r"[a-z0-9]{4,}", low) if t not in {
                 "what", "host", "activity", "supports", "refutes", "with", "from",
             }][:6]
-        external_q = any(w in low for w in ("external", "compromise", "c2", "malware", "intrusion"))
+        external_q = any(w in low for w in (
+            "external", "compromise", "c2", "malware", "intrusion", "attacker",
+        ))
         matched: list[str] = []
         cited = ""
         for f in findings:
@@ -130,7 +139,7 @@ def build_qa_spine(
         elif matched:
             rows.append({
                 "question": q,
-                "answer": f"Supported by approved findings (terms: {', '.join(matched)}).",
+                "answer": f"Supported by findings (terms: {', '.join(matched)}).",
                 "cite": cited,
             })
         else:
@@ -145,6 +154,61 @@ def build_qa_spine(
 def _sev_rank(sev: str) -> int:
     order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "informational": 4}
     return order.get((sev or "").lower(), 9)
+
+
+def dated_timeline(events: list[dict[str, Any]] | None) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Split N7 events into timestamped chronology vs untimed keyword hits."""
+    dated: list[dict[str, Any]] = []
+    untimed: list[dict[str, Any]] = []
+    for e in events or []:
+        src = str(e.get("source") or "").lower()
+        desc = str(e.get("description") or "")
+        if src.startswith("i1:generic") or desc.startswith("Generic JSONL"):
+            continue
+        if str(e.get("timestamp") or "").strip():
+            dated.append(e)
+        else:
+            untimed.append(e)
+    dated.sort(key=lambda e: str(e.get("timestamp") or ""))
+    return dated, untimed
+
+
+def sift_notes_from_ledger(ledger: list[dict[str, Any]] | None) -> list[str]:
+    """SIFT section = tools that ran on a Linux tool host, not extraction listings."""
+    notes: list[str] = []
+    for row in ledger or []:
+        host = str(row.get("host") or "").lower()
+        if "sift" not in host and host not in {"linux", "remnux"}:
+            continue
+        tool = row.get("tool") or "?"
+        status = row.get("status") or "?"
+        purpose = (row.get("purpose") or "").strip()
+        bit = f"`{tool}` {status}"
+        if purpose:
+            bit += f" — {purpose[:120]}"
+        notes.append(bit)
+        if len(notes) >= 40:
+            break
+    return notes
+
+
+def load_case_ledger(case_dir) -> list[dict[str, Any]]:
+    import json
+    from pathlib import Path
+
+    case_dir = Path(case_dir)
+    for lp in (
+        case_dir / "extractions" / "_tool_lane_ledger.json",
+        case_dir / "ledger" / "_tool_lane_ledger.json",
+    ):
+        if lp.is_file():
+            try:
+                raw = json.loads(lp.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if isinstance(raw, list):
+                return raw
+    return []
 
 
 def build_dfir_markdown(
@@ -165,14 +229,20 @@ def build_dfir_markdown(
     tool_ledger: list[dict[str, Any]] | None = None,
     finding_ids: list[str] | None = None,
     questions: list[str] | None = None,
+    include_draft: bool = False,
 ) -> str:
-    """Render a detailed DFIR-style Markdown report from approved case data."""
+    """Render a detailed DFIR-style Markdown report from case findings.
+
+    Official ``REPORT.md`` uses APPROVED rows only (``include_draft=False``).
+    Examiner preview ``REPORT-DRAFT.md`` sets ``include_draft=True``.
+    """
     if finding_ids:
         want = set(finding_ids)
         findings = [f for f in findings if f.get("id") in want]
+    statuses = ("APPROVED", "DRAFT") if include_draft else ("APPROVED",)
     approved = [
         f for f in findings
-        if str(f.get("status") or f.get("approval_state") or "").upper() in ("APPROVED",)
+        if str(f.get("status") or f.get("approval_state") or "").upper() in statuses
     ]
     approved.sort(key=lambda f: (_sev_rank(str(f.get("severity", ""))), f.get("title", "")))
 
@@ -233,6 +303,10 @@ def build_dfir_markdown(
     lines.append(f"**Generated:** {generated}  ")
     lines.append("")
     lines.append(
+        "> PREVIEW from **DRAFT** findings. Not HMAC-approved. "
+        "Official `REPORT.md` is written after `nexus approve`."
+        if include_draft
+        else
         "> Lab IR report from **APPROVED** findings (template, not an LLM file). "
         "Key takeaways, "
         "case summary, evidence-backed sections, timeline, indicators, detections, MITRE."
@@ -243,15 +317,24 @@ def build_dfir_markdown(
     lines.append("## Key Takeaways")
     lines.append("")
     if not approved:
-        lines.append("- No APPROVED findings yet — examiner HITL gate not complete.")
+        if include_draft:
+            lines.append("- No DRAFT or APPROVED findings staged yet.")
+        else:
+            lines.append("- No APPROVED findings yet — examiner HITL gate not complete.")
     else:
         for f in approved[:8]:
             title = f.get("title") or "Untitled finding"
             sev = f.get("severity") or "?"
             lines.append(f"- **[{sev}]** {title}")
+        custody = (
+            f"**{len(approved)}** staged DRAFT findings (not HMAC-approved)."
+            if include_draft
+            else
+            f"**{len(approved)}** approved findings with HMAC chain-of-custody."
+        )
         lines.append(
             f"- Investigation registered **{len(evidence)}** evidence items and "
-            f"**{len(approved)}** approved findings with HMAC chain-of-custody."
+            f"{custody}"
         )
         if sift_notes:
             lines.append(
@@ -330,12 +413,19 @@ def build_dfir_markdown(
     lines.append("## Findings (Evidence-Backed)")
     lines.append("")
     if not approved:
-        lines.append("_No approved findings._")
+        lines.append(
+            "_No DRAFT or APPROVED findings._"
+            if include_draft
+            else "_No approved findings._"
+        )
         lines.append("")
     for f in approved:
         lines.append(f"### {f.get('title', 'Untitled')}")
         lines.append("")
         lines.append(f"- **ID:** `{f.get('id')}`")
+        st = str(f.get("status") or f.get("approval_state") or "").upper()
+        if include_draft and st:
+            lines.append(f"- **Status:** {st}")
         lines.append(f"- **Severity:** {f.get('severity')}")
         if f.get("approved_by"):
             lines.append(f"- **Approved by:** {f.get('approved_by')}")
@@ -424,15 +514,15 @@ def build_dfir_markdown(
     lines.append("")
     if sift_notes:
         lines.append(
-            "The Linux tool host (SIFT) was used for supporting analysis on this case:"
+            "Linux tool-host (SIFT) jobs from the tool-run ledger:"
         )
         lines.append("")
         for note in sift_notes:
             lines.append(f"- {note}")
     else:
         lines.append(
-            "_No SIFT tool notes attached. Linux ingest may still have run on the "
-            "Windows examiner host from staged `Evidence-files/03-linux/`._"
+            "_No SIFT host jobs in the ledger. Windows examiner-host parsers "
+            "are listed under Tool-run inventory when present._"
         )
     lines.append("")
 
@@ -458,24 +548,26 @@ def build_dfir_markdown(
     # Timeline
     lines.append("## Timeline")
     lines.append("")
-    events = list(timeline or [])
-    events.sort(key=lambda e: str(e.get("timestamp") or ""))
-    if not events:
+    dated, untimed = dated_timeline(timeline)
+    if not dated and not untimed:
         lines.append("_No timeline events recorded._")
     else:
-        lines.append("| Timestamp | Host | Description | Source |")
-        lines.append("|-----------|------|-------------|--------|")
-        for e in events[:80]:
-            ts = str(e.get("timestamp") or "")[:25]
-            host = str(e.get("host") or "").replace("|", "/")
-            desc = str(e.get("description") or "").replace("|", "/")[:120]
-            src = str(e.get("source") or "").replace("|", "/")
-            lines.append(f"| {ts} | {host} | {desc} | {src} |")
-        if len(events) > 80:
-            lines.append("")
-            lines.append(f"_… {len(events) - 80} additional timeline rows omitted._")
+        if dated:
+            lines.append("| Timestamp | Host | Description | Source |")
+            lines.append("|-----------|------|-------------|--------|")
+            for e in dated[:80]:
+                ts = str(e.get("timestamp") or "")[:25]
+                host = str(e.get("host") or "").replace("|", "/")
+                desc = str(e.get("description") or "").replace("|", "/")[:120]
+                src = str(e.get("family") or e.get("source") or "").replace("|", "/")
+                lines.append(f"| {ts} | {host} | {desc} | {src} |")
+            if len(dated) > 80:
+                lines.append("")
+                lines.append(f"_… {len(dated) - 80} additional dated rows omitted._")
+        else:
+            lines.append("_No dated N7 events. Keyword hits without timestamps are below._")
         i1_events = [
-            e for e in events
+            e for e in dated
             if str(e.get("source") or "").lower().startswith("i1")
         ]
         if i1_events:
@@ -489,6 +581,16 @@ def build_dfir_markdown(
                 desc = str(e.get("description") or "").replace("|", "/")[:120]
                 src = str(e.get("source") or "").replace("|", "/")
                 lines.append(f"| {ts} | {desc} | {src} |")
+        if untimed:
+            lines.append("")
+            lines.append("### Untimed keyword hits")
+            lines.append("")
+            for e in untimed[:15]:
+                desc = str(e.get("description") or "").replace("|", "/")[:160]
+                src = str(e.get("source") or "").replace("|", "/")
+                lines.append(f"- [{src}] {desc}")
+            if len(untimed) > 15:
+                lines.append(f"- _… {len(untimed) - 15} additional untimed rows omitted._")
     lines.append("")
 
     # Indicators
@@ -626,9 +728,70 @@ def build_dfir_markdown(
 
     lines.append("---")
     lines.append("")
-    lines.append(
-        "_Only APPROVED findings are included. DRAFT/REJECTED omitted by HITL design. "
-        "This is a lab report — not a public attribution claim._"
-    )
+    if include_draft:
+        lines.append(
+            "_PREVIEW includes DRAFT findings. HMAC `nexus approve` writes official `REPORT.md`._"
+        )
+    else:
+        lines.append(
+            "_Only APPROVED findings are included. DRAFT/REJECTED omitted by HITL design. "
+            "This is a lab report — not a public attribution claim._"
+        )
     lines.append("")
     return "\n".join(lines)
+
+
+def write_findings_preview(case_dir) -> "Path":
+    """Write ``reports/REPORT-DRAFT.md`` from staged DRAFT+APPROVED findings."""
+    import json
+    from pathlib import Path
+
+    import yaml
+
+    case_dir = Path(case_dir)
+    findings_path = case_dir / "findings.json"
+    findings = []
+    if findings_path.is_file():
+        findings = json.loads(findings_path.read_text(encoding="utf-8"))
+    meta: dict = {}
+    case_yaml = case_dir / "CASE.yaml"
+    if case_yaml.is_file():
+        meta = yaml.safe_load(case_yaml.read_text(encoding="utf-8")) or {}
+    intake = meta.get("intake") if isinstance(meta.get("intake"), dict) else {}
+    questions = _split_questions(str((intake or {}).get("question") or meta.get("question") or ""))
+    evidence = []
+    ev_path = case_dir / "evidence.json"
+    if ev_path.is_file():
+        raw = json.loads(ev_path.read_text(encoding="utf-8"))
+        evidence = raw if isinstance(raw, list) else raw.get("evidence") or []
+    timeline = []
+    try:
+        from nexus.langgraph.timeline_merge import rebuild_case_timeline
+
+        timeline = rebuild_case_timeline(case_dir)
+    except Exception:
+        tl_path = case_dir / "timeline.json"
+        if tl_path.is_file():
+            timeline = json.loads(tl_path.read_text(encoding="utf-8"))
+            if not isinstance(timeline, list):
+                timeline = []
+    ledger = load_case_ledger(case_dir)
+    md = build_dfir_markdown(
+        case_id=str(meta.get("case_id") or case_dir.name),
+        case_name=str(meta.get("name") or case_dir.name),
+        findings=findings,
+        evidence=evidence if isinstance(evidence, list) else [],
+        timeline=timeline,
+        examiner=str(meta.get("examiner") or ""),
+        status=str(meta.get("status") or "open"),
+        severity=str(meta.get("severity") or "unrated"),
+        case_summary=str((intake or {}).get("question") or meta.get("description") or ""),
+        tool_ledger=ledger if isinstance(ledger, list) else None,
+        questions=questions,
+        include_draft=True,
+        sift_notes=sift_notes_from_ledger(ledger),
+    )
+    out = case_dir / "reports" / "REPORT-DRAFT.md"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(md, encoding="utf-8")
+    return out

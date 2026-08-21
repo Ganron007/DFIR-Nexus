@@ -1,6 +1,15 @@
 name: "Log Tampering Investigation"
 description: "Investigate event log clearing, suspicious gaps, and anti-forensic activity targeting log integrity"
 mitre: ["T1070.001", "T1070"]
+query_terms:
+  - wevtutil
+  - "1102"
+  - dataoverwrite
+  - security.evtx
+  - system.evtx
+  - usnjrnl
+  - sdelete
+  - cipher.exe
 sources:
   - "SANS FOR508 — Windows Enterprise Incident Response"
   - "MITRE ATT&CK T1070.001 — Clear Windows Event Logs"

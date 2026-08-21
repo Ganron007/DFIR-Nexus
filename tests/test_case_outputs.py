@@ -77,7 +77,50 @@ def test_resolve_active_case_dir_env(tmp_path: Path, monkeypatch):
     assert resolved == case
 
 
-def test_dfir_report_uses_case_summary():
+def test_resolve_active_case_dir_relative_id(tmp_path: Path, monkeypatch):
+    """ID-only active_case must resolve under settings.cases_root, not ~/.nexus/cases."""
+    cases_root = tmp_path / "cases"
+    case = cases_root / "INC-REL"
+    case.mkdir(parents=True)
+    (case / "CASE.yaml").write_text("case_id: INC-REL\n", encoding="utf-8")
+    active = tmp_path / "home" / ".nexus" / "active_case"
+    active.parent.mkdir(parents=True)
+    active.write_text("INC-REL", encoding="utf-8")
+    monkeypatch.setattr("nexus.case.outputs._ACTIVE_CASE_FILE", active)
+    monkeypatch.delenv("NEXUS_CASE_DIR", raising=False)
+
+    class _Boom:
+        def resolve_case_dir(self, *a, **k):
+            raise RuntimeError("no mgr")
+
+    monkeypatch.setattr("nexus.case_manager.CaseManager", _Boom)
+    monkeypatch.setattr("nexus.config.settings.cases_root", cases_root)
+    assert resolve_active_case_dir() == case
+
+
+def test_cli_resolve_case_uses_cases_root(tmp_path: Path, monkeypatch):
+    cases_root = tmp_path / "cases"
+    case = cases_root / "INC-CLI"
+    case.mkdir(parents=True)
+    monkeypatch.setattr("nexus.config.settings.cases_root", cases_root)
+    from nexus.cli.main import _resolve_case
+
+    assert _resolve_case("INC-CLI") == case
+
+
+def test_report_normalize_case_ref_strips_path(tmp_path: Path, monkeypatch):
+    cases_root = tmp_path / "cases"
+    case = cases_root / "INC-20260815074250"
+    case.mkdir(parents=True)
+    monkeypatch.setattr("nexus.config.settings.cases_root", cases_root)
+    from nexus.cli.report import _normalize_case_ref
+
+    cid, resolved = _normalize_case_ref(str(case))
+    assert cid == "INC-20260815074250"
+    assert resolved == case
+    cid2, resolved2 = _normalize_case_ref("INC-20260815074250")
+    assert cid2 == "INC-20260815074250"
+    assert resolved2 == case
     from nexus.integration.dfir_report import build_dfir_markdown
 
     md = build_dfir_markdown(

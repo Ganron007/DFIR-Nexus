@@ -74,3 +74,22 @@ class TestAutoDetect:
             p = Path(f.name)
         result = ingest_auto(p)
         assert result["success"] is False
+
+    def test_ingest_auto_source_override(self) -> None:
+        from nexus.ingest.detect import resolve_ingest_source
+
+        content = "col1,col2,col3\nval1,val2,val3\nval4,val5,val6\n"
+        with tempfile.NamedTemporaryFile(suffix=".csv", mode="w", delete=False) as f:
+            f.write(content)
+            p = Path(f.name)
+        resolved, err = resolve_ingest_source(p, "generic_csv")
+        assert err is None
+        assert resolved == ArtifactSource.GENERIC_CSV
+        result = ingest_auto(p, source="generic_csv")
+        assert result["success"] is True
+        assert result["source"] == "generic_csv"
+
+    def test_ingest_auto_bad_source(self) -> None:
+        result = ingest_auto(Path("x.csv"), source="not-a-source")
+        assert result["success"] is False
+        assert "Unknown source" in result["error"]

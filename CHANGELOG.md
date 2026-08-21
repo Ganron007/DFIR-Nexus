@@ -4,6 +4,80 @@ All notable changes to DFIR-Nexus are documented here.
 
 ## Unreleased
 
+### Stage 0 IR collect (`nexus collect`) (2026-08-18)
+
+- Default profile is **full**: every FOSS collector we can run. Examiners opt out with `--profile disk|volatile`, `--only kansa,kape,…`, or `--no-*`.
+- **Windows:** Kansa local-full module set, Sysinternals (autorunsc/handle/tcpvcon/listdlls/pslist/psloggedon/logonsessions/pipelist), PersistenceSniper, wevtutil EVTX export, Hayabusa + Suzaku timelines, Chainsaw hunt (SigmaHQ `rules/` sparse tree), KAPE `!SANS_Triage`/`!EZParser`, DFIR-ORC, WinPmem, live Velociraptor `collect_client` hunts.
+- **Linux:** POSIX volatile snapshot (plus optional osquery/chkrootkit/lynis if present), journalctl 30d + ausearch, UAC `-p full`, AVML, live Velociraptor hunts.
+- Velociraptor is a Stage 0 collector (not Stage 2). Mock / no-key loopback is skipped honestly; live hunts need `NEXUS_VR_ENDPOINT` + `NEXUS_VR_API_KEY`. DumpIt is never invoked (commercial).
+- `nexus collect tools|plan|run|import`. Password never on argv (`NEXUS_COLLECT_PASSWORD`).
+
+### Stage 0 IR collect (`nexus collect`) (2026-08-17)
+
+- Live authenticated collection: Kansa volatile + KAPE `!SANS_Triage` acquire and `!EZParser` parse + **DFIR-ORC** snapshot (Windows); UAC `ir_triage` or builtin POSIX volatile (Linux). Optional WinPmem / AVML via `--memory`. DumpIt is not fetched (commercial).
+- Remote path is SSH (key `--identity`, or password via `NEXUS_COLLECT_PASSWORD` + optional `paramiko`). WinRM is the Windows-to-Windows fallback. Passwords never go on argv or in `manifest.json`.
+- Velociraptor is probed and skipped unless a live server is configured. `nexus collect import` registers an existing dump as a pack pointer.
+
+### N4 numeric needles + N7 readable chronology (2026-08-16)
+
+- Short event-ID needles (`1102`, `7045`, `1149`) match as tokens, not inside
+  hashes / UUIDs / file sizes. `ingest/artifacts.jsonl` is not an N4 scan file
+  (I1 dump; UUID substring hits were becoming fake sdelete/1102 salvage).
+- N5 salvage ignores process-time `generic_jsonl` rows. N7 skips those events
+  and renders host + `family [terms]: artifact` instead of raw CSV cells.
+
+### N4 searches host artifacts; N3 indexes Hayabusa (2026-08-16)
+
+- Host-compromise questions attach log-tamper / execution / remote / autorun /
+  PowerShell / credential playbooks. `query_terms` are parser needles
+  (`wevtutil`, `1102`, `dataoverwrite`, `psexec`, …), not only malware names.
+- N4 CSV pack needle-scans files up to 400 MB (Hayabusa timeline). N3 reserves
+  index budget for those large files and drops generic `.exe` as a keep-all.
+- N8 Q&A treats USN overwrite / wevtutil / unexpected execution as support for
+  an attacker-activity question. Official `REPORT.md` passes intake questions,
+  dated N7 chronology, and ledger SIFT jobs — not an `extractions/` directory listing.
+  Preview Q&A says “findings” (not “approved”) so DRAFT cards can cite. Dated
+  chronology drops `i1:generic_jsonl` noise. `nexus report generate` prints
+  case + APPROVED count before the N7 scan so the LangChain Python 3.14 warning
+  is not the only output.
+- N5 prompt: answer N1 questions first; IR collection (Velociraptor / F-Response /
+  Kansa) is not C2; emit claim-level findings, not one card per parser.
+
+### Set HMAC password when it was never yours (2026-08-16)
+
+- `nexus config --examiner e2e_host --setup-password --replace` overwrites `~/.nexus/passwords/e2e_host.json` without the old key (lab leftover hash). Old HMAC ledger rows for that examiner will not verify.
+- `NEXUS_APPROVAL_PASSWORD` is used as the new password so PowerShell/Cursor do not need a hidden prompt.
+
+### Examiner draft report + honest completeness (2026-08-15)
+
+- Tools mode never writes IR `REPORT.md` (only `TOOL-RUN.md`). Official `REPORT.md` is APPROVED-only after HMAC.
+- After interpret stages DRAFTs, `reports/REPORT-DRAFT.md` is the examiner-readable preview (watermark: PREVIEW / not HMAC).
+- `nexus report generate` resolves `active_case` even when it is an absolute directory (uses the case ID, prefers `findings.json` HMAC store).
+- Artifact completeness refreshes after the tool lane: related parser OK → **PARSED** (not frozen **SCHEDULED**). If the evidence root is unmounted, statuses upgrade from the existing JSON + ledger.
+- N4 `parse_intake_window` uses the dedicated `window` field. Dates inside the question (e.g. “incident called 2023-01-24”) no longer clip the end of the range. Collection-prose tokens (`disk`, `memory`, `security`, `admin`) are not search needles.
+
+### Approve/report find the live case under `cases_root` (2026-08-15)
+
+- `nexus approve` / portal / `nexus report generate` no longer look only in `~/.nexus/cases/`. They use `settings.cases_root` (this repo’s `cases/` after the move).
+- `case_activate` writes the absolute case directory to `~/.nexus/active_case` (same as `case_init`), so ID-only pointers do not miss the live store.
+
+### Tool-lane honesty (bmc-tools / BitsParser / SIFT skip / stdio RAG) (2026-08-15)
+
+- Windows-only MCP no longer emits a fake SIFT SKIP (`No SIFT evidence root`). SIFT jobs run only when a root is named or a SIFT MCP is connected.
+- `bmc-tools`: stage non-empty RDP cache tiles locally; skip 0-byte-only caches; timeout scales with size (cap 3600s). Root cause of the 600s FAIL was a ~104 MB `Cache0000.bin` on a mounted VHDX.
+- `bitsparser`: copy `qmgr.db` + ESE logs, `esentutl` repair (same as SRUM), then parse the repaired copy. Dirty KAPE ESE hangs Impacket `getNextRow`; `--carveall` stays off the tools lane.
+- Stdio MCP now passes a full `env` copy; tools mode forces `NEXUS_RAG_PRELOAD=0` so the child does not reload the CUDA embedder per tool.
+- `nexus pipeline --mode tools --from-case <id>` reuses that case (no new INC id). Prior OK ledger rows are skipped; FAIL/new jobs re-run. `--from-case` alone still means interpret.
+- `_copy_text` skips an already-staged dest (ReadOnly KAPE copies were PermissionError on leftover re-run).
+- SIFT memory: `intake.sift_memory_file` / `NEXUS_SIFT_MEMORY_FILE`. Rocba default dump only when the evidence root path contains `rocba`.
+
+### Phase B leftovers (2026-08-15)
+
+- N1: placeholder window text (`examiner-supplied; evidence timestamps win`) is not intake — coverage/design degrades to TOOL-RUN.
+- `nexus ingest --source` forces `ArtifactSource`; each file prints `audit_id` (persisted when a case/audit dir is active).
+- `nexus doctor` probes HTTP `/health` (`--health-url` / `NEXUS_HEALTH_URL`; not listening is optional).
+- Official MCP `ClientSession` initialize + `tools/list` against `/mcp` (`test_official_mcp_client_handshake`). Not 12-pass M2.
+
 ### Nexus-mode query loop (2026-08-14)
 
 - Operator loop doc: `Docs/NEXUS-MODE.md` (open this if INTERPRET/COMPLETE preview crashes).

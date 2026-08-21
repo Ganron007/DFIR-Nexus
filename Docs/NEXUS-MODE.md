@@ -13,9 +13,31 @@ One product, three doors, one `case_id`:
 Do import and detection **after** Nexus mode is honest on one pack.
 They reuse the same query / HITL / report brain. They do not replace it.
 
+## Stage 0 — live collect (before N1)
+
+Stage 0 is a **live run** against a host you can authenticate to:
+
+`nexus collect run --os windows --host <ip> --user <acct> --identity <key>`
+
+That wraps **every FOSS collector we can run** (Windows: Kansa-full, Sysinternals,
+PersistenceSniper, wevtutil, Hayabusa, Suzaku, Chainsaw, KAPE, DFIR-ORC, WinPmem,
+live Velociraptor; Linux: POSIX volatile, journalctl, UAC `-p full`, AVML, VR).
+Writes `hosts/<hostname>/…` + `manifest.json`. Then `nexus case init` and
+`nexus evidence register` the pack. **Not** an analysis dump.
+
+`nexus collect import <dump>` is the helper when you already have a KAPE image or
+Kansa CSVs. Velociraptor is a **Stage 0 collector**: skipped honestly when the
+server is mock or unreachable; live hunts run with `collect_client` when
+`NEXUS_VR_ENDPOINT` + `NEXUS_VR_API_KEY` are set. Opt out with `--profile disk`
+(no RAM dump), `--profile volatile`, `--only kansa,kape`, or `--no-*`.
+
+Without SSH or WinRM (or local) credentials, collection does not run. That is
+the orchestrator boundary.
+
 ## The loop (locked)
 
 ```
+Stage 0  Collect    live IR with auth → pack on disk          (no LLM)
 N1  Intake     examiner question + window + playbooks
 N2  Process    parsers write CSVs + audit_id     (no LLM)
 N3  Index      optional ES of THIS case's output (no LLM)
@@ -34,9 +56,12 @@ Empty hits = INSUFFICIENT, not a coverage gap, not a fake story.
 
 N4 is **search code**, not a chat. Three callers, one function (`n4_hits`):
 
-1. **Playbooks (automatic).** YAML `query_terms` (sdelete, .pst, USBSTOR, …)
-   plus tokens from the examiner question. This is the default pack
-   `analysis/query_pack.md` that N5 reads.
+1. **Playbooks (automatic).** YAML `query_terms` plus tokens from the
+   examiner question. Host-compromise / attacker-activity questions load
+   execution, persistence, log-tamper, and credential playbooks — not only
+   malware family names (mimikatz/beacon). This is the default pack
+   `analysis/query_pack.md` that N5 reads. N3 indexes Hayabusa-sized CSVs
+   (needle rows); it must not fill the budget with RDP-cache tiles.
 2. **Examiner (visual + CLI).** Portal **Query** tab, or
    `nexus case query --needles sdelete,.pst`. You are hunting in
    **already-parsed** CSVs / the case ES index — not in `Evidence-files/`.
@@ -63,6 +88,17 @@ The LLM does not grep raw disks. It does not treat RAG snippets as evidence.
 
 `tools` mode does not load RAG. Process first, query second, interpret third.
 
+## Tools vs design (do not skip the lane)
+
+`tools` is the mandatory parser pass for **present** artifacts. FAIL = the
+parser ran and lost (timeout/error). SKIP = artifact absent, or SIFT was never
+configured (Windows-only MCP does not fake a SIFT SKIP). The LLM does not
+choose this set.
+
+`design` (agentic) runs **the same lane first**. ReAct may then add extras
+(carve, extra Volatility plugins). Agentic must not paper over a FAIL by
+omitting the parser. Extras after the lane, not instead of it.
+
 ## If the analysis is wrong (N6)
 
 Do not re-parse a good ledger. Redirect:
@@ -82,6 +118,11 @@ HITL is the accuracy gate. Lab auto-approve is not 12-pass HITL.
 findings + N7 timeline. The LLM already wrote observation vs interpretation
 at N5. It does not write the file.
 
+Before HMAC, open `reports/REPORT-DRAFT.md` — same template with DRAFT
+findings and a PREVIEW watermark. `nexus report generate` writes that
+preview when nothing is APPROVED yet. Tools mode writes `TOOL-RUN.md`
+only; it must not overwrite `REPORT.md`.
+
 Polish later may rephrase headings. It must not add hosts, times, or
 malware names that are not in APPROVED hits. Prefer examiner edits
 in the portal / markdown over a second model pass.
@@ -90,11 +131,13 @@ in the portal / markdown over a second model pass.
 
 ```
 nexus pipeline --mode tools --case D:\pack
+nexus pipeline --mode tools --from-case INC-... --case I:\C
 nexus case query --needles sdelete,.pst
 nexus pipeline --mode interpret --from-case INC-20260813122635
+nexus config --examiner e2e_host --setup-password --replace
 nexus approve --examiner e2e_host F-021
 nexus report generate
-nexus ingest --case path\to\conn.log
+nexus ingest conn.log --source zeek --case INC-...
 nexus case detections --finding-ids F-021,F-022
 ```
 
