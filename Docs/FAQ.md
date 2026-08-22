@@ -101,7 +101,7 @@ A: 36 registered importers — Suricata, Zeek, Elastic, Splunk, Wazuh, EVTX, Amc
 A: Yes. Index your Sigma/Hayabusa rules with `detection_sigma_install()`, then search by technique, severity, or keyword. Get MITRE coverage heatmaps and gap analysis.
 
 **Q: Can I use Velociraptor?**
-A: Yes. 10 pre-built hunts + 5 custom artifacts. Mock mode works out of the box (no VR server needed for testing).
+A: Yes. Mock mode works offline (no VR server). Live Stage 0 hunts need examiner `.env` `NEXUS_VR_MCP_URL` (HTTP `:8002`) + `NEXUS_VR_MCP_API_KEY` from the VR server MCP env. Do not point `NEXUS_VR_ENDPOINT` at gRPC `:8001`. Check with `nexus collect tools` (`velociraptor_live: True`). Do not `nexus collect run` until freeze. Steps: [SETUP.md §2.6](SETUP.md#26-live-velociraptor-hunts-every-examiner-host).
 
 ---
 

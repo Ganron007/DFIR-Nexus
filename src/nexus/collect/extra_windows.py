@@ -251,7 +251,7 @@ def run_wevtutil(
             ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", _export_cmds(str(out))],
             600,
         )
-        n = len(list(out.glob("*.evtx")))
+        n = len(list(out.rglob("*.evtx")))
         if n == 0:
             return CollectorStep(
                 "wevtutil",
@@ -264,7 +264,7 @@ def run_wevtutil(
     remote = transport.remote_temp().rstrip("/\\") + "/wevtutil"
     result = transport.run(_export_cmds(_win_join(remote)), timeout=600)
     pull = transport.get_tree(remote, out, timeout=1800)
-    n = len(list(out.glob("*.evtx")))
+    n = len(list(out.rglob("*.evtx")))
     if n == 0:
         return CollectorStep(
             "wevtutil",

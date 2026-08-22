@@ -79,7 +79,7 @@ def run_linux(
         return [CollectorStep("linux", "skipped", "not a linux host")]
 
     uac = uac_home() if opts.uac else None
-    uac_profile = (opts.uac_profile or "full").strip() or "full"
+    uac_profile = (opts.uac_profile or "ir_triage").strip() or "ir_triage"
     out_uac = pack_host / "uac"
     out_vol = pack_host / "volatile"
     sudo = "sudo " if spec.sudo else ""
@@ -138,6 +138,20 @@ def run_linux(
     return steps
 
 
+def _make_world_readable(transport: Transport, sudo: str, remote: str) -> None:
+    """Sudo-created files are root:root 0640; scp as vagrant cannot read them."""
+    transport.run(f"{sudo}chmod -R a+rX {remote} || true", timeout=60)
+
+
+def _uac_remote_cmd(remote: str, sudo: str, profile: str) -> str:
+    """UAC sets __UAC_DIR from pwd — must run from the extracted tree, not via abs path."""
+    return (
+        f"mkdir -p {remote}/out && "
+        f"cd {remote} && {sudo}chmod +x ./uac && "
+        f"{sudo}./uac -p {profile} {remote}/out"
+    )
+
+
 def _run_builtin(
     spec: HostSpec,
     transport: Transport,
@@ -165,6 +179,7 @@ def _run_builtin(
     result = transport.run(cmd, timeout=opts.timeout_linux)
     if not result.ok:
         return CollectorStep("linux_volatile", "failed", (result.stderr or result.stdout)[:400], detail=detail)
+    _make_world_readable(transport, sudo, remote + "/out")
     pull = transport.get_tree(remote + "/out", out_local, timeout=opts.timeout_linux)
     if not pull.ok:
         return CollectorStep("linux_volatile", "failed", f"pull: {pull.stderr[:300]}", path=str(out_local), detail=detail)
@@ -195,9 +210,10 @@ def _run_journal(
     transport.run(f"mkdir -p {remote}", timeout=30)
     result = transport.run(
         f"{sudo}journalctl --since '30 days ago' --no-pager -o short-iso > {remote}/journal.txt 2> {remote}/journal.err; "
-        f"{sudo}ausearch -ts recent > {remote}/audit.txt 2>/dev/null || true",
+        f"{sudo}timeout 90 ausearch -ts recent > {remote}/audit.txt 2>/dev/null || true",
         timeout=opts.timeout_linux,
     )
+    _make_world_readable(transport, sudo, remote)
     pull = transport.get_tree(remote, out, timeout=opts.timeout_linux)
     if not pull.ok:
         return CollectorStep("journal", "failed", (pull.stderr or result.stderr)[:400], path=str(out))
@@ -240,10 +256,10 @@ def _run_uac(
     put = transport.put_tree(uac, remote, timeout=opts.timeout_linux)
     if not put.ok:
         return CollectorStep("uac", "failed", f"stage uac: {put.stderr[:300]}", detail=detail)
-    cmd = f"{sudo}chmod +x {remote}/uac && {sudo}{remote}/uac -p {profile} {remote}/out"
-    result = transport.run(f"mkdir -p {remote}/out && {cmd}", timeout=opts.timeout_linux)
+    result = transport.run(_uac_remote_cmd(remote, sudo, profile), timeout=opts.timeout_linux)
     if not result.ok:
         return CollectorStep("uac", "failed", (result.stderr or result.stdout)[:400], detail=detail)
+    _make_world_readable(transport, sudo, remote + "/out")
     pull = transport.get_tree(remote + "/out", out_local, timeout=opts.timeout_linux)
     if not pull.ok:
         return CollectorStep("uac", "failed", f"pull: {pull.stderr[:300]}", path=str(out_local), detail=detail)

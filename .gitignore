@@ -146,6 +146,9 @@ Tools/linux/
 # ── Local forensic evidence corpus (never commit samples / EVTX / PCAP / malware) ──
 # Entirely local — including README/MANIFEST.
 Evidence-files/
+# Per-exercise Stage 0 packs + collector logs (local only).
+/cadre-run/
+/collect-packs/
 
 # ── Private-repo policy ─────────────────────────────────────────────
 # Internal planning / audit / checklist docs are LOCAL ONLY — never published.

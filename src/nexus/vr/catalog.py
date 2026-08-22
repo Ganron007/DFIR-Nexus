@@ -10,8 +10,48 @@ _PARAM_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
 
 VR_HUNTS: list[VRCatalogEntry] = [
     VRCatalogEntry(
+        id="cadre-ir-triage",
+        artifact_name="CADRE.Hunts.IRTriage",
+        title="Windows IR triage (Stage 0 default)",
+        description="Minimum live-response: process, net, users, services, tasks, startup, WMI, prefetch, amcache, shimcache, PSReadline, high-signal EVTX. No memory/MFT.",
+        platforms=["windows"],
+        technique_ids=["T1059", "T1053", "T1543", "T1547", "T1071"],
+    ),
+    VRCatalogEntry(
+        id="cadre-linux-ir-triage",
+        artifact_name="CADRE.Hunts.LinuxIRTriage",
+        title="Linux IR triage (Stage 0 default)",
+        description="Linux IR triage: process, net, users/groups, persistence, SSH, SUID, packages, docker/podman, SSSD/keytab. No memory/journal dump.",
+        platforms=["linux"],
+        technique_ids=["T1059", "T1098", "T1543"],
+    ),
+    VRCatalogEntry(
+        id="cadre-persistence",
+        artifact_name="CADRE.Hunts.Persistence",
+        title="Windows persistence (library)",
+        description="Startup, WMI, PS profile/registry, IFEO debug, tasks, services, drivers, RunMRU. Not Stage 0 default.",
+        platforms=["windows"],
+        technique_ids=["T1547", "T1543", "T1053", "T1546"],
+    ),
+    VRCatalogEntry(
+        id="cadre-user-artifacts",
+        artifact_name="CADRE.Hunts.UserArtifacts",
+        title="Windows user artifacts (library)",
+        description="LNK, JumpLists, Recycle Bin, Shellbags, RecentDocs, UserAssist, BAM. Prefer KAPE on SSH hosts.",
+        platforms=["windows"],
+        technique_ids=["T1070", "T1083"],
+    ),
+    VRCatalogEntry(
+        id="cadre-usage",
+        artifact_name="CADRE.Hunts.Usage",
+        title="Windows usage (library)",
+        description="SRUM + User Access Logging. For VR-only hosts; can be large. Not Stage 0 default.",
+        platforms=["windows"],
+        technique_ids=["T1071", "T1078"],
+    ),
+    VRCatalogEntry(
         id="nexus-process-tree",
-        artifact_name="Nexus.Hunts.ProcessTree",
+        artifact_name="CADRE.Hunts.ProcessTree",
         title="Process Tree",
         description="Pslist, scheduled tasks, and services — process-based attacks.",
         platforms=["windows"],
@@ -19,7 +59,7 @@ VR_HUNTS: list[VRCatalogEntry] = [
     ),
     VRCatalogEntry(
         id="nexus-credential-access",
-        artifact_name="Nexus.Hunts.CredentialAccess",
+        artifact_name="CADRE.Hunts.CredentialAccess",
         title="Credential Access",
         description="AMCache, NTUser registry, and prefetch — credential dumping.",
         platforms=["windows"],
@@ -27,7 +67,7 @@ VR_HUNTS: list[VRCatalogEntry] = [
     ),
     VRCatalogEntry(
         id="nexus-network-state",
-        artifact_name="Nexus.Hunts.NetworkState",
+        artifact_name="CADRE.Hunts.NetworkState",
         title="Network State",
         description="Netstat, DNS cache, and ARP — lateral movement and C2.",
         platforms=["windows"],
@@ -35,7 +75,7 @@ VR_HUNTS: list[VRCatalogEntry] = [
     ),
     VRCatalogEntry(
         id="nexus-fs-timeline",
-        artifact_name="Nexus.Hunts.FilesystemTimeline",
+        artifact_name="CADRE.Hunts.FilesystemTimeline",
         title="Filesystem Timeline",
         description="MFT and USN journal — file drops and persistence.",
         platforms=["windows"],
@@ -43,7 +83,7 @@ VR_HUNTS: list[VRCatalogEntry] = [
     ),
     VRCatalogEntry(
         id="nexus-registry-snapshot",
-        artifact_name="Nexus.Hunts.RegistrySnapshot",
+        artifact_name="CADRE.Hunts.RegistrySnapshot",
         title="Registry Snapshot",
         description="SAM, SECURITY, and SYSTEM hives — privilege escalation.",
         platforms=["windows"],
@@ -51,7 +91,7 @@ VR_HUNTS: list[VRCatalogEntry] = [
     ),
     VRCatalogEntry(
         id="nexus-event-logs",
-        artifact_name="Nexus.Hunts.EventLogs",
+        artifact_name="CADRE.Hunts.EventLogs",
         title="Event Logs",
         description="Export all EVTX for Hayabusa / Chainsaw analysis.",
         platforms=["windows"],
@@ -59,7 +99,7 @@ VR_HUNTS: list[VRCatalogEntry] = [
     ),
     VRCatalogEntry(
         id="nexus-adcs-snapshot",
-        artifact_name="Nexus.Hunts.ADCSSnapshot",
+        artifact_name="CADRE.Hunts.ADCSSnapshot",
         title="ADCS Snapshot",
         description="CA database and template config — ADCS attacks (ESC).",
         platforms=["windows"],
@@ -67,7 +107,7 @@ VR_HUNTS: list[VRCatalogEntry] = [
     ),
     VRCatalogEntry(
         id="nexus-sccm-snapshot",
-        artifact_name="Nexus.Hunts.SCCMSnapshot",
+        artifact_name="CADRE.Hunts.SCCMSnapshot",
         title="SCCM Snapshot",
         description="SCCM WMI classes and NAA policy — SCCM branch attacks.",
         platforms=["windows"],
@@ -75,15 +115,15 @@ VR_HUNTS: list[VRCatalogEntry] = [
     ),
     VRCatalogEntry(
         id="nexus-linux-triage",
-        artifact_name="Nexus.Hunts.LinuxTriage",
+        artifact_name="CADRE.Hunts.LinuxTriage",
         title="Linux Triage",
-        description="Audit logs, bash history, netstat, keytabs, podman, SSSD.",
+        description="LinuxIRTriage plus journal dump. Not Stage 0 default.",
         platforms=["linux"],
         technique_ids=["T1550", "T1078", "T1611"],
     ),
     VRCatalogEntry(
         id="nexus-full-breach",
-        artifact_name="Nexus.Hunts.FullBreach",
+        artifact_name="CADRE.Hunts.FullBreach",
         title="Full Breach",
         description="Union of all hunt artifacts — comprehensive collection.",
         platforms=["windows", "linux"],
@@ -93,8 +133,26 @@ VR_HUNTS: list[VRCatalogEntry] = [
 
 VR_CUSTOM_ARTIFACTS: list[VRCatalogEntry] = [
     VRCatalogEntry(
+        id="cadre-linux-podman-inventory",
+        artifact_name="CADRE.Linux.PodmanInventory",
+        title="Linux Podman Inventory",
+        description="podman ps/images metadata. Empty if podman is absent.",
+        platforms=["linux"],
+        technique_ids=["T1611"],
+        kind="custom_artifact",
+    ),
+    VRCatalogEntry(
+        id="cadre-linux-sssd-cache",
+        artifact_name="CADRE.Linux.SSSDCache",
+        title="Linux SSSD Cache",
+        description="SSSD cache.db file metadata (no blob dump).",
+        platforms=["linux"],
+        technique_ids=["T1078"],
+        kind="custom_artifact",
+    ),
+    VRCatalogEntry(
         id="nexus-linux-keytab-fingerprints",
-        artifact_name="Nexus.Linux.KeytabFingerprints",
+        artifact_name="CADRE.Linux.KeytabFingerprints",
         title="Linux Keytab Fingerprints",
         description="klist -ke inventory for krb5/mssql keytabs on linux01.",
         platforms=["linux"],
@@ -103,7 +161,7 @@ VR_CUSTOM_ARTIFACTS: list[VRCatalogEntry] = [
     ),
     VRCatalogEntry(
         id="nexus-linux-podman-inventory",
-        artifact_name="Nexus.Linux.PodmanInventory",
+        artifact_name="CADRE.Linux.PodmanInventory",
         title="Linux Podman Inventory",
         description="Container images, mounts, and privileged namespace inventory.",
         platforms=["linux"],
@@ -112,7 +170,7 @@ VR_CUSTOM_ARTIFACTS: list[VRCatalogEntry] = [
     ),
     VRCatalogEntry(
         id="nexus-linux-sssd-cache",
-        artifact_name="Nexus.Linux.SSSDCache",
+        artifact_name="CADRE.Linux.SSSDCache",
         title="Linux SSSD Cache",
         description="SSSD cache.db metadata extraction.",
         platforms=["linux"],
@@ -121,7 +179,7 @@ VR_CUSTOM_ARTIFACTS: list[VRCatalogEntry] = [
     ),
     VRCatalogEntry(
         id="nexus-windows-adcs-templates",
-        artifact_name="Nexus.Windows.AdcsTemplates",
+        artifact_name="CADRE.Hunts.ADCSSnapshot",
         title="Windows ADCS Templates",
         description="ADCS template ACL and flag inventory.",
         platforms=["windows"],
@@ -130,7 +188,7 @@ VR_CUSTOM_ARTIFACTS: list[VRCatalogEntry] = [
     ),
     VRCatalogEntry(
         id="nexus-windows-sccm-policy",
-        artifact_name="Nexus.Windows.SccmPolicy",
+        artifact_name="CADRE.Hunts.SCCMSnapshot",
         title="Windows SCCM Policy",
         description="NAA policy and client-push configuration.",
         platforms=["windows"],

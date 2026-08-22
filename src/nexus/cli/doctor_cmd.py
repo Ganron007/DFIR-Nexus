@@ -217,7 +217,7 @@ def doctor(
     # Parked / gated surfaces (informational — not golden-path failures).
     typer.echo("parked / gated surfaces (not required to ship):")
     typer.echo("  [park] OpenCTI (11 tools): parked — needs OPENCTI_URL/TOKEN; org CTI graph, not findings search")
-    typer.echo("  [gate] VR live: VR-GATE — mock works offline (NEXUS_VR_USE_MOCK=1); live optional via NEXUS_VR_ENDPOINT")
+    typer.echo("  [gate] VR live: VR-GATE — mock offline; live via NEXUS_VR_MCP_URL + NEXUS_VR_MCP_API_KEY (not gRPC :8001)")
     typer.echo("  [park] analysis extras (translate_query/asset-graph/KG/dynamic-tables): parked — superseded by N4 query pack")
     try:
         from nexus.collect.paths import (

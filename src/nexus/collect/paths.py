@@ -313,7 +313,7 @@ def tool_inventory() -> dict[str, object]:
     kh = kape_home()
     cs_sigma = chainsaw_sigma()
     return {
-        "profile_default": "full",
+        "profile_default": "disk",
         "kape_home": str(kh) if kh else "",
         "kape_exe": str(kape_exe() or ""),
         "kape_targets": [r["name"] for r in kape_list("targets") if r["name"].startswith("!")],

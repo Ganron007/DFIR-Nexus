@@ -3,8 +3,9 @@
 This is a live run against a host (SSH / WinRM / local), not an analysis dump.
 `nexus collect import` is the helper when you already have a KAPE/Kansa/UAC tree.
 
-Default profile is **full** (every FOSS collector we can run). Opt out with
-`--profile disk|volatile`, `--only kansa,kape,...`, or `--no-*`.
+Default profile is **disk** (live IR spine on current Windows / Linux).
+Opt into every FOSS collector with `--profile full`. Opt out with
+`--profile volatile`, `--only kansa,kape,...`, or `--no-*`.
 """
 
 from __future__ import annotations
@@ -29,12 +30,18 @@ def _echo_manifest(manifest) -> None:
 def tools_cmd() -> None:
     """Show every Stage 0 collector binary and Velociraptor live status."""
     from nexus.collect.paths import kape_list, tool_inventory
-    from nexus.collect.profiles import ALL_COLLECTORS, PROFILES
+    from nexus.collect.profiles import ALL_COLLECTORS, DEFAULT_PROFILE, PROFILES
     from nexus.collect.vr import vr_live_status
 
     inv = tool_inventory()
     live, reason = vr_live_status()
-    typer.echo("Stage 0 tool inventory (profile default: full)")
+    typer.echo(f"Stage 0 tool inventory (profile default: {DEFAULT_PROFILE} — live IR spine)")
+    if not live:
+        typer.echo(
+            "  VR setup: set NEXUS_VR_MCP_URL + NEXUS_VR_MCP_API_KEY in repo .env "
+            "(Docs/SETUP.md §2.6). Do not point NEXUS_VR_ENDPOINT at gRPC :8001. "
+            "nexus collect run harvests — wait for freeze."
+        )
     for k, v in inv.items():
         typer.echo(f"  {k}: {v}")
     typer.echo(f"  velociraptor_live: {live} ({reason})")
@@ -46,11 +53,11 @@ def tools_cmd() -> None:
         typer.echo("  kape compound modules: " + ", ".join(mods))
     typer.echo("  collectors: " + ", ".join(ALL_COLLECTORS))
     typer.echo("  profiles: " + ", ".join(f"{n}={len(s)}" for n, s in PROFILES.items()))
-    typer.echo("  default windows: Kansa-full + Sysinternals + PersistenceSniper + wevtutil")
-    typer.echo("                 + Hayabusa + Suzaku + Chainsaw + KAPE !SANS_Triage/!EZParser")
-    typer.echo("                 + DFIR-ORC + WinPmem + live Velociraptor hunts")
-    typer.echo("  default linux: POSIX volatile + journalctl + UAC -p full + AVML + VR")
-    typer.echo("  opt out: --profile disk|volatile   --only kansa,kape   --no-memory --no-vr")
+    typer.echo("  default windows (disk): Sysinternals + PersistenceSniper + wevtutil")
+    typer.echo("                 + KAPE !SANS_Triage/!EZParser + live Velociraptor IRTriage")
+    typer.echo("  default linux (disk): POSIX volatile + journalctl + UAC -p ir_triage + VR LinuxIRTriage")
+    typer.echo("  opt in: --profile full (Kansa/Hayabusa/Suzaku/Chainsaw/ORC/WinPmem/AVML/UAC full)")
+    typer.echo("  opt out: --profile volatile   --only kansa,kape   --no-memory --no-vr")
 
 
 def _plan_run_opts(
@@ -83,7 +90,7 @@ def _plan_run_opts(
     tsource: str,
     sudo: bool,
 ):
-    from nexus.collect.profiles import apply_enabled, enabled_set
+    from nexus.collect.profiles import DEFAULT_PROFILE, apply_enabled, enabled_set
     from nexus.collect.types import AuthSpec, CollectOptions, HostSpec
 
     os_l = os_name.strip().lower()
@@ -147,7 +154,7 @@ def _plan_run_opts(
         enabled.add("winpmem")
         enabled.add("avml")
     opts = CollectOptions(
-        profile=profile.strip().lower() or "full",
+        profile=profile.strip().lower() or DEFAULT_PROFILE,
         kape_target=kape_target.strip() or "!SANS_Triage",
         kape_module=module,
         kape_remote_path=kape_remote_path,
@@ -165,7 +172,7 @@ def plan_cmd(
     identity: str = typer.Option("", "--identity", "-i", help="SSH private key (never a password)"),
     transport: str = typer.Option("", "--transport", help="local | ssh | winrm (default: local if host is localhost else ssh)"),
     hostname: str = typer.Option("", "--hostname", help="Name for pack/hosts/<name>/"),
-    profile: str = typer.Option("full", "--profile", help="full | disk | volatile"),
+    profile: str = typer.Option("disk", "--profile", help="disk (live IR spine) | full | volatile"),
     only: str = typer.Option("", "--only", help="Comma list of collectors (overrides profile)"),
     kape_target: str = typer.Option("!SANS_Triage", "--kape-target"),
     kape_module: str = typer.Option("!EZParser", "--kape-module", help="none to skip KAPE parse"),
@@ -210,7 +217,7 @@ def run_cmd(
     identity: str = typer.Option("", "--identity", "-i", help="SSH private key path"),
     transport: str = typer.Option("", "--transport", help="local | ssh | winrm"),
     hostname: str = typer.Option("", "--hostname"),
-    profile: str = typer.Option("full", "--profile", help="full | disk | volatile"),
+    profile: str = typer.Option("disk", "--profile", help="disk (live IR spine) | full | volatile"),
     only: str = typer.Option("", "--only", help="Comma list of collectors (overrides profile)"),
     kape_target: str = typer.Option("!SANS_Triage", "--kape-target"),
     kape_module: str = typer.Option("!EZParser", "--kape-module", help="Pass none to acquire only"),
@@ -256,7 +263,7 @@ def run_cmd(
             typer.echo(f"Case directory missing: {case_dir}", err=True)
             raise typer.Exit(1)
     pack = out or default_pack_dir(case_dir)
-    typer.echo(f"Stage 0 live collect profile={opts.profile} → {pack}")
+    typer.echo(f"Stage 0 live collect profile={opts.profile} -> {pack}")
     typer.echo(f"  {spec.os} {spec.transport} {spec.auth.user}@{spec.address}")
     manifest = plan_or_run(
         spec, opts, pack, dry_run=False, probe=probe, examiner=resolve_examiner()

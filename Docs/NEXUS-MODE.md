@@ -19,17 +19,23 @@ Stage 0 is a **live run** against a host you can authenticate to:
 
 `nexus collect run --os windows --host <ip> --user <acct> --identity <key>`
 
-That wraps **every FOSS collector we can run** (Windows: Kansa-full, Sysinternals,
-PersistenceSniper, wevtutil, Hayabusa, Suzaku, Chainsaw, KAPE, DFIR-ORC, WinPmem,
-live Velociraptor; Linux: POSIX volatile, journalctl, UAC `-p full`, AVML, VR).
-Writes `hosts/<hostname>/…` + `manifest.json`. Then `nexus case init` and
-`nexus evidence register` the pack. **Not** an analysis dump.
+**`--profile disk` is the default ship spine** (current Windows 11 / modern Linux):
+Windows KAPE + Sysinternals + PersistenceSniper + wevtutil + Velociraptor IRTriage;
+Linux POSIX volatile + journalctl + UAC `ir_triage` + Velociraptor LinuxIRTriage.
+`--profile full` wraps every FOSS collector we can run (Kansa, Hayabusa, Suzaku,
+Chainsaw, DFIR-ORC, WinPmem/AVML, UAC `full`) and **skips with a reason** when a
+tool is missing or broken on the current OS. Writes `hosts/<hostname>/…` +
+`manifest.json`. Then `nexus case init` and `nexus evidence register` the pack.
+**Not** an analysis dump.
 
 `nexus collect import <dump>` is the helper when you already have a KAPE image or
 Kansa CSVs. Velociraptor is a **Stage 0 collector**: skipped honestly when the
-server is mock or unreachable; live hunts run with `collect_client` when
-`NEXUS_VR_ENDPOINT` + `NEXUS_VR_API_KEY` are set. Opt out with `--profile disk`
-(no RAM dump), `--profile volatile`, `--only kansa,kape`, or `--no-*`.
+server is mock or unreachable; live hunts run when examiner `.env` has
+`NEXUS_VR_MCP_URL` + `NEXUS_VR_MCP_API_KEY` (HTTP `:8002`, not gRPC `:8001`).
+See [SETUP.md §2.6](SETUP.md#26-live-velociraptor-hunts-every-examiner-host).
+`nexus collect run` harvests — wait for operator freeze. Opt into overlap with
+`--profile full`. Opt out with `--profile volatile`, `--only kansa,kape`,
+or `--no-*`.
 
 Without SSH or WinRM (or local) credentials, collection does not run. That is
 the orchestrator boundary.

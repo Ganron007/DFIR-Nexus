@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import contextlib
 import os
 import shutil
@@ -60,6 +61,69 @@ def _which(name: str) -> str | None:
 
 def password_from_env(auth: AuthSpec) -> str:
     return (os.environ.get(auth.password_env) or os.environ.get("NEXUS_COLLECT_PASSWORD") or "").strip()
+
+
+def windows_sftp_path(remote: str) -> str:
+    """Normalize a Windows path for OpenSSH scp/SFTP (`/C:/Users/...`)."""
+    p = (remote or "").strip().replace("\\", "/")
+    if len(p) >= 3 and p[0] == "/" and p[1].isalpha() and p[2] == ":":
+        drive = p[1].upper()
+        rest = p[3:]
+        if rest and not rest.startswith("/"):
+            rest = "/" + rest
+        return f"/{drive}:{rest}"
+    if len(p) >= 2 and p[1] == ":" and p[0].isalpha():
+        drive = p[0].upper()
+        rest = p[2:]
+        if rest and not rest.startswith("/"):
+            rest = "/" + rest
+        return f"/{drive}:{rest}"
+    return p
+
+
+def windows_ssh_encoded_command(command: str) -> str:
+    """Windows OpenSSH default shell is cmd.exe — send PowerShell via EncodedCommand."""
+    if "-EncodedCommand" in command or "-encodedcommand" in command.lower():
+        return command
+    blob = base64.b64encode(
+        ("$ProgressPreference = 'SilentlyContinue'; " + command).encode("utf-16le")
+    ).decode("ascii")
+    return (
+        "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass "
+        f"-EncodedCommand {blob}"
+    )
+
+
+def _flatten_scp_nest(local: Path, remote: str) -> None:
+    """scp -r host:foo dest/ creates dest/foo. Collect wants dest/<contents>."""
+    name = Path(str(remote).replace("\\", "/").rstrip("/")).name
+    if not name or name in {".", ".."}:
+        return
+    nested = local / name
+    try:
+        if not nested.is_dir() or nested.resolve() == local.resolve():
+            return
+    except OSError:
+        return
+    for child in list(nested.iterdir()):
+        dest = local / child.name
+        if dest.exists():
+            continue
+        try:
+            child.rename(dest)
+        except OSError:
+            continue
+    try:
+        nested.rmdir()
+    except OSError:
+        return
+
+
+def _remote_parent(remote: str) -> str:
+    p = remote.replace("\\", "/").rstrip("/")
+    if "/" not in p:
+        return p
+    return p.rsplit("/", 1)[0]
 
 
 class LocalTransport:
@@ -151,6 +215,21 @@ class SshTransport:
             return "C:/Windows/Temp/nexus-ir-" + uuid.uuid4().hex[:8]
         return "/tmp/nexus-ir-" + uuid.uuid4().hex[:8]
 
+    def _scp_path(self, remote: str) -> str:
+        if self.spec.os == "windows":
+            return windows_sftp_path(remote)
+        return remote.replace("\\", "/")
+
+    def _ensure_remote_dir(self, remote: str) -> ExecResult:
+        if self.spec.os == "windows":
+            win = remote.replace("/", "\\")
+            quoted = win.replace("'", "''")
+            return self.run(
+                f"New-Item -ItemType Directory -Force -Path '{quoted}' | Out-Null",
+                timeout=60,
+            )
+        return self.run(f"mkdir -p {remote}", timeout=60)
+
     def probe(self, timeout: int = 30) -> ExecResult:
         if not self._ssh:
             return ExecResult(127, "", "ssh client not found on this workstation")
@@ -167,11 +246,14 @@ class SshTransport:
         return self._paramiko_run("hostname", timeout)
 
     def run(self, remote_command: str, timeout: int = 600) -> ExecResult:
+        command = remote_command
+        if self.spec.os == "windows":
+            command = windows_ssh_encoded_command(remote_command)
         if not self.spec.auth.has_key():
-            return self._paramiko_run(remote_command, timeout)
+            return self._paramiko_run(command, timeout)
         if not self._ssh:
             return ExecResult(127, "", "ssh client not found")
-        argv = self._base_ssh() + [remote_command]
+        argv = self._base_ssh() + [command]
         return _run_local(argv, timeout)
 
     def put_file(self, local: Path, remote: str, timeout: int = 600) -> ExecResult:
@@ -179,29 +261,51 @@ class SshTransport:
             return self._paramiko_put(local, remote, timeout, tree=False)
         if not self._scp:
             return ExecResult(127, "", "scp not found")
-        argv = self._scp_argv() + [str(local), f"{self._target()}:{remote}"]
+        self._ensure_remote_dir(_remote_parent(remote))
+        argv = self._scp_argv() + [str(local), f"{self._target()}:{self._scp_path(remote)}"]
         return _run_local(argv, timeout)
 
     def put_tree(self, local: Path, remote: str, timeout: int = 3600) -> ExecResult:
+        if not local.exists():
+            return ExecResult(1, "", f"missing local tree {local}")
+        if local.is_file():
+            return self.put_file(local, remote, timeout)
         if not self.spec.auth.has_key():
             return self._paramiko_put(local, remote, timeout, tree=True)
         if not self._scp:
             return ExecResult(127, "", "scp not found")
-        mkdir = self.run(f"mkdir -p {remote}" if self.spec.os != "windows" else f"mkdir {remote}", timeout=60)
-        if not mkdir.ok and "already" not in (mkdir.stderr + mkdir.stdout).lower():
-            # Windows mkdir may need cmd
-            self.run(f"cmd.exe /c mkdir {remote.replace('/', '\\\\')}", timeout=60)
-        argv = self._scp_argv() + ["-r", str(local), f"{self._target()}:{remote}"]
-        return _run_local(argv, timeout)
+        self._ensure_remote_dir(remote)
+        last = ExecResult(0, remote, "")
+        for child in sorted(local.iterdir(), key=lambda p: p.name.lower()):
+            dest = remote.rstrip("/\\") + "/" + child.name
+            if child.is_dir():
+                argv = self._scp_argv() + ["-r", str(child), f"{self._target()}:{self._scp_path(dest)}"]
+                last = _run_local(argv, timeout)
+            else:
+                last = self.put_file(child, dest, timeout)
+            if not last.ok:
+                return last
+        return ExecResult(0, remote, "")
 
     def get_tree(self, remote: str, local: Path, timeout: int = 3600) -> ExecResult:
-        local.mkdir(parents=True, exist_ok=True)
         if not self.spec.auth.has_key():
+            local.mkdir(parents=True, exist_ok=True)
             return self._paramiko_get(remote, local, timeout)
         if not self._scp:
             return ExecResult(127, "", "scp not found")
-        argv = self._scp_argv() + ["-r", f"{self._target()}:{remote}", str(local)]
-        return _run_local(argv, timeout)
+        spec = f"{self._target()}:{self._scp_path(remote)}"
+        remote_name = Path(remote.replace("\\", "/")).name
+        looks_file = bool(Path(remote_name).suffix)
+        if looks_file and local.suffix:
+            local.parent.mkdir(parents=True, exist_ok=True)
+            argv = self._scp_argv() + [spec, str(local)]
+            return _run_local(argv, timeout)
+        local.mkdir(parents=True, exist_ok=True)
+        argv = self._scp_argv() + ["-r", spec, str(local)]
+        result = _run_local(argv, timeout)
+        if result.ok:
+            _flatten_scp_nest(local, remote)
+        return result
 
     def _scp_argv(self) -> list[str]:
         auth = self.spec.auth

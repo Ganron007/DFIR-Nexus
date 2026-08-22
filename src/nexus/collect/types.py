@@ -57,29 +57,29 @@ class CollectorStep:
 
 @dataclass
 class CollectOptions:
-    """Default profile is *full*: every FOSS collector we can run.
+    """Default profile is *disk*: live IR spine on current Windows / Linux.
 
-    Examiners opt out with ``--no-*`` / ``--only`` / ``--profile disk|volatile``.
-    Missing binaries become skipped steps with a reason — never a silent omit.
+    ``--profile full`` opts into every FOSS collector (Kansa, Hayabusa, ORC,
+    memory dumpers, UAC full). Missing or broken tools skip with a reason.
     """
 
-    profile: str = "full"
-    kansa: bool = True
+    profile: str = "disk"
+    kansa: bool = False
     kape: bool = True
     kape_target: str = "!SANS_Triage"
     kape_module: str = "!EZParser"
     kape_remote_path: str = ""
-    memory: bool = True
-    orc: bool = True
+    memory: bool = False
+    orc: bool = False
     uac: bool = True
-    uac_profile: str = "full"
+    uac_profile: str = "ir_triage"
     vr: bool = True
     vr_client_id: str = ""
     sysinternals: bool = True
     persistencesniper: bool = True
-    hayabusa: bool = True
-    suzaku: bool = True
-    chainsaw: bool = True
+    hayabusa: bool = False
+    suzaku: bool = False
+    chainsaw: bool = False
     wevtutil: bool = True
     linux_volatile: bool = True
     journal: bool = True

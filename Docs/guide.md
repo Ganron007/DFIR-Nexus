@@ -17,10 +17,12 @@ Run forensic tools → Evidence ingested → Findings recorded (DRAFT)
 → Human reviews & approves → Report generated → Audit chain verifiable
 ```
 
-**Stage 0 (live IR):** `nexus collect run --profile full` authenticates to Windows or Linux
-and runs every FOSS collector we can (opt out with `--profile` / `--only` / `--no-*`).
-Then `nexus case init` + `nexus evidence register`. Existing dumps: `nexus collect import`.
-See [CLI.md](CLI.md) and [NEXUS-MODE.md](NEXUS-MODE.md).
+**Stage 0 (live IR):** `nexus collect run` authenticates over SSH/WinRM/local and
+runs the **disk** spine (Windows: KAPE + Sysinternals + PersistenceSniper + wevtutil
++ Velociraptor IRTriage; Linux: POSIX volatile + journalctl + UAC `ir_triage` +
+LinuxIRTriage). `--profile full` opts into every FOSS collector (skip with a reason
+if a tool is unmaintained). Then `nexus case init` + `nexus evidence register`.
+Existing dumps: `nexus collect import`. See [CLI.md](CLI.md) and [NEXUS-MODE.md](NEXUS-MODE.md).
 
 **What you get:**
 - **Findings** — structured observations with MITRE ATT&CK technique mapping, severity, confidence, and provenance links back to the raw evidence
@@ -146,8 +148,10 @@ DFIR-Nexus wraps your existing forensic tools as MCP tools. Every tool run is au
 Velociraptor live-response tooling ships on the **main server** as
 `vr_health`, `vr_list_hunts`, `vr_list_clients`, `vr_run_hunt`, and
 `vr_vql_query` (ad-hoc VQL, policy-gated). Mock mode works offline via
-`NEXUS_VR_USE_MOCK=1`; live collection is optional via `NEXUS_VR_ENDPOINT` /
-`NEXUS_VR_MCP_URL` and is a documented gate, not a requirement.
+`NEXUS_VR_USE_MOCK=1`. Live hunts need examiner `.env` `NEXUS_VR_MCP_URL`
+(HTTP `:8002`) + `NEXUS_VR_MCP_API_KEY`. Do not point `NEXUS_VR_ENDPOINT`
+at gRPC `:8001`. Setup steps: [SETUP.md §2.6](SETUP.md#26-live-velociraptor-hunts-every-examiner-host).
+`nexus collect run` harvests — wait for operator freeze.
 
 **Example workflow:**
 ```
@@ -346,7 +350,10 @@ vr_list_clients()                                    → show enrolled hosts
 vr_list_hunts()                                      → show available hunts
 vr_run_hunt("nexus-process-tree", "C.mbr01")         → collect from C.mbr01
 ```
-*Note: Velociraptor comes with a built-in Mock Mode (force-mocked by default) that returns synthetic, structured forensic data. You can test and practice hunts without setting up a Velociraptor server.*
+Mock mode works without a Velociraptor server. For live hunts, set examiner
+`.env` as in [SETUP.md §2.6](SETUP.md#26-live-velociraptor-hunts-every-examiner-host)
+(`NEXUS_VR_MCP_URL` + `NEXUS_VR_MCP_API_KEY`, MCP HTTP `:8002`, not gRPC
+`:8001`). Confirm with `nexus collect tools` before any `collect run`.
 
 ---
 

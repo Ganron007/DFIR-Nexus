@@ -1,4 +1,4 @@
-"""Stage 0 collector profiles — full by default; examiner opts out."""
+"""Stage 0 collector profiles — disk (live IR spine) by default; full opts in."""
 
 from __future__ import annotations
 
@@ -28,9 +28,24 @@ LINUX_COLLECTORS = (
 
 ALL_COLLECTORS = WINDOWS_COLLECTORS + tuple(c for c in LINUX_COLLECTORS if c not in WINDOWS_COLLECTORS)
 
+# Live SSH/WinRM IR on current Windows 11 / modern Linux. Broader collectors
+# stay on --profile full (skip with a reason; we fix unmaintained tools later).
+DEFAULT_PROFILE = "disk"
+
 PROFILES: dict[str, frozenset[str]] = {
     "full": frozenset(ALL_COLLECTORS),
-    "disk": frozenset(ALL_COLLECTORS) - frozenset({"winpmem", "avml"}),
+    # Ship spine: collectors proven on current Windows 11 / Ubuntu. Broader /
+    # unmaintained tools stay on --profile full (skip with a reason; fix later).
+    "disk": frozenset({
+        "sysinternals",
+        "persistencesniper",
+        "wevtutil",
+        "kape",
+        "velociraptor",
+        "linux_volatile",
+        "journal",
+        "uac",
+    }),
     "volatile": frozenset({
         "kansa",
         "sysinternals",
@@ -77,7 +92,7 @@ def enabled_set(
     only: str = "",
     disable: list[str] | None = None,
 ) -> set[str]:
-    key = (profile or "full").strip().lower()
+    key = (profile or DEFAULT_PROFILE).strip().lower()
     if key not in PROFILES:
         raise ValueError(f"--profile must be full, disk, or volatile (got {profile!r})")
     enabled = set(PROFILES[key])
@@ -103,5 +118,7 @@ def apply_enabled(opts: CollectOptions, enabled: set[str]) -> CollectOptions:
     opts.linux_volatile = "linux_volatile" in enabled
     opts.journal = "journal" in enabled
     opts.uac = "uac" in enabled
-    opts.uac_profile = "full" if opts.profile in {"full", "disk"} else "ir_triage"
+    # UAC ir_triage is the industry IR profile (SANS-style live response).
+    # UAC full is files/* bulk collection — only --profile full.
+    opts.uac_profile = "full" if opts.profile == "full" else "ir_triage"
     return opts

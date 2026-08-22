@@ -4,9 +4,43 @@ All notable changes to DFIR-Nexus are documented here.
 
 ## Unreleased
 
+### Live SSH IR is the Stage 0 product highlight (2026-08-22)
+
+- Default `--profile disk`: Windows KAPE `!SANS_Triage`/`!EZParser` + Sysinternals + PersistenceSniper + wevtutil + Velociraptor `IRTriage`; Linux POSIX volatile + journalctl + UAC `ir_triage` + Velociraptor `LinuxIRTriage`.
+- `--profile full` keeps overlapping / unmaintained collectors (Kansa, Hayabusa, Suzaku, Chainsaw, DFIR-ORC, WinPmem/AVML, UAC `full`). Missing or broken tools skip with a reason; we fix them and re-run. That live pack on current Windows 11 / modern Linux is a product differentiator — not dump-import.
+
+### Linux IR triage (2026-08-22)
+
+- Stage 0 `--profile disk` now runs UAC **ir_triage** (industry live-response profile). UAC **full** (`files/*`) is `--profile full` only — the previous disk=full mapping hung hashing the whole tree.
+- `CADRE.Hunts.LinuxIRTriage` expanded to Windows-IRTriage parity on stock 0.76 artifacts (process/net/users/persistence/SSH/SUID/packages/docker) plus CADRE keytab/SSSD/Podman. Does not nest `Linux.Users.InteractiveUsers` (Fqdn ERROR on 0.76). Journal stays on `LinuxTriage`.
+- Volatile/UAC run as sudo so copies of `/var/log/syslog` are `root:root` 0640; scp as vagrant failed. Collect now `chmod -R a+rX` before pull.
+- UAC sets `__UAC_DIR` from `pwd`. Remote run is `cd <staged tree> && sudo ./uac` so artifacts/bin/lib resolve.
+- Collect harvests `artifacts_with_results` even when the Velociraptor flow state is ERROR.
+
+### Windows SSH collect staging (2026-08-22)
+
+- Windows OpenSSH default shell is `cmd.exe`. Collect now sends remote commands as PowerShell `-EncodedCommand` so Sysinternals / wevtutil / PersistenceSniper actually create output dirs.
+- `scp -r <folder> dest/` nested KAPE as `dest\\kape\\kape.exe`. Trees now copy each child into dest. `get_tree` flattens the matching nested basename so wevtutil EVTX land in `pack/wevtutil/*.evtx`. Staging stays `C:\\Windows\\Temp\\nexus-ir-*`. SCP remotes use `/C:/...`.
+- Windows SSH prepends `$ProgressPreference = 'SilentlyContinue'` so `#< CLIXML` progress records do not look like collector failure. DFIR-ORC stages the capsule exe plus `ORC_config.xml` and passes `/Config=` (the embedded XML comment `collect --memory` is illegal in XmlLite and crashed WolfLauncher). OpenSSH sessions run inside a Windows job that denies child `CreateProcess` (empty General.7z); collect now starts ORC via WMI `Win32_Process.Create`. Memory archive is skipped (`/-Key=ORC_Memory`). A 7z smaller than 50 KB is not treated as success.
+
+### VR Stage 0 = IR triage only (2026-08-22)
+
+- Collect calls `Generic.Client.Info` then `CADRE.Hunts.IRTriage` (Windows) or `CADRE.Hunts.LinuxIRTriage` (Linux) and stops. Heavier `CADRE.Hunts.*` packs remain on the VR server for an explicit later hunt. No memory, no disk image, no MFT in the default collect path.
+- `vr` catalog hunt ids now resolve to live `CADRE.Hunts.*` / `CADRE.Linux.*` names (the old `Nexus.Hunts.*` YAML never existed on `.51`).
+- `nexus collect run` banner uses ASCII `->` so Windows cp1252 consoles do not crash before harvest.
+
+### Examiner VR MCP env (2026-08-22)
+
+- Live Stage 0 hunts require examiner-host `.env` `NEXUS_VR_MCP_URL` (HTTP `:8002`) + `NEXUS_VR_MCP_API_KEY`. Documented as a user step in `Docs/SETUP.md` §2.6, `Docs/CLI.md`, `.env.example`. Do not point `NEXUS_VR_ENDPOINT` at gRPC `:8001`. `nexus collect run` remains operator-gated (freeze).
+
+### Velociraptor 0.76 collect_client (2026-08-21)
+
+- Stage 0 hunts now start `collect_client` as a **VQL function** (`SELECT collect_client(...) AS Collection FROM scope()`), wait on `flows()`, then read `flow_results`. The old `SELECT * FROM collect_client(...)` plugin form is a no-op on Velociraptor 0.76 ("Plugin collect_client not found").
+- Live probe treats `NEXUS_VR_MCP_URL` + `NEXUS_VR_MCP_API_KEY` as configured even when `NEXUS_VR_ENDPOINT` is still the loopback gRPC default. Client match strips `:port` from Velociraptor `last_ip`.
+
 ### Stage 0 IR collect (`nexus collect`) (2026-08-18)
 
-- Default profile is **full**: every FOSS collector we can run. Examiners opt out with `--profile disk|volatile`, `--only kansa,kape,…`, or `--no-*`.
+- `--profile full` runs every FOSS collector we can. Default (as of 2026-08-22) is **disk**. Examiners opt in with `--profile full` or `--only kansa,kape,…`.
 - **Windows:** Kansa local-full module set, Sysinternals (autorunsc/handle/tcpvcon/listdlls/pslist/psloggedon/logonsessions/pipelist), PersistenceSniper, wevtutil EVTX export, Hayabusa + Suzaku timelines, Chainsaw hunt (SigmaHQ `rules/` sparse tree), KAPE `!SANS_Triage`/`!EZParser`, DFIR-ORC, WinPmem, live Velociraptor `collect_client` hunts.
 - **Linux:** POSIX volatile snapshot (plus optional osquery/chkrootkit/lynis if present), journalctl 30d + ausearch, UAC `-p full`, AVML, live Velociraptor hunts.
 - Velociraptor is a Stage 0 collector (not Stage 2). Mock / no-key loopback is skipped honestly; live hunts need `NEXUS_VR_ENDPOINT` + `NEXUS_VR_API_KEY`. DumpIt is never invoked (commercial).

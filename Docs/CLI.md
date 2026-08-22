@@ -30,26 +30,45 @@ Mental model: [NEXUS-MODE.md](NEXUS-MODE.md).
 
 ## Stage 0 — live IR collect
 
-This is a **live run** with authentication, not a dump-for-Nexus script.
+This is a **live run with authentication**, not a dump-for-Nexus script.
+It is a product highlight: the same command produces a case pack against
+**current Windows 11** and **modern Linux** (main kernels/distros).
+
 `nexus collect import` is only for an IR tree you already have.
 
-Default profile is **full**: every FOSS collector we can run on the target.
-Opt out with `--profile disk` (no RAM dump), `--profile volatile`, `--only kansa,kape`, or `--no-*`.
+**`--profile disk` (ship spine — default):** collectors that must work on the current OS.
+
+- **Windows:** Sysinternals, PersistenceSniper, wevtutil EVTX, KAPE `!SANS_Triage`/`!EZParser`, live Velociraptor `CADRE.Hunts.IRTriage`.
+- **Linux:** POSIX volatile snapshot, journalctl (30 days) + ausearch, UAC `-p ir_triage` (SANS-style live response; not UAC `full`), live Velociraptor `CADRE.Hunts.LinuxIRTriage`.
+
+**`--profile full`:** every FOSS collector we can wire, including overlap
+(Kansa, Hayabusa, Suzaku, Chainsaw, DFIR-ORC, WinPmem/AVML, UAC `full`).
+Missing or broken tools **skip with a reason**. Unmaintained binaries are not
+deleted from `full`; we fix them and re-run later. `--profile volatile` is
+process/net/log only (no KAPE/UAC/ORC).
 
 ```bash
 nexus collect tools                       # every collector binary + VR live status
 nexus collect plan --os windows --host <windows-host> --user analyst --identity ~/.ssh/id
-nexus collect run  --os windows --host <windows-host> --user analyst --identity ~/.ssh/id --profile full
-nexus collect run  --os linux   --host <linux-host> --user vagrant --identity ~/.ssh/id --sudo --profile full
-nexus collect run  --os windows --host localhost --no-probe --profile disk
+nexus collect run  --os windows --host <windows-host> --user analyst --identity ~/.ssh/id
+nexus collect run  --os linux   --host <linux-host> --user vagrant --identity ~/.ssh/id --sudo
+nexus collect run  --os windows --host localhost --no-probe --profile full
 nexus collect import D:\kape-out --os windows --hostname rd01 --case INC-...
 ```
 
-**Windows (full):** Kansa local-full module set, Sysinternals (autorunsc/handle/tcpvcon/listdlls/pslist/psloggedon/logonsessions/pipelist), PersistenceSniper, wevtutil EVTX export, Hayabusa + Suzaku timelines, Chainsaw hunt (needs Sigma `rules/` tree), KAPE `!SANS_Triage`/`!EZParser`, DFIR-ORC, WinPmem, live Velociraptor hunts.
+`--only kansa,hayabusa,dfir_orc` or `--profile full` pulls optional collectors.
+`--kape-module none` acquires the triage image only. `--kape-remote-path` uses KAPE already installed on the target. `--no-memory` skips WinPmem/AVML (DumpIt is not used — commercial). `--vr-client-id` if hostname match fails. Password SSH/WinRM: `NEXUS_COLLECT_PASSWORD` (never `--password`). Optional extras: `pip install dfir-nexus[collect]` (paramiko / pywinrm).
 
-**Linux (full):** POSIX volatile snapshot, journalctl (30 days) + ausearch, UAC `-p full`, AVML, live Velociraptor hunts.
+### Live Velociraptor (examiner `.env` — required for hunts)
 
-`--kape-module none` acquires the triage image only. `--kape-remote-path` uses KAPE already installed on the target. `--no-memory` skips WinPmem/AVML (DumpIt is not used — commercial). `--vr-client-id` if hostname match fails. Live VR needs `NEXUS_VR_ENDPOINT` + `NEXUS_VR_API_KEY`. Password SSH/WinRM: `NEXUS_COLLECT_PASSWORD` (never `--password`). Optional extras: `pip install dfir-nexus[collect]` (paramiko / pywinrm).
+This is **your** host, not the Velociraptor VM install. Full table: [SETUP.md §2.6](SETUP.md#26-live-velociraptor-hunts-every-examiner-host).
+
+1. Copy `.env.example` → `.env` (gitignored).
+2. Set `NEXUS_VR_MCP_URL=http://<vr-host>:8002` and `NEXUS_VR_MCP_API_KEY` from the VR server MCP env (`VR_MCP_API_KEY`, often `/etc/velociraptor/mcp.env`).
+3. Do not set `NEXUS_VR_USE_MOCK=1`. Do not point `NEXUS_VR_ENDPOINT` at gRPC `:8001`.
+4. Check (no harvest): `nexus collect tools` → `velociraptor_live: True`.
+5. `nexus collect run` harvests. Only after the operator says freeze.
+   Stage 0 VR calls `CADRE.Hunts.IRTriage` (Windows) or `CADRE.Hunts.LinuxIRTriage` (Linux) after `Generic.Client.Info`. Heavier `CADRE.Hunts.*` packs stay on the VR server for a later hunt. KAPE/UAC on SSH targets do file triage.
 
 Missing binaries are **skipped with a reason**, not omitted silently. Then: `nexus case init "IR host"` → `nexus evidence register <pack>`.
 

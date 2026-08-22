@@ -159,8 +159,29 @@ A missing parser is a **setup failure**, not an acceptable SKIP in the tool ledg
 | 5 | Doctor | `nexus doctor` → `golden-path: ok`. Core EZ/Hayabusa **and** `bmc-tools.py` / `BitsParser.py` must resolve |
 | 6 | MCP | `nexus serve --http` on each analysis host (`127.0.0.1:4508` Windows, SIFT on its lab IP) |
 | 7 | RAG (coverage/design only) | Windows MCP `forensic_rag_status` = ready. Tools mode does not load RAG |
+| 8 | Live Velociraptor (Stage 0 hunts) | §2.6 — `nexus collect tools` shows `velociraptor_live: True`. Collect runs **IR triage only** (`CADRE.Hunts.IRTriage` / `LinuxIRTriage`). Skip if you are not hunting live |
 
 KAPE stays operator-downloaded (Kroll). Thumbcache Viewer CMD and LogFileParser stay cataloged until their CLI is verified — they are not silent SKIPs for missing bits/RDP parsers.
+
+---
+
+## 2.6 Live Velociraptor hunts (every examiner host)
+
+Stage 0 `nexus collect run` will **skip** Velociraptor unless the examiner host is pointed at the **HTTP MCP** front (`:8002`). This is a required user step on each analysis PC — it is not set by install scripts, and it is not the DFIR-Nexus MCP on `:4508`.
+
+Do **not** run `nexus collect run` until the operator freezes the scene. Setting env and running `nexus collect tools` is setup only.
+
+| Step | What you do | How you know it worked |
+|------|-------------|------------------------|
+| 1 | Copy `.env.example` to `.env` in the repo root if you do not already have one | `.env` exists and is gitignored (never commit it) |
+| 2 | On the Velociraptor **server**, open the MCP env file and copy `VR_MCP_API_KEY`. Confirm `GET http://<vr-host>:8002/health` returns ok | Health JSON has `"ok": true`. Typical path: `/etc/velociraptor/mcp.env` |
+| 3 | In examiner `.env` set `NEXUS_VR_MCP_URL=http://<vr-host>:8002` and `NEXUS_VR_MCP_API_KEY=<that key>` | Both lines are present and non-empty |
+| 4 | Leave `NEXUS_VR_USE_MOCK` unset. Do **not** set `NEXUS_VR_ENDPOINT` to gRPC `:8001` | `:8001` is Velociraptor gRPC. Nexus hunts over MCP HTTP `:8002` |
+| 5 | From the repo root, run `nexus collect tools` (or `nexus doctor`) | `velociraptor_live: True` and `RemoteVRMCPClient` / `endpoint=http://<vr-host>:8002` |
+
+`nexus` loads repo-root `.env` on import (existing process env wins). Open a new terminal after you edit `.env`.
+
+`nexus collect plan` only SSH-probes the target. `nexus collect run` starts harvest. Wait for freeze before `run`.
 
 ---
 
