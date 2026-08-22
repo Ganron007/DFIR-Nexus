@@ -19,11 +19,51 @@ def orc_config(exe: Path) -> Path | None:
     return None
 
 
+# Stock ANSSI General walks every volume + VSS (USN/NTFSInfo/GetThis). That
+# works on Windows 11 but is a multi-hour job; the outer 7z stays 0 bytes until
+# GetThis finishes. Live SSH keeps volatile + builtin commands only.
+ORC_DISABLE_KEYS: tuple[str, ...] = (
+    "ORC_Memory",
+    "ORC_FastFind",
+    "ORC_Offline",
+    "ORC_Debug",
+    "USNInfo",
+    "USNInfo_system_noshadow",
+    "NTFSInfo_Quick_Shadows",
+    "NTFSInfo_Details_Current",
+    "NTFSInfo_Details_system_noshadow",
+    "NTFSInfoNoLimit",
+    "FatInfo",
+    "GetThis_Default",
+    "GetThis_Default_system_noshadow",
+    "GetThis_Additional",
+    "GetThis_Additional_system_noshadow",
+    "GetThis_Protected",
+    "GetThis_Protected_system_noshadow",
+    "GetThis_Optional",
+    "GetThis_Default_offline",
+    "GetThis_additional_offline",
+    "GetThis_optional_offline",
+    "GetSamples",
+    "GetResidents",
+    "GetBrowsers_History",
+    "GetBrowsers_History_system_noshadow",
+    "GetBrowsers_Artefacts",
+    "GetExtAttrs",
+    "GetYara",
+    "GetFuzzyHash",
+    "GetCatroot",
+    "GetSDS",
+    "GetMemoryDmp",
+)
+
+
 def orc_argv(exe: Path, out_dir: str, config: Path | None = None) -> list[str]:
     argv = [str(exe)]
     if config is not None:
         argv.append(f"/Config={config}")
-    argv.extend([f"/Out={out_dir}", "/-Key=ORC_Memory"])
+    argv.append(f"/Out={out_dir}")
+    argv.extend(f"/-Key={k}" for k in ORC_DISABLE_KEYS)
     return argv
 
 
@@ -77,7 +117,7 @@ def run_orc(
         return CollectorStep("dfir_orc", "skipped", "disabled")
     exe = orc_exe()
     out_local = pack_host / "orc"
-    detail = {"engine": "DFIR-ORC", "note": "collect-only snapshot; N2 parses"}
+    detail = {"engine": "DFIR-ORC", "note": "collect-only snapshot; N2 parses", "disable_keys": list(ORC_DISABLE_KEYS)}
     if not exe:
         return CollectorStep(
             "dfir_orc",
@@ -128,7 +168,8 @@ def run_orc(
     def _q(path: str) -> str:
         return "'" + path.replace("'", "''") + "'"
 
-    arg_items = [f"/Out={remote_out_win}", "/-Key=ORC_Memory"]
+    arg_items = [f"/Out={remote_out_win}"]
+    arg_items.extend(f"/-Key={k}" for k in ORC_DISABLE_KEYS)
     if remote_cfg_win:
         arg_items.insert(0, f"/Config={remote_cfg_win}")
     cmdline = remote_exe_win + " " + " ".join(arg_items)

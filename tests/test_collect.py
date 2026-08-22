@@ -66,6 +66,8 @@ def test_orc_argv_uses_out_switch():
     assert argv[0].endswith("DFIR-ORC.exe")
     assert any(a.startswith("/Out=") for a in argv)
     assert "/-Key=ORC_Memory" in argv
+    assert "/-Key=GetThis_Default" in argv
+    assert "/-Key=NTFSInfo_Details_Current" in argv
 
 
 def test_plan_windows_localhost_no_network(tmp_path):
