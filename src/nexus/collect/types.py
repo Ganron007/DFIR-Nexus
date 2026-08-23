@@ -59,8 +59,9 @@ class CollectorStep:
 class CollectOptions:
     """Default profile is *disk*: live IR spine on current Windows / Linux.
 
-    ``--profile full`` opts into every FOSS collector (Kansa, Hayabusa, ORC,
-    memory dumpers, UAC full). Missing or broken tools skip with a reason.
+    ``--profile full`` opts into every FOSS collector (Kansa, ORC, memory
+    dumpers, UAC full). Hayabusa / Suzaku / Chainsaw are N2 parsers, not
+    Stage 0 collectors. Missing or broken tools skip with a reason.
     """
 
     profile: str = "disk"
@@ -77,9 +78,6 @@ class CollectOptions:
     vr_client_id: str = ""
     sysinternals: bool = True
     persistencesniper: bool = True
-    hayabusa: bool = False
-    suzaku: bool = False
-    chainsaw: bool = False
     wevtutil: bool = True
     linux_volatile: bool = True
     journal: bool = True
@@ -89,7 +87,6 @@ class CollectOptions:
     timeout_linux: int = 7200
     timeout_memory: int = 1800
     timeout_probe: int = 30
-    timeout_hayabusa: int = 3600
     timeout_vr: int = 1800
 
 

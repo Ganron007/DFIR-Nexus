@@ -4,10 +4,21 @@ All notable changes to DFIR-Nexus are documented here.
 
 ## Unreleased
 
+### Public docs match collect → register → N2 (2026-08-23)
+
+- README, `Docs/index.md`, `Docs/ARCHITECTURE.md`, `Docs/NEXUS-MODE.md`, `Docs/FAQ.md`, `Docs/guide.md`, and `Docs/cases/` now describe the current loop: Stage 0 collect (CLI only) → Register (custody, not N1–N8) → N2 parsers → N1–N8. Hayabusa / Suzaku / Chainsaw are not live collectors.
+- Examiner Portal is the investigation UI. Live harvest stays on the CLI. Public pages no longer link to gitignored internal ledgers.
+
+### Stage 0 is collection-only; EVTX parsers moved to N2 (2026-08-23)
+
+- `nexus collect run` no longer calls Hayabusa, Suzaku, or Chainsaw, and does not create empty `hayabusa` / `suzaku` / `chainsaw` dirs on the pack or target.
+- Those tools run at N2 (`nexus pipeline --mode tools`) against Stage 0 `wevtutil` / KAPE EVTX after case init + evidence register.
+- `--profile full` is extra *collectors* (Kansa, ORC, memory, UAC full) — not live EVTX hunting.
+
 ### Live SSH IR is the Stage 0 product highlight (2026-08-22)
 
 - Default `--profile disk`: Windows KAPE `!SANS_Triage`/`!EZParser` + Sysinternals + PersistenceSniper + wevtutil + Velociraptor `IRTriage`; Linux POSIX volatile + journalctl + UAC `ir_triage` + Velociraptor `LinuxIRTriage`.
-- `--profile full` keeps overlapping / unmaintained collectors (Kansa, Hayabusa, Suzaku, Chainsaw, DFIR-ORC, WinPmem/AVML, UAC `full`). Missing or broken tools skip with a reason; we fix them and re-run. That live pack on current Windows 11 / modern Linux is a product differentiator — not dump-import.
+- `--profile full` keeps extra *collectors* (Kansa, DFIR-ORC, WinPmem/AVML, UAC `full`). Hayabusa / Suzaku / Chainsaw are N2 parsers. Missing or broken tools skip with a reason; we fix them and re-run. That live pack on current Windows 11 / modern Linux is a product differentiator — not dump-import.
 
 ### Linux IR triage (2026-08-22)
 
@@ -41,7 +52,7 @@ All notable changes to DFIR-Nexus are documented here.
 ### Stage 0 IR collect (`nexus collect`) (2026-08-18)
 
 - `--profile full` runs every FOSS collector we can. Default (as of 2026-08-22) is **disk**. Examiners opt in with `--profile full` or `--only kansa,kape,…`.
-- **Windows:** Kansa local-full module set, Sysinternals (autorunsc/handle/tcpvcon/listdlls/pslist/psloggedon/logonsessions/pipelist), PersistenceSniper, wevtutil EVTX export, Hayabusa + Suzaku timelines, Chainsaw hunt (SigmaHQ `rules/` sparse tree), KAPE `!SANS_Triage`/`!EZParser`, DFIR-ORC, WinPmem, live Velociraptor `collect_client` hunts.
+- **Windows:** Kansa local-full module set, Sysinternals (autorunsc/handle/tcpvcon/listdlls/pslist/psloggedon/logonsessions/pipelist), PersistenceSniper, wevtutil EVTX export, KAPE `!SANS_Triage`/`!EZParser`, DFIR-ORC, WinPmem, live Velociraptor `collect_client` hunts. Hayabusa / Suzaku / Chainsaw parse EVTX at N2.
 - **Linux:** POSIX volatile snapshot (plus optional osquery/chkrootkit/lynis if present), journalctl 30d + ausearch, UAC `-p full`, AVML, live Velociraptor hunts.
 - Velociraptor is a Stage 0 collector (not Stage 2). Mock / no-key loopback is skipped honestly; live hunts need `NEXUS_VR_ENDPOINT` + `NEXUS_VR_API_KEY`. DumpIt is never invoked (commercial).
 - `nexus collect tools|plan|run|import`. Password never on argv (`NEXUS_COLLECT_PASSWORD`).

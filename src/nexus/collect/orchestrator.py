@@ -8,10 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from nexus.collect.extra_windows import (
-    run_chainsaw,
-    run_hayabusa,
     run_persistencesniper,
-    run_suzaku,
     run_sysinternals,
     run_wevtutil,
 )
@@ -163,9 +160,6 @@ def _run_windows(
     steps.append(run_sysinternals(spec, transport, pack_host, opts, dry_run=dry_run))
     steps.append(run_persistencesniper(spec, transport, pack_host, opts, dry_run=dry_run))
     steps.append(run_wevtutil(spec, transport, pack_host, opts, dry_run=dry_run))
-    steps.append(run_hayabusa(spec, transport, pack_host, opts, dry_run=dry_run))
-    steps.append(run_suzaku(spec, transport, pack_host, opts, dry_run=dry_run))
-    steps.append(run_chainsaw(spec, transport, pack_host, opts, dry_run=dry_run))
     if opts.kape:
         steps.append(run_kape(spec, transport, pack_host, opts, dry_run=dry_run))
     else:

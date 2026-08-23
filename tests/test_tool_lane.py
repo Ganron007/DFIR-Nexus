@@ -35,6 +35,27 @@ def test_plan_windows_triage_skips_and_schedules(tmp_path: Path):
     assert "mftecmd" in skipped  # no $MFT
     hay = next(j for j in jobs if j.tool == "hayabusa" and j.status == "PENDING")
     assert "-d" in hay.argv
+    assert "suzaku" in tools
+
+
+def test_plan_windows_triage_stage0_pack_wevtutil(tmp_path: Path):
+    pack = tmp_path / "pack"
+    wevt = pack / "hosts" / "WS01" / "wevtutil"
+    wevt.mkdir(parents=True)
+    (wevt / "Security.evtx").write_bytes(b"evtx")
+    extractions = tmp_path / "extractions"
+    extractions.mkdir()
+
+    jobs = plan_windows_triage(str(pack), extractions)
+    pending = {j.tool for j in jobs if j.status == "PENDING"}
+    assert "hayabusa" in pending
+    assert "suzaku" in pending
+    assert "evtxecmd" in pending
+    hay = next(j for j in jobs if j.tool == "hayabusa" and j.status == "PENDING")
+    assert str(wevt) in hay.argv
+    assert not any(j.tool == "(discovery)" and j.status == "SKIP" for j in jobs)
+    # parsers write under case extractions, not empty dirs on the pack
+    assert not (wevt.parent / "hayabusa").exists()
 
 
 def test_plan_windows_triage_all_user_profiles(tmp_path: Path):

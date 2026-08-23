@@ -191,7 +191,7 @@ DFIR-Nexus wraps external forensic command-line tools. Put portable copies under
 
 ### 3a. Windows Forensic Tools Installation
 
-To run Zimmerman tools, KAPE, Hayabusa, Chainsaw, Capa, and Yara natively on Windows, follow these installation procedures.
+To run Zimmerman tools, KAPE, Hayabusa, Chainsaw, Capa, and Yara natively on Windows, follow these installation procedures. Hayabusa / Chainsaw / Suzaku are **N2 parsers** (after `nexus evidence register`), not Stage 0 collectors.
 
 #### Option A: Installing via Chocolatey (Simplest)
 Chocolatey is a Windows package manager. If you do not have it, install it by opening an administrator PowerShell prompt and running:
@@ -206,7 +206,7 @@ choco install ericzimmerman -y
 # KAPE (Kroll Artifact Parser and Extractor)
 choco install kape -y
 
-# Sigma / Event Log Hunting Tools
+# N2 EVTX parsers (not Stage 0 collect)
 choco install hayabusa -y
 choco install chainsaw -y
 
@@ -381,7 +381,7 @@ $env:NEXUS_SHARE_ROOT = "H:\C"
 ```bash
 # SIFT (if the script did not mount)
 sudo mkdir -p /mnt/windows_mount
-sudo mount -t cifs //192.168.77.1/kape /mnt/windows_mount -o guest,ro,vers=3.0,uid=1000,gid=1000
+sudo mount -t cifs //<windows-host>/kape /mnt/windows_mount -o guest,ro,vers=3.0,uid=1000,gid=1000
 export NEXUS_SIFT_TRIAGE_ROOT=/mnt/windows_mount
 export NEXUS_SHARE_ROOT=/mnt/windows_mount
 ```

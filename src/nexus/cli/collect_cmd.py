@@ -56,7 +56,8 @@ def tools_cmd() -> None:
     typer.echo("  default windows (disk): Sysinternals + PersistenceSniper + wevtutil")
     typer.echo("                 + KAPE !SANS_Triage/!EZParser + live Velociraptor IRTriage")
     typer.echo("  default linux (disk): POSIX volatile + journalctl + UAC -p ir_triage + VR LinuxIRTriage")
-    typer.echo("  opt in: --profile full (Kansa/Hayabusa/Suzaku/Chainsaw/ORC/WinPmem/AVML/UAC full)")
+    typer.echo("  opt in: --profile full (Kansa/ORC/WinPmem/AVML/UAC full)")
+    typer.echo("  N2 EVTX parsers (Hayabusa/Suzaku/Chainsaw): nexus pipeline --mode tools")
     typer.echo("  opt out: --profile volatile   --only kansa,kape   --no-memory --no-vr")
 
 
@@ -77,9 +78,6 @@ def _plan_run_opts(
     no_orc: bool,
     no_uac: bool,
     no_vr: bool,
-    no_hayabusa: bool,
-    no_suzaku: bool,
-    no_chainsaw: bool,
     no_sysinternals: bool,
     no_wevtutil: bool,
     no_psniper: bool,
@@ -127,12 +125,6 @@ def _plan_run_opts(
         disable.append("uac")
     if no_vr:
         disable.append("velociraptor")
-    if no_hayabusa:
-        disable.append("hayabusa")
-    if no_suzaku:
-        disable.append("suzaku")
-    if no_chainsaw:
-        disable.append("chainsaw")
     if no_sysinternals:
         disable.append("sysinternals")
     if no_wevtutil:
@@ -181,9 +173,6 @@ def plan_cmd(
     no_orc: bool = typer.Option(False, "--no-orc"),
     no_uac: bool = typer.Option(False, "--no-uac"),
     no_vr: bool = typer.Option(False, "--no-vr"),
-    no_hayabusa: bool = typer.Option(False, "--no-hayabusa"),
-    no_suzaku: bool = typer.Option(False, "--no-suzaku"),
-    no_chainsaw: bool = typer.Option(False, "--no-chainsaw"),
     no_sysinternals: bool = typer.Option(False, "--no-sysinternals"),
     no_wevtutil: bool = typer.Option(False, "--no-wevtutil"),
     no_psniper: bool = typer.Option(False, "--no-psniper"),
@@ -198,8 +187,8 @@ def plan_cmd(
     """Print what would run. Does not collect. Use `run --probe` to test auth."""
     spec, opts = _plan_run_opts(
         os_name, host, user, identity, transport, hostname, kape_target, kape_module, "",
-        profile, only, no_kansa, no_kape, no_orc, no_uac, no_vr, no_hayabusa, no_suzaku,
-        no_chainsaw, no_sysinternals, no_wevtutil, no_psniper, no_journal, no_volatile, memory,
+        profile, only, no_kansa, no_kape, no_orc, no_uac, no_vr,
+        no_sysinternals, no_wevtutil, no_psniper, no_journal, no_volatile, memory,
         vr_client_id, tsource, sudo,
     )
     from nexus.audit import resolve_examiner
@@ -227,9 +216,6 @@ def run_cmd(
     no_orc: bool = typer.Option(False, "--no-orc"),
     no_uac: bool = typer.Option(False, "--no-uac"),
     no_vr: bool = typer.Option(False, "--no-vr"),
-    no_hayabusa: bool = typer.Option(False, "--no-hayabusa"),
-    no_suzaku: bool = typer.Option(False, "--no-suzaku"),
-    no_chainsaw: bool = typer.Option(False, "--no-chainsaw"),
     no_sysinternals: bool = typer.Option(False, "--no-sysinternals"),
     no_wevtutil: bool = typer.Option(False, "--no-wevtutil"),
     no_psniper: bool = typer.Option(False, "--no-psniper"),
@@ -248,7 +234,7 @@ def run_cmd(
     spec, opts = _plan_run_opts(
         os_name, host, user, identity, transport, hostname, kape_target, kape_module,
         kape_remote_path, profile, only, no_kansa, no_kape, no_orc, no_uac, no_vr,
-        no_hayabusa, no_suzaku, no_chainsaw, no_sysinternals, no_wevtutil, no_psniper,
+        no_sysinternals, no_wevtutil, no_psniper,
         no_journal, no_volatile, memory, vr_client_id, tsource, sudo,
     )
     spec.auth.port = port

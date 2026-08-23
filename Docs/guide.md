@@ -4,7 +4,7 @@
 
 > **Who:** Built for DFIR examiners — incident responders, forensic analysts, SOC leads, and threat hunters. You run commands (via MCP tools, CLI, or the Examiner Portal), the platform records every action, and findings are staged as DRAFT until a human approves them.
 
-> **How:** You interact with DFIR-Nexus through an LLM client (Claude Code, Cursor, etc.), the `nexus` CLI, or the browser-based Examiner Portal. Behind the scenes it runs MCP servers that wrap your forensic tools (SIFT, Windows, Velociraptor), a RAG knowledge base, triage validation databases, and a SQLite case stack with cryptographic audit.
+> **How:** Live IR is CLI-only (`nexus collect`). After Register, you investigate with the `nexus` CLI, the Examiner Portal, or (optional) an LLM client that calls MCP tools. Behind the scenes: parsers at N2, MCP wrappers for SIFT/Windows/Velociraptor, RAG, triage baselines, and a SQLite case stack with cryptographic audit. The LLM cannot approve findings.
 
 ---
 
@@ -20,8 +20,9 @@ Run forensic tools → Evidence ingested → Findings recorded (DRAFT)
 **Stage 0 (live IR):** `nexus collect run` authenticates over SSH/WinRM/local and
 runs the **disk** spine (Windows: KAPE + Sysinternals + PersistenceSniper + wevtutil
 + Velociraptor IRTriage; Linux: POSIX volatile + journalctl + UAC `ir_triage` +
-LinuxIRTriage). `--profile full` opts into every FOSS collector (skip with a reason
-if a tool is unmaintained). Then `nexus case init` + `nexus evidence register`.
+LinuxIRTriage). `--profile full` opts into extra collectors (Kansa/ORC/memory/UAC full;
+skip with a reason if a tool is unmaintained). Hayabusa/Suzaku/Chainsaw parse EVTX
+at N2 after register. Then `nexus case init` + `nexus evidence register`.
 Existing dumps: `nexus collect import`. See [CLI.md](CLI.md) and [NEXUS-MODE.md](NEXUS-MODE.md).
 
 **What you get:**

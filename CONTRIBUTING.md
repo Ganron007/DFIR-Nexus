@@ -8,9 +8,13 @@ Bug reports, doc fixes, and well-scoped features are welcome.
   approach. This avoids wasted PR work.
 - For security defects, do **not** open an issue — see
   [SECURITY.md](SECURITY.md).
-- Read [`Docs/ARCHITECTURE.md`](Docs/ARCHITECTURE.md) before touching
+- Read [`Docs/NEXUS-MODE.md`](Docs/NEXUS-MODE.md) for the product loop
+  (collect CLI → register → N2 parsers → N1–N8). Read
+  [`Docs/ARCHITECTURE.md`](Docs/ARCHITECTURE.md) before touching
   the provenance chain, audit log, HMAC ledger, or transparency log.
   Mistakes there silently break the trust model.
+- Live IR (`nexus collect`) stays CLI-only. Do not add a Portal harvest
+  path without an explicit product decision.
 
 ## Development setup
 
@@ -28,7 +32,7 @@ pip install -e .[all]
 
 ## Running tests
 
-**Total: 489 checks (155 pytest + 219 script + 115 functional audit).**
+**Counts here lag.** Trust the README badge and a local `pytest` / script run.
 
 ### Pytest suite (155 tests)
 ```bash

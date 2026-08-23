@@ -130,6 +130,169 @@ def find_windows_root(evidence: Path) -> Path | None:
     return None
 
 
+def _fs_safe(name: str) -> str:
+    keep = []
+    for ch in (name or "host").strip() or "host":
+        keep.append(ch if ch.isalnum() or ch in "-_." else "-")
+    return "".join(keep)[:80] or "host"
+
+
+def _evtx_label(d: Path) -> str:
+    if d.name.lower() == "wevtutil":
+        return _fs_safe(d.parent.name or "wevtutil")
+    if d.name.lower() == "logs" and d.parent.name.lower() == "winevt":
+        return "winevt"
+    return _fs_safe(d.name)
+
+
+def find_evtx_dirs(evidence: Path) -> list[Path]:
+    """Directories that contain ``*.evtx``.
+
+    Prefers Stage 0 ``wevtutil`` exports on a live IR pack. Falls back to
+    ``Windows/System32/winevt/Logs`` on a Windows image. Never creates dirs.
+    """
+    found: list[Path] = []
+    seen: set[Path] = set()
+
+    def add(d: Path) -> None:
+        if not d.is_dir():
+            return
+        try:
+            key = d.resolve()
+        except OSError:
+            return
+        if key in seen:
+            return
+        try:
+            if next(d.glob("*.evtx"), None) is None:
+                return
+        except OSError:
+            return
+        seen.add(key)
+        found.append(d)
+
+    if not evidence.exists() or evidence.is_file():
+        return found
+
+    add(evidence / "wevtutil")
+    hosts = evidence / "hosts"
+    if hosts.is_dir():
+        try:
+            for host in hosts.iterdir():
+                if host.is_dir():
+                    add(host / "wevtutil")
+        except OSError:
+            pass
+    if found:
+        return found
+
+    root = find_windows_root(evidence)
+    if root is not None:
+        add(root / "Windows" / "System32" / "winevt" / "Logs")
+    return found
+
+
+def schedule_evtx_parsers(
+    jobs: list[ToolJob],
+    evtx_dirs: list[Path],
+    extractions: Path,
+) -> None:
+    """N2: Hayabusa / Suzaku / Chainsaw / EvtxECmd against collected EVTX."""
+
+    def add(tool: str, argv: list[str], purpose: str, timeout: int = 600) -> None:
+        jobs.append(ToolJob(
+            host="windows",
+            tool=tool,
+            argv=argv,
+            purpose=purpose,
+            timeout=timeout,
+        ))
+
+    def skip(tool: str, reason: str) -> None:
+        jobs.append(ToolJob(
+            host="windows",
+            tool=tool,
+            argv=[],
+            purpose="",
+            status="SKIP",
+            reason=reason,
+        ))
+
+    if not evtx_dirs:
+        reason = "no *.evtx (Stage 0 wevtutil or image winevt/Logs)"
+        skip("hayabusa", reason)
+        skip("suzaku", reason)
+        skip("chainsaw", reason)
+        skip("evtxecmd", reason)
+        return
+
+    mapping = sigma = None
+    try:
+        from nexus.collect.paths import chainsaw_mapping, chainsaw_sigma
+
+        mapping, sigma = chainsaw_mapping(), chainsaw_sigma()
+    except Exception:
+        mapping = sigma = None
+
+    many = len(evtx_dirs) > 1
+    for evtx_dir in evtx_dirs:
+        label = _evtx_label(evtx_dir)
+        n = len(list(evtx_dir.glob("*.evtx")))
+        hay_dir = extractions / "hayabusa" / label if many else extractions / "hayabusa"
+        hay_dir.mkdir(parents=True, exist_ok=True)
+        add(
+            "hayabusa",
+            [
+                "hayabusa", "dfir-timeline", "-d", str(evtx_dir),
+                "-o", str(hay_dir / "evtx-timeline.csv"),
+                "-w", "-C", "-Q",
+            ],
+            f"EVTX timeline {label} ({n} logs)",
+            1800,
+        )
+        suz_dir = extractions / "suzaku" / label if many else extractions / "suzaku"
+        suz_dir.mkdir(parents=True, exist_ok=True)
+        add(
+            "suzaku",
+            [
+                "suzaku", "csv-timeline", "-d", str(evtx_dir),
+                "-o", str(suz_dir / "timeline.csv"), "--clobber",
+            ],
+            f"Suzaku EVTX timeline {label} ({n} logs)",
+            1800,
+        )
+        if mapping and sigma:
+            cs_dir = extractions / "chainsaw" / label if many else extractions / "chainsaw"
+            cs_dir.mkdir(parents=True, exist_ok=True)
+            add(
+                "chainsaw",
+                [
+                    "chainsaw", "hunt", str(evtx_dir),
+                    "-s", str(sigma),
+                    "--mapping", str(mapping),
+                    "--csv", "--output", str(cs_dir / "hunt.csv"),
+                    "--skip-errors",
+                ],
+                f"Chainsaw hunt {label} ({n} logs)",
+                1800,
+            )
+        ev_dir = extractions / "evtxecmd" / label if many else extractions / "evtxecmd"
+        ev_dir.mkdir(parents=True, exist_ok=True)
+        add(
+            "evtxecmd",
+            ["evtxecmd", "-d", str(evtx_dir), "--csv", str(ev_dir)],
+            f"Parse all EVTX {label} ({n} logs)",
+            1800,
+        )
+
+    if not mapping or not sigma:
+        skip(
+            "chainsaw",
+            "needs mappings/sigma-event-logs-all.yml and a sigma/ rules tree "
+            "(Tools/windows/extra/chainsaw)",
+        )
+
+
 def plan_windows_triage(
     evidence_path: str,
     extractions: Path,
@@ -140,20 +303,25 @@ def plan_windows_triage(
     from nexus.langgraph.artifact_map import user_profile_dirs
 
     jobs: list[ToolJob] = []
-    root = find_windows_root(Path(evidence_path))
-    if root is None:
+    evidence = Path(evidence_path)
+    root = find_windows_root(evidence)
+    evtx_dirs = find_evtx_dirs(evidence)
+    if root is None and not evtx_dirs:
         jobs.append(ToolJob(
             host="windows",
             tool="(discovery)",
             argv=[],
             purpose="locate Windows root",
             status="SKIP",
-            reason=f"No Windows/System32 under evidence path: {evidence_path}",
+            reason=f"No Windows/System32 or Stage 0 wevtutil EVTX under: {evidence_path}",
         ))
         return jobs
 
+    if root is None:
+        schedule_evtx_parsers(jobs, evtx_dirs, extractions)
+        return jobs
+
     users = user_profile_dirs(root)
-    logs_dir = root / "Windows/System32/winevt/Logs"
     prefetch = root / "Windows/Prefetch"
     amcache = root / "Windows/AppCompat/Programs/Amcache.hve"
     system_hive = root / "Windows/System32/config/SYSTEM"
@@ -182,31 +350,7 @@ def plan_windows_triage(
             reason=reason,
         ))
 
-    evtx_files = list(logs_dir.glob("*.evtx")) if logs_dir.is_dir() else []
-    if evtx_files:
-        hay_dir = extractions / "hayabusa"
-        hay_dir.mkdir(parents=True, exist_ok=True)
-        add(
-            "hayabusa",
-            [
-                "hayabusa", "dfir-timeline", "-d", str(logs_dir),
-                "-o", str(hay_dir / "evtx-timeline.csv"),
-                "-w", "-C", "-Q",
-            ],
-            f"EVTX timeline ({len(evtx_files)} logs)",
-            1800,
-        )
-        ev_dir = extractions / "evtxecmd"
-        ev_dir.mkdir(parents=True, exist_ok=True)
-        add(
-            "evtxecmd",
-            ["evtxecmd", "-d", str(logs_dir), "--csv", str(ev_dir)],
-            f"Parse all EVTX ({len(evtx_files)} logs)",
-            1800,
-        )
-    else:
-        skip("hayabusa", f"no *.evtx under {logs_dir}")
-        skip("evtxecmd", f"no *.evtx under {logs_dir}")
+    schedule_evtx_parsers(jobs, evtx_dirs, extractions)
 
     if prefetch.is_dir():
         d = extractions / "pecmd"

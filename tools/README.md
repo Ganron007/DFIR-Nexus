@@ -8,9 +8,9 @@ Default Windows layout (what `run_windows_command` searches):
 ```
 Tools/windows/zimmerman/     Eric Zimmerman (Get-ZimmermanTools, latest net9)
 Tools/windows/sysinternals/  Sysinternals Suite (Stage 0 live: autorunsc, handle, tcpvcon, listdlls, pslist, psloggedon, logonsessions, pipelist)
-Tools/windows/hayabusa/      Hayabusa — N2 parser and Stage 0 live EVTX hunter
-Tools/windows/suzaku/        Suzaku — N2 parser and Stage 0 live EVTX hunter
-Tools/windows/extra/         chainsaw (+ sigma/rules sparse tree), capa, yara, bmc-tools.py, KStrike.py,
+Tools/windows/hayabusa/      Hayabusa — N2 EVTX parser (not Stage 0)
+Tools/windows/suzaku/        Suzaku — N2 EVTX parser (not Stage 0)
+Tools/windows/extra/         chainsaw (+ sigma/rules sparse tree) — N2 hunt; capa, yara, bmc-tools.py, KStrike.py,
                              BitsParser/ (FireEye tree — not a single file)
 Tools/windows/kape/          KAPE — operator download from Kroll only
 Tools/windows/kansa/         Kansa (`tools/fetch-ir-collect.ps1`)

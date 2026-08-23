@@ -78,13 +78,13 @@ def test_plan_windows_localhost_no_network(tmp_path):
     names = {s.name: s.status for s in manifest.hosts[0].steps}
     for expected in (
         "kansa", "sysinternals", "persistencesniper", "wevtutil",
-        "hayabusa", "suzaku", "chainsaw", "kape", "dfir_orc", "winpmem", "velociraptor",
+        "kape", "dfir_orc", "winpmem", "velociraptor",
     ):
         assert expected in names, expected
     assert names["kansa"] == "skipped"
-    assert names["hayabusa"] == "skipped"
-    assert names["suzaku"] == "skipped"
-    assert names["chainsaw"] == "skipped"
+    assert "hayabusa" not in names
+    assert "suzaku" not in names
+    assert "chainsaw" not in names
     assert names["dfir_orc"] == "skipped"
     assert names["winpmem"] == "skipped"
     assert names["kape"] in {"planned", "skipped"}
@@ -106,7 +106,7 @@ def test_plan_windows_full_profile_lists_optional_collectors(tmp_path):
     manifest = plan_or_run(spec, opts, tmp_path / "pack", dry_run=True, probe=False)
     names = {s.name: s.status for s in manifest.hosts[0].steps}
     assert names["kansa"] == "planned"
-    assert names["hayabusa"] in {"planned", "skipped"}
+    assert "hayabusa" not in names
     assert names["dfir_orc"] in {"planned", "skipped"}
     assert names["winpmem"] in {"planned", "skipped"}
 
@@ -593,7 +593,7 @@ def test_profile_volatile_skips_disk_collectors(tmp_path):
     assert names["kansa"] == "planned"
     assert names["kape"] == "skipped"
     assert names["dfir_orc"] == "skipped"
-    assert names["hayabusa"] == "skipped"
+    assert "hayabusa" not in names
     assert names["winpmem"] == "skipped"
 
 
@@ -619,9 +619,13 @@ def test_disk_profile_is_live_ir_spine(tmp_path):
     manifest = plan_or_run(spec, opts, tmp_path / "pack", dry_run=True, probe=False)
     names = {s.name: s.status for s in manifest.hosts[0].steps}
     assert names["kansa"] == "skipped"
-    assert names["hayabusa"] == "skipped"
-    assert names["suzaku"] == "skipped"
-    assert names["chainsaw"] == "skipped"
+    assert "hayabusa" not in names
+    assert "suzaku" not in names
+    assert "chainsaw" not in names
+    host_dir = tmp_path / "pack" / "hosts" / "ws01"
+    assert not (host_dir / "hayabusa").exists()
+    assert not (host_dir / "suzaku").exists()
+    assert not (host_dir / "chainsaw").exists()
     assert names["dfir_orc"] == "skipped"
     assert names["winpmem"] == "skipped"
     assert names["kape"] in {"planned", "skipped"}

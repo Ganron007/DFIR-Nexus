@@ -151,5 +151,5 @@ Nexus mode is honest on one evidence pack. See [NEXUS-MODE.md](../NEXUS-MODE.md)
 | **RAG / TI / Sigma / VR / triage** | Optional analysis MCP tools |
 | **Custody** | evidence hash, approve/reject, backup, export, audit verify |
 
-Ship tracker (every advertised capability): [`Docs/internal/COMPLETE-TO-SHIP.md`](../internal/COMPLETE-TO-SHIP.md).
+Operator loop: [NEXUS-MODE.md](../NEXUS-MODE.md).
 Change log (what landed): [`CHANGELOG.md`](../../CHANGELOG.md).

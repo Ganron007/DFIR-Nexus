@@ -47,12 +47,12 @@ _STOP = frozenset(
     }
 )
 _FAMILY_HINTS = (
-    "hayabusa", "evtxecmd", "evtx", "pecmd", "prefetch", "jlecmd", "lecmd",
+    "hayabusa", "suzaku", "chainsaw", "evtxecmd", "evtx", "pecmd", "prefetch", "jlecmd", "lecmd",
     "sbecmd", "rbcmd", "srum", "srumecmd", "recmd", "mftecmd", "amcache",
     "appcompat", "wxtcmd", "bits", "vol", "fls", "setupapi", "bmc-tools",
 )
 _SCAN_FIRST = (
-    "hayabusa", "evtxecmd", "evtx", "pecmd", "prefetch", "amcache",
+    "hayabusa", "suzaku", "chainsaw", "evtxecmd", "evtx", "pecmd", "prefetch", "amcache",
     "appcompat", "recmd", "mftecmd-usn", "usn",
     "userassist", "wordwheel", "recentdocs", "opensave",
     "rbcmd", "srum", "jlecmd", "lecmd", "wxtcmd",

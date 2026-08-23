@@ -6,7 +6,7 @@
 A: A unified DFIR investigation platform that wraps your existing forensic tools behind MCP servers, enforces a cryptographic audit chain, and requires human approval before findings become final.
 
 **Q: Do I need an LLM?**
-A: No. The CLI (`nexus`) and Examiner Portal work without any LLM. An LLM client (Claude Code, Cursor, etc.) is optional — it lets you run investigations agentically where the LLM calls MCP tools on your behalf.
+A: No. Live IR (`nexus collect`), Register, N2 parsers (`nexus pipeline --mode tools`), the CLI, and the Examiner Portal work without any LLM. An LLM is optional at interpret: it narrates retrieved hits. It cannot approve findings. Fully agentic tool-selection is a later mode, not the current ship path.
 
 **Q: What OS does it run on?**
 A: Windows, Linux, macOS. The `nexus serve` server runs on any. MCP tools (SIFT, Windows, Velociraptor) are available based on what you have installed on each host.
@@ -80,7 +80,16 @@ A: Yes. The audit chain + per-finding HMAC signatures provide cryptographic proo
 ## Tools & Data
 
 **Q: What forensic tools does DFIR-Nexus support?**
-A: It wraps your existing tools — NOT replaces them. Supported: SIFT workstation tools, Zimmerman tools, Sysinternals, KAPE, YARA, Volatility 3, Plaso, Hayabusa, Velociraptor, Suricata, Zeek, Elastic, and more. 103 MCP tools (Windows) / 100 (Linux).
+A: It wraps your existing tools — NOT replaces them. Supported: SIFT workstation tools, Zimmerman tools, Sysinternals, KAPE, YARA, Volatility 3, Plaso, Hayabusa (N2 parser, not live collect), Velociraptor, Suricata, Zeek, Elastic, and more. 103 MCP tools (Windows) / 100 (Linux).
+
+**Q: Does live collect run Hayabusa / Suzaku / Chainsaw?**
+A: No. `nexus collect` is acquire-only (KAPE, wevtutil, Sysinternals, PersistenceSniper, optional Kansa/ORC/memory). Parsers run at **N2** after you register the pack: `nexus pipeline --mode tools`. Collect must not create empty `hayabusa` / `suzaku` / `chainsaw` directories on the target.
+
+**Q: Will there be a UI for collection?**
+A: Not for live harvest. Collect stays a portable CLI so you can freeze, SSH/WinRM, and pull a pack without a browser. Examiner Portal covers register, query, interpret, approve, timeline, and report. Ingest and detection share that investigation desk.
+
+**Q: Is Register part of N1–N8?**
+A: No. Register is SHA-256 custody (`nexus case init` + `nexus evidence register`). Import-only cases register without collect. Re-running N2 must not re-register. All analysis modes need an existing `case_id`.
 
 **Q: Do I need to install the forensic tools separately?**
 A: Yes. DFIR-Nexus discovers tools on your PATH or at configured paths. If SIFT tools are on a VM, point `nexus setup client --sift <ip>:4508`.

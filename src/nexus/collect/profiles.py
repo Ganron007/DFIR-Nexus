@@ -9,9 +9,6 @@ WINDOWS_COLLECTORS = (
     "sysinternals",
     "persistencesniper",
     "wevtutil",
-    "hayabusa",
-    "suzaku",
-    "chainsaw",
     "kape",
     "orc",
     "winpmem",
@@ -108,9 +105,6 @@ def apply_enabled(opts: CollectOptions, enabled: set[str]) -> CollectOptions:
     opts.sysinternals = "sysinternals" in enabled
     opts.persistencesniper = "persistencesniper" in enabled
     opts.wevtutil = "wevtutil" in enabled
-    opts.hayabusa = "hayabusa" in enabled
-    opts.suzaku = "suzaku" in enabled
-    opts.chainsaw = "chainsaw" in enabled
     opts.kape = "kape" in enabled
     opts.orc = "orc" in enabled
     opts.memory = "winpmem" in enabled or "avml" in enabled

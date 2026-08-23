@@ -5,7 +5,6 @@ Examiner-facing copies live **here** under `Docs/cases/<case_id>/reports/`.
 It is not temp, and it is not the deliverable.
 
 Map: [TOOL-EVIDENCE-MAP.md](TOOL-EVIDENCE-MAP.md) (interpret/report + other surfaces).
-Ship tests: [COMPLETE-TO-SHIP.md](../internal/COMPLETE-TO-SHIP.md) M6a–d.
 
 ## What each mode does (wired in the product)
 

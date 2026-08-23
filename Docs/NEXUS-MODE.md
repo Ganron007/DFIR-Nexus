@@ -1,8 +1,6 @@
 # Nexus mode (the investigation loop)
 
-Open this file if Cursor preview crashes on INTERPRET-HITL-CONTEXT-PLAN.md
-or COMPLETE-TO-SHIP.md (assertion failed). Those two stay the architecture
-tracker and the 12-pass ledger. This page is the operator mental model.
+This page is the operator mental model. Open it first: collect → register → N1–N8.
 
 One product, three doors, one `case_id`:
 
@@ -13,7 +11,7 @@ One product, three doors, one `case_id`:
 Do import and detection **after** Nexus mode is honest on one pack.
 They reuse the same query / HITL / report brain. They do not replace it.
 
-## Stage 0 — live collect (before N1)
+## Stage 0 — live collect (before Register)
 
 Stage 0 is a **live run** against a host you can authenticate to:
 
@@ -22,11 +20,14 @@ Stage 0 is a **live run** against a host you can authenticate to:
 **`--profile disk` is the default ship spine** (current Windows 11 / modern Linux):
 Windows KAPE + Sysinternals + PersistenceSniper + wevtutil + Velociraptor IRTriage;
 Linux POSIX volatile + journalctl + UAC `ir_triage` + Velociraptor LinuxIRTriage.
-`--profile full` wraps every FOSS collector we can run (Kansa, Hayabusa, Suzaku,
-Chainsaw, DFIR-ORC, WinPmem/AVML, UAC `full`) and **skips with a reason** when a
-tool is missing or broken on the current OS. Writes `hosts/<hostname>/…` +
-`manifest.json`. Then `nexus case init` and `nexus evidence register` the pack.
-**Not** an analysis dump.
+`--profile full` wraps extra *collectors* (Kansa, DFIR-ORC, WinPmem/AVML, UAC `full`)
+and **skips with a reason** when a tool is missing or broken. It does **not** run
+Hayabusa / Suzaku / Chainsaw — those parse collected EVTX at **N2**.
+Writes `hosts/<hostname>/…` + `manifest.json`. **Not** an analysis dump.
+
+Then **Register** (separate from N1–N8): `nexus case init` and
+`nexus evidence register` the pack. After that, N2 parsers and N1–N8
+run in examiner / thick / agents mode against the same `case_id`.
 
 `nexus collect import <dump>` is the helper when you already have a KAPE image or
 Kansa CSVs. Velociraptor is a **Stage 0 collector**: skipped honestly when the
@@ -40,12 +41,41 @@ or `--no-*`.
 Without SSH or WinRM (or local) credentials, collection does not run. That is
 the orchestrator boundary.
 
+## Register stays outside N1–N8
+
+Do **not** fold Register into N1–N8. Custody is a gate, not analysis.
+
+| Activity | What it is |
+|----------|------------|
+| **Stage 0 Collect** | Live IR → pack on disk. No case required. No LLM. No parsers. |
+| **Register** | `nexus case init` + `nexus evidence register <pack>`. HMAC / chain-of-custody. Also used for import-only cases (no collect). |
+| **N1–N8** | Analysis spine on a registered `case_id`. Examiner / thick / agents are *how you drive* that spine, not extra stages. |
+| **N2** | Parsers (Hayabusa / Suzaku / Chainsaw + Zimmerman) write CSVs under the case. |
+
+Why Register is separate:
+
+- Import-only cases must register without collect.
+- Re-running N2 must not re-register.
+- The three Nexus modes all need an existing `case_id`. Mixing Register into N1 makes Mode 2/3 awkward.
+
+One collect command. Follow-up is **separate CLI commands**, not one mega-script.
+
+## Surfaces (CLI vs UI)
+
+| Surface | What |
+|---------|------|
+| **Collect** | Stays **CLI** (`nexus collect`). Portable, headless, freeze-gated. No Portal harvest. |
+| **Register + N1–N8 + ingest + detection** | CLI **and** Examiner Portal / MCP. Portal is the investigation desk. |
+
+Do not put live IR behind a browser. Do not skip Register because the Portal can open a case.
+
 ## The loop (locked)
 
 ```
-Stage 0  Collect    live IR with auth → pack on disk          (no LLM)
+Stage 0  Collect    live IR with auth → pack on disk          (no LLM, no parsers)
+Register case init + evidence register (HMAC custody)         (no LLM)
 N1  Intake     examiner question + window + playbooks
-N2  Process    parsers write CSVs + audit_id     (no LLM)
+N2  Process    parsers write CSVs + audit_id     (Hayabusa/Suzaku/Chainsaw here)
 N3  Index      optional ES of THIS case's output (no LLM)
 N4  Query      code searches processed output    (no LLM)
 N5  Interpret  LLM narrates N4 hits only
@@ -136,15 +166,15 @@ in the portal / markdown over a second model pass.
 ## CLI cheat sheet
 
 ```
-nexus pipeline --mode tools --case D:\pack
-nexus pipeline --mode tools --from-case INC-... --case I:\C
+# once: .env, SSH keys, nexus doctor
+nexus collect run --os windows --host <ip> --user analyst --identity ~/.ssh/id
+nexus case init "IR host"
+nexus evidence register <pack>
+nexus pipeline --mode tools --case <pack>
+nexus pipeline --mode interpret --from-case INC-...
 nexus case query --needles sdelete,.pst
-nexus pipeline --mode interpret --from-case INC-20260813122635
-nexus config --examiner e2e_host --setup-password --replace
 nexus approve --examiner e2e_host F-021
 nexus report generate
-nexus ingest conn.log --source zeek --case INC-...
-nexus case detections --finding-ids F-021,F-022
 ```
 
 Portal: Steer (intake) → Query (hits) → Findings → Approve → Timeline.
@@ -162,12 +192,7 @@ N1–N8 is the investigation brain. Same case, same HMAC, examiner/agent may als
 
 OpenCTI is **parked**. Elasticsearch (`nexus-es`) searches **this case’s parsed rows**. OpenCTI would search an org CTI graph about an IOC taken *from* those rows. Different job.
 
-Dispositions: `Docs/internal/OLD-VS-NEW.md` §4. Not a tracker.
+Parser contract (public): [TOOL-EVIDENCE-MAP.md](cases/TOOL-EVIDENCE-MAP.md).
+What shipped: [CHANGELOG.md](../CHANGELOG.md).
 
-## Trackers (one checklist)
-
-- Actions / 12-pass: `Docs/internal/COMPLETE-TO-SHIP.md` §0.3 (do not flip `[x]` without 12-pass)
-- Architecture leftover: `Docs/internal/INTERPRET-HITL-CONTEXT-PLAN.md` §4
-- Keep/Park only: `Docs/internal/OLD-VS-NEW.md` §4
-- Session pointer: `Docs/internal/ACTIVE.md`
-- Parser contract: `Docs/cases/TOOL-EVIDENCE-MAP.md`
+Examiner hosts keep a gitignored `Docs/internal/` tree (ship ledger, old-vs-new, live backlog). Those files are not in the public clone.

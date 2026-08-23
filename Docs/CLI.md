@@ -41,11 +41,10 @@ It is a product highlight: the same command produces a case pack against
 - **Windows:** Sysinternals, PersistenceSniper, wevtutil EVTX, KAPE `!SANS_Triage`/`!EZParser`, live Velociraptor `CADRE.Hunts.IRTriage`.
 - **Linux:** POSIX volatile snapshot, journalctl (30 days) + ausearch, UAC `-p ir_triage` (SANS-style live response; not UAC `full`), live Velociraptor `CADRE.Hunts.LinuxIRTriage`.
 
-**`--profile full`:** every FOSS collector we can wire, including overlap
-(Kansa, Hayabusa, Suzaku, Chainsaw, DFIR-ORC, WinPmem/AVML, UAC `full`).
-Missing or broken tools **skip with a reason**. Unmaintained binaries are not
-deleted from `full`; we fix them and re-run later. `--profile volatile` is
-process/net/log only (no KAPE/UAC/ORC).
+**`--profile full`:** extra collectors (Kansa, DFIR-ORC, WinPmem/AVML, UAC `full`).
+Missing or broken tools **skip with a reason**. Hayabusa / Suzaku / Chainsaw are
+**N2 parsers** (`nexus pipeline --mode tools`), not Stage 0 collectors.
+`--profile volatile` is process/net/log only (no KAPE/UAC/ORC).
 
 ```bash
 nexus collect tools                       # every collector binary + VR live status
@@ -56,7 +55,7 @@ nexus collect run  --os windows --host localhost --no-probe --profile full
 nexus collect import D:\kape-out --os windows --hostname rd01 --case INC-...
 ```
 
-`--only kansa,hayabusa,dfir_orc` or `--profile full` pulls optional collectors.
+`--only kansa,dfir_orc` or `--profile full` pulls optional collectors.
 `--kape-module none` acquires the triage image only. `--kape-remote-path` uses KAPE already installed on the target. `--no-memory` skips WinPmem/AVML (DumpIt is not used — commercial). `--vr-client-id` if hostname match fails. Password SSH/WinRM: `NEXUS_COLLECT_PASSWORD` (never `--password`). Optional extras: `pip install dfir-nexus[collect]` (paramiko / pywinrm).
 
 ### Live Velociraptor (examiner `.env` — required for hunts)
@@ -70,7 +69,9 @@ This is **your** host, not the Velociraptor VM install. Full table: [SETUP.md §
 5. `nexus collect run` harvests. Only after the operator says freeze.
    Stage 0 VR calls `CADRE.Hunts.IRTriage` (Windows) or `CADRE.Hunts.LinuxIRTriage` (Linux) after `Generic.Client.Info`. Heavier `CADRE.Hunts.*` packs stay on the VR server for a later hunt. KAPE/UAC on SSH targets do file triage.
 
-Missing binaries are **skipped with a reason**, not omitted silently. Then: `nexus case init "IR host"` → `nexus evidence register <pack>`.
+Missing binaries are **skipped with a reason**, not omitted silently. Then Register
+(separate from N1–N8): `nexus case init "IR host"` → `nexus evidence register <pack>`.
+N2 EVTX parsers: `nexus pipeline --mode tools --case <pack>`.
 
 ## Evidence
 
