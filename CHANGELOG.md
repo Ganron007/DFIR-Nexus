@@ -4,6 +4,14 @@ All notable changes to DFIR-Nexus are documented here.
 
 ## Unreleased
 
+### Architecture, Examiner Cockpit UI & Three Modes synchronization (2026-08-25)
+
+- Updated `README.md` and `assets/dfir-nexus-architecture.svg` / `.png` to reflect the v2 architecture lifecycle: Stage 0 Live Collect (CLI) → Evidence Custody Registration → Examiner Cockpit & N1–N8 Investigation Spine → Cryptographic HITL Gate → Storage & Verified Exporters.
+- Documented the Examiner Portal Web Cockpit desks (`/portal/steer`, `/portal/query`, `/portal/approve`, `/portal/timeline`, `/portal/evidence`).
+- Documented the Three Nexus Driving Modes (Mode 1 Examiner-Led / Public Beta, Mode 2 Thick Cognitive Analysis, Mode 3 Autonomous Agentic MCP).
+- Documented the dual storage model separating permanent SQLite case state & cryptographic ledger from optional N3 Elasticsearch row searching.
+- Fixed `streamable_http_client` call signature in `tests/test_bridge_regressions.py` (10/10 PASS).
+
 ### Canonical product-flow diagram (2026-08-25)
 
 - `Docs/NEXUS-MODE.md` and `Docs/ARCHITECTURE.md` now carry the mermaid product flow: Stage 0 Collect (CLI) → Register → N1–N8 (3 modes) → Ingest → N4–N8 again → optional Detection. README / `Docs/index.md` point at it.

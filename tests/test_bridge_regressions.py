@@ -162,7 +162,7 @@ class TestB5HttpMount:
 
             async def _handshake() -> int:
                 url = f"http://127.0.0.1:{port}/mcp"
-                async with streamable_http_client(url, timeout=30) as streams:
+                async with streamable_http_client(url) as streams:
                     read, write = streams[0], streams[1]
                     async with ClientSession(read, write) as session:
                         result = await session.initialize()
