@@ -52,49 +52,6 @@ See **[Docs/NEXUS-MODE.md](Docs/NEXUS-MODE.md)** for the full operator loop, and
   </a>
 </p>
 
-### Canonical Product Flow
-
-```mermaid
-flowchart TB
-  subgraph ENTRY["1. Collection & Entry (Pick one or both)"]
-    S0["Stage 0 — Live IR (CLI)<br/>nexus collect run<br/>Headless · freeze-gated · no LLM · no parsers"]
-    IMP["Import Existing Pack<br/>KAPE / Kansa / UAC dump"]
-  end
-
-  REG["2. Custody Registration Gate<br/>case init + evidence register<br/>SHA-256 Proof-of-Source · Isolated from N1–N8"]
-
-  S0 --> REG
-  IMP --> REG
-
-  subgraph WORKBENCH["3. Examiner Cockpit (Portal / CLI / MCP) — N1 to N8 Spine"]
-    direction TB
-    N1["N1 Intake (Question, Window &amp; Playbooks)"]
-    N2["N2 Process (Hayabusa, EvtxECmd, PECmd, RECmd, SIFT → extractions/)"]
-    N3["N3 Index (Optional Case ES or CSV Pack)"]
-    N4["N4 Query Pack (Code Search &amp; Needle Hits with file:line Citations)"]
-    N5["N5 Interpret (LLM Scribe Narrates N4 Hits Only · DRAFT Staged)"]
-    N6["N6 Approve (Human Cryptographic PBKDF2-HMAC Sign-Off)"]
-    N7["N7 Timeline (Chronological Merge of Hits &amp; Ingest)"]
-    N8["N8 Verified Report (Compiled Exclusively from APPROVED Findings)"]
-
-    N1 --> N2 --> N3 --> N4 --> N5 --> N6 --> N7 --> N8
-  end
-
-  REG --> N1
-
-  MODE["Three Driving Modes<br/>Mode 1 Examiner-Led (Beta) · Mode 2 Thick Analysis · Mode 3 Autonomous MCP"]
-  MODE -.-> WORKBENCH
-
-  subgraph EXTENSIONS["4. Post-Story Extensions (Same case_id)"]
-    ING["Ingest Extensions (I1)<br/>Zeek / Suricata / EDR / SIEM / PCAP"]
-    DET["Detection Engineering (D1)<br/>Draft Sigma / KQL / Suricata for SIEM Team"]
-  end
-
-  N8 -->|"Host story verified"| ING
-  ING -->|"Merge &amp; re-query"| N4
-  N8 -->|"APPROVED narrative ready"| DET
-```
-
 **Trust model (offline-first, loopback-only):**
 1. **Collect (CLI)** — Live IR pack on disk. No LLM, no parsers on target, freeze-gated. Stays portable; not a Portal harvest.
 2. **Register** — `nexus case init` + `nexus evidence register`. Custody gate before analysis. Outside N1–N8.
