@@ -8,7 +8,7 @@
 
 | Document | What it covers |
 |----------|---------------|
-| **[NEXUS-MODE.md](NEXUS-MODE.md)** | **Start here for the loop.** Stage 0 collect (CLI) → Register → N1–N8. Parsers are N2, not collect. |
+| **[NEXUS-MODE.md](NEXUS-MODE.md)** | **Start here.** Canonical product flow diagram: Collect → Register → N1–N8 → Ingest → N4–N8 again → Detection. |
 | **[guide.md](guide.md)** | Step-by-step DFIR workflow — case, tools, findings, approve, report. |
 | **[SETUP.md](SETUP.md)** | Installation — per-OS prerequisites, setup scripts, venv/pip/docker, client wiring, baselines. |
 | **[ARCHITECTURE.md](ARCHITECTURE.md)** | Product spine, trust boundaries, module layout, data flow. |

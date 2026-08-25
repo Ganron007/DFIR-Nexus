@@ -37,6 +37,9 @@ Digital Forensics and Incident Response (DFIR) routinely relies on a highly frag
 
 ## Architecture & Data Flow
 
+Product flow (collect → register → N1–N8 → ingest → N4–N8 again → detection):
+**[Docs/NEXUS-MODE.md](Docs/NEXUS-MODE.md)** · spine diagram also in **[Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md)**.
+
 DFIR-Nexus operates as a single, platform-aware FastMCP process with strict cryptographic trust boundaries, evidence provenance rules (FD-001..007), and a mandatory human authorization gate:
 
 <p align="center">

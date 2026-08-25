@@ -69,11 +69,94 @@ One collect command. Follow-up is **separate CLI commands**, not one mega-script
 
 Do not put live IR behind a browser. Do not skip Register because the Portal can open a case.
 
-## The loop (locked)
+## Product flow (canonical)
+
+One product, one `case_id`. Stage 0 is skippable for import-only cases. Register is not.
+The three Nexus modes are **how you drive** N1–N8 — not extra stages after N8.
+After ingest, “Nexus again” means re-run **N4→N8** on merged evidence — not collect / register / N2 from scratch.
+
+```mermaid
+flowchart TB
+  subgraph ENTRY["Entry (pick one or both)"]
+    S0["Stage 0 — Collect<br/>nexus collect run<br/>CLI only · freeze-gated · no LLM · no parsers"]
+    IMP["Import-only<br/>existing dump / pack already on disk"]
+  end
+
+  REG["Register<br/>case init + evidence register<br/>SHA-256 custody · not part of N1–N8"]
+
+  S0 --> REG
+  IMP --> REG
+
+  subgraph NEXUS["Nexus N1–N8 — one spine, three drivers"]
+    direction TB
+    N1["N1 Intake<br/>question · window · playbooks"]
+    N2["N2 Process<br/>Hayabusa / Suzaku / Chainsaw / Zimmerman<br/>→ case extractions/ + audit_id"]
+    N3["N3 Index optional<br/>this-case ES or CSV pack"]
+    N4["N4 Query<br/>code search · hits only · no LLM"]
+    N5["N5 Interpret<br/>LLM narrates N4 hits only"]
+    N6["N6 Approve<br/>human HMAC · DRAFT → APPROVED"]
+    N7["N7 Timeline<br/>hits + ingest chronology"]
+    N8["N8 Export<br/>template from APPROVED · no new facts"]
+
+    N1 --> N2 --> N3 --> N4 --> N5 --> N6 --> N7 --> N8
+  end
+
+  REG --> N1
+
+  MODE["How you drive the same spine<br/>Mode 1 examiner-led · Mode 2 thick · Mode 3 agents/MCP"]
+  MODE -.-> NEXUS
+
+  ING["Ingest<br/>Zeek / Suricata / EDR / SIEM / PCAP / extra logs<br/>onto the same case_id"]
+
+  N8 -->|"host story honest"| ING
+  ING -->|"merge onto case"| N4
+
+  DET["Detection eng optional<br/>draft Sigma / KQL / Suricata<br/>after APPROVED story · for SIEM team"]
+  N8 -->|"APPROVED narrative ready"| DET
+
+  UI["Examiner Portal / MCP<br/>Register · N1–N8 · Ingest · Detection · HMAC"]
+  UI -.-> REG
+  UI -.-> NEXUS
+  UI -.-> ING
+  UI -.-> DET
+```
+
+### How to read it
+
+| Step | What it is | What it is not |
+|------|------------|----------------|
+| **Stage 0** | Live IR → pack on disk | Analysis, parsers, Portal harvest |
+| **Register** | Custody gate into a case | An N1–N8 step |
+| **N1–N8** | The investigation brain | Three separate products |
+| **3 modes** | *How* you drive N1–N8 | Extra stages after N8 |
+| **Ingest** | Other logs onto **that** case | A second collect / re-register |
+| **Nexus again** | Re-run **N4→N8** on merged evidence | Collect / Register / N2 from scratch |
+| **Detection** | Optional drafts after APPROVED | Required next click; not N5 |
+
+### Happy path (host first, then network)
+
+```text
+Collect (CLI) ──► Register ──► N1→N2→N3→N4→N5→N6→N7→N8
+                                      │
+                                      ▼ (optional)
+                                   Ingest logs
+                                      │
+                                      ▼
+                              N4→N5→N6→N7→N8 again
+                                      │
+                                      ▼ (optional)
+                              Detection drafts (D1)
+```
+
+### Import-only shortcut
+
+```text
+Existing dump ──► Register ──► N1–N8 ──► (Ingest?) ──► (Detection?)
+```
+
+### N1–N8 spine (locked)
 
 ```
-Stage 0  Collect    live IR with auth → pack on disk          (no LLM, no parsers)
-Register case init + evidence register (HMAC custody)         (no LLM)
 N1  Intake     examiner question + window + playbooks
 N2  Process    parsers write CSVs + audit_id     (Hayabusa/Suzaku/Chainsaw here)
 N3  Index      optional ES of THIS case's output (no LLM)
@@ -87,6 +170,9 @@ D1  Optional   draft detections after N8
 
 Facts never come from the model. Hits come from N4. Findings cite hits.
 Empty hits = INSUFFICIENT, not a coverage gap, not a fake story.
+
+Continuous improvement (AI forensics, better parsers, playbooks, RAG) lands **inside**
+N1–N8 — not as a parallel product.
 
 ## Who runs N4 query?
 

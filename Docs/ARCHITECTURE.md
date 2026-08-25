@@ -8,13 +8,60 @@
 
 This is the architecture the CLI and docs describe **now**. MCP tool counts and
 the FastMCP process remain; they are the workstation behind the spine, not the
-first door.
+first door. Operator detail: [NEXUS-MODE.md](NEXUS-MODE.md).
 
 ```
 Stage 0  Collect     nexus collect run     CLI only (portable; freeze-gated)
 Register             case init + evidence register     custody; not N1–N8
 N1–N8                intake → parsers → query → interpret → HMAC → report
-Ingest / Detection   optional, same case_id, after the host story is honest
+Ingest               other logs onto the same case_id
+Nexus again          N4→N8 on merged evidence (not re-collect / re-register)
+Detection            optional drafts after APPROVED
+```
+
+```mermaid
+flowchart TB
+  subgraph ENTRY["Entry (pick one or both)"]
+    S0["Stage 0 — Collect<br/>nexus collect run<br/>CLI only · freeze-gated · no LLM · no parsers"]
+    IMP["Import-only<br/>existing dump / pack already on disk"]
+  end
+
+  REG["Register<br/>case init + evidence register<br/>SHA-256 custody · not part of N1–N8"]
+
+  S0 --> REG
+  IMP --> REG
+
+  subgraph NEXUS["Nexus N1–N8 — one spine, three drivers"]
+    direction TB
+    N1["N1 Intake"]
+    N2["N2 Process — parsers → extractions/"]
+    N3["N3 Index optional"]
+    N4["N4 Query — code · hits only"]
+    N5["N5 Interpret — LLM on hits"]
+    N6["N6 Approve — human HMAC"]
+    N7["N7 Timeline"]
+    N8["N8 Export — APPROVED only"]
+
+    N1 --> N2 --> N3 --> N4 --> N5 --> N6 --> N7 --> N8
+  end
+
+  REG --> N1
+
+  MODE["Mode 1 examiner · Mode 2 thick · Mode 3 agents/MCP"]
+  MODE -.-> NEXUS
+
+  ING["Ingest — Zeek / Suricata / EDR / SIEM / PCAP<br/>same case_id"]
+  N8 -->|"host story honest"| ING
+  ING -->|"merge"| N4
+
+  DET["Detection optional — Sigma / KQL / Suricata drafts"]
+  N8 -->|"APPROVED ready"| DET
+
+  UI["Portal / MCP — Register · N1–N8 · Ingest · Detection · HMAC"]
+  UI -.-> REG
+  UI -.-> NEXUS
+  UI -.-> ING
+  UI -.-> DET
 ```
 
 | Surface | Role |
@@ -22,7 +69,10 @@ Ingest / Detection   optional, same case_id, after the host story is honest
 | **`nexus collect`** | Live IR. Stays **CLI** — handy, headless, no browser. No parsers. No empty parser dirs on the target. |
 | **Register** | SHA-256 pack into a case. Import-only cases skip collect. |
 | **N2** | Hayabusa / Suzaku / Chainsaw / Zimmerman write CSVs under the case (`nexus pipeline --mode tools`). |
-| **Examiner Portal + MCP** | Investigation UI and agent surfaces for Register and N1–N8 (query, approve, timeline, report). Collect does not move into the Portal. |
+| **3 modes** | How you drive the same N1–N8 spine (examiner / thick / agents) — not extra stages. |
+| **Ingest** | Other logs onto that case. Then re-query / interpret / HMAC / report (N4→N8). |
+| **Detection** | Optional drafts after an APPROVED story. Not N5. |
+| **Examiner Portal + MCP** | Investigation UI for Register, N1–N8, ingest, detection, HMAC. Collect does not move into the Portal. |
 | **LLM** | Optional. Narrates **N4 hits** only. Cannot approve. Fully agentic tool-selection is a later mode. |
 
 ## Design Principle
