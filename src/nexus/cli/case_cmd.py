@@ -279,3 +279,235 @@ def intake_case(
         ctx["query_extra"] = query_extra
     written = persist_case_intake(case_dir, ctx)
     typer.echo(f"Intake fields: {', '.join(written) or '(none)'}")
+
+
+# ---------------------------------------------------------------------------
+# Mode 1 — Examiner-Led Query Desk
+# ---------------------------------------------------------------------------
+
+
+@app.command("ask")
+def ask_case(
+    case_id: str = typer.Argument("", help="Case ID (defaults to active)"),
+    question: str = typer.Option(
+        "",
+        "--question",
+        "-q",
+        help="English question (e.g. 'Was sdelete used to wipe files?')",
+    ),
+    persist: bool = typer.Option(
+        True,
+        "--persist/--no-persist",
+        help="Save extracted needles on CASE.yaml intake.query_extra",
+    ),
+    limit: int = typer.Option(50, "--limit", help="Max hits to print"),
+    backend: str = typer.Option("auto", "--backend", help="auto | csv | es"),
+    no_llm: bool = typer.Option(False, "--no-llm", help="Use heuristic extraction (no LLM)"),
+):
+    """Mode 1 — NL to needles: translate English question into search terms, run N4 query."""
+    from nexus.langgraph.mode1 import nl_to_needles
+    from nexus.langgraph.query_pack import _parse_needles, run_ad_hoc_query
+
+    case_dir = _case_dir(case_id)
+    if not question:
+        typer.echo("Provide --question (e.g. 'Was sdelete used to wipe files?')", err=True)
+        raise typer.Exit(1)
+
+    model = None
+    if not no_llm:
+        try:
+            from nexus.langgraph.llm_pipeline import get_model
+            model = get_model()
+        except Exception:
+            pass  # fall back to heuristic
+
+    result = nl_to_needles(question, model=model)
+    needles = result.get("needles", [])
+    window = result.get("window", "")
+    source = result.get("source", "heuristic")
+
+    typer.echo(f"Source: {source}")
+    typer.echo(f"Needles: {', '.join(needles) or '(none)'}")
+    if window:
+        typer.echo(f"Window: {window}")
+
+    if not needles:
+        typer.echo("No needles extracted. INSUFFICIENT — refine your question.")
+        return
+
+    # Persist needles + window to intake
+    if persist:
+        from nexus.langgraph.case_intake import persist_case_intake
+        ctx: dict[str, str] = {"query_extra": ",".join(needles)}
+        if window:
+            ctx["window"] = window
+        persist_case_intake(case_dir, ctx)
+
+    # Run N4 query
+    n4_result = run_ad_hoc_query(
+        case_dir,
+        extra_needles=needles,
+        persist=False,
+        backend=backend,
+        limit=limit,
+    )
+    typer.echo(
+        f"\nbackend={n4_result.get('backend')} hits={n4_result.get('count')} "
+        f"terms={len(n4_result.get('terms') or [])}"
+    )
+    if n4_result.get("empty"):
+        typer.echo("No rows matched. INSUFFICIENT — do not invent findings.")
+        return
+
+    for i, hit in enumerate(n4_result.get("hits") or [], 1):
+        loc = f"{hit.get('file')}:{hit.get('line')}"
+        typer.echo(f"  [{i}] {hit.get('family')}\t{loc}\t{hit.get('terms')}\t{hit.get('text')}")
+    typer.echo(f"\nTo promote hits to DRAFT: nexus case select --hits 1,3,5 --title '...'")
+
+
+@app.command("select")
+def select_case(
+    case_id: str = typer.Argument("", help="Case ID (defaults to active)"),
+    hits: str = typer.Option(
+        "",
+        "--hits",
+        help="Comma-separated hit indices from the last query (1,3,5)",
+    ),
+    title: str = typer.Option(
+        "",
+        "--title",
+        help="Finding title (e.g. 'sdelete file wipe on WS01')",
+    ),
+    interpretation: str = typer.Option(
+        "",
+        "--interpretation",
+        help="Optional interpretation hint for the scribe",
+    ),
+    scribe: bool = typer.Option(
+        True,
+        "--scribe/--no-scribe",
+        help="Run LLM scribe to format the DRAFT (use --no-scribe for raw skeleton)",
+    ),
+):
+    """Mode 1 — Examiner selects hits -> promote to DRAFT finding."""
+    from nexus.langgraph.mode1 import promote_hits_to_draft, save_draft_finding, scribe_finding
+
+    case_dir = _case_dir(case_id)
+    if not hits:
+        typer.echo("Provide --hits (comma-separated indices from the last query)", err=True)
+        raise typer.Exit(1)
+    if not title:
+        typer.echo("Provide --title (e.g. 'sdelete file wipe on WS01')", err=True)
+        raise typer.Exit(1)
+
+    # Load the last query results from the query pack
+    from nexus.langgraph.query_pack import load_case_intake, collect_query_terms, n4_hits, parse_intake_window
+    intake = load_case_intake(case_dir)
+    terms = collect_query_terms(intake)
+    window = parse_intake_window(intake)
+    all_hits, _ = n4_hits(case_dir, terms, window)
+
+    if not all_hits:
+        typer.echo("No hits available. Run 'nexus case ask' first.", err=True)
+        raise typer.Exit(1)
+
+    # Parse hit indices (1-based from the ask output)
+    indices = []
+    for part in hits.replace(";", ",").split(","):
+        part = part.strip()
+        if part.isdigit():
+            idx = int(part)
+            if 1 <= idx <= len(all_hits):
+                indices.append(idx - 1)
+            else:
+                typer.echo(f"Hit index {idx} out of range (1-{len(all_hits)})", err=True)
+                raise typer.Exit(1)
+
+    if not indices:
+        typer.echo("No valid hit indices provided.", err=True)
+        raise typer.Exit(1)
+
+    selected = [all_hits[i] for i in indices]
+    typer.echo(f"Selected {len(selected)} hit(s):")
+    for i, h in enumerate(indices, 1):
+        loc = f"{all_hits[h].get('file')}:{all_hits[h].get('line')}"
+        typer.echo(f"  [{i+1 if i > 1 else i}] {all_hits[h].get('family')}\t{loc}\t{all_hits[h].get('text', '')[:80]}")
+
+    # Promote to DRAFT skeleton
+    from nexus.audit import resolve_examiner
+    examiner = resolve_examiner()
+    draft = promote_hits_to_draft(
+        case_dir,
+        hits=selected,
+        title=title,
+        examiner=examiner,
+        interpretation_hint=interpretation,
+    )
+
+    # Run scribe if requested
+    if scribe:
+        model = None
+        try:
+            from nexus.langgraph.llm_pipeline import get_model
+            model = get_model()
+        except Exception:
+            pass
+
+        rag_context = ""
+        if model:
+            try:
+                from nexus.tools.forensic import _get_tools
+                # RAG search for methodology on the hit families
+                families = sorted({h.get("family", "") for h in selected if h.get("family")})
+                rag_context = f"Artifact families: {', '.join(families)}"
+            except Exception:
+                pass
+
+        draft = scribe_finding(draft, hits=selected, rag_context=rag_context, model=model)
+        typer.echo(f"\nScribe: {draft.get('scribe_source', 'none')}")
+        typer.echo(f"  Observation: {draft.get('observation', '')[:200]}")
+        typer.echo(f"  Confidence: {draft.get('confidence', '?')}")
+    else:
+        typer.echo("\nDRAFT skeleton (no scribe):")
+        typer.echo(f"  Evidence rows: {len(draft.get('evidence', []))}")
+        typer.echo(f"  Audit IDs: {draft.get('audit_ids', [])}")
+
+    # Save the DRAFT
+    result = save_draft_finding(case_dir, draft)
+    if result.get("status") == "STAGED":
+        fid = result.get("finding_id", "?")
+        typer.echo(f"\nDRAFT staged: {fid}")
+        typer.echo(f"  Review: nexus case findings")
+        typer.echo(f"  Approve: nexus approve --examiner {examiner} {fid}")
+    elif result.get("status") == "VALIDATION_FAILED":
+        typer.echo(f"\nValidation failed: {result.get('errors', [])}", err=True)
+    else:
+        typer.echo(f"\nResult: {result}", err=True)
+
+
+@app.command("findings")
+def findings_case(
+    case_id: str = typer.Argument("", help="Case ID (defaults to active)"),
+    status: str = typer.Option("", "--status", help="Filter by status: DRAFT|APPROVED|REJECTED"),
+):
+    """List findings for a case."""
+    import json
+
+    case_dir = _case_dir(case_id)
+    fpath = case_dir / "findings.json"
+    if not fpath.is_file():
+        typer.echo("No findings yet.")
+        return
+    findings = json.loads(fpath.read_text())
+    if status:
+        findings = [f for f in findings if (f.get("status") or "DRAFT") == status.upper()]
+    if not findings:
+        typer.echo(f"No findings{' with status ' + status if status else ''}.")
+        return
+    for f in findings:
+        fid = f.get("id") or f.get("finding_id", "?")
+        st = f.get("status", "?")
+        conf = f.get("confidence", "?")
+        title = f.get("title", "?")[:60]
+        sel = " [examiner-selected]" if f.get("examiner_selected") else ""
+        typer.echo(f"  {fid:25s} {st:10s} {conf:10s} {title}{sel}")
