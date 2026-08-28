@@ -104,151 +104,220 @@ Do not put live IR behind a browser. Do not skip Register because the Portal can
 ## Mode 1 / 2 / 3 — three doors, one spine, one case
 
 The N1–N8 spine is identical in all three modes. The difference is **how much
-of the spine runs in one command** and **how much autonomy the LLM has**.
-Mode 1 and Mode 2 are the current ship targets — they are run **sequentially**
-on the same case. Mode 3 is future.
+autonomy the LLM has** and **who writes the findings**. Mode 1 and Mode 2 are
+the current ship targets — they are run **sequentially** on the same case.
+Mode 3 is future and will absorb the best of the old plan last.
 
-### Mode 1 — Examiner-Led (current, run first)
+> **Honest status:** The old plan (Mode 3 agentic) was never wired properly
+> and failed. v2 builds Mode 1 first, Mode 2 second, Mode 3 last. The
+> pipeline modes that exist in code today (`tools` / `interpret` / `coverage`
+> / `design`) are **implementation scaffolding**, not the product modes.
+> They will be re-wired as we test against real cases. Do not treat the
+> current code as the finished Mode 1/2/3 behavior.
 
-Mode 1 is **two CLI commands** run in sequence on the same case. The LLM
-only runs in the second command, and only to narrate N4 hits.
+### The two axes (do not confuse them)
 
-**Command 1 — N2 (no LLM):**
+| Axis | What it means |
+|------|---------------|
+| **Pipeline mode** (`tools` / `interpret` / `coverage` / `design`) | How the LangGraph runs — which nodes execute, in what order. Implementation detail. |
+| **Product mode** (Mode 1 / 2 / 3) | How much LLM autonomy the examiner allows — who chooses questions, who writes findings, who selects hits. Product behavior. |
 
-```
-nexus pipeline --mode tools --case <pack>
-```
+The pipeline modes are the **engine**. The product modes are the **steering
+wheel**. They are different axes and will be wired together as we build.
 
-What happens under the hood:
-1. `register_evidence` — registers the pack, creates immutable run, records
-   SHA-256 + audit_ids
-2. `scope` — surveys available evidence (artifact types, hosts)
-3. `execute_tool_lane` — runs ALL applicable binary parsers (Hayabusa, Suzaku,
-   Chainsaw, EvtxECmd, PECmd, MFTECmd, RECmd, etc.) + ingests pre-collected
-   host logs (VR JSON, KAPE CSV, Kansa, UAC, journalctl). Each tool gets
-   `audit_id`. Writes CSVs to `runs/<run_id>/extractions/`. Writes
-   `_tool_lane_ledger.json` (OK/FAIL/SKIP per tool). Writes
-   `_artifact_completeness.json`.
-4. `emit_tool_report` — writes `TOOL-RUN.md` (human-readable summary of what
-   ran, what skipped, what failed)
+### Mode 1 — Examiner-Led (ship door, in progress)
 
-**No LLM runs. No query. No findings. No interpretation.** This is pure
-deterministic parsing with audit chain. The examiner reviews `TOOL-RUN.md`
-and the ledger before proceeding.
+**Thin LLM as scribe + NL retrieval. Examiner owns questions, keep/reject,
+report set.**
 
-**Command 2 — N4 + N5 (LLM narrates hits):**
+The examiner drives. The LLM helps translate English to needles and narrates
+hits, but the **examiner selects which hits become DRAFT findings**.
 
 ```
-nexus pipeline --mode interpret --from-case <case-id>
+Examiner question (English)
+    |
+    v
+LLM translates -> needles + time window        (thin LLM: NL -> search terms)
+    |
+    v
+N4 query (code) -> hits with audit_id           (no LLM in the search)
+    |
+    v
+Examiner reviews hits in CLI / Portal
+    |
+    v
+Examiner selects hit-set -> promote to DRAFT    (examiner is the writer)
+    |
+    v
+LLM scribe formats DRAFT with RAG methodology  (thin LLM: scribe)
+    |
+    v
+Examiner reviews DRAFT -> keep / reject / edit
+    |
+    v
+HMAC on cards the EXAMINER selected             (not on LLM-written cards)
+    |
+    v
+N8 report from APPROVED only
 ```
 
-What happens under the hood:
-1. `ensure_rag` — loads ChromaDB RAG index (methodology only, not evidence)
-2. `load_existing` — resolves the active tools run, loads its ledger, creates
-   a child interpret run with `parent_run_id`, writes N4 query pack
-   (`query_pack.md`) from playbook needles + ledger hits, writes snippets
-3. `interpret` — ReAct agent with **narrow tool set** (forensic_rag_search,
-   forensic_rag_status, check_file, check_hash, check_autorun,
-   predict_techniques, suggest_tools). The agent:
-   - Receives the **N4 query pack** as its ONLY source of host facts
-   - Calls `forensic_rag_search` once per hit family for methodology context
-   - Emits DRAFT findings as JSON (title, evidence rows, observation,
-     interpretation, MITRE IDs, confidence, audit_ids)
-   - **Cannot** run host triage tools, cannot re-parse, cannot grep raw disks
-4. `stage_findings` — validates DRAFT findings against discipline rules
-   (FD-001..007), writes to `findings.json` as DRAFT
-5. `await_approval` — pauses for human HMAC (examiner runs `nexus approve`)
-6. `generate_report` — writes `REPORT.md` from APPROVED findings only
+**What the LLM does in Mode 1:**
+- Translates the examiner's English question into search needles + time window
+- Calls `forensic_rag_search` for methodology context (how to read an artifact)
+- Formats the examiner's selected hits into structured DRAFT findings (scribe)
 
-**The LLM's job in Mode 1:** read the N4 query pack (code-search hits),
-enrich with RAG methodology, write evidence-backed DRAFT findings. That is
-all. It does not choose tools, does not query raw data, does not approve.
+**What the LLM does NOT do in Mode 1:**
+- Does not choose which hits become findings (examiner selects)
+- Does not write findings from scratch (examiner promotes hit-sets)
+- Does not choose tools or parsers
+- Does not approve
+- Does not invent facts beyond N4 hits
 
-**Then the examiner:**
-- Reviews DRAFT findings in CLI or Portal
-- Adds needles if needed: `nexus case query --needles sdelete,.pst --persist`
-- Re-runs interpret if redirected
-- Approves with `nexus approve` (password/HMAC)
-- Generates report: `nexus report generate`
+**What is missing in code today:**
+- NL -> needles translation (COMPARISON.md: "NL query translator: Not implemented")
+- Select-to-report UI flow (IMPROVEMENT-PLAN.md W10: "want-ui")
+- Examiner-driven hit selection (current code has LLM writing findings directly)
+- Portal Query desk with bookmark -> DRAFT -> HMAC (starved)
 
-### Mode 2 — Thick Cognitive (current, run after Mode 1)
+**Closest code today:** `tools` + `interpret` — but interpret is "broken as a
+report" because the LLM is the primary writer, not a scribe. The lane
+(`tools` mode) is solid. The interpret path needs re-wiring to make the
+examiner the driver.
 
-Mode 2 is the `coverage` pipeline mode. It runs **the same N2 lane** and
-then does **thicker LLM interpretation** in one command. It is used when
-the examiner wants the LLM to correlate across hit families and propose
-follow-up — not just narrate individual hits.
+### Mode 2 — Thick Cognitive Analysis (after Mode 1 is honest)
+
+**Thick LLM/agents: retrieve -> corroborate -> DRAFT. LLM chooses the next
+question. Iteration, not one-shot.**
+
+Mode 2 is the **product** — the differentiator. The LLM becomes an
+investigative partner that iterates: it reads initial hits, proposes new
+needles, re-queries, corroborates across hit families, and writes DRAFT
+findings with provenance. The examiner still approves.
 
 ```
-nexus pipeline --mode coverage --case <pack>
+Examiner question (English)
+    |
+    v
+LLM translates -> initial needles + window
+    |
+    v
+N4 query (code) -> initial hits
+    |
+    v
+LLM analyzes hits -> proposes NEW needles        (thick LLM: chooses next question)
+    |
+    v
+N4 query again with new needles -> more hits     (ITERATION — not one-shot)
+    |
+    v
+LLM corroborates across hit families            (thick LLM: cross-family)
+    |  (e.g. Prefetch .exe + LNK + USN journal + RDP cache -> one story)
+    v
+LLM writes DRAFT findings with audit_ids        (LLM is the writer here)
+    |
+    v
+Examiner reviews DRAFT -> keep / reject / redirect
+    |
+    v
+HMAC on agent DRAFTs (no self-approve)           (examiner still gates)
+    |
+    v
+N8 report from APPROVED only
 ```
 
-What happens under the hood:
-1. `ensure_rag` — loads RAG
-2. `register_evidence` — same as Mode 1
-3. `scope` — same as Mode 1, but also calls `forensic_rag_search` with the
-   examiner hypothesis for methodology context
-4. `execute_tool_lane` — **same deterministic lane** (LLM does not skip
-   parsers, does not choose tools)
-5. Route: if examiner supplied a real question (N1 intake), proceed to
-   `interpret`. If not, stop at `emit_tool_report` (same as Mode 1 tools).
-6. `interpret` — **same ReAct agent as Mode 1** but with the full case
-   context including RAG notes from scope. The agent has the same narrow
-   tool set and the same constraint: N4 query pack is the only source of
-   host facts.
-7. `stage_findings` → `await_approval` → `generate_report` — same as Mode 1
+**What the LLM does in Mode 2:**
+- Everything from Mode 1, PLUS:
+- Chooses the next question based on initial hits
+- Proposes new needles and re-queries (iterative loop)
+- Corroborates across hit families (Prefetch + LNK + USN + RDP -> one story)
+- Writes DRAFT findings directly (LLM is the writer in Mode 2)
+- Applies FD-006 corroboration rules (single-source stays LOW)
 
-**Difference from Mode 1:** Mode 2 runs N2 + N4 + N5 in one command instead
-of two. The LLM interpretation is the same agent with the same constraints.
-Mode 2 is "I want the full lane + interpretation in one pass" while Mode 1
-is "I want to review the parser output before letting the LLM interpret."
+**What the LLM does NOT do in Mode 2:**
+- Does not choose tools or parsers (N2 lane is still deterministic)
+- Does not approve (examiner HMAC)
+- Does not invent facts beyond N4 hits
 
-**When to use which:**
-- **Mode 1 (tools then interpret):** when you want to inspect `TOOL-RUN.md`
-  and the ledger before committing to interpretation. Safer for first run
-  on unfamiliar evidence.
-- **Mode 2 (coverage):** when you trust the lane and want the full
-  N2→N5 in one pass. Faster for repeat runs or known evidence types.
+**What is missing in code today:**
+- Iterative query loop (current interpret runs once, not iteratively)
+- Cross-family corroboration logic (current interpret is one-shot per family)
+- LLM choosing next question (current interpret receives a static query pack)
+- "Too thin" per OLD-VS-NEW.md section 7.1
 
-Both produce the same artifacts: extractions, ledger, query pack, DRAFT
-findings, HMAC approval gate, report.
+**Closest code today:** `coverage` / `design` hunt — but "too thin." The
+hunt agent adds extras after the lane but does not iterate on queries.
 
-### Mode 3 — Autonomous Agentic (future)
+### Mode 3 — Full Agentic (future, absorbs old plan last)
 
-Mode 3 is the `design` pipeline mode. It runs the mandatory N2 lane first,
-then a ReAct agent **adds extras** (additional tools, corroboration, extra
-Volatility plugins) beyond the deterministic lane.
+**Agents also choose MCP tools. Same analysis loop as Mode 2. One HMAC on
+the case file.**
+
+Mode 3 is the old plan done right. A ReAct agent drives tool selection, runs
+the lane, adds extras, iterates on queries, corroborates, and writes DRAFTs.
+The examiner gives one HMAC at the end on the case file, not per-finding.
 
 ```
-nexus pipeline --mode design --case <pack>   # FUTURE
+Examiner question (English)
+    |
+    v
+Agent loads playbooks autonomously
+    |
+    v
+Agent runs mandatory N2 lane first                  (cannot skip the lane)
+    |
+    v
+Agent adds extras (carve, extra Volatility, additional parsers)
+    |  (only for SKIP'd artifacts or playbook extras — not instead of lane)
+    v
+Agent iterates: query -> analyze -> propose needles -> re-query
+    |
+    v
+Agent corroborates across all hit families
+    |
+    v
+Agent writes DRAFT findings with full provenance
+    |
+    v
+Examiner reviews case file -> ONE HMAC              (not per-finding)
+    |
+    v
+N8 report from APPROVED only
 ```
 
-What would happen under the hood:
-1. `ensure_rag` → `register_evidence` → `scope` — same
-2. `execute_tool_lane` — **same mandatory lane** (agent cannot skip it)
-3. `hunt` — ReAct agent with **wider tool set** (run_command,
-   run_windows_command, forensic_rag_search, check_file, check_hash,
-   check_autorun, ingest_auto, analyze_gaps, predict_techniques,
-   deobfuscate_command, check_kev). The agent:
-   - Runs RAG searches for playbook corroboration (data staging, USB, cloud)
-   - MAY run additional `run_windows_command` / `run_command` only for
-     artifacts the ledger SKIP'd as PRESENT_NO_PARSER or playbook extras
-   - MUST NOT re-run parsers that already OK'd
-   - MUST NOT paper over a FAIL by omitting the parser
-4. `interpret` — same N5 interpretation on combined lane + hunt hits
-5. `stage_findings` → `await_approval` → `generate_report` — same
+**What the agent does in Mode 3:**
+- Everything from Mode 2, PLUS:
+- Chooses which MCP tools to run (but mandatory lane first, then extras)
+- May ingest network logs and re-run N4->N8 autonomously
+- Full autonomous investigation with audit chain
 
-**Key constraint:** The agent runs the lane first, then adds. It cannot
-replace the lane with its own tool selection. N6 is still human HMAC.
+**What the agent does NOT do in Mode 3:**
+- Does not skip the mandatory lane (FAIL is not papered over)
+- Does not self-approve (one HMAC from the examiner at the end)
+
+**What is missing in code today:**
+- Not the live pipeline. `design` mode runs the lane + hunt extras, but
+  true Mode 3 is "LLM clients call MCP" — not the current LangGraph.
+- Will absorb the best of the old plan's agentic work when built.
 
 ### What stays constant across all modes
 
 - Same `case_id`, same immutable runs, same audit chain
 - Same N2 deterministic lane (parsers always run; agent can add, not skip)
-- Same N4 code search (no LLM grep of raw disks)
+- Same N4 code search (no LLM grep of raw disks; query is a tool with caps)
 - Same N6 human HMAC approval (no auto-approve in any mode)
 - Same N8 template from APPROVED only (no new facts)
 - Same ingest boundary (network/SIEM/cloud/EDR, not direct host)
 - Same detection timing (after N8, not before)
+- HMAC / FD-001..007 / AI-cannot-approve: **no compromise** in any mode
+
+### Build order
+
+1. **Mode 1** — examiner-led query desk: NL -> needles -> hits -> examiner
+   selects -> DRAFT -> HMAC -> report. Ship door.
+2. **Mode 2** — thick analysis: LLM iterates, corroborates, writes DRAFTs.
+   Product differentiator. After Mode 1 is honest.
+3. **Mode 3** — full agentic: agents choose tools, one HMAC on case file.
+   Future. Absorbs old plan last.
 
 ## Product flow (canonical)
 
