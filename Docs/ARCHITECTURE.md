@@ -34,7 +34,7 @@ flowchart TB
   subgraph NEXUS["Nexus N1–N8 — one spine, three drivers"]
     direction TB
     N1["N1 Intake"]
-    N2["N2 Process — host parsers + pre-collected host logs → extractions/"]
+    N2["N2 Process — all direct host logs (Win/Linux/Mac) → extractions/"]
     N3["N3 Index — SQLite default · ES optional · this-case only"]
     N4["N4 Query — code · hits only"]
     N5["N5 Interpret — LLM on hits"]
@@ -50,7 +50,7 @@ flowchart TB
   MODE["Mode 1 examiner · Mode 2 thick · Mode 3 agents/MCP"]
   MODE -.-> NEXUS
 
-  ING["Ingest — Zeek / Suricata / EDR / SIEM / PCAP / cloud / TI<br/>network + SIEM + cloud only · same case_id"]
+  ING["Ingest — Zeek / Suricata / PCAP(tshark) / EDR / SIEM / cloud / TI<br/>non-direct-host only · same case_id"]
   N8 -->|"host story honest"| ING
   ING -->|"merge"| N4
 
@@ -68,10 +68,10 @@ flowchart TB
 |---------|------|
 | **`nexus collect`** | Live IR. Stays **CLI** — handy, headless, no browser. No parsers. No empty parser dirs on the target. |
 | **Register** | SHA-256 pack into a case. Import-only cases skip collect. |
-| **N2** | Host parsers (Hayabusa / Suzaku / Chainsaw / Zimmerman) + pre-collected host logs (VR hunts, KAPE, Kansa, UAC) → CSVs under the case (`nexus pipeline --mode tools`). |
+| **N2** | All direct host logs (Win/Linux/Mac): binary parsers (Hayabusa/Suzaku/Chainsaw/Zimmerman) + pre-collected host output (VR hunts, KAPE, Kansa, UAC, journalctl) → CSVs under the case with audit_id. Given a directory (pack or mounted VMDK) and recursively parses all host evidence. |
 | **N3** | SQLite (default) or ES (optional) index of this case's N2 output. Not the lab SIEM. |
 | **3 modes** | How you drive the same N1–N8 spine (examiner / thick / agents) — not extra stages. |
-| **Ingest** | Network/SIEM/cloud logs onto that case (after N8). Then re-query / interpret / HMAC / report (N4→N8). Host artifacts stay in N2. |
+| **Ingest** | Network/SIEM/cloud/EDR/PCAP onto that case (after N8). PCAP parsed via tshark. Direct host logs stay in N2. |
 | **Detection** | Optional drafts after an APPROVED story. Not N5. |
 | **Examiner Portal + MCP** | Investigation UI for Register, N1–N8, ingest, detection, HMAC. Collect does not move into the Portal. |
 | **LLM** | Optional. Narrates **N4 hits** only. Cannot approve. Fully agentic tool-selection is a later mode. |
@@ -236,10 +236,10 @@ nexus collect run …                    → pack on disk (no parsers)
     │
 nexus case init + evidence register    → SHA-256 custody
     │
-nexus pipeline --mode tools            → N2 host parsers + pre-collected host logs
+nexus pipeline --mode tools            → N2 all direct host logs (Win/Linux/Mac)
+                                         parsers + pre-collected host output
                                          → extractions/ + audit_id
-                                         (skips redundant parser if Stage 0
-                                          already produced parsed CSV/JSON)
+                                         (given a directory: pack or mounted VMDK)
     │
 nexus pipeline --mode interpret        → N4 hits → N5 DRAFT (optional LLM)
     │
@@ -247,8 +247,8 @@ nexus approve                          → HMAC; DRAFT → APPROVED
     │
 nexus report generate                  → template from APPROVED only
     │
-ingest (after N8)                      → Zeek/Suricata/ES/Splunk/cloud/TI
-                                         onto same case_id (NOT host artifacts)
+ingest (after N8)                      → Zeek/Suricata/PCAP(tshark)/EDR/SIEM/cloud/TI
+                                         onto same case_id (non-direct-host only)
     │
 N4→N8 again                            → re-query merged host + network evidence
 ```

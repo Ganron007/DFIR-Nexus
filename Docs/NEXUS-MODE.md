@@ -21,8 +21,37 @@ Stage 0 is a **live run** against a host you can authenticate to:
 Windows KAPE + Sysinternals + PersistenceSniper + wevtutil + Velociraptor IRTriage;
 Linux POSIX volatile + journalctl + UAC `ir_triage` + Velociraptor LinuxIRTriage.
 `--profile full` wraps extra *collectors* (Kansa, DFIR-ORC, WinPmem/AVML, UAC `full`)
-and **skips with a reason** when a tool is missing or broken. It does **not** run
-Hayabusa / Suzaku / Chainsaw — those parse collected EVTX at **N2**.
+and **skips with a reason** when a tool is missing or broken.
+
+**Stage 0 is strictly IR collection. No parsers. No Hayabusa, no Suzaku, no
+Chainsaw.** Those are N2 parsers. The empty `hayabusa-out/`, `chainsaw-out/`,
+`suzaku-out/` folders that appeared in earlier Stage 0 packs were a mistake —
+those tools must never run during collection. N2 runs them after Register.
+
+**KAPE packing (forensically sound):** KAPE triage should be packed as a
+**zipped VMDK** (or raw image), not as a plain folder of loose files. Stage 0
+collects the VMDK; the examiner mounts it into a directory before Register;
+N2 parses the mounted directory. A plain KAPE triage dumped into a folder is
+not forensically sound and is not acceptable as the Stage 0 pack format going
+forward. The pack format is:
+
+```
+pack/
+├── hosts/<hostname>/
+│   ├── kape/           → zipped VMDK or raw image (mounted before N2)
+│   ├── velociraptor/   → VR IRTriage JSON (direct host collection)
+│   ├── sysinternals/   → Sysinternals output (direct host collection)
+│   ├── wevtutil/       → raw EVTX exports (direct host collection)
+│   ├── kansa/          → Kansa CSV output (direct host collection)
+│   ├── persistencesniper/  → PersistenceSniper CSV (direct host)
+│   ├── orc/            → DFIR-ORC exports (direct host collection)
+│   ├── volatile/       → POSIX volatile / UAC ir_triage (Linux direct host)
+│   └── journal/        → journalctl export (Linux direct host)
+├── elk/                → ELK exports (NOT direct host — goes to ingest)
+├── monitor/            → Zeek/Suricata (NOT direct host — goes to ingest)
+└── manifest.json
+```
+
 Writes `hosts/<hostname>/…` + `manifest.json`. **Not** an analysis dump.
 
 Then **Register** (separate from N1–N8): `nexus case init` and
@@ -50,7 +79,7 @@ Do **not** fold Register into N1–N8. Custody is a gate, not analysis.
 | **Stage 0 Collect** | Live IR → pack on disk. No case required. No LLM. No parsers. |
 | **Register** | `nexus case init` + `nexus evidence register <pack>`. HMAC / chain-of-custody. Also used for import-only cases (no collect). |
 | **N1–N8** | Analysis spine on a registered `case_id`. Examiner / thick / agents are *how you drive* that spine, not extra stages. |
-| **N2** | Parsers (Hayabusa / Suzaku / Chainsaw + Zimmerman) write CSVs under the case. Also ingests pre-collected host logs (VR hunts, KAPE, Kansa, UAC, PersistenceSniper) as N2 extractions with audit_id. |
+| **N2** | All direct host logs (Win/Linux/Mac): binary parsers + pre-collected host output → CSVs under the case with audit_id. Given a directory (pack or mounted VMDK) and recursively parses all host evidence. |
 | **N3** | SQLite (default) or ES (optional) index of this case's N2 output. Not the lab SIEM. |
 
 Why Register is separate:
@@ -71,6 +100,88 @@ A case is stable across retries. Each tools, coverage, design, or interpret exec
 | **Register + N1–N8 + ingest + detection** | CLI **and** Examiner Portal / MCP. Portal is the investigation desk. |
 
 Do not put live IR behind a browser. Do not skip Register because the Portal can open a case.
+
+## Mode 1 / 2 / 3 — three doors, one spine, one case
+
+The N1–N8 spine is identical in all three modes. The difference is **how you
+drive it** and **how much autonomy the agent has**. All three modes produce
+the same case artifacts: extractions, ledger, query pack, DRAFT findings,
+HMAC approvals, timeline, report. The case direction and scope do not change
+between modes.
+
+### Mode 1 — Examiner-Led / Public Beta (current ship target)
+
+The examiner drives every step. The LLM is optional and narrow.
+
+| Stage | Who acts | LLM role |
+|-------|----------|----------|
+| N1 | Examiner types the question + time window in CLI or Portal | None |
+| N2 | `nexus pipeline --mode tools` — deterministic lane runs all parsers | None |
+| N3 | SQLite/ES index built automatically | None |
+| N4 | Playbook needles auto-search + examiner can add needles via CLI/Portal | None — N4 is code search |
+| N5 | `nexus pipeline --mode interpret` — LLM narrates N4 hits only | Narrates hits; stages DRAFT; cannot approve |
+| N6 | Examiner reviews DRAFTs, runs `nexus approve` (password/HMAC) | None — cannot approve |
+| N7 | Timeline built from approved hits | None |
+| N8 | `nexus report generate` — template from APPROVED only | None — template fill, no new facts |
+| Ingest | Examiner ingests network/SIEM/cloud via CLI or Portal | None |
+| Detection | Optional drafts after N8 | May suggest Sigma/KQL drafts; examiner reviews |
+
+**Key constraint:** The LLM never chooses which parsers run. It never
+invents facts. It never approves. It narrates N4 hits and that is all.
+
+### Mode 2 — Thick Cognitive Analysis (future)
+
+The LLM proposes needles, correlates across hits, and suggests follow-up
+queries. The examiner still approves.
+
+| Stage | Who acts | LLM role |
+|-------|----------|----------|
+| N1 | Examiner question + LLM expands into sub-questions | Proposes sub-questions from playbooks/RAG |
+| N2 | Same deterministic lane (LLM does not skip parsers) | None — N2 is still deterministic |
+| N3 | Same SQLite/ES index | None |
+| N4 | LLM proposes additional needles from initial hit families | Proposes needles; examiner can accept/reject |
+| N5 | LLM correlates across hit families, suggests finding clusters | Heavier interpretation; cross-family correlation |
+| N6 | Examiner reviews — same HMAC gate | None — cannot approve |
+| N7 | Same timeline | None |
+| N8 | Same template | None |
+| Ingest | LLM may suggest which network logs to ingest based on host hits | Suggests; examiner decides |
+| Detection | LLM drafts detections with justification | Drafts with ATT&CK mapping; examiner reviews |
+
+**Key constraint:** Same N6 gate. The LLM is thicker at N4/N5 but still
+cannot approve, cannot skip N2, and cannot invent facts beyond N4 hits.
+
+### Mode 3 — Autonomous Agentic MCP (future, was the old plan)
+
+A ReAct agent drives tool selection, runs the lane, adds extras, and
+proposes findings. The examiner approves.
+
+| Stage | Who acts | LLM role |
+|-------|----------|----------|
+| N1 | Agent reads the question, loads playbooks autonomously | Full intake reasoning |
+| N2 | Agent runs the mandatory lane first, then may **add** extras (carve, extra Volatility plugins, additional parsers) | Runs lane + adds extras after, not instead of |
+| N3 | Same index | None |
+| N4 | Agent proposes and executes needles via `query_case_hits` tool | Proposes + executes; empty = stop |
+| N5 | Agent narrates hits, stages DRAFT findings with provenance | Full interpretation with audit chain |
+| N6 | Examiner reviews — same HMAC gate | None — cannot approve |
+| N7 | Same timeline | None |
+| N8 | Same template | None |
+| Ingest | Agent may ingest network logs and re-run N4→N8 | Autonomous ingest + re-query |
+| Detection | Agent drafts detections | Full draft with justification |
+
+**Key constraint:** The agent must run the mandatory N2 lane first. It may
+add extras after the lane, not instead of it. FAIL in the lane is not
+papered over by omitting the parser. N6 is still human HMAC. The agent
+cannot approve its own findings.
+
+### What stays constant across all modes
+
+- Same `case_id`, same immutable runs, same audit chain
+- Same N2 deterministic lane (parsers always run; agent can add, not skip)
+- Same N4 code search (no LLM grep of raw disks)
+- Same N6 human HMAC approval (no auto-approve in any mode)
+- Same N8 template from APPROVED only (no new facts)
+- Same ingest boundary (network/SIEM/cloud/EDR, not direct host)
+- Same detection timing (after N8, not before)
 
 ## Product flow (canonical)
 
@@ -93,7 +204,7 @@ flowchart TB
   subgraph NEXUS["Nexus N1–N8 — one spine, three drivers"]
     direction TB
     N1["N1 Intake<br/>question · window · playbooks"]
-    N2["N2 Process<br/>host parsers + pre-collected host logs<br/>→ case extractions/ + audit_id"]
+    N2["N2 Process<br/>all direct host logs (Win/Linux/Mac)<br/>parsers + pre-collected → extractions/ + audit_id"]
     N3["N3 Index<br/>SQLite default · ES optional<br/>this-case N2 output only · no LLM"]
     N4["N4 Query<br/>code search · hits only · no LLM"]
     N5["N5 Interpret<br/>LLM narrates N4 hits only"]
@@ -109,7 +220,7 @@ flowchart TB
   MODE["How you drive the same spine<br/>Mode 1 examiner-led · Mode 2 thick · Mode 3 agents/MCP"]
   MODE -.-> NEXUS
 
-  ING["Ingest<br/>Zeek / Suricata / EDR / SIEM / PCAP / cloud / TI<br/>network + SIEM + cloud only · NOT host artifacts (N2 covers those)<br/>onto the same case_id"]
+  ING["Ingest<br/>Zeek / Suricata / PCAP / EDR / SIEM / cloud / TI<br/>non-direct-host only · PCAP parsed via tshark<br/>onto the same case_id"]
 
   N8 -->|"host story honest"| ING
   ING -->|"merge onto case"| N4
@@ -130,11 +241,11 @@ flowchart TB
 |------|------------|----------------|
 | **Stage 0** | Live IR → pack on disk | Analysis, parsers, Portal harvest |
 | **Register** | Custody gate into a case | An N1–N8 step |
-| **N2** | Host parsers + pre-collected host logs → CSVs + audit_id | Network/SIEM/cloud (that is ingest, after N8) |
+| **N2** | All direct host logs (Win/Linux/Mac) → parsers + pre-collected host output → CSVs + audit_id | Network/SIEM/cloud/EDR (that is ingest, after N8) |
 | **N3** | SQLite/ES index of this case's N2 output | The lab SIEM; a global ES store |
 | **N1–N8** | The investigation brain | Three separate products |
 | **3 modes** | *How* you drive N1–N8 | Extra stages after N8 |
-| **Ingest** | Network/SIEM/cloud logs onto **that** case (after N8) | A second collect / re-register / host-artifact re-parse |
+| **Ingest** | Network/SIEM/cloud/EDR/PCAP onto **that** case (after N8) | A second collect / re-register / direct-host re-parse |
 | **Nexus again** | Re-run **N4→N8** on merged evidence | Collect / Register / N2 from scratch |
 | **Detection** | Optional drafts after APPROVED | Required next click; not N5 |
 
@@ -163,7 +274,7 @@ Existing dump ──► Register ──► N1–N8 ──► (Ingest?) ──►
 
 ```
 N1  Intake     examiner question + window + playbooks
-N2  Process    host parsers + pre-collected host logs → CSVs + audit_id
+N2  Process    all direct host logs (Win/Linux/Mac) → parsers + pre-collected → CSVs + audit_id
 N3  Index      ES or SQLite index of THIS case's N2 output (no LLM)
 N4  Query      code searches processed output    (no LLM)
 N5  Interpret  LLM narrates N4 hits only
@@ -179,38 +290,59 @@ Empty hits = INSUFFICIENT, not a coverage gap, not a fake story.
 Continuous improvement (AI forensics, better parsers, playbooks, RAG) lands **inside**
 N1–N8 — not as a parallel product.
 
-### N2 — host parser lane (what it covers, what it does not)
+### N2 — host parser lane (all direct host logs)
 
-N2 is the **deterministic host-artifact lane**. It has two jobs:
+N2 is the **deterministic host-artifact lane**. It is given a directory
+(the registered pack, or a mounted VMDK image) and recursively parses all
+direct host evidence it finds. It has two jobs:
 
-1. **Run external binary parsers** against raw host artifacts in the registered
-   pack — Hayabusa, Suzaku, Chainsaw, EvtxECmd (EVTX), PECmd (prefetch),
-   MFTECmd (MFT), RECmd (registry), AmcacheParser, AppCompatCacheParser,
-   SBECmd (shellbags), LECmd/JLECmd (LNK/jumplists), autorunsc, BitsParser,
-   SRUM, Volatility (memory). Each tool writes CSVs to
+1. **Run external binary parsers** against raw host artifacts — Hayabusa,
+   Suzaku, Chainsaw, EvtxECmd (EVTX), PECmd (prefetch), MFTECmd (MFT),
+   RECmd (registry), AmcacheParser, AppCompatCacheParser, SBECmd
+   (shellbags), LECmd/JLECmd (LNK/jumplists), autorunsc, BitsParser, SRUM,
+   Volatility (memory). Each tool writes CSVs to
    `runs/<run_id>/extractions/` and gets an `audit_id` in the HMAC chain.
 
-2. **Ingest pre-collected host logs** that Stage 0 already gathered as
-   structured output — Velociraptor IRTriage / LinuxIRTriage JSON hunts,
-   KAPE CSV modules, Kansa CSV output, PersistenceSniper CSV, Sysinternals
-   output, UAC `ir_triage` output, DFIR-ORC exports, journalctl exports.
-   These are host artifacts that Stage 0 collected; they belong in N2, not
-   in the post-N8 ingest lane.
+2. **Ingest pre-collected direct host logs** that Stage 0 gathered as
+   structured output. These are **direct from the host** — collected live
+   or from a mounted image. They include:
+   - **Windows:** Velociraptor IRTriage JSON, KAPE CSV modules, Kansa CSV,
+     PersistenceSniper CSV, Sysinternals output, DFIR-ORC exports, wevtutil
+     EVTX exports
+   - **Linux:** Velociraptor LinuxIRTriage JSON, UAC `ir_triage` output,
+     journalctl exports, POSIX volatile output (auditd, authlog, bash_history,
+     syslog — when collected directly from the host)
+   - **Mac:** (future) direct host collection output
 
-**If Stage 0 already produced parsed CSV/JSON output** (e.g. Hayabusa was run
-during collection, or KAPE modules already emitted CSVs), N2 should detect
-the pre-parsed output, **skip the redundant binary parser run**, register the
-existing CSVs as N2 extractions with `audit_id`, and proceed to N3. The
-examiner does not pay for a second Hayabusa pass on already-timelined EVTX.
+   All direct host logs — Windows, Linux, Mac — go through N2, not the
+   ingest lane. N2 registers them as extractions with `audit_id`.
+
+**The boundary is "direct from host" vs "from another source":**
+
+| Source | Lane | Why |
+|--------|------|-----|
+| Collected directly from the host (Stage 0, mounted image, live SSH) | **N2** | Direct host evidence; custody chain; audit_id |
+| EDR console export (e.g. Defender, CrowdStrike, SentinelOne) | **Ingest** | Not direct host collection — filtered/processed by the EDR vendor |
+| SIEM export (Elastic, Splunk, Wazuh) even if it contains host events | **Ingest** | Aggregated from multiple sources; not direct host collection |
+| ELK dashboard export with host details | **Ingest** | From the SIEM, not from the host directly |
+| Velociraptor hunt JSON from Stage 0 | **N2** | Direct host collection via VR client |
+| Velociraptor server export from ELK/SIEM | **Ingest** | From the SIEM, not direct VR collection |
+
+**Pre-parsed skip:** If the pack already contains parsed CSV/JSON output
+(e.g. a prior Hayabusa run), N2 should detect it, skip the redundant parser
+run, register the existing CSVs as N2 extractions with `audit_id`, and
+proceed to N3. The examiner does not pay for a second Hayabusa pass on
+already-timelined EVTX. (Note: Stage 0 no longer runs parsers — but
+import-only cases may bring pre-parsed output from another tool.)
 
 **What N2 does NOT cover:**
 
-- Network telemetry (Zeek, Suricata, Wireshark, Sysdig)
+- Network telemetry (Zeek, Suricata, Wireshark/PCAP, Sysdig)
 - SIEM exports (Elastic, Splunk, SecurityOnion, Wazuh, SocRates)
+- EDR console exports (Defender, CrowdStrike, SentinelOne — not direct host)
 - Cloud logs (Azure, CloudTrail, M365)
 - Threat-intel feeds (AbuseIPDB, MISP, OTX, ThreatFox, VirusTotal)
-- Linux system logs not in the Stage 0 pack (auditd, authlog, syslog from
-  a separate SIEM export — not the journalctl that Stage 0 already collected)
+- Any log that was not collected directly from the host
 
 Those are the **ingest lane** (below), which runs after the first N1–N8 pass.
 
@@ -240,47 +372,57 @@ case with Hayabusa-sized timelines (hundreds of MB of CSV), the index is
 what makes N4 usable. The fallback is for small cases and offline-first
 guarantees, not the intended production path.
 
-### Ingest lane — network/SIEM/cloud after N1–N8
+### Ingest lane — network/SIEM/cloud/TI/EDR after N1–N8
 
-The ingest lane is a **separate post-N8 step** that brings additional
+The ingest lane is a **separate post-N8 step** that brings non-direct-host
 telemetry onto the same `case_id`. It uses the Python importer registry
 (`src/nexus/ingest/registry.py`) — 42 importers across 7 categories.
+
+**The rule: if it was not collected directly from the host, it goes to ingest.**
 
 **What belongs in ingest (v2 boundary):**
 
 | Category | Importers | Why |
 |----------|-----------|-----|
-| Network | Zeek, Suricata, Wireshark, Sysdig | N2 does not parse network captures |
-| SIEM | Elastic, Splunk, SecurityOnion, Wazuh, SocRates | N2 does not query global SIEM stores |
-| Cloud | Azure, CloudTrail, M365 | N2 is host-only |
-| TI | AbuseIPDB, MISP, OTX, ThreatFox, VirusTotal | Enrichment feeds, not host artifacts |
-| Linux logs | auditd, authlog, bash_history, syslog, journald | Only when from a separate SIEM/log export, not the Stage 0 journalctl already in the pack |
+| **Network** | Zeek, Suricata, Wireshark/PCAP, Sysdig | N2 does not parse network captures. PCAP must be parsed via `tshark` (Wireshark CLI) into structured output before ingestion — not Arkime/NetFlow full packet analytics, but queryable network events for N4. |
+| **SIEM** | Elastic, Splunk, SecurityOnion, Wazuh, SocRates | Aggregated from multiple sources. Even if the SIEM holds host events, they are not direct host collection. |
+| **EDR** | EDR console exports (Defender, CrowdStrike, SentinelOne) | Processed/filtered by the EDR vendor — not raw direct host collection. |
+| **Cloud** | Azure, CloudTrail, M365 | Cloud provider logs, not host logs. |
+| **TI** | AbuseIPDB, MISP, OTX, ThreatFox, VirusTotal | Enrichment feeds, not host artifacts. |
 
 **What does NOT belong in ingest (v2 boundary):**
 
-The following host-artifact importers exist in the registry from the old
-plan. In v2, N2 covers them with stronger provenance (audit chain, run
-isolation, FAIL/SKIP ledger). They are **legacy** and will be re-wired or
-deprecated after the first N1–N8 host triage run:
+All direct host logs — Windows, Linux, Mac — go through N2. This includes
+auditd, authlog, bash_history, syslog, journald **when collected directly
+from the host** (Stage 0 or mounted image). The same log types from a SIEM
+export go to ingest.
 
-- EVTXImporter (N2 runs Hayabusa/Suzaku/Chainsaw/EvtxECmd)
-- HayabusaImporter (N2 produces the Hayabusa CSV)
-- KAPEImporter (N2 parses KAPE module output)
-- VelociraptorImporter (N2 ingests VR hunt JSON as host logs)
-- VolatilityImporter (N2 runs Volatility plugins)
-- AmCacheImporter, BrowserHistoryImporter, LNKFileImporter,
-  WindowsRegistryImporter, ScheduledTasksImporter, WindowsServicesImporter,
-  WMISubscriptionsImporter, CyberTriageImporter, IRISImporter,
-  SandboxImporter, TheHiveImporter
-
-These will be re-arranged so that host importers either:
-1. Read N2's already-produced CSV output into Artifact objects for the case
-   store (re-scoped as N2 output readers), or
-2. Are deprecated because N2 covers them with audit chain.
+The ~17 host-artifact importers in the registry (EVTX, Hayabusa, KAPE,
+Velociraptor, Volatility, AmCache, Registry, LNK, etc.) are **legacy from
+the old plan**. In v2, N2 covers them with stronger provenance (audit chain,
+run isolation, FAIL/SKIP ledger). They will be either:
+1. Re-scoped as N2 output readers (read N2's CSV output into Artifact objects
+   for the case store), or
+2. Deprecated because N2 covers them.
 
 The re-wiring happens **after** the first N1–N8 host triage run on the
-CADRE pack proves the N2 lane is honest. Until then, the legacy importers
-remain registered but are not part of the active v2 flow.
+CADRE pack proves N2 is honest.
+
+**PCAP parsing in ingest:** Raw PCAP files are not directly queryable. The
+ingest lane must run 	shark (Wireshark CLI) to decompose PCAP into
+structured output (conn, dns, http, tls, etc.) before importing. This is
+not full packet analytics (Arkime/NetFlow territory) — it is making PCAP
+queryable for N4 needle search. The Zeek importer handles Zeek TSV/JSON
+logs; the Wireshark importer handles PCAP via tshark decomposition.
+
+**SIEM/EDR differentiation (future):** ELK dashboards, Arkime, and
+Velociraptor server exports may all contain host details, but they come
+from different sources and are not direct host collection. They go to
+ingest. How we differentiate and correlate SIEM-sourced host events from
+N2 direct host evidence in the UI is a high-effort problem — the Examiner
+Portal must bring both into a unified view without confusing provenance.
+For now, the CADRE-run investigation will help us understand what the UI
+needs to do.
 
 ## Who runs N4 query?
 
