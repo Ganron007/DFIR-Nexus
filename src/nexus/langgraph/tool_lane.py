@@ -1193,6 +1193,7 @@ async def run_tool_lane(
     tools: dict[str, Any],
     evidence_path: str,
     case_id: str,
+    run_id: str,
     case_context: dict[str, str] | None = None,
     parse_result: Callable[[Any], dict],
     skip_rag: bool = True,
@@ -1208,6 +1209,11 @@ async def run_tool_lane(
 
     ctx = dict(case_context or {})
     case_dir = settings.cases_root / case_id
+    if not run_id:
+        raise ValueError("run_id is required; refusing to write mutable case-level extractions")
+    from nexus.langgraph.pipeline_runs import resolve_run
+
+    pipeline_run = resolve_run(case_dir, run_id=run_id)
     try:
         from nexus.langgraph.query_pack import load_case_intake
 
@@ -1216,8 +1222,7 @@ async def run_tool_lane(
                 ctx[key] = val
     except Exception as exc:  # noqa: BLE001
         log.warning("case intake merge skipped: %s", exc)
-    extractions = case_dir / "extractions"
-    extractions.mkdir(parents=True, exist_ok=True)
+    extractions = pipeline_run.extractions
 
     win_tool = tools.get("run_windows_command")
     sift_tool = tools.get("run_command")
@@ -1282,10 +1287,6 @@ async def run_tool_lane(
         triage_root=str(ctx.get("sift_triage_root") or "").strip() or None,
         memory_file=str(ctx.get("sift_memory_file") or "").strip() or None,
     ))
-    reused = apply_prior_ok(jobs, case_dir)
-    if reused:
-        log.info("tool_lane reused %s prior OK job(s)", reused)
-
     audit_ids: list[str] = []
     ledger: list[dict[str, Any]] = []
 
@@ -1414,6 +1415,7 @@ async def run_tool_lane(
 
     try:
         import json as _json
+
         from nexus.langgraph.artifact_map import (
             apply_ledger_to_completeness,
             completeness_table,
@@ -1442,7 +1444,11 @@ async def run_tool_lane(
     try:
         from nexus.case.sift_sync import pull_sift_extractions
 
-        pulled = pull_sift_extractions(case_id, case_dir)
+        pulled = pull_sift_extractions(
+            case_id,
+            case_dir,
+            pipeline_run.path / "sift" / "extractions",
+        )
         if pulled:
             summary = f"{summary}; sift_pull={pulled}"
     except Exception as exc:  # noqa: BLE001
@@ -1452,7 +1458,7 @@ async def run_tool_lane(
     try:
         from nexus.langgraph.snippets import write_snippets
 
-        snip = write_snippets(case_dir, ledger)
+        snip = write_snippets(pipeline_run.path, ledger)
         summary = f"{summary}; snippets={snip}"
     except Exception as exc:  # noqa: BLE001
         log.warning("snippet write failed: %s", exc)

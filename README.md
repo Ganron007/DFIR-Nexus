@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/Tests-609%20Passed-success.svg" alt="Tests: 609 Passed">
+  <img src="https://img.shields.io/badge/Tests-783%20Passed-success.svg" alt="Tests: 783 Passed">
   <img src="https://img.shields.io/badge/MCP%20Tools-103%20Registered-blue.svg" alt="MCP Tools: 103 Registered">
   <img src="https://img.shields.io/badge/Status-v2%20in%20development-yellow.svg" alt="Status: v2 in development">
 </p>

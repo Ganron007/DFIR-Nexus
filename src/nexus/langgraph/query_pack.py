@@ -334,9 +334,13 @@ def iter_extraction_files(
     file_cap = _MAX_FILES_PER_FAMILY if max_files_per_family is None else max_files_per_family
     out: list[tuple[Path, Path, str]] = []
     fam_files: dict[str, int] = {}
+    from nexus.langgraph.pipeline_runs import resolve_tools_extractions
+
+    extractions = resolve_tools_extractions(case_dir)
+    tools_run_dir = extractions.parent
     roots = [
-        case_dir / "extractions",
-        case_dir / "sift" / "extractions",
+        extractions,
+        tools_run_dir / "sift" / "extractions",
         case_dir / "ingest",
     ]
     for root in roots:
@@ -425,7 +429,9 @@ def extras_gap_notes(case_dir: Path, intake: dict[str, str] | None = None) -> li
         "email": "PST/OST mailbox copy",
         "usb_serial": "USBSTOR serial parse from setupapi",
     }
-    ext = Path(case_dir) / "extractions"
+    from nexus.langgraph.pipeline_runs import resolve_tools_extractions
+
+    ext = resolve_tools_extractions(Path(case_dir))
     present = {
         "chrome_profiles": (ext / "sqlecmd").is_dir() and any(
             "profile" in p.name.lower() for p in (ext / "sqlecmd").rglob("*")
@@ -484,7 +490,9 @@ def build_query_pack_markdown(
     hits, backend = n4_hits(case_dir, terms, window, priority_terms=pb_terms)
 
     if ledger is None:
-        lp = case_dir / "extractions" / "_tool_lane_ledger.json"
+        from nexus.langgraph.pipeline_runs import resolve_tools_extractions
+
+        lp = resolve_tools_extractions(case_dir) / "_tool_lane_ledger.json"
         ledger = []
         if lp.is_file():
             import json
@@ -614,9 +622,7 @@ def _is_process_dump_hit(h: dict[str, str]) -> bool:
     text = str(h.get("text") or "").lower()
     if f.endswith("artifacts.jsonl") or "/artifacts.jsonl" in f:
         return True
-    if fam == "ingest" and "generic_jsonl" in text:
-        return True
-    return False
+    return bool(fam == "ingest" and "generic_jsonl" in text)
 
 
 def n4_finding_candidates(
@@ -717,9 +723,10 @@ def write_query_pack(
     case_dir: Path,
     ledger: list[dict[str, Any]] | None = None,
     intake: dict[str, str] | None = None,
+    output_dir: Path | None = None,
 ) -> Path:
     case_dir = Path(case_dir)
-    out_dir = case_dir / "analysis"
+    out_dir = Path(output_dir) if output_dir else case_dir / "analysis"
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / "query_pack.md"
     path.write_text(

@@ -84,5 +84,5 @@ class Settings(BaseModel):
 
 
 settings = Settings()
-settings.update_from_env()
 settings.load_config_file()
+settings.update_from_env()

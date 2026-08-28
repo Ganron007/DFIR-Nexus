@@ -4,6 +4,13 @@ All notable changes to DFIR-Nexus are documented here.
 
 ## Unreleased
 
+### Immutable pipeline runs within one case (2026-08-27)
+
+- Tools, coverage, design, and interpret executions now write to unique `runs/<run_id>/` directories instead of overwriting case-level extractions, ledgers, query packs, and reports.
+- `active_runs.json` selects the current run while preserving previous outputs; interpretation runs record their parent tools run.
+- Directory evidence registration now records a deterministic recursive SHA-256, file count, and byte count. Re-registering unchanged evidence is idempotent; changed content at the same registered path is rejected.
+- Environment variables now correctly override `~/.nexus/config.yaml`, restoring isolated `NEXUS_CASES_ROOT` behavior. The current suite is 783 passing checks plus one platform skip.
+
 ### Architecture, Examiner Cockpit UI & Three Modes synchronization (2026-08-25)
 
 - Updated `README.md` and `assets/dfir-nexus-architecture.svg` / `.png` to reflect the v2 architecture lifecycle: Stage 0 Live Collect (CLI) → Evidence Custody Registration → Examiner Cockpit & N1–N8 Investigation Spine → Cryptographic HITL Gate → Storage & Verified Exporters.

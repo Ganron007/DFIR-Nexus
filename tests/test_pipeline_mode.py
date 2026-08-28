@@ -54,6 +54,75 @@ def test_make_initial_state_carries_mode():
     assert st4["case_id"] == "INC-TEST"
 
 
+
+def test_pipeline_runs_are_immutable_and_point_to_latest(tmp_path: Path):
+    from nexus.langgraph.pipeline_runs import create_run, finalize_run, resolve_run
+
+    case_dir = tmp_path / "CASE-001"
+    case_dir.mkdir()
+    first = create_run(case_dir, "tools", ["C:/evidence/pack"])
+    (first.path / "extractions" / "first.csv").write_text("first", encoding="utf-8")
+    finalize_run(first, "completed")
+
+    second = create_run(case_dir, "tools", ["C:/evidence/pack"])
+    assert second.run_id != first.run_id
+    assert second.path != first.path
+    assert (first.path / "extractions" / "first.csv").read_text(encoding="utf-8") == "first"
+    assert not (second.path / "extractions" / "first.csv").exists()
+    finalize_run(second, "completed")
+
+    assert resolve_run(case_dir, "tools").run_id == second.run_id
+    with pytest.raises(FileExistsError):
+        create_run(case_dir, "tools", ["C:/evidence/pack"], run_id=first.run_id)
+
+
+
+def test_interpret_run_references_tools_parent(tmp_path: Path):
+    from nexus.langgraph.pipeline_runs import create_run, finalize_run, load_manifest
+
+    case_dir = tmp_path / "CASE-001"
+    case_dir.mkdir()
+    tools_run = create_run(case_dir, "tools", ["C:/evidence/pack"])
+    finalize_run(tools_run, "completed")
+    interpret_run = create_run(
+        case_dir,
+        "interpret",
+        ["C:/evidence/pack"],
+        parent_run_id=tools_run.run_id,
+    )
+    manifest = load_manifest(interpret_run.path)
+    assert manifest["parent_run_id"] == tools_run.run_id
+    assert manifest["mode"] == "interpret"
+
+
+
+def test_directory_evidence_registration_is_hashed_and_idempotent(tmp_path: Path, monkeypatch):
+    from nexus.case_manager import CaseManager
+
+    case_dir = tmp_path / "CASE-001"
+    case_dir.mkdir()
+    (case_dir / "CASE.yaml").write_text("case_id: CASE-001\nstatus: open\n", encoding="utf-8")
+    (case_dir / "evidence.json").write_text("[]", encoding="utf-8")
+    evidence = tmp_path / "pack"
+    evidence.mkdir()
+    (evidence / "a.txt").write_text("alpha", encoding="utf-8")
+    (evidence / "b.txt").write_text("beta", encoding="utf-8")
+    manager = CaseManager()
+    monkeypatch.setattr(manager, "resolve_case_dir", lambda case_id="": case_dir)
+    monkeypatch.setattr(manager, "require_active_case", lambda: case_dir)
+    first = manager.register_evidence(str(evidence))
+    second = manager.register_evidence(str(evidence))
+    assert first["status"] == "registered"
+    assert first["sha256"]
+    assert first["files"] == 2
+    assert second["status"] == "already_registered"
+    assert len(manager.list_evidence()) == 1
+
+    (evidence / "a.txt").write_text("changed", encoding="utf-8")
+    with pytest.raises(ValueError, match="content changed"):
+        manager.register_evidence(str(evidence))
+
+
 def test_build_graph_nodes_by_mode():
     class _DummyModel:
         pass

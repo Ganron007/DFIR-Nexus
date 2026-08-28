@@ -169,7 +169,10 @@ def iter_index_docs(
 
     # Hayabusa / MFT / EVTX above the small-file cap: index matching rows only.
     # Always reserved — small CSVs must not consume the whole 250k budget.
-    for root in (case_dir / "extractions", case_dir / "sift" / "extractions"):
+    from nexus.langgraph.pipeline_runs import resolve_tools_extractions
+
+    extractions = resolve_tools_extractions(case_dir)
+    for root in (extractions, extractions.parent / "sift" / "extractions"):
         if not root.is_dir() or len(docs) >= _MAX_DOCS:
             break
         files: list[Path] = []

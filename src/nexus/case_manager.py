@@ -53,6 +53,30 @@ def _compute_content_hash(item: dict) -> str:
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
+def _hash_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _hash_evidence_path(path: Path) -> tuple[str, int, int]:
+    if path.is_file():
+        return _hash_file(path), 1, path.stat().st_size
+    manifest = hashlib.sha256()
+    count = 0
+    total_bytes = 0
+    for child in sorted((p for p in path.rglob("*") if p.is_file()), key=lambda p: p.relative_to(path).as_posix()):
+        relative = child.relative_to(path).as_posix()
+        size = child.stat().st_size
+        file_hash = _hash_file(child)
+        manifest.update(f"{relative}\0{size}\0{file_hash}\n".encode())
+        count += 1
+        total_bytes += size
+    return manifest.hexdigest(), count, total_bytes
+
+
 def _next_seq(items: list[dict], id_field: str, prefix: str, examiner: str) -> int:
     pattern = f"{prefix}-{examiner}-"
     max_num = 0
@@ -862,13 +886,25 @@ class CaseManager:
         if not evidence_path.exists():
             raise FileNotFoundError(f"Evidence path not found: {path_str}")
 
-        sha256_hash = ""
-        if evidence_path.is_file():
-            h = hashlib.sha256()
-            with open(evidence_path, "rb") as f:
-                for chunk in iter(lambda: f.read(65536), b""):
-                    h.update(chunk)
-            sha256_hash = h.hexdigest()
+        sha256_hash, file_count, total_bytes = _hash_evidence_path(evidence_path)
+        evidence = self._load_evidence_registry(case_dir)
+        canonical_path = os.path.normcase(str(evidence_path))
+        for existing in evidence:
+            if os.path.normcase(str(existing.get("path") or "")) != canonical_path:
+                continue
+            if existing.get("sha256") == sha256_hash:
+                return {
+                    "status": "already_registered",
+                    "path": str(evidence_path),
+                    "sha256": sha256_hash,
+                    "files": file_count,
+                    "total_bytes": total_bytes,
+                    "registered_at": existing.get("registered_at", ""),
+                }
+            raise ValueError(
+                "Evidence path is already registered but its content changed; "
+                "preserve it and register the changed copy from a new path"
+            )
 
         now = datetime.now(UTC).isoformat()
         entry = {
@@ -878,16 +914,19 @@ class CaseManager:
             "examiner": exam,
             "registered_at": now,
             "status": "registered",
+            "kind": "file" if evidence_path.is_file() else "directory",
+            "files": file_count,
+            "total_bytes": total_bytes,
         }
 
-        evidence = self._load_evidence_registry(case_dir)
         evidence.append(entry)
         self._save_evidence(case_dir, evidence)
         return {
             "status": "registered",
             "path": str(evidence_path),
             "sha256": sha256_hash,
-            "files": 1,
+            "files": file_count,
+            "total_bytes": total_bytes,
         }
 
     def list_evidence(self) -> list[dict]:
@@ -911,23 +950,21 @@ class CaseManager:
                 results.append({"path": entry["path"], "status": "MISSING"})
                 all_ok = False
                 continue
-            if ep.is_file():
-                h = hashlib.sha256()
-                try:
-                    with open(ep, "rb") as f:
-                        for chunk in iter(lambda: f.read(65536), b""):
-                            h.update(chunk)
-                    current_hash = h.hexdigest()
-                    if current_hash == entry["sha256"]:
-                        results.append({"path": entry["path"], "status": "OK"})
-                    else:
-                        results.append({"path": entry["path"], "status": "MODIFIED"})
-                        all_ok = False
-                except OSError:
-                    results.append({"path": entry["path"], "status": "ERROR"})
+            try:
+                current_hash, file_count, total_bytes = _hash_evidence_path(ep)
+                if current_hash == entry["sha256"]:
+                    results.append({
+                        "path": entry["path"],
+                        "status": "OK",
+                        "files": file_count,
+                        "total_bytes": total_bytes,
+                    })
+                else:
+                    results.append({"path": entry["path"], "status": "MODIFIED"})
                     all_ok = False
-            else:
-                results.append({"path": entry["path"], "status": "OK", "note": "directory"})
+            except OSError:
+                results.append({"path": entry["path"], "status": "ERROR"})
+                all_ok = False
         return {"status": "verified" if all_ok else "issues_found", "files": results}
 
     # ── Case Status ──────────────────────────────────────────────────

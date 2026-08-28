@@ -37,20 +37,22 @@ def _ssh_opts() -> dict[str, str]:
     }
 
 
-def pull_sift_extractions(case_id: str, local_case_dir: Path) -> Path | None:
-    """scp remote ``.../cases/<id>/extractions`` → ``local_case_dir/sift/extractions``.
-
-    Returns the local destination directory, or None on failure.
-    """
+def pull_sift_extractions(
+    case_id: str,
+    local_case_dir: Path,
+    local_output_dir: Path | None = None,
+) -> Path | None:
+    """scp remote case extractions into a new local destination."""
     opts = _ssh_opts()
     key = Path(opts["key"])
     if not key.is_file():
         log.warning("SIFT SSH key missing: %s — skip pull", key)
         return None
 
-    dest = Path(local_case_dir) / "sift" / "extractions"
+    dest = Path(local_output_dir) if local_output_dir else Path(local_case_dir) / "sift" / "extractions"
     if dest.exists():
-        shutil.rmtree(dest, ignore_errors=True)
+        log.warning("SIFT destination exists; refusing overwrite: %s", dest)
+        return None
     dest.parent.mkdir(parents=True, exist_ok=True)
 
     remote = (

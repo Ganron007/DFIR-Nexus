@@ -154,6 +154,9 @@ class InvestigationState(TypedDict):
     rag_notes: Annotated[list[str], add]
     # design = ReAct tool selection; coverage = deterministic full triage
     pipeline_mode: str
+    run_id: str
+    run_dir: str
+    parent_run_id: str
 
 
 def make_initial_state(
@@ -184,6 +187,9 @@ def make_initial_state(
         "tool_run_ledger": [],
         "rag_notes": [],
         "pipeline_mode": resolve_pipeline_mode(pipeline_mode),
+        "run_id": "",
+        "run_dir": "",
+        "parent_run_id": "",
     }
 
 
@@ -689,17 +695,29 @@ async def register_evidence(state: InvestigationState, tools: dict) -> dict:
                 audit_ids.append(aid)
             if ev_result.get("error"):
                 step_log.append(f"Evidence register warning ({p}): {ev_result.get('error')}")
+            elif ev_result.get("status") == "already_registered":
+                step_log.append(f"Evidence already registered (unchanged): {p}")
             else:
                 step_log.append(f"Evidence registered: {p}")
-        if audit_ids:
-            return {
-                "case_id": case_id,
-                "evidence_audit_ids": audit_ids,
-                "step_log": step_log,
-            }
+
+    try:
+        from nexus.config import settings
+        from nexus.langgraph.pipeline_runs import create_run
+
+        pipeline_run = create_run(
+            settings.cases_root / case_id,
+            state.get("pipeline_mode") or "tools",
+            paths,
+        )
+        step_log.append(f"Started immutable run {pipeline_run.run_id}")
+    except (OSError, ValueError) as exc:
+        return {"error": f"Could not create immutable pipeline run: {exc}", "step_log": step_log}
 
     return {
         "case_id": case_id,
+        "evidence_audit_ids": audit_ids,
+        "run_id": pipeline_run.run_id,
+        "run_dir": str(pipeline_run.path),
         "step_log": step_log,
     }
 
@@ -754,6 +772,7 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
         tools=tools,
         evidence_path=state.get("evidence_path") or "",
         case_id=case_id,
+        run_id=state.get("run_id") or "",
         case_context=state.get("case_context") or {},
         parse_result=_parse_tool_result,
         skip_rag=True,
@@ -867,9 +886,15 @@ async def load_existing_case(state: InvestigationState, tools: dict) -> dict:
         else:
             step_log.append(f"Activated existing case {case_id}")
     case_dir = settings.cases_root / case_id
-    ledger_path = case_dir / "extractions" / "_tool_lane_ledger.json"
+    from nexus.langgraph.pipeline_runs import create_run, load_manifest, resolve_run
+
+    try:
+        tools_run = resolve_run(case_dir, "tools")
+    except ValueError as exc:
+        return {"error": str(exc)}
+    ledger_path = tools_run.extractions / "_tool_lane_ledger.json"
     if not ledger_path.is_file():
-        ledger_path = case_dir / "ledger" / "_tool_lane_ledger.json"
+        ledger_path = tools_run.path / "ledger" / "_tool_lane_ledger.json"
     ledger: list[dict] = []
     if ledger_path.is_file():
         try:
@@ -877,9 +902,15 @@ async def load_existing_case(state: InvestigationState, tools: dict) -> dict:
         except json.JSONDecodeError as exc:
             return {"error": f"ledger unreadable: {exc}"}
     if not ledger:
-        return {"error": f"No tool-lane ledger in {case_dir}"}
-    write_snippets(case_dir, ledger)
-    write_query_pack(case_dir, ledger)
+        return {"error": f"No tool-lane ledger in {tools_run.path}"}
+    interpret_run = create_run(
+        case_dir,
+        "interpret",
+        load_manifest(tools_run.path).get("evidence_paths") or [],
+        parent_run_id=tools_run.run_id,
+    )
+    write_snippets(tools_run.path, ledger)
+    write_query_pack(case_dir, ledger, output_dir=interpret_run.analysis)
     intake = load_case_intake(case_dir)
     ctx = dict(state.get("case_context") or {})
     for key, val in intake.items():
@@ -891,6 +922,9 @@ async def load_existing_case(state: InvestigationState, tools: dict) -> dict:
         "tool_run_ledger": ledger,
         "evidence_audit_ids": aids,
         "case_context": ctx,
+        "run_id": interpret_run.run_id,
+        "run_dir": str(interpret_run.path),
+        "parent_run_id": tools_run.run_id,
         "step_log": step_log,
     }
 
@@ -906,6 +940,7 @@ def _format_tool_run_markdown(state: InvestigationState) -> str:
         f"# Tool-run ledger — `{case_id}`",
         "",
         f"**Mode:** `{state.get('pipeline_mode') or 'tools'}` (no LLM)",
+        f"**Run:** `{state.get('run_id') or 'unknown'}`",
         f"**Generated:** {datetime.now(UTC).strftime('%Y-%m-%d %H:%M UTC')}",
         f"**Evidence:** `{state.get('evidence_path') or ''}`",
         "",
@@ -1000,16 +1035,16 @@ async def emit_tool_report(state: InvestigationState, tools: dict) -> dict:
     try:
         from nexus.case.repo_export import export_case_to_repo, live_case_is_in_repo
         from nexus.config import settings
+        from nexus.langgraph.pipeline_runs import finalize_run, resolve_run
 
         case_dir = settings.cases_root / state["case_id"]
+        pipeline_run = resolve_run(case_dir, run_id=state.get("run_id") or "")
         md = _format_tool_run_markdown(state)
-        out = case_dir / "reports" / "TOOL-RUN.md"
-        out.parent.mkdir(parents=True, exist_ok=True)
+        out = pipeline_run.reports / "TOOL-RUN.md"
         out.write_text(md, encoding="utf-8")
         step_log.append(f"Wrote {out}")
 
-        ledger_dir = case_dir / "ledger"
-        ledger_dir.mkdir(parents=True, exist_ok=True)
+        ledger_dir = pipeline_run.path / "ledger"
         ledger_path = ledger_dir / "_tool_lane_ledger.json"
         ledger_path.write_text(
             json.dumps(state.get("tool_run_ledger") or [], indent=2),
@@ -1017,6 +1052,7 @@ async def emit_tool_report(state: InvestigationState, tools: dict) -> dict:
         )
 
         if live_case_is_in_repo(case_dir):
+            finalize_run(pipeline_run, "completed")
             step_log.append("Repo sample-export skipped (live case already in-repo)")
             return {
                 "report_path": str(out),
@@ -1026,13 +1062,16 @@ async def emit_tool_report(state: InvestigationState, tools: dict) -> dict:
 
         exported = export_case_to_repo(
             case_dir,
-            extra_sift_dir=case_dir / "sift" / "extractions",
+            extra_sift_dir=pipeline_run.path / "sift" / "extractions",
         )
         export_root = str(exported)
         (exported / "reports" / "TOOL-RUN.md").write_text(md, encoding="utf-8")
         report_path = str(exported / "reports" / "TOOL-RUN.md")
         step_log.append(f"Repo export: {exported}")
+        finalize_run(pipeline_run, "completed")
     except Exception as exc:  # noqa: BLE001
+        if "pipeline_run" in locals():
+            finalize_run(pipeline_run, "failed", str(exc))
         step_log.append(f"Tool-run report/export failed: {exc}")
         return {"error": str(exc), "step_log": step_log}
 
@@ -1137,16 +1176,17 @@ async def hunt(state: InvestigationState, tools: dict, model) -> dict:
     }
 
 
-def _n5_query_payload(case_dir, ledger: list) -> str:
+def _n5_query_payload(case_dir, ledger: list, output_dir: Path | None = None) -> str:
     """N5 reads the query pack; CSV heads are examiner appendix only."""
     from pathlib import Path
 
     from nexus.langgraph.query_pack import write_query_pack
 
     case_dir = Path(case_dir)
-    qp = case_dir / "analysis" / "query_pack.md"
+    analysis_dir = Path(output_dir) if output_dir else case_dir / "analysis"
+    qp = analysis_dir / "query_pack.md"
     try:
-        write_query_pack(case_dir, ledger)
+        write_query_pack(case_dir, ledger, output_dir=analysis_dir)
     except Exception as exc:  # noqa: BLE001
         return f"(query pack build failed: {exc})"
     if qp.is_file():
@@ -1195,7 +1235,8 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
     case_id = state.get("case_id") or ""
     if case_id:
         from nexus.config import settings
-        query_pack = _n5_query_payload(settings.cases_root / case_id, ledger)
+        analysis_dir = Path(state.get("run_dir") or "") / "analysis" if state.get("run_dir") else None
+        query_pack = _n5_query_payload(settings.cases_root / case_id, ledger, analysis_dir)
 
     from nexus.langgraph.itm import itm_prompt_block
 
@@ -1618,22 +1659,8 @@ async def generate_report(state: InvestigationState, tools: dict) -> dict:
     ``case/reports/dfir-report.md`` on the case-authority host from APPROVED
     findings + CASE.yaml + extractions (so the artifact is not MCP-profile gated).
     """
-    report_tool = tools.get("generate_report")
-    profile = "full" if state.get("approved_finding_ids") else "status"
-    step_log: list[str] = []
-
-    if report_tool:
-        result = _parse_tool_result(await report_tool.ainvoke({
-            "profile": profile,
-            "case_id": state["case_id"],
-            "finding_ids": state.get("approved_finding_ids") or None,
-        }))
-        if result.get("error"):
-            step_log.append(f"MCP generate_report warning: {result['error']}")
-        else:
-            step_log.append(f"MCP report generated ({profile} profile)")
-    else:
-        step_log.append("generate_report MCP tool not available — writing local markdown")
+    del tools
+    step_log: list[str] = ["Writing run-scoped report from APPROVED findings"]
 
     report_path: str | None = None
     export_root: str | None = None
@@ -1651,9 +1678,11 @@ async def generate_report(state: InvestigationState, tools: dict) -> dict:
             load_case_ledger,
             sift_notes_from_ledger,
         )
+        from nexus.langgraph.pipeline_runs import finalize_run, resolve_run
         from nexus.langgraph.timeline_merge import rebuild_case_timeline
 
         case_dir = settings.cases_root / state["case_id"]
+        pipeline_run = resolve_run(case_dir, run_id=state.get("run_id") or "")
         findings_path = case_dir / "findings.json"
         findings = []
         if findings_path.is_file():
@@ -1716,7 +1745,7 @@ async def generate_report(state: InvestigationState, tools: dict) -> dict:
             severity=str(meta.get("severity") or "unrated"),
         )
         # Append analysis pointers for examiners
-        qp = case_dir / "analysis" / "query_pack.md"
+        qp = pipeline_run.analysis / "query_pack.md"
         extra = []
         if qp.is_file():
             extra.append(
@@ -1728,16 +1757,15 @@ async def generate_report(state: InvestigationState, tools: dict) -> dict:
             extra.append("D1 SIEM drafts are `analysis/detections/` (not N5 facts).")
         if extra:
             md += "\n\n## Analysis artifacts\n\n" + " ".join(extra) + "\n"
-        out = case_dir / "reports" / "REPORT.md"
-        out.parent.mkdir(parents=True, exist_ok=True)
+        out = pipeline_run.reports / "REPORT.md"
         out.write_text(md, encoding="utf-8")
-        # Keep legacy name too
-        (case_dir / "reports" / "dfir-report.md").write_text(md, encoding="utf-8")
+        (pipeline_run.reports / "dfir-report.md").write_text(md, encoding="utf-8")
         step_log.append(f"Wrote {out}")
 
         from nexus.case.repo_export import export_case_to_repo, live_case_is_in_repo
 
         if live_case_is_in_repo(case_dir):
+            finalize_run(pipeline_run, "completed")
             step_log.append("Repo sample-export skipped (live case already in-repo)")
             return {
                 "report_path": str(out),
@@ -1753,7 +1781,10 @@ async def generate_report(state: InvestigationState, tools: dict) -> dict:
         export_root = str(exported)
         report_path = str(exported / "reports" / "REPORT.md")
         step_log.append(f"Repo export: {exported}")
+        finalize_run(pipeline_run, "completed")
     except Exception as exc:  # noqa: BLE001
+        if "pipeline_run" in locals():
+            finalize_run(pipeline_run, "failed", str(exc))
         step_log.append(f"Local report/export failed: {exc}")
         return {"error": str(exc), "step_log": step_log}
 

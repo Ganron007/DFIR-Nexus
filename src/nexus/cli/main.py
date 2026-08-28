@@ -397,7 +397,7 @@ def pipeline(
     from_case: str = typer.Option(
         "",
         "--from-case",
-        help="Existing case_id. Default mode is interpret (no re-parse). With --mode tools|coverage|design, reuse that case and re-run the lane (prior OK jobs are skipped).",
+        help="Existing case_id. Default mode is interpret (no re-parse). Tools/coverage/design create a new immutable run inside the same case.",
     ),
     resume: bool = typer.Option(False, "--resume", help="Resume from last checkpoint after human approval"),
     model: str = typer.Option("", "--model", help="LLM model (e.g. openai/gpt-4o, ollama/qwen2.5:32b-instruct)"),
@@ -418,7 +418,7 @@ def pipeline(
       coverage         — same lane; LLM interprets N4 hits → DRAFT
       design           — lane first, then ReAct extras, then interpret
       interpret        — reuse an existing tool-run case (--from-case)
-      tools + --from-case — leftover parsers on the same case (prior OK skipped)
+      tools + --from-case — new immutable parser run inside the same case
 
     Also set via NEXUS_PIPELINE_MODE=design|coverage|tools|interpret
     (aliases: react/hunt → design; debug/full/lane → coverage;

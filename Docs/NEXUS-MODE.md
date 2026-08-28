@@ -60,6 +60,8 @@ Why Register is separate:
 
 One collect command. Follow-up is **separate CLI commands**, not one mega-script.
 
+A case is stable across retries. Each tools, coverage, design, or interpret execution creates an immutable `runs/<run_id>/` directory containing that execution's extractions, ledger, analysis, and reports. `active_runs.json` selects the current tools and interpretation runs without overwriting earlier output. Register unchanged evidence once; a changed pack must be preserved at a new path and registered as new evidence.
+
 ## Surfaces (CLI vs UI)
 
 | Surface | What |
