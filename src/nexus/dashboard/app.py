@@ -1109,12 +1109,44 @@ async def api_select(request):
 
     from nexus.langgraph.mode1 import promote_hits_to_draft, save_draft_finding, scribe_finding
     from nexus.langgraph.llm_pipeline import get_model
-    from nexus.langgraph.query_pack import load_case_intake, collect_query_terms, n4_hits, parse_intake_window
+    from nexus.langgraph.query_pack import (
+        load_case_intake,
+        collect_query_terms,
+        n4_hits,
+        parse_intake_window,
+        _parse_needles,
+    )
 
     intake = load_case_intake(case_dir)
-    terms = collect_query_terms(intake)
-    window = parse_intake_window(intake)
-    all_hits, _ = n4_hits(case_dir, terms, window)
+
+    # If the client sent the current explore filters, run the same query
+    # so that indices are stable against the displayed hit list.
+    explore_needles = _parse_needles(str(body.get("needles") or ""))
+    if body.get("family") or body.get("start") or body.get("end") or explore_needles:
+        if explore_needles:
+            merged = _parse_needles(intake.get("query_extra", "")) + explore_needles
+            intake["query_extra"] = ",".join(merged)
+        start = str(body.get("start") or "").strip()
+        end = str(body.get("end") or "").strip()
+        if start or end:
+            parts = []
+            if start:
+                parts.append(start)
+            if end:
+                parts.append(end)
+            intake["window"] = "..".join(parts)
+        terms = collect_query_terms(intake)
+        window = parse_intake_window(intake)
+        all_hits, _ = n4_hits(case_dir, terms, window)
+        family_filter = [f.strip() for f in str(body.get("family") or "").split(",") if f.strip()]
+        if family_filter:
+            want = {f.lower() for f in family_filter}
+            all_hits = [h for h in all_hits if (h.get("family") or "").lower() in want]
+    else:
+        # Fallback to the persisted intake query (ask flow)
+        terms = collect_query_terms(intake)
+        window = parse_intake_window(intake)
+        all_hits, _ = n4_hits(case_dir, terms, window)
 
     if not all_hits:
         return JSONResponse({"error": "No hits loaded. Run ask first."}, status_code=400)
@@ -1428,7 +1460,15 @@ async function promoteSelected() {{
   const r = await fetch('/portal/api/mode1/select', {{
     method: 'POST',
     headers: {{'Content-Type':'application/json'}},
-    body: JSON.stringify({{hits: hitIds, title: title, scribe: scribe}})
+    body: JSON.stringify({{
+      hits: hitIds,
+      title: title,
+      scribe: scribe,
+      needles: document.getElementById('needles').value,
+      family: selectedFamily(),
+      start: document.getElementById('start').value,
+      end: document.getElementById('end').value
+    }})
   }});
   const result = await r.json();
   if (result.finding_id) {{
