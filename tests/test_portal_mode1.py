@@ -136,3 +136,49 @@ def test_api_select_promotes_hits(mock_save, mock_n4, mock_get_dir, tmp_path):
     data = resp.json()
     assert data.get("finding_id") == "F-test-001"
     assert data.get("status") == "DRAFT"
+
+
+@patch("nexus.dashboard.app._get_case_dir")
+def test_explore_page_renders(mock_get_dir, tmp_path):
+    from starlette.testclient import TestClient
+    from nexus.dashboard.app import create_dashboard
+    from starlette.applications import Starlette
+
+    case_dir = _make_case_dir(tmp_path)
+    mock_get_dir.return_value = case_dir
+
+    app = Starlette(routes=create_dashboard())
+    client = TestClient(app)
+    resp = client.get("/portal/explore")
+    assert resp.status_code == 200
+    assert b"Explore Evidence" in resp.content
+
+
+@patch("nexus.dashboard.app._get_case_dir")
+@patch("nexus.langgraph.query_pack.n4_hits")
+def test_api_explore_search(mock_n4, mock_get_dir, tmp_path):
+    from starlette.testclient import TestClient
+    from nexus.dashboard.app import create_dashboard
+    from starlette.applications import Starlette
+
+    case_dir = _make_case_dir(tmp_path)
+    mock_get_dir.return_value = case_dir
+    mock_n4.return_value = (
+        [
+            {"family": "hayabusa", "file": "a.csv", "line": "1", "text": "2026-08-10T15:00:00Z hit", "terms": "sdelete"},
+            {"family": "prefetch", "file": "b.csv", "line": "2", "text": "2026-08-10T16:00:00Z hit", "terms": "sdelete"},
+        ],
+        "csv",
+    )
+
+    app = Starlette(routes=create_dashboard())
+    client = TestClient(app)
+    resp = client.post("/portal/api/explore/search", json={
+        "needles": "sdelete",
+        "family": "hayabusa",
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data.get("count") == 1
+    assert len(data.get("hits", [])) == 1
+    assert data["hits"][0]["family"] == "hayabusa"

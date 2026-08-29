@@ -359,7 +359,8 @@ pre {{ background: #161b22; padding: 0.5rem; border-radius: 4px; overflow-x: aut
 <nav>
 <a href="/portal">Overview</a>
 <a href="/portal/steer">Steer</a>
-<a href="/portal/ask">Mode 1 Ask</a>
+<a href="/portal/explore">Explore</a>
+<a href="/portal/ask">Ask</a>
 <a href="/portal/query">Query</a>
 <a href="/portal/findings">Findings</a>
 <a href="/portal/approve">Approve</a>
@@ -1156,6 +1157,297 @@ async def api_select(request):
     return JSONResponse({"error": result.get("errors", [result.get("status", "failed")])})
 
 
+
+
+# ---------------------------------------------------------------------------
+# Mode 1 Cockpit: Explore + Steer Chat + Histogram
+# ---------------------------------------------------------------------------
+
+
+def _available_families(case_dir: Path) -> list[str]:
+    from nexus.langgraph.pipeline_runs import resolve_tools_extractions
+    extractions = resolve_tools_extractions(case_dir)
+    if not extractions.is_dir():
+        return []
+    return sorted({p.parent.name for p in extractions.rglob("*.csv")})
+
+
+def _bucket_times(hits: list[dict], bucket_minutes: int = 60) -> dict[str, int]:
+    from nexus.langgraph.query_pack import _DATE_RE
+    buckets: dict[str, int] = {}
+    for h in hits:
+        text = str(h.get('text', ''))
+        for m in _DATE_RE.finditer(text):
+            ts = m.group(1)
+            try:
+                d = datetime.strptime(ts, '%Y-%m-%d').replace(tzinfo=UTC)
+            except ValueError:
+                continue
+            if bucket_minutes == 1440:
+                key = ts
+            else:
+                key = f'{ts}T{d.hour:02d}:00'
+            buckets[key] = buckets.get(key, 0) + 1
+    return dict(sorted(buckets.items()))
+
+
+async def api_explore_search(request):
+    """POST /portal/api/explore/search — faceted N4 search."""
+    case_dir = _get_case_dir()
+    if not case_dir:
+        return JSONResponse({'error': 'No active case'}, status_code=404)
+
+    from nexus.langgraph.query_pack import load_case_intake, collect_query_terms, n4_hits, parse_intake_window, _parse_needles
+
+    body = await request.json()
+    needles = _parse_needles(str(body.get('needles') or ''))
+    family_filter = [f.strip() for f in str(body.get('family') or '').split(',') if f.strip()]
+    start = str(body.get('start') or '').strip()
+    end = str(body.get('end') or '').strip()
+    limit = max(1, min(int(body.get('limit') or 80), 400))
+
+    intake = load_case_intake(case_dir)
+    if needles:
+        merged = _parse_needles(intake.get('query_extra', '')) + needles
+        intake['query_extra'] = ','.join(merged)
+    window = parse_intake_window(intake)
+    if start or end:
+        # Override with user-supplied dates; keep window parsing for times
+        parts = []
+        if start:
+            parts.append(start)
+        if end:
+            parts.append(end)
+        intake['window'] = '..'.join(parts)
+        window = parse_intake_window(intake)
+    hits, backend = n4_hits(case_dir, collect_query_terms(intake), window)
+
+    if family_filter:
+        want = {f.lower() for f in family_filter}
+        hits = [h for h in hits if (h.get('family') or '').lower() in want]
+
+    total = len(hits)
+    hits = hits[:limit]
+    return JSONResponse({
+        'hits': hits,
+        'count': total,
+        'backend': backend,
+        'families': _available_families(case_dir),
+        'needles': collect_query_terms(intake),
+    })
+
+
+async def api_explore_histogram(request):
+    """POST /portal/api/explore/histogram — time buckets for current hits."""
+    case_dir = _get_case_dir()
+    if not case_dir:
+        return JSONResponse({'error': 'No active case'}, status_code=404)
+    body = await request.json()
+    from nexus.langgraph.query_pack import load_case_intake, collect_query_terms, n4_hits, parse_intake_window, _parse_needles
+    needles = _parse_needles(str(body.get('needles') or ''))
+    family_filter = [f.strip() for f in str(body.get('family') or '').split(',') if f.strip()]
+    start = str(body.get('start') or '').strip()
+    end = str(body.get('end') or '').strip()
+    intake = load_case_intake(case_dir)
+    if needles:
+        merged = _parse_needles(intake.get('query_extra', '')) + needles
+        intake['query_extra'] = ','.join(merged)
+    if start or end:
+        parts = []
+        if start:
+            parts.append(start)
+        if end:
+            parts.append(end)
+        intake['window'] = '..'.join(parts)
+    window = parse_intake_window(intake)
+    hits, _ = n4_hits(case_dir, collect_query_terms(intake), window)
+    if family_filter:
+        want = {f.lower() for f in family_filter}
+        hits = [h for h in hits if (h.get('family') or '').lower() in want]
+    buckets = _bucket_times(hits, bucket_minutes=int(body.get('bucket') or 60))
+    return JSONResponse({'buckets': buckets, 'count': len(hits)})
+
+
+async def explore_page(request):
+    """Mode 1 Cockpit — faceted explore + steer chat + histogram."""
+    case_dir = _get_case_dir()
+    families = _available_families(case_dir) if case_dir else []
+    fam_options = ''.join(f'<option value="{_e(f)}">{_e(f)}</option>' for f in families)
+    content = f"""
+<h1>Explore Evidence</h1>
+<p>Faceted N4 search over parsed evidence. The chat can translate English to needles and return hits inline.</p>
+<div style="display:grid;grid-template-columns:260px 1fr;gap:1rem">
+  <div>
+    <h3>Filters</h3>
+    <p>Needles<br><input id="needles" style="width:100%;background:#161b22;color:#c9d1d9" placeholder="sdelete,.pst,USBSTOR"></p>
+    <p>Family<br><select id="family" multiple style="width:100%;background:#161b22;color:#c9d1d9;height:6rem">{fam_options}</select></p>
+    <p>Start<br><input id="start" type="date" style="width:100%;background:#161b22;color:#c9d1d9"></p>
+    <p>End<br><input id="end" type="date" style="width:100%;background:#161b22;color:#c9d1d9"></p>
+    <p><button class="action-btn" onclick="searchHits()">Search</button></p>
+    <hr style="border-color:#30363d">
+    <h3>Steer Chat</h3>
+    <div id="chat" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:0.5rem;height:12rem;overflow:auto;font-size:0.85rem;margin-bottom:0.5rem"></div>
+    <input id="chat_input" style="width:100%;background:#161b22;color:#c9d1d9" placeholder="Ask the case..." onkeydown="if(event.key==='Enter') chatAsk()">
+    <p><button class="action-btn" onclick="chatAsk()">Ask LLM</button></p>
+  </div>
+  <div>
+    <h3>Hits <span id="hit_count" style="font-size:0.8rem;font-weight:normal"></span></h3>
+    <div id="hist" style="height:120px;background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:0.5rem;margin-bottom:1rem;overflow:hidden"></div>
+    <p>
+      <input id="draft_title" style="width:50%;background:#161b22;color:#c9d1d9" placeholder="Finding title">
+      <label style="margin-left:0.5rem"><input type="checkbox" id="use_scribe" checked> Scribe</label>
+      <button class="action-btn" onclick="promoteSelected()" style="margin-left:0.5rem">Promote to DRAFT</button>
+      <span id="status" style="margin-left:1rem"></span>
+    </p>
+    <table>
+      <tr><th></th><th>Family</th><th>File:line</th><th>Terms</th><th>Row</th></tr>
+      <tbody id="hit_rows"></tbody>
+    </table>
+  </div>
+</div>
+<script>
+let currentHits = [];
+function selectedFamily() {{
+  const s = document.getElementById('family');
+  return Array.from(s.selectedOptions).map(o => o.value).join(',');
+}}
+async function searchHits() {{
+  const r = await fetch('/portal/api/explore/search', {{
+    method: 'POST', headers: {{'Content-Type':'application/json'}},
+    body: JSON.stringify({{
+      needles: document.getElementById('needles').value,
+      family: selectedFamily(),
+      start: document.getElementById('start').value,
+      end: document.getElementById('end').value,
+    }})
+  }});
+  const data = await r.json();
+  currentHits = data.hits || [];
+  document.getElementById('hit_count').textContent = `showing ${{currentHits.length}} / ${{data.count}}`;
+  renderHits();
+  const rh = await fetch('/portal/api/explore/histogram', {{
+    method: 'POST', headers: {{'Content-Type':'application/json'}},
+    body: JSON.stringify({{
+      needles: document.getElementById('needles').value,
+      family: selectedFamily(),
+      start: document.getElementById('start').value,
+      end: document.getElementById('end').value,
+    }})
+  }});
+  updateHistogram(await rh.json());
+}}
+function renderHits() {{
+  const tb = document.getElementById('hit_rows');
+  if (!currentHits.length) {{
+    tb.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#8b949e">No hits. Adjust filters or chat.</td></tr>';
+    return;
+  }}
+  tb.innerHTML = currentHits.map((h, i) => '<tr>' +
+    '<td><input type="checkbox" class="hit-check" value="' + (i+1) + '"></td>' +
+    '<td>' + escapeHtml(h.family) + '</td>' +
+    '<td>' + escapeHtml(h.file) + ':' + escapeHtml(h.line) + '</td>' +
+    '<td>' + escapeHtml(h.terms) + '</td>' +
+    '<td class="evidence-path">' + escapeHtml(h.text) + '</td>' +
+  '</tr>').join('');
+}}
+function updateHistogram(hd) {{
+  const buckets = hd.buckets || {{}};
+  const max = Math.max(1, ...Object.values(buckets));
+  const el = document.getElementById('hist');
+  const keys = Object.keys(buckets);
+  if (!keys.length) {{
+    el.innerHTML = '<span style="color:#8b949e">No timestamped hits</span>';
+    return;
+  }}
+  let html = '<div style="display:flex;align-items:flex-end;height:100%;gap:2px">';
+  for (const [k, v] of Object.entries(buckets)) {{
+    html += '<div title="' + escapeHtml(k + ': ' + v) + '" style="flex:1;background:#1f6feb;height:' + (v/max*100) + '%;min-width:4px"></div>';
+  }}
+  html += '</div>';
+  el.innerHTML = html;
+}}
+async function chatAsk() {{
+  const input = document.getElementById('chat_input');
+  const q = input.value.trim();
+  if (!q) return;
+  input.value = '';
+  appendChat('you', q);
+  appendChat('llm', 'Thinking...');
+  try {{
+    const r = await fetch('/portal/api/mode1/ask', {{
+      method: 'POST', headers: {{'Content-Type':'application/json'}},
+      body: JSON.stringify({{question: q}})
+    }});
+    const data = await r.json();
+    if (data.error) {{
+      replaceLast('llm', 'Error: ' + data.error);
+      return;
+    }}
+    replaceLast('llm', 'Needles: ' + data.needles.join(', ') + ' | hits: ' + data.count);
+    if (data.hits && data.hits.length) {{
+      currentHits = data.hits;
+      document.getElementById('needles').value = data.needles.join(',');
+      document.getElementById('hit_count').textContent = 'showing ' + currentHits.length + ' / ' + data.count;
+      renderHits();
+      const rh = await fetch('/portal/api/explore/histogram', {{
+        method: 'POST', headers: {{'Content-Type':'application/json'}},
+        body: JSON.stringify({{needles: data.needles.join(',')}})
+      }});
+      updateHistogram(await rh.json());
+    }}
+  }} catch (e) {{
+    replaceLast('llm', 'Error: ' + e.message);
+  }}
+}}
+function appendChat(who, text) {{
+  const d = document.getElementById('chat');
+  const cls = who === 'you' ? 'color:#58a6ff' : 'color:#3fb950';
+  d.innerHTML += '<div style="' + cls + '">' + who + ': ' + escapeHtml(text) + '</div>';
+  d.scrollTop = d.scrollHeight;
+}}
+function replaceLast(who, text) {{
+  const d = document.getElementById('chat');
+  const divs = d.querySelectorAll('div');
+  if (divs.length) {{
+    const last = divs[divs.length-1];
+    if (last.textContent.startsWith(who + ':')) {{
+      last.textContent = who + ': ' + text;
+      return;
+    }}
+  }}
+  appendChat(who, text);
+}}
+async function promoteSelected() {{
+  const checkboxes = document.querySelectorAll('.hit-check:checked');
+  const hitIds = Array.from(checkboxes).map(cb => cb.value);
+  if (hitIds.length === 0) return alert('Select at least one hit');
+  const title = document.getElementById('draft_title').value.trim();
+  if (!title) return alert('Enter a finding title');
+  const scribe = document.getElementById('use_scribe').checked;
+  document.getElementById('status').textContent = 'Promoting...';
+  const r = await fetch('/portal/api/mode1/select', {{
+    method: 'POST',
+    headers: {{'Content-Type':'application/json'}},
+    body: JSON.stringify({{hits: hitIds, title: title, scribe: scribe}})
+  }});
+  const result = await r.json();
+  if (result.finding_id) {{
+    document.getElementById('status').textContent = 'DRAFT: ' + result.finding_id;
+    setTimeout(() => window.location = '/portal/findings?status=DRAFT', 1000);
+  }} else {{
+    document.getElementById('status').textContent = 'Error: ' + (result.error || JSON.stringify(result));
+  }}
+}}
+function escapeHtml(s) {{
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}}
+</script>
+"""
+    return HTMLResponse(_TEMPLATE.format(content=content))
+
+
 async def health(request):
     """Lightweight health endpoint for load balancers and Docker healthchecks."""
     return JSONResponse({"status": "ok", "service": "dfir-nexus"})
@@ -1194,4 +1486,8 @@ def create_dashboard():
         # Mode 1 API endpoints
         Route("/portal/api/mode1/ask", api_ask, methods=["POST"]),
         Route("/portal/api/mode1/select", api_select, methods=["POST"]),
+        # Mode 1 Cockpit
+        Route("/portal/explore", explore_page),
+        Route("/portal/api/explore/search", api_explore_search, methods=["POST"]),
+        Route("/portal/api/explore/histogram", api_explore_histogram, methods=["POST"]),
     ]
