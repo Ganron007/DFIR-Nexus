@@ -359,6 +359,7 @@ pre {{ background: #161b22; padding: 0.5rem; border-radius: 4px; overflow-x: aut
 <nav>
 <a href="/portal">Overview</a>
 <a href="/portal/steer">Steer</a>
+<a href="/portal/ask">Mode 1 Ask</a>
 <a href="/portal/query">Query</a>
 <a href="/portal/findings">Findings</a>
 <a href="/portal/approve">Approve</a>
@@ -938,6 +939,223 @@ async def api_transparency(request):
     return JSONResponse(result)
 
 
+async def ask_page(request):
+    """Mode 1 examiner query desk: natural language -> needles -> hits -> select."""
+    case_dir = _get_case_dir()
+    question = str(request.query_params.get("question") or "").strip()
+    hits: list[dict] = []
+    needles: list[str] = []
+    window = ""
+    backend = "(no case)"
+    count = 0
+    error = ""
+
+    if case_dir and question:
+        from nexus.langgraph.mode1 import nl_to_needles
+        from nexus.langgraph.query_pack import run_ad_hoc_query
+        from nexus.langgraph.llm_pipeline import get_model
+
+        try:
+            model = get_model()
+        except Exception:
+            model = None
+
+        try:
+            parsed = nl_to_needles(question, model=model)
+            needles = parsed.get("needles", [])
+            window = parsed.get("window", "")
+            if not needles:
+                error = "No needles extracted from the question. Refine it."
+            else:
+                n4_result = run_ad_hoc_query(
+                    case_dir,
+                    extra_needles=needles,
+                    persist=True,
+                    limit=80,
+                )
+                hits = list(n4_result.get("hits") or [])
+                count = n4_result.get("count", 0)
+                backend = str(n4_result.get("backend") or "")
+                if not hits:
+                    error = "No rows matched. INSUFFICIENT — do not invent findings."
+        except Exception as exc:
+            error = f"Query failed: {exc}"
+
+    # Render hit rows with checkboxes for selection
+    if hits:
+        rows = ""
+        for i, h in enumerate(hits, 1):
+            rows += f"""
+<tr>
+  <td><input type="checkbox" class="hit-check" value="{i}"></td>
+  <td>{_e(h.get('family', ''))}</td>
+  <td>{_e(h.get('file', ''))}:{_e(h.get('line', ''))}</td>
+  <td>{_e(h.get('terms', ''))}</td>
+  <td class="evidence-path">{_e(h.get('text', ''))}</td>
+</tr>"""
+    else:
+        rows = (
+            "<tr><td colspan='5' style='text-align:center;color:#8b949e'>"
+            "No hits yet. Enter a question above and click Ask."
+            "</td></tr>"
+        )
+
+    error_div = f'<p style="color:#f85149">{_e(error)}</p>' if error else ""
+    content = f"""
+<h1>Mode 1 — Ask the Case</h1>
+<p>Natural language → needles → N4 query. The examiner then selects hits to promote to DRAFT.</p>
+<form method="get" action="/portal/ask" style="margin-bottom:1rem">
+<p>Question<br>
+<input name="question" style="width:70%;background:#161b22;color:#c9d1d9" value="{_e(question)}" placeholder="Was sdelete used to wipe files around 2026-08-10?">
+<button class="action-btn" type="submit">Ask</button></p>
+</form>
+{error_div}
+<p>Extracted needles: <code>{_e(', '.join(needles) or '(none)')}</code>
+{(' · Window: ' + _e(window)) if window else ''}
+{(' · backend: ' + _e(backend)) if question else ''}
+· hits: {len(hits)} / {count}</p>
+<h2>Select hits and promote to DRAFT</h2>
+<p>Title <input id="draft_title" style="width:50%;background:#161b22;color:#c9d1d9" placeholder="sdelete file wipe on WS01"></p>
+<p><label><input type="checkbox" id="use_scribe" checked> Run LLM scribe (methodology + RAG)</label></p>
+<p><button class="action-btn" onclick="promoteSelected()">Promote selected to DRAFT</button>
+<span id="status" style="margin-left:1rem"></span></p>
+<table>
+<tr><th></th><th>Family</th><th>File:line</th><th>Terms</th><th>Row</th></tr>
+{rows}
+</table>
+<script>
+async function promoteSelected() {{
+  const checkboxes = document.querySelectorAll('.hit-check:checked');
+  const hitIds = Array.from(checkboxes).map(cb => cb.value);
+  if (hitIds.length === 0) return alert('Select at least one hit');
+  const title = document.getElementById('draft_title').value.trim();
+  if (!title) return alert('Enter a finding title');
+  const scribe = document.getElementById('use_scribe').checked;
+  document.getElementById('status').textContent = 'Promoting...';
+  const r = await fetch('/portal/api/mode1/select', {{
+    method: 'POST',
+    headers: {{'Content-Type':'application/json'}},
+    body: JSON.stringify({{hits: hitIds, title: title, scribe: scribe}})
+  }});
+  const result = await r.json();
+  if (result.finding_id) {{
+    document.getElementById('status').textContent = 'DRAFT: ' + result.finding_id;
+    setTimeout(() => window.location = '/portal/findings?status=DRAFT', 1000);
+  }} else {{
+    document.getElementById('status').textContent = 'Error: ' + (result.error || JSON.stringify(result));
+  }}
+}}
+</script>
+"""
+    return HTMLResponse(_TEMPLATE.format(content=content))
+
+
+async def api_ask(request):
+    """POST /portal/api/mode1/ask — NL → needles + N4 hits."""
+    case_dir = _get_case_dir()
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    body = await request.json()
+    question = str(body.get("question") or "").strip()
+    if not question:
+        return JSONResponse({"error": "Missing question"}, status_code=400)
+
+    from nexus.langgraph.mode1 import nl_to_needles
+    from nexus.langgraph.query_pack import run_ad_hoc_query
+    from nexus.langgraph.llm_pipeline import get_model
+
+    try:
+        model = get_model()
+    except Exception:
+        model = None
+
+    parsed = nl_to_needles(question, model=model)
+    needles = parsed.get("needles", [])
+    window = parsed.get("window", "")
+    if not needles:
+        return JSONResponse({"needles": [], "window": window, "error": "No needles extracted"})
+
+    n4_result = run_ad_hoc_query(
+        case_dir,
+        extra_needles=needles,
+        persist=True,
+        limit=int(body.get("limit") or 80),
+    )
+    return JSONResponse({
+        "needles": needles,
+        "window": window,
+        "hits": n4_result.get("hits", []),
+        "count": n4_result.get("count", 0),
+        "backend": n4_result.get("backend", ""),
+    })
+
+
+async def api_select(request):
+    """POST /portal/api/mode1/select — promote selected hit indices to DRAFT."""
+    case_dir = _get_case_dir()
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+
+    body = await request.json()
+    raw_indices = body.get("hits", [])
+    title = str(body.get("title") or "").strip()
+    use_scribe = bool(body.get("scribe", True))
+
+    if not title:
+        return JSONResponse({"error": "Missing title"}, status_code=400)
+    if not raw_indices:
+        return JSONResponse({"error": "No hits selected"}, status_code=400)
+
+    from nexus.langgraph.mode1 import promote_hits_to_draft, save_draft_finding, scribe_finding
+    from nexus.langgraph.llm_pipeline import get_model
+    from nexus.langgraph.query_pack import load_case_intake, collect_query_terms, n4_hits, parse_intake_window
+
+    intake = load_case_intake(case_dir)
+    terms = collect_query_terms(intake)
+    window = parse_intake_window(intake)
+    all_hits, _ = n4_hits(case_dir, terms, window)
+
+    if not all_hits:
+        return JSONResponse({"error": "No hits loaded. Run ask first."}, status_code=400)
+
+    try:
+        indices = sorted({int(i) - 1 for i in raw_indices if str(i).strip()})
+    except (ValueError, TypeError):
+        return JSONResponse({"error": "Invalid hit indices"}, status_code=400)
+
+    bad = [i + 1 for i in indices if i < 0 or i >= len(all_hits)]
+    if bad:
+        return JSONResponse({"error": f"Hit indices out of range: {bad}"}, status_code=400)
+
+    selected = [all_hits[i] for i in indices]
+    from nexus.audit import resolve_examiner
+    examiner = resolve_examiner()
+    draft = promote_hits_to_draft(
+        case_dir,
+        hits=selected,
+        title=title,
+        examiner=examiner,
+        interpretation_hint=str(body.get("interpretation") or ""),
+    )
+
+    if use_scribe:
+        try:
+            model = get_model()
+        except Exception:
+            model = None
+        draft = scribe_finding(draft, hits=selected, model=model)
+
+    result = save_draft_finding(case_dir, draft)
+    if result.get("status") == "STAGED":
+        return JSONResponse({
+            "finding_id": result.get("finding_id"),
+            "title": title,
+            "status": "DRAFT",
+            "audit_ids": draft.get("audit_ids", []),
+        })
+    return JSONResponse({"error": result.get("errors", [result.get("status", "failed")])})
+
+
 async def health(request):
     """Lightweight health endpoint for load balancers and Docker healthchecks."""
     return JSONResponse({"status": "ok", "service": "dfir-nexus"})
@@ -948,6 +1166,7 @@ def create_dashboard():
         Route("/health", endpoint=health, methods=["GET"]),
         Route("/portal", endpoint=overview),
         Route("/portal/", endpoint=overview),
+        Route("/portal/ask", endpoint=ask_page),
         Route("/portal/findings", endpoint=findings_page),
         Route("/portal/approve", endpoint=approve_page),
         Route("/portal/timeline", endpoint=timeline_page),
@@ -972,4 +1191,7 @@ def create_dashboard():
         Route("/portal/api/case/activate", api_activate_case, methods=["POST"]),
         Route("/portal/api/intake", api_intake, methods=["POST"]),
         Route("/portal/api/query-rerun", api_query_rerun, methods=["POST"]),
+        # Mode 1 API endpoints
+        Route("/portal/api/mode1/ask", api_ask, methods=["POST"]),
+        Route("/portal/api/mode1/select", api_select, methods=["POST"]),
     ]

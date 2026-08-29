@@ -191,6 +191,10 @@ def scribe_finding(
             "terms": h.get("terms", []),
         })
 
+    families = {h.get("family", "") for h in hits if h.get("family")}
+    if not rag_context:
+        rag_context = _rag_methodology_for_families(families)
+
     user_msg = (
         f"DRAFT skeleton:\n{json.dumps(draft, indent=2, default=str)[:2000]}\n\n"
         f"Selected hits (ONLY source of facts):\n{json.dumps(hit_rows, indent=2, default=str)[:4000]}\n\n"
@@ -218,6 +222,53 @@ def scribe_finding(
         log.warning("Scribe LLM failed (%s), using heuristic", exc)
 
     return _heuristic_scribe(draft, hits)
+
+
+def _rag_methodology_for_families(families: set[str]) -> str:
+    """Gather RAG methodology context for the artifact families in hits.
+
+    Uses the local RAG index (ChromaDB) to find methodology for reading
+    each artifact type (e.g. Prefetch, EVTX, LNK, SRUM). Returns a concise
+    text block to pass to the scribe. If RAG is not available, returns the
+    family list as minimal context.
+    """
+    if not families:
+        return ""
+    try:
+        from nexus.tools.rag import _check_rag_available, _get_index
+
+        available, _ = _check_rag_available()
+        if not available:
+            return "Artifact families: " + ", ".join(sorted(families))
+
+        idx = _get_index()
+        blocks: list[str] = []
+        seen: set[str] = set()
+        for fam in sorted(families):
+            if not fam or fam in seen:
+                continue
+            seen.add(fam)
+            # Search for methodology on how to read this artifact
+            q = f"how to interpret forensic {fam} evidence"
+            try:
+                result = idx.search(query=q, top_k=3, source="kape")
+                docs = result.get("results", [])
+                if not docs:
+                    # Fallback: search without source filter
+                    result = idx.search(query=q, top_k=2)
+                    docs = result.get("results", [])
+                if docs:
+                    block = f"\n--- {fam} ---\n"
+                    for d in docs[:3]:
+                        text = d.get("text") or d.get("document") or ""
+                        block += str(text)[:400] + "\n"
+                    blocks.append(block)
+            except Exception:
+                blocks.append(f"\n--- {fam} ---\n(no RAG methodology available)\n")
+        return "\n".join(blocks).strip() or "Artifact families: " + ", ".join(sorted(families))
+    except Exception as exc:
+        log.warning("RAG methodology lookup failed: %s", exc)
+        return "Artifact families: " + ", ".join(sorted(families))
 
 
 def _heuristic_scribe(draft: dict[str, Any], hits: list[dict[str, Any]]) -> dict[str, Any]:
