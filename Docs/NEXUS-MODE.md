@@ -101,52 +101,70 @@ A case is stable across retries. Each tools, coverage, design, or interpret exec
 
 Do not put live IR behind a browser. Do not skip Register because the Portal can open a case.
 
-## Mode 1 / 2 / 3 — three doors, one spine, one case
+## Mode 1 / 2 / 3 — control depth, one cockpit, one case
 
-The N1–N8 spine is identical in all three modes. The difference is **how much
-autonomy the LLM has** and **who writes the findings**. Mode 1 and Mode 2 are
-the current ship targets — they are run **sequentially** on the same case.
-Mode 3 is future and will absorb the best of the old plan last.
+The N1–N8 spine, the case evidence, the audit chain, and the **Case Analysis
+Cockpit** are identical in all three modes. The difference is **who initiates
+the next action** — the examiner or the LLM/agent. The modes are **control-depth
+presets**, not separate products or UIs.
 
-> **Honest status:** The old plan (Mode 3 agentic) was never wired properly
-> and failed. v2 builds Mode 1 first, Mode 2 second, Mode 3 last. The
-> pipeline modes that exist in code today (`tools` / `interpret` / `coverage`
-> / `design`) are **implementation scaffolding**, not the product modes.
-> They will be re-wired as we test against real cases. Do not treat the
-> current code as the finished Mode 1/2/3 behavior.
+> **UI purpose (all modes):** the Portal is the manual evidence-analysis
+> workbench + the LLM/agent steering chat. Whether the LLM is thin (Mode 1),
+> thick (Mode 2), or agentic (Mode 3), the examiner always sees the same
+> evidence, the same chat pane, and the same approval gate.
+
+> **Honest status:** Mode 1 CLI is wired. The Portal needs an **Explore** pane,
+> a persistent **steer chat**, and a **Finding Workbench** to be complete. Modes
+> 2 and 3 are product evolution on the same UI, not new UIs.
 
 ### The two axes (do not confuse them)
 
 | Axis | What it means |
 |------|---------------|
 | **Pipeline mode** (`tools` / `interpret` / `coverage` / `design`) | How the LangGraph runs — which nodes execute, in what order. Implementation detail. |
-| **Product mode** (Mode 1 / 2 / 3) | How much LLM autonomy the examiner allows — who chooses questions, who writes findings, who selects hits. Product behavior. |
+| **Product mode** (Mode 1 / 2 / 3) | Who drives the next action — examiner, LLM guide, or agent. Control depth. |
+| **UI surface** (Cockpit: Explore / Timeline / Chat / Workbench / Approve / Report) | The one investigation workbench. Same in all modes. |
 
-The pipeline modes are the **engine**. The product modes are the **steering
-wheel**. They are different axes and will be wired together as we build.
+### The Case Analysis Cockpit (one surface, all modes)
 
-### Mode 1 — Examiner-Led (ship door, in progress)
+The Portal is **not** another SIEM dashboard, ticket system, or packet hunter.
+It is the single case-reasoning workbench. The CLI remains available for
+scripting and headless work, but the UI must expose every N1–N8 action:
 
-**Thin LLM as scribe + NL retrieval. Examiner owns questions, keep/reject,
-report set.**
+| Pane | What the examiner does | What the LLM/agent can do |
+|------|------------------------|----------------------------|
+| **Explore** | Faceted search over parsed evidence (family, host, date, user, needle, regex). Bookmark hits. | Mode 1: scribe only. Mode 2: propose next queries/filters. Mode 3: agent runs filters and proposes. |
+| **Timeline** | Time scrubber, histogram, event lanes, brush-to-zoom. | Mode 1: none. Mode 2: mark pivot points. Mode 3: add events from new tools. |
+| **Steer Chat** | Ask English questions, accept/reject LLM proposals, say "corroborate this" or "drill into WS01". | Always the co-pilot. In Mode 1 it only translates/scribe. In Mode 2 it proposes. In Mode 3 it executes. |
+| **Finding Workbench** | Bookmarked hits -> DRAFT builder + evidence list + scribe + validation. | Format DRAFTs (Mode 1). Propose DRAFTs (Mode 2/3). Never self-approve. |
+| **Approval Desk** | HMAC sign-off on DRAFT findings. | Nothing. Approval is always human. |
+| **Report** | Trigger N8 from APPROVED. | Nothing. No new facts. |
 
-The examiner drives. The LLM helps translate English to needles and narrates
-hits, but the **examiner selects which hits become DRAFT findings**.
+### Mode 1 — Examiner-Driven (ship door)
+
+**The examiner does the analysis. The LLM is a thin scribe + NL query helper.**
+
+The examiner explores evidence manually, selects hits, and tells the LLM to
+scribe the DRAFT. The LLM does not choose queries, does not select hits, does
+not approve.
 
 ```
-Examiner question (English)
+Examiner opens Explore/Timeline
     |
     v
-LLM translates -> needles + time window        (thin LLM: NL -> search terms)
+Examiner searches (needles, family, host, time) or types in chat
     |
     v
-N4 query (code) -> hits with audit_id           (no LLM in the search)
+LLM helps: English -> needles + time window  (thin LLM: NL translator)
     |
     v
-Examiner reviews hits in CLI / Portal
+N4 query (code) -> hits with audit_id
     |
     v
-Examiner selects hit-set -> promote to DRAFT    (examiner is the writer)
+Examiner reviews and bookmarks hits in Explore
+    |
+    v
+Examiner drags bookmarks to Finding Workbench
     |
     v
 LLM scribe formats DRAFT with RAG methodology  (thin LLM: scribe)
@@ -155,155 +173,132 @@ LLM scribe formats DRAFT with RAG methodology  (thin LLM: scribe)
 Examiner reviews DRAFT -> keep / reject / edit
     |
     v
-HMAC on cards the EXAMINER selected             (not on LLM-written cards)
+HMAC on findings the EXAMINER built
     |
     v
 N8 report from APPROVED only
 ```
 
 **What the LLM does in Mode 1:**
-- Translates the examiner's English question into search needles + time window
-- Calls `forensic_rag_search` for methodology context (how to read an artifact)
-- Formats the examiner's selected hits into structured DRAFT findings (scribe)
+- Translates English questions into N4 search terms
+- Calls `forensic_rag_search` for methodology context
+- Formats the examiner's selected hits into structured DRAFT findings
 
 **What the LLM does NOT do in Mode 1:**
-- Does not choose which hits become findings (examiner selects)
-- Does not write findings from scratch (examiner promotes hit-sets)
+- Does not choose which hits become findings
+- Does not write findings from scratch
 - Does not choose tools or parsers
 - Does not approve
 - Does not invent facts beyond N4 hits
 
-**What is missing in code today:**
-- NL -> needles translation (COMPARISON.md: "NL query translator: Not implemented")
-- Select-to-report UI flow (IMPROVEMENT-PLAN.md W10: "want-ui")
-- Examiner-driven hit selection (current code has LLM writing findings directly)
-- Portal Query desk with bookmark -> DRAFT -> HMAC (starved)
+**Mode 1 is complete when the Portal has:**
+- Explore pane with faceted search + histogram
+- Timeline pane with time scrubber
+- Persistent Steer Chat
+- Finding Workbench (bookmarks -> DRAFT)
+- Existing Approval Desk and Report
 
-**Closest code today:** `tools` + `interpret` — but interpret is "broken as a
-report" because the LLM is the primary writer, not a scribe. The lane
-(`tools` mode) is solid. The interpret path needs re-wiring to make the
-examiner the driver.
+### Mode 2 — LLM-Guided Analysis (after Mode 1 is honest)
 
-### Mode 2 — Thick Cognitive Analysis (after Mode 1 is honest)
+**The LLM proposes the next query and correlations; the examiner validates and
+steers in the chat.**
 
-**Thick LLM/agents: retrieve -> corroborate -> DRAFT. LLM chooses the next
-question. Iteration, not one-shot.**
-
-Mode 2 is the **product** — the differentiator. The LLM becomes an
-investigative partner that iterates: it reads initial hits, proposes new
-needles, re-queries, corroborates across hit families, and writes DRAFT
-findings with provenance. The examiner still approves.
+Mode 2 is the **product differentiator**. The LLM becomes an investigative
+partner that reads hits, proposes new needles, re-queries, and suggests
+correlations. But the examiner still decides what to include.
 
 ```
-Examiner question (English)
+Examiner asks question in Steer Chat
     |
     v
 LLM translates -> initial needles + window
     |
     v
-N4 query (code) -> initial hits
+N4 query -> initial hits
     |
     v
-LLM analyzes hits -> proposes NEW needles        (thick LLM: chooses next question)
+LLM analyzes hits -> proposes NEW needles in chat  (thick: chooses next question)
     |
     v
-N4 query again with new needles -> more hits     (ITERATION — not one-shot)
+Examiner accepts/rejects/redirects each proposal
     |
     v
-LLM corroborates across hit families            (thick LLM: cross-family)
-    |  (e.g. Prefetch .exe + LNK + USN journal + RDP cache -> one story)
-    v
-LLM writes DRAFT findings with audit_ids        (LLM is the writer here)
+N4 re-queries with accepted needles  (ITERATION — not one-shot)
     |
     v
-Examiner reviews DRAFT -> keep / reject / redirect
+LLM corroborates across hit families and proposes DRAFT  (LLM is the writer here)
     |
     v
-HMAC on agent DRAFTs (no self-approve)           (examiner still gates)
+Examiner reviews DRAFT -> keep / reject / edit
+    |
+    v
+HMAC on DRAFTs (examiner still gates)
     |
     v
 N8 report from APPROVED only
 ```
 
-**What the LLM does in Mode 2:**
-- Everything from Mode 1, PLUS:
-- Chooses the next question based on initial hits
-- Proposes new needles and re-queries (iterative loop)
-- Corroborates across hit families (Prefetch + LNK + USN + RDP -> one story)
-- Writes DRAFT findings directly (LLM is the writer in Mode 2)
-- Applies FD-006 corroboration rules (single-source stays LOW)
+**What the LLM does in Mode 2 (plus Mode 1):**
+- Proposes the next question and new needles
+- Re-queries in a loop until the examiner stops it
+- Corroborates across hit families
+- Suggests DRAFT findings; examiner edits or rejects
+- Applies FD-006 (single-source stays LOW)
 
 **What the LLM does NOT do in Mode 2:**
-- Does not choose tools or parsers (N2 lane is still deterministic)
-- Does not approve (examiner HMAC)
-- Does not invent facts beyond N4 hits
+- Does not choose tools or parsers
+- Does not approve
+- Does not act on rejected proposals
 
-**What is missing in code today:**
-- Iterative query loop (current interpret runs once, not iteratively)
-- Cross-family corroboration logic (current interpret is one-shot per family)
-- LLM choosing next question (current interpret receives a static query pack)
-- "Too thin" per OLD-VS-NEW.md section 7.1
+### Mode 3 — Agentic (future, after Modes 1 & 2 are honest)
 
-**Closest code today:** `coverage` / `design` hunt — but "too thin." The
-hunt agent adds extras after the lane but does not iterate on queries.
+**The agent chooses MCP tools, runs extras, proposes findings, and the examiner
+steers at the end.**
 
-### Mode 3 — Full Agentic (future, absorbs old plan last)
-
-**Agents also choose MCP tools. Same analysis loop as Mode 2. One HMAC on
-the case file.**
-
-Mode 3 is the old plan done right. A ReAct agent drives tool selection, runs
-the lane, adds extras, iterates on queries, corroborates, and writes DRAFTs.
-The examiner gives one HMAC at the end on the case file, not per-finding.
+Mode 3 is the old plan done right. A ReAct agent can run the mandatory N2 lane,
+then choose additional MCP tools, iterate on queries, and propose DRAFTs. The
+examiner reviews the whole case file and signs off.
 
 ```
-Examiner question (English)
+Examiner sets scope in Steer Chat
     |
     v
-Agent loads playbooks autonomously
+Agent runs mandatory N2 lane (cannot skip)
     |
     v
-Agent runs mandatory N2 lane first                  (cannot skip the lane)
-    |
-    v
-Agent adds extras (carve, extra Volatility, additional parsers)
+Agent adds extras via MCP tools (carve, Volatility, network parsers)
     |  (only for SKIP'd artifacts or playbook extras — not instead of lane)
     v
 Agent iterates: query -> analyze -> propose needles -> re-query
     |
     v
-Agent corroborates across all hit families
+Agent corroborates and proposes DRAFTs
     |
     v
-Agent writes DRAFT findings with full provenance
+Examiner reviews all DRAFTs and case file in Cockpit
     |
     v
-Examiner reviews case file -> ONE HMAC              (not per-finding)
+HMAC on case file  (or per-finding if the examiner wants)
     |
     v
 N8 report from APPROVED only
 ```
 
-**What the agent does in Mode 3:**
-- Everything from Mode 2, PLUS:
-- Chooses which MCP tools to run (but mandatory lane first, then extras)
-- May ingest network logs and re-run N4->N8 autonomously
+**What the agent does in Mode 3 (plus Mode 2):**
+- Chooses which MCP tools to run (lane first, then extras)
+- May ingest network logs and re-run N4->N8
 - Full autonomous investigation with audit chain
 
 **What the agent does NOT do in Mode 3:**
-- Does not skip the mandatory lane (FAIL is not papered over)
-- Does not self-approve (one HMAC from the examiner at the end)
-
-**What is missing in code today:**
-- Not the live pipeline. `design` mode runs the lane + hunt extras, but
-  true Mode 3 is "LLM clients call MCP" — not the current LangGraph.
-- Will absorb the best of the old plan's agentic work when built.
+- Does not skip the mandatory lane
+- Does not self-approve
 
 ### What stays constant across all modes
 
 - Same `case_id`, same immutable runs, same audit chain
 - Same N2 deterministic lane (parsers always run; agent can add, not skip)
-- Same N4 code search (no LLM grep of raw disks; query is a tool with caps)
+- Same N4 code search (no LLM grep of raw disks)
+- Same **Case Analysis Cockpit** (one UI for all modes)
 - Same N6 human HMAC approval (no auto-approve in any mode)
 - Same N8 template from APPROVED only (no new facts)
 - Same ingest boundary (network/SIEM/cloud/EDR, not direct host)
@@ -312,12 +307,12 @@ N8 report from APPROVED only
 
 ### Build order
 
-1. **Mode 1** — examiner-led query desk: NL -> needles -> hits -> examiner
-   selects -> DRAFT -> HMAC -> report. Ship door.
-2. **Mode 2** — thick analysis: LLM iterates, corroborates, writes DRAFTs.
-   Product differentiator. After Mode 1 is honest.
-3. **Mode 3** — full agentic: agents choose tools, one HMAC on case file.
-   Future. Absorbs old plan last.
+1. **Mode 1 Cockpit** — Explore + Timeline + Steer Chat + Finding Workbench.
+   The examiner can do the full N1–N8 loop without touching the CLI. Ship door.
+2. **Mode 2 reasoning** — Make the Steer Chat drive iterative query and
+   corroboration. LLM proposes; examiner accepts/rejects. Same Cockpit.
+3. **Mode 3 agentic** — Agent chooses MCP tools. Same Cockpit; the chat shows
+   what the agent plans and asks permission.
 
 ## Product flow (canonical)
 
