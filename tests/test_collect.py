@@ -537,17 +537,27 @@ def test_manifest_does_not_store_password_secret(tmp_path, monkeypatch):
     assert "super-secret-lab" not in blob
 
 
-def test_cli_collect_help():
+def test_cli_collect_help(monkeypatch):
+    # Rich renders CLI help tables with terminal-width-dependent truncation;
+    # pin a wide console and strip ANSI so the assertions are deterministic
+    # across local terminals and CI runners.
+    import re
+
+    monkeypatch.setenv("COLUMNS", "200")
+    ansi = re.compile(r"\x1b\[[0-9;]*m")
+
     result = runner.invoke(app, ["collect", "--help"])
-    assert result.exit_code == 0, result.output
-    assert "tools" in result.output
-    assert "plan" in result.output
-    assert "run" in result.output
-    assert "import" in result.output
+    out = ansi.sub("", result.output)
+    assert result.exit_code == 0, out
+    assert "tools" in out
+    assert "plan" in out
+    assert "run" in out
+    assert "import" in out
     plan = runner.invoke(app, ["collect", "plan", "--help"])
-    assert plan.exit_code == 0, plan.output
-    assert "--profile" in plan.output
-    assert "--only" in plan.output
+    pout = ansi.sub("", plan.output)
+    assert plan.exit_code == 0, pout
+    assert "--profile" in pout, pout
+    assert "--only" in pout, pout
 
 
 def test_cli_collect_tools():
