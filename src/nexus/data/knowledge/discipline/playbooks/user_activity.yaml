@@ -1,0 +1,62 @@
+name: "User Activity Investigation"
+description: "Reconstruct per-user file and folder interaction via ShellBags, MRU artifacts, and thumbnail caches"
+mitre: ["T1083", "T1005"]
+query_terms:
+  - shellbags
+  - usrclass
+  - bagmru
+  - recentdocs
+  - wordwheelquery
+  - typedpaths
+  - runmru
+  - comdlg32
+  - opensavepidlmru
+  - lastvisitedpidlmru
+  - thumbcache
+  - thumbs.db
+  - userassist
+  - muiocache
+sources:
+  - "13Cubed — Investigating Windows Endpoints (UsrClass.dat and ShellBags; Thumbs.db and Thumbcache; UserAssist)"
+  - "13Cubed — Windows Registry Cheat Sheet (Explorer keys: ComDlg32, RecentDocs, WordWheelQuery, TypedPaths, RunMRU)"
+triggers:
+  - "Need to prove a user BROWSED into a folder (staging share, USB volume, deleted directory)"
+  - "Data staging or USB investigation needs user attribution"
+  - "Deleted folder paths must be recovered"
+  - "Images or documents of interest no longer exist on disk"
+phases:
+  - phase: "ShellBags"
+    steps:
+      - "Parse UsrClass.dat with RECmd/SBECmd — ShellBags live at HKCU\\SOFTWARE\\Classes\\Local Settings\\Software\\Microsoft\\Windows\\Shell (Bags, BagMRU)"
+      - "Desktop and Network-location ShellBags live separately under HKCU\\SOFTWARE\\Microsoft\\Windows\\Shell"
+      - "Extract first/last INTERACTED timestamps per folder and the view settings"
+      - "Map volume GUIDs from MountPoints2 to attribute removable-volume browsing to a user"
+  - phase: "MRU Artifacts"
+    steps:
+      - "RecentDocs — recent file interaction per user (NTUSER.DAT)"
+      - "WordWheelQuery — Explorer SEARCH terms typed by the user"
+      - "TypedPaths — paths manually typed into the Explorer address bar"
+      - "RunMRU — Start > Run commands"
+      - "ComDlg32 LastVisitedPidlMRU (apps used to open/save) and OpenSavePidlMRU (files opened/saved via dialog)"
+  - phase: "Execution Context"
+    steps:
+      - "UserAssist (NTUSER.DAT, ROT13) — GUI program execution with run count, focus time, last-executed UTC"
+      - "MUICache — per-user GUI program presence (no execution time)"
+  - phase: "Thumbnails"
+    steps:
+      - "Parse thumbcache_*.db from %LOCALAPPDATA%\\Microsoft\\Windows\\Explorer with ThumbcacheViewer"
+      - "Check Thumbs.db inside folders (still created for UNC paths) — thumbnails survive file deletion and even secure wipe"
+      - "Map cache entry IDs back to original filenames/paths where possible"
+  - phase: "Record"
+    steps:
+      - "Record finding with user, artifact, path, and first/last-interacted timestamps"
+      - "Include all evidence IDs from each analysis phase"
+caveats:
+  - "ShellBags record FOLDERS (not files) traversed in Explorer — they are a 'GPS for the filesystem' with first/last interacted times, and they SURVIVE deletion of the folder they describe."
+  - "ZIP files are the exception — ShellBags tracks them like folders."
+  - "ShellBags do NOT record paths opened via cmd.exe, PowerShell, or WSL — absence proves nothing about non-Explorer access."
+  - "UsrClass.dat (per-user) plugs in at HKCU\\SOFTWARE\\Classes; Desktop/Network ShellBags live under HKCU\\SOFTWARE\\Microsoft\\Windows\\Shell."
+  - "UserAssist: CEB... GUID under Count = application execution; F4E... = shortcut (LNK) execution. Values are ROT13-encoded."
+  - "UserAssist quirks: modern Windows often shows run count 0 with a valid last-executed time, and service/scheduled-task/startup launches get a bogus 1601-01-01 timestamp — corroborate before citing."
+  - "Thumbcache can retain thumbnails for images/PDFs that were deleted or securely wiped — strong anti-forensics counter-artifact."
+  - "Registry MRU last-write times are single timestamps ('no later than'), not event times."

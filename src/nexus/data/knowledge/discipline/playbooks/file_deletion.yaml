@@ -1,0 +1,59 @@
+name: "File Deletion and Anti-Forensics Investigation"
+description: "Investigate file deletion, secure wiping, carving, and recovery including Recycle Bin mechanics"
+mitre: ["T1070.004", "T1070", "T1485"]
+query_terms:
+  - sdelete
+  - cipher
+  - wipe
+  - shred
+  - erase
+  - recycle
+  - $i
+  - $r
+  - carving
+  - unallocated
+  - photorec
+  - scalpel
+  - vsc
+  - shadowcopy
+sources:
+  - "13Cubed — Investigating Windows Endpoints (The Recycle Bin; 'Permanent' Deletion)"
+  - "SANS FOR508 — Anti-Forensics detection (VSS ScopeSnapshots caveat)"
+triggers:
+  - "Files referenced in other artifacts (LNK, Jump List, ShellBags, Thumbcache) no longer exist"
+  - "sdelete or similar wipe tools in Prefetch"
+  - "USN journal shows rename-to-.tmp then delete patterns"
+  - "MFT record reuse or zeroed entries in the window of interest"
+phases:
+  - phase: "Recycle Bin"
+    steps:
+      - "Parse $Recycle.Bin\\<SID> — $I files hold metadata (original path, size, deletion time UTC), $R files hold content; names share 6 random chars + original extension"
+      - "$I file VERSION matters: v1 (Vista/Win7) vs v2 (Win8+) have different header layouts — parse with the right structure (RBCmd)"
+      - "Attribute the SID to a user; empty bins can still be attributed via USN/MFT"
+  - phase: "Deletion Mechanics"
+    steps:
+      - "Permanent deletion marks the MFT record 'not in use', frees clusters in $BITMAP, updates $I30, and writes USN entries — data persists until overwritten"
+      - "Check the USN journal for the deletion sequence (rename sdeleteNN.tmp -> delete) using MFTECmd"
+      - "sdelete renames files before overwrite — the rename chain in USN is the wipe signature"
+  - phase: "Recovery"
+    steps:
+      - "Carve unallocated space by header signatures (photorec, bulk_extractor) when MFT records are gone"
+      - "Check $I30 directory index entries — deleted entries can persist in the index"
+      - "Check Volume Shadow Copies: ScopeSnapshots (default Win8/8.1/10/11) limits client-OS snapshots to boot-volume system files — server SKUs keep fuller snapshots"
+      - "Check in-use files copied from VSS (Tworek: in-use files are copyable from shadow copies)"
+  - phase: "Correlate"
+    steps:
+      - "Cross-reference deleted paths against ShellBags, LNK, Jump Lists, UserAssist, and Thumbcache — these survive deletion"
+      - "Check Prefetch for wipe-tool execution (sdelete, cipher, ccleaner)"
+      - "Check cloud-sync and email artifacts for copies of the deleted data"
+  - phase: "Record"
+    steps:
+      - "Record finding with deleted path, deletion time, method, and recovery attempts"
+      - "HITL checkpoint — deliberate evidence destruction affects legal posture"
+caveats:
+  - "Recycle Bin deletion is NOT secure deletion — $R retains full content until the bin is emptied; $I v2 (Win10/11) stores original size, path, and 'recycled on' timestamp."
+  - "Permanent deletion updates MFT/$BITMAP/$I30/USN but does NOT erase data — carving recovers files from unallocated space by header signatures."
+  - "sdelete renames files (sdeleteNN.tmp) before overwrite — look for the rename chain in USN, not just the final delete."
+  - "VSS on client Windows 8+ uses ScopeSnapshots (boot-volume system files only) — non-system artifact recovery from VSS is degraded; Servers keep fuller snapshots."
+  - "MFT record reuse can destroy evidence of old files — check $LogFile and USN for prior states."
+  - "Deletion timestamps in $I are UTC; MFT/USN times are UTC; Explorer displays local — normalize."

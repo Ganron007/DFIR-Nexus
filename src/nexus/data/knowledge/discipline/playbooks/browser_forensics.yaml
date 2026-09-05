@@ -1,0 +1,53 @@
+name: "Browser Forensics Investigation"
+description: "Investigate browser history, downloads, and search activity for C2, exfiltration, and phishing access"
+mitre: ["T1071.001", "T1566", "T1185"]
+query_terms:
+  - chrome
+  - firefox
+  - edge
+  - history
+  - downloads
+  - places.sqlite
+  - cookies
+  - browsinghistoryview
+  - hindsight
+  - typedurls
+  - restore points
+sources:
+  - "13Cubed — Investigating Windows Endpoints (Web Browser Forensics; Windows Browser Artifacts cheat sheet)"
+triggers:
+  - "Phishing link clicked before compromise"
+  - "Cloud/mail access from the host (OWA, Gmail, Drive)"
+  - "Download of a payload or archive from the web"
+  - "C2 over HTTP(S) needing user-context attribution"
+phases:
+  - phase: "Locate Artifacts"
+    steps:
+      - "Chrome/Edge: %LOCALAPPDATA%\\Google\\Chrome\\User Data\\<profile>\\ (History, Downloads, Cookies, Login Data are SQLite)"
+      - "Firefox: %APPDATA%\\Mozilla\\Firefox\\Profiles\\<profile>\\places.sqlite (history), downloads.sqlite/annotations"
+      - "Edge legacy/IE: TypedURLs and TypedPaths under NTUSER.DAT; index.dat for older systems"
+  - phase: "Parse"
+    steps:
+      - "Parse SQLite histories with BrowsingHistoryView (all browsers) or Hindsight (Chrome-specific, parses extensions and cache)"
+      - "Export downloads with full source URL, target path, and timestamps"
+      - "Record search queries (Chrome keyword_search_terms, Firefox keyword search history)"
+  - phase: "Correlate"
+    steps:
+      - "Correlate download timestamps with Prefetch/Amcache execution of the downloaded file"
+      - "Correlate visited domains with Zeek/Suricata/PCAP network evidence"
+      - "Check LNK/Jump List artifacts for files opened from the Downloads folder"
+  - phase: "Cloud Access"
+    steps:
+      - "Check for OWA/Gmail/Drive sessions in history — the host-side evidence of cloud mailbox access"
+      - "Check ComDlg32 OpenSavePidlMRU and TypedPaths for files opened from cloud-sync folders"
+  - phase: "Record"
+    steps:
+      - "Record finding with URL, timestamp (UTC), profile/user, and correlated artifacts"
+      - "Include all evidence IDs from each analysis phase"
+caveats:
+  - "Browser timestamps are stored in WebKit epoch (microseconds since 1601-01-01) for Chrome/Edge and Unix epoch (microseconds) for Firefox — convert before correlating."
+  - "History is per-PROFILE — a compromised service account or second user has its own profile directory; check all profiles, not just Default."
+  - "Private/incognito browsing leaves little to no history — absence of a visit is not proof the user did not browse there."
+  - "Sync can populate history from OTHER devices — a URL in local history may have been visited on a phone; check the sync metadata before attributing to this host."
+  - "The 13Cubed source uses BrowsingHistoryView for cross-browser parsing; Hindsight is Chrome-focused (history + extensions + cache)."
+  - "Deleted rows can persist in SQLite freelist pages — carve the DB file, do not rely only on query results."

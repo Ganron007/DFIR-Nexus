@@ -65,6 +65,21 @@ def extra_playbook_names(ctx: dict[str, Any] | None) -> list[str]:
         names.extend(_HOST_HUNT_PLAYBOOKS)
     if any(k in hyp for k in ("email", "pst", "outlook", "mailbox", "bec")):
         names.append("email_compromise")
+    if any(k in hyp for k in ("memory", "volatility", "ram dump", "memdump", "lsass dump")):
+        names.append("memory_forensics")
+    if any(
+        k in hyp
+        for k in ("linux", "ubuntu", "ssh key", "authorized_keys", "cron", "systemd", "auth.log")
+    ):
+        names.append("linux_forensics")
+    if any(k in hyp for k in ("browser", "chrome", "firefox", "browsing history", "download")):
+        names.append("browser_forensics")
+    if any(k in hyp for k in ("phishing", "phish", "spam", "malicious email")):
+        names.append("phishing_analysis")
+    if any(k in hyp for k in ("shellbags", "folder access", "user activity", "deleted files")):
+        names.extend(("user_activity", "file_deletion"))
+    if any(k in hyp for k in ("timeline", "supertimeline", "super timeline", "plaso")):
+        names.append("supertimeline")
     return list(dict.fromkeys(names))
 
 

@@ -73,3 +73,7 @@ caveats:
   - "5140 is share ACCESS; 5145 is a share CHECK — 5145 fires even when access is denied, so it is the better volume signal."
   - "1102 (audit log cleared) in the same window as logon analysis means the logon record set may be incomplete — note the gap in the finding."
   - "4688 (process creation) requires audit policy to be enabled; its absence is not evidence of absence."
+  - "DeepBlueCLI parses .evtx offline for password-spray, new-user creation, and PowerShell/Net.WebClient download patterns — fast triage before Hayabusa."
+  - "Kerberos: 4768 TGT request, 4769 service ticket (0x17 RC4 = Kerberoasting candidate), 4771 pre-auth failed; 4776 = DC credential validation."
+  - "LINUX hosts: /var/log/auth.log (Debian) or secure (RHEL) record PAM/sudo/sshd events; wtmp (last), btmp (lastb), utmp (who), lastlog are BINARY — parse dead images with last -F / lastb -F."
+  - "System identity registry values for context: TimeZoneInformation and ComputerName (SYSTEM hive), NetworkList\\Signatures + Profiles (DefaultGatewayMac, SSID, DateCreated/DateLastConnected, network type 0x06 wired / 0x17 broadband / 0x47 wireless)."

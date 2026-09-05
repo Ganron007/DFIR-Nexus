@@ -47,7 +47,10 @@ phases:
       - "Include all evidence IDs from each analysis phase"
 caveats:
   - "Sysmon Event ID 3 gives process → destination IP/port with the initiating process — the single best endpoint-side network artifact; network logs alone cannot attribute to a process."
-  - "Volatility netscan only reflects connections alive (or in freed memory) at capture time — absence in netscan is not absence of activity."
+  - "Volatility netscan only reflects connections alive (or in freed memory) at capture time — absence in netscan is not absence of activity. Vol3 has TWO plugins: Windows.NetScan (pool scan, finds aged-out connections, more results) vs Windows.NetStat (active structures, fewer); Vol2 netscan is deprecated and misses connections on modern Win10/11."
   - "Beaconing analysis needs at least 10-20 connections to establish periodicity; a single connection to a known-bad IP is still a finding, just not a beacon."
   - "TLS-encrypted channels hide payload content — judge by destination reputation, JA3/SNI, and timing, not content."
-  - "Zeek conn.log durations and byte counts are the primary beacon evidence; RITA automates beacon scoring over Zeek logs."
+  - "Zeek conn.log durations and byte counts are the primary beacon evidence; RITA automates beacon scoring over Zeek logs: 'rita show-beacons', 'rita show-beacons-fqdn <db> -H', 'rita show-exploded-dns <db> -H', 'rita html-report'."
+  - "Suricata: config /etc/suricata/suricata.yaml (test with -T); logs at /var/log/suricata (fast.log alerts, eve.json structured, stats.log); custom rules in /var/lib/suricata/rules/local.rules; reload with kill -USR2 $(pidof suricata)."
+  - "OS fingerprinting from TTL: Windows ~128, Linux/Mac ~64, some Unix 255; TCP window size hints (Linux 2920-5840, Mac 65535) — use for initial OS attribution only, TTL can be rewritten."
+  - "Elastic/Packetbeat exfil hunting: agent.type:'packetbeat' AND type:dns AND NOT dns.response_code:'NOERROR' — NXDOMAIN bursts and randomized subdomains are exfil signals (CCD Module 8)."

@@ -51,8 +51,10 @@ phases:
       - "Include all evidence IDs from each analysis phase"
 caveats:
   - "SRUM tracks per-application network DATA VOLUME (via SrumECmd {D8F...} data tables) — it is the primary artifact for proving 'how much left the host', not where it went."
+  - "ShellBags are the 'GPS for the filesystem': they record FOLDERS (not files) browsed in Explorer with first/last-interacted timestamps, and they survive deletion of the folder — use them to prove what was browsed before staging (see user_activity playbook)."
   - "sdelete renames files (sdeleteNN.tmp pattern) before overwrite — look for the rename chain in USN journal, not just the final deletion."
-  - "Recycle Bin presence does not prove user deletion intent — $I files record original path and deletion TIME (UTC); $R files hold content."
+  - "Recycle Bin presence does not prove user deletion intent — $I files record original path and deletion TIME (UTC); $R files hold content (see file_deletion playbook)."
   - "Archive tools (7z/rar/compact) are frequently used legitimately — staging findings need the accessed-file context (ShellBags/Jump Lists) to be meaningful."
   - "Cloud sync (DriveFS/OneDrive) uploads can look like exfiltration; check whether the account is the user's own before attributing exfiltration."
   - "Compact.exe (LZNT1 compression) is a native alternative to 7z/rar — include it in archive-tool Prefetch review."
+  - "Exfil channels beyond cloud: FTP/SFTP/TFTP, email, steganography, RAT/VPN tunneling — corroborate with SRUM volumes and Packetbeat/Zeek flows (CCD Module 8)."

@@ -1,0 +1,84 @@
+name: "Linux Forensics Investigation"
+description: "Investigate compromised Linux systems — auth logs, persistence, filesystem timestamps, and memory"
+mitre: ["T1078", "T1053", "T1098", "T1070"]
+query_terms:
+  - auth.log
+  - secure
+  - wtmp
+  - btmp
+  - utmp
+  - lastlog
+  - faillog
+  - syslog
+  - messages
+  - kern.log
+  - dmesg
+  - journalctl
+  - audit.log
+  - ausearch
+  - systemd
+  - init.d
+  - crontab
+  - authorized_keys
+  - bash_history
+  - bashrc
+  - rc.local
+  - ext4
+  - debugfs
+  - fls
+  - mactime
+  - log2timeline
+  - psort
+  - uac
+  - avml
+  - lime
+sources:
+  - "13Cubed — Investigating Linux Devices (logs, ext4, persistence, TSK/Plaso, UAC, AVML)"
+  - "Hal Pomeranz — Linux Forensics 2-day (CC BY-SA): disk triage, timelining, user artifacts"
+triggers:
+  - "SSH key or account changes on a Linux host"
+  - "Unexpected cron/systemd/init.d persistence"
+  - "Cleared or rotated auth logs during the investigation window"
+  - "Linux host in scope (CADRE linux01 or UAC triage output)"
+phases:
+  - phase: "Collect"
+    steps:
+      - "Collect /var/log: auth.log (Debian) or secure (RHEL), syslog/messages, kern.log, audit/audit.log, cron, package-manager logs"
+      - "Capture binary login records: wtmp, btmp, utmp, lastlog, faillog — parse with last -F / lastb -F on dead images"
+      - "Run journalctl (persistent under /var/log/journal; volatile at /run/log/journal depending on journald.conf)"
+      - "Run UAC ir_triage for a standardized artifact bundle; acquire memory with AVML or LiME"
+  - phase: "Accounts and Logons"
+    steps:
+      - "Review auth.log/secure for accepted/failed password, sudo, su, sshd, polkit events"
+      - "Correlate wtmp (last) logins with btmp (lastb) failures — spray shows many failures across accounts"
+      - "Check lastlog for per-user last-login source IP"
+  - phase: "Persistence"
+    steps:
+      - "Enumerate systemd units (/etc/systemd/system, /lib/systemd/system), timers (.timer + .service, WantedBy=timers.target)"
+      - "Check /etc/init.d, cron tables (/var/spool/cron/crontabs, /etc/cron.d, /etc/cron.{daily,hourly,weekly,monthly})"
+      - "Check ~/.ssh/authorized_keys (mode 600, dir 700) for attacker-added public keys"
+      - "Check shell startup files (.bashrc, .bash_profile), /etc/rc.local, /etc/udev/rules.d, /etc/xdg/autostart, ~/.config/autostart, /etc/NetworkManager/dispatcher.d, /etc/sudoers"
+  - phase: "Filesystem and Timeline"
+    steps:
+      - "Build a MACB timeline with TSK: fls -r -m bodyfile + mactime -b bodyfile -d (UTC)"
+      - "Super-timeline with Plaso: log2timeline + psort -o dynamic / l2tcsv"
+      - "Check ext4 birth/CR time with stat (needs coreutils >= 8.31) or debugfs -R 'stat <inode>'"
+      - "Look for timestomping: all-zero sub-seconds on BOTH atime and mtime; touch -t/-r leaves ctime and birth unchanged"
+  - phase: "Memory"
+    steps:
+      - "Volatility Linux requires a kernel- AND distro-specific profile (same version on RHEL vs Ubuntu differs)"
+      - "Run linux_psaux, linux_bash (in-memory command history), linux_netstat, linux_lsof, linux_check_modules, linux_hidden_modules, linux_check_syscall, linux_yarascan"
+  - phase: "Record"
+    steps:
+      - "Record finding with UTC-normalized timestamps, source commands, and UAC hashes"
+      - "Include all evidence IDs from each analysis phase"
+caveats:
+  - "auth.log/secure/syslog timestamps are in the host's LOCAL timezone — normalize to UTC before correlating with UTC-based artifacts."
+  - "Default logrotate retention is ~4 weeks with rotated .1/.2.gz files — use zcat/zgrep on rotated logs; absence in the current log is not absence of the event."
+  - "audit.log uses EPOCH timestamps and is a separate, tamper-resistant source that can survive syslog deletion — always check it during gap analysis."
+  - "wtmp/btmp/utmp/lastlog/faillog are BINARY: live tools are last/lastb/who/w/lastlog; on dead images use last -F <path> / lastb -F <path>."
+  - "bash_history is written ONLY when the shell exits — the current session's history lives only in memory (Volatility linux_bash). A leading space or unset HISTFILE evades logging."
+  - "ext4 delayed allocation can leave files allocated-but-unwritten; deleted ext4 metadata is often zeroed, making recovery harder than NTFS."
+  - "touch -t and touch -r modify atime/mtime ONLY — ctime and birth time survive, which is the timestomping tell on ext4."
+  - "dmesg is not persistent across reboots; the persistent kernel log is kern.log or the journal."
+  - "Sysmon for Linux writes XML into syslog (Debian) or messages (Fedora) — parse accordingly."

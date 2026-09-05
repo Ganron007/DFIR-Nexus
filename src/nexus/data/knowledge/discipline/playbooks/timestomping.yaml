@@ -52,5 +52,7 @@ caveats:
   - "Timestamps shown in Explorer/DIR come from the $I30 directory index $FILE_NAME attribute, which can differ slightly from the MFT file record's $FILE_NAME attribute."
   - "The Accessed (A) timestamp is the LEAST reliable — AV scans and organic system operations update it. It was disabled from Vista through some Win10 builds (NtfsDisableLastAccessUpdate) and re-enabled on later Win10/11. Never build a timeline on A alone."
   - "A brand-new file has ALL FOUR timestamps set to the same creation time — identical MACB on an old file instead suggests copying or timestomping."
+  - "Shimcache cross-check: a backdated binary's M-time stored in Shimcache will NOT match the on-disk M-time — that mismatch is timestomping evidence (13Cubed Shimcache lesson)."
   - "NTFS stores times in UTC (100-nanosecond intervals since 1601-01-01); Prefetch/registry display local time — normalize before comparing."
   - "$SI vs $FN: timestomping tools typically alter $SI (the API-visible set); $FN is updated by the filesystem itself and is harder to forge — $SI earlier than $FN is the classic indicator."
+  - "LINUX/ext4: touch -t and touch -r change atime/mtime ONLY — ctime and birth (CR) time survive; all-zero sub-seconds on BOTH atime and mtime is the programmatic tell. Attackers may also stop NTP, set the clock, drop files, then restart NTP."

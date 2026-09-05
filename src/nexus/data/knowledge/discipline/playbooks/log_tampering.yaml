@@ -57,7 +57,10 @@ phases:
 caveats:
   - "1102 lives in the Security log; 104 lives in the System log (source 'EventLog') — a System-log-only wipe shows 104 but no 1102."
   - "Event 104 text is 'The <channel> log file was cleared' — it fires for System, Application, AND other channels, not just System."
+  - "EVTX rows carry TWO timestamps: Creation Time (event generated) and Content Modification Time — supertimeline analysis should use Creation Time only, or rows duplicate."
   - "Third-party software (notably antivirus) also writes to the Application log — application-log gaps are weaker evidence than Security-log gaps."
   - "wevtutil cl requires the channel name; look for 'cl' or 'clear-log' arguments in scriptblock logging (4104) and console history."
   - "Log clearing does not remove USN journal, MFT, registry, Prefetch, or file-system artifacts — always rebuild the window from those sources."
   - "If the Security log was cleared, the 1102 event itself is usually the LAST surviving record — treat everything before it as potentially missing."
+  - "LINUX hosts: attackers truncate /var/log/auth.log, secure, syslog, messages, or the journal. auditd (/var/log/audit/audit.log, epoch timestamps) is a separate tamper-resistant source that often survives; rotated .1/.2.gz logs (~4-week retention) still hold the window — zgrep them."
+  - "VSS caveat: client Windows 8+ ScopeSnapshots limits shadow copies to boot-volume system files, degrading non-system artifact recovery; Servers keep fuller snapshots (SANS 508.5)."

@@ -1,0 +1,96 @@
+name: "Memory Forensics Investigation"
+description: "Acquire and analyze volatile memory with Volatility 2/3 and MemProcFS for injection, rootkits, and credential residue"
+mitre: ["T1055", "T1014", "T1003"]
+query_terms:
+  - volatility
+  - vol.py
+  - windows.info
+  - imageinfo
+  - kdbgscan
+  - psscan
+  - pslist
+  - pstree
+  - psxview
+  - dlllist
+  - ldrmodules
+  - malfind
+  - holofind
+  - apihooks
+  - ssdt
+  - modscan
+  - driverscan
+  - devicetree
+  - filescan
+  - dumpfiles
+  - memmap
+  - cmdscan
+  - consoles
+  - getsids
+  - hivelist
+  - printkey
+  - shimcachemem
+  - yarascan
+  - vadyarascan
+  - dlldump
+  - moddump
+  - memdump
+  - vaddump
+  - bstrings
+  - pagefile
+  - swapfile
+  - hiberfil
+  - imagecopy
+  - winpmem
+  - dumpit
+  - memprocfs
+sources:
+  - "13Cubed — Investigating Windows Memory (acquisition, Volatility 2/3, MemProcFS, hibernation)"
+  - "SANS FOR526 — Memory Forensics In-Depth (hashdump, cachedump, mimikatz plugins)"
+  - "Volexity — Volatility Malware & Memory Training (Vol3 plugin behavior, paging)"
+triggers:
+  - "Memory image available for the case (sift_memory_file intake)"
+  - "Disk artifacts suggest injection, hollowing, or rootkit behavior"
+  - "Credential theft suspected but disk artifacts inconclusive"
+  - "Network connections need process attribution beyond Sysmon"
+phases:
+  - phase: "Acquire"
+    steps:
+      - "Prefer crash-dump-capable acquisition (Magnet DumpIt); WinPMem/Belkasoft produce raw dumps; FTK Imager live capture is last resort (hard-crash risk)"
+      - "Collect pagefile.sys and swapfile.sys alongside the dump; collect hiberfil.sys only from powered-off media (zeroed on live Win10+)"
+      - "Document order of volatility and acquisition smear before shutdown"
+  - phase: "Identify Image"
+    steps:
+      - "Run windows.info (Vol3) or imageinfo/kdbgscan (Vol2) to confirm profile support"
+      - "List hives with hivelist; enumerate processes with pslist AND psscan; enumerate drivers with modules AND modscan"
+  - phase: "Hunt Code Injection"
+    steps:
+      - "Run ldrmodules — blank MappedPath means the DLL was not loaded from disk (DLL injection)"
+      - "Run malfind / Windows.Malfind — PAGE_EXECUTE_READWRITE sections with no file backing (reflective injection); dump with --dump"
+      - "Run holofind (Vol2) for process hollowing via PEB/VAD discrepancy; run apihooks (Vol2) and ssdt for hooking"
+      - "Scan with yarascan / Windows.VADYaraScan; dump suspicious sections for AV/YARA/string analysis"
+  - phase: "Extract Artifacts"
+    steps:
+      - "Use filescan + dumpfiles to recover files from memory; procdump/dlldump for process and DLL binaries"
+      - "Extract command history with cmdline, cmdscan, consoles"
+      - "Extract registry with hivelist + printkey; Shimcache from memory with shimcachemem (bypasses the reboot-flush limitation)"
+      - "Extract credentials: hashdump (SAM, needs System+SAM offsets), cachedump (Domain cache, default 10), mimikatz/lsadump (wdigest plaintext)"
+  - phase: "Corroborate"
+    steps:
+      - "Cross-view pslist vs psscan, modules vs modscan, netscan vs netstat — differences reveal hidden objects"
+      - "Correlate memory findings with disk artifacts (Amcache, Prefetch, registry) before recording"
+      - "Check hashes of dumped binaries against threat intelligence (opencti: lookup_hash)"
+  - phase: "Record"
+    steps:
+      - "Record finding with plugin output, dumped-file hashes, and audit_ids"
+      - "State which Volatility version produced each result — plugin behavior differs"
+      - "HITL checkpoint — memory evidence may contain user credentials; handle per evidence policy"
+caveats:
+  - "Live acquisition SMEARS: the system keeps writing memory during capture; the dump reflects no single instant. Note capture duration in the finding."
+  - "Crash dumps carry headers/metadata and are more reliable; raw dumps (WinPMem/Belkasoft/FTK) have none. Record which format was collected."
+  - "Volatility 2 supports only up to Win10 2004 (19041); use Volatility 3 for Win10 20H2+/Win11. The same plugin name can return very different results (Vol2 netscan misses connections on modern builds)."
+  - "Pool-scan plugins (psscan, modscan, filescan, netscan) are slower but find hidden/unlinked/terminated objects that linked-list plugins miss."
+  - "malfind detects REFLECTIVE injection only; LoadLibrary-style DLL injection shows in LDRModules instead. Both have false positives — corroborate before recording."
+  - "API hooks from security software and SSDT hooks in ntoskrnl/win32k are expected false positives; SSDT hooks are rare on modern Windows."
+  - "Pagefile/swapfile are not parsed by Volatility/MemProcFS — use strings/bstrings. AV signature strings ('mimikatz', 'Cobalt Strike') appear in pagefile from scanner databases; correlate to a process before citing."
+  - "Paged-out pages are not in the dump; MemCompression (Win10) can hide data. Absence in memory is not absence on disk."
+  - "hashdump/cachedump require hive offsets from hivelist (-y System, -s SAM/Security)."

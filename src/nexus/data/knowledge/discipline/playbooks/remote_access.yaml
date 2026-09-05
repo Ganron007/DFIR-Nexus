@@ -77,6 +77,10 @@ phases:
       - "Include all evidence IDs from each analysis phase"
 caveats:
   - "TerminalServices-RemoteConnectionManager 1149 is a successful NETWORK connection, NOT a successful authentication — never cite 1149 alone as a logon."
+  - "RDP event map: RdpCoreTS/Operational 131 (connection attempt) and 98 (successful connection); LocalSessionManager 21 logon / 22 shell start / 23 logoff / 24 disconnect / 25 reconnect; Security 4778/4779 session reconnect/disconnect."
+  - "Default.rdp pivot: C:\\Users\\<user>\\Documents\\Default.rdp records the 'full address' of the FIRST RDP destination from this host — read it on suspected SOURCE systems."
+  - "SMB admin-share lateral movement: SmbClient/Security 31001 (failed logon to destination), 'net use z: \\\\host\\c$', 'dir \\\\host\\c$'; file drops land in C$ or ADMIN$. PsExec's binary goes to ADMIN$\\Windows by default and the service key is HKLM\\SYSTEM\\...\\Services\\PSEXESVC (the -r flag renames it)."
+  - "Remote service creation via 'sc \\\\host create ... binpath=' and WMI via 'wmic /node:host process call create' or Invoke-WmiMethod — mofcomp.exe and scrcons.exe in Prefetch indicate WMI repository manipulation."
   - "UAL exists only on Windows Server 2012+ (server OS). Databases are ESENT; SrumECmd will fail with 'database not shut down cleanly' until esentutl /p repairs them — this is expected, not corruption."
   - "UAL retains up to two years; current.mdb rolls to GUID.mdb every 24 hours and a new GUID database starts each year."
   - "PsExec creates a NEW PSEXESVC service (and a new 7045) on EVERY run, even seconds apart — multiple 7045s are normal for repeated PsExec use."

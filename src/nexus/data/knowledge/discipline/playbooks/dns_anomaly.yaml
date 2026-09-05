@@ -48,3 +48,5 @@ caveats:
   - "Zeek dns.log records answers the local resolver returned; NXDOMAIN bursts are a DGA/tunneling signal but also occur with misconfigured clients."
   - "TXT-record volume is the strongest tunneling signal; A-record volume alone is usually benign (CDNs)."
   - "Endpoint DNS artifacts (Sysmon 22) tie queries to a process; network-only DNS logs cannot attribute to a process."
+  - "RITA DNS tunneling workflow: 'rita show-exploded-dns <db> -H' (exploded subdomain view) and 'rita show-beacons-fqdn <db> -H'; massive queries to one second-level domain with NO matching HTTP traffic is the strong exfil indicator (CCD labs 34-35)."
+  - "Exfil channels beyond DNS: FTP/SFTP/TFTP, cloud sync (Dropbox/Drive/OneDrive), email, steganography, RAT/VPN tunneling — check SRUM data volumes and Packetbeat flows, not just DNS (CCD Module 8)."

@@ -1,0 +1,52 @@
+name: "Phishing Analysis Investigation"
+description: "Analyze phishing emails and their artifacts to confirm delivery vector and scope recipients"
+mitre: ["T1566", "T1566.001", "T1566.002"]
+query_terms:
+  - reply-to
+  - return-path
+  - x-mailer
+  - received
+  - spf
+  - dkim
+  - dmarc
+  - phishing
+  - attachment
+  - urlscan
+sources:
+  - "Blue Team Level 1 — Phishing Analysis (Anatomy of an Email; Artifacts to Collect; Manual Collection)"
+triggers:
+  - "User reports a suspicious email"
+  - "Compromise suspected via emailed link or attachment"
+  - "Mail gateway flagged a campaign affecting multiple users"
+phases:
+  - phase: "Collect Artifacts"
+    steps:
+      - "Preserve the full .eml/.msg with headers — do not rely on the client rendering"
+      - "Record: sending address, subject, recipient/BCC list, sending server IP + reverse DNS, timestamp, attachment name + SHA256, full URLs + root domains"
+  - phase: "Header Analysis"
+    steps:
+      - "Read Received headers BOTTOM-UP to follow the true delivery path"
+      - "Compare Reply-To / Return-Path against From — a mismatch is the classic phishing tell"
+      - "Check SPF, DKIM, DMARC results — but note a PASS only authenticates the envelope domain, not the display name"
+      - "Check X-Mailer and originating client for automation indicators"
+  - phase: "Payload Analysis"
+    steps:
+      - "Hash attachments and check against threat intelligence (opencti: lookup_hash)"
+      - "Detonate or statically analyze documents (remnux: analyze_file) — macros, embedded objects, remote template references"
+      - "Check URLs against reputation and archive (urlscan-style) before any live access"
+  - phase: "Scope Recipients"
+    steps:
+      - "Search the mail environment for the same sender/subject/URL across all mailboxes"
+      - "Identify who clicked (proxy/mail-gateway logs) and correlate with host artifacts (browser_forensics, suspicious_execution)"
+      - "Check for internal spearphishing — compromised accounts forwarding the campaign"
+  - phase: "Record"
+    steps:
+      - "Record finding with email artifacts, payload verdicts, and recipient scope"
+      - "HITL checkpoint — campaign scope determines notification decisions"
+caveats:
+  - "SPF/DKIM/DMARC PASS does NOT mean the email is safe — it authenticates the sending domain, and attackers abuse lookalike or compromised domains."
+  - "Reply-To differing from From is high-signal but not proof — some legitimate services use it; weigh with content and context."
+  - "Read Received headers from the BOTTOM (origin) upward — top-down reading inverts the delivery path."
+  - "URLs in the body may be wrapped/rewritten by safe-link gateways — collect the ORIGINAL URL from the raw .eml, not the client display."
+  - "Attachment hashes should be SHA256 of the raw attachment, not the container message."
+  - "Never open attachments or URLs on a production host — use the REMnux/detonation lane."

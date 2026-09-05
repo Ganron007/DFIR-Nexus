@@ -1,0 +1,51 @@
+name: "Super-Timeline Investigation"
+description: "Build and analyze a consolidated Plaso super-timeline across host artifacts"
+mitre: []
+query_terms:
+  - plaso
+  - log2timeline
+  - psort
+  - mactime
+  - bodyfile
+  - l2tcsv
+  - timesketch
+  - super timeline
+  - fls
+  - istat
+sources:
+  - "SANS FOR508 — Timeline Analysis (508.4 lab: log2timeline/psort workflow, Creation Time filtering)"
+  - "13Cubed — Investigating Windows Endpoints / Linux Devices (TSK fls+mactime, Plaso)"
+triggers:
+  - "Multiple artifact families need unified chronological analysis"
+  - "Investigation window spans many hosts or artifact types"
+  - "N4 hits need time-context corroboration across families"
+phases:
+  - phase: "Acquire Inputs"
+    steps:
+      - "Collect parsed CSVs from the N2 lane (EvtxECmd, PECmd, MFTECmd, RECmd, LECmd, SrumECmd outputs)"
+      - "For raw images, run log2timeline with a targeted parser set (--parsers 'prefetch,winevtx,mft,usnjrnl') before full parsing"
+  - phase: "Build Timeline"
+    steps:
+      - "log2timeline.py --storage-file timeline.plaso <evidence> — then psort.py -o l2tcsv -w timeline.csv timeline.plaso"
+      - "For TSK-only sources: fls -r -m <mnt> <img> > bodyfile; mactime -b bodyfile -d -y > mactime.csv (UTC MACB)"
+      - "Prefer psort -o dynamic for configurable fields; keep the full dataset and slice with --slice for focused windows"
+  - phase: "Filter and Analyze"
+    steps:
+      - "Filter EVTX rows by 'Creation Time' (when the event was generated), NOT 'Content Modification Time' — the latter duplicates rows in supertimelines"
+      - "Slice around pivot events (--slice 'YYYY-MM-DDTHH:MM:SS' --slice_size N) to retain context"
+      - "Tag rows by family and pivot on host/user to build the intrusion narrative"
+  - phase: "Corroborate"
+    steps:
+      - "Cross-check timeline rows against N4 hits and their audit_ids"
+      - "Normalize all timestamps to UTC — Plaso stores UTC internally; source artifacts may be local time"
+  - phase: "Record"
+    steps:
+      - "Record finding citing the specific timeline rows (file:line) and their audit_ids"
+      - "Include all evidence IDs from each analysis phase"
+caveats:
+  - "Full-disk log2timeline can take hours and 8GB+ RAM — use --parsers to scope, and --vss_stores all to include shadow copies."
+  - "psort output can be millions of rows — always slice or filter; never load the full CSV into review."
+  - "EVTX has TWO timestamps: Creation Time (event generated) and Content Modification Time (record written) — filtering on the wrong one duplicates or misorders events."
+  - "Plaso storage files can be multi-GB; keep them out of the case extractions directory."
+  - "Timesketch is the interactive exploration layer for large Plaso timelines when available."
+  - "MACB from TSK bodyfiles is UTC; Prefetch/registry-derived rows may be local — Plaso normalizes, hand-built bodyfiles may not."

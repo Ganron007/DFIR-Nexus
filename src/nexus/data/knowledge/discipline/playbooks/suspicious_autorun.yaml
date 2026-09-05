@@ -60,7 +60,10 @@ phases:
 caveats:
   - "Run/RunOnce under HKCU affect ONLY that user (NTUSER.DAT); under HKLM they affect ALL users (SOFTWARE hive). Run fires every logon; RunOnce fires once at next logon."
   - "There are 100+ ASEPs on Windows — Run keys are the most ubiquitous and STILL heavily used by threat actors precisely because they work; never skip them as 'too obvious'."
-  - "Scheduled task events live in Microsoft-Windows-TaskScheduler/Operational: 106 = task registered, 141 = task deleted, 100 = task started, 102 = task completed. Security 4698 (task created) requires audit policy."
-  - "Service creation: System 7045 always fires; Security 4697 requires audit policy — 7045 is the more reliable source."
-  - "TaskScheduler 100/102 pairs give actual execution times of a task — use them to prove the persistence RAN, not just exists."
+  - "Additional ASEPs beyond Run keys: Active Setup\\Installed Components, AppInit_DLLs, Shell Extensions approved, Winlogon (Userinit/Shell/Notify), and RunMRU (Start>Run history) — Mandiant Windows Cheat Sheet."
+  - "Service persistence hides in Parameters\\ServiceDll and ImagePath under HKLM\\SYSTEM\\ControlSet###\\Services\\<name> — check both, and the service ACCOUNT plus failure-recovery actions (run program on 1st/2nd failure is abusable)."
+  - "Scheduled task FILES live in C:\\Windows\\Tasks, System32\\Tasks, SysWOW64\\Tasks, and Schedule\\TaskCache\\Tree|Tasks — the Author field can reveal the creating system; remote creation via 'at \\\\host' or 'schtasks /S host' is lateral movement, not local persistence."
+  - "Scheduled task events: TaskScheduler/Operational 106 registered, 141 deleted, 140 updated, 200 executed, 201 completed, 100/102 instance start/finish; Security 4698/4699/4700/4701 require audit policy. 7045 (service install) always fires in System; 4697 needs audit policy."
+  - "Service control events: 7034 crashed, 7035 start/stop control, 7036 started/stopped, 7040 start-type changed."
+  - "Use RECmd batch RegistryASEPs.reb to pull dozens of ASEP locations across SOFTWARE, SOFTWARE\\Classes, WOW64, and SYSTEM hives in one pass."
   - "Registry last-write time is the only registry timestamp — it proves 'no earlier than' for key creation and 'no later than' for last modification."

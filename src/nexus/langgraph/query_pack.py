@@ -74,6 +74,11 @@ _WEAK_TERMS = frozenset({
     "http", "dns", "tls", "sum", "cl", "mft", "txt", "sysmon", "defender",
     # 2-digit Task Scheduler / RDP event IDs — also match counts and sizes.
     "21", "22", "23", "24", "25",
+    # Volatility/memory + browser generic terms from memory_forensics /
+    # browser_forensics playbooks — plugin-ish but high-volume substrings.
+    "modules", "strings", "handles", "consoles", "cmdline", "netstat",
+    "history", "downloads", "cookies", "secure", "messages", "received",
+    "attachment", "edge", "uac", "fls",
 })
 _NUMERIC_TERM = re.compile(r"^\d{1,5}$")
 _needle_rx: dict[str, re.Pattern[str]] = {}
