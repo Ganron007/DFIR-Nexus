@@ -12,8 +12,6 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import pytest
-
 from nexus.langgraph.mode1 import (
     _heuristic_needles,
     _heuristic_scribe,
@@ -21,7 +19,6 @@ from nexus.langgraph.mode1 import (
     promote_hits_to_draft,
     scribe_finding,
 )
-
 
 # ---------------------------------------------------------------------------
 # NL -> needles

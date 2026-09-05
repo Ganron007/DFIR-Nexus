@@ -11,6 +11,7 @@ import re
 from ast import literal_eval
 from collections import defaultdict
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 
@@ -741,10 +742,9 @@ def build_dfir_markdown(
     return "\n".join(lines)
 
 
-def write_findings_preview(case_dir) -> "Path":
+def write_findings_preview(case_dir) -> Path:
     """Write ``reports/REPORT-DRAFT.md`` from staged DRAFT+APPROVED findings."""
     import json
-    from pathlib import Path
 
     import yaml
 

@@ -4,11 +4,8 @@ from __future__ import annotations
 
 import os
 import sys
-import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -48,9 +45,10 @@ def test_nl_to_needles_question():
 
 
 def test_ask_page_renders_with_no_case():
-    from starlette.testclient import TestClient
-    from nexus.dashboard.app import create_dashboard
     from starlette.applications import Starlette
+    from starlette.testclient import TestClient
+
+    from nexus.dashboard.app import create_dashboard
     app = Starlette(routes=create_dashboard())
     client = TestClient(app)
     resp = client.get("/portal/ask")
@@ -62,9 +60,10 @@ def test_ask_page_renders_with_no_case():
 @patch("nexus.langgraph.mode1.nl_to_needles")
 @patch("nexus.langgraph.query_pack.run_ad_hoc_query")
 def test_api_ask_returns_needles_and_hits(mock_query, mock_nl, mock_get_dir, tmp_path):
-    from starlette.testclient import TestClient
-    from nexus.dashboard.app import create_dashboard
     from starlette.applications import Starlette
+    from starlette.testclient import TestClient
+
+    from nexus.dashboard.app import create_dashboard
 
     case_dir = _make_case_dir(tmp_path)
     mock_get_dir.return_value = case_dir
@@ -88,9 +87,10 @@ def test_api_ask_returns_needles_and_hits(mock_query, mock_nl, mock_get_dir, tmp
 
 @patch("nexus.dashboard.app._get_case_dir")
 def test_api_select_requires_title(mock_get_dir, tmp_path):
-    from starlette.testclient import TestClient
-    from nexus.dashboard.app import create_dashboard
     from starlette.applications import Starlette
+    from starlette.testclient import TestClient
+
+    from nexus.dashboard.app import create_dashboard
 
     case_dir = _make_case_dir(tmp_path)
     mock_get_dir.return_value = case_dir
@@ -107,9 +107,10 @@ def test_api_select_requires_title(mock_get_dir, tmp_path):
 @patch("nexus.langgraph.query_pack.n4_hits")
 @patch("nexus.langgraph.mode1.save_draft_finding")
 def test_api_select_promotes_hits(mock_save, mock_n4, mock_get_dir, tmp_path):
-    from starlette.testclient import TestClient
-    from nexus.dashboard.app import create_dashboard
     from starlette.applications import Starlette
+    from starlette.testclient import TestClient
+
+    from nexus.dashboard.app import create_dashboard
 
     case_dir = _make_case_dir(tmp_path)
     mock_get_dir.return_value = case_dir
@@ -140,9 +141,10 @@ def test_api_select_promotes_hits(mock_save, mock_n4, mock_get_dir, tmp_path):
 
 @patch("nexus.dashboard.app._get_case_dir")
 def test_explore_page_renders(mock_get_dir, tmp_path):
-    from starlette.testclient import TestClient
-    from nexus.dashboard.app import create_dashboard
     from starlette.applications import Starlette
+    from starlette.testclient import TestClient
+
+    from nexus.dashboard.app import create_dashboard
 
     case_dir = _make_case_dir(tmp_path)
     mock_get_dir.return_value = case_dir
@@ -157,9 +159,10 @@ def test_explore_page_renders(mock_get_dir, tmp_path):
 @patch("nexus.dashboard.app._get_case_dir")
 @patch("nexus.langgraph.query_pack.n4_hits")
 def test_api_explore_search(mock_n4, mock_get_dir, tmp_path):
-    from starlette.testclient import TestClient
-    from nexus.dashboard.app import create_dashboard
     from starlette.applications import Starlette
+    from starlette.testclient import TestClient
+
+    from nexus.dashboard.app import create_dashboard
 
     case_dir = _make_case_dir(tmp_path)
     mock_get_dir.return_value = case_dir

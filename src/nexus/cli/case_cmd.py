@@ -314,7 +314,7 @@ def ask_case(
 ):
     """Mode 1 — NL to needles: translate English question into search terms, run N4 query."""
     from nexus.langgraph.mode1 import nl_to_needles
-    from nexus.langgraph.query_pack import _parse_needles, run_ad_hoc_query
+    from nexus.langgraph.query_pack import run_ad_hoc_query
 
     case_dir = _case_dir(case_id)
     if not question:
@@ -370,7 +370,7 @@ def ask_case(
     for i, hit in enumerate(n4_result.get("hits") or [], 1):
         loc = f"{hit.get('file')}:{hit.get('line')}"
         typer.echo(f"  [{i}] {hit.get('family')}\t{loc}\t{hit.get('terms')}\t{hit.get('text')}")
-    typer.echo(f"\nTo promote hits to DRAFT: nexus case select --hits 1,3,5 --title '...'")
+    typer.echo("\nTo promote hits to DRAFT: nexus case select --hits 1,3,5 --title '...'")
 
 
 @app.command("select")
@@ -410,9 +410,9 @@ def select_case(
 
     # Load the last query results from the query pack
     from nexus.langgraph.query_pack import (
-        load_case_intake,
-        collect_query_terms,
         collect_playbook_query_terms,
+        collect_query_terms,
+        load_case_intake,
         n4_hits,
         parse_intake_window,
     )
@@ -473,7 +473,6 @@ def select_case(
         rag_context = ""
         if model:
             try:
-                from nexus.tools.forensic import _get_tools
                 # RAG search for methodology on the hit families
                 families = sorted({h.get("family", "") for h in selected if h.get("family")})
                 rag_context = f"Artifact families: {', '.join(families)}"
@@ -494,7 +493,7 @@ def select_case(
     if result.get("status") == "STAGED":
         fid = result.get("finding_id", "?")
         typer.echo(f"\nDRAFT staged: {fid}")
-        typer.echo(f"  Review: nexus case findings")
+        typer.echo("  Review: nexus case findings")
         typer.echo(f"  Approve: nexus approve --examiner {examiner} {fid}")
     elif result.get("status") == "VALIDATION_FAILED":
         typer.echo(f"\nValidation failed: {result.get('errors', [])}", err=True)

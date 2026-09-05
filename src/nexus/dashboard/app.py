@@ -952,9 +952,9 @@ async def ask_page(request):
     error = ""
 
     if case_dir and question:
+        from nexus.langgraph.llm_pipeline import get_model
         from nexus.langgraph.mode1 import nl_to_needles
         from nexus.langgraph.query_pack import run_ad_hoc_query
-        from nexus.langgraph.llm_pipeline import get_model
 
         try:
             model = get_model()
@@ -1061,9 +1061,9 @@ async def api_ask(request):
     if not question:
         return JSONResponse({"error": "Missing question"}, status_code=400)
 
+    from nexus.langgraph.llm_pipeline import get_model
     from nexus.langgraph.mode1 import nl_to_needles
     from nexus.langgraph.query_pack import run_ad_hoc_query
-    from nexus.langgraph.llm_pipeline import get_model
 
     try:
         model = get_model()
@@ -1107,15 +1107,15 @@ async def api_select(request):
     if not raw_indices:
         return JSONResponse({"error": "No hits selected"}, status_code=400)
 
-    from nexus.langgraph.mode1 import promote_hits_to_draft, save_draft_finding, scribe_finding
     from nexus.langgraph.llm_pipeline import get_model
+    from nexus.langgraph.mode1 import promote_hits_to_draft, save_draft_finding, scribe_finding
     from nexus.langgraph.query_pack import (
-        load_case_intake,
-        collect_query_terms,
+        _parse_needles,
         collect_playbook_query_terms,
+        collect_query_terms,
+        load_case_intake,
         n4_hits,
         parse_intake_window,
-        _parse_needles,
     )
 
     intake = load_case_intake(case_dir)
@@ -1226,10 +1226,7 @@ def _bucket_times(hits: list[dict], bucket_minutes: int = 60) -> dict[str, int]:
                 d = datetime.strptime(ts, '%Y-%m-%d').replace(tzinfo=UTC)
             except ValueError:
                 continue
-            if bucket_minutes == 1440:
-                key = ts
-            else:
-                key = f'{ts}T{d.hour:02d}:00'
+            key = ts if bucket_minutes == 1440 else f'{ts}T{d.hour:02d}:00'
             buckets[key] = buckets.get(key, 0) + 1
     return dict(sorted(buckets.items()))
 
@@ -1240,7 +1237,13 @@ async def api_explore_search(request):
     if not case_dir:
         return JSONResponse({'error': 'No active case'}, status_code=404)
 
-    from nexus.langgraph.query_pack import load_case_intake, collect_query_terms, n4_hits, parse_intake_window, _parse_needles
+    from nexus.langgraph.query_pack import (
+        _parse_needles,
+        collect_query_terms,
+        load_case_intake,
+        n4_hits,
+        parse_intake_window,
+    )
 
     body = await request.json()
     needles = _parse_needles(str(body.get('needles') or ''))
@@ -1286,7 +1289,13 @@ async def api_explore_histogram(request):
     if not case_dir:
         return JSONResponse({'error': 'No active case'}, status_code=404)
     body = await request.json()
-    from nexus.langgraph.query_pack import load_case_intake, collect_query_terms, n4_hits, parse_intake_window, _parse_needles
+    from nexus.langgraph.query_pack import (
+        _parse_needles,
+        collect_query_terms,
+        load_case_intake,
+        n4_hits,
+        parse_intake_window,
+    )
     needles = _parse_needles(str(body.get('needles') or ''))
     family_filter = [f.strip() for f in str(body.get('family') or '').split(',') if f.strip()]
     start = str(body.get('start') or '').strip()

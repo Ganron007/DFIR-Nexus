@@ -180,9 +180,10 @@ def _glob_exe(root: Path, prefixes: tuple[str, ...]) -> Path | None:
         if not p.is_file():
             continue
         low = p.name.lower()
-        if low.endswith(".exe") or p.suffix == "":
-            if any(low.startswith(pref) for pref in prefixes):
-                hits.append(p)
+        if (low.endswith(".exe") or p.suffix == "") and any(
+            low.startswith(pref) for pref in prefixes
+        ):
+            hits.append(p)
     if not hits:
         return None
     exact = [h for h in hits if h.stem.lower() in prefixes]
