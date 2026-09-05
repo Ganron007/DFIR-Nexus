@@ -6,7 +6,16 @@ query_terms:
   - mountpoints2
   - removable
   - setupapi
+  - setupapi.dev.log
+  - vid_
+  - pid_
+  - emdmgmt
+  - mounteddevices
+  - portable devices
+  - sandisk
+  - kingston
 sources:
+  - "13Cubed — Investigating Windows Endpoints (USB Forensics, Networks, and More; Windows Registry Cheat Sheet)"
   - "SANS FOR500 — Windows Forensic Analysis"
   - "MITRE ATT&CK T1052.001 — Exfiltration Over USB"
   - "MITRE ATT&CK T1091 — Replication Through Removable Media"
@@ -15,22 +24,32 @@ triggers:
   - "File operations to removable drive paths detected"
   - "USB connection coincides with suspicious user activity"
   - "Unknown USB device connected to sensitive system"
+  - "EMDMgmt shows a volume serial with no matching current device (device was formatted)"
 phases:
   - phase: "Identify Devices"
     steps:
       - "Parse USB artifacts from registry using RECmd (via run_command / run_windows_command) — USBSTOR, MountPoints2, MountedDevices"
-      - "Check SetupAPI logs for device installation events"
-      - "Extract device serial numbers, vendor IDs, and product IDs"
+      - "Check SetupAPI logs for device installation events (C:\\Windows\\inf\\setupapi.dev.log on Vista+; setupapi.log on XP)"
+      - "Extract device serial numbers, vendor IDs (VID), and product IDs (PID); look up VID/PID for make/model"
+      - "Check HKLM\\SOFTWARE\\Microsoft\\Windows Portable Devices\\Devices for the FriendlyName (volume name) by serial"
   - phase: "Timeline"
     steps:
       - "Correlate USB first and last connection times with investigation timeframe"
+      - "Use USBSTOR Properties {83da6326-97a6-4088-9453-a1923f573b29}: 0064 = First Install (Win7/8), 0066 = Last Connected (Win8+), 0067 = Last Removal (Win8+)"
+      - "Cross-check with \\Enum\\USB\\VID_...&PID_...\\<serial> key last-write time and \\MountPoints2\\{GUID} last-write time"
       - "Check event logs for USB-related events using EvtxECmd (via run_command / run_windows_command)"
       - "Determine connection duration and pattern (one-time vs repeated)"
+  - phase: "User Attribution"
+    steps:
+      - "Map serial to drive letter / volume GUID via HKLM\\SYSTEM\\MountedDevices"
+      - "Find which USER mounted it: HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\MountPoints2\\{volume GUID}"
+      - "Check per-user ShellBags and LNK files for browsing into the removable volume"
   - phase: "File Operations"
     steps:
       - "Check LNK files for removable drive paths using LECmd (via run_command / run_windows_command)"
       - "Check Jump Lists for recent file access on removable media using JLECmd (via run_command / run_windows_command)"
       - "Check MFT for file copy operations to or from removable drive letters"
+      - "Check HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\EMDMgmt: serial-to-volume-serial history survives reformatting (decimal VSN — convert to hex)"
   - phase: "Context"
     steps:
       - "Determine if USB activity is routine for this user or anomalous"
@@ -40,3 +59,10 @@ phases:
     steps:
       - "Record finding including device serial, connection times, and files accessed"
       - "Include all evidence IDs from each analysis phase"
+caveats:
+  - "A serial number with an '&' as the SECOND character is NOT a globally-unique serial — it is a device-generated value; treat attribution as weaker."
+  - "Properties values 0066/0067 (Last Connected/Removal) exist only on Windows 8+; on Win7 use key last-write times and setupapi logs."
+  - "EMDMgmt is only present when the SYSTEM drive is NOT an SSD; it preserves volume serial numbers across formats — the same device serial appears once per format with a different VSN."
+  - "setupapi.dev.log records the FIRST time a device was connected — search it by serial number."
+  - "MountedDevices maps serial → drive letter AND serial → volume GUID; the volume GUID is what links to per-user MountPoints2."
+  - "Registry last-write times are single timestamps (last write only) — they prove 'no later than', not exact event times."

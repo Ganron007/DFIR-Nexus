@@ -68,6 +68,12 @@ _WEAK_TERMS = frozenset({
     # Common LOLBins — keep some hits, never ahead of wipe/C2/wevtutil.
     "rundll32", "schtasks", "certutil", "wscript", "cscript",
     "bitsadmin", "mshta", "regsvr32", "wmic", "winrm", "termsrv",
+    # Generic protocol/channel substrings from playbook terms — they match
+    # huge row volumes (URLs, channel names, paths) and must not outrank
+    # specific indicators like sdelete/mimikatz.
+    "http", "dns", "tls", "sum", "cl", "mft", "txt", "sysmon", "defender",
+    # 2-digit Task Scheduler / RDP event IDs — also match counts and sizes.
+    "21", "22", "23", "24", "25",
 })
 _NUMERIC_TERM = re.compile(r"^\d{1,5}$")
 _needle_rx: dict[str, re.Pattern[str]] = {}

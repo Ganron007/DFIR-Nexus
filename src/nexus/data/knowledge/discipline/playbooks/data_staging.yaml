@@ -49,3 +49,10 @@ phases:
     steps:
       - "Record finding including timeline from data access through staging through potential exfiltration"
       - "Include all evidence IDs from each analysis phase"
+caveats:
+  - "SRUM tracks per-application network DATA VOLUME (via SrumECmd {D8F...} data tables) — it is the primary artifact for proving 'how much left the host', not where it went."
+  - "sdelete renames files (sdeleteNN.tmp pattern) before overwrite — look for the rename chain in USN journal, not just the final deletion."
+  - "Recycle Bin presence does not prove user deletion intent — $I files record original path and deletion TIME (UTC); $R files hold content."
+  - "Archive tools (7z/rar/compact) are frequently used legitimately — staging findings need the accessed-file context (ShellBags/Jump Lists) to be meaningful."
+  - "Cloud sync (DriveFS/OneDrive) uploads can look like exfiltration; check whether the account is the user's own before attributing exfiltration."
+  - "Compact.exe (LZNT1 compression) is a native alternative to 7z/rar — include it in archive-tool Prefetch review."

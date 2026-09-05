@@ -1,7 +1,27 @@
 name: "Unusual Logon Investigation"
 description: "Investigate unexpected authentication events indicating unauthorized access or credential misuse"
 mitre: ["T1078", "T1021"]
+query_terms:
+  - "4624"
+  - "4625"
+  - "4634"
+  - "4647"
+  - "4648"
+  - "4672"
+  - "4776"
+  - "4768"
+  - "4769"
+  - "4771"
+  - "4720"
+  - "4798"
+  - "4799"
+  - "5140"
+  - "5145"
+  - "type 10"
+  - "type 3"
+  - "type 9"
 sources:
+  - "13Cubed — Windows Event Log Cheat Sheet (Security event IDs + logon type codes)"
   - "SANS FOR508 — Windows Enterprise Incident Response"
   - "MITRE ATT&CK T1078 — Valid Accounts"
   - "MITRE ATT&CK T1021 — Remote Services"
@@ -11,6 +31,8 @@ triggers:
   - "Service account used interactively"
   - "Failed logon attempts followed by success from same source"
   - "Logon type inconsistent with account purpose"
+  - "4648 (explicit credentials) on a server with no interactive users"
+  - "4720 (account created) followed by logons from the new account"
 phases:
   - phase: "Identify"
     steps:
@@ -32,6 +54,8 @@ phases:
       - "Determine if the same account accessed other systems during the investigation timeframe"
       - "Check RDP activity in event logs (Event ID 1149, 4624 Type 10) and RDP bitmap cache artifacts"
       - "Check network share access in Security logs (Event IDs 5140, 5145)"
+      - "Check Kerberos activity — 4768 (TGT request), 4769 (service ticket), 4771 (pre-auth failed) for ticket-based movement"
+      - "Check 4672 (special privileges) to spot admin-equivalent logons; 4776 for DC credential validation"
   - phase: "Corroborate"
     steps:
       - "Check source IP reputation and threat intelligence (opencti: lookup_ioc)"
@@ -41,3 +65,11 @@ phases:
     steps:
       - "Record finding with all evidence IDs from each phase"
       - "HITL checkpoint — examiner determines whether logon is unauthorized access"
+caveats:
+  - "Logon type codes: 2=Console, 3=Network, 4=Batch(scheduled task), 5=Service, 7=Unlock, 8=NetworkCleartext, 9=NewCredentials(RunAs), 10=RemoteInteractive(RDP), 11=CachedInteractive, 12=CachedRemoteInteractive, 13=CachedUnlock."
+  - "Type 3 (Network) logons do NOT create a session on the target in the interactive sense — hundreds of Type 3s can be normal file/share traffic; judge by account + source pairing, not raw count."
+  - "4648 means explicit credentials were used (RunAs) — common with scheduled tasks and lateral movement tools; correlate with 4624 Type 9."
+  - "4798/4799 are group membership ENUMERATION events — a burst can indicate recon (e.g. BloodHound-style collection)."
+  - "5140 is share ACCESS; 5145 is a share CHECK — 5145 fires even when access is denied, so it is the better volume signal."
+  - "1102 (audit log cleared) in the same window as logon analysis means the logon record set may be incomplete — note the gap in the finding."
+  - "4688 (process creation) requires audit policy to be enabled; its absence is not evidence of absence."

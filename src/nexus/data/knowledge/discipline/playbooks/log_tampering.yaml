@@ -3,22 +3,30 @@ description: "Investigate event log clearing, suspicious gaps, and anti-forensic
 mitre: ["T1070.001", "T1070"]
 query_terms:
   - wevtutil
+  - cl
   - "1102"
+  - "104"
   - dataoverwrite
   - security.evtx
   - system.evtx
+  - application.evtx
   - usnjrnl
   - sdelete
   - cipher.exe
+  - clear-log
+  - phant0m
+  - invoke-phant0m
 sources:
+  - "13Cubed — Windows Event Log Cheat Sheet (1102, 104, ESENT provider)"
   - "SANS FOR508 — Windows Enterprise Incident Response"
   - "MITRE ATT&CK T1070.001 — Clear Windows Event Logs"
   - "MITRE ATT&CK T1070 — Indicator Removal"
 triggers:
   - "Event ID 1102 detected (Security log cleared)"
-  - "Event ID 104 detected (System log cleared)"
+  - "Event ID 104 detected (System log cleared — 'x104' in the System log source EventLog)"
   - "Gaps in event log sequence numbers"
   - "Missing expected log entries for known activity period"
+  - "wevtutil cl <channel> in command history / PowerShell scriptblock logs"
 phases:
   - phase: "Identify"
     steps:
@@ -36,6 +44,7 @@ phases:
       - "Check Sysmon logs which are stored in a separate event log channel"
       - "Check PowerShell transcripts and PSReadLine history for command activity"
       - "Check network logs and PCAP for activity during the gap period"
+      - "Check ESENT Application-log events (216/325/326/327) — they survive Security-log clearing"
   - phase: "Attribution"
     steps:
       - "Determine which account cleared the logs from Event ID 1102 subject fields"
@@ -45,3 +54,10 @@ phases:
     steps:
       - "Document the gap, alternative sources consulted, and evidence of anti-forensic activity"
       - "HITL checkpoint — evidence destruction may affect legal proceedings and investigation scope"
+caveats:
+  - "1102 lives in the Security log; 104 lives in the System log (source 'EventLog') — a System-log-only wipe shows 104 but no 1102."
+  - "Event 104 text is 'The <channel> log file was cleared' — it fires for System, Application, AND other channels, not just System."
+  - "Third-party software (notably antivirus) also writes to the Application log — application-log gaps are weaker evidence than Security-log gaps."
+  - "wevtutil cl requires the channel name; look for 'cl' or 'clear-log' arguments in scriptblock logging (4104) and console history."
+  - "Log clearing does not remove USN journal, MFT, registry, Prefetch, or file-system artifacts — always rebuild the window from those sources."
+  - "If the Security log was cleared, the 1102 event itself is usually the LAST surviving record — treat everything before it as potentially missing."

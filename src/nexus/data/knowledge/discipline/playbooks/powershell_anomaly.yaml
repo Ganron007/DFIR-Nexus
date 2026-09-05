@@ -7,8 +7,19 @@ query_terms:
   - invoke-expression
   - frombase64
   - iex(
-  - -enc 
+  - -enc
+  - "4104"
+  - "4103"
+  - "400"
+  - "600"
+  - net.webclient
+  - downloadfile
+  - invokemimikatz
+  - invoke-shellcode
+  - reflection
+  - system.management.automation
 sources:
+  - "13Cubed — Windows Event Log Cheat Sheet (PowerShell + Operational event IDs)"
   - "SANS FOR508 — Windows Enterprise Incident Response"
   - "MITRE ATT&CK T1059.001 — PowerShell"
   - "FireEye/Mandiant — Greater Visibility Through PowerShell Logging"
@@ -17,10 +28,12 @@ triggers:
   - "Download cradle patterns (IEX, Invoke-Expression, Net.WebClient, DownloadString)"
   - "Script block logging alerts in PowerShell event logs"
   - "Unusual script execution path or unsigned script"
+  - "Engine state 400 / provider 600 events without corresponding 4104 (classic host, hidden execution)"
 phases:
   - phase: "Identify"
     steps:
       - "Parse PowerShell event logs with EvtxECmd (via run_command / run_windows_command) — Event IDs 4103 (module logging), 4104 (script block logging)"
+      - "Parse classic Windows-PowerShell log — 400 (engine state None→Available), 600 (provider started)"
       - "Parse Security event logs for process creation with command line — Event ID 4688"
       - "Check PowerShell transcripts if enabled (check PSReadLine history and transcript paths)"
   - phase: "Decode"
@@ -42,3 +55,10 @@ phases:
     steps:
       - "Record finding including decoded command content, execution context, and impact assessment"
       - "Include all evidence IDs from each analysis phase"
+caveats:
+  - "4104 script block logging is enabled by DEFAULT in PowerShell v5+ only for content flagged as potentially malicious (logged as WARNING level) — absence of 4104 does not mean no script ran."
+  - "4104 entries are split as 'Creating Scriptblock text (1 of N)' — always reassemble ALL parts before analysis."
+  - "Classic Windows-PowerShell log 400/600 show engine starts and provider loads; they fire even when script block logging captures nothing."
+  - "Base64 -enc payloads are UTF-16LE, not UTF-8 — decoding as UTF-8 yields garbage; decode as UTF-16LE."
+  - "Module logging (4103) writes pipeline execution detail but is NOT enabled by default; its presence depends on group policy."
+  - "Third-party AV/EDR also logs to Application — correlate PowerShell findings with Defender Operational 1116/1117 detections."

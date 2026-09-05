@@ -1,7 +1,17 @@
 name: "Timestomping Investigation"
 description: "Investigate timestamp manipulation in NTFS file system metadata"
 mitre: ["T1070.006"]
+query_terms:
+  - timestomp
+  - nircmd
+  - mft
+  - usnjrnl
+  - $si
+  - $fn
+  - macb
+  - "1601"
 sources:
+  - "13Cubed — Investigating Windows Endpoints (MACB Timestamps; Metafiles, MFT, Journaling, ADS; Parsing the MFT and USN Journal)"
   - "SANS FOR500 — Windows Forensic Analysis"
   - "MITRE ATT&CK T1070.006 — Timestomping"
 triggers:
@@ -9,6 +19,7 @@ triggers:
   - "Nanosecond precision of zero in timestamps (indicates programmatic modification)"
   - "Timestamps predating the file system creation date"
   - "Timestamps inconsistent with other artifact evidence"
+  - "All four MACB timestamps identical on an OLD file (copied, not created)"
 phases:
   - phase: "Identify"
     steps:
@@ -20,6 +31,7 @@ phases:
       - "Check USN Journal for actual file creation and modification times"
       - "Check Prefetch for execution timing of the timestomped files if they are executables"
       - "Cross-reference with Amcache and Shimcache entries for the same files"
+      - "Check $I30 index attributes — the directory index $FILE_NAME can differ slightly from the MFT record $FILE_NAME"
   - phase: "Scope"
     steps:
       - "Search for other timestomped files using the same pattern — same target date, same nanosecond value"
@@ -35,3 +47,10 @@ phases:
       - "Record finding including both $SI and $FN timestamps for affected files"
       - "Note the discrepancy as evidence of deliberate timestamp manipulation"
       - "Include all evidence IDs from each analysis phase"
+caveats:
+  - "MACB = Modified, Accessed, MFT-record-change (NOT creation), Birth/created. The C timestamp is metadata change and is NOT exposed via the Windows API."
+  - "Timestamps shown in Explorer/DIR come from the $I30 directory index $FILE_NAME attribute, which can differ slightly from the MFT file record's $FILE_NAME attribute."
+  - "The Accessed (A) timestamp is the LEAST reliable — AV scans and organic system operations update it. It was disabled from Vista through some Win10 builds (NtfsDisableLastAccessUpdate) and re-enabled on later Win10/11. Never build a timeline on A alone."
+  - "A brand-new file has ALL FOUR timestamps set to the same creation time — identical MACB on an old file instead suggests copying or timestomping."
+  - "NTFS stores times in UTC (100-nanosecond intervals since 1601-01-01); Prefetch/registry display local time — normalize before comparing."
+  - "$SI vs $FN: timestomping tools typically alter $SI (the API-visible set); $FN is updated by the filesystem itself and is harder to forge — $SI earlier than $FN is the classic indicator."

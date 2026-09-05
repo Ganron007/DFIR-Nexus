@@ -10,7 +10,12 @@ query_terms:
   - certutil
   - bitsadmin
   - encodedcommand
+  - schtasks
+  - at.exe
+  - sqldumper
+  - rpcping
 sources:
+  - "13Cubed — Investigating Windows Endpoints (Prefetch, Shimcache, AmCache, PCA, MUICache, UserAssist, SRUM)"
   - "SANS FOR508 — Windows Enterprise Incident Response"
   - "MITRE ATT&CK T1204 — User Execution"
   - "MITRE ATT&CK T1059 — Command and Scripting Interpreter"
@@ -19,12 +24,16 @@ triggers:
   - "Amcache entry with no corresponding installer record"
   - "Execution from unusual path (Temp, AppData, Recycle Bin, Downloads)"
   - "Shimcache entry for unknown binary"
+  - "Two Prefetch files for the same binary with different hashes (executed from two different paths)"
+  - "PCA (Program Compatibility Assistant) entries for unsigned or newly-seen binaries"
 phases:
   - phase: "Identify"
     steps:
       - "Parse Prefetch with PECmd (via run_windows_command) — note run count, timestamps, and loaded files/directories"
-      - "Check Amcache with AmcacheParser (via run_command / run_windows_command) for file presence records and SHA1 hashes"
-      - "Check Shimcache with AppCompatCacheParser (via run_command / run_windows_command) for additional execution evidence"
+      - "Check Amcache with AmcacheParser (via run_windows_command) for file presence records and SHA1 hashes"
+      - "Check Shimcache with AppCompatCacheParser (via run_windows_command) for additional execution evidence"
+      - "Check UserAssist (GUI program execution, ROT13-encoded) and MUICache (presence, no execution time)"
+      - "Check SRUM with SrumECmd for network/data usage per application"
   - phase: "Validate"
     steps:
       - "Check executable against Windows baseline (windows-triage: check_file)"
@@ -47,3 +56,11 @@ phases:
     steps:
       - "Record finding — be precise about evidence type: Prefetch proves execution, Amcache proves presence, Shimcache proves presence"
       - "Include all evidence IDs and note artifact interpretation boundaries"
+caveats:
+  - "Prefetch proves EXECUTION. The .pf file is created on first launch; the hash in the filename is derived from the full path (and sometimes command-line), so two .pf files for one binary mean it ran from two locations."
+  - "Prefetch monitors execution for approximately the first 10 seconds only — files touched after that window may not appear in the .pf file list."
+  - "Prefetch can be disabled (EnablePrefetcher=0 under HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Memory Management\\PrefetchParameters). Absence of .pf files is not proof of absence of execution."
+  - "Shimcache (AppCompatCache) stores file path + last MODIFIED time. On Windows 10/11 the InsertFlag (often mislabeled 'execution flag') was removed — Shimcache can NOT prove execution on Win10/11."
+  - "Amcache proves PRESENCE (file was on disk and registered), not execution. It records SHA1 hashes and first-run metadata but the timestamps are not reliable execution times."
+  - "MUICache and UserAssist show GUI program interaction; MUICache does NOT track execution time. UserAssist values are ROT13-encoded."
+  - "Prefetch timestamps are LOCAL time on the source system — convert to UTC before correlating with UTC-based logs."

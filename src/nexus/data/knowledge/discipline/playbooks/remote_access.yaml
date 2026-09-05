@@ -1,5 +1,5 @@
 name: "Remote Access Investigation"
-description: "Investigate unexpected remote access including RDP, PsExec, WMI, and WinRM connections"
+description: "Investigate unexpected remote access including RDP, PsExec, WMI, WinRM, and Impacket-style connections"
 mitre: ["T1021", "T1570"]
 query_terms:
   - psexec
@@ -9,8 +9,25 @@ query_terms:
   - termsrv
   - "1149"
   - "7045"
-  - type 10
+  - "7036"
+  - "4624"
+  - "4648"
+  - btobto
+  - atexec
+  - smbexec
+  - wmiexec
+  - dcomexec
+  - "1029"
+  - "21"
+  - "22"
+  - "23"
+  - "24"
+  - "25"
+  - sum
+  - current.mdb
+  - ual
 sources:
+  - "13Cubed — Investigating Windows Endpoints (SMB, RDP, WMI, PsExec, UAL; impacket exec commands cheat sheet; RDP flowchart)"
   - "SANS FOR508 — Windows Enterprise Incident Response"
   - "MITRE ATT&CK T1021 — Remote Services"
   - "MITRE ATT&CK T1570 — Lateral Tool Transfer"
@@ -19,23 +36,36 @@ triggers:
   - "PsExec service installation (Event ID 7045 with PSEXESVC)"
   - "WMI remote execution events (Event IDs 5857-5861)"
   - "WinRM connections from non-administrative workstations"
+  - "Service installed with name BTOBTO (impacket smbexec.py default — actors rarely change it)"
+  - "UAL (User Access Logging) shows an account touching many servers in a short window"
+  - "TerminalServices-RemoteConnectionManager 1149 followed by LocalSessionManager 21/25"
 phases:
   - phase: "Identify Method"
     steps:
       - "Check for PsExec service install — Event ID 7045 with service name PSEXESVC using Hayabusa (via run_command / run_windows_command)"
       - "Check for RDP logons — Event ID 4624 Type 10, Event ID 1149 in TerminalServices-RemoteConnectionManager"
+      - "Check RDP session lifecycle — LocalSessionManager 21 (logon), 22 (shell start), 23 (logoff), 24 (disconnect), 25 (reconnect)"
       - "Check for WMI events — Event IDs 5857-5861 using EvtxECmd (via run_command / run_windows_command)"
       - "Check for WinRM connections in Windows Remote Management event logs"
+      - "Check for impacket residue — services named BTOBTO (smbexec), ATExec/SmbExec/WMIExec/DComExec/PSExec.py artifacts per the impacket cheat sheet"
   - phase: "Source Analysis"
     steps:
       - "Identify the source system for each remote access event"
       - "Determine if the source system is a known compromised or suspicious host"
       - "Check source IP against threat intelligence (opencti: lookup_ioc)"
+      - "On the SOURCE host, check RDPClient Operational 1029 — it stores Base64(SHA256(username)) used for the outbound connection"
+  - phase: "UAL Lateral Map"
+    steps:
+      - "Collect UAL databases from %SystemRoot%\\System32\\LogFiles\\SUM (current.mdb, system identity.mdb, GUID.mdb) with KAPE"
+      - "Parse with SrumECmd (-d <dir> --csv <out>); repair dirty ESENT databases with esentutl /p first — the 'database not shut down cleanly' error is expected"
+      - "Use SUMDetail_Clients / SUM_Client outputs to map username + IP + first/last access per server role"
+      - "Repeat across servers to profile one account's lateral movement path"
   - phase: "Execution Context"
     steps:
       - "Check what was executed after remote access using PECmd (via run_windows_command)"
       - "Verify process execution trees around remote access time (windows-triage: check_process_tree)"
       - "Check for tools transferred to the system using MFTECmd (via run_command / run_windows_command)"
+      - "For PsExec: the PSEXESVC.exe file is brand-new each run, so ALL four MACB timestamps equal creation time — Shimcache's modified time equals the service install time (7045)"
   - phase: "Scope"
     steps:
       - "Map all systems accessed via the same remote access method"
@@ -45,3 +75,10 @@ phases:
     steps:
       - "Record finding including method, source, destination, account, and subsequent activity"
       - "Include all evidence IDs from each analysis phase"
+caveats:
+  - "TerminalServices-RemoteConnectionManager 1149 is a successful NETWORK connection, NOT a successful authentication — never cite 1149 alone as a logon."
+  - "UAL exists only on Windows Server 2012+ (server OS). Databases are ESENT; SrumECmd will fail with 'database not shut down cleanly' until esentutl /p repairs them — this is expected, not corruption."
+  - "UAL retains up to two years; current.mdb rolls to GUID.mdb every 24 hours and a new GUID database starts each year."
+  - "PsExec creates a NEW PSEXESVC service (and a new 7045) on EVERY run, even seconds apart — multiple 7045s are normal for repeated PsExec use."
+  - "Event 4648 (explicit credentials / RunAs) often accompanies lateral movement with alternate credentials."
+  - "RDPClient 1029 on the SOURCE contains a hash of the username, not the username — correlate by hash value across source systems."

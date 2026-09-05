@@ -29,3 +29,8 @@ phases:
   - phase: "Record"
     steps:
       - "Record finding with audit_ids. Do not force an APT name."
+caveats:
+  - "This is a catch-all playbook — prefer the specific playbooks (suspicious_execution, credential_access, remote_access) when the artifact family is known."
+  - "SIEM/EDR exports are INGEST evidence (another system's view), not direct host acquisition — cite them as corroboration, not primary host artifacts."
+  - "Cobalt Strike 'beacon' hits in host CSVs can be false positives on the literal word — require process/network context before claiming C2."
+  - "Do not force an APT/threat-actor name onto findings — describe the behavior and let the examiner attribute."

@@ -9,7 +9,17 @@ query_terms:
   - userinit
   - image file execution
   - wmi event
+  - "4698"
+  - "106"
+  - "141"
+  - "100"
+  - "102"
+  - "7045"
+  - "4697"
+  - active time
+  - taskcache
 sources:
+  - "13Cubed — Investigating Windows Endpoints (Services and Scheduled Tasks; USB Forensics/ASEPs; Windows Registry Cheat Sheet)"
   - "SANS FOR508 — Windows Enterprise Incident Response"
   - "MITRE ATT&CK T1547 — Boot or Logon Autostart Execution"
   - "MITRE ATT&CK T1053 — Scheduled Task/Job"
@@ -20,6 +30,7 @@ triggers:
   - "New or modified scheduled task"
   - "WMI event subscription detected"
   - "Suspicious BITS job persistence"
+  - "ASEP entry pointing outside Program Files / Windows (Temp, AppData, ProgramData, Public)"
 phases:
   - phase: "Identify"
     steps:
@@ -46,3 +57,10 @@ phases:
     steps:
       - "Record finding including persistence mechanism type, binary details, and creation timeline"
       - "Include all evidence IDs from analysis phases"
+caveats:
+  - "Run/RunOnce under HKCU affect ONLY that user (NTUSER.DAT); under HKLM they affect ALL users (SOFTWARE hive). Run fires every logon; RunOnce fires once at next logon."
+  - "There are 100+ ASEPs on Windows — Run keys are the most ubiquitous and STILL heavily used by threat actors precisely because they work; never skip them as 'too obvious'."
+  - "Scheduled task events live in Microsoft-Windows-TaskScheduler/Operational: 106 = task registered, 141 = task deleted, 100 = task started, 102 = task completed. Security 4698 (task created) requires audit policy."
+  - "Service creation: System 7045 always fires; Security 4697 requires audit policy — 7045 is the more reliable source."
+  - "TaskScheduler 100/102 pairs give actual execution times of a task — use them to prove the persistence RAN, not just exists."
+  - "Registry last-write time is the only registry timestamp — it proves 'no earlier than' for key creation and 'no later than' for last modification."

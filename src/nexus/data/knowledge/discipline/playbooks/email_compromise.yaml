@@ -42,3 +42,9 @@ phases:
     steps:
       - "Record finding with all evidence of compromise, rule changes, and impact"
       - "HITL checkpoint — financial impact requires examiner decision on notification and containment"
+caveats:
+  - "A .pst/.ost file on disk is a LOCAL mailbox copy — its presence proves collection capability; audit the export context (who created it, when) before claiming exfiltration."
+  - "Browser history for cloud mail (OWA/Gmail) is often the only host-side evidence of cloud mailbox access — check ComDlg32/OpenSavePidlMRU and TypedPaths too."
+  - "Impossible-travel determinations require BOTH the geolocation confidence and the session token context — VPNs and mobile IPs create false positives."
+  - "Mailbox rule creation timestamps come from the cloud audit log, not the host — host artifacts cannot prove rule creation time."
+  - "Internal spearphishing from a compromised account shows up in Sent Items AND in recipients' mailboxes — check both sides when scope allows."
