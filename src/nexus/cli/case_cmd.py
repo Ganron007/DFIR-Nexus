@@ -20,16 +20,20 @@ def _get_active_case_id() -> str | None:
     if _ACTIVE_CASE_FILE.exists():
         content = _ACTIVE_CASE_FILE.read_text().strip()
         if content:
+            # Some writers stored an absolute path; normalize to the case ID
+            # (the directory name) so ID-based consumers work consistently.
+            p = Path(content)
+            if p.is_absolute():
+                return p.name
             return content
     return None
 
 
 def _set_active_case(case_id: str) -> None:
-    from nexus.config import settings
-
     _ACTIVE_CASE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    case_dir = settings.cases_root / case_id
-    _ACTIVE_CASE_FILE.write_text(str(case_dir) if case_dir.is_dir() else case_id)
+    # Always store the case ID — resolve_case_dir() handles ID -> directory,
+    # and every consumer of this file expects an ID, not a path.
+    _ACTIVE_CASE_FILE.write_text(case_id)
 
 
 @app.command()
@@ -165,6 +169,10 @@ def _case_dir(case_id: str = "") -> Path:
     if not cid:
         typer.echo("No case specified and no active case", err=True)
         raise typer.Exit(1)
+    # Tolerate a legacy absolute-path pointer: use the directory name.
+    p = Path(cid)
+    if p.is_absolute():
+        cid = p.name
     path = settings.cases_root / cid
     if not path.is_dir():
         typer.echo(f"Case directory missing: {path}", err=True)
@@ -401,11 +409,20 @@ def select_case(
         raise typer.Exit(1)
 
     # Load the last query results from the query pack
-    from nexus.langgraph.query_pack import load_case_intake, collect_query_terms, n4_hits, parse_intake_window
+    from nexus.langgraph.query_pack import (
+        load_case_intake,
+        collect_query_terms,
+        collect_playbook_query_terms,
+        n4_hits,
+        parse_intake_window,
+    )
     intake = load_case_intake(case_dir)
     terms = collect_query_terms(intake)
     window = parse_intake_window(intake)
-    all_hits, _ = n4_hits(case_dir, terms, window)
+    # priority_terms must match the ask/query flow so hit indices are stable
+    all_hits, _ = n4_hits(
+        case_dir, terms, window, priority_terms=collect_playbook_query_terms(intake)
+    )
 
     if not all_hits:
         typer.echo("No hits available. Run 'nexus case ask' first.", err=True)

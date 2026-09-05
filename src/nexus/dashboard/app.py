@@ -1112,12 +1112,14 @@ async def api_select(request):
     from nexus.langgraph.query_pack import (
         load_case_intake,
         collect_query_terms,
+        collect_playbook_query_terms,
         n4_hits,
         parse_intake_window,
         _parse_needles,
     )
 
     intake = load_case_intake(case_dir)
+    pb_terms = collect_playbook_query_terms(intake)
 
     # If the client sent the current explore filters, run the same query
     # so that indices are stable against the displayed hit list.
@@ -1137,7 +1139,7 @@ async def api_select(request):
             intake["window"] = "..".join(parts)
         terms = collect_query_terms(intake)
         window = parse_intake_window(intake)
-        all_hits, _ = n4_hits(case_dir, terms, window)
+        all_hits, _ = n4_hits(case_dir, terms, window, priority_terms=pb_terms)
         family_filter = [f.strip() for f in str(body.get("family") or "").split(",") if f.strip()]
         if family_filter:
             want = {f.lower() for f in family_filter}
@@ -1146,7 +1148,7 @@ async def api_select(request):
         # Fallback to the persisted intake query (ask flow)
         terms = collect_query_terms(intake)
         window = parse_intake_window(intake)
-        all_hits, _ = n4_hits(case_dir, terms, window)
+        all_hits, _ = n4_hits(case_dir, terms, window, priority_terms=pb_terms)
 
     if not all_hits:
         return JSONResponse({"error": "No hits loaded. Run ask first."}, status_code=400)
@@ -1186,7 +1188,16 @@ async def api_select(request):
             "status": "DRAFT",
             "audit_ids": draft.get("audit_ids", []),
         })
-    return JSONResponse({"error": result.get("errors", [result.get("status", "failed")])})
+    # Surface the real rejection reason (validation errors, provenance
+    # detail, missing audit_ids) instead of a bare status code.
+    detail: list = list(result.get("errors") or [])
+    if result.get("error"):
+        detail.append(str(result["error"]))
+    if result.get("missing_audit_ids"):
+        detail.append("missing audit_ids: " + ", ".join(str(a) for a in result["missing_audit_ids"][:5]))
+    if not detail:
+        detail = [str(result.get("status", "failed"))]
+    return JSONResponse({"error": detail})
 
 
 

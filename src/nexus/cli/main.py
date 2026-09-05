@@ -414,15 +414,15 @@ def pipeline(
     """Run the investigation pipeline.
 
     Modes:
-      tools            — deterministic tool lane only; TOOL-RUN.md; no LLM
-      coverage         — same lane; LLM interprets N4 hits → DRAFT
-      design           — lane first, then ReAct extras, then interpret
-      interpret        — reuse an existing tool-run case (--from-case)
-      tools + --from-case — new immutable parser run inside the same case
+      tools            - deterministic tool lane only; TOOL-RUN.md; no LLM
+      coverage         - same lane; LLM interprets N4 hits -> DRAFT
+      design           - lane first, then ReAct extras, then interpret
+      interpret        - reuse an existing tool-run case (--from-case)
+      tools + --from-case - new immutable parser run inside the same case
 
     Also set via NEXUS_PIPELINE_MODE=design|coverage|tools|interpret
-    (aliases: react/hunt → design; debug/full/lane → coverage;
-     tools_only/no_llm → tools; from_case → interpret).
+    (aliases: react/hunt -> design; debug/full/lane -> coverage;
+     tools_only/no_llm -> tools; from_case -> interpret).
 
     Requires: pip install dfir-nexus[pipeline]
 

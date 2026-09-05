@@ -219,8 +219,32 @@ class CaseManager:
         supporting_commands: list[dict] | None = None,
         artifacts: list[dict] | None = None,
         audit: Any = None,
+        case_dir: Path | None = None,
     ) -> dict:
-        case_dir = self.require_active_case()
+        if case_dir is not None:
+            # Explicit target case (Mode 1 select flow) — validate directly
+            # instead of relying on the global active-case pointer, which may
+            # point at a different case.
+            case_dir = Path(case_dir)
+            if not case_dir.is_dir() or not (case_dir / "CASE.yaml").is_file():
+                return {
+                    "status": "ERROR",
+                    "errors": [f"Case directory invalid: {case_dir}"],
+                }
+            try:
+                meta = yaml.safe_load((case_dir / "CASE.yaml").read_text()) or {}
+                if meta.get("status") == "closed":
+                    return {
+                        "status": "ERROR",
+                        "errors": [
+                            f"Case {case_dir.name} is closed. "
+                            "Run case_activate to work on a different case."
+                        ],
+                    }
+            except (OSError, yaml.YAMLError):
+                pass
+        else:
+            case_dir = self.require_active_case()
         if supporting_commands is None and isinstance(finding.get("supporting_commands"), list):
             supporting_commands = finding.pop("supporting_commands")
         if artifacts is None and isinstance(finding.get("artifacts"), list):

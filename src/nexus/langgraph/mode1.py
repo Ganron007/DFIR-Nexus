@@ -317,8 +317,19 @@ def promote_hits_to_draft(
     """
     evidence_rows = []
     for h in hits:
+        # n4_hits does not emit a time field — parse the first timestamp
+        # from the raw row text so evidence rows carry a usable time.
+        hit_time = h.get("time") or ""
+        if not hit_time:
+            try:
+                from nexus.langgraph.query_pack import _DATE_RE
+                m = _DATE_RE.search(str(h.get("text", "")))
+                if m:
+                    hit_time = m.group(1) + (f"T{m.group(2)}" if m.group(2) else "")
+            except Exception:
+                pass
         row = {
-            "time": h.get("time") or "",
+            "time": hit_time,
             "source": f"{h.get('family', '')}/{h.get('file', '')}",
             "artifact": h.get("file", ""),
             "detail": str(h.get("text", ""))[:500],
@@ -364,9 +375,8 @@ def save_draft_finding(case_dir: Path, draft: dict[str, Any]) -> dict[str, Any]:
     from nexus.case_manager import CaseManager
 
     mgr = CaseManager()
-    # Set the active case path so record_finding targets the right directory
-    mgr._active_case_id = case_dir.name
-    mgr._active_case_path = case_dir
-
-    result = mgr.record_finding(draft, audit=None)
+    # Pass the target case explicitly — the global active-case pointer may
+    # point at a different case, and record_finding's active-case resolution
+    # never reads private attributes.
+    result = mgr.record_finding(draft, audit=None, case_dir=case_dir)
     return result

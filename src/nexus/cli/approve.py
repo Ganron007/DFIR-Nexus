@@ -122,7 +122,10 @@ def approve_finding(
             if note:
                 f.setdefault("notes", []).append({"text": note, "author": analyst, "at": f["approved_at"]})
 
-            findings_path.write_text(json.dumps(findings, indent=2, default=str))
+            # Atomic write — matches the Portal path; a plain write_text can
+            # race a concurrent Portal approval and corrupt findings.json.
+            from nexus.case_manager import _atomic_write
+            _atomic_write(findings_path, json.dumps(findings, indent=2, default=str))
 
             hmac_key = _hmac_signing_key(password, analyst)
             if hmac_key:
@@ -163,7 +166,8 @@ def approve_timeline_event(
             e["status"] = "APPROVED"
             e["approved_by"] = analyst
             e["approved_at"] = datetime.now(UTC).isoformat()
-            tl_path.write_text(json.dumps(events, indent=2, default=str))
+            from nexus.case_manager import _atomic_write
+            _atomic_write(tl_path, json.dumps(events, indent=2, default=str))
             return {"event_id": event_id, "status": "APPROVED"}
     return {"error": f"Event {event_id} not found or not DRAFT"}
 

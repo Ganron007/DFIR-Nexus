@@ -18,6 +18,10 @@ def _get_active_case_id() -> str | None:
     if _ACTIVE_CASE_FILE.exists():
         content = _ACTIVE_CASE_FILE.read_text().strip()
         if content:
+            # Tolerate a legacy absolute-path pointer: use the directory name.
+            p = Path(content)
+            if p.is_absolute():
+                return p.name
             return content
     return None
 

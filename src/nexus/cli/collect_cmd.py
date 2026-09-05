@@ -209,7 +209,10 @@ def run_cmd(
     profile: str = typer.Option("disk", "--profile", help="disk (live IR spine) | full | volatile"),
     only: str = typer.Option("", "--only", help="Comma list of collectors (overrides profile)"),
     kape_target: str = typer.Option("!SANS_Triage", "--kape-target"),
-    kape_module: str = typer.Option("!EZParser", "--kape-module", help="Pass none to acquire only"),
+    kape_module: str = typer.Option(
+        "none", "--kape-module",
+        help="KAPE module to run (default none = acquire only; Stage 0 never parses)",
+    ),
     kape_remote_path: str = typer.Option("", "--kape-remote-path", help="KAPE already installed on the target"),
     no_kansa: bool = typer.Option(False, "--no-kansa"),
     no_kape: bool = typer.Option(False, "--no-kape"),
