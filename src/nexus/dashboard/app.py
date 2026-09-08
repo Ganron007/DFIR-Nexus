@@ -1491,16 +1491,16 @@ async function chatAsk() {{
   appendChat('you', q);
   appendChat('llm', 'Thinking...');
   try {{
-    const r = await fetch('/portal/api/mode1/ask', {{
+    const r = await fetch('/portal/api/chat', {{
       method: 'POST', headers: {{'Content-Type':'application/json'}},
-      body: JSON.stringify({{question: q}})
+      body: JSON.stringify({{message: q}})
     }});
     const data = await r.json();
     if (data.error) {{
       replaceLast('llm', 'Error: ' + data.error);
       return;
     }}
-    replaceLast('llm', 'Needles: ' + data.needles.join(', ') + ' | hits: ' + data.count);
+    replaceLast('llm', data.reply);
     if (data.hits && data.hits.length) {{
       currentHits = data.hits;
       document.getElementById('needles').value = data.needles.join(',');
@@ -1516,6 +1516,18 @@ async function chatAsk() {{
     replaceLast('llm', 'Error: ' + e.message);
   }}
 }}
+async function loadChatHistory() {{
+  try {{
+    const r = await fetch('/portal/api/chat');
+    if (!r.ok) return;
+    const data = await r.json();
+    const msgs = data.messages || [];
+    for (const m of msgs) {{
+      appendChat(m.role === 'examiner' ? 'you' : 'llm', m.text);
+    }}
+  }} catch (e) {{ /* transcript load is best-effort */ }}
+}}
+document.addEventListener('DOMContentLoaded', loadChatHistory);
 function appendChat(who, text) {{
   const d = document.getElementById('chat');
   const cls = who === 'you' ? 'color:#58a6ff' : 'color:#3fb950';
@@ -1783,6 +1795,84 @@ async def api_workbook(request):
     return JSONResponse({"bookmarks": bookmarks, "total": len(bookmarks)})
 
 
+async def api_chat_get(request):
+    """GET /portal/api/chat — steer-chat transcript for the active case."""
+    case_dir = _get_case_dir()
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    from nexus.case.chat import load_chat
+
+    messages = load_chat(case_dir)
+    return JSONResponse({"messages": messages, "total": len(messages)})
+
+
+async def api_chat_post(request):
+    """POST /portal/api/chat — examiner message -> Mode 1 ask flow -> logged reply."""
+    case_dir = _get_case_dir()
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    body = await request.json()
+    message = str(body.get("message") or "").strip()
+    if not message:
+        return JSONResponse({"error": "Empty message"}, status_code=400)
+
+    from nexus.case.chat import append_chat
+    from nexus.langgraph.llm_pipeline import get_model
+    from nexus.langgraph.mode1 import nl_to_needles
+    from nexus.langgraph.query_pack import load_case_intake, n4_query, parse_intake_window
+
+    append_chat(case_dir, "examiner", "ask", message)
+
+    try:
+        model = get_model()
+    except Exception:
+        model = None
+
+    parsed = nl_to_needles(message, model=model)
+    needles = parsed.get("needles", [])
+    window_str = parsed.get("window", "")
+
+    if not needles:
+        reply = "No needles extracted. Refine the question (name an artifact, tool, or event ID)."
+        append_chat(case_dir, "llm", "needles_empty", reply, {"source": parsed.get("source", "")})
+        return JSONResponse({"reply": reply, "needles": [], "count": 0})
+
+    window = parse_intake_window(load_case_intake(case_dir))
+    result = n4_query(case_dir, " ".join(needles), window=window, limit=80)
+    if result.get("error"):
+        append_chat(case_dir, "llm", "error", result["error"])
+        return JSONResponse({"reply": f"Query error: {result['error']}"}, status_code=400)
+
+    reply = (
+        f"Needles: {', '.join(needles)} | hits: {result.get('count', 0)}"
+        + (f" | {result.get('query')}" if result.get("query") else "")
+    )
+    append_chat(case_dir, "llm", "query_run", reply, {
+        "needles": ",".join(needles),
+        "hits": result.get("count", 0),
+        "backend": result.get("backend", ""),
+        "window": window_str,
+    })
+    return JSONResponse({
+        "reply": reply,
+        "needles": needles,
+        "window": window_str,
+        "hits": result.get("hits", []),
+        "count": result.get("count", 0),
+        "backend": result.get("backend", ""),
+    })
+
+
+async def api_chat_clear(request):
+    """POST /portal/api/chat/clear — wipe the transcript."""
+    case_dir = _get_case_dir()
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    from nexus.case.chat import clear_chat
+
+    return JSONResponse(clear_chat(case_dir))
+
+
 async def health(request):
     """Lightweight health endpoint for load balancers and Docker healthchecks."""
     return JSONResponse({"status": "ok", "service": "dfir-nexus"})
@@ -1832,4 +1922,8 @@ def create_dashboard():
         Route("/portal/api/workbench/remove", api_workbench_remove, methods=["POST"]),
         Route("/portal/api/workbench/clear", api_workbench_clear, methods=["POST"]),
         Route("/portal/api/workbench/promote", api_workbench_promote, methods=["POST"]),
+        # Steer chat (persistent transcript)
+        Route("/portal/api/chat", api_chat_get, methods=["GET"]),
+        Route("/portal/api/chat", api_chat_post, methods=["POST"]),
+        Route("/portal/api/chat/clear", api_chat_clear, methods=["POST"]),
     ]
