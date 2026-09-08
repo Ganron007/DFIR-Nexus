@@ -2179,6 +2179,67 @@ async def api_mode2_propose_draft(request):
     return JSONResponse({"error": detail})
 
 
+async def api_mode3_plan(request):
+    """POST /portal/api/mode3/plan — agent proposes the investigation plan.
+
+    Reads the tool-lane ledger (SKIPs), unrequested extras, and FD-006
+    corroboration needs. Logged to agent_runs.jsonl + chat. The examiner
+    approves items before anything executes.
+    """
+    case_dir = _get_case_dir()
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    from nexus.langgraph.llm_pipeline import get_model
+    from nexus.langgraph.mode3 import plan_extras
+
+    try:
+        model = get_model()
+    except Exception:
+        model = None
+    plan = plan_extras(case_dir, model=model)
+    return JSONResponse(plan)
+
+
+async def api_mode3_execute(request):
+    """POST /portal/api/mode3/execute — run examiner-approved plan items.
+
+    Body: {extras: ["usb_serial", ...], queries: ["...", ...]}
+    Extras persist to intake (next lane run parses them; mandatory lane
+    first). Queries run immediately (read-only N4).
+    """
+    case_dir = _get_case_dir()
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    body = await request.json()
+    from nexus.langgraph.mode3 import execute_plan
+
+    result = execute_plan(
+        case_dir,
+        [str(e) for e in (body.get("extras") or [])],
+        [str(q) for q in (body.get("queries") or [])],
+    )
+    return JSONResponse(result)
+
+
+async def api_mode3_seal(request):
+    """POST /portal/api/mode3/seal — case-file HMAC (one signature over the report).
+
+    Body: {examiner, password} — password handled like per-finding approval.
+    """
+    case_dir = _get_case_dir()
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    body = await request.json()
+    from nexus.audit import resolve_examiner
+    from nexus.langgraph.mode3 import seal_case
+
+    examiner = str(body.get("examiner") or "") or resolve_examiner()
+    password = str(body.get("password") or "")
+    if not password:
+        return JSONResponse({"error": "Missing password"}, status_code=400)
+    return JSONResponse(seal_case(case_dir, examiner, password))
+
+
 async def health(request):
     """Lightweight health endpoint for load balancers and Docker healthchecks."""
     return JSONResponse({"status": "ok", "service": "dfir-nexus"})
@@ -2243,4 +2304,8 @@ def create_dashboard():
         Route("/portal/api/mode2/iterate", api_mode2_iterate, methods=["POST"]),
         Route("/portal/api/mode2/corroborate", api_mode2_corroborate, methods=["POST"]),
         Route("/portal/api/mode2/propose-draft", api_mode2_propose_draft, methods=["POST"]),
+        # Mode 3 (agentic)
+        Route("/portal/api/mode3/plan", api_mode3_plan, methods=["POST"]),
+        Route("/portal/api/mode3/execute", api_mode3_execute, methods=["POST"]),
+        Route("/portal/api/mode3/seal", api_mode3_seal, methods=["POST"]),
     ]
