@@ -1374,6 +1374,8 @@ async def explore_page(request):
     <p><button class="action-btn" onclick="searchHits()">Search</button></p>
     <p><button class="action-btn" style="background:#1f6feb" onclick="loadAggregates()">Aggregations</button></p>
     <div id="agg" style="font-size:0.8rem;color:#8b949e"></div>
+    <p><button class="action-btn" style="background:#8957e5" onclick="loadEntities()">Entities</button></p>
+    <div id="entities" style="font-size:0.8rem;color:#8b949e;max-height:14rem;overflow:auto"></div>
     <hr style="border-color:#30363d">
     <h3>Steer Chat</h3>
     <div id="chat" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:0.5rem;height:12rem;overflow:auto;font-size:0.85rem;margin-bottom:0.5rem"></div>
@@ -1436,22 +1438,41 @@ async function searchHits() {{
   }});
   updateTimelineLanes();
 }}
-async function loadAggregates() {{
-  const dslEl = document.getElementById('dsl');
-  const r = await fetch('/portal/api/explore/aggregate', {{
-    method: 'POST', headers: {{'Content-Type':'application/json'}},
-    body: JSON.stringify({{ query: dslEl ? document.getElementById('dsl').value : '', group_by: 'family' }})
-  }});
-  const data = await r.json();
-  const el = document.getElementById('agg');
-  if (data.error) {{
-    el.innerHTML = '<span style="color:#f85149">' + escapeHtml(data.error) + '</span>';
-    return;
-  }}
   const buckets = data.buckets || {{}};
   document.getElementById('agg').innerHTML = Object.keys(buckets).length
     ? '<b>hits by family</b><br>' + Object.entries(buckets).map(([k, v]) => escapeHtml(k) + ': <b>' + v + '</b>').join('<br>')
     : 'No hits to aggregate.';
+}}
+async function loadEntities() {{
+  const dslEl = document.getElementById('dsl');
+  const r = await fetch('/portal/api/entities', {{
+    method: 'POST', headers: {{'Content-Type':'application/json'}},
+    body: JSON.stringify({{ query: dslEl ? dslEl.value.trim() : '' }})
+  }});
+  const data = await r.json();
+  const el = document.getElementById('entities');
+  if (data.error) {{
+    el.innerHTML = '<span style="color:#f85149">' + escapeHtml(data.error) + '</span>';
+    return;
+  }}
+  const ent = data.entities || {{}};
+  let html = '';
+  for (const [key, label] of [['users', 'Users'], ['ips', 'IPs'], ['processes', 'Processes'], ['paths', 'Paths']]) {{
+    const entries = Object.entries(ent[key] || {{}}).slice(0, 8);
+    if (!entries.length) continue;
+    html += '<b>' + label + '</b><br>' + entries.map(([k, v]) =>
+      '<span style="cursor:pointer;color:#58a6ff" title="click to pivot" '
+      + 'onclick="pivotEntity(this.textContent)">' + escapeHtml(k) + '</span>: ' + v
+    ).join('<br>');
+  }}
+  el.innerHTML = html || 'No entities found.';
+}}
+function pivotEntity(value) {{
+  const dslEl = document.getElementById('dsl');
+  if (dslEl) {{
+    dslEl.value = '"' + value + '"';
+    searchHits();
+  }}
 }}
 function renderHits() {{
   const tb = document.getElementById('hit_rows');
@@ -1954,6 +1975,25 @@ async def api_timeline_lanes(request):
     return JSONResponse({"families": ordered, "total": result.get("count", 0), "bucket": bucket})
 
 
+async def api_entities(request):
+    """POST /portal/api/entities — extract entities from current N4 hits.
+
+    Body: {query?: "<DSL>", needles?} — same search as explore/search.
+    """
+    case_dir = _get_case_dir()
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    body = await request.json()
+    from nexus.analysis.entities import extract_entities
+    from nexus.langgraph.query_pack import n4_query
+
+    result = n4_query(case_dir, str(body.get("query") or ""), limit=400)
+    if result.get("error"):
+        return JSONResponse({"error": result["error"]}, status_code=400)
+    texts = [h.get("text", "") for h in result.get("hits", [])]
+    return JSONResponse({"entities": extract_entities(texts), "total": result.get("count", 0)})
+
+
 async def health(request):
     """Lightweight health endpoint for load balancers and Docker healthchecks."""
     return JSONResponse({"status": "ok", "service": "dfir-nexus"})
@@ -2012,4 +2052,6 @@ def create_dashboard():
         Route("/portal/api/chat/clear", api_chat_clear, methods=["POST"]),
         # Timeline lanes
         Route("/portal/api/timeline/lanes", api_timeline_lanes, methods=["POST"]),
+        # Entity pivot
+        Route("/portal/api/entities", api_entities, methods=["POST"]),
     ]
