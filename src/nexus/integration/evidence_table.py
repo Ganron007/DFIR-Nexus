@@ -133,12 +133,14 @@ def _source_of(chunk: str) -> str:
     return aliases.get(raw, raw)
 
 
-def _row(time: str, source: str, artifact: str, detail: str) -> dict[str, str]:
+def _row(time: str, source: str, artifact: str, detail: str, audit_id: str = "", loc: str = "") -> dict[str, str]:
     return {
         "time": time or "—",
         "source": source or "host",
         "artifact": artifact or "—",
         "detail": detail or "—",
+        "audit_id": audit_id or "",
+        "loc": loc or "",
     }
 
 
@@ -274,6 +276,8 @@ def normalize_evidence_rows(finding: dict[str, Any]) -> list[dict[str, str]]:
                 str(item.get("source") or item.get("family") or item.get("tool") or "host"),
                 str(item.get("artifact") or item.get("path") or item.get("name") or "—"),
                 str(item.get("detail") or item.get("what") or item.get("text") or "—"),
+                audit_id=str(item.get("audit_id") or ""),
+                loc=str(item.get("loc") or item.get("file_line") or ""),
             ))
             if len(rows) >= _MAX_ROWS:
                 break
@@ -286,15 +290,28 @@ def normalize_evidence_rows(finding: dict[str, Any]) -> list[dict[str, str]]:
 def render_evidence_table(rows: list[dict[str, str]]) -> list[str]:
     if not rows:
         return ["_No structured evidence rows._", ""]
-    lines = [
-        "| Time (UTC) | Source | Artifact / path | What it shows |",
-        "|---|---|---|---|",
-    ]
-    for r in rows:
-        lines.append(
-            f"| {_cell(r.get('time'))} | {_cell(r.get('source'))} | "
-            f"{_cell(r.get('artifact'))} | {_cell(r.get('detail'))} |"
-        )
+    has_audit = any(r.get("audit_id") or r.get("loc") for r in rows)
+    if has_audit:
+        lines = [
+            "| Time (UTC) | Source | Artifact / path | What it shows | audit_id | file:line |",
+            "|---|---|---|---|---|---|",
+        ]
+        for r in rows:
+            lines.append(
+                f"| {_cell(r.get('time'))} | {_cell(r.get('source'))} | "
+                f"{_cell(r.get('artifact'))} | {_cell(r.get('detail'))} | "
+                f"{_cell(r.get('audit_id'))} | {_cell(r.get('loc'))} |"
+            )
+    else:
+        lines = [
+            "| Time (UTC) | Source | Artifact / path | What it shows |",
+            "|---|---|---|---|",
+        ]
+        for r in rows:
+            lines.append(
+                f"| {_cell(r.get('time'))} | {_cell(r.get('source'))} | "
+                f"{_cell(r.get('artifact'))} | {_cell(r.get('detail'))} |"
+            )
     lines.append("")
     return lines
 
@@ -310,7 +327,7 @@ def evidence_rows_from_n4_hits(hits: list[dict[str, Any]], limit: int = _MAX_ROW
         artifact = prod.group(1).strip() if prod else (_artifact(body) or str(h.get("terms") or "—"))
         source = str(h.get("family") or "n4")
         loc = f"{h.get('file')}:{h.get('line')}"
-        rows.append(_row(ts, source, artifact, f"{loc} {body}"))
+        rows.append(_row(ts, source, artifact, f"{loc} {body}", loc=loc))
         if len(rows) >= limit:
             break
     return rows
