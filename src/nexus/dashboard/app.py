@@ -360,6 +360,7 @@ pre {{ background: #161b22; padding: 0.5rem; border-radius: 4px; overflow-x: aut
 <a href="/portal">Overview</a>
 <a href="/portal/steer">Steer</a>
 <a href="/portal/explore">Explore</a>
+<a href="/portal/workbench">Workbench</a>
 <a href="/portal/ask">Ask</a>
 <a href="/portal/query">Query</a>
 <a href="/portal/findings">Findings</a>
@@ -1386,6 +1387,7 @@ async def explore_page(request):
       <input id="draft_title" style="width:50%;background:#161b22;color:#c9d1d9" placeholder="Finding title">
       <label style="margin-left:0.5rem"><input type="checkbox" id="use_scribe" checked> Scribe</label>
       <button class="action-btn" onclick="promoteSelected()" style="margin-left:0.5rem">Promote to DRAFT</button>
+      <button class="action-btn" style="background:#1f6feb" onclick="addSelectedToWorkbench()">Add to Workbench</button>
       <span id="status" style="margin-left:1rem"></span>
     </p>
     <table>
@@ -1561,6 +1563,31 @@ async function promoteSelected() {{
     document.getElementById('status').textContent = 'Error: ' + (result.error || JSON.stringify(result));
   }}
 }}
+async function addSelectedToWorkbench() {{
+  const checkboxes = document.querySelectorAll('.hit-check:checked');
+  if (checkboxes.length === 0) return alert('Select at least one hit');
+  let added = 0, lastErr = '';
+  for (const cb of checkboxes) {{
+    const cells = cb.closest('tr').querySelectorAll('td');
+    const hit = {{
+      family: cells[1] ? cells[1].textContent : '',
+      file: (cells[2] ? cells[2].textContent : '').split(':')[0],
+      line: (cells[2] ? cells[2].textContent : '').split(':')[1] || '',
+      terms: cells[3] ? cells[3].textContent : '',
+      text: cells[4] ? cells[4].textContent : '',
+    }};
+    const r = await fetch('/portal/api/workbench/add', {{
+      method: 'POST', headers: {{'Content-Type':'application/json'}},
+      body: JSON.stringify({{ hit }})
+    }});
+    const res = await r.json();
+    if (res.status === 'added') {{ added += 1; }}
+    else {{ lastErr = res.error || 'failed'; }}
+  }}
+  document.getElementById('status').textContent = added
+    ? 'Added ' + added + ' hit(s) to Workbench'
+    : 'Error: ' + (lastErr || 'nothing added');
+}}
 function escapeHtml(s) {{
   const d = document.createElement('div');
   d.textContent = s;
@@ -1569,6 +1596,191 @@ function escapeHtml(s) {{
 </script>
 """
     return HTMLResponse(_TEMPLATE.format(content=content))
+
+
+async def api_workbench(request):
+    """GET /portal/api/workbench — list bookmarked hits."""
+    case_dir = _get_case_dir()
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    from nexus.case.workbench import load_bookmarks
+
+    return JSONResponse({"bookmarks": load_bookmarks(case_dir), "total": len(load_bookmarks(case_dir))})
+
+
+async def api_workbench_add(request):
+    """POST /portal/api/workbench/add — bookmark one hit {hit: {...}, note?}."""
+    case_dir = _get_case_dir()
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    body = await request.json()
+    hit = body.get("hit") or {}
+    if not isinstance(hit, dict) or not (hit.get("file") or hit.get("text")):
+        return JSONResponse({"error": "Missing hit data"}, status_code=400)
+    from nexus.case.workbench import add_bookmark
+
+    return JSONResponse(add_bookmark(case_dir, hit, note=str(body.get("note") or "")))
+
+
+async def api_workbench_remove(request):
+    """POST /portal/api/workbench/remove — {bookmark_id}."""
+    case_dir = _get_case_dir()
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    body = await request.json()
+    from nexus.case.workbench import remove_bookmark
+
+    return JSONResponse(remove_bookmark(case_dir, str(body.get("bookmark_id") or "")))
+
+
+async def api_workbench_clear(request):
+    """POST /portal/api/workbench/clear."""
+    case_dir = _get_case_dir()
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    from nexus.case.workbench import clear_bookmarks
+
+    return JSONResponse(clear_bookmarks(case_dir))
+
+
+async def api_workbench_promote(request):
+    """POST /portal/api/workbench/promote — bookmarked hits -> DRAFT finding.
+
+    Body: {bookmark_ids: ["B-001", ...], title, scribe?, interpretation?}
+    """
+    case_dir = _get_case_dir()
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    body = await request.json()
+    title = str(body.get("title") or "").strip()
+    wanted = [str(b) for b in (body.get("bookmark_ids") or []) if str(b).strip()]
+    if not title:
+        return JSONResponse({"error": "Missing title"}, status_code=400)
+    if not wanted:
+        return JSONResponse({"error": "No bookmarks selected"}, status_code=400)
+
+    from nexus.case.workbench import load_bookmarks
+    from nexus.langgraph.llm_pipeline import get_model
+    from nexus.langgraph.mode1 import promote_hits_to_draft, save_draft_finding, scribe_finding
+
+    bookmarks = load_bookmarks(case_dir)
+    by_id = {str(b.get("id")): b for b in bookmarks}
+    selected = []
+    for bid in wanted:
+        if hit := by_id.get(bid):
+            selected.append(hit)
+    if not selected:
+        return JSONResponse({"error": "Bookmark IDs not found"}, status_code=400)
+
+    from nexus.audit import resolve_examiner
+
+    examiner = resolve_examiner()
+    draft = promote_hits_to_draft(
+        case_dir,
+        hits=selected,
+        title=title,
+        examiner=examiner,
+        interpretation_hint=str(body.get("interpretation") or ""),
+    )
+    if body.get("scribe", True):
+        try:
+            model = get_model()
+        except Exception:
+            model = None
+        draft = scribe_finding(draft, hits=selected, model=model)
+
+    result = save_draft_finding(case_dir, draft)
+    if result.get("status") == "STAGED":
+        return JSONResponse({
+            "finding_id": result.get("finding_id"),
+            "status": "DRAFT",
+            "title": title,
+            "bookmark_count": len(selected),
+        })
+    detail: list = list(result.get("errors") or [])
+    if result.get("error"):
+        detail.append(str(result["error"]))
+    if result.get("missing_audit_ids"):
+        detail.append("missing audit_ids: " + ", ".join(str(a) for a in result["missing_audit_ids"][:5]))
+    if not detail:
+        detail = [str(result.get("status", "failed"))]
+    return JSONResponse({"error": detail})
+
+
+async def workbench_page(request):
+    """Mode 1 workbench — bookmarked hits -> DRAFT builder."""
+    case_dir = _get_case_dir()
+    from nexus.case.workbench import load_bookmarks
+
+    bookmarks = load_bookmarks(case_dir) if case_dir else []
+    rows = ""
+    for b in bookmarks:
+        rows += (
+            "<tr>"
+            f"<td><input type='checkbox' class='bm-check' value='{_e(b.get('id', ''))}'></td>"
+            f"<td>{_e(b.get('id', ''))}</td>"
+            f"<td>{_e(b.get('family', ''))}</td>"
+            f"<td>{_e(b.get('file', ''))}:{_e(b.get('line', ''))}</td>"
+            f"<td class='evidence-path'>{_e(b.get('text', ''))}</td>"
+            "</tr>"
+        )
+    if not rows:
+        rows = "<tr><td colspan='5' style='text-align:center;color:#8b949e'>No bookmarks. Select hits in Explore and click 'Add to Workbench'.</td></tr>"
+
+    content = f"""
+<h1>Finding Workbench</h1>
+<p>Bookmarked hits collected during exploration. Select bookmarks, give the finding a title, promote to DRAFT.</p>
+<p style="font-size:0.85rem;color:#8b949e">{len(bookmarks)} bookmark(s) in the workbench.</p>
+<p>
+  <input id="wb_title" style="width:45%;background:#161b22;color:#c9d1d9" placeholder="Finding title">
+  <label style="margin-left:0.5rem"><input type="checkbox" id="wb_scribe" checked> Scribe</label>
+  <button class="action-btn" onclick="promoteBookmarks()">Promote to DRAFT</button>
+  <button class="action-btn danger" onclick="clearWb()">Clear all</button>
+  <span id="wb_status" style="margin-left:1rem"></span>
+</p>
+<table>
+<tr><th></th><th>ID</th><th>Family</th><th>File:line</th><th>Row</th></tr>
+{rows or '<tr><td colspan="5" style="text-align:center;color:#8b949e">Workbench empty — bookmark hits from Explore.</td></tr>'}
+</table>
+<script>
+async function promoteBookmarks() {{
+  const ids = Array.from(document.querySelectorAll('.bm-check:checked')).map(cb => cb.value);
+  if (!ids.length) return alert('Select bookmarks first');
+  const title = document.getElementById('wb_title').value.trim();
+  if (!title) return alert('Enter a finding title');
+  const scribe = document.getElementById('wb_scribe').checked;
+  document.getElementById('wb_status').textContent = 'Promoting...';
+  const r = await fetch('/portal/api/workbench/promote', {{
+    method: 'POST', headers: {{'Content-Type':'application/json'}},
+    body: JSON.stringify({{ bookmark_ids: ids, title, scribe }})
+  }});
+  const result = await r.json();
+  if (result.finding_id) {{
+    document.getElementById('wb_status').textContent = 'DRAFT: ' + result.finding_id;
+    setTimeout(() => window.location = '/portal/findings?status=DRAFT', 1000);
+  }} else {{
+    document.getElementById('wb_status').textContent = 'Error: ' + (result.error || 'failed');
+  }}
+}}
+async function clearWb() {{
+  if (!confirm('Clear ALL bookmarks?')) return;
+  await fetch('/portal/api/workbench/clear', {{method:'POST'}});
+  location.reload();
+}}
+</script>
+"""
+    return HTMLResponse(_TEMPLATE.format(content=content))
+
+
+async def api_workbook(request):
+    """GET /portal/api/workbench — list bookmarks."""
+    case_dir = _get_case_dir()
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    from nexus.case.workbench import load_bookmarks
+
+    bookmarks = load_bookmarks(case_dir)
+    return JSONResponse({"bookmarks": bookmarks, "total": len(bookmarks)})
 
 
 async def health(request):
@@ -1611,7 +1823,13 @@ def create_dashboard():
         Route("/portal/api/mode1/select", api_select, methods=["POST"]),
         # Mode 1 Cockpit
         Route("/portal/explore", explore_page),
+        Route("/portal/workbench", workbench_page),
         Route("/portal/api/explore/search", api_explore_search, methods=["POST"]),
         Route("/portal/api/explore/histogram", api_explore_histogram, methods=["POST"]),
         Route("/portal/api/explore/aggregate", api_explore_aggregate, methods=["POST"]),
+        Route("/portal/api/workbench", api_workbench, methods=["GET"]),
+        Route("/portal/api/workbench/add", api_workbench_add, methods=["POST"]),
+        Route("/portal/api/workbench/remove", api_workbench_remove, methods=["POST"]),
+        Route("/portal/api/workbench/clear", api_workbench_clear, methods=["POST"]),
+        Route("/portal/api/workbench/promote", api_workbench_promote, methods=["POST"]),
     ]
