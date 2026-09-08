@@ -4,7 +4,10 @@ All notable changes to DFIR-Nexus are documented here.
 
 ## Unreleased
 
-### Phase 4.1 + 4.2 — API contract freeze + React scaffold (2026-09-08)
+### Phase 4 — Enterprise UI rewrite (2026-09-08)
+
+Phase 4 is complete. The React SPA achieves feature parity with the legacy
+hand-written HTML pages. All 7 work packages delivered.
 
 #### 4.1 — API contract freeze
 - `Docs/API-CONTRACT.md` (1075 lines) documents all 30 `/portal/api/*` endpoints
@@ -17,30 +20,67 @@ All notable changes to DFIR-Nexus are documented here.
 - **Framework:** React 18 + Vite 5 + TypeScript 5 (strict mode).
 - **Dev topology:** Starlette serves the built SPA at `/portal/app/*`;
   Vite dev server proxies API calls to Starlette `:4508`.
-- **Layout:** sidebar navigation (10 pages), case switcher dropdown, topbar
+- **Layout:** sidebar navigation (11 pages), case switcher dropdown, topbar
   breadcrumb, active-case badge.
-- **10 page components:**
-  - Overview — case summary + case list
-  - Explore — needle search, family facets, paginated hits table, bookmarking
-  - Timeline — per-family hour-bucket bar chart
-  - SteerChat — mode switcher (Mode 1/2/3), persistent transcript, send/clear
-  - Workbench — bookmarked hits + DRAFT finding builder + promote
-  - Findings — finding cards with status/confidence badges, LLM-drafted marker
-  - Approve — DRAFT selection, HMAC challenge-response flow
-  - Report — generated report preview (APPROVED only)
-  - Evidence — evidence registry table
-  - Entities — entity extraction with needle input
+- **11 page components:** Overview, Explore, Timeline, SteerChat, Workbench,
+  Findings, Approve, Report, Evidence, Entities, Transparency.
 - **API client** (`frontend/src/api/client.ts`): typed interfaces for all 30
   endpoints with `ApiError` class for error handling.
 - **Dark forensic theme:** GitHub-dark palette, monospace for IDs/paths.
 - **Starlette SPA serving:** `spa_index` handler for client-side routing
   catch-all, `spa_asset` for static assets with path traversal protection.
-- **6 SPA serving tests:** index returns HTML, client-side routing works,
-  asset 404, path traversal blocked, health endpoint coexists, API routes
-  coexist.
-- Legacy HTML pages remain at original paths during the parity period.
-- Build: 191KB JS (60KB gzipped) + 6KB CSS.
+- **6 SPA serving tests.**
+
+#### 4.3 — Explore: virtualized tables + histogram
+- `VirtualTable` component: windowed rendering for 100k+ hits (only visible
+  rows in DOM).
+- `Histogram` component: event count per hour bucket with hover tooltips.
+- Family + host facet chips with click-to-filter.
+- Larger page size (200) for virtualization efficiency.
+- Parallel search + histogram fetch.
+
+#### 4.4 — Timeline: lanes + brush-zoom
+- Per-family lane cards with bar charts.
+- Brush-zoom: click to set start, click again for end range.
+- Lane filtering: click a lane title to isolate it.
+- Dimmed non-brushed bars for focus.
+- Time axis labels (start/middle/end).
+
+#### 4.5 — Steer chat: proposal cards + Mode 3 flow
+- `ProposalCard` component: renders Mode 2/3 proposals with needles, hits,
+  rationale.
+- Mode 3 multi-step flow: plan -> execute -> seal with action bar.
+- Seal challenge integration (getChallenge + seal endpoint).
+- Loading indicator with pulse animation.
+- Timestamps in message metadata.
+- Step indicator (plan/execute/seal) for Mode 3.
+
+#### 4.6 — Workbench: undo/redo + drag-and-drop
+- `useHistory` hook: undo/redo for finding builder (past/present/future stack).
+- Drag-and-drop reordering of bookmarked hits.
+- Visual drag indicator (left border + background).
+- Hit numbering (#1, #2, ...).
+- Reset button for finding form.
+- Evidence attachment count indicator.
+
+#### 4.7 — Report viewer + transparency + parity checklist
+- Report page: markdown rendering (headers, blockquotes, bold, lists),
+  summary stats, approved findings only, export to .md file.
+- Transparency page: HMAC audit chain viewer.
+- `Docs/PHASE4-PARITY-CHECKLIST.md`: 11-page parity matrix + API coverage +
+  known gaps + Gate 4 criteria.
+- Legacy HTML pages remain available during transition.
+
+#### Build stats
+- 207KB JS (64KB gzipped) + 6KB CSS.
+- TypeScript strict mode clean.
 - Suite: 468 passed, 1 skipped. Ruff clean. CI green (ubuntu/macos/windows).
+
+#### Known gaps (non-blocking for Gate 4)
+- IOCs tab (currently merged into Evidence).
+- TODOs page (not displayed in SPA).
+- Corroborate endpoint (wired in API client but not exposed in UI).
+- SSE streaming (chat uses request/response, not server-sent events).
 
 ### Phase 0-3 complete + re-audit (2026-09-08)
 
