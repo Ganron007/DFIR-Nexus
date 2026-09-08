@@ -4,6 +4,44 @@ All notable changes to DFIR-Nexus are documented here.
 
 ## Unreleased
 
+### Phase 4.1 + 4.2 — API contract freeze + React scaffold (2026-09-08)
+
+#### 4.1 — API contract freeze
+- `Docs/API-CONTRACT.md` (1075 lines) documents all 30 `/portal/api/*` endpoints
+  with method, path, request body schema, response schema, and error codes.
+- 13 HTML page routes mapped to React routes for the SPA migration.
+- Shared data types (Hit, Bookmark, ChatEntry, Finding, Plan, Corroboration)
+  documented for the frontend type definitions.
+
+#### 4.2 — React + Vite scaffold + cockpit shell
+- **Framework:** React 18 + Vite 5 + TypeScript 5 (strict mode).
+- **Dev topology:** Starlette serves the built SPA at `/portal/app/*`;
+  Vite dev server proxies API calls to Starlette `:4508`.
+- **Layout:** sidebar navigation (10 pages), case switcher dropdown, topbar
+  breadcrumb, active-case badge.
+- **10 page components:**
+  - Overview — case summary + case list
+  - Explore — needle search, family facets, paginated hits table, bookmarking
+  - Timeline — per-family hour-bucket bar chart
+  - SteerChat — mode switcher (Mode 1/2/3), persistent transcript, send/clear
+  - Workbench — bookmarked hits + DRAFT finding builder + promote
+  - Findings — finding cards with status/confidence badges, LLM-drafted marker
+  - Approve — DRAFT selection, HMAC challenge-response flow
+  - Report — generated report preview (APPROVED only)
+  - Evidence — evidence registry table
+  - Entities — entity extraction with needle input
+- **API client** (`frontend/src/api/client.ts`): typed interfaces for all 30
+  endpoints with `ApiError` class for error handling.
+- **Dark forensic theme:** GitHub-dark palette, monospace for IDs/paths.
+- **Starlette SPA serving:** `spa_index` handler for client-side routing
+  catch-all, `spa_asset` for static assets with path traversal protection.
+- **6 SPA serving tests:** index returns HTML, client-side routing works,
+  asset 404, path traversal blocked, health endpoint coexists, API routes
+  coexist.
+- Legacy HTML pages remain at original paths during the parity period.
+- Build: 191KB JS (60KB gzipped) + 6KB CSS.
+- Suite: 468 passed, 1 skipped. Ruff clean. CI green (ubuntu/macos/windows).
+
 ### Phase 0-3 complete + re-audit (2026-09-08)
 
 This entry documents the full day's work: Phase 1 dual-audit fixes, Phase 2
