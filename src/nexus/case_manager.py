@@ -23,7 +23,7 @@ from nexus.discipline import validate_finding
 
 logger = logging.getLogger(__name__)
 
-_AUDIT_ID_PATTERN = re.compile(r"^[a-z]+-[a-z0-9](?:[a-z0-9-]*[a-z0-9])?-[0-9]{8}-[0-9]{3,}\Z")
+_AUDIT_ID_PATTERN = re.compile(r"^[a-z_]+-[a-z0-9](?:[a-z0-9-]*[a-z0-9])?-[0-9]{8}-[0-9]{3,}\Z")
 _HASH_EXCLUDE_KEYS = {
     "status", "approved_at", "approved_by", "rejected_at", "rejected_by",
     "rejection_reason", "examiner_notes", "examiner_modifications",
@@ -351,6 +351,8 @@ class CaseManager:
             "observation": sanitized.get("observation", ""),
             "interpretation": sanitized.get("interpretation", ""),
             "confidence": sanitized.get("confidence", "MEDIUM").upper(),
+            "confidence_justification": sanitized.get("confidence_justification", ""),
+            "evidence": sanitized.get("evidence") or [],
             "type": sanitized.get("type", ""),
             "host": sanitized.get("host", ""),
             "affected_account": sanitized.get("affected_account", ""),

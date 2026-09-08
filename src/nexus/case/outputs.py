@@ -7,11 +7,13 @@ path must be returned to the LLM so findings can cite it (FD-001).
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import logging
 import os
 import re
+import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -19,6 +21,20 @@ from typing import Any
 log = logging.getLogger(__name__)
 
 _ACTIVE_CASE_FILE = Path(os.environ.get("NEXUS_ACTIVE_CASE_FILE", str(Path.home() / ".nexus" / "active_case")))
+
+
+def _atomic_write_json(path: Path, data: Any) -> None:
+    """Write JSON atomically to avoid corruption on crash."""
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+    try:
+        os.close(fd)
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, default=str)
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
 
 
 def resolve_active_case_dir() -> Path | None:
@@ -204,5 +220,5 @@ def _register_extraction_evidence(
         "tool": tool_key,
     }
     evidence.append(entry)
-    registry_path.write_text(json.dumps(evidence, indent=2), encoding="utf-8")
+    _atomic_write_json(registry_path, evidence)
     return {"status": "registered", "path": abs_path, "sha256": digest}

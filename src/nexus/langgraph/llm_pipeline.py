@@ -2045,7 +2045,8 @@ async def run_pipeline(
 
         if not approved_ids:
             case_id = current_state.get("case_id", "")
-            case_dir = Path.home() / ".nexus" / "cases" / case_id
+            from nexus.config import settings
+            case_dir = settings.cases_root / case_id
             approvals_file = case_dir / "approvals.jsonl"
             if approvals_file.exists():
                 try:

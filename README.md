@@ -21,7 +21,9 @@ Standalone release of the examiner-led DFIR capability developed within the [CAD
 > **Version 2 is in active development.** The product is being re-architected into an enterprise-grade, deterministic forensic foundation with a phased AI roadmap:
 > 
 > - **What we are actively building & validating (v2 Mode 1 — Public Beta):** Authenticated, headless live IR collection (`nexus collect`, default `--profile disk`) over SSH/WinRM on current Windows 11 and modern Linux with zero model in the collection path; isolated evidence custody registration (SHA-256); deterministic parser execution (Hayabusa, Zimmerman, SIFT); code-based needle query scanning (N4); and an **examiner-led investigation cockpit** where an LLM acts strictly as an objective scribe over retrieved evidence hits, requiring cryptographic human sign-off (PBKDF2-HMAC) before findings become official.
-> - **What we will ship in the final vision (Modes 2 & 3):** Once the deterministic spine is proven, we will layer **Mode 2 (Thick Cognitive Analysis)** for autonomous multi-source hypothesis corroboration and **Mode 3 (Full Autonomous Agentic MCP)** for direct agent tool execution over native MCP endpoints—strictly bounded by real-time HMAC-SHA256 audit chaining and `FD-001..007` forensic discipline rules.
+> - **Mode 2 (Thick Cognitive Analysis) — implemented & dual-audited:** Iterative query loop, corroboration engine (FD-006/007), and LLM-drafted findings with `examiner_selected=False` provenance marker. Portal endpoints: `/portal/api/mode2/iterate`, `/corroborate`, `/propose-draft`.
+> - **Mode 3 (Full Autonomous Agentic MCP) — implemented & dual-audited:** Agent planning, mandatory-lane-first execution guard, case-file HMAC sealing (challenge-response), and agent run ledger. Portal endpoints: `/portal/api/mode3/plan`, `/execute`, `/seal`. Strictly bounded by real-time HMAC-SHA256 audit chaining and `FD-001..007` forensic discipline rules.
+> - **Phase 4 (enterprise UI rewrite) — not started:** The current hand-written HTML/JS Cockpit proved the API contracts. Phase 4 will replace it with a component framework without changing the contracts.
 > 
 > This repository is an active **development snapshot**. Commands, APIs, and internal schemas are evolving toward the v2 milestone. Do not deploy this development branch in production environments.
 
@@ -98,7 +100,7 @@ DFIR-Nexus uses a dual-layer storage model separating immutable forensic state f
 | **Threat Intel** | Integrated lookups across 10 TI providers (ThreatFox, MalwareBazaar, URLhaus, Yaraify, MISP, OTX, Shodan, VT, AbuseIPDB, and CrowdStrike). |
 | **Semantic RAG** | Search over **22,000+ IR records** (SANS posters, Sigma, LOLBAS, GTFOBins, and KAPE targets) using a local ChromaDB collection. Bring your own index, download the prebuilt release, or rebuild from your own sources; embedding model is operator-configurable (`NEXUS_RAG_MODEL`). |
 | **Live IR pack (Stage 0)** | Authenticated **SSH / WinRM / local** collection — **CLI only** (portable, no UI). Ship spine (`--profile disk`): Windows **KAPE** `!SANS_Triage`/`!EZParser` + Sysinternals + PersistenceSniper + wevtutil + Velociraptor `IRTriage`; Linux **POSIX volatile + journalctl + UAC `ir_triage` + Velociraptor `LinuxIRTriage`**. Extra *collectors* (Kansa, DFIR-ORC, WinPmem/AVML, UAC `full`) stay on `--profile full` and **skip with a reason** if missing or broken. **Hayabusa / Suzaku / Chainsaw are N2 parsers**, not Stage 0. Live Velociraptor needs examiner `.env` MCP URL + key — [SETUP.md §2.6](Docs/SETUP.md#26-live-velociraptor-hunts-every-examiner-host). |
-| **Three Nexus Modes** | Progressive investigation models driving the same N1–N8 spine, same `case_id`, and same HMAC lock:<br>• **Mode 1 (Examiner-Led / Public Beta):** Deterministic tool execution + code-based N4 query pack + LLM scribe & natural-language query assistant + manual examiner cryptographic sign-off.<br>• **Mode 2 (Thick Cognitive Analysis):** Same deterministic tools + cognitive LLM agent iteratively asking follow-up questions, building attack hypotheses, and corroborating across multiple artifact sources.<br>• **Mode 3 (Autonomous Agentic MCP):** Full autonomous agent tool execution over the 100 native MCP endpoints, strictly bounded by real-time HMAC auditing and final human sign-off. |
+| **Three Nexus Modes** | Progressive investigation models driving the same N1–N8 spine, same `case_id`, and same HMAC lock:<br>• **Mode 1 (Examiner-Led / Public Beta):** Deterministic tool execution + code-based N4 query pack + LLM scribe & natural-language query assistant + manual examiner cryptographic sign-off. **Implemented + dual-audited.**<br>• **Mode 2 (Thick Cognitive Analysis):** Same deterministic tools + cognitive LLM agent iteratively asking follow-up questions, building attack hypotheses, and corroborating across multiple artifact sources. **Implemented + dual-audited.**<br>• **Mode 3 (Autonomous Agentic MCP):** Full autonomous agent tool execution over the 100 native MCP endpoints, strictly bounded by real-time HMAC auditing and final human sign-off. **Implemented + dual-audited.**<br>• **Phase 4 (Enterprise UI rewrite):** Replace hand-written HTML Cockpit with component framework. **Not started.** |
 
 ---
 
@@ -181,7 +183,7 @@ Detailed guidelines are grouped in the `Docs/` directory:
 DFIR-Nexus includes a rigorous testing suite covering unit, script, functional wiring, and blocker regression tests (**734 total checks**).
 
 ```bash
-# 1. Run the pytest suite (456 tests, including Mode 1 examiner-led flow)
+# 1. Run the pytest suite (462 tests, including Mode 1/2/3 + audit regression tests)
 pytest
 
 # 2. Run Individual Script-Based Tests (215 checks)

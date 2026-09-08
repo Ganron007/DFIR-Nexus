@@ -28,7 +28,7 @@ _LOCKOUT_FILE = Path.home() / ".nexus" / ".approval_lockout"
 
 def verify_bearer_token(token: str, expected: str) -> bool:
     if not expected:
-        return True
+        return False
     return hmac.compare_digest(token, expected)
 
 
@@ -273,7 +273,7 @@ def read_verification_ledger(case_id: str) -> list[dict]:
 
 def verify_hmac_entries(case_id: str, password: str, salt: str, examiner: str) -> list[dict]:
     """Verify HMAC for all items belonging to examiner. Returns verification results."""
-    derived_key = derive_hmac_key(password, salt)
+    derived_key = derive_purpose_key(derive_hmac_key(password, salt), SIGNING_PURPOSE)
     entries = read_verification_ledger(case_id)
     results = []
     for entry in entries:

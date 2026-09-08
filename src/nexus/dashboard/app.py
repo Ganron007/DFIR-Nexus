@@ -2344,9 +2344,6 @@ def create_dashboard():
         # Steer chat (persistent transcript)
         Route("/portal/api/chat", api_chat_get, methods=["GET"]),
         Route("/portal/api/chat", api_chat_post, methods=["POST"]),
-        # Steer chat (persistent transcript)
-        Route("/portal/api/chat", api_chat_get, methods=["GET"]),
-        Route("/portal/api/chat", api_chat_post, methods=["POST"]),
         Route("/portal/api/chat/clear", api_chat_clear, methods=["POST"]),
         # Timeline lanes
         Route("/portal/api/timeline/lanes", api_timeline_lanes, methods=["POST"]),

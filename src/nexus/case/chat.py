@@ -52,7 +52,7 @@ def load_chat(case_dir: Path, limit: int = 200) -> list[dict]:
                 continue
     except OSError:
         return []
-    return out[-500:]
+    return out[-limit:] if limit else out
 
 
 def clear_chat(case_dir: Path) -> dict:

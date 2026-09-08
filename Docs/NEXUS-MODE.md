@@ -113,9 +113,22 @@ presets**, not separate products or UIs.
 > thick (Mode 2), or agentic (Mode 3), the examiner always sees the same
 > evidence, the same chat pane, and the same approval gate.
 
-> **Honest status:** Mode 1 CLI is wired. The Portal needs an **Explore** pane,
-> a persistent **steer chat**, and a **Finding Workbench** to be complete. Modes
-> 2 and 3 are product evolution on the same UI, not new UIs.
+> **Honest status (2026-09-08):** Mode 1 is implemented and dual-audited —
+> the Portal ships Explore (faceted search + timeline lanes + entity
+> pivots), persistent Steer Chat, Finding Workbench (bookmarks -> DRAFT
+> promotion), Approval Desk (HMAC challenge-response), and Report
+> generation from APPROVED findings only. Mode 2 is implemented —
+> iterative query loop, corroboration engine (FD-006/007), and LLM-drafted
+> findings (`examiner_selected=False` provenance marker) are wired with
+> Portal endpoints (`/portal/api/mode2/iterate`, `/corroborate`,
+> `/propose-draft`). Mode 3 is implemented — agentic planning, mandatory-
+> lane-first execution guard, case-file HMAC sealing (challenge-response),
+> and agent run ledger are wired with Portal endpoints
+> (`/portal/api/mode3/plan`, `/execute`, `/seal`). All three modes share
+> the same Cockpit. **Operator review on a real case (Gate 1/2/3) and the
+> Phase 4 enterprise UI rewrite remain pending.** The current UI is
+> intentionally hand-written HTML/JS to prove the API contracts; Phase 4
+> will replace it without changing the contracts.
 
 ### The two axes (do not confuse them)
 
@@ -192,13 +205,18 @@ N8 report from APPROVED only
 - Does not invent facts beyond N4 hits
 
 **Mode 1 is complete when the Portal has:**
-- Explore pane with faceted search + histogram
-- Timeline pane with time scrubber
-- Persistent Steer Chat
-- Finding Workbench (bookmarks -> DRAFT)
-- Existing Approval Desk and Report
+- ~~Explore pane with faceted search + histogram~~ — **implemented** (Phase 1.3)
+- ~~Timeline pane with time scrubber~~ — **implemented** (Phase 1.5, per-family lanes)
+- ~~Persistent Steer Chat~~ — **implemented** (Phase 1.4)
+- ~~Finding Workbench (bookmarks -> DRAFT)~~ — **implemented** (Phase 1.4)
+- Existing Approval Desk and Report — **wired** (HMAC challenge-response)
 
-### Mode 2 — LLM-Guided Analysis (after Mode 1 is honest)
+> **Gate 1 status:** Mode 1 implementation complete and dual-audited
+> (commit `7cc7ec0`). Operator review on a real case remains the gate
+> before Mode 1 is declared *proven*. Phase 4 will rewrite the UI surface
+> without changing the API contracts.
+
+### Mode 2 — LLM-Guided Analysis (implemented, dual-audited)
 
 **The LLM proposes the next query and correlations; the examiner validates and
 steers in the chat.**
@@ -250,7 +268,7 @@ N8 report from APPROVED only
 - Does not approve
 - Does not act on rejected proposals
 
-### Mode 3 — Agentic (future, after Modes 1 & 2 are honest)
+### Mode 3 — Agentic (implemented, dual-audited; operator review pending)
 
 **The agent chooses MCP tools, runs extras, proposes findings, and the examiner
 steers at the end.**
@@ -258,6 +276,12 @@ steers at the end.**
 Mode 3 is the old plan done right. A ReAct agent can run the mandatory N2 lane,
 then choose additional MCP tools, iterate on queries, and propose DRAFTs. The
 examiner reviews the whole case file and signs off.
+
+> **Status (2026-09-08):** Mode 3 is implemented and dual-audited (commits
+> `8fc0543`, `b52ff50`). Planning, execution, mandatory-lane guard,
+> challenge-response case-file HMAC sealing, and agent run ledger are wired.
+> Portal endpoints: `/portal/api/mode3/plan`, `/execute`, `/seal`.
+> **Gate 3 (operator review on a real case) remains pending.**
 
 ```
 Examiner sets scope in Steer Chat
@@ -309,10 +333,16 @@ N8 report from APPROVED only
 
 1. **Mode 1 Cockpit** — Explore + Timeline + Steer Chat + Finding Workbench.
    The examiner can do the full N1–N8 loop without touching the CLI. Ship door.
+   **Status: implemented + dual-audited (Phase 1, commit `7cc7ec0`).**
 2. **Mode 2 reasoning** — Make the Steer Chat drive iterative query and
    corroboration. LLM proposes; examiner accepts/rejects. Same Cockpit.
+   **Status: implemented + dual-audited (Phase 2, commits `fe62295`, `49720eb`).**
 3. **Mode 3 agentic** — Agent chooses MCP tools. Same Cockpit; the chat shows
    what the agent plans and asks permission.
+   **Status: implemented + dual-audited (Phase 3, commits `8fc0543`, `b52ff50`).**
+4. **Phase 4 enterprise UI rewrite** — Replace the hand-written HTML/JS
+   Cockpit with a proper component framework. API contracts are frozen;
+   this is a UI-only rewrite. **Status: not started.**
 
 ## Product flow (canonical)
 

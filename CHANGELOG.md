@@ -4,6 +4,156 @@ All notable changes to DFIR-Nexus are documented here.
 
 ## Unreleased
 
+### Phase 0-3 complete + re-audit (2026-09-08)
+
+This entry documents the full day's work: Phase 1 dual-audit fixes, Phase 2
+Mode 2 implementation, Phase 3 Mode 3 implementation, Phase 3 dual-audit fixes,
+and the final Phase 0-3 re-audit with documentation correction.
+
+#### Phase 1 — dual-audit fixes (commit `7cc7ec0`)
+
+Independent static-code audit + self-audit found 3 blockers + 9 bugs, all fixed:
+
+- **Explore page JS blocker:** `loadAggregates()` was referenced but undefined;
+  a stray module-scope block referenced `data` outside a function. Fixed by
+  defining the function and moving aggregate rendering into it.
+- **Unused histogram fetch:** `searchHits()` fetched histogram data but did not
+  use it. Fixed the Explore flow to update timeline lanes and aggregates.
+- **Explore API ignored request needles:** the API merged needles into an
+  in-memory intake object, but `n4_query()` reloaded `CASE.yaml`, so those
+  needles were ignored. Fixed by incorporating request needles into the query
+  text.
+- **Explore pagination was a no-op:** API hardcoded `offset=0`. Fixed to pass
+  the request offset through.
+- **Quoted DSL phrases did not match:** terms such as `"faulting application"`
+  retained literal quotes. Fixed `_add_term()` to strip surrounding quotes.
+- **Numeric DSL terms matched hashes/UUIDs:** terms such as `1102` could match
+  inside longer hexadecimal strings. Reused numeric boundary logic from
+  `needle_in_text()`.
+- **Entity path regex truncated paths with spaces:** `C:\Program Files\...` was
+  truncated at `C:\Program`. Expanded the path regex character class.
+- **Backup ignored configured case root:** `backup.py` hardcoded
+  `Path.home() / ".nexus" / "cases"`. Fixed to use configured `settings.cases_root`.
+- **Duplicate staleness helper:** `case_index.py` contained duplicate
+  `_newest_extraction_mtime()` implementations. Removed the dead duplicate.
+- **Index staleness false positives:** `iter_index_files()` included files the
+  indexer skips (`_stdout.txt`, `artifacts.jsonl`). Applied matching skip rules.
+- **Portal malformed input handling:** invalid JSON and non-integer
+  limit/offset values caused HTTP 500. Added validation and 400 responses.
+- **Duplicate `_DANGEROUS_RE`:** removed duplicate regex definition in
+  `query_dsl.py`.
+
+Suite: 455 passed, 1 skipped. CI green.
+
+#### Phase 2 — Mode 2: LLM-guided analysis (commits `fe62295`, `49720eb`)
+
+- **2.1 Iterative query engine:** `mode2.run_iterative_loop` (propose -> validate
+  -> re-query, caps max_iterations/needles, every step chat-logged),
+  `POST /portal/api/mode2/iterate`, Explore "Iterate (Mode 2)" button.
+- **2.2 Corroboration engine:** `corroboration_check()` (FD-006/007:
+  single-family + confidence rule), `corroboration_suggestions()`
+  (family-mapped needles), `/portal/api/mode2/corroborate`.
+- **2.3 Proposal protocol:** proposals logged as structured chat entries
+  (mode2_proposal with needles/hits/rationale); examiner steers via chat +
+  Iterate button. Formal card UI deferred to Phase 4.
+- **2.4 LLM-drafted findings:** `propose_draft_finding()` stages DRAFT with
+  `examiner_selected=False` marker + corroboration attached; HMAC unchanged;
+  AI-cannot-approve enforced. `POST /portal/api/mode2/propose-draft`.
+
+Bugs fixed during implementation: unused imports/variables in `mode2.py`;
+undefined corroboration helper (`_corroboration_queries`); undefined variable
+`fam`; proposal signature mismatch; test mocked symbol in wrong module; test
+expected wrong chat action; malformed API response expression.
+
+#### Phase 3 — Mode 3: Agentic (commits `8fc0543`, `b52ff50`)
+
+- **3.1 Agent planning:** `mode3.plan_extras()` proposes extras (from
+  `_KNOWN_EXTRAS` not yet requested) + actionable ledger SKIPs (platform-
+  appropriate only) + FD-006 corroboration queries. LLM refines rationale when
+  configured. Logged to `agent_runs.jsonl` + chat.
+- **3.2 Plan-approval execution:** `execute_plan()` runs ONLY examiner-approved
+  items; extras persist to intake; approved queries run immediately (read-only
+  N4). `/portal/api/mode3/plan` + `/execute`.
+- **3.3 Case-file HMAC:** `mode3.seal_case()` — one signature over REPORT.md +
+  findings count, same PBKDF2/HMAC ledger as per-finding approval.
+  `/portal/api/mode3/seal` (challenge-response).
+- **3.4 Agent run ledger:** `agent_runs.jsonl` (plan/execute decisions,
+  timestamps).
+
+Phase 3 dual-audit fixes (`b52ff50`): `seal_case` password verification +
+challenge-response API; `.parent` ledger path bug; mandatory-lane guard;
+platform-gated SKIPs; body validation; HMAC over stored snapshot (not full
+report); transparency logging; dead code removal; action name alignment; 10
+new tests.
+
+Suite: 455 passed, 1 skipped. CI green.
+
+#### Phase 0-3 re-audit (this commit)
+
+Independent subagent + local audit re-checked every Phase 0-3 work package
+without skipping anything.
+
+**1 blocker fixed:**
+- `verify_hmac_entries` used `derive_hmac_key` directly instead of
+  `derive_purpose_key(derive_hmac_key(...), SIGNING_PURPOSE)` — verification
+  always failed for legitimate ledgers. Fixed in `src/nexus/auth.py`.
+
+**6 bugs fixed:**
+- `CaseManager.record_finding` dropped `confidence_justification` (FD-005
+  violation) and `evidence` fields from the saved finding entry. Fixed in
+  `src/nexus/case_manager.py`.
+- `_AUDIT_ID_PATTERN` rejected underscored MCP names like `claude_code-*`
+  (audit.py emits IDs with `mcp_name.replace('-', '_')`). Fixed pattern to
+  allow `[a-z_]+` first segment. `src/nexus/case_manager.py`.
+- `verify_bearer_token` returned `True` when no expected token was configured
+  (silent auth bypass). Fixed to return `False`. `src/nexus/auth.py`.
+- `load_chat` ignored its `limit` parameter (hardcoded `out[-500:]`). Fixed to
+  use `out[-limit:] if limit else out`. `src/nexus/case/chat.py`.
+- `llm_pipeline` resume branch hardcoded `Path.home() / ".nexus" / "cases"`
+  instead of `settings.cases_root`. Fixed. `src/nexus/langgraph/llm_pipeline.py`.
+- Dashboard registered `/portal/api/chat` GET/POST routes twice. Removed
+  duplicate. `src/nexus/dashboard/app.py`.
+
+**2 polish fixes:**
+- Extraction evidence registration used non-atomic `write_text`. Switched to
+  `_atomic_write_json` (temp file + `os.replace`). `src/nexus/case/outputs.py`.
+
+**False positives rejected:**
+- Entity path regex already allows spaces (fixed in Phase 1 audit).
+- `Docs/WIRING-PLAN.md` / `Docs/internal/ACTIVE.md` /
+  `Docs/internal/COMPLETE-TO-SHIP.md` are gitignored, not missing.
+- Dual `CaseManager` (SQLite `nexus.case.CaseManager` vs flat-JSON
+  `nexus.case_manager.CaseManager`) is an intentional migration state, not a
+  bug. `cli/review.py` already aliases the flat one as `FlatCaseManager`.
+
+**7 regression tests added** (`tests/test_audit_regressions.py`): HMAC
+round-trip (purpose key), HMAC wrong-password rejection, record_finding
+field persistence, audit-ID pattern for underscored MCP names, bearer token
+denial when unconfigured, load_chat limit honoring, llm_pipeline resume path.
+
+**Documentation corrected:**
+- `Docs/NEXUS-MODE.md`: "Honest status" paragraph updated from "Mode 1 CLI
+  only, Portal needs Explore/chat/workbench" to current implemented state
+  (Mode 1/2/3 all wired with Portal endpoints). Mode 2/3 section headers
+  updated from "future" to "implemented, dual-audited". Build order updated
+  with Phase 4 entry.
+- `README.md`: Mode 2/3 "future vision" language replaced with
+  "implemented + dual-audited" status. Three Nexus Modes table updated. Test
+  count updated to 462.
+- `AGENTS.md`: "Next action" updated from "Phase 0 then Phase 1.1" to
+  "Phases 0-3 complete, Phase 4 next". Test count updated.
+- `Docs/WIRING-PLAN.md`: Phase 0-3 re-audit summary added after Gate 3.
+- `Docs/internal/ACTIVE.md`: Current focus updated with re-audit status.
+
+**Accepted limitations (unchanged):**
+- ReDoS guard is a nested-quantifier filter (120-char cap is the real
+  backstop; stdlib `re` has no timeouts).
+- Workbench/chat writes are atomic per-writer but not cross-process locked —
+  fine for single-examiner Portal; revisit if multi-examiner editing lands.
+- Dual `CaseManager` (SQLite vs flat-JSON) is an intentional migration state.
+
+Suite: 462 passed, 1 skipped. Ruff clean. CI green.
+
 ### Immutable pipeline runs within one case (2026-08-27)
 
 - Tools, coverage, design, and interpret executions now write to unique `runs/<run_id>/` directories instead of overwriting case-level extractions, ledgers, query packs, and reports.
