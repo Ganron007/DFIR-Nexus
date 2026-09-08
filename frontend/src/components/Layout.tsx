@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { to: "/report", label: "Report", icon: "R" },
   { to: "/evidence", label: "Evidence", icon: "V" },
   { to: "/entities", label: "Entities", icon: "N" },
+  { to: "/transparency", label: "Transparency", icon: "X" },
 ];
 
 export default function Layout({ children }: { children: React.ReactNode }) {

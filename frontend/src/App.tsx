@@ -10,6 +10,7 @@ import Approve from "./pages/Approve";
 import Report from "./pages/Report";
 import Evidence from "./pages/Evidence";
 import Entities from "./pages/Entities";
+import Transparency from "./pages/Transparency";
 
 export default function App() {
   return (
@@ -25,6 +26,7 @@ export default function App() {
         <Route path="/report" element={<Report />} />
         <Route path="/evidence" element={<Evidence />} />
         <Route path="/entities" element={<Entities />} />
+        <Route path="/transparency" element={<Transparency />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>
