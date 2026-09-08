@@ -2210,34 +2210,86 @@ async def api_mode3_execute(request):
     case_dir = _get_case_dir()
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
-    body = await request.json()
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+
+    extras = body.get("extras") or []
+    queries = body.get("queries") or []
+    if not isinstance(extras, list) or not isinstance(queries, list):
+        return JSONResponse({"error": "extras and queries must be lists"}, status_code=400)
+
     from nexus.langgraph.mode3 import execute_plan
 
     result = execute_plan(
         case_dir,
-        [str(e) for e in (body.get("extras") or [])],
-        [str(q) for q in (body.get("queries") or [])],
+        [str(e) for e in extras],
+        [str(q) for q in queries],
     )
+    if result.get("error"):
+        return JSONResponse(result, status_code=400)
     return JSONResponse(result)
 
 
 async def api_mode3_seal(request):
-    """POST /portal/api/mode3/seal — case-file HMAC (one signature over the report).
+    """POST /portal/api/mode3/seal — case-file HMAC via challenge-response.
 
-    Body: {examiner, password} — password handled like per-finding approval.
+    Body: {challenge_id, response, examiner?}
+    Reuses the same challenge-response flow as per-finding approval —
+    the password never travels in plaintext.
     """
     case_dir = _get_case_dir()
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
-    body = await request.json()
-    from nexus.audit import resolve_examiner
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+
+    challenge_id = body.get("challenge_id")
+    response_hmac = body.get("response")
+    if not challenge_id or not response_hmac:
+        return JSONResponse(
+            {"error": "Missing challenge_id or response — get a challenge from /portal/api/commit/challenge"},
+            status_code=400,
+        )
+
+    examiner = str(body.get("examiner") or "") or _resolve_examiner(request)
+    if not examiner:
+        return JSONResponse({"error": "No examiner identity"}, status_code=401)
+
+    # Validate the challenge (same flow as post_commit)
+    import hashlib
+    import hmac as hmac_mod
+    import time as _time
+
+    with _challenge_lock:
+        challenge = _challenges.pop(challenge_id, None)
+    if not challenge:
+        return JSONResponse({"error": "Invalid or expired challenge"}, status_code=401)
+    if _time.time() - challenge["created_at"] > _CHALLENGE_TTL:
+        return JSONResponse({"error": "Challenge expired"}, status_code=401)
+    if challenge["examiner"] != examiner:
+        return JSONResponse({"error": "Challenge/examiner mismatch"}, status_code=401)
+
+    entry = _load_password_entry(examiner)
+    if not entry:
+        return JSONResponse({"error": "No password configured"}, status_code=403)
+
+    stored_hash_bytes = bytes.fromhex(entry.get("hash", ""))
+    expected = hmac_mod.new(stored_hash_bytes, challenge["nonce"].encode("utf-8"), hashlib.sha256).hexdigest()
+    if not hmac_mod.compare_digest(expected, response_hmac):
+        return JSONResponse({"error": "Challenge response mismatch"}, status_code=401)
+
+    # Challenge proved the examiner knows the password. Derive the
+    # signing key from the stored hash (same as per-finding approval).
     from nexus.langgraph.mode3 import seal_case
 
-    examiner = str(body.get("examiner") or "") or resolve_examiner()
-    password = str(body.get("password") or "")
-    if not password:
-        return JSONResponse({"error": "Missing password"}, status_code=400)
-    return JSONResponse(seal_case(case_dir, examiner, password))
+    result = seal_case(case_dir, examiner, "", skip_verify=True)
+    if result.get("error"):
+        return JSONResponse(result, status_code=400)
+    return JSONResponse(result)
 
 
 async def health(request):
