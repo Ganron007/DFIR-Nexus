@@ -1434,7 +1434,7 @@ async function searchHits() {{
       end: document.getElementById('end').value,
     }})
   }});
-  updateHistogram(await rh.json());
+  updateTimelineLanes();
 }}
 async function loadAggregates() {{
   const dslEl = document.getElementById('dsl');
@@ -1466,6 +1466,49 @@ function renderHits() {{
     '<td>' + escapeHtml(h.terms) + '</td>' +
     '<td class="evidence-path">' + escapeHtml(h.text) + '</td>' +
   '</tr>').join('');
+}}
+function famColor(fam) {{
+  let h = 0;
+  for (const c of String(fam)) h = (h * 31 + c.charCodeAt(0)) % 360;
+  return 'hsl(' + h + ',60%,45%)';
+}}
+async function updateTimelineLanes() {{
+  const dslEl = document.getElementById('dsl');
+  const r = await fetch('/portal/api/timeline/lanes', {{
+    method: 'POST', headers: {{'Content-Type':'application/json'}},
+    body: JSON.stringify({{
+      query: dslEl ? dslEl.value.trim() : '',
+      needles: document.getElementById('needles').value,
+      bucket: 'hour'
+    }})
+  }});
+  const data = await r.json();
+  const el = document.getElementById('hist');
+  const families = data.families || [];
+  if (!families.length) {{
+    el.innerHTML = '<span style="color:#8b949e">No timestamped hits</span>';
+    return;
+  }}
+  const max = Math.max(1, ...families.flatMap(f => Object.values(f.buckets)));
+  let html = '';
+  for (const f of families.slice(0, 8)) {{
+    html += '<div style="display:flex;align-items:flex-end;height:22px;gap:1px;margin-bottom:2px" title="' + escapeHtml(f.family) + '">';
+    html += '<div style="width:90px;font-size:0.7rem;color:#8b949e;overflow:hidden;white-space:nowrap">' + escapeHtml(f.family) + '</div>';
+    const keys = Object.keys(f.buckets);
+    for (const [k, v] of Object.entries(f.buckets)) {{
+      const w = Math.max(100 / keys.length, 1.5);
+      html += '<div title="' + escapeHtml(f.family + ' ' + k + ': ' + v) + '"'
+        + ' onclick="zoomTo(\'' + escapeHtml(k.slice(0, 10)) + '\')"'
+        + ' style="flex:1;background:' + famColor(f.family) + ';height:' + (v/max*100) + '%;min-width:3px;cursor:pointer"></div>';
+    }}
+    html += '</div>';
+  }}
+  el.innerHTML = html;
+}}
+function zoomTo(day) {{
+  const startEl = document.getElementById('start');
+  const endEl = document.getElementById('end');
+  if (startEl && endEl) {{ startEl.value = day; endEl.value = day; searchHits(); }}
 }}
 function updateHistogram(hd) {{
   const buckets = hd.buckets || {{}};
@@ -1510,7 +1553,7 @@ async function chatAsk() {{
         method: 'POST', headers: {{'Content-Type':'application/json'}},
         body: JSON.stringify({{needles: data.needles.join(',')}})
       }});
-      updateHistogram(await rh.json());
+      updateTimelineLanes();
     }}
   }} catch (e) {{
     replaceLast('llm', 'Error: ' + e.message);
@@ -1873,6 +1916,44 @@ async def api_chat_clear(request):
     return JSONResponse(clear_chat(case_dir))
 
 
+async def api_timeline_lanes(request):
+    """POST /portal/api/timeline/lanes — per-family time buckets for lanes.
+
+    Body: {query?: "<DSL>", needles?, family?, start?, end?, bucket?: hour|day}
+    Returns {families: [{family, buckets: {ts: count}}], total}
+    """
+    case_dir = _get_case_dir()
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    body = await request.json()
+    from nexus.langgraph.query_pack import _DATE_RE, n4_query
+
+    result = n4_query(case_dir, str(body.get("query") or ""), limit=400)
+    if result.get("error"):
+        return JSONResponse({"error": result["error"]}, status_code=400)
+    hits = result.get("hits", [])
+    bucket = "day" if str(body.get("bucket") or "hour") == "day" else "hour"
+
+    families: dict[str, dict[str, int]] = {}
+    for h in hits:
+        fam = h.get("family") or "other"
+        m = _DATE_RE.search(h.get("text", ""))
+        if not m:
+            key = "(no timestamp)"
+        elif bucket == "day":
+            key = m.group(1)
+        else:
+            key = f"{m.group(1)}T{(m.group(2) or '00:00:00')[:2]}:00"
+        lanes = families.setdefault(fam, {})
+        lanes[key] = lanes.get(key, 0) + 1
+
+    ordered = [
+        {"family": fam, "buckets": dict(sorted(lanes.items()))}
+        for fam, lanes in sorted(families.items(), key=lambda kv: -sum(kv[1].values()))
+    ]
+    return JSONResponse({"families": ordered, "total": result.get("count", 0), "bucket": bucket})
+
+
 async def health(request):
     """Lightweight health endpoint for load balancers and Docker healthchecks."""
     return JSONResponse({"status": "ok", "service": "dfir-nexus"})
@@ -1925,5 +2006,10 @@ def create_dashboard():
         # Steer chat (persistent transcript)
         Route("/portal/api/chat", api_chat_get, methods=["GET"]),
         Route("/portal/api/chat", api_chat_post, methods=["POST"]),
+        # Steer chat (persistent transcript)
+        Route("/portal/api/chat", api_chat_get, methods=["GET"]),
+        Route("/portal/api/chat", api_chat_post, methods=["POST"]),
         Route("/portal/api/chat/clear", api_chat_clear, methods=["POST"]),
+        # Timeline lanes
+        Route("/portal/api/timeline/lanes", api_timeline_lanes, methods=["POST"]),
     ]
