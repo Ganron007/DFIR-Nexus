@@ -1535,9 +1535,8 @@ async function updateTimelineLanes() {{
     html += '<div style="width:90px;font-size:0.7rem;color:#8b949e;overflow:hidden;white-space:nowrap">' + escapeHtml(f.family) + '</div>';
     const keys = Object.keys(f.buckets);
     for (const [k, v] of Object.entries(f.buckets)) {{
-      const w = Math.max(100 / keys.length, 1.5);
-      html += '<div title="' + escapeHtml(f.family + ' ' + k + ': ' + v) + '"'
-        + ' onclick="zoomTo(\'' + escapeHtml(k.slice(0, 10)) + '\')"'
+      html += '<div data-day="' + escapeHtml(k.slice(0, 10)) + '" title="' + escapeHtml(f.family + ' ' + k + ': ' + v) + '"'
+        + ' onclick="zoomTo(this.dataset.day)"'
         + ' style="flex:1;background:' + famColor(f.family) + ';height:' + (v/max*100) + '%;min-width:3px;cursor:pointer"></div>';
     }}
     html += '</div>';
