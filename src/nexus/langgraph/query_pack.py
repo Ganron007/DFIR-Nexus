@@ -50,6 +50,7 @@ _FAMILY_HINTS = (
     "hayabusa", "suzaku", "chainsaw", "evtxecmd", "evtx", "pecmd", "prefetch", "jlecmd", "lecmd",
     "sbecmd", "rbcmd", "srum", "srumecmd", "recmd", "mftecmd", "amcache",
     "appcompat", "wxtcmd", "bits", "vol", "fls", "setupapi", "bmc-tools",
+    "plaso", "log2timeline", "psort",
 )
 _SCAN_FIRST = (
     "hayabusa", "suzaku", "chainsaw", "evtxecmd", "evtx", "pecmd", "prefetch", "amcache",

@@ -321,7 +321,24 @@ def plan_windows_triage(
         schedule_evtx_parsers(jobs, evtx_dirs, extractions)
         return jobs
 
+    if root is None:
+        schedule_evtx_parsers(jobs, evtx_dirs, extractions)
+        return jobs
+
+    # Plaso suggestion: surface the super-timeline option in TOOL-RUN.md
+    # unless it is already enabled (NEXUS_SIFT_PLASO=1 adds real jobs).
+    if os.environ.get("NEXUS_SIFT_PLASO", "").strip().lower() not in ("1", "true", "yes"):
+        jobs.append(ToolJob(
+            host="windows",
+            tool="log2timeline",
+            argv=[],
+            purpose="Plaso super-timeline",
+            status="SKIP",
+            reason="available: set NEXUS_SIFT_PLASO=1 for a full super-timeline (large disk + hours)",
+        ))
+
     users = user_profile_dirs(root)
+    prefetch = root / "Windows/Prefetch"
     prefetch = root / "Windows/Prefetch"
     amcache = root / "Windows/AppCompat/Programs/Amcache.hve"
     system_hive = root / "Windows/System32/config/SYSTEM"
