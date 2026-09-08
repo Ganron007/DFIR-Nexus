@@ -1390,7 +1390,11 @@ async def explore_page(request):
     <h3>Steer Chat</h3>
     <div id="chat" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:0.5rem;height:12rem;overflow:auto;font-size:0.85rem;margin-bottom:0.5rem"></div>
     <input id="chat_input" style="width:100%;background:#161b22;color:#c9d1d9" placeholder="Ask the case..." onkeydown="if(event.key==='Enter') chatAsk()">
-    <p><button class="action-btn" onclick="chatAsk()">Ask LLM</button></p>
+    <p>
+      <button class="action-btn" onclick="chatAsk()">Ask LLM</button>
+      <button class="action-btn" style="background:#8957e5" onclick="mode2Iterate()">Iterate (Mode 2)</button>
+      <span id="mode2_status" style="margin-left:0.5rem;font-size:0.8rem;color:#8b949e"></span>
+    </p>
   </div>
   <div>
     <h3>Hits <span id="hit_count" style="font-size:0.8rem;font-weight:normal"></span></h3>
@@ -1606,6 +1610,42 @@ async function loadChatHistory() {{
   }} catch (e) {{ /* transcript load is best-effort */ }}
 }}
 document.addEventListener('DOMContentLoaded', loadChatHistory);
+document.addEventListener('DOMContentLoaded', loadChatHistory);
+async function mode2Iterate() {{
+  const q = document.getElementById('chat_input').value.trim()
+    || (currentHits.length ? 'Corroborate and expand on the current hits' : '');
+  if (!q && !currentHits.length) return alert('Ask a question first or run a search');
+  const statusEl = document.getElementById('mode2_status');
+  statusEl.textContent = 'iterating...';
+  appendChat('you', '[Mode 2] iterate on: ' + (q || 'current hits'));
+  try {{
+    const r = await fetch('/portal/api/mode2/iterate', {{
+      method: 'POST', headers: {{'Content-Type':'application/json'}},
+      body: JSON.stringify({{ question: q || 'corroborate the current hits', max_iterations: 2 }})
+    }});
+    const data = await r.json();
+    if (data.error) {{
+      appendChat('llm', 'Mode 2 error: ' + data.error);
+      document.getElementById('mode2_status').textContent = 'error';
+      return;
+    }}
+    for (const it of data.iterations || []) {{
+      if (it.action === 'proposed_and_run') {{
+        appendChat('llm', 'Iteration ' + it.iteration + ': proposed ' + (it.needles || []).join(', ') + ' -> ' + it.hits + ' hits');
+      }} else if (it.action === 'no_new_proposals') {{
+        appendChat('llm', 'Iteration ' + it.iteration + ': no new needles to propose');
+      }}
+    }}
+    appendChat('llm', 'Mode 2 loop complete: ' + (data.total_hits || 0) + ' total hits' + (data.capped ? ' (capped)' : ''));
+    if (data.needles_run) {{
+      document.getElementById('needles').value = (data.needles_run || []).join(',');
+      await searchHits();
+    }}
+    statusEl.textContent = 'done';
+  }} catch (e) {{
+    document.getElementById('mode2_status').textContent = 'error: ' + e.message;
+  }}
+}}
 function appendChat(who, text) {{
   const d = document.getElementById('chat');
   const cls = who === 'you' ? 'color:#58a6ff' : 'color:#3fb950';
@@ -2008,6 +2048,81 @@ async def api_entities(request):
     return JSONResponse({"entities": extract_entities(texts), "total": result.get("count", 0)})
 
 
+async def api_mode2_iterate(request):
+    """POST /portal/api/mode2/iterate — Mode 2 iterative loop (logged).
+
+    Body: {question, max_iterations? (default 2, hard cap 4), limit?}
+    Every iteration is logged to chat.jsonl. Returns the iteration log;
+    the examiner reviews proposals — nothing is auto-staged.
+    """
+    case_dir = _get_case_dir()
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    body = await request.json()
+    question = str(body.get("question") or "").strip()
+    if not question:
+        return JSONResponse({"error": "Missing question"}, status_code=400)
+    try:
+        max_iterations = max(1, min(int(body.get("max_iterations") or 2), 4))
+    except (TypeError, ValueError):
+        return JSONResponse({"error": "max_iterations must be an integer"}, status_code=400)
+
+    from nexus.case.chat import append_chat
+    from nexus.langgraph.llm_pipeline import get_model
+    from nexus.langgraph.mode2 import run_iterative_loop
+
+    try:
+        model = get_model()
+    except Exception:
+        model = None
+
+    append_chat(case_dir, "examiner", "mode2_start", question, {"max_iterations": max_iterations})
+    result = run_iterative_loop(case_dir, question, model=model, max_iterations=max_iterations)
+    if result.get("error"):
+        append_chat(case_dir, "llm", "mode2_error", result["error"])
+        return JSONResponse({"error": result["error"]}, status_code=400)
+    for it in result.get("iterations", []):
+        action = it.get("action", "")
+        if action == "proposed_and_run":
+            append_chat(case_dir, "llm", "mode2_proposal", (
+                f"Iteration {it.get('iteration')}: proposed {', '.join(it.get('needles', []))} "
+                f"-> {it.get('hits', 0)} hits. {it.get('rationale', '')}"
+            ), {"needles": ",".join(it.get("needles", [])), "hits": it.get("hits", 0)})
+        elif action == "no_new_proposals":
+            append_chat(case_dir, "llm", "mode2_no_proposals", "No new needles to propose.", {"iteration": it.get("iteration")})
+    append_chat(case_dir, "llm", "mode2_done", f"Iterative loop complete: {result.get('total_hits', 0)} total hits.", {
+        "iterations": len(result.get("iterations", [])),
+        "capped": result.get("capped", False),
+    })
+    return JSONResponse(result)
+
+
+async def api_mode2_corroborate(request):
+    """POST /portal/api/mode2/corroborate — FD-006/007 check on a finding.
+
+    Body: {finding_id} or a full {finding} dict.
+    """
+    case_dir = _get_case_dir()
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    body = await request.json()
+    from nexus.langgraph.mode2 import corroboration_check
+
+    finding = body.get("finding")
+    if not finding and body.get("finding_id"):
+        fid = str(body.get("finding_id"))
+        findings_path = case_dir / "findings.json"
+        if findings_path.is_file():
+            try:
+                all_f = json.loads(findings_path.read_text(encoding="utf-8"))
+                finding = next((f for f in all_f if f.get("id") == fid), None)
+            except (OSError, ValueError):
+                finding = None
+    if not finding:
+        return JSONResponse({"error": "Finding not found"}, status_code=404)
+    return JSONResponse(corroboration_check(finding))
+
+
 async def health(request):
     """Lightweight health endpoint for load balancers and Docker healthchecks."""
     return JSONResponse({"status": "ok", "service": "dfir-nexus"})
@@ -2068,4 +2183,7 @@ def create_dashboard():
         Route("/portal/api/timeline/lanes", api_timeline_lanes, methods=["POST"]),
         # Entity pivot
         Route("/portal/api/entities", api_entities, methods=["POST"]),
+        # Mode 2 (LLM-guided)
+        Route("/portal/api/mode2/iterate", api_mode2_iterate, methods=["POST"]),
+        Route("/portal/api/mode2/corroborate", api_mode2_corroborate, methods=["POST"]),
     ]
