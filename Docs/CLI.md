@@ -231,10 +231,10 @@ nexus audit summary                       # Audit summary
 ## Backup & Sync
 
 ```bash
-nexus export bundle.json                  # Export case bundle
-nexus merge bundle.json                   # Import/merge case bundle
-nexus backup /path/to/backup              # Full case backup
-nexus restore /path/to/backup             # Restore from backup
+nexus export bundle.json                       # Export case bundle
+nexus merge bundle.json                        # Import/merge case bundle
+nexus backup create /path/to/backup            # Full case backup
+nexus backup restore /path/to/backup           # Restore from backup
 ```
 
 ## Maintenance

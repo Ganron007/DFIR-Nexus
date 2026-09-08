@@ -7,9 +7,9 @@ Usage:
     nexus serve [--http] [--port]          Start MCP server
     nexus approve [ids...] [--note]        Approve DRAFT findings (password required)
     nexus reject <ids...> [--reason]       Reject findings
-    nexus report --full                    Generate report
-    nexus backup /path                     Backup case
-    nexus restore /path                    Restore case
+    nexus report generate [--profile dfir] Generate report (APPROVED only)
+    nexus backup create /path              Backup case
+    nexus backup restore /path             Restore case
     nexus case init "Name"                 Create case
     nexus case activate CASE-001           Activate case
     nexus case close CASE-001              Close case
@@ -20,11 +20,11 @@ Usage:
     nexus evidence verify                  Verify evidence integrity
     nexus evidence lock                    Lock evidence (read-only)
     nexus evidence unlock                  Unlock evidence
-    nexus review [--findings]              Review case state
+    nexus review findings                  Review case state (findings/timeline/...)
     nexus config [--examiner] [--setup-password]  Configure
-    nexus export bundle.json               Export case bundle (positional)
-    nexus merge bundle.json                Import case bundle (positional)
-    nexus exec --purpose "reason" cmd      Run command with audit
+    nexus export bundle.json               Export case bundle
+    nexus merge bundle.json                Import case bundle
+    nexus exec run --purpose "reason" cmd  Run command with audit
     nexus audit log                        View audit trail
     nexus audit summary                    Audit summary
     nexus todo list                        List TODOs
@@ -63,7 +63,6 @@ from nexus.cli.init_cmd import init as init_cmd
 from nexus.cli.report import app as report_app
 from nexus.cli.review import app as review_app
 from nexus.cli.service import app as service_app
-from nexus.cli.sync import app as sync_app
 from nexus.cli.todo import app as todo_app
 
 app = typer.Typer(name="nexus", help="DFIR-Nexus — unified DFIR investigation platform")
@@ -75,8 +74,14 @@ app.add_typer(evidence_app, name="evidence", help="Manage evidence")
 app.add_typer(review_app, name="review", help="Review case state")
 app.add_typer(config_app, name="config", help="Manage examiner configuration")
 app.add_typer(service_app, name="service", help="Manage MCP services")
-app.add_typer(sync_app, name="export", help="Export case bundle")
-app.add_typer(sync_app, name="merge", help="Merge case bundle")
+# export/merge registered as DIRECT commands below so the documented
+# `nexus export bundle.json` / `nexus merge bundle.json` forms work
+# (sync_app's own sub-commands would double-nest: `nexus export export`).
+from nexus.cli.sync import export as _sync_export
+from nexus.cli.sync import merge as _sync_merge
+
+app.command(name="export", help="Export case bundle")(_sync_export)
+app.command(name="merge", help="Merge case bundle")(_sync_merge)
 app.add_typer(exec_app, name="exec", help="Execute forensic command with audit trail")
 app.add_typer(audit_app, name="audit", help="View audit trail")
 app.add_typer(todo_app, name="todo", help="Manage TODO items")

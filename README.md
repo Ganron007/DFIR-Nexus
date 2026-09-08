@@ -133,7 +133,9 @@ nexus case init "IR host"
 nexus evidence register <pack>
 
 # N2 parsers (deterministic; no LLM)
-nexus pipeline --mode tools --case <pack>
+# NOTE: --case is the EVIDENCE path; --from-case reuses your registered case
+# (without --from-case the pipeline auto-creates a new INC-* case)
+nexus pipeline --mode tools --from-case <CASE-ID> --case <pack>
 
 # Mode 1 — Examiner-Led Query Desk (thin LLM as scribe)
 nexus case ask --question "Was sdelete used to wipe files?"
