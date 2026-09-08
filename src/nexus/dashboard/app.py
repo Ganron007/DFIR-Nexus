@@ -2123,6 +2123,63 @@ async def api_mode2_corroborate(request):
     return JSONResponse(corroboration_check(finding))
 
 
+async def api_mode2_propose_draft(request):
+    """POST /portal/api/mode2/propose-draft — LLM drafts a finding from hits.
+
+    Body: {title, hits: [...]} or {title, query} (hits from the query).
+    The draft stages as DRAFT (examiner_selected=False); HMAC approval
+    stays with the examiner.
+    """
+    case_dir = _get_case_dir()
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    body = await request.json()
+    title = str(body.get("title") or "").strip()
+    if not title:
+        return JSONResponse({"error": "Missing title"}, status_code=400)
+    hits = body.get("hits")
+    if not hits and body.get("query") is not None:
+        from nexus.langgraph.query_pack import n4_query
+
+        result = n4_query(case_dir, str(body.get("query")), limit=12)
+        hits = result.get("hits", [])
+    if not hits:
+        return JSONResponse({"error": "No hits to draft from"}, status_code=400)
+
+    from nexus.case.chat import append_chat
+    from nexus.langgraph.llm_pipeline import get_model
+    from nexus.langgraph.mode2 import propose_draft_finding
+
+    try:
+        model = get_model()
+    except Exception:
+        model = None
+
+    outcome = propose_draft_finding(case_dir, hits, title, model=model)
+    if outcome.get("error"):
+        return JSONResponse({"error": outcome["error"]}, status_code=400)
+    draft = outcome["draft"]
+    from nexus.langgraph.mode1 import save_draft_finding
+
+    saved = save_draft_finding(case_dir, draft)
+    if saved.get("status") == "STAGED":
+        append_chat(case_dir, "llm", "mode2_draft", f"Proposed DRAFT '{title}' from {len(hits)} hits (examiner approval required)", {
+            "finding_id": saved.get("finding_id", ""),
+            "confidence": draft.get("confidence", ""),
+        })
+        return JSONResponse({
+            "finding_id": saved.get("finding_id"),
+            "status": "DRAFT",
+            "corroboration": outcome.get("corroboration", {}),
+        })
+    detail: list = list(saved.get("errors") or [])
+    if saved.get("error"):
+        detail.append(str(saved["error"]))
+    if not detail:
+        detail = [str(saved.get("status", "failed"))]
+    return JSONResponse({"error": detail})
+
+
 async def health(request):
     """Lightweight health endpoint for load balancers and Docker healthchecks."""
     return JSONResponse({"status": "ok", "service": "dfir-nexus"})
@@ -2186,4 +2243,5 @@ def create_dashboard():
         # Mode 2 (LLM-guided)
         Route("/portal/api/mode2/iterate", api_mode2_iterate, methods=["POST"]),
         Route("/portal/api/mode2/corroborate", api_mode2_corroborate, methods=["POST"]),
+        Route("/portal/api/mode2/propose-draft", api_mode2_propose_draft, methods=["POST"]),
     ]

@@ -305,13 +305,13 @@ def promote_hits_to_draft(
     title: str,
     examiner: str = "",
     interpretation_hint: str = "",
+    examiner_selected: bool = True,
 ) -> dict[str, Any]:
-    """Examiner selects hits -> promote to a DRAFT finding skeleton.
+    """Promote hits to a DRAFT finding skeleton.
 
-    The examiner is the writer. This creates a skeleton with the selected
-    hits as evidence rows and their audit_ids (resolved from the ledger by
-    family). The LLM scribe can then format it (or the examiner can edit it
-    directly).
+    ``examiner_selected=True`` (Mode 1): the examiner picked the hits.
+    ``examiner_selected=False`` marks an LLM-proposed finding (Mode 2) —
+    the draft is still examiner-gated for approval either way.
 
     Returns the DRAFT finding dict (not yet written to findings.json).
     """
@@ -366,7 +366,7 @@ def promote_hits_to_draft(
         "host": "",
         "event_timestamp": hits[0].get("time", "") if hits else "",
         "status": "DRAFT",
-        "examiner_selected": True,
+        "examiner_selected": examiner_selected,
     }
     return draft
 

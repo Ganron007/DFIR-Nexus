@@ -211,6 +211,35 @@ def run_iterative_loop(
     }
 
 
+def propose_draft_finding(
+    case_dir: Path,
+    hits: list[dict[str, Any]],
+    title: str,
+    model: Any = None,
+    interpretation_hint: str = "",
+) -> dict[str, Any]:
+    """Mode 2: LLM drafts a finding from hits. Staged as DRAFT with
+    ``examiner_selected=False`` — the examiner reviews, edits, approves,
+    or rejects via the normal HMAC flow. The LLM never approves.
+
+    Returns {draft, corroboration} or {error}.
+    """
+    from nexus.langgraph.mode1 import promote_hits_to_draft, scribe_finding
+
+    if not hits:
+        return {"error": "No hits to draft from"}
+    draft = promote_hits_to_draft(
+        case_dir,
+        hits=hits,
+        title=title,
+        examiner="mode2-llm",
+        interpretation_hint=interpretation_hint,
+        examiner_selected=False,
+    )
+    draft = scribe_finding(draft, hits=hits, model=model)
+    return {"draft": draft, "corroboration": corroboration_check(draft)}
+
+
 def corroboration_check(finding: dict[str, Any]) -> dict[str, Any]:
     """FD-006/007: distinct evidence families + confidence rule check.
 
