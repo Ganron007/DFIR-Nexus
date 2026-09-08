@@ -156,8 +156,8 @@ Evidence-files/
 Docs/internal/
 # Local scratch space (audit scripts, temp renders, working notes).
 scratch/
-# Claude Code skill bundle — local only while rebranding is in progress.
-claude-code/
 # Agent/session notes — local only (not part of the public product).
 AGENTS.md
 .cursor/
+# Agent-only discipline reference (mirror of the YAML rules KB).
+/FORENSIC-DISCIPLINE.md

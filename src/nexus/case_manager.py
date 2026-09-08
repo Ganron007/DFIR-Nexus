@@ -165,7 +165,12 @@ class CaseManager:
                 raise ValueError(f"Case not found: {case_id}")
             return case_dir
 
-        active_file = Path.home() / ".nexus" / "active_case"
+        active_file = Path(
+            os.environ.get(
+                "NEXUS_ACTIVE_CASE_FILE",
+                str(Path.home() / ".nexus" / "active_case"),
+            )
+        )
         if active_file.exists():
             try:
                 content = active_file.read_text().strip()

@@ -1,6 +1,7 @@
 """Report generation from approved findings — backed by SQLite case stack."""
 
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -8,7 +9,7 @@ import typer
 
 app = typer.Typer(help="Generate investigation reports")
 
-_ACTIVE_CASE_FILE = Path.home() / ".nexus" / "active_case"
+_ACTIVE_CASE_FILE = Path(os.environ.get("NEXUS_ACTIVE_CASE_FILE", str(Path.home() / ".nexus" / "active_case")))
 
 
 def _normalize_case_ref(raw: str) -> tuple[str, Path]:

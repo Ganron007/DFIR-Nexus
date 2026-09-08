@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import os
 import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
@@ -12,7 +13,7 @@ app = typer.Typer(help="Backup and restore cases")
 
 
 def _resolve_case_dir() -> Path | None:
-    active = Path.home() / ".nexus" / "active_case"
+    active = Path(os.environ.get("NEXUS_ACTIVE_CASE_FILE", str(Path.home() / ".nexus" / "active_case")))
     if active.exists():
         content = active.read_text().strip()
         if content:
@@ -114,7 +115,7 @@ def restore(
             restored += 1
 
     typer.echo(f"  Restored {restored} files to {target}")
-    active_file = Path.home() / ".nexus" / "active_case"
+    active_file = Path(os.environ.get("NEXUS_ACTIVE_CASE_FILE", str(Path.home() / ".nexus" / "active_case")))
     active_file.write_text(str(target))
     typer.echo(f"  Active case set to: {target}")
 

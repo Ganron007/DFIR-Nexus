@@ -18,7 +18,7 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-_ACTIVE_CASE_FILE = Path.home() / ".nexus" / "active_case"
+_ACTIVE_CASE_FILE = Path(os.environ.get("NEXUS_ACTIVE_CASE_FILE", str(Path.home() / ".nexus" / "active_case")))
 
 
 def resolve_active_case_dir() -> Path | None:

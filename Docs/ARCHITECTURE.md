@@ -330,13 +330,9 @@ nexus setup client --sift 10.0.0.2:4508 --windows 10.0.0.5:4508
 # Generates .mcp.json + settings.json with deny rules protecting case files
 ```
 
-For Claude Code specifically, the **`claude-code/` skill bundle** ships
-a curated experience — CLAUDE.md system prompt, `case-data-guard.sh`
-PreToolUse hook, `forensic-audit.sh` PostToolUse hook (writes Bash
-invocations to `<case>/audit/claude-code.jsonl`), and slash commands
-(`/welcome`, `/case`, `/approve`, `/report`). Two variants:
-
-- `claude-code/lite/` — single-machine, one MCP allowlist entry
-- `claude-code/full/` — multi-host fleet, sandbox + stricter denies
-
-See [`../claude-code/README.md`](../claude-code/README.md).
+For agent integrations, agent-only guidance lives at the repo root
+(`AGENTS.md`, `FORENSIC-DISCIPLINE.md` — gitignored, local only).
+`AGENTS.md` is the canonical agent reference; `FORENSIC-DISCIPLINE.md`
+is the human-readable mirror of the FD-001..007 rules whose
+authoritative source is `src/nexus/data/knowledge/discipline/rules.yaml`
+(queryable via the `get_rules()` MCP tool).

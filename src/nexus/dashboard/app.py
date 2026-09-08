@@ -761,7 +761,11 @@ async def api_activate_case(request):
     path = settings.cases_root / case_id
     if not path.is_dir():
         return JSONResponse({"ok": False, "error": "case not found"}, status_code=404)
-    active = Path.home() / ".nexus" / "active_case"
+    import os
+
+    active = Path(
+        os.environ.get("NEXUS_ACTIVE_CASE_FILE", str(Path.home() / ".nexus" / "active_case"))
+    )
     active.parent.mkdir(parents=True, exist_ok=True)
     active.write_text(case_id, encoding="utf-8")
     return JSONResponse({"ok": True, "active": case_id})

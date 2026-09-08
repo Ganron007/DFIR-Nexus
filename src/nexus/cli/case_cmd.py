@@ -1,12 +1,15 @@
 """Case lifecycle commands — backed by the SQLite case stack."""
 
+import os
 from pathlib import Path
 
 import typer
 
 app = typer.Typer(help="Manage investigation cases")
 
-_ACTIVE_CASE_FILE = Path.home() / ".nexus" / "active_case"
+_ACTIVE_CASE_FILE = Path(
+    os.environ.get("NEXUS_ACTIVE_CASE_FILE", str(Path.home() / ".nexus" / "active_case"))
+)
 
 
 def _get_sqlite_mgr():
