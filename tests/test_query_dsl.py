@@ -10,7 +10,6 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from nexus.langgraph.query_dsl import (  # noqa: E402
-    ParsedQuery,
     QuerySyntaxError,
     parse_query,
     row_matches,
