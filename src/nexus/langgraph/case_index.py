@@ -283,11 +283,12 @@ def query_index(
     terms: list[str],
     window: tuple[datetime | None, datetime | None],
     priority_terms: list[str] | None = None,
+    query: Any | None = None,
 ) -> list[dict[str, str]]:
     case_dir = Path(case_dir)
     name = index_name(case_dir.name)
     needles = [t.lower() for t in terms if t.strip()]
-    if not needles:
+    if not needles and query is None:
         return []
     from nexus.langgraph.query_pack import _CLOUD_TERMS, _WEAK_TERMS, _strong_set
 
@@ -328,14 +329,14 @@ def query_index(
         return should
 
     def _search(client, subset: list[str], size: int) -> list[dict[str, Any]]:
-        if not subset:
+        if not subset and query is None:
             return []
         body = {
             "size": size,
             "query": {
                 "bool": {
-                    "should": _should_for(subset),
-                    "minimum_should_match": 1,
+                    "should": _should_for(subset) or [{"match_all": {}}],
+                    "minimum_should_match": 1 if subset else 0,
                     "filter": filt,
                 }
             },
@@ -356,6 +357,9 @@ def query_index(
         for t in cloud:
             hits_raw.extend(_search(client, [t], 80))
         hits_raw.extend(_search(client, rest, 400))
+        if not hits_raw and query is not None:
+            # DSL-only query (fields/regex, no terms): scan the index once.
+            hits_raw.extend(_search(client, [], 400))
 
     hits: list[dict[str, str]] = []
     seen: set[tuple[str, str]] = set()
@@ -365,15 +369,25 @@ def query_index(
         if start is not None and end is not None and not _row_in_window(text, start, end):
             continue
         low = text.lower()
-        matched = [t for t in needles if needle_in_text(low, t)]
-        if not matched:
-            continue
+        fam = str(src.get("family") or "other")
+        file_rel = str(src.get("file") or "")
+        if query is not None:
+            from nexus.langgraph.query_dsl import row_matches
+
+            ok, matched = row_matches(query, line_lower=low, family=fam, file_rel=file_rel)
+            if not ok:
+                continue
+            matched = matched[:6]
+        else:
+            matched = [t for t in needles if needle_in_text(low, t)]
+            if not matched:
+                continue
         key = (str(src.get("file") or ""), str(src.get("line") or 0))
         if key in seen:
             continue
         seen.add(key)
         hits.append({
-            "family": str(src.get("family") or "other"),
+            "family": fam,
             "file": key[0],
             "line": key[1],
             "terms": ",".join(matched[:6]),

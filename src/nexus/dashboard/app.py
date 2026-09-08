@@ -1236,7 +1236,12 @@ def _bucket_times(hits: list[dict], bucket_minutes: int = 60) -> dict[str, int]:
 
 
 async def api_explore_search(request):
-    """POST /portal/api/explore/search — faceted N4 search."""
+    """POST /portal/api/explore/search — faceted N4 search.
+
+    Body: {query?: "<DSL>", needles?: "a,b", family?: "evtx,prefetch",
+           start?, end?, limit?, offset?}. When ``query`` (DSL) is provided
+    it takes precedence over plain needles.
+    """
     case_dir = _get_case_dir()
     if not case_dir:
         return JSONResponse({'error': 'No active case'}, status_code=404)
@@ -1245,16 +1250,18 @@ async def api_explore_search(request):
         _parse_needles,
         collect_query_terms,
         load_case_intake,
-        n4_hits,
+        n4_query,
         parse_intake_window,
     )
 
     body = await request.json()
     needles = _parse_needles(str(body.get('needles') or ''))
+    query_text = str(body.get('query') or '').strip()
     family_filter = [f.strip() for f in str(body.get('family') or '').split(',') if f.strip()]
     start = str(body.get('start') or '').strip()
     end = str(body.get('end') or '').strip()
     limit = max(1, min(int(body.get('limit') or 80), 400))
+    offset = max(0, int(body.get('offset') or 0))
 
     intake = load_case_intake(case_dir)
     if needles:
@@ -1262,29 +1269,51 @@ async def api_explore_search(request):
         intake['query_extra'] = ','.join(merged)
     window = parse_intake_window(intake)
     if start or end:
-        # Override with user-supplied dates; keep window parsing for times
-        parts = []
-        if start:
-            parts.append(start)
-        if end:
-            parts.append(end)
+        parts = [p for p in (start, end) if p]
         intake['window'] = '..'.join(parts)
         window = parse_intake_window(intake)
-    hits, backend = n4_hits(case_dir, collect_query_terms(intake), window)
+
+    result = n4_query(case_dir, query_text, window=window, limit=400, offset=0)
+    if result.get('error'):
+        return JSONResponse({'error': result['error']}, status_code=400)
+    hits = list(result.get('hits') or [])
+    total_before_filter = int(result.get('count') or 0)
 
     if family_filter:
         want = {f.lower() for f in family_filter}
         hits = [h for h in hits if (h.get('family') or '').lower() in want]
 
-    total = len(hits)
-    hits = hits[:limit]
     return JSONResponse({
-        'hits': hits,
-        'count': total,
-        'backend': backend,
+        'hits': hits[:limit],
+        'count': len(hits),
+        'total_before_family_filter': total_before_filter,
+        'backend': result.get('backend', ''),
         'families': _available_families(case_dir),
         'needles': collect_query_terms(intake),
+        'query': result.get('query', ''),
+        'offset': offset,
     })
+
+
+async def api_explore_aggregate(request):
+    """POST /portal/api/explore/aggregate — hit counts by family/hour/day.
+
+    Body: {query?: "<DSL>", group_by: family|hour|day|file}
+    """
+    case_dir = _get_case_dir()
+    if not case_dir:
+        return JSONResponse({'error': 'No active case'}, status_code=404)
+    body = await request.json()
+    from nexus.langgraph.query_pack import n4_aggregate
+
+    result = n4_aggregate(
+        case_dir,
+        str(body.get('query') or ''),
+        group_by=str(body.get('group_by') or 'family'),
+    )
+    if result.get('error'):
+        return JSONResponse({'error': result['error']}, status_code=400)
+    return JSONResponse(result)
 
 
 async def api_explore_histogram(request):
@@ -1335,11 +1364,15 @@ async def explore_page(request):
 <div style="display:grid;grid-template-columns:260px 1fr;gap:1rem">
   <div>
     <h3>Filters</h3>
+    <p>Query (DSL)<br><input id="dsl" style="width:100%;background:#161b22;color:#c9d1d9" placeholder='error AND family:evtx NOT defender'></p>
+    <p style="font-size:0.75rem;color:#8b949e">AND / OR / NOT &middot; family: host: user: event: file: &middot; regex:&lt;pattern&gt;</p>
     <p>Needles<br><input id="needles" style="width:100%;background:#161b22;color:#c9d1d9" placeholder="sdelete,.pst,USBSTOR"></p>
     <p>Family<br><select id="family" multiple style="width:100%;background:#161b22;color:#c9d1d9;height:6rem">{fam_options}</select></p>
     <p>Start<br><input id="start" type="date" style="width:100%;background:#161b22;color:#c9d1d9"></p>
     <p>End<br><input id="end" type="date" style="width:100%;background:#161b22;color:#c9d1d9"></p>
     <p><button class="action-btn" onclick="searchHits()">Search</button></p>
+    <p><button class="action-btn" style="background:#1f6feb" onclick="loadAggregates()">Aggregations</button></p>
+    <div id="agg" style="font-size:0.8rem;color:#8b949e"></div>
     <hr style="border-color:#30363d">
     <h3>Steer Chat</h3>
     <div id="chat" style="background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:0.5rem;height:12rem;overflow:auto;font-size:0.85rem;margin-bottom:0.5rem"></div>
@@ -1368,18 +1401,27 @@ function selectedFamily() {{
   return Array.from(s.selectedOptions).map(o => o.value).join(',');
 }}
 async function searchHits() {{
+  const dslEl = document.getElementById('dsl');
+  const dsl = dslEl ? dslEl.value.trim() : '';
+  const body = {{
+    needles: document.getElementById('needles').value,
+    family: selectedFamily(),
+    start: document.getElementById('start').value,
+    end: document.getElementById('end').value,
+  }};
+  if (dsl) body.query = dsl;
   const r = await fetch('/portal/api/explore/search', {{
     method: 'POST', headers: {{'Content-Type':'application/json'}},
-    body: JSON.stringify({{
-      needles: document.getElementById('needles').value,
-      family: selectedFamily(),
-      start: document.getElementById('start').value,
-      end: document.getElementById('end').value,
-    }})
+    body: JSON.stringify(body)
   }});
   const data = await r.json();
+  if (data.error) {{
+    document.getElementById('hit_count').textContent = 'query error: ' + data.error;
+    renderHits();
+    return;
+  }}
   currentHits = data.hits || [];
-  document.getElementById('hit_count').textContent = `showing ${{currentHits.length}} / ${{data.count}}`;
+  document.getElementById('hit_count').textContent = `showing ${{currentHits.length}} / ${{data.count}}` + (data.query && data.query !== '(match all)' ? ' | ' + data.query : '');
   renderHits();
   const rh = await fetch('/portal/api/explore/histogram', {{
     method: 'POST', headers: {{'Content-Type':'application/json'}},
@@ -1391,6 +1433,23 @@ async function searchHits() {{
     }})
   }});
   updateHistogram(await rh.json());
+}}
+async function loadAggregates() {{
+  const dslEl = document.getElementById('dsl');
+  const r = await fetch('/portal/api/explore/aggregate', {{
+    method: 'POST', headers: {{'Content-Type':'application/json'}},
+    body: JSON.stringify({{ query: dslEl ? document.getElementById('dsl').value : '', group_by: 'family' }})
+  }});
+  const data = await r.json();
+  const el = document.getElementById('agg');
+  if (data.error) {{
+    el.innerHTML = '<span style="color:#f85149">' + escapeHtml(data.error) + '</span>';
+    return;
+  }}
+  const buckets = data.buckets || {{}};
+  document.getElementById('agg').innerHTML = Object.keys(buckets).length
+    ? '<b>hits by family</b><br>' + Object.entries(buckets).map(([k, v]) => escapeHtml(k) + ': <b>' + v + '</b>').join('<br>')
+    : 'No hits to aggregate.';
 }}
 function renderHits() {{
   const tb = document.getElementById('hit_rows');
@@ -1554,4 +1613,5 @@ def create_dashboard():
         Route("/portal/explore", explore_page),
         Route("/portal/api/explore/search", api_explore_search, methods=["POST"]),
         Route("/portal/api/explore/histogram", api_explore_histogram, methods=["POST"]),
+        Route("/portal/api/explore/aggregate", api_explore_aggregate, methods=["POST"]),
     ]

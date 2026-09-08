@@ -295,6 +295,7 @@ def _hits_from_file(
     strong: set[str],
     start: datetime | None,
     end: datetime | None,
+    query: Any | None = None,
 ) -> list[dict[str, str]]:
     """Keep strong-term rows even when noisier matches appear first in the file."""
     raw: list[tuple[int, int, list[str], str]] = []
@@ -305,9 +306,19 @@ def _hits_from_file(
             if i == 1 and ("," in line or "\t" in line):
                 continue
             low = line.lower()
-            matched = [t for t in needles if needle_in_text(low, t)]
-            if not matched:
-                continue
+            if query is not None:
+                from nexus.langgraph.query_dsl import row_matches
+
+                ok, matched = row_matches(
+                    query, line_lower=low, family=fam, file_rel=str(path.relative_to(root))
+                )
+                if not ok:
+                    continue
+                matched = matched[:6]
+            else:
+                matched = [t for t in needles if needle_in_text(low, t)]
+                if not matched:
+                    continue
             if not _row_in_window(line, start, end):
                 continue
             pri = _hit_rank(matched, strong)
@@ -409,8 +420,14 @@ def n4_hits(
     window: tuple[datetime | None, datetime | None],
     priority_terms: list[str] | None = None,
     backend: str | None = None,
+    query: Any | None = None,
 ) -> tuple[list[dict[str, str]], str]:
-    """One query API: Elasticsearch when reachable+indexed, else CSV pack."""
+    """One query API: Elasticsearch when reachable+indexed, else CSV pack.
+
+    ``query`` is an optional parsed query_dsl.ParsedQuery adding boolean /
+    field-filter / regex semantics. The ES backend translates it to a bool
+    query; the CSV backend evaluates it per row.
+    """
     import os
 
     choice = (backend or os.environ.get("NEXUS_N4_BACKEND") or "auto").strip().lower()
@@ -419,14 +436,112 @@ def n4_hits(
             from nexus.langgraph.case_index import IndexMissing, es_available, query_index
 
             if choice != "auto" or es_available():
-                return query_index(case_dir, terms, window, priority_terms), "elasticsearch"
+                return query_index(case_dir, terms, window, priority_terms, query=query), "elasticsearch"
         except IndexMissing:
             if choice != "auto":
                 raise
         except Exception:
             if choice not in {"auto", ""}:
                 raise
-    return scan_extractions(case_dir, terms, window, priority_terms), "csv"
+    return scan_extractions(case_dir, terms, window, priority_terms, query=query), "csv"
+
+
+def n4_query(
+    case_dir: Path,
+    query_text: str,
+    window: tuple[datetime | None, datetime | None] | None = None,
+    limit: int = 80,
+    offset: int = 0,
+    backend: str | None = None,
+) -> dict[str, Any]:
+    """DSL entry point: parse -> N4 -> hits + total count (pagination-ready).
+
+    Returns {query, backend, count, offset, hits, empty} or {error}.
+    """
+    from nexus.langgraph.query_dsl import QuerySyntaxError, parse_query
+
+    try:
+        parsed = parse_query(query_text)
+    except QuerySyntaxError as exc:
+        return {"error": str(exc), "query": query_text}
+
+    case_dir = Path(case_dir)
+    intake = load_case_intake(case_dir)
+    if window is None:
+        window = parse_intake_window(intake)
+    pb_terms = collect_playbook_query_terms(intake)
+    dsl_terms = parsed.all_needles()
+    terms = list(dict.fromkeys(dsl_terms + collect_query_terms(intake)))
+    all_hits, backend_used = n4_hits(
+        case_dir,
+        terms,
+        window,
+        priority_terms=list(dict.fromkeys(pb_terms + dsl_terms)),
+        backend=backend,
+        query=parsed if not parsed.is_empty() else None,
+    )
+    total = len(all_hits)
+    page = all_hits[max(0, offset):max(0, offset) + max(1, min(int(limit or 80), _MAX_HITS_TOTAL))]
+    return {
+        "query": parsed.describe(),
+        "backend": backend_used,
+        "count": total,
+        "offset": max(0, offset),
+        "hits": page,
+        "empty": not all_hits,
+    }
+
+
+def n4_aggregate(
+    case_dir: Path,
+    query_text: str = "",
+    group_by: str = "family",
+    window: tuple[datetime | None, datetime | None] | None = None,
+) -> dict[str, Any]:
+    """Count hits grouped by family / hour / day (caps: _MAX_HITS_TOTAL)."""
+
+    from nexus.langgraph.query_dsl import QuerySyntaxError, parse_query
+
+    if group_by not in ("family", "hour", "day", "file"):
+        return {"error": f"unknown group_by: {group_by}"}
+    try:
+        parsed = parse_query(query_text)
+    except QuerySyntaxError as exc:
+        return {"error": str(exc)}
+
+    case_dir = Path(case_dir)
+    intake = load_case_intake(case_dir)
+    if window is None:
+        window = parse_intake_window(intake)
+    dsl_terms = parsed.all_needles()
+    terms = collect_query_terms(intake)
+    pb_terms = collect_playbook_query_terms(intake)
+    merged = list(dict.fromkeys(dsl_terms + terms))
+    all_hits, _ = n4_hits(
+        case_dir,
+        merged,
+        window,
+        priority_terms=list(dict.fromkeys(pb_terms + dsl_terms)),
+        query=parsed if not parsed.is_empty() else None,
+    )
+
+    buckets: dict[str, int] = {}
+    for h in all_hits:
+        if group_by == "family":
+            key = h.get("family") or "other"
+        elif group_by in ("hour", "day"):
+            m = _DATE_RE.search(h.get("text", ""))
+            key = m.group(1) if m else "(no timestamp)"
+            if group_by == "hour" and m and m.group(2):
+                key = f"{m.group(1)}T{m.group(2)[:2]}:00"
+        else:
+            key = h.get("file") or "?"
+        buckets[key] = buckets.get(key, 0) + 1
+    return {
+        "group_by": group_by,
+        "buckets": dict(sorted(buckets.items(), key=lambda kv: -kv[1])),
+        "total": len(all_hits),
+    }
 
 
 def extras_gap_notes(case_dir: Path, intake: dict[str, str] | None = None) -> list[str]:
@@ -467,13 +582,16 @@ def scan_extractions(
     terms: list[str],
     window: tuple[datetime | None, datetime | None],
     priority_terms: list[str] | None = None,
+    query: Any | None = None,
 ) -> list[dict[str, str]]:
+    """Scan parsed CSVs. ``query`` (query_dsl.ParsedQuery) adds boolean /
+    field-filter / regex semantics on top of the plain needle list."""
     case_dir = Path(case_dir)
     needles = [t.lower() for t in terms if t.strip()]
     strong = _strong_set(priority_terms if priority_terms is not None else terms)
     start, end = window
     hits: list[dict[str, str]] = []
-    if not needles:
+    if not needles and query is None:
         return hits
 
     for path, root, fam in iter_extraction_files(
@@ -481,7 +599,7 @@ def scan_extractions(
     ):
         try:
             hits.extend(
-                _hits_from_file(path, root, fam, needles, strong, start, end)
+                _hits_from_file(path, root, fam, needles, strong, start, end, query=query)
             )
         except OSError:
             continue
