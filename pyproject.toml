@@ -163,4 +163,5 @@ python_files = [
     "test_steer_portal.py",
     "test_collect.py",
     "test_audit_regressions.py",
+    "test_spa_serving.py",
 ]

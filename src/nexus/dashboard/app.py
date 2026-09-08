@@ -20,7 +20,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from starlette.responses import HTMLResponse, JSONResponse
+from starlette.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from starlette.routing import Route
 
 logger = logging.getLogger(__name__)
@@ -2297,6 +2297,42 @@ async def health(request):
     return JSONResponse({"status": "ok", "service": "dfir-nexus"})
 
 
+# --- Phase 4: React SPA serving ---
+# The built React SPA lives in frontend/dist/. Starlette serves it at /portal/app/*
+# and the index.html catch-all handles client-side routing. The old HTML pages
+# remain available at their original paths until the parity checklist is signed.
+
+_SPA_DIST = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "dist"
+_SPA_INDEX = _SPA_DIST / "index.html"
+
+
+async def spa_index(request) -> HTMLResponse:
+    """Serve the React SPA index.html for client-side routing."""
+    if _SPA_INDEX.is_file():
+        return HTMLResponse(_SPA_INDEX.read_text(encoding="utf-8"))
+    # Fallback: SPA not built yet — show a helpful message
+    return HTMLResponse(
+        "<html><body style='background:#0d1117;color:#e6edf3;font-family:sans-serif;padding:40px'>"
+        "<h2>Phase 4 SPA not built</h2>"
+        "<p>Run <code>cd frontend && npm run build</code> to build the React UI.</p>"
+        "<p>The legacy HTML pages are still available at their original /portal/* paths.</p>"
+        "</body></html>",
+        status_code=503,
+    )
+
+
+async def spa_asset(request) -> Response:
+    """Serve a static asset (JS/CSS/images) from the SPA dist directory."""
+    path = request.path_params.get("path", "")
+    # Prevent path traversal
+    if ".." in path or path.startswith("/"):
+        return Response(status_code=404)
+    file_path = _SPA_DIST / path
+    if file_path.is_file():
+        return FileResponse(file_path)
+    return Response(status_code=404)
+
+
 def create_dashboard():
     return [
         Route("/health", endpoint=health, methods=["GET"]),
@@ -2357,4 +2393,8 @@ def create_dashboard():
         Route("/portal/api/mode3/plan", api_mode3_plan, methods=["POST"]),
         Route("/portal/api/mode3/execute", api_mode3_execute, methods=["POST"]),
         Route("/portal/api/mode3/seal", api_mode3_seal, methods=["POST"]),
+        # Phase 4: React SPA (served after API + legacy HTML routes)
+        Route("/portal/app/assets/{path:path}", spa_asset),
+        Route("/portal/app/{path:path}", spa_index),
+        Route("/portal/app", spa_index),
     ]

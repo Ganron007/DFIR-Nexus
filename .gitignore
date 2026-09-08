@@ -144,6 +144,12 @@ Tools/linux/
 *.orig
 *.swp
 
+# ── Frontend (Phase 4: React + Vite) ────────────────────────────────
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/tsconfig.tsbuildinfo
+
 # ── Local forensic evidence corpus (never commit samples / EVTX / PCAP / malware) ──
 # Entirely local — including README/MANIFEST.
 Evidence-files/
