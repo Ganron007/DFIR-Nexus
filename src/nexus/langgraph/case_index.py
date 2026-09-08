@@ -275,7 +275,98 @@ def index_case(case_dir: Path, extra_needles: list[str] | None = None) -> dict[s
     out = case_dir / "analysis"
     out.mkdir(parents=True, exist_ok=True)
     (out / "es_index.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    write_index_state(case_dir, meta)
     return meta
+
+
+def _newest_extraction_mtime(case_dir: Path) -> float:
+    """Newest mtime across this case's processed outputs (0 when none)."""
+    from nexus.langgraph.query_pack import iter_extraction_files
+
+    newest = 0.0
+    for path, _root, _fam in iter_extraction_files(case_dir):
+        try:
+            newest = max(newest, path.stat().st_mtime)
+        except OSError:
+            continue
+    return newest
+
+
+def write_index_state(case_dir: Path, meta: dict[str, Any]) -> None:
+    """Persist index freshness state for staleness detection."""
+    import json
+    from datetime import UTC, datetime
+
+    case_dir = Path(case_dir)
+    newest = _newest_extraction_mtime(case_dir)
+    state = {
+        "indexed_at": datetime.now(UTC).isoformat(),
+        "newest_extraction_mtime": newest,
+        "docs": meta.get("docs", 0),
+        "index": meta.get("index", ""),
+        "url": es_url(),
+    }
+    out = case_dir / "analysis"
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "index_state.json").write_text(json.dumps(state, indent=2), encoding="utf-8")
+
+
+def index_stale(case_dir: Path) -> tuple[bool, dict[str, Any]]:
+    """True when extractions are newer than the last index build.
+
+    Returns (stale, info). info is empty when the case was never indexed.
+    """
+    case_dir = Path(case_dir)
+    state_file = case_dir / "analysis" / "index_state.json"
+    if not state_file_exists(state_file):
+        return True, {"reason": "never indexed"}
+    try:
+        import json
+
+        state = json.loads(state_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return True, {"reason": "unreadable index state"}
+    newest = _newest_extraction_mtime(case_dir)
+    indexed_at = float(state.get("newest_extraction_mtime") or 0)
+    if newest > indexed_at + 1:  # 1s tolerance for filesystem jitter
+        return True, {
+            "reason": "extractions newer than index",
+            "indexed_at": state.get("indexed_at", ""),
+            "newest_extraction": newest,
+        }
+    return False, {"indexed_at": state.get("indexed_at", ""), "docs": state.get("docs")}
+
+
+def state_file_exists(path: Path) -> bool:
+    return path.is_file()
+
+
+def _newest_extraction_mtime(case_dir: Path) -> float:
+    newest = 0.0
+    for path in iter_index_files(case_dir):
+        try:
+            newest = max(newest, path.stat().st_mtime)
+        except OSError:
+            continue
+    return newest
+
+
+def iter_index_files(case_dir: Path) -> list[Path]:
+    """Files the indexer walks (for mtime staleness checks)."""
+    case_dir = Path(case_dir)
+    from nexus.langgraph.pipeline_runs import resolve_tools_extractions
+
+    extractions = resolve_tools_extractions(case_dir)
+    tools_run_dir = extractions.parent
+    roots = [extractions, tools_run_dir / "sift" / "extractions", case_dir / "ingest"]
+    out: list[Path] = []
+    for root in roots:
+        if not root.is_dir():
+            continue
+        pats = ("*.csv", "*.txt", "*.json", "*.jsonl", "*.log") if root.name == "ingest" else ("*.csv", "*.txt", "*.json", "*.jsonl")
+        for pat in pats:
+            out.extend(root.rglob(pat))
+    return out
 
 
 def query_index(

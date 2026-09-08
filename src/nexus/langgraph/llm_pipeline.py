@@ -1054,6 +1054,7 @@ async def emit_tool_report(state: InvestigationState, tools: dict) -> dict:
         if live_case_is_in_repo(case_dir):
             finalize_run(pipeline_run, "completed")
             step_log.append("Repo sample-export skipped (live case already in-repo)")
+            step_log.extend(_autoindex_case(case_dir))
             return {
                 "report_path": str(out),
                 "step_log": step_log,
@@ -1069,6 +1070,7 @@ async def emit_tool_report(state: InvestigationState, tools: dict) -> dict:
         report_path = str(exported / "reports" / "TOOL-RUN.md")
         step_log.append(f"Repo export: {exported}")
         finalize_run(pipeline_run, "completed")
+        step_log.extend(_autoindex_case(case_dir))
     except Exception as exc:  # noqa: BLE001
         if "pipeline_run" in locals():
             finalize_run(pipeline_run, "failed", str(exc))
@@ -1080,6 +1082,28 @@ async def emit_tool_report(state: InvestigationState, tools: dict) -> dict:
         "step_log": step_log,
         "rag_notes": [f"repo_export={export_root}"] if export_root else [],
     }
+
+
+def _autoindex_case(case_dir: Path) -> list[str]:
+    """Best-effort N3 auto-index after the tools lane (WP 1.2).
+
+    Enabled by default when NEXUS_ES_URL is set; disable with
+    NEXUS_ES_AUTOINDEX=0. Never fails the run — indexing problems are
+    logged as step notes.
+    """
+    import os
+
+    if (os.environ.get("NEXUS_ES_AUTOINDEX") or "").strip().lower() in {"0", "false", "no"}:
+        return ["N3 auto-index disabled (NEXUS_ES_AUTOINDEX=0)"]
+    if not (os.environ.get("NEXUS_ES_URL") or "").strip():
+        return ["N3 auto-index skipped (NEXUS_ES_URL empty — CSV pack remains the backend)"]
+    try:
+        from nexus.langgraph.case_index import index_case
+
+        meta = index_case(case_dir)
+        return [f"N3 auto-index: {meta.get('docs')} docs -> {meta.get('index')}"]
+    except Exception as exc:  # noqa: BLE001
+        return [f"N3 auto-index failed (CSV pack remains usable): {exc}"]
 
 
 async def hunt(state: InvestigationState, tools: dict, model) -> dict:

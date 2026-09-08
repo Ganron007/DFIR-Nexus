@@ -70,6 +70,73 @@ def probe_http_health(
     return True, False, f"200 {service or 'dfir-nexus'} [{url}]"
 
 
+def _environment_checks() -> list[tuple[str, bool, str]]:
+    """Case-start readiness: ES, LLM, RAG embedder, SIFT reachability.
+
+    These are the Phase 5 preflight checks (WIRING-PLAN.md). Each is
+    informational here — the preflight gate command will enforce them.
+    """
+    import os
+
+    rows: list[tuple[str, bool, str]] = []
+
+    # Elasticsearch (N3 backend)
+    es_url = (os.environ.get("NEXUS_ES_URL") or "").strip()
+    if not es_url:
+        rows.append(("elasticsearch (N3)", True, "NEXUS_ES_URL empty — CSV pack backend"))
+    else:
+        try:
+            import httpx
+
+            r = httpx.get(es_url.rstrip("/") + "/", timeout=5)
+            if r.status_code == 200 and "version" in r.json():
+                rows.append(("elasticsearch (N3)", True, f"{es_url} v{r.json()['version']['number']}"))
+            else:
+                rows.append(("elasticsearch (N3)", False, f"HTTP {r.status_code} at {es_url}"))
+        except Exception as exc:  # noqa: BLE001
+            rows.append(("elasticsearch (N3)", False, f"unreachable: {exc}"))
+
+    # LLM (configured + optionally reachable)
+    llm_base = (os.environ.get("NEXUS_LLM_BASE_URL") or "").strip()
+    llm_model = (os.environ.get("NEXUS_LLM_MODEL") or "").strip()
+    llm_key = _key_set("NEXUS_LLM_API_KEY")
+    if llm_base and llm_model:
+        rows.append(("llm config", True, f"model={llm_model} base={llm_base} key={'set' if llm_key else 'unset'}"))
+    else:
+        rows.append(("llm config", True, "unset — heuristic scribe fallback active"))
+
+    # RAG index + embedding model
+    try:
+        from nexus.tools.rag import _get_index_dir, resolve_embedding_source
+
+        src = resolve_embedding_source()
+        idx_dir = _get_index_dir()
+        chroma = idx_dir / "chroma"
+        rows.append((
+            "rag index",
+            chroma.is_dir(),
+            f"{idx_dir} ({'present' if chroma.is_dir() else 'missing — nexus data rag-download'})",
+        ))
+        rows.append((
+            "embedding model",
+            src["source"] in ("hf_hub_cache", "explicit_dir"),
+            f"{src['model_id']} via {src['source']}" + ("" if src["local_files_only"] else " (will download on first use)"),
+        ))
+    except Exception as exc:  # noqa: BLE001
+        rows.append(("rag/embedder", False, str(exc)))
+
+    # SIFT reachability (fast probe; kill-switch aware)
+    try:
+        from nexus.case.sift_sync import sift_reachable
+
+        ok, msg = sift_reachable()
+        rows.append(("sift ssh", ok, msg if msg else ("reachable" if ok else "unreachable")))
+    except Exception as exc:  # noqa: BLE001
+        rows.append(("sift ssh", False, str(exc)[:120]))
+
+    return rows
+
+
 def doctor(
     health_url: str = typer.Option(
         "",
@@ -199,6 +266,9 @@ def doctor(
     ):
         set_ = _key_set(env_name)
         rows.append((env_name, True, "set" if set_ else "unset (optional)"))
+
+    # ── Environment gate checks (ES / LLM / RAG embedder / SIFT) ──
+    rows.extend(_environment_checks())
 
     probe_url = resolve_health_url(health_url)
     if probe_url is None:
