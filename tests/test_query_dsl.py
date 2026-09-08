@@ -35,7 +35,7 @@ class TestParse:
 
     def test_quoted_phrase(self):
         q = parse_query('"faulting application"')
-        assert q.or_terms == ['"faulting application"']
+        assert q.or_terms == ["faulting application"]
 
     def test_regex_mode(self):
         q = parse_query("regex:sdelete.*\\.exe")

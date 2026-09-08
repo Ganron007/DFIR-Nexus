@@ -19,7 +19,7 @@ _NOISE_USERS = frozenset({
 _IP_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 _USER_RE = re.compile(r"\b[A-Za-z0-9][\w.-]{1,30}\\[\w.$-]{2,32}\b")
 _EXE_RE = re.compile(r"\b[\w][\w .-]{0,50}\.(?:exe|dll|ps1|bat|cmd|js|vbs)\b", re.IGNORECASE)
-_PATH_RE = re.compile(r"[A-Za-z]:\\[^\s,;\"']{2,120}")
+_PATH_RE = re.compile(r"[A-Za-z]:\\[^\r\n,;\"']{2,260}")
 
 
 def extract_entities(texts: list[str], top: int = 12) -> dict[str, dict[str, int]]:

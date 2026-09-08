@@ -341,18 +341,13 @@ def state_file_exists(path: Path) -> bool:
     return path.is_file()
 
 
-def _newest_extraction_mtime(case_dir: Path) -> float:
-    newest = 0.0
-    for path in iter_index_files(case_dir):
-        try:
-            newest = max(newest, path.stat().st_mtime)
-        except OSError:
-            continue
-    return newest
-
-
 def iter_index_files(case_dir: Path) -> list[Path]:
-    """Files the indexer walks (for mtime staleness checks)."""
+    """Files the indexer walks (for mtime staleness checks).
+
+    Applies the same skip rules as iter_extraction_files (ledger/meta
+    suffixes, ingest artifacts.jsonl) so staleness is not triggered by
+    files the indexer never reads.
+    """
     case_dir = Path(case_dir)
     from nexus.langgraph.pipeline_runs import resolve_tools_extractions
 
@@ -365,7 +360,12 @@ def iter_index_files(case_dir: Path) -> list[Path]:
             continue
         pats = ("*.csv", "*.txt", "*.json", "*.jsonl", "*.log") if root.name == "ingest" else ("*.csv", "*.txt", "*.json", "*.jsonl")
         for pat in pats:
-            out.extend(root.rglob(pat))
+            for p in root.rglob(pat):
+                if p.name.startswith("_") or p.name.endswith(_SKIP_SUFFIXES):
+                    continue
+                if root.name == "ingest" and p.name == "artifacts.jsonl":
+                    continue
+                out.append(p)
     return out
 
 

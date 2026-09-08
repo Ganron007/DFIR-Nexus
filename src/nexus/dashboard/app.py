@@ -1261,8 +1261,11 @@ async def api_explore_search(request):
     family_filter = [f.strip() for f in str(body.get('family') or '').split(',') if f.strip()]
     start = str(body.get('start') or '').strip()
     end = str(body.get('end') or '').strip()
-    limit = max(1, min(int(body.get('limit') or 80), 400))
-    offset = max(0, int(body.get('offset') or 0))
+    try:
+        limit = max(1, min(int(body.get('limit') or 80), 400))
+        offset = max(0, int(body.get('offset') or 0))
+    except (TypeError, ValueError):
+        return JSONResponse({'error': 'limit/offset must be integers'}, status_code=400)
 
     intake = load_case_intake(case_dir)
     if needles:
@@ -1274,7 +1277,14 @@ async def api_explore_search(request):
         intake['window'] = '..'.join(parts)
         window = parse_intake_window(intake)
 
-    result = n4_query(case_dir, query_text, window=window, limit=400, offset=0)
+    # Merge plain needles into the DSL text so n4_query sees both
+    # (it reloads CASE.yaml internally and would otherwise drop them).
+    if needles and query_text:
+        query_text = query_text + ' ' + ' '.join(needles)
+    elif needles and not query_text:
+        query_text = ' OR '.join(needles)
+
+    result = n4_query(case_dir, query_text, window=window, limit=400, offset=offset)
     if result.get('error'):
         return JSONResponse({'error': result['error']}, status_code=400)
     hits = list(result.get('hits') or [])
@@ -1427,17 +1437,21 @@ async function searchHits() {{
   currentHits = data.hits || [];
   document.getElementById('hit_count').textContent = `showing ${{currentHits.length}} / ${{data.count}}` + (data.query && data.query !== '(match all)' ? ' | ' + data.query : '');
   renderHits();
-  const rh = await fetch('/portal/api/explore/histogram', {{
-    method: 'POST', headers: {{'Content-Type':'application/json'}},
-    body: JSON.stringify({{
-      needles: document.getElementById('needles').value,
-      family: selectedFamily(),
-      start: document.getElementById('start').value,
-      end: document.getElementById('end').value,
-    }})
-  }});
-  updateTimelineLanes();
+  await updateTimelineLanes();
+  await loadAggregates();
 }}
+async function loadAggregates() {{
+  const dslEl = document.getElementById('dsl');
+  const r = await fetch('/portal/api/explore/aggregate', {{
+    method: 'POST', headers: {{'Content-Type':'application/json'}},
+    body: JSON.stringify({{ query: dslEl ? dslEl.value.trim() : '', group_by: 'family' }})
+  }});
+  const data = await r.json();
+  const el = document.getElementById('agg');
+  if (data.error) {{
+    el.innerHTML = '<span style="color:#f85149">' + escapeHtml(data.error) + '</span>';
+    return;
+  }}
   const buckets = data.buckets || {{}};
   document.getElementById('agg').innerHTML = Object.keys(buckets).length
     ? '<b>hits by family</b><br>' + Object.entries(buckets).map(([k, v]) => escapeHtml(k) + ': <b>' + v + '</b>').join('<br>')

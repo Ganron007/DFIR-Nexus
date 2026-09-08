@@ -17,7 +17,9 @@ def _resolve_case_dir() -> Path | None:
     if active.exists():
         content = active.read_text().strip()
         if content:
-            case_dir = Path(content) if Path(content).is_absolute() else Path.home() / ".nexus" / "cases" / content
+            from nexus.config import settings
+
+            case_dir = Path(content) if Path(content).is_absolute() else settings.cases_root / content
             if case_dir.exists():
                 return case_dir
     return None

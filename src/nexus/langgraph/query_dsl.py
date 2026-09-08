@@ -123,6 +123,9 @@ def parse_query(text: str) -> ParsedQuery:
 
 def _add_term(q: ParsedQuery, tok: str, pending: str | None) -> None:
     term = tok.strip()
+    # Quoted phrases lose their literal quotes so matching works on row text.
+    if len(term) >= 2 and term.startswith('"') and term.endswith('"'):
+        term = term[1:-1].strip()
     if not term or (len(term) < 2 and not term.isdigit()):
         return
     if not term.startswith('"') and ":" in term:
@@ -139,6 +142,14 @@ def _add_term(q: ParsedQuery, tok: str, pending: str | None) -> None:
         bucket.append(term)
 
 
+def _term_in(term: str, line_lower: str) -> bool:
+    """Numeric terms use hex-boundary matching (1102 must not match a hash);
+    everything else stays substring. Kept for external callers/tests."""
+    from nexus.langgraph.query_pack import needle_in_text
+
+    return needle_in_text(line_lower, term)
+
+
 def row_matches(
     q: ParsedQuery,
     *,
@@ -150,16 +161,20 @@ def row_matches(
 
     ``line_lower`` must already be lowercased. Returns
     ``(matched, matched_or_terms)``. An empty query matches everything.
+    Numeric terms use the same hex-boundary guard as plain N4 needles so
+    event IDs never match inside hashes or UUIDs.
     """
+    from nexus.langgraph.query_pack import needle_in_text
+
     if q.regex is not None and not q.regex.search(line_lower):
         return False, []
-    if q.or_terms and not any(t.lower() in line_lower for t in q.or_terms):
+    if q.or_terms and not any(needle_in_text(line_lower, t) for t in q.or_terms):
         return False, []
     for t in q.and_terms:
-        if t.lower() not in line_lower:
+        if not needle_in_text(line_lower, t):
             return False, []
     for t in q.not_terms:
-        if t.lower() in line_lower:
+        if needle_in_text(line_lower, t):
             return False, []
     for fname, fvalue in q.fields.items():
         if fname == "family" and family.lower() != fvalue:
@@ -168,8 +183,7 @@ def row_matches(
             return False, []
         if fname in ("host", "user", "event") and fvalue not in line_lower:
             return False, []
-    matched = [t for t in q.all_needles() if t.lower() in line_lower]
+    from nexus.langgraph.query_pack import needle_in_text
+
+    matched = [t for t in q.all_needles() if needle_in_text(line_lower, t)]
     return True, matched
-
-
-_DANGEROUS_RE = re.compile(r"\([^()]*[+*][^()]*\)\s*[+*{]")
