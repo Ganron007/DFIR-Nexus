@@ -2,7 +2,10 @@
 
 > **Status:** Active plan. This file supersedes `Docs/internal/OLD-VS-NEW.md`,
 > `IMPROVEMENT-PLAN.md`, and `COMPARISON.md` as the forward-looking build plan.
-> Those documents are historical context only — do not implement from them.
+> Those documents (plus INTERPRET-HITL-CONTEXT-PLAN, CORPUS-CHECKLIST, and
+> point-in-time reports) are archived under
+> `Docs/internal/archive/2026-09-v2-transition/` — historical context only,
+> do not implement from them.
 >
 > **Product definition:** `Docs/NEXUS-MODE.md` (Mode 1/2/3 = control-depth
 > presets on one Case Analysis Cockpit). Architecture: `Docs/ARCHITECTURE.md`.
