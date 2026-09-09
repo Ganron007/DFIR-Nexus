@@ -20,7 +20,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from starlette.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from starlette.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from starlette.routing import Route
 
 logger = logging.getLogger(__name__)
@@ -2299,11 +2299,20 @@ async def health(request):
 
 # --- Phase 4: React SPA serving ---
 # The built React SPA lives in frontend/dist/. Starlette serves it at /portal/app/*
-# and the index.html catch-all handles client-side routing. The old HTML pages
-# remain available at their original paths until the parity checklist is signed.
+# and the index.html catch-all handles client-side routing. The root URL "/"
+# serves a professional landing page that links into the cockpit.
 
 _SPA_DIST = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "dist"
 _SPA_INDEX = _SPA_DIST / "index.html"
+_LANDING_HTML = Path(__file__).resolve().parent / "landing.html"
+
+
+async def landing_page(request) -> HTMLResponse:
+    """Serve the DFIR-Nexus landing page at /."""
+    if _LANDING_HTML.is_file():
+        return HTMLResponse(_LANDING_HTML.read_text(encoding="utf-8"))
+    # Fallback if landing.html is missing — redirect to the cockpit
+    return RedirectResponse(url="/portal/app", status_code=302)
 
 
 async def spa_index(request) -> HTMLResponse:
@@ -2313,9 +2322,8 @@ async def spa_index(request) -> HTMLResponse:
     # Fallback: SPA not built yet — show a helpful message
     return HTMLResponse(
         "<html><body style='background:#0d1117;color:#e6edf3;font-family:sans-serif;padding:40px'>"
-        "<h2>Phase 4 SPA not built</h2>"
+        "<h2>DFIR-Nexus UI not built</h2>"
         "<p>Run <code>cd frontend && npm run build</code> to build the React UI.</p>"
-        "<p>The legacy HTML pages are still available at their original /portal/* paths.</p>"
         "</body></html>",
         status_code=503,
     )
@@ -2327,10 +2335,10 @@ async def spa_asset(request) -> Response:
     # Defense-in-depth: block obvious traversal attempts
     if ".." in path or path.startswith("/"):
         return Response(status_code=404)
-    # Resolve and verify the path stays within _SPA_DIST
+    # The route is /portal/app/assets/{path} — files live in dist/assets/{path}
     try:
         spa_root = _SPA_DIST.resolve()
-        file_path = (_SPA_DIST / path).resolve()
+        file_path = (_SPA_DIST / "assets" / path).resolve()
         if not str(file_path).startswith(str(spa_root)):
             return Response(status_code=404)
     except (ValueError, RuntimeError):
@@ -2340,11 +2348,31 @@ async def spa_asset(request) -> Response:
     return Response(status_code=404)
 
 
+_LOGO_SVG = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "public" / "logo.svg"
+
+
+async def logo(request) -> Response:
+    """Serve the DFIR-Nexus logo SVG. Works before and after SPA build."""
+    # Try built dist first, then public/ source
+    for candidate in [_SPA_DIST / "logo.svg", _LOGO_SVG]:
+        if candidate.is_file():
+            return FileResponse(
+                str(candidate),
+                media_type="image/svg+xml",
+                headers={"Cache-Control": "public, max-age=3600"},
+            )
+    return Response(status_code=404)
+
+
 def create_dashboard():
     return [
         Route("/health", endpoint=health, methods=["GET"]),
-        Route("/portal", endpoint=overview),
-        Route("/portal/", endpoint=overview),
+        # Logo (works before and after SPA build)
+        Route("/logo.svg", endpoint=logo),
+        # Landing page + SPA
+        Route("/", endpoint=landing_page),
+        Route("/portal", endpoint=landing_page),
+        Route("/portal/", endpoint=landing_page),
         Route("/portal/ask", endpoint=ask_page),
         Route("/portal/findings", endpoint=findings_page),
         Route("/portal/approve", endpoint=approve_page),
@@ -2402,6 +2430,7 @@ def create_dashboard():
         Route("/portal/api/mode3/seal", api_mode3_seal, methods=["POST"]),
         # Phase 4: React SPA (served after API + legacy HTML routes)
         Route("/portal/app/assets/{path:path}", spa_asset),
+        Route("/portal/app/logo.svg", logo),
         Route("/portal/app/{path:path}", spa_index),
         Route("/portal/app", spa_index),
     ]
