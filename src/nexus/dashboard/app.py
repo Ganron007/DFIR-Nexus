@@ -796,7 +796,8 @@ async def api_intake(request):
 
 async def api_register_evidence(request):
     body = await request.json()
-    path = str(body.get("path") or "").strip()
+    # Strip surrounding quotes — examiners often paste "C:\path with spaces"
+    path = str(body.get("path") or "").strip().strip('"').strip()
     case_dir = _get_case_dir()
     if not case_dir:
         return JSONResponse({"ok": False, "error": "no active case"}, status_code=400)
@@ -2938,7 +2939,7 @@ async def api_fs_list(request):
     """
     import string as _string
 
-    raw = request.query_params.get("path") or ""
+    raw = (request.query_params.get("path") or "").strip().strip('"').strip()
     try:
         if not raw.strip():
             if os.name == "nt":

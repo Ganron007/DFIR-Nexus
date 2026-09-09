@@ -112,7 +112,9 @@ def test_pipeline_run_invalid_mode(client):
 
 def test_pipeline_run_no_case(client, tmp_path, monkeypatch):
     """WP 4b.2: Pipeline run without active case returns 404."""
-    monkeypatch.setenv("NEXUS_ACTIVE_CASE_FILE", str(tmp_path / "nonexistent"))
+    import nexus.dashboard.app as dash
+
+    monkeypatch.setattr(dash, "_get_case_dir", lambda: None)
     r = client.post("/portal/api/pipeline/run", json={"mode": "tools"})
     assert r.status_code == 404
 

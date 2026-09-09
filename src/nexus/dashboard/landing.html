@@ -386,7 +386,7 @@
         <span class="topnav-brand-text">DFIR<span>-Nexus</span></span>
       </a>
       <div class="topnav-links">
-        <a href="#cases">Cases</a>
+        <a href="/portal/app">Case Dashboard</a>
         <a href="#workflow" data-tab="tab-spine">Workflow</a>
         <a href="#workflow" data-tab="tab-platform">Platform</a>
       </div>
@@ -413,6 +413,7 @@
                 <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
             </a>
+            <a href="/portal/app/case-setup" class="btn-secondary">+ New Investigation</a>
             <a href="/health" class="btn-secondary" target="_blank">
               <span class="status-dot"></span>
               System Status
@@ -426,65 +427,6 @@
       </div>
     </div>
   </header>
-
-  <!-- Overview strip -->
-  <section class="section">
-    <div class="wrap">
-      <div class="overview-grid" id="overview-grid">
-        <div class="stat-tile">
-          <div class="label">Cases</div>
-          <div class="value" id="st-cases">—</div>
-          <div class="hint" id="st-active">no active case</div>
-        </div>
-        <div class="stat-tile">
-          <div class="label">Findings</div>
-          <div class="value" id="st-findings">—</div>
-          <div class="hint">across all cases</div>
-        </div>
-        <div class="stat-tile">
-          <div class="label">Evidence items</div>
-          <div class="value" id="st-evidence">—</div>
-          <div class="hint">registered across cases</div>
-        </div>
-        <div class="stat-tile">
-          <div class="label">Processed</div>
-          <div class="value" id="st-processed">—</div>
-          <div class="hint">cases with completed N2 lane</div>
-        </div>
-      </div>
-      <div class="health-bar" id="health-strip">
-        <span class="health-item"><span class="health-dot" id="hd-backend"></span>Backend</span>
-        <span class="health-sep">·</span>
-        <span class="health-item"><span class="health-dot" id="hd-es"></span>Elasticsearch</span>
-        <span class="health-sep">·</span>
-        <span class="health-item"><span class="health-dot" id="hd-rag"></span>RAG Index</span>
-        <span class="health-sep">·</span>
-        <span class="health-item"><span class="health-dot" id="hd-llm"></span>LLM</span>
-        <span class="health-sep">·</span>
-        <span class="health-item"><span class="health-dot" id="hd-parser"></span>Parser Lane</span>
-        <span class="health-sep">·</span>
-        <a href="/health" target="_blank" style="color:var(--accent);text-decoration:none;">raw status →</a>
-      </div>
-    </div>
-  </section>
-
-  <!-- Cases -->
-  <section class="section" id="cases" style="padding-top: 8px;">
-    <div class="wrap">
-      <div class="section-head">
-        <div>
-          <div class="kicker">Case dashboard</div>
-          <h2 class="section-title" style="font-size:22px;font-weight:700;letter-spacing:-0.4px;">Your Cases</h2>
-          <p class="section-sub">Click a case to activate it and open the cockpit.</p>
-        </div>
-        <a href="/portal/app/case-setup" class="btn-new">+ New Investigation</a>
-      </div>
-      <div id="cases-container">
-        <div class="cases-card" id="cases-loading" style="padding:18px;color:var(--text-secondary);font-size:13px;">Loading cases…</div>
-      </div>
-    </div>
-  </section>
-
 
   <!-- Explore-the-platform: tabbed panel (spine + features) -->
   <section class="section" id="workflow">
@@ -609,112 +551,12 @@
   </footer>
   <script>
     (function () {
-      function esc(s) {
-        return String(s == null ? "" : s)
-          .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-          .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-      }
-      function setDot(id, state) {
-        var el = document.getElementById(id);
-        if (!el) return;
-        el.className = "health-dot " + (state === true ? "ok" : state === false ? "bad" : state === "warn" ? "warn" : "");
-      }
-
-      // System health (cheap checks — deep preflight stays in nexus doctor)
-      fetch("/portal/api/system/health")
-        .then(function (r) { return r.json(); })
-        .then(function (h) {
-          setDot("hd-backend", h.backend === "ok");
-          var es = h.es || {};
-          setDot("hd-es", es.configured === false ? true : es.reachable);
-          setDot("hd-rag", (h.rag || {}).configured);
-          setDot("hd-llm", (h.llm || {}).configured === true ? true : "warn");
-          setDot("hd-parser", h.parser === "ok");
-        })
-        .catch(function () {
-          ["hd-backend", "hd-es", "hd-rag", "hd-llm", "hd-parser"].forEach(function (id) { setDot(id, false); });
-        });
-
-      // Cases table + overview stats
-      fetch("/portal/api/cases")
-        .then(function (r) { return r.json(); })
-        .then(function (c) {
-          var activeCase = c.active || "";
-          var cases = c.cases || [];
-          var host = document.getElementById("cases-loading");
-
-          document.getElementById("st-cases").textContent = String(cases.length);
-          document.getElementById("st-active").textContent = activeCase ? ("active: " + activeCase) : "no active case";
-
-          if (!cases.length) {
-            host.innerHTML =
-              '<div class="cases-empty">' +
-              '<div class="big">No cases yet</div>' +
-              'Click <strong>"+ New Investigation"</strong> to start your first investigation.' +
-              "</div>";
-            document.getElementById("st-findings").textContent = "0";
-            document.getElementById("st-evidence").textContent = "0";
-            document.getElementById("st-processed").textContent = "0";
-            return;
-          }
-
-          return Promise.all(cases.map(function (id) {
-            return fetch("/portal/api/case/details?case_id=" + encodeURIComponent(id))
-              .then(function (r) { return r.json(); })
-              .catch(function () { return { case_id: id }; });
-          })).then(function (details) {
-            var totFindings = 0, totEvidence = 0, totProcessed = 0;
-            var rows = details.map(function (d) {
-              var f = d.findings_count || 0;
-              totFindings += f;
-              totEvidence += d.evidence_count || 0;
-              if (d.pipeline_complete) totProcessed += 1;
-              var isActive = d.case_id === activeCase;
-              var mode = d.investigation_mode
-                ? '<span class="pill mode' + esc(d.investigation_mode) + '">Mode ' + esc(d.investigation_mode) + "</span>"
-                : '<span class="pill idle">—</span>';
-              return "<tr data-case=\"" + esc(d.case_id) + "\"" + (isActive ? " class=\"active\"" : "") + ">" +
-                "<td class='mono'>" + esc(d.case_id) + "</td>" +
-                "<td>" + esc(d.name || d.case_id) + "</td>" +
-                "<td>" + mode + "</td>" +
-                "<td>" + (d.evidence_count != null ? d.evidence_count : "—") + "</td>" +
-                "<td>" + (f || "—") + "</td>" +
-                "<td>" + (d.pipeline_complete
-                  ? '<span class="pill ok">✓ processed</span>'
-                  : '<span class="pill idle">pending</span>') + "</td>" +
-                "<td>" + (isActive ? '<span class="pill ok">Active</span>' : '<span class="pill idle">—</span>') + "</td>" +
-                "</tr>";
-            }).join("");
-
-            document.getElementById("st-findings").textContent = String(totFindings);
-            document.getElementById("st-evidence").textContent = String(totEvidence);
-            document.getElementById("st-processed").textContent = String(totProcessed);
-
-            host.innerHTML =
-              "<table class='cases-table'><thead><tr>" +
-              "<th>Case ID</th><th>Name</th><th>Mode</th><th>Evidence</th><th>Findings</th><th>N2 Pipeline</th><th>Status</th>" +
-              "</tr></thead><tbody>" + rows + "</tbody></table>";
-
-            Array.prototype.forEach.call(document.querySelectorAll(".cases-table tbody tr"), function (tr) {
-              tr.addEventListener("click", function () {
-                var cid = tr.getAttribute("data-case");
-                fetch("/portal/api/case/activate", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ case_id: cid }),
-                }).then(function () { window.location.href = "/portal/app"; });
-              });
-            });
-          });
-        })
-        .catch(function () {
-          var host = document.getElementById("cases-loading");
-          if (host) host.innerHTML = '<div class="cases-error">Could not load cases — is the backend running?</div>';
-        });
-
       // Tabbed info panel (spine + platform in one compact card)
       var tabBtns = document.querySelectorAll(".tab-btn");
-      var panels = { "tab-spine": document.getElementById("tab-spine"), "tab-platform": document.getElementById("tab-platform") };
+      var panels = {
+        "tab-spine": document.getElementById("tab-spine"),
+        "tab-platform": document.getElementById("tab-platform"),
+      };
       function activateTab(id) {
         Array.prototype.forEach.call(tabBtns, function (b) {
           b.classList.toggle("active", b.getAttribute("data-tab") === id);
@@ -726,7 +568,7 @@
       Array.prototype.forEach.call(tabBtns, function (b) {
         b.addEventListener("click", function () { activateTab(b.getAttribute("data-tab")); });
       });
-      // Nav links switch tabs instead of scrolling past them
+      // Nav links switch tabs instead of scrolling
       Array.prototype.forEach.call(document.querySelectorAll("a[data-tab]"), function (a) {
         a.addEventListener("click", function (ev) {
           ev.preventDefault();

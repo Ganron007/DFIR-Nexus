@@ -1,12 +1,13 @@
 /**
- * WP 4b.3: Landing page → Case Dashboard.
+ * WP 4b.3: Case Dashboard (SPA Overview).
  *
- * The Overview page is now a functional case dashboard, not just a summary.
- * Lists all cases with details, "New Investigation" button, and system health.
+ * Functional dashboard: all cases with details, "New Investigation",
+ * system health (backend/ES/RAG/LLM/parser), and active-case summary.
+ * The landing page links here as "Case Dashboard".
  */
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, type SummaryResponse, type CaseDetailsResponse } from "../api/client";
+import { api, type SummaryResponse, type CaseDetailsResponse, type SystemHealthResponse } from "../api/client";
 import { useCase } from "../context/CaseContext";
 
 export default function Overview() {
@@ -14,17 +15,19 @@ export default function Overview() {
   const { cases, activeCase, setActiveCase, mode, health } = useCase();
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
   const [caseDetails, setCaseDetails] = useState<Record<string, CaseDetailsResponse>>({});
+  const [sys, setSys] = useState<SystemHealthResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([
       api.summary().catch(() => null),
-    ]).then(([s]) => {
+      api.systemHealth().catch(() => null),
+    ]).then(([s, h]) => {
       if (s) setSummary(s);
+      if (h) setSys(h);
       setLoading(false);
     });
 
-    // Load details for each case
     cases.forEach(async (c) => {
       try {
         const d = await api.caseDetails(c);
@@ -48,11 +51,35 @@ export default function Overview() {
 
       {/* System health */}
       <div className="card" style={{ marginBottom: 16, padding: 12 }}>
-        <div style={{ display: "flex", gap: 24, fontSize: 12 }}>
+        <div style={{ display: "flex", gap: 20, flexWrap: "wrap", fontSize: 12 }}>
           <span>
             <span style={{ color: "var(--text-muted)" }}>Backend:</span>{" "}
             <span style={{ color: health === "ok" ? "var(--success)" : "var(--danger)" }}>
               {health === "ok" ? "✓ Healthy" : health === "down" ? "✗ Down" : "Checking..."}
+            </span>
+          </span>
+          <span>
+            <span style={{ color: "var(--text-muted)" }}>Elasticsearch:</span>{" "}
+            <span style={{ color: sys?.es?.configured === false ? "var(--text-muted)" : sys?.es?.reachable ? "var(--success)" : "var(--danger)" }}>
+              {sys?.es?.configured === false ? "CSV pack (not configured)" : sys?.es?.reachable ? "✓ reachable" : "✗ unreachable"}
+            </span>
+          </span>
+          <span>
+            <span style={{ color: "var(--text-muted)" }}>RAG index:</span>{" "}
+            <span style={{ color: sys?.rag?.configured ? "var(--success)" : "var(--danger)" }}>
+              {sys?.rag?.configured ? "✓ present" : "✗ missing"}
+            </span>
+          </span>
+          <span>
+            <span style={{ color: "var(--text-muted)" }}>LLM:</span>{" "}
+            <span style={{ color: sys?.llm?.configured ? "var(--success)" : "var(--warning)" }}>
+              {sys?.llm?.configured ? `✓ ${sys.llm.model || "configured"}` : "heuristic fallback"}
+            </span>
+          </span>
+          <span>
+            <span style={{ color: "var(--text-muted)" }}>Parser lane:</span>{" "}
+            <span style={{ color: sys?.parser === "ok" ? "var(--success)" : "var(--danger)" }}>
+              {sys?.parser === "ok" ? "✓ available" : "✗ missing"}
             </span>
           </span>
           {activeCase && mode && (
