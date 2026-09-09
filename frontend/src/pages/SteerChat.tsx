@@ -1,10 +1,87 @@
 import { useEffect, useState, useRef } from "react";
-import { api, type ChatEntry, type Mode3PlanResponse } from "../api/client";
+import { api, chatStream, type ChatEntry, type Mode3PlanResponse, type N4Hit } from "../api/client";
 import { useCase } from "../context/CaseContext";
+
+/**
+ * WP 4d.3: live steer chat — Mode 1/2 turns stream over SSE with live
+ * progress (status + iteration events) and hit cards rendered directly
+ * in the transcript. Hit cards carry one-click bookmarking so interesting
+ * items flow into the Workbench without leaving the conversation.
+ */
+
+function HitCard({ hit: h }: { hit: N4Hit }) {
+  const [bookmarked, setBookmarked] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const key = `${h.family}:${h.file}:${h.line}`;
+
+  const toggle = async () => {
+    setBusy(true);
+    try {
+      if (bookmarked) {
+        await api.workbenchRemove(key);
+        setBookmarked(false);
+      } else {
+        await api.workbenchAdd(h);
+        setBookmarked(true);
+      }
+    } catch {
+      // card-level failure is non-fatal; the star just stays as-is
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const preview = Object.entries(h.fields || {}).slice(0, 4);
+
+  return (
+    <div
+      style={{
+        background: "var(--bg-secondary)",
+        border: "1px solid var(--border)",
+        borderRadius: 6,
+        padding: "6px 10px",
+        fontSize: 11,
+        display: "flex",
+        gap: 8,
+        alignItems: "flex-start",
+      }}
+    >
+      <button
+        onClick={toggle}
+        disabled={busy}
+        style={{ background: "none", border: "none", cursor: "pointer", color: bookmarked ? "var(--warning)" : "var(--text-muted)", fontSize: 13, padding: 0 }}
+        title={bookmarked ? "Remove bookmark" : "Bookmark to Workbench"}
+      >
+        {bookmarked ? "★" : "☆"}
+      </button>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 2 }}>
+          <span style={{ fontFamily: "monospace" }}>{h.family}</span>
+          {h.host ? ` · ${h.host}` : ""} · {h.file}:{h.line}
+        </div>
+        {preview.length > 0 ? (
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            {preview.map(([k, v]) => (
+              <span key={k} style={{ fontSize: 11 }}>
+                <span style={{ color: "var(--text-muted)" }}>{k}: </span>
+                <span style={{ fontFamily: "monospace" }}>{v}</span>
+              </span>
+            ))}
+          </div>
+        ) : (
+          <div style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {h.text}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function ProposalCard({ entry }: { entry: ChatEntry }) {
   const meta = (entry.meta || {}) as Record<string, string>;
   const isMode3 = entry.action === "mode3_plan" || entry.action === "mode3_execute";
+  const hits = entry.data?.hits || [];
 
   return (
     <div
@@ -69,6 +146,18 @@ function ProposalCard({ entry }: { entry: ChatEntry }) {
         </div>
       )}
 
+      {/* WP 4d.3: hit cards persisted in the transcript */}
+      {hits.length > 0 && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 4 }}>
+            Top hits ({hits.length})
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {hits.map((h, i) => <HitCard key={i} hit={h} />)}
+          </div>
+        </div>
+      )}
+
       {meta.hits && (
         <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>
           {meta.hits} hits
@@ -91,6 +180,9 @@ export default function SteerChat() {
   const [sealChallenge, setSealChallenge] = useState<{ challenge_id: string; nonce: string; salt: string } | null>(null);
   const [sealResponse, setSealResponse] = useState("");
   const [sealExaminer, setSealExaminer] = useState("");
+  // WP 4d.3: live progress while a streamed turn is running
+  const [liveStatus, setLiveStatus] = useState("");
+  const [liveIterations, setLiveIterations] = useState<Record<string, unknown>[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollTimerRef = useRef<number | null>(null);
 
@@ -125,20 +217,32 @@ export default function SteerChat() {
     if (!input.trim() || loading) return;
     setLoading(true);
     setError("");
+    setLiveStatus("");
+    setLiveIterations([]);
     const text = input;
     setInput("");
 
     try {
-      if (mode === "mode1") {
-        // WP 4b.12: Wire api.ask to Mode 1 — translates English to needles
-        const askResult = await api.ask(text);
-        await api.chatPost(text);
-        if (askResult.error) {
-          setError(askResult.error);
-        }
-        load();
-      } else if (mode === "mode2") {
-        await api.mode2Iterate({ question: text, max_iterations: mode2Iterations });
+      if (mode === "mode1" || mode === "mode2") {
+        // WP 4d.3: streamed turn — live status + iteration events, then reload
+        await chatStream(
+          {
+            message: text,
+            mode,
+            max_iterations: mode2Iterations,
+          },
+          (evt) => {
+            if (evt.event === "status") {
+              const stage = String((evt.data as { stage?: string }).stage || "");
+              setLiveStatus(stage === "translating" ? "Translating question to needles…" : "Querying evidence…");
+            } else if (evt.event === "iteration") {
+              setLiveStatus("");
+              setLiveIterations((prev) => [...prev, evt.data]);
+            } else if (evt.event === "error") {
+              setError(String((evt.data as { error?: string }).error || "stream error"));
+            }
+          },
+        );
         load();
       } else if (mode === "mode3") {
         if (mode3Step === "plan") {
@@ -161,6 +265,8 @@ export default function SteerChat() {
       setError((e as Error).message);
     } finally {
       setLoading(false);
+      setLiveStatus("");
+      setLiveIterations([]);
     }
   };
 
@@ -435,7 +541,7 @@ export default function SteerChat() {
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {messages.map((m, i) => {
-              if (isProposal(m)) {
+              if (isProposal(m) || (m.data?.hits && m.data.hits.length > 0)) {
                 return <ProposalCard key={i} entry={m} />;
               }
               return (
@@ -463,9 +569,26 @@ export default function SteerChat() {
                 </div>
               );
             })}
+            {/* WP 4d.3: live progress while streaming */}
             {loading && (
-              <div style={{ alignSelf: "flex-start", color: "var(--text-muted)", fontSize: 13, padding: "4px 12px" }}>
-                <span className="pulse-dots">●●●</span>
+              <div style={{ alignSelf: "flex-start", padding: "4px 12px" }}>
+                {liveStatus && (
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{liveStatus}</div>
+                )}
+                {liveIterations.map((it, i) => {
+                  const needles = Array.isArray(it.needles) ? (it.needles as string[]).join(", ") : "";
+                  return (
+                    <div key={i} style={{ fontSize: 12, color: "var(--accent)", padding: "2px 0" }}>
+                      ⟳ iteration {String(it.iteration ?? i)}: {String(it.action || "")}
+                      {needles ? ` — ${needles}` : ""} · {String(it.hits ?? 0)} hits
+                    </div>
+                  );
+                })}
+                {!liveStatus && liveIterations.length === 0 && (
+                  <div style={{ color: "var(--text-muted)", fontSize: 13 }}>
+                    <span className="pulse-dots">●●●</span>
+                  </div>
+                )}
               </div>
             )}
           </div>

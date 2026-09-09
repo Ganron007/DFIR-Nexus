@@ -17,8 +17,20 @@ def _chat_path(case_dir: Path) -> Path:
     return Path(case_dir) / "chat.jsonl"
 
 
-def append_chat(case_dir: Path, role: str, action: str, text: str, meta: dict | None = None) -> dict:
-    """Append one chat entry. Roles: examiner | llm | system."""
+def append_chat(
+    case_dir: Path,
+    role: str,
+    action: str,
+    text: str,
+    meta: dict | None = None,
+    data: dict | None = None,
+) -> dict:
+    """Append one chat entry. Roles: examiner | llm | system.
+
+    ``data`` carries structured payloads (e.g. hit lists for the portal
+    transcript) that must survive reload verbatim — unlike ``meta``,
+    which is stringified and truncated for display.
+    """
     entry = {
         "ts": datetime.now(UTC).isoformat(),
         "role": role,
@@ -27,6 +39,8 @@ def append_chat(case_dir: Path, role: str, action: str, text: str, meta: dict | 
     }
     if meta:
         entry["meta"] = {k: str(v)[:300] for k, v in meta.items() if v}
+    if data:
+        entry["data"] = data
     path = Path(case_dir) / "chat.jsonl"
     line = json.dumps(entry, default=str)
     with path.open("a", encoding="utf-8") as f:

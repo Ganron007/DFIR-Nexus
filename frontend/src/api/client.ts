@@ -93,7 +93,33 @@ export interface EvidenceResponse {
   total: number;
 }
 
-// WP 4b.12: IocsResponse and TodosResponse removed — no UI pages consume them
+/** GET /iocs → IOCs extracted from findings */
+export interface Ioc {
+  type?: string;
+  value?: string;
+  finding_title?: string;
+  finding_status?: string;
+  [key: string]: unknown;
+}
+export interface IocsResponse {
+  iocs: Ioc[];
+  total: number;
+}
+
+/** GET /todos → TODO list */
+export interface Todo {
+  todo_id?: string;
+  id?: string;
+  description: string;
+  status?: string;
+  priority?: string;
+  assignee?: string;
+  [key: string]: unknown;
+}
+export interface TodosResponse {
+  todos: Todo[];
+  total: number;
+}
 
 /** GET /summary → nested counts */
 export interface SummaryResponse {
@@ -109,13 +135,15 @@ export type TransparencyResponse = Record<string, unknown>;
 /** GET /audit/{finding_id} → audit entries */
 export type AuditResponse = Record<string, unknown>[];
 
-/** N4 hit shape (from query_pack) */
+/** N4 hit shape (from query_pack) — fields/host added by WP 4d.1 */
 export interface N4Hit {
   family: string;
   file: string;
   line: string | number;
   terms: string;
   text: string;
+  fields?: Record<string, string>;
+  host?: string;
 }
 
 /** POST /mode1/ask → {needles, window, hits, count, backend} or {needles: [], window, error} */
@@ -202,13 +230,14 @@ export interface WorkbenchPromoteResponse {
   error?: string | string[];
 }
 
-/** Chat entry shape (from chat.py) */
+/** Chat entry shape (from chat.py) — data.hits added by WP 4d.3 */
 export interface ChatEntry {
   ts: string;
   role: string;
   action: string;
   text: string;
   meta?: Record<string, string>;
+  data?: { hits?: N4Hit[] };
 }
 
 /** GET /chat → {messages: ChatEntry[], total} */
@@ -356,6 +385,8 @@ export interface CaseDetailsResponse {
   investigation_mode?: string;
   evidence_count?: number;
   findings_count?: number;
+  approved_count?: number;
+  report_exists?: boolean;
   pipeline_complete?: boolean;
   error?: string;
 }
@@ -427,7 +458,9 @@ export const api = {
     return request<FindingsResponse>(`/findings${qs ? `?${qs}` : ""}`);
   },
   evidence: () => request<EvidenceResponse>("/evidence"),
-  // WP 4b.12: iocs and todos removed — no UI pages consume them
+  iocs: () => request<IocsResponse>("/iocs"),
+  todos: (status?: string) =>
+    request<TodosResponse>(`/todos${status ? `?status=${status}` : ""}`),
   summary: () => request<SummaryResponse>("/summary"),
   transparency: () => request<TransparencyResponse>("/transparency"),
   auditForFinding: (findingId: string) =>
@@ -445,6 +478,7 @@ export const api = {
     query?: string;
     needles?: string;
     family?: string;
+    host?: string;
     start?: string;
     end?: string;
     limit?: number;
@@ -541,3 +575,68 @@ export const api = {
   getCaseMode: () => request<CaseModeResponse>("/case/mode"),
   systemHealth: () => request<SystemHealthResponse>("/system/health"),
 };
+
+// --- WP 4d.3: live steer-chat stream (SSE over fetch) ---
+
+export type ChatStreamEvent =
+  | { event: "status"; data: { stage: string; detail?: string; needles?: string[] } }
+  | { event: "iteration"; data: Record<string, unknown> }
+  | { event: "hits"; data: { hits: N4Hit[]; count?: number } }
+  | { event: "done"; data: { reply: string; needles: string[]; count: number; backend?: string; hits?: N4Hit[] } }
+  | { event: "error"; data: { error: string } };
+
+/**
+ * Stream a steer-chat turn via POST /chat/stream (SSE).
+ * Calls onEvent for each server event; resolves when the stream ends.
+ */
+export async function chatStream(
+  body: { message: string; mode: "mode1" | "mode2"; max_iterations?: number },
+  onEvent: (evt: { event: string; data: Record<string, unknown> }) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const res = await fetch(`${BASE}/chat/stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!res.ok || !res.body) {
+    let detail = res.statusText;
+    try {
+      const b = await res.json();
+      detail = (b as { error?: string }).error || detail;
+    } catch {
+      // keep statusText
+    }
+    throw new ApiError(res.status, detail);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (value) {
+      buf += decoder.decode(value, { stream: true });
+      let idx: number;
+      while ((idx = buf.indexOf("\n\n")) >= 0) {
+        const raw = buf.slice(0, idx);
+        buf = buf.slice(idx + 2);
+        let event = "message";
+        const dataLines: string[] = [];
+        for (const line of raw.split("\n")) {
+          if (line.startsWith("event: ")) event = line.slice(7).trim();
+          else if (line.startsWith("data: ")) dataLines.push(line.slice(6));
+        }
+        if (event === "ping") continue;
+        let parsed: Record<string, unknown> = {};
+        try {
+          parsed = JSON.parse(dataLines.join("\n")) as Record<string, unknown>;
+        } catch {
+          parsed = {};
+        }
+        onEvent({ event, data: parsed });
+      }
+    }
+    if (done) break;
+  }
+}

@@ -1366,6 +1366,49 @@
 
 ---
 
+### POST /portal/api/chat/stream
+**Description:** Live steer-chat turn (WP 4d.3). Runs the Mode 1 ask flow or the Mode 2 iterative loop and streams progress as Server-Sent Events. The examiner message and final reply are persisted to the case transcript; top hits are persisted in the reply entry's `data.hits` so hit cards survive reload.
+
+**Request:**
+```json
+{
+  "message": "show me sdelete and prefetch activity",
+  "mode": "mode1",
+  "max_iterations": 2
+}
+```
+- `mode`: `mode1` (ask → query) or `mode2` (iterative loop)
+- `max_iterations`: Mode 2 only, 1–5 (default 2)
+
+**Response:** `text/event-stream` with events:
+```
+event: status     data: {"stage": "translating"|"querying", ...}
+event: iteration  data: {"iteration": 0, "action": "initial_query", "needles": [...], "hits": N, ...}
+event: hits       data: {"hits": [...capped 12 trimmed hits...], "count": N}
+event: done       data: {"reply": "...", "needles": [...], "count": N, "backend": "..."}
+event: error      data: {"error": "..."}
+event: ping       data: {}   (keepalive every 30s while working)
+```
+
+**Notes:**
+- Mode 2 `iteration` events come from `run_iterative_loop`'s `on_event` callback (WP 4d.3).
+- `hits` payloads include parsed `fields` + best-effort `host` per hit (WP 4d.1).
+- Non-SSE fallback: `POST /portal/api/chat` (blocking) remains available.
+
+---
+
+### Explore hit enrichment (WP 4d.1)
+
+`POST /portal/api/explore/search` responses now attach per-hit:
+- `fields` — parsed CSV columns (header → value, quoted-comma safe, capped 24 fields / 160 chars)
+- `host` — best-effort hostname (Computer column or `\\UNC` path)
+
+And accept an optional `"host"` filter (exact, case-insensitive).
+
+`POST /portal/api/explore/aggregate` accepts `group_by: family|host|hour|day|file`.
+
+---
+
 ## 12. HTML Page Routes (React Routes)
 
 These are server-side rendered HTML pages in the current portal. In the React SPA rewrite, these become client-side routes. Each renders the `_TEMPLATE` wrapper with case-data content.

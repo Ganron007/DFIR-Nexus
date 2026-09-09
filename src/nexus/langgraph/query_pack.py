@@ -447,6 +447,117 @@ def n4_hits(
     return scan_extractions(case_dir, terms, window, priority_terms, query=query), "csv"
 
 
+# ---------------------------------------------------------------------------
+# WP 4d.1 — type-aware hit enrichment: parsed CSV fields + best-effort host
+# ---------------------------------------------------------------------------
+
+_HOST_RE = re.compile(
+    r"(?:^|[\",;\s|])(?:computer(?:\s*name)?|host(?:name)?)\"?\s*[:=,]\s*\"?([A-Za-z0-9][A-Za-z0-9.-]{1,30})",
+    re.I,
+)
+_UNC_RE = re.compile(r"\\\\([A-Za-z0-9][A-Za-z0-9.-]{1,30})\\")
+_MAX_FIELDS = 24
+_MAX_FIELD_VALUE = 160
+_header_cache: dict[str, list[str]] = {}
+
+
+def _split_csv_row(text: str) -> list[str]:
+    """Best-effort CSV row split (handles quoted commas)."""
+    import csv
+
+    try:
+        return next(csv.reader([text]))
+    except (StopIteration, csv.Error):
+        return [p.strip() for p in text.split(",")]
+
+
+def _host_from_text(text: str) -> str:
+    """Best-effort hostname from a hit row (Computer column or \\\\UNC path)."""
+    m = _HOST_RE.search(text)
+    if m:
+        return m.group(1).rstrip(".").lower()
+    m = _UNC_RE.search(text)
+    if m:
+        return m.group(1).lower()
+    return ""
+
+
+def _host_from_fields(fields: dict[str, str]) -> str:
+    for key in ("Computer", "ComputerName", "Host", "Hostname", "HostName", "SourceHost"):
+        v = fields.get(key, "").strip()
+        if v:
+            return v.split(".")[0].lower()
+    return ""
+
+
+def _header_for_file(root: Path, file_rel: str) -> list[str]:
+    """Read (and cache) the CSV header line of a source file."""
+    if file_rel in _header_cache:
+        return _header_cache[file_rel]
+    header: list[str] = []
+    p = root / file_rel
+    if file_rel and p.is_file():
+        try:
+            with p.open(encoding="utf-8", errors="replace") as fh:
+                first = fh.readline().strip()
+            if first:
+                import csv as _csv
+
+                header = next(_csv.reader([first]), [])
+                header = [h.strip().lstrip("\ufeff").strip('"') for h in header]
+        except OSError:
+            header = []
+    _header_cache[file_rel] = header
+    return header
+
+
+def attach_hit_fields(case_dir: Path, hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """WP 4d.1: attach parsed ``fields`` (CSV header -> value) and a
+    best-effort ``host`` to each hit so the UI can render type-aware
+    columns instead of raw text rows.
+
+    Headers are read once per source file (line 1, cached process-wide).
+    Rows are split with the csv reader so quoted commas survive. ES and
+    CSV backends share the same hit shape, so this works for both.
+    """
+    case_dir = Path(case_dir)
+    if not hits:
+        return hits
+    from nexus.langgraph.pipeline_runs import resolve_tools_extractions
+
+    root = resolve_tools_extractions(case_dir)
+    out: list[dict[str, Any]] = []
+    for h in hits:
+        row = dict(h)
+        fields: dict[str, str] = {}
+        file_rel = str(h.get("file") or "")
+        p = root / file_rel if file_rel else None
+        if p is not None and p.is_file():
+            if file_rel not in _header_cache:
+                try:
+                    with p.open(encoding="utf-8", errors="replace") as fh:
+                        first = fh.readline().strip()
+                    _header_cache[file_rel] = (
+                        [c.strip().lstrip("\ufeff").strip('"') for c in _split_csv_row(first)] if first else []
+                    )
+                except OSError:
+                    _header_cache[file_rel] = []
+            header = _header_cache[file_rel]
+            values = _split_csv_row(h.get("text", ""))
+            for name, val in list(zip(header, values, strict=False))[:_MAX_FIELDS]:
+                v = str(val).strip()[:_MAX_FIELD_VALUE]
+                if v:
+                    fields[name] = v
+        host = next((v for v in (fields.get(k, "") for k in ("Computer", "ComputerName", "Host", "Hostname")) if v), "")
+        if not host:
+            m = _HOST_RE.search(h.get("text", "")) or _UNC_RE.search(h.get("text", ""))
+            host = (m.group(1) if m else "").rstrip(".").lower()
+        row["fields"] = fields
+        row["host"] = host
+        out.append(row)
+    return out
+
+
 def n4_query(
     case_dir: Path,
     query_text: str,
@@ -503,7 +614,7 @@ def n4_aggregate(
 
     from nexus.langgraph.query_dsl import QuerySyntaxError, parse_query
 
-    if group_by not in ("family", "hour", "day", "file"):
+    if group_by not in ("family", "hour", "day", "file", "host"):
         return {"error": f"unknown group_by: {group_by}"}
     try:
         parsed = parse_query(query_text)
@@ -530,6 +641,9 @@ def n4_aggregate(
     for h in all_hits:
         if group_by == "family":
             key = h.get("family") or "other"
+        elif group_by == "host":
+            m = _HOST_RE.search(h.get("text", "")) or _UNC_RE.search(h.get("text", ""))
+            key = (m.group(1).rstrip(".").lower() if m else "") or "(unknown host)"
         elif group_by in ("hour", "day"):
             m = _DATE_RE.search(h.get("text", ""))
             key = m.group(1) if m else "(no timestamp)"

@@ -7,17 +7,85 @@ import Histogram from "../components/Histogram";
 
 const PAGE_SIZE = 200;
 
+/**
+ * WP 4d.1: per-family priority fields for type-aware hit rendering.
+ * The backend attaches `fields` (parsed CSV header -> value) to every hit;
+ * these lists pick which parsed columns to show for each evidence family.
+ * Unknown families fall back to GENERIC_FIELD_PRIORITY.
+ */
+const FAMILY_FIELD_PRIORITY: Record<string, string[]> = {
+  evtx: ["TimeCreated", "EventID", "Computer", "Channel", "Level", "Message"],
+  security: ["TimeCreated", "EventID", "Computer", "TargetUserName", "SubjectUserName", "IpAddress"],
+  system: ["TimeCreated", "EventID", "Computer", "Provider", "Message"],
+  powershell: ["TimeCreated", "ScriptBlockText", "Path", "Message"],
+  pecmd: ["ExecutableName", "RunCount", "LastRun", "SourceFile"],
+  prefetch: ["ExecutableName", "RunCount", "LastRun", "SourceFile"],
+  amcache: ["Name", "Path", "SHA1", "FirstSeen", "LastSeen"],
+  appcompat: ["Path", "LastModified", "Size"],
+  appcompatcacheparser: ["Path", "LastModified"],
+  shellbags: ["Path", "LastWriteTime", "SourceFile"],
+  lnk: ["LocalPath", "Arguments", "WorkingDirectory", "TargetCreated"],
+  jlecmd: ["SourceFile", "EntryName", "LastAccessed"],
+  jumplist: ["SourceFile", "EntryName", "LastAccessed"],
+  recmd: ["FileName", "OriginalPath", "DeletedFrom"],
+  recycle: ["OriginalPath", "DeletedFrom", "DeletionTime"],
+  rbcmd: ["OriginalFileName", "DeletedFrom", "DeletionTime"],
+  mftecmd: ["FileName", "ParentPath", "Created0x10", "LastModified0x10"],
+  mft: ["FileName", "ParentPath", "Created", "Modified"],
+  srum: ["AppName", "UserId", "TimeStamp", "BytesSent", "BytesRecvd"],
+  hayabusa: ["Timestamp", "RuleTitle", "Level", "Computer", "EventID"],
+  usn: ["FileName", "UpdateReason", "Timestamp"],
+  browser: ["URL", "Title", "VisitCount", "LastVisitTime"],
+  chrome: ["URL", "Title", "VisitCount", "LastVisitTime"],
+  edge: ["URL", "Title", "VisitCount", "LastVisitTime"],
+  registry: ["KeyPath", "ValueName", "Value", "LastWriteTime"],
+  scheduled_tasks: ["TaskName", "Action", "Author"],
+  services: ["Name", "ImagePath", "StartMode"],
+  userassist: ["Name", "RunCount", "LastExecution"],
+  usb: ["Device", "SerialNumber", "FirstInstall", "LastConnect"],
+  setupapi: ["Device", "Serial", "FirstInstall"],
+};
+const GENERIC_FIELD_PRIORITY = [
+  "TimeCreated", "Timestamp", "EventID", "Computer", "Name", "Path", "URL",
+  "ExecutableName", "FileName", "LastWriteTime", "Message",
+];
+
+/** Pick up to 4 parsed columns to render for the current result set. */
+export function pickHitColumns(hits: N4Hit[]): string[] {
+  const tally: Record<string, number> = {};
+  for (const h of hits) {
+    const f = h.family || "other";
+    tally[f] = (tally[f] || 0) + 1;
+  }
+  const dominant = Object.entries(tally).sort((a, b) => b[1] - a[1])[0]?.[0] || "";
+  const priority = FAMILY_FIELD_PRIORITY[dominant] || GENERIC_FIELD_PRIORITY;
+  const present = new Set<string>();
+  for (const h of hits) {
+    for (const k of Object.keys(h.fields || {})) present.add(k);
+  }
+  const chosen = priority.filter((f) => present.has(f)).slice(0, 4);
+  if (chosen.length === 0) {
+    for (const f of present) {
+      chosen.push(f);
+      if (chosen.length >= 4) break;
+    }
+  }
+  return chosen;
+}
+
 export default function Explore() {
   const { activeCase } = useCase();
   const [searchParams] = useSearchParams();
   const [needles, setNeedles] = useState("");
   const [family, setFamily] = useState("");
+  const [hostFilter, setHostFilter] = useState("");
   const [hits, setHits] = useState<N4Hit[]>([]);
   const [count, setCount] = useState(0);
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [familyAgg, setFamilyAgg] = useState<Record<string, number>>({});
+  const [hostAgg, setHostAgg] = useState<Record<string, number>>({});
   const [bookmarked, setBookmarked] = useState<Set<string>>(new Set());
   const [histogram, setHistogram] = useState<Record<string, number>>({});
   const [showHistogram, setShowHistogram] = useState(true);
@@ -26,11 +94,14 @@ export default function Explore() {
   const [timeRange, setTimeRange] = useState<{ start: string; end: string }>({ start: "", end: "" });
   const reqIdRef = useRef(0);
 
-  // Load family aggregates and workbench bookmarks on mount
+  // Load family/host aggregates and workbench bookmarks on mount
   useEffect(() => {
     api.aggregate({ group_by: "family" })
       .then((r) => setFamilyAgg(r.buckets || {}))
       .catch((e) => setError(`Facet load failed: ${(e as Error).message}`));
+    api.aggregate({ group_by: "host" })
+      .then((r) => setHostAgg(r.buckets || {}))
+      .catch(() => setHostAgg({}));
     api.workbench()
       .then((r) => {
         const ids = new Set(r.bookmarks.map((b) => b.id));
@@ -48,26 +119,30 @@ export default function Explore() {
     const start = searchParams.get("start");
     const end = searchParams.get("end");
     const fam = searchParams.get("family");
+    const host = searchParams.get("host");
     if (fam) setFamily(fam);
-    if (start || end || fam) {
-      // Auto-search with the provided params
+    if (host) setHostFilter(host);
+    if (start || end || fam || host) {
       const n = searchParams.get("needles") || "";
       setNeedles(n);
       setTimeRange({ start: start || "", end: end || "" });
       setTimeout(() => doSearch(0, fam || undefined), 100);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
-  const doSearch = useCallback(async (targetOffset: number, fam?: string) => {
+  const doSearch = useCallback(async (targetOffset: number, fam?: string, host?: string) => {
     const reqId = ++reqIdRef.current;
     setLoading(true);
     setError("");
     const famValue = fam !== undefined ? fam : family;
+    const hostValue = host !== undefined ? host : hostFilter;
     try {
       const [searchResult, histResult] = await Promise.all([
         api.search({
           needles: needles || undefined,
           family: famValue || undefined,
+          host: hostValue || undefined,
           start: timeRange.start || undefined,
           end: timeRange.end || undefined,
           limit: PAGE_SIZE,
@@ -79,7 +154,6 @@ export default function Explore() {
           end: timeRange.end || undefined,
         }).catch(() => ({ buckets: {}, count: 0 }) as HistogramResponse),
       ]);
-      // Ignore stale responses
       if (reqIdRef.current !== reqId) return;
       setHits(searchResult.hits);
       setCount(searchResult.count);
@@ -93,7 +167,7 @@ export default function Explore() {
     } finally {
       if (reqIdRef.current === reqId) setLoading(false);
     }
-  }, [needles, family, timeRange]);
+  }, [needles, family, hostFilter, timeRange]);
 
   const search = (resetOffset = true) => {
     doSearch(resetOffset ? 0 : offset);
@@ -103,6 +177,12 @@ export default function Explore() {
     const newFam = family === fam ? "" : fam;
     setFamily(newFam);
     doSearch(0, newFam);
+  };
+
+  const toggleHostChip = (host: string) => {
+    const newHost = hostFilter === host ? "" : host;
+    setHostFilter(newHost);
+    doSearch(0, family, newHost);
   };
 
   const toggleBookmark = (hit: N4Hit) => {
@@ -122,6 +202,23 @@ export default function Explore() {
 
   const pages = Math.ceil(count / PAGE_SIZE);
   const currentPage = Math.floor(offset / PAGE_SIZE) + 1;
+
+  const familyEntries = Object.entries(familyAgg).sort((a, b) => b[1] - a[1]);
+  const hostEntries = Object.entries(hostAgg)
+    .filter(([k]) => k && k !== "(unknown host)")
+    .sort((a, b) => b[1] - a[1]);
+
+  // WP 4d.1: type-aware columns recomputed for the current page of hits
+  const typeColumns: Column<N4Hit>[] = pickHitColumns(hits).map((fieldName) => ({
+    key: `field-${fieldName}`,
+    header: fieldName,
+    width: fieldName.toLowerCase().includes("message") || fieldName.toLowerCase().includes("text") ? undefined : 150,
+    render: (h: N4Hit) => (
+      <span style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", display: "block", whiteSpace: "nowrap" }}>
+        {h.fields?.[fieldName] ?? ""}
+      </span>
+    ),
+  }));
 
   const columns: Column<N4Hit>[] = [
     {
@@ -150,15 +247,26 @@ export default function Explore() {
     {
       key: "family",
       header: "Family",
-      width: 120,
+      width: 100,
       render: (h) => <span style={{ fontFamily: "monospace", fontSize: 11 }}>{h.family}</span>,
     },
     {
-      key: "file",
-      header: "File",
-      width: 200,
+      key: "host",
+      header: "Host",
+      width: 90,
       render: (h) => (
-        <span style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", display: "block", whiteSpace: "nowrap" }}>
+        <span style={{ fontFamily: "monospace", fontSize: 11, color: "var(--text-secondary)" }}>
+          {h.host || "—"}
+        </span>
+      ),
+    },
+    ...typeColumns,
+    {
+      key: "file",
+      header: "Source",
+      width: 170,
+      render: (h) => (
+        <span style={{ fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", display: "block", whiteSpace: "nowrap", color: "var(--text-muted)" }}>
           {h.file}:{h.line}
         </span>
       ),
@@ -166,21 +274,10 @@ export default function Explore() {
     {
       key: "terms",
       header: "Terms",
-      width: 150,
-      render: (h) => <span style={{ fontSize: 11, fontFamily: "monospace" }}>{h.terms}</span>,
-    },
-    {
-      key: "text",
-      header: "Row",
-      render: (h) => (
-        <span style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", display: "block", whiteSpace: "nowrap" }}>
-          {h.text}
-        </span>
-      ),
+      width: 110,
+      render: (h) => <span style={{ fontSize: 10, fontFamily: "monospace", color: "var(--text-muted)" }}>{h.terms}</span>,
     },
   ];
-
-  const familyEntries = Object.entries(familyAgg).sort((a, b) => b[1] - a[1]);
 
   return (
     <div>
@@ -290,6 +387,27 @@ export default function Explore() {
                   margin: 2,
                   borderColor: family === key ? "var(--accent)" : undefined,
                   background: family === key ? "rgba(47,129,247,0.15)" : undefined,
+                }}
+              >
+                {key} ({cnt})
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* WP 4d.2: Host facet chips */}
+        {hostEntries.length > 0 && (
+          <div style={{ marginBottom: 8 }}>
+            <span style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", marginRight: 8 }}>Host:</span>
+            {hostEntries.slice(0, 12).map(([key, cnt]) => (
+              <button
+                key={key}
+                className="btn btn-sm"
+                onClick={() => toggleHostChip(key)}
+                style={{
+                  margin: 2,
+                  borderColor: hostFilter === key ? "var(--accent)" : undefined,
+                  background: hostFilter === key ? "rgba(47,129,247,0.15)" : undefined,
                 }}
               >
                 {key} ({cnt})

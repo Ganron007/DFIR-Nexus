@@ -4,6 +4,76 @@ All notable changes to DFIR-Nexus are documented here.
 
 ## Unreleased
 
+### Phase 4d — UI hardening: full case workflow (2026-09-10)
+
+#### Summary
+
+Closed every remaining pre-Phase-5 gap, focused on making the complete case
+workflow work end-to-end from the browser: create → register → process (N2)
+→ explore/query (N3-N4) → steer/interpret (N5) → bookmark → findings →
+approve (N6) → timeline (N7) → report (N8).
+
+#### Type-aware evidence rendering (4d.1)
+
+- Backend: `attach_hit_fields()` in query_pack.py attaches parsed CSV
+  `fields` (header → value, quoted-comma safe, header cached per file) and
+  a best-effort `host` to every hit — works for both the Elasticsearch and
+  CSV backends. Wired into `/portal/api/explore/search`.
+- Frontend: Explore renders per-family parsed columns (30+ family priority
+  maps: evtx, prefetch/pecmd, amcache, shellbags, lnk, recycle, mft, srum,
+  hayabusa, usn, browser, registry, usb, …) instead of raw text rows, with
+  a generic fallback for unknown families. Host column added.
+
+#### Host facets (4d.2)
+
+- `n4_aggregate` supports `group_by=host` (best-effort hostname from
+  Computer columns / UNC paths); `/explore/search` accepts a `host` filter.
+- Explore shows Host facet chips alongside family chips.
+
+#### Live steer chat (4d.3)
+
+- Backend: `POST /portal/api/chat/stream` (SSE) streams Mode 1 and Mode 2
+  turns live — `status` events while translating/querying, `iteration`
+  events from the Mode 2 loop (new `on_event` callback), then `done`.
+- Chat persistence: `append_chat` gained a structured `data` field; top
+  hits (capped 12, trimmed) persist into the transcript so hit cards
+  survive reload.
+- Frontend: SteerChat renders live progress during streamed turns and hit
+  cards in the transcript — each card shows family/host/parsed fields with
+  one-click bookmarking into the Workbench.
+
+#### IOCs + TODOs pages (4d.4)
+
+- New `Iocs.tsx` and `Todos.tsx` pages (endpoints existed; UI never built).
+  Routes `/iocs` + `/todos`, error banners, lifecycle-aware empty states,
+  added to the sidebar Utilities group.
+
+#### Live stage states (4d.5)
+
+- `GET /case/details` now reports `approved_count` + `report_exists`;
+  CaseContext exposes `stages` and refreshes on case switch.
+- The N1-N8 stepper colors completed stages green (N6 keyed on approvals,
+  N8 on REPORT.md presence).
+
+#### Evidence page N2 controls
+
+- Evidence page gains a "Run N2 lane" button (pipeline/run + status
+  polling) and a live N2 completion indicator, so processing is reachable
+  outside the wizard.
+
+#### Frontend tests (WP 4.2 gap)
+
+- vitest + @testing-library/react + jsdom installed; `npm test` runs them.
+- 7 tests: Histogram empty/series/downsampling, VirtualTable virtualized
+  window + cell rendering, and the 4d.1 family column picker.
+
+#### Verification
+
+- Backend: 468 passed, 1 skipped, 0 failed; Ruff clean.
+- Frontend: TypeScript strict clean; Vite build clean; vitest 7 passed.
+
+---
+
 ### Phase 4 + 4b full re-verification (2026-09-10)
 
 #### Summary

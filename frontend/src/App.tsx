@@ -13,6 +13,8 @@ import Evidence from "./pages/Evidence";
 import Entities from "./pages/Entities";
 import Transparency from "./pages/Transparency";
 import CaseSetup from "./pages/CaseSetup";
+import Iocs from "./pages/Iocs";
+import Todos from "./pages/Todos";
 
 export default function App() {
   return (
@@ -31,6 +33,8 @@ export default function App() {
           <Route path="/entities" element={<Entities />} />
           <Route path="/transparency" element={<Transparency />} />
           <Route path="/case-setup" element={<CaseSetup />} />
+          <Route path="/iocs" element={<Iocs />} />
+          <Route path="/todos" element={<Todos />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Layout>

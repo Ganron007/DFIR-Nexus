@@ -6,6 +6,7 @@ evidence, IOCs, todos, and the commit challenge-response workflow
 for browser-based finding approval.
 """
 
+import asyncio
 import contextlib
 import hashlib
 import hmac as hmac_mod
@@ -20,7 +21,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from starlette.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
+from starlette.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    Response,
+    StreamingResponse,
+)
 from starlette.routing import Route
 
 logger = logging.getLogger(__name__)
@@ -1294,6 +1302,15 @@ async def api_explore_search(request):
         want = {f.lower() for f in family_filter}
         hits = [h for h in hits if (h.get('family') or '').lower() in want]
 
+    # WP 4d.1: parsed CSV fields + best-effort host per hit for type-aware UI
+    from nexus.langgraph.query_pack import attach_hit_fields
+
+    hits = attach_hit_fields(case_dir, hits)
+
+    host_filter = str(body.get('host') or '').strip().lower()
+    if host_filter:
+        hits = [h for h in hits if (h.get('host') or '').lower() == host_filter]
+
     return JSONResponse({
         'hits': hits[:limit],
         'count': len(hits),
@@ -1307,9 +1324,9 @@ async def api_explore_search(request):
 
 
 async def api_explore_aggregate(request):
-    """POST /portal/api/explore/aggregate — hit counts by family/hour/day.
+    """POST /portal/api/explore/aggregate — hit counts by family/host/hour/day.
 
-    Body: {query?: "<DSL>", group_by: family|hour|day|file}
+    Body: {query?: "<DSL>", group_by: family|host|hour|day|file}
     """
     case_dir = _get_case_dir()
     if not case_dir:
@@ -1990,6 +2007,177 @@ async def api_chat_clear(request):
     return JSONResponse(clear_chat(case_dir))
 
 
+_CHAT_STREAM_MAX_HITS = 12
+
+
+def _hits_for_transcript(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Cap + trim hits persisted into the chat transcript (WP 4d.3)."""
+    out = []
+    for h in hits[:_CHAT_STREAM_MAX_HITS]:
+        out.append({
+            "family": str(h.get("family", ""))[:60],
+            "file": str(h.get("file", ""))[:200],
+            "line": str(h.get("line", ""))[:12],
+            "terms": str(h.get("terms", ""))[:120],
+            "text": str(h.get("text", ""))[:240],
+            "fields": {str(k)[:60]: str(v)[:160] for k, v in list((h.get("fields") or {}).items())[:12]},
+            "host": str(h.get("host", ""))[:60],
+        })
+    return out
+
+
+async def api_chat_stream(request):
+    """POST /portal/api/chat/stream — live steer-chat (WP 4d.3).
+
+    Body: {message, mode: "mode1"|"mode2", max_iterations?}
+    Returns text/event-stream with events:
+      status   — {stage: "translating"|"querying", ...}
+      iteration — Mode 2 loop step (needles, hits, rationale)
+      hits     — {hits: [...]} top hits for the transcript
+      done     — {reply, needles, count, backend}
+      error    — {error}
+    """
+    case_dir = _get_case_dir()
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+    message = str(body.get("message") or "").strip()
+    mode = str(body.get("mode") or "mode1").strip()
+    if not message:
+        return JSONResponse({"error": "Empty message"}, status_code=400)
+    if mode not in ("mode1", "mode2"):
+        return JSONResponse({"error": f"Unsupported stream mode: {mode}"}, status_code=400)
+    try:
+        max_iterations = max(1, min(int(body.get("max_iterations") or 2), 5))
+    except (TypeError, ValueError):
+        max_iterations = 2
+
+    import queue as _queue
+
+    from nexus.case.chat import append_chat
+
+    append_chat(case_dir, "examiner", "ask", message)
+    q: _queue.Queue = _queue.Queue()
+
+    def _worker_mode1() -> tuple[str, dict[str, Any]]:
+        from nexus.langgraph.mode1 import nl_to_needles
+        from nexus.langgraph.query_pack import (
+            attach_hit_fields,
+            load_case_intake,
+            n4_query,
+            parse_intake_window,
+        )
+
+        q.put(("status", {"stage": "translating", "detail": "translating question to needles"}))
+        try:
+            from nexus.langgraph.llm_pipeline import get_model
+            model = get_model()
+        except Exception:
+            model = None
+        parsed = nl_to_needles(message, model=model)
+        needles = parsed.get("needles", [])
+        if not needles:
+            q.put(("done", {"reply": "No needles extracted. Refine the question (name an artifact, tool, or event ID).", "needles": [], "count": 0}))
+            return "needles_empty", {}
+        window = parse_intake_window(load_case_intake(case_dir))
+        q.put(("status", {"stage": "querying", "needles": needles}))
+        result = n4_query(case_dir, " ".join(needles), window=window, limit=80)
+        if result.get("error"):
+            q.put(("error", {"error": result["error"]}))
+            return "error", {}
+        hits = attach_hit_fields(case_dir, result.get("hits", []))
+        reply = (
+            f"Needles: {', '.join(needles)} | hits: {result.get('count', 0)}"
+            + (f" | {result.get('query')}" if result.get("query") else "")
+        )
+        q.put(("hits", {"hits": _hits_for_transcript(hits), "count": result.get("count", 0)}))
+        return "query_run", {
+            "reply": reply,
+            "needles": needles,
+            "count": result.get("count", 0),
+            "backend": result.get("backend", ""),
+            "hits": hits,
+        }
+
+    def _finalize(action: str, final: dict[str, Any]) -> None:
+        if action == "error":
+            q.put(("error", final))
+            q.put((None, None))
+            return
+        hits = final.get("hits", [])
+        reply = final.get("reply", "")
+        if action == "mode2_done":
+            reply = f"Iterative run complete: {final.get('total_hits', 0)} total hits across {len(final.get('needles_run', []))} needle(s)."
+            from nexus.case.chat import append_chat as _ac
+            _ac(case_dir, "llm", "mode2_done",
+                f"Run complete: {final.get('total_hits', 0)} total hits",
+                {"needles": ",".join(final.get("needles_run", [])[:12])})
+        append_chat(case_dir, "llm", action, reply, {
+            "needles": ",".join(final.get("needles", [])[:12]),
+            "hits": str(final.get("count", len(hits))),
+        }, data={"hits": _hits_for_transcript(hits)})
+        q.put(("done", {
+            "reply": reply,
+            "needles": final.get("needles", []),
+            "count": final.get("count", 0) or len(hits),
+            "backend": final.get("backend", ""),
+            "hits": _hits_for_transcript(hits),
+        }))
+        q.put((None, None))
+
+    async def _run():
+        try:
+            if mode == "mode1":
+                action, final = await asyncio.to_thread(_worker_mode1)
+                if action != "error":
+                    final["backend"] = final.get("backend", "")
+                _finalize(action, final)
+            else:
+                def _mode2_worker():
+                    from nexus.langgraph.llm_pipeline import get_model
+                    from nexus.langgraph.mode2 import run_iterative_loop
+
+                    try:
+                        model = get_model()
+                    except Exception:
+                        model = None
+                    return run_iterative_loop(
+                        case_dir, message, model=model, max_iterations=max_iterations,
+                        on_event=lambda e: q.put(("iteration", e)),
+                    )
+
+                result = await asyncio.to_thread(_mode2_worker)
+                if result.get("error"):
+                    q.put(("error", {"error": result["error"]}))
+                    q.put((None, None))
+                else:
+                    hits = result.get("hits", [])
+                    q.put(("hits", {"hits": _hits_for_transcript(hits[:_CHAT_STREAM_MAX_HITS])}))
+                    _finalize("mode2_done", result)
+        except Exception as exc:
+            q.put(("error", {"error": str(exc)}))
+            q.put((None, None))
+
+    async def _stream():
+        task = asyncio.create_task(_run())
+        while True:
+            try:
+                kind, payload = await asyncio.to_thread(q.get, timeout=30)
+            except _queue.Empty:
+                yield "event: ping\ndata: {}\n\n"
+                continue
+            if kind is None:
+                break
+            yield f"event: {kind}\ndata: {json.dumps(payload, default=str)}\n\n"
+        with contextlib.suppress(Exception):
+            await task
+
+    return StreamingResponse(_stream(), media_type="text/event-stream")
+
+
 async def api_timeline_lanes(request):
     """POST /portal/api/timeline/lanes — per-family time buckets for lanes.
 
@@ -2580,16 +2768,23 @@ async def api_case_details(request):
     else:
         details["evidence_count"] = 0
 
-    # Findings count
+    # Findings count + approval split (WP 4d.5 stage states)
     findings_file = case_dir / "findings.json"
+    details["findings_count"] = 0
+    details["approved_count"] = 0
     if findings_file.is_file():
         try:
             f = json.loads(findings_file.read_text(encoding="utf-8"))
-            details["findings_count"] = len(f) if isinstance(f, list) else 0
+            if isinstance(f, list):
+                details["findings_count"] = len(f)
+                details["approved_count"] = len(
+                    [x for x in f if str(x.get("status", "")).upper() == "APPROVED"]
+                )
         except Exception:
-            details["findings_count"] = 0
-    else:
-        details["findings_count"] = 0
+            pass
+
+    # N8 report presence
+    details["report_exists"] = (case_dir / "REPORT.md").is_file()
 
     # Pipeline status
     tool_run = case_dir / "analysis" / "TOOL-RUN.md"
@@ -2904,6 +3099,8 @@ def create_dashboard():
         Route("/portal/api/chat", api_chat_get, methods=["GET"]),
         Route("/portal/api/chat", api_chat_post, methods=["POST"]),
         Route("/portal/api/chat/clear", api_chat_clear, methods=["POST"]),
+        # Live steer-chat stream (WP 4d.3)
+        Route("/portal/api/chat/stream", api_chat_stream, methods=["POST"]),
         # Timeline lanes
         Route("/portal/api/timeline/lanes", api_timeline_lanes, methods=["POST"]),
         # Entity pivot

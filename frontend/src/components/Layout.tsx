@@ -1,12 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { api } from "../api/client";
 import { useCase } from "../context/CaseContext";
 
 /**
- * WP 4b.4 + lifecycle ordering fix: the sidebar follows the N1-N8
- * investigation spine in order. Each item carries its stage badge so the
- * examiner sees where they are in the lifecycle as they move down the list.
+ * WP 4b.4 + lifecycle ordering: the sidebar follows the N1-N8 investigation
+ * spine in order, each item carrying its stage badge. The top stepper shows
+ * live stage completion from CaseContext (WP 4d.5).
  */
 const NAV_SPINE = [
   { to: "/case-setup", label: "Case Setup", stage: "N1", hint: "Create case · register evidence · choose mode" },
@@ -21,6 +20,8 @@ const NAV_SPINE = [
 
 const NAV_UTILITIES = [
   { to: "/entities", label: "Entities", hint: "Entity pivot across hits" },
+  { to: "/iocs", label: "IOCs", hint: "Indicators of compromise from findings" },
+  { to: "/todos", label: "TODOs", hint: "Investigation follow-ups" },
   { to: "/transparency", label: "Transparency", hint: "HMAC audit chain verification" },
 ];
 
@@ -60,41 +61,15 @@ const LOGO_SVG = `<svg width="28" height="32" viewBox="0 0 128 148" fill="none" 
   </g>
 </svg>`;
 
-// WP 4b.4: Stage Stepper component
-function StageStepper({ activeCase }: { activeCase: string }) {
-  const [stageStatus, setStageStatus] = useState<Record<string, boolean>>({});
-  const [loadFailed, setLoadFailed] = useState(false);
-
-  useEffect(() => {
-    if (!activeCase) return;
-    setLoadFailed(false);
-    api.caseDetails(activeCase).then((d) => {
-      setStageStatus({
-        N1: true, // case exists = intake done
-        N2: d.pipeline_complete || false,
-        N3: d.pipeline_complete || false, // index built during N2
-        N4: (d.findings_count || 0) > 0 || (d.evidence_count || 0) > 0,
-        N5: (d.findings_count || 0) > 0,
-        N6: (d.findings_count || 0) > 0,
-        N7: (d.findings_count || 0) > 0,
-        N8: (d.findings_count || 0) > 0,
-      });
-      setLoadFailed(false);
-    }).catch(() => setLoadFailed(true));
-  }, [activeCase]);
-
+/** WP 4b.4: N1-N8 stage stepper — live completion states from CaseContext. */
+function StageStepper({ stages }: { stages: Record<string, boolean> }) {
   return (
     <div className="stage-stepper">
-      {loadFailed && (
-        <span className="stage-step" style={{ color: "var(--warning)" }} title="Stage status unavailable — case details could not be loaded">
-          ⚠ stage status unavailable
-        </span>
-      )}
       {STAGES.map((stage, i) => (
         <NavLink
           key={stage.id}
           to={stage.to}
-          className={`stage-step ${stageStatus[stage.id] ? "complete" : ""}`}
+          className={`stage-step ${stages[stage.id] ? "complete" : ""}`}
           title={`${stage.id}: ${stage.label}`}
         >
           <span className="stage-id">{stage.id}</span>
@@ -107,7 +82,7 @@ function StageStepper({ activeCase }: { activeCase: string }) {
 }
 
 export default function Layout({ children }: { children: React.ReactNode }) {
-  const { cases, activeCase, mode, health, setActiveCase } = useCase();
+  const { cases, activeCase, mode, health, stages, setActiveCase } = useCase();
   const [caseMenuOpen, setCaseMenuOpen] = useState(false);
   const location = useLocation();
 
@@ -117,7 +92,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   };
 
   const currentLabel =
-    [...NAV_SPINE, ...NAV_UTILITIES].find((n) => n.to === location.pathname)?.label || "Unknown";
+    [...NAV_SPINE, ...NAV_UTILITIES].find((n) => n.to === location.pathname)?.label || "Overview";
 
   return (
     <div className="cockpit">
@@ -235,8 +210,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </span>
           </div>
         </header>
-        {/* WP 4b.4: N1-N8 stage stepper */}
-        {activeCase && <StageStepper activeCase={activeCase} />}
+        {/* WP 4b.4: N1-N8 stage stepper — live stage states from CaseContext */}
+        {activeCase && <StageStepper stages={stages} />}
         <div className="content">{children}</div>
       </main>
     </div>

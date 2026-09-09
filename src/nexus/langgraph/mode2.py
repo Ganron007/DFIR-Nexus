@@ -13,6 +13,7 @@ terms and entity extraction (deterministic, no LLM).
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 from pathlib import Path
@@ -328,18 +329,30 @@ def _propose_heuristic(hits: list[dict], already_run: list[str]) -> dict:
     }
 
 
+def _emit(on_event: Any, payload: dict[str, Any]) -> None:
+    """Best-effort streaming callback (WP 4d.3) — never breaks the loop."""
+    if not on_event:
+        return
+    with contextlib.suppress(Exception):
+        on_event(payload)
+
+
 def run_iterative_loop(
     case_dir: Path,
     question: str,
     model: Any = None,
     max_iterations: int = 2,
     limit: int = 80,
+    on_event: Any = None,
 ) -> dict[str, Any]:
     """Mode 2 loop: query -> analyze -> propose -> re-query.
 
     Every step is logged to the case chat transcript. Hard caps:
     max_iterations re-queries; each proposal is capped. The loop NEVER
     writes findings — it returns the iteration log for examiner review.
+
+    ``on_event(iteration_dict)`` is called after each iteration step so
+    the portal can stream live progress (WP 4d.3).
     """
     from nexus.case.chat import append_chat
     from nexus.langgraph.mode1 import nl_to_needles
@@ -369,6 +382,7 @@ def run_iterative_loop(
         "hits": r0.get("count", 0),
         "backend": r0.get("backend", ""),
     })
+    _emit(on_event, iterations[-1])
     append_chat(case_dir, "llm", "mode2_iter0", f"Initial query: {', '.join(needles0)} -> {r0.get('count', 0)} hits")
 
     # Iterative proposals
@@ -401,6 +415,7 @@ def run_iterative_loop(
             f"Iteration {it}: proposed {', '.join(new_needles)} -> {rq.get('count', 0)} hits",
             {"rationale": proposal.get("rationale", ""), "needles": ",".join(new_needles)},
         )
+        _emit(on_event, iterations[-1])
         hits = hits + new_hits
 
     return {
@@ -409,6 +424,7 @@ def run_iterative_loop(
         "total_hits": len(hits),
         "needles_run": all_needles_run,
         "capped": len(iterations) >= max_iterations,
+        "hits": hits,
     }
 
 
