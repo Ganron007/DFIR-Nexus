@@ -108,30 +108,28 @@
       font-size: 15px; font-weight: 500; border: 1px solid var(--border);
       transition: border-color 0.15s, background 0.15s;
     }
-    .btn-secondary:hover { border-color: var(--border-light); }
-
     /* System status pop-down */
     .status-wrap { position: relative; display: inline-block; }
     .status-toggle { cursor: pointer; }
     .status-pop {
       position: absolute;
       top: calc(100% + 8px);
-      left: 50%;
-      transform: translateX(-50%);
+      right: 0;
       background: var(--bg-secondary);
       border: 1px solid var(--border-light);
       border-radius: 10px;
-      box-shadow: 0 8px 28px rgba(0,0,0,0.5);
+      box-shadow: 0 8px 28px rgba(0,0,0,0.55);
       padding: 12px 16px;
-      min-width: 220px;
+      min-width: 230px;
       z-index: 60;
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 9px;
       font-size: 13px;
       color: var(--text-secondary);
     }
-    .status-pop .health-item { justify-content: flex-start; }
+    .status-pop[hidden] { display: none; }
+    .status-pop .health-item { justify-content: flex-start; white-space: nowrap; }
     .health-raw {
       margin-top: 6px;
       font-size: 12px;
