@@ -17,6 +17,30 @@ export default function Overview() {
   const [caseDetails, setCaseDetails] = useState<Record<string, CaseDetailsResponse>>({});
   const [sys, setSys] = useState<SystemHealthResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [seeding, setSeeding] = useState(false);
+  const [seedMsg, setSeedMsg] = useState("");
+
+  const handleSeedDemo = async () => {
+    setSeeding(true);
+    setSeedMsg("");
+    try {
+      const res = await api.seedDemo({ name: "Demo Investigation — WS01 Incident" });
+      if (res.ok) {
+        setSeedMsg(`Loaded demo case ${res.case_id} (${res.evidence_count} evidence, ${res.findings_count} findings)`);
+        await setActiveCase(res.case_id);
+        const [s, h] = await Promise.all([
+          api.summary().catch(() => null),
+          api.systemHealth().catch(() => null),
+        ]);
+        if (s) setSummary(s);
+        if (h) setSys(h);
+      }
+    } catch (e) {
+      setSeedMsg(`Failed to seed demo: ${(e as Error).message}`);
+    } finally {
+      setSeeding(false);
+    }
+  };
 
   useEffect(() => {
     Promise.all([
@@ -44,10 +68,27 @@ export default function Overview() {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
         <h2>Case Dashboard</h2>
-        <button className="btn btn-primary" onClick={() => navigate("/case-setup")}>
-          + New Investigation
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            className="btn btn-sm"
+            onClick={handleSeedDemo}
+            disabled={seeding}
+            title="Instantly create a pre-populated test case with evidence, extractions, findings, and timeline"
+            style={{ background: "rgba(47, 129, 247, 0.15)", border: "1px solid rgba(47, 129, 247, 0.4)", color: "var(--accent)" }}
+          >
+            {seeding ? "Seeding..." : "⚡ Seed Demo Investigation"}
+          </button>
+          <button className="btn btn-primary btn-sm" onClick={() => navigate("/case-setup")}>
+            + New Investigation
+          </button>
+        </div>
       </div>
+
+      {seedMsg && (
+        <div style={{ padding: "10px 14px", background: "rgba(16, 185, 129, 0.15)", border: "1px solid rgba(16, 185, 129, 0.4)", borderRadius: 6, color: "#10b981", marginBottom: 16, fontSize: 13 }}>
+          {seedMsg}
+        </div>
+      )}
 
       {/* System health */}
       <div className="card" style={{ marginBottom: 16, padding: 12 }}>
@@ -132,10 +173,15 @@ export default function Overview() {
         {cases.length === 0 ? (
           <div className="empty-state">
             <h3>No cases yet</h3>
-            <p>Click "New Investigation" to create your first case.</p>
-            <button className="btn btn-primary" onClick={() => navigate("/case-setup")} style={{ marginTop: 12 }}>
-              + New Investigation
-            </button>
+            <p>Get started immediately with a pre-populated test case or create a new one.</p>
+            <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 16 }}>
+              <button className="btn btn-primary" onClick={handleSeedDemo} disabled={seeding}>
+                {seeding ? "Seeding Demo..." : "⚡ Load Demo Investigation"}
+              </button>
+              <button className="btn" onClick={() => navigate("/case-setup")}>
+                + New Investigation
+              </button>
+            </div>
           </div>
         ) : (
           <table>

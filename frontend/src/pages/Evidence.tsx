@@ -21,6 +21,37 @@ export default function Evidence() {
   const [showPicker, setShowPicker] = useState(false);
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
   const [ledgerRunId, setLedgerRunId] = useState("");
+  const [verifying, setVerifying] = useState(false);
+  const [verificationResults, setVerificationResults] = useState<Record<string, { valid: boolean; error?: string }>>({});
+  const [verifyBanner, setVerifyBanner] = useState<{ total: number; valid: number; failed: number } | null>(null);
+
+  const verifyIntegrity = async () => {
+    setVerifying(true);
+    setError("");
+    setVerifyBanner(null);
+    try {
+      const res = await api.evidenceVerify();
+      if (res.ok) {
+        const resultMap: Record<string, { valid: boolean; error?: string }> = {};
+        let validCount = 0;
+        let failedCount = 0;
+        for (const r of res.results) {
+          resultMap[r.file_path] = { valid: r.valid, error: r.error };
+          resultMap[r.name] = { valid: r.valid, error: r.error };
+          if (r.valid) validCount++;
+          else failedCount++;
+        }
+        setVerificationResults(resultMap);
+        setVerifyBanner({ total: res.results.length, valid: validCount, failed: failedCount });
+      } else {
+        setError("Failed to verify evidence integrity");
+      }
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setVerifying(false);
+    }
+  };
 
   const load = () => {
     if (!activeCase) {
@@ -116,6 +147,14 @@ export default function Evidence() {
             <span style={{ fontSize: 12, color: pipelineComplete ? "var(--success)" : "var(--text-muted)" }}>
               {pipelineComplete ? "✓ N2 lane complete" : "N2 lane not run"}
             </span>
+            <button
+              className="btn btn-sm"
+              onClick={verifyIntegrity}
+              disabled={verifying || evidence.length === 0}
+              title="Cryptographically verify SHA-256 hashes against disk files"
+            >
+              {verifying ? "Verifying..." : "🔒 Verify Hashes"}
+            </button>
             <button className="btn btn-sm" onClick={() => setShowPicker(true)}>
               + Add evidence
             </button>
@@ -129,7 +168,33 @@ export default function Evidence() {
           </div>
         )}
       </div>
+
       {error && <div className="error-banner">{error}</div>}
+
+      {verifyBanner && (
+        <div
+          style={{
+            padding: "10px 14px",
+            background: verifyBanner.failed === 0 ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)",
+            border: `1px solid ${verifyBanner.failed === 0 ? "rgba(16, 185, 129, 0.4)" : "rgba(239, 68, 68, 0.4)"}`,
+            borderRadius: 6,
+            color: verifyBanner.failed === 0 ? "#10b981" : "#ef4444",
+            marginBottom: 16,
+            fontSize: 13,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <span>
+            {verifyBanner.failed === 0
+              ? `✓ Integrity Verified: All ${verifyBanner.valid} registered files match their recorded SHA-256 hashes.`
+              : `⚠️ Integrity Mismatch: ${verifyBanner.failed} of ${verifyBanner.total} files failed hash validation!`}
+          </span>
+          <button className="btn btn-sm" onClick={() => setVerifyBanner(null)} style={{ padding: "2px 8px" }}>✕</button>
+        </div>
+      )}
+
       {runId && (
         <div className="card" style={{ padding: "8px 12px", marginBottom: 12 }}>
           <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
@@ -214,6 +279,7 @@ export default function Evidence() {
               <tr>
                 <th>Path</th>
                 <th>SHA-256</th>
+                <th>Integrity</th>
                 <th>Description</th>
                 <th>Status</th>
                 <th>Registered</th>
@@ -222,10 +288,22 @@ export default function Evidence() {
             <tbody>
               {evidence.map((e, i) => {
                 const item = e as Record<string, string>;
+                const res = verificationResults[item.path] || verificationResults[item.name];
                 return (
                   <tr key={i}>
                     <td style={{ fontFamily: "monospace", fontSize: 11 }}>{item.path}</td>
                     <td style={{ fontFamily: "monospace", fontSize: 11 }}>{item.sha256?.slice(0, 16)}...</td>
+                    <td>
+                      {res ? (
+                        res.valid ? (
+                          <span className="badge approved" style={{ fontSize: 10 }}>✓ Intact</span>
+                        ) : (
+                          <span className="badge rejected" style={{ fontSize: 10 }} title={res.error}>✗ Failed</span>
+                        )
+                      ) : (
+                        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Unverified</span>
+                      )}
+                    </td>
                     <td>{item.description}</td>
                     <td>{item.status}</td>
                     <td>{item.registered_at}</td>

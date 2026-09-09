@@ -222,3 +222,11 @@ def _register_extraction_evidence(
     evidence.append(entry)
     _atomic_write_json(registry_path, evidence)
     return {"status": "registered", "path": abs_path, "sha256": digest}
+
+
+def set_active_case_id(case_id: str) -> None:
+    """Set the active case ID in the active case pointer file."""
+    active_file = Path(os.environ.get("NEXUS_ACTIVE_CASE_FILE", str(Path.home() / ".nexus" / "active_case")))
+    active_file.parent.mkdir(parents=True, exist_ok=True)
+    active_file.write_text(case_id, encoding="utf-8")
+

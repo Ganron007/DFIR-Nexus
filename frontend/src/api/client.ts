@@ -578,7 +578,7 @@ export const api = {
     examiner?: string;
   }) => post<Mode3SealResponse>("/mode3/seal", params),
 
-  // Approval
+  // Approval & Rejection
   getChallenge: () => request<ChallengeResponse>("/commit/challenge"),
   commit: (params: {
     finding_ids: string[];
@@ -586,14 +586,21 @@ export const api = {
     response: string;
     examiner?: string;
   }) => post<CommitResponse>("/commit", params),
+  rejectFindings: (params: {
+    finding_ids: string[];
+    reason: string;
+    examiner?: string;
+  }) => post<{ ok: boolean; rejected: string[]; error?: string }>("/findings/reject", params),
 
-  // Phase 4b: Workflow-driven cockpit
+  // Phase 4b/4c/4d: Workflow-driven cockpit
   caseCreate: (params: {
     name: string;
     description?: string;
     examiner?: string;
     mode?: string;
   }) => post<CaseCreateResponse>("/case/create", params),
+  seedDemo: (params?: { name?: string }) =>
+    post<{ ok: boolean; case_id: string; evidence_count: number; findings_count: number }>("/case/seed-demo", params || {}),
   caseDetails: (caseId?: string) =>
     request<CaseDetailsResponse>(`/case/details${caseId ? `?case_id=${caseId}` : ""}`),
   pipelineRun: (params: { mode: string; case_id?: string }) =>
@@ -608,6 +615,14 @@ export const api = {
   setCaseMode: (mode: string) => post<CaseModeResponse>("/case/mode", { mode }),
   getCaseMode: () => request<CaseModeResponse>("/case/mode"),
   systemHealth: () => request<SystemHealthResponse>("/system/health"),
+
+  // Report & Evidence Verification
+  reportGenerate: (params?: { profile?: string }) =>
+    post<{ ok: boolean; report_path: string; findings_count: number; error?: string }>("/report/generate", params || {}),
+  reportView: () =>
+    request<{ ok: boolean; markdown: string; title?: string; error?: string }>("/report/view"),
+  evidenceVerify: () =>
+    post<{ ok: boolean; results: Array<{ name: string; file_path: string; valid: boolean; error?: string }> }>("/evidence/verify", {}),
 };
 
 // --- WP 4d.3: live steer-chat stream (SSE over fetch) ---

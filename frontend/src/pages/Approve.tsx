@@ -1,25 +1,37 @@
 import { useEffect, useState } from "react";
-import { api, type Finding, type ChallengeResponse } from "../api/client";
+import { api, type Finding } from "../api/client";
+import { computeApprovalResponse } from "../lib/crypto";
 
 export default function Approve() {
   const [findings, setFindings] = useState<Finding[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [challenge, setChallenge] = useState<ChallengeResponse | null>(null);
-  const [response, setResponse] = useState("");
+  const [password, setPassword] = useState("");
   const [examiner, setExaminer] = useState("");
-  const [result, setResult] = useState<string>("");
+  const [statusMsg, setStatusMsg] = useState("");
+  const [result, setResult] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+
+  // Rejection state
+  const [rejectMode, setRejectMode] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
 
   const load = () => {
     setLoading(true);
     api.findings("DRAFT")
-      .then((r) => setFindings(r.findings))
+      .then((r) => {
+        setFindings(r.findings);
+        // Pre-select all drafts by default for quick examiner workflow
+        setSelected(new Set(r.findings.map((f) => f.id)));
+      })
       .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => load(), []);
+  useEffect(() => {
+    load();
+  }, []);
 
   const toggle = (id: string) => {
     const next = new Set(selected);
@@ -27,54 +39,92 @@ export default function Approve() {
     setSelected(next);
   };
 
-  const getChallenge = async () => {
-    setError("");
-    try {
-      const ch = await api.getChallenge();
-      setChallenge(ch);
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  };
+  const selectAll = () => setSelected(new Set(findings.map((f) => f.id)));
+  const clearSelection = () => setSelected(new Set());
 
-  const approve = async () => {
+  const handleApprove = async () => {
     setError("");
     setResult("");
-    if (!challenge) {
-      setError("Get a challenge first");
-      return;
-    }
     if (selected.size === 0) {
-      setError("Select at least one finding");
+      setError("Select at least one finding to approve");
       return;
     }
-    if (!examiner.trim()) {
-      setError("Examiner name is required");
+    if (!password) {
+      setError("Approval password is required");
       return;
     }
-    if (!response.trim()) {
-      setError("HMAC response is required");
-      return;
-    }
+
+    setBusy(true);
     try {
+      setStatusMsg("Requesting authentication challenge...");
+      const ch = await api.getChallenge();
+
+      setStatusMsg(`Deriving HMAC key (${ch.iterations.toLocaleString()} iterations)...`);
+      const responseHmac = await computeApprovalResponse(
+        password,
+        ch.salt,
+        ch.iterations,
+        ch.nonce
+      );
+
+      setStatusMsg("Submitting HMAC approval to verification ledger...");
       const r = await api.commit({
-        finding_ids: [...selected],
-        challenge_id: challenge.challenge_id,
-        response,
-        examiner,
+        finding_ids: Array.from(selected),
+        challenge_id: ch.challenge_id,
+        response: responseHmac,
+        examiner: examiner.trim() || undefined,
       });
+
       if (r.errors.length > 0) {
         setError(`${r.errors.length} error(s): ${r.errors.map((e) => e.error).join("; ")}`);
       }
       if (r.approved.length > 0) {
-        setResult(`Approved ${r.approved.length} finding(s): ${r.approved.join(", ")}`);
-        setSelected(new Set());
-        setChallenge(null);
-        setResponse("");
+        setResult(`✓ Successfully approved ${r.approved.length} finding(s): ${r.approved.join(", ")}`);
+        setPassword("");
         load();
       }
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      setBusy(false);
+      setStatusMsg("");
+    }
+  };
+
+  const handleReject = async () => {
+    setError("");
+    setResult("");
+    if (selected.size === 0) {
+      setError("Select at least one finding to reject");
+      return;
+    }
+    if (!rejectReason.trim()) {
+      setError("Rejection reason is required");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      setStatusMsg("Rejecting findings...");
+      const r = await api.rejectFindings({
+        finding_ids: Array.from(selected),
+        reason: rejectReason.trim(),
+        examiner: examiner.trim() || undefined,
+      });
+
+      if (r.ok) {
+        setResult(`✗ Rejected ${r.rejected.length} finding(s)`);
+        setRejectMode(false);
+        setRejectReason("");
+        load();
+      } else {
+        setError(r.error || "Failed to reject findings");
+      }
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+      setStatusMsg("");
     }
   };
 
@@ -82,14 +132,24 @@ export default function Approve() {
 
   return (
     <div>
-      <h2 style={{ marginBottom: 16 }}>Approval Desk</h2>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <h2>Approval Desk (N6)</h2>
+        {findings.length > 0 && (
+          <div style={{ display: "flex", gap: 8 }}>
+            <button className="btn btn-sm" onClick={selectAll}>Select All</button>
+            <button className="btn btn-sm" onClick={clearSelection}>Clear</button>
+          </div>
+        )}
+      </div>
+
       {error && <div className="error-banner">{error}</div>}
       {result && (
         <div style={{ background: "rgba(63,185,80,0.1)", border: "1px solid var(--success)", borderRadius: 6, padding: 10, marginBottom: 16, color: "var(--success)" }}>
           {result}
         </div>
       )}
-      <div className="card">
+
+      <div className="card" style={{ marginBottom: 16 }}>
         <div className="card-header">
           <span className="card-title">DRAFT Findings ({findings.length})</span>
           <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{selected.size} selected</span>
@@ -97,7 +157,7 @@ export default function Approve() {
         {findings.length === 0 ? (
           <div className="empty-state">
             <h3>No DRAFT findings</h3>
-            <p>Findings awaiting approval will appear here.</p>
+            <p>All findings are currently approved or no findings have been staged yet.</p>
           </div>
         ) : (
           <table>
@@ -118,11 +178,18 @@ export default function Approve() {
                       type="checkbox"
                       checked={selected.has(f.id)}
                       onChange={() => toggle(f.id)}
-                      style={{ width: "auto" }}
+                      style={{ width: "auto", cursor: "pointer" }}
                     />
                   </td>
                   <td style={{ fontFamily: "monospace", fontSize: 11 }}>{f.id}</td>
-                  <td>{f.title}</td>
+                  <td>
+                    <strong>{f.title}</strong>
+                    {f.observation && (
+                      <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>
+                        {f.observation.slice(0, 100)}...
+                      </div>
+                    )}
+                  </td>
                   <td><span className={`badge badge-${f.confidence.toLowerCase()}`}>{f.confidence}</span></td>
                   <td>{f.examiner_selected === false ? "LLM-drafted" : "examiner"}</td>
                 </tr>
@@ -131,40 +198,87 @@ export default function Approve() {
           </table>
         )}
       </div>
+
       {findings.length > 0 && (
         <div className="card">
           <div className="card-header">
-            <span className="card-title">HMAC Challenge-Response</span>
+            <span className="card-title">Cryptographic Human Approval (FD-002)</span>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 400 }}>
-            <input
-              placeholder="Examiner name"
-              value={examiner}
-              onChange={(e) => setExaminer(e.target.value)}
-            />
-            {!challenge ? (
-              <button className="btn btn-primary" onClick={getChallenge}>
-                Get Challenge
+          <div style={{ maxWidth: 440, display: "flex", flexDirection: "column", gap: 12 }}>
+            <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: 0 }}>
+              Approving signs a PBKDF2-HMAC-SHA256 entry to the immutable ledger.
+              The signature is derived locally in your browser via Web Crypto.
+            </p>
+
+            <div>
+              <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
+                Examiner Identity (optional override)
+              </label>
+              <input
+                placeholder="Default from active config"
+                value={examiner}
+                onChange={(e) => setExaminer(e.target.value)}
+                disabled={busy}
+              />
+            </div>
+
+            <div>
+              <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
+                Approval Password
+              </label>
+              <input
+                type="password"
+                placeholder="Enter examiner password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleApprove()}
+                disabled={busy}
+              />
+            </div>
+
+            {statusMsg && (
+              <div style={{ fontSize: 12, color: "var(--accent)" }}>
+                ⚡ {statusMsg}
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+              <button
+                className="btn btn-primary"
+                onClick={handleApprove}
+                disabled={busy || selected.size === 0 || !password}
+                style={{ flex: 1 }}
+              >
+                {busy ? "Signing..." : `Approve ${selected.size} Finding(s)`}
               </button>
-            ) : (
-              <>
-                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                  Nonce: <code>{challenge.nonce.slice(0, 32)}...</code>
-                  <br />
-                  Salt: <code>{challenge.salt}</code>
-                  <br />
-                  Iterations: {challenge.iterations}
-                </div>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setRejectMode(!rejectMode)}
+                disabled={busy || selected.size === 0}
+              >
+                Reject...
+              </button>
+            </div>
+
+            {rejectMode && (
+              <div style={{ marginTop: 8, padding: 12, border: "1px solid var(--border)", borderRadius: 6, background: "var(--bg-secondary)" }}>
+                <label style={{ fontSize: 12, color: "var(--danger)", display: "block", marginBottom: 4, fontWeight: 600 }}>
+                  Reason for Rejection (required by FD-001)
+                </label>
                 <input
-                  placeholder="HMAC response (hex)"
-                  value={response}
-                  onChange={(e) => setResponse(e.target.value)}
-                  style={{ fontFamily: "monospace" }}
+                  placeholder="e.g. Legitimate administrative activity, baseline software"
+                  value={rejectReason}
+                  onChange={(e) => setRejectReason(e.target.value)}
+                  style={{ marginBottom: 8 }}
                 />
-                <button className="btn btn-primary" onClick={approve}>
-                  Approve {selected.size} Finding(s)
+                <button
+                  className="btn btn-danger btn-sm"
+                  onClick={handleReject}
+                  disabled={busy || !rejectReason.trim()}
+                >
+                  Confirm Rejection
                 </button>
-              </>
+              </div>
             )}
           </div>
         </div>

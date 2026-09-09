@@ -56,6 +56,26 @@ def init(
     typer.echo(f"Active case set to: {case.id}")
 
 
+@app.command()
+def seed(
+    name: str = typer.Option("Demo Investigation", "--name", "-n", help="Demo case name"),
+    examiner: str = typer.Option("analyst_purple", "--examiner", "-e", help="Lead examiner identity"),
+    case_id: str = typer.Option("CASE-DEMO-001", "--case-id", help="Case ID for the demo case"),
+):
+    """Seed a fully populated demo investigation with realistic forensic artifacts."""
+    from nexus.case.seed import seed_demo_case
+
+    typer.echo(f"Seeding demo investigation '{name}'...")
+    res = seed_demo_case(case_name=name, examiner=examiner, case_id=case_id)
+    _set_active_case(res["case_id"])
+    typer.echo(f"✓ Created case {res['case_id']}")
+    typer.echo(f"  - Registered {res['evidence_count']} evidence files")
+    typer.echo(f"  - Populated {res['timeline_count']} timeline extractions (EVTX, Prefetch, Zeek, Browser)")
+    typer.echo(f"  - Staged {res['findings_count']} findings (DRAFT, APPROVED, REJECTED)")
+    typer.echo("  - Generated official report preview at reports/REPORT.md")
+    typer.echo(f"Active case set to: {res['case_id']}")
+
+
 @app.command("clean")
 def clean_cases(
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),

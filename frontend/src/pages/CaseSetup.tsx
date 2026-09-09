@@ -157,7 +157,13 @@ export default function CaseSetup() {
   };
 
   const finish = () => {
-    navigate("/");
+    if (mode === "1") {
+      navigate("/explore");
+    } else if (mode === "2" || mode === "3") {
+      navigate("/steer");
+    } else {
+      navigate("/");
+    }
   };
 
   return (

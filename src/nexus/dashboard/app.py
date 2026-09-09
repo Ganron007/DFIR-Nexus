@@ -3151,6 +3151,209 @@ async def api_system_health(request):
     return JSONResponse(health)
 
 
+async def api_case_seed_demo(request):
+    """POST /portal/api/case/seed-demo — seed a populated demo investigation."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    name = str(body.get("name") or "Demo Investigation").strip()
+    from nexus.case.seed import seed_demo_case
+    try:
+        res = seed_demo_case(case_name=name)
+        return JSONResponse(res)
+    except Exception as exc:
+        logger.exception("Demo seed failed: %s", exc)
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+async def api_findings_reject(request):
+    """POST /portal/api/findings/reject — reject DRAFT findings with a reason."""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+    finding_ids = body.get("finding_ids", [])
+    reason = str(body.get("reason") or "").strip()
+    if not finding_ids:
+        return JSONResponse({"error": "finding_ids is required"}, status_code=400)
+    if not reason:
+        return JSONResponse({"error": "reason is required"}, status_code=400)
+
+    case_dir = _get_case_dir()
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+
+    examiner = str(body.get("examiner") or "").strip() or _resolve_examiner(request)
+
+    rejected = []
+    # Update findings.json
+    findings_path = case_dir / "findings.json"
+    if findings_path.is_file():
+        try:
+            findings = json.loads(findings_path.read_text(encoding="utf-8"))
+            for f in findings:
+                fid = f.get("id") or f.get("finding_id", "")
+                if fid in finding_ids:
+                    f["status"] = "REJECTED"
+                    f["rejected_by"] = examiner
+                    f["rejected_at"] = datetime.now(UTC).isoformat()
+                    f["rejection_reason"] = reason
+                    rejected.append(fid)
+            _atomic_write_json(findings_path, findings)
+        except Exception as exc:
+            logger.warning("Failed updating findings.json on reject: %s", exc)
+
+    # Best-effort sync to SQLite store
+    try:
+        from nexus.case import CaseManager
+        from nexus.case.schemas import ApprovalState
+        from nexus.config import settings
+        mgr = CaseManager(settings.cases_root / "cases.db")
+        for fid in finding_ids:
+            f_obj = mgr.store.get_finding(fid)
+            if f_obj:
+                f_obj.approval_state = ApprovalState.REJECTED
+                f_obj.rejected_by = examiner
+                f_obj.rejected_at = datetime.now(UTC)
+                f_obj.rejection_reason = reason
+                mgr.store.save_finding(f_obj)
+        mgr.close()
+    except Exception as exc:
+        logger.warning("Failed updating SQLite on reject: %s", exc)
+
+    return JSONResponse({"ok": True, "rejected": rejected})
+
+
+async def api_report_generate(request):
+    """POST /portal/api/report/generate — trigger official case report generation."""
+    case_dir = _get_case_dir()
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+
+    with contextlib.suppress(Exception):
+        await request.json()
+
+    from nexus.cli.report import _load_flat_evidence
+    from nexus.integration.dfir_report import (
+        _split_questions,
+        build_dfir_markdown,
+        load_case_ledger,
+        sift_notes_from_ledger,
+    )
+
+    findings = []
+    if (case_dir / "findings.json").is_file():
+        try:
+            findings = json.loads((case_dir / "findings.json").read_text(encoding="utf-8"))
+        except Exception:
+            findings = []
+
+    evidence = _load_flat_evidence(case_dir)
+    timeline = []
+    if (case_dir / "timeline.json").is_file():
+        try:
+            timeline = json.loads((case_dir / "timeline.json").read_text(encoding="utf-8"))
+        except Exception:
+            timeline = []
+
+    import yaml
+    meta = {}
+    if (case_dir / "CASE.yaml").is_file():
+        try:
+            meta = yaml.safe_load((case_dir / "CASE.yaml").read_text(encoding="utf-8")) or {}
+        except Exception:
+            meta = {}
+
+    intake = meta.get("intake") if isinstance(meta.get("intake"), dict) else {}
+    questions = _split_questions(str(intake.get("question") or meta.get("question") or ""))
+    ledger = load_case_ledger(case_dir)
+
+    try:
+        report_text = build_dfir_markdown(
+            case_id=case_dir.name,
+            case_name=meta.get("name") or case_dir.name,
+            findings=findings,
+            evidence=evidence,
+            timeline=timeline if isinstance(timeline, list) else [],
+            sift_notes=sift_notes_from_ledger(ledger),
+            examiner=meta.get("examiner") or meta.get("created_by") or "examiner",
+            status=str(meta.get("status") or "open"),
+            severity=str(meta.get("severity") or "unrated"),
+            case_summary=str(meta.get("description") or ""),
+            tool_ledger=ledger,
+            questions=questions,
+        )
+        reports_dir = case_dir / "reports"
+        reports_dir.mkdir(exist_ok=True)
+        out_file = reports_dir / "REPORT.md"
+        out_file.write_text(report_text, encoding="utf-8")
+        approved_count = len([f for f in findings if str(f.get("status") or "").upper() == "APPROVED"])
+        return JSONResponse({
+            "ok": True,
+            "report_path": str(out_file),
+            "findings_count": approved_count,
+        })
+    except Exception as exc:
+        logger.exception("Report generation failed: %s", exc)
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+async def api_report_view(request):
+    """GET /portal/api/report/view — view the case's generated REPORT.md."""
+    case_dir = _get_case_dir()
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    report_file = case_dir / "reports" / "REPORT.md"
+    if not report_file.is_file():
+        report_file = case_dir / "reports" / "dfir-report.md"
+    if not report_file.is_file():
+        return JSONResponse({"ok": False, "markdown": "", "error": "Report not yet generated. Click 'Generate Official Report'."})
+    return JSONResponse({
+        "ok": True,
+        "markdown": report_file.read_text(encoding="utf-8"),
+        "title": f"Report: {case_dir.name}",
+    })
+
+
+async def api_evidence_verify(request):
+    """POST /portal/api/evidence/verify — re-verify SHA-256 hashes of registered evidence."""
+    case_dir = _get_case_dir()
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+
+    from nexus.case import CaseManager
+    from nexus.config import settings
+    mgr = CaseManager(settings.cases_root / "cases.db")
+    evidence_list = mgr.list_evidence(case_dir.name)
+    mgr.close()
+
+    results = []
+    for ev in evidence_list:
+        fpath = Path(ev.file_path) if ev.file_path else None
+        if not fpath or not fpath.exists():
+            results.append({"name": ev.name, "file_path": ev.file_path or "", "valid": False, "error": "File not found on disk"})
+            continue
+        try:
+            sha256 = hashlib.sha256()
+            with open(fpath, "rb") as f:
+                for chunk in iter(lambda: f.read(65536), b""):
+                    sha256.update(chunk)
+            digest = sha256.hexdigest()
+            valid = digest == ev.file_hash_sha256
+            results.append({
+                "name": ev.name,
+                "file_path": str(fpath),
+                "valid": valid,
+                "expected_hash": ev.file_hash_sha256,
+                "actual_hash": digest,
+            })
+        except Exception as exc:
+            results.append({"name": ev.name, "file_path": str(fpath), "valid": False, "error": str(exc)})
+
+    return JSONResponse({"ok": True, "results": results})
+
+
 # ── End Phase 4b APIs ─────────────────────────────────────────────────────
 
 
@@ -3253,6 +3456,11 @@ def create_dashboard():
         Route("/portal/api/case/mode", api_case_mode, methods=["POST"]),
         Route("/portal/api/case/mode", api_get_case_mode, methods=["GET"]),
         Route("/portal/api/system/health", api_system_health, methods=["GET"]),
+        Route("/portal/api/case/seed-demo", api_case_seed_demo, methods=["POST"]),
+        Route("/portal/api/findings/reject", api_findings_reject, methods=["POST"]),
+        Route("/portal/api/report/generate", api_report_generate, methods=["POST"]),
+        Route("/portal/api/report/view", api_report_view, methods=["GET"]),
+        Route("/portal/api/evidence/verify", api_evidence_verify, methods=["POST"]),
         # Phase 4: React SPA (served after API + legacy HTML routes)
         Route("/portal/app/assets/{path:path}", spa_asset),
         Route("/portal/app/logo.svg", logo),
