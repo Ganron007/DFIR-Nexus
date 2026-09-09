@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Case Dashboard — DFIR-Nexus</title>
+  <meta name="theme-color" content="#0d1117">
+  <style>
+    :root {
+      --bg-primary: #0d1117;
+      --bg-secondary: #161b22;
+      --bg-tertiary: #21262d;
+      --border: #30363d;
+      --border-light: #484f58;
+      --text-primary: #e6edf3;
+      --text-secondary: #8b949e;
+      --text-muted: #6e7681;
+      --accent: #2f81f7;
+      --accent-hover: #4493f8;
+      --success: #3fb950;
+      --warning: #d29922;
+      --danger: #f85149;
+      --purple: #a371f7;
+      --orange: #db6d28;
+      --max-w: 1120px;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      font-size: 15px; line-height: 1.6; color: var(--text-primary);
+      background:
+        radial-gradient(900px 420px at 50% -140px, rgba(47,129,247,0.14), transparent 70%),
+        var(--bg-primary);
+      min-height: 100vh;
+    }
+    .wrap { max-width: var(--max-w); margin: 0 auto; padding: 0 32px; }
+
+    .topnav {
+      position: sticky; top: 0; z-index: 50;
+      background: rgba(22,27,34,0.85);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+    }
+    .topnav-inner {
+      max-width: var(--max-w); margin: 0 auto;
+      display: flex; align-items: center; justify-content: space-between;
+      height: 60px; padding: 0 32px;
+    }
+    .topnav-brand { display: flex; align-items: center; gap: 12px; text-decoration: none; }
+    .topnav-brand img { width: 32px; height: 32px; display: block; }
+    .topnav-brand-text { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; color: var(--text-primary); }
+    .topnav-brand-text span { color: var(--accent); }
+    .topnav-links { display: flex; gap: 22px; align-items: center; }
+    .topnav-links a {
+      color: var(--text-secondary); text-decoration: none; font-size: 14px; transition: color 0.15s;
+    }
+    .topnav-links a:hover, .topnav-links a.current { color: var(--text-primary); }
+    .btn-nav {
+      background: var(--accent); color: #fff !important; text-decoration: none;
+      padding: 8px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      transition: background 0.15s;
+    }
+    .btn-nav:hover { background: var(--accent-hover); }
+    .topnav-version { font-size: 12px; color: var(--text-muted); font-family: "SF Mono", Consolas, monospace; }
+
+    .page { padding: 36px 0 48px; }
+    .page-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+    .page-title { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; }
+    .page-sub { font-size: 13px; color: var(--text-secondary); margin-top: 2px; }
+    .btn-new {
+      background: var(--accent); color: #fff; border: none; border-radius: 8px;
+      padding: 10px 20px; font-size: 14px; font-weight: 600; cursor: pointer;
+      text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
+      transition: background 0.15s, transform 0.1s;
+    }
+    .btn-new:hover { background: var(--accent-hover); transform: translateY(-1px); }
+
+    .overview-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px;
+      margin-bottom: 14px;
+    }
+    .stat-tile {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 18px;
+    }
+    .stat-tile .label {
+      font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--text-secondary); margin-bottom: 6px;
+    }
+    .stat-tile .value { font-size: 30px; font-weight: 700; line-height: 1.1; color: var(--accent); }
+    .stat-tile .hint { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+    .health-bar {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border); border-radius: 10px;
+      padding: 10px 16px; font-size: 12px; color: var(--text-secondary);
+      margin-bottom: 22px;
+    }
+    .health-item { display: inline-flex; align-items: center; gap: 7px; padding: 2px 6px; }
+    .health-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--text-muted); display: inline-block; flex: 0 0 auto;
+    }
+    .health-dot.ok { background: var(--success); box-shadow: 0 0 6px rgba(63,185,80,0.5); }
+    .health-dot.bad { background: var(--danger); box-shadow: 0 0 6px rgba(248,81,73,0.5); }
+    .health-dot.warn { background: var(--warning); box-shadow: 0 0 6px rgba(210,153,34,0.5); }
+    .health-sep { color: var(--border-light); }
+
+    .cases-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .cases-table {
+      width: 100%; border-collapse: separate; border-spacing: 0;
+      font-size: 13px; min-width: 720px;
+    }
+    .cases-table th, .cases-table td {
+      text-align: left; padding: 11px 16px; border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    .cases-table th {
+      font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--text-secondary); background: var(--bg-tertiary);
+    }
+    .cases-table tbody tr:last-child td { border-bottom: none; }
+    .cases-table tbody tr { cursor: pointer; transition: background 0.1s; }
+    .cases-table tbody tr:hover { background: rgba(47,129,247,0.08); }
+    .cases-table tr.active td { background: rgba(47,129,247,0.12); }
+    .cases-table .mono { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 12px; color: var(--text-secondary); }
+    .pill {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 999px;
+    }
+    .pill.mode1 { background: rgba(47,129,247,0.15); color: var(--accent); }
+    .pill.mode2 { background: rgba(210,153,34,0.15); color: var(--warning); }
+    .pill.mode3 { background: rgba(163,113,247,0.15); color: var(--purple); }
+    .pill.ok { background: rgba(63,185,80,0.15); color: var(--success); }
+    .pill.idle { background: var(--bg-tertiary); color: var(--text-secondary); }
+    .cases-empty { padding: 44px 32px; text-align: center; color: var(--text-secondary); font-size: 14px; }
+    .cases-empty .big { font-size: 15px; color: var(--text-primary); font-weight: 600; margin-bottom: 6px; }
+    .cases-error { padding: 20px; color: var(--danger); font-size: 13px; }
+
+    .footer {
+      border-top: 1px solid var(--border);
+      margin-top: 40px;
+      padding: 24px 32px;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+      font-size: 13px; color: var(--text-muted);
+    }
+    .footer a { color: var(--text-secondary); text-decoration: none; }
+    .footer a:hover { color: var(--text-primary); }
+
+    @media (max-width: 768px) {
+      .overview-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+  <nav class="topnav">
+    <div class="topnav-inner">
+      <a class="topnav-brand" href="/">
+        <img src="/logo.svg" alt="DFIR-Nexus" onerror="this.style.display='none'">
+        <span class="topnav-brand-text">DFIR<span>-Nexus</span></span>
+      </a>
+      <div class="topnav-links">
+        <a href="/">Landing</a>
+        <a href="/portal/app" class="btn-nav">Enter Cockpit</a>
+      </div>
+      <div class="topnav-version">v2.0</div>
+    </div>
+  </nav>
+
+  <main class="page">
+    <div class="wrap">
+      <div class="page-head">
+        <div>
+          <h1 class="page-title">Case Dashboard</h1>
+          <p class="page-sub">All investigations at a glance — click a case to activate it and open the cockpit.</p>
+        </div>
+        <a href="/portal/app/case-setup" class="btn-new">+ New Investigation</a>
+      </div>
+
+      <!-- Totals -->
+      <div class="overview-grid">
+        <div class="stat-tile">
+          <div class="label">Cases</div>
+          <div class="value" id="st-cases">—</div>
+          <div class="hint" id="st-active">no active case</div>
+        </div>
+        <div class="stat-tile">
+          <div class="label">Findings</div>
+          <div class="value" id="st-findings">—</div>
+          <div class="hint">across all cases</div>
+        </div>
+        <div class="stat-tile">
+          <div class="label">Evidence items</div>
+          <div class="value" id="st-evidence">—</div>
+          <div class="hint">registered across cases</div>
+        </div>
+        <div class="stat-tile">
+          <div class="label">Processed</div>
+          <div class="value" id="st-processed">—</div>
+          <div class="hint">cases with completed N2 lane</div>
+        </div>
+      </div>
+
+      <!-- System health -->
+      <div class="health-bar" id="health-strip">
+        <span class="health-item"><span class="health-dot" id="hd-backend"></span>Backend</span>
+        <span class="health-sep">·</span>
+        <span class="health-item"><span class="health-dot" id="hd-es"></span>Elasticsearch</span>
+        <span class="health-sep">·</span>
+        <span class="health-item"><span class="health-dot" id="hd-rag"></span>RAG Index</span>
+        <span class="health-sep">·</span>
+        <span class="health-item"><span class="health-dot" id="hd-llm"></span>LLM</span>
+        <span class="health-sep">·</span>
+        <span class="health-item"><span class="health-dot" id="hd-parser"></span>Parser Lane</span>
+        <span class="health-sep">·</span>
+        <a href="/health" target="_blank" style="color:var(--accent);text-decoration:none;">raw status →</a>
+      </div>
+
+      <!-- Cases table -->
+      <div id="cases-container" style="margin-top: 20px;">
+        <div class="cases-card" id="cases-loading" style="padding:18px;color:var(--text-secondary);font-size:13px;">Loading cases…</div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+      <span>DFIR-Nexus v2.0 — Part of the <a href="https://github.com/Ganron007/DFIR-Nexus" target="_blank">CADRE ecosystem</a></span>
+      <span>Examiner-controlled · HMAC-audited · AI-cannot-approve</span>
+    </div>
+  </footer>
+
+  <script>
+    (function () {
+      function esc(s) {
+        return String(s == null ? "" : s)
+          .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+      }
+      function setDot(id, state) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        el.className = "health-dot " + (state === true ? "ok" : state === false ? "bad" : state === "warn" ? "warn" : "");
+      }
+
+      // System health (cheap checks — deep preflight stays in nexus doctor)
+      fetch("/portal/api/system/health")
+        .then(function (r) { return r.json(); })
+        .then(function (h) {
+          setDot("hd-backend", h.backend === "ok");
+          var es = h.es || {};
+          setDot("hd-es", es.configured === false ? true : es.reachable);
+          setDot("hd-rag", (h.rag || {}).configured);
+          setDot("hd-llm", (h.llm || {}).configured === true ? true : "warn");
+          setDot("hd-parser", h.parser === "ok");
+        })
+        .catch(function () {
+          ["hd-backend", "hd-es", "hd-rag", "hd-llm", "hd-parser"].forEach(function (id) { setDot(id, false); });
+        });
+
+      function esc(s) {
+        return String(s == null ? "" : s)
+          .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+      }
+
+      // Cases table + totals
+      fetch("/portal/api/cases")
+        .then(function (r) { return r.json(); })
+        .then(function (c) {
+          var activeCase = c.active || "";
+          var cases = c.cases || [];
+          var host = document.getElementById("cases-loading");
+
+          document.getElementById("st-cases").textContent = String(cases.length);
+          document.getElementById("st-active").textContent = activeCase ? ("active: " + activeCase) : "no active case";
+
+          if (!cases.length) {
+            host.innerHTML =
+              '<div class="cases-card"><div class="cases-empty">' +
+              '<div class="big">No cases yet</div>' +
+              'Click <strong>"+ New Investigation"</strong> to start your first investigation.' +
+              "</div></div>";
+            document.getElementById("st-findings").textContent = "0";
+            document.getElementById("st-evidence").textContent = "0";
+            document.getElementById("st-processed").textContent = "0";
+            return;
+          }
+
+          return Promise.all(cases.map(function (id) {
+            return fetch("/portal/api/case/details?case_id=" + encodeURIComponent(id))
+              .then(function (r) { return r.json(); })
+              .catch(function () { return { case_id: id }; });
+          })).then(function (details) {
+            var totFindings = 0, totEvidence = 0, totProcessed = 0;
+            var rows = details.map(function (d) {
+              var f = d.findings_count || 0;
+              totFindings += f;
+              totEvidence += d.evidence_count || 0;
+              if (d.pipeline_complete) totProcessed += 1;
+              var isActive = d.case_id === activeCase;
+              var mode = d.investigation_mode
+                ? '<span class="pill mode' + esc(d.investigation_mode) + '">Mode ' + esc(d.investigation_mode) + "</span>"
+                : '<span class="pill idle">—</span>';
+              return "<tr data-case=\"" + esc(d.case_id) + "\"" + (isActive ? " class=\"active\"" : "") + ">" +
+                "<td class='mono'>" + esc(d.case_id) + "</td>" +
+                "<td>" + esc(d.name || d.case_id) + "</td>" +
+                "<td>" + mode + "</td>" +
+                "<td>" + (d.evidence_count != null ? d.evidence_count : "—") + "</td>" +
+                "<td>" + (f || "—") + "</td>" +
+                "<td>" + (d.pipeline_complete
+                  ? '<span class="pill ok">✓ processed</span>'
+                  : '<span class="pill idle">pending</span>') + "</td>" +
+                "<td>" + (isActive ? '<span class="pill ok">Active</span>' : '<span class="pill idle">—</span>') + "</td>" +
+                "</tr>";
+            }).join("");
+
+            document.getElementById("st-findings").textContent = String(totFindings);
+            document.getElementById("st-evidence").textContent = String(totEvidence);
+            document.getElementById("st-processed").textContent = String(totProcessed);
+
+            host.innerHTML =
+              "<table class='cases-table'><thead><tr>" +
+              "<th>Case ID</th><th>Name</th><th>Mode</th><th>Evidence</th><th>Findings</th><th>N2 Pipeline</th><th>Status</th>" +
+              "</tr></thead><tbody>" + rows + "</tbody></table>";
+
+            Array.prototype.forEach.call(document.querySelectorAll(".cases-table tbody tr"), function (tr) {
+              tr.addEventListener("click", function () {
+                var cid = tr.getAttribute("data-case");
+                fetch("/portal/api/case/activate", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ case_id: cid }),
+                }).then(function () { window.location.href = "/portal/app"; });
+              });
+            });
+          });
+        })
+        .catch(function () {
+          var host = document.getElementById("cases-loading");
+          if (host) host.innerHTML = '<div class="cases-card" style="padding:18px;color:var(--danger);font-size:13px;">Could not load cases — is the backend running?</div>';
+        });
+    })();
+  </script>
+</body>
+</html>

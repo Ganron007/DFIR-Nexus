@@ -2617,11 +2617,22 @@ _SPA_INDEX = _SPA_DIST / "index.html"
 _LANDING_HTML = Path(__file__).resolve().parent / "landing.html"
 
 
+_LANDING_HTML = Path(__file__).resolve().parent / "landing.html"
+_CASE_DASHBOARD_HTML = Path(__file__).resolve().parent / "case_dashboard.html"
+
+
 async def landing_page(request) -> HTMLResponse:
     """Serve the DFIR-Nexus landing page at /."""
     if _LANDING_HTML.is_file():
         return HTMLResponse(_LANDING_HTML.read_text(encoding="utf-8"))
     # Fallback if landing.html is missing — redirect to the cockpit
+    return RedirectResponse(url="/portal/app", status_code=302)
+
+
+async def case_dashboard_page(request) -> HTMLResponse:
+    """Serve the standalone Case Dashboard at /dashboard (totals + cases table)."""
+    if _CASE_DASHBOARD_HTML.is_file():
+        return HTMLResponse(_CASE_DASHBOARD_HTML.read_text(encoding="utf-8"))
     return RedirectResponse(url="/portal/app", status_code=302)
 
 
@@ -3163,6 +3174,7 @@ def create_dashboard():
         Route("/logo.svg", endpoint=logo),
         # Landing page + SPA
         Route("/", endpoint=landing_page),
+        Route("/dashboard", endpoint=case_dashboard_page),
         Route("/portal", endpoint=landing_page),
         Route("/portal/", endpoint=landing_page),
         Route("/portal/ask", endpoint=ask_page),

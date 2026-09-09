@@ -110,6 +110,37 @@
     }
     .btn-secondary:hover { border-color: var(--border-light); }
 
+    /* System status pop-down */
+    .status-wrap { position: relative; display: inline-block; }
+    .status-toggle { cursor: pointer; }
+    .status-pop {
+      position: absolute;
+      top: calc(100% + 8px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-light);
+      border-radius: 10px;
+      box-shadow: 0 8px 28px rgba(0,0,0,0.5);
+      padding: 12px 16px;
+      min-width: 220px;
+      z-index: 60;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+    .status-pop .health-item { justify-content: flex-start; }
+    .health-raw {
+      margin-top: 6px;
+      font-size: 12px;
+      color: var(--accent);
+      text-decoration: none;
+      text-align: center;
+    }
+    .health-raw:hover { text-decoration: underline; }
+
     /* Hero logo panel */
     .hero-visual {
       display: flex; align-items: center; justify-content: center;
@@ -386,9 +417,7 @@
         <span class="topnav-brand-text">DFIR<span>-Nexus</span></span>
       </a>
       <div class="topnav-links">
-        <a href="/portal/app">Case Dashboard</a>
-        <a href="#workflow" data-tab="tab-spine">Workflow</a>
-        <a href="#workflow" data-tab="tab-platform">Platform</a>
+        <a href="/dashboard">Case Dashboard</a>
       </div>
       <div class="topnav-version">v2.0</div>
     </div>
@@ -414,10 +443,21 @@
               </svg>
             </a>
             <a href="/portal/app/case-setup" class="btn-secondary">+ New Investigation</a>
-            <a href="/health" class="btn-secondary" target="_blank">
-              <span class="status-dot"></span>
-              System Status
-            </a>
+            <div class="status-wrap">
+              <button class="btn-secondary status-toggle" id="status-toggle" type="button">
+                <span class="status-dot" id="status-dot-hero"></span>
+                System Status
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <div class="status-pop" id="status-pop" hidden>
+                <div class="health-item"><span class="health-dot" id="hd-backend"></span>Backend</div>
+                <div class="health-item"><span class="health-dot" id="hd-es"></span>Elasticsearch</div>
+                <div class="health-item"><span class="health-dot" id="hd-rag"></span>RAG Index</div>
+                <div class="health-item"><span class="health-dot" id="hd-llm"></span>LLM</div>
+                <div class="health-item"><span class="health-dot" id="hd-parser"></span>Parser Lane</div>
+                <a href="/health" target="_blank" class="health-raw">raw status →</a>
+              </div>
+            </div>
           </div>
         </div>
         <div class="hero-visual">
@@ -575,6 +615,52 @@
           activateTab(a.getAttribute("data-tab"));
           document.getElementById("workflow").scrollIntoView({ behavior: "smooth", block: "start" });
         });
+      });
+
+      // System status pop-down (fetch once on first open)
+      var statusToggle = document.getElementById("status-toggle");
+      var statusPop = document.getElementById("status-pop");
+      var statusLoaded = false;
+      function setDot(id, state) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        el.className = "health-dot " + (state === true ? "ok" : state === false ? "bad" : state === "warn" ? "warn" : "");
+      }
+      function loadHealth() {
+        if (statusLoaded) return;
+        statusLoaded = true;
+        fetch("/portal/api/system/health")
+          .then(function (r) { return r.json(); })
+          .then(function (h) {
+            setDot("hd-backend", h.backend === "ok");
+            var es = h.es || {};
+            setDot("hd-es", es.configured === false ? true : es.reachable);
+            setDot("hd-rag", (h.rag || {}).configured);
+            setDot("hd-llm", (h.llm || {}).configured === true ? true : "warn");
+            setDot("hd-parser", h.parser === "ok");
+            var heroDot = document.getElementById("status-dot-hero");
+            if (heroDot) {
+              var allOk = h.backend === "ok" && h.parser === "ok"
+                && (h.es || {}).reachable !== false
+                && (h.rag || {}).configured !== false;
+              heroDot.style.background = allOk ? "var(--success)" : "var(--warning)";
+              heroDot.style.boxShadow = allOk ? "0 0 6px rgba(63,185,80,0.6)" : "0 0 6px rgba(210,153,34,0.5)";
+            }
+          })
+          .catch(function () {
+            ["hd-backend", "hd-es", "hd-rag", "hd-llm", "hd-parser"].forEach(function (id) { setDot(id, false); });
+          });
+      }
+      var statusToggle = document.getElementById("status-toggle");
+      var statusPop = document.getElementById("status-pop");
+      statusToggle.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        var willOpen = statusPop.hidden;
+        statusPop.hidden = !willOpen;
+        if (willOpen && !statusLoaded) { statusLoaded = true; loadHealth(); }
+      });
+      document.addEventListener("click", function (ev) {
+        if (!statusPop.hidden && !statusPop.contains(ev.target)) statusPop.hidden = true;
       });
     })();
   </script>
