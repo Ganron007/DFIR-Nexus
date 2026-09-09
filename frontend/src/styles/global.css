@@ -483,6 +483,19 @@ tr:hover td {
   color: var(--text-muted);
 }
 
+.nav-home {
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.nav-home:hover {
+  background: var(--bg-tertiary);
+  color: var(--accent);
+}
+
 .nav-stage {
   flex: 0 0 34px;
   font-family: "SF Mono", Consolas, monospace;

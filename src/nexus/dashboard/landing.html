@@ -284,6 +284,63 @@
     .feature-card h3 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
     .feature-card p { font-size: 13px; color: var(--text-secondary); line-height: 1.6; }
 
+    /* ── Tabbed info panel (spine + platform in one compact card) ── */
+    .tabbed-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    .tab-bar {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-tertiary);
+    }
+    .tab-btn {
+      flex: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--text-secondary);
+      font-size: 14px;
+      font-weight: 600;
+      padding: 14px 16px;
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s, background 0.15s;
+    }
+    .tab-btn:hover { color: var(--text-primary); }
+    .tab-btn.active {
+      color: var(--text-primary);
+      border-bottom-color: var(--accent);
+      background: var(--bg-secondary);
+    }
+    .tab-btn .tab-chip {
+      font-family: "SF Mono", Consolas, monospace;
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--accent);
+      background: rgba(47,129,247,0.14);
+      border: 1px solid rgba(47,129,247,0.45);
+      border-radius: 999px;
+      padding: 1px 8px;
+    }
+    .tab-btn .tab-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--success); display: inline-block;
+    }
+    .tab-panel { padding: 28px 24px 24px; }
+    .tab-panel[hidden] { display: none; }
+    .tab-lede {
+      text-align: center;
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 22px;
+    }
+
     /* ── Footer ──────────────────────────────────────────────── */
     .footer {
       border-top: 1px solid var(--border);
@@ -330,8 +387,8 @@
       </a>
       <div class="topnav-links">
         <a href="#cases">Cases</a>
-        <a href="#workflow">Workflow</a>
-        <a href="#features">Platform</a>
+        <a href="#workflow" data-tab="tab-spine">Workflow</a>
+        <a href="#features" data-tab="tab-platform">Platform</a>
         <a href="/portal/app" class="btn-nav">Enter Cockpit</a>
       </div>
       <div class="topnav-version">v2.0</div>
@@ -530,117 +587,145 @@
           var host = document.getElementById("cases-loading");
           if (host) host.innerHTML = '<div class="cases-error">Could not load cases — is the backend running?</div>';
         });
+        .catch(function () {
+          var host = document.getElementById("cases-loading");
+          if (host) host.innerHTML = '<div class="cases-error">Could not load cases — is the backend running?</div>';
+        });
+
+      // Tabbed info panel (spine + platform in one compact card)
+      var tabBtns = document.querySelectorAll(".tab-btn");
+      var panels = { "tab-spine": document.getElementById("tab-spine"), "tab-platform": document.getElementById("tab-platform") };
+      function activateTab(id) {
+        Array.prototype.forEach.call(tabBtns, function (b) {
+          b.classList.toggle("active", b.getAttribute("data-tab") === id);
+        });
+        Object.keys(panels).forEach(function (k) {
+          if (panels[k]) panels[k].hidden = (k !== id);
+        });
+      }
+      Array.prototype.forEach.call(tabBtns, function (b) {
+        b.addEventListener("click", function () { activateTab(b.getAttribute("data-tab")); });
+      });
+      // Nav links switch tabs instead of scrolling past them
+      Array.prototype.forEach.call(document.querySelectorAll('[data-tab-link]'), function (a) {
+        a.addEventListener("click", function (ev) {
+          ev.preventDefault();
+          activateTab(a.getAttribute("data-tab"));
+          document.getElementById("workflow").scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+      });
     })();
   </script>
 
-  <!-- Investigation spine -->
+  <!-- Explore-the-platform: tabbed panel (spine + features) -->
   <section class="section" id="workflow">
     <div class="wrap">
-      <div class="section-head" style="justify-content:center;text-align:center;">
-        <div style="width:100%;">
-          <div class="kicker">How it works</div>
-          <h2 class="section-title" style="font-size:24px;font-weight:700;letter-spacing:-0.5px;">The Investigation Spine</h2>
-          <p class="section-sub">Eight deterministic stages from raw evidence to verified report — the same rail you follow inside the cockpit.</p>
+      <div class="tabbed-card">
+        <div class="tab-bar" role="tablist">
+          <button class="tab-btn active" data-tab="tab-spine" role="tab">
+            <span class="tab-num">N1–N8</span> The Investigation Spine
+          </button>
+          <button class="tab-btn" data-tab="tab-platform" role="tab">
+            <span class="tab-dot"></span> Built for defensible investigations
+          </button>
         </div>
-      </div>
-      <div class="spine-rail">
-        <div class="spine-grid">
-          <div class="spine-step">
-            <div class="spine-num">N1</div>
-            <div class="spine-name">Intake</div>
-            <div class="spine-desc">Case created, question and window recorded</div>
-          </div>
-          <div class="spine-step">
-            <div class="spine-num">N2</div>
-            <div class="spine-name">Process</div>
-            <div class="spine-desc">Deterministic parsers extract artifacts</div>
-          </div>
-          <div class="spine-step">
-            <div class="spine-num">N3</div>
-            <div class="spine-name">Index</div>
-            <div class="spine-desc">Per-case index built for fast search</div>
-          </div>
-          <div class="spine-step">
-            <div class="spine-num">N4</div>
-            <div class="spine-name">Query</div>
-            <div class="spine-desc">Needles search parsed evidence — never raw disks</div>
-          </div>
-          <div class="spine-step">
-            <div class="spine-num">N5</div>
-            <div class="spine-name">Interpret</div>
-            <div class="spine-desc">Hits become observations, grounded in evidence</div>
-          </div>
-          <div class="spine-step">
-            <div class="spine-num">N6</div>
-            <div class="spine-name">Approve</div>
-            <div class="spine-desc">Examiner signs findings with HMAC challenge</div>
-          </div>
-          <div class="spine-step">
-            <div class="spine-num">N7</div>
-            <div class="spine-name">Timeline</div>
-            <div class="spine-desc">Events merged into a per-case timeline</div>
-          </div>
-          <div class="spine-step">
-            <div class="spine-num">N8</div>
-            <div class="spine-name">Report</div>
-            <div class="spine-desc">Approved findings exported, sealed and verified</div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
 
-  <!-- Features -->
-  <section class="section" id="features">
-    <div class="wrap">
-      <div class="section-head" style="justify-content:center;text-align:center;">
-        <div style="width:100%;">
-          <div class="kicker">Platform</div>
-          <h2 class="section-title" style="font-size:24px;font-weight:700;letter-spacing:-0.5px;">Built for defensible investigations</h2>
-        </div>
-      </div>
-      <div class="features-grid">
-        <div class="feature-card">
-          <div class="feature-icon blue">
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 3h14v14H3z M3 7h14 M7 3v14" stroke="currentColor" stroke-width="1.5"/></svg>
+        <!-- Tab 1: spine -->
+        <div class="tab-panel active" id="tab-spine">
+          <p class="tab-lede">Eight deterministic stages from raw evidence to verified report — the same rail you follow inside the cockpit.</p>
+          <div class="spine-rail">
+            <div class="spine-grid">
+              <div class="spine-step">
+                <div class="spine-num">N1</div>
+                <div class="spine-name">Intake</div>
+                <div class="spine-desc">Case created, question and window recorded</div>
+              </div>
+              <div class="spine-step">
+                <div class="spine-num">N2</div>
+                <div class="spine-name">Process</div>
+                <div class="spine-desc">Deterministic parsers extract artifacts</div>
+              </div>
+              <div class="spine-step">
+                <div class="spine-num">N3</div>
+                <div class="spine-name">Index</div>
+                <div class="spine-desc">Per-case index built for fast search</div>
+              </div>
+              <div class="spine-step">
+                <div class="spine-num">N4</div>
+                <div class="spine-name">Query</div>
+                <div class="spine-desc">Needles search parsed evidence — never raw disks</div>
+              </div>
+              <div class="spine-step">
+                <div class="spine-num">N5</div>
+                <div class="spine-name">Interpret</div>
+                <div class="spine-desc">Hits become observations, grounded in evidence</div>
+              </div>
+              <div class="spine-step">
+                <div class="spine-num">N6</div>
+                <div class="spine-name">Approve</div>
+                <div class="spine-desc">Examiner signs findings with HMAC challenge</div>
+              </div>
+              <div class="spine-step">
+                <div class="spine-num">N7</div>
+                <div class="spine-name">Timeline</div>
+                <div class="spine-desc">Events merged into a per-case timeline</div>
+              </div>
+              <div class="spine-step">
+                <div class="spine-num">N8</div>
+                <div class="spine-name">Report</div>
+                <div class="spine-desc">Approved findings exported, sealed and verified</div>
+              </div>
+            </div>
           </div>
-          <h3>Case Analysis Cockpit</h3>
-          <p>Unified workspace for evidence exploration, timeline analysis, entity pivots, and finding management — all in one interface.</p>
         </div>
-        <div class="feature-card">
-          <div class="feature-icon green">
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 2l7 4v6l-7 4-7-4V6z M10 2v16 M3 6l7 4 7-4" stroke="currentColor" stroke-width="1.5"/></svg>
+
+        <!-- Tab 2: platform features -->
+        <div class="tab-panel" id="tab-platform" hidden>
+          <div class="tab-lede" style="text-align:center;">What makes every investigation defensible.</div>
+          <div class="features-grid">
+            <div class="feature-card">
+              <div class="feature-icon blue">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 3h14v14H3z M3 7h14 M7 3v14" stroke="currentColor" stroke-width="1.5"/></svg>
+              </div>
+              <h3>Case Analysis Cockpit</h3>
+              <p>Unified workspace for evidence exploration, timeline analysis, entity pivots, and finding management — all in one interface.</p>
+            </div>
+            <div class="feature-card">
+              <div class="feature-icon green">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 2l7 4v6l-7 4-7-4V6z M10 2v16 M3 6l7 4 7-4" stroke="currentColor" stroke-width="1.5"/></svg>
+              </div>
+              <h3>Chain of Custody</h3>
+              <p>Evidence registration with cryptographic hashing, atomic writes, and full audit trail from collection through reporting.</p>
+            </div>
+            <div class="feature-card">
+              <div class="feature-icon purple">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M7 10l2 2 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+              </div>
+              <h3>HMAC Approval Boundary</h3>
+              <p>Challenge-response authentication for finding approval. The AI never approves — the examiner signs every finding.</p>
+            </div>
+            <div class="feature-card">
+              <div class="feature-icon orange">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M4 6h12 M4 10h12 M4 14h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+              </div>
+              <h3>Three Investigation Modes</h3>
+              <p>Mode 1: examiner-led exploration. Mode 2: LLM-guided iteration. Mode 3: agentic MCP with examiner approval at every step.</p>
+            </div>
+            <div class="feature-card">
+              <div class="feature-icon yellow">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 17l5-5 4 4 5-7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </div>
+              <h3>Playbook-Driven Needles</h3>
+              <p>22 investigation playbooks suggest search needles per evidence family — IOCs, technique names, event IDs — with one-click search.</p>
+            </div>
+            <div class="feature-card">
+              <div class="feature-icon red">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 3v14 M3 10h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.5"/></svg>
+              </div>
+              <h3>Transparency Ledger</h3>
+              <p>Hash-chained audit log of every action — case sealing, finding approval, agent execution. Tamper-evident by design.</p>
+            </div>
           </div>
-          <h3>Chain of Custody</h3>
-          <p>Evidence registration with cryptographic hashing, atomic writes, and full audit trail from collection through reporting.</p>
-        </div>
-        <div class="feature-card">
-          <div class="feature-icon purple">
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M7 10l2 2 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-          </div>
-          <h3>HMAC Approval Boundary</h3>
-          <p>Challenge-response authentication for finding approval. The AI never approves — the examiner signs every finding.</p>
-        </div>
-        <div class="feature-card">
-          <div class="feature-icon orange">
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M4 6h12 M4 10h12 M4 14h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-          </div>
-          <h3>Three Investigation Modes</h3>
-          <p>Mode 1: examiner-led exploration. Mode 2: LLM-guided iteration. Mode 3: agentic MCP with examiner approval at every step.</p>
-        </div>
-        <div class="feature-card">
-          <div class="feature-icon yellow">
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 17l5-5 4 4 5-7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </div>
-          <h3>Playbook-Driven Needles</h3>
-          <p>22 investigation playbooks suggest search needles per evidence family — IOCs, technique names, event IDs — with one-click search.</p>
-        </div>
-        <div class="feature-card">
-          <div class="feature-icon red">
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 3v14 M3 10h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.5"/></svg>
-          </div>
-          <h3>Transparency Ledger</h3>
-          <p>Hash-chained audit log of every action — case sealing, finding approval, agent execution. Tamper-evident by design.</p>
         </div>
       </div>
     </div>

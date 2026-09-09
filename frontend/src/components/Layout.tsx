@@ -98,13 +98,17 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     <div className="cockpit">
       <aside className="sidebar">
         <div className="sidebar-header">
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <a
+            href="/"
+            title="Back to landing page"
+            style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none", color: "inherit" }}
+          >
             <span dangerouslySetInnerHTML={{ __html: LOGO_SVG }} />
             <div>
               <h1 className="brand">DFIR-Nexus</h1>
               <span className="brand-sub">Examiner Cockpit</span>
             </div>
-          </div>
+          </a>
         </div>
 
         <div className="case-switcher">
@@ -153,7 +157,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         )}
 
         <nav className="nav">
-          <div className="nav-group-label">Investigation Spine</div>
+          <a href="/" className="nav-item nav-home" title="Back to the landing page">
+            <span className="nav-stage">⌂</span>
+            <span className="nav-label">Home / Landing</span>
+          </a>
+          <div className="nav-group-label" style={{ marginTop: 8 }}>Investigation Spine</div>
           {NAV_SPINE.map((item) => (
             <NavLink
               key={item.to}
