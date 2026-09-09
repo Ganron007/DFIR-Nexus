@@ -2498,7 +2498,7 @@ async def api_case_create(request):
     from nexus.case import CaseManager
     from nexus.config import settings
 
-    db_path = settings.data_root / "cases.db"
+    db_path = settings.cases_root / "cases.db"
     mgr = CaseManager(db_path)
     try:
         case = mgr.create_case(name=name, description=description, created_by=examiner)
@@ -2624,7 +2624,23 @@ async def api_pipeline_run(request):
     if not case_dir.is_dir():
         return JSONResponse({"error": "Case not found"}, status_code=404)
 
-    import asyncio
+    # Resolve the case's registered evidence so the N2 lane has data to parse.
+    # Without this the pipeline would run against an empty evidence list.
+    evidence_paths: list[str] = []
+    from nexus.case import CaseManager
+    mgr = CaseManager(settings.cases_root / "cases.db")
+    try:
+        for rec in mgr.list_evidence(case_id):
+            fp = (rec.file_path or "").strip()
+            if fp and Path(fp).exists():
+                evidence_paths.append(fp)
+    finally:
+        mgr.close()
+    if not evidence_paths:
+        return JSONResponse({
+            "error": "No registered evidence for this case — register evidence first (wizard step 2)"
+        }, status_code=400)
+
     import threading
     import uuid
 
@@ -2643,12 +2659,14 @@ async def api_pipeline_run(request):
     }
 
     def _run_in_thread():
+        import asyncio
         try:
             from nexus.langgraph.llm_pipeline import run_pipeline
             asyncio.run(run_pipeline(
-                evidence_path="",
+                evidence_path=evidence_paths[0],
                 mode=pipeline_mode,
                 case_id=case_id,
+                evidence_paths=evidence_paths,
             ))
             _pipeline_runs[run_id]["status"] = "complete"
         except Exception as exc:
@@ -2774,6 +2792,50 @@ async def api_get_case_mode(request):
     return JSONResponse({"mode": mode})
 
 
+async def api_system_health(request):
+    """GET /portal/api/system/health — cheap backend/ES/RAG/LLM/parser status.
+
+    Reports configured/reachable status without heavy preflight (no model
+    loads). Deep verification stays in `nexus doctor` / `GET /rag/status`.
+    """
+    health: dict[str, Any] = {"backend": "ok"}
+
+    # Elasticsearch (N3 backend) — same check as nexus doctor
+    es_url = (os.environ.get("NEXUS_ES_URL") or "").strip()
+    if not es_url:
+        health["es"] = {"configured": False, "reachable": False, "note": "CSV pack backend"}
+    else:
+        try:
+            import httpx
+            r = httpx.get(es_url.rstrip("/") + "/", timeout=3)
+            ok = r.status_code == 200 and "version" in r.json()
+            health["es"] = {"configured": True, "reachable": ok, "url": es_url}
+        except Exception:
+            health["es"] = {"configured": True, "reachable": False, "url": es_url}
+
+    # RAG index presence (cheap — no model load; deep check via /rag/status)
+    try:
+        from nexus.tools.rag import _get_index_dir
+        chroma_dir = _get_index_dir() / "chroma"
+        health["rag"] = {"configured": chroma_dir.is_dir()}
+    except Exception:
+        health["rag"] = {"configured": False}
+
+    # LLM configuration (not reachability — that needs a live call)
+    llm_model = (os.environ.get("NEXUS_LLM_MODEL") or "").strip()
+    llm_base = (os.environ.get("NEXUS_LLM_BASE_URL") or "").strip()
+    health["llm"] = {"configured": bool(llm_model and llm_base), "model": llm_model}
+
+    # Parser lane availability (tool-lane deps importable)
+    try:
+        from nexus.langgraph.tool_lane import run_tool_lane  # noqa: F401
+        health["parser"] = "ok"
+    except Exception:
+        health["parser"] = "missing"
+
+    return JSONResponse(health)
+
+
 # ── End Phase 4b APIs ─────────────────────────────────────────────────────
 
 
@@ -2870,6 +2932,7 @@ def create_dashboard():
         Route("/portal/api/playbook/needles", api_playbook_needles, methods=["GET"]),
         Route("/portal/api/case/mode", api_case_mode, methods=["POST"]),
         Route("/portal/api/case/mode", api_get_case_mode, methods=["GET"]),
+        Route("/portal/api/system/health", api_system_health, methods=["GET"]),
         # Phase 4: React SPA (served after API + legacy HTML routes)
         Route("/portal/app/assets/{path:path}", spa_asset),
         Route("/portal/app/logo.svg", logo),

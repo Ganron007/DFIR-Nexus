@@ -56,9 +56,11 @@ const LOGO_SVG = `<svg width="28" height="32" viewBox="0 0 128 148" fill="none" 
 // WP 4b.4: Stage Stepper component
 function StageStepper({ activeCase }: { activeCase: string }) {
   const [stageStatus, setStageStatus] = useState<Record<string, boolean>>({});
+  const [loadFailed, setLoadFailed] = useState(false);
 
   useEffect(() => {
     if (!activeCase) return;
+    setLoadFailed(false);
     api.caseDetails(activeCase).then((d) => {
       setStageStatus({
         N1: true, // case exists = intake done
@@ -70,11 +72,17 @@ function StageStepper({ activeCase }: { activeCase: string }) {
         N7: (d.findings_count || 0) > 0,
         N8: (d.findings_count || 0) > 0,
       });
-    }).catch(() => {});
+      setLoadFailed(false);
+    }).catch(() => setLoadFailed(true));
   }, [activeCase]);
 
   return (
     <div className="stage-stepper">
+      {loadFailed && (
+        <span className="stage-step" style={{ color: "var(--warning)" }} title="Stage status unavailable — case details could not be loaded">
+          ⚠ stage status unavailable
+        </span>
+      )}
       {STAGES.map((stage, i) => (
         <NavLink
           key={stage.id}
@@ -142,10 +150,22 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           )}
         </div>
 
-        {/* WP 4b.6: Mode indicator */}
+        {/* WP 4b.6: Mode indicator — click navigates to the mode's primary surface */}
         {mode && (
           <div className="mode-indicator">
-            <span className="mode-badge mode-{mode}">Mode {mode}</span>
+            <NavLink
+              to={mode === "1" ? "/explore" : "/steer"}
+              className={`mode-badge mode-${mode}`}
+              title={
+                mode === "1"
+                  ? "Mode 1 — Examiner-driven. Primary surface: Explore"
+                  : mode === "2"
+                    ? "Mode 2 — LLM-guided. Primary surface: Steer Chat"
+                    : "Mode 3 — Agentic. Primary surface: Steer Chat (plan/execute/seal)"
+              }
+            >
+              Mode {mode} · {mode === "1" ? "Explore" : "Steer Chat"} primary
+            </NavLink>
           </div>
         )}
 

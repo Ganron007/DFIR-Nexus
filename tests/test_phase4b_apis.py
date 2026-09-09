@@ -1,14 +1,13 @@
 """Tests for Phase 4b workflow-driven cockpit APIs.
 
 Covers:
-- WP 4b.1: POST /portal/api/case/create
+- WP 4b.1: POST /portal/api/case/create + GET /portal/api/case/details
 - WP 4b.2: POST /portal/api/pipeline/run + GET /portal/api/pipeline/status
 - WP 4b.7: GET /portal/api/playbook/needles
 - WP 4b.6: POST/GET /portal/api/case/mode
-- WP 4b.1: GET /portal/api/case/details
+- GET /portal/api/system/health
 """
-import json
-from pathlib import Path
+import time
 
 import pytest
 from starlette.applications import Starlette
@@ -54,7 +53,6 @@ def test_case_create_missing_name(client):
 
 def test_case_details(client):
     """WP 4b.1: Case details endpoint returns metadata."""
-    # Create a case first
     r = client.post("/portal/api/case/create", json={
         "name": "Details Test",
         "mode": "2",
@@ -74,12 +72,10 @@ def test_case_details(client):
 def test_case_mode_set_get(client):
     """WP 4b.6: Set and get investigation mode."""
     client.post("/portal/api/case/create", json={"name": "Mode Test"})
-    # Set mode
     r = client.post("/portal/api/case/mode", json={"mode": "3"})
     assert r.status_code == 200
     assert r.json()["ok"] is True
     assert r.json()["mode"] == "3"
-    # Get mode
     r = client.get("/portal/api/case/mode")
     assert r.status_code == 200
     assert r.json()["mode"] == "3"
@@ -121,7 +117,84 @@ def test_pipeline_run_no_case(client, tmp_path, monkeypatch):
     assert r.status_code == 404
 
 
+def test_pipeline_run_without_evidence_rejected(client):
+    """WP 4b.2: Pipeline run with no registered evidence returns 400.
+
+    Guards the regression where the N2 lane ran against an empty
+    evidence list and silently processed nothing.
+    """
+    r = client.post("/portal/api/case/create", json={"name": "No Evidence"})
+    case_id = r.json()["case_id"]
+    r = client.post("/portal/api/pipeline/run", json={"mode": "tools", "case_id": case_id})
+    assert r.status_code == 400
+    assert "evidence" in r.json()["error"].lower()
+
+
+def test_pipeline_run_passes_registered_evidence(client, tmp_path, monkeypatch):
+    """WP 4b.2: pipeline/run resolves case evidence and passes it to
+    run_pipeline as evidence_paths (regression for the empty-evidence bug)."""
+    from nexus.case import CaseManager
+    from nexus.config import settings
+
+    r = client.post("/portal/api/case/create", json={"name": "Evidence Case"})
+    case_id = r.json()["case_id"]
+
+    ev_path = tmp_path / "evidence.csv"
+    ev_path.write_text("col1,col2\n1,2\n", encoding="utf-8")
+    mgr = CaseManager(settings.cases_root / "cases.db")
+    try:
+        mgr.add_evidence(
+            case_id=case_id,
+            name=ev_path.name,
+            description="test evidence",
+            file_path=str(ev_path),
+            file_hash_sha256="0" * 64,
+            collected_by="tester",
+        )
+    finally:
+        mgr.close()
+
+    captured: dict = {}
+
+    async def fake_run_pipeline(**kwargs):
+        captured.update(kwargs)
+        return {}
+
+    import nexus.langgraph.llm_pipeline as lp
+    monkeypatch.setattr(lp, "run_pipeline", fake_run_pipeline)
+
+    r = client.post("/portal/api/pipeline/run", json={"mode": "tools", "case_id": case_id})
+    assert r.status_code == 200
+    run_id = r.json()["run_id"]
+
+    deadline = time.time() + 10
+    status = ""
+    while time.time() < deadline:
+        s = client.get(f"/portal/api/pipeline/status?run_id={run_id}")
+        status = s.json().get("status", "")
+        if status in ("complete", "error"):
+            break
+        time.sleep(0.1)
+    assert status == "complete", s.json()
+    assert captured.get("case_id") == case_id
+    assert captured.get("evidence_paths") == [str(ev_path)]
+    assert captured.get("evidence_path") == str(ev_path)
+    assert captured.get("mode") == "tools"
+
+
 def test_pipeline_status_not_found(client):
     """WP 4b.2: Status for unknown run_id returns 404."""
     r = client.get("/portal/api/pipeline/status?run_id=nonexistent")
     assert r.status_code == 404
+
+
+def test_system_health(client):
+    """System health endpoint reports cheap component status."""
+    r = client.get("/portal/api/system/health")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["backend"] == "ok"
+    assert "es" in body
+    assert "rag" in body
+    assert "llm" in body
+    assert "parser" in body

@@ -22,7 +22,7 @@ export default function Findings() {
   const loadCorroboration = (findingId: string) => {
     api.mode2Corroborate({ finding_id: findingId })
       .then((r) => setCorroboration((prev) => ({ ...prev, [findingId]: r })))
-      .catch(() => {});
+      .catch((e) => setError(`Corroboration check failed: ${(e as Error).message}`));
   };
 
   // WP 4b.12: Wire auditForFinding — load audit trail for a finding
@@ -30,7 +30,7 @@ export default function Findings() {
   const loadAudit = (findingId: string) => {
     api.auditForFinding(findingId)
       .then((r) => setAuditTrail((prev) => ({ ...prev, [findingId]: r })))
-      .catch(() => {});
+      .catch((e) => setError(`Audit trail load failed: ${(e as Error).message}`));
   };
 
   if (loading) return <div className="loading">Loading findings...</div>;

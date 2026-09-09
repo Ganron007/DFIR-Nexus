@@ -4,6 +4,102 @@ All notable changes to DFIR-Nexus are documented here.
 
 ## Unreleased
 
+### Phase 4 + 4b full re-verification (2026-09-10)
+
+#### Summary
+
+Re-audited every Phase 4 and Phase 4b wiring-plan item against actual code
+(routes, handlers, frontend calls, state propagation, tests, builds).
+Found 7 issues — including one critical backend bug and one critical
+configuration bug that existing tests could not catch — and fixed all of them.
+
+#### Finding 1 (CRITICAL): pipeline/run ran with no evidence
+
+`POST /portal/api/pipeline/run` called `run_pipeline(evidence_path="", ...)`.
+The pipeline's `register_evidence` node only registers evidence from
+`state["evidence_paths"]` — so an N2 run triggered from the browser reused
+the case but parsed **nothing**. The case's registered evidence (stored via
+`CaseManager.add_evidence`) was never consulted.
+
+**Fix:** `api_pipeline_run` now resolves the case's evidence via
+`CaseManager.list_evidence(case_id)`, filters to paths that exist, passes
+them as `evidence_path` + `evidence_paths` to `run_pipeline`, and returns
+400 with a clear message when no evidence is registered.
+
+#### Finding 2 (CRITICAL): split-brain cases.db
+
+New Phase 4b endpoints used `settings.data_root / "cases.db"` while evidence
+registration and the CLI use `settings.cases_root / "cases.db"` — two
+different databases. Cases created via the wizard would be invisible to
+evidence registration and the CLI. Tests missed it because they were
+internally consistent.
+
+**Fix:** All CaseManager usage now uses `settings.cases_root / "cases.db"`.
+
+#### Finding 3: Timeline brush still didn't filter (4b.10 incomplete)
+
+Explore read `start`/`end` URL params but never passed them to
+`api.search` / `api.histogram` — the backend supported time filtering but
+the frontend dropped the values.
+
+**Fix:** Explore stores `timeRange` state, passes `start`/`end` to both
+search and histogram calls, and shows a clearable active time-filter chip.
+
+#### Finding 4: Mode badge CSS never applied (4b.6)
+
+`className="mode-badge mode-{mode}"` was a string literal, not a template —
+the `mode-1/2/3` CSS classes never applied.
+
+**Fix:** Template literal; badge is now a NavLink to the mode's primary
+surface (Mode 1 → Explore, Mode 2/3 → Steer Chat) and states which surface
+is primary. SteerChat's chat mode now follows the case-level mode.
+
+#### Finding 5: Silent error swallowing beyond the two named pages
+
+WP 4b.8 named only Findings.tsx and Evidence.tsx, but the "no silent
+failures" requirement is broader. Fixed `.catch(() => {})` in:
+Approve.tsx (DRAFT findings load), Workbench.tsx (load/remove/clear),
+SteerChat.tsx (chat load/clear), Explore.tsx (facets, bookmark state,
+playbook suggestions, bookmark add/remove), Findings.tsx (corroboration,
+audit trail), Layout.tsx stepper (visible ⚠ hint on failure).
+
+#### Finding 6: Dead `api.select` remained
+
+WP 4b.12 said "wire or remove" — `select` was left defined but uncalled.
+
+**Fix:** Removed `api.select` + `SelectResponse` from the client with a
+comment pointing to the Workbench flow; the `/mode1/select` endpoint remains
+for legacy HTML pages.
+
+#### Finding 7: Root `/` was still a marketing page (4b.3 gap)
+
+The WP requires `/` to be the functional entry point. The SPA Overview was
+a dashboard, but `landing.html` had no cases table.
+
+**Fix:** `landing.html` now renders a functional Your Cases table (fetches
+`/portal/api/cases` + `/portal/api/case/details`, click-to-activate →
+cockpit), a New Investigation button → `/portal/app/case-setup`, and a
+system health strip backed by the new `GET /portal/api/system/health`
+(cheap backend/ES/RAG-index/LLM-config/parser checks; deep preflight stays
+in `nexus doctor` and `GET /portal/api/rag/status`).
+
+#### Stale plan claims corrected
+
+- WP 4.2 claimed "6 tests" — no frontend test runner exists; claim corrected.
+- WP 4.3 claimed "family+host facets" — UI exposes family facets only;
+  corrected (host aggregation remains backend-supported).
+- WP 4.1 endpoint count updated (48 routes).
+
+#### Tests
+
+- `tests/test_phase4b_apis.py` expanded to 12 tests, including two
+  regressions for the pipeline evidence fix (rejects when no evidence;
+  passes registered evidence paths through to `run_pipeline`).
+- Full suite: 469 collected — 468 passed, 1 skipped, 0 failed.
+- Ruff: clean. TypeScript strict: clean. Vite build: clean.
+
+---
+
 ### Phase 4b — Workflow-driven cockpit (2026-09-10)
 
 #### Summary

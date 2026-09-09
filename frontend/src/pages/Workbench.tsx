@@ -73,19 +73,28 @@ export default function Workbench() {
         setItems(r.bookmarks);
         setSelected(new Set(r.bookmarks.map((b) => b.id)));
       })
-      .catch(() => {})
+      .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => load(), []);
 
   const remove = async (id: string) => {
-    await api.workbenchRemove(id).catch(() => {});
+    try {
+      await api.workbenchRemove(id);
+    } catch (e) {
+      setError(`Failed to remove bookmark: ${(e as Error).message}`);
+    }
     load();
   };
 
   const clearAll = async () => {
-    await api.workbenchClear().catch(() => {});
+    try {
+      await api.workbenchClear();
+    } catch (e) {
+      setError(`Failed to clear workbench: ${(e as Error).message}`);
+      return;
+    }
     setItems([]);
     setSelected(new Set());
   };

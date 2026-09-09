@@ -15,7 +15,7 @@ export default function Approve() {
     setLoading(true);
     api.findings("DRAFT")
       .then((r) => setFindings(r.findings))
-      .catch(() => {})
+      .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false));
   };
 

@@ -128,14 +128,7 @@ export interface AskResponse {
   error?: string;
 }
 
-/** POST /mode1/select → {finding_id, title, status, audit_ids} or {error} */
-export interface SelectResponse {
-  finding_id?: string;
-  title?: string;
-  status?: string;
-  audit_ids?: string[];
-  error?: string | string[];
-}
+// WP 4b.12: SelectResponse removed with api.select (see api.select note).
 
 /** POST /explore/search */
 export interface SearchResponse {
@@ -408,6 +401,15 @@ export interface CaseModeResponse {
   error?: string;
 }
 
+/** GET /system/health → cheap backend/ES/RAG/LLM/parser status */
+export interface SystemHealthResponse {
+  backend: string;
+  es?: { configured?: boolean; reachable?: boolean; url?: string };
+  rag?: { configured?: boolean };
+  llm?: { configured?: boolean; model?: string };
+  parser?: string;
+}
+
 // --- API ---
 
 export const api = {
@@ -434,16 +436,9 @@ export const api = {
   // Mode 1
   ask: (question: string, limit?: number) =>
     post<AskResponse>("/mode1/ask", { question, limit }),
-  select: (params: {
-    hits: (string | number)[];
-    title: string;
-    scribe?: boolean;
-    needles?: string;
-    family?: string;
-    start?: string;
-    end?: string;
-    interpretation?: string;
-  }) => post<SelectResponse>("/mode1/select", params),
+  // WP 4b.12: api.select removed — Mode 1 selection flows through the
+  // Workbench (bookmark → promote); the legacy /mode1/select endpoint
+  // remains available to the legacy HTML pages only.
 
   // Explore
   search: (params: {
@@ -544,4 +539,5 @@ export const api = {
     request<PlaybookNeedlesResponse>(`/playbook/needles${families ? `?families=${families}` : ""}`),
   setCaseMode: (mode: string) => post<CaseModeResponse>("/case/mode", { mode }),
   getCaseMode: () => request<CaseModeResponse>("/case/mode"),
+  systemHealth: () => request<SystemHealthResponse>("/system/health"),
 };

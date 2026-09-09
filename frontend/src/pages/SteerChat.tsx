@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { api, type ChatEntry, type Mode3PlanResponse } from "../api/client";
+import { useCase } from "../context/CaseContext";
 
 function ProposalCard({ entry }: { entry: ChatEntry }) {
   const meta = (entry.meta || {}) as Record<string, string>;
@@ -78,6 +79,7 @@ function ProposalCard({ entry }: { entry: ChatEntry }) {
 }
 
 export default function SteerChat() {
+  const { mode: caseMode } = useCase();
   const [messages, setMessages] = useState<ChatEntry[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -92,10 +94,18 @@ export default function SteerChat() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollTimerRef = useRef<number | null>(null);
 
+  // WP 4b.6: chat mode follows the case-level investigation mode
+  useEffect(() => {
+    if (caseMode === "1" || caseMode === "2" || caseMode === "3") {
+      setMode(`mode${caseMode}` as "mode1" | "mode2" | "mode3");
+      if (caseMode === "3") setMode3Step("plan");
+    }
+  }, [caseMode]);
+
   const load = () => {
     api.chat(200)
       .then((r) => setMessages(r.messages))
-      .catch(() => {})
+      .catch((e) => setError((e as Error).message))
       .finally(() => {
         if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
         scrollTimerRef.current = window.setTimeout(() => {
@@ -230,7 +240,12 @@ export default function SteerChat() {
   };
 
   const clear = async () => {
-    await api.chatClear().catch(() => {});
+    try {
+      await api.chatClear();
+    } catch (e) {
+      setError(`Failed to clear chat: ${(e as Error).message}`);
+      return;
+    }
     setMessages([]);
     setMode3Plan(null);
     setMode3Step("plan");

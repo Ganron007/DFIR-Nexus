@@ -21,23 +21,24 @@ export default function Explore() {
   const [showHistogram, setShowHistogram] = useState(true);
   const [playbookSuggestions, setPlaybookSuggestions] = useState<PlaybookSuggestion[]>([]);
   const [showPlaybookHelp, setShowPlaybookHelp] = useState(false);
+  const [timeRange, setTimeRange] = useState<{ start: string; end: string }>({ start: "", end: "" });
   const reqIdRef = useRef(0);
 
   // Load family aggregates and workbench bookmarks on mount
   useEffect(() => {
     api.aggregate({ group_by: "family" })
       .then((r) => setFamilyAgg(r.buckets || {}))
-      .catch(() => {});
+      .catch((e) => setError(`Facet load failed: ${(e as Error).message}`));
     api.workbench()
       .then((r) => {
         const ids = new Set(r.bookmarks.map((b) => b.id));
         setBookmarked(ids);
       })
-      .catch(() => {});
+      .catch((e) => setError(`Bookmark state load failed: ${(e as Error).message}`));
     // WP 4b.5: Load playbook needle suggestions
     api.playbookNeedles()
       .then((r) => setPlaybookSuggestions(r.suggestions || []))
-      .catch(() => {});
+      .catch((e) => setError(`Playbook suggestions load failed: ${(e as Error).message}`));
   }, []);
 
   // WP 4b.10: Read URL params from Timeline brush navigation
@@ -50,6 +51,7 @@ export default function Explore() {
       // Auto-search with the provided params
       const n = searchParams.get("needles") || "";
       setNeedles(n);
+      setTimeRange({ start: start || "", end: end || "" });
       setTimeout(() => doSearch(0, fam || undefined), 100);
     }
   }, [searchParams]);
@@ -64,10 +66,16 @@ export default function Explore() {
         api.search({
           needles: needles || undefined,
           family: famValue || undefined,
+          start: timeRange.start || undefined,
+          end: timeRange.end || undefined,
           limit: PAGE_SIZE,
           offset: targetOffset,
         }),
-        api.histogram({ family: famValue || undefined }).catch(() => ({ buckets: {}, count: 0 }) as HistogramResponse),
+        api.histogram({
+          family: famValue || undefined,
+          start: timeRange.start || undefined,
+          end: timeRange.end || undefined,
+        }).catch(() => ({ buckets: {}, count: 0 }) as HistogramResponse),
       ]);
       // Ignore stale responses
       if (reqIdRef.current !== reqId) return;
@@ -83,7 +91,7 @@ export default function Explore() {
     } finally {
       if (reqIdRef.current === reqId) setLoading(false);
     }
-  }, [needles, family]);
+  }, [needles, family, timeRange]);
 
   const search = (resetOffset = true) => {
     doSearch(resetOffset ? 0 : offset);
@@ -99,11 +107,12 @@ export default function Explore() {
     const key = `${hit.family}:${hit.file}:${hit.line}`;
     const next = new Set(bookmarked);
     if (next.has(key)) {
-      // Find the bookmark ID from the workbench
-      api.workbenchRemove(key).catch(() => {});
+      api.workbenchRemove(key)
+        .catch((e) => setError(`Bookmark remove failed: ${(e as Error).message}`));
       next.delete(key);
     } else {
-      api.workbenchAdd(hit).catch(() => {});
+      api.workbenchAdd(hit)
+        .catch((e) => setError(`Bookmark add failed: ${(e as Error).message}`));
       next.add(key);
     }
     setBookmarked(next);
@@ -175,6 +184,22 @@ export default function Explore() {
     <div>
       <h2 style={{ marginBottom: 16 }}>Explore</h2>
       {error && <div className="error-banner">{error}</div>}
+
+      {/* WP 4b.10: Active time-range filter from Timeline brush */}
+      {(timeRange.start || timeRange.end) && (
+        <div className="card" style={{ padding: "8px 12px", marginBottom: 8 }}>
+          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+            Time filter: <strong>{timeRange.start || "…"}</strong> → <strong>{timeRange.end || "…"}</strong>
+          </span>
+          <button
+            className="btn btn-sm"
+            style={{ marginLeft: 12 }}
+            onClick={() => { setTimeRange({ start: "", end: "" }); setTimeout(() => search(), 50); }}
+          >
+            Clear time filter
+          </button>
+        </div>
+      )}
 
       {/* Search bar */}
       <div className="card">

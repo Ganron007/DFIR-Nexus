@@ -1347,6 +1347,25 @@
 
 ---
 
+### GET /portal/api/system/health
+**Description:** Cheap component status for dashboards (landing page + cockpit Overview). Reports configured/reachable state without heavy preflight — deep verification stays in `nexus doctor` and `GET /portal/api/rag/status`.
+
+**Response 200:**
+```json
+{
+  "backend": "ok",
+  "es": {"configured": true, "reachable": true, "url": "http://..."},
+  "rag": {"configured": true},
+  "llm": {"configured": true, "model": "openai/gpt-4o"},
+  "parser": "ok"
+}
+```
+- `es.configured=false` means `NEXUS_ES_URL` is empty (CSV pack backend — not an error).
+- `rag.configured` reports index presence only (no model load); use `/rag/status` for the full preflight.
+- `llm.configured=false` means heuristic scribe fallback is active (not an error).
+
+---
+
 ## 12. HTML Page Routes (React Routes)
 
 These are server-side rendered HTML pages in the current portal. In the React SPA rewrite, these become client-side routes. Each renders the `_TEMPLATE` wrapper with case-data content.

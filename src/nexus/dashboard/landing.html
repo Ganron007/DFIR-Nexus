@@ -146,6 +146,86 @@
       grid-template-columns: repeat(3, 1fr);
       gap: 20px;
     }
+    /* Case dashboard (WP 4b.3) */
+    .cases-dash {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 0 32px 64px;
+    }
+    .cases-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .cases-head h2 { font-size: 20px; font-weight: 600; }
+    .btn-new {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 20px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-new:hover { background: var(--accent-hover); }
+    .cases-table {
+      width: 100%;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      border-collapse: separate;
+      border-spacing: 0;
+      overflow: hidden;
+      font-size: 13px;
+    }
+    .cases-table th, .cases-table td {
+      text-align: left;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+    .cases-table th {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-secondary);
+      background: var(--bg-tertiary);
+    }
+    .cases-table tr:last-child td { border-bottom: none; }
+    .cases-table tbody tr { cursor: pointer; transition: background 0.1s; }
+    .cases-table tbody tr:hover { background: rgba(47,129,247,0.08); }
+    .cases-table tr.active-row { background: rgba(47,129,247,0.12); }
+    .cases-table .mono { font-family: ui-monospace, monospace; font-size: 12px; color: var(--text-secondary); }
+    .cases-empty {
+      background: var(--bg-secondary);
+      border: 1px dashed var(--border-light);
+      border-radius: 10px;
+      padding: 32px;
+      text-align: center;
+      color: var(--text-secondary);
+      font-size: 14px;
+    }
+    .health-strip {
+      display: flex;
+      gap: 18px;
+      flex-wrap: wrap;
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-bottom: 20px;
+    }
+    .health-item { display: flex; align-items: center; gap: 6px; }
+    .health-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--text-secondary); display: inline-block;
+    }
+    .health-dot.ok { background: var(--success); }
+    .health-dot.bad { background: var(--danger); }
+    .health-dot.warn { background: var(--warning); }
     .feature-card {
       background: var(--bg-secondary);
       border: 1px solid var(--border);
@@ -296,6 +376,97 @@
       </a>
     </div>
   </section>
+
+  <!-- Case Dashboard (WP 4b.3) -->
+  <section class="cases-dash" id="cases">
+    <div class="cases-head">
+      <h2>Your Cases</h2>
+      <a href="/portal/app/case-setup" class="btn-enter" style="padding:10px 20px;font-size:14px;">+ New Investigation</a>
+    </div>
+    <div class="health-strip" id="health-strip">
+      <span class="health-item"><span class="health-dot" id="hd-backend"></span>Backend</span>
+      <span class="health-item"><span class="health-dot" id="hd-es"></span>Elasticsearch</span>
+      <span class="health-item"><span class="health-dot" id="hd-rag"></span>RAG Index</span>
+      <span class="health-item"><span class="health-dot" id="hd-llm"></span>LLM</span>
+      <span class="health-item"><span class="health-dot" id="hd-parser"></span>Parser Lane</span>
+    </div>
+    <div id="cases-container">
+      <div class="cases-table" id="cases-loading" style="padding:16px;color:var(--text-secondary);font-size:13px;">Loading cases…</div>
+    </div>
+  </section>
+
+  <script>
+    (function () {
+      function setDot(id, state) {
+        var el = document.getElementById(id);
+        if (el) el.className = "health-dot " + (state === true ? "ok" : state === false ? "bad" : state === "warn" ? "warn" : "");
+      }
+      // System health (cheap checks — deep preflight stays in nexus doctor)
+      fetch("/portal/api/system/health").then(function (r) { return r.json(); }).then(function (h) {
+        setDot("hd-backend", h.backend === "ok");
+        var es = h.es || {};
+        setDot("hd-es", es.configured === false ? true : (es.reachable === true ? true : (es.reachable === false ? false : null)));
+        var rag = h.rag || {};
+        setDot("hd-rag", rag.configured === true ? true : (rag.configured === false ? false : null));
+        setDot("hd-llm", (h.llm || {}).configured === true ? true : "warn");
+        setDot("hd-parser", h.parser === "ok");
+      }).catch(function () {
+        ["hd-backend", "hd-es", "hd-rag", "hd-llm", "hd-parser"].forEach(function (id) { setDot(id, false); });
+      });
+      function setDot(id, state) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        el.className = "health-dot " + (state === true ? "ok" : state === false ? "bad" : state === "warn" ? "warn" : "");
+      }
+
+      // Cases table
+      var activeCase = "";
+      fetch("/portal/api/cases").then(function (r) { return r.json(); }).then(function (c) {
+        activeCase = c.active || "";
+        var cases = c.cases || [];
+        var host = document.getElementById("cases-loading");
+        if (!cases.length) {
+          host.outerHTML = '<div class="cases-table" id="cases-empty"><div class="cases-empty">No cases yet — click "New Investigation" to start your first investigation.</div></div>';
+          return;
+        }
+        return Promise.all(cases.map(function (id) {
+          return fetch("/portal/api/case/details?case_id=" + encodeURIComponent(id))
+            .then(function (r) { return r.json(); })
+            .catch(function () { return { case_id: id }; });
+        })).then(function (details) {
+          var rows = details.map(function (d) {
+            var isActive = d.case_id === activeCase;
+            return "<tr data-case=\"" + d.case_id + "\"" + (isActive ? " class=\"active\"" : "") + ">" +
+              "<td class='mono'>" + d.case_id + "</td>" +
+              "<td>" + (d.name || d.case_id) + "</td>" +
+              "<td>" + (d.investigation_mode ? "Mode " + d.investigation_mode : "—") + "</td>" +
+              "<td>" + (d.evidence_count != null ? d.evidence_count : "—") + "</td>" +
+              "<td>" + (d.findings_count != null ? d.findings_count : "—") + "</td>" +
+              "<td>" + (d.pipeline_complete ? "✓ processed" : "—") + "</td>" +
+              "<td>" + (isActive ? "✓ Active" : "—") + "</td>" +
+              "</tr>";
+          }).join("");
+          host.outerHTML =
+            "<table class='cases-table'><thead><tr>" +
+            "<th>Case ID</th><th>Name</th><th>Mode</th><th>Evidence</th><th>Findings</th><th>N2 Pipeline</th><th>Status</th>" +
+            "</tr></thead><tbody>" + rows + "</tbody></table>";
+          Array.prototype.forEach.call(document.querySelectorAll(".cases-table tbody tr"), function (tr) {
+            tr.addEventListener("click", function () {
+              var cid = tr.getAttribute("data-case");
+              fetch("/portal/api/case/activate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ case_id: cid }),
+              }).then(function () { window.location.href = "/portal/app"; });
+            });
+          });
+        });
+      }).catch(function () {
+        var host = document.getElementById("cases-loading");
+        if (host) host.textContent = "Could not load cases — is the backend running?";
+      });
+    })();
+  </script>
 
   <!-- Features -->
   <section class="features" id="features">
