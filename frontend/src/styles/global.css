@@ -473,6 +473,33 @@ tr:hover td {
   padding: 4px 12px;
 }
 
+/* Sidebar spine stage badges (N1-N8 ordering) */
+.nav-group-label {
+  padding: 0 16px 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.nav-stage {
+  flex: 0 0 34px;
+  font-family: "SF Mono", Consolas, monospace;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.nav-item.active .nav-stage {
+  color: var(--accent);
+}
+
+.nav-item.complete .nav-stage {
+  color: var(--success);
+}
+
 .mode-badge {
   display: inline-block;
   padding: 2px 8px;

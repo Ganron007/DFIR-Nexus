@@ -3,23 +3,30 @@ import { NavLink, useLocation } from "react-router-dom";
 import { api } from "../api/client";
 import { useCase } from "../context/CaseContext";
 
-const NAV_ITEMS = [
-  { to: "/", label: "Overview", icon: "O" },
-  { to: "/explore", label: "Explore", icon: "E" },
-  { to: "/timeline", label: "Timeline", icon: "T" },
-  { to: "/steer", label: "Steer Chat", icon: "S" },
-  { to: "/workbench", label: "Workbench", icon: "W" },
-  { to: "/findings", label: "Findings", icon: "F" },
-  { to: "/approve", label: "Approve", icon: "A" },
-  { to: "/report", label: "Report", icon: "R" },
-  { to: "/evidence", label: "Evidence", icon: "V" },
-  { to: "/entities", label: "Entities", icon: "N" },
-  { to: "/transparency", label: "Transparency", icon: "X" },
+/**
+ * WP 4b.4 + lifecycle ordering fix: the sidebar follows the N1-N8
+ * investigation spine in order. Each item carries its stage badge so the
+ * examiner sees where they are in the lifecycle as they move down the list.
+ */
+const NAV_SPINE = [
+  { to: "/case-setup", label: "Case Setup", stage: "N1", hint: "Create case · register evidence · choose mode" },
+  { to: "/evidence", label: "Evidence", stage: "N2", hint: "Registered evidence + N2 processing status" },
+  { to: "/explore", label: "Explore", stage: "N3·N4", hint: "Index-backed search over parsed evidence" },
+  { to: "/steer", label: "Steer Chat", stage: "N5", hint: "Interpretation — scribe, iterative, or agentic" },
+  { to: "/workbench", label: "Workbench", stage: "N5", hint: "Build DRAFT findings from bookmarked hits" },
+  { to: "/approve", label: "Approve", stage: "N6", hint: "HMAC challenge-response approval desk" },
+  { to: "/timeline", label: "Timeline", stage: "N7", hint: "Per-family event lanes and brush" },
+  { to: "/report", label: "Report", stage: "N8", hint: "Approved findings export" },
+];
+
+const NAV_UTILITIES = [
+  { to: "/entities", label: "Entities", hint: "Entity pivot across hits" },
+  { to: "/transparency", label: "Transparency", hint: "HMAC audit chain verification" },
 ];
 
 // WP 4b.4: N1-N8 stage stepper
 const STAGES = [
-  { id: "N1", label: "Intake", to: "/steer" },
+  { id: "N1", label: "Intake", to: "/case-setup" },
   { id: "N2", label: "Process", to: "/evidence" },
   { id: "N3", label: "Index", to: "/explore" },
   { id: "N4", label: "Query", to: "/explore" },
@@ -109,7 +116,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     setCaseMenuOpen(false);
   };
 
-  const currentLabel = NAV_ITEMS.find((n) => n.to === location.pathname)?.label || "Unknown";
+  const currentLabel =
+    [...NAV_SPINE, ...NAV_UTILITIES].find((n) => n.to === location.pathname)?.label || "Unknown";
 
   return (
     <div className="cockpit">
@@ -170,16 +178,27 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         )}
 
         <nav className="nav">
-          {NAV_ITEMS.map((item) => (
+          <div className="nav-group-label">Investigation Spine</div>
+          {NAV_SPINE.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
-              end={item.to === "/"}
-              className={({ isActive }) =>
-                `nav-item ${isActive ? "active" : ""}`
-              }
+              className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
+              title={item.hint}
             >
-              <span className="nav-icon">{item.icon}</span>
+              <span className="nav-stage">{item.stage}</span>
+              <span className="nav-label">{item.label}</span>
+            </NavLink>
+          ))}
+          <div className="nav-group-label" style={{ marginTop: 12 }}>Utilities</div>
+          {NAV_UTILITIES.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
+              title={item.hint}
+            >
+              <span className="nav-stage">·</span>
               <span className="nav-label">{item.label}</span>
             </NavLink>
           ))}

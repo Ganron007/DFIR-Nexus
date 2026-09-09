@@ -22,227 +22,258 @@
       --danger: #f85149;
       --purple: #a371f7;
       --orange: #db6d28;
+      --max-w: 1120px;
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
       font-size: 15px;
       line-height: 1.6;
       color: var(--text-primary);
-      background: var(--bg-primary);
+      background:
+        radial-gradient(900px 420px at 50% -140px, rgba(47,129,247,0.14), transparent 70%),
+        var(--bg-primary);
       min-height: 100vh;
     }
-    /* Top nav bar */
+    .wrap { max-width: var(--max-w); margin: 0 auto; padding: 0 32px; }
+
+    /* ── Top nav ─────────────────────────────────────────────── */
     .topnav {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 32px;
-      height: 60px;
-      background: var(--bg-secondary);
+      position: sticky; top: 0; z-index: 50;
+      background: rgba(22,27,34,0.85);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
       border-bottom: 1px solid var(--border);
     }
-    .topnav-brand {
-      display: flex;
-      align-items: center;
-      gap: 12px;
+    .topnav-inner {
+      max-width: var(--max-w); margin: 0 auto;
+      display: flex; align-items: center; justify-content: space-between;
+      height: 60px; padding: 0 32px;
     }
-    .topnav-brand img { width: 32px; height: 32px; }
-    .topnav-brand-text {
-      font-size: 18px;
-      font-weight: 700;
-      letter-spacing: -0.3px;
-    }
+    .topnav-brand { display: flex; align-items: center; gap: 12px; text-decoration: none; }
+    .topnav-brand img { width: 32px; height: 32px; display: block; }
+    .topnav-brand-text { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; color: var(--text-primary); }
     .topnav-brand-text span { color: var(--accent); }
-    .topnav-links {
-      display: flex;
-      gap: 24px;
-      align-items: center;
+    .topnav-links { display: flex; gap: 22px; align-items: center; }
+    .topnav-links a:not(.btn-nav) {
+      color: var(--text-secondary); text-decoration: none; font-size: 14px; transition: color 0.15s;
     }
-    .topnav-links a {
-      color: var(--text-secondary);
-      text-decoration: none;
-      font-size: 14px;
-      transition: color 0.15s;
+    .topnav-links a:not(.btn-nav):hover { color: var(--text-primary); }
+    .btn-nav {
+      background: var(--accent); color: #fff !important; text-decoration: none;
+      padding: 8px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
+      transition: background 0.15s;
     }
-    .topnav-links a:hover { color: var(--text-primary); }
-    .topnav-version {
-      font-size: 12px;
-      color: var(--text-muted);
-      font-family: "SF Mono", Consolas, monospace;
+    .btn-nav:hover { background: var(--accent-hover); }
+    .topnav-version { font-size: 12px; color: var(--text-muted); font-family: "SF Mono", Consolas, monospace; }
+
+    /* ── Hero ────────────────────────────────────────────────── */
+    .hero { padding: 72px 0 56px; }
+    .hero-grid {
+      display: grid; grid-template-columns: 1.25fr 0.75fr;
+      gap: 48px; align-items: center;
     }
-    /* Hero section */
-    .hero {
-      max-width: 960px;
-      margin: 0 auto;
-      padding: 80px 32px 60px;
-      text-align: center;
-    }
-    .hero-logo {
-      width: 96px;
-      height: 111px;
-      margin-bottom: 24px;
+    .kicker {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--accent);
+      background: rgba(47,129,247,0.12);
+      border: 1px solid rgba(47,129,247,0.35);
+      border-radius: 999px;
+      padding: 5px 14px;
+      margin-bottom: 20px;
     }
     .hero h1 {
-      font-size: 42px;
-      font-weight: 700;
-      letter-spacing: -1px;
+      font-size: 44px; font-weight: 700; letter-spacing: -1.2px; line-height: 1.15;
       margin-bottom: 16px;
-      background: linear-gradient(135deg, #e6edf3 0%, #2f81f7 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
+      background: linear-gradient(135deg, #e6edf3 30%, #2f81f7 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
     }
-    .hero p {
-      font-size: 18px;
-      color: var(--text-secondary);
-      max-width: 640px;
-      margin: 0 auto 40px;
-      line-height: 1.7;
-    }
-    .hero-actions {
-      display: flex;
-      gap: 16px;
-      justify-content: center;
-    }
+    .hero-sub { font-size: 17px; color: var(--text-secondary); max-width: 560px; margin-bottom: 28px; }
+    .hero-actions { display: flex; gap: 14px; flex-wrap: wrap; }
     .btn-enter {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      background: var(--accent);
-      color: white;
-      padding: 14px 32px;
-      border-radius: 8px;
-      text-decoration: none;
-      font-size: 16px;
-      font-weight: 600;
-      transition: background 0.15s, transform 0.1s;
-      border: none;
-      cursor: pointer;
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--accent); color: white;
+      padding: 13px 28px; border-radius: 8px; text-decoration: none;
+      font-size: 15px; font-weight: 600;
+      transition: background 0.15s, transform 0.1s; border: none; cursor: pointer;
     }
     .btn-enter:hover { background: var(--accent-hover); transform: translateY(-1px); }
     .btn-enter:active { transform: translateY(0); }
     .btn-secondary {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      background: var(--bg-tertiary);
-      color: var(--text-primary);
-      padding: 14px 32px;
-      border-radius: 8px;
-      text-decoration: none;
-      font-size: 16px;
-      font-weight: 500;
-      border: 1px solid var(--border);
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--bg-tertiary); color: var(--text-primary);
+      padding: 13px 28px; border-radius: 8px; text-decoration: none;
+      font-size: 15px; font-weight: 500; border: 1px solid var(--border);
       transition: border-color 0.15s, background 0.15s;
     }
-    .btn-secondary:hover { border-color: var(--border-light); background: var(--bg-tertiary); }
-    /* Feature grid */
-    .features {
-      max-width: 960px;
-      margin: 0 auto;
-      padding: 0 32px 80px;
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 20px;
+    .btn-secondary:hover { border-color: var(--border-light); }
+
+    /* Hero logo panel */
+    .hero-visual {
+      display: flex; align-items: center; justify-content: center;
+      background:
+        radial-gradient(320px 220px at 50% 40%, rgba(47,129,247,0.18), transparent 75%),
+        var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 40px 24px;
+      position: relative;
+      overflow: hidden;
     }
-    /* Case dashboard (WP 4b.3) */
-    .cases-dash {
-      max-width: 960px;
-      margin: 0 auto;
-      padding: 0 32px 64px;
+    .hero-visual::after {
+      content: "";
+      position: absolute; inset: 0;
+      background: linear-gradient(180deg, transparent 65%, rgba(13,17,23,0.55));
+      pointer-events: none;
     }
-    .cases-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 16px;
+    .hero-visual img { width: 128px; height: 148px; position: relative; z-index: 1; }
+    .hero-visual-caption {
+      position: absolute; bottom: 14px; left: 0; right: 0; text-align: center;
+      font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-muted);
     }
-    .cases-head h2 { font-size: 20px; font-weight: 600; }
+
+    /* ── Section headers ─────────────────────────────────────── */
+    .section { padding: 40px 0; }
+    .section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+    .kicker-sm {
+      font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+      color: var(--accent); margin-bottom: 4px;
+    }
+    .section-title { font-size: 22px; font-weight: 700; letter-spacing: -0.4px; }
+    .section-sub { font-size: 13px; color: var(--text-secondary); margin-top: 2px; }
+
+    /* ── Overview strip (stats + health) ─────────────────────── */
+    .overview-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px;
+      margin-bottom: 14px;
+    }
+    .stat-tile {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 18px;
+    }
+    .stat-tile .label {
+      font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--text-secondary); margin-bottom: 6px;
+    }
+    .stat-tile .value { font-size: 26px; font-weight: 700; line-height: 1.1; }
+    .stat-tile .hint { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+    .stat-tile.accent .value { color: var(--accent); }
+    .health-bar {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border); border-radius: 10px;
+      padding: 10px 16px; font-size: 12px; color: var(--text-secondary);
+    }
+    .health-item { display: inline-flex; align-items: center; gap: 7px; padding: 2px 6px; }
+    .health-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--text-muted); display: inline-block; flex: 0 0 auto;
+    }
+    .health-dot.ok { background: var(--success); box-shadow: 0 0 6px rgba(63,185,80,0.5); }
+    .health-dot.bad { background: var(--danger); box-shadow: 0 0 6px rgba(248,81,73,0.5); }
+    .health-dot.warn { background: var(--warning); box-shadow: 0 0 6px rgba(210,153,34,0.5); }
+    .health-sep { color: var(--border-light); }
+
+    /* ── Cases dashboard ─────────────────────────────────────── */
     .btn-new {
-      background: var(--accent);
-      color: #fff;
-      border: none;
-      border-radius: 8px;
-      padding: 10px 20px;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      text-decoration: none;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
+      background: var(--accent); color: #fff; border: none; border-radius: 8px;
+      padding: 10px 20px; font-size: 14px; font-weight: 600; cursor: pointer;
+      text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
+      transition: background 0.15s, transform 0.1s;
     }
-    .btn-new:hover { background: var(--accent-hover); }
+    .btn-new:hover { background: var(--accent-hover); transform: translateY(-1px); }
+    .cases-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .cases-scroll { overflow-x: auto; }
     .cases-table {
-      width: 100%;
+      width: 100%; border-collapse: separate; border-spacing: 0;
+      font-size: 13px; min-width: 720px;
+    }
+    .cases-table th, .cases-table td {
+      text-align: left; padding: 11px 16px; border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    .cases-table th {
+      font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--text-secondary); background: var(--bg-tertiary);
+      position: sticky; top: 0;
+    }
+    .cases-table tbody tr:last-child td { border-bottom: none; }
+    .cases-table tbody tr { cursor: pointer; transition: background 0.1s; }
+    .cases-table tbody tr:hover { background: rgba(47,129,247,0.08); }
+    .cases-table tr.active td { background: rgba(47,129,247,0.12); }
+    .cases-table .mono { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 12px; color: var(--text-secondary); }
+    .pill {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 999px;
+    }
+    .pill.mode1 { background: rgba(47,129,247,0.15); color: var(--accent); }
+    .pill.mode2 { background: rgba(210,153,34,0.15); color: var(--warning); }
+    .pill.mode3 { background: rgba(163,113,247,0.15); color: var(--purple); }
+    .pill.ok { background: rgba(63,185,80,0.15); color: var(--success); }
+    .pill.idle { background: var(--bg-tertiary); color: var(--text-secondary); }
+    .cases-empty {
+      padding: 44px 32px; text-align: center; color: var(--text-secondary); font-size: 14px;
+    }
+    .cases-empty .big { font-size: 15px; color: var(--text-primary); font-weight: 600; margin-bottom: 6px; }
+    .cases-error { padding: 20px; color: var(--danger); font-size: 13px; }
+
+    /* ── Investigation spine ─────────────────────────────────── */
+    .spine-rail { position: relative; }
+    .spine-rail::before {
+      content: ""; position: absolute; top: 19px; left: 4%; right: 4%; height: 2px;
+      background: linear-gradient(90deg, rgba(47,129,247,0.05), rgba(47,129,247,0.55), rgba(47,129,247,0.05));
+    }
+    .spine-grid {
+      position: relative;
+      display: grid; grid-template-columns: repeat(8, 1fr); gap: 12px;
+    }
+    .spine-step {
       background: var(--bg-secondary);
       border: 1px solid var(--border);
       border-radius: 10px;
-      border-collapse: separate;
-      border-spacing: 0;
-      overflow: hidden;
-      font-size: 13px;
-    }
-    .cases-table th, .cases-table td {
-      text-align: left;
-      padding: 10px 14px;
-      border-bottom: 1px solid var(--border);
-    }
-    .cases-table th {
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--text-secondary);
-      background: var(--bg-tertiary);
-    }
-    .cases-table tr:last-child td { border-bottom: none; }
-    .cases-table tbody tr { cursor: pointer; transition: background 0.1s; }
-    .cases-table tbody tr:hover { background: rgba(47,129,247,0.08); }
-    .cases-table tr.active-row { background: rgba(47,129,247,0.12); }
-    .cases-table .mono { font-family: ui-monospace, monospace; font-size: 12px; color: var(--text-secondary); }
-    .cases-empty {
-      background: var(--bg-secondary);
-      border: 1px dashed var(--border-light);
-      border-radius: 10px;
-      padding: 32px;
+      padding: 14px 12px 12px;
       text-align: center;
-      color: var(--text-secondary);
-      font-size: 14px;
+      transition: border-color 0.15s, transform 0.15s;
     }
-    .health-strip {
-      display: flex;
-      gap: 18px;
-      flex-wrap: wrap;
-      font-size: 12px;
-      color: var(--text-secondary);
-      margin-bottom: 20px;
+    .spine-step:hover { border-color: rgba(47,129,247,0.55); transform: translateY(-2px); }
+    .spine-num {
+      width: 38px; height: 38px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 10px;
+      background: rgba(47,129,247,0.14);
+      border: 1px solid rgba(47,129,247,0.45);
+      color: var(--accent);
+      font-family: "SF Mono", Consolas, monospace;
+      font-size: 12px; font-weight: 700;
     }
-    .health-item { display: flex; align-items: center; gap: 6px; }
-    .health-dot {
-      width: 8px; height: 8px; border-radius: 50%;
-      background: var(--text-secondary); display: inline-block;
+    .spine-name { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+    .spine-desc { font-size: 11px; color: var(--text-secondary); line-height: 1.5; }
+
+    /* ── Features ────────────────────────────────────────────── */
+    .features-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
     }
-    .health-dot.ok { background: var(--success); }
-    .health-dot.bad { background: var(--danger); }
-    .health-dot.warn { background: var(--warning); }
     .feature-card {
       background: var(--bg-secondary);
       border: 1px solid var(--border);
       border-radius: 10px;
-      padding: 24px;
-      transition: border-color 0.15s;
+      padding: 22px;
+      transition: border-color 0.15s, transform 0.15s;
     }
-    .feature-card:hover { border-color: var(--border-light); }
+    .feature-card:hover { border-color: var(--border-light); transform: translateY(-2px); }
     .feature-icon {
-      width: 40px;
-      height: 40px;
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 18px;
-      margin-bottom: 16px;
+      width: 38px; height: 38px; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 14px;
     }
     .feature-icon.blue { background: rgba(47,129,247,0.15); color: var(--accent); }
     .feature-icon.green { background: rgba(63,185,80,0.15); color: var(--success); }
@@ -250,298 +281,377 @@
     .feature-icon.orange { background: rgba(219,109,40,0.15); color: var(--orange); }
     .feature-icon.yellow { background: rgba(210,153,34,0.15); color: var(--warning); }
     .feature-icon.red { background: rgba(248,81,73,0.15); color: var(--danger); }
-    .feature-card h3 {
-      font-size: 15px;
-      font-weight: 600;
-      margin-bottom: 8px;
-    }
-    .feature-card p {
-      font-size: 13px;
-      color: var(--text-secondary);
-      line-height: 1.6;
-    }
-    /* Investigation spine */
-    .spine {
-      max-width: 960px;
-      margin: 0 auto;
-      padding: 0 32px 80px;
-    }
-    .spine-title {
-      text-align: center;
-      font-size: 24px;
-      font-weight: 700;
-      margin-bottom: 8px;
-    }
-    .spine-subtitle {
-      text-align: center;
-      font-size: 14px;
-      color: var(--text-secondary);
-      margin-bottom: 40px;
-    }
-    .spine-flow {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      gap: 4px;
-      flex-wrap: wrap;
-    }
-    .spine-step {
-      background: var(--bg-secondary);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 12px 16px;
-      text-align: center;
-      min-width: 100px;
-    }
-    .spine-step-num {
-      font-size: 11px;
-      font-weight: 700;
-      color: var(--accent);
-      font-family: "SF Mono", Consolas, monospace;
-      margin-bottom: 4px;
-    }
-    .spine-step-name {
-      font-size: 12px;
-      color: var(--text-secondary);
-    }
-    .spine-arrow {
-      color: var(--text-muted);
-      font-size: 14px;
-    }
-    /* Footer */
+    .feature-card h3 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+    .feature-card p { font-size: 13px; color: var(--text-secondary); line-height: 1.6; }
+
+    /* ── Footer ──────────────────────────────────────────────── */
     .footer {
       border-top: 1px solid var(--border);
-      padding: 24px 32px;
-      text-align: center;
-      font-size: 13px;
-      color: var(--text-muted);
+      margin-top: 40px;
+      padding: 26px 32px;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+      font-size: 13px; color: var(--text-muted);
     }
-    .footer a {
-      color: var(--text-secondary);
-      text-decoration: none;
-    }
+    .footer a { color: var(--text-secondary); text-decoration: none; }
     .footer a:hover { color: var(--text-primary); }
-    /* Status indicator */
-    .status-dot {
-      display: inline-block;
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--success);
-      margin-right: 6px;
-      box-shadow: 0 0 6px rgba(63,185,80,0.6);
+    .footer-badges { display: flex; gap: 14px; flex-wrap: wrap; color: var(--text-muted); }
+
+    /* ── Responsive ──────────────────────────────────────────── */
+    @media (max-width: 960px) {
+      .hero h1 { font-size: 34px; }
+      .spine-grid { grid-template-columns: repeat(4, 1fr); }
+      .spine-rail::before { display: none; }
+      .features-grid { grid-template-columns: repeat(2, 1fr); }
+      .overview-grid { grid-template-columns: repeat(2, 1fr); }
     }
-    @media (max-width: 768px) {
-      .features { grid-template-columns: 1fr; }
-      .hero h1 { font-size: 32px; }
-      .hero p { font-size: 16px; }
-      .topnav-links a:not(.btn-enter) { display: none; }
+    @media (max-width: 680px) {
+      .hero { padding-top: 40px; }
+      .hero-grid { grid-template-columns: 1fr; gap: 28px; }
+      .hero-visual { order: -1; padding: 28px; }
+      .hero-visual img { width: 96px; height: 111px; }
+      .spine-grid { grid-template-columns: repeat(2, 1fr); }
+      .features-grid { grid-template-columns: 1fr; }
+      .topnav-links a:not(.btn-nav) { display: none; }
+      .section-head { flex-direction: column; align-items: flex-start; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      * { transition: none !important; }
     }
   </style>
 </head>
 <body>
   <!-- Top navigation -->
   <nav class="topnav">
-    <div class="topnav-brand">
-      <img src="/logo.svg" alt="DFIR-Nexus" onerror="this.style.display='none'">
-      <span class="topnav-brand-text">DFIR<span>-Nexus</span></span>
+    <div class="topnav-inner">
+      <a class="topnav-brand" href="/">
+        <img src="/logo.svg" alt="DFIR-Nexus" onerror="this.style.display='none'">
+        <span class="topnav-brand-text">DFIR<span>-Nexus</span></span>
+      </a>
+      <div class="topnav-links">
+        <a href="#cases">Cases</a>
+        <a href="#workflow">Workflow</a>
+        <a href="#features">Platform</a>
+        <a href="/portal/app" class="btn-nav">Enter Cockpit</a>
+      </div>
+      <div class="topnav-version">v2.0</div>
     </div>
-    <div class="topnav-links">
-      <a href="#features">Features</a>
-      <a href="#workflow">Workflow</a>
-      <a href="/portal/app" class="btn-enter" style="padding:8px 20px;font-size:14px;">Enter Cockpit</a>
-    </div>
-    <div class="topnav-version">v2.0</div>
   </nav>
 
   <!-- Hero -->
-  <section class="hero">
-    <img class="hero-logo" src="/logo.svg" alt="DFIR-Nexus" onerror="this.style.display='none'">
-    <h1>Deterministic Forensic Investigation</h1>
-    <p>
-      An auditable, examiner-controlled platform for digital forensics.
-      From evidence collection through HMAC-verified reporting — every step
-      is deterministic, every finding is examiner-approved, every action is logged.
-    </p>
-    <div class="hero-actions">
-      <a href="/portal/app" class="btn-enter">
-        Enter Examiner Cockpit
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-          <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </a>
-      <a href="/health" class="btn-secondary" target="_blank">
-        <span class="status-dot"></span>
-        System Status
-      </a>
+  <header class="hero">
+    <div class="wrap">
+      <div class="hero-grid">
+        <div>
+          <span class="kicker">Examiner-controlled · HMAC-audited · AI cannot approve</span>
+          <h1>Deterministic forensic investigation, end to end</h1>
+          <p>
+            An auditable platform for digital forensics — from evidence collection
+            through HMAC-verified reporting. Every step is deterministic, every
+            finding is examiner-approved, every action is logged.
+          </p>
+          <div class="hero-actions">
+            <a href="/portal/app" class="btn-enter">
+              Enter Examiner Cockpit
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </a>
+            <a href="/portal/app/case-setup" class="btn-secondary">+ New Investigation</a>
+          </div>
+        </div>
+        <div class="hero-visual">
+          <img src="/logo.svg" alt="DFIR-Nexus shield logo" onerror="this.style.display='none'">
+          <div class="hero-visual-caption">N1 → N8 · Deterministic spine</div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Overview strip -->
+  <section class="section">
+    <div class="wrap">
+      <div class="overview-grid" id="overview-grid">
+        <div class="stat-tile">
+          <div class="label">Cases</div>
+          <div class="value" id="st-cases">—</div>
+          <div class="hint" id="st-active">no active case</div>
+        </div>
+        <div class="stat-tile">
+          <div class="label">Findings</div>
+          <div class="value" id="st-findings">—</div>
+          <div class="hint">across all cases</div>
+        </div>
+        <div class="stat-tile">
+          <div class="label">Evidence items</div>
+          <div class="value" id="st-evidence">—</div>
+          <div class="hint">registered across cases</div>
+        </div>
+        <div class="stat-tile">
+          <div class="label">Processed</div>
+          <div class="value" id="st-processed">—</div>
+          <div class="hint">cases with completed N2 lane</div>
+        </div>
+      </div>
+      <div class="health-bar" id="health-strip">
+        <span class="health-item"><span class="health-dot" id="hd-backend"></span>Backend</span>
+        <span class="health-sep">·</span>
+        <span class="health-item"><span class="health-dot" id="hd-es"></span>Elasticsearch</span>
+        <span class="health-sep">·</span>
+        <span class="health-item"><span class="health-dot" id="hd-rag"></span>RAG Index</span>
+        <span class="health-sep">·</span>
+        <span class="health-item"><span class="health-dot" id="hd-llm"></span>LLM</span>
+        <span class="health-sep">·</span>
+        <span class="health-item"><span class="health-dot" id="hd-parser"></span>Parser Lane</span>
+        <span class="health-sep">·</span>
+        <a href="/health" target="_blank" style="color:var(--accent);text-decoration:none;">raw status →</a>
+      </div>
     </div>
   </section>
 
-  <!-- Case Dashboard (WP 4b.3) -->
-  <section class="cases-dash" id="cases">
-    <div class="cases-head">
-      <h2>Your Cases</h2>
-      <a href="/portal/app/case-setup" class="btn-enter" style="padding:10px 20px;font-size:14px;">+ New Investigation</a>
-    </div>
-    <div class="health-strip" id="health-strip">
-      <span class="health-item"><span class="health-dot" id="hd-backend"></span>Backend</span>
-      <span class="health-item"><span class="health-dot" id="hd-es"></span>Elasticsearch</span>
-      <span class="health-item"><span class="health-dot" id="hd-rag"></span>RAG Index</span>
-      <span class="health-item"><span class="health-dot" id="hd-llm"></span>LLM</span>
-      <span class="health-item"><span class="health-dot" id="hd-parser"></span>Parser Lane</span>
-    </div>
-    <div id="cases-container">
-      <div class="cases-table" id="cases-loading" style="padding:16px;color:var(--text-secondary);font-size:13px;">Loading cases…</div>
+  <!-- Cases -->
+  <section class="section" id="cases" style="padding-top: 8px;">
+    <div class="wrap">
+      <div class="section-head">
+        <div>
+          <div class="kicker">Case dashboard</div>
+          <h2 class="section-title" style="font-size:22px;font-weight:700;letter-spacing:-0.4px;">Your Cases</h2>
+          <p class="section-sub">Click a case to activate it and open the cockpit.</p>
+        </div>
+        <a href="/portal/app/case-setup" class="btn-new">+ New Investigation</a>
+      </div>
+      <div id="cases-container">
+        <div class="cases-card" id="cases-loading" style="padding:18px;color:var(--text-secondary);font-size:13px;">Loading cases…</div>
+      </div>
     </div>
   </section>
 
   <script>
     (function () {
-      function setDot(id, state) {
-        var el = document.getElementById(id);
-        if (el) el.className = "health-dot " + (state === true ? "ok" : state === false ? "bad" : state === "warn" ? "warn" : "");
+      function esc(s) {
+        return String(s == null ? "" : s)
+          .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
       }
-      // System health (cheap checks — deep preflight stays in nexus doctor)
-      fetch("/portal/api/system/health").then(function (r) { return r.json(); }).then(function (h) {
-        setDot("hd-backend", h.backend === "ok");
-        var es = h.es || {};
-        setDot("hd-es", es.configured === false ? true : (es.reachable === true ? true : (es.reachable === false ? false : null)));
-        var rag = h.rag || {};
-        setDot("hd-rag", rag.configured === true ? true : (rag.configured === false ? false : null));
-        setDot("hd-llm", (h.llm || {}).configured === true ? true : "warn");
-        setDot("hd-parser", h.parser === "ok");
-      }).catch(function () {
-        ["hd-backend", "hd-es", "hd-rag", "hd-llm", "hd-parser"].forEach(function (id) { setDot(id, false); });
-      });
       function setDot(id, state) {
         var el = document.getElementById(id);
         if (!el) return;
         el.className = "health-dot " + (state === true ? "ok" : state === false ? "bad" : state === "warn" ? "warn" : "");
       }
 
-      // Cases table
-      var activeCase = "";
-      fetch("/portal/api/cases").then(function (r) { return r.json(); }).then(function (c) {
-        activeCase = c.active || "";
-        var cases = c.cases || [];
-        var host = document.getElementById("cases-loading");
-        if (!cases.length) {
-          host.outerHTML = '<div class="cases-table" id="cases-empty"><div class="cases-empty">No cases yet — click "New Investigation" to start your first investigation.</div></div>';
-          return;
-        }
-        return Promise.all(cases.map(function (id) {
-          return fetch("/portal/api/case/details?case_id=" + encodeURIComponent(id))
-            .then(function (r) { return r.json(); })
-            .catch(function () { return { case_id: id }; });
-        })).then(function (details) {
-          var rows = details.map(function (d) {
-            var isActive = d.case_id === activeCase;
-            return "<tr data-case=\"" + d.case_id + "\"" + (isActive ? " class=\"active\"" : "") + ">" +
-              "<td class='mono'>" + d.case_id + "</td>" +
-              "<td>" + (d.name || d.case_id) + "</td>" +
-              "<td>" + (d.investigation_mode ? "Mode " + d.investigation_mode : "—") + "</td>" +
-              "<td>" + (d.evidence_count != null ? d.evidence_count : "—") + "</td>" +
-              "<td>" + (d.findings_count != null ? d.findings_count : "—") + "</td>" +
-              "<td>" + (d.pipeline_complete ? "✓ processed" : "—") + "</td>" +
-              "<td>" + (isActive ? "✓ Active" : "—") + "</td>" +
-              "</tr>";
-          }).join("");
-          host.outerHTML =
-            "<table class='cases-table'><thead><tr>" +
-            "<th>Case ID</th><th>Name</th><th>Mode</th><th>Evidence</th><th>Findings</th><th>N2 Pipeline</th><th>Status</th>" +
-            "</tr></thead><tbody>" + rows + "</tbody></table>";
-          Array.prototype.forEach.call(document.querySelectorAll(".cases-table tbody tr"), function (tr) {
-            tr.addEventListener("click", function () {
-              var cid = tr.getAttribute("data-case");
-              fetch("/portal/api/case/activate", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ case_id: cid }),
-              }).then(function () { window.location.href = "/portal/app"; });
+      // System health (cheap checks — deep preflight stays in nexus doctor)
+      fetch("/portal/api/system/health")
+        .then(function (r) { return r.json(); })
+        .then(function (h) {
+          setDot("hd-backend", h.backend === "ok");
+          var es = h.es || {};
+          setDot("hd-es", es.configured === false ? true : es.reachable);
+          setDot("hd-rag", (h.rag || {}).configured);
+          setDot("hd-llm", (h.llm || {}).configured === true ? true : "warn");
+          setDot("hd-parser", h.parser === "ok");
+        })
+        .catch(function () {
+          ["hd-backend", "hd-es", "hd-rag", "hd-llm", "hd-parser"].forEach(function (id) { setDot(id, false); });
+        });
+
+      // Cases table + overview stats
+      fetch("/portal/api/cases")
+        .then(function (r) { return r.json(); })
+        .then(function (c) {
+          var activeCase = c.active || "";
+          var cases = c.cases || [];
+          var host = document.getElementById("cases-loading");
+
+          document.getElementById("st-cases").textContent = String(cases.length);
+          document.getElementById("st-active").textContent = activeCase ? ("active: " + activeCase) : "no active case";
+
+          if (!cases.length) {
+            host.innerHTML =
+              '<div class="cases-empty">' +
+              '<div class="big">No cases yet</div>' +
+              'Click <strong>"+ New Investigation"</strong> to start your first investigation.' +
+              "</div>";
+            document.getElementById("st-findings").textContent = "0";
+            document.getElementById("st-evidence").textContent = "0";
+            document.getElementById("st-processed").textContent = "0";
+            return;
+          }
+
+          return Promise.all(cases.map(function (id) {
+            return fetch("/portal/api/case/details?case_id=" + encodeURIComponent(id))
+              .then(function (r) { return r.json(); })
+              .catch(function () { return { case_id: id }; });
+          })).then(function (details) {
+            var totFindings = 0, totEvidence = 0, totProcessed = 0;
+            var rows = details.map(function (d) {
+              var f = d.findings_count || 0;
+              totFindings += f;
+              totEvidence += d.evidence_count || 0;
+              if (d.pipeline_complete) totProcessed += 1;
+              var isActive = d.case_id === activeCase;
+              var mode = d.investigation_mode
+                ? '<span class="pill mode' + esc(d.investigation_mode) + '">Mode ' + esc(d.investigation_mode) + "</span>"
+                : '<span class="pill idle">—</span>';
+              return "<tr data-case=\"" + esc(d.case_id) + "\"" + (isActive ? " class=\"active\"" : "") + ">" +
+                "<td class='mono'>" + esc(d.case_id) + "</td>" +
+                "<td>" + esc(d.name || d.case_id) + "</td>" +
+                "<td>" + mode + "</td>" +
+                "<td>" + (d.evidence_count != null ? d.evidence_count : "—") + "</td>" +
+                "<td>" + (f || "—") + "</td>" +
+                "<td>" + (d.pipeline_complete
+                  ? '<span class="pill ok">✓ processed</span>'
+                  : '<span class="pill idle">pending</span>') + "</td>" +
+                "<td>" + (isActive ? '<span class="pill ok">Active</span>' : '<span class="pill idle">—</span>') + "</td>" +
+                "</tr>";
+            }).join("");
+
+            document.getElementById("st-findings").textContent = String(totFindings);
+            document.getElementById("st-evidence").textContent = String(totEvidence);
+            document.getElementById("st-processed").textContent = String(totProcessed);
+
+            host.innerHTML =
+              "<table class='cases-table'><thead><tr>" +
+              "<th>Case ID</th><th>Name</th><th>Mode</th><th>Evidence</th><th>Findings</th><th>N2 Pipeline</th><th>Status</th>" +
+              "</tr></thead><tbody>" + rows + "</tbody></table>";
+
+            Array.prototype.forEach.call(document.querySelectorAll(".cases-table tbody tr"), function (tr) {
+              tr.addEventListener("click", function () {
+                var cid = tr.getAttribute("data-case");
+                fetch("/portal/api/case/activate", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ case_id: cid }),
+                }).then(function () { window.location.href = "/portal/app"; });
+              });
             });
           });
+        })
+        .catch(function () {
+          var host = document.getElementById("cases-loading");
+          if (host) host.innerHTML = '<div class="cases-error">Could not load cases — is the backend running?</div>';
         });
-      }).catch(function () {
-        var host = document.getElementById("cases-loading");
-        if (host) host.textContent = "Could not load cases — is the backend running?";
-      });
     })();
   </script>
 
-  <!-- Features -->
-  <section class="features" id="features">
-    <div class="feature-card">
-      <div class="feature-icon blue">
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 3h14v14H3z M3 7h14 M7 3v14" stroke="currentColor" stroke-width="1.5"/></svg>
+  <!-- Investigation spine -->
+  <section class="section" id="workflow">
+    <div class="wrap">
+      <div class="section-head" style="justify-content:center;text-align:center;">
+        <div style="width:100%;">
+          <div class="kicker">How it works</div>
+          <h2 class="section-title" style="font-size:24px;font-weight:700;letter-spacing:-0.5px;">The Investigation Spine</h2>
+          <p class="section-sub">Eight deterministic stages from raw evidence to verified report — the same rail you follow inside the cockpit.</p>
+        </div>
       </div>
-      <h3>Case Analysis Cockpit</h3>
-      <p>Unified workspace for evidence exploration, timeline analysis, entity pivots, and finding management — all in one interface.</p>
-    </div>
-    <div class="feature-card">
-      <div class="feature-icon green">
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 2l7 4v6l-7 4-7-4V6z M10 2v16 M3 6l7 4 7-4" stroke="currentColor" stroke-width="1.5"/></svg>
+      <div class="spine-rail">
+        <div class="spine-grid">
+          <div class="spine-step">
+            <div class="spine-num">N1</div>
+            <div class="spine-name">Intake</div>
+            <div class="spine-desc">Case created, question and window recorded</div>
+          </div>
+          <div class="spine-step">
+            <div class="spine-num">N2</div>
+            <div class="spine-name">Process</div>
+            <div class="spine-desc">Deterministic parsers extract artifacts</div>
+          </div>
+          <div class="spine-step">
+            <div class="spine-num">N3</div>
+            <div class="spine-name">Index</div>
+            <div class="spine-desc">Per-case index built for fast search</div>
+          </div>
+          <div class="spine-step">
+            <div class="spine-num">N4</div>
+            <div class="spine-name">Query</div>
+            <div class="spine-desc">Needles search parsed evidence — never raw disks</div>
+          </div>
+          <div class="spine-step">
+            <div class="spine-num">N5</div>
+            <div class="spine-name">Interpret</div>
+            <div class="spine-desc">Hits become observations, grounded in evidence</div>
+          </div>
+          <div class="spine-step">
+            <div class="spine-num">N6</div>
+            <div class="spine-name">Approve</div>
+            <div class="spine-desc">Examiner signs findings with HMAC challenge</div>
+          </div>
+          <div class="spine-step">
+            <div class="spine-num">N7</div>
+            <div class="spine-name">Timeline</div>
+            <div class="spine-desc">Events merged into a per-case timeline</div>
+          </div>
+          <div class="spine-step">
+            <div class="spine-num">N8</div>
+            <div class="spine-name">Report</div>
+            <div class="spine-desc">Approved findings exported, sealed and verified</div>
+          </div>
+        </div>
       </div>
-      <h3>Chain of Custody</h3>
-      <p>Evidence registration with cryptographic hashing, atomic writes, and full audit trail from collection through reporting.</p>
-    </div>
-    <div class="feature-card">
-      <div class="feature-icon purple">
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M7 10l2 2 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-      </div>
-      <h3>HMAC Approval Boundary</h3>
-      <p>Challenge-response authentication for finding approval. The AI never approves — the examiner signs every finding with a cryptographic key.</p>
-    </div>
-    <div class="feature-card">
-      <div class="feature-icon orange">
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M4 6h12 M4 10h12 M4 14h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-      </div>
-      <h3>Three Investigation Modes</h3>
-      <p>Mode 1: examiner-led exploration. Mode 2: LLM-guided iteration. Mode 3: agentic MCP with examiner approval at every step.</p>
-    </div>
-    <div class="feature-card">
-      <div class="feature-icon yellow">
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 17l5-5 4 4 5-7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </div>
-      <h3>N1–N8 Investigation Spine</h3>
-      <p>Deterministic processing pipeline from N2 parsing through N8 interpretation — reproducible, auditable, no black boxes.</p>
-    </div>
-    <div class="feature-card">
-      <div class="feature-icon red">
-        <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 3v14 M3 10h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.5"/></svg>
-      </div>
-      <h3>Transparency Ledger</h3>
-      <p>Hash-chained audit log of every action — case sealing, finding approval, agent execution. Tamper-evident by design.</p>
     </div>
   </section>
 
-  <!-- Investigation spine -->
-  <section class="spine" id="workflow">
-    <h2 class="spine-title">The Investigation Spine</h2>
-    <p class="spine-subtitle">Eight deterministic stages from raw evidence to verified report</p>
-    <div class="spine-flow">
-      <div class="spine-step"><div class="spine-step-num">N1</div><div class="spine-step-name">Intake</div></div>
-      <span class="spine-arrow">→</span>
-      <div class="spine-step"><div class="spine-step-num">N2</div><div class="spine-step-name">Parse</div></div>
-      <span class="spine-arrow">→</span>
-      <div class="spine-step"><div class="spine-step-num">N3</div><div class="spine-step-name">Index</div></div>
-      <span class="spine-arrow">→</span>
-      <div class="spine-step"><div class="spine-step-num">N4</div><div class="spine-step-name">Query</div></div>
-      <span class="spine-arrow">→</span>
-      <div class="spine-step"><div class="spine-step-num">N5</div><div class="spine-step-name">Correlate</div></div>
-      <span class="spine-arrow">→</span>
-      <div class="spine-step"><div class="spine-step-num">N6</div><div class="spine-step-name">Corroborate</div></div>
-      <span class="spine-arrow">→</span>
-      <div class="spine-step"><div class="spine-step-num">N7</div><div class="spine-step-name">Validate</div></div>
-      <span class="spine-arrow">→</span>
-      <div class="spine-step"><div class="spine-step-num">N8</div><div class="spine-step-name">Report</div></div>
+  <!-- Features -->
+  <section class="section" id="features">
+    <div class="wrap">
+      <div class="section-head" style="justify-content:center;text-align:center;">
+        <div style="width:100%;">
+          <div class="kicker">Platform</div>
+          <h2 class="section-title" style="font-size:24px;font-weight:700;letter-spacing:-0.5px;">Built for defensible investigations</h2>
+        </div>
+      </div>
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon blue">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 3h14v14H3z M3 7h14 M7 3v14" stroke="currentColor" stroke-width="1.5"/></svg>
+          </div>
+          <h3>Case Analysis Cockpit</h3>
+          <p>Unified workspace for evidence exploration, timeline analysis, entity pivots, and finding management — all in one interface.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon green">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 2l7 4v6l-7 4-7-4V6z M10 2v16 M3 6l7 4 7-4" stroke="currentColor" stroke-width="1.5"/></svg>
+          </div>
+          <h3>Chain of Custody</h3>
+          <p>Evidence registration with cryptographic hashing, atomic writes, and full audit trail from collection through reporting.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon purple">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M7 10l2 2 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </div>
+          <h3>HMAC Approval Boundary</h3>
+          <p>Challenge-response authentication for finding approval. The AI never approves — the examiner signs every finding.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon orange">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M4 6h12 M4 10h12 M4 14h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </div>
+          <h3>Three Investigation Modes</h3>
+          <p>Mode 1: examiner-led exploration. Mode 2: LLM-guided iteration. Mode 3: agentic MCP with examiner approval at every step.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon yellow">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 17l5-5 4 4 5-7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <h3>Playbook-Driven Needles</h3>
+          <p>22 investigation playbooks suggest search needles per evidence family — IOCs, technique names, event IDs — with one-click search.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon red">
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 3v14 M3 10h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.5"/></svg>
+          </div>
+          <h3>Transparency Ledger</h3>
+          <p>Hash-chained audit log of every action — case sealing, finding approval, agent execution. Tamper-evident by design.</p>
+        </div>
+      </div>
     </div>
   </section>
 
   <!-- Footer -->
   <footer class="footer">
-    DFIR-Nexus v2.0 — Part of the <a href="https://github.com/Ganron007/DFIR-Nexus" target="_blank">CADRE ecosystem</a>
-    &nbsp;·&nbsp;
-    Examiner-controlled · HMAC-audited · AI-cannot-approve
+    <div class="wrap" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+      <span>DFIR-Nexus v2.0 — Part of the <a href="https://github.com/Ganron007/DFIR-Nexus" target="_blank">CADRE ecosystem</a></span>
+      <span>Examiner-controlled · HMAC-audited · AI-cannot-approve</span>
+    </div>
   </footer>
 </body>
 </html>

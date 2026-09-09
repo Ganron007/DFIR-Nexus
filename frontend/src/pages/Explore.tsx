@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api, type N4Hit, type HistogramResponse, type PlaybookSuggestion } from "../api/client";
+import { useCase } from "../context/CaseContext";
 import VirtualTable, { type Column } from "../components/VirtualTable";
 import Histogram from "../components/Histogram";
 
 const PAGE_SIZE = 200;
 
 export default function Explore() {
+  const { activeCase } = useCase();
   const [searchParams] = useSearchParams();
   const [needles, setNeedles] = useState("");
   const [family, setFamily] = useState("");
@@ -336,7 +338,21 @@ export default function Explore() {
         ) : hits.length === 0 ? (
           <div className="empty-state">
             <h3>No hits</h3>
-            <p>Enter needles above and click Search.</p>
+            {!activeCase ? (
+              <>
+                <p>No active case — Explore searches the active case's N3 index.</p>
+                <Link to="/case-setup" className="btn btn-primary" style={{ marginTop: 12, display: "inline-block" }}>
+                  Go to Case Setup (N1)
+                </Link>
+              </>
+            ) : (
+              <>
+                <p>Enter needles above and click Search.</p>
+                <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                  If the index is empty, register evidence and run the N2 processing lane first (Case Setup, steps 2 and 4).
+                </p>
+              </>
+            )}
           </div>
         ) : (
           <VirtualTable
