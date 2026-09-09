@@ -161,6 +161,7 @@ Evidence-files/
 # Internal planning / audit / checklist docs are LOCAL ONLY — never published.
 Docs/internal/
 Docs/WIRING-PLAN.md
+CHANGELOG.md
 # Local scratch space (audit scripts, temp renders, working notes).
 scratch/
 # Agent/session notes — local only (not part of the public product).
