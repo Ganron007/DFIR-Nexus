@@ -10,7 +10,7 @@ import { render, screen } from "@testing-library/react";
 
 import Histogram from "../components/Histogram";
 import VirtualTable from "../components/VirtualTable";
-import { pickHitColumns } from "./Explore";
+import { pickHitColumns } from "../lib/hitColumns";
 import type { N4Hit } from "../api/client";
 
 describe("Histogram", () => {

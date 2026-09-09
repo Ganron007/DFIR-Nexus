@@ -412,6 +412,37 @@ export interface PipelineStatusResponse {
   stages?: string[];
 }
 
+/** GET /pipeline/ledger → tool-lane parser run status */
+export interface LedgerRow {
+  tool?: string;
+  status?: string;
+  detail?: string;
+  audit_id?: string;
+  [key: string]: unknown;
+}
+export interface PipelineLedgerResponse {
+  run_id: string;
+  ledger: LedgerRow[];
+  total: number;
+  extractions?: string;
+  error?: string;
+}
+
+/** GET /fs/list → directory listing for the evidence picker */
+export interface FsEntry {
+  name: string;
+  path: string;
+  is_dir: boolean;
+  size: number | null;
+}
+export interface FsListResponse {
+  path: string;
+  parent: string;
+  drives: boolean;
+  entries: FsEntry[];
+  error?: string;
+}
+
 /** GET /playbook/needles → {suggestions: [...], total} */
 export interface PlaybookSuggestion {
   playbook: string;
@@ -569,6 +600,9 @@ export const api = {
     post<PipelineRunResponse>("/pipeline/run", params),
   pipelineStatus: (runId: string) =>
     request<PipelineStatusResponse>(`/pipeline/status?run_id=${runId}`),
+  pipelineLedger: () => request<PipelineLedgerResponse>("/pipeline/ledger"),
+  fsList: (path?: string) =>
+    request<FsListResponse>(`/fs/list${path ? `?path=${encodeURIComponent(path)}` : ""}`),
   playbookNeedles: (families?: string) =>
     request<PlaybookNeedlesResponse>(`/playbook/needles${families ? `?families=${families}` : ""}`),
   setCaseMode: (mode: string) => post<CaseModeResponse>("/case/mode", { mode }),

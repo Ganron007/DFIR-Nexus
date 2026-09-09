@@ -1409,6 +1409,46 @@ And accept an optional `"host"` filter (exact, case-insensitive).
 
 ---
 
+### GET /portal/api/fs/list
+**Description:** Read-only filesystem listing for the evidence picker (WP 4d.8). The server runs on the examiner's machine, so this browses the same filesystem the pipeline reads from. Never returns file contents.
+
+**Query params:** `path` (optional) — a directory. Omitted → list drives (Windows) or root (POSIX).
+
+**Response 200:**
+```json
+{
+  "path": "C:\\Evidence\\ws01",
+  "parent": "C:\\Evidence",
+  "drives": false,
+  "entries": [
+    {"name": "evtx", "path": "C:\\Evidence\\ws01\\evtx", "is_dir": true, "size": null},
+    {"name": "bits_openvpn.evtx", "path": "C:\\Evidence\\ws01\\evtx\\bits_openvpn.evtx", "is_dir": false, "size": 139264}
+  ]
+}
+```
+
+**Errors:** 404 `path not found`; 400 path is a file / cannot list.
+
+---
+
+### GET /portal/api/pipeline/ledger
+**Description:** Tool-lane ledger for the active case (parser visibility). Returns the per-parser status from the active tools run.
+
+**Response 200:**
+```json
+{
+  "run_id": "20260910-120000-ab12cd34",
+  "ledger": [
+    {"tool": "evtxecmd", "status": "OK", "detail": "...", "audit_id": "..."},
+    {"tool": "pecmd", "status": "SKIP", "detail": "no prefetch artifacts"}
+  ],
+  "extractions": "C:\\...\\extractions"
+}
+```
+Empty `ledger` + empty `run_id` = no tools run has executed yet for this case.
+
+---
+
 ## 12. HTML Page Routes (React Routes)
 
 These are server-side rendered HTML pages in the current portal. In the React SPA rewrite, these become client-side routes. Each renders the `_TEMPLATE` wrapper with case-data content.

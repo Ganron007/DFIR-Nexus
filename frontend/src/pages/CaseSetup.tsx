@@ -12,6 +12,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { useCase } from "../context/CaseContext";
+import EvidencePicker from "../components/EvidencePicker";
 
 const STEPS = ["Case Details", "Register Evidence", "Choose Mode", "Run Processing"];
 
@@ -29,8 +30,9 @@ export default function CaseSetup() {
   const [caseId, setCaseId] = useState("");
 
   // Step 2 state
-  const [evidencePath, setEvidencePath] = useState("");
-  const [evidenceRegistered, setEvidenceRegistered] = useState(false);
+  const [registeredPaths, setRegisteredPaths] = useState<string[]>([]);
+  const [showPicker, setShowPicker] = useState(false);
+  const [manualPath, setManualPath] = useState("");
 
   // Step 3 state
   const [mode, setModeState] = useState("");
@@ -63,31 +65,41 @@ export default function CaseSetup() {
     }
   };
 
-  const registerEvidence = async () => {
-    if (!evidencePath.trim()) {
+  const registerPaths = async (paths: string[]) => {
+    if (!paths.length) return;
+    setBusy(true);
+    setError("");
+    const failures: string[] = [];
+    for (const p of paths) {
+      try {
+        const res = await fetch("/portal/api/evidence", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: p }),
+        });
+        const body = await res.json();
+        if (body.ok) {
+          setRegisteredPaths((prev) => [...prev, p]);
+        } else {
+          failures.push(`${p}: ${body.error || "failed"}`);
+        }
+      } catch (e) {
+        failures.push(`${p}: ${(e as Error).message}`);
+      }
+    }
+    setBusy(false);
+    if (failures.length) {
+      setError(`Some paths failed: ${failures.join("; ")}`);
+    }
+  };
+
+  const registerManual = async () => {
+    if (!manualPath.trim()) {
       setError("Evidence path is required");
       return;
     }
-    setBusy(true);
-    setError("");
-    try {
-      const res = await fetch("/portal/api/evidence", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: evidencePath }),
-      });
-      const body = await res.json();
-      if (body.ok) {
-        setEvidenceRegistered(true);
-        setStep(2);
-      } else {
-        setError(body.error || "Failed to register evidence");
-      }
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
+    await registerPaths([manualPath.trim()]);
+    setManualPath("");
   };
 
   const chooseMode = (m: string) => {
@@ -230,28 +242,42 @@ export default function CaseSetup() {
         <div className="card">
           <h3>Register Evidence</h3>
           <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 12 }}>
-            Case <strong>{caseId}</strong> created. Now register evidence for processing.
+            Case <strong>{caseId}</strong> created. Browse and select single or multiple
+            files/folders — or paste a path. Folders are registered whole.
           </p>
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <div>
-              <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
-                Evidence Path *
-              </label>
-              <input
-                value={evidencePath}
-                onChange={(e) => setEvidencePath(e.target.value)}
-                placeholder="e.g. /cases/campaign-h/ws01/extractions or /path/to/evidence.csv"
-                style={{ width: "100%", fontFamily: "monospace", fontSize: 12 }}
-              />
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn btn-primary" onClick={() => setShowPicker(true)}>
+                📁 Browse files & folders…
+              </button>
             </div>
-            {evidenceRegistered && (
-              <div style={{ color: "var(--success)", fontSize: 13 }}>
-                ✓ Evidence registered successfully
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                value={manualPath}
+                onChange={(e) => setManualPath(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && registerManual()}
+                placeholder="…or paste an absolute path (e.g. C:\Evidence\ws01\evtx) and press Enter"
+                style={{ flex: 1, fontFamily: "monospace", fontSize: 12 }}
+              />
+              <button className="btn" onClick={registerManual} disabled={busy}>
+                Add path
+              </button>
+            </div>
+            {registeredPaths.length > 0 && (
+              <div style={{ fontSize: 13 }}>
+                <div style={{ color: "var(--success)", marginBottom: 4 }}>
+                  ✓ {registeredPaths.length} item(s) registered:
+                </div>
+                <ul style={{ margin: "0 0 0 20px", fontSize: 11, color: "var(--text-secondary)" }}>
+                  {registeredPaths.map((p) => (
+                    <li key={p} style={{ fontFamily: "monospace", fontSize: 11 }}>{p}</li>
+                  ))}
+                </ul>
               </div>
             )}
             <div style={{ display: "flex", gap: 8 }}>
-              <button className="btn btn-primary" onClick={registerEvidence} disabled={busy}>
-                {busy ? "Registering..." : "Register Evidence →"}
+              <button className="btn btn-primary" onClick={() => setStep(2)}>
+                Continue →
               </button>
               <button className="btn" onClick={() => setStep(2)}>
                 Skip for now →
@@ -260,6 +286,12 @@ export default function CaseSetup() {
           </div>
         </div>
       )}
+
+      <EvidencePicker
+        open={showPicker}
+        onClose={() => setShowPicker(false)}
+        onAdd={registerPaths}
+      />
 
       {/* Step 3: Choose Mode */}
       {step === 2 && (

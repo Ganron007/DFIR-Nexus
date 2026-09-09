@@ -4,6 +4,66 @@ All notable changes to DFIR-Nexus are documented here.
 
 ## Unreleased
 
+### Phase 4d.2 — timeline events, evidence picker, parser visibility (2026-09-10)
+
+#### Summary
+
+Second UI-hardening pass: type-aware Timeline events, a filesystem evidence
+picker, parser-lane visibility, and a critical test-discovery fix.
+
+#### Type-aware Timeline (4d.1 continued)
+
+- Timeline now renders a type-aware **Events panel** under the aggregate
+  lanes: clicking a lane filters events to that family, the brush range
+  filters by time, and events render parsed per-family columns (shared
+  `lib/hitColumns.ts` with Explore). "Search in Explore" still hands the
+  range off.
+
+#### Universal parser-output support
+
+- The column system is header-driven: whatever CSV headers a parser emits
+  become available fields; the per-family priority lists (Eric Zimmerman
+  tool suite conventions) pick defaults, and unknown headers fall back to
+  the first available parsed fields. Any parser output is therefore
+  renderable without UI changes.
+
+#### Evidence picker (filesystem browsing)
+
+- `GET /portal/api/fs/list` — read-only drive/directory listing (no file
+  contents). The server runs on the examiner's machine, so the picker
+  browses the same filesystem the pipeline reads from.
+- `EvidencePicker` modal: browse drives → folders, multi-select files
+  and/or folders, or paste an absolute path. Wired into Case Setup step 2
+  and the Evidence page. Windows paths with spaces are fine (JSON body).
+- Evidence page: "+ Add evidence" button opens the picker; registered
+  items list refreshes.
+
+#### Parser lane visibility
+
+- `GET /portal/api/pipeline/ledger` returns the active tool-run ledger
+  (tool, status, detail per parser).
+- Evidence page shows an "N2 Parser Lane" panel with OK/SKIP/FAIL counts —
+  the UI surface for what the N2 pipeline actually ran.
+
+#### Test discovery fix (CRITICAL)
+
+- `pyproject.toml` `[tool.pytest.ini_options] python_files` was an explicit
+  allowlist that silently excluded 28 real test files from every full-suite
+  run — including the Mode 1/2/3 suites, portal tests, RAG tests,
+  FD-006/007 enforcement tests, and the Phase 4 API suites. Replaced with
+  default `test_*.py` discovery; 5 legacy standalone check-scripts
+  (module-level `sys.exit`, not pytest-collectable) are excluded via
+  `tests/conftest.py::collect_ignore_glob`.
+- True full suite: **637 collected — 636 passed, 1 skipped, 0 failed**
+  (previously reported "468 passed" never exercised these files).
+
+#### Verification
+
+- Backend: 637 collected — 636 passed, 1 skipped, 0 failed; Ruff clean.
+- Frontend: TypeScript strict clean; Vite build clean; vitest 7 passed.
+
+---
+
 ### Phase 4d — UI hardening: full case workflow (2026-09-10)
 
 #### Summary

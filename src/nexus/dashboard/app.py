@@ -2890,6 +2890,114 @@ async def api_pipeline_status(request):
     return JSONResponse(_pipeline_runs[run_id])
 
 
+async def api_pipeline_ledger(request):
+    """GET /portal/api/pipeline/ledger — tool-lane ledger for the active case.
+
+    Returns the per-parser run status from the active tools run ledger so
+    the UI can show exactly which parsers ran, were skipped, or failed.
+    """
+    case_dir = _get_case_dir()
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    from nexus.langgraph.pipeline_runs import resolve_run, resolve_tools_extractions
+
+    ledger: list[dict[str, Any]] = []
+    run_id = ""
+    try:
+        run = resolve_run(case_dir, "tools")
+        run_id = run.run_id
+        candidates = [
+            run.extractions / "_tool_lane_ledger.json",
+            run.path / "ledger" / "_tool_lane_ledger.json",
+        ]
+        for lp in candidates:
+            if lp.is_file():
+                try:
+                    parsed = json.loads(lp.read_text(encoding="utf-8"))
+                    if isinstance(parsed, list):
+                        ledger = parsed
+                    break
+                except (json.JSONDecodeError, OSError):
+                    continue
+    except ValueError:
+        pass
+    return JSONResponse({
+        "run_id": run_id,
+        "ledger": ledger,
+        "total": len(ledger),
+        "extractions": str(resolve_tools_extractions(case_dir)),
+    })
+
+
+async def api_fs_list(request):
+    """GET /portal/api/fs/list?path=... — filesystem browsing for the
+    evidence picker (WP: evidence path selection UI).
+
+    No path → list drives (Windows) or root (POSIX). Read-only listing;
+    never returns file contents.
+    """
+    import string as _string
+
+    raw = request.query_params.get("path") or ""
+    try:
+        if not raw.strip():
+            if os.name == "nt":
+                drives = []
+                for letter in _string.ascii_uppercase:
+                    drive = f"{letter}:\\"
+                    if Path(drive).exists():
+                        drives.append(drive)
+                entries = [
+                    {"name": f"{d} Drive", "path": d, "is_dir": True, "size": None}
+                    for d in drives
+                ]
+                return JSONResponse({"path": "", "parent": "", "drives": True, "entries": entries})
+            return _list_dir(Path("/"))
+        p = Path(raw)
+        if not p.exists():
+            return JSONResponse({"error": "path not found"}, status_code=404)
+        if p.is_file():
+            return JSONResponse({"error": "path is a file — select its folder or add it directly"}, status_code=400)
+        return _list_dir(p)
+    except (OSError, ValueError) as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+
+def _list_dir(p: Path) -> Response:
+    """List one directory for the evidence picker (read-only)."""
+    try:
+        entries_raw = list(p.iterdir())
+    except OSError as exc:
+        return JSONResponse({"error": f"cannot list: {exc}"}, status_code=400)
+    dirs, files = [], []
+    for entry in entries_raw:
+        try:
+            is_dir = entry.is_dir()
+        except OSError:
+            continue
+        size = None
+        if not is_dir:
+            try:
+                size = entry.stat().st_size
+            except OSError:
+                size = None
+        if is_dir:
+            dirs.append(entry)
+        else:
+            files.append(entry)
+    dirs.sort(key=lambda x: x.name.lower())
+    files.sort(key=lambda x: x.name.lower())
+    out = [
+        {"name": d.name, "path": str(d), "is_dir": True, "size": None}
+        for d in dirs
+    ] + [
+        {"name": f.name, "path": str(f), "is_dir": False, "size": size}
+        for f in files
+    ]
+    parent = str(p.parent) if p.parent != p else ""
+    return JSONResponse({"path": str(p), "parent": parent, "drives": False, "entries": out})
+
+
 async def api_playbook_needles(request):
     """GET /portal/api/playbook/needles?families=fam1,fam2 — suggested needles from playbooks.
 
@@ -3126,6 +3234,8 @@ def create_dashboard():
         Route("/portal/api/case/details", api_case_details, methods=["GET"]),
         Route("/portal/api/pipeline/run", api_pipeline_run, methods=["POST"]),
         Route("/portal/api/pipeline/status", api_pipeline_status, methods=["GET"]),
+        Route("/portal/api/pipeline/ledger", api_pipeline_ledger, methods=["GET"]),
+        Route("/portal/api/fs/list", api_fs_list, methods=["GET"]),
         Route("/portal/api/playbook/needles", api_playbook_needles, methods=["GET"]),
         Route("/portal/api/case/mode", api_case_mode, methods=["POST"]),
         Route("/portal/api/case/mode", api_get_case_mode, methods=["GET"]),

@@ -5,8 +5,9 @@
  */
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { api } from "../api/client";
+import { api, type LedgerRow } from "../api/client";
 import { useCase } from "../context/CaseContext";
+import EvidencePicker from "../components/EvidencePicker";
 
 export default function Evidence() {
   const { activeCase } = useCase();
@@ -17,8 +18,11 @@ export default function Evidence() {
   const [busy, setBusy] = useState(false);
   const [runId, setRunId] = useState("");
   const [runStatus, setRunStatus] = useState("");
+  const [showPicker, setShowPicker] = useState(false);
+  const [ledger, setLedger] = useState<LedgerRow[]>([]);
+  const [ledgerRunId, setLedgerRunId] = useState("");
 
-  useEffect(() => {
+  const load = () => {
     if (!activeCase) {
       setEvidence([]);
       setPipelineComplete(false);
@@ -30,14 +34,46 @@ export default function Evidence() {
     Promise.all([
       api.evidence(),
       api.caseDetails(activeCase).catch(() => null),
+      api.pipelineLedger().catch(() => null),
     ])
-      .then(([ev, d]) => {
+      .then(([ev, d, lg]) => {
         setEvidence(ev.evidence);
         setPipelineComplete(d?.pipeline_complete || false);
+        if (lg && !lg.error) {
+          setLedger(lg.ledger || []);
+          setLedgerRunId(lg.run_id || "");
+        }
       })
       .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeCase]);
+
+  const registerPaths = async (paths: string[]) => {
+    setError("");
+    const failures: string[] = [];
+    for (const p of paths) {
+      try {
+        const res = await fetch("/portal/api/evidence", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: p }),
+        });
+        const body = await res.json();
+        if (!body.ok) {
+          failures.push(`${p}: ${body.error || "failed"}`);
+        }
+      } catch (e) {
+        failures.push(`${p}: ${(e as Error).message}`);
+      }
+    }
+    if (failures.length) setError(`Some paths failed: ${failures.join("; ")}`);
+    load();
+  };
 
   const runN2 = async () => {
     setBusy(true);
@@ -80,6 +116,9 @@ export default function Evidence() {
             <span style={{ fontSize: 12, color: pipelineComplete ? "var(--success)" : "var(--text-muted)" }}>
               {pipelineComplete ? "✓ N2 lane complete" : "N2 lane not run"}
             </span>
+            <button className="btn btn-sm" onClick={() => setShowPicker(true)}>
+              + Add evidence
+            </button>
             <button
               className="btn btn-primary btn-sm"
               onClick={runN2}
@@ -102,6 +141,52 @@ export default function Evidence() {
           </span>
         </div>
       )}
+
+      {/* Parser lane ledger — which parsers ran (WP: parser visibility) */}
+      {activeCase && ledger.length > 0 && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div className="card-header">
+            <span className="card-title">
+              N2 Parser Lane — {ledger.filter((r) => (r.status || "").toUpperCase() === "OK").length}/{ledger.length} OK
+              {ledgerRunId ? ` · run ${ledgerRunId}` : ""}
+            </span>
+          </div>
+          <div style={{ maxHeight: 240, overflowY: "auto" }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Tool</th>
+                  <th>Status</th>
+                  <th>Detail</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ledger.map((row, i) => (
+                  <tr key={i}>
+                    <td style={{ fontFamily: "monospace", fontSize: 11 }}>{String(row.tool || "—")}</td>
+                    <td>
+                      <span
+                        className={`badge ${(row.status || "").toLowerCase() === "ok" ? "approved" : (row.status || "").toUpperCase() === "SKIP" ? "draft" : "rejected"}`}
+                        style={{ fontSize: 10 }}
+                      >
+                        {String(row.status || "—")}
+                      </span>
+                    </td>
+                    <td style={{ fontSize: 11, color: "var(--text-muted)" }}>{String(row.detail || "")}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      <EvidencePicker
+        open={showPicker}
+        onClose={() => setShowPicker(false)}
+        onAdd={registerPaths}
+      />
+
       {evidence.length === 0 ? (
         <div className="empty-state">
           <h3>N2 — no evidence registered</h3>
@@ -115,10 +200,10 @@ export default function Evidence() {
           ) : (
             <>
               <p>Case <strong>{activeCase}</strong> has no registered evidence yet.</p>
-              <p>Register evidence in the Case Setup wizard (step 2), then run the N2 processing lane.</p>
-              <Link to="/case-setup" className="btn btn-primary" style={{ marginTop: 12, display: "inline-block" }}>
-                Open Case Setup
-              </Link>
+              <p>Click <strong>"+ Add evidence"</strong> to browse files/folders, or register via the Case Setup wizard.</p>
+              <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={() => setShowPicker(true)}>
+                + Add evidence
+              </button>
             </>
           )}
         </div>

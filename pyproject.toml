@@ -131,37 +131,7 @@ ignore = ["E501", "E402"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-python_files = [
-    "test_case_*.py",
-    "test_utils_*.py",
-    "test_llm_*.py",
-    "test_mitre.py",
-    "test_integration_modules.py",
-    "test_blocker_regressions.py",
-    "test_beacon.py",
-    "test_gap_analysis.py",
-    "test_deobfuscate.py",
-    "test_playbook.py",
-    "test_adversary.py",
-    "test_detect.py",
-    "test_declarative.py",
-    "test_correlate.py",
-    "test_evidence_graph.py",
-    "test_ingest_regressions.py",
-    "test_bridge_regressions.py",
-    "test_cli_onboarding_regressions.py",
-    "test_pipeline_mode.py",
-    "test_dfir_report.py",
-    "test_artifact_map.py",
-    "test_tool_lane.py",
-    "test_tool_context.py",
-    "test_itm.py",
-    "test_query_pack.py",
-    "test_case_index.py",
-    "test_timeline_merge.py",
-    "test_draft_detections.py",
-    "test_steer_portal.py",
-    "test_collect.py",
-    "test_audit_regressions.py",
-    "test_spa_serving.py",
-]
+# Default pytest discovery: every tests/test_*.py runs in the full suite.
+# (A previous explicit allowlist silently excluded 28 test files — including
+# the Mode 1/2/3, portal, RAG and Phase 4 API suites — from full runs.)
+python_files = ["test_*.py"]
