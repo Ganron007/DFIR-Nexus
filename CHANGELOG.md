@@ -4,6 +4,77 @@ All notable changes to DFIR-Nexus are documented here.
 
 ## Unreleased
 
+### Phase 4 re-audit + enterprise landing page (2026-09-09)
+
+#### Phase 4 re-audit — 6 blockers + 8 bugs fixed
+
+Independent audit of all Phase 4 work packages found 6 blockers and 8 bugs
+that the prior "468 passed" suite did not catch. All fixed and verified.
+
+**Blockers fixed:**
+- **API client types wrong on all 30 endpoints** — every response shape was
+  incorrect (cases expected array but got `{cases, active}`, findings expected
+  array but got `{findings, total}`, chat used `text` instead of `message`,
+  aggregate used `field` instead of `group_by`, mode3 execute used `results`
+  instead of `query_results`, etc.). Full rewrite of `client.ts`.
+- **Report.tsx XSS** — `dangerouslySetInnerHTML` with unsanitized finding data.
+  Replaced with safe React rendering.
+- **Explore pagination stale closure** — `search(false)` used old `offset`
+  from closure; Prev/Next fetched the same page forever. Facet chips changed
+  state but never triggered search. Both fixed.
+- **SteerChat Mode 3 seal incomplete** — fetched challenge but had no UI to
+  submit examiner + HMAC response. Added full seal flow.
+- **Vite base path wrong** — `base: "/"` but SPA served at `/portal/app/*`.
+  Production SPA would 404 on all JS/CSS. Fixed to `/portal/app/`.
+- **BrowserRouter basename wrong** — `"/portal"` but SPA lives at
+  `/portal/app/*`. Fixed to `/portal/app`.
+
+**Bugs fixed:**
+- VirtualTable: row height not enforced via CSS — virtualization math drifted
+  with 100k+ rows. Added fixed height + overflow:hidden + rAF scroll throttle.
+- Layout: active case never seeded from server (always empty string).
+- Workbench: promote cleared ALL bookmarks instead of just promoted ones.
+  Added checkbox selection; only selected bookmarks are promoted.
+- Explore: bookmark state not seeded from server workbench on mount.
+- Approve: no validation for empty examiner/response before commit.
+- Histogram: downsample dropped buckets instead of aggregating (now sums).
+- Timeline/Entities/Transparency/Overview/Findings/Evidence: all used wrong
+  response types from API. Fixed to match actual backend handlers.
+- spa_asset: path traversal check was string-based only. Added `resolve()` +
+  `is_relative_to()` defense-in-depth.
+
+**Polish:**
+- Mode 2 chat race fixed (removed duplicate append + load).
+- Workbench dragEnd resets dragIndex.
+- Report export uses `setTimeout` before `revokeObjectURL`.
+- SteerChat scroll timer cleanup on unmount.
+
+Commit: `2bbed66`
+
+#### Enterprise landing page + branding (2026-09-09)
+
+- **Landing page at `/`** — professional HTML page served by Starlette with:
+  hero section, 6 feature cards, N1-N8 investigation spine visualization,
+  system status link, GitHub footer. Self-contained (no external deps).
+- **DFIR-Nexus shield logo** — extracted shield icon (magnifying glass +
+  fingerprint scanner + AI sparkle) from `assets/dfir-nexus-logo.svg`.
+  Served at `/logo.svg` and `/portal/app/logo.svg`. Used in landing page,
+  SPA sidebar, and browser favicon.
+- **SPA Layout polished** — inline logo in sidebar header, health indicator
+  dot (green/red/yellow) in sidebar footer, breadcrumb with bold page name,
+  "← Landing" link in topbar.
+- **spa_asset bug fix** — was looking for files at `dist/{path}` instead of
+  `dist/assets/{path}` (JS/CSS bundles were 404ing). Fixed.
+- **CSS additions** — stat-box, pulse-dots animation classes.
+
+Commits: `71d14db`, `d3b019a`
+
+#### Build stats (2026-09-09)
+- 216KB JS (67KB gzipped) + 6.5KB CSS.
+- TypeScript strict mode clean.
+- Suite: 468 passed, 1 skipped. Ruff clean.
+- Verified live: `/`, `/logo.svg`, `/portal/app`, `/portal/app/assets/*` all 200.
+
 ### Phase 4 — Enterprise UI rewrite (2026-09-08)
 
 Phase 4 is complete. The React SPA achieves feature parity with the legacy
