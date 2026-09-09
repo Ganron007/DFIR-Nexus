@@ -4,6 +4,131 @@ All notable changes to DFIR-Nexus are documented here.
 
 ## Unreleased
 
+### RAG + multi-agent orchestrator wiring (2026-09-09)
+
+#### What was done
+
+Audited the codebase for RAG/embedding/playbook usage across all product
+modes. Found that RAG was barely used (only Mode 1 scribing), embeddings
+loaded lazily, `DFIRAgentGraph` was orphaned (not called by any product
+mode), and Mode 3 was a deterministic extender with zero RAG context.
+Updated `Docs/WIRING-PLAN.md` with 7 new WPs (2.10, 2.11, 3.9-3.13) to
+address the gaps, then implemented all of them plus WPs 2.6-2.9, 3.5,
+3.8 in two batches.
+
+#### Phase 2 — Mode 2 backend fixes (WPs 2.6-2.11)
+
+- **WP 2.6 — LLM context enrichment:** `propose_next_needles` now feeds
+  the LLM aggregation summaries (hit counts per family/host), top hits
+  per family (500 chars, up from 160), and already-searched needles.
+  New helpers: `_aggregation_summary()`, `_top_hits_per_family()`.
+  New constant: `_MAX_HIT_TEXT_ENRICHED = 500`.
+
+- **WP 2.7 — Iteration cap raise:** `_MAX_ITERATIONS` raised from 3 to 5.
+
+- **WP 2.8 — FD-006/007 hard enforcement:** `discipline.validate_finding()`
+  now rejects single-family MEDIUM/HIGH/SPECULATIVE findings and
+  MEDIUM/HIGH with < 2 audit_ids. Previously advisory only; now a hard gate.
+  1 existing test updated to use valid multi-family evidence.
+
+- **WP 2.9 — Playbook-derived corroboration:** `corroboration_suggestions()`
+  works alongside the new playbook context system (WP 2.11).
+
+- **WP 2.10 — RAG in propose_next_needles:** New
+  `_rag_methodology_for_proposal()` retrieves RAG methodology per hit family
+  before the LLM proposes next queries. RAG provenance (query text, doc
+  sources, scores) recorded in the proposal output as `rag_provenance`.
+
+- **WP 2.11 — Playbook methodology in proposals:** New
+  `_playbook_context_for_families()` loads playbook caveats, Identify
+  phase steps, and triggers for hit families. Injected as `playbook_context`
+  alongside RAG in the LLM prompt. Previously only `query_terms` were used.
+
+#### Phase 3 — Mode 3 backend fixes (WPs 3.5, 3.8-3.13)
+
+- **WP 3.5 — LLM-driven planning:** New `_llm_plan()` uses the LLM to
+  propose plan items from evidence gaps + RAG methodology. Falls back
+  to deterministic items if LLM fails. The LLM now proposes the plan,
+  not just refines the rationale.
+
+- **WP 3.8 — Product mode ↔ pipeline mode mapping:** New
+  `mode_mapping.py` maps Mode 1→tools+interpret, Mode 2→coverage,
+  Mode 3→design. New API: `GET /portal/api/mode-mapping?product_mode=N`.
+
+- **WP 3.9 — RAG in Mode 3 planning:** New
+  `_rag_methodology_for_skips()` retrieves RAG methodology for SKIP'd
+  tools before LLM planning. RAG provenance recorded in plan output.
+
+- **WP 3.10 — Multi-agent orchestrator:** New `orchestrator.py` with
+  `run_orchestrator()` that dispatches specialist agents (timeline/
+  endpoint/network/alert/cloud) per evidence family. Each agent gets
+  RAG methodology for its families. Synthesis node cross-corroborates
+  across agents. New API: `POST /portal/api/mode3/orchestrator`.
+
+- **WP 3.11 — Agent run ledger:** Every orchestrator agent run logged
+  to `agent_runs.jsonl` with agent name, status, evidence families,
+  evidence ref count, proposal count, RAG usage flag, RAG provenance
+  count. Mode 3 plan logs now include `rag_used` flag.
+
+- **WP 3.12 — RAG provenance in findings:** RAG provenance (query text,
+  doc sources, scores) recorded in plan output as `rag_provenance`.
+  Agent runs carry per-doc query/source/score. Methodology classified
+  as methodology, never evidence.
+
+- **WP 3.13 — RAG preflight:** New `rag_preflight.py` verifies deps
+  installed, embedding model loads, Chroma opens, index > 1000 records,
+  test query returns results. CLI: `nexus doctor --rag`. API:
+  `GET /portal/api/rag/status`. Documented in API-CONTRACT.md §11b.
+
+#### New files
+
+- `src/nexus/tools/rag_preflight.py` — RAG readiness preflight
+- `src/nexus/langgraph/orchestrator.py` — Multi-agent orchestrator
+- `src/nexus/langgraph/mode_mapping.py` — Product mode ↔ pipeline mode
+- `tests/test_mode2_rag_context.py` — 7 tests for WP 2.10/2.11/2.6
+- `tests/test_fd006_007_enforcement.py` — 8 tests for WP 2.8
+- `tests/test_rag_preflight.py` — 5 tests for WP 3.13
+- `tests/test_mode3_rag_orchestrator.py` — 11 tests for WP 3.5/3.9/3.10/3.11/3.12
+- `tests/test_mode_wiring_misc.py` — 8 tests for WP 2.7/2.9/3.8
+
+#### Modified files
+
+- `src/nexus/langgraph/mode2.py` — RAG + playbook + enriched context in proposals, iteration cap 5
+- `src/nexus/langgraph/mode3.py` — LLM-driven planning with RAG, RAG provenance, rag_used flag
+- `src/nexus/discipline.py` — FD-006/007 hard enforcement
+- `src/nexus/cli/doctor_cmd.py` — `--rag` flag for RAG preflight
+- `src/nexus/dashboard/app.py` — 3 new API endpoints (rag/status, mode3/orchestrator, mode-mapping)
+- `tests/test_audit_regressions.py` — Updated to use valid multi-family evidence for FD-006/007
+- `Docs/WIRING-PLAN.md` — All WPs marked DONE with dates, gates updated, next steps updated
+- `Docs/API-CONTRACT.md` — New §11b for RAG preflight endpoint
+
+#### Test results
+
+- 468 passed, 1 skipped, 0 failed
+- 38 new tests across 6 new test files
+- Ruff clean
+- 2 commits: `532e432` (Batch 1+2) + `4740fac` (Batch 3-5)
+
+#### What remains (backend)
+
+- WP 3.6 — Iterative query loop in Mode 3 execution
+- WP 3.7 — Agent-proposed DRAFT findings
+
+#### What remains (UI)
+
+- Phase 4b WPs 4b.1-4b.14 — expose new backend APIs in the React SPA
+- RAG status indicator in the cockpit (from `/portal/api/rag/status`)
+- Orchestrator run view (from `/portal/api/mode3/orchestrator`)
+- Mode selector (from `/portal/api/mode-mapping`)
+
+#### Post-verification (Phase 6)
+
+- Run full workflow on real CADRE Campaign H / ws01 evidence
+- Execute Modes 1 → 2 → 3 sequentially
+- Confirm RAG and embeddings are genuinely loaded and used
+- Verify multi-agent orchestrator produces better coverage than deterministic
+- Update `Docs/internal/COMPLETE-TO-SHIP.md`
+
 ### Phase 4 re-audit + enterprise landing page (2026-09-09)
 
 #### Phase 4 re-audit — 6 blockers + 8 bugs fixed
