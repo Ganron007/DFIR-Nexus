@@ -20,7 +20,7 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-_MAX_ITERATIONS = 3
+_MAX_ITERATIONS = 5
 _MAX_NEEDLES_PER_PROPOSAL = 6
 _MAX_HITS_SUMMARY = 12
 _MAX_HIT_TEXT = 160

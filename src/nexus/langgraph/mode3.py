@@ -84,12 +84,127 @@ def _mandatory_lane_complete(ledger: list[dict]) -> bool:
     return any(row.get("status") == "OK" and row.get("tool") not in ("(discovery)", "log2timeline") for row in ledger)
 
 
+def _rag_methodology_for_skips(skip_tools: list[str]) -> tuple[str, list[dict[str, Any]]]:
+    """WP 3.9: Retrieve RAG methodology for SKIP'd tools/artifacts.
+
+    Returns (methodology_text, provenance) for the LLM to use during planning.
+    """
+    if not skip_tools:
+        return "", []
+    try:
+        from nexus.tools.rag import _check_rag_available, _get_index
+
+        available, _ = _check_rag_available()
+        if not available:
+            return "", []
+
+        idx = _get_index()
+        blocks: list[str] = []
+        provenance: list[dict[str, Any]] = []
+        for tool in skip_tools:
+            q = f"forensic methodology for {tool} artifact analysis"
+            try:
+                result = idx.search(query=q, top_k=3, source="kape")
+                docs = result.get("results", [])
+                if not docs:
+                    result = idx.search(query=q, top_k=2)
+                    docs = result.get("results", [])
+                if docs:
+                    block = f"\n--- {tool} methodology ---\n"
+                    sources: list[str] = []
+                    for d in docs[:3]:
+                        text = d.get("text") or ""
+                        block += str(text)[:400] + "\n"
+                        sources.append(d.get("source", ""))
+                    blocks.append(block)
+                    provenance.append({
+                        "tool": tool,
+                        "query": q,
+                        "doc_count": len(docs),
+                        "sources": sources,
+                    })
+            except Exception:
+                pass
+        return "\n".join(blocks).strip(), provenance
+    except Exception as exc:
+        log.warning("RAG methodology for skips failed: %s", exc)
+        return "", []
+
+
+def _llm_plan(
+    model: Any,
+    items: list[dict[str, Any]],
+    queries: list[str],
+    rag_context: str,
+    intake_question: str,
+) -> tuple[list[dict[str, Any]], str, list[dict[str, Any]]]:
+    """WP 3.5: Use LLM to propose a refined plan with RAG context.
+
+    Returns (refined_items, rationale, rag_provenance_from_llm).
+    Falls back to the deterministic items if the LLM fails.
+    """
+    rag_provenance: list[dict[str, Any]] = []
+    prompt = (
+        "You are a DFIR agent planner. You see evidence gaps from the tool-lane "
+        "ledger and existing findings. Propose a plan to fill coverage gaps and "
+        "corroborate single-source findings.\n\n"
+        f"Case question: {intake_question}\n"
+        f"Deterministic items (from ledger SKIPs + known extras):\n"
+        f"{json.dumps(items, indent=1, default=str)[:2000]}\n\n"
+        f"Corroboration queries: {', '.join(queries[:6])}\n\n"
+        f"RAG methodology for SKIP'd artifacts:\n{rag_context[:2000] or '(none)'}\n\n"
+        "Return ONLY JSON: {\"items\": [...], \"rationale\": \"one sentence\"}. "
+        "Items can be {\"type\": \"extra\", \"key\": \"...\", \"purpose\": \"...\"} "
+        "or {\"type\": \"tool_skip\", \"tool\": \"...\", \"reason\": \"...\"}. "
+        "Use RAG methodology to explain why each tool matters."
+    )
+    try:
+        response = model.invoke([{"role": "user", "content": prompt}])
+        text = getattr(response, "content", str(response))
+        start, end = text.find("{"), text.rfind("}")
+        if start == -1 or end == -1:
+            return items, "", rag_provenance
+        parsed = json.loads(text[start:end + 1])
+        llm_items = parsed.get("items") or []
+        rationale = str(parsed.get("rationale") or "")[:300]
+        # Validate LLM items structure
+        valid_items: list[dict[str, Any]] = []
+        for item in llm_items[:_MAX_PLAN_ITEMS]:
+            if not isinstance(item, dict):
+                continue
+            item_type = item.get("type")
+            if item_type == "extra" and item.get("key"):
+                valid_items.append({
+                    "type": "extra",
+                    "key": str(item["key"])[:50],
+                    "purpose": str(item.get("purpose") or "")[:200],
+                })
+            elif item_type == "tool_skip" and item.get("tool"):
+                valid_items.append({
+                    "type": "tool_skip",
+                    "tool": str(item["tool"])[:50],
+                    "reason": str(item.get("reason") or "")[:200],
+                })
+        if valid_items:
+            return valid_items, rationale, rag_provenance
+        return items, rationale, rag_provenance
+    except Exception as exc:
+        log.warning("Mode 3 LLM planning failed: %s", exc)
+        return items, "", rag_provenance
+
+
 def plan_extras(case_dir: Path, model: Any = None) -> dict[str, Any]:
     """Agent proposes the investigation plan (extras + corroboration queries).
 
+    WP 3.5: When an LLM is available, it proposes plan items based on
+    evidence gaps and RAG methodology, not just the static _KNOWN_EXTRAS dict.
+    WP 3.9: RAG methodology is retrieved for SKIP'd artifacts and injected
+    into the LLM planning prompt.
+    WP 3.11: Agent runs are logged with RAG usage flag.
+    WP 3.12: RAG provenance is recorded in the plan output.
+
     Sources: tool-lane ledger SKIPs, extras not yet requested, and FD-006
-    corroboration needs from existing findings. LLM refines the rationale
-    when configured. Logged to agent_runs.jsonl + chat.
+    corroboration needs from existing findings. Logged to agent_runs.jsonl + chat.
     """
     from nexus.case.chat import append_chat
     from nexus.langgraph.query_pack import load_case_intake
@@ -111,6 +226,7 @@ def plan_extras(case_dir: Path, model: Any = None) -> dict[str, Any]:
     # 2. Ledger SKIPs (real parser gaps the examiner may want to fill)
     ledger = _load_ledger(case_dir)
     platform_skips = _PLATFORM_SKIP.get(sys.platform, set())
+    skip_tools: list[str] = []
     for row in ledger:
         if row.get("status") != "SKIP":
             continue
@@ -122,6 +238,7 @@ def plan_extras(case_dir: Path, model: Any = None) -> dict[str, Any]:
             "tool": tool,
             "reason": str(row.get("reason") or "")[:160],
         })
+        skip_tools.append(tool)
 
     # 3. Corroboration queries from findings (FD-006)
     queries: list[str] = []
@@ -135,16 +252,26 @@ def plan_extras(case_dir: Path, model: Any = None) -> dict[str, Any]:
         except (OSError, ValueError):
             pass
 
+    # WP 3.9: RAG methodology for SKIP'd artifacts
+    rag_context, rag_provenance = _rag_methodology_for_skips(skip_tools)
+    rag_used = bool(rag_context)
+
     rationale = (
         f"Agent plan: {len(items)} extra step(s) + {len(queries)} corroboration "
         "queries, derived from ledger SKIPs and single-source findings."
     )
+
+    # WP 3.5: LLM-driven planning with RAG context
     if model is not None:
         try:
-            refined = _refine_rationale(model, items, queries)
-            rationale = refined or rationale
+            llm_items, llm_rationale, _ = _llm_plan(
+                model, items, queries, rag_context, intake.get("question", "")
+            )
+            items = llm_items
+            if llm_rationale:
+                rationale = llm_rationale
         except Exception as exc:  # noqa: BLE001
-            log.warning("Mode 3 plan LLM refinement failed: %s", exc)
+            log.warning("Mode 3 LLM planning failed: %s", exc)
 
     plan = {
         "case_id": case_dir.name,
@@ -153,11 +280,20 @@ def plan_extras(case_dir: Path, model: Any = None) -> dict[str, Any]:
         "rationale": rationale,
         "created_at": datetime.now(UTC).isoformat(),
         "lane_complete": _mandatory_lane_complete(ledger),
+        "rag_context": rag_context,
+        "rag_provenance": rag_provenance,
     }
-    _log_agent_run(case_dir, {"action": "mode3_plan", "items": len(plan["items"]), "queries": len(queries)})
+    _log_agent_run(case_dir, {
+        "action": "mode3_plan",
+        "items": len(plan["items"]),
+        "queries": len(queries),
+        "rag_used": rag_used,
+    })
     append_chat(
         case_dir, "llm", "mode3_plan",
-        f"Agent plan ready: {len(plan['items'])} step(s), {len(queries)} corroboration query(ies). Awaiting examiner approval.",
+        f"Agent plan ready: {len(plan['items'])} step(s), {len(queries)} corroboration query(ies). "
+        + ("RAG methodology applied." if rag_used else "")
+        + " Awaiting examiner approval.",
     )
     return plan
 

@@ -2316,6 +2316,68 @@ async def health(request):
     return JSONResponse({"status": "ok", "service": "dfir-nexus"})
 
 
+async def api_mode3_orchestrator(request):
+    """POST /portal/api/mode3/orchestrator — run multi-agent orchestrator (WP 3.10).
+
+    Body: {hits? (optional — defaults to current N4 hits)}
+    Dispatches specialist agents per evidence family, injects RAG methodology,
+    collects findings into synthesis. Examiner reviews proposals — nothing
+    is auto-staged.
+    """
+    case_dir = _get_case_dir()
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    from nexus.langgraph.llm_pipeline import get_model
+    from nexus.langgraph.orchestrator import run_orchestrator
+
+    try:
+        model = get_model()
+    except Exception:
+        model = None
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+
+    hits = body.get("hits") or []
+    if not hits:
+        # Load current N4 hits if no hits provided
+        from nexus.langgraph.query_pack import load_case_intake, n4_query
+
+        intake = load_case_intake(case_dir)
+        needles = intake.get("question", "")
+        if needles:
+            r = n4_query(case_dir, needles, limit=80)
+            hits = r.get("hits", [])
+
+    result = run_orchestrator(case_dir, hits, model=model)
+    return JSONResponse(result)
+
+
+async def api_mode_mapping(request):
+    """GET /portal/api/mode-mapping?product_mode=1 — map product mode to pipeline mode (WP 3.8).
+
+    Query params: product_mode (1, 2, or 3)
+    Returns: {pipeline_mode, pipeline_modes, description}
+    """
+    from urllib.parse import parse_qs
+
+    qs = parse_qs(request.url.query)
+    mode_str = qs.get("product_mode", [""])[0]
+    try:
+        mode = int(mode_str)
+    except (TypeError, ValueError):
+        return JSONResponse({"error": "product_mode must be 1, 2, or 3"}, status_code=400)
+
+    from nexus.langgraph.mode_mapping import map_product_mode_to_pipeline
+
+    result = map_product_mode_to_pipeline(mode)
+    if "error" in result:
+        return JSONResponse(result, status_code=400)
+    return JSONResponse(result)
+
+
 # --- Phase 4: React SPA serving ---
 # The built React SPA lives in frontend/dist/. Starlette serves it at /portal/app/*
 # and the index.html catch-all handles client-side routing. The root URL "/"
@@ -2449,6 +2511,10 @@ def create_dashboard():
         Route("/portal/api/mode3/seal", api_mode3_seal, methods=["POST"]),
         # RAG preflight (WP 3.13)
         Route("/portal/api/rag/status", api_rag_status, methods=["GET"]),
+        # Mode 3 orchestrator (WP 3.10)
+        Route("/portal/api/mode3/orchestrator", api_mode3_orchestrator, methods=["POST"]),
+        # Product mode ↔ pipeline mode mapping (WP 3.8)
+        Route("/portal/api/mode-mapping", api_mode_mapping, methods=["GET"]),
         # Phase 4: React SPA (served after API + legacy HTML routes)
         Route("/portal/app/assets/{path:path}", spa_asset),
         Route("/portal/app/logo.svg", logo),
