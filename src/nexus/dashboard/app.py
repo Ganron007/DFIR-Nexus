@@ -2179,6 +2179,25 @@ async def api_mode2_propose_draft(request):
     return JSONResponse({"error": detail})
 
 
+async def api_rag_status(request):
+    """GET /portal/api/rag/status — RAG preflight: embedder + Chroma + test query.
+
+    WP 3.13: Exposes RAG readiness to the UI and API clients. Mode 3
+    orchestrator and any RAG-dependent workflow should check this before
+    starting. Returns {ready, embedding_model, document_count, ...}.
+    """
+    from nexus.tools.rag_preflight import rag_preflight
+
+    try:
+        result = rag_preflight()
+        return JSONResponse(result)
+    except Exception as exc:
+        return JSONResponse(
+            {"ready": False, "error": str(exc), "errors": [str(exc)]},
+            status_code=500,
+        )
+
+
 async def api_mode3_plan(request):
     """POST /portal/api/mode3/plan — agent proposes the investigation plan.
 
@@ -2428,6 +2447,8 @@ def create_dashboard():
         Route("/portal/api/mode3/plan", api_mode3_plan, methods=["POST"]),
         Route("/portal/api/mode3/execute", api_mode3_execute, methods=["POST"]),
         Route("/portal/api/mode3/seal", api_mode3_seal, methods=["POST"]),
+        # RAG preflight (WP 3.13)
+        Route("/portal/api/rag/status", api_rag_status, methods=["GET"]),
         # Phase 4: React SPA (served after API + legacy HTML routes)
         Route("/portal/app/assets/{path:path}", spa_asset),
         Route("/portal/app/logo.svg", logo),

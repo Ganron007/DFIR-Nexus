@@ -146,6 +146,11 @@ def doctor(
             "http://127.0.0.1:4508. Pass skip to disable."
         ),
     ),
+    rag_preflight: bool = typer.Option(
+        False,
+        "--rag",
+        help="Run full RAG preflight: load embedding model, open Chroma, test query.",
+    ),
 ) -> None:
     """Print found/missing extras, RAG/triage, catalog binaries, optional TI keys."""
     from nexus import __version__
@@ -283,6 +288,30 @@ def doctor(
     for name, ok, detail in rows:
         mark = "ok" if ok else "FAIL"
         typer.echo(f"  [{mark}] {name}: {detail}")
+
+    # ── RAG preflight (WP 3.13) ──
+    if rag_preflight:
+        typer.echo("\nRAG preflight (--rag):")
+        try:
+            from nexus.tools.rag_preflight import rag_preflight as _pf
+            result = _pf()
+            if result["ready"]:
+                typer.echo(f"  [ok] embedding model: {result.get('embedding_model', '?')}")
+                typer.echo(f"  [ok] model source: {result.get('model_source', '?')}")
+                typer.echo(f"  [ok] document count: {result.get('document_count', 0):,}")
+                typer.echo(f"  [ok] source count: {result.get('source_count', 0)}")
+                typer.echo("  [ok] test query: returned results")
+                typer.echo("  RAG preflight: PASS")
+            else:
+                for err in result.get("errors", [result.get("error", "unknown")]):
+                    if err:
+                        typer.echo(f"  [FAIL] {err}")
+                typer.echo(f"  test query returned: {result.get('test_query_returned', False)}")
+                typer.echo("  RAG preflight: FAIL")
+                golden_fail = True
+        except Exception as exc:
+            typer.echo(f"  [FAIL] RAG preflight crashed: {exc}")
+            golden_fail = True
 
     # Parked / gated surfaces (informational — not golden-path failures).
     typer.echo("parked / gated surfaces (not required to ship):")

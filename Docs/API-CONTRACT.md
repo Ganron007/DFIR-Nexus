@@ -1147,6 +1147,57 @@
 
 ---
 
+## 11b. RAG Preflight (WP 3.13)
+
+### GET /portal/api/rag/status
+**Description:** RAG readiness preflight. Verifies that the embedding model loads, the Chroma collection opens, the index has sufficient records, and a test query returns results. Mode 3 orchestrator and any RAG-dependent workflow should check this before starting.
+
+**Request:** No body required.
+
+**Response 200:**
+```json
+{
+  "ready": true,
+  "embedding_model": "BAAI/bge-base-en-v1.5",
+  "model_source": "hf_hub_cache",
+  "document_count": 23000,
+  "source_count": 12,
+  "test_query_returned": true,
+  "errors": [],
+  "error": ""
+}
+```
+
+**Response 200 (not ready):**
+```json
+{
+  "ready": false,
+  "embedding_model": "",
+  "model_source": "",
+  "document_count": 0,
+  "source_count": 0,
+  "test_query_returned": false,
+  "errors": ["RAG index not found: ..."],
+  "error": "RAG index not found: ..."
+}
+```
+
+**Response 500:**
+```json
+{
+  "ready": false,
+  "error": "string",
+  "errors": ["string"]
+}
+```
+
+**Notes:**
+- `ready` is `true` only when all checks pass: dependencies installed, model loaded, Chroma opened, index > 1000 records, test query returned results.
+- `test_query_returned` is `false` if the embedder + Chroma are loaded but the test query returned no results (possible embedder/index mismatch).
+- This endpoint is also exposed via `nexus doctor --rag` CLI command.
+
+---
+
 ## 12. HTML Page Routes (React Routes)
 
 These are server-side rendered HTML pages in the current portal. In the React SPA rewrite, these become client-side routes. Each renders the `_TEMPLATE` wrapper with case-data content.

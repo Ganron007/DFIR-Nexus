@@ -123,8 +123,10 @@ def test_record_finding_persists_confidence_justification_and_evidence(tmp_path,
     audit_dir = case_dir / "audit"
     audit_dir.mkdir(exist_ok=True)
     audit_id = "hayabusa-examiner-20260908-001"
+    audit_id2 = "pecmd-examiner-20260908-002"
     (audit_dir / "tool.jsonl").write_text(
         json.dumps({"audit_id": audit_id, "source": "mcp", "tool": "test"}) + "\n"
+        + json.dumps({"audit_id": audit_id2, "source": "mcp", "tool": "test"}) + "\n"
     )
     finding = {
         "title": "T",
@@ -132,8 +134,11 @@ def test_record_finding_persists_confidence_justification_and_evidence(tmp_path,
         "interpretation": "I",
         "confidence": "HIGH",
         "confidence_justification": "Three independent tool outputs agree.",
-        "evidence": [{"audit_id": audit_id, "path": "/x", "note": "n"}],
-        "audit_ids": [audit_id],
+        "evidence": [
+            {"audit_id": audit_id, "source": "hayabusa/x", "path": "/x", "note": "n"},
+            {"audit_id": audit_id2, "source": "prefetch/y", "path": "/y", "note": "n2"},
+        ],
+        "audit_ids": [audit_id, audit_id2],
     }
     result = mgr.record_finding(
         finding=finding,
@@ -146,7 +151,10 @@ def test_record_finding_persists_confidence_justification_and_evidence(tmp_path,
     assert findings, "findings.json should not be empty"
     f = findings[0]
     assert f.get("confidence_justification") == "Three independent tool outputs agree."
-    assert f.get("evidence") == [{"audit_id": audit_id, "path": "/x", "note": "n"}]
+    assert f.get("evidence") == [
+        {"audit_id": audit_id, "source": "hayabusa/x", "path": "/x", "note": "n"},
+        {"audit_id": audit_id2, "source": "prefetch/y", "path": "/y", "note": "n2"},
+    ]
 
 
 # ---------------------------------------------------------------------------

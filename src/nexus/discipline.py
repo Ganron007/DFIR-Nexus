@@ -60,6 +60,29 @@ def validate_finding(finding: dict) -> dict:
     if finding_type == "attribution" and len(audit_ids) < 3:
         errors.append(f"Attribution requires at least 3 audit_ids (FD-003), got {len(audit_ids)}")
 
+    # FD-006: single evidence family with MEDIUM/HIGH confidence is rejected.
+    # Corroboration across independent artifact families is mandatory for
+    # escalating confidence above LOW. This is a HARD gate, not advisory.
+    evidence = finding.get("evidence") or []
+    families = sorted(
+        {str(e.get("source", "")).split("/")[0] for e in evidence if isinstance(e, dict)}
+    )
+    distinct_families = len([f for f in families if f])
+    if distinct_families <= 1 and confidence in ("MEDIUM", "HIGH", "SPECULATIVE"):
+        errors.append(
+            f"FD-006: single evidence family ({families or ['none']}) with confidence "
+            f"{confidence} — corroborate across independent artifact families or "
+            "lower confidence to LOW."
+        )
+
+    # FD-007: MEDIUM/HIGH confidence requires at least 2 audit_ids.
+    # A single audit_id means a single tool run — insufficient for escalation.
+    if len(audit_ids) < 2 and confidence in ("MEDIUM", "HIGH"):
+        errors.append(
+            f"FD-007: confidence {confidence} with {len(audit_ids)} audit_id(s) — "
+            "at least 2 independent audit_ids required to escalate above LOW."
+        )
+
     has_mitre = bool(finding.get("mitre_ids") or finding.get("mitre_techniques"))
     if confidence == "HIGH" and not has_mitre:
         warnings.append("HIGH confidence findings should include MITRE ATT&CK technique IDs")

@@ -24,15 +24,23 @@ _MAX_ITERATIONS = 3
 _MAX_NEEDLES_PER_PROPOSAL = 6
 _MAX_HITS_SUMMARY = 12
 _MAX_HIT_TEXT = 160
+# WP 2.6: enriched context uses a larger text cap for top hits per family
+_MAX_HIT_TEXT_ENRICHED = 500
+_MAX_TOP_HITS_PER_FAMILY = 3
+_MAX_RAG_DOCS_PER_FAMILY = 3
+_MAX_RAG_TEXT_PER_DOC = 400
+_MAX_PLAYBOOK_CONTEXT_CHARS = 1200
 
 _PROPOSE_SYSTEM = (
     "You are a DFIR investigative partner. You are given N4 hit rows from "
-    "parsed forensic evidence. Propose the NEXT search needles that would "
-    "corroborate or expand the investigation. Respond with ONLY a JSON "
-    'object: {"needles": ["term1", "term2"], "rationale": "one sentence"}. '
+    "parsed forensic evidence, RAG methodology context, and playbook guidance. "
+    "Propose the NEXT search needles that would corroborate or expand the "
+    "investigation. Respond with ONLY a JSON object: "
+    '{"needles": ["term1", "term2"], "rationale": "one sentence"}. '
     "Rules: needles are concrete (artifact names, event IDs, file names, "
     "registry keys, hostnames); never invent facts; 2-6 needles; do not "
-    "repeat needles already searched."
+    "repeat needles already searched; use RAG methodology and playbook "
+    "caveats to guide your proposals."
 )
 
 
@@ -44,6 +52,171 @@ def _hit_summary(hits: list[dict[str, Any]]) -> str:
             f":: {str(h.get('text', ''))[:_MAX_HIT_TEXT]}"
         )
     return "\n".join(rows) if rows else "(no hits)"
+
+
+def _aggregation_summary(hits: list[dict[str, Any]]) -> str:
+    """WP 2.6: hit counts per family and per host for LLM context."""
+    family_counts: dict[str, int] = {}
+    host_counts: dict[str, int] = {}
+    for h in hits:
+        fam = h.get("family", "?")
+        host = h.get("host", "?")
+        family_counts[fam] = family_counts.get(fam, 0) + 1
+        host_counts[host] = host_counts.get(host, 0) + 1
+    lines = ["Hit counts per family:"]
+    for fam, count in sorted(family_counts.items(), key=lambda x: -x[1]):
+        lines.append(f"  {fam}: {count}")
+    lines.append("Hit counts per host:")
+    for host, count in sorted(host_counts.items(), key=lambda x: -x[1]):
+        lines.append(f"  {host}: {count}")
+    return "\n".join(lines)
+
+
+def _top_hits_per_family(hits: list[dict[str, Any]]) -> str:
+    """WP 2.6: top N hits per family with enriched text (500 chars)."""
+    by_family: dict[str, list[dict[str, Any]]] = {}
+    for h in hits:
+        fam = h.get("family", "?")
+        by_family.setdefault(fam, []).append(h)
+    lines = []
+    for fam in sorted(by_family):
+        lines.append(f"\n--- {fam} (top {_MAX_TOP_HITS_PER_FAMILY}) ---")
+        for h in by_family[fam][:_MAX_TOP_HITS_PER_FAMILY]:
+            lines.append(
+                f"  {h.get('file', '')}:{h.get('line', '')} "
+                f":: {str(h.get('text', ''))[:_MAX_HIT_TEXT_ENRICHED]}"
+            )
+    return "\n".join(lines) if lines else "(no hits)"
+
+
+def _rag_methodology_for_proposal(families: set[str]) -> tuple[str, list[dict[str, Any]]]:
+    """WP 2.10: Retrieve RAG methodology for artifact families in hits.
+
+    Returns (methodology_text, provenance) where provenance is a list of
+    dicts with query, doc_count, sources, and scores for audit trail.
+    """
+    if not families:
+        return "", []
+    try:
+        from nexus.tools.rag import _check_rag_available, _get_index
+
+        available, _ = _check_rag_available()
+        if not available:
+            return "", []
+
+        idx = _get_index()
+        blocks: list[str] = []
+        provenance: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for fam in sorted(families):
+            if not fam or fam in seen:
+                continue
+            seen.add(fam)
+            q = f"how to interpret forensic {fam} evidence methodology"
+            try:
+                result = idx.search(query=q, top_k=_MAX_RAG_DOCS_PER_FAMILY, source="kape")
+                docs = result.get("results", [])
+                if not docs:
+                    result = idx.search(query=q, top_k=2)
+                    docs = result.get("results", [])
+                if docs:
+                    block = f"\n--- {fam} methodology ---\n"
+                    sources: list[str] = []
+                    scores: list[float] = []
+                    for d in docs[:_MAX_RAG_DOCS_PER_FAMILY]:
+                        text = d.get("text") or d.get("document") or ""
+                        block += str(text)[:_MAX_RAG_TEXT_PER_DOC] + "\n"
+                        sources.append(d.get("source", ""))
+                        scores.append(d.get("score", 0))
+                    blocks.append(block)
+                    provenance.append({
+                        "family": fam,
+                        "query": q,
+                        "doc_count": len(docs),
+                        "sources": sources,
+                        "scores": scores,
+                    })
+            except Exception:
+                pass
+        return "\n".join(blocks).strip(), provenance
+    except Exception as exc:
+        log.warning("RAG methodology lookup for proposal failed: %s", exc)
+        return "", []
+
+
+def _playbook_context_for_families(families: set[str]) -> str:
+    """WP 2.11: Load playbook caveats and Identify steps for artifact families.
+
+    Maps artifact families to relevant playbooks and extracts caveats +
+    Identify phase steps as context for the LLM proposal.
+    """
+    if not families:
+        return ""
+    try:
+        from nexus.knowledge.loader import get_playbook, list_playbook_slugs
+
+        # Build a family → playbook mapping by scanning playbook query_terms
+        # and matching against our hit families
+        slugs = list_playbook_slugs()
+        family_lower = {f.lower() for f in families}
+        blocks: list[str] = []
+        seen_slugs: set[str] = set()
+
+        for slug in slugs:
+            pb = get_playbook(slug)
+            if not isinstance(pb, dict):
+                continue
+            # Check if any query_term matches a hit family
+            terms = pb.get("query_terms") or []
+            if not isinstance(terms, list):
+                continue
+            term_lower = {str(t).lower() for t in terms}
+            # Also check the playbook name/description for family mentions
+            pb_text = (
+                str(pb.get("name", "")) + " " + str(pb.get("description", ""))
+            ).lower()
+            matches = False
+            for fam in family_lower:
+                if fam in term_lower or fam in pb_text:
+                    matches = True
+                    break
+            if not matches:
+                continue
+            if slug in seen_slugs:
+                continue
+            seen_slugs.add(slug)
+
+            block = f"\n--- Playbook: {pb.get('name', slug)} ---\n"
+            # Caveats — corroboration constraints
+            caveats = pb.get("caveats") or []
+            if isinstance(caveats, list) and caveats:
+                block += "Caveats:\n"
+                for c in caveats[:5]:
+                    block += f"  - {str(c)[:200]}\n"
+            # Identify phase steps — what to look for
+            phases = pb.get("phases") or []
+            if isinstance(phases, list):
+                for phase in phases:
+                    if isinstance(phase, dict) and phase.get("phase") == "Identify":
+                        steps = phase.get("steps") or []
+                        if isinstance(steps, list) and steps:
+                            block += "Identify steps:\n"
+                            for s in steps[:5]:
+                                block += f"  - {str(s)[:200]}\n"
+            # Triggers — what indicators to look for
+            triggers = pb.get("triggers") or []
+            if isinstance(triggers, list) and triggers:
+                block += "Triggers:\n"
+                for t in triggers[:3]:
+                    block += f"  - {str(t)[:200]}\n"
+
+            block_text = block[:_MAX_PLAYBOOK_CONTEXT_CHARS]
+            blocks.append(block_text)
+
+        return "\n".join(blocks).strip()
+    except Exception as exc:
+        log.warning("Playbook context lookup failed: %s", exc)
+        return ""
 
 
 def propose_next_needles(
@@ -70,15 +243,27 @@ def _propose_with_model(case_dir: Path, hits: list[dict], already_run: list[str]
 
     intake = load_case_intake(case_dir)
     families = sorted({h.get("family", "?") for h in hits})
-    hit_summary = "\n".join(
-        f"- {h.get('family')}: {str(h.get('text', ''))[:_MAX_HIT_TEXT]}" for h in hits[:_MAX_HITS_SUMMARY]
-    )
+
+    # WP 2.10: RAG methodology for hit families
+    rag_context, rag_provenance = _rag_methodology_for_proposal(set(families))
+
+    # WP 2.11: Playbook caveats + Identify steps for hit families
+    playbook_context = _playbook_context_for_families(set(families))
+
+    # WP 2.6: Enriched context — aggregation + top hits per family
+    agg_summary = _aggregation_summary(hits)
+    top_hits = _top_hits_per_family(hits)
+
     user = (
         f"Case question: {intake.get('question', '(none)')}\n"
         f"Artifact families with hits: {', '.join(families) or '(none)'}\n"
         f"Already searched: {', '.join(already_run) or '(none)'}\n\n"
-        f"Hit rows:\n{hit_summary}\n\n"
+        f"Aggregation summary:\n{agg_summary}\n\n"
+        f"Top hits per family:\n{top_hits}\n\n"
+        f"RAG methodology:\n{rag_context[:2000] or '(none)'}\n\n"
+        f"Playbook guidance:\n{playbook_context[:1500] or '(none)'}\n\n"
         "Propose 2-6 NEW search needles to corroborate or expand this picture. "
+        "Use the RAG methodology and playbook caveats to guide your proposals. "
         'Return ONLY JSON: {"needles": [...], "rationale": "..."}'
     )
     response = model.invoke([
@@ -97,6 +282,9 @@ def _propose_with_model(case_dir: Path, hits: list[dict], already_run: list[str]
         "needles": needles,
         "rationale": str(parsed.get("rationale") or "")[:300],
         "source": "llm",
+        "rag_context": rag_context,
+        "rag_provenance": rag_provenance,
+        "playbook_context": playbook_context,
     }
 
 
