@@ -4,6 +4,57 @@ All notable changes to DFIR-Nexus are documented here.
 
 ## Unreleased
 
+### Mode 3 iterative query + agent DRAFT findings (2026-09-09)
+
+#### What was done
+
+Implemented the final two remaining Mode 3 backend WPs (3.6 and 3.7),
+completing all Phase 2 and Phase 3 backend wiring.
+
+#### WP 3.6 — Iterative query loop in Mode 3 execution
+
+- New `_run_iterative_for_queries()` wraps Mode 2's `run_iterative_loop`
+  for Mode 3 execution
+- `execute_plan` now runs approved queries through the iterative loop
+  (propose → query → analyze → re-query) instead of one-shot
+- Iterative results included in `execute_plan` output as `iterative` key
+- Each iterative run logged to `agent_runs.jsonl` as `mode3_iterative`
+  with iteration count, total hits, and capped flag
+- `execute_plan` signature updated to accept `model` parameter
+- Dashboard `api_mode3_execute` updated to pass the LLM model
+
+#### WP 3.7 — Agent-proposed DRAFT findings
+
+- New `propose_agent_finding()` stages DRAFT findings with
+  `examiner_selected=False` via Mode 2's `propose_draft_finding`
+- Agent NEVER approves — findings are always DRAFT, examiner-gated
+- Each draft logged to `agent_runs.jsonl` as `mode3_draft_finding`
+- New API: `POST /portal/api/mode3/draft-finding`
+
+#### New files
+
+- `tests/test_mode3_iterative_draft.py` — 11 tests for WP 3.6/3.7
+
+#### Modified files
+
+- `src/nexus/langgraph/mode3.py` — `_run_iterative_for_queries()`, `propose_agent_finding()`, updated `execute_plan`
+- `src/nexus/dashboard/app.py` — `api_mode3_draft_finding` endpoint, `execute_plan` passes model
+- `Docs/WIRING-PLAN.md` — WP 3.6/3.7 marked DONE, Gate 3 v2 fully PASSED
+- `CHANGELOG.md` — This entry
+
+#### Test results
+
+- 468 passed, 1 skipped, 0 failed
+- 11 new tests in 1 new test file
+- Ruff clean
+
+#### What remains
+
+All Phase 2 (WPs 2.6-2.11) and Phase 3 (WPs 3.5-3.13) backend WPs are DONE.
+Remaining work:
+- **Phase 4b** — UI workflow (expose new backend APIs in the React SPA)
+- **Phase 6** — Real case validation on CADRE Campaign H evidence
+
 ### RAG + multi-agent orchestrator wiring (2026-09-09)
 
 #### What was done

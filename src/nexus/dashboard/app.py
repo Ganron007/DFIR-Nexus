@@ -2239,13 +2239,53 @@ async def api_mode3_execute(request):
     if not isinstance(extras, list) or not isinstance(queries, list):
         return JSONResponse({"error": "extras and queries must be lists"}, status_code=400)
 
+    from nexus.langgraph.llm_pipeline import get_model
     from nexus.langgraph.mode3 import execute_plan
+
+    try:
+        model = get_model()
+    except Exception:
+        model = None
 
     result = execute_plan(
         case_dir,
         [str(e) for e in extras],
         [str(q) for q in queries],
+        model=model,
     )
+    if result.get("error"):
+        return JSONResponse(result, status_code=400)
+    return JSONResponse(result)
+
+
+async def api_mode3_draft_finding(request):
+    """POST /portal/api/mode3/draft-finding — agent proposes a DRAFT finding (WP 3.7).
+
+    Body: {hits, title, interpretation_hint?}
+    Stages a DRAFT finding with examiner_selected=False. The examiner
+    reviews and approves via the normal HMAC flow. The agent NEVER approves.
+    """
+    case_dir = _get_case_dir()
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+
+    hits = body.get("hits") or []
+    title = body.get("title") or "Agent-proposed finding"
+    hint = body.get("interpretation_hint") or ""
+
+    from nexus.langgraph.llm_pipeline import get_model
+    from nexus.langgraph.mode3 import propose_agent_finding
+
+    try:
+        model = get_model()
+    except Exception:
+        model = None
+
+    result = propose_agent_finding(case_dir, hits, title, model=model, interpretation_hint=hint)
     if result.get("error"):
         return JSONResponse(result, status_code=400)
     return JSONResponse(result)
@@ -2513,6 +2553,8 @@ def create_dashboard():
         Route("/portal/api/rag/status", api_rag_status, methods=["GET"]),
         # Mode 3 orchestrator (WP 3.10)
         Route("/portal/api/mode3/orchestrator", api_mode3_orchestrator, methods=["POST"]),
+        # Mode 3 agent DRAFT finding (WP 3.7)
+        Route("/portal/api/mode3/draft-finding", api_mode3_draft_finding, methods=["POST"]),
         # Product mode ↔ pipeline mode mapping (WP 3.8)
         Route("/portal/api/mode-mapping", api_mode_mapping, methods=["GET"]),
         # Phase 4: React SPA (served after API + legacy HTML routes)

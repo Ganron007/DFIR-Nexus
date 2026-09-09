@@ -316,16 +316,85 @@ def _refine_rationale(model: Any, items: list[dict], queries: list[str]) -> str:
         return ""
 
 
+def _run_iterative_for_queries(
+    case_dir: Path,
+    question: str,
+    model: Any = None,
+    max_iterations: int = 3,
+    limit: int = 80,
+) -> dict[str, Any]:
+    """WP 3.6: Run the Mode 2 iterative query loop for Mode 3 execution.
+
+    This wraps the Mode 2 propose→query→analyze loop so the agent iterates
+    on approved queries rather than running them one-shot. Every iteration
+    is logged to the case chat transcript.
+    """
+    from nexus.langgraph.mode2 import run_iterative_loop
+
+    return run_iterative_loop(
+        case_dir, question, model=model, max_iterations=max_iterations, limit=limit
+    )
+
+
+def propose_agent_finding(
+    case_dir: Path,
+    hits: list[dict[str, Any]],
+    title: str,
+    model: Any = None,
+    interpretation_hint: str = "",
+) -> dict[str, Any]:
+    """WP 3.7: Agent proposes a DRAFT finding from hits.
+
+    Stages a DRAFT finding with ``examiner_selected=False`` — the examiner
+    reviews, edits, approves, or rejects via the normal HMAC flow.
+    The agent NEVER approves. Reuses Mode 2's ``propose_draft_finding``
+    so the scribing + corroboration logic is shared.
+
+    Returns {draft, corroboration} or {error}.
+    """
+    from nexus.case.chat import append_chat
+    from nexus.langgraph.mode2 import propose_draft_finding
+
+    if not hits:
+        return {"error": "No hits to draft from"}
+
+    result = propose_draft_finding(
+        case_dir, hits, title, model=model, interpretation_hint=interpretation_hint
+    )
+    if "error" in result:
+        return result
+
+    draft = result.get("draft")
+    if not draft:
+        return {"error": "Failed to stage draft finding"}
+
+    _log_agent_run(case_dir, {
+        "action": "mode3_draft_finding",
+        "title": str(draft.get("title", title))[:100],
+        "evidence_count": len(draft.get("evidence") or []),
+        "examiner_selected": False,
+        "approval_state": "DRAFT",
+    })
+    append_chat(
+        case_dir, "llm", "mode3_draft",
+        f"Agent drafted finding: {draft.get('title', title)}. "
+        f"Staged as DRAFT — examiner review required.",
+    )
+    return result
+
+
 def execute_plan(
     case_dir: Path,
     approved_extras: list[str],
     approved_queries: list[str],
+    model: Any = None,
 ) -> dict[str, Any]:
     """Execute examiner-approved plan items.
 
     Extras: persisted to CASE.yaml intake (next lane run picks them up;
-    mandatory lane first, prior-OK reused). Queries: run immediately
-    (read-only N4). Everything logged to agent_runs.jsonl + chat.
+    mandatory lane first, prior-OK reused). Queries: run through the
+    WP 3.6 iterative loop (propose → query → analyze → re-query), not
+    one-shot. Everything logged to agent_runs.jsonl + chat.
 
     Refuses to run if the mandatory lane has not completed at least one
     OK tool — the agent can add parsers but never skip the lane.
@@ -355,6 +424,22 @@ def execute_plan(
         merged = list(dict.fromkeys(existing + valid_extras))
         persist_case_intake(case_dir, {"extras": ",".join(merged)})
 
+    # WP 3.6: Run queries through the iterative loop, not one-shot
+    iterative_result: dict[str, Any] | None = None
+    if approved_queries:
+        combined_query = " ".join(approved_queries)
+        iterative_result = _run_iterative_for_queries(
+            case_dir, combined_query, model=model, max_iterations=3, limit=80
+        )
+        _log_agent_run(case_dir, {
+            "action": "mode3_iterative",
+            "queries": approved_queries,
+            "iterations": len(iterative_result.get("iterations", [])),
+            "total_hits": iterative_result.get("total_hits", 0),
+            "capped": iterative_result.get("capped", False),
+        })
+
+    # Also keep one-shot results for backward compatibility
     query_results: list[dict[str, Any]] = []
     for q in approved_queries:
         from nexus.langgraph.query_pack import n4_query
@@ -372,12 +457,15 @@ def execute_plan(
         f"Executed approved plan: extras={valid_extras or 'none'}, "
         f"queries={len(query_results)}. Re-run the tools lane to parse new extras.",
     )
-    return {
+    result: dict[str, Any] = {
         "status": "executed",
         "extras_persisted": valid_extras,
         "query_results": query_results,
         "note": "Extras parse on the next lane run (mandatory lane first, prior-OK reused).",
     }
+    if iterative_result is not None:
+        result["iterative"] = iterative_result
+    return result
 
 
 def seal_case(
