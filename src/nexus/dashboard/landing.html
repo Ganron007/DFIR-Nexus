@@ -587,10 +587,6 @@
           var host = document.getElementById("cases-loading");
           if (host) host.innerHTML = '<div class="cases-error">Could not load cases — is the backend running?</div>';
         });
-        .catch(function () {
-          var host = document.getElementById("cases-loading");
-          if (host) host.innerHTML = '<div class="cases-error">Could not load cases — is the backend running?</div>';
-        });
 
       // Tabbed info panel (spine + platform in one compact card)
       var tabBtns = document.querySelectorAll(".tab-btn");
@@ -607,7 +603,7 @@
         b.addEventListener("click", function () { activateTab(b.getAttribute("data-tab")); });
       });
       // Nav links switch tabs instead of scrolling past them
-      Array.prototype.forEach.call(document.querySelectorAll('[data-tab-link]'), function (a) {
+      Array.prototype.forEach.call(document.querySelectorAll("a[data-tab]"), function (a) {
         a.addEventListener("click", function (ev) {
           ev.preventDefault();
           activateTab(a.getAttribute("data-tab"));
