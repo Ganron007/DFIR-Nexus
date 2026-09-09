@@ -90,8 +90,8 @@
       background: linear-gradient(135deg, #e6edf3 30%, #2f81f7 100%);
       -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
     }
-    .hero-sub { font-size: 17px; color: var(--text-secondary); max-width: 560px; margin-bottom: 28px; }
-    .hero-actions { display: flex; gap: 14px; flex-wrap: wrap; }
+    .hero-sub { font-size: 17px; color: var(--text-secondary); max-width: 560px; margin-bottom: 44px; }
+    .hero-actions { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; }
     .btn-enter {
       display: inline-flex; align-items: center; gap: 8px;
       background: var(--accent); color: white;
@@ -316,18 +316,16 @@
       background: none;
       border: none;
       border-bottom: 2px solid transparent;
-      color: var(--text-secondary);
+      color: var(--text-primary);
       font-size: 14px;
       font-weight: 600;
       padding: 14px 16px;
       cursor: pointer;
-      transition: color 0.15s, border-color 0.15s, background 0.15s;
+      transition: border-color 0.15s;
     }
-    .tab-btn:hover { color: var(--text-primary); }
+    .tab-btn:hover { color: #fff; }
     .tab-btn.active {
-      color: var(--text-primary);
-      border-bottom-color: var(--accent);
-      background: var(--bg-secondary);
+      border-bottom-color: rgba(47,129,247,0.45);
     }
     .tab-btn .tab-chip {
       font-family: "SF Mono", Consolas, monospace;
