@@ -7,7 +7,7 @@ export default function Findings() {
 
   useEffect(() => {
     api.findings()
-      .then(setFindings)
+      .then((r) => setFindings(r.findings))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);

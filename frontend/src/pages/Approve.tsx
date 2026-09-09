@@ -13,8 +13,8 @@ export default function Approve() {
 
   const load = () => {
     setLoading(true);
-    api.findings()
-      .then((f) => setFindings(f.filter((x) => x.status === "DRAFT")))
+    api.findings("DRAFT")
+      .then((r) => setFindings(r.findings))
       .catch(() => {})
       .finally(() => setLoading(false));
   };
@@ -46,6 +46,14 @@ export default function Approve() {
     }
     if (selected.size === 0) {
       setError("Select at least one finding");
+      return;
+    }
+    if (!examiner.trim()) {
+      setError("Examiner name is required");
+      return;
+    }
+    if (!response.trim()) {
+      setError("HMAC response is required");
       return;
     }
     try {

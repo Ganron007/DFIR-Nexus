@@ -1,65 +1,83 @@
-import { useState, useEffect, useCallback } from "react";
-import { api, type ExploreHit, type AggregateResponse } from "../api/client";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { api, type N4Hit, type HistogramResponse } from "../api/client";
 import VirtualTable, { type Column } from "../components/VirtualTable";
-import Histogram, { type HistogramBucket } from "../components/Histogram";
+import Histogram from "../components/Histogram";
 
-const PAGE_SIZE = 200; // larger pages for virtualization
+const PAGE_SIZE = 200;
 
 export default function Explore() {
   const [needles, setNeedles] = useState("");
   const [family, setFamily] = useState("");
-  const [host, setHost] = useState("");
-  const [hits, setHits] = useState<ExploreHit[]>([]);
-  const [total, setTotal] = useState(0);
+  const [hits, setHits] = useState<N4Hit[]>([]);
+  const [count, setCount] = useState(0);
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [aggregates, setAggregates] = useState<Record<string, AggregateResponse>>({});
+  const [familyAgg, setFamilyAgg] = useState<Record<string, number>>({});
   const [bookmarked, setBookmarked] = useState<Set<string>>(new Set());
-  const [histogram, setHistogram] = useState<HistogramBucket[]>([]);
+  const [histogram, setHistogram] = useState<Record<string, number>>({});
   const [showHistogram, setShowHistogram] = useState(true);
+  const reqIdRef = useRef(0);
 
-  const search = useCallback(async (resetOffset = true) => {
+  // Load family aggregates and workbench bookmarks on mount
+  useEffect(() => {
+    api.aggregate({ group_by: "family" })
+      .then((r) => setFamilyAgg(r.buckets || {}))
+      .catch(() => {});
+    api.workbench()
+      .then((r) => {
+        const ids = new Set(r.bookmarks.map((b) => b.id));
+        setBookmarked(ids);
+      })
+      .catch(() => {});
+  }, []);
+
+  const doSearch = useCallback(async (targetOffset: number, fam?: string) => {
+    const reqId = ++reqIdRef.current;
     setLoading(true);
     setError("");
-    const off = resetOffset ? 0 : offset;
+    const famValue = fam !== undefined ? fam : family;
     try {
       const [searchResult, histResult] = await Promise.all([
         api.search({
           needles: needles || undefined,
-          family: family || undefined,
-          host: host || undefined,
+          family: famValue || undefined,
           limit: PAGE_SIZE,
-          offset: off,
+          offset: targetOffset,
         }),
-        api.histogram({ family: family || undefined }).catch(() => ({ buckets: [] })),
+        api.histogram({ family: famValue || undefined }).catch(() => ({ buckets: {}, count: 0 }) as HistogramResponse),
       ]);
+      // Ignore stale responses
+      if (reqIdRef.current !== reqId) return;
       setHits(searchResult.hits);
-      setTotal(searchResult.total);
-      if (resetOffset) setOffset(0);
-      setHistogram(histResult.buckets || []);
+      setCount(searchResult.count);
+      setOffset(targetOffset);
+      setHistogram(histResult.buckets || {});
     } catch (e) {
+      if (reqIdRef.current !== reqId) return;
       setError((e as Error).message);
       setHits([]);
-      setHistogram([]);
+      setHistogram({});
     } finally {
-      setLoading(false);
+      if (reqIdRef.current === reqId) setLoading(false);
     }
-  }, [needles, family, host, offset]);
+  }, [needles, family]);
 
-  useEffect(() => {
-    Promise.all([
-      api.aggregate("family").catch(() => ({ field: "family", buckets: [] })),
-      api.aggregate("host").catch(() => ({ field: "host", buckets: [] })),
-    ]).then(([fam, host]) => {
-      setAggregates({ family: fam, host });
-    });
-  }, []);
+  const search = (resetOffset = true) => {
+    doSearch(resetOffset ? 0 : offset);
+  };
 
-  const toggleBookmark = (hit: ExploreHit) => {
-    const key = `${hit.audit_id}:${hit.line_no || 0}`;
+  const toggleFamilyChip = (fam: string) => {
+    const newFam = family === fam ? "" : fam;
+    setFamily(newFam);
+    doSearch(0, newFam);
+  };
+
+  const toggleBookmark = (hit: N4Hit) => {
+    const key = `${hit.family}:${hit.file}:${hit.line}`;
     const next = new Set(bookmarked);
     if (next.has(key)) {
+      // Find the bookmark ID from the workbench
       api.workbenchRemove(key).catch(() => {});
       next.delete(key);
     } else {
@@ -69,16 +87,16 @@ export default function Explore() {
     setBookmarked(next);
   };
 
-  const pages = Math.ceil(total / PAGE_SIZE);
+  const pages = Math.ceil(count / PAGE_SIZE);
   const currentPage = Math.floor(offset / PAGE_SIZE) + 1;
 
-  const columns: Column<ExploreHit>[] = [
+  const columns: Column<N4Hit>[] = [
     {
       key: "bookmark",
       header: "★",
       width: 30,
       render: (h) => {
-        const key = `${h.audit_id}:${h.line_no || 0}`;
+        const key = `${h.family}:${h.file}:${h.line}`;
         return (
           <button
             onClick={(e) => { e.stopPropagation(); toggleBookmark(h); }}
@@ -103,27 +121,33 @@ export default function Explore() {
       render: (h) => <span style={{ fontFamily: "monospace", fontSize: 11 }}>{h.family}</span>,
     },
     {
-      key: "host",
-      header: "Host",
-      width: 100,
-      render: (h) => <span style={{ fontSize: 11 }}>{h.host}</span>,
-    },
-    {
-      key: "timestamp",
-      header: "Timestamp",
-      width: 160,
-      render: (h) => <span style={{ fontSize: 11, whiteSpace: "nowrap" }}>{h.timestamp}</span>,
-    },
-    {
-      key: "line",
-      header: "Line",
+      key: "file",
+      header: "File",
+      width: 200,
       render: (h) => (
         <span style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", display: "block", whiteSpace: "nowrap" }}>
-          {h.line}
+          {h.file}:{h.line}
+        </span>
+      ),
+    },
+    {
+      key: "terms",
+      header: "Terms",
+      width: 150,
+      render: (h) => <span style={{ fontSize: 11, fontFamily: "monospace" }}>{h.terms}</span>,
+    },
+    {
+      key: "text",
+      header: "Row",
+      render: (h) => (
+        <span style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", display: "block", whiteSpace: "nowrap" }}>
+          {h.text}
         </span>
       ),
     },
   ];
+
+  const familyEntries = Object.entries(familyAgg).sort((a, b) => b[1] - a[1]);
 
   return (
     <div>
@@ -134,7 +158,7 @@ export default function Explore() {
       <div className="card">
         <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
           <input
-            placeholder="Needles (e.g. sdelete | powershell -enc | 1102)"
+            placeholder="Needles (e.g. sdelete, powershell, 1102)"
             value={needles}
             onChange={(e) => setNeedles(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && search()}
@@ -148,62 +172,29 @@ export default function Explore() {
             list="family-list"
           />
           <datalist id="family-list">
-            {aggregates.family?.buckets.map((b) => (
-              <option key={b.key} value={b.key}>{b.key} ({b.count})</option>
-            ))}
-          </datalist>
-          <input
-            placeholder="Host"
-            value={host}
-            onChange={(e) => setHost(e.target.value)}
-            style={{ width: 120 }}
-            list="host-list"
-          />
-          <datalist id="host-list">
-            {aggregates.host?.buckets.map((b) => (
-              <option key={b.key} value={b.key}>{b.key} ({b.count})</option>
+            {familyEntries.map(([key, cnt]) => (
+              <option key={key} value={key}>{key} ({cnt})</option>
             ))}
           </datalist>
           <button className="btn btn-primary" onClick={() => search()}>Search</button>
         </div>
 
         {/* Family facet chips */}
-        {aggregates.family && aggregates.family.buckets.length > 0 && (
+        {familyEntries.length > 0 && (
           <div style={{ marginBottom: 8 }}>
             <span style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", marginRight: 8 }}>Family:</span>
-            {aggregates.family.buckets.slice(0, 20).map((b) => (
+            {familyEntries.slice(0, 20).map(([key, cnt]) => (
               <button
-                key={b.key}
+                key={key}
                 className="btn btn-sm"
-                onClick={() => { setFamily(family === b.key ? "" : b.key); }}
+                onClick={() => toggleFamilyChip(key)}
                 style={{
                   margin: 2,
-                  borderColor: family === b.key ? "var(--accent)" : undefined,
-                  background: family === b.key ? "rgba(47,129,247,0.15)" : undefined,
+                  borderColor: family === key ? "var(--accent)" : undefined,
+                  background: family === key ? "rgba(47,129,247,0.15)" : undefined,
                 }}
               >
-                {b.key} ({b.count})
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Host facet chips */}
-        {aggregates.host && aggregates.host.buckets.length > 0 && (
-          <div>
-            <span style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", marginRight: 8 }}>Host:</span>
-            {aggregates.host.buckets.slice(0, 10).map((b) => (
-              <button
-                key={b.key}
-                className="btn btn-sm"
-                onClick={() => { setHost(host === b.key ? "" : b.key); }}
-                style={{
-                  margin: 2,
-                  borderColor: host === b.key ? "var(--accent)" : undefined,
-                  background: host === b.key ? "rgba(47,129,247,0.15)" : undefined,
-                }}
-              >
-                {b.key} ({b.count})
+                {key} ({cnt})
               </button>
             ))}
           </div>
@@ -211,7 +202,7 @@ export default function Explore() {
       </div>
 
       {/* Histogram */}
-      {showHistogram && histogram.length > 0 && (
+      {showHistogram && Object.keys(histogram).length > 0 && (
         <div className="card">
           <div className="card-header">
             <span className="card-title">Event Timeline</span>
@@ -225,20 +216,20 @@ export default function Explore() {
       <div className="card">
         <div className="card-header">
           <span className="card-title">
-            Hits ({total.toLocaleString()}{total > PAGE_SIZE && ` — page ${currentPage}/${pages}`})
+            Hits ({count.toLocaleString()}{count > PAGE_SIZE && ` — page ${currentPage}/${pages}`})
           </span>
           <div style={{ display: "flex", gap: 8 }}>
             <button
               className="btn btn-sm"
               disabled={offset === 0 || loading}
-              onClick={() => { setOffset(Math.max(0, offset - PAGE_SIZE)); search(false); }}
+              onClick={() => doSearch(Math.max(0, offset - PAGE_SIZE))}
             >
               Prev
             </button>
             <button
               className="btn btn-sm"
-              disabled={offset + PAGE_SIZE >= total || loading}
-              onClick={() => { setOffset(offset + PAGE_SIZE); search(false); }}
+              disabled={offset + PAGE_SIZE >= count || loading}
+              onClick={() => doSearch(offset + PAGE_SIZE)}
             >
               Next
             </button>
@@ -255,7 +246,7 @@ export default function Explore() {
           <VirtualTable
             rows={hits}
             columns={columns}
-            rowKey={(h, i) => `${h.audit_id}:${h.line_no || i}`}
+            rowKey={(h, i) => `${h.family}:${h.file}:${h.line}:${i}`}
             maxHeight="60vh"
           />
         )}

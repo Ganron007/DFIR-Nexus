@@ -1,8 +1,9 @@
 import { useEffect, useState, useRef } from "react";
-import { api, type TimelineLane } from "../api/client";
+import { api, type TimelineLaneEntry } from "../api/client";
 
 export default function Timeline() {
-  const [lanes, setLanes] = useState<TimelineLane[]>([]);
+  const [lanes, setLanes] = useState<TimelineLaneEntry[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [brushStart, setBrushStart] = useState<number | null>(null);
@@ -12,23 +13,34 @@ export default function Timeline() {
 
   useEffect(() => {
     api.timelineLanes({})
-      .then(setLanes)
+      .then((r) => {
+        setLanes(r.families || []);
+        setTotal(r.total);
+      })
       .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false));
   }, []);
 
+  // Convert lane buckets from Record<string, number> to sorted array
+  const laneData = lanes.map((lane) => {
+    const buckets = Object.entries(lane.buckets)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([hour, count]) => ({ hour, count }));
+    return { family: lane.family, buckets };
+  });
+
   // Find max count for scaling across all lanes
-  const maxCount = Math.max(0, ...lanes.flatMap((l) => l.buckets.map((b) => b.count)));
-  const totalEvents = lanes.reduce((s, l) => s + l.buckets.reduce((s2, b) => s2 + b.count, 0), 0);
+  const maxCount = Math.max(0, ...laneData.flatMap((l) => l.buckets.map((b) => b.count)));
+  const totalEvents = laneData.reduce((s, l) => s + l.buckets.reduce((s2, b) => s2 + b.count, 0), 0);
 
   // Collect all unique hours for the x-axis
-  const allHours = lanes.length > 0
-    ? [...new Set(lanes.flatMap((l) => l.buckets.map((b) => b.hour)))].sort()
+  const allHours = laneData.length > 0
+    ? [...new Set(laneData.flatMap((l) => l.buckets.map((b) => b.hour)))].sort()
     : [];
   const hourToIndex = new Map(allHours.map((h, i) => [h, i]));
 
   const handleBarClick = (hour: string) => {
-    const idx = hourToIndex.get(hour) || 0;
+    const idx = hourToIndex.get(hour) ?? 0;
     if (brushStart === null) {
       setBrushStart(idx);
       setBrushEnd(null);
@@ -53,8 +65,8 @@ export default function Timeline() {
 
   return (
     <div>
-      <h2 style={{ marginBottom: 16 }}>Timeline ({totalEvents.toLocaleString()} events)</h2>
-      {lanes.length === 0 ? (
+      <h2 style={{ marginBottom: 16 }}>Timeline ({totalEvents.toLocaleString()} events · {total} total hits)</h2>
+      {laneData.length === 0 ? (
         <div className="empty-state">
           <h3>No timeline data</h3>
           <p>Run a search first to populate timeline lanes.</p>
@@ -95,7 +107,7 @@ export default function Timeline() {
           )}
 
           <div ref={containerRef}>
-            {lanes
+            {laneData
               .filter((lane) => !selectedLane || lane.family === selectedLane)
               .map((lane) => {
                 const laneEvents = lane.buckets.reduce((s, b) => s + b.count, 0);
@@ -110,7 +122,7 @@ export default function Timeline() {
                         {lane.family} ({laneEvents.toLocaleString()} events)
                       </span>
                       <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                        {lane.buckets.length} hour buckets
+                        {lane.buckets.length} time buckets
                       </span>
                     </div>
                     {/* Bar chart */}

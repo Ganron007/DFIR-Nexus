@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { api, type CaseInfo } from "../api/client";
+import { api } from "../api/client";
 
 const NAV_ITEMS = [
   { to: "/", label: "Overview", icon: "O" },
@@ -17,16 +17,19 @@ const NAV_ITEMS = [
 ];
 
 export default function Layout({ children }: { children: React.ReactNode }) {
-  const [cases, setCases] = useState<CaseInfo[]>([]);
+  const [cases, setCases] = useState<string[]>([]);
   const [activeCase, setActiveCase] = useState<string>("");
   const [caseMenuOpen, setCaseMenuOpen] = useState(false);
   const location = useLocation();
 
   useEffect(() => {
-    api.cases().then(setCases).catch(() => {});
+    api.cases()
+      .then((r) => {
+        setCases(r.cases || []);
+        setActiveCase(r.active || (r.cases[0] || ""));
+      })
+      .catch(() => {});
   }, []);
-
-  const current = cases.find((c) => c.case_id === activeCase) || cases[0];
 
   const handleActivate = async (caseId: string) => {
     try {
@@ -52,16 +55,16 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             onClick={() => setCaseMenuOpen(!caseMenuOpen)}
           >
             <span className="case-label">Active Case</span>
-            <span className="case-name">{current?.case_name || "No case"}</span>
-            <span className="case-id">{current?.case_id || ""}</span>
+            <span className="case-name">{activeCase || "No case"}</span>
+            <span className="case-id">{activeCase || ""}</span>
           </button>
           {caseMenuOpen && (
             <ul className="case-list">
               {cases.map((c) => (
-                <li key={c.case_id}>
-                  <button onClick={() => handleActivate(c.case_id)}>
-                    <span className="case-name">{c.case_name}</span>
-                    <span className="case-id">{c.case_id}</span>
+                <li key={c}>
+                  <button onClick={() => handleActivate(c)}>
+                    <span className="case-name">{c}</span>
+                    <span className="case-id">{c}</span>
                   </button>
                 </li>
               ))}
@@ -99,7 +102,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             DFIR-Nexus / {NAV_ITEMS.find((n) => n.to === location.pathname)?.label || "Unknown"}
           </span>
           <span className="active-case-badge">
-            {current?.case_id || "no case"}
+            {activeCase || "no case"}
           </span>
         </header>
         <div className="content">{children}</div>

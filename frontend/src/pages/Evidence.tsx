@@ -7,7 +7,7 @@ export default function Evidence() {
 
   useEffect(() => {
     api.evidence()
-      .then(setEvidence)
+      .then((r) => setEvidence(r.evidence))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);

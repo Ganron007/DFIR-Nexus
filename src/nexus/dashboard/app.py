@@ -2324,10 +2324,17 @@ async def spa_index(request) -> HTMLResponse:
 async def spa_asset(request) -> Response:
     """Serve a static asset (JS/CSS/images) from the SPA dist directory."""
     path = request.path_params.get("path", "")
-    # Prevent path traversal
+    # Defense-in-depth: block obvious traversal attempts
     if ".." in path or path.startswith("/"):
         return Response(status_code=404)
-    file_path = _SPA_DIST / path
+    # Resolve and verify the path stays within _SPA_DIST
+    try:
+        spa_root = _SPA_DIST.resolve()
+        file_path = (_SPA_DIST / path).resolve()
+        if not str(file_path).startswith(str(spa_root)):
+            return Response(status_code=404)
+    except (ValueError, RuntimeError):
+        return Response(status_code=404)
     if file_path.is_file():
         return FileResponse(file_path)
     return Response(status_code=404)

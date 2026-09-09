@@ -1,26 +1,31 @@
 import { useEffect, useState, useCallback } from "react";
-import { api, type WorkbenchItem } from "../api/client";
+import { api, type Bookmark } from "../api/client";
+
+interface FormState {
+  title: string;
+  interpretation: string;
+  confidence: string;
+  justification: string;
+}
 
 interface HistoryState {
-  past: Array<{ title: string; observation: string; interpretation: string; confidence: string; justification: string }>;
-  present: { title: string; observation: string; interpretation: string; confidence: string; justification: string };
-  future: Array<{ title: string; observation: string; interpretation: string; confidence: string; justification: string }>;
+  past: FormState[];
+  present: FormState;
+  future: FormState[];
 }
+
+const initialForm: FormState = { title: "", interpretation: "", confidence: "MEDIUM", justification: "" };
 
 const initialState: HistoryState = {
   past: [],
-  present: { title: "", observation: "", interpretation: "", confidence: "MEDIUM", justification: "" },
+  present: initialForm,
   future: [],
 };
 
-function useHistory<T>(initial: T) {
-  const [state, setState] = useState<{ past: T[]; present: T; future: T[] }>({
-    past: [],
-    present: initial,
-    future: [],
-  });
+function useHistory() {
+  const [state, setState] = useState<HistoryState>(initialState);
 
-  const set = useCallback((updater: (prev: T) => T) => {
+  const set = useCallback((updater: (prev: FormState) => FormState) => {
     setState((s) => {
       const newPresent = updater(s.present);
       if (JSON.stringify(newPresent) === JSON.stringify(s.present)) return s;
@@ -44,7 +49,7 @@ function useHistory<T>(initial: T) {
     });
   }, []);
 
-  const reset = useCallback((value: T) => {
+  const reset = useCallback((value: FormState) => {
     setState({ past: [], present: value, future: [] });
   }, []);
 
@@ -52,18 +57,22 @@ function useHistory<T>(initial: T) {
 }
 
 export default function Workbench() {
-  const [items, setItems] = useState<WorkbenchItem[]>([]);
+  const [items, setItems] = useState<Bookmark[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [result, setResult] = useState("");
   const [error, setError] = useState("");
   const [dragIndex, setDragIndex] = useState<number | null>(null);
 
-  const form = useHistory(initialState.present);
+  const form = useHistory();
 
   const load = () => {
     setLoading(true);
     api.workbench()
-      .then(setItems)
+      .then((r) => {
+        setItems(r.bookmarks);
+        setSelected(new Set(r.bookmarks.map((b) => b.id)));
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   };
@@ -75,30 +84,45 @@ export default function Workbench() {
     load();
   };
 
-  const clear = async () => {
+  const clearAll = async () => {
     await api.workbenchClear().catch(() => {});
     setItems([]);
+    setSelected(new Set());
+  };
+
+  const toggleSelect = (id: string) => {
+    const next = new Set(selected);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelected(next);
   };
 
   const promote = async () => {
     setError("");
     setResult("");
     const f = form.state.present;
-    if (!f.title.trim() || !f.observation.trim()) {
-      setError("Title and observation are required");
+    if (!f.title.trim()) {
+      setError("Title is required");
+      return;
+    }
+    if (selected.size === 0) {
+      setError("Select at least one bookmark to promote");
       return;
     }
     try {
       const r = await api.workbenchPromote({
+        bookmark_ids: Array.from(selected),
         title: f.title,
-        observation: f.observation,
         interpretation: f.interpretation || undefined,
-        confidence: f.confidence,
-        confidence_justification: f.justification || undefined,
       });
-      setResult(`Promoted to DRAFT: ${r.finding_id}`);
-      form.reset(initialState.present);
-      clear();
+      if (r.error) {
+        setError(Array.isArray(r.error) ? r.error.join("; ") : r.error);
+        return;
+      }
+      setResult(`Promoted to DRAFT: ${r.finding_id} (${r.bookmark_count} bookmark(s))`);
+      form.reset(initialForm);
+      // Reload workbench — promoted bookmarks are consumed but others remain
+      load();
     } catch (e) {
       setError((e as Error).message);
     }
@@ -115,6 +139,7 @@ export default function Workbench() {
     setItems(next);
     setDragIndex(null);
   };
+  const handleDragEnd = () => setDragIndex(null);
 
   if (loading) return <div className="loading">Loading workbench...</div>;
 
@@ -134,7 +159,7 @@ export default function Workbench() {
           <div className="card-header">
             <span className="card-title">Bookmarked Hits ({items.length})</span>
             {items.length > 0 && (
-              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Drag to reorder</span>
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Drag to reorder · {selected.size} selected</span>
             )}
           </div>
           {items.length === 0 ? (
@@ -145,7 +170,9 @@ export default function Workbench() {
           ) : (
             <>
               <div style={{ marginBottom: 8 }}>
-                <button className="btn btn-sm" onClick={clear}>Clear All</button>
+                <button className="btn btn-sm" onClick={clearAll}>Clear All</button>
+                <button className="btn btn-sm" style={{ marginLeft: 4 }} onClick={() => setSelected(new Set(items.map((i) => i.id)))}>Select All</button>
+                <button className="btn btn-sm" style={{ marginLeft: 4 }} onClick={() => setSelected(new Set())}>Deselect All</button>
               </div>
               <div style={{ maxHeight: "50vh", overflowY: "auto" }}>
                 {items.map((item, i) => (
@@ -155,6 +182,7 @@ export default function Workbench() {
                     onDragStart={() => handleDragStart(i)}
                     onDragOver={handleDragOver}
                     onDrop={() => handleDrop(i)}
+                    onDragEnd={handleDragEnd}
                     style={{
                       padding: 8,
                       marginBottom: 4,
@@ -163,15 +191,23 @@ export default function Workbench() {
                       cursor: "grab",
                       background: dragIndex === i ? "var(--bg-hover)" : "transparent",
                       borderLeft: "2px solid transparent",
-                      borderLeftColor: dragIndex === i ? "var(--accent)" : "transparent",
+                      borderLeftColor: selected.has(item.id) ? "var(--accent)" : "transparent",
                       transition: "background 0.1s",
                     }}
                   >
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span style={{ fontFamily: "monospace", fontSize: 11, color: "var(--text-muted)" }}>
-                        {item.hit.family} · {item.hit.host}
-                      </span>
-                      <div style={{ display: "flex", gap: 4 }}>
+                      <label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+                        <input
+                          type="checkbox"
+                          checked={selected.has(item.id)}
+                          onChange={() => toggleSelect(item.id)}
+                          style={{ margin: 0 }}
+                        />
+                        <span style={{ fontFamily: "monospace", fontSize: 11, color: "var(--text-muted)" }}>
+                          {item.id} · {item.family}
+                        </span>
+                      </label>
+                      <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
                         <span style={{ fontSize: 10, color: "var(--text-muted)" }}>#{i + 1}</span>
                         <button
                           className="btn btn-sm"
@@ -182,12 +218,17 @@ export default function Workbench() {
                         </button>
                       </div>
                     </div>
-                    <div style={{ marginTop: 4, color: "var(--text-secondary)" }}>
-                      {item.hit.line}
+                    <div style={{ marginTop: 4, color: "var(--text-secondary)", fontSize: 11 }}>
+                      {item.file}:{item.line}
                     </div>
-                    <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
-                      {item.hit.timestamp}
+                    <div style={{ fontSize: 10, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {item.text}
                     </div>
+                    {item.time && (
+                      <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                        {item.time}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -225,16 +266,10 @@ export default function Workbench() {
               onChange={(e) => form.set((p) => ({ ...p, title: e.target.value }))}
             />
             <textarea
-              placeholder="Observation (required) — what the evidence shows"
-              value={form.state.present.observation}
-              onChange={(e) => form.set((p) => ({ ...p, observation: e.target.value }))}
-              rows={4}
-            />
-            <textarea
-              placeholder="Interpretation — what it means"
+              placeholder="Interpretation — what the evidence shows and what it means"
               value={form.state.present.interpretation}
               onChange={(e) => form.set((p) => ({ ...p, interpretation: e.target.value }))}
-              rows={3}
+              rows={4}
             />
             <div style={{ display: "flex", gap: 8 }}>
               <select
@@ -253,20 +288,20 @@ export default function Workbench() {
               />
             </div>
             <div style={{ display: "flex", gap: 8 }}>
-              <button className="btn btn-primary" onClick={promote} style={{ flex: 1 }}>
-                Promote to DRAFT
+              <button className="btn btn-primary" onClick={promote} style={{ flex: 1 }} disabled={selected.size === 0}>
+                Promote to DRAFT ({selected.size} bookmark{selected.size !== 1 ? "s" : ""})
               </button>
               <button
                 className="btn"
-                onClick={() => form.reset(initialState.present)}
+                onClick={() => form.reset(initialForm)}
                 title="Reset form"
               >
                 Reset
               </button>
             </div>
-            {items.length > 0 && (
+            {selected.size > 0 && (
               <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
-                {items.length} bookmarked hit(s) will be attached as evidence.
+                {selected.size} bookmarked hit(s) will be attached as evidence. Scribe will auto-generate observation.
               </div>
             )}
           </div>

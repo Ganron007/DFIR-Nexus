@@ -1,8 +1,9 @@
 /**
  * DFIR-Nexus Portal API client.
- * 
+ *
  * All endpoints are under /portal/api/* and return JSON.
  * The Vite dev server proxies these to the Starlette backend on :4508.
+ * In production, Starlette serves both the SPA and the API on the same port.
  */
 
 const BASE = "/portal/api";
@@ -44,93 +45,298 @@ function post<T>(path: string, data?: unknown): Promise<T> {
   });
 }
 
-// --- Types ---
+// --- Types (matched against actual backend handler responses) ---
 
-export interface CaseInfo {
-  case_id: string;
-  case_name: string;
-  status?: string;
-  examiner?: string;
+/** GET /cases → {cases: string[], active: string} */
+export interface CasesResponse {
+  cases: string[];
+  active: string;
+}
+
+/** POST /case/activate → {ok: bool, active: string} or {ok: false, error} */
+export interface ActivateCaseResponse {
+  ok: boolean;
+  active?: string;
+  error?: string;
 }
 
 export interface Finding {
   id: string;
-  case_id: string;
+  case_id?: string;
   status: "DRAFT" | "APPROVED" | "REJECTED";
   title: string;
   observation: string;
   interpretation: string;
-  confidence: "LOW" | "MEDIUM" | "HIGH";
+  confidence: "LOW" | "MEDIUM" | "HIGH" | "SPECULATIVE";
   confidence_justification?: string;
   type?: string;
   host?: string;
   audit_ids: string[];
-  evidence?: Array<{ audit_id: string; path: string; note?: string }>;
+  evidence?: Array<{ source: string; path: string; note?: string }>;
+  iocs?: Array<{ type: string; value: string }>;
   approved_by?: string;
   approved_at?: string;
   examiner_selected?: boolean;
-  created_at: string;
-  modified_at: string;
+  created_at?: string;
+  modified_at?: string;
 }
 
+/** GET /findings → {findings: Finding[], total: number} */
+export interface FindingsResponse {
+  findings: Finding[];
+  total: number;
+}
+
+/** GET /evidence → {evidence: dict[], total: number} */
+export interface EvidenceResponse {
+  evidence: Record<string, unknown>[];
+  total: number;
+}
+
+/** GET /iocs → {iocs: dict[], total: number} */
+export interface IocsResponse {
+  iocs: Record<string, unknown>[];
+  total: number;
+}
+
+/** GET /todos → {todos: dict[], total: number} */
+export interface TodosResponse {
+  todos: Record<string, unknown>[];
+  total: number;
+}
+
+/** GET /summary → nested counts */
+export interface SummaryResponse {
+  findings: { total: number; draft: number; approved: number; rejected: number };
+  timeline: number;
+  evidence: number;
+  todos: { total: number; open: number };
+}
+
+/** GET /transparency → transparency_verify result */
+export type TransparencyResponse = Record<string, unknown>;
+
+/** GET /audit/{finding_id} → audit entries */
+export type AuditResponse = Record<string, unknown>[];
+
+/** N4 hit shape (from query_pack) */
+export interface N4Hit {
+  family: string;
+  file: string;
+  line: string | number;
+  terms: string;
+  text: string;
+}
+
+/** POST /mode1/ask → {needles, window, hits, count, backend} or {needles: [], window, error} */
+export interface AskResponse {
+  needles: string[];
+  window: string;
+  hits?: N4Hit[];
+  count?: number;
+  backend?: string;
+  error?: string;
+}
+
+/** POST /mode1/select → {finding_id, title, status, audit_ids} or {error} */
+export interface SelectResponse {
+  finding_id?: string;
+  title?: string;
+  status?: string;
+  audit_ids?: string[];
+  error?: string | string[];
+}
+
+/** POST /explore/search */
+export interface SearchResponse {
+  hits: N4Hit[];
+  count: number;
+  total_before_family_filter: number;
+  backend: string;
+  families: string[];
+  needles: string[];
+  query: string;
+  offset: number;
+}
+
+/** POST /explore/aggregate → n4_aggregate result */
+export interface AggregateResponse {
+  group_by: string;
+  buckets: Record<string, number>;
+  total?: number;
+  error?: string;
+}
+
+/** POST /explore/histogram → {buckets: Record<string, number>, count} */
+export interface HistogramResponse {
+  buckets: Record<string, number>;
+  count: number;
+}
+
+/** Bookmark shape (from workbench.py) */
+export interface Bookmark {
+  id: string;
+  family: string;
+  file: string;
+  line: string;
+  time: string;
+  text: string;
+  note: string;
+  bookmarked_at: string;
+}
+
+/** GET /workbench → {bookmarks: Bookmark[], total} */
+export interface WorkbenchResponse {
+  bookmarks: Bookmark[];
+  total: number;
+}
+
+/** POST /workbench/add → {status, bookmark_id, total} */
+export interface WorkbenchAddResponse {
+  status: string;
+  bookmark_id?: string;
+  total: number;
+  error?: string;
+}
+
+/** POST /workbench/remove → {status, total} */
+export interface WorkbenchRemoveResponse {
+  status: string;
+  total: number;
+}
+
+/** POST /workbench/clear → {status} */
+export interface WorkbenchClearResponse {
+  status: string;
+}
+
+/** POST /workbench/promote → {finding_id, status, title, bookmark_count} or {error} */
+export interface WorkbenchPromoteResponse {
+  finding_id?: string;
+  status?: string;
+  title?: string;
+  bookmark_count?: number;
+  error?: string | string[];
+}
+
+/** Chat entry shape (from chat.py) */
 export interface ChatEntry {
+  ts: string;
   role: string;
   action: string;
   text: string;
-  meta?: Record<string, unknown>;
-  timestamp?: string;
+  meta?: Record<string, string>;
 }
 
-export interface ExploreHit {
-  audit_id: string;
-  family: string;
-  host: string;
-  timestamp: string;
-  line: string;
-  path: string;
-  line_no?: number;
-}
-
-export interface SearchResponse {
-  hits: ExploreHit[];
+/** GET /chat → {messages: ChatEntry[], total} */
+export interface ChatResponse {
+  messages: ChatEntry[];
   total: number;
-  offset: number;
-  limit: number;
 }
 
-export interface AggregateBucket {
-  key: string;
-  count: number;
+/** POST /chat → {reply, needles, window, hits, count, backend} or {reply, needles: [], count: 0} */
+export interface ChatPostResponse {
+  reply: string;
+  needles: string[];
+  window?: string;
+  hits?: N4Hit[];
+  count?: number;
+  backend?: string;
 }
 
-export interface AggregateResponse {
-  field: string;
-  buckets: AggregateBucket[];
-}
-
-export interface HistogramBucket {
-  hour: string;
-  count: number;
+/** POST /timeline/lanes → {families: [{family, buckets}], total, bucket} */
+export interface TimelineLaneEntry {
   family: string;
+  buckets: Record<string, number>;
+}
+export interface TimelineLanesResponse {
+  families: TimelineLaneEntry[];
+  total: number;
+  bucket: string;
 }
 
-export interface TimelineLane {
-  family: string;
-  buckets: Array<{ hour: string; count: number }>;
+/** POST /entities → {entities: {ips, users, processes, paths}, total} */
+export interface EntitiesResponse {
+  entities: {
+    ips: Record<string, number>;
+    users: Record<string, number>;
+    processes: Record<string, number>;
+    paths: Record<string, number>;
+  };
+  total: number;
 }
 
-export interface EntityResult {
-  type: "user" | "ip" | "process" | "path";
-  value: string;
-  count: number;
+/** POST /mode2/iterate → {question, iterations, total_hits, needles_run, capped} */
+export interface Mode2Iteration {
+  iteration: number;
+  action: string;
+  backend?: string;
+  needles?: string[];
+  rationale?: string;
+  source?: string;
+  hits?: number;
+  new_families?: string[];
+}
+export interface Mode2IterateResponse {
+  question: string;
+  iterations: Mode2Iteration[];
+  total_hits: number;
+  needles_run: string[];
+  capped: boolean;
+  error?: string;
 }
 
-export interface WorkbenchItem {
-  id: string;
-  hit: ExploreHit;
-  added_at: string;
+/** POST /mode2/corroborate → {families, distinct_families, confidence, ok, problems, suggested_queries} */
+export interface CorroborationResponse {
+  families: string[];
+  distinct_families: number;
+  confidence: string;
+  ok: boolean;
+  problems: string[];
+  suggested_queries: string[];
 }
 
+/** POST /mode2/propose-draft → {finding_id, status, corroboration} or {error} */
+export interface ProposeDraftResponse {
+  finding_id?: string;
+  status?: string;
+  corroboration?: CorroborationResponse;
+  error?: string | string[];
+}
+
+/** POST /mode3/plan → {items, queries, rationale, created_at, lane_complete} */
+export interface Mode3PlanItem {
+  type: string;
+  key?: string;
+  tool?: string;
+  purpose: string;
+}
+export interface Mode3PlanResponse {
+  items: Mode3PlanItem[];
+  queries: string[];
+  rationale: string;
+  created_at: string;
+  lane_complete: boolean;
+}
+
+/** POST /mode3/execute → {status, extras_persisted, query_results, note} or {error} */
+export interface Mode3ExecuteResponse {
+  status: string;
+  extras_persisted: string[];
+  query_results: Array<{ query: string; count: number; error?: string }>;
+  note: string;
+  error?: string;
+}
+
+/** POST /mode3/seal → {status: "SEALED", case_id, examiner} or {error} */
+export interface Mode3SealResponse {
+  status: string;
+  case_id?: string;
+  examiner?: string;
+  error?: string;
+}
+
+/** GET /commit/challenge → {challenge_id, nonce, salt, iterations, hash_algorithm} */
 export interface ChallengeResponse {
   challenge_id: string;
   nonce: string;
@@ -139,124 +345,124 @@ export interface ChallengeResponse {
   hash_algorithm: string;
 }
 
+/** POST /commit → {status, approved, errors, examiner} */
+export interface CommitResponse {
+  status: string;
+  approved: string[];
+  errors: Array<{ id: string; error: string }>;
+  examiner: string;
+}
+
 // --- API ---
 
 export const api = {
   // Case management
-  cases: () => request<CaseInfo[]>("/cases"),
+  cases: () => request<CasesResponse>("/cases"),
   activateCase: (caseId: string) =>
-    post<{ status: string; case_id: string }>("/case/activate", { case_id: caseId }),
+    post<ActivateCaseResponse>("/case/activate", { case_id: caseId }),
 
   // Findings & evidence
-  findings: () => request<Finding[]>("/findings"),
-  evidence: () => request<unknown[]>("/evidence"),
-  iocs: () => request<unknown[]>("/iocs"),
-  todos: () => request<unknown[]>("/todos"),
-  summary: () => request<Record<string, unknown>>("/summary"),
-  transparency: () => request<unknown[]>("/transparency"),
+  findings: (status?: string, limit?: number) => {
+    const params = new URLSearchParams();
+    if (status) params.set("status", status);
+    if (limit) params.set("limit", String(limit));
+    const qs = params.toString();
+    return request<FindingsResponse>(`/findings${qs ? `?${qs}` : ""}`);
+  },
+  evidence: () => request<EvidenceResponse>("/evidence"),
+  iocs: () => request<IocsResponse>("/iocs"),
+  todos: () => request<TodosResponse>("/todos"),
+  summary: () => request<SummaryResponse>("/summary"),
+  transparency: () => request<TransparencyResponse>("/transparency"),
   auditForFinding: (findingId: string) =>
-    request<unknown[]>(`/audit/${findingId}`),
+    request<AuditResponse>(`/audit/${findingId}`),
 
   // Mode 1
-  ask: (question: string, needles?: string[]) =>
-    post<{ reply: string; needles?: string[]; hits?: ExploreHit[] }>("/mode1/ask", {
-      question,
-      needles,
-    }),
-  select: (hitIds: number[], title: string, observation?: string) =>
-    post<{ status: string; finding_id: string }>("/mode1/select", {
-      hit_ids: hitIds,
-      title,
-      observation,
-    }),
+  ask: (question: string, limit?: number) =>
+    post<AskResponse>("/mode1/ask", { question, limit }),
+  select: (params: {
+    hits: (string | number)[];
+    title: string;
+    scribe?: boolean;
+    needles?: string;
+    family?: string;
+    start?: string;
+    end?: string;
+    interpretation?: string;
+  }) => post<SelectResponse>("/mode1/select", params),
 
   // Explore
   search: (params: {
+    query?: string;
     needles?: string;
     family?: string;
-    host?: string;
+    start?: string;
+    end?: string;
     limit?: number;
     offset?: number;
   }) => post<SearchResponse>("/explore/search", params),
-  aggregate: (field: string) =>
-    post<AggregateResponse>("/explore/aggregate", { field }),
-  histogram: (params: { family?: string; hours?: number }) =>
-    post<{ buckets: HistogramBucket[] }>("/explore/histogram", params),
+  aggregate: (params: { query?: string; group_by: string }) =>
+    post<AggregateResponse>("/explore/aggregate", params),
+  histogram: (params: {
+    needles?: string;
+    family?: string;
+    start?: string;
+    end?: string;
+    bucket?: number;
+  }) => post<HistogramResponse>("/explore/histogram", params),
 
   // Workbench
-  workbench: () => request<WorkbenchItem[]>("/workbench"),
-  workbenchAdd: (hit: ExploreHit) => post("/workbench/add", { hit }),
-  workbenchRemove: (id: string) => post("/workbench/remove", { id }),
-  workbenchClear: () => post("/workbench/clear"),
+  workbench: () => request<WorkbenchResponse>("/workbench"),
+  workbenchAdd: (hit: N4Hit, note?: string) =>
+    post<WorkbenchAddResponse>("/workbench/add", { hit, note }),
+  workbenchRemove: (bookmarkId: string) =>
+    post<WorkbenchRemoveResponse>("/workbench/remove", { bookmark_id: bookmarkId }),
+  workbenchClear: () => post<WorkbenchClearResponse>("/workbench/clear"),
   workbenchPromote: (params: {
+    bookmark_ids: string[];
     title: string;
-    observation: string;
+    scribe?: boolean;
     interpretation?: string;
-    confidence?: string;
-    confidence_justification?: string;
-  }) => post<{ status: string; finding_id: string }>("/workbench/promote", params),
+  }) => post<WorkbenchPromoteResponse>("/workbench/promote", params),
 
   // Chat
   chat: (limit?: number) =>
-    request<ChatEntry[]>(`/chat${limit ? `?limit=${limit}` : ""}`),
-  chatPost: (text: string) => post<{ reply: string; action: string }>("/chat", { text }),
+    request<ChatResponse>(`/chat${limit ? `?limit=${limit}` : ""}`),
+  chatPost: (message: string) => post<ChatPostResponse>("/chat", { message }),
   chatClear: () => post<{ status: string }>("/chat/clear"),
 
   // Timeline
-  timelineLanes: (params?: { family?: string; hours?: number }) =>
-    post<TimelineLane[]>("/timeline/lanes", params || {}),
+  timelineLanes: (params?: {
+    query?: string;
+    needles?: string;
+    family?: string;
+    start?: string;
+    end?: string;
+    bucket?: string;
+  }) => post<TimelineLanesResponse>("/timeline/lanes", params || {}),
 
   // Entities
-  entities: (params: { needles?: string; family?: string; type?: string }) =>
-    post<EntityResult[]>("/entities", params),
+  entities: (params: { query?: string; needles?: string }) =>
+    post<EntitiesResponse>("/entities", params),
 
   // Mode 2
   mode2Iterate: (params: { question: string; max_iterations?: number }) =>
-    post<{
-      iterations: number;
-      total_hits: number;
-      proposed_needles: string[];
-      hits: ExploreHit[];
-      chat_entries: ChatEntry[];
-    }>("/mode2/iterate", params),
-  mode2Corroborate: (params: { finding_id?: string; family?: string }) =>
-    post<{
-      corroboration: Array<{ family: string; count: number; confidence: string }>;
-      suggestions: string[];
-    }>("/mode2/corroborate", params),
-  mode2ProposeDraft: (params: {
-    title: string;
-    observation: string;
-    interpretation?: string;
-    confidence?: string;
-    confidence_justification?: string;
-    audit_ids?: string[];
-  }) => post<{ status: string; finding_id: string }>("/mode2/propose-draft", params),
+    post<Mode2IterateResponse>("/mode2/iterate", params),
+  mode2Corroborate: (params: { finding_id?: string }) =>
+    post<CorroborationResponse>("/mode2/corroborate", params),
+  mode2ProposeDraft: (params: { title: string; hits?: N4Hit[]; query?: string }) =>
+    post<ProposeDraftResponse>("/mode2/propose-draft", params),
 
   // Mode 3
-  mode3Plan: (params: { question?: string }) =>
-    post<{
-      extras: string[];
-      skips: string[];
-      queries: string[];
-      rationale: string;
-    }>("/mode3/plan", params),
-  mode3Execute: (params: {
-    extras?: string[];
-    queries?: string[];
-    approval_token?: string;
-  }) =>
-    post<{
-      status: string;
-      extras_persisted: number;
-      queries_run: number;
-      results: unknown[];
-    }>("/mode3/execute", params),
+  mode3Plan: (params?: { question?: string }) =>
+    post<Mode3PlanResponse>("/mode3/plan", params || {}),
+  mode3Execute: (params: { extras?: string[]; queries?: string[] }) =>
+    post<Mode3ExecuteResponse>("/mode3/execute", params),
   mode3Seal: (params: {
     challenge_id: string;
     response: string;
-    examiner: string;
-  }) => post<{ status: string; sealed: boolean; hmac: string }>("/mode3/seal", params),
+    examiner?: string;
+  }) => post<Mode3SealResponse>("/mode3/seal", params),
 
   // Approval
   getChallenge: () => request<ChallengeResponse>("/commit/challenge"),
@@ -264,10 +470,6 @@ export const api = {
     finding_ids: string[];
     challenge_id: string;
     response: string;
-    examiner: string;
-  }) =>
-    post<{
-      approved: string[];
-      errors: Array<{ finding_id: string; error: string }>;
-    }>("/commit", params),
+    examiner?: string;
+  }) => post<CommitResponse>("/commit", params),
 };

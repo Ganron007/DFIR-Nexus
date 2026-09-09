@@ -1,16 +1,8 @@
 import { useEffect, useState, useRef } from "react";
-import { api, type ChatEntry } from "../api/client";
-
-interface ProposalData {
-  needles?: string[];
-  hits?: Array<{ audit_id: string; family: string; line: string }>;
-  rationale?: string;
-  iterations?: number;
-  total_hits?: number;
-}
+import { api, type ChatEntry, type Mode3PlanResponse } from "../api/client";
 
 function ProposalCard({ entry }: { entry: ChatEntry }) {
-  const meta = (entry.meta || {}) as ProposalData;
+  const meta = (entry.meta || {}) as Record<string, string>;
   const isMode3 = entry.action === "mode3_plan" || entry.action === "mode3_execute";
 
   return (
@@ -47,11 +39,11 @@ function ProposalCard({ entry }: { entry: ChatEntry }) {
         </p>
       )}
 
-      {meta.needles && meta.needles.length > 0 && (
+      {meta.needles && (
         <div style={{ marginBottom: 8 }}>
           <span style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase" }}>Proposed Needles:</span>
           <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
-            {meta.needles.map((n, i) => (
+            {meta.needles.split(",").map((n, i) => (
               <span
                 key={i}
                 style={{
@@ -70,36 +62,15 @@ function ProposalCard({ entry }: { entry: ChatEntry }) {
         </div>
       )}
 
-      {meta.hits && meta.hits.length > 0 && (
-        <div style={{ marginBottom: 8 }}>
-          <span style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase" }}>
-            Hits ({meta.hits.length}):
-          </span>
-          <div style={{ marginTop: 4, maxHeight: 120, overflowY: "auto" }}>
-            {meta.hits.slice(0, 5).map((h, i) => (
-              <div key={i} style={{ fontSize: 11, color: "var(--text-secondary)", padding: "2px 0", borderBottom: "1px solid var(--border)" }}>
-                <span style={{ fontFamily: "monospace", color: "var(--accent)" }}>{h.family}</span>
-                {" — "}
-                {h.line.slice(0, 100)}
-                {h.line.length > 100 && "..."}
-              </div>
-            ))}
-            {meta.hits.length > 5 && (
-              <span style={{ fontSize: 10, color: "var(--text-muted)" }}>+ {meta.hits.length - 5} more...</span>
-            )}
-          </div>
-        </div>
-      )}
-
       {meta.rationale && (
         <div style={{ fontSize: 12, color: "var(--text-secondary)", fontStyle: "italic", marginTop: 8, paddingLeft: 8, borderLeft: "2px solid var(--border-light)" }}>
           {meta.rationale}
         </div>
       )}
 
-      {meta.iterations !== undefined && (
+      {meta.hits && (
         <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>
-          {meta.iterations} iterations · {meta.total_hits || 0} total hits
+          {meta.hits} hits
         </div>
       )}
     </div>
@@ -114,22 +85,31 @@ export default function SteerChat() {
   const [mode, setMode] = useState<"mode1" | "mode2" | "mode3">("mode1");
   const [mode2Iterations, setMode2Iterations] = useState(3);
   const [mode3Step, setMode3Step] = useState<"plan" | "execute" | "seal">("plan");
-  const [mode3Plan, setMode3Plan] = useState<{ extras: string[]; skips: string[]; queries: string[] } | null>(null);
-  const [sealChallenge, setSealChallenge] = useState<{ challenge_id: string; nonce: string } | null>(null);
+  const [mode3Plan, setMode3Plan] = useState<Mode3PlanResponse | null>(null);
+  const [sealChallenge, setSealChallenge] = useState<{ challenge_id: string; nonce: string; salt: string } | null>(null);
+  const [sealResponse, setSealResponse] = useState("");
+  const [sealExaminer, setSealExaminer] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const scrollTimerRef = useRef<number | null>(null);
 
   const load = () => {
     api.chat(200)
-      .then(setMessages)
+      .then((r) => setMessages(r.messages))
       .catch(() => {})
       .finally(() => {
-        setTimeout(() => {
+        if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
+        scrollTimerRef.current = window.setTimeout(() => {
           scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
         }, 50);
       });
   };
 
-  useEffect(() => load(), []);
+  useEffect(() => {
+    load();
+    return () => {
+      if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
+    };
+  }, []);
 
   const send = async () => {
     if (!input.trim() || loading) return;
@@ -143,10 +123,7 @@ export default function SteerChat() {
         await api.chatPost(text);
         load();
       } else if (mode === "mode2") {
-        const r = await api.mode2Iterate({ question: text, max_iterations: mode2Iterations });
-        if (r.chat_entries?.length) {
-          setMessages((prev) => [...prev, ...r.chat_entries]);
-        }
+        await api.mode2Iterate({ question: text, max_iterations: mode2Iterations });
         load();
       } else if (mode === "mode3") {
         if (mode3Step === "plan") {
@@ -155,10 +132,11 @@ export default function SteerChat() {
           setMessages((prev) => [
             ...prev,
             {
-              role: "agent",
+              ts: new Date().toISOString(),
+              role: "llm",
               action: "mode3_plan",
-              text: `Plan: ${plan.extras.length} extras, ${plan.skips.length} skips, ${plan.queries.length} queries.`,
-              meta: plan,
+              text: `Plan: ${plan.items.length} step(s), ${plan.queries.length} corroboration query(ies). ${plan.rationale}`,
+              meta: { rationale: plan.rationale },
             },
           ]);
           setMode3Step("execute");
@@ -177,16 +155,17 @@ export default function SteerChat() {
     setError("");
     try {
       const r = await api.mode3Execute({
-        extras: mode3Plan.extras,
+        extras: mode3Plan.items.filter((i) => i.type === "extra" && i.key).map((i) => i.key!),
         queries: mode3Plan.queries,
       });
       setMessages((prev) => [
         ...prev,
         {
-          role: "agent",
+          ts: new Date().toISOString(),
+          role: "llm",
           action: "mode3_execute",
-          text: `Executed: ${r.extras_persisted} extras persisted, ${r.queries_run} queries run.`,
-          meta: r,
+          text: `Executed: ${r.extras_persisted.length} extras persisted, ${r.query_results.length} queries run. ${r.note}`,
+          meta: {},
         },
       ]);
       setMode3Step("seal");
@@ -202,7 +181,42 @@ export default function SteerChat() {
     setError("");
     try {
       const ch = await api.getChallenge();
-      setSealChallenge({ challenge_id: ch.challenge_id, nonce: ch.nonce });
+      setSealChallenge({ challenge_id: ch.challenge_id, nonce: ch.nonce, salt: ch.salt });
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const sealCase = async () => {
+    if (!sealChallenge || !sealResponse.trim()) return;
+    setLoading(true);
+    setError("");
+    try {
+      const r = await api.mode3Seal({
+        challenge_id: sealChallenge.challenge_id,
+        response: sealResponse,
+        examiner: sealExaminer || undefined,
+      });
+      if (r.error) {
+        setError(r.error);
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          {
+            ts: new Date().toISOString(),
+            role: "llm",
+            action: "mode3_seal",
+            text: `Case sealed: ${r.status} — examiner: ${r.examiner}, case: ${r.case_id}`,
+            meta: {},
+          },
+        ]);
+        setSealChallenge(null);
+        setSealResponse("");
+        setMode3Step("plan");
+        setMode3Plan(null);
+      }
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -216,13 +230,16 @@ export default function SteerChat() {
     setMode3Plan(null);
     setMode3Step("plan");
     setSealChallenge(null);
+    setSealResponse("");
   };
 
   const isProposal = (entry: ChatEntry) =>
     entry.action === "mode2_proposal" ||
-    entry.action === "mode2_iterate" ||
+    entry.action === "mode2_no_proposals" ||
+    entry.action === "mode2_done" ||
     entry.action === "mode3_plan" ||
-    entry.action === "mode3_execute";
+    entry.action === "mode3_execute" ||
+    entry.action === "mode3_seal";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 120px)" }}>
@@ -236,6 +253,7 @@ export default function SteerChat() {
               setMode3Step("plan");
               setMode3Plan(null);
               setSealChallenge(null);
+              setSealResponse("");
             }}
             style={{ width: "auto" }}
           >
@@ -247,11 +265,11 @@ export default function SteerChat() {
             <input
               type="number"
               min={1}
-              max={10}
+              max={4}
               value={mode2Iterations}
-              onChange={(e) => setMode2Iterations(Number(e.target.value))}
+              onChange={(e) => setMode2Iterations(Math.max(1, Math.min(4, Number(e.target.value) || 2)))}
               style={{ width: 60 }}
-              title="Max iterations"
+              title="Max iterations (1-4)"
             />
           )}
           {mode === "mode3" && (
@@ -265,30 +283,58 @@ export default function SteerChat() {
 
       {error && <div className="error-banner">{error}</div>}
 
-      {/* Mode 3 action bar */}
+      {/* Mode 3 action bar — Execute */}
       {mode === "mode3" && mode3Step === "execute" && mode3Plan && (
         <div className="card" style={{ padding: "8px 12px", marginBottom: 8 }}>
           <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-            Plan ready: {mode3Plan.extras.length} extras, {mode3Plan.queries.length} queries.
+            Plan ready: {mode3Plan.items.length} step(s), {mode3Plan.queries.length} query(ies).
+            {!mode3Plan.lane_complete && (
+              <span style={{ color: "var(--warning)", marginLeft: 8 }}>
+                ⚠ Mandatory lane not complete — extras may be refused.
+              </span>
+            )}
           </span>
           <button className="btn btn-primary btn-sm" style={{ marginLeft: 12 }} onClick={executePlan} disabled={loading}>
             Execute Plan
           </button>
         </div>
       )}
+
+      {/* Mode 3 action bar — Seal */}
       {mode === "mode3" && mode3Step === "seal" && (
-        <div className="card" style={{ padding: "8px 12px", marginBottom: 8 }}>
-          <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-            Execution complete. Ready to seal the case file.
-          </span>
+        <div className="card" style={{ padding: "12px", marginBottom: 8 }}>
+          <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 8 }}>
+            Execution complete. Seal the case file with HMAC challenge-response.
+          </div>
           {!sealChallenge ? (
-            <button className="btn btn-primary btn-sm" style={{ marginLeft: 12 }} onClick={getSealChallenge} disabled={loading}>
+            <button className="btn btn-primary btn-sm" onClick={getSealChallenge} disabled={loading}>
               Get Seal Challenge
             </button>
           ) : (
-            <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 12 }}>
-              Challenge: {sealChallenge.nonce.slice(0, 24)}...
-            </span>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                Nonce: {sealChallenge.nonce.slice(0, 32)}...
+              </span>
+              <input
+                placeholder="Examiner name"
+                value={sealExaminer}
+                onChange={(e) => setSealExaminer(e.target.value)}
+                style={{ width: 120 }}
+              />
+              <input
+                placeholder="HMAC response (hex)"
+                value={sealResponse}
+                onChange={(e) => setSealResponse(e.target.value)}
+                style={{ width: 300, fontFamily: "monospace", fontSize: 11 }}
+              />
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={sealCase}
+                disabled={loading || !sealResponse.trim()}
+              >
+                Seal Case
+              </button>
+            </div>
           )}
         </div>
       )}
@@ -330,15 +376,14 @@ export default function SteerChat() {
                     {m.text}
                   </div>
                   <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2, textAlign: m.role === "examiner" ? "right" : "left" }}>
-                    {m.role} · {m.action}{m.timestamp ? ` · ${m.timestamp}` : ""}
+                    {m.role} · {m.action}{m.ts ? ` · ${m.ts.slice(0, 19)}` : ""}
                   </div>
                 </div>
               );
             })}
             {loading && (
               <div style={{ alignSelf: "flex-start", color: "var(--text-muted)", fontSize: 13, padding: "4px 12px" }}>
-                <span style={{ animation: "pulse 1s infinite" }}>●●●</span>
-                <style>{`@keyframes pulse { 0%,100% { opacity: 0.3 } 50% { opacity: 1 } }`}</style>
+                <span className="pulse-dots">●●●</span>
               </div>
             )}
           </div>
