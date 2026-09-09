@@ -4,6 +4,60 @@ All notable changes to DFIR-Nexus are documented here.
 
 ## Unreleased
 
+### Post-implementation audit fixes (2026-09-09)
+
+#### What was done
+
+Comprehensive audit of all Phase 2 and Phase 3 WPs against actual
+implementation. Found and fixed 4 gaps:
+
+#### Gap 1: WP 2.11 — Playbook first-phase matching (FIXED)
+
+`_playbook_context_for_families` only matched `phase == "Identify"` exactly.
+11 of 22 playbooks use different first-phase names ("Locate Artifacts",
+"Collect", "Detection", "Acquire", "Identify Method", "Identify Devices",
+etc.) and their methodology steps were never extracted.
+
+**Fix:** Now extracts the FIRST phase's steps regardless of name, plus
+also checks for an "Identify" phase if it's not the first. All 22 playbooks
+now contribute their methodology context.
+
+#### Gap 2: WP 2.9 — Corroboration from playbook caveats (FIXED)
+
+`corroboration_suggestions` still used the hard-coded `_corroborate_for`
+family mapping despite WP 2.9 claiming it was data-driven.
+
+**Fix:** `_corroborate_for` now loads playbook caveats first, extracts
+corroboration terms from caveat text, and falls back to the hard-coded
+mapping only when no playbook matches.
+
+#### Gap 3: WP 3.10 — Orchestrator playbook context (FIXED)
+
+The orchestrator's docstring claimed "playbook context" but only injected
+RAG methodology. Playbook caveats and steps were never loaded.
+
+**Fix:** New `_playbook_for_family()` loads playbook caveats + first-phase
+steps for each agent's assigned families. The LLM prompt now includes
+playbook guidance alongside RAG methodology. Agent run log includes
+`playbook_used` flag.
+
+#### Gap 4: Dead code removal (FIXED)
+
+`_refine_rationale` in mode3.py was dead code — replaced by `_llm_plan`
+in WP 3.5 but never removed.
+
+**Fix:** Removed.
+
+#### New files
+
+- `tests/test_audit_fixes.py` — 10 tests verifying all 4 fixes
+
+#### Test results
+
+- 468 passed, 1 skipped, 0 failed
+- 10 new tests in 1 new test file
+- Ruff clean
+
 ### Mode 3 iterative query + agent DRAFT findings (2026-09-09)
 
 #### What was done
