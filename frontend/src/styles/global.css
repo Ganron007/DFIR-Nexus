@@ -417,6 +417,86 @@ tr:hover td {
   color: var(--text-secondary);
 }
 
+/* WP 4b.4: N1-N8 stage stepper */
+.stage-stepper {
+  display: flex;
+  gap: 0;
+  padding: 8px 16px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+
+.stage-step {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-decoration: none;
+  white-space: nowrap;
+  border-radius: 4px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.stage-step:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.stage-step.complete {
+  color: var(--success);
+}
+
+.stage-step.complete .stage-id {
+  font-weight: 600;
+}
+
+.stage-id {
+  font-family: monospace;
+  font-weight: 600;
+}
+
+.stage-label {
+  font-size: 10px;
+}
+
+.stage-arrow {
+  margin-left: 4px;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+/* WP 4b.6: Mode indicator */
+.mode-indicator {
+  padding: 4px 12px;
+}
+
+.mode-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.mode-1 {
+  background: rgba(47, 129, 247, 0.15);
+  color: var(--accent);
+}
+
+.mode-2 {
+  background: rgba(210, 153, 34, 0.15);
+  color: var(--warning);
+}
+
+.mode-3 {
+  background: rgba(163, 113, 247, 0.15);
+  color: var(--purple);
+}
+
 .badge-medium {
   background: rgba(210, 153, 34, 0.15);
   color: var(--warning);

@@ -93,17 +93,7 @@ export interface EvidenceResponse {
   total: number;
 }
 
-/** GET /iocs → {iocs: dict[], total: number} */
-export interface IocsResponse {
-  iocs: Record<string, unknown>[];
-  total: number;
-}
-
-/** GET /todos → {todos: dict[], total: number} */
-export interface TodosResponse {
-  todos: Record<string, unknown>[];
-  total: number;
-}
+// WP 4b.12: IocsResponse and TodosResponse removed — no UI pages consume them
 
 /** GET /summary → nested counts */
 export interface SummaryResponse {
@@ -353,6 +343,71 @@ export interface CommitResponse {
   examiner: string;
 }
 
+// --- Phase 4b: Workflow-driven cockpit types ---
+
+/** POST /case/create → {ok, case_id, name, active} */
+export interface CaseCreateResponse {
+  ok: boolean;
+  case_id: string;
+  name: string;
+  active: string;
+  error?: string;
+}
+
+/** GET /case/details → case metadata + counts */
+export interface CaseDetailsResponse {
+  case_id: string;
+  name?: string;
+  description?: string;
+  status?: string;
+  investigation_mode?: string;
+  evidence_count?: number;
+  findings_count?: number;
+  pipeline_complete?: boolean;
+  error?: string;
+}
+
+/** POST /pipeline/run → {run_id, case_id, mode, status} */
+export interface PipelineRunResponse {
+  run_id: string;
+  case_id: string;
+  mode: string;
+  status: string;
+  error?: string;
+}
+
+/** GET /pipeline/status → {run_id, case_id, mode, status, ...} */
+export interface PipelineStatusResponse {
+  run_id: string;
+  case_id: string;
+  mode: string;
+  status: string;
+  started_at?: string;
+  completed_at?: string;
+  error?: string;
+  stages?: string[];
+}
+
+/** GET /playbook/needles → {suggestions: [...], total} */
+export interface PlaybookSuggestion {
+  playbook: string;
+  slug: string;
+  needles: string[];
+  caveats: string[];
+  triggers: string[];
+}
+export interface PlaybookNeedlesResponse {
+  suggestions: PlaybookSuggestion[];
+  total: number;
+}
+
+/** POST/GET /case/mode → {ok, mode} or {mode} */
+export interface CaseModeResponse {
+  ok?: boolean;
+  mode: string;
+  error?: string;
+}
+
 // --- API ---
 
 export const api = {
@@ -370,8 +425,7 @@ export const api = {
     return request<FindingsResponse>(`/findings${qs ? `?${qs}` : ""}`);
   },
   evidence: () => request<EvidenceResponse>("/evidence"),
-  iocs: () => request<IocsResponse>("/iocs"),
-  todos: () => request<TodosResponse>("/todos"),
+  // WP 4b.12: iocs and todos removed — no UI pages consume them
   summary: () => request<SummaryResponse>("/summary"),
   transparency: () => request<TransparencyResponse>("/transparency"),
   auditForFinding: (findingId: string) =>
@@ -472,4 +526,22 @@ export const api = {
     response: string;
     examiner?: string;
   }) => post<CommitResponse>("/commit", params),
+
+  // Phase 4b: Workflow-driven cockpit
+  caseCreate: (params: {
+    name: string;
+    description?: string;
+    examiner?: string;
+    mode?: string;
+  }) => post<CaseCreateResponse>("/case/create", params),
+  caseDetails: (caseId?: string) =>
+    request<CaseDetailsResponse>(`/case/details${caseId ? `?case_id=${caseId}` : ""}`),
+  pipelineRun: (params: { mode: string; case_id?: string }) =>
+    post<PipelineRunResponse>("/pipeline/run", params),
+  pipelineStatus: (runId: string) =>
+    request<PipelineStatusResponse>(`/pipeline/status?run_id=${runId}`),
+  playbookNeedles: (families?: string) =>
+    request<PlaybookNeedlesResponse>(`/playbook/needles${families ? `?families=${families}` : ""}`),
+  setCaseMode: (mode: string) => post<CaseModeResponse>("/case/mode", { mode }),
+  getCaseMode: () => request<CaseModeResponse>("/case/mode"),
 };

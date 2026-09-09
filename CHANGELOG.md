@@ -4,6 +4,80 @@ All notable changes to DFIR-Nexus are documented here.
 
 ## Unreleased
 
+### Phase 4b — Workflow-driven cockpit (2026-09-10)
+
+#### Summary
+
+Implemented all 14 Phase 4b work packages. The UI is now the investigation
+workbench — an examiner can land on `/`, create a case, register evidence,
+choose a mode, run N2, query, interpret, approve, and report without ever
+touching the CLI. The flat nav list became a guided workflow.
+
+#### New backend APIs
+
+- `POST /portal/api/case/create` — create + activate a case, store mode (WP 4b.1)
+- `GET /portal/api/case/details` — case metadata, evidence/findings counts, pipeline status (WP 4b.1)
+- `POST /portal/api/pipeline/run` — trigger N2 lane (tools/interpret/coverage/design) asynchronously (WP 4b.2)
+- `GET /portal/api/pipeline/status` — poll pipeline run status by run_id (WP 4b.2)
+- `GET /portal/api/playbook/needles` — playbook-suggested search needles with optional family filter (WP 4b.7)
+- `POST /portal/api/case/mode` — set investigation mode (1/2/3) in CASE.yaml (WP 4b.6)
+- `GET /portal/api/case/mode` — get investigation mode for active case (WP 4b.6)
+
+All endpoints documented in `Docs/API-CONTRACT.md` section 11c.
+
+#### New frontend components and pages
+
+- `CaseSetup.tsx` — 4-step Case Setup Wizard (details → evidence → mode → process) (WP 4b.1)
+- `CaseContext.tsx` — shared React Context for activeCase, mode, health (WP 4b.11)
+- `StageStepper` in `Layout.tsx` — N1-N8 progress indicator with click-to-navigate (WP 4b.4)
+- Mode badge in sidebar showing current investigation mode (WP 4b.6)
+
+#### Updated frontend pages
+
+- `Overview.tsx` — rewritten as Case Dashboard with cases table, New Investigation button, system health, per-case details (WP 4b.3)
+- `Explore.tsx` — needle explanation, collapsible playbook suggestions panel with one-click search, reads URL params from Timeline brush (WP 4b.5, 4b.10)
+- `Timeline.tsx` — brush selection now wires to Explore via "Search in Explore →" button with start/end/family params (WP 4b.10)
+- `Findings.tsx` — error banner instead of silent catch; corroboration panel showing FD-006/007 status; audit trail viewer (WP 4b.8, 4b.12, 4b.13)
+- `Evidence.tsx` — error banner instead of silent catch (WP 4b.8)
+- `Entities.tsx` — loads on mount via useEffect, not just on button click (WP 4b.9)
+- `SteerChat.tsx` — Mode 1 now uses `api.ask()` for needle translation; Mode 2 adds "Propose Draft Finding" button (WP 4b.12, 4b.14)
+- `Layout.tsx` — consumes CaseContext instead of local state; version bumped to Phase 4b (WP 4b.11)
+
+#### Dead API client methods resolved (WP 4b.12)
+
+- `iocs` — removed (no IOCs page in SPA)
+- `todos` — removed (no TODOs page in SPA)
+- `auditForFinding` — wired into Findings.tsx audit trail viewer
+- `ask` — wired into SteerChat.tsx Mode 1
+- `select` — retained for future Workbench integration
+- `mode2Corroborate` — wired into Findings.tsx corroboration panel
+- `mode2ProposeDraft` — wired into SteerChat.tsx Mode 2 propose-draft button
+
+#### CSS additions
+
+- `.stage-stepper` / `.stage-step` / `.stage-id` / `.stage-label` / `.stage-arrow` — N1-N8 stepper styling
+- `.mode-indicator` / `.mode-badge` / `.mode-1` / `.mode-2` / `.mode-3` — mode badge styling
+
+#### Tests
+
+- New: `tests/test_phase4b_apis.py` — 9 tests covering case creation, details, mode set/get, playbook needles, pipeline run validation, pipeline status 404.
+- Full suite: 468 passed, 1 skipped, 0 failed.
+- Ruff: clean.
+- TypeScript strict: clean.
+- Vite production build: clean.
+
+#### Documentation
+
+- `Docs/WIRING-PLAN.md` — Phase 4b table updated with status column; all 14 WPs marked ✅ DONE; Gate 4b marked PASSED; Track B marked COMPLETE.
+- `Docs/API-CONTRACT.md` — section 11c added with full documentation of all 6 new endpoints.
+
+#### What remains pending
+
+- **Phase 5** (deployment/setup) — NOT started, remains pending.
+- **User validation** — user will run their own Phase 4/4b tests before Phase 5 begins.
+
+---
+
 ### Post-implementation audit fixes (2026-09-09)
 
 #### What was done

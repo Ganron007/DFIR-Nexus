@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { api, type N4Hit, type HistogramResponse } from "../api/client";
+import { useSearchParams } from "react-router-dom";
+import { api, type N4Hit, type HistogramResponse, type PlaybookSuggestion } from "../api/client";
 import VirtualTable, { type Column } from "../components/VirtualTable";
 import Histogram from "../components/Histogram";
 
 const PAGE_SIZE = 200;
 
 export default function Explore() {
+  const [searchParams] = useSearchParams();
   const [needles, setNeedles] = useState("");
   const [family, setFamily] = useState("");
   const [hits, setHits] = useState<N4Hit[]>([]);
@@ -17,6 +19,8 @@ export default function Explore() {
   const [bookmarked, setBookmarked] = useState<Set<string>>(new Set());
   const [histogram, setHistogram] = useState<Record<string, number>>({});
   const [showHistogram, setShowHistogram] = useState(true);
+  const [playbookSuggestions, setPlaybookSuggestions] = useState<PlaybookSuggestion[]>([]);
+  const [showPlaybookHelp, setShowPlaybookHelp] = useState(false);
   const reqIdRef = useRef(0);
 
   // Load family aggregates and workbench bookmarks on mount
@@ -30,7 +34,25 @@ export default function Explore() {
         setBookmarked(ids);
       })
       .catch(() => {});
+    // WP 4b.5: Load playbook needle suggestions
+    api.playbookNeedles()
+      .then((r) => setPlaybookSuggestions(r.suggestions || []))
+      .catch(() => {});
   }, []);
+
+  // WP 4b.10: Read URL params from Timeline brush navigation
+  useEffect(() => {
+    const start = searchParams.get("start");
+    const end = searchParams.get("end");
+    const fam = searchParams.get("family");
+    if (fam) setFamily(fam);
+    if (start || end || fam) {
+      // Auto-search with the provided params
+      const n = searchParams.get("needles") || "";
+      setNeedles(n);
+      setTimeout(() => doSearch(0, fam || undefined), 100);
+    }
+  }, [searchParams]);
 
   const doSearch = useCallback(async (targetOffset: number, fam?: string) => {
     const reqId = ++reqIdRef.current;
@@ -178,6 +200,55 @@ export default function Explore() {
           </datalist>
           <button className="btn btn-primary" onClick={() => search()}>Search</button>
         </div>
+
+        {/* WP 4b.5: Needle explanation */}
+        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>
+          <strong>Needles</strong> are search terms — IOCs, technique names, file names, event IDs —
+          that the N4 query engine searches for across parsed evidence.
+          {" "}
+          <button
+            onClick={() => setShowPlaybookHelp(!showPlaybookHelp)}
+            style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", fontSize: 12 }}
+          >
+            {showPlaybookHelp ? "Hide suggestions" : `Show playbook suggestions (${playbookSuggestions.length})`}
+          </button>
+        </div>
+
+        {/* WP 4b.5: Playbook needle suggestions */}
+        {showPlaybookHelp && playbookSuggestions.length > 0 && (
+          <div style={{ marginTop: 8, padding: 12, background: "var(--bg-tertiary)", borderRadius: 8 }}>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8, textTransform: "uppercase" }}>
+              Playbook-Suggested Needles
+            </div>
+            {playbookSuggestions.slice(0, 6).map((pb) => (
+              <div key={pb.slug} style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4 }}>
+                  {pb.playbook}
+                </div>
+                <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                  {pb.needles.slice(0, 10).map((n) => (
+                    <button
+                      key={n}
+                      className="btn btn-sm"
+                      style={{ fontFamily: "monospace", fontSize: 11, padding: "2px 8px" }}
+                      onClick={() => {
+                        setNeedles(n);
+                        setTimeout(() => search(), 50);
+                      }}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+                {pb.caveats.length > 0 && (
+                  <div style={{ fontSize: 10, color: "var(--warning)", marginTop: 4 }}>
+                    ⚠ {pb.caveats[0]}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Family facet chips */}
         {familyEntries.length > 0 && (

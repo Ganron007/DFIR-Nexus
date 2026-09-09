@@ -120,7 +120,12 @@ export default function SteerChat() {
 
     try {
       if (mode === "mode1") {
+        // WP 4b.12: Wire api.ask to Mode 1 — translates English to needles
+        const askResult = await api.ask(text);
         await api.chatPost(text);
+        if (askResult.error) {
+          setError(askResult.error);
+        }
         load();
       } else if (mode === "mode2") {
         await api.mode2Iterate({ question: text, max_iterations: mode2Iterations });
@@ -233,6 +238,38 @@ export default function SteerChat() {
     setSealResponse("");
   };
 
+  // WP 4b.14: Propose-draft UI — trigger LLM-drafted findings from the UI
+  const [draftTitle, setDraftTitle] = useState("");
+  const [showDraftForm, setShowDraftForm] = useState(false);
+  const proposeDraft = async () => {
+    if (!draftTitle.trim()) return;
+    setLoading(true);
+    setError("");
+    try {
+      const r = await api.mode2ProposeDraft({ title: draftTitle });
+      if (r.error) {
+        setError(Array.isArray(r.error) ? r.error.join("; ") : r.error);
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          {
+            ts: new Date().toISOString(),
+            role: "llm",
+            action: "mode2_proposal",
+            text: `DRAFT finding staged: ${r.finding_id || draftTitle} (${r.status || "DRAFT"})`,
+            meta: {},
+          },
+        ]);
+        setDraftTitle("");
+        setShowDraftForm(false);
+      }
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const isProposal = (entry: ChatEntry) =>
     entry.action === "mode2_proposal" ||
     entry.action === "mode2_no_proposals" ||
@@ -333,6 +370,36 @@ export default function SteerChat() {
                 disabled={loading || !sealResponse.trim()}
               >
                 Seal Case
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* WP 4b.14: Propose Draft button — Mode 2 */}
+      {mode === "mode2" && (
+        <div className="card" style={{ padding: "8px 12px", marginBottom: 8 }}>
+          {!showDraftForm ? (
+            <button className="btn btn-sm" onClick={() => setShowDraftForm(true)}>
+              ✎ Propose Draft Finding
+            </button>
+          ) : (
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <input
+                placeholder="Finding title..."
+                value={draftTitle}
+                onChange={(e) => setDraftTitle(e.target.value)}
+                style={{ flex: 1 }}
+              />
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={proposeDraft}
+                disabled={loading || !draftTitle.trim()}
+              >
+                {loading ? "..." : "Stage DRAFT"}
+              </button>
+              <button className="btn btn-sm" onClick={() => { setShowDraftForm(false); setDraftTitle(""); }}>
+                Cancel
               </button>
             </div>
           )}

@@ -1,12 +1,32 @@
-import { useState } from "react";
+/**
+ * WP 4b.9: Entities loads on mount — call api.entities({}) in useEffect
+ * so the page isn't empty on arrival.
+ */
+import { useEffect, useState } from "react";
 import { api, type EntitiesResponse } from "../api/client";
 
 export default function Entities() {
   const [entities, setEntities] = useState<EntitiesResponse["entities"] | null>(null);
   const [total, setTotal] = useState(0);
   const [needles, setNeedles] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  // WP 4b.9: Load on mount with empty needles
+  useEffect(() => {
+    setLoading(true);
+    setError("");
+    api.entities({ needles: undefined })
+      .then((r) => {
+        setEntities(r.entities);
+        setTotal(r.total);
+      })
+      .catch((e) => {
+        setError((e as Error).message);
+        setEntities(null);
+      })
+      .finally(() => setLoading(false));
+  }, []);
 
   const search = () => {
     setLoading(true);

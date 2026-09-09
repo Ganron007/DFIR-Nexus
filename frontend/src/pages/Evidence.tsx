@@ -1,14 +1,18 @@
+/**
+ * WP 4b.8: Frontend error handling — no more silent .catch(() => {}).
+ */
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 
 export default function Evidence() {
   const [evidence, setEvidence] = useState<unknown[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     api.evidence()
       .then((r) => setEvidence(r.evidence))
-      .catch(() => {})
+      .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false));
   }, []);
 
@@ -17,10 +21,11 @@ export default function Evidence() {
   return (
     <div>
       <h2 style={{ marginBottom: 16 }}>Evidence Registry ({evidence.length})</h2>
+      {error && <div className="error-banner">{error}</div>}
       {evidence.length === 0 ? (
         <div className="empty-state">
           <h3>No evidence registered</h3>
-          <p>Run <code>nexus evidence register /path/to/evidence</code> to register.</p>
+          <p>Use the Case Setup Wizard or run <code>nexus evidence register /path/to/evidence</code> to register.</p>
         </div>
       ) : (
         <div className="card">

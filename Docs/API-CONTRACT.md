@@ -1198,6 +1198,155 @@
 
 ---
 
+## 11c. Phase 4b — Workflow-driven cockpit APIs
+
+### POST /portal/api/case/create
+**Description:** Create a new investigation case, activate it, and optionally store the investigation mode. Uses `CaseManager.create_case()` and writes the case ID to the active-case file.
+
+**Request:**
+```json
+{
+  "name": "Campaign H — WS01 Investigation",
+  "description": "Optional description",
+  "examiner": "analyst_t1",
+  "mode": "1"
+}
+```
+
+**Response 200:**
+```json
+{
+  "ok": true,
+  "case_id": "CASE-XXXX-XXXX",
+  "name": "Campaign H — WS01 Investigation",
+  "active": "CASE-XXXX-XXXX"
+}
+```
+
+**Response 400:** `{"error": "name is required"}` or `{"error": "Case already exists: ..."}`
+
+---
+
+### GET /portal/api/case/details
+**Description:** Get case metadata, evidence count, findings count, and pipeline status. If `case_id` is omitted, uses the active case.
+
+**Query params:** `case_id` (optional)
+
+**Response 200:**
+```json
+{
+  "case_id": "CASE-XXXX-XXXX",
+  "name": "Campaign H — WS01 Investigation",
+  "description": "...",
+  "status": "OPEN",
+  "investigation_mode": "1",
+  "evidence_count": 3,
+  "findings_count": 5,
+  "pipeline_complete": true
+}
+```
+
+**Response 404:** `{"error": "No case specified"}` or `{"error": "Case not found"}`
+
+---
+
+### POST /portal/api/pipeline/run
+**Description:** Trigger the N2 processing lane (or interpret/coverage/design) asynchronously. Returns a `run_id` for status polling. The pipeline runs in a background thread.
+
+**Request:**
+```json
+{
+  "mode": "tools",
+  "case_id": "CASE-XXXX-XXXX"
+}
+```
+- `mode`: one of `tools`, `interpret`, `coverage`, `design`
+- `case_id`: optional; defaults to active case
+
+**Response 200:**
+```json
+{
+  "run_id": "abc12345",
+  "case_id": "CASE-XXXX-XXXX",
+  "mode": "tools",
+  "status": "running"
+}
+```
+
+**Response 400:** `{"error": "Invalid mode: ..."}` or `{"error": "No active case"}` (404)
+
+---
+
+### GET /portal/api/pipeline/status
+**Description:** Poll the status of a pipeline run.
+
+**Query params:** `run_id` (required)
+
+**Response 200:**
+```json
+{
+  "run_id": "abc12345",
+  "case_id": "CASE-XXXX-XXXX",
+  "mode": "tools",
+  "status": "complete",
+  "started_at": "",
+  "completed_at": "",
+  "error": "",
+  "stages": []
+}
+```
+
+**Response 404:** `{"error": "run_id not found"}`
+
+---
+
+### GET /portal/api/playbook/needles
+**Description:** Return playbook-suggested search needles for the given evidence families (or all playbooks if no families specified).
+
+**Query params:** `families` (optional, comma-separated, e.g. `evtx,registry,prefetch`)
+
+**Response 200:**
+```json
+{
+  "suggestions": [
+    {
+      "playbook": "Suspicious Execution",
+      "slug": "suspicious_execution",
+      "needles": ["powershell.exe", "cmd.exe", "wscript.exe"],
+      "caveats": ["Legitimate admin tools may trigger..."],
+      "triggers": ["Suspicious command-line arguments..."]
+    }
+  ],
+  "total": 22
+}
+```
+
+---
+
+### POST /portal/api/case/mode
+**Description:** Set the investigation mode (1/2/3) for the active case. Stored in `CASE.yaml`.
+
+**Request:**
+```json
+{
+  "mode": "1"
+}
+```
+
+**Response 200:** `{"ok": true, "mode": "1"}`
+**Response 400:** `{"error": "mode must be 1, 2, or 3"}`
+**Response 404:** `{"error": "No active case"}`
+
+---
+
+### GET /portal/api/case/mode
+**Description:** Get the investigation mode for the active case.
+
+**Response 200:** `{"mode": "1"}` (empty string if not set)
+**Response 404:** `{"error": "No active case"}`
+
+---
+
 ## 12. HTML Page Routes (React Routes)
 
 These are server-side rendered HTML pages in the current portal. In the React SPA rewrite, these become client-side routes. Each renders the `_TEMPLATE` wrapper with case-data content.

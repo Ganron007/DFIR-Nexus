@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { api } from "../api/client";
+import { useCase } from "../context/CaseContext";
 
 const NAV_ITEMS = [
   { to: "/", label: "Overview", icon: "O" },
@@ -14,6 +15,18 @@ const NAV_ITEMS = [
   { to: "/evidence", label: "Evidence", icon: "V" },
   { to: "/entities", label: "Entities", icon: "N" },
   { to: "/transparency", label: "Transparency", icon: "X" },
+];
+
+// WP 4b.4: N1-N8 stage stepper
+const STAGES = [
+  { id: "N1", label: "Intake", to: "/steer" },
+  { id: "N2", label: "Process", to: "/evidence" },
+  { id: "N3", label: "Index", to: "/explore" },
+  { id: "N4", label: "Query", to: "/explore" },
+  { id: "N5", label: "Interpret", to: "/steer" },
+  { id: "N6", label: "Approve", to: "/approve" },
+  { id: "N7", label: "Timeline", to: "/timeline" },
+  { id: "N8", label: "Report", to: "/report" },
 ];
 
 const LOGO_SVG = `<svg width="28" height="32" viewBox="0 0 128 148" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -40,33 +53,52 @@ const LOGO_SVG = `<svg width="28" height="32" viewBox="0 0 128 148" fill="none" 
   </g>
 </svg>`;
 
-export default function Layout({ children }: { children: React.ReactNode }) {
-  const [cases, setCases] = useState<string[]>([]);
-  const [activeCase, setActiveCase] = useState<string>("");
-  const [caseMenuOpen, setCaseMenuOpen] = useState(false);
-  const [health, setHealth] = useState<"ok" | "down" | "checking">("checking");
-  const location = useLocation();
+// WP 4b.4: Stage Stepper component
+function StageStepper({ activeCase }: { activeCase: string }) {
+  const [stageStatus, setStageStatus] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    api.cases()
-      .then((r) => {
-        setCases(r.cases || []);
-        setActiveCase(r.active || (r.cases[0] || ""));
-      })
-      .catch(() => {});
-    fetch("/health")
-      .then((r) => setHealth(r.ok ? "ok" : "down"))
-      .catch(() => setHealth("down"));
-  }, []);
+    if (!activeCase) return;
+    api.caseDetails(activeCase).then((d) => {
+      setStageStatus({
+        N1: true, // case exists = intake done
+        N2: d.pipeline_complete || false,
+        N3: d.pipeline_complete || false, // index built during N2
+        N4: (d.findings_count || 0) > 0 || (d.evidence_count || 0) > 0,
+        N5: (d.findings_count || 0) > 0,
+        N6: (d.findings_count || 0) > 0,
+        N7: (d.findings_count || 0) > 0,
+        N8: (d.findings_count || 0) > 0,
+      });
+    }).catch(() => {});
+  }, [activeCase]);
+
+  return (
+    <div className="stage-stepper">
+      {STAGES.map((stage, i) => (
+        <NavLink
+          key={stage.id}
+          to={stage.to}
+          className={`stage-step ${stageStatus[stage.id] ? "complete" : ""}`}
+          title={`${stage.id}: ${stage.label}`}
+        >
+          <span className="stage-id">{stage.id}</span>
+          <span className="stage-label">{stage.label}</span>
+          {i < STAGES.length - 1 && <span className="stage-arrow">→</span>}
+        </NavLink>
+      ))}
+    </div>
+  );
+}
+
+export default function Layout({ children }: { children: React.ReactNode }) {
+  const { cases, activeCase, mode, health, setActiveCase } = useCase();
+  const [caseMenuOpen, setCaseMenuOpen] = useState(false);
+  const location = useLocation();
 
   const handleActivate = async (caseId: string) => {
-    try {
-      await api.activateCase(caseId);
-      setActiveCase(caseId);
-      setCaseMenuOpen(false);
-    } catch (e) {
-      console.error("Failed to activate case:", e);
-    }
+    await setActiveCase(caseId);
+    setCaseMenuOpen(false);
   };
 
   const currentLabel = NAV_ITEMS.find((n) => n.to === location.pathname)?.label || "Unknown";
@@ -110,6 +142,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           )}
         </div>
 
+        {/* WP 4b.6: Mode indicator */}
+        {mode && (
+          <div className="mode-indicator">
+            <span className="mode-badge mode-{mode}">Mode {mode}</span>
+          </div>
+        )}
+
         <nav className="nav">
           {NAV_ITEMS.map((item) => (
             <NavLink
@@ -128,7 +167,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
         <div className="sidebar-footer">
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span className="version">v2.0 — Phase 4</span>
+            <span className="version">v2.0 — Phase 4b</span>
             <span
               title={health === "ok" ? "System healthy" : health === "down" ? "Backend unreachable" : "Checking…"}
               style={{
@@ -157,6 +196,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </span>
           </div>
         </header>
+        {/* WP 4b.4: N1-N8 stage stepper */}
+        {activeCase && <StageStepper activeCase={activeCase} />}
         <div className="content">{children}</div>
       </main>
     </div>

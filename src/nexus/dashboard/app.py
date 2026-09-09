@@ -2472,6 +2472,311 @@ async def spa_asset(request) -> Response:
 _LOGO_SVG = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "public" / "logo.svg"
 
 
+# ── Phase 4b: Workflow-driven cockpit APIs ──────────────────────────────
+
+
+async def api_case_create(request):
+    """POST /portal/api/case/create — create a new investigation case.
+
+    Body: {name, description?, examiner?, mode?}
+    Creates the case via CaseManager, activates it, and optionally
+    stores the investigation mode (1/2/3) in CASE.yaml.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+
+    name = str(body.get("name") or "").strip()
+    if not name:
+        return JSONResponse({"error": "name is required"}, status_code=400)
+
+    description = str(body.get("description") or f"Case: {name}")
+    examiner = str(body.get("examiner") or "system")
+    mode = str(body.get("mode") or "").strip()
+
+    from nexus.case import CaseManager
+    from nexus.config import settings
+
+    db_path = settings.data_root / "cases.db"
+    mgr = CaseManager(db_path)
+    try:
+        case = mgr.create_case(name=name, description=description, created_by=examiner)
+    except ValueError as exc:
+        mgr.close()
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    mgr.close()
+
+    # Activate the new case
+    import os
+    active = Path(
+        os.environ.get("NEXUS_ACTIVE_CASE_FILE", str(Path.home() / ".nexus" / "active_case"))
+    )
+    active.parent.mkdir(parents=True, exist_ok=True)
+    active.write_text(case.id, encoding="utf-8")
+
+    # Store mode in CASE.yaml if provided
+    if mode in ("1", "2", "3"):
+        try:
+            case_dir = settings.cases_root / case.id
+            case_yaml = case_dir / "CASE.yaml"
+            if case_yaml.is_file():
+                import yaml
+                meta = yaml.safe_load(case_yaml.read_text(encoding="utf-8")) or {}
+                if not isinstance(meta, dict):
+                    meta = {}
+                meta["investigation_mode"] = mode
+                case_yaml.write_text(yaml.safe_dump(meta, sort_keys=False), encoding="utf-8")
+        except Exception:
+            pass
+
+    return JSONResponse({
+        "ok": True,
+        "case_id": case.id,
+        "name": case.name,
+        "active": case.id,
+    })
+
+
+async def api_case_details(request):
+    """GET /portal/api/case/details?case_id=ID — case metadata + status.
+
+    Returns case info from CASE.yaml, evidence count, findings count,
+    and the investigation mode if set.
+    """
+    import yaml
+
+    from nexus.config import settings
+
+    case_id = request.query_params.get("case_id") or _active_case_id()
+    if not case_id:
+        return JSONResponse({"error": "No case specified"}, status_code=404)
+
+    case_dir = settings.cases_root / case_id
+    if not case_dir.is_dir():
+        return JSONResponse({"error": "Case not found"}, status_code=404)
+
+    details: dict[str, Any] = {"case_id": case_id}
+    case_yaml = case_dir / "CASE.yaml"
+    if case_yaml.is_file():
+        try:
+            meta = yaml.safe_load(case_yaml.read_text(encoding="utf-8")) or {}
+            if isinstance(meta, dict):
+                details["name"] = meta.get("name", "")
+                details["description"] = meta.get("description", "")
+                details["status"] = meta.get("status", "")
+                details["investigation_mode"] = str(meta.get("investigation_mode", ""))
+        except Exception:
+            pass
+
+    # Evidence count
+    evidence_file = case_dir / "evidence.json"
+    if evidence_file.is_file():
+        try:
+            ev = json.loads(evidence_file.read_text(encoding="utf-8"))
+            details["evidence_count"] = len(ev) if isinstance(ev, list) else 0
+        except Exception:
+            details["evidence_count"] = 0
+    else:
+        details["evidence_count"] = 0
+
+    # Findings count
+    findings_file = case_dir / "findings.json"
+    if findings_file.is_file():
+        try:
+            f = json.loads(findings_file.read_text(encoding="utf-8"))
+            details["findings_count"] = len(f) if isinstance(f, list) else 0
+        except Exception:
+            details["findings_count"] = 0
+    else:
+        details["findings_count"] = 0
+
+    # Pipeline status
+    tool_run = case_dir / "analysis" / "TOOL-RUN.md"
+    details["pipeline_complete"] = tool_run.is_file()
+
+    return JSONResponse(details)
+
+
+async def api_pipeline_run(request):
+    """POST /portal/api/pipeline/run — trigger the N2 processing lane.
+
+    Body: {mode: "tools"|"interpret"|"coverage"|"design", case_id?}
+    Runs the pipeline asynchronously and returns a run_id.
+    The pipeline runs in a background thread; status is polled via
+    GET /portal/api/pipeline/status.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+
+    pipeline_mode = str(body.get("mode") or "tools").strip().lower()
+    if pipeline_mode not in ("tools", "interpret", "coverage", "design"):
+        return JSONResponse({"error": f"Invalid mode: {pipeline_mode}"}, status_code=400)
+
+    case_id = str(body.get("case_id") or "").strip() or _active_case_id()
+    if not case_id:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+
+    from nexus.config import settings
+    case_dir = settings.cases_root / case_id
+    if not case_dir.is_dir():
+        return JSONResponse({"error": "Case not found"}, status_code=404)
+
+    import asyncio
+    import threading
+    import uuid
+
+    run_id = str(uuid.uuid4())[:8]
+
+    # Store run state
+    _pipeline_runs[run_id] = {
+        "run_id": run_id,
+        "case_id": case_id,
+        "mode": pipeline_mode,
+        "status": "running",
+        "started_at": "",
+        "completed_at": "",
+        "error": "",
+        "stages": [],
+    }
+
+    def _run_in_thread():
+        try:
+            from nexus.langgraph.llm_pipeline import run_pipeline
+            asyncio.run(run_pipeline(
+                evidence_path="",
+                mode=pipeline_mode,
+                case_id=case_id,
+            ))
+            _pipeline_runs[run_id]["status"] = "complete"
+        except Exception as exc:
+            _pipeline_runs[run_id]["status"] = "error"
+            _pipeline_runs[run_id]["error"] = str(exc)
+
+    thread = threading.Thread(target=_run_in_thread, daemon=True)
+    thread.start()
+
+    return JSONResponse({
+        "run_id": run_id,
+        "case_id": case_id,
+        "mode": pipeline_mode,
+        "status": "running",
+    })
+
+
+_pipeline_runs: dict[str, dict[str, Any]] = {}
+
+
+async def api_pipeline_status(request):
+    """GET /portal/api/pipeline/status?run_id=ID — poll pipeline run status."""
+    run_id = request.query_params.get("run_id") or ""
+    if not run_id or run_id not in _pipeline_runs:
+        return JSONResponse({"error": "run_id not found"}, status_code=404)
+    return JSONResponse(_pipeline_runs[run_id])
+
+
+async def api_playbook_needles(request):
+    """GET /portal/api/playbook/needles?families=fam1,fam2 — suggested needles from playbooks.
+
+    Returns playbook-suggested search needles for the given evidence families
+    (or all playbooks if no families specified).
+    """
+    from nexus.knowledge.loader import get_playbook, list_playbook_slugs
+
+    families_param = request.query_params.get("families") or ""
+    families_filter = {f.strip().lower() for f in families_param.split(",") if f.strip()}
+
+    slugs = list_playbook_slugs()
+    suggestions: list[dict[str, Any]] = []
+
+    for slug in slugs:
+        pb = get_playbook(slug)
+        if not isinstance(pb, dict):
+            continue
+        terms = pb.get("query_terms") or []
+        if not isinstance(terms, list):
+            continue
+
+        # Filter by family if specified
+        if families_filter:
+            term_lower = {str(t).lower() for t in terms}
+            pb_text = (
+                str(pb.get("name", "")) + " " + str(pb.get("description", ""))
+            ).lower()
+            if not any(f in term_lower or f in pb_text for f in families_filter):
+                continue
+
+        suggestions.append({
+            "playbook": pb.get("name", slug),
+            "slug": slug,
+            "needles": [str(t) for t in terms[:20]],
+            "caveats": [str(c)[:200] for c in (pb.get("caveats") or [])[:3]],
+            "triggers": [str(t)[:200] for t in (pb.get("triggers") or [])[:3]],
+        })
+
+    return JSONResponse({"suggestions": suggestions, "total": len(suggestions)})
+
+
+async def api_case_mode(request):
+    """POST /portal/api/case/mode — set the investigation mode for the active case.
+
+    Body: {mode: "1"|"2"|"3"}
+    Stores the mode in CASE.yaml.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+
+    mode = str(body.get("mode") or "").strip()
+    if mode not in ("1", "2", "3"):
+        return JSONResponse({"error": "mode must be 1, 2, or 3"}, status_code=400)
+
+    case_dir = _get_case_dir()
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+
+    import yaml
+    case_yaml = case_dir / "CASE.yaml"
+    try:
+        meta = {}
+        if case_yaml.is_file():
+            meta = yaml.safe_load(case_yaml.read_text(encoding="utf-8")) or {}
+            if not isinstance(meta, dict):
+                meta = {}
+        meta["investigation_mode"] = mode
+        case_yaml.write_text(yaml.safe_dump(meta, sort_keys=False), encoding="utf-8")
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+    return JSONResponse({"ok": True, "mode": mode})
+
+
+async def api_get_case_mode(request):
+    """GET /portal/api/case/mode — get the investigation mode for the active case."""
+    case_dir = _get_case_dir()
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+
+    import yaml
+    case_yaml = case_dir / "CASE.yaml"
+    if not case_yaml.is_file():
+        return JSONResponse({"mode": ""})
+
+    try:
+        meta = yaml.safe_load(case_yaml.read_text(encoding="utf-8")) or {}
+        mode = str(meta.get("investigation_mode", "")) if isinstance(meta, dict) else ""
+    except Exception:
+        mode = ""
+
+    return JSONResponse({"mode": mode})
+
+
+# ── End Phase 4b APIs ─────────────────────────────────────────────────────
+
+
 async def logo(request) -> Response:
     """Serve the DFIR-Nexus logo SVG. Works before and after SPA build."""
     # Try built dist first, then public/ source
@@ -2557,6 +2862,14 @@ def create_dashboard():
         Route("/portal/api/mode3/draft-finding", api_mode3_draft_finding, methods=["POST"]),
         # Product mode ↔ pipeline mode mapping (WP 3.8)
         Route("/portal/api/mode-mapping", api_mode_mapping, methods=["GET"]),
+        # Phase 4b: Workflow-driven cockpit APIs
+        Route("/portal/api/case/create", api_case_create, methods=["POST"]),
+        Route("/portal/api/case/details", api_case_details, methods=["GET"]),
+        Route("/portal/api/pipeline/run", api_pipeline_run, methods=["POST"]),
+        Route("/portal/api/pipeline/status", api_pipeline_status, methods=["GET"]),
+        Route("/portal/api/playbook/needles", api_playbook_needles, methods=["GET"]),
+        Route("/portal/api/case/mode", api_case_mode, methods=["POST"]),
+        Route("/portal/api/case/mode", api_get_case_mode, methods=["GET"]),
         # Phase 4: React SPA (served after API + legacy HTML routes)
         Route("/portal/app/assets/{path:path}", spa_asset),
         Route("/portal/app/logo.svg", logo),

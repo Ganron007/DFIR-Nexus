@@ -1,7 +1,13 @@
+/**
+ * WP 4b.10: Timeline brush wired to Explore — brush selection passes
+ * the selected time range to Explore as query params.
+ */
 import { useEffect, useState, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { api, type TimelineLaneEntry } from "../api/client";
 
 export default function Timeline() {
+  const navigate = useNavigate();
   const [lanes, setLanes] = useState<TimelineLaneEntry[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -60,6 +66,20 @@ export default function Timeline() {
     return idx >= Math.min(brushStart, brushEnd) && idx <= Math.max(brushStart, brushEnd);
   };
 
+  // WP 4b.10: Wire brush to Explore — navigate with time range
+  const sendToExplore = () => {
+    if (brushStart === null) return;
+    const startIdx = brushEnd !== null ? Math.min(brushStart, brushEnd) : brushStart;
+    const endIdx = brushEnd !== null ? Math.max(brushStart, brushEnd) : brushStart;
+    const start = allHours[startIdx] || "";
+    const end = allHours[endIdx] || "";
+    const params = new URLSearchParams();
+    if (start) params.set("start", start);
+    if (end) params.set("end", end);
+    if (selectedLane) params.set("family", selectedLane);
+    navigate(`/explore?${params.toString()}`);
+  };
+
   if (loading) return <div className="loading">Loading timeline...</div>;
   if (error) return <div className="error-banner">{error}</div>;
 
@@ -86,6 +106,14 @@ export default function Timeline() {
                 onClick={() => { setBrushStart(null); setBrushEnd(null); }}
               >
                 Clear
+              </button>
+              {/* WP 4b.10: Send brushed range to Explore */}
+              <button
+                className="btn btn-sm btn-primary"
+                style={{ marginLeft: 8 }}
+                onClick={sendToExplore}
+              >
+                Search in Explore →
               </button>
             </div>
           )}
@@ -174,6 +202,7 @@ export default function Timeline() {
             </span>
             <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 16 }}>
               Click a bar to start a brush range. Click a second bar to set the end.
+              Then click "Search in Explore" to filter.
             </span>
           </div>
         </>
