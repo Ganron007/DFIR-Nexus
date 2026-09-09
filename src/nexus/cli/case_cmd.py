@@ -56,6 +56,56 @@ def init(
     typer.echo(f"Active case set to: {case.id}")
 
 
+@app.command("clean")
+def clean_cases(
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
+    keep: str = typer.Option("", "--keep", help="Comma-separated case IDs to keep"),
+):
+    """Delete ALL cases (folders + case DB) and reset the active-case pointer.
+
+    Intended for post-testing cleanup so test cases never accumulate.
+    Keeps the RAG index, model caches and config — only case data is removed.
+    """
+    from nexus.config import settings
+
+    cases_root = settings.cases_root
+    keep = {k.strip() for k in (keep or "").split(",") if k.strip()}
+    case_dirs = sorted(p for p in cases_root.glob("CASE-*") if p.is_dir()) if cases_root.is_dir() else []
+    db_path = cases_root / "cases.db"
+
+    if not case_dirs and not db_path.exists():
+        typer.echo("No cases to clean.")
+        return
+
+    typer.echo(f"cases_root: {cases_root}")
+    typer.echo(f"  case folders: {len(case_dirs)}")
+    if keep:
+        typer.echo(f"  keeping: {', '.join(keep)}")
+    if not yes:
+        confirm = typer.confirm(f"Delete {len(case_dirs)} case folder(s) and the case DB?")
+        if not confirm:
+            typer.echo("Aborted.")
+            raise typer.Exit(1)
+
+    import contextlib
+    import shutil
+
+    removed = 0
+    for d in case_dirs:
+        if d.name in keep:
+            typer.echo(f"  kept: {d.name}")
+            continue
+        shutil.rmtree(d, ignore_errors=True)
+        removed += 1
+    if db_path.exists() and not keep:
+        with contextlib.suppress(OSError):
+            db_path.unlink()
+    # Reset the active-case pointer
+    with contextlib.suppress(OSError):
+        _ACTIVE_CASE_FILE.write_text("")
+    typer.echo(f"Cleaned {len(case_dirs)} case folder(s); cases.db removed; active case cleared.")
+
+
 @app.command()
 def activate(case_id: str = typer.Argument(..., help="Case ID to activate")):
     """Activate an existing case."""

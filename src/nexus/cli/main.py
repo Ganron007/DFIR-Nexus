@@ -354,8 +354,16 @@ def serve(
     http: bool = typer.Option(False, "--http", help="Run as HTTP server"),
     port: int = typer.Option(4508, "--port", "-p", help="HTTP port"),
     host: str = typer.Option("127.0.0.1", "--host", "-H", help="HTTP bind address"),
+    dev: bool = typer.Option(
+        False, "--dev", help="Debug mode: auto-clean ALL test cases on startup"
+    ),
 ):
-    """Start the DFIR-Nexus MCP server."""
+    """Start the DFIR-Nexus MCP server.
+
+    Debug mode (--dev or NEXUS_DEBUG_AUTOCLEAN=1) wipes all case folders
+    + the case DB on startup — for live testing sessions so test cases never
+    accumulate. NEVER use with real case data.
+    """
     from nexus.app import create_server
     # Pass bind host into FastMCP so DNS-rebinding allowlist matches
     # client Host headers (fixes SIFT /mcp HTTP 421 for lab IPs).
@@ -365,6 +373,12 @@ def serve(
 
         from nexus.mcp_security import build_allowed_hosts
         from nexus.utils.constants import check_required_env
+
+        # Debug auto-clean: wipe all case data on startup (post-testing routine)
+        if dev or os.environ.get("NEXUS_DEBUG_AUTOCLEAN", "").strip().lower() in {"1", "true", "yes"}:
+            n = _debug_autoclean_cases()
+            typer.echo(f"  DEBUG AUTOCLEAN: removed {n} case folder(s) + case DB + active pointer")
+
         try:
             warnings = check_required_env(host=host, port=port)
             for w in warnings:
@@ -383,6 +397,37 @@ def serve(
     else:
         typer.echo("Starting DFIR-Nexus in stdio mode...", err=True)
         server.run()
+
+
+def _debug_autoclean_cases() -> int:
+    """Debug mode: delete all case folders + case DB before the server starts.
+
+    Enabled by NEXUS_DEBUG_AUTOCLEAN=1 (or `nexus serve --debug-autoclean`).
+    Only touches case data under cases_root — never RAG/model caches/config.
+    """
+    import contextlib
+    import shutil
+
+    from nexus.config import settings
+
+    cases_root = settings.cases_root
+    removed = 0
+    if cases_root.is_dir():
+        for d in sorted(cases_root.glob("CASE-*")):
+            if d.is_dir():
+                shutil.rmtree(d, ignore_errors=True)
+                removed += 1
+    db_path = cases_root / "cases.db"
+    if db_path.exists():
+        with contextlib.suppress(OSError):
+            db_path.unlink()
+    active = Path(
+        os.environ.get("NEXUS_ACTIVE_CASE_FILE", str(Path.home() / ".nexus" / "active_case"))
+    )
+    with contextlib.suppress(OSError):
+        active.parent.mkdir(parents=True, exist_ok=True)
+        active.write_text("")
+    return removed
 
 
 @app.command()
