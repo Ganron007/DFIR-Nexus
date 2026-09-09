@@ -298,23 +298,6 @@ def plan_extras(case_dir: Path, model: Any = None) -> dict[str, Any]:
     return plan
 
 
-def _refine_rationale(model: Any, items: list[dict], queries: list[str]) -> str:
-    prompt = (
-        "You are a DFIR agent planner. Proposed steps:\n"
-        + json.dumps(items, indent=1)[:1200]
-        + "\nCorroboration queries: " + ", ".join(queries[:6])
-        + '\nReturn ONLY JSON: {"rationale": "one sentence"}.'
-    )
-    response = model.invoke([{"role": "user", "content": prompt}])
-    text = getattr(response, "content", str(response))
-    start, end = text.find("{"), text.rfind("}")
-    if start == -1 or end == -1:
-        return ""
-    try:
-        return str(json.loads(text[start:end + 1]).get("rationale") or "")[:300]
-    except (ValueError, KeyError):
-        return ""
-
 
 def _run_iterative_for_queries(
     case_dir: Path,

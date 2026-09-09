@@ -193,16 +193,29 @@ def _playbook_context_for_families(families: set[str]) -> str:
                 block += "Caveats:\n"
                 for c in caveats[:5]:
                     block += f"  - {str(c)[:200]}\n"
-            # Identify phase steps — what to look for
+            # First phase steps — what to look for (identification/locating).
+            # Playbooks use different names for the first phase: "Identify",
+            # "Locate Artifacts", "Collect", "Detection", "Acquire", etc.
+            # We extract the FIRST phase's steps as the methodology context.
             phases = pb.get("phases") or []
-            if isinstance(phases, list):
-                for phase in phases:
-                    if isinstance(phase, dict) and phase.get("phase") == "Identify":
-                        steps = phase.get("steps") or []
-                        if isinstance(steps, list) and steps:
-                            block += "Identify steps:\n"
-                            for s in steps[:5]:
-                                block += f"  - {str(s)[:200]}\n"
+            if isinstance(phases, list) and phases:
+                first_phase = phases[0]
+                if isinstance(first_phase, dict):
+                    steps = first_phase.get("steps") or []
+                    if isinstance(steps, list) and steps:
+                        phase_name = first_phase.get("phase", "first phase")
+                        block += f"{phase_name} steps:\n"
+                        for s in steps[:5]:
+                            block += f"  - {str(s)[:200]}\n"
+                    # Also check for an "Identify" phase if it's not the first
+                    for phase in phases[1:]:
+                        if isinstance(phase, dict) and phase.get("phase") == "Identify":
+                            id_steps = phase.get("steps") or []
+                            if isinstance(id_steps, list) and id_steps:
+                                block += "Identify steps:\n"
+                                for s in id_steps[:5]:
+                                    block += f"  - {str(s)[:200]}\n"
+                            break
             # Triggers — what indicators to look for
             triggers = pb.get("triggers") or []
             if isinstance(triggers, list) and triggers:
@@ -467,7 +480,43 @@ def corroboration_check(finding: dict[str, Any]) -> dict[str, Any]:
 
 
 def _corroborate_for(family: str) -> list[str]:
-    """Corroboration needles per artifact family (what would independently confirm)."""
+    """Corroboration needles per artifact family (what would independently confirm).
+
+    WP 2.9: Now data-driven from playbook caveats. Falls back to the
+    hard-coded mapping when no playbook caveats are available.
+    """
+    # Try playbook caveats first
+    try:
+        from nexus.knowledge.loader import get_playbook, list_playbook_slugs
+
+        slugs = list_playbook_slugs()
+        family_lower = family.lower()
+        for slug in slugs:
+            pb = get_playbook(slug)
+            if not isinstance(pb, dict):
+                continue
+            terms = pb.get("query_terms") or []
+            term_lower = {str(t).lower() for t in terms}
+            pb_text = (
+                str(pb.get("name", "")) + " " + str(pb.get("description", ""))
+            ).lower()
+            if family_lower not in term_lower and family_lower not in pb_text:
+                continue
+            # Extract corroboration terms from caveats
+            caveats = pb.get("caveats") or []
+            needles: list[str] = []
+            for caveat in caveats:
+                caveat_text = str(caveat).lower()
+                # Look for artifact family names mentioned in caveats
+                for term in term_lower:
+                    if term in caveat_text and term not in needles:
+                        needles.append(term)
+            if needles:
+                return needles[:8]
+    except Exception:
+        pass
+
+    # Fallback: hard-coded mapping
     mapping = {
         "prefetch": ["amcache", "shimcache"],
         "amcache": ["prefetch", "shimcache"],

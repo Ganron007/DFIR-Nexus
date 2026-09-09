@@ -80,6 +80,59 @@ def _agent_for_family(family: str) -> str:
     return "endpoint"
 
 
+def _playbook_for_family(family: str) -> str:
+    """WP 3.10: Load playbook caveats + first-phase steps for an agent's family.
+
+    Reuses the same logic as mode2._playbook_context_for_families but for
+    a single family (the agent's assigned family).
+    """
+    if not family:
+        return ""
+    try:
+        from nexus.knowledge.loader import get_playbook, list_playbook_slugs
+
+        slugs = list_playbook_slugs()
+        family_lower = family.lower()
+        blocks: list[str] = []
+
+        for slug in slugs:
+            pb = get_playbook(slug)
+            if not isinstance(pb, dict):
+                continue
+            terms = pb.get("query_terms") or []
+            if not isinstance(terms, list):
+                continue
+            term_lower = {str(t).lower() for t in terms}
+            pb_text = (
+                str(pb.get("name", "")) + " " + str(pb.get("description", ""))
+            ).lower()
+            if family_lower not in term_lower and family_lower not in pb_text:
+                continue
+
+            block = f"\n--- Playbook: {pb.get('name', slug)} ---\n"
+            caveats = pb.get("caveats") or []
+            if isinstance(caveats, list) and caveats:
+                block += "Caveats:\n"
+                for c in caveats[:5]:
+                    block += f"  - {str(c)[:200]}\n"
+            phases = pb.get("phases") or []
+            if isinstance(phases, list) and phases:
+                first_phase = phases[0]
+                if isinstance(first_phase, dict):
+                    steps = first_phase.get("steps") or []
+                    if isinstance(steps, list) and steps:
+                        phase_name = first_phase.get("phase", "first phase")
+                        block += f"{phase_name} steps:\n"
+                        for s in steps[:5]:
+                            block += f"  - {str(s)[:200]}\n"
+            blocks.append(block[:1200])
+
+        return "\n".join(blocks).strip()
+    except Exception as exc:
+        log.warning("Playbook for family %s failed: %s", family, exc)
+        return ""
+
+
 def _run_agent(
     agent_name: str,
     families: list[str],
@@ -97,6 +150,7 @@ def _run_agent(
         proposals: list[dict] — proposed needles/findings
         rag_context: str — RAG methodology text used
         rag_provenance: list[dict] — RAG query/doc provenance
+        playbook_context: str — playbook caveats + steps used
     """
     # Gather RAG methodology for each family
     rag_blocks: list[str] = []
@@ -108,6 +162,14 @@ def _run_agent(
             rag_provenance.extend(prov)
 
     rag_context = "\n".join(rag_blocks)
+
+    # WP 3.10: Gather playbook caveats + first-phase steps for each family
+    playbook_blocks: list[str] = []
+    for fam in families:
+        pb_text = _playbook_for_family(fam)
+        if pb_text:
+            playbook_blocks.append(pb_text)
+    playbook_context = "\n".join(playbook_blocks)
 
     # Collect evidence references from hits
     evidence_refs = [
@@ -132,16 +194,18 @@ def _run_agent(
                 proposals.append({"needle": term, "source": "hit_terms"})
                 seen_terms.add(term)
 
-    # If LLM is available, use RAG context to propose additional needles
-    if model is not None and rag_context:
+    # If LLM is available, use RAG + playbook context to propose additional needles
+    if model is not None and (rag_context or playbook_context):
         try:
             prompt = (
                 f"You are a {agent_name} DFIR specialist agent. "
                 f"You are analyzing evidence from families: {', '.join(families)}.\n\n"
                 f"Evidence hits:\n"
                 f"{chr(10).join(f'- [{h.get('family')}] {str(h.get('text', ''))[:200]}' for h in hits[:10] if h.get('family', '').lower() in [f.lower() for f in families])}\n\n"
-                f"RAG methodology:\n{rag_context[:1500]}\n\n"
+                f"RAG methodology:\n{rag_context[:1500] or '(none)'}\n\n"
+                f"Playbook guidance:\n{playbook_context[:1000] or '(none)'}\n\n"
                 "Propose 2-5 NEW search needles to corroborate or expand. "
+                "Use the RAG methodology and playbook caveats to guide your proposals. "
                 'Return ONLY JSON: {"needles": [...], "rationale": "..."}'
             )
             response = model.invoke([{"role": "user", "content": prompt}])
@@ -164,6 +228,7 @@ def _run_agent(
         "proposals": proposals,
         "rag_context": rag_context,
         "rag_provenance": rag_provenance,
+        "playbook_context": playbook_context,
     }
 
 
@@ -280,6 +345,7 @@ def _log_orchestrator_run(case_dir: Path, run: dict[str, Any]) -> None:
         "proposal_count": len(run.get("proposals") or []),
         "rag_used": bool(run.get("rag_context")),
         "rag_provenance_count": len(run.get("rag_provenance") or []),
+        "playbook_used": bool(run.get("playbook_context")),
     }
     with (case_dir / "agent_runs.jsonl").open("a", encoding="utf-8") as f:
         f.write(json.dumps(record, default=str) + "\n")
