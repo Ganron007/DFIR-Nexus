@@ -4,19 +4,22 @@
  */
 import { useEffect, useState } from "react";
 import { api, type Finding, type CorroborationResponse } from "../api/client";
+import { useCase } from "../context/CaseContext";
 
 export default function Findings() {
+  const { activeCase } = useCase();
   const [findings, setFindings] = useState<Finding[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [corroboration, setCorroboration] = useState<Record<string, CorroborationResponse>>({});
 
   useEffect(() => {
+    setLoading(true);
     api.findings()
       .then((r) => setFindings(r.findings))
       .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [activeCase]);
 
   // WP 4b.13: Load corroboration for each finding
   const loadCorroboration = (findingId: string) => {

@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { api, type Finding } from "../api/client";
 import { computeApprovalResponse } from "../lib/crypto";
+import { useCase } from "../context/CaseContext";
 
 export default function Approve() {
+  const { activeCase } = useCase();
   const [findings, setFindings] = useState<Finding[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [password, setPassword] = useState("");
@@ -31,7 +33,7 @@ export default function Approve() {
 
   useEffect(() => {
     load();
-  }, []);
+  }, [activeCase]);
 
   const toggle = (id: string) => {
     const next = new Set(selected);

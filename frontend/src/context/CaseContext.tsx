@@ -1,10 +1,10 @@
 /**
  * CaseContext — shared case state across the cockpit.
  *
- * WP 4b.11: Lifts activeCase from Layout's local state to React Context
- * so all route pages re-fetch when the case switches.
- * WP 4b.6: Also stores the investigation mode (1/2/3) per-case.
- * WP 4d.5: Exposes live N1-N8 stage completion for the sidebar + stepper.
+ * Phase 4e: the UI never invents an active case. It mirrors the server's
+ * active-case pointer, and every request carries the case id explicitly
+ * (client.ts X-Nexus-Case) so dashboard previews and cockpit operations can
+ * never drift onto the wrong case.
  */
 import {
   createContext,
@@ -14,19 +14,24 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
-import { api } from "../api/client";
+import { api, setRequestCaseId, type CaseSummary } from "../api/client";
 
 export type StageStatus = Record<string, boolean>;
 
 interface CaseContextValue {
   cases: string[];
+  caseSummaries: Record<string, CaseSummary>;
   activeCase: string;
+  previewCase: string;
+  booting: boolean;
   mode: string;
   health: "ok" | "down" | "checking";
   stages: Record<string, boolean>;
   setActiveCase: (caseId: string) => Promise<void>;
+  setPreviewCase: (caseId: string) => void;
+  exitToDashboard: () => Promise<void>;
   refreshCases: () => Promise<void>;
-  refreshMode: () => Promise<void>;
+  refreshMode: (caseId?: string) => Promise<void>;
   setMode: (mode: string) => Promise<void>;
 }
 
@@ -34,7 +39,10 @@ const CaseContext = createContext<CaseContextValue | null>(null);
 
 export function CaseProvider({ children }: { children: ReactNode }) {
   const [cases, setCases] = useState<string[]>([]);
+  const [caseSummaries, setCaseSummaries] = useState<Record<string, CaseSummary>>({});
   const [activeCase, setActiveCaseState] = useState<string>("");
+  const [previewCase, setPreviewCaseState] = useState<string>("");
+  const [booting, setBooting] = useState<boolean>(true);
   const [mode, setModeState] = useState<string>("");
   const [health, setHealth] = useState<"ok" | "down" | "checking">("checking");
   const [stages, setStages] = useState<Record<string, boolean>>({});
@@ -43,15 +51,23 @@ export function CaseProvider({ children }: { children: ReactNode }) {
     try {
       const r = await api.cases();
       setCases(r.cases || []);
-      setActiveCaseState(r.active || (r.cases[0] || ""));
+      setCaseSummaries(r.details || {});
+      // Mirror the server pointer — never fabricate an active case.
+      setActiveCaseState(r.active || "");
     } catch {
-      // ignore
+      // keep prior state on transient failure
+    } finally {
+      setBooting(false);
     }
   }, []);
 
-  const refreshMode = useCallback(async () => {
+  const refreshMode = useCallback(async (caseId?: string) => {
+    if (!caseId) {
+      setModeState("");
+      return;
+    }
     try {
-      const r = await api.getCaseMode();
+      const r = await api.getCaseMode(caseId);
       setModeState(r.mode || "");
     } catch {
       // ignore
@@ -76,26 +92,41 @@ export function CaseProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const setActiveCase = useCallback(async (caseId: string) => {
-    try {
+  const setActiveCase = useCallback(
+    async (caseId: string) => {
       await api.activateCase(caseId);
       setActiveCaseState(caseId);
-      const r = await api.getCaseMode();
-      setModeState(r.mode || "");
+      await refreshMode(caseId);
       await refreshStages(caseId);
-    } catch (e) {
-      console.error("Failed to activate case:", e);
-    }
+    },
+    [refreshMode, refreshStages],
+  );
+
+  const setPreviewCase = useCallback((caseId: string) => {
+    setPreviewCaseState(caseId);
   }, []);
 
-  const setMode = useCallback(async (newMode: string) => {
+  const exitToDashboard = useCallback(async () => {
     try {
-      await api.setCaseMode(newMode);
-      setModeState(newMode);
-    } catch (e) {
-      console.error("Failed to set mode:", e);
+      await api.deactivateCase();
+    } catch {
+      // best-effort; still detach locally
     }
-  }, []);
+    setActiveCaseState("");
+    setModeState("");
+    setStages({});
+    setPreviewCaseState("");
+    await refreshCases();
+  }, [refreshCases]);
+
+  const setMode = useCallback(
+    async (newMode: string) => {
+      if (!activeCase) return;
+      await api.setCaseMode(newMode, activeCase);
+      setModeState(newMode);
+    },
+    [activeCase],
+  );
 
   useEffect(() => {
     refreshCases();
@@ -104,16 +135,39 @@ export function CaseProvider({ children }: { children: ReactNode }) {
       .catch(() => setHealth("down"));
   }, [refreshCases]);
 
+  // Every API request from now on carries the explicit case identity.
+  useEffect(() => {
+    setRequestCaseId(activeCase);
+  }, [activeCase]);
+
   useEffect(() => {
     if (activeCase) {
-      refreshMode();
+      refreshMode(activeCase);
       refreshStages(activeCase);
+    } else {
+      setStages({});
+      setModeState("");
     }
   }, [activeCase, refreshMode, refreshStages]);
 
   return (
     <CaseContext.Provider
-      value={{ cases, activeCase, mode, health, stages, setActiveCase, refreshCases, refreshMode, setMode }}
+      value={{
+        cases,
+        caseSummaries,
+        activeCase,
+        previewCase,
+        booting,
+        mode,
+        health,
+        stages,
+        setActiveCase,
+        setPreviewCase,
+        exitToDashboard,
+        refreshCases,
+        refreshMode,
+        setMode,
+      }}
     >
       {children}
     </CaseContext.Provider>

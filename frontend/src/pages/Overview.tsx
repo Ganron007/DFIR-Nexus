@@ -1,68 +1,116 @@
 /**
- * WP 4b.3: Case Dashboard (SPA Overview).
+ * Case Dashboard (SPA Overview, Phase 4e.6).
  *
- * Functional dashboard: all cases with details, "New Investigation",
- * system health (backend/ES/RAG/LLM/parser), and active-case summary.
- * The landing page links here as "Case Dashboard".
+ * The one case-management surface: every case with status/counts, click to
+ * preview, explicit Enter to activate. Creating or seeding a case never
+ * switches the active case by itself.
  */
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, type SummaryResponse, type CaseDetailsResponse, type SystemHealthResponse } from "../api/client";
+import {
+  api,
+  type CaseDetailsResponse,
+  type SystemHealthResponse,
+} from "../api/client";
 import { useCase } from "../context/CaseContext";
+
+const STATUS_LABEL: Record<string, string> = {
+  created: "Created",
+  intake: "Intake",
+  processing: "Processing",
+  active: "Active",
+  sealed: "Sealed",
+  open: "Open",
+  in_progress: "In Progress",
+  closed: "Closed",
+  archived: "Archived",
+};
+
+function statusClass(status: string): string {
+  switch (status) {
+    case "active":
+    case "sealed":
+      return "approved";
+    case "closed":
+    case "archived":
+      return "rejected";
+    default:
+      return "draft";
+  }
+}
 
 export default function Overview() {
   const navigate = useNavigate();
-  const { cases, activeCase, setActiveCase, mode, health } = useCase();
-  const [summary, setSummary] = useState<SummaryResponse | null>(null);
-  const [caseDetails, setCaseDetails] = useState<Record<string, CaseDetailsResponse>>({});
+  const {
+    cases,
+    caseSummaries,
+    activeCase,
+    previewCase,
+    setPreviewCase,
+    setActiveCase,
+    mode,
+    health,
+    refreshCases,
+  } = useCase();
   const [sys, setSys] = useState<SystemHealthResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [previewDetails, setPreviewDetails] = useState<CaseDetailsResponse | null>(null);
+  const [banner, setBanner] = useState("");
   const [seeding, setSeeding] = useState(false);
-  const [seedMsg, setSeedMsg] = useState("");
+  const [entering, setEntering] = useState("");
+
+  useEffect(() => {
+    api
+      .systemHealth()
+      .then(setSys)
+      .catch(() => setSys(null));
+  }, [activeCase]);
+
+  useEffect(() => {
+    if (!previewCase) {
+      setPreviewDetails(null);
+      return;
+    }
+    api
+      .caseDetails(previewCase)
+      .then(setPreviewDetails)
+      .catch(() => setPreviewDetails(null));
+  }, [previewCase]);
+
+  const enterCase = async (caseId: string) => {
+    setEntering(caseId);
+    setBanner("");
+    try {
+      await setActiveCase(caseId);
+      const caseMode = caseSummaries[caseId]?.mode || "1";
+      navigate(caseMode === "1" ? "/explore" : "/steer");
+    } catch (e) {
+      setBanner(`Failed to open ${caseId}: ${(e as Error).message}`);
+    } finally {
+      setEntering("");
+    }
+  };
 
   const handleSeedDemo = async () => {
     setSeeding(true);
-    setSeedMsg("");
+    setBanner("");
     try {
       const res = await api.seedDemo({ name: "Demo Investigation — WS01 Incident" });
-      if (res.ok) {
-        setSeedMsg(`Loaded demo case ${res.case_id} (${res.evidence_count} evidence, ${res.findings_count} findings)`);
-        await setActiveCase(res.case_id);
-        const [s, h] = await Promise.all([
-          api.summary().catch(() => null),
-          api.systemHealth().catch(() => null),
-        ]);
-        if (s) setSummary(s);
-        if (h) setSys(h);
+      await refreshCases();
+      if (res.ok && res.case_id) {
+        setPreviewCase(res.case_id);
+        setBanner(
+          `Seeded ${res.case_id} (${res.evidence_count} evidence, ${res.findings_count} findings). ` +
+            "It is not active — click Enter on the row to open it.",
+        );
+      } else {
+        setBanner(res.error || "Seed failed");
       }
     } catch (e) {
-      setSeedMsg(`Failed to seed demo: ${(e as Error).message}`);
+      setBanner(`Failed to seed demo: ${(e as Error).message}`);
     } finally {
       setSeeding(false);
     }
   };
-
-  useEffect(() => {
-    Promise.all([
-      api.summary().catch(() => null),
-      api.systemHealth().catch(() => null),
-    ]).then(([s, h]) => {
-      if (s) setSummary(s);
-      if (h) setSys(h);
-      setLoading(false);
-    });
-
-    cases.forEach(async (c) => {
-      try {
-        const d = await api.caseDetails(c);
-        setCaseDetails((prev) => ({ ...prev, [c]: d }));
-      } catch {
-        // ignore
-      }
-    });
-  }, [cases]);
-
-  if (loading) return <div className="loading">Loading case dashboard...</div>;
 
   return (
     <div>
@@ -73,7 +121,7 @@ export default function Overview() {
             className="btn btn-sm"
             onClick={handleSeedDemo}
             disabled={seeding}
-            title="Instantly create a pre-populated test case with evidence, extractions, findings, and timeline"
+            title="Create a pre-populated test case (does not switch the active case)"
             style={{ background: "rgba(47, 129, 247, 0.15)", border: "1px solid rgba(47, 129, 247, 0.4)", color: "var(--accent)" }}
           >
             {seeding ? "Seeding..." : "⚡ Seed Demo Investigation"}
@@ -84,9 +132,22 @@ export default function Overview() {
         </div>
       </div>
 
-      {seedMsg && (
-        <div style={{ padding: "10px 14px", background: "rgba(16, 185, 129, 0.15)", border: "1px solid rgba(16, 185, 129, 0.4)", borderRadius: 6, color: "#10b981", marginBottom: 16, fontSize: 13 }}>
-          {seedMsg}
+      {banner && (
+        <div style={{ padding: "10px 14px", background: "rgba(47,129,247,0.12)", border: "1px solid rgba(47,129,247,0.4)", borderRadius: 6, color: "var(--text-primary)", marginBottom: 16, fontSize: 13 }}>
+          {banner}
+        </div>
+      )}
+
+      {/* Continue banner — an investigation is already active */}
+      {activeCase && (
+        <div className="card" style={{ marginBottom: 16, padding: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span style={{ fontSize: 13 }}>
+            Current investigation: <strong>{activeCase}</strong>
+            {mode && <> · Mode {mode}</>}
+          </span>
+          <button className="btn btn-primary btn-sm" onClick={() => navigate(mode === "1" ? "/explore" : "/steer")}>
+            Continue →
+          </button>
         </div>
       )}
 
@@ -123,45 +184,47 @@ export default function Overview() {
               {sys?.parser === "ok" ? "✓ available" : "✗ missing"}
             </span>
           </span>
-          {activeCase && mode && (
-            <span>
-              <span style={{ color: "var(--text-muted)" }}>Mode:</span>{" "}
-              <span style={{ color: "var(--accent)", fontWeight: 600 }}>Mode {mode}</span>
-            </span>
-          )}
         </div>
       </div>
 
-      {/* Active case summary */}
-      {activeCase && summary && (
+      {/* Preview panel — inspect a case without activating it */}
+      {previewCase && previewDetails && (
         <div className="card" style={{ marginBottom: 16 }}>
           <div className="card-header">
-            <span className="card-title">Active Case: {activeCase}</span>
+            <span className="card-title">Preview: {previewDetails.name || previewCase}</span>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, padding: 16 }}>
-            <div className="stat-box">
-              <div className="stat-label">Findings (total)</div>
-              <div className="stat-value">{summary.findings.total}</div>
-              <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                {summary.findings.approved} approved · {summary.findings.draft} draft · {summary.findings.rejected} rejected
-              </div>
-            </div>
-            <div className="stat-box">
-              <div className="stat-label">Timeline Events</div>
-              <div className="stat-value">{summary.timeline}</div>
-            </div>
-            <div className="stat-box">
-              <div className="stat-label">Evidence Items</div>
-              <div className="stat-value">{summary.evidence}</div>
-            </div>
-            <div className="stat-box">
-              <div className="stat-label">TODOs</div>
-              <div className="stat-value">{summary.todos.total}</div>
-              <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                {summary.todos.open} open
-              </div>
-            </div>
+          <div style={{ padding: 16, display: "flex", gap: 24, flexWrap: "wrap", alignItems: "center" }}>
+            <span style={{ fontSize: 12 }}>
+              <span style={{ color: "var(--text-muted)" }}>ID:</span> <code>{previewCase}</code>
+            </span>
+            <span style={{ fontSize: 12 }}>
+              <span style={{ color: "var(--text-muted)" }}>Status:</span>{" "}
+              <span className={`badge ${statusClass(previewDetails.status || "")}`}>
+                {STATUS_LABEL[previewDetails.status || ""] || previewDetails.status || "—"}
+              </span>
+            </span>
+            <span style={{ fontSize: 12 }}>
+              <span style={{ color: "var(--text-muted)" }}>Mode:</span> {previewDetails.investigation_mode || "—"}
+            </span>
+            <span style={{ fontSize: 12 }}>
+              <span style={{ color: "var(--text-muted)" }}>Evidence:</span> {previewDetails.evidence_count ?? 0}
+            </span>
+            <span style={{ fontSize: 12 }}>
+              <span style={{ color: "var(--text-muted)" }}>Findings:</span> {previewDetails.findings_count ?? 0}
+            </span>
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => enterCase(previewCase)}
+              disabled={entering === previewCase}
+            >
+              {entering === previewCase ? "Opening…" : "Enter Investigation →"}
+            </button>
           </div>
+          {previewDetails.description && (
+            <p style={{ padding: "0 16px 16px", fontSize: 12, color: "var(--text-muted)" }}>
+              {previewDetails.description}
+            </p>
+          )}
         </div>
       )}
 
@@ -173,7 +236,7 @@ export default function Overview() {
         {cases.length === 0 ? (
           <div className="empty-state">
             <h3>No cases yet</h3>
-            <p>Get started immediately with a pre-populated test case or create a new one.</p>
+            <p>Start with a pre-populated demo case or create a new investigation.</p>
             <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 16 }}>
               <button className="btn btn-primary" onClick={handleSeedDemo} disabled={seeding}>
                 {seeding ? "Seeding Demo..." : "⚡ Load Demo Investigation"}
@@ -189,32 +252,51 @@ export default function Overview() {
               <tr>
                 <th>Case ID</th>
                 <th>Name</th>
+                <th>Status</th>
                 <th>Mode</th>
                 <th>Evidence</th>
                 <th>Findings</th>
                 <th>Pipeline</th>
-                <th>Status</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
               {cases.map((c) => {
-                const d = caseDetails[c];
+                const d = caseSummaries[c];
+                const isPreview = c === previewCase;
+                const isActive = c === activeCase;
                 return (
                   <tr
                     key={c}
                     style={{
-                      background: c === activeCase ? "rgba(47,129,247,0.1)" : undefined,
+                      background: isPreview ? "rgba(47,129,247,0.14)" : isActive ? "rgba(63,185,80,0.08)" : undefined,
                       cursor: "pointer",
                     }}
-                    onClick={() => setActiveCase(c)}
+                    onClick={() => setPreviewCase(c)}
                   >
                     <td style={{ fontFamily: "monospace", fontSize: 11 }}>{c}</td>
                     <td>{d?.name || c}</td>
-                    <td>{d?.investigation_mode ? `Mode ${d.investigation_mode}` : "—"}</td>
+                    <td>
+                      <span className={`badge ${statusClass(d?.status || "")}`} style={{ fontSize: 10 }}>
+                        {STATUS_LABEL[d?.status || ""] || d?.status || "—"}
+                      </span>
+                    </td>
+                    <td>{d?.mode ? `Mode ${d.mode}` : "—"}</td>
                     <td>{d?.evidence_count ?? "—"}</td>
                     <td>{d?.findings_count ?? "—"}</td>
                     <td>{d?.pipeline_complete ? "✓ Done" : "—"}</td>
-                    <td>{c === activeCase ? "✓ Active" : "—"}</td>
+                    <td>
+                      <button
+                        className="btn btn-primary btn-sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          enterCase(c);
+                        }}
+                        disabled={entering === c}
+                      >
+                        {entering === c ? "Opening…" : isActive ? "Continue" : "Enter"}
+                      </button>
+                    </td>
                   </tr>
                 );
               })}

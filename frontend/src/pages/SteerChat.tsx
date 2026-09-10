@@ -168,7 +168,7 @@ function ProposalCard({ entry }: { entry: ChatEntry }) {
 }
 
 export default function SteerChat() {
-  const { mode: caseMode } = useCase();
+  const { mode: caseMode, activeCase } = useCase();
   const [messages, setMessages] = useState<ChatEntry[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -211,7 +211,7 @@ export default function SteerChat() {
     return () => {
       if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
     };
-  }, []);
+  }, [activeCase]);
 
   const send = async () => {
     if (!input.trim() || loading) return;

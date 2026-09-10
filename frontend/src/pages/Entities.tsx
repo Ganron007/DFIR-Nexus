@@ -4,8 +4,10 @@
  */
 import { useEffect, useState } from "react";
 import { api, type EntitiesResponse } from "../api/client";
+import { useCase } from "../context/CaseContext";
 
 export default function Entities() {
+  const { activeCase } = useCase();
   const [entities, setEntities] = useState<EntitiesResponse["entities"] | null>(null);
   const [total, setTotal] = useState(0);
   const [needles, setNeedles] = useState("");
@@ -26,7 +28,7 @@ export default function Entities() {
         setEntities(null);
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [activeCase]);
 
   const search = () => {
     setLoading(true);

@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { api, type Finding } from "../api/client";
+import { useCase } from "../context/CaseContext";
 
 export default function Report() {
+  const { activeCase } = useCase();
   const [findings, setFindings] = useState<Finding[]>([]);
   const [summary, setSummary] = useState<{
     total: number;
@@ -51,7 +53,7 @@ export default function Report() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [activeCase]);
 
   const handleGenerateReport = async () => {
     setGenerating(true);

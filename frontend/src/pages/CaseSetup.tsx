@@ -18,7 +18,7 @@ const STEPS = ["Case Details", "Register Evidence", "Choose Mode", "Run Processi
 
 export default function CaseSetup() {
   const navigate = useNavigate();
-  const { setActiveCase, setMode } = useCase();
+  const { setActiveCase } = useCase();
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -57,11 +57,10 @@ export default function CaseSetup() {
     setBusy(true);
     setError("");
     try {
-      const r = await api.caseCreate({ name, description, examiner, mode });
+      // Phase 4e: create only — activation happens on "Enter Cockpit".
+      const r = await api.caseCreate({ name, description, examiner, mode, activate: false });
       if (r.ok) {
         setCaseId(r.case_id);
-        await setActiveCase(r.case_id);
-        if (mode) await setMode(mode);
         setStep(1);
       } else {
         setError(r.error || "Failed to create case");
@@ -78,18 +77,16 @@ export default function CaseSetup() {
     setBusy(true);
     setError("");
     const failures: string[] = [];
-    for (const p of paths) {
+    for (const raw of paths) {
+      // Strip surrounding quotes — examiners often paste "C:\path with spaces"
+      const p = raw.trim().replace(/^["']+|["']+$/g, "").trim();
+      if (!p) continue;
       try {
-        const res = await fetch("/portal/api/evidence", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ path: p }),
-        });
-        const body = await res.json();
-        if (body.ok) {
+        const res = await api.registerEvidence(p, caseId);
+        if (res.ok) {
           setRegisteredPaths((prev) => [...prev, p]);
         } else {
-          failures.push(`${p}: ${body.error || "failed"}`);
+          failures.push(`${p}: ${res.error || "failed"}`);
         }
       } catch (e) {
         failures.push(`${p}: ${(e as Error).message}`);
@@ -102,11 +99,12 @@ export default function CaseSetup() {
   };
 
   const registerManual = async () => {
-    if (!manualPath.trim()) {
+    const cleaned = manualPath.trim().replace(/^["']+|["']+$/g, "").trim();
+    if (!cleaned) {
       setError("Evidence path is required");
       return;
     }
-    await registerPaths([manualPath.trim()]);
+    await registerPaths([cleaned]);
     setManualPath("");
   };
 
@@ -122,8 +120,7 @@ export default function CaseSetup() {
     setBusy(true);
     setError("");
     try {
-      await api.setCaseMode(mode);
-      await setMode(mode);
+      await api.setCaseMode(mode, caseId);
       setStep(3);
     } catch (e) {
       setError((e as Error).message);
@@ -166,13 +163,20 @@ export default function CaseSetup() {
     }
   };
 
-  const finish = () => {
-    if (mode === "1") {
-      navigate("/explore");
-    } else if (mode === "2" || mode === "3") {
-      navigate("/steer");
-    } else {
+  const finish = async () => {
+    if (!caseId) {
       navigate("/");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      // Enter Cockpit = the explicit activation point.
+      await setActiveCase(caseId);
+      navigate(mode === "1" ? "/explore" : "/steer");
+    } catch (e) {
+      setError((e as Error).message);
+      setBusy(false);
     }
   };
 

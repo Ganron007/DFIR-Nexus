@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { api, type Bookmark } from "../api/client";
+import { useCase } from "../context/CaseContext";
 
 interface FormState {
   title: string;
@@ -57,6 +58,7 @@ function useHistory() {
 }
 
 export default function Workbench() {
+  const { activeCase } = useCase();
   const [items, setItems] = useState<Bookmark[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -77,7 +79,8 @@ export default function Workbench() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => load(), []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => load(), [activeCase]);
 
   const remove = async (id: string) => {
     try {

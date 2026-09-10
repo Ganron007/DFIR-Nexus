@@ -1,14 +1,13 @@
 import { useState } from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useCase } from "../context/CaseContext";
 
 /**
- * WP 4b.4 + lifecycle ordering: the sidebar follows the N1-N8 investigation
- * spine in order, each item carrying its stage badge. The top stepper shows
- * live stage completion from CaseContext (WP 4d.5).
+ * Phase 4e: the sidebar follows the N1-N8 investigation spine only when a
+ * case is active. The case switcher previews with a click and switches only
+ * through the explicit "Switch" button; "Exit to Dashboard" detaches.
  */
 const NAV_SPINE = [
-  { to: "/case-setup", label: "Case Setup", stage: "N1", hint: "Create case · register evidence · choose mode" },
   { to: "/evidence", label: "Evidence", stage: "N2", hint: "Registered evidence + N2 processing status" },
   { to: "/explore", label: "Explore", stage: "N3·N4", hint: "Index-backed search over parsed evidence" },
   { to: "/steer", label: "Steer Chat", stage: "N5", hint: "Interpretation — scribe, iterative, or agentic" },
@@ -27,7 +26,7 @@ const NAV_UTILITIES = [
 
 // WP 4b.4: N1-N8 stage stepper
 const STAGES = [
-  { id: "N1", label: "Intake", to: "/case-setup" },
+  { id: "N1", label: "Intake", to: "/evidence" },
   { id: "N2", label: "Process", to: "/evidence" },
   { id: "N3", label: "Index", to: "/explore" },
   { id: "N4", label: "Query", to: "/explore" },
@@ -82,17 +81,34 @@ function StageStepper({ stages }: { stages: Record<string, boolean> }) {
 }
 
 export default function Layout({ children }: { children: React.ReactNode }) {
-  const { cases, activeCase, mode, health, stages, setActiveCase } = useCase();
+  const {
+    cases,
+    activeCase,
+    previewCase,
+    mode,
+    health,
+    stages,
+    setActiveCase,
+    setPreviewCase,
+    exitToDashboard,
+  } = useCase();
   const [caseMenuOpen, setCaseMenuOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
 
-  const handleActivate = async (caseId: string) => {
+  const handleSwitch = async (caseId: string) => {
     await setActiveCase(caseId);
+    setPreviewCase(caseId);
     setCaseMenuOpen(false);
   };
 
+  const handleExit = async () => {
+    await exitToDashboard();
+    navigate("/");
+  };
+
   const currentLabel =
-    [...NAV_SPINE, ...NAV_UTILITIES].find((n) => n.to === location.pathname)?.label || "Overview";
+    [...NAV_SPINE, ...NAV_UTILITIES].find((n) => n.to === location.pathname)?.label || "Dashboard";
 
   return (
     <div className="cockpit">
@@ -117,16 +133,30 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             onClick={() => setCaseMenuOpen(!caseMenuOpen)}
           >
             <span className="case-label">Active Case</span>
-            <span className="case-name">{activeCase || "No case"}</span>
+            <span className="case-name">{activeCase || "No case — Dashboard"}</span>
             <span className="case-id">{activeCase || ""}</span>
           </button>
           {caseMenuOpen && (
             <ul className="case-list">
               {cases.map((c) => (
-                <li key={c}>
-                  <button onClick={() => handleActivate(c)}>
+                <li key={c} style={{ display: "flex", gap: 4, alignItems: "stretch" }}>
+                  <button
+                    onClick={() => setPreviewCase(c)}
+                    style={{
+                      flex: 1,
+                      background: c === previewCase ? "rgba(47,129,247,0.15)" : undefined,
+                    }}
+                    title="Preview (does not switch)"
+                  >
                     <span className="case-name">{c}</span>
-                    <span className="case-id">{c}</span>
+                  </button>
+                  <button
+                    className="btn btn-sm"
+                    onClick={() => handleSwitch(c)}
+                    disabled={c === activeCase}
+                    title={c === activeCase ? "Already active" : "Switch to this case"}
+                  >
+                    {c === activeCase ? "Current" : "Switch"}
                   </button>
                 </li>
               ))}
@@ -138,7 +168,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </div>
 
         {/* WP 4b.6: Mode indicator — click navigates to the mode's primary surface */}
-        {mode && (
+        {activeCase && mode && (
           <div className="mode-indicator">
             <NavLink
               to={mode === "1" ? "/explore" : "/steer"}
@@ -157,39 +187,57 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         )}
 
         <nav className="nav">
-          <a href="/" className="nav-item nav-home" title="Back to the landing page">
+          <NavLink
+            to="/"
+            className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
+            title="Case Dashboard — all cases, no case required"
+          >
             <span className="nav-stage">⌂</span>
-            <span className="nav-label">Home / Landing</span>
-          </a>
-          <div className="nav-group-label" style={{ marginTop: 8 }}>Investigation Spine</div>
-          {NAV_SPINE.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
-              title={item.hint}
-            >
-              <span className="nav-stage">{item.stage}</span>
-              <span className="nav-label">{item.label}</span>
-            </NavLink>
-          ))}
-          <div className="nav-group-label" style={{ marginTop: 12 }}>Utilities</div>
-          {NAV_UTILITIES.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
-              title={item.hint}
-            >
-              <span className="nav-stage">·</span>
-              <span className="nav-label">{item.label}</span>
-            </NavLink>
-          ))}
+            <span className="nav-label">Dashboard</span>
+          </NavLink>
+
+          {activeCase ? (
+            <>
+              <div className="nav-group-label" style={{ marginTop: 8 }}>Investigation Spine</div>
+              {NAV_SPINE.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
+                  title={item.hint}
+                >
+                  <span className="nav-stage">{item.stage}</span>
+                  <span className="nav-label">{item.label}</span>
+                </NavLink>
+              ))}
+              <div className="nav-group-label" style={{ marginTop: 12 }}>Utilities</div>
+              {NAV_UTILITIES.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
+                  title={item.hint}
+                >
+                  <span className="nav-stage">·</span>
+                  <span className="nav-label">{item.label}</span>
+                </NavLink>
+              ))}
+            </>
+          ) : (
+            <div style={{ padding: "12px 8px", fontSize: 11, color: "var(--text-muted)", lineHeight: 1.5 }}>
+              Select a case on the dashboard (preview → Enter) to open the investigation cockpit.
+            </div>
+          )}
         </nav>
 
         <div className="sidebar-footer">
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span className="version">v2.0 — Phase 4d</span>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+            <span className="version">v2.0 — Phase 4e</span>
+            {activeCase && (
+              <button className="btn btn-sm" onClick={handleExit} title="Detach this case and return to the dashboard">
+                Exit
+              </button>
+            )}
             <span
               title={health === "ok" ? "System healthy" : health === "down" ? "Backend unreachable" : "Checking…"}
               style={{
@@ -210,15 +258,26 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             DFIR-Nexus / <strong style={{ color: "var(--text-primary)" }}>{currentLabel}</strong>
           </span>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <a href="/" style={{ fontSize: 12, color: "var(--text-muted)", textDecoration: "none" }}>
-              ← Landing
-            </a>
+            {activeCase ? (
+              <button
+                className="btn btn-sm"
+                onClick={handleExit}
+                style={{ fontSize: 11 }}
+                title="Detach this case and return to the dashboard"
+              >
+                ← Exit to Dashboard
+              </button>
+            ) : (
+              <a href="/" style={{ fontSize: 12, color: "var(--text-muted)", textDecoration: "none" }}>
+                ← Landing
+              </a>
+            )}
             <span className="active-case-badge">
               {activeCase || "no case"}
             </span>
           </div>
         </header>
-        {/* WP 4b.4: N1-N8 stage stepper — live stage states from CaseContext */}
+        {/* WP 4b.4: N1-N8 stage stepper — only inside an investigation */}
         {activeCase && <StageStepper stages={stages} />}
         <div className="content">{children}</div>
       </main>

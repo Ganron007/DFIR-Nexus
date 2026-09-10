@@ -95,16 +95,14 @@ export default function Evidence() {
   const registerPaths = async (paths: string[]) => {
     setError("");
     const failures: string[] = [];
-    for (const p of paths) {
+    for (const raw of paths) {
+      // Strip surrounding quotes — examiners often paste "C:\path with spaces"
+      const p = raw.trim().replace(/^["']+|["']+$/g, "").trim();
+      if (!p) continue;
       try {
-        const res = await fetch("/portal/api/evidence", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ path: p }),
-        });
-        const body = await res.json();
-        if (!body.ok) {
-          failures.push(`${p}: ${body.error || "failed"}`);
+        const res = await api.registerEvidence(p, activeCase);
+        if (!res.ok) {
+          failures.push(`${p}: ${res.error || "failed"}`);
         }
       } catch (e) {
         failures.push(`${p}: ${(e as Error).message}`);

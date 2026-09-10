@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import { CaseProvider } from "./context/CaseContext";
 import Layout from "./components/Layout";
+import RequireCase from "./components/RequireCase";
 import Overview from "./pages/Overview";
 import Explore from "./pages/Explore";
 import Timeline from "./pages/Timeline";
@@ -21,20 +22,24 @@ export default function App() {
     <CaseProvider>
       <Layout>
         <Routes>
+          {/* Dashboard — case management, no active case required */}
           <Route path="/" element={<Overview />} />
-          <Route path="/explore" element={<Explore />} />
-          <Route path="/timeline" element={<Timeline />} />
-          <Route path="/steer" element={<SteerChat />} />
-          <Route path="/workbench" element={<Workbench />} />
-          <Route path="/findings" element={<Findings />} />
-          <Route path="/approve" element={<Approve />} />
-          <Route path="/report" element={<Report />} />
-          <Route path="/evidence" element={<Evidence />} />
-          <Route path="/entities" element={<Entities />} />
-          <Route path="/transparency" element={<Transparency />} />
           <Route path="/case-setup" element={<CaseSetup />} />
-          <Route path="/iocs" element={<Iocs />} />
-          <Route path="/todos" element={<Todos />} />
+
+          {/* Cockpit — requires a server-confirmed active case */}
+          <Route path="/explore" element={<RequireCase><Explore /></RequireCase>} />
+          <Route path="/timeline" element={<RequireCase><Timeline /></RequireCase>} />
+          <Route path="/steer" element={<RequireCase><SteerChat /></RequireCase>} />
+          <Route path="/workbench" element={<RequireCase><Workbench /></RequireCase>} />
+          <Route path="/findings" element={<RequireCase><Findings /></RequireCase>} />
+          <Route path="/approve" element={<RequireCase><Approve /></RequireCase>} />
+          <Route path="/report" element={<RequireCase><Report /></RequireCase>} />
+          <Route path="/evidence" element={<RequireCase><Evidence /></RequireCase>} />
+          <Route path="/entities" element={<RequireCase><Entities /></RequireCase>} />
+          <Route path="/transparency" element={<RequireCase><Transparency /></RequireCase>} />
+          <Route path="/iocs" element={<RequireCase><Iocs /></RequireCase>} />
+          <Route path="/todos" element={<RequireCase><Todos /></RequireCase>} />
+
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Layout>

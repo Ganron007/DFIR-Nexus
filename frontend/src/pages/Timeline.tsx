@@ -9,8 +9,10 @@ import { useNavigate } from "react-router-dom";
 import { api, type TimelineLaneEntry, type N4Hit } from "../api/client";
 import { pickHitColumns } from "../lib/hitColumns";
 import VirtualTable, { type Column } from "../components/VirtualTable";
+import { useCase } from "../context/CaseContext";
 
 export default function Timeline() {
+  const { activeCase } = useCase();
   const navigate = useNavigate();
   const [lanes, setLanes] = useState<TimelineLaneEntry[]>([]);
   const [total, setTotal] = useState(0);
@@ -33,7 +35,7 @@ export default function Timeline() {
       })
       .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [activeCase]);
 
   const laneData = lanes.map((lane) => {
     const buckets = Object.entries(lane.buckets)
@@ -100,7 +102,7 @@ export default function Timeline() {
       .catch((e) => setEventError((e as Error).message))
       .finally(() => setEventsLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedLane, brushRange.start, brushRange.end]);
+  }, [selectedLane, brushRange.start, brushRange.end, activeCase]);
 
   // WP 4b.10: hand the brushed range to Explore
   const sendToExplore = () => {

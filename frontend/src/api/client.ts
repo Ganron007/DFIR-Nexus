@@ -8,6 +8,24 @@
 
 const BASE = "/portal/api";
 
+/**
+ * Phase 4e: explicit case identity for every request.
+ *
+ * The cockpit always tells the server which case it means — the active-case
+ * pointer is only a fallback for CLI/MCP/legacy consumers. CaseContext owns
+ * this value; pages never set it directly.
+ */
+let requestCaseId = "";
+
+/** Set (or clear) the case id attached to every API request. */
+export function setRequestCaseId(caseId: string): void {
+  requestCaseId = caseId || "";
+}
+
+function caseHeaders(): Record<string, string> {
+  return requestCaseId ? { "X-Nexus-Case": requestCaseId } : {};
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -24,7 +42,7 @@ async function request<T>(
   options: RequestInit = {},
 ): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
-    headers: { "Content-Type": "application/json", ...options.headers },
+    headers: { "Content-Type": "application/json", ...caseHeaders(), ...options.headers },
     ...options,
   });
   const body = await res.json().catch(() => ({}));
@@ -47,10 +65,22 @@ function post<T>(path: string, data?: unknown): Promise<T> {
 
 // --- Types (matched against actual backend handler responses) ---
 
-/** GET /cases → {cases: string[], active: string} */
+/** GET /cases → {cases: string[], active: string, details: Record<string, CaseSummary>} */
+export interface CaseSummary {
+  case_id: string;
+  name: string;
+  status: string;
+  mode: string;
+  evidence_count?: number;
+  findings_count?: number;
+  approved_count?: number;
+  pipeline_complete?: boolean;
+  report_exists?: boolean;
+}
 export interface CasesResponse {
   cases: string[];
   active: string;
+  details?: Record<string, CaseSummary>;
 }
 
 /** POST /case/activate → {ok: bool, active: string} or {ok: false, error} */
@@ -440,6 +470,8 @@ export interface FsListResponse {
   parent: string;
   drives: boolean;
   entries: FsEntry[];
+  is_file?: boolean;
+  file_entry?: FsEntry;
   error?: string;
 }
 
@@ -479,6 +511,23 @@ export const api = {
   cases: () => request<CasesResponse>("/cases"),
   activateCase: (caseId: string) =>
     post<ActivateCaseResponse>("/case/activate", { case_id: caseId }),
+  deactivateCase: () => post<{ ok: boolean; active: string }>("/case/deactivate"),
+  caseCreate: (params: {
+    name: string;
+    description?: string;
+    examiner?: string;
+    mode?: string;
+    activate?: boolean;
+  }) => post<CaseCreateResponse>("/case/create", params),
+  registerEvidence: (path: string, caseId?: string, description?: string) =>
+    post<{
+      ok: boolean;
+      case_id?: string;
+      sha256?: string;
+      files?: number;
+      total_bytes?: number;
+      error?: string;
+    }>("/evidence", { path, case_id: caseId, description }),
 
   // Findings & evidence
   findings: (status?: string, limit?: number) => {
@@ -593,14 +642,15 @@ export const api = {
   }) => post<{ ok: boolean; rejected: string[]; error?: string }>("/findings/reject", params),
 
   // Phase 4b/4c/4d: Workflow-driven cockpit
-  caseCreate: (params: {
-    name: string;
-    description?: string;
-    examiner?: string;
-    mode?: string;
-  }) => post<CaseCreateResponse>("/case/create", params),
-  seedDemo: (params?: { name?: string }) =>
-    post<{ ok: boolean; case_id: string; evidence_count: number; findings_count: number }>("/case/seed-demo", params || {}),
+  seedDemo: (params?: { name?: string; activate?: boolean }) =>
+    post<{
+      ok: boolean;
+      case_id: string;
+      evidence_count: number;
+      findings_count: number;
+      active: string;
+      error?: string;
+    }>("/case/seed-demo", params || {}),
   caseDetails: (caseId?: string) =>
     request<CaseDetailsResponse>(`/case/details${caseId ? `?case_id=${caseId}` : ""}`),
   pipelineRun: (params: { mode: string; case_id?: string }) =>
@@ -612,8 +662,10 @@ export const api = {
     request<FsListResponse>(`/fs/list${path ? `?path=${encodeURIComponent(path)}` : ""}`),
   playbookNeedles: (families?: string) =>
     request<PlaybookNeedlesResponse>(`/playbook/needles${families ? `?families=${families}` : ""}`),
-  setCaseMode: (mode: string) => post<CaseModeResponse>("/case/mode", { mode }),
-  getCaseMode: () => request<CaseModeResponse>("/case/mode"),
+  setCaseMode: (mode: string, caseId?: string) =>
+    post<CaseModeResponse>("/case/mode", { mode, case_id: caseId }),
+  getCaseMode: (caseId?: string) =>
+    request<CaseModeResponse>(`/case/mode${caseId ? `?case_id=${caseId}` : ""}`),
   systemHealth: () => request<SystemHealthResponse>("/system/health"),
 
   // Report & Evidence Verification
@@ -645,7 +697,7 @@ export async function chatStream(
 ): Promise<void> {
   const res = await fetch(`${BASE}/chat/stream`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...caseHeaders() },
     body: JSON.stringify(body),
     signal,
   });

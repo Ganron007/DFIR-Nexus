@@ -47,7 +47,7 @@ export default function Explore() {
     api.playbookNeedles()
       .then((r) => setPlaybookSuggestions(r.suggestions || []))
       .catch((e) => setError(`Playbook suggestions load failed: ${(e as Error).message}`));
-  }, []);
+  }, [activeCase]);
 
   // WP 4b.10: Read URL params from Timeline brush navigation
   useEffect(() => {
@@ -102,7 +102,7 @@ export default function Explore() {
     } finally {
       if (reqIdRef.current === reqId) setLoading(false);
     }
-  }, [needles, family, hostFilter, timeRange]);
+  }, [needles, family, hostFilter, timeRange, activeCase]);
 
   const search = (resetOffset = true) => {
     doSearch(resetOffset ? 0 : offset);
