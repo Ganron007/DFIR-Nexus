@@ -1,0 +1,40 @@
+name: "RDP Brute Force / Remote Logon Investigation"
+description: "Investigate failed-logon storms, lockouts, and successful remote interactive logons"
+mitre: ["T1110", "T1021.001", "T1078"]
+query_terms:
+  - "4625"
+  - "4740"
+  - "4771"
+  - "4776"
+  - lockout
+  - "type 10"
+  - RemoteInteractive
+  - mstsc
+  - Default.rdp
+  - rdpclip
+  - termsrv
+  - "1149"
+  - "21"
+query_terms_strong:
+  - "4740"
+  - "4771"
+  - RemoteInteractive
+  - "type 10"
+  - Default.rdp
+sources:
+  - "SANS FOR508 - Windows Enterprise Incident Response"
+  - "MITRE ATT&CK T1110 Brute Force"
+triggers:
+  - "Many 4625 from one source, many accounts, near-identical timing (spray)"
+  - "4740 lockout followed by success"
+  - "RDP client artifacts (Default.rdp, rdpclip) on a non-admin workstation"
+caveats:
+  - "Service accounts retry credentials; distinguish spray (one source, many accounts) from a single misconfigured service."
+phases:
+  - phase: "Identify"
+    steps:
+      - "Aggregate 4625 by source IP and target account"
+      - "Find 4740 lockouts and the following successful 4624 type 10"
+  - phase: "Correlate"
+    steps:
+      - "Match successful remote logon to RDP artifacts and subsequent process execution"

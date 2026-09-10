@@ -1,0 +1,41 @@
+name: "Web Shell Investigation"
+description: "Investigate server-side web shells dropped on IIS/Apache/nginx (T1505.003)"
+mitre: ["T1505.003", "T1190"]
+query_terms:
+  - w3wp.exe
+  - cmd.aspx
+  - "*.aspx"
+  - webshell
+  - inetsrv
+  - "iis"
+  - "http.sys"
+  - "c:\\inetpub\\wwwroot"
+  - "*.php"
+  - "*.jsp"
+  - "*.ashx"
+  - "eval("
+  - "request.form"
+  - "response.write"
+query_terms_strong:
+  - w3wp.exe
+  - cmd.aspx
+  - webshell
+  - c:\\inetpub\\wwwroot
+  - "*.ashx"
+sources:
+  - "SANS FOR508 - Windows Enterprise Incident Response"
+  - "MITRE ATT&CK T1505.003 Web Shell"
+triggers:
+  - "w3wp.exe spawning cmd/powershell (unusual parent)"
+  - "Newly written script under a web root"
+  - "Web requests to a single script with command parameters"
+caveats:
+  - "Legitimate ASP.NET apps run under w3wp.exe; suspicion requires child shell processes or writes to the web root."
+phases:
+  - phase: "Identify"
+    steps:
+      - "Find script files written to the web root and their creation time"
+      - "Look for w3wp.exe -> cmd.exe/powershell.exe process chains"
+  - phase: "Correlate"
+    steps:
+      - "Correlate web access logs with the script path and source IP"

@@ -1,0 +1,53 @@
+version: 1
+description: >
+  SigmaHQ-derived search needles: high-signal fields from well-known
+  process-creation / persistence / credential / defense-evasion rules,
+  distilled into concrete strings that appear in parsed forensic output.
+  Keyed by evidence family so only relevant packs are offered per case.
+source: "SigmaHQ rules (process_creation, powershell, persistence, credential_access, defense_evasion, lateral_movement)"
+packs:
+  - id: sigma-susp-process
+    name: "Suspicious process execution"
+    families: [evtx, evtxecmd, hayabusa, chainsaw, prefetch, pecmd, amcache, recmd]
+    needles: ["rundll32.exe", "mshta.exe", "regsvr32.exe", "regasm.exe", "installutil.exe", "certutil -urlcache", "bitsadmin /transfer", "msbuild.exe", "wmic process call create", "forfiles /c", "pcalua.exe", "conhost.exe --headless"]
+    caveats: ["LOLBins are legitimate; suspicion requires remote/temp payloads, odd parents, or follow-on execution (FD-004)."]
+  - id: sigma-powershell
+    name: "PowerShell abuse"
+    families: [evtx, evtxecmd, hayabusa, chainsaw, prefetch, pecmd, powershell]
+    needles: ["-enc ", "-encodedcommand", "-nop", "-w hidden", "-noni", "downloadstring", "invoke-expression", "iex(", "frombase64string", "webclient", "new-object net.webclient", "scriptblocklogging", "amsi"]
+    caveats: ["Admin scripts use PowerShell; require encoded/hidden flags or a download cradle."]
+  - id: sigma-credaccess
+    name: "Credential access"
+    families: [evtx, evtxecmd, hayabusa, chainsaw, prefetch, amcache, recmd, memory, vol]
+    needles: ["lsass", "procdump", "mimikatz", "sekurlsa", "comsvcs.dll", "minidump", "nanodump", "wdigest", "uselogoncredential", "kerberos::", "ntds.dit", "secretsdump", "lsassy"]
+    caveats: ["EDR/backup access LSASS too; require tool names or dump files."]
+  - id: sigma-persistence
+    name: "Persistence"
+    families: [recmd, evtx, evtxecmd, hayabusa, chainsaw, prefetch, mftecmd]
+    needles: ["currentversion\\run", "currentversion\\runonce", "winlogon", "userinit", "shell", "startupapproved", "\\start menu\\programs\\startup", "7045", "create service", "sc.exe create", "schtasks /create", "\\microsoft\\windows\\"]
+    caveats: ["Updaters create run keys/tasks/services; focus on unsigned binaries and non-Microsoft paths."]
+  - id: sigma-defense-evasion
+    name: "Defense evasion"
+    families: [evtx, evtxecmd, hayabusa, chainsaw, prefetch, recmd]
+    needles: ["wevtutil cl", "1102", "auditpol /clear", "set-mppreference", "disablerealtimemonitoring", "netsh advfirewall set", "sc stop windefend", "net stop", "bcdedit /set", "vssadmin delete shadows", "fsutil usn deletejournal"]
+    caveats: ["Management tooling can change these; 1102 + shadow deletion without a change ticket is high signal."]
+  - id: sigma-lateral
+    name: "Lateral movement"
+    families: [evtx, evtxecmd, hayabusa, chainsaw, zeek, suricata, pcap]
+    needles: ["psexesvc", "admin$", "c$", "net use", "winrs", "wmic /node:", "enter-pssession", "4648", "5140", "5145", "4624 type 10"]
+    caveats: ["Admin shares/RDP are common; require unexpected source host, account, or tool artifacts."]
+  - id: sigma-discovery
+    name: "Discovery"
+    families: [evtx, evtxecmd, hayabusa, chainsaw, prefetch, sysmon]
+    needles: ["net group \"domain admins\"", "net user /domain", "nltest /dclist", "dsquery", "whoami /all", "systeminfo", "qwinsta", "net view", "arp -a", "nslookup"]
+    caveats: ["Native admin commands; correlate bursts across hosts/accounts."]
+  - id: sigma-exfil
+    name: "Exfiltration / staging"
+    families: [prefetch, pecmd, recmd, srum, browser, zeek, suricata, evtx, evtxecmd]
+    needles: ["rclone", "mega.nz", "mega-cmd", "transfer.sh", "pastebin", "anonfiles", "file.io", "wetransfer", "backup.pst", ".7z", "compress-archive", "ftp -s:"]
+    caveats: ["Cloud storage/archive use is common; staging is mass copy + compress + upload pattern."]
+  - id: sigma-web-c2
+    name: "Web C2 / user agent"
+    families: [zeek, suricata, pcap, browser, evtx, evtxecmd]
+    needles: ["user-agent: curl", "user-agent: python", "user-agent: powershell", "beacon", "jitter", "mozilla/4.0", "cmd.exe /c", "downloadstring", "post /submit.php"]
+    caveats: ["UA strings alone are weak; combine with beacon cadence, rare domains, or process correlation."]

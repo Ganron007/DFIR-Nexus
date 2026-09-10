@@ -45,6 +45,8 @@ export default defineConfig({
       NEXUS_N4_BACKEND: "csv",
       NEXUS_RAG_PRELOAD: "0",
       NEXUS_REPO_EXPORT: "0",
+      NEXUS_PORTAL_RATE_LIMIT: "100000",
+      NEXUS_PORTAL_AUTH_RATE_LIMIT: "100000",
     },
   },
 });

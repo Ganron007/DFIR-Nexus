@@ -26,6 +26,7 @@ export default function Explore() {
   const [showHistogram, setShowHistogram] = useState(true);
   const [playbookSuggestions, setPlaybookSuggestions] = useState<PlaybookSuggestion[]>([]);
   const [showPlaybookHelp, setShowPlaybookHelp] = useState(false);
+  const [feedbackMsg, setFeedbackMsg] = useState("");
   const [timeRange, setTimeRange] = useState<{ start: string; end: string }>({ start: "", end: "" });
   const reqIdRef = useRef(0);
 
@@ -59,6 +60,39 @@ export default function Explore() {
       .catch((e) => setError(`Needle suggestions load failed: ${(e as Error).message}`));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [familyAgg]);
+
+  const needleFeedback = async (
+    pb: PlaybookSuggestion,
+    verdict: "accept" | "reject" | "promote",
+  ) => {
+    try {
+      const family = Object.keys(familyAgg)[0] || "";
+      await api.needleFeedback({
+        needles: pb.needles,
+        family,
+        source: pb.source || "playbook",
+        verdict,
+      });
+      setFeedbackMsg(`${verdict === "promote" ? "★ promoted" : verdict}: ${pb.playbook}`);
+      if (verdict === "promote") {
+        const r = await api.playbookNeedles(Object.keys(familyAgg).join(",") || undefined);
+        setPlaybookSuggestions(r.suggestions || []);
+      }
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
+  const sourceLabel = (s?: string) =>
+    s === "mitre" ? "ATT&CK" : s === "sigma" ? "Sigma" : s === "overlay" ? "yours" : "playbook";
+  const sourceColor = (s?: string) =>
+    s === "mitre"
+      ? "var(--purple)"
+      : s === "sigma"
+        ? "var(--orange)"
+        : s === "overlay"
+          ? "var(--success)"
+          : undefined;
 
   // WP 4b.10: Read URL params from Timeline brush navigation
   useEffect(() => {
@@ -288,8 +322,11 @@ export default function Explore() {
         {showPlaybookHelp && playbookSuggestions.length > 0 && (
           <div style={{ marginTop: 8, padding: 12, background: "var(--bg-tertiary)", borderRadius: 8 }}>
             <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8, textTransform: "uppercase" }}>
-              Suggested Needles — Playbooks + MITRE ATT&CK
+              Suggested Needles — Playbooks · MITRE ATT&CK · Sigma · Yours
             </div>
+            {feedbackMsg && (
+              <div style={{ fontSize: 11, color: "var(--success)", marginBottom: 8 }}>{feedbackMsg}</div>
+            )}
             {playbookSuggestions.slice(0, 8).map((pb) => (
               <div key={pb.slug} style={{ marginBottom: 8 }}>
                 <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4 }}>
@@ -299,27 +336,49 @@ export default function Explore() {
                       fontSize: 9,
                       marginRight: 6,
                       background: pb.source === "mitre" ? "rgba(163,113,247,0.15)" : undefined,
-                      color: pb.source === "mitre" ? "var(--purple)" : undefined,
+                      color: sourceColor(pb.source),
                     }}
                   >
-                    {pb.source === "mitre" ? "ATT&CK" : "playbook"}
+                    {sourceLabel(pb.source)}
                   </span>
                   {pb.playbook}
                 </div>
                 <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                  {pb.needles.slice(0, 10).map((n) => (
-                    <button
-                      key={n}
-                      className="btn btn-sm"
-                      style={{ fontFamily: "monospace", fontSize: 11, padding: "2px 8px" }}
-                      onClick={() => {
-                        setNeedles(n);
-                        setTimeout(() => search(), 50);
-                      }}
-                    >
-                      {n}
-                    </button>
-                  ))}
+                  {[
+                    ...(pb.strong_needles || []),
+                    ...pb.needles.filter((n) => !(pb.strong_needles || []).includes(n)),
+                  ]
+                    .slice(0, 10)
+                    .map((n) => (
+                      <button
+                        key={n}
+                        className="btn btn-sm"
+                        style={{
+                          fontFamily: "monospace",
+                          fontSize: 11,
+                          padding: "2px 8px",
+                          borderColor: (pb.strong_needles || []).includes(n) ? "var(--accent)" : undefined,
+                        }}
+                        title={(pb.strong_needles || []).includes(n) ? "high-signal" : ""}
+                        onClick={() => {
+                          setNeedles(n);
+                          setTimeout(() => search(), 50);
+                        }}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                </div>
+                <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                  <button className="btn btn-sm" style={{ fontSize: 10 }} onClick={() => needleFeedback(pb, "accept")} title="Mark this suggestion as useful">
+                    ✓ used
+                  </button>
+                  <button className="btn btn-sm" style={{ fontSize: 10 }} onClick={() => needleFeedback(pb, "reject")} title="Reject this suggestion">
+                    ✗ reject
+                  </button>
+                  <button className="btn btn-sm" style={{ fontSize: 10 }} onClick={() => needleFeedback(pb, "promote")} title="Promote to my local overlay (never the repo)">
+                    ★ promote
+                  </button>
                 </div>
                 {pb.caveats.length > 0 && (
                   <div style={{ fontSize: 10, color: "var(--warning)", marginTop: 4 }}>

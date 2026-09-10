@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import time
 from collections import defaultdict
 from collections.abc import Callable
@@ -12,20 +13,35 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(str(os.environ.get(name, "") or default).strip())
+    except (TypeError, ValueError):
+        return default
+
+
 class PortalRateLimitMiddleware(BaseHTTPMiddleware):
-    """In-memory per-IP sliding window with an optional path-prefix filter."""
+    """In-memory per-IP sliding window with an optional path-prefix filter.
+
+    Defaults are configurable so a busy local SPA (and the E2E suite) do not
+    trip the safety net: ``NEXUS_PORTAL_RATE_LIMIT`` / ``NEXUS_PORTAL_AUTH_RATE_LIMIT``.
+    """
 
     def __init__(
         self,
         app: Callable[..., Any],
         *,
-        limit_per_minute: int = 120,
-        auth_limit_per_minute: int = 30,
+        limit_per_minute: int | None = None,
+        auth_limit_per_minute: int | None = None,
         window_seconds: float = 60.0,
         path_prefix: str = "/",
         auth_path_prefix: str = "/api/auth/",
     ) -> None:
         super().__init__(app)
+        if limit_per_minute is None:
+            limit_per_minute = _env_int("NEXUS_PORTAL_RATE_LIMIT", 600)
+        if auth_limit_per_minute is None:
+            auth_limit_per_minute = _env_int("NEXUS_PORTAL_AUTH_RATE_LIMIT", 60)
         self._limit = max(1, limit_per_minute)
         self._auth_limit = max(1, auth_limit_per_minute)
         self._window = float(window_seconds)

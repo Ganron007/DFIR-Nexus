@@ -337,8 +337,6 @@ def build_http_app(server, host: str = "127.0.0.1", port: int = 4508):
         middleware=[
             Middleware(
                 PortalRateLimitMiddleware,
-                limit_per_minute=120,
-                auth_limit_per_minute=30,
                 path_prefix="/portal",
                 auth_path_prefix="/portal/api/commit",
             ),

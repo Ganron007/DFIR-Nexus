@@ -160,7 +160,7 @@ test("wizard creates, registers, runs the lane, and enters the cockpit", async (
   // The wizard's explicit-case registration is visible in the cockpit.
   await page.getByRole("link", { name: "Evidence" }).click();
   await expect(page.getByRole("heading", { name: /Evidence Registry \(1\)/ })).toBeVisible();
-  await expect(page.getByText(file, { exact: false })).toBeVisible();
+  await expect(page.getByRole("cell", { name: file, exact: true })).toBeVisible();
 
   // Leave the store detached for the next test.
   await page.getByRole("button", { name: /Exit to Dashboard/i }).first().click();

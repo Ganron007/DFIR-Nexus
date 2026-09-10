@@ -203,6 +203,20 @@ def get_attack_needles() -> list[dict]:
     return []
 
 
+def get_sigma_needles() -> list[dict]:
+    """SigmaHQ-derived needle packs.
+
+    File: ``needles/sigma_needles.yaml`` — family -> detection-field needles
+    mined from well-known Sigma rules, with FD-004 caveats.
+    """
+    data = _load_yaml("needles/sigma_needles.yaml")
+    if isinstance(data, dict):
+        packs = data.get("packs")
+        if isinstance(packs, list):
+            return [p for p in packs if isinstance(p, dict)]
+    return []
+
+
 def list_playbooks() -> list[dict]:
     return _load_all_in_dir("discipline/playbooks")
 

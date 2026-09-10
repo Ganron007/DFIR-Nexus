@@ -147,6 +147,11 @@ def _context_block(context: dict[str, Any] | None) -> str:
             "MITRE ATT&CK packs for this case (terms + false-positive caveats):\n"
             + attack_context[:1800]
         )
+    sigma_context = str(context.get("sigma_context") or "").strip()
+    if sigma_context:
+        lines.append(
+            "SigmaHQ-derived detection patterns for this case:\n" + sigma_context[:1500]
+        )
     rag = str(context.get("rag") or "").strip()
     if rag:
         lines.append("RAG methodology:\n" + rag[:1200])
@@ -187,14 +192,26 @@ def nl_to_needles(
 
     entities = extract_entities(question)
     entity_needles = entities_to_needles(entities)
-    attack_needles = [
-        str(t) for t in (context or {}).get("attack_needles") or [] if str(t).strip()
+    # Context-grounded vocabulary: ATT&CK packs (B), Sigma-derived (C), and the
+    # examiner's local overlay (F). Offline or online, these top up the list.
+    context_needles = [
+        str(t)
+        for t in (context or {}).get("attack_needles") or []
+        if str(t).strip()
+    ] + [
+        str(t)
+        for t in (context or {}).get("sigma_needles") or []
+        if str(t).strip()
+    ] + [
+        str(t)
+        for t in (context or {}).get("overlay_needles") or []
+        if str(t).strip()
     ]
 
     if model is None:
         result = _heuristic_needles(question)
         result["needles"] = _dedupe_needles(
-            entity_needles + list(result.get("needles") or []) + attack_needles
+            entity_needles + list(result.get("needles") or []) + context_needles
         )
         result["entities"] = entities
         return result
@@ -212,7 +229,7 @@ def nl_to_needles(
         if parsed and isinstance(parsed.get("needles"), list):
             llm_needles = [str(n).strip() for n in parsed["needles"] if str(n).strip()]
             needles = _dedupe_needles(entity_needles + llm_needles, cap=10)
-            needles = _dedupe_needles(needles + attack_needles, cap=14)
+            needles = _dedupe_needles(needles + context_needles, cap=14)
             window = str(parsed.get("window") or "").strip()
             if needles:
                 return {
@@ -228,7 +245,7 @@ def nl_to_needles(
 
     result = _heuristic_needles(question)
     result["needles"] = _dedupe_needles(
-        entity_needles + list(result.get("needles") or []) + attack_needles
+        entity_needles + list(result.get("needles") or []) + context_needles
     )
     result["entities"] = entities
     return result

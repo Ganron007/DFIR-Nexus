@@ -14,6 +14,13 @@ query_terms:
   - at.exe
   - sqldumper
   - rpcping
+query_terms_strong:
+  - encodedcommand
+  - mshta
+  - regsvr32
+  - certutil
+  - rundll32
+
 sources:
   - "13Cubed — Investigating Windows Endpoints (Prefetch, Shimcache, AmCache, PCA, MUICache, UserAssist, SRUM)"
   - "SANS FOR508 — Windows Enterprise Incident Response"
@@ -69,3 +76,5 @@ caveats:
   - "UserAssist quirks: modern Windows often shows run count 0 with a valid last-executed time, and service/scheduled-task/startup launches get a bogus 1601-01-01 timestamp — corroborate before citing."
   - "Correlate process exit with Security 4689 and PowerShell scriptblock start/stop 4105/4106 when audit policy allows."
   - "Prefetch timestamps are LOCAL time on the source system — convert to UTC before correlating with UTC-based logs."
+
+families: [prefetch, pecmd, amcache, recmd, evtx, evtxecmd, hayabusa, chainsaw]

@@ -251,6 +251,13 @@ def _family_matched_playbooks(families: set[str] | list[str] | None) -> list[dic
         pb = get_playbook(slug)
         if not isinstance(pb, dict):
             continue
+        # Explicit family declaration wins (Phase 4g-D tiering): robust matching
+        # for playbooks whose query_terms don't literally contain the family.
+        declared = pb.get("families")
+        if isinstance(declared, list) and declared:
+            if any(f in {str(d).lower() for d in declared} for f in fams):
+                out.append(pb)
+            continue
         terms = pb.get("query_terms") or []
         term_lower = (
             {str(t).lower() for t in terms} if isinstance(terms, list) else set()
@@ -284,6 +291,16 @@ def playbook_techniques_for_families(families: set[str] | list[str] | None) -> l
         mitre = pb.get("mitre") or []
         if isinstance(mitre, list):
             out.extend(str(t).strip() for t in mitre if str(t).strip())
+    return _dedupe(out)
+
+
+def playbook_strong_terms_for_families(families: set[str] | list[str] | None) -> list[str]:
+    """High-signal ``query_terms_strong`` from playbooks matched to families."""
+    out: list[str] = []
+    for pb in _family_matched_playbooks(families):
+        strong = pb.get("query_terms_strong") or []
+        if isinstance(strong, list):
+            out.extend(str(t).strip() for t in strong if str(t).strip())
     return _dedupe(out)
 
 
@@ -353,11 +370,12 @@ def _strong_set(terms: list[str]) -> set[str]:
 def _hit_rank(matched: list[str], strong: set[str]) -> int:
     """0 wipe/PST/C2, 1 cloud copy, 2 USB ids, 3 generic onedrive/recycle."""
     core = strong - _CLOUD_TERMS
-    if any(t in core for t in matched):
+    low = [t.strip().lower() for t in matched if t.strip()]
+    if any(t in core for t in low):
         return 0
-    if any(t in _CLOUD_TERMS for t in matched):
+    if any(t in _CLOUD_TERMS for t in low):
         return 1
-    if any(t in _USB_TERMS for t in matched):
+    if any(t in _USB_TERMS for t in low):
         return 2
     return 3
 

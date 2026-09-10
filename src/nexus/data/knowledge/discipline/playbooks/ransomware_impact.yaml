@@ -1,0 +1,44 @@
+name: "Ransomware / Impact Investigation"
+description: "Investigate encryption, ransom notes, and recovery inhibition (shadow copy deletion, backup tampering)"
+mitre: ["T1486", "T1490", "T1485"]
+query_terms:
+  - README
+  - DECRYPT
+  - RESTORE
+  - .locked
+  - .encrypted
+  - .crypt
+  - vssadmin delete shadows
+  - wmic shadowcopy delete
+  - wbadmin delete catalog
+  - bcdedit /set
+  - reagentc /disable
+  - cipher /w
+  - ransom
+  - onion
+query_terms_strong:
+  - vssadmin delete shadows
+  - wmic shadowcopy delete
+  - wbadmin delete catalog
+  - bcdedit /set
+  - reagentc /disable
+  - .locked
+  - .encrypted
+sources:
+  - "SANS FOR508 - Windows Enterprise Incident Response"
+  - "MITRE ATT&CK T1486 Data Encrypted for Impact"
+triggers:
+  - "Mass file rename/extension change"
+  - "Shadow copies or backup catalog deleted"
+  - "Ransom note dropped across directories"
+caveats:
+  - "Recovery tooling also names files README/DECRYPT; require the full pattern (notes + shadow deletion + extension)."
+phases:
+  - phase: "Identify"
+    steps:
+      - "Look for ransom notes (README/DECRYPT/RESTORE) and renamed extensions"
+      - "Check for vssadmin/wmic shadow copy deletion and wbadmin catalog deletion"
+  - phase: "Correlate"
+    steps:
+      - "Correlate encryption start time with process execution (Prefetch/Amcache/4688)"
+      - "Check network for exfil before encryption"

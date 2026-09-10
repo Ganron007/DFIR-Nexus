@@ -18,6 +18,13 @@ query_terms:
   - invoke-shellcode
   - reflection
   - system.management.automation
+query_terms_strong:
+  - -enc
+  - -encodedcommand
+  - frombase64string
+  - downloadstring
+  - invoke-expression
+
 sources:
   - "13Cubed — Windows Event Log Cheat Sheet (PowerShell + Operational event IDs)"
   - "SANS FOR508 — Windows Enterprise Incident Response"

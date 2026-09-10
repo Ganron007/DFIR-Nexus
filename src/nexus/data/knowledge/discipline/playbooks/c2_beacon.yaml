@@ -1,0 +1,40 @@
+name: "C2 Beacon Investigation"
+description: "Investigate command-and-control beaconing cadence and rare outbound destinations"
+mitre: ["T1071.001", "T1571", "T1095"]
+query_terms:
+  - beacon
+  - jitter
+  - callback
+  - heartbeat
+  - user-agent
+  - "user-agent: curl"
+  - "user-agent: python"
+  - "user-agent: powershell"
+  - "post /"
+  - "get /submit"
+  - "dns query"
+  - "tls"
+  - "ssl"
+query_terms_strong:
+  - beacon
+  - jitter
+  - callback
+  - "user-agent: curl"
+  - "user-agent: python"
+sources:
+  - "SANS FOR508 / FOR572 - Network Forensics"
+  - "MITRE ATT&CK T1071.001 Web Protocols"
+triggers:
+  - "Regular-interval connections to a rare destination (low jitter)"
+  - "Non-browser user agent on a workstation"
+  - "Large POST to a single URI repeating"
+caveats:
+  - "CDNs and telemetry also beacon; require a rare domain, non-browser UA, and process correlation."
+phases:
+  - phase: "Identify"
+    steps:
+      - "Histogram outbound connection intervals per destination"
+      - "Filter non-browser user agents and rare domains"
+  - phase: "Correlate"
+    steps:
+      - "Map beaconing process to execution artifacts (Prefetch/Amcache/4688)"

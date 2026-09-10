@@ -16,6 +16,13 @@ query_terms:
   - scalpel
   - vsc
   - shadowcopy
+query_terms_strong:
+  - sdelete
+  - cipher /w
+  - fileoverwrite
+  - $Recycle.Bin
+  - shred
+
 sources:
   - "13Cubed — Investigating Windows Endpoints (The Recycle Bin; 'Permanent' Deletion)"
   - "SANS FOR508 — Anti-Forensics detection (VSS ScopeSnapshots caveat)"
@@ -57,3 +64,5 @@ caveats:
   - "VSS on client Windows 8+ uses ScopeSnapshots (boot-volume system files only) — non-system artifact recovery from VSS is degraded; Servers keep fuller snapshots."
   - "MFT record reuse can destroy evidence of old files — check $LogFile and USN for prior states."
   - "Deletion timestamps in $I are UTC; MFT/USN times are UTC; Explorer displays local — normalize."
+
+families: [prefetch, pecmd, recmd, rbcmd, srum, mftecmd, evtx, evtxecmd, hayabusa, chainsaw]

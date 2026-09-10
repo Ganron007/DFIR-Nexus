@@ -493,9 +493,10 @@ export interface PlaybookSuggestion {
   playbook: string;
   slug: string;
   needles: string[];
+  strong_needles?: string[];
   caveats: string[];
   triggers: string[];
-  /** "playbook" (YAML) or "mitre" (ATT&CK needle pack). */
+  /** "playbook" (YAML) | "mitre" | "sigma" | "overlay". */
   source?: string;
 }
 export interface PlaybookNeedlesResponse {
@@ -684,6 +685,16 @@ export const api = {
     request<FsListResponse>(`/fs/list${path ? `?path=${encodeURIComponent(path)}` : ""}`),
   playbookNeedles: (families?: string) =>
     request<PlaybookNeedlesResponse>(`/playbook/needles${families ? `?families=${families}` : ""}`),
+  needleFeedback: (params: {
+    needles: string[];
+    family?: string;
+    source?: string;
+    verdict: "accept" | "reject" | "promote";
+  }) =>
+    post<{ ok: boolean; verdict: string; promoted?: Record<string, unknown>; error?: string }>(
+      "/needles/feedback",
+      params,
+    ),
   setCaseMode: (mode: string, caseId?: string) =>
     post<CaseModeResponse>("/case/mode", { mode, case_id: caseId }),
   getCaseMode: (caseId?: string) =>

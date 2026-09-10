@@ -14,6 +14,13 @@ query_terms:
   - portable devices
   - sandisk
   - kingston
+query_terms_strong:
+  - USBSTOR
+  - VID_
+  - PID_
+  - mountpoints2
+  - EMDMgmt
+
 sources:
   - "13Cubed — Investigating Windows Endpoints (USB Forensics, Networks, and More; Windows Registry Cheat Sheet)"
   - "SANS FOR500 — Windows Forensic Analysis"
@@ -66,3 +73,5 @@ caveats:
   - "setupapi.dev.log records the FIRST time a device was connected — search it by serial number."
   - "MountedDevices maps serial → drive letter AND serial → volume GUID; the volume GUID is what links to per-user MountPoints2."
   - "Registry last-write times are single timestamps (last write only) — they prove 'no later than', not exact event times."
+
+families: [recmd, setupapi, evtx, evtxecmd, hayabusa, chainsaw, mftecmd, lecmd, jlecmd]

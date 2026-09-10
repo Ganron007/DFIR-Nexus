@@ -58,3 +58,5 @@ caveats:
   - "Cloud sync (DriveFS/OneDrive) uploads can look like exfiltration; check whether the account is the user's own before attributing exfiltration."
   - "Compact.exe (LZNT1 compression) is a native alternative to 7z/rar — include it in archive-tool Prefetch review."
   - "Exfil channels beyond cloud: FTP/SFTP/TFTP, email, steganography, RAT/VPN tunneling — corroborate with SRUM volumes and Packetbeat/Zeek flows (CCD Module 8)."
+
+families: [prefetch, pecmd, recmd, srum, browser, evtx, evtxecmd, hayabusa, chainsaw, mftecmd]

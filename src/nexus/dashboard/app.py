@@ -1398,6 +1398,27 @@ def _mode1_ask_context(case_dir: Path, question: str) -> dict[str, Any]:
         except Exception:  # noqa: BLE001
             pass
 
+    # Phase 4g-D/C/F: SigmaHQ-derived patterns + the examiner's local overlay.
+    try:
+        from nexus.knowledge.needle_overlay import overlay_terms_for_families
+        from nexus.knowledge.sigma_needles import (
+            sigma_context_for,
+            sigma_needles_for,
+            sigma_packs_for,
+        )
+
+        sigma_packs = sigma_packs_for(families, limit=4)
+        if sigma_packs:
+            context["sigma_needles"] = sigma_needles_for(families, limit=4)
+            context["sigma_context"] = sigma_context_for(sigma_packs)
+            context["sources"].append("sigma")
+        overlay = overlay_terms_for_families(families)
+        if overlay:
+            context["overlay_needles"] = overlay
+            context["sources"].append("needle-overlay")
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("sigma/overlay context skipped: %s", exc)
+
     return context
 
 
@@ -3596,6 +3617,7 @@ async def api_playbook_needles(request):
             "playbook": pb.get("name", slug),
             "slug": slug,
             "needles": [str(t) for t in terms[:20]],
+            "strong_needles": [str(t) for t in (pb.get("query_terms_strong") or [])[:12]],
             "caveats": [str(c)[:200] for c in (pb.get("caveats") or [])[:3]],
             "triggers": [str(t)[:200] for t in (pb.get("triggers") or [])[:3]],
             "source": "playbook",
@@ -3626,12 +3648,105 @@ async def api_playbook_needles(request):
     except Exception as exc:  # noqa: BLE001
         logger.debug("attack needle suggestions skipped: %s", exc)
 
-    combined = attack_suggestions + suggestions
+    # Phase 4g-C: SigmaHQ-derived patterns for the families present.
+    sigma_suggestions: list[dict[str, Any]] = []
+    try:
+        from nexus.knowledge.sigma_needles import sigma_packs_for
+
+        for pack in sigma_packs_for(families_filter, limit=5):
+            sigma_suggestions.append({
+                "playbook": f"Sigma: {pack.get('name', '')}".strip(),
+                "slug": f"sigma:{pack.get('id', '')}",
+                "needles": [str(n) for n in (pack.get("needles") or [])[:20]],
+                "strong_needles": [],
+                "caveats": [str(c)[:200] for c in (pack.get("caveats") or [])[:2]],
+                "triggers": [],
+                "source": "sigma",
+            })
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("sigma needle suggestions skipped: %s", exc)
+
+    # Phase 4g-F: examiner-promoted local overlay for the families present.
+    overlay_suggestions: list[dict[str, Any]] = []
+    try:
+        from nexus.knowledge.needle_overlay import load_overlay
+
+        overlay = load_overlay()
+        for family in sorted(families_filter):
+            terms = overlay.get(family) or []
+            if terms:
+                overlay_suggestions.append({
+                    "playbook": f"Your promoted needles ({family})",
+                    "slug": f"overlay:{family}",
+                    "needles": [str(t) for t in terms[:20]],
+                    "strong_needles": [str(t) for t in terms[:20]],
+                    "caveats": ["Promoted by the examiner from case feedback."],
+                    "triggers": [],
+                    "source": "overlay",
+                })
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("overlay needle suggestions skipped: %s", exc)
+
+    combined = overlay_suggestions + attack_suggestions + sigma_suggestions + suggestions
     return JSONResponse({
         "suggestions": combined,
         "total": len(combined),
         "families": sorted(families_filter),
     })
+
+
+async def api_needle_feedback(request):
+    """POST /portal/api/needles/feedback — examiner verdict on suggested needles.
+
+    Body: {needle?: str, needles?: [str], family?, source?, verdict: "accept"|"reject"|"promote"}
+    Records the verdict in ``<case>/needle_feedback.jsonl`` (when a case is
+    resolved). ``promote`` additionally merges the terms into the examiner's
+    LOCAL overlay (~/.nexus/knowledge/needles/overlay.yaml) — never the repo.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+
+    verdict = str(body.get("verdict") or "").strip().lower()
+    if verdict not in ("accept", "reject", "promote"):
+        return JSONResponse({"error": "verdict must be accept|reject|promote"}, status_code=400)
+
+    family = str(body.get("family") or "").strip().lower()
+    source = str(body.get("source") or "").strip()
+    raw_terms = body.get("needles")
+    if not isinstance(raw_terms, list):
+        single = str(body.get("needle") or "").strip()
+        raw_terms = [single] if single else []
+    terms = [str(t).strip() for t in raw_terms if str(t).strip()]
+    if not terms:
+        return JSONResponse({"error": "needle or needles is required"}, status_code=400)
+
+    case_dir = _get_case_dir(request)
+    if case_dir is not None:
+        from nexus.audit import resolve_examiner
+
+        entry = {
+            "ts": datetime.now(UTC).isoformat(),
+            "examiner": resolve_examiner(),
+            "verdict": verdict,
+            "family": family,
+            "source": source,
+            "needles": terms,
+        }
+        try:
+            with (case_dir / "needle_feedback.jsonl").open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(entry, default=str) + "\n")
+        except OSError as exc:
+            logger.warning("needle feedback write failed: %s", exc)
+
+    promoted: dict[str, Any] = {}
+    if verdict == "promote":
+        from nexus.knowledge.needle_overlay import promote_needles
+
+        promoted = promote_needles(family or "general", terms)
+
+    return JSONResponse({"ok": True, "verdict": verdict, "terms": terms, "promoted": promoted})
 
 
 async def api_case_mode(request):
@@ -4054,6 +4169,7 @@ def create_dashboard():
         Route("/portal/api/pipeline/run", api_pipeline_run, methods=["POST"]),
         Route("/portal/api/pipeline/status", api_pipeline_status, methods=["GET"]),
         Route("/portal/api/pipeline/ledger", api_pipeline_ledger, methods=["GET"]),
+        Route("/portal/api/needles/feedback", api_needle_feedback, methods=["POST"]),
         Route("/portal/api/fs/list", api_fs_list, methods=["GET"]),
         Route("/portal/api/playbook/needles", api_playbook_needles, methods=["GET"]),
         Route("/portal/api/case/mode", api_case_mode, methods=["POST"]),
