@@ -80,9 +80,33 @@ _WEAK_TERMS = frozenset({
     "modules", "strings", "handles", "consoles", "cmdline", "netstat",
     "history", "downloads", "cookies", "secure", "messages", "received",
     "attachment", "edge", "uac", "fls",
+    # Generic question/playbook vocabulary (WP 4g-G) — matches almost every
+    # row. Structural identifiers (hashes, IPs, domains, paths, event IDs)
+    # still count as strong via _is_structurally_strong.
+    "security", "audit", "event", "events", "log", "logs", "file", "files",
+    "system", "windows", "user", "users", "process", "processes", "network",
+    "local", "domain", "activity", "record", "records", "report", "data",
+    "investigate", "analysis", "artifact", "artifacts", "evidence",
+    "suspicious", "detected", "possible", "unknown", "update", "backup",
+    "service", "services", "driver", "drivers", "admin", "administrator",
 })
 _NUMERIC_TERM = re.compile(r"^\d{1,5}$")
 _needle_rx: dict[str, re.Pattern[str]] = {}
+
+# Structural identifiers are strong regardless of the weak list above.
+_STRONG_RX: tuple[re.Pattern[str], ...] = (
+    re.compile(r"^[a-f0-9]{8,}$"),                       # hash / hex fragment
+    re.compile(r"^(?:\d{1,3}\.){3}\d{1,3}$"),            # IPv4
+    re.compile(r"^[a-z0-9-]+(?:\.[a-z0-9-]+)+$"),        # domain / dotted host
+    re.compile(r"\.(?:exe|dll|ps1|bat|vbs|js|lnk|pst|ost|zip|7z|rar|evtx|pf|sqlite)$"),
+    re.compile(r"[\\/]"),                                 # path-ish
+    re.compile(r"^\d{3,5}$"),                             # event id
+)
+
+
+def _is_structurally_strong(term: str) -> bool:
+    t = (term or "").strip().lower()
+    return bool(t) and any(rx.search(t) for rx in _STRONG_RX)
 
 
 def needle_in_text(low: str, term: str) -> bool:
@@ -215,6 +239,35 @@ def collect_playbook_query_terms(intake: dict[str, str] | None) -> list[str]:
     return _dedupe(_playbook_terms(extra_playbook_names(intake or {})))
 
 
+def playbook_terms_for_families(families: set[str] | list[str] | None) -> list[str]:
+    """Playbook ``query_terms`` for the given artifact families (WP 4g-A).
+
+    Family-matched against each playbook's terms and name/description, so
+    expanding the playbook YAML expands Mode 1's starting vocabulary.
+    """
+    from nexus.knowledge.loader import get_playbook, list_playbook_slugs
+
+    fams = {str(f).lower() for f in (families or []) if str(f).strip()}
+    if not fams:
+        return []
+    out: list[str] = []
+    for slug in list_playbook_slugs():
+        pb = get_playbook(slug)
+        if not isinstance(pb, dict):
+            continue
+        terms = pb.get("query_terms") or []
+        if not isinstance(terms, list):
+            continue
+        term_lower = {str(t).lower() for t in terms}
+        blob = (
+            str(pb.get("name", "")) + " " + str(pb.get("description", ""))
+        ).lower()
+        if not any(f in term_lower or f in blob for f in fams):
+            continue
+        out.extend(str(t).strip() for t in terms if str(t).strip())
+    return _dedupe(out)
+
+
 def collect_query_terms(intake: dict[str, str] | None) -> list[str]:
     intake = intake or {}
     terms: list[str] = []
@@ -271,8 +324,10 @@ def _strong_set(terms: list[str]) -> set[str]:
         t.lower()
         for t in terms
         if t.strip()
-        and t.lower() not in _WEAK_TERMS
-        and t.lower() not in _USB_TERMS
+        and (
+            _is_structurally_strong(t)
+            or (t.lower() not in _WEAK_TERMS and t.lower() not in _USB_TERMS)
+        )
     }
 
 

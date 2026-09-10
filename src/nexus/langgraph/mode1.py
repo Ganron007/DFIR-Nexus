@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
@@ -27,59 +28,198 @@ parsed CSV/JSON output from forensic tools like Hayabusa, EvtxECmd, PECmd,
 MFTECmd, RECmd, etc.) and a time window if mentioned.
 
 Rules:
-- Return ONLY a JSON object: {"needles": ["term1","term2",...], "window": "start..end" or ""}
+- Return ONLY a JSON object: {"needles": ["term1","term2",...], "window": "start..end" or "", "rationale": "one sentence"}
 - Needles are concrete strings that appear in log rows: tool names, file
   extensions, event IDs, process names, registry keys, IP patterns.
 - Do NOT return prose. Do NOT return methodology. Do NOT return full sentences.
 - If the question mentions a time range, extract it as "YYYY-MM-DD..YYYY-MM-DD".
 - If no time range is mentioned, set window to "".
 - Include 3-10 needles. Too few misses hits; too many floods the query.
+- When case context is provided (evidence families present, playbook terms,
+  RAG methodology, already-searched needles), ground your needles in it:
+  prefer the playbook/RAG vocabulary, do not repeat already-searched needles,
+  and prioritise identifiers the examiner actually named.
 - Common needle patterns: sdelete, .pst, USBSTOR, wevtutil, 1102 (log clear),
   mimikatz, lsass, psexec, encodedcommand, powershell, cmd.exe, rundll32,
   mshta, wscript, schtasks, reg add, net user, 4624, 4625, 4648, 4672, 4720.
 
 Examples:
 Question: "Did anyone clear the security event logs around August 10-15?"
-Output: {"needles": ["wevtutil","1102","cleared","audit","security"],"window": "2026-08-10..2026-08-15"}
+Output: {"needles": ["wevtutil","1102","cleared","audit","security"],"window": "2026-08-10..2026-08-15","rationale": "Log-clear artifacts"}
 
 Question: "Was sdelete used to wipe files?"
-Output: {"needles": ["sdelete","Sysinternals","delete","wipe","fileoverwrite"],"window": ""}
+Output: {"needles": ["sdelete","Sysinternals","delete","wipe","fileoverwrite"],"window": "","rationale": "Wipe-tool traces"}
 
 Question: "Any evidence of credential dumping via mimikatz or LSASS access?"
-Output: {"needles": ["mimikatz","lsass","sekurlsa","credential","dump","00000001.log"],"window": ""}
+Output: {"needles": ["mimikatz","lsass","sekurlsa","credential","dump","00000001.log"],"window": "","rationale": "Credential-dump artifacts"}
 """
 
 
-def nl_to_needles(question: str, model: Any = None) -> dict[str, Any]:
+# ---------------------------------------------------------------------------
+# Deterministic entity extraction (Phase 4g): the examiner's own identifiers
+# are the highest-signal needles and must survive even without an LLM.
+# ---------------------------------------------------------------------------
+
+_ENTITY_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
+    ("url", re.compile(r"https?://[^\s\"'<>]+", re.IGNORECASE)),
+    ("email", re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")),
+    ("sha256", re.compile(r"\b[a-fA-F0-9]{64}\b")),
+    ("sha1", re.compile(r"\b[a-fA-F0-9]{40}\b")),
+    ("md5", re.compile(r"\b[a-fA-F0-9]{32}\b")),
+    ("windows_path", re.compile(r"(?:[A-Za-z]:\\|\\\\)[^\s\"'<>|]+")),
+    ("posix_path", re.compile(r"/[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+){2,}")),
+    ("domain_user", re.compile(r"\b[A-Za-z][A-Za-z0-9._-]{1,31}\\[A-Za-z0-9._$-]{1,64}\b")),
+    ("ipv4", re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")),
+    ("domain", re.compile(r"\b(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,}\b")),
+]
+
+_ENTITY_TRAILING = ").,;:!?]}>'\""
+_ENTITY_NEEDLE_ORDER = (
+    "sha256", "sha1", "md5", "windows_path", "posix_path",
+    "url", "email", "domain_user", "ipv4", "domain",
+)
+
+
+def extract_entities(text: str) -> dict[str, list[str]]:
+    """Extract identifiers named in the examiner's question.
+
+    Deterministic and LLM-independent: IPs, domains, URLs, emails, hashes,
+    Windows/POSIX paths, and ``DOMAIN\\user`` accounts.
+    """
+    text = text or ""
+    out: dict[str, list[str]] = {kind: [] for kind, _ in _ENTITY_PATTERNS}
+    seen: set[str] = set()
+    for kind, rx in _ENTITY_PATTERNS:
+        for raw in rx.findall(text):
+            value = str(raw).rstrip(_ENTITY_TRAILING)
+            key = value.lower()
+            if not value or key in seen:
+                continue
+            seen.add(key)
+            if len(out[kind]) < 8:
+                out[kind].append(value)
+    return {kind: values for kind, values in out.items() if values}
+
+
+def entities_to_needles(entities: dict[str, list[str]] | None) -> list[str]:
+    """Entity needles, exact identifiers first (specific -> broad)."""
+    if not entities:
+        return []
+    needles: list[str] = []
+    for kind in _ENTITY_NEEDLE_ORDER:
+        needles.extend(entities.get(kind) or [])
+    return needles
+
+
+def _dedupe_needles(items: list[str], cap: int = 14) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for item in items:
+        value = str(item).strip()
+        key = value.lower()
+        if not value or key in seen:
+            continue
+        seen.add(key)
+        out.append(value)
+    return out[:cap]
+
+
+def _context_block(context: dict[str, Any] | None) -> str:
+    """Render case context for the scribe prompt (WP 4g-A)."""
+    if not context:
+        return ""
+    lines: list[str] = []
+    families = [str(f) for f in (context.get("families") or []) if str(f).strip()]
+    if families:
+        lines.append(f"Evidence families present: {', '.join(families[:24])}")
+    terms = [str(t) for t in (context.get("playbook_terms") or []) if str(t).strip()]
+    if terms:
+        lines.append("Playbook search terms for these families: " + ", ".join(terms[:60]))
+    searched = [str(s) for s in (context.get("searched") or []) if str(s).strip()]
+    if searched:
+        lines.append("Already searched (do not repeat): " + ", ".join(searched[:30]))
+    playbook_context = str(context.get("playbook_context") or "").strip()
+    if playbook_context:
+        lines.append("Playbook methodology and caveats:\n" + playbook_context[:1800])
+    rag = str(context.get("rag") or "").strip()
+    if rag:
+        lines.append("RAG methodology:\n" + rag[:1200])
+    intake = context.get("intake") or {}
+    if isinstance(intake, dict):
+        for key in ("question", "subjects", "hypothesis"):
+            value = str(intake.get(key) or "").strip()
+            if value:
+                lines.append(f"Case {key}: {value[:400]}")
+    if not lines:
+        return ""
+    return (
+        "\n\nContext (use it; prefer needles grounded in this material):\n"
+        + "\n".join(lines)
+        + "\n"
+    )
+
+
+def nl_to_needles(
+    question: str,
+    model: Any = None,
+    context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Translate an English question into search needles + time window.
 
+    ``context`` (WP 4g) grounds the scribe: evidence families present,
+    playbook terms/caveats for those families, RAG methodology, already
+    searched needles, and the case intake. Deterministic entity needles
+    (IPs, domains, hashes, paths, accounts) always survive, LLM or not.
+
     If no model is provided, falls back to keyword extraction (no LLM).
-    Returns {"needles": [...], "window": "...", "source": "llm"|"heuristic"}.
+    Returns {"needles": [...], "window": "...", "source": "llm"|"heuristic",
+    "entities": {...}, "rationale": "..."}.
     """
     question = (question or "").strip()
     if not question:
         return {"needles": [], "window": "", "source": "none", "error": "empty question"}
 
+    entities = extract_entities(question)
+    entity_needles = entities_to_needles(entities)
+
     if model is None:
-        return _heuristic_needles(question)
+        result = _heuristic_needles(question)
+        result["needles"] = _dedupe_needles(entity_needles + list(result.get("needles") or []))
+        result["entities"] = entities
+        return result
 
     try:
         response = model.invoke([
             {"role": "system", "content": _NL_TO_NEEDLES_SYSTEM},
-            {"role": "user", "content": f"Question: {question}\nOutput:"},
+            {
+                "role": "user",
+                "content": f"Question: {question}{_context_block(context)}\nOutput:",
+            },
         ])
         text = getattr(response, "content", str(response))
         parsed = _parse_json_response(text)
         if parsed and isinstance(parsed.get("needles"), list):
-            needles = [str(n).strip() for n in parsed["needles"] if str(n).strip()]
+            needles = _dedupe_needles(
+                entity_needles
+                + [str(n).strip() for n in parsed["needles"] if str(n).strip()]
+            )
             window = str(parsed.get("window") or "").strip()
             if needles:
-                return {"needles": needles, "window": window, "source": "llm"}
+                return {
+                    "needles": needles,
+                    "window": window,
+                    "source": "llm",
+                    "rationale": str(parsed.get("rationale") or "")[:500],
+                    "entities": entities,
+                }
         log.warning("LLM returned unparseable needles, falling back to heuristic")
     except Exception as exc:
         log.warning("LLM needles failed (%s), falling back to heuristic", exc)
 
-    return _heuristic_needles(question)
+    result = _heuristic_needles(question)
+    result["needles"] = _dedupe_needles(entity_needles + list(result.get("needles") or []))
+    result["entities"] = entities
+    return result
 
 
 def _heuristic_needles(question: str) -> dict[str, Any]:

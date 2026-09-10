@@ -1304,6 +1304,71 @@ async function promoteSelected() {{
     return HTMLResponse(_TEMPLATE.format(content=content))
 
 
+def _mode1_ask_context(case_dir: Path, question: str) -> dict[str, Any]:
+    """Ground the Mode 1 scribe with case material (WP 4g-A).
+
+    Evidence families present, playbook terms + caveats for those families,
+    RAG methodology, already-searched needles, and the case intake. Every
+    item is best-effort — a missing index just yields a thinner prompt.
+    """
+    from nexus.langgraph.query_pack import (
+        _parse_needles,
+        load_case_intake,
+        n4_aggregate,
+        playbook_terms_for_families,
+    )
+
+    context: dict[str, Any] = {"sources": []}
+    try:
+        intake = load_case_intake(case_dir)
+    except Exception:  # noqa: BLE001
+        intake = {}
+    context["searched"] = _parse_needles(str(intake.get("query_extra") or ""))
+    context["intake"] = {
+        key: str(intake.get(key) or "").strip()
+        for key in ("question", "subjects", "hypothesis")
+        if str(intake.get(key) or "").strip()
+    }
+
+    families: set[str] = set()
+    try:
+        agg = n4_aggregate(case_dir, group_by="family")
+        families = {str(k) for k in (agg.get("buckets") or {}) if str(k).strip()}
+        if families:
+            context["sources"].append("n4-families")
+    except Exception:  # noqa: BLE001
+        families = set()
+    context["families"] = sorted(families)
+
+    if families:
+        try:
+            terms = playbook_terms_for_families(families)
+            if terms:
+                context["playbook_terms"] = terms
+                context["sources"].append("playbooks")
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            from nexus.langgraph.mode2 import (
+                _playbook_context_for_families,
+                _rag_methodology_for_proposal,
+            )
+
+            playbook_context = _playbook_context_for_families(families)
+            if playbook_context:
+                context["playbook_context"] = playbook_context
+                context["sources"].append("playbook-caveats")
+            rag_text, rag_provenance = _rag_methodology_for_proposal(families)
+            if rag_text:
+                context["rag"] = rag_text
+                context["rag_provenance"] = rag_provenance
+                context["sources"].append("rag")
+        except Exception:  # noqa: BLE001
+            pass
+
+    return context
+
+
 async def api_ask(request):
     """POST /portal/api/mode1/ask — NL → needles + N4 hits."""
     case_dir = _get_case_dir(request)
@@ -1323,7 +1388,8 @@ async def api_ask(request):
     except Exception:
         model = None
 
-    parsed = nl_to_needles(question, model=model)
+    context = _mode1_ask_context(case_dir, question)
+    parsed = nl_to_needles(question, model=model, context=context)
     needles = parsed.get("needles", [])
     window = parsed.get("window", "")
     if not needles:
@@ -1341,6 +1407,11 @@ async def api_ask(request):
         "hits": n4_result.get("hits", []),
         "count": n4_result.get("count", 0),
         "backend": n4_result.get("backend", ""),
+        "rationale": parsed.get("rationale", ""),
+        "entities": parsed.get("entities", {}),
+        "families": context.get("families", []),
+        "context_sources": context.get("sources", []),
+        "source": parsed.get("source", ""),
     })
 
 
