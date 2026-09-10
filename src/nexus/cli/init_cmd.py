@@ -71,7 +71,9 @@ def init(
         typer.echo(f"  Error: {e}", err=True)
         raise typer.Exit(1) from None
     typer.echo(f"  Case created (ID: {new_case.id})")
-    active_file = Path.home() / ".nexus" / "active_case"
+    active_file = Path(
+        os.environ.get("NEXUS_ACTIVE_CASE_FILE", str(Path.home() / ".nexus" / "active_case"))
+    )
     active_file.parent.mkdir(parents=True, exist_ok=True)
     active_file.write_text(new_case.id)
 

@@ -174,6 +174,22 @@ def test_d2_invalid_case_ids_rejected(client):
     assert r.status_code == 404
 
 
+def test_d2_active_case_pointer_is_env_aware():
+    """No module may hardcode the home active-case pointer.
+
+    A hardcoded pointer means MCP/CLI/audit code stomps the real
+    ``~/.nexus/active_case`` even when the process runs with an isolated
+    ``NEXUS_ACTIVE_CASE_FILE`` — e2e/test runs leaked into the real pointer
+    and silently dropped case audits (found 2026-09-10).
+    """
+    offenders: list[str] = []
+    for path in sorted((REPO / "src" / "nexus").rglob("*.py")):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if "_ACTIVE_CASE_FILE" in text and "NEXUS_ACTIVE_CASE_FILE" not in text:
+            offenders.append(str(path.relative_to(REPO)))
+    assert not offenders, f"hardcoded active-case pointer in: {offenders}"
+
+
 # ---------------------------------------------------------------------------
 # D3 — dashboard/cockpit split
 # ---------------------------------------------------------------------------

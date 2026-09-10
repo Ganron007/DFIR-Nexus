@@ -23,7 +23,9 @@ manager = CaseManager()
 _MAX_NAME = 200
 _MAX_TEXT = 10_000
 
-_ACTIVE_CASE_FILE = Path.home() / ".nexus" / "active_case"
+_ACTIVE_CASE_FILE = Path(
+    os.environ.get("NEXUS_ACTIVE_CASE_FILE", str(Path.home() / ".nexus" / "active_case"))
+)
 
 
 def _detect_capabilities() -> dict:

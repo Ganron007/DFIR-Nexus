@@ -1,12 +1,15 @@
 """Case review and audit queries — backed by SQLite case stack."""
 
+import os
 from pathlib import Path
 
 import typer
 
 app = typer.Typer(help="Review case state")
 
-_ACTIVE_CASE_FILE = Path.home() / ".nexus" / "active_case"
+_ACTIVE_CASE_FILE = Path(
+    os.environ.get("NEXUS_ACTIVE_CASE_FILE", str(Path.home() / ".nexus" / "active_case"))
+)
 
 
 def _get_active_case_id() -> str | None:

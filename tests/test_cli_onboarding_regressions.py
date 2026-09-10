@@ -20,6 +20,7 @@ runner = CliRunner()
 def isolated_home(tmp_path, monkeypatch):
     monkeypatch.setenv("USERPROFILE", str(tmp_path))
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("NEXUS_ACTIVE_CASE_FILE", str(tmp_path / ".nexus" / "active_case"))
     monkeypatch.setattr(settings, "cases_root", tmp_path / "cases")
     monkeypatch.setattr(settings, "data_root", tmp_path / "data")
     return tmp_path

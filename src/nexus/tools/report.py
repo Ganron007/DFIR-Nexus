@@ -23,7 +23,9 @@ from nexus.config import settings
 logger = logging.getLogger(__name__)
 manager = CaseManager()
 
-_ACTIVE_CASE_FILE = Path.home() / ".nexus" / "active_case"
+_ACTIVE_CASE_FILE = Path(
+    os.environ.get("NEXUS_ACTIVE_CASE_FILE", str(Path.home() / ".nexus" / "active_case"))
+)
 _MAX_FILENAME = 200
 _MAX_REPORT_BYTES = 10 * 1024 * 1024
 

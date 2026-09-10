@@ -97,7 +97,9 @@ from nexus.cli.ingest_cmd import ingest as ingest_cmd
 app.command(name="ingest", help="Auto-detect and ingest a forensic file or tree")(ingest_cmd)
 app.command(name="doctor", help="Report extras, catalog binaries, indexes, optional keys")(doctor_cmd)
 
-_ACTIVE_CASE_FILE = Path.home() / ".nexus" / "active_case"
+_ACTIVE_CASE_FILE = Path(
+    os.environ.get("NEXUS_ACTIVE_CASE_FILE", str(Path.home() / ".nexus" / "active_case"))
+)
 
 
 def _resolve_case(case_id: str = "") -> Path | None:
