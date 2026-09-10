@@ -68,6 +68,13 @@ def test_seed_without_activate_leaves_pointer(client, tmp_path):
     assert r.status_code == 200
     assert _pointer(tmp_path) == ""
 
+    # The demo is flagged synthetic in both dashboard and detail payloads.
+    seeded_id = r.json()["case_id"]
+    cases = client.get("/portal/api/cases").json()
+    assert cases["details"][seeded_id]["synthetic"] is True
+    details = client.get(f"/portal/api/case/{seeded_id}/details").json()
+    assert details["synthetic"] is True
+
     # Explicit activate still switches the pointer (legacy flow)
     r = client.post("/portal/api/case/seed-demo", json={"name": "Demo", "activate": True})
     assert r.status_code == 200

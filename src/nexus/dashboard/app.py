@@ -901,8 +901,10 @@ def _case_summary(case_id: str, mgr) -> dict[str, Any]:
     if case is not None:
         summary["name"] = case.name or case_id
         summary["status"] = case.status.value
+        summary["synthetic"] = bool((case.metadata or {}).get("synthetic"))
     else:
         summary["status"] = "unknown"
+        summary["synthetic"] = False
 
     case_yaml = case_dir / "CASE.yaml"
     if case_yaml.is_file():
@@ -3011,6 +3013,7 @@ async def api_case_details(request):
             case = mgr.get_case(case_id)
             if case is not None:
                 details["status"] = case.status.value
+                details["synthetic"] = bool((case.metadata or {}).get("synthetic"))
                 if not details.get("name"):
                     details["name"] = case.name
         finally:

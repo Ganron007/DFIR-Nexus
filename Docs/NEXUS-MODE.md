@@ -143,6 +143,12 @@ presets**, not separate products or UIs.
 | **Product mode** (Mode 1 / 2 / 3) | Who drives the next action — examiner, LLM guide, or agent. Control depth. |
 | **UI surface** (Cockpit: Explore / Timeline / Chat / Workbench / Approve / Report) | The one investigation workbench. Same in all modes. |
 
+> **Depth is a case-level setting, not a chat mode.** Moving Mode 1 → 2 → 3
+> changes *who initiates the next action* (examiner → LLM → agent). Evidence,
+> parsed outputs (N2/N3), findings, and the audit chain are shared — switching
+> depth never re-processes evidence. The seeded demo case is **synthetic**
+> (mock files, no parsers ran) and is labelled as such in the dashboard.
+
 ### The Case Analysis Cockpit (one surface, all modes)
 
 The Portal is **not** another SIEM dashboard, ticket system, or packet hunter.

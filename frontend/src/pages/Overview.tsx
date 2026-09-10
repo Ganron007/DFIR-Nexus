@@ -220,6 +220,12 @@ export default function Overview() {
               {entering === previewCase ? "Opening…" : "Enter Investigation →"}
             </button>
           </div>
+          {previewDetails.synthetic && (
+            <p style={{ padding: "0 16px 8px", fontSize: 12, color: "var(--warning)" }}>
+              Synthetic demo case — evidence files are mocks and no parsers ran on this
+              case. Use it to try UI flows; run a real evidence pack for processing.
+            </p>
+          )}
           {previewDetails.description && (
             <p style={{ padding: "0 16px 16px", fontSize: 12, color: "var(--text-muted)" }}>
               {previewDetails.description}
@@ -275,7 +281,18 @@ export default function Overview() {
                     onClick={() => setPreviewCase(c)}
                   >
                     <td style={{ fontFamily: "monospace", fontSize: 11 }}>{c}</td>
-                    <td>{d?.name || c}</td>
+                    <td>
+                      {d?.name || c}
+                      {d?.synthetic && (
+                        <span
+                          className="badge draft"
+                          style={{ fontSize: 9, marginLeft: 6 }}
+                          title="Seeded demo — mock evidence, no parsers ran"
+                        >
+                          synthetic
+                        </span>
+                      )}
+                    </td>
                     <td>
                       <span className={`badge ${statusClass(d?.status || "")}`} style={{ fontSize: 10 }}>
                         {STATUS_LABEL[d?.status || ""] || d?.status || "—"}

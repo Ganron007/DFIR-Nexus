@@ -4,6 +4,8 @@ import path from "path";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const runtime = path.join(here, "e2e", ".runtime");
+const port = process.env.NEXUS_E2E_PORT || "4508";
+const baseURL = `http://127.0.0.1:${port}`;
 
 /**
  * Phase 4f L3 — UI flow E2E.
@@ -21,16 +23,16 @@ export default defineConfig({
   workers: 1,
   reporter: [["list"]],
   use: {
-    baseURL: "http://127.0.0.1:4508",
+    baseURL,
     channel: "chrome",
     headless: true,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
   webServer: {
-    command: "npm run build && python -m nexus serve --http --dev --port 4508",
+    command: `npm run build && python -m nexus serve --http --dev --port ${port}`,
     cwd: here,
-    url: "http://127.0.0.1:4508/health",
+    url: `${baseURL}/health`,
     reuseExistingServer: false,
     timeout: 240_000,
     env: {

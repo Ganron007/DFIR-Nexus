@@ -168,12 +168,16 @@ function ProposalCard({ entry }: { entry: ChatEntry }) {
 }
 
 export default function SteerChat() {
-  const { mode: caseMode, activeCase } = useCase();
+  const { mode: caseMode, activeCase, setMode: setCaseMode } = useCase();
   const [messages, setMessages] = useState<ChatEntry[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [mode, setMode] = useState<"mode1" | "mode2" | "mode3">("mode1");
+  // Phase 4f fix: depth is a case-level decision (single source = caseMode).
+  // No private chat mode that can disagree with the case setting; changing it
+  // persists to the case via setCaseMode.
+  const mode: "mode1" | "mode2" | "mode3" =
+    caseMode === "2" ? "mode2" : caseMode === "3" ? "mode3" : "mode1";
   const [mode2Iterations, setMode2Iterations] = useState(3);
   const [mode3Step, setMode3Step] = useState<"plan" | "execute" | "seal">("plan");
   const [mode3Plan, setMode3Plan] = useState<Mode3PlanResponse | null>(null);
@@ -186,12 +190,9 @@ export default function SteerChat() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollTimerRef = useRef<number | null>(null);
 
-  // WP 4b.6: chat mode follows the case-level investigation mode
+  // Reset the Mode-3 step whenever the case depth changes.
   useEffect(() => {
-    if (caseMode === "1" || caseMode === "2" || caseMode === "3") {
-      setMode(`mode${caseMode}` as "mode1" | "mode2" | "mode3");
-      if (caseMode === "3") setMode3Step("plan");
-    }
+    if (caseMode === "3") setMode3Step("plan");
   }, [caseMode]);
 
   const load = () => {
@@ -405,13 +406,19 @@ export default function SteerChat() {
         <h2>Steer Chat</h2>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <select
+            aria-label="Investigation depth"
             value={mode}
-            onChange={(e) => {
-              setMode(e.target.value as "mode1" | "mode2" | "mode3");
+            onChange={async (e) => {
+              const next = e.target.value as "mode1" | "mode2" | "mode3";
               setMode3Step("plan");
               setMode3Plan(null);
               setSealChallenge(null);
               setSealResponse("");
+              try {
+                await setCaseMode(next === "mode2" ? "2" : next === "mode3" ? "3" : "1");
+              } catch (err) {
+                setError((err as Error).message);
+              }
             }}
             style={{ width: "auto" }}
           >
@@ -437,6 +444,10 @@ export default function SteerChat() {
           )}
           <button className="btn btn-sm" onClick={clear}>Clear</button>
         </div>
+      </div>
+      <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: -4, marginBottom: 10 }}>
+        Depth is a case-level setting: it changes who proposes next (examiner → LLM → agent).
+        Evidence, parsed outputs, findings and the audit chain are shared — nothing is re-processed.
       </div>
 
       {error && <div className="error-banner">{error}</div>}

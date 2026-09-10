@@ -58,7 +58,7 @@ def seed_demo_case(
         severity=FindingSeverity.HIGH,
         created_by=examiner,
         tags=["campaign-h", "active-directory", "assumed-breach", "demo"],
-        metadata={"investigation_mode": "1", "examiner": examiner},
+        metadata={"investigation_mode": "1", "examiner": examiner, "synthetic": True},
         case_id=case_id,
     )
 

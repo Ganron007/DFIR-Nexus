@@ -76,6 +76,8 @@ export interface CaseSummary {
   approved_count?: number;
   pipeline_complete?: boolean;
   report_exists?: boolean;
+  /** Seeded demo case — mock evidence, no parsers ran. */
+  synthetic?: boolean;
 }
 export interface CasesResponse {
   cases: string[];
@@ -418,6 +420,8 @@ export interface CaseDetailsResponse {
   approved_count?: number;
   report_exists?: boolean;
   pipeline_complete?: boolean;
+  /** Seeded demo case — mock evidence, no parsers ran. */
+  synthetic?: boolean;
   error?: string;
 }
 

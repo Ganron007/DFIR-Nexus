@@ -41,6 +41,11 @@ test("seed demo never activates until Enter; Exit detaches", async ({ page }) =>
   await page.getByRole("button", { name: /Seed Demo Investigation/i }).click();
   await expect(page.getByText(/Seeded CASE-DEMO-001/)).toBeVisible({ timeout: 30_000 });
 
+  // The demo is labelled synthetic (mock evidence, no parsers ran).
+  await expect(
+    page.locator("tr", { hasText: "CASE-DEMO-001" }).getByText("synthetic")
+  ).toBeVisible();
+
   // Seeded but NOT active — no Exit control anywhere.
   await expect(page.getByRole("button", { name: /Exit to Dashboard/i })).toHaveCount(0);
 
@@ -103,6 +108,24 @@ test("switching cases changes the data on screen", async ({ page, request }) => 
 
   await expect(page.getByRole("heading", { name: /Evidence Registry \(1\)/ })).toBeVisible();
   await expect(page.getByText(otherFile, { exact: false })).toBeVisible();
+});
+
+test("investigation depth is a case-level setting that persists", async ({ page, request }) => {
+  const created = await request.post("/portal/api/case/create", {
+    data: { name: `E2E Depth ${Date.now()}`, activate: true },
+  });
+  expect(created.ok()).toBeTruthy();
+
+  await page.goto(`${APP}/steer`);
+  const depth = page.getByLabel("Investigation depth");
+  await expect(depth).toHaveValue("mode1");
+
+  // Changing depth persists to the case (no private chat mode).
+  await depth.selectOption("mode2");
+  await expect(page.getByText(/Mode 2 · Steer Chat primary/)).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByLabel("Investigation depth")).toHaveValue("mode2");
 });
 
 test("wizard creates, registers, and enters a case with no CLI", async ({ page }) => {
