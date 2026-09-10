@@ -1,0 +1,165 @@
+version: 1
+description: >
+  MITRE ATT&CK technique -> concrete search needles for parsed forensic output
+  (EvtxECmd / Hayabusa / Chainsaw / PECmd / AmcacheParser / RECmd / SRUM /
+  MFTECmd / browser). Technique ids allow selection from the case intake;
+  families map to evidence actually present in the case. Caveats are FD-004
+  false-positive guards the scribe must respect.
+source: "MITRE ATT&CK Enterprise + SANS FOR500/FOR508 & 13Cubed methodology (G:/doc_extract corpus)"
+packs:
+  - technique: "T1059.001"
+    name: "PowerShell"
+    families: [evtx, evtxecmd, hayabusa, chainsaw, prefetch, pecmd, powershell]
+    needles: ["powershell.exe", "-enc", "-encodedcommand", "-nop", "-w hidden", "-noni", "IEX", "Invoke-Expression", "DownloadString", "FromBase64String", "ScriptBlock", "AMSI"]
+    caveats:
+      - "PowerShell is a legitimate admin tool; require encoded/hidden flags or a download cradle before calling execution suspicious (FD-004)."
+  - technique: "T1059.003"
+    name: "Windows Command Shell"
+    families: [evtx, evtxecmd, hayabusa, chainsaw, prefetch, pecmd]
+    needles: ["cmd.exe /c", "cmd.exe /k", "whoami", "net user", "net localgroup", "reg add", "sc create", "schtasks /create", "wmic", "systeminfo"]
+    caveats:
+      - "Admin scripts use cmd.exe routinely; correlate with parent process and account context."
+  - technique: "T1003.001"
+    name: "LSASS Memory"
+    families: [evtx, evtxecmd, hayabusa, chainsaw, prefetch, pecmd, amcache, memory, vol]
+    needles: ["lsass", "mimikatz", "sekurlsa", "procdump", "comsvcs.dll", "MiniDump", "nanodump", "dump64", "PssCaptureSnapshot", "4656", "4663"]
+    caveats:
+      - "AV/EDR and backup software may access LSASS; require tool names, dump files, or 4656/4663 handle rights."
+  - technique: "T1003.002"
+    name: "Security Account Manager"
+    families: [prefetch, pecmd, evtx, evtxecmd, hayabusa, chainsaw, recmd]
+    needles: ["reg save", "\\SAM", "esentutl", "vssadmin", "ntdsutil", "hive"]
+    caveats:
+      - "reg save of hives is also used by backup tooling; check destination path and account."
+  - technique: "T1003.003"
+    name: "NTDS"
+    families: [evtx, evtxecmd, hayabusa, chainsaw, prefetch, pecmd]
+    needles: ["ntds.dit", "vssadmin create", "ntdsutil", "secretsdump", "dcsync", "4662", "dr suess"]
+    caveats:
+      - "NTDS reads are legitimate for backup/AD maintenance; DCSync requires 4662 with replication GUIDs."
+  - technique: "T1053.005"
+    name: "Scheduled Task"
+    families: [evtx, evtxecmd, hayabusa, chainsaw, prefetch, recmd, mftecmd]
+    needles: ["schtasks", "\\Windows\\System32\\Tasks", "TaskCache", "\\Microsoft\\Windows\\", "at.exe", "4698", "106", "200"]
+    caveats:
+      - "Windows and updaters create scheduled tasks constantly; focus on non-Microsoft paths and attacker naming."
+  - technique: "T1547.001"
+    name: "Registry Run Keys / Startup Folder"
+    families: [recmd, evtx, evtxecmd, hayabusa, chainsaw, mftecmd, prefetch]
+    needles: ["\\CurrentVersion\\Run", "\\CurrentVersion\\RunOnce", "Winlogon", "Userinit", "Shell", "StartupApproved", "RunMRU", "Start Menu\\Programs\\Startup"]
+    caveats:
+      - "Run keys are common for legitimate apps; require suspicious binary paths or unsigned executables."
+  - technique: "T1543.003"
+    name: "Windows Service"
+    families: [evtx, evtxecmd, hayabusa, chainsaw, recmd, prefetch, pecmd]
+    needles: ["7045", "CreateService", "New Service", "ImagePath", "sc.exe create", "services.exe", "SYSTEM\\CurrentControlSet\\Services"]
+    caveats:
+      - "Software installs create services; 7045 alone is not malicious — inspect the binary path."
+  - technique: "T1546.003"
+    name: "WMI Event Subscription"
+    families: [evtx, evtxecmd, hayabusa, chainsaw, recmd]
+    needles: ["__EventFilter", "CommandLineEventConsumer", "FilterToConsumerBinding", "ActiveScriptEventConsumer", "5861", "WmiPrvSE"]
+    caveats:
+      - "Management/monitoring tooling also uses WMI subscriptions; check consumer payloads."
+  - technique: "T1070.001"
+    name: "Clear Windows Event Logs"
+    families: [evtx, evtxecmd, hayabusa, chainsaw, prefetch, pecmd]
+    needles: ["wevtutil cl", "wevtutil clear-log", "1102", "104", "cleared", "audit"]
+    caveats:
+      - "Log rotation or retention tooling can clear logs; 1102 without a change ticket is high signal."
+  - technique: "T1070.004"
+    name: "File Deletion"
+    families: [prefetch, pecmd, recmd, rbcmd, srum, mftecmd, evtx, hayabusa, chainsaw]
+    needles: ["sdelete", "cipher /w", "del /f", "rm -rf", "$Recycle.Bin", "recycle", "fileoverwrite", "shred"]
+    caveats:
+      - "Cleanup scripts and installers delete files; secure-delete tools are high signal."
+  - technique: "T1021.001"
+    name: "Remote Desktop Protocol"
+    families: [evtx, evtxecmd, hayabusa, chainsaw, prefetch, pecmd, recmd]
+    needles: ["4624", "type 10", "termsrv", "RDP", "mstsc", "Default.rdp", "rdpclip", "1149", "21"]
+    caveats:
+      - "4624 type 10 is normal for admin access; check source IP, account, and time."
+  - technique: "T1021.002"
+    name: "SMB / Windows Admin Shares"
+    families: [evtx, evtxecmd, hayabusa, chainsaw, zeek, suricata, pcap]
+    needles: ["admin$", "c$", "net use", "PSEXESVC", "smbexec", "5140", "5145", "445"]
+    caveats:
+      - "Admin shares are used by management tools; PSEXESVC and share traversals from unexpected hosts are high signal."
+  - technique: "T1569.002"
+    name: "Service Execution (PsExec-style)"
+    families: [evtx, evtxecmd, hayabusa, chainsaw, prefetch, pecmd, recmd]
+    needles: ["psexec", "psexesvc", "7045", "PSEXESVC.exe", "paexec", "remcom"]
+    caveats:
+      - "Sysinternals PsExec is used legitimately by admins; verify source host and account."
+  - technique: "T1105"
+    name: "Ingress Tool Transfer"
+    families: [prefetch, pecmd, evtx, evtxecmd, hayabusa, chainsaw, browser, zeek, suricata]
+    needles: ["certutil -urlcache", "bitsadmin /transfer", "curl ", "wget ", "Invoke-WebRequest", "iwr ", "DownloadFile", "DownloadString"]
+    caveats:
+      - "Package managers and updaters download files; look for temp paths and follow-on execution."
+  - technique: "T1218"
+    name: "System Binary Proxy Execution"
+    families: [evtx, evtxecmd, hayabusa, chainsaw, prefetch, pecmd]
+    needles: ["rundll32", "regsvr32", "mshta", "installutil", "msiexec", "cscript", "wscript", "scrobj.dll"]
+    caveats:
+      - "These LOLBins are legitimate; suspicious when loading remote/temp payloads or script URLs."
+  - technique: "T1140"
+    name: "Deobfuscate / Decode Files"
+    families: [prefetch, pecmd, evtx, evtxecmd, hayabusa, chainsaw]
+    needles: ["certutil -decode", "-decodehex", "FromBase64String", "base64", "expand -f:*", "gzip -d"]
+    caveats:
+      - "Encoding is not malicious by itself; correlate decoded output with execution."
+  - technique: "T1219"
+    name: "Remote Access Software"
+    families: [prefetch, pecmd, evtx, evtxecmd, hayabusa, chainsaw, amcache, recmd, browser]
+    needles: ["AnyDesk", "TeamViewer", "ngrok", "ScreenConnect", "Atera", "Splashtop", "RustDesk", "LogMeIn"]
+    caveats:
+      - "Remote support tools may be sanctioned; check install path, account, and session timing."
+  - technique: "T1486"
+    name: "Data Encrypted for Impact"
+    families: [prefetch, pecmd, evtx, evtxecmd, hayabusa, chainsaw, mftecmd, rbcmd]
+    needles: ["README", "decrypt", ".locked", ".encrypted", "vssadmin delete shadows", "wbadmin delete", "bcdedit", "ransom"]
+    caveats:
+      - "Recovery tooling also names files README/decrypt; require the full impact pattern (notes + shadow deletion + extension)."
+  - technique: "T1490"
+    name: "Inhibit System Recovery"
+    families: [evtx, evtxecmd, hayabusa, chainsaw, prefetch, pecmd]
+    needles: ["vssadmin delete shadows", "wmic shadowcopy delete", "bcdedit /set", "wbadmin delete catalog", "reagentc /disable", "shadowcopy"]
+    caveats:
+      - "Backup/imaging software may manipulate shadow copies; correlate with encryption or deletion activity."
+  - technique: "T1562.001"
+    name: "Disable or Modify Tools"
+    families: [evtx, evtxecmd, hayabusa, chainsaw, prefetch, pecmd, recmd]
+    needles: ["Set-MpPreference", "DisableRealtimeMonitoring", "netsh advfirewall set", "sc stop windefend", "5001", "5007", "tamper", "MpCmdRun"]
+    caveats:
+      - "GPO and endpoint-management tools legitimately change AV/firewall settings; attribute by account and change window."
+  - technique: "T1136"
+    name: "Create Account"
+    families: [evtx, evtxecmd, hayabusa, chainsaw, recmd]
+    needles: ["net user /add", "net localgroup administrators", "4720", "4728", "4732", "4756", "New-LocalUser"]
+    caveats:
+      - "Provisioning and helpdesk workflows create accounts; verify the actor and business justification."
+  - technique: "T1110"
+    name: "Brute Force"
+    families: [evtx, evtxecmd, hayabusa, chainsaw, zeek, suricata]
+    needles: ["4625", "4740", "lockout", "failed logon", "brute", "password spray", "authentication failure"]
+    caveats:
+      - "Misconfigured services retry credentials; a spray shows one source, many accounts, near-identical timing."
+  - technique: "T1052.001"
+    name: "Exfiltration over USB"
+    families: [recmd, evtx, evtxecmd, hayabusa, chainsaw, setupapi, mftecmd, lecmd, jlecmd]
+    needles: ["USBSTOR", "VID_", "PID_", "mountpoints2", "EMDMgmt", "removable", "usb"]
+    caveats:
+      - "USB devices are routinely legitimate; require file access from the device or staging before removal."
+  - technique: "T1074.001"
+    name: "Local Data Staging"
+    families: [prefetch, pecmd, recmd, srum, evtx, evtxecmd, hayabusa, chainsaw, mftecmd]
+    needles: ["\\Temp\\", "ProgramData", ".zip", ".rar", ".7z", "stage", "archive", "backup.pst", ".pst"]
+    caveats:
+      - "Archives are common; staging is a pattern (mass copy to temp + compress + exfil tool)."
+  - technique: "T1567"
+    name: "Exfiltration Over Web Service"
+    families: [browser, prefetch, pecmd, srum, zeek, suricata, evtx, evtxecmd]
+    needles: ["telegram", "discord", "pastebin", "file.io", "transfer.sh", "anonfiles", "wetransfer", "mega.nz", "drive.google.com"]
+    caveats:
+      - "Cloud storage is legitimate business use; correlate upload with staging and volume."

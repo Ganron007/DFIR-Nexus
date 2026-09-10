@@ -1315,6 +1315,7 @@ def _mode1_ask_context(case_dir: Path, question: str) -> dict[str, Any]:
         _parse_needles,
         load_case_intake,
         n4_aggregate,
+        playbook_techniques_for_families,
         playbook_terms_for_families,
     )
 
@@ -1366,6 +1367,37 @@ def _mode1_ask_context(case_dir: Path, question: str) -> dict[str, Any]:
         except Exception:  # noqa: BLE001
             pass
 
+    # MITRE ATT&CK packs (WP 4g-B): techniques named in intake or implied by
+    # the playbooks matched to the evidence families present.
+    from nexus.knowledge.attack_needles import (
+        attack_context_for,
+        attack_needles_for,
+        attack_packs_for,
+        extract_techniques,
+    )
+
+    technique_text = " ".join(
+        [question]
+        + [str(intake.get(k) or "") for k in ("question", "subjects", "hypothesis")]
+    )
+    techniques = set(extract_techniques(technique_text))
+    if families:
+        with contextlib.suppress(Exception):
+            techniques.update(playbook_techniques_for_families(families))
+    context["techniques"] = sorted(techniques)
+    if families or techniques:
+        try:
+            packs = attack_packs_for(families, techniques, limit=4)
+            if packs:
+                context["attack_packs"] = packs
+                context["attack_needles"] = attack_needles_for(
+                    families, techniques, limit=4
+                )
+                context["attack_context"] = attack_context_for(packs)
+                context["sources"].append("attack-packs")
+        except Exception:  # noqa: BLE001
+            pass
+
     return context
 
 
@@ -1410,6 +1442,7 @@ async def api_ask(request):
         "rationale": parsed.get("rationale", ""),
         "entities": parsed.get("entities", {}),
         "families": context.get("families", []),
+        "techniques": context.get("techniques", []),
         "context_sources": context.get("sources", []),
         "source": parsed.get("source", ""),
     })
@@ -2391,7 +2424,9 @@ async def api_chat_stream(request):
             model = get_model()
         except Exception:
             model = None
-        parsed = nl_to_needles(message, model=model)
+        # Phase 4g: the UI chat path gets the same grounded context as /mode1/ask.
+        context = _mode1_ask_context(case_dir, message)
+        parsed = nl_to_needles(message, model=model, context=context)
         needles = parsed.get("needles", [])
         if not needles:
             q.put(("done", {"reply": "No needles extracted. Refine the question (name an artifact, tool, or event ID).", "needles": [], "count": 0}))
@@ -2403,9 +2438,11 @@ async def api_chat_stream(request):
             q.put(("error", {"error": result["error"]}))
             return "error", {}
         hits = attach_hit_fields(case_dir, result.get("hits", []))
+        rationale = str(parsed.get("rationale") or "").strip()
         reply = (
             f"Needles: {', '.join(needles)} | hits: {result.get('count', 0)}"
             + (f" | {result.get('query')}" if result.get("query") else "")
+            + (f" | why: {rationale}" if rationale else "")
         )
         q.put(("hits", {"hits": _hits_for_transcript(hits), "count": result.get("count", 0)}))
         return "query_run", {
@@ -2414,6 +2451,9 @@ async def api_chat_stream(request):
             "count": result.get("count", 0),
             "backend": result.get("backend", ""),
             "hits": hits,
+            "rationale": rationale,
+            "techniques": context.get("techniques", []),
+            "families": context.get("families", []),
         }
 
     def _finalize(action: str, final: dict[str, Any]) -> None:
@@ -2432,6 +2472,8 @@ async def api_chat_stream(request):
         append_chat(case_dir, "llm", action, reply, {
             "needles": ",".join(final.get("needles", [])[:12]),
             "hits": str(final.get("count", len(hits))),
+            "rationale": str(final.get("rationale") or "")[:400],
+            "techniques": ",".join(final.get("techniques", [])[:8]),
         }, data={"hits": _hits_for_transcript(hits)})
         q.put(("done", {
             "reply": reply,
@@ -2439,6 +2481,9 @@ async def api_chat_stream(request):
             "count": final.get("count", 0) or len(hits),
             "backend": final.get("backend", ""),
             "hits": _hits_for_transcript(hits),
+            "rationale": final.get("rationale", ""),
+            "techniques": final.get("techniques", []),
+            "families": final.get("families", []),
         }))
         q.put((None, None))
 

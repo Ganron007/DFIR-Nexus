@@ -528,7 +528,7 @@ If the case is already open: `{"ok": true, "status": "created", "note": "already
 ## 4. Mode 1
 
 ### POST /portal/api/mode1/ask
-**Description:** Mode 1 natural-language query. The scribe is **grounded with case context** (Phase 4g): evidence families present, playbook terms/caveats for those families, RAG methodology, already-searched needles, and the case intake. Deterministic entity extraction (IPs, domains, URLs, hashes, paths, `DOMAIN\user`) always contributes needles, LLM or not. Runs an N4 ad-hoc query (persisting needles to intake) and returns the hits.
+**Description:** Mode 1 natural-language query. The scribe is **grounded with case context** (Phase 4g): evidence families present, playbook terms/caveats for those families, **MITRE ATT&CK needle packs** (techniques named in intake or implied by matched playbooks), RAG methodology, already-searched needles, and the case intake. Deterministic entity extraction (IPs, domains, URLs, hashes, paths, `DOMAIN\user`) always contributes needles, LLM or not. Runs an N4 ad-hoc query (persisting needles to intake) and returns the hits.
 
 **Request:**
 ```json
@@ -551,7 +551,8 @@ If the case is already open: `{"ok": true, "status": "created", "note": "already
   "rationale": "string (one sentence, LLM only)",
   "entities": {"ipv4": ["10.0.0.5"], "domain": ["evil.example.com"]},
   "families": ["evtxecmd", "hayabusa"],
-  "context_sources": ["n4-families", "playbooks", "playbook-caveats", "rag"],
+  "techniques": ["T1003.001", "T1070.004"],
+  "context_sources": ["n4-families", "playbooks", "playbook-caveats", "rag", "attack-packs"],
   "source": "llm|heuristic"
 }
 ```

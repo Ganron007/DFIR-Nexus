@@ -146,6 +146,28 @@ function ProposalCard({ entry }: { entry: ChatEntry }) {
         </div>
       )}
 
+      {meta.techniques && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8, alignItems: "center" }}>
+          <span style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase" }}>ATT&CK</span>
+          {meta.techniques.split(",").filter(Boolean).map((t) => (
+            <span
+              key={t}
+              style={{
+                fontFamily: "monospace",
+                fontSize: 10,
+                background: "rgba(163,113,247,0.12)",
+                border: "1px solid rgba(163,113,247,0.4)",
+                color: "var(--purple)",
+                padding: "1px 6px",
+                borderRadius: 4,
+              }}
+            >
+              {t}
+            </span>
+          ))}
+        </div>
+      )}
+
       {/* WP 4d.3: hit cards persisted in the transcript */}
       {hits.length > 0 && (
         <div style={{ marginTop: 8 }}>

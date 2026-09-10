@@ -239,32 +239,51 @@ def collect_playbook_query_terms(intake: dict[str, str] | None) -> list[str]:
     return _dedupe(_playbook_terms(extra_playbook_names(intake or {})))
 
 
+def _family_matched_playbooks(families: set[str] | list[str] | None) -> list[dict]:
+    """Playbooks whose query_terms/name/description mention any given family."""
+    from nexus.knowledge.loader import get_playbook, list_playbook_slugs
+
+    fams = {str(f).lower() for f in (families or []) if str(f).strip()}
+    if not fams:
+        return []
+    out: list[dict] = []
+    for slug in list_playbook_slugs():
+        pb = get_playbook(slug)
+        if not isinstance(pb, dict):
+            continue
+        terms = pb.get("query_terms") or []
+        term_lower = (
+            {str(t).lower() for t in terms} if isinstance(terms, list) else set()
+        )
+        blob = (
+            str(pb.get("name", "")) + " " + str(pb.get("description", ""))
+        ).lower()
+        if any(f in term_lower or f in blob for f in fams):
+            out.append(pb)
+    return out
+
+
 def playbook_terms_for_families(families: set[str] | list[str] | None) -> list[str]:
     """Playbook ``query_terms`` for the given artifact families (WP 4g-A).
 
     Family-matched against each playbook's terms and name/description, so
     expanding the playbook YAML expands Mode 1's starting vocabulary.
     """
-    from nexus.knowledge.loader import get_playbook, list_playbook_slugs
-
-    fams = {str(f).lower() for f in (families or []) if str(f).strip()}
-    if not fams:
-        return []
     out: list[str] = []
-    for slug in list_playbook_slugs():
-        pb = get_playbook(slug)
-        if not isinstance(pb, dict):
-            continue
+    for pb in _family_matched_playbooks(families):
         terms = pb.get("query_terms") or []
-        if not isinstance(terms, list):
-            continue
-        term_lower = {str(t).lower() for t in terms}
-        blob = (
-            str(pb.get("name", "")) + " " + str(pb.get("description", ""))
-        ).lower()
-        if not any(f in term_lower or f in blob for f in fams):
-            continue
-        out.extend(str(t).strip() for t in terms if str(t).strip())
+        if isinstance(terms, list):
+            out.extend(str(t).strip() for t in terms if str(t).strip())
+    return _dedupe(out)
+
+
+def playbook_techniques_for_families(families: set[str] | list[str] | None) -> list[str]:
+    """MITRE technique ids declared by playbooks matched to those families."""
+    out: list[str] = []
+    for pb in _family_matched_playbooks(families):
+        mitre = pb.get("mitre") or []
+        if isinstance(mitre, list):
+            out.extend(str(t).strip() for t in mitre if str(t).strip())
     return _dedupe(out)
 
 

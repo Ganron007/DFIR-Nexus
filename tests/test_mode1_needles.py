@@ -116,3 +116,30 @@ def test_api_ask_returns_entities_without_llm(client, monkeypatch):
     assert "10.0.0.5" in body["needles"]
     assert body["entities"]["ipv4"] == ["10.0.0.5"]
     assert body["source"] == "heuristic"
+
+
+def test_chat_stream_mode1_uses_grounded_context(client, monkeypatch):
+    """The UI path (/chat/stream) must ground the scribe like /mode1/ask."""
+    import nexus.langgraph.mode1 as mode1
+
+    captured: dict = {}
+    real = mode1.nl_to_needles
+
+    def spy(question, model=None, context=None):
+        captured["context"] = context
+        return real(question, model=None, context=context)
+
+    monkeypatch.setattr(mode1, "nl_to_needles", spy)
+
+    created = client.post("/portal/api/case/create", json={"name": "Stream Case"})
+    case_id = created.json()["case_id"]
+    r = client.post(
+        "/portal/api/chat/stream",
+        headers={"X-Nexus-Case": case_id},
+        json={"message": "Did 10.0.0.5 use powershell?", "mode": "mode1"},
+    )
+    assert r.status_code == 200, r.text
+    context = captured.get("context")
+    assert context is not None, "chat stream dropped the grounded context"
+    assert "searched" in context and "sources" in context
+    assert "event: done" in r.text or "Needles:" in r.text

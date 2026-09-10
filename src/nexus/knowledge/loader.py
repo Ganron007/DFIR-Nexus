@@ -186,8 +186,21 @@ def get_rules() -> list[dict]:
 
 
 def get_playbook(name: str) -> dict | None:
-    name_lower = name.lower().replace(" ", "_")
+    name_lower = name.strip().lower().replace(" ", "_")
     return _load_yaml(f"discipline/playbooks/{name_lower}.yaml")
+
+
+def get_attack_needles() -> list[dict]:
+    """MITRE ATT&CK needle packs (data-driven search vocabulary).
+
+    File: ``needles/attack_needles.yaml`` — technique id -> needles + caveats.
+    """
+    data = _load_yaml("needles/attack_needles.yaml")
+    if isinstance(data, dict):
+        packs = data.get("packs")
+        if isinstance(packs, list):
+            return [p for p in packs if isinstance(p, dict)]
+    return []
 
 
 def list_playbooks() -> list[dict]:

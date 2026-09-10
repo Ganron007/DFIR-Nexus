@@ -141,6 +141,12 @@ def _context_block(context: dict[str, Any] | None) -> str:
     playbook_context = str(context.get("playbook_context") or "").strip()
     if playbook_context:
         lines.append("Playbook methodology and caveats:\n" + playbook_context[:1800])
+    attack_context = str(context.get("attack_context") or "").strip()
+    if attack_context:
+        lines.append(
+            "MITRE ATT&CK packs for this case (terms + false-positive caveats):\n"
+            + attack_context[:1800]
+        )
     rag = str(context.get("rag") or "").strip()
     if rag:
         lines.append("RAG methodology:\n" + rag[:1200])
@@ -181,10 +187,15 @@ def nl_to_needles(
 
     entities = extract_entities(question)
     entity_needles = entities_to_needles(entities)
+    attack_needles = [
+        str(t) for t in (context or {}).get("attack_needles") or [] if str(t).strip()
+    ]
 
     if model is None:
         result = _heuristic_needles(question)
-        result["needles"] = _dedupe_needles(entity_needles + list(result.get("needles") or []))
+        result["needles"] = _dedupe_needles(
+            entity_needles + list(result.get("needles") or []) + attack_needles
+        )
         result["entities"] = entities
         return result
 
@@ -199,10 +210,9 @@ def nl_to_needles(
         text = getattr(response, "content", str(response))
         parsed = _parse_json_response(text)
         if parsed and isinstance(parsed.get("needles"), list):
-            needles = _dedupe_needles(
-                entity_needles
-                + [str(n).strip() for n in parsed["needles"] if str(n).strip()]
-            )
+            llm_needles = [str(n).strip() for n in parsed["needles"] if str(n).strip()]
+            needles = _dedupe_needles(entity_needles + llm_needles, cap=10)
+            needles = _dedupe_needles(needles + attack_needles, cap=14)
             window = str(parsed.get("window") or "").strip()
             if needles:
                 return {
@@ -217,7 +227,9 @@ def nl_to_needles(
         log.warning("LLM needles failed (%s), falling back to heuristic", exc)
 
     result = _heuristic_needles(question)
-    result["needles"] = _dedupe_needles(entity_needles + list(result.get("needles") or []))
+    result["needles"] = _dedupe_needles(
+        entity_needles + list(result.get("needles") or []) + attack_needles
+    )
     result["entities"] = entities
     return result
 
