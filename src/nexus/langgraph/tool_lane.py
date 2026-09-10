@@ -189,6 +189,21 @@ def find_evtx_dirs(evidence: Path) -> list[Path]:
     root = find_windows_root(evidence)
     if root is not None:
         add(root / "Windows" / "System32" / "winevt" / "Logs")
+    if found:
+        return found
+
+    # Generic fallback (Phase 4h): any directory under the evidence that
+    # directly contains *.evtx — handles a plain folder of EVTX files (e.g. an
+    # EVTX-ATTACK-SAMPLES folder) with no Stage-0 pack or Windows root.
+    added = 0
+    try:
+        for candidate in sorted(evidence.rglob("*.evtx")):
+            add(candidate.parent)
+            added += 1
+            if added >= 24:
+                break
+    except OSError:
+        pass
     return found
 
 
@@ -293,32 +308,167 @@ def schedule_evtx_parsers(
         )
 
 
+def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
+    """Schedule the matching parser for a single file / plain artifact folder.
+
+    Phase 4h: examiners register whatever they have — a lone prefetch file, a
+    hive, an MFT, or a folder of artifacts — and the lane must know which tool
+    parses it. Commands mirror the host-plan argv.
+    """
+    jobs: list[ToolJob] = []
+
+    def add(tool: str, argv: list[str], purpose: str, timeout: int = 600) -> None:
+        jobs.append(ToolJob(
+            host="windows", tool=tool, argv=argv, purpose=purpose, timeout=timeout,
+        ))
+
+    def out_dir(name: str) -> Path:
+        d = extractions / name
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    if evidence.is_dir():
+        if next(evidence.glob("*.pf"), None) is not None:
+            d = out_dir("pecmd")
+            add("pecmd", ["pecmd", "-d", str(evidence), "--csv", str(d), "--csvf", "prefetch.csv"],
+                "Prefetch execution evidence (folder)")
+            return jobs
+        if next(evidence.glob("*.lnk"), None) is not None:
+            d = out_dir("lecmd")
+            add("lecmd", ["lecmd", "-d", str(evidence), "--csv", str(d), "--csvf", "lecmd.csv"],
+                "LNK files (folder)", 300)
+            return jobs
+        if evidence.name.lower() in ("automaticdestinations", "customdestinations"):
+            d = out_dir("jlecmd")
+            add("jlecmd", ["jlecmd", "-d", str(evidence), "--csv", str(d), "--csvf", "jlecmd.csv"],
+                "Jump Lists (folder)", 300)
+            return jobs
+        return jobs
+
+    if not evidence.is_file():
+        return jobs
+
+    name = evidence.name.lower()
+    suffix = evidence.suffix.lower()
+
+    if suffix == ".pf":
+        d = out_dir("pecmd")
+        add("pecmd", ["pecmd", "-f", str(evidence), "--csv", str(d), "--csvf", "prefetch.csv"],
+            "Prefetch execution evidence")
+    elif suffix == ".lnk":
+        d = out_dir("lecmd")
+        add("lecmd", ["lecmd", "-f", str(evidence), "--csv", str(d), "--csvf", "lecmd.csv"],
+            "LNK target/usage", 300)
+    elif name.startswith("$mft") or suffix == ".mft":
+        d = out_dir("mftecmd")
+        add("mftecmd", ["mftecmd", "-f", str(evidence), "--csv", str(d), "--csvf", "mft.csv"],
+            "MFT file system timeline", 1800)
+    elif name.startswith("amcache"):
+        d = out_dir("amcache")
+        add("amcacheparser",
+            ["amcacheparser", "-f", str(evidence), "--csv", str(d), "--csvf", "amcache.csv"],
+            "Amcache application execution", 300)
+    elif name == "srudb.dat" or "sru" in name:
+        d = out_dir("srum")
+        add("srumecmd", ["srumecmd", "-f", str(evidence), "--csv", str(d)],
+            "SRUM database", 600)
+    elif name in ("system", "software", "sam", "security", "ntuser.dat", "usrclass.dat"):
+        d = out_dir("recmd")
+        add("recmd", ["recmd", "-f", str(evidence), "--csv", str(d), "--csvf", "recmd.csv"],
+            f"Registry hive ({evidence.name})")
+        if name == "system":
+            ad = out_dir("appcompat")
+            add("appcompatcacheparser",
+                ["appcompatcacheparser", "-f", str(evidence), "--csv", str(ad), "--csvf", "appcompat.csv"],
+                "Shimcache / AppCompat", 300)
+    return jobs
+
+
+def is_host_evidence(path: str | Path) -> bool:
+    """True when the Windows tool lane can parse this evidence path.
+
+    Used to route non-host evidence (PCAP / Zeek / Suricata / cloud / syslog)
+    to the importer lane instead of leaving it unprocessed.
+    """
+    p = Path(path)
+    if find_windows_root(p) is not None or find_evtx_dirs(p):
+        return True
+    if p.is_file():
+        name = p.name.lower()
+        suffix = p.suffix.lower()
+        return (
+            suffix in (".pf", ".lnk", ".evtx", ".mft")
+            or name.startswith("$mft")
+            or name.startswith("amcache")
+            or name == "srudb.dat"
+            or name in ("system", "software", "sam", "security", "ntuser.dat", "usrclass.dat")
+        )
+    if p.is_dir():
+        if (
+            next(p.glob("*.pf"), None) is not None
+            or next(p.glob("*.lnk"), None) is not None
+            or next(p.glob("*.evtx"), None) is not None
+        ):
+            return True
+        return p.name.lower() in ("automaticdestinations", "customdestinations")
+    return False
+
+
 def plan_windows_triage(
     evidence_path: str,
     extractions: Path,
     sample_files: list[str] | None = None,
     extras: list[str] | None = None,
 ) -> list[ToolJob]:
-    """Build Windows host-triage jobs from YAML discovery + all user profiles."""
+    """Build host-triage jobs from YAML discovery + all user profiles.
+
+    Phase 4h accepts any registered shape: a Windows root, a KAPE/drive tree,
+    a Stage-0 pack, an EVTX file or folder, or a known single artifact.
+    """
     from nexus.langgraph.artifact_map import user_profile_dirs
 
     jobs: list[ToolJob] = []
     evidence = Path(evidence_path)
     root = find_windows_root(evidence)
     evtx_dirs = find_evtx_dirs(evidence)
-    if root is None and not evtx_dirs:
-        jobs.append(ToolJob(
-            host="windows",
-            tool="(discovery)",
-            argv=[],
-            purpose="locate Windows root",
-            status="SKIP",
-            reason=f"No Windows/System32 or Stage 0 wevtutil EVTX under: {evidence_path}",
-        ))
-        return jobs
 
-    if root is None:
-        schedule_evtx_parsers(jobs, evtx_dirs, extractions)
+    # Phase 4h: a single .evtx file is valid evidence — stage it into the run
+    # so the EVTX parsers (Hayabusa/Chainsaw/EvtxECmd) can run on it.
+    if (
+        root is None
+        and not evtx_dirs
+        and evidence.is_file()
+        and evidence.suffix.lower() == ".evtx"
+    ):
+        staged = extractions / "evtx_input"
+        try:
+            staged.mkdir(parents=True, exist_ok=True)
+            target = staged / evidence.name
+            if not target.exists():
+                shutil.copy2(evidence, target)
+            evtx_dirs = [staged]
+        except OSError as exc:
+            log.warning("Could not stage EVTX %s: %s", evidence, exc)
+
+    if root is None and not evtx_dirs:
+        # Single/folder non-EVTX artifacts: schedule the matching parser, else
+        # skip with actionable guidance.
+        jobs.extend(_plan_single_artifact(evidence, extractions))
+        if not jobs:
+            jobs.append(ToolJob(
+                host="windows",
+                tool="(discovery)",
+                argv=[],
+                purpose="locate evidence",
+                status="SKIP",
+                reason=(
+                    f"No recognized evidence shape under {evidence_path}. Accepted: "
+                    "a Windows root (Windows/System32), a KAPE/drive tree "
+                    "(*/C/Windows/System32), a Stage-0 pack (<pack>/wevtutil/*.evtx), "
+                    "any folder of *.evtx, or a known artifact folder/file "
+                    "(.evtx/.pf/$MFT/SRUDB.dat/Amcache.hve/hive/.lnk/jumplist)."
+                ),
+            ))
         return jobs
 
     if root is None:
@@ -1216,6 +1366,7 @@ async def run_tool_lane(
     skip_rag: bool = True,
     pipeline_mode: str = "",
     strict: bool | None = None,
+    evidence_paths: list[str] | None = None,
 ) -> dict[str, Any]:
     """Execute the planned triage lane via MCP tools. Returns ledger + audit_ids.
 
@@ -1261,20 +1412,30 @@ async def run_tool_lane(
         except Exception as exc:  # noqa: BLE001
             rag_notes.append(f"RAG error: {exc}")
 
-    jobs = plan_windows_triage(
-        evidence_path,
-        extractions,
-        sample_files=[
-            p.strip()
-            for p in str(ctx.get("sample_files") or "").replace(";", ",").split(",")
-            if p.strip()
-        ],
-        extras=[
-            p.strip()
-            for p in str(ctx.get("extras") or "").replace(";", ",").split(",")
-            if p.strip()
-        ],
-    )
+    sample_list = [
+        p.strip()
+        for p in str(ctx.get("sample_files") or "").replace(";", ",").split(",")
+        if p.strip()
+    ]
+    extras_list = [
+        p.strip()
+        for p in str(ctx.get("extras") or "").replace(";", ",").split(",")
+        if p.strip()
+    ]
+    # Phase 4h: plan across EVERY registered evidence path (single file,
+    # multiple files, folder, or drive root), deduping identical jobs.
+    plan_paths = [p for p in (evidence_paths or [evidence_path]) if str(p).strip()]
+    jobs: list[ToolJob] = []
+    _planned: set[tuple] = set()
+    for _p in plan_paths:
+        for _job in plan_windows_triage(
+            _p, extractions, sample_files=sample_list, extras=extras_list,
+        ):
+            _key = (_job.tool, tuple(_job.argv), _job.status)
+            if _key in _planned:
+                continue
+            _planned.add(_key)
+            jobs.append(_job)
     try:
         import json as _json
 

@@ -777,19 +777,24 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
         parse_result=_parse_tool_result,
         skip_rag=True,
         pipeline_mode=mode,
+        evidence_paths=state.get("evidence_paths") or None,
     )
-    extra_paths = [
-        p for p in (state.get("evidence_paths") or [])
-        if p and p != (state.get("evidence_path") or "")
+    # Phase 4h: every registered path is planned by the lane; paths the Windows
+    # tool lane cannot parse (PCAP/Zeek/Suricata/cloud/syslog) go to importers.
+    from nexus.langgraph.tool_lane import is_host_evidence
+
+    all_paths = [
+        p for p in (state.get("evidence_paths") or [state.get("evidence_path")]) if p
     ]
-    if extra_paths:
+    ingest_paths = [p for p in all_paths if not is_host_evidence(p)]
+    if ingest_paths:
         from nexus.config import settings as _settings
         from nexus.langgraph.timeline_merge import ingest_into_case, rebuild_case_timeline
         from nexus.langgraph.tool_lane import find_windows_root
 
         case_dir = _settings.cases_root / case_id
         steps = list(result.get("step_log") or [])
-        for p in extra_paths:
+        for p in ingest_paths:
             if find_windows_root(Path(p)) is not None:
                 steps.append(f"Extra Windows root registered (not re-parsed this pass): {p}")
                 continue

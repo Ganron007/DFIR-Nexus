@@ -21,6 +21,8 @@ export default function Evidence() {
   const [showPicker, setShowPicker] = useState(false);
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
   const [ledgerRunId, setLedgerRunId] = useState("");
+  const [ledgerRunStatus, setLedgerRunStatus] = useState("");
+  const [ledgerEvidence, setLedgerEvidence] = useState<string[]>([]);
   const [verifying, setVerifying] = useState(false);
   const [verificationResults, setVerificationResults] = useState<Record<string, { valid: boolean; error?: string }>>({});
   const [verifyBanner, setVerifyBanner] = useState<{ total: number; valid: number; failed: number } | null>(null);
@@ -81,6 +83,8 @@ export default function Evidence() {
         if (lg && !lg.error) {
           setLedger(lg.ledger || []);
           setLedgerRunId(lg.run_id || "");
+          setLedgerRunStatus(lg.run_status || "");
+          setLedgerEvidence(lg.evidence_paths || []);
         }
       })
       .catch((e) => setError((e as Error).message))
@@ -223,15 +227,26 @@ export default function Evidence() {
             <span className="card-title">
               N2 Parser Lane — {ledger.filter((r) => (r.status || "").toUpperCase() === "OK").length}/{ledger.length} OK
               {ledgerRunId ? ` · run ${ledgerRunId}` : ""}
+              {ledgerRunStatus ? ` · ${ledgerRunStatus}` : ""}
             </span>
           </div>
-          <div style={{ maxHeight: 240, overflowY: "auto" }}>
+          {ledgerEvidence.length > 0 && (
+            <div style={{ padding: "8px 16px 0", fontSize: 11, color: "var(--text-muted)" }}>
+              <strong>Evidence processed:</strong>{" "}
+              {ledgerEvidence.map((p) => (
+                <div key={p} style={{ fontFamily: "monospace" }}>{p}</div>
+              ))}
+            </div>
+          )}
+          <div style={{ maxHeight: 300, overflowY: "auto" }}>
             <table>
               <thead>
                 <tr>
                   <th>Tool</th>
                   <th>Status</th>
-                  <th>Detail</th>
+                  <th>Command</th>
+                  <th>Output</th>
+                  <th>Detail / reason</th>
                 </tr>
               </thead>
               <tbody>
@@ -246,7 +261,21 @@ export default function Evidence() {
                         {String(row.status || "—")}
                       </span>
                     </td>
-                    <td style={{ fontSize: 11, color: "var(--text-muted)" }}>{String(row.detail || "")}</td>
+                    <td
+                      style={{ fontFamily: "monospace", fontSize: 10, maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                      title={Array.isArray(row.argv) ? row.argv.join(" ") : ""}
+                    >
+                      {Array.isArray(row.argv) && row.argv.length ? row.argv.join(" ") : "—"}
+                    </td>
+                    <td
+                      style={{ fontFamily: "monospace", fontSize: 10, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                      title={String(row.output_saved_to || "")}
+                    >
+                      {String(row.output_saved_to || "—")}
+                    </td>
+                    <td style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                      {String(row.reason || row.detail || "")}
+                    </td>
                   </tr>
                 ))}
               </tbody>

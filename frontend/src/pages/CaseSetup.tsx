@@ -444,13 +444,15 @@ export default function CaseSetup() {
                     {failCount ? ` · ${failCount} FAIL` : ""}
                   </div>
                   {ledger.length > 0 ? (
-                    <div style={{ maxHeight: 220, overflowY: "auto" }}>
+                    <div style={{ maxHeight: 260, overflowY: "auto" }}>
                       <table>
                         <thead>
                           <tr>
                             <th>Tool</th>
                             <th>Status</th>
-                            <th>Detail</th>
+                            <th>Command</th>
+                            <th>Output</th>
+                            <th>Detail / reason</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -465,7 +467,21 @@ export default function CaseSetup() {
                                   {String(row.status || "—")}
                                 </span>
                               </td>
-                              <td style={{ fontSize: 11, color: "var(--text-muted)" }}>{String(row.detail || "")}</td>
+                              <td
+                                style={{ fontFamily: "monospace", fontSize: 10, maxWidth: 300, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                                title={Array.isArray(row.argv) ? row.argv.join(" ") : ""}
+                              >
+                                {Array.isArray(row.argv) && row.argv.length ? row.argv.join(" ") : "—"}
+                              </td>
+                              <td
+                                style={{ fontFamily: "monospace", fontSize: 10, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                                title={String(row.output_saved_to || "")}
+                              >
+                                {String(row.output_saved_to || "—")}
+                              </td>
+                              <td style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                                {String(row.reason || row.detail || "")}
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -476,8 +492,10 @@ export default function CaseSetup() {
                   )}
                   {okCount === 0 && failCount === 0 && (
                     <div style={{ fontSize: 12, color: "var(--warning)", marginTop: 8 }}>
-                      No parser produced output — check the evidence path shape
-                      (e.g. a Stage-0 pack with a wevtutil/ folder) before investigating.
+                      No parser produced output — see the reason above. Supported evidence:
+                      a Windows root / KAPE drive tree (…/C/Windows/System32), a Stage-0
+                      pack (&lt;pack&gt;/wevtutil/*.evtx), any EVTX file or folder, or a known
+                      artifact (.pf / hive / $MFT / SRUDB.dat / Amcache.hve / .lnk).
                     </div>
                   )}
                   <button className="btn btn-primary" onClick={finish} style={{ marginTop: 12 }}>

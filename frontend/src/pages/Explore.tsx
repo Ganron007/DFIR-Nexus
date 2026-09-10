@@ -49,6 +49,17 @@ export default function Explore() {
       .catch((e) => setError(`Playbook suggestions load failed: ${(e as Error).message}`));
   }, [activeCase]);
 
+  // Phase 4g: suggestions are case-aware — static playbooks PLUS ATT&CK packs
+  // matched to the evidence families actually present, refreshing when the
+  // family aggregate changes.
+  useEffect(() => {
+    const fams = Object.keys(familyAgg).join(",");
+    api.playbookNeedles(fams || undefined)
+      .then((r) => setPlaybookSuggestions(r.suggestions || []))
+      .catch((e) => setError(`Needle suggestions load failed: ${(e as Error).message}`));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [familyAgg]);
+
   // WP 4b.10: Read URL params from Timeline brush navigation
   useEffect(() => {
     const start = searchParams.get("start");
@@ -277,11 +288,22 @@ export default function Explore() {
         {showPlaybookHelp && playbookSuggestions.length > 0 && (
           <div style={{ marginTop: 8, padding: 12, background: "var(--bg-tertiary)", borderRadius: 8 }}>
             <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8, textTransform: "uppercase" }}>
-              Playbook-Suggested Needles
+              Suggested Needles — Playbooks + MITRE ATT&CK
             </div>
-            {playbookSuggestions.slice(0, 6).map((pb) => (
+            {playbookSuggestions.slice(0, 8).map((pb) => (
               <div key={pb.slug} style={{ marginBottom: 8 }}>
                 <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4 }}>
+                  <span
+                    className="badge draft"
+                    style={{
+                      fontSize: 9,
+                      marginRight: 6,
+                      background: pb.source === "mitre" ? "rgba(163,113,247,0.15)" : undefined,
+                      color: pb.source === "mitre" ? "var(--purple)" : undefined,
+                    }}
+                  >
+                    {pb.source === "mitre" ? "ATT&CK" : "playbook"}
+                  </span>
                   {pb.playbook}
                 </div>
                 <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>

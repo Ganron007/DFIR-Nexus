@@ -3447,6 +3447,8 @@ async def api_pipeline_ledger(request):
 
     ledger: list[dict[str, Any]] = []
     run_id = ""
+    evidence_paths: list[str] = []
+    run_status = ""
     try:
         run = resolve_run(case_dir, "tools")
         run_id = run.run_id
@@ -3463,10 +3465,18 @@ async def api_pipeline_ledger(request):
                     break
                 except (json.JSONDecodeError, OSError):
                     continue
+        try:
+            manifest = json.loads((run.path / "manifest.json").read_text(encoding="utf-8"))
+            evidence_paths = [str(p) for p in (manifest.get("evidence_paths") or [])]
+            run_status = str(manifest.get("status") or "")
+        except (OSError, json.JSONDecodeError):
+            pass
     except ValueError:
         pass
     return JSONResponse({
         "run_id": run_id,
+        "run_status": run_status,
+        "evidence_paths": evidence_paths,
         "ledger": ledger,
         "total": len(ledger),
         "extractions": str(resolve_tools_extractions(case_dir)),
@@ -3588,9 +3598,40 @@ async def api_playbook_needles(request):
             "needles": [str(t) for t in terms[:20]],
             "caveats": [str(c)[:200] for c in (pb.get("caveats") or [])[:3]],
             "triggers": [str(t)[:200] for t in (pb.get("triggers") or [])[:3]],
+            "source": "playbook",
         })
 
-    return JSONResponse({"suggestions": suggestions, "total": len(suggestions)})
+    # Phase 4g: MITRE ATT&CK packs for the case's evidence families (and the
+    # techniques those families' playbooks declare). Same needle vocabulary the
+    # grounded scribe uses, so Explore and the chat agree.
+    attack_suggestions: list[dict[str, Any]] = []
+    try:
+        from nexus.knowledge.attack_needles import attack_packs_for
+        from nexus.langgraph.query_pack import playbook_techniques_for_families
+
+        techniques = (
+            set(playbook_techniques_for_families(families_filter))
+            if families_filter
+            else set()
+        )
+        for pack in attack_packs_for(families_filter, techniques, limit=6):
+            attack_suggestions.append({
+                "playbook": f"{pack.get('technique', '')} {pack.get('name', '')}".strip(),
+                "slug": f"mitre:{pack.get('technique', '')}",
+                "needles": [str(n) for n in (pack.get("needles") or [])[:20]],
+                "caveats": [str(c)[:200] for c in (pack.get("caveats") or [])[:2]],
+                "triggers": [],
+                "source": "mitre",
+            })
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("attack needle suggestions skipped: %s", exc)
+
+    combined = attack_suggestions + suggestions
+    return JSONResponse({
+        "suggestions": combined,
+        "total": len(combined),
+        "families": sorted(families_filter),
+    })
 
 
 async def api_case_mode(request):

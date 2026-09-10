@@ -439,3 +439,66 @@ def test_copy_text_skips_existing_readonly(tmp_path: Path):
     f.write_bytes(b"abc")
     digest = _hash_file(str(f))
     assert len(digest) == 64
+
+
+def test_plan_single_evtx_file_is_staged_and_parsed(tmp_path: Path):
+    """Phase 4h: a lone .evtx file is valid evidence (was discovery SKIP)."""
+    evtx = tmp_path / "susp_explorer.evtx"
+    evtx.write_bytes(b"evtx")
+    extractions = tmp_path / "extractions"
+    extractions.mkdir()
+
+    jobs = plan_windows_triage(str(evtx), extractions)
+    pending = {j.tool for j in jobs if j.status == "PENDING"}
+    assert "evtxecmd" in pending and "hayabusa" in pending
+    assert all(j.tool != "(discovery)" for j in jobs)
+    assert (extractions / "evtx_input" / "susp_explorer.evtx").is_file()
+
+
+def test_plan_evtx_folder_is_recognized(tmp_path: Path):
+    """Phase 4h: any folder of *.evtx (no Stage-0 pack) is parsable."""
+    folder = tmp_path / "Execution"
+    folder.mkdir()
+    (folder / "a.evtx").write_bytes(b"evtx")
+    (folder / "b.evtx").write_bytes(b"evtx")
+    extractions = tmp_path / "extractions"
+    extractions.mkdir()
+
+    jobs = plan_windows_triage(str(folder), extractions)
+    pending = {j.tool for j in jobs if j.status == "PENDING"}
+    assert "evtxecmd" in pending
+
+
+def test_plan_single_artifacts_map_to_their_tool(tmp_path: Path):
+    """Phase 4h: a lone prefetch/hive schedules the right parser."""
+    extractions = tmp_path / "extractions"
+    extractions.mkdir()
+    pf = tmp_path / "CMD.EXE-ABC123.pf"
+    pf.write_bytes(b"pf")
+    assert {j.tool for j in plan_windows_triage(str(pf), extractions) if j.status == "PENDING"} == {"pecmd"}
+
+    hive = tmp_path / "SYSTEM"
+    hive.write_bytes(b"regf")
+    tools = {j.tool for j in plan_windows_triage(str(hive), extractions) if j.status == "PENDING"}
+    assert {"recmd", "appcompatcacheparser"} <= tools
+
+
+def test_plan_unknown_shape_skips_with_guidance(tmp_path: Path):
+    mystery = tmp_path / "mystery.bin"
+    mystery.write_bytes(b"x")
+    extractions = tmp_path / "extractions"
+    extractions.mkdir()
+    jobs = plan_windows_triage(str(mystery), extractions)
+    assert len(jobs) == 1 and jobs[0].status == "SKIP"
+    assert "Accepted:" in jobs[0].reason
+
+
+def test_is_host_evidence_routes_non_host_to_importers(tmp_path: Path):
+    from nexus.langgraph.tool_lane import is_host_evidence
+
+    evtx = tmp_path / "a.evtx"
+    evtx.write_bytes(b"e")
+    pcap = tmp_path / "a.pcap"
+    pcap.write_bytes(b"p")
+    assert is_host_evidence(str(evtx)) is True
+    assert is_host_evidence(str(pcap)) is False

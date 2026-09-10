@@ -449,13 +449,22 @@ export interface PipelineStatusResponse {
 /** GET /pipeline/ledger → tool-lane parser run status */
 export interface LedgerRow {
   tool?: string;
+  host?: string;
   status?: string;
   detail?: string;
+  reason?: string;
+  purpose?: string;
+  argv?: string[];
+  timeout?: number;
   audit_id?: string;
+  output_saved_to?: string;
+  output_files?: Array<{ path?: string; sha256?: string; kind?: string }>;
   [key: string]: unknown;
 }
 export interface PipelineLedgerResponse {
   run_id: string;
+  run_status?: string;
+  evidence_paths?: string[];
   ledger: LedgerRow[];
   total: number;
   extractions?: string;
@@ -486,6 +495,8 @@ export interface PlaybookSuggestion {
   needles: string[];
   caveats: string[];
   triggers: string[];
+  /** "playbook" (YAML) or "mitre" (ATT&CK needle pack). */
+  source?: string;
 }
 export interface PlaybookNeedlesResponse {
   suggestions: PlaybookSuggestion[];
