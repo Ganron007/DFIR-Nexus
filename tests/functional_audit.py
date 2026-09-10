@@ -23,6 +23,14 @@ def check(label, condition, detail=""):
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 os.chdir(Path(__file__).resolve().parent)
 
+# Test isolation: never materialize audit cases into the examiner's real store.
+from nexus.config import settings as _settings  # noqa: E402
+
+_audit_cases_root = Path(tempfile.gettempdir()) / f"nexus_audit_cases_{os.getpid()}"
+_audit_cases_root.mkdir(parents=True, exist_ok=True)
+_settings.cases_root = _audit_cases_root
+os.environ["NEXUS_ACTIVE_CASE_FILE"] = str(_audit_cases_root / "active_case")
+
 # ──────────────────────────────────────────────
 # 1. Package imports — are all modules loadable?
 # ──────────────────────────────────────────────
@@ -74,7 +82,7 @@ mgr = CaseManager(db, secret_key=b"audit-test")
 # Create case
 case = mgr.create_case(name="AUDIT-CASE", severity=FindingSeverity.HIGH, created_by="auditor")
 check("create_case", case.id.startswith("CASE-"), case.id)
-check("case status OPEN", case.status == CaseStatus.OPEN)
+check("case status CREATED", case.status == CaseStatus.CREATED)
 
 # Add finding
 finding = mgr.add_finding(case.id, "Suspicious PowerShell", severity=FindingSeverity.CRITICAL,

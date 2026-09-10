@@ -46,10 +46,11 @@ def test_fs_list_missing(client):
 
 
 def test_pipeline_ledger_no_run(client):
-    """Ledger with no active run returns an empty ledger, not an error."""
+    """Ledger with no run returns an empty ledger, not an error."""
     r = client.post("/portal/api/case/create", json={"name": "Ledger Test"})
     assert r.status_code == 200
-    r = client.get("/portal/api/pipeline/ledger")
+    case_id = r.json()["case_id"]
+    r = client.get("/portal/api/pipeline/ledger", headers={"X-Nexus-Case": case_id})
     assert r.status_code == 200
     body = r.json()
     assert body["ledger"] == []

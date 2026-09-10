@@ -13,6 +13,14 @@
 > server-side from environment / OS user. Approval endpoints use an
 > HMAC challenge-response flow (never sends the password in plaintext).
 >
+> **Case scoping (Phase 4e):** Every endpoint that operates on a case accepts
+> an explicit `X-Nexus-Case: <case_id>` request header (the React SPA sends it
+> automatically) or a `?case_id=` query param. Explicit identity always wins
+> over the server-side active-case pointer (`~/.nexus/active_case`); the
+> pointer remains the fallback for CLI, MCP, and legacy HTML consumers.
+> Evidence is stored in SQLite (system of record) and mirrored to
+> `evidence.json` for legacy consumers.
+>
 > **Source file:** `src/nexus/dashboard/app.py` — route table in
 > `create_dashboard()` (line 2300+), handlers defined above.
 
@@ -96,7 +104,7 @@
 ## 2. Case Management
 
 ### GET /portal/api/cases
-**Description:** Lists all case IDs (directories containing `CASE.yaml`) and the currently active case.
+**Description:** Lists all case IDs (directories containing `CASE.yaml`), the currently active case, and a per-case summary map for the dashboard (name, status, mode, counts, pipeline/report flags).
 
 **Request:** No body. No query params.
 
@@ -104,7 +112,20 @@
 ```json
 {
   "cases": ["string"] (sorted case directory names),
-  "active": "string" (active case ID, or "" if none)
+  "active": "string" (active case ID, or "" if none),
+  "details": {
+    "CASE-XXXX-XXXX": {
+      "case_id": "CASE-XXXX-XXXX",
+      "name": "Campaign H — WS01",
+      "status": "created",
+      "mode": "1",
+      "evidence_count": 3,
+      "findings_count": 5,
+      "approved_count": 2,
+      "pipeline_complete": true,
+      "report_exists": false
+    }
+  }
 }
 ```
 
@@ -132,6 +153,17 @@
 
 **Errors:**
 - `404` — Case directory not found under `cases_root`.
+
+---
+
+### POST /portal/api/case/deactivate
+**Description:** Clears the active-case pointer ("Exit to Dashboard"). The case stays on disk untouched; the cockpit simply detaches so the dashboard can preview/enter cases without ambiguity.
+
+**Request:** No body.
+
+**Response 200:** `{"ok": true, "active": ""}`
+
+**Errors:** None (always 200).
 
 ---
 
@@ -276,36 +308,44 @@
 ---
 
 ### GET /portal/api/evidence
-**Description:** Returns the evidence registry for the active case.
+**Description:** Returns the evidence registry for the resolved case (explicit `X-Nexus-Case`/`case_id`, else the active case). Reads the SQLite system of record; legacy flat registries are imported once. This is the same source used by `/summary`, `/case/{id}/details`, and `/evidence/verify`.
 
-**Request:** No body. No query params.
+**Request:** No body.
 
 **Response 200:**
 ```json
 {
   "evidence": [
     {
+      "id": "string",
       "path": "string",
-      "sha256": "string (or 'hash')",
+      "sha256": "string",
       "description": "string",
-      "registered_at": "string (or 'ts')"
+      "registered_at": "string",
+      "status": "registered",
+      "name": "string",
+      "kind": "file",
+      "files": 1,
+      "total_bytes": 1234
     }
   ],
   "total": 0
 }
 ```
 
-**Errors:** None (returns empty list if no case).
+**Errors:** None (returns an empty list if no case is resolved).
 
 ---
 
 ### POST /portal/api/evidence
-**Description:** Registers a new evidence file or directory with the active case. Computes SHA-256 hash (file contents for files, resolved path string for directories) and records it via `CaseManager.add_evidence`.
+**Description:** Registers a new evidence file or directory with the resolved case. Writes to the SQLite evidence registry (system of record) and refreshes the `evidence.json` mirror. Files hash their contents; directories hash a deterministic recursive manifest (relative path + size + file hash), so re-registering unchanged content is idempotent.
 
 **Request:**
 ```json
 {
-  "path": "string (required — filesystem path to file or directory; must exist)"
+  "path": "string (required — filesystem path to file or directory; must exist)",
+  "case_id": "string (optional — explicit case; header also accepted)",
+  "description": "string (optional)"
 }
 ```
 
@@ -313,13 +353,19 @@
 ```json
 {
   "ok": true,
+  "case_id": "CASE-XXXX-XXXX",
+  "status": "registered",
   "path": "string (resolved path)",
-  "sha256": "string (hex digest)"
+  "sha256": "string (hex digest)",
+  "files": 1,
+  "total_bytes": 1234,
+  "registered_at": "string"
 }
 ```
 
 **Errors:**
-- `400` — No active case, or path is empty / does not exist.
+- `400` — No case resolved, or `path` missing / does not exist.
+- `409` — Same path already registered with different content.
 
 ---
 
@@ -1201,7 +1247,7 @@
 ## 11c. Phase 4b — Workflow-driven cockpit APIs
 
 ### POST /portal/api/case/create
-**Description:** Create a new investigation case, activate it, and optionally store the investigation mode. Uses `CaseManager.create_case()` and writes the case ID to the active-case file.
+**Description:** Create a new investigation case. Does **not** switch the active case unless `activate: true` is explicitly passed — the wizard registers evidence/mode against the returned `case_id` and activates on "Enter Cockpit". CLI `nexus case init` / MCP `case_init` remain create+activate.
 
 **Request:**
 ```json
@@ -1209,9 +1255,11 @@
   "name": "Campaign H — WS01 Investigation",
   "description": "Optional description",
   "examiner": "analyst_t1",
-  "mode": "1"
+  "mode": "1",
+  "activate": false
 }
 ```
+- `activate` (optional, default `false`) — write the active-case pointer on creation.
 
 **Response 200:**
 ```json
@@ -1219,7 +1267,7 @@
   "ok": true,
   "case_id": "CASE-XXXX-XXXX",
   "name": "Campaign H — WS01 Investigation",
-  "active": "CASE-XXXX-XXXX"
+  "active": "string (current pointer value, or \"\")"
 }
 ```
 
@@ -1228,8 +1276,9 @@
 ---
 
 ### GET /portal/api/case/details
-**Description:** Get case metadata, evidence count, findings count, and pipeline status. If `case_id` is omitted, uses the active case.
+**Description:** Get case metadata, evidence count, findings count, pipeline status, and the SQLite lifecycle status. Without an explicit id it uses the active case.
 
+**Path variant:** `GET /portal/api/case/{case_id}/details` — same handler, explicit case id, works with no active case.
 **Query params:** `case_id` (optional)
 
 **Response 200:**
@@ -1238,11 +1287,13 @@
   "case_id": "CASE-XXXX-XXXX",
   "name": "Campaign H — WS01 Investigation",
   "description": "...",
-  "status": "OPEN",
+  "status": "created",
   "investigation_mode": "1",
   "evidence_count": 3,
   "findings_count": 5,
-  "pipeline_complete": true
+  "approved_count": 2,
+  "pipeline_complete": true,
+  "report_exists": false
 }
 ```
 
@@ -1278,7 +1329,7 @@
 ---
 
 ### GET /portal/api/pipeline/status
-**Description:** Poll the status of a pipeline run.
+**Description:** Poll the status of a pipeline run. State is held in memory and written through to `<case>/analysis/pipeline_runs/<run_id>.json`, so it survives page reload and server restart; a stale `running` record is reconciled against the immutable run manifest.
 
 **Query params:** `run_id` (required)
 
@@ -1289,8 +1340,8 @@
   "case_id": "CASE-XXXX-XXXX",
   "mode": "tools",
   "status": "complete",
-  "started_at": "",
-  "completed_at": "",
+  "started_at": "2026-09-10T...",
+  "completed_at": "2026-09-10T...",
   "error": "",
   "stages": []
 }
@@ -1324,23 +1375,27 @@
 ---
 
 ### POST /portal/api/case/mode
-**Description:** Set the investigation mode (1/2/3) for the active case. Stored in `CASE.yaml`.
+**Description:** Set the investigation mode (1/2/3) for the resolved case (explicit `case_id`/header, else the active case). Stored in `CASE.yaml`; used by the wizard before the case is active.
 
 **Request:**
 ```json
 {
-  "mode": "1"
+  "mode": "1",
+  "case_id": "CASE-XXXX-XXXX"
 }
 ```
+- `case_id` (optional) — explicit target case.
 
 **Response 200:** `{"ok": true, "mode": "1"}`
 **Response 400:** `{"error": "mode must be 1, 2, or 3"}`
-**Response 404:** `{"error": "No active case"}`
+**Response 404:** `{"error": "No case specified"}`
 
 ---
 
 ### GET /portal/api/case/mode
-**Description:** Get the investigation mode for the active case.
+**Description:** Get the investigation mode for the resolved case.
+
+**Query params:** `case_id` (optional)
 
 **Response 200:** `{"mode": "1"}` (empty string if not set)
 **Response 404:** `{"error": "No active case"}`
@@ -1410,11 +1465,11 @@ And accept an optional `"host"` filter (exact, case-insensitive).
 ---
 
 ### GET /portal/api/fs/list
-**Description:** Read-only filesystem listing for the evidence picker (WP 4d.8). The server runs on the examiner's machine, so this browses the same filesystem the pipeline reads from. Never returns file contents.
+**Description:** Read-only filesystem listing for the evidence picker (WP 4d.8 + 4e.9). The server runs on the examiner's machine, so this browses the same filesystem the pipeline reads from. Never returns file contents.
 
-**Query params:** `path` (optional) — a directory. Omitted → list drives (Windows) or root (POSIX).
+**Query params:** `path` (optional) — a directory or file. Omitted → list drives (Windows) or root (POSIX).
 
-**Response 200:**
+**Response 200 (directory):**
 ```json
 {
   "path": "C:\\Evidence\\ws01",
@@ -1427,7 +1482,20 @@ And accept an optional `"host"` filter (exact, case-insensitive).
 }
 ```
 
-**Errors:** 404 `path not found`; 400 path is a file / cannot list.
+**Response 200 (file path — WP 4e.9):**
+```json
+{
+  "path": "C:\\Evidence\\ws01\\evtx",
+  "parent": "C:\\Evidence\\ws01",
+  "drives": false,
+  "is_file": true,
+  "file_entry": {"name": "bits_openvpn.evtx", "path": "C:\\Evidence\\ws01\\evtx\\bits_openvpn.evtx", "is_dir": false, "size": 139264},
+  "entries": []
+}
+```
+When `is_file` is true, the picker shows an "Add This File" prompt using `file_entry`.
+
+**Errors:** 404 `path not found`.
 
 ---
 
@@ -1491,22 +1559,27 @@ These are server-side rendered HTML pages in the current portal. In the React SP
 ---
 
 ### POST /portal/api/case/seed-demo
-**Description:** Seed a populated demo investigation case with pre-built findings, evidence, and timeline entries. Used by the "Seed Demo Case" button in the Case Dashboard.
+**Description:** Seed a populated demo investigation case with pre-built findings, evidence, and timeline entries. By default the demo is created **without** switching the active case; the dashboard previews it and offers an explicit Enter.
 
 **Request:**
 ```json
 {
-  "name": "Demo Investigation"
+  "name": "Demo Investigation",
+  "activate": false
 }
 ```
 - `name` (optional, default `"Demo Investigation"`)
+- `activate` (optional, default `false`) — switch the active case to the demo.
 
 **Response 200:**
 ```json
 {
   "ok": true,
   "case_id": "CASE-XXXX-XXXX",
-  "case_dir": "C:\\...\\CASE-XXXX-XXXX"
+  "evidence_count": 4,
+  "findings_count": 5,
+  "timeline_count": 284,
+  "active": "string (current pointer value, or \"\")"
 }
 ```
 

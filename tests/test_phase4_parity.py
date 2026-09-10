@@ -46,8 +46,8 @@ def test_seed_demo_api(client):
 
 def test_findings_reject_api(client):
     """POST /portal/api/findings/reject marks findings REJECTED with reason."""
-    # Seed case
-    client.post("/portal/api/case/seed-demo", json={})
+    # Seed case (activate for this legacy active-case flow)
+    client.post("/portal/api/case/seed-demo", json={"activate": True})
 
     # Reject without reason fails
     r_bad = client.post("/portal/api/findings/reject", json={"finding_ids": ["F-DEMO-001"]})
@@ -73,8 +73,8 @@ def test_findings_reject_api(client):
 
 def test_report_generate_and_view_api(client):
     """POST /portal/api/report/generate compiles report and GET /portal/api/report/view serves it."""
-    # Seed case
-    client.post("/portal/api/case/seed-demo", json={})
+    # Seed case (activate for this legacy active-case flow)
+    client.post("/portal/api/case/seed-demo", json={"activate": True})
 
     # Generate report
     gen_res = client.post("/portal/api/report/generate", json={"profile": "markdown"})
@@ -94,8 +94,8 @@ def test_report_generate_and_view_api(client):
 
 def test_evidence_verify_api(client):
     """POST /portal/api/evidence/verify checks cryptographic file integrity."""
-    # Seed case
-    client.post("/portal/api/case/seed-demo", json={})
+    # Seed case (activate for this legacy active-case flow)
+    client.post("/portal/api/case/seed-demo", json={"activate": True})
 
     # Run verification
     v_res = client.post("/portal/api/evidence/verify")

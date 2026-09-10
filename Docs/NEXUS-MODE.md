@@ -127,8 +127,13 @@ presets**, not separate products or UIs.
 > (`/portal/api/mode3/plan`, `/execute`, `/seal`). All three modes share
 > the same Cockpit. **Phase 4 (enterprise UI rewrite) is complete** — the
 > React SPA cockpit at `/portal/app/*` replaced the hand-written HTML/JS
-> proof-of-concept without changing the API contracts. Operator review on
-> a real case (Gate 1/2/3) remains pending.
+> proof-of-concept without changing the API contracts. **Phase 4e (case
+> management segregation) is complete (2026-09-10):** the SPA Overview is the
+> single case-management surface (status badges, preview, explicit Enter),
+> cockpit routes require an active case, create/seed no longer switch cases,
+> evidence uses SQLite as the system of record (registered evidence appears
+> immediately), and every request carries an explicit `X-Nexus-Case` header.
+> Operator review on a real case (Gate 1/2/3) remains pending.
 
 ### The two axes (do not confuse them)
 
@@ -212,9 +217,8 @@ N8 report from APPROVED only
 - Existing Approval Desk and Report — **wired** (HMAC challenge-response)
 
 > **Gate 1 status:** Mode 1 implementation complete and dual-audited
-> (commit `7cc7ec0`). Operator review on a real case remains the gate
-> before Mode 1 is declared *proven*. Phase 4 will rewrite the UI surface
-> without changing the API contracts.
+> (commit `7cc7ec0`), with the Phase 4/4e SPA cockpit on top. Operator review
+> on a real case remains the gate before Mode 1 is declared *proven*.
 
 ### Mode 2 — LLM-Guided Analysis (implemented, dual-audited)
 
@@ -342,7 +346,8 @@ N8 report from APPROVED only
    **Status: implemented + dual-audited (Phase 3, commits `8fc0543`, `b52ff50`).**
 4. **Phase 4 enterprise UI rewrite** — React SPA cockpit at `/portal/app/*`
    replaced the hand-written HTML/JS proof-of-concept. API contracts unchanged.
-   **Status: complete (Phase 4b workflow cockpit + Phase 4d UI hardening).**
+   **Status: complete (Phase 4b workflow cockpit + Phase 4d UI hardening +
+   Phase 4e case-management segregation).**
 
 ## Product flow (canonical)
 

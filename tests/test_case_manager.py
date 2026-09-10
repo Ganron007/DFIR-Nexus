@@ -35,7 +35,7 @@ class TestCaseManager:
     def test_create_case(self, mgr: CaseManager) -> None:
         case = mgr.create_case(name="INC-001", description="test", severity=FindingSeverity.HIGH)
         assert case.name == "INC-001"
-        assert case.status == CaseStatus.OPEN
+        assert case.status == CaseStatus.CREATED
         assert case.severity == FindingSeverity.HIGH
 
     def test_get_case(self, mgr: CaseManager) -> None:
@@ -55,7 +55,7 @@ class TestCaseManager:
         open_case = mgr.create_case(name="OPEN")
         closed_case = mgr.create_case(name="CLOSED")
         mgr.close_case(closed_case.id)
-        open_cases = mgr.list_cases(status=CaseStatus.OPEN)
+        open_cases = mgr.list_cases(status=CaseStatus.CREATED)
         closed_cases = mgr.list_cases(status=CaseStatus.CLOSED)
         assert len(open_cases) == 1
         assert open_cases[0].id == open_case.id
