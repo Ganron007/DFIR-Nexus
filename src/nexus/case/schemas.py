@@ -10,12 +10,22 @@ from typing import Any
 
 
 class CaseStatus(StrEnum):
-    """Lifecycle status of a case."""
+    """Lifecycle status of a case.
+
+    The v2 lifecycle is ``CREATED → INTAKE → PROCESSING → ACTIVE → SEALED``.
+    The legacy values (``OPEN`` …) are kept for backward compatibility with
+    existing databases and the ``case_reopen`` path.
+    """
 
     OPEN = "open"
     IN_PROGRESS = "in_progress"
     CLOSED = "closed"
     ARCHIVED = "archived"
+    CREATED = "created"
+    INTAKE = "intake"
+    PROCESSING = "processing"
+    ACTIVE = "active"
+    SEALED = "sealed"
 
 
 class FindingSeverity(StrEnum):

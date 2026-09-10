@@ -24,6 +24,7 @@ def seed_demo_case(
     case_name: str = "Demo Investigation",
     examiner: str = "analyst_purple",
     case_id: str = "CASE-DEMO-001",
+    activate: bool = True,
 ) -> dict[str, Any]:
     """Seed a rich, realistic investigation case into the case store.
 
@@ -34,10 +35,13 @@ def seed_demo_case(
     - 5 realistic findings (2 DRAFT, 2 APPROVED, 1 REJECTED)
     - 4 IOCs and 3 TODO items
     - An official compiled REPORT.md preview
+
+    ``activate=False`` seeds the case without switching the active-case
+    pointer (the Examiner Portal dashboard previews cases before entering).
     """
     from nexus.case.manager import CaseManager
     from nexus.case.outputs import set_active_case_id
-    from nexus.case.schemas import ApprovalState, FindingSeverity
+    from nexus.case.schemas import ApprovalState, CaseStatus, FindingSeverity
 
     db_path = settings.cases_root / "cases.db"
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -69,7 +73,7 @@ def seed_demo_case(
     case_yaml_data = {
         "name": case_name,
         "description": "Assumed-breach incident simulation — credential access, lateral movement & persistence",
-        "status": "active",
+        "status": "created",
         "investigation_mode": "1",
         "examiner": examiner,
         "created_at": datetime.now(UTC).isoformat(),
@@ -399,8 +403,14 @@ An assumed-breach forensic investigation was conducted across target workstation
         encoding="utf-8"
     )
 
-    # Set as active case
-    set_active_case_id(case.id)
+    # Lifecycle: the demo is fully parsed → ACTIVE. SQLite is the system of
+    # record; update_status mirrors the value into CASE.yaml (audit-chained).
+    mgr.update_status(case.id, CaseStatus.ACTIVE, actor=examiner)
+
+    # Activate only when requested — the portal previews cases on the
+    # dashboard without switching away from the current investigation.
+    if activate:
+        set_active_case_id(case.id)
     mgr.close()
 
     log.info("Successfully seeded demo case %s with %d findings", case.id, len(flat_findings))

@@ -154,7 +154,7 @@ class CaseManager:
             id=case_id or Case.new_id(),
             name=name,
             description=description,
-            status=CaseStatus.OPEN,
+            status=CaseStatus.CREATED,
             severity=FindingSeverity.normalize(severity),
             created_at=datetime.now(UTC),
             created_by=created_by,

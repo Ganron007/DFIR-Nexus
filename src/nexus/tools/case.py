@@ -304,10 +304,21 @@ def register_tools(server: FastMCP, audit: AuditWriter):
     def evidence_register(path: str, description: str = "") -> dict:
         """Register an evidence file — SHA-256 hash, chain of custody.
 
-        Confirm with the examiner before registering.
+        Registers into the case's SQLite evidence registry (the single system
+        of record shared with the Examiner Portal). Confirm with the examiner
+        before registering.
         """
         try:
-            result = manager.register_evidence(path, description)
+            case_dir = manager.require_active_case()
+        except ValueError as e:
+            return {"error": str(e)}
+
+        from nexus.case import evidence_service
+
+        try:
+            result = evidence_service.register_evidence(
+                case_dir, path, description, examiner=manager.examiner
+            )
         except (ValueError, FileNotFoundError) as e:
             return {"error": str(e)}
 

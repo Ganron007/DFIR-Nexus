@@ -287,7 +287,6 @@
       margin-bottom: 14px;
     }
     .feature-icon.blue { background: rgba(47,129,247,0.15); color: var(--accent); }
-    .feature-icon.green { background: rgba(63,185,80,0.15); color: var(--success); }
     .feature-icon.purple { background: rgba(163,113,247,0.15); color: var(--purple); }
     .feature-icon.orange { background: rgba(219,109,40,0.15); color: var(--orange); }
     .feature-icon.yellow { background: rgba(210,153,34,0.15); color: var(--warning); }
@@ -336,10 +335,6 @@
       border: 1px solid rgba(47,129,247,0.45);
       border-radius: 999px;
       padding: 1px 8px;
-    }
-    .tab-btn .tab-dot {
-      width: 7px; height: 7px; border-radius: 50%;
-      background: var(--success); display: inline-block;
     }
     .tab-panel { padding: 28px 24px 24px; }
     .tab-panel[hidden] { display: none; }
@@ -395,7 +390,7 @@
         <span class="topnav-brand-text">DFIR<span>-Nexus</span></span>
       </a>
       <div class="topnav-links">
-        <a href="/dashboard">Case Dashboard</a>
+        <a href="/portal/app/">Case Dashboard</a>
         <span class="nav-health" id="nav-health" title="System health">
           <span class="health-item" title="Backend"><span class="health-dot" id="hd-backend"></span>Backend</span>
           <span class="health-item"><span class="health-dot" id="hd-es"></span>ES</span>
@@ -447,7 +442,7 @@
             <span class="tab-num">N1–N8</span> The Investigation Spine
           </button>
           <button class="tab-btn" data-tab="tab-platform" role="tab">
-            <span class="tab-dot"></span> Built for defensible investigations
+            Platform
           </button>
         </div>
 
@@ -512,7 +507,7 @@
               <p>Unified workspace for evidence exploration, timeline analysis, entity pivots, and finding management — all in one interface.</p>
             </div>
             <div class="feature-card">
-              <div class="feature-icon green">
+              <div class="feature-icon blue">
                 <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 2l7 4v6l-7 4-7-4V6z M10 2v16 M3 6l7 4 7-4" stroke="currentColor" stroke-width="1.5"/></svg>
               </div>
               <h3>Chain of Custody</h3>
@@ -555,7 +550,7 @@
   <!-- Footer -->
   <footer class="footer">
     <div class="wrap" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
-      <span>DFIR-Nexus v2.0 — Part of the <a href="https://github.com/Ganron007/DFIR-Nexus" target="_blank">CADRE ecosystem</a></span>
+      <span>DFIR-Nexus v2.0 — <a href="https://github.com/Ganron007/DFIR-Nexus" target="_blank">GitHub</a></span>
       <span>Examiner-controlled · HMAC-audited · AI-cannot-approve</span>
     </div>
   </footer>

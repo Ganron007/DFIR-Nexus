@@ -59,14 +59,123 @@ def _atomic_write_json(path: Path, data: Any) -> None:
         raise
 
 
-def _get_case_dir() -> Path | None:
+def _request_case_id(request=None) -> str:
+    """Explicit case identity supplied by the SPA (header or query param).
+
+    Returns "" when absent or invalid so callers fall back to the active-case
+    pointer (CLI / MCP / legacy HTML keep working unchanged).
+    """
+    if request is None:
+        return ""
+    cid = ""
+    try:
+        cid = str(request.headers.get("X-Nexus-Case") or "").strip()
+    except Exception:  # noqa: BLE001 — non-HTTP request objects
+        cid = ""
+    if not cid:
+        try:
+            cid = str(request.query_params.get("case_id") or "").strip()
+        except Exception:  # noqa: BLE001
+            cid = ""
+    if not cid:
+        return ""
+    from nexus.discipline import validate_case_id
+
+    if validate_case_id(cid):
+        return ""
+    return cid
+
+
+def _get_case_dir(request=None) -> Path | None:
+    """Resolve the case for a request.
+
+    Explicit case identity (``X-Nexus-Case`` header or ``?case_id=``) always
+    wins over the server-side active-case pointer. The pointer remains the
+    fallback for CLI, MCP, and legacy HTML consumers.
+    """
+    cid = _request_case_id(request)
+    if cid:
+        from nexus.config import settings
+
+        candidate = settings.cases_root / cid
+        return candidate if candidate.is_dir() else None
     from nexus.case.outputs import resolve_active_case_dir
 
     return resolve_active_case_dir()
 
 
-def _load_json(name: str) -> list:
-    case_dir = _get_case_dir()
+def _resolve_case_dir_for(case_id: str, request=None) -> Path | None:
+    """Resolve an explicitly named case (body ``case_id`` preferred)."""
+    from nexus.config import settings
+
+    cid = (case_id or "").strip()
+    if cid:
+        from nexus.discipline import validate_case_id
+
+        if validate_case_id(cid):
+            return None
+        candidate = settings.cases_root / cid
+        return candidate if candidate.is_dir() else None
+    return _get_case_dir(request)
+
+
+def _transition_case_status(
+    case_id: str,
+    target: str,
+    allowed_from: set[str] | None = None,
+) -> None:
+    """Best-effort audit-chained status transition (SQLite is the record).
+
+    ``allowed_from`` gates the transition so e.g. registering late evidence
+    cannot drag an ACTIVE case back to INTAKE. SEALED is never downgraded.
+    """
+    from nexus.case import CaseManager
+    from nexus.case.schemas import CaseStatus
+    from nexus.config import settings
+
+    try:
+        target_status = CaseStatus(target)
+    except ValueError:
+        return
+    try:
+        mgr = CaseManager(settings.cases_root / "cases.db")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("status transition: manager init failed: %s", exc)
+        return
+    try:
+        case = mgr.get_case(case_id)
+        if case is None:
+            return
+        if case.status == CaseStatus.SEALED and target_status != CaseStatus.SEALED:
+            return
+        if case.status == target_status:
+            return
+        if allowed_from is not None and case.status.value not in allowed_from:
+            return
+        mgr.update_status(case_id, target_status, actor="portal")
+    except Exception as exc:  # noqa: BLE001 — status is best-effort
+        logger.warning("status transition %s -> %s failed: %s", case_id, target, exc)
+    finally:
+        mgr.close()
+
+
+def _pipeline_run_status_path(case_dir: Path, run_id: str) -> Path:
+    return case_dir / "analysis" / "pipeline_runs" / f"{run_id}.json"
+
+
+def _persist_pipeline_run(case_dir: Path, record: dict[str, Any]) -> None:
+    """Write-through pipeline run state so status survives reload/restart."""
+    try:
+        _atomic_write_json(
+            _pipeline_run_status_path(case_dir, str(record.get("run_id") or "")),
+            record,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("pipeline run state persist failed: %s", exc)
+
+
+def _load_json(name: str, request=None) -> list:
+    case_dir = _get_case_dir(request)
     if not case_dir:
         return []
     path = case_dir / name
@@ -77,6 +186,24 @@ def _load_json(name: str) -> list:
         return data if isinstance(data, list) else []
     except (json.JSONDecodeError, OSError):
         return []
+
+
+def _evidence_items(request=None, case_dir: Path | None = None) -> list:
+    """Registered evidence for a case from the SQLite system of record.
+
+    Falls back to the flat mirror only if the registry read fails, so legacy
+    pages never break while the one true list is SQLite.
+    """
+    directory = case_dir or _get_case_dir(request)
+    if not directory:
+        return []
+    from nexus.case import evidence_service
+
+    try:
+        return evidence_service.list_evidence(directory)
+    except Exception as exc:  # noqa: BLE001 — legacy page must not 500
+        logger.warning("evidence list failed for %s: %s", directory.name, exc)
+        return _load_json("evidence.json", request)
 
 
 def _load_password_entry(examiner: str) -> dict | None:
@@ -180,7 +307,7 @@ async def get_commit_challenge(request) -> JSONResponse:
 
 async def post_commit(request) -> JSONResponse:
     """Apply finding approvals with challenge-response authentication."""
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
 
@@ -402,10 +529,10 @@ def _status_tag(status: str) -> str:
 
 
 async def overview(request):
-    findings = _load_json("findings.json")
-    timeline = _load_json("timeline.json")
-    evidence = _load_json("evidence_registry.json")
-    todos = _load_json("todos.json")
+    findings = _load_json("findings.json", request)
+    timeline = _load_json("timeline.json", request)
+    evidence = _evidence_items(request)
+    todos = _load_json("todos.json", request)
 
     draft = sum(1 for f in findings if f.get("status") == "DRAFT")
     approved = sum(1 for f in findings if f.get("status") == "APPROVED")
@@ -440,7 +567,7 @@ async def overview(request):
 
 
 async def findings_page(request):
-    findings = _load_json("findings.json")
+    findings = _load_json("findings.json", request)
     status_filter = request.query_params.get("status", "")
 
     rows = ""
@@ -466,7 +593,7 @@ async def findings_page(request):
 
 async def approve_page(request):
     """HTML page for browser-based finding approval with password."""
-    findings = _load_json("findings.json")
+    findings = _load_json("findings.json", request)
     drafts = [f for f in findings if f.get("status") == "DRAFT"]
 
     rows = ""
@@ -572,7 +699,7 @@ async function approveSelected() {
 
 
 async def timeline_page(request):
-    events = _load_json("timeline.json")
+    events = _load_json("timeline.json", request)
     rows = ""
     for e in sorted(events, key=lambda x: x.get("timestamp", "")):
         ts = _e(e.get("timestamp", "")[:19])
@@ -589,7 +716,7 @@ async def timeline_page(request):
 
 
 async def evidence_page(request):
-    ev = _load_json("evidence_registry.json")
+    ev = _evidence_items(request)
     rows = ""
     for e in ev:
         path = _e(e.get("path", ""))[:80]
@@ -605,7 +732,7 @@ async def evidence_page(request):
 
 
 async def iocs_page(request):
-    findings = _load_json("findings.json")
+    findings = _load_json("findings.json", request)
     iocs = []
     for f in findings:
         for ioc in f.get("iocs", []):
@@ -627,7 +754,7 @@ async def iocs_page(request):
 
 
 async def todos_page(request):
-    todos = _load_json("todos.json")
+    todos = _load_json("todos.json", request)
     rows = ""
     for t in todos:
         tid = _e(t.get("todo_id", t.get("id", "")))
@@ -652,6 +779,7 @@ def _list_case_ids() -> list[str]:
 
 
 def _active_case_id() -> str:
+    # Deliberately pointer-only: "active" means the server-side current case.
     case_dir = _get_case_dir()
     return case_dir.name if case_dir else ""
 
@@ -663,7 +791,7 @@ async def steer_page(request):
     cases = _list_case_ids()
     active = _active_case_id()
     intake = {}
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     if case_dir and (case_dir / "CASE.yaml").is_file():
         meta = yaml.safe_load((case_dir / "CASE.yaml").read_text(encoding="utf-8")) or {}
         if isinstance(meta.get("intake"), dict):
@@ -708,7 +836,7 @@ async def query_page(request):
     """N4 hit browser — examiner searches processed output, not raw evidence."""
     needles = str(request.query_params.get("needles") or "")
     persist_flag = str(request.query_params.get("persist") or "") in {"1", "true", "yes"}
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     hits: list[dict] = []
     meta: dict = {}
     if case_dir:
@@ -759,8 +887,96 @@ Empty hits mean INSUFFICIENT. Persist needles, then re-run interpret
     return HTMLResponse(_TEMPLATE.format(content=content))
 
 
+def _case_summary(case_id: str, mgr) -> dict[str, Any]:
+    """Dashboard row summary: name/status/mode/counts/pipeline/report."""
+    from nexus.config import settings
+
+    case_dir = settings.cases_root / case_id
+    summary: dict[str, Any] = {"case_id": case_id, "name": case_id, "status": "", "mode": ""}
+
+    case = None
+    if mgr is not None:
+        try:
+            case = mgr.get_case(case_id)
+        except Exception:  # noqa: BLE001
+            case = None
+    if case is not None:
+        summary["name"] = case.name or case_id
+        summary["status"] = case.status.value
+    else:
+        summary["status"] = "unknown"
+
+    case_yaml = case_dir / "CASE.yaml"
+    if case_yaml.is_file():
+        try:
+            import yaml
+
+            meta = yaml.safe_load(case_yaml.read_text(encoding="utf-8")) or {}
+            if isinstance(meta, dict):
+                summary["name"] = str(meta.get("name") or summary["name"])
+                if not summary["status"] or summary["status"] == "unknown":
+                    summary["status"] = str(meta.get("status") or "")
+                summary["mode"] = str(meta.get("investigation_mode") or "")
+        except Exception:  # noqa: BLE001
+            pass
+
+    evidence_count = 0
+    findings_count = 0
+    approved_count = 0
+    if mgr is not None:
+        try:
+            evidence_count = len(mgr.list_evidence(case_id))
+            findings = mgr.list_findings(case_id)
+            findings_count = len(findings)
+            approved_count = sum(1 for f in findings if f.approval_state.value == "approved")
+        except Exception:  # noqa: BLE001
+            pass
+    if evidence_count == 0:
+        # Legacy flat-only case: count without migrating.
+        for name in ("evidence.json", "evidence_registry.json"):
+            path = case_dir / name
+            if not path.is_file():
+                continue
+            try:
+                raw = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            items = raw if isinstance(raw, list) else (raw.get("files") or [])
+            if items:
+                evidence_count = len(items)
+                break
+
+    summary["evidence_count"] = evidence_count
+    summary["findings_count"] = findings_count
+    summary["approved_count"] = approved_count
+    summary["pipeline_complete"] = (case_dir / "analysis" / "TOOL-RUN.md").is_file()
+    summary["report_exists"] = (case_dir / "REPORT.md").is_file()
+    return summary
+
+
 async def api_cases(request):
-    return JSONResponse({"cases": _list_case_ids(), "active": _active_case_id()})
+    cases = _list_case_ids()
+    active = _active_case_id()
+    details: dict[str, Any] = {}
+    mgr = None
+    try:
+        from nexus.case import CaseManager
+        from nexus.config import settings
+
+        mgr = CaseManager(settings.cases_root / "cases.db")
+        for case_id in cases:
+            details[case_id] = _case_summary(case_id, mgr)
+    except Exception as exc:  # noqa: BLE001 — dashboard must still render
+        logger.warning("case summaries failed: %s", exc)
+        for case_id in cases:
+            details.setdefault(
+                case_id,
+                {"case_id": case_id, "name": case_id, "status": "", "mode": ""},
+            )
+    finally:
+        if mgr is not None:
+            mgr.close()
+    return JSONResponse({"cases": cases, "active": active, "details": details})
 
 
 async def api_activate_case(request):
@@ -782,7 +998,7 @@ async def api_activate_case(request):
 
 async def api_intake(request):
     body = await request.json()
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"ok": False, "error": "no active case"}, status_code=400)
     from nexus.langgraph.case_intake import persist_case_intake
@@ -798,40 +1014,37 @@ async def api_register_evidence(request):
     body = await request.json()
     # Strip surrounding quotes — examiners often paste "C:\path with spaces"
     path = str(body.get("path") or "").strip().strip('"').strip()
-    case_dir = _get_case_dir()
+    case_dir = _resolve_case_dir_for(str(body.get("case_id") or ""), request)
     if not case_dir:
-        return JSONResponse({"ok": False, "error": "no active case"}, status_code=400)
-    if not path or not Path(path).exists():
+        return JSONResponse(
+            {"ok": False, "error": "no case specified — create a case or select an active one"},
+            status_code=400,
+        )
+    if not path:
         return JSONResponse({"ok": False, "error": "path missing"}, status_code=400)
-    import hashlib
 
     from nexus.audit import resolve_examiner
-    from nexus.case import CaseManager
-    from nexus.config import settings
-    fpath = Path(path)
-    h = hashlib.sha256()
-    if fpath.is_dir():
-        h.update(str(fpath.resolve()).encode())
-        digest = h.hexdigest()
-    else:
-        with open(fpath, "rb") as fh:
-            for chunk in iter(lambda: fh.read(65536), b""):
-                h.update(chunk)
-        digest = h.hexdigest()
-    mgr = CaseManager(settings.cases_root / "cases.db")
-    mgr.add_evidence(
-        case_id=case_dir.name,
-        name=fpath.name,
-        description="portal register",
-        file_path=str(fpath.resolve()),
-        file_hash_sha256=digest,
-        collected_by=resolve_examiner(),
-    )
-    return JSONResponse({"ok": True, "path": str(fpath), "sha256": digest})
+    from nexus.case import evidence_service
+
+    try:
+        result = evidence_service.register_evidence(
+            case_dir,
+            path,
+            description=str(body.get("description") or "portal register"),
+            examiner=resolve_examiner(),
+        )
+    except FileNotFoundError as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+    except ValueError as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=409)
+
+    # Evidence registered → intake. Never downgrades an ACTIVE case.
+    _transition_case_status(case_dir.name, "intake", allowed_from={"created", "open"})
+    return JSONResponse({"ok": True, "case_id": case_dir.name, **result})
 
 
 async def api_query_rerun(request):
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"ok": False, "error": "no active case"}, status_code=400)
     from nexus.langgraph.query_pack import _parse_needles, run_ad_hoc_query, write_query_pack
@@ -853,7 +1066,7 @@ async def api_query_rerun(request):
 
 async def api_findings(request):
     """GET /portal/api/findings?status=DRAFT&limit=20"""
-    findings = _load_json("findings.json")
+    findings = _load_json("findings.json", request)
     status = request.query_params.get("status")
     limit = int(request.query_params.get("limit", "0"))
     if status:
@@ -865,7 +1078,7 @@ async def api_findings(request):
 
 async def api_timeline(request):
     """GET /portal/api/timeline?event_type=execution&limit=50"""
-    events = _load_json("timeline.json")
+    events = _load_json("timeline.json", request)
     ev_type = request.query_params.get("event_type")
     limit = int(request.query_params.get("limit", "0"))
     if ev_type:
@@ -877,13 +1090,13 @@ async def api_timeline(request):
 
 async def api_evidence(request):
     """GET /portal/api/evidence"""
-    ev = _load_json("evidence_registry.json")
+    ev = _evidence_items(request)
     return JSONResponse({"evidence": ev, "total": len(ev)})
 
 
 async def api_iocs(request):
     """GET /portal/api/iocs"""
-    findings = _load_json("findings.json")
+    findings = _load_json("findings.json", request)
     iocs = []
     for f in findings:
         for ioc in f.get("iocs", []):
@@ -895,7 +1108,7 @@ async def api_iocs(request):
 
 async def api_todos(request):
     """GET /portal/api/todos?status=open"""
-    todos = _load_json("todos.json")
+    todos = _load_json("todos.json", request)
     status = request.query_params.get("status", "")
     if status:
         todos = [t for t in todos if t.get("status", "open") == status]
@@ -907,7 +1120,7 @@ async def api_audit_for_finding(request):
     finding_id = request.path_params.get("finding_id", "")
     if not finding_id:
         return JSONResponse({"error": "Missing finding_id"}, status_code=400)
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
     audit_dir = case_dir / "audit"
@@ -930,10 +1143,10 @@ async def api_audit_for_finding(request):
 
 async def api_summary(request):
     """GET /portal/api/summary"""
-    findings = _load_json("findings.json")
-    timeline = _load_json("timeline.json")
-    evidence = _load_json("evidence_registry.json")
-    todos = _load_json("todos.json")
+    findings = _load_json("findings.json", request)
+    timeline = _load_json("timeline.json", request)
+    evidence = _evidence_items(request)
+    todos = _load_json("todos.json", request)
     return JSONResponse({
         "findings": {"total": len(findings), "draft": sum(1 for f in findings if f.get("status") == "DRAFT"),
                       "approved": sum(1 for f in findings if f.get("status") == "APPROVED"),
@@ -946,7 +1159,7 @@ async def api_summary(request):
 
 async def api_transparency(request):
     """GET /portal/api/transparency"""
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
     from nexus.transparency import transparency_verify
@@ -956,7 +1169,7 @@ async def api_transparency(request):
 
 async def ask_page(request):
     """Mode 1 examiner query desk: natural language -> needles -> hits -> select."""
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     question = str(request.query_params.get("question") or "").strip()
     hits: list[dict] = []
     needles: list[str] = []
@@ -1067,7 +1280,7 @@ async function promoteSelected() {{
 
 async def api_ask(request):
     """POST /portal/api/mode1/ask — NL → needles + N4 hits."""
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
     body = await request.json()
@@ -1107,7 +1320,7 @@ async def api_ask(request):
 
 async def api_select(request):
     """POST /portal/api/mode1/select — promote selected hit indices to DRAFT."""
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
 
@@ -1252,7 +1465,7 @@ async def api_explore_search(request):
            start?, end?, limit?, offset?}. When ``query`` (DSL) is provided
     it takes precedence over plain needles.
     """
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({'error': 'No active case'}, status_code=404)
 
@@ -1329,7 +1542,7 @@ async def api_explore_aggregate(request):
 
     Body: {query?: "<DSL>", group_by: family|host|hour|day|file}
     """
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({'error': 'No active case'}, status_code=404)
     body = await request.json()
@@ -1347,7 +1560,7 @@ async def api_explore_aggregate(request):
 
 async def api_explore_histogram(request):
     """POST /portal/api/explore/histogram — time buckets for current hits."""
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({'error': 'No active case'}, status_code=404)
     body = await request.json()
@@ -1384,7 +1597,7 @@ async def api_explore_histogram(request):
 
 async def explore_page(request):
     """Mode 1 Cockpit — faceted explore + steer chat + histogram."""
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     families = _available_families(case_dir) if case_dir else []
     fam_options = ''.join(f'<option value="{_e(f)}">{_e(f)}</option>' for f in families)
     content = f"""
@@ -1747,7 +1960,7 @@ function escapeHtml(s) {{
 
 async def api_workbench(request):
     """GET /portal/api/workbench — list bookmarked hits."""
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
     from nexus.case.workbench import load_bookmarks
@@ -1757,7 +1970,7 @@ async def api_workbench(request):
 
 async def api_workbench_add(request):
     """POST /portal/api/workbench/add — bookmark one hit {hit: {...}, note?}."""
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
     body = await request.json()
@@ -1771,7 +1984,7 @@ async def api_workbench_add(request):
 
 async def api_workbench_remove(request):
     """POST /portal/api/workbench/remove — {bookmark_id}."""
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
     body = await request.json()
@@ -1782,7 +1995,7 @@ async def api_workbench_remove(request):
 
 async def api_workbench_clear(request):
     """POST /portal/api/workbench/clear."""
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
     from nexus.case.workbench import clear_bookmarks
@@ -1795,7 +2008,7 @@ async def api_workbench_promote(request):
 
     Body: {bookmark_ids: ["B-001", ...], title, scribe?, interpretation?}
     """
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
     body = await request.json()
@@ -1856,7 +2069,7 @@ async def api_workbench_promote(request):
 
 async def workbench_page(request):
     """Mode 1 workbench — bookmarked hits -> DRAFT builder."""
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     from nexus.case.workbench import load_bookmarks
 
     bookmarks = load_bookmarks(case_dir) if case_dir else []
@@ -1921,7 +2134,7 @@ async function clearWb() {{
 
 async def api_workbook(request):
     """GET /portal/api/workbench — list bookmarks."""
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
     from nexus.case.workbench import load_bookmarks
@@ -1932,7 +2145,7 @@ async def api_workbook(request):
 
 async def api_chat_get(request):
     """GET /portal/api/chat — steer-chat transcript for the active case."""
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
     from nexus.case.chat import load_chat
@@ -1943,7 +2156,7 @@ async def api_chat_get(request):
 
 async def api_chat_post(request):
     """POST /portal/api/chat — examiner message -> Mode 1 ask flow -> logged reply."""
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
     body = await request.json()
@@ -2000,7 +2213,7 @@ async def api_chat_post(request):
 
 async def api_chat_clear(request):
     """POST /portal/api/chat/clear — wipe the transcript."""
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
     from nexus.case.chat import clear_chat
@@ -2038,7 +2251,7 @@ async def api_chat_stream(request):
       done     — {reply, needles, count, backend}
       error    — {error}
     """
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
     try:
@@ -2185,7 +2398,7 @@ async def api_timeline_lanes(request):
     Body: {query?: "<DSL>", needles?, family?, start?, end?, bucket?: hour|day}
     Returns {families: [{family, buckets: {ts: count}}], total}
     """
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
     body = await request.json()
@@ -2222,7 +2435,7 @@ async def api_entities(request):
 
     Body: {query?: "<DSL>", needles?} — same search as explore/search.
     """
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
     body = await request.json()
@@ -2243,7 +2456,7 @@ async def api_mode2_iterate(request):
     Every iteration is logged to chat.jsonl. Returns the iteration log;
     the examiner reviews proposals — nothing is auto-staged.
     """
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
     body = await request.json()
@@ -2290,7 +2503,7 @@ async def api_mode2_corroborate(request):
 
     Body: {finding_id} or a full {finding} dict.
     """
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
     body = await request.json()
@@ -2318,7 +2531,7 @@ async def api_mode2_propose_draft(request):
     The draft stages as DRAFT (examiner_selected=False); HMAC approval
     stays with the examiner.
     """
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
     body = await request.json()
@@ -2394,7 +2607,7 @@ async def api_mode3_plan(request):
     corroboration needs. Logged to agent_runs.jsonl + chat. The examiner
     approves items before anything executes.
     """
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
     from nexus.langgraph.llm_pipeline import get_model
@@ -2415,7 +2628,7 @@ async def api_mode3_execute(request):
     Extras persist to intake (next lane run parses them; mandatory lane
     first). Queries run immediately (read-only N4).
     """
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
     try:
@@ -2454,7 +2667,7 @@ async def api_mode3_draft_finding(request):
     Stages a DRAFT finding with examiner_selected=False. The examiner
     reviews and approves via the normal HMAC flow. The agent NEVER approves.
     """
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
     try:
@@ -2487,7 +2700,7 @@ async def api_mode3_seal(request):
     Reuses the same challenge-response flow as per-finding approval —
     the password never travels in plaintext.
     """
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
     try:
@@ -2537,6 +2750,8 @@ async def api_mode3_seal(request):
     result = seal_case(case_dir, examiner, "", skip_verify=True)
     if result.get("error"):
         return JSONResponse(result, status_code=400)
+    # Case-file seal → lifecycle SEALED (SQLite is the record).
+    _transition_case_status(case_dir.name, "sealed")
     return JSONResponse(result)
 
 
@@ -2553,7 +2768,7 @@ async def api_mode3_orchestrator(request):
     collects findings into synthesis. Examiner reviews proposals — nothing
     is auto-staged.
     """
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
     from nexus.langgraph.llm_pipeline import get_model
@@ -2621,7 +2836,7 @@ _LANDING_HTML = Path(__file__).resolve().parent / "landing.html"
 _CASE_DASHBOARD_HTML = Path(__file__).resolve().parent / "case_dashboard.html"
 
 
-async def landing_page(request) -> HTMLResponse:
+async def landing_page(request) -> Response:
     """Serve the DFIR-Nexus landing page at /."""
     if _LANDING_HTML.is_file():
         return HTMLResponse(_LANDING_HTML.read_text(encoding="utf-8"))
@@ -2629,11 +2844,9 @@ async def landing_page(request) -> HTMLResponse:
     return RedirectResponse(url="/portal/app", status_code=302)
 
 
-async def case_dashboard_page(request) -> HTMLResponse:
-    """Serve the standalone Case Dashboard at /dashboard (totals + cases table)."""
-    if _CASE_DASHBOARD_HTML.is_file():
-        return HTMLResponse(_CASE_DASHBOARD_HTML.read_text(encoding="utf-8"))
-    return RedirectResponse(url="/portal/app", status_code=302)
+async def case_dashboard_page(request) -> Response:
+    """Legacy /dashboard — retired; the SPA Overview is the one case home."""
+    return RedirectResponse(url="/portal/app/", status_code=302)
 
 
 async def spa_index(request) -> HTMLResponse:
@@ -2678,9 +2891,12 @@ _LOGO_SVG = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / 
 async def api_case_create(request):
     """POST /portal/api/case/create — create a new investigation case.
 
-    Body: {name, description?, examiner?, mode?}
-    Creates the case via CaseManager, activates it, and optionally
-    stores the investigation mode (1/2/3) in CASE.yaml.
+    Body: {name, description?, examiner?, mode?, activate?}
+    Creates the case via CaseManager. Does NOT switch the active-case pointer
+    unless ``activate: true`` is explicitly passed — the case-setup wizard
+    registers evidence/mode against the returned ``case_id`` and activates on
+    "Enter Cockpit". CLI ``nexus case init`` / MCP ``case_init`` keep their
+    create+activate behavior (they are separate paths).
     """
     try:
         body = await request.json()
@@ -2707,13 +2923,16 @@ async def api_case_create(request):
         return JSONResponse({"error": str(exc)}, status_code=400)
     mgr.close()
 
-    # Activate the new case
-    import os
-    active = Path(
-        os.environ.get("NEXUS_ACTIVE_CASE_FILE", str(Path.home() / ".nexus" / "active_case"))
-    )
-    active.parent.mkdir(parents=True, exist_ok=True)
-    active.write_text(case.id, encoding="utf-8")
+    # Activate only when explicitly requested (legacy/machine callers).
+    activate = bool(body.get("activate") or False)
+    if activate:
+        import os
+
+        active = Path(
+            os.environ.get("NEXUS_ACTIVE_CASE_FILE", str(Path.home() / ".nexus" / "active_case"))
+        )
+        active.parent.mkdir(parents=True, exist_ok=True)
+        active.write_text(case.id, encoding="utf-8")
 
     # Store mode in CASE.yaml if provided
     if mode in ("1", "2", "3"):
@@ -2734,21 +2953,42 @@ async def api_case_create(request):
         "ok": True,
         "case_id": case.id,
         "name": case.name,
-        "active": case.id,
+        "active": _active_case_id(),
     })
 
 
+async def api_case_deactivate(request):
+    """POST /portal/api/case/deactivate — clear the active-case pointer.
+
+    "Exit to Dashboard": the case stays on disk untouched; the cockpit simply
+    detaches so the dashboard can preview/enter cases without ambiguity.
+    """
+    import os
+
+    active = Path(
+        os.environ.get("NEXUS_ACTIVE_CASE_FILE", str(Path.home() / ".nexus" / "active_case"))
+    )
+    active.parent.mkdir(parents=True, exist_ok=True)
+    active.write_text("", encoding="utf-8")
+    return JSONResponse({"ok": True, "active": ""})
+
+
 async def api_case_details(request):
-    """GET /portal/api/case/details?case_id=ID — case metadata + status.
+    """GET /portal/api/case/details[?case_id=ID] or /case/{id}/details.
 
     Returns case info from CASE.yaml, evidence count, findings count,
-    and the investigation mode if set.
+    the investigation mode, and the SQLite status (system of record).
+    Without an explicit id it falls back to the active case.
     """
     import yaml
 
     from nexus.config import settings
 
-    case_id = request.query_params.get("case_id") or _active_case_id()
+    case_id = str(
+        request.path_params.get("case_id")
+        or request.query_params.get("case_id")
+        or _active_case_id()
+    ).strip()
     if not case_id:
         return JSONResponse({"error": "No case specified"}, status_code=404)
 
@@ -2769,16 +3009,24 @@ async def api_case_details(request):
         except Exception:
             pass
 
-    # Evidence count
-    evidence_file = case_dir / "evidence.json"
-    if evidence_file.is_file():
+    # Status: SQLite is the system of record; CASE.yaml is only the mirror.
+    try:
+        from nexus.case import CaseManager
+
+        mgr = CaseManager(settings.cases_root / "cases.db")
         try:
-            ev = json.loads(evidence_file.read_text(encoding="utf-8"))
-            details["evidence_count"] = len(ev) if isinstance(ev, list) else 0
-        except Exception:
-            details["evidence_count"] = 0
-    else:
-        details["evidence_count"] = 0
+            case = mgr.get_case(case_id)
+            if case is not None:
+                details["status"] = case.status.value
+                if not details.get("name"):
+                    details["name"] = case.name
+        finally:
+            mgr.close()
+    except Exception:  # noqa: BLE001 — details must still render
+        pass
+
+    # Evidence count from the SQLite registry (system of record).
+    details["evidence_count"] = len(_evidence_items(request, case_dir))
 
     # Findings count + approval split (WP 4d.5 stage states)
     findings_file = case_dir / "findings.json"
@@ -2853,32 +3101,47 @@ async def api_pipeline_run(request):
 
     run_id = str(uuid.uuid4())[:8]
 
-    # Store run state
+    # Store run state (memory cache + write-through to the case dir)
     _pipeline_runs[run_id] = {
         "run_id": run_id,
         "case_id": case_id,
         "mode": pipeline_mode,
         "status": "running",
-        "started_at": "",
+        "started_at": datetime.now(UTC).isoformat(),
         "completed_at": "",
         "error": "",
         "stages": [],
     }
+    _persist_pipeline_run(case_dir, _pipeline_runs[run_id])
+    _transition_case_status(
+        case_id,
+        "processing",
+        allowed_from={"created", "open", "intake", "active", "in_progress"},
+    )
 
     def _run_in_thread():
         import asyncio
+
+        record = _pipeline_runs[run_id]
         try:
             from nexus.langgraph.llm_pipeline import run_pipeline
+
             asyncio.run(run_pipeline(
                 evidence_path=evidence_paths[0],
                 mode=pipeline_mode,
                 case_id=case_id,
                 evidence_paths=evidence_paths,
             ))
-            _pipeline_runs[run_id]["status"] = "complete"
+            record["status"] = "complete"
+            record["completed_at"] = datetime.now(UTC).isoformat()
+            _transition_case_status(case_id, "active", allowed_from={"processing"})
         except Exception as exc:
-            _pipeline_runs[run_id]["status"] = "error"
-            _pipeline_runs[run_id]["error"] = str(exc)
+            record["status"] = "error"
+            record["error"] = str(exc)
+            record["completed_at"] = datetime.now(UTC).isoformat()
+            _transition_case_status(case_id, "intake", allowed_from={"processing"})
+        finally:
+            _persist_pipeline_run(case_dir, record)
 
     thread = threading.Thread(target=_run_in_thread, daemon=True)
     thread.start()
@@ -2895,11 +3158,70 @@ _pipeline_runs: dict[str, dict[str, Any]] = {}
 
 
 async def api_pipeline_status(request):
-    """GET /portal/api/pipeline/status?run_id=ID — poll pipeline run status."""
+    """GET /portal/api/pipeline/status?run_id=ID — poll pipeline run status.
+
+    Memory cache first; falls back to the write-through record under
+    ``<case>/analysis/pipeline_runs/<run_id>.json`` so a reload or server
+    restart keeps the examiner's run state.
+    """
     run_id = request.query_params.get("run_id") or ""
-    if not run_id or run_id not in _pipeline_runs:
+    if not run_id:
         return JSONResponse({"error": "run_id not found"}, status_code=404)
-    return JSONResponse(_pipeline_runs[run_id])
+
+    record = _pipeline_runs.get(run_id)
+    case_dir = _get_case_dir(request)
+
+    if record is None:
+        candidates: list[Path] = []
+        if case_dir is not None:
+            candidates.append(_pipeline_run_status_path(case_dir, run_id))
+        else:
+            from nexus.config import settings
+
+            root = settings.cases_root
+            if root.is_dir():
+                for child in root.iterdir():
+                    if not child.is_dir():
+                        continue
+                    candidate = _pipeline_run_status_path(child, run_id)
+                    if candidate.is_file():
+                        candidates.append(candidate)
+        for candidate in candidates:
+            if not candidate.is_file():
+                continue
+            try:
+                loaded = json.loads(candidate.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if isinstance(loaded, dict):
+                record = loaded
+                if case_dir is None:
+                    case_dir = candidate.parent.parent.parent
+                break
+
+    if record is None:
+        return JSONResponse({"error": "run_id not found"}, status_code=404)
+
+    # Reconcile a stale "running" record against the pipeline's own manifest
+    # (server restart mid-run: the thread is gone, the run dir is not).
+    if record.get("status") == "running" and case_dir is not None:
+        try:
+            from nexus.langgraph.pipeline_runs import resolve_run
+
+            run = resolve_run(case_dir, str(record.get("mode") or "tools"))
+            manifest = json.loads((run.path / "manifest.json").read_text(encoding="utf-8"))
+            manifest_status = str(manifest.get("status") or "")
+            if manifest_status == "completed":
+                record["status"] = "complete"
+                record["completed_at"] = str(manifest.get("completed_at") or "")
+            elif manifest_status == "failed":
+                record["status"] = "error"
+                record["error"] = str(manifest.get("error") or "pipeline failed")
+                record["completed_at"] = str(manifest.get("completed_at") or "")
+        except Exception:  # noqa: BLE001 — reconciliation is best-effort
+            pass
+
+    return JSONResponse(record)
 
 
 async def api_pipeline_ledger(request):
@@ -2908,7 +3230,7 @@ async def api_pipeline_ledger(request):
     Returns the per-parser run status from the active tools run ledger so
     the UI can show exactly which parsers ran, were skipped, or failed.
     """
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
     from nexus.langgraph.pipeline_runs import resolve_run, resolve_tools_extractions
@@ -2969,7 +3291,15 @@ async def api_fs_list(request):
         if not p.exists():
             return JSONResponse({"error": "path not found"}, status_code=404)
         if p.is_file():
-            return JSONResponse({"error": "path is a file — select its folder or add it directly"}, status_code=400)
+            # Return file info so the picker can offer to add it directly
+            return JSONResponse({
+                "path": str(p.parent),
+                "parent": str(p.parent.parent) if p.parent.parent != p.parent else "",
+                "drives": False,
+                "is_file": True,
+                "file_entry": {"name": p.name, "path": str(p), "is_dir": False, "size": p.stat().st_size},
+                "entries": [],
+            })
         return _list_dir(p)
     except (OSError, ValueError) as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
@@ -2987,23 +3317,24 @@ def _list_dir(p: Path) -> Response:
             is_dir = entry.is_dir()
         except OSError:
             continue
-        size = None
-        if not is_dir:
-            try:
-                size = entry.stat().st_size
-            except OSError:
-                size = None
         if is_dir:
             dirs.append(entry)
         else:
             files.append(entry)
     dirs.sort(key=lambda x: x.name.lower())
     files.sort(key=lambda x: x.name.lower())
+
+    def _size(path: Path) -> int | None:
+        try:
+            return path.stat().st_size
+        except OSError:
+            return None
+
     out = [
         {"name": d.name, "path": str(d), "is_dir": True, "size": None}
         for d in dirs
     ] + [
-        {"name": f.name, "path": str(f), "is_dir": False, "size": size}
+        {"name": f.name, "path": str(f), "is_dir": False, "size": _size(f)}
         for f in files
     ]
     parent = str(p.parent) if p.parent != p else ""
@@ -3053,10 +3384,11 @@ async def api_playbook_needles(request):
 
 
 async def api_case_mode(request):
-    """POST /portal/api/case/mode — set the investigation mode for the active case.
+    """POST /portal/api/case/mode — set the investigation mode for a case.
 
-    Body: {mode: "1"|"2"|"3"}
-    Stores the mode in CASE.yaml.
+    Body: {mode: "1"|"2"|"3", case_id?}. Explicit case_id (or the SPA
+    X-Nexus-Case header) wins over the active-case pointer, so the wizard can
+    configure a case that is not active yet.
     """
     try:
         body = await request.json()
@@ -3067,9 +3399,9 @@ async def api_case_mode(request):
     if mode not in ("1", "2", "3"):
         return JSONResponse({"error": "mode must be 1, 2, or 3"}, status_code=400)
 
-    case_dir = _get_case_dir()
+    case_dir = _resolve_case_dir_for(str(body.get("case_id") or ""), request)
     if not case_dir:
-        return JSONResponse({"error": "No active case"}, status_code=404)
+        return JSONResponse({"error": "No case specified"}, status_code=404)
 
     import yaml
     case_yaml = case_dir / "CASE.yaml"
@@ -3089,7 +3421,7 @@ async def api_case_mode(request):
 
 async def api_get_case_mode(request):
     """GET /portal/api/case/mode — get the investigation mode for the active case."""
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
 
@@ -3152,16 +3484,22 @@ async def api_system_health(request):
 
 
 async def api_case_seed_demo(request):
-    """POST /portal/api/case/seed-demo — seed a populated demo investigation."""
+    """POST /portal/api/case/seed-demo — seed a populated demo investigation.
+
+    Body: {name?, activate?}. By default the demo is created without switching
+    the active case; the dashboard previews it and offers an explicit Enter.
+    """
     try:
         body = await request.json()
     except Exception:
         body = {}
     name = str(body.get("name") or "Demo Investigation").strip()
+    activate = bool(body.get("activate") or False)
     from nexus.case.seed import seed_demo_case
+
     try:
-        res = seed_demo_case(case_name=name)
-        return JSONResponse(res)
+        res = seed_demo_case(case_name=name, activate=activate)
+        return JSONResponse({**res, "active": _active_case_id()})
     except Exception as exc:
         logger.exception("Demo seed failed: %s", exc)
         return JSONResponse({"error": str(exc)}, status_code=500)
@@ -3187,7 +3525,7 @@ async def api_findings_reject(request):
     if not reason:
         return JSONResponse({"error": "reason is required"}, status_code=400)
 
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
 
@@ -3234,7 +3572,7 @@ async def api_findings_reject(request):
 
 async def api_report_generate(request):
     """POST /portal/api/report/generate — trigger official case report generation."""
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
 
@@ -3272,7 +3610,8 @@ async def api_report_generate(request):
         except Exception:
             meta = {}
 
-    intake = meta.get("intake") if isinstance(meta.get("intake"), dict) else {}
+    raw_intake = meta.get("intake")
+    intake: dict[str, Any] = raw_intake if isinstance(raw_intake, dict) else {}
     questions = _split_questions(str(intake.get("question") or meta.get("question") or ""))
     ledger = load_case_ledger(case_dir)
 
@@ -3308,7 +3647,7 @@ async def api_report_generate(request):
 
 async def api_report_view(request):
     """GET /portal/api/report/view — view the case's generated REPORT.md."""
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
     report_file = case_dir / "reports" / "REPORT.md"
@@ -3325,7 +3664,7 @@ async def api_report_view(request):
 
 async def api_evidence_verify(request):
     """POST /portal/api/evidence/verify — re-verify SHA-256 hashes of registered evidence."""
-    case_dir = _get_case_dir()
+    case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
 
@@ -3455,6 +3794,8 @@ def create_dashboard():
         # Phase 4b: Workflow-driven cockpit APIs
         Route("/portal/api/case/create", api_case_create, methods=["POST"]),
         Route("/portal/api/case/details", api_case_details, methods=["GET"]),
+        Route("/portal/api/case/deactivate", api_case_deactivate, methods=["POST"]),
+        Route("/portal/api/case/{case_id}/details", api_case_details, methods=["GET"]),
         Route("/portal/api/pipeline/run", api_pipeline_run, methods=["POST"]),
         Route("/portal/api/pipeline/status", api_pipeline_status, methods=["GET"]),
         Route("/portal/api/pipeline/ledger", api_pipeline_ledger, methods=["GET"]),
