@@ -1033,7 +1033,11 @@ async def emit_tool_report(state: InvestigationState, tools: dict) -> dict:
     report_path: str | None = None
     export_root: str | None = None
     try:
-        from nexus.case.repo_export import export_case_to_repo, live_case_is_in_repo
+        from nexus.case.repo_export import (
+            export_case_to_repo,
+            live_case_is_in_repo,
+            repo_export_enabled,
+        )
         from nexus.config import settings
         from nexus.langgraph.pipeline_runs import finalize_run, resolve_run
 
@@ -1050,6 +1054,18 @@ async def emit_tool_report(state: InvestigationState, tools: dict) -> dict:
             json.dumps(state.get("tool_run_ledger") or [], indent=2),
             encoding="utf-8",
         )
+
+        if not repo_export_enabled():
+            finalize_run(pipeline_run, "completed")
+            step_log.append(
+                "Repo sample-export disabled (set NEXUS_REPO_EXPORT=1 for the examiner copy)"
+            )
+            step_log.extend(_autoindex_case(case_dir))
+            return {
+                "report_path": str(out),
+                "step_log": step_log,
+                "rag_notes": [f"live_case={case_dir}"],
+            }
 
         if live_case_is_in_repo(case_dir):
             finalize_run(pipeline_run, "completed")
@@ -1786,7 +1802,22 @@ async def generate_report(state: InvestigationState, tools: dict) -> dict:
         (pipeline_run.reports / "dfir-report.md").write_text(md, encoding="utf-8")
         step_log.append(f"Wrote {out}")
 
-        from nexus.case.repo_export import export_case_to_repo, live_case_is_in_repo
+        from nexus.case.repo_export import (
+            export_case_to_repo,
+            live_case_is_in_repo,
+            repo_export_enabled,
+        )
+
+        if not repo_export_enabled():
+            finalize_run(pipeline_run, "completed")
+            step_log.append(
+                "Repo sample-export disabled (set NEXUS_REPO_EXPORT=1 for the examiner copy)"
+            )
+            return {
+                "report_path": str(out),
+                "step_log": step_log,
+                "rag_notes": [f"live_case={case_dir}"],
+            }
 
         if live_case_is_in_repo(case_dir):
             finalize_run(pipeline_run, "completed")

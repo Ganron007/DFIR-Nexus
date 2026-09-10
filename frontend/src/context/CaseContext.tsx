@@ -54,6 +54,9 @@ export function CaseProvider({ children }: { children: ReactNode }) {
       setCaseSummaries(r.details || {});
       // Mirror the server pointer — never fabricate an active case.
       setActiveCaseState(r.active || "");
+      // Sync the request header synchronously with the state change so child
+      // load effects (which run before parent effects) see the right case.
+      setRequestCaseId(r.active || "");
     } catch {
       // keep prior state on transient failure
     } finally {
@@ -95,6 +98,8 @@ export function CaseProvider({ children }: { children: ReactNode }) {
   const setActiveCase = useCallback(
     async (caseId: string) => {
       await api.activateCase(caseId);
+      // Synchronous header sync — no window where pages fetch the old case.
+      setRequestCaseId(caseId);
       setActiveCaseState(caseId);
       await refreshMode(caseId);
       await refreshStages(caseId);
@@ -112,6 +117,7 @@ export function CaseProvider({ children }: { children: ReactNode }) {
     } catch {
       // best-effort; still detach locally
     }
+    setRequestCaseId("");
     setActiveCaseState("");
     setModeState("");
     setStages({});

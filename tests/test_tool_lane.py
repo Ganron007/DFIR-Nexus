@@ -35,7 +35,10 @@ def test_plan_windows_triage_skips_and_schedules(tmp_path: Path):
     assert "mftecmd" in skipped  # no $MFT
     hay = next(j for j in jobs if j.tool == "hayabusa" and j.status == "PENDING")
     assert "-d" in hay.argv
-    assert "suzaku" in tools
+    # Suzaku 2.x dropped local EVTX support — it must skip with a reason.
+    assert "suzaku" not in tools
+    suz_skip = next(j for j in jobs if j.tool == "suzaku")
+    assert suz_skip.status == "SKIP" and "cloud-log" in suz_skip.reason
 
 
 def test_plan_windows_triage_stage0_pack_wevtutil(tmp_path: Path):
@@ -49,8 +52,11 @@ def test_plan_windows_triage_stage0_pack_wevtutil(tmp_path: Path):
     jobs = plan_windows_triage(str(pack), extractions)
     pending = {j.tool for j in jobs if j.status == "PENDING"}
     assert "hayabusa" in pending
-    assert "suzaku" in pending
     assert "evtxecmd" in pending
+    # Suzaku 2.x dropped local EVTX support — skip, don't schedule.
+    assert "suzaku" not in pending
+    suz_skip = next(j for j in jobs if j.tool == "suzaku")
+    assert suz_skip.status == "SKIP" and "cloud-log" in suz_skip.reason
     hay = next(j for j in jobs if j.tool == "hayabusa" and j.status == "PENDING")
     assert str(wevt) in hay.argv
     assert not any(j.tool == "(discovery)" and j.status == "SKIP" for j in jobs)

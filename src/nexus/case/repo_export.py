@@ -34,6 +34,18 @@ _MAX_COPY_BYTES = int(os.environ.get("NEXUS_REPO_CASE_MAX_FILE_BYTES", str(8 * 1
 _SAMPLE_LINES = 80
 
 
+def repo_export_enabled() -> bool:
+    """Whether pipeline runs may write an examiner copy into the git repo.
+
+    Default OFF: the live case under ``cases_root`` is the investigation home,
+    and ``Docs/cases/<id>`` is a curated publishing copy — a per-run side
+    effect must not write into tracked docs (tests, probes, and UI runs were
+    polluting ``Docs/cases``). Enable explicitly with ``NEXUS_REPO_EXPORT=1``.
+    """
+    raw = (os.environ.get("NEXUS_REPO_EXPORT") or "").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
 def resolve_repo_case_root() -> Path:
     raw = (os.environ.get("NEXUS_REPO_CASE_ROOT") or "").strip()
     if raw:

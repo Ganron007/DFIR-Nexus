@@ -197,7 +197,11 @@ def schedule_evtx_parsers(
     evtx_dirs: list[Path],
     extractions: Path,
 ) -> None:
-    """N2: Hayabusa / Suzaku / Chainsaw / EvtxECmd against collected EVTX."""
+    """N2: Hayabusa / Chainsaw / EvtxECmd against collected EVTX.
+
+    Suzaku is skipped: 2.x is cloud-log only (``aws-ct-*``, ``azure-timeline``)
+    and no longer ships a local EVTX timeline (found by the Phase 4f flow test).
+    """
 
     def add(tool: str, argv: list[str], purpose: str, timeout: int = 600) -> None:
         jobs.append(ToolJob(
@@ -250,16 +254,12 @@ def schedule_evtx_parsers(
             f"EVTX timeline {label} ({n} logs)",
             1800,
         )
-        suz_dir = extractions / "suzaku" / label if many else extractions / "suzaku"
-        suz_dir.mkdir(parents=True, exist_ok=True)
-        add(
+        # Suzaku 2.x is cloud-log only (aws-ct-*, azure-timeline); it no longer
+        # ships a local EVTX timeline. Skip honestly instead of scheduling a
+        # command the binary rejects.
+        skip(
             "suzaku",
-            [
-                "suzaku", "csv-timeline", "-d", str(evtx_dir),
-                "-o", str(suz_dir / "timeline.csv"), "--clobber",
-            ],
-            f"Suzaku EVTX timeline {label} ({n} logs)",
-            1800,
+            f"Suzaku 2.x is cloud-log only (no local EVTX timeline) — {label}",
         )
         if mapping and sigma:
             cs_dir = extractions / "chainsaw" / label if many else extractions / "chainsaw"

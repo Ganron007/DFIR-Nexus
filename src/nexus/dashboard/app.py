@@ -41,8 +41,6 @@ _MAX_COMMIT_ATTEMPTS = 3
 _COMMIT_LOCKOUT_SECONDS = 900
 _LOCKOUT_FILE = Path.home() / ".nexus" / ".commit_lockout"
 
-_PASSWORDS_DIR = Path.home() / ".nexus" / "passwords"
-
 
 def _atomic_write_json(path: Path, data: Any) -> None:
     """Write JSON atomically to avoid corruption on crash."""
@@ -166,10 +164,9 @@ def _pipeline_run_status_path(case_dir: Path, run_id: str) -> Path:
 def _persist_pipeline_run(case_dir: Path, record: dict[str, Any]) -> None:
     """Write-through pipeline run state so status survives reload/restart."""
     try:
-        _atomic_write_json(
-            _pipeline_run_status_path(case_dir, str(record.get("run_id") or "")),
-            record,
-        )
+        path = _pipeline_run_status_path(case_dir, str(record.get("run_id") or ""))
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _atomic_write_json(path, record)
     except Exception as exc:  # noqa: BLE001
         logger.warning("pipeline run state persist failed: %s", exc)
 
@@ -207,14 +204,15 @@ def _evidence_items(request=None, case_dir: Path | None = None) -> list:
 
 
 def _load_password_entry(examiner: str) -> dict | None:
-    path = _PASSWORDS_DIR / f"{examiner}.json"
-    try:
-        data = json.loads(path.read_text())
-        if isinstance(data, dict) and "hash" in data and "salt" in data:
-            return data
-    except (OSError, json.JSONDecodeError):
-        pass
-    return None
+    """Load the examiner password entry from the shared nexus.auth store.
+
+    Single source with `nexus config --setup-password` and
+    `mode3.seal_case` — the previous dashboard-local store could diverge
+    from the store the seal path reads.
+    """
+    from nexus.auth import _load_password_entry as _auth_load_password_entry
+
+    return _auth_load_password_entry(examiner)
 
 
 def _resolve_examiner(request) -> str:
@@ -932,19 +930,14 @@ def _case_summary(case_id: str, mgr) -> dict[str, Any]:
         except Exception:  # noqa: BLE001
             pass
     if evidence_count == 0:
-        # Legacy flat-only case: count without migrating.
-        for name in ("evidence.json", "evidence_registry.json"):
-            path = case_dir / name
-            if not path.is_file():
-                continue
-            try:
-                raw = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                continue
-            items = raw if isinstance(raw, list) else (raw.get("files") or [])
-            if items:
-                evidence_count = len(items)
-                break
+        # Legacy flat-only case: go through the one evidence service so the
+        # legacy registry is imported once and SQLite stays authoritative.
+        from nexus.case import evidence_service
+
+        try:
+            evidence_count = len(evidence_service.list_evidence(case_dir))
+        except Exception:  # noqa: BLE001 — dashboard must still render
+            evidence_count = 0
 
     summary["evidence_count"] = evidence_count
     summary["findings_count"] = findings_count
