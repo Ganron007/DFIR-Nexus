@@ -44,10 +44,6 @@ export default function Explore() {
         setBookmarked(ids);
       })
       .catch((e) => setError(`Bookmark state load failed: ${(e as Error).message}`));
-    // WP 4b.5: Load playbook needle suggestions
-    api.playbookNeedles()
-      .then((r) => setPlaybookSuggestions(r.suggestions || []))
-      .catch((e) => setError(`Playbook suggestions load failed: ${(e as Error).message}`));
   }, [activeCase]);
 
   // Phase 4g: suggestions are case-aware — static playbooks PLUS ATT&CK packs

@@ -473,6 +473,8 @@ def plan_windows_triage(
 
     if root is None:
         schedule_evtx_parsers(jobs, evtx_dirs, extractions)
+        # A folder can mix EVTX with prefetch/LNK; schedule those too.
+        jobs.extend(_plan_single_artifact(evidence, extractions))
         return jobs
 
     # Plaso suggestion: surface the super-timeline option in TOOL-RUN.md
