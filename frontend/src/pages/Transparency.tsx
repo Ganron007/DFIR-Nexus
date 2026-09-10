@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
+import { useCase } from "../context/CaseContext";
 
 interface TransparencyResult {
   valid: boolean;
@@ -13,16 +14,18 @@ interface TransparencyResult {
 }
 
 export default function Transparency() {
+  const { activeCase } = useCase();
   const [result, setResult] = useState<TransparencyResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
+    setLoading(true);
     api.transparency()
       .then((r) => setResult(r as unknown as TransparencyResult))
       .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [activeCase]);
 
   if (loading) return <div className="loading">Loading transparency log...</div>;
 

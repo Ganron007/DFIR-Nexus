@@ -162,6 +162,18 @@ def test_d2_case_scoping_no_cross_case_leakage(client, tmp_path):
     assert bad.json()["total"] == 0
 
 
+def test_d2_invalid_case_ids_rejected(client):
+    """Traversal-ish case ids must be rejected, never resolved or stored."""
+    r = client.post("/portal/api/case/activate", json={"case_id": "../evil"})
+    assert r.status_code == 400
+    r = client.post("/portal/api/pipeline/run", json={"mode": "tools", "case_id": "../evil"})
+    assert r.status_code == 400
+    r = client.get("/portal/api/case/details?case_id=../evil")
+    assert r.status_code == 404
+    r = client.post("/portal/api/case/mode", json={"mode": "1", "case_id": "../evil"})
+    assert r.status_code == 404
+
+
 # ---------------------------------------------------------------------------
 # D3 — dashboard/cockpit split
 # ---------------------------------------------------------------------------
@@ -298,6 +310,7 @@ def test_d7_cockpit_pages_depend_on_active_case():
     pages = [
         "Explore", "Timeline", "Findings", "SteerChat", "Workbench",
         "Approve", "Report", "Entities", "Evidence", "Iocs", "Todos",
+        "Transparency",
     ]
     pattern = re.compile(r"\[[^\]]*activeCase[^\]]*\]", re.DOTALL)
     for page in pages:

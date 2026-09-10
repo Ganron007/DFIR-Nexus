@@ -430,11 +430,11 @@ export default function SteerChat() {
             <input
               type="number"
               min={1}
-              max={4}
+              max={5}
               value={mode2Iterations}
-              onChange={(e) => setMode2Iterations(Math.max(1, Math.min(4, Number(e.target.value) || 2)))}
+              onChange={(e) => setMode2Iterations(Math.max(1, Math.min(5, Number(e.target.value) || 2)))}
               style={{ width: 60 }}
-              title="Max iterations (1-4)"
+              title="Max iterations (1-5)"
             />
           )}
           {mode === "mode3" && (

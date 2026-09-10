@@ -977,6 +977,10 @@ async def api_cases(request):
 async def api_activate_case(request):
     body = await request.json()
     case_id = str(body.get("case_id") or "").strip()
+    from nexus.discipline import validate_case_id
+
+    if validate_case_id(case_id):
+        return JSONResponse({"ok": False, "error": "invalid case id"}, status_code=400)
     from nexus.config import settings
     path = settings.cases_root / case_id
     if not path.is_dir():
@@ -2982,14 +2986,17 @@ async def api_case_details(request):
     case_id = str(
         request.path_params.get("case_id")
         or request.query_params.get("case_id")
-        or _active_case_id()
+        or ""
     ).strip()
-    if not case_id:
-        return JSONResponse({"error": "No case specified"}, status_code=404)
-
-    case_dir = settings.cases_root / case_id
-    if not case_dir.is_dir():
-        return JSONResponse({"error": "Case not found"}, status_code=404)
+    if case_id:
+        case_dir = _resolve_case_dir_for(case_id)
+        if case_dir is None:
+            return JSONResponse({"error": "Case not found"}, status_code=404)
+    else:
+        case_dir = _get_case_dir(request)
+        if case_dir is None:
+            return JSONResponse({"error": "No case specified"}, status_code=404)
+        case_id = case_dir.name
 
     details: dict[str, Any] = {"case_id": case_id}
     case_yaml = case_dir / "CASE.yaml"
@@ -3069,6 +3076,10 @@ async def api_pipeline_run(request):
     case_id = str(body.get("case_id") or "").strip() or _active_case_id()
     if not case_id:
         return JSONResponse({"error": "No active case"}, status_code=404)
+    from nexus.discipline import validate_case_id
+
+    if validate_case_id(case_id):
+        return JSONResponse({"error": "invalid case id"}, status_code=400)
 
     from nexus.config import settings
     case_dir = settings.cases_root / case_id
