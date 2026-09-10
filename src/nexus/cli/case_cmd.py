@@ -158,7 +158,7 @@ def close(case_id: str = typer.Argument("", help="Case ID to close (defaults to 
 
 @app.command()
 def reopen(case_id: str = typer.Argument("", help="Case ID to reopen (defaults to active)")):
-    """Reopen a closed case."""
+    """Reopen a sealed (completed) or closed case."""
     if not case_id:
         case_id = _get_active_case_id() or ""
     if not case_id:
@@ -166,7 +166,7 @@ def reopen(case_id: str = typer.Argument("", help="Case ID to reopen (defaults t
         raise typer.Exit(1)
     mgr = _get_sqlite_mgr()
     from nexus.case import CaseStatus
-    updated = mgr.update_status(case_id, CaseStatus.OPEN)
+    updated = mgr.update_status(case_id, CaseStatus.ACTIVE)
     if updated is None:
         typer.echo(f"Case not found: {case_id}", err=True)
         raise typer.Exit(1)
