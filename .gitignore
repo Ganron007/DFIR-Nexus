@@ -39,7 +39,6 @@ coverage.xml
 .idea/
 *.swp
 *.swo
-.claude/
 
 # ── OS junk ─────────────────────────────────────────────────────────
 .DS_Store
@@ -159,13 +158,20 @@ Evidence-files/
 
 # ── Private-repo policy ─────────────────────────────────────────────
 # Internal planning / audit / checklist docs are LOCAL ONLY — never published.
+# Everything under Docs/internal/ is gitignored as a whole.
 Docs/internal/
-Docs/WIRING-PLAN.md
 CHANGELOG.md
 # Local scratch space (audit scripts, temp renders, working notes).
 scratch/
 # Agent/session notes — local only (not part of the public product).
 AGENTS.md
-.cursor/
 # Agent-only discipline reference (mirror of the YAML rules KB).
 /FORENSIC-DISCIPLINE.md
+
+# ── All dot-directories (catch-all for local tooling caches/configs) ──
+# Ignores any directory starting with a dot (.venv, .vscode, .cursor, .devin, etc.)
+# Files like .gitignore, .env, .env.example are NOT affected (they're files, not dirs).
+.*/
+# Re-allow specific dot-dirs that must be tracked (add negations here as needed)
+!.github/
+# !.devin/

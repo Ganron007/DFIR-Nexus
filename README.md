@@ -10,8 +10,8 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/Tests-734%20Checks-success.svg" alt="Tests: 734 Checks">
-  <img src="https://img.shields.io/badge/MCP%20Tools-100%20Registered-blue.svg" alt="MCP Tools: 100 Registered">
+  <img src="https://img.shields.io/badge/Tests-641%20Checks-success.svg" alt="Tests: 652 checks">
+  <img src="https://img.shields.io/badge/MCP%20Tools-115%20Win%20%7C%20112%20Linux-blue.svg" alt="MCP Tools: 115 Win | 112 Linux">
   <img src="https://img.shields.io/badge/Status-v2%20in%20development-yellow.svg" alt="Status: v2 in development">
 </p>
 
@@ -23,7 +23,7 @@ Standalone release of the examiner-led DFIR capability developed within the [CAD
 > - **What we are actively building & validating (v2 Mode 1 — Public Beta):** Authenticated, headless live IR collection (`nexus collect`, default `--profile disk`) over SSH/WinRM on current Windows 11 and modern Linux with zero model in the collection path; isolated evidence custody registration (SHA-256); deterministic parser execution (Hayabusa, Zimmerman, SIFT); code-based needle query scanning (N4); and an **examiner-led investigation cockpit** where an LLM acts strictly as an objective scribe over retrieved evidence hits, requiring cryptographic human sign-off (PBKDF2-HMAC) before findings become official.
 > - **Mode 2 (Thick Cognitive Analysis) — implemented & dual-audited:** Iterative query loop, corroboration engine (FD-006/007), and LLM-drafted findings with `examiner_selected=False` provenance marker. Portal endpoints: `/portal/api/mode2/iterate`, `/corroborate`, `/propose-draft`.
 > - **Mode 3 (Full Autonomous Agentic MCP) — implemented & dual-audited:** Agent planning, mandatory-lane-first execution guard, case-file HMAC sealing (challenge-response), and agent run ledger. Portal endpoints: `/portal/api/mode3/plan`, `/execute`, `/seal`. Strictly bounded by real-time HMAC-SHA256 audit chaining and `FD-001..007` forensic discipline rules.
-> - **Phase 4 (enterprise UI rewrite) — not started:** The current hand-written HTML/JS Cockpit proved the API contracts. Phase 4 will replace it with a component framework without changing the contracts.
+> - **Phase 4 (enterprise UI rewrite) — complete:** React SPA cockpit at `/portal/app/*` with full feature parity (Explore, Timeline, Steer Chat, Workbench, Findings, Approval, Evidence, IOCs, TODOs). Type-aware hit rendering, host facets, SSE streaming, evidence picker, parser-lane visibility, and 10 Vitest tests. Legacy HTML pages remain available during transition.
 > 
 > This repository is an active **development snapshot**. Commands, APIs, and internal schemas are evolving toward the v2 milestone. Do not deploy this development branch in production environments.
 
@@ -66,16 +66,26 @@ See **[Docs/NEXUS-MODE.md](Docs/NEXUS-MODE.md)** for the full operator loop, and
 
 ## Examiner Cockpit (Web UI)
 
-DFIR-Nexus features a web-based **Examiner Portal** (`nexus portal` on `http://127.0.0.1:4508/portal`) serving as the central investigation cockpit alongside the CLI and MCP APIs:
+DFIR-Nexus features a web-based **Examiner Portal** (`nexus portal` on `http://127.0.0.1:4508`) with three surfaces:
+
+| Surface | Route | Role |
+| :--- | :--- | :--- |
+| **Landing page** | `/` | Product identity, inline health chips, entry points |
+| **Case Dashboard** | `/dashboard` | Totals (cases, evidence, findings, processed), cases table, health bar |
+| **React Cockpit** | `/portal/app/*` | Full investigation workspace (N1–N8 workflow) |
+
+**React Cockpit pages:**
 
 | Desk | Route | Capability |
 | :--- | :--- | :--- |
-| 🎯 **Case Steer** | `/portal/steer` | Active case switching, incident scope/question framing, and one-click N4 query pack re-runs. |
-| 🔍 **Query Explorer** | `/portal/query` | Fast full-text needle searching across parsed CSVs and the case index with exact `file:line` provenance citations. |
-| 🔐 **Approval Desk** | `/portal/approve` | Interactive review of staged `DRAFT` findings with client-side Web Crypto PBKDF2/HMAC challenge-response signing. |
-| ⏱️ **Timeline Desk** | `/portal/timeline` | Integrated chronological inspection of host forensic events and ingested network telemetry. |
-| 🗃️ **Evidence Desk** | `/portal/evidence` | SHA-256 evidence integrity validation and pack asset management. |
-| 📋 **Case Summary** | `/portal` | Real-time counts of findings by state (Draft / Approved / Rejected), timeline events, and open investigator TODOs. |
+| 🎯 **Case Steer** | `/portal/app/steer` | Active case switching, intake, Mode 1/2/3 switcher, SSE chat streaming |
+| 🔍 **Explore** | `/portal/app/explore` | Faceted DSL search, type-aware hit columns, host facets, histogram, bookmarking |
+| ⏱️ **Timeline** | `/portal/app/timeline` | Per-family lanes, type-aware event panels, brush-zoom |
+| 🗃️ **Evidence** | `/portal/app/evidence` | Evidence registry, filesystem picker, parser-lane ledger |
+| � **Findings** | `/portal/app/findings` | Finding cards with status/confidence badges, HMAC approval flow |
+| 📋 **IOCs** | `/portal/app/iocs` | IOC list extracted from findings |
+| ✅ **TODOs** | `/portal/app/todos` | Investigation TODO tracking |
+| 📊 **Overview** | `/portal/app/` | In-cockpit dashboard with health strip |
 
 ---
 

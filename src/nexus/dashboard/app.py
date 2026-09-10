@@ -3168,7 +3168,14 @@ async def api_case_seed_demo(request):
 
 
 async def api_findings_reject(request):
-    """POST /portal/api/findings/reject — reject DRAFT findings with a reason."""
+    """POST /portal/api/findings/reject — reject DRAFT findings with a reason.
+
+    Intentionally does NOT require HMAC challenge-response: rejection is a
+    non-cryptographic state transition (DRAFT → REJECTED), not an attestation.
+    Approval (DRAFT → APPROVED) always requires HMAC via POST /portal/api/commit.
+    Rejection is logged with examiner identity, timestamp, and reason in both
+    findings.json and the SQLite store for audit traceability.
+    """
     try:
         body = await request.json()
     except Exception:

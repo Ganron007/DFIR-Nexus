@@ -58,7 +58,7 @@ Existing dumps: `nexus collect import` then register. Full loop: [NEXUS-MODE.md]
 | **Provenance** | Every finding must reference real audit_ids from tool runs. Fabricated IDs → rejected. |
 | **Collect** | Live IR pack (`nexus collect`). CLI / SSH / WinRM. No LLM, no parsers. |
 | **Register** | `nexus case init` + `nexus evidence register`. Custody. Not part of N1–N8. |
-| **MCP Tools** | 103 Windows / 100 Linux forensic tools exposed through MCP (workstation + agents). |
+| **MCP Tools** | 115 Windows / 112 Linux forensic tools exposed through MCP (105 universal + platform-specific). |
 | **RAG** | Semantic search over 22K forensic knowledge records (downloaded on first use, ~600 MB). |
 | **Triage** | Windows baseline validation — legitimate vs suspicious vs LOLBin. |
 | **MITRE** | Full ATT&CK v15 support — technique matching, threat actor profiles, Navigator layers, RBA scoring. |

@@ -21,7 +21,16 @@ nexus case intake --question "..." --window 2020-11-14 --extras chrome_profiles
 nexus case index INC-...                  # N3: index this case's extractions (needs NEXUS_ES_URL)
 nexus case query INC-... --needles sdelete,.pst --backend auto
 nexus case detections INC-... --finding-ids F-009,F-010   # D1 drafts for SIEM (not N5)
+
+nexus case clean                          # Delete ALL cases + cases.db + reset active pointer
+nexus case clean --yes                    # Skip confirmation prompt
+nexus case clean --keep CASE-XXX-XXXX     # Preserve named case(s) while cleaning the rest
 ```
+
+> **Hygiene:** `nexus case clean` wipes all `CASE-*` folders, `cases.db`, and the
+> active-case pointer. It never touches the RAG index, model caches, or config.
+> Use after manual/UI/pipeline testing sessions so dummy cases don't accumulate.
+> Selective pruning: `python scripts/prune_cases.py` (dry-run) then `--apply`.
 
 Portal **Steer** = intake + register. Portal **Query** = N4 hit table
 (processed CSVs / case index, not Evidence-files). Empty hits = INSUFFICIENT.
@@ -166,6 +175,7 @@ nexus serve                               # Start MCP server (stdio mode)
 nexus serve --http                        # Start HTTP server (port 4508)
 nexus serve --http --port 8080            # Custom port
 nexus serve --http --host 0.0.0.0        # Bind to all interfaces
+nexus serve --http --dev                  # Debug mode: auto-clean all cases on startup
 
 nexus portal                              # Open Examiner Portal in browser
 

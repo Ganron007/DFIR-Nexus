@@ -189,7 +189,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
         <div className="sidebar-footer">
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span className="version">v2.0 — Phase 4b</span>
+            <span className="version">v2.0 — Phase 4d</span>
             <span
               title={health === "ok" ? "System healthy" : health === "down" ? "Backend unreachable" : "Checking…"}
               style={{

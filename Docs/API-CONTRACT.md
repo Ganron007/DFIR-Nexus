@@ -1490,6 +1490,216 @@ These are server-side rendered HTML pages in the current portal. In the React SP
 
 ---
 
+### POST /portal/api/case/seed-demo
+**Description:** Seed a populated demo investigation case with pre-built findings, evidence, and timeline entries. Used by the "Seed Demo Case" button in the Case Dashboard.
+
+**Request:**
+```json
+{
+  "name": "Demo Investigation"
+}
+```
+- `name` (optional, default `"Demo Investigation"`)
+
+**Response 200:**
+```json
+{
+  "ok": true,
+  "case_id": "CASE-XXXX-XXXX",
+  "case_dir": "C:\\...\\CASE-XXXX-XXXX"
+}
+```
+
+**Response 500:** `{"error": "string"}` — seed failed.
+
+---
+
+### POST /portal/api/findings/reject
+**Description:** Reject one or more DRAFT findings with a reason. Updates both `findings.json` and the SQLite case store. Does **not** require HMAC challenge-response (rejection is a non-cryptographic state change; approval requires HMAC). Examiner identity is resolved from the request or body.
+
+**Request:**
+```json
+{
+  "finding_ids": ["F-001", "F-002"],
+  "reason": "False positive — legitimate admin activity",
+  "examiner": "analyst_t1"
+}
+```
+- `finding_ids` (required, non-empty array)
+- `reason` (required, non-empty string)
+- `examiner` (optional — resolved from OS user if omitted)
+
+**Response 200:**
+```json
+{
+  "ok": true,
+  "rejected": ["F-001", "F-002"]
+}
+```
+
+**Response 400:** `{"error": "finding_ids is required"}` or `{"error": "reason is required"}`
+**Response 404:** `{"error": "No active case"}`
+
+**Security note:** Rejection does not require HMAC because it is a non-cryptographic state transition (DRAFT → REJECTED). Approval (DRAFT → APPROVED) always requires HMAC challenge-response via `POST /portal/api/commit`. Rejection is logged with examiner identity, timestamp, and reason in both `findings.json` and the SQLite store.
+
+---
+
+### POST /portal/api/evidence/verify
+**Description:** Re-verify SHA-256 hashes of all registered evidence files for the active case. Reads each file from disk and compares the computed hash against the registered custody hash.
+
+**Request:** No body required.
+
+**Response 200:**
+```json
+{
+  "ok": true,
+  "results": [
+    {
+      "name": "ws01_evtx.zip",
+      "file_path": "C:\\Evidence\\ws01_evtx.zip",
+      "valid": true,
+      "expected_hash": "abc123...",
+      "actual_hash": "abc123..."
+    },
+    {
+      "name": "missing.pcap",
+      "file_path": "C:\\Evidence\\missing.pcap",
+      "valid": false,
+      "error": "File not found on disk"
+    }
+  ]
+}
+```
+
+**Response 404:** `{"error": "No active case"}`
+
+---
+
+### POST /portal/api/report/generate
+**Description:** Trigger official case report generation. Assembles findings, evidence, timeline, case metadata, and tool ledger into a Markdown report written to `CASE-XXXX/reports/REPORT.md`.
+
+**Request:** No body required (empty JSON accepted).
+
+**Response 200:**
+```json
+{
+  "ok": true,
+  "report_path": "C:\\...\\CASE-XXXX\\reports\\REPORT.md",
+  "findings_count": 5
+}
+```
+- `findings_count` = number of APPROVED findings included.
+
+**Response 404:** `{"error": "No active case"}`
+**Response 500:** `{"error": "string"}` — report generation failed.
+
+---
+
+### GET /portal/api/report/view
+**Description:** View the case's generated `REPORT.md` as Markdown. Returns empty markdown if no report has been generated yet.
+
+**Request:** No body. No query params.
+
+**Response 200:**
+```json
+{
+  "ok": true,
+  "markdown": "# DFIR Report\n## Case: CASE-XXXX...",
+  "title": "Report: CASE-XXXX-XXXX"
+}
+```
+
+**Response (no report yet):**
+```json
+{
+  "ok": false,
+  "markdown": "",
+  "error": "Report not yet generated. Click 'Generate Official Report'."
+}
+```
+
+**Response 404:** `{"error": "No active case"}`
+
+---
+
+### GET /portal/api/mode-mapping
+**Description:** Map a product mode (1/2/3) to the corresponding pipeline mode (`tools`/`coverage`/`design`). Used by the SPA to translate the examiner's control-depth selection into the pipeline execution mode (WP 3.8).
+
+**Query params:** `product_mode` (required — `1`, `2`, or `3`)
+
+**Response 200:**
+```json
+{
+  "product_mode": 1,
+  "pipeline_mode": "tools",
+  "pipeline_modes": ["tools"],
+  "description": "Examiner-driven exploration — N4 query packs, manual hit selection."
+}
+```
+
+**Response 400:** `{"error": "product_mode must be 1, 2, or 3"}`
+
+---
+
+### POST /portal/api/mode3/draft-finding
+**Description:** Agent proposes a DRAFT finding from selected hits (WP 3.7). The finding is staged with `examiner_selected=false` — the examiner reviews and approves via the normal HMAC flow. The agent **never** approves.
+
+**Request:**
+```json
+{
+  "hits": [{"file": "...", "line": 42, "text": "..."}],
+  "title": "Suspicious PowerShell execution",
+  "interpretation_hint": "Encoded command pattern matches Empire stager"
+}
+```
+- `hits` (required, non-empty array of hit objects)
+- `title` (optional, default `"Agent-proposed finding"`)
+- `interpretation_hint` (optional, passed to LLM scribe)
+
+**Response 200:**
+```json
+{
+  "ok": true,
+  "finding_id": "F-XXX",
+  "title": "Suspicious PowerShell execution",
+  "interpretation": "...",
+  "status": "DRAFT"
+}
+```
+
+**Response 400:** `{"error": "string"}` — invalid input or LLM failure.
+**Response 404:** `{"error": "No active case"}`
+
+---
+
+### POST /portal/api/mode3/orchestrator
+**Description:** Run the multi-agent orchestrator (WP 3.10). Dispatches specialist agents per evidence family, injects RAG methodology, and collects findings into synthesis. Examiner reviews proposals — nothing is auto-staged.
+
+**Request:**
+```json
+{
+  "hits": []
+}
+```
+- `hits` (optional — defaults to current N4 hits from case intake if omitted)
+
+**Response 200:**
+```json
+{
+  "ok": true,
+  "specialists": [
+    {"agent": "evtx_specialist", "findings": [...], "rag_cited": [...]},
+    {"agent": "registry_specialist", "findings": [...], "rag_cited": [...]}
+  ],
+  "synthesis": "Cross-family correlation: ...",
+  "total_findings": 3
+}
+```
+
+**Response 404:** `{"error": "No active case"}`
+
+---
+
 ## Common Error Patterns
 
 | Status Code | Condition | Body |

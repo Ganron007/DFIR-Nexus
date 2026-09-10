@@ -8,7 +8,7 @@
  *
  * On completion, lands in the Cockpit with the case active and N2 complete.
  */
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { useCase } from "../context/CaseContext";
@@ -22,6 +22,14 @@ export default function CaseSetup() {
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  // Poll cleanup ref — clears interval on unmount to prevent poll leak
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
 
   // Step 1 state
   const [name, setName] = useState("");
@@ -141,6 +149,7 @@ export default function CaseSetup() {
           setPipelineStatus(s.status);
           if (s.status === "complete" || s.status === "error") {
             clearInterval(poll);
+            pollRef.current = null;
             setBusy(false);
             if (s.status === "error") {
               setError(s.error || "Pipeline failed");
@@ -150,6 +159,7 @@ export default function CaseSetup() {
           // ignore
         }
       }, 3000);
+      pollRef.current = poll;
     } catch (e) {
       setError((e as Error).message);
       setBusy(false);

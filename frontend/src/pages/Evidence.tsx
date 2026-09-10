@@ -3,7 +3,7 @@
  * controls. The examiner can register evidence (wizard) and run/monitor
  * the N2 processing lane without touching the CLI.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Link } from "react-router-dom";
 import { api, type LedgerRow } from "../api/client";
 import { useCase } from "../context/CaseContext";
@@ -24,6 +24,14 @@ export default function Evidence() {
   const [verifying, setVerifying] = useState(false);
   const [verificationResults, setVerificationResults] = useState<Record<string, { valid: boolean; error?: string }>>({});
   const [verifyBanner, setVerifyBanner] = useState<{ total: number; valid: number; failed: number } | null>(null);
+
+  // Poll cleanup ref — clears interval on unmount to prevent poll leak
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
 
   const verifyIntegrity = async () => {
     setVerifying(true);
@@ -119,10 +127,12 @@ export default function Evidence() {
           setRunStatus(s.status);
           if (s.status === "complete") {
             clearInterval(poll);
+            pollRef.current = null;
             setBusy(false);
             setPipelineComplete(true);
           } else if (s.status === "error") {
             clearInterval(poll);
+            pollRef.current = null;
             setError(s.error || "Pipeline failed");
             setBusy(false);
           }
@@ -130,6 +140,7 @@ export default function Evidence() {
           // keep polling
         }
       }, 3000);
+      pollRef.current = poll;
     } catch (e) {
       setError((e as Error).message);
       setBusy(false);

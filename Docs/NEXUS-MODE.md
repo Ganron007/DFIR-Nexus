@@ -125,10 +125,10 @@ presets**, not separate products or UIs.
 > lane-first execution guard, case-file HMAC sealing (challenge-response),
 > and agent run ledger are wired with Portal endpoints
 > (`/portal/api/mode3/plan`, `/execute`, `/seal`). All three modes share
-> the same Cockpit. **Operator review on a real case (Gate 1/2/3) and the
-> Phase 4 enterprise UI rewrite remain pending.** The current UI is
-> intentionally hand-written HTML/JS to prove the API contracts; Phase 4
-> will replace it without changing the contracts.
+> the same Cockpit. **Phase 4 (enterprise UI rewrite) is complete** — the
+> React SPA cockpit at `/portal/app/*` replaced the hand-written HTML/JS
+> proof-of-concept without changing the API contracts. Operator review on
+> a real case (Gate 1/2/3) remains pending.
 
 ### The two axes (do not confuse them)
 
@@ -340,9 +340,9 @@ N8 report from APPROVED only
 3. **Mode 3 agentic** — Agent chooses MCP tools. Same Cockpit; the chat shows
    what the agent plans and asks permission.
    **Status: implemented + dual-audited (Phase 3, commits `8fc0543`, `b52ff50`).**
-4. **Phase 4 enterprise UI rewrite** — Replace the hand-written HTML/JS
-   Cockpit with a proper component framework. API contracts are frozen;
-   this is a UI-only rewrite. **Status: not started.**
+4. **Phase 4 enterprise UI rewrite** — React SPA cockpit at `/portal/app/*`
+   replaced the hand-written HTML/JS proof-of-concept. API contracts unchanged.
+   **Status: complete (Phase 4b workflow cockpit + Phase 4d UI hardening).**
 
 ## Product flow (canonical)
 

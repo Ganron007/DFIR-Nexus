@@ -26,11 +26,10 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 collect_ignore_glob = [
-    "test_detection.py",
-    "test_hunt_parser.py",
-    "test_integration.py",
-    "test_portal.py",
-    "test_ti.py",
+    "test_detection.py",    # script-style: sys.exit() at module level
+    "test_hunt_parser.py",  # script-style: sys.exit() at module level
+    "test_integration.py",  # script-style: starts live server, long-running
+    "test_ti.py",           # script-style: sys.exit() at module level
 ]
 
 

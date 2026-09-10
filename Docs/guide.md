@@ -131,7 +131,7 @@ nexus evidence verify     # re-hash and check for tampering
 
 DFIR-Nexus wraps your existing forensic tools as MCP tools. Every tool run is audited and returns an `audit_id`. **This is the key concept — every action gets a unique audit_id that findings must reference:**
 
-**Tools available (103 on Windows / 100 on Linux):**
+**Tools available (115 on Windows / 112 on Linux):**
 
 | Category | Tools | When to use |
 |----------|-------|-------------|
@@ -602,7 +602,7 @@ python tests/test_integration.py
 python tests/test_portal.py
 python tests/test_hunt_parser.py
 ```
-**Total:** 609 checks. All tests must report `PASS` / Exit Code `0`.
+**Total:** 652 checks. All tests must report `PASS` / Exit Code `0`.
 
 ---
 

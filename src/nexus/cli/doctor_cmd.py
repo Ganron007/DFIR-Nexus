@@ -73,7 +73,7 @@ def probe_http_health(
 def _environment_checks() -> list[tuple[str, bool, str]]:
     """Case-start readiness: ES, LLM, RAG embedder, SIFT reachability.
 
-    These are the Phase 5 preflight checks (WIRING-PLAN.md). Each is
+    These are the Phase 5 preflight checks (Docs/internal/WIRING-PLAN.md). Each is
     informational here — the preflight gate command will enforce them.
     """
     import os

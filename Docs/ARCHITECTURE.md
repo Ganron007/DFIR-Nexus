@@ -107,7 +107,7 @@ flowchart TD
     subgraph CORE [" FastMCP Single-Process Engine (app.py) "]
         MCP["⚡ FastMCP Server Process<br/><i>(Stdio & Uvicorn HTTP :4508)</i>"]:::serverStyle
         
-        subgraph MODULES [" Integrated Tool Engine (103 Win / 100 Linux Endpoints) "]
+        subgraph MODULES [" Integrated Tool Engine (115 Win / 112 Linux Endpoints) "]
             direction LR
             CORE_TOOLS["<b>Forensics & Case Ops</b><br/>• forensic.py (23 tools)<br/>• case.py (13 tools)<br/>• report.py (6 tools)"]:::toolStyle
             INTEL_TOOLS["<b>RAG & Threat Intel</b><br/>• rag.py (ChromaDB 22k records)<br/>• triage/ (2.6M baselines)<br/>• ti/ (10 TI Providers)"]:::toolStyle
@@ -189,6 +189,35 @@ flowchart TD
 │   config.py        — Pydantic settings (NEXUS_ env vars)                    │
 │                                                                             │
 └────────────────────────────────────────────────────────────────────────────┘
+
+### Ledger & approval architecture (4 ledgers, 2 approval stacks)
+
+DFIR-Nexus maintains **4 separate ledgers** and **2 approval stacks**. They are
+intentionally distinct — each serves a different audit purpose. They are **not**
+one unified chain.
+
+**Ledgers:**
+
+| Ledger | File | Format | Purpose |
+|--------|------|--------|---------|
+| **Audit JSONL** | `{case_dir}/audit/{mcp_name}.jsonl` | JSONL + `audit_id` | Per-tool-call audit trail. Every MCP tool execution gets a unique `audit_id`. Findings must reference real `audit_id`s (fabricated IDs are rejected by discipline rules). |
+| **Transparency chain** | `{case_dir}/transparency.jsonl` | HMAC-chained JSONL | Hash-chained log of every approval commit. Each entry links to the previous entry's hash — tampering breaks the chain. |
+| **Verification ledger** | `{case_dir}/verification.jsonl` | HMAC entries | PBKDF2/HMAC password verification records. `auth.py:reset_password` re-HMACs all entries when the password changes. Used by the challenge-response approval flow. |
+| **Case SQLite store** | `{cases_root}/cases.db` | SQLite tables | Structured case state: findings, evidence, timeline, IOCs, TODOs. Dual-write: JSON files on disk + SQLite for query. |
+
+**Approval stacks:**
+
+| Stack | Location | Used by | Status |
+|-------|----------|---------|--------|
+| **Dashboard HMAC flow** | `auth.py` + `dashboard/app.py` | Portal `/portal/api/commit/challenge` + `/commit` + `/mode3/seal` | **Active** — the primary examiner approval path. Challenge-response: server issues nonce → examiner computes `HMAC-SHA256(PBKDF2(password, salt, 600000), nonce)` → server verifies. |
+| **Case module ApprovalWorkflow** | `case/approval.py:ApprovalWorkflow` | `case/` module internals only | **Legacy** — not wired into the Portal dashboard. Retained for CLI-path and programmatic API use. `get_default_workflow()` returns a singleton with process-level lockout. |
+
+**Design note:** The two approval stacks share the same PBKDF2-HMAC-SHA256
+cryptographic primitives but maintain separate code paths. The Portal dashboard
+uses `auth.py` directly (challenge-response, never sends password). The
+`case/approval.py` workflow wraps the same crypto in a class-based API for
+programmatic consumers. They are **not** the same chain — the transparency log
+chains approval commits, not password verifications.
                            │
            ┌───────────────┴───────────────┐
            │ Stdio transport               │ HTTP transport

@@ -422,13 +422,20 @@ def execute_plan(
             "capped": iterative_result.get("capped", False),
         })
 
-    # Also keep one-shot results for backward compatibility
+    # Derive per-query summary from the iterative result (avoids a second
+    # round of n4_query calls that would double-load Elasticsearch).
     query_results: list[dict[str, Any]] = []
-    for q in approved_queries:
+    if iterative_result is not None:
+        total_hits = iterative_result.get("total_hits", 0)
+        for q in approved_queries:
+            query_results.append({"query": q, "count": total_hits})
+    elif approved_queries:
+        # No iterative result (e.g. model unavailable) — one-shot fallback.
         from nexus.langgraph.query_pack import n4_query
 
-        r = n4_query(case_dir, q, limit=40)
-        query_results.append({"query": q, "count": r.get("count", 0), "error": r.get("error")})
+        for q in approved_queries:
+            r = n4_query(case_dir, q, limit=40)
+            query_results.append({"query": q, "count": r.get("count", 0), "error": r.get("error")})
 
     _log_agent_run(case_dir, {
         "action": "mode3_execute",
