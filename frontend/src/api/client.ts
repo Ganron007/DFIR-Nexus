@@ -516,6 +516,10 @@ export const api = {
   activateCase: (caseId: string) =>
     post<ActivateCaseResponse>("/case/activate", { case_id: caseId }),
   deactivateCase: () => post<{ ok: boolean; active: string }>("/case/deactivate"),
+  reopenCase: (caseId?: string) =>
+    post<{ ok: boolean; status?: string; note?: string; error?: string }>("/case/reopen", {
+      case_id: caseId,
+    }),
   caseCreate: (params: {
     name: string;
     description?: string;

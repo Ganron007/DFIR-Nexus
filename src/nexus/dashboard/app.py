@@ -157,6 +157,30 @@ def _transition_case_status(
         mgr.close()
 
 
+def _sealed_case_error(case_id: str):
+    """409 response when the case is sealed (completed) — reopen required."""
+    if not case_id:
+        return None
+    from nexus.case import CaseManager
+    from nexus.case.schemas import CaseStatus
+    from nexus.config import settings
+
+    try:
+        mgr = CaseManager(settings.cases_root / "cases.db")
+        try:
+            case = mgr.get_case(case_id)
+        finally:
+            mgr.close()
+    except Exception:  # noqa: BLE001 — never block on a lookup failure
+        return None
+    if case is not None and case.status == CaseStatus.SEALED:
+        return JSONResponse(
+            {"error": "Case is sealed (completed) — reopen it to run more actions"},
+            status_code=409,
+        )
+    return None
+
+
 def _pipeline_run_status_path(case_dir: Path, run_id: str) -> Path:
     return case_dir / "analysis" / "pipeline_runs" / f"{run_id}.json"
 
@@ -1016,9 +1040,12 @@ async def api_register_evidence(request):
     case_dir = _resolve_case_dir_for(str(body.get("case_id") or ""), request)
     if not case_dir:
         return JSONResponse(
-            {"ok": False, "error": "no case specified — create a case or select an active one"},
+            {"ok": False, "error": "no case specified - create a case or select an active one"},
             status_code=400,
         )
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
     if not path:
         return JSONResponse({"ok": False, "error": "path missing"}, status_code=400)
 
@@ -2003,13 +2030,16 @@ async def api_workbench_clear(request):
 
 
 async def api_workbench_promote(request):
-    """POST /portal/api/workbench/promote — bookmarked hits -> DRAFT finding.
+    """POST /portal/api/workbench/promote - bookmarked hits -> DRAFT finding.
 
     Body: {bookmark_ids: ["B-001", ...], title, scribe?, interpretation?}
     """
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
     body = await request.json()
     title = str(body.get("title") or "").strip()
     wanted = [str(b) for b in (body.get("bookmark_ids") or []) if str(b).strip()]
@@ -2449,15 +2479,18 @@ async def api_entities(request):
 
 
 async def api_mode2_iterate(request):
-    """POST /portal/api/mode2/iterate — Mode 2 iterative loop (logged).
+    """POST /portal/api/mode2/iterate - Mode 2 iterative loop (logged).
 
-    Body: {question, max_iterations? (default 2, hard cap 4), limit?}
+    Body: {question, max_iterations? (default 2, hard cap 5), limit?}
     Every iteration is logged to chat.jsonl. Returns the iteration log;
-    the examiner reviews proposals — nothing is auto-staged.
+    the examiner reviews proposals - nothing is auto-staged.
     """
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
     body = await request.json()
     question = str(body.get("question") or "").strip()
     if not question:
@@ -2524,7 +2557,7 @@ async def api_mode2_corroborate(request):
 
 
 async def api_mode2_propose_draft(request):
-    """POST /portal/api/mode2/propose-draft — LLM drafts a finding from hits.
+    """POST /portal/api/mode2/propose-draft - LLM drafts a finding from hits.
 
     Body: {title, hits: [...]} or {title, query} (hits from the query).
     The draft stages as DRAFT (examiner_selected=False); HMAC approval
@@ -2533,6 +2566,9 @@ async def api_mode2_propose_draft(request):
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
     body = await request.json()
     title = str(body.get("title") or "").strip()
     if not title:
@@ -2600,7 +2636,7 @@ async def api_rag_status(request):
 
 
 async def api_mode3_plan(request):
-    """POST /portal/api/mode3/plan — agent proposes the investigation plan.
+    """POST /portal/api/mode3/plan - agent proposes the investigation plan.
 
     Reads the tool-lane ledger (SKIPs), unrequested extras, and FD-006
     corroboration needs. Logged to agent_runs.jsonl + chat. The examiner
@@ -2609,6 +2645,9 @@ async def api_mode3_plan(request):
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
     from nexus.langgraph.llm_pipeline import get_model
     from nexus.langgraph.mode3 import plan_extras
 
@@ -2621,7 +2660,7 @@ async def api_mode3_plan(request):
 
 
 async def api_mode3_execute(request):
-    """POST /portal/api/mode3/execute — run examiner-approved plan items.
+    """POST /portal/api/mode3/execute - run examiner-approved plan items.
 
     Body: {extras: ["usb_serial", ...], queries: ["...", ...]}
     Extras persist to intake (next lane run parses them; mandatory lane
@@ -2630,6 +2669,9 @@ async def api_mode3_execute(request):
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
     try:
         body = await request.json()
     except Exception:
@@ -2660,7 +2702,7 @@ async def api_mode3_execute(request):
 
 
 async def api_mode3_draft_finding(request):
-    """POST /portal/api/mode3/draft-finding — agent proposes a DRAFT finding (WP 3.7).
+    """POST /portal/api/mode3/draft-finding - agent proposes a DRAFT finding (WP 3.7).
 
     Body: {hits, title, interpretation_hint?}
     Stages a DRAFT finding with examiner_selected=False. The examiner
@@ -2669,6 +2711,9 @@ async def api_mode3_draft_finding(request):
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
     try:
         body = await request.json()
     except Exception:
@@ -2972,6 +3017,45 @@ async def api_case_deactivate(request):
     return JSONResponse({"ok": True, "active": ""})
 
 
+async def api_case_reopen(request):
+    """POST /portal/api/case/reopen — reopen a sealed/closed case for more work.
+
+    Sealing is the completion gate: sealed cases reject mutating actions
+    (409) until the examiner explicitly reopens them. Reopen is
+    audit-chained and returns the case to ACTIVE.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    case_dir = _resolve_case_dir_for(str(body.get("case_id") or ""), request)
+    if not case_dir:
+        return JSONResponse({"error": "No case specified"}, status_code=404)
+
+    from nexus.case import CaseManager
+    from nexus.case.schemas import CaseStatus
+    from nexus.config import settings
+
+    mgr = CaseManager(settings.cases_root / "cases.db")
+    try:
+        case = mgr.get_case(case_dir.name)
+        if case is None:
+            return JSONResponse({"error": "Case not found"}, status_code=404)
+        if case.status not in (CaseStatus.SEALED, CaseStatus.CLOSED, CaseStatus.ARCHIVED):
+            return JSONResponse(
+                {"ok": True, "status": case.status.value, "note": "already open"}
+            )
+        reopened_from = case.status.value
+        updated = mgr.update_status(case_dir.name, CaseStatus.ACTIVE, actor="portal")
+        return JSONResponse({
+            "ok": True,
+            "status": updated.status.value if updated else CaseStatus.ACTIVE.value,
+            "reopened_from": reopened_from,
+        })
+    finally:
+        mgr.close()
+
+
 async def api_case_details(request):
     """GET /portal/api/case/details[?case_id=ID] or /case/{id}/details.
 
@@ -3085,6 +3169,9 @@ async def api_pipeline_run(request):
     case_dir = settings.cases_root / case_id
     if not case_dir.is_dir():
         return JSONResponse({"error": "Case not found"}, status_code=404)
+    sealed = _sealed_case_error(case_id)
+    if sealed:
+        return sealed
 
     # Resolve the case's registered evidence so the N2 lane has data to parse.
     # Without this the pipeline would run against an empty evidence list.
@@ -3409,6 +3496,9 @@ async def api_case_mode(request):
     case_dir = _resolve_case_dir_for(str(body.get("case_id") or ""), request)
     if not case_dir:
         return JSONResponse({"error": "No case specified"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
 
     import yaml
     case_yaml = case_dir / "CASE.yaml"
@@ -3802,6 +3892,7 @@ def create_dashboard():
         Route("/portal/api/case/create", api_case_create, methods=["POST"]),
         Route("/portal/api/case/details", api_case_details, methods=["GET"]),
         Route("/portal/api/case/deactivate", api_case_deactivate, methods=["POST"]),
+        Route("/portal/api/case/reopen", api_case_reopen, methods=["POST"]),
         Route("/portal/api/case/{case_id}/details", api_case_details, methods=["GET"]),
         Route("/portal/api/pipeline/run", api_pipeline_run, methods=["POST"]),
         Route("/portal/api/pipeline/status", api_pipeline_status, methods=["GET"]),

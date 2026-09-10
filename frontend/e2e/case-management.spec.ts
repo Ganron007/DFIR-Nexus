@@ -101,10 +101,8 @@ test("switching cases changes the data on screen", async ({ page, request }) => 
   await page.goto(`${APP}/evidence`);
   await expect(page.getByRole("heading", { name: /Evidence Registry \(4\)/ })).toBeVisible();
 
-  // Explicit switch: preview state never activates by itself.
-  await page.getByRole("button", { name: /Active Case/i }).click();
-  const row = page.locator(".case-list li").filter({ hasText: otherCase });
-  await row.getByRole("button", { name: "Switch" }).click();
+  // Explicit switch via the sidebar dropdown (selection switches directly).
+  await page.getByLabel("Active case").selectOption(otherCase);
 
   await expect(page.getByRole("heading", { name: /Evidence Registry \(1\)/ })).toBeVisible();
   await expect(page.getByText(otherFile, { exact: false })).toBeVisible();

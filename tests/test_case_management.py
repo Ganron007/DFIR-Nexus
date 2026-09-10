@@ -193,6 +193,50 @@ def test_cases_endpoint_exposes_status_and_details(client):
     assert body["details"][case_id]["name"] == "Status Case"
 
 
+def test_sealed_case_locks_actions_until_reopened(client, tmp_path):
+    """Sealed = completed: mutations are rejected (409) until reopen."""
+    from nexus.case import CaseManager
+    from nexus.case.schemas import CaseStatus
+    from nexus.config import settings
+
+    case_id = _create(client, "Sealed Case")["case_id"]
+    ev = tmp_path / "first.txt"
+    ev.write_text("first", encoding="utf-8")
+    assert client.post(
+        "/portal/api/evidence", json={"path": str(ev), "case_id": case_id}
+    ).status_code == 200
+
+    mgr = CaseManager(settings.cases_root / "cases.db")
+    try:
+        mgr.update_status(case_id, CaseStatus.SEALED)
+    finally:
+        mgr.close()
+
+    ev2 = tmp_path / "second.txt"
+    ev2.write_text("second", encoding="utf-8")
+    assert client.post(
+        "/portal/api/evidence", json={"path": str(ev2), "case_id": case_id}
+    ).status_code == 409
+    assert client.post(
+        "/portal/api/pipeline/run", json={"mode": "tools", "case_id": case_id}
+    ).status_code == 409
+    assert client.post(
+        "/portal/api/case/mode", json={"mode": "2", "case_id": case_id}
+    ).status_code == 409
+
+    r = client.post("/portal/api/case/reopen", json={"case_id": case_id})
+    assert r.status_code == 200
+    assert r.json()["status"] == "active"
+    assert r.json()["reopened_from"] == "sealed"
+
+    # Actions flow again after the explicit reopen.
+    assert client.post(
+        "/portal/api/evidence", json={"path": str(ev2), "case_id": case_id}
+    ).status_code == 200
+    details = client.get(f"/portal/api/case/{case_id}/details").json()
+    assert details["status"] == "active"
+
+
 def test_evidence_hash_parity_with_legacy_mcp(tmp_path):
     """The unified service and the legacy MCP hasher must agree on digests."""
     from nexus.case.evidence_service import hash_evidence_path as unified_hash

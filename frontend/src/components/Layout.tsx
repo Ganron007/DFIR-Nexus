@@ -1,5 +1,6 @@
-import { useState } from "react";
+import type { ReactNode } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { api } from "../api/client";
 import { useCase } from "../context/CaseContext";
 
 /**
@@ -80,26 +81,38 @@ function StageStepper({ stages }: { stages: Record<string, boolean> }) {
   );
 }
 
-export default function Layout({ children }: { children: React.ReactNode }) {
+export default function Layout({ children }: { children: ReactNode }) {
   const {
     cases,
+    caseSummaries,
     activeCase,
-    previewCase,
     mode,
     health,
     stages,
     setActiveCase,
     setPreviewCase,
     exitToDashboard,
+    refreshCases,
   } = useCase();
-  const [caseMenuOpen, setCaseMenuOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
 
+  const activeStatus = activeCase ? caseSummaries[activeCase]?.status || "" : "";
+  const isSealed = activeStatus === "sealed";
+
   const handleSwitch = async (caseId: string) => {
+    if (!caseId) return;
     await setActiveCase(caseId);
     setPreviewCase(caseId);
-    setCaseMenuOpen(false);
+  };
+
+  const handleReopen = async () => {
+    try {
+      await api.reopenCase(activeCase);
+      await refreshCases();
+    } catch (e) {
+      console.error("Reopen failed:", e);
+    }
   };
 
   const handleExit = async () => {
@@ -128,43 +141,24 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </div>
 
         <div className="case-switcher">
-          <button
-            className="case-current"
-            onClick={() => setCaseMenuOpen(!caseMenuOpen)}
+          <label htmlFor="case-select" className="case-label">Active Case</label>
+          <select
+            id="case-select"
+            aria-label="Active case"
+            value={cases.includes(activeCase) ? activeCase : ""}
+            onChange={(e) => handleSwitch(e.target.value)}
+            disabled={cases.length === 0}
+            title="Switch the active case"
           >
-            <span className="case-label">Active Case</span>
-            <span className="case-name">{activeCase || "No case — Dashboard"}</span>
-            <span className="case-id">{activeCase || ""}</span>
-          </button>
-          {caseMenuOpen && (
-            <ul className="case-list">
-              {cases.map((c) => (
-                <li key={c} style={{ display: "flex", gap: 4, alignItems: "stretch" }}>
-                  <button
-                    onClick={() => setPreviewCase(c)}
-                    style={{
-                      flex: 1,
-                      background: c === previewCase ? "rgba(47,129,247,0.15)" : undefined,
-                    }}
-                    title="Preview (does not switch)"
-                  >
-                    <span className="case-name">{c}</span>
-                  </button>
-                  <button
-                    className="btn btn-sm"
-                    onClick={() => handleSwitch(c)}
-                    disabled={c === activeCase}
-                    title={c === activeCase ? "Already active" : "Switch to this case"}
-                  >
-                    {c === activeCase ? "Current" : "Switch"}
-                  </button>
-                </li>
-              ))}
-              {cases.length === 0 && (
-                <li className="empty">No cases found</li>
-              )}
-            </ul>
-          )}
+            <option value="">
+              {cases.length === 0 ? "No cases" : "Select a case…"}
+            </option>
+            {cases.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
         </div>
 
         {/* WP 4b.6: Mode indicator — click navigates to the mode's primary surface */}
@@ -277,6 +271,30 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </span>
           </div>
         </header>
+        {isSealed && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              background: "rgba(210,153,34,0.12)",
+              border: "1px solid rgba(210,153,34,0.4)",
+              borderRadius: 6,
+              padding: "8px 12px",
+              margin: "8px 16px 0",
+              fontSize: 12,
+            }}
+          >
+            <span>
+              This case is <strong>sealed (completed)</strong> — actions are locked.
+              Reopen it to continue the investigation.
+            </span>
+            <button className="btn btn-sm" onClick={handleReopen}>
+              Reopen case
+            </button>
+          </div>
+        )}
         {/* WP 4b.4: N1-N8 stage stepper — only inside an investigation */}
         {activeCase && <StageStepper stages={stages} />}
         <div className="content">{children}</div>

@@ -167,6 +167,25 @@
 
 ---
 
+### POST /portal/api/case/reopen
+**Description:** Reopens a sealed (completed), closed, or archived case and returns it to `ACTIVE`. Sealing is the completion gate: sealed cases reject mutating actions with `409` until reopened. The transition is audit-chained.
+
+**Request:**
+```json
+{ "case_id": "CASE-XXXX-XXXX" }
+```
+`case_id` optional — falls back to the active case (or the `X-Nexus-Case` header).
+
+**Response 200:**
+```json
+{ "ok": true, "status": "active", "reopened_from": "sealed" }
+```
+If the case is already open: `{"ok": true, "status": "created", "note": "already open"}`.
+
+**Errors:** `404` case not found. `409` from any mutating endpoint (evidence register, pipeline run, mode change, workbench promote, mode 2/3 actions) while the case is `SEALED`.
+
+---
+
 ### POST /portal/api/intake
 **Description:** Persists N1 intake fields (question, window, extras, playbooks, subjects, hypothesis, query_extra) into the active case's `CASE.yaml` under the `intake` key. Only non-empty fields are written; existing fields are merged.
 
