@@ -665,7 +665,10 @@ export const api = {
     post<PipelineRunResponse>("/pipeline/run", params),
   pipelineStatus: (runId: string) =>
     request<PipelineStatusResponse>(`/pipeline/status?run_id=${runId}`),
-  pipelineLedger: () => request<PipelineLedgerResponse>("/pipeline/ledger"),
+  pipelineLedger: (caseId?: string) =>
+    request<PipelineLedgerResponse>(
+      `/pipeline/ledger${caseId ? `?case_id=${encodeURIComponent(caseId)}` : ""}`,
+    ),
   fsList: (path?: string) =>
     request<FsListResponse>(`/fs/list${path ? `?path=${encodeURIComponent(path)}` : ""}`),
   playbookNeedles: (families?: string) =>

@@ -126,7 +126,8 @@ test("investigation depth is a case-level setting that persists", async ({ page,
   await expect(page.getByLabel("Investigation depth")).toHaveValue("mode2");
 });
 
-test("wizard creates, registers, and enters a case with no CLI", async ({ page }) => {
+test("wizard creates, registers, runs the lane, and enters the cockpit", async ({ page }) => {
+  test.setTimeout(240_000);
   const file = makeEvidenceFile("wizard");
   const caseName = `E2E Wizard ${Date.now()}`;
 
@@ -147,8 +148,13 @@ test("wizard creates, registers, and enters a case with no CLI", async ({ page }
   await page.getByText(/Mode 1 — Examiner-Driven/i).click();
   await page.getByRole("button", { name: /Confirm Mode/i }).click();
 
-  // Step 4 — enter cockpit (skip the lane; L1 covers the real run)
-  await page.getByRole("button", { name: /Skip — Enter Cockpit/i }).click();
+  // Step 4 — with evidence registered, cockpit entry is gated on the lane.
+  await expect(page.getByRole("button", { name: /Enter Cockpit/i })).toHaveCount(0);
+  await page.getByRole("button", { name: /Run N2 Pipeline/i }).click();
+  await expect(page.getByText(/Parser lane:/i)).toBeVisible({ timeout: 180_000 });
+  // The ledger shows what ran (a bare .txt honestly yields a discovery SKIP).
+  await expect(page.locator("table").getByText("(discovery)")).toBeVisible();
+  await page.getByRole("button", { name: /Enter Cockpit/i }).click();
   await expect(page).toHaveURL(new RegExp(`${APP}/explore$`));
 
   // The wizard's explicit-case registration is visible in the cockpit.

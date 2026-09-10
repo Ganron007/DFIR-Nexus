@@ -10,7 +10,7 @@
  */
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { api } from "../api/client";
+import { api, type LedgerRow } from "../api/client";
 import { useCase } from "../context/CaseContext";
 import EvidencePicker from "../components/EvidencePicker";
 
@@ -48,6 +48,7 @@ export default function CaseSetup() {
   // Step 4 state
   const [pipelineRunId, setPipelineRunId] = useState("");
   const [pipelineStatus, setPipelineStatus] = useState("");
+  const [ledger, setLedger] = useState<LedgerRow[]>([]);
 
   const createCase = async () => {
     if (!name.trim()) {
@@ -150,6 +151,14 @@ export default function CaseSetup() {
             setBusy(false);
             if (s.status === "error") {
               setError(s.error || "Pipeline failed");
+            } else {
+              // Show exactly which parsers ran before the examiner enters.
+              try {
+                const lg = await api.pipelineLedger(caseId);
+                setLedger(lg.ledger || []);
+              } catch {
+                setLedger([]);
+              }
             }
           }
         } catch {
@@ -162,6 +171,11 @@ export default function CaseSetup() {
       setBusy(false);
     }
   };
+
+  const okCount = ledger.filter((r) => (r.status || "").toUpperCase() === "OK").length;
+  const skipCount = ledger.filter((r) => (r.status || "").toUpperCase() === "SKIP").length;
+  const failCount = ledger.filter((r) => (r.status || "").toUpperCase() === "FAIL").length;
+  const hasEvidence = registeredPaths.length > 0;
 
   const finish = async () => {
     if (!caseId) {
@@ -392,7 +406,8 @@ export default function CaseSetup() {
           <h3>Run N2 Processing Lane</h3>
           <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 12 }}>
             Case <strong>{caseId}</strong> ready. Mode <strong>{mode}</strong> selected.
-            Run the deterministic parser lane (N2) to process evidence.
+            Run the deterministic parser lane (N2) to process evidence. The lane
+            output decides whether you can enter the cockpit.
           </p>
           {!pipelineRunId && (
             <button className="btn btn-primary" onClick={runPipeline} disabled={busy}>
@@ -421,23 +436,70 @@ export default function CaseSetup() {
                 </div>
               )}
               {pipelineStatus === "complete" && (
-                <button className="btn btn-primary" onClick={finish} style={{ marginTop: 12 }}>
-                  Enter Cockpit →
-                </button>
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ fontSize: 13, marginBottom: 8 }}>
+                    Parser lane:{" "}
+                    <strong style={{ color: "var(--success)" }}>{okCount} OK</strong>
+                    {skipCount ? ` · ${skipCount} SKIP` : ""}
+                    {failCount ? ` · ${failCount} FAIL` : ""}
+                  </div>
+                  {ledger.length > 0 ? (
+                    <div style={{ maxHeight: 220, overflowY: "auto" }}>
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Tool</th>
+                            <th>Status</th>
+                            <th>Detail</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {ledger.map((row, i) => (
+                            <tr key={i}>
+                              <td style={{ fontFamily: "monospace", fontSize: 11 }}>{String(row.tool || "—")}</td>
+                              <td>
+                                <span
+                                  className={`badge ${(row.status || "").toUpperCase() === "OK" ? "approved" : (row.status || "").toUpperCase() === "SKIP" ? "draft" : "rejected"}`}
+                                  style={{ fontSize: 10 }}
+                                >
+                                  {String(row.status || "—")}
+                                </span>
+                              </td>
+                              <td style={{ fontSize: 11, color: "var(--text-muted)" }}>{String(row.detail || "")}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>No parser ledger produced.</div>
+                  )}
+                  {okCount === 0 && failCount === 0 && (
+                    <div style={{ fontSize: 12, color: "var(--warning)", marginTop: 8 }}>
+                      No parser produced output — check the evidence path shape
+                      (e.g. a Stage-0 pack with a wevtutil/ folder) before investigating.
+                    </div>
+                  )}
+                  <button className="btn btn-primary" onClick={finish} style={{ marginTop: 12 }}>
+                    Enter Cockpit →
+                  </button>
+                </div>
               )}
               {pipelineStatus === "error" && (
                 <div>
                   <div className="error-banner" style={{ marginTop: 8 }}>{error}</div>
-                  <button className="btn" onClick={() => { setPipelineRunId(""); setPipelineStatus(""); }} style={{ marginTop: 8 }}>
+                  <button className="btn" onClick={() => { setPipelineRunId(""); setPipelineStatus(""); setLedger([]); }} style={{ marginTop: 8 }}>
                     Retry
                   </button>
                 </div>
               )}
             </div>
           )}
-          <button className="btn" onClick={finish} style={{ marginTop: 12, marginLeft: 8 }}>
-            Skip — Enter Cockpit
-          </button>
+          {!hasEvidence && !pipelineRunId && (
+            <button className="btn" onClick={finish} style={{ marginTop: 12, marginLeft: 8 }}>
+              Enter Cockpit (no evidence registered)
+            </button>
+          )}
         </div>
       )}
     </div>

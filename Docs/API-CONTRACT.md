@@ -1519,7 +1519,9 @@ When `is_file` is true, the picker shows an "Add This File" prompt using `file_e
 ---
 
 ### GET /portal/api/pipeline/ledger
-**Description:** Tool-lane ledger for the active case (parser visibility). Returns the per-parser status from the active tools run.
+**Description:** Tool-lane ledger for the resolved case (parser visibility). Returns the per-parser status from the active tools run — used by the Evidence page panel and the Mode 1 wizard's "Run N2 Processing Lane" step, which gates cockpit entry on lane completion.
+
+**Query params:** `case_id` (optional — explicit case; the SPA `X-Nexus-Case` header also resolves it). Without either, the active case is used.
 
 **Response 200:**
 ```json
