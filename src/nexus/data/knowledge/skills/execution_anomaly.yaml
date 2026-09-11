@@ -5,7 +5,7 @@ description: >-
   chains, LOLBin abuse, and process lineage analysis.
 trigger:
   families: [prefetch, amcache, evtx, sysmon, pecmd, mft, appcompat]
-  keywords: [exec, unsigned, binary, process, anomaly, lolbin, rundll32, mshta]
+  keywords: [unsigned, anomaly, lolbin, rundll32, mshta, hollowing, spawn]
   techniques: [T1218, T1059.005, T1106, T1055.001]
 steps:
   - name: unsigned_execution

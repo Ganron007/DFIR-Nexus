@@ -195,6 +195,7 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
 
     # --- alerts: severity rows from detection families ---
     alerts: list[dict[str, Any]] = []
+    alert_hits: list[dict[str, Any]] = []
     for h in hits:
         fam = str(h.get("family") or "").lower()
         if not any(k in fam for k in _ALERT_FAMILY_HINTS):
@@ -223,7 +224,26 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
                 "line": str(h.get("line") or ""),
             }
         )
-    alerts.sort(key=lambda a: (0 if a["level"] == "critical" else 1, a["time"]))
+        alert_hits.append(h)
+    pairs = sorted(
+        zip(alerts, alert_hits, strict=False),
+        key=lambda p: (0 if p[0]["level"] == "critical" else 1, p[0]["time"]),
+    )
+    alerts = [a for a, _h in pairs]
+    alert_hits = [h for _a, h in pairs]
+
+    # WP 4j.1: interpretation on every alert — what it means + what to check
+    # next, from the matching skill + playbook caveats (no RAG here; the
+    # on-demand /hit/interpret endpoint carries the methodology chunk).
+    try:
+        from nexus.langgraph.interpret import interpret_hits
+
+        for alert, interp in zip(
+            alerts, interpret_hits(case_dir, alert_hits), strict=False
+        ):
+            alert["interpret"] = interp
+    except Exception as exc:  # noqa: BLE001
+        log.debug("alert interpretation failed: %s", exc)
 
     # --- entity top-N ---
     raw_entities = extract_entities(hits)

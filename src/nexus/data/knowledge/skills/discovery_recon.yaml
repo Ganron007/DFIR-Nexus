@@ -5,7 +5,7 @@ description: >-
   domain enumeration, network scanning.
 trigger:
   families: [evtx, sysmon, powershell, prefetch, cmd]
-  keywords: [recon, enum, whoami, net user, systeminfo, ipconfig, domain, scan]
+  keywords: [recon, enum, whoami, systeminfo, ipconfig, netstat, arp, nltest]
   techniques: [T1033, T1082, T1087, T1018, T1069, T1057]
 steps:
   - name: whoami_chains

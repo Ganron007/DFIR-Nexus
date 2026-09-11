@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { api, type N4Hit, type HistogramResponse, type PlaybookSuggestion } from "../api/client";
+import { api, type N4Hit, type HistogramResponse, type PlaybookSuggestion, type HitInterpretation } from "../api/client";
 import { useCase } from "../context/CaseContext";
 import { allHitColumns } from "../lib/hitColumns";
 import VirtualTable, { type Column } from "../components/VirtualTable";
@@ -34,6 +34,9 @@ export default function Explore() {
   const [sortKey, setSortKey] = useState("");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [selected, setSelected] = useState<N4Hit | null>(null);
+  // WP 4j.1: hit interpretation — meaning + what to check next, from skills/playbooks/RAG
+  const [interp, setInterp] = useState<HitInterpretation | null>(null);
+  const [interpLoading, setInterpLoading] = useState(false);
   const reqIdRef = useRef(0);
 
   // Load family/host aggregates and workbench bookmarks on mount
@@ -208,6 +211,22 @@ export default function Explore() {
     setSelected(null);
     setTimeout(() => doSearch(0), 50);
   };
+
+  // WP 4j.1: fetch interpretation when a hit is selected for the drawer
+  useEffect(() => {
+    if (!selected) {
+      setInterp(null);
+      setInterpLoading(false);
+      return;
+    }
+    let stale = false;
+    setInterpLoading(true);
+    api.hitInterpret(selected)
+      .then((r) => { if (!stale) setInterp(r); })
+      .catch(() => { if (!stale) setInterp(null); })
+      .finally(() => { if (!stale) setInterpLoading(false); });
+    return () => { stale = true; };
+  }, [selected]);
 
   // WP 4i.3: client-side sort of the current page
   const sortedHits = (() => {
@@ -648,6 +667,86 @@ export default function Explore() {
             <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8 }}>
               {selected.file}:{selected.line} · terms: {selected.terms || "—"}
             </div>
+
+            {/* WP 4j.1: what this means + what to check next */}
+            {interpLoading && (
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8 }}>
+                Interpreting…
+              </div>
+            )}
+            {interp && (interp.meaning || interp.look_for.length > 0 || interp.caveats.length > 0) && (
+              <div style={{
+                marginBottom: 10, padding: "8px 10px",
+                background: "var(--bg-tertiary)", borderRadius: 6,
+                borderLeft: "3px solid var(--accent)",
+              }}>
+                {interp.meaning && (
+                  <div style={{ fontSize: 12, marginBottom: 6 }}>{interp.meaning}</div>
+                )}
+                {interp.skills.length > 0 && (
+                  <div style={{ marginBottom: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
+                    {interp.skills.map((s) => (
+                      <span key={s.name} className="badge draft" style={{ fontSize: 9 }}
+                            title={s.title}>
+                        {s.name}{s.mitre.length ? ` · ${s.mitre.join(",")}` : ""}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {interp.look_for.length > 0 && (
+                  <div style={{ fontSize: 11, marginBottom: 4 }}>
+                    <strong style={{ color: "var(--text-secondary)" }}>Check next:</strong>
+                    <ul style={{ margin: "2px 0 0 16px", padding: 0 }}>
+                      {interp.look_for.map((lf, i) => <li key={i}>{lf}</li>)}
+                    </ul>
+                  </div>
+                )}
+                {interp.next_queries.length > 0 && (
+                  <div style={{ fontSize: 11, marginBottom: 4 }}>
+                    <strong style={{ color: "var(--text-secondary)" }}>Run:</strong>{" "}
+                    {interp.next_queries.map((q) => (
+                      <button key={q} className="btn btn-sm"
+                              style={{ fontFamily: "monospace", fontSize: 10, marginRight: 4 }}
+                              title="Search this query"
+                              onClick={() => { setNeedles(q); setSelected(null); setTimeout(() => doSearch(0), 50); }}>
+                        {q.length > 40 ? q.slice(0, 40) + "…" : q}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {interp.pivots.length > 0 && (
+                  <div style={{ fontSize: 11, marginBottom: 4 }}>
+                    <strong style={{ color: "var(--text-secondary)" }}>Pivot on:</strong>{" "}
+                    <span style={{ fontFamily: "monospace" }}>{interp.pivots.join(", ")}</span>
+                  </div>
+                )}
+                {interp.corroborate.length > 0 && (
+                  <div style={{ fontSize: 11, marginBottom: 4 }}>
+                    <strong style={{ color: "var(--text-secondary)" }}>Corroborate:</strong>
+                    <ul style={{ margin: "2px 0 0 16px", padding: 0 }}>
+                      {interp.corroborate.map((c, i) => <li key={i}>{c}</li>)}
+                    </ul>
+                  </div>
+                )}
+                {interp.negative.length > 0 && (
+                  <div style={{ fontSize: 11, marginBottom: 4, color: "var(--text-muted)" }}>
+                    <strong>If absent:</strong> {interp.negative.join(" ")}
+                  </div>
+                )}
+                {interp.caveats.length > 0 && (
+                  <div style={{ fontSize: 10, color: "var(--warning)" }}>
+                    {interp.caveats.map((c, i) => <div key={i}>⚠ {c}</div>)}
+                  </div>
+                )}
+                {interp.methodology && (
+                  <details style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
+                    <summary style={{ cursor: "pointer" }}>Methodology (RAG)</summary>
+                    <div style={{ whiteSpace: "pre-wrap", marginTop: 4 }}>{interp.methodology}</div>
+                  </details>
+                )}
+              </div>
+            )}
+
             {selected.fields && Object.keys(selected.fields).length > 0 ? (
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <tbody>

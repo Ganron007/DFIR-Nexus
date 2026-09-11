@@ -5,7 +5,7 @@ description: >-
   DNS tunneling, large outbound transfers.
 trigger:
   families: [evtx, sysmon, browser, netstat, powershell, prefetch, mft]
-  keywords: [exfil, steal, upload, archive, rar, 7z, mega, dropbox, dns]
+  keywords: [exfil, steal, upload, archive, rar, 7z, mega, dropbox, webhook]
   techniques: [T1041, T1567, T1071.004, T1560.001]
 steps:
   - name: archive_creation

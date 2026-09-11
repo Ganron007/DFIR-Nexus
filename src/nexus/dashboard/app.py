@@ -3739,6 +3739,31 @@ async def api_case_briefing(request):
         return JSONResponse({"error": f"briefing failed: {exc}"}, status_code=500)
 
 
+async def api_hit_interpret(request):
+    """POST /portal/api/hit/interpret — WP 4j.1 hit interpretation layer.
+
+    Body: {hit: {family, file, line, terms, text, fields?, host?}, rag?: bool}.
+    Returns what the row means + what to check next — matched skills
+    (look_for / corroborate / negative / caveats / confidence_rules),
+    playbook caveats for the family, and a RAG methodology chunk when
+    ``rag`` is true (default) and the index is available.
+    """
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return JSONResponse({"error": "invalid JSON body"}, status_code=400)
+    hit = body.get("hit")
+    if not isinstance(hit, dict) or not str(hit.get("family") or hit.get("file") or "").strip():
+        return JSONResponse({"error": "hit object required (family/file)"}, status_code=400)
+    include_rag = bool(body.get("rag", True))
+    from nexus.langgraph.interpret import interpret_hit
+
+    return JSONResponse(interpret_hit(case_dir, hit, include_rag=include_rag))
+
+
 async def api_fs_list(request):
     """GET /portal/api/fs/list?path=... — filesystem browsing for the
     evidence picker (WP: evidence path selection UI).
@@ -4405,6 +4430,7 @@ def create_dashboard():
         Route("/portal/api/pipeline/status", api_pipeline_status, methods=["GET"]),
         Route("/portal/api/pipeline/ledger", api_pipeline_ledger, methods=["GET"]),
         Route("/portal/api/case/briefing", api_case_briefing, methods=["GET"]),
+        Route("/portal/api/hit/interpret", api_hit_interpret, methods=["POST"]),
         Route("/portal/api/needles/feedback", api_needle_feedback, methods=["POST"]),
         Route("/portal/api/fs/list", api_fs_list, methods=["GET"]),
         Route("/portal/api/playbook/needles", api_playbook_needles, methods=["GET"]),

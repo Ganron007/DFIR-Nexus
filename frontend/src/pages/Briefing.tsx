@@ -17,6 +17,8 @@ export default function Briefing() {
   const [brief, setBrief] = useState<BriefingResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  // WP 4j.1: alert rows expand to show interpretation (meaning + what to check)
+  const [openAlert, setOpenAlert] = useState<number | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -128,20 +130,72 @@ export default function Briefing() {
             ) : (
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <tbody>
-                  {alerts.slice(0, 20).map((a, i) => (
-                    <tr key={i} style={{ borderBottom: "1px solid var(--border)", cursor: "pointer" }}
-                        onClick={() => searchNeedle(a.title || a.family, a.family)}>
-                      <td style={{ padding: "4px 6px", width: 60 }}>
-                        <span className={`badge ${a.level === "critical" ? "danger" : "draft"}`} style={{ fontSize: 9 }}>
-                          {a.level.toUpperCase()}
-                        </span>
-                      </td>
-                      <td style={{ padding: "4px 6px", fontSize: 11 }}>{a.title || "(untitled rule)"}</td>
-                      <td style={{ padding: "4px 6px", fontSize: 10, color: "var(--text-muted)", width: 140 }}>
-                        {a.host} · {a.time.slice(0, 19)}
-                      </td>
-                    </tr>
-                  ))}
+                  {alerts.slice(0, 20).map((a, i) => {
+                    const it = a.interpret;
+                    const open = openAlert === i;
+                    return (
+                      <tr key={i} style={{ borderBottom: "1px solid var(--border)", verticalAlign: "top" }}>
+                        <td colSpan={3} style={{ padding: 0 }}>
+                          <div
+                            style={{ display: "flex", cursor: "pointer", padding: "4px 6px" }}
+                            onClick={() => setOpenAlert(open ? null : i)}
+                            title={it ? "click for what this means + what to check next" : "click to search this alert"}
+                          >
+                            <span className={`badge ${a.level === "critical" ? "danger" : "draft"}`}
+                                  style={{ fontSize: 9, width: 54, flexShrink: 0 }}>
+                              {a.level.toUpperCase()}
+                            </span>
+                            <span style={{ fontSize: 11, flex: 1, padding: "0 6px" }}>
+                              {a.title || "(untitled rule)"}
+                            </span>
+                            <span style={{ fontSize: 10, color: "var(--text-muted)", width: 150, flexShrink: 0 }}>
+                              {a.host} · {a.time.slice(0, 19)}
+                            </span>
+                            <span style={{ fontSize: 10, color: "var(--text-muted)", width: 14 }}>{open ? "▾" : "▸"}</span>
+                          </div>
+                          {open && (
+                            <div style={{
+                              padding: "6px 10px 8px 66px", fontSize: 11,
+                              borderTop: "1px dashed var(--border)",
+                            }}>
+                              {it?.meaning && <div style={{ marginBottom: 4 }}>{it.meaning}</div>}
+                              {it && it.look_for.length > 0 && (
+                                <div style={{ marginBottom: 4 }}>
+                                  <strong style={{ color: "var(--text-secondary)" }}>Check next:</strong>
+                                  <ul style={{ margin: "2px 0 0 16px", padding: 0 }}>
+                                    {it.look_for.slice(0, 4).map((lf, j) => <li key={j}>{lf}</li>)}
+                                  </ul>
+                                </div>
+                              )}
+                              {it && it.next_queries.length > 0 && (
+                                <div style={{ marginBottom: 4 }}>
+                                  <strong style={{ color: "var(--text-secondary)" }}>Run:</strong>{" "}
+                                  {it.next_queries.slice(0, 4).map((q) => (
+                                    <button key={q} className="btn btn-sm"
+                                            style={{ fontFamily: "monospace", fontSize: 10, marginRight: 4 }}
+                                            onClick={(e) => { e.stopPropagation(); searchNeedle(q, a.family); }}>
+                                      {q.length > 40 ? q.slice(0, 40) + "…" : q}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                              {it && it.caveats.length > 0 && (
+                                <div style={{ fontSize: 10, color: "var(--warning)" }}>
+                                  {it.caveats.slice(0, 3).map((c, j) => <div key={j}>⚠ {c}</div>)}
+                                </div>
+                              )}
+                              {!it && (
+                                <button className="btn btn-sm" style={{ fontSize: 10 }}
+                                        onClick={(e) => { e.stopPropagation(); searchNeedle(a.title || a.family, a.family); }}>
+                                  Search this alert in Explore →
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}

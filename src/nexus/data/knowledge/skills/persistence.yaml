@@ -5,7 +5,7 @@ description: >-
   services, scheduled tasks, WMI event subscriptions.
 trigger:
   families: [registry, evtx, sysmon, services, scheduled_tasks, security]
-  keywords: [persist, run key, autostart, service, schtasks, wmi, subscription]
+  keywords: [persist, autostart, schtasks, subscription, runkey, reg add, startup]
   techniques: [T1547.001, T1543.003, T1053.005, T1546.003]
 steps:
   - name: run_keys

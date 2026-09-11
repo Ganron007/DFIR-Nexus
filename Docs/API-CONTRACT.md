@@ -1542,6 +1542,55 @@ When `is_file` is true, the picker shows an "Add This File" prompt using `file_e
 ```
 Empty `ledger` + empty `run_id` = no tools run has executed yet for this case.
 
+### GET /portal/api/case/briefing
+**Description:** Deterministic case briefing (WP 4i.1) — what was processed
+(inventory + parser ledger), what the signatures caught (alert surface), the
+signal map (needle→hit counts), top entities, hosts, time range, and intake
+echo. WP 4i.5 adds an optional `directions` block when an LLM is configured.
+WP 4j.1 attaches `interpret` to each alert — see `/hit/interpret` for the
+payload shape (without the RAG `methodology` chunk).
+
+**Query params:** `case_id` (optional — explicit case; `X-Nexus-Case` header
+also resolves it).
+
+**Response 200:** `{inventory, families, total_files, total_rows, ledger,
+hosts, time_range, alerts, alert_count, needle_scan, scanned_needles,
+entities, intake, directions?, backend, hits_examined}`
+
+### POST /portal/api/hit/interpret
+**Description:** WP 4j.1 hit interpretation layer — what a hit/alert row
+means and what to check next. Deterministic: matches the hit against skill
+procedures (trigger families/keywords/techniques, step-level token overlap)
+plus family-matched playbook caveats. Optionally appends a RAG methodology
+chunk (`rag: true`, default) — methodology is context, never case evidence.
+
+**Request body:**
+```json
+{
+  "hit": {"family": "hayabusa", "file": "hayabusa_alerts.csv", "line": "2",
+          "terms": "lsass", "text": "...", "fields": {"RuleTitle": "LSASS Memory Access"}},
+  "rag": true
+}
+```
+
+**Response 200:**
+```json
+{
+  "meaning": "Detect access to lsass.exe memory by non-standard processes…",
+  "skills": [{"name": "lsass_credential_access", "title": "…", "mitre": ["T1003.001"],
+              "matched_steps": [{"name": "sysmon_lsass_access", "query": "…",
+                                 "look_for": "…", "corroborate": "…", "pivot": "SourceImage"}]}],
+  "techniques": ["T1003.001"],
+  "look_for": ["…"], "corroborate": ["…"], "next_queries": ["…"],
+  "pivots": ["SourceImage"], "negative": ["…"], "caveats": ["…"],
+  "confidence_rules": {"high": "…", "medium": "…", "low": "…"},
+  "methodology": "…",
+  "sources": ["skills", "playbooks", "rag"]
+}
+```
+
+**Errors:** `400` invalid JSON or missing `hit` object · `404` no active case.
+
 ---
 
 ## 12. HTML Page Routes (React Routes)

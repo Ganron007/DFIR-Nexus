@@ -178,6 +178,34 @@ export interface N4Hit {
   host?: string;
 }
 
+/** WP 4j.1 — POST /hit/interpret → what a hit means + what to check next. */
+export interface HitInterpretation {
+  meaning: string;
+  skills: {
+    name: string;
+    title: string;
+    mitre: string[];
+    matched_steps: {
+      name: string;
+      query: string;
+      look_for: string;
+      corroborate: string;
+      pivot: string;
+    }[];
+  }[];
+  techniques: string[];
+  look_for: string[];
+  corroborate: string[];
+  next_queries: string[];
+  pivots: string[];
+  negative: string[];
+  caveats: string[];
+  confidence_rules: Record<string, string>;
+  methodology?: string;
+  sources: string[];
+  error?: string;
+}
+
 /** POST /mode1/ask → {needles, window, hits, count, backend} or {needles: [], window, error} */
 export interface AskResponse {
   needles: string[];
@@ -480,6 +508,8 @@ export interface BriefingAlert {
   host: string;
   file: string;
   line: string;
+  /** WP 4j.1 — interpretation (meaning + what to check next) attached at build. */
+  interpret?: HitInterpretation;
 }
 export interface BriefingNeedle {
   needle: string;
@@ -639,6 +669,9 @@ export const api = {
     end?: string;
     bucket?: number;
   }) => post<HistogramResponse>("/explore/histogram", params),
+  // WP 4j.1: hit interpretation — what the row means + what to check next
+  hitInterpret: (hit: N4Hit, rag = true) =>
+    post<HitInterpretation>("/hit/interpret", { hit, rag }),
 
   // Workbench
   workbench: () => request<WorkbenchResponse>("/workbench"),
