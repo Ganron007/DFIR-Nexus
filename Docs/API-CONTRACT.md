@@ -1546,16 +1546,37 @@ Empty `ledger` + empty `run_id` = no tools run has executed yet for this case.
 **Description:** Deterministic case briefing (WP 4i.1) — what was processed
 (inventory + parser ledger), what the signatures caught (alert surface), the
 signal map (needle→hit counts), top entities, hosts, time range, and intake
-echo. WP 4i.5 adds an optional `directions` block when an LLM is configured.
+echo. WP 4j.3 adds a `walkthrough` — the four-step guided first pass.
 WP 4j.1 attaches `interpret` to each alert — see `/hit/interpret` for the
 payload shape (without the RAG `methodology` chunk).
+
+The optional LLM `directions` block is **no longer inline** — it moved to a
+lazy endpoint (`/case/briefing/directions`, below) so a slow local model
+never blocks the deterministic payload.
 
 **Query params:** `case_id` (optional — explicit case; `X-Nexus-Case` header
 also resolves it).
 
 **Response 200:** `{inventory, families, total_files, total_rows, ledger,
 hosts, time_range, alerts, alert_count, needle_scan, scanned_needles,
-entities, intake, directions?, backend, hits_examined}`
+entities, intake, walkthrough, backend, hits_examined}`
+
+`walkthrough[]` — `{order, key, title, why, count, actions[{label, needle,
+family?, hits?, level?, host?, source?, etype?}], learn{headline,
+why_matters[], sources[]}}`.
+
+### GET /portal/api/case/briefing/directions
+**Description:** Optional LLM layer over the deterministic briefing (WP 4i.5).
+Plain-English investigation starting points grounded in the real numbers —
+alerts, signal-map hits, entities, intake focus. Runs on demand so the
+deterministic briefing stays fast; returns an empty list when no model is
+configured. The frontend fetches this lazily after the briefing renders.
+
+**Query params:** `case_id` (optional — explicit case; `X-Nexus-Case` header
+also resolves it).
+
+**Response 200:** `{directions: [{title, why, needles[], family}]}` — empty
+list when no LLM is configured or generation fails.
 
 ### POST /portal/api/hit/interpret
 **Description:** WP 4j.1 hit interpretation layer — what a hit/alert row
@@ -1577,7 +1598,16 @@ chunk (`rag: true`, default) — methodology is context, never case evidence.
 ```json
 {
   "meaning": "Detect access to lsass.exe memory by non-standard processes…",
-  "skills": [{"name": "lsass_credential_access", "title": "…", "mitre": ["T1003.001"],
+  "learn": {"headline": "LSASS memory credential dumping",
+            "why_matters": ["…"], "watch_out": ["…"],
+            "technique": [{"id": "T1003.001", "name": "LSASS Memory", "caveat": "…"}],
+            "sources": ["skills", "playbooks"]},
+  "skills": [{"name": "lsass_credential_access", "title": "…", "description": "…",
+              "mitre": ["T1003.001"],
+              "why": ["technique T1003.001", "keyword lsass"],
+              "confidence": {"high": "…", "medium": "…", "low": "…"},
+              "confirm": [{"query": "…", "look_for": "…", "corroborate": "…"}],
+              "refute": "what absence of the procedure would mean",
               "matched_steps": [{"name": "sysmon_lsass_access", "query": "…",
                                  "look_for": "…", "corroborate": "…", "pivot": "SourceImage"}]}],
   "techniques": ["T1003.001"],
@@ -1588,6 +1618,11 @@ chunk (`rag: true`, default) — methodology is context, never case evidence.
   "sources": ["skills", "playbooks", "rag"]
 }
 ```
+
+WP 4j.2 added `why`/`confirm`/`refute`/`confidence`/`description` to each
+skill — the alert→skill linkage (why it matched, steps that would confirm,
+what absence would mean). WP 4j.4 added the `learn` teaching block —
+plain-language "why this matters" per hit.
 
 **Errors:** `400` invalid JSON or missing `hit` object · `404` no active case.
 
