@@ -4,8 +4,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 
 def _mkcase(tmp_path: Path) -> Path:
     """Minimal case dir with tools extractions + ledger."""
@@ -76,6 +74,57 @@ def test_briefing_empty_case(tmp_path):
     assert b["families"] == []
     assert b["alert_count"] == 0
     assert b["needle_scan"] == []
+
+
+def test_briefing_guided_first_pass(tmp_path):
+    """WP 4j.3 — walkthrough order: alerts → entities → signals → starts."""
+    from nexus.langgraph.briefing import case_briefing
+
+    b = case_briefing(_mkcase(tmp_path))
+    walk = b["walkthrough"]
+    assert [s["key"] for s in walk] == ["alerts", "entities", "signals", "starting_points"]
+    assert [s["order"] for s in walk] == [1, 2, 3, 4]
+    # step 1 triage carries the critical/high alerts with a runnable needle
+    assert walk[0]["count"] == 2
+    assert walk[0]["actions"], "expected alert actions"
+    assert all(a.get("needle") for a in walk[0]["actions"])
+    # step 2 counts entity types; step 3 counts needles with hits
+    assert walk[1]["count"] == len(b["entities"])
+    assert walk[2]["count"] == len(b["needle_scan"])
+    # step 4 dedupes starting needles across the first three steps
+    starts = [a["needle"].lower() for a in walk[3]["actions"]]
+    assert starts == list(dict.fromkeys(starts))
+    # every step explains itself (learning, not just a list)
+    assert all(s["why"] for s in walk)
+
+
+def test_briefing_walkthrough_empty_case(tmp_path):
+    """A case with no hits still yields the walkthrough shape (counts 0)."""
+    from nexus.langgraph.briefing import case_briefing
+
+    case = tmp_path / "CASE-EMPTY"
+    case.mkdir()
+    walk = case_briefing(case)["walkthrough"]
+    assert len(walk) == 4
+    assert walk[0]["count"] == 0
+    assert walk[0]["why"]
+
+
+def test_briefing_intake_echo_loaded(tmp_path):
+    """Regression: intake is read via query_pack (was imported from the wrong
+    module, so the intake echo silently never populated)."""
+    from nexus.langgraph.briefing import case_briefing
+
+    b = case_briefing(_mkcase(tmp_path))
+    assert b["intake"].get("question") == "was lsass dumped"
+
+
+def test_briefing_markdown_walkthrough(tmp_path):
+    from nexus.langgraph.briefing import briefing_to_markdown, case_briefing
+
+    md = briefing_to_markdown(case_briefing(_mkcase(tmp_path)))
+    assert "## Guided first pass" in md
+    assert "1. Triage the alerts" in md
 
 
 def test_skills_load_and_validate():

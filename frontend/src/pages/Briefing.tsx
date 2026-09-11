@@ -19,6 +19,30 @@ export default function Briefing() {
   const [error, setError] = useState("");
   // WP 4j.1: alert rows expand to show interpretation (meaning + what to check)
   const [openAlert, setOpenAlert] = useState<number | null>(null);
+  // WP 4j.3: guided first-pass step completion (per-case, local)
+  const [doneSteps, setDoneSteps] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (!activeCase) return;
+    try {
+      const raw = localStorage.getItem(`nexus.walkthrough.${activeCase}`);
+      setDoneSteps(raw ? JSON.parse(raw) : {});
+    } catch {
+      setDoneSteps({});
+    }
+  }, [activeCase]);
+
+  const toggleStep = (key: string) => {
+    setDoneSteps((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      try {
+        localStorage.setItem(`nexus.walkthrough.${activeCase}`, JSON.stringify(next));
+      } catch {
+        /* localStorage unavailable — keep in-memory state */
+      }
+      return next;
+    });
+  };
 
   useEffect(() => {
     setLoading(true);
@@ -46,6 +70,7 @@ export default function Briefing() {
   const entities = brief.entities || {};
   const intake = brief.intake || {};
   const directions = brief.directions || [];
+  const walkthrough = brief.walkthrough || [];
 
   return (
     <div>
@@ -54,6 +79,66 @@ export default function Briefing() {
         Auto-generated after processing — what was collected, what the signatures
         already caught, and where to start digging.
       </p>
+
+      {/* WP 4j.3 — guided first pass: the walkthrough an examiner follows */}
+      {walkthrough.length > 0 && (
+        <div className="card" style={{ borderLeft: "3px solid var(--accent)" }}>
+          <div className="card-title" style={{ marginBottom: 4 }}>
+            Guided First Pass
+            <span style={{ fontSize: 10, color: "var(--text-muted)", marginLeft: 8 }}>
+              {Object.values(doneSteps).filter(Boolean).length}/{walkthrough.length} steps done
+            </span>
+          </div>
+          <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 10px" }}>
+            Work top-down: triage what the signatures caught, map who/where,
+            read the signal clusters, then run the starting points.
+          </p>
+          {walkthrough.map((st) => {
+            const done = !!doneSteps[st.key];
+            return (
+              <div key={st.key} style={{
+                display: "flex", gap: 10, padding: "8px 0",
+                borderTop: "1px solid var(--border)", opacity: done ? 0.55 : 1,
+              }}>
+                <input
+                  type="checkbox"
+                  checked={done}
+                  onChange={() => toggleStep(st.key)}
+                  style={{ marginTop: 3, flexShrink: 0, cursor: "pointer" }}
+                />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>
+                    {st.order}. {st.title}
+                    <span className="badge" style={{ fontSize: 9, marginLeft: 8 }}>{st.count}</span>
+                    {done && <span style={{ fontSize: 10, color: "var(--success)", marginLeft: 8 }}>done</span>}
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", margin: "2px 0 6px" }}>{st.why}</div>
+                  {st.actions.length > 0 && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                      {st.actions.map((a, ai) => (
+                        <button
+                          key={ai}
+                          className="btn btn-sm"
+                          style={{ fontFamily: "monospace", fontSize: 10 }}
+                          title={a.label}
+                          onClick={() => searchNeedle(a.needle, a.family || undefined)}
+                        >
+                          {a.needle.length > 34 ? a.needle.slice(0, 34) + "…" : a.needle}
+                          {typeof a.hits === "number" && a.hits > 0 ? ` (${a.hits})` : ""}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8, marginBottom: 0 }}>
+            When the steps stop being obvious, switch to Steer Chat and ask your
+            own questions — you are the driver.
+          </p>
+        </div>
+      )}
 
       {/* Intake echo — what the examiner said they were looking for */}
       {(intake.question || intake.subjects || intake.hypothesis) && (

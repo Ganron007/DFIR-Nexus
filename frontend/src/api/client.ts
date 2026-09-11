@@ -536,6 +536,24 @@ export interface BriefingDirection {
   needles: string[];
   family: string;
 }
+/** WP 4j.3 — one step of the deterministic guided first pass. */
+export interface BriefingWalkthroughStep {
+  order: number;
+  key: string;
+  title: string;
+  why: string;
+  count: number;
+  actions: {
+    label: string;
+    needle: string;
+    family?: string;
+    hits?: number;
+    level?: string;
+    host?: string;
+    source?: string;
+    etype?: string;
+  }[];
+}
 export interface BriefingResponse {
   inventory: Record<string, { files: number; rows: number; capped?: boolean }>;
   families: string[];
@@ -551,6 +569,7 @@ export interface BriefingResponse {
   entities: Record<string, BriefingEntity[]>;
   intake: Record<string, string>;
   directions?: BriefingDirection[];
+  walkthrough?: BriefingWalkthroughStep[];
   backend: string;
   hits_examined: number;
   error?: string;

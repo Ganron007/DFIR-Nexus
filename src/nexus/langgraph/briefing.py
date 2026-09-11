@@ -132,8 +132,7 @@ def _scan_needles(case_dir: Path, families: list[str]) -> dict[str, str]:
 
     # Intake extras + question terms the examiner already named
     try:
-        from nexus.langgraph.case_intake import load_case_intake
-        from nexus.langgraph.query_pack import collect_query_terms
+        from nexus.langgraph.query_pack import collect_query_terms, load_case_intake
 
         for t in collect_query_terms(load_case_intake(case_dir)):
             needles.setdefault(t.lower(), "intake")
@@ -146,6 +145,146 @@ def _scan_needles(case_dir: Path, families: list[str]) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 # Briefing assembly — one scan powers everything
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# WP 4j.3 — guided first pass: the order an examiner walks a fresh case
+# ---------------------------------------------------------------------------
+
+def _alert_needle(alert: dict[str, Any]) -> tuple[str, str]:
+    """Best 'run this' term for an alert: top confirm query, else title/family."""
+    it = alert.get("interpret") or {}
+    for skill in it.get("skills") or []:
+        for c in skill.get("confirm") or []:
+            q = str(c.get("query") or "").strip()
+            if q:
+                return q, str(alert.get("family") or "")
+    return str(alert.get("title") or alert.get("family") or ""), str(alert.get("family") or "")
+
+
+def _guided_first_pass(
+    *,
+    alerts: list[dict[str, Any]],
+    entities: dict[str, list[dict[str, Any]]],
+    needle_scan: list[dict[str, Any]],
+    hosts: list[str],
+    families: list[str],
+) -> list[dict[str, Any]]:
+    """The deterministic Mode 1 walkthrough.
+
+    Four steps in examiner order: triage the alerts, map who/where, read the
+    signal clusters, then the concrete starting points. Each step carries
+    grounded actions (a needle + family) so the examiner can act without
+    thinking about query syntax. Ranking is by real counts, never invented.
+    """
+    steps: list[dict[str, Any]] = []
+
+    # 1) Triage — the signatures already fired.
+    alert_actions: list[dict[str, Any]] = []
+    for a in alerts[:5]:
+        needle, fam = _alert_needle(a)
+        if not needle:
+            continue
+        alert_actions.append({
+            "label": str(a.get("title") or a.get("family") or "")[:120],
+            "needle": needle[:120],
+            "family": fam[:40],
+            "level": str(a.get("level") or ""),
+            "host": str(a.get("host") or ""),
+        })
+    if alerts:
+        alert_why = (
+            f"{len(alerts)} critical/high detection row(s) already fired. "
+            "Confirm or dismiss each before hunting — the signature did the "
+            "first pass for you."
+        )
+    else:
+        alert_why = (
+            "No critical/high detection rows. That is itself a signal — either "
+            "the host is clean of known-bad patterns or logging coverage is "
+            "thin. Proceed to map who/where before assuming the first."
+        )
+    steps.append({
+        "order": 1,
+        "key": "alerts",
+        "title": "Triage the alerts",
+        "why": alert_why,
+        "count": len(alerts),
+        "actions": alert_actions,
+    })
+
+    # 2) Who/where — entity map + hosts.
+    ent_actions: list[dict[str, Any]] = []
+    for etype, elist in entities.items():
+        for e in elist[:2]:
+            fam = (e.get("families") or [""])[0]
+            ent_actions.append({
+                "label": f"{etype}: {e.get('value')}",
+                "needle": str(e.get("value") or ""),
+                "family": str(fam or ""),
+                "hits": int(e.get("hits") or 0),
+                "etype": etype,
+            })
+    steps.append({
+        "order": 2,
+        "key": "entities",
+        "title": "Map who and where",
+        "why": (
+            f"{len(entities)} entity type(s) across {len(hosts)} host(s). "
+            "Pivot on the loudest accounts, processes, and addresses to see "
+            "whether the activity concentrates or is broad."
+        ),
+        "count": len(entities),
+        "actions": ent_actions[:8],
+    })
+
+    # 3) What fired — signal clusters by needle volume.
+    scan_actions = [
+        {
+            "label": str(s.get("needle") or ""),
+            "needle": str(s.get("needle") or ""),
+            "family": "",
+            "hits": int(s.get("hits") or 0),
+            "source": str(s.get("source") or ""),
+        }
+        for s in needle_scan[:8]
+    ]
+    steps.append({
+        "order": 3,
+        "key": "signals",
+        "title": "Read the signal clusters",
+        "why": (
+            f"{len(needle_scan)} needle(s) with hits. Volume is not proof, but "
+            "a cluster of related needles is where a story forms. Start with "
+            "the highest-count needles that fit the intake question."
+        ),
+        "count": len(needle_scan),
+        "actions": scan_actions,
+    })
+
+    # 4) Starting points — the cross-cutting terms to run first. Alerts beat
+    # signal clusters beat entities; each needle appears once.
+    starts: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for a in [*alert_actions, *scan_actions, *ent_actions]:
+        n = str(a.get("needle") or "")
+        if n and n.lower() not in seen:
+            seen.add(n.lower())
+            starts.append(a)
+    steps.append({
+        "order": 4,
+        "key": "starting_points",
+        "title": "Run the starting points",
+        "why": (
+            "Concrete first queries drawn from the alerts, signal clusters, and "
+            "top entities above. Run them, read the rows with their "
+            "interpretation, then steer with your own questions."
+        ),
+        "count": len(starts[:6]),
+        "actions": starts[:6],
+    })
+
+    return steps
+
 
 def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
     """Deterministic case briefing.
@@ -275,7 +414,7 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
     # --- intake echo ---
     intake: dict[str, str] = {}
     try:
-        from nexus.langgraph.case_intake import load_case_intake
+        from nexus.langgraph.query_pack import load_case_intake
 
         raw = load_case_intake(case_dir) or {}
         intake = {
@@ -285,6 +424,15 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
         }
     except Exception:  # noqa: BLE001
         pass
+
+    # WP 4j.3: guided first pass — the order an examiner walks a fresh case.
+    walkthrough = _guided_first_pass(
+        alerts=alerts,
+        entities=entities,
+        needle_scan=needle_scan[:80],
+        hosts=hosts,
+        families=families,
+    )
 
     return {
         "inventory": inventory,
@@ -300,6 +448,7 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
         "scanned_needles": len(terms),
         "entities": entities,
         "intake": intake,
+        "walkthrough": walkthrough,
         "backend": backend,
         "hits_examined": len(hits),
     }
@@ -322,6 +471,15 @@ def briefing_to_markdown(brief: dict[str, Any]) -> str:
     tr = brief.get("time_range") or {}
     if tr.get("start"):
         lines.append(f"Time range: {tr['start']} → {tr['end']}")
+    walk = brief.get("walkthrough") or []
+    if walk:
+        lines.append("\n## Guided first pass")
+        for st in walk:
+            lines.append(f"\n### {st.get('order')}. {st.get('title')} ({st.get('count', 0)})")
+            if st.get("why"):
+                lines.append(str(st["why"]))
+            for a in (st.get("actions") or [])[:6]:
+                lines.append(f"- `{a.get('needle')}` — {a.get('label')}")
     alerts = brief.get("alerts") or []
     if alerts:
         lines.append(f"\n## Alerts ({len(alerts)})")
