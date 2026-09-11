@@ -110,6 +110,27 @@ def test_briefing_walkthrough_empty_case(tmp_path):
     assert walk[0]["why"]
 
 
+def test_briefing_walkthrough_learn_explanations(tmp_path):
+    """WP 4j.4 — every walkthrough step teaches 'why this matters'."""
+    from nexus.langgraph.briefing import case_briefing
+
+    walk = case_briefing(_mkcase(tmp_path))["walkthrough"]
+    for st in walk:
+        learn = st.get("learn") or {}
+        assert learn.get("headline"), f"{st['key']} missing learn headline"
+        assert learn.get("why_matters"), f"{st['key']} missing why_matters"
+    # the alerts step teaches FD-004-style caution from the technique caveat
+    assert any("false" in w.lower() or "require" in w.lower() or "legitimate" in w.lower()
+               for w in walk[0]["learn"]["why_matters"])
+
+
+def test_briefing_markdown_learn(tmp_path):
+    from nexus.langgraph.briefing import briefing_to_markdown, case_briefing
+
+    md = briefing_to_markdown(case_briefing(_mkcase(tmp_path)))
+    assert "Why this matters:" in md
+
+
 def test_briefing_intake_echo_loaded(tmp_path):
     """Regression: intake is read via query_pack (was imported from the wrong
     module, so the intake echo silently never populated)."""

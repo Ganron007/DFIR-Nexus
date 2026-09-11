@@ -122,6 +122,32 @@ def test_interpret_hit_confirm_corroborate_present():
     assert any(c.get("corroborate") for c in all_confirm)
 
 
+def test_interpret_hit_learn_block():
+    """WP 4j.4: plain-language 'why this matters' teaching block."""
+    from nexus.langgraph.interpret import interpret_hit
+
+    out = interpret_hit(None, _lsass_hit())
+    learn = out.get("learn") or {}
+    assert learn, "expected a learn block"
+    assert learn.get("headline"), "expected a headline"
+    assert learn.get("why_matters"), "expected why-matters bullets"
+    # T1003.001 maps to a named ATT&CK technique with its FD-004 caveat
+    tech = {t["id"]: t for t in learn.get("technique") or []}
+    assert "T1003.001" in tech
+    assert tech["T1003.001"]["name"]
+    assert tech["T1003.001"]["caveat"]
+    assert "technique" in learn.get("sources", [])
+
+
+def test_interpret_hit_learn_unknown_family():
+    """No skill/technique → still a shaped (non-crashing) learn block."""
+    from nexus.langgraph.interpret import interpret_hit
+
+    out = interpret_hit(None, {"family": "zeek", "terms": "x", "text": "conn row"})
+    learn = out.get("learn") or {}
+    assert "headline" in learn and "why_matters" in learn
+
+
 def test_interpret_hit_unknown_family_no_crash():
     """A family with no skills still returns a shaped payload."""
     from nexus.langgraph.interpret import interpret_hit

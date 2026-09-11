@@ -683,6 +683,18 @@ export default function Explore() {
                 {interp.meaning && (
                   <div style={{ fontSize: 12, marginBottom: 6 }}>{interp.meaning}</div>
                 )}
+                {interp.learn && interp.learn.why_matters.length > 0 && (
+                  <div style={{
+                    fontSize: 11, marginBottom: 6, padding: "6px 8px",
+                    background: "var(--bg-tertiary)", borderRadius: 4,
+                  }}>
+                    <strong style={{ color: "var(--text-secondary)" }}>Why this matters:</strong>{" "}
+                    <span>{interp.learn.headline}</span>
+                    <ul style={{ margin: "2px 0 0 16px", padding: 0, color: "var(--text-muted)" }}>
+                      {interp.learn.why_matters.slice(0, 3).map((w, wi) => <li key={wi}>{w}</li>)}
+                    </ul>
+                  </div>
+                )}
                 {interp.skills.length > 0 && (
                   <div style={{ marginBottom: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
                     {interp.skills.map((s) => (

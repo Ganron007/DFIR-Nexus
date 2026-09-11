@@ -26,6 +26,8 @@ _MAX_CAVEATS = 6
 _MAX_NEXT_QUERIES = 6
 _MAX_PIVOTS = 6
 _MAX_RAG_CHARS = 1200
+_MAX_LEARN_TECHNIQUES = 4
+_MAX_LEARN_WHY = 5
 
 # Fields whose values carry the row's meaning (rule names, event ids,
 # technique tags) — prioritised when building the match blob.
@@ -160,6 +162,110 @@ def _match_reasons(
     return reasons[:6]
 
 
+def _playbook_triggers(family: str, limit: int = 3) -> list[str]:
+    """'Why this pattern is suspicious' bullets from family-matched playbooks."""
+    if not family:
+        return []
+    try:
+        from nexus.langgraph.query_pack import _family_matched_playbooks
+    except Exception:  # noqa: BLE001
+        return []
+    out: list[str] = []
+    for pb in _family_matched_playbooks({family})[:4]:
+        for t in (pb.get("triggers") or []):
+            t = str(t).strip()
+            if t and t not in out:
+                out.append(t)
+    return out[:limit]
+
+
+def _technique_notes(techniques: list[str]) -> list[dict[str, str]]:
+    """ATT&CK technique -> plain name + FD-004 false-positive caveat."""
+    if not techniques:
+        return []
+    try:
+        from nexus.knowledge.loader import get_attack_needles
+    except Exception:  # noqa: BLE001
+        return []
+    techs = {str(t).upper() for t in techniques if str(t).strip()}
+    out: list[dict[str, str]] = []
+    for pack in get_attack_needles():
+        tid = str(pack.get("technique") or "").upper()
+        if tid in techs:
+            caveats = [str(c).strip() for c in (pack.get("caveats") or []) if str(c).strip()]
+            out.append({
+                "id": tid,
+                "name": str(pack.get("name") or ""),
+                "caveat": caveats[0] if caveats else "",
+            })
+    return out[:_MAX_LEARN_TECHNIQUES]
+
+
+def _learn(
+    family: str,
+    techniques: list[str],
+    matched: list[dict[str, Any]],
+    caveats: list[str],
+) -> dict[str, Any]:
+    """Plain-language "why this matters" — WP 4j.4 learning layer.
+
+    Composes a teaching block from three sources so a junior examiner learns
+    what a senior would notice: the ATT&CK technique (name + FD-004 caveat),
+    the matching playbook's own suspicion triggers, and the matched skill's
+    description + caveats. Deterministic; RAG is appended by the caller.
+    """
+    tech_notes = _technique_notes(techniques)
+    pb_triggers = _playbook_triggers(family)
+
+    headline = ""
+    if tech_notes:
+        headline = "This is a " + ", ".join(
+            f"{t['name']} ({t['id']})" for t in tech_notes if t.get("name")
+        ) + " signal."
+    elif matched:
+        headline = str(matched[0].get("title") or "").strip()
+    elif family:
+        headline = f"{family} evidence — no skill/technique mapped yet."
+    skill_desc = ""
+    if matched:
+        skill_desc = str(matched[0].get("description") or "").strip()
+    if skill_desc:
+        headline = (headline + " " + skill_desc).strip()
+
+    why_matters: list[str] = []
+    for t in tech_notes:
+        if t.get("caveat"):
+            why_matters.append(str(t["caveat"]))
+    for t in pb_triggers:
+        if t not in why_matters:
+            why_matters.append(t)
+    for s in matched:
+        desc = str(s.get("description") or "").strip()
+        if desc and desc not in why_matters:
+            why_matters.append(desc)
+
+    watch_out: list[str] = []
+    for c in caveats:
+        if c and c not in watch_out:
+            watch_out.append(c)
+
+    sources = [
+        s for s, have in (
+            ("technique", bool(tech_notes)),
+            ("playbook", bool(pb_triggers)),
+            ("skill", bool(matched)),
+        ) if have
+    ]
+
+    return {
+        "headline": headline[:400],
+        "why_matters": why_matters[:_MAX_LEARN_WHY],
+        "technique": tech_notes,
+        "watch_out": watch_out[:_MAX_CAVEATS],
+        "sources": sources,
+    }
+
+
 def interpret_hit(
     case_dir: Path | None,
     hit: dict[str, Any],
@@ -281,8 +387,12 @@ def interpret_hit(
     elif family:
         meaning = f"{family} parser row — no skill covers this family yet."
 
+    # WP 4j.4: plain-language "why this matters" teaching block.
+    learn = _learn(family, techniques, matched, caveats)
+
     out: dict[str, Any] = {
         "meaning": meaning[:400],
+        "learn": learn,
         "skills": skills_out,
         "techniques": techniques,
         "look_for": look_for[:_MAX_LOOK_FOR],

@@ -161,6 +161,35 @@ def _alert_needle(alert: dict[str, Any]) -> tuple[str, str]:
     return str(alert.get("title") or alert.get("family") or ""), str(alert.get("family") or "")
 
 
+def _walkthrough_learn(
+    families: list[str],
+    alerts: list[dict[str, Any]],
+) -> tuple[list[dict[str, str]], list[str]]:
+    """Technique notes + playbook triggers for the case, for teaching steps.
+
+    WP 4j.4: the walkthrough should explain *why* each step matters, not just
+    list actions. Reuses the interpretation layer's technique-name/FD-004
+    caveat lookup and the playbooks' own suspicion triggers.
+    """
+    try:
+        from nexus.langgraph.interpret import _playbook_triggers, _technique_notes
+        from nexus.langgraph.query_pack import playbook_techniques_for_families
+    except Exception:  # noqa: BLE001
+        return [], []
+
+    tech_ids: set[str] = set(playbook_techniques_for_families(families))
+    for a in alerts:
+        tech_ids.update((a.get("interpret") or {}).get("techniques") or [])
+    notes = _technique_notes(sorted(tech_ids))
+
+    triggers: list[str] = []
+    for fam in families[:8]:
+        for t in _playbook_triggers(fam, limit=2):
+            if t not in triggers:
+                triggers.append(t)
+    return notes, triggers
+
+
 def _guided_first_pass(
     *,
     alerts: list[dict[str, Any]],
@@ -177,6 +206,8 @@ def _guided_first_pass(
     thinking about query syntax. Ranking is by real counts, never invented.
     """
     steps: list[dict[str, Any]] = []
+    tech_notes, pb_triggers = _walkthrough_learn(families, alerts)
+    tech_caveats = [str(t.get("caveat") or "") for t in tech_notes if t.get("caveat")]
 
     # 1) Triage — the signatures already fired.
     alert_actions: list[dict[str, Any]] = []
@@ -210,6 +241,14 @@ def _guided_first_pass(
         "why": alert_why,
         "count": len(alerts),
         "actions": alert_actions,
+        "learn": {
+            "headline": "A detection signature is a lead, not a conclusion.",
+            "why_matters": (
+                tech_caveats
+                or ["Signatures have false positives — verify before you escalate."]
+            )[:4],
+            "sources": [s for s, have in (("technique", bool(tech_caveats)),) if have],
+        },
     })
 
     # 2) Who/where — entity map + hosts.
@@ -235,6 +274,18 @@ def _guided_first_pass(
         ),
         "count": len(entities),
         "actions": ent_actions[:8],
+        "learn": {
+            "headline": "Attackers reuse the same accounts, hosts, and tools.",
+            "why_matters": [
+                "One account touching many hosts suggests lateral movement; "
+                "one host touched by many accounts suggests credential spray.",
+                "A process appearing in execution artifacts AND network artifacts "
+                "is stronger than either alone (corroboration, FD-006).",
+                "Broad, shallow activity is often benign admin; narrow, deep "
+                "activity on one target is the pattern worth chasing.",
+            ],
+            "sources": ["playbook"] if pb_triggers else [],
+        },
     })
 
     # 3) What fired — signal clusters by needle volume.
@@ -259,6 +310,17 @@ def _guided_first_pass(
         ),
         "count": len(needle_scan),
         "actions": scan_actions,
+        "learn": {
+            "headline": (
+                "Techniques present: "
+                + ", ".join(f"{t['name']} ({t['id']})" for t in tech_notes if t.get("name"))
+            ) if tech_notes else "These needles are the vocabulary of the case.",
+            "why_matters": pb_triggers[:4],
+            "sources": [s for s, have in (
+                ("technique", bool(tech_notes)),
+                ("playbook", bool(pb_triggers)),
+            ) if have],
+        },
     })
 
     # 4) Starting points — the cross-cutting terms to run first. Alerts beat
@@ -281,6 +343,18 @@ def _guided_first_pass(
         ),
         "count": len(starts[:6]),
         "actions": starts[:6],
+        "learn": {
+            "headline": "Start specific, then widen only if the story holds.",
+            "why_matters": [
+                "Read each row's interpretation before drawing a conclusion — "
+                "the meaning and what-to-check panel is the teaching layer.",
+                "If a query returns nothing, that absence is evidence too "
+                "(negative evidence) — record what you expected and did not find.",
+                "When the deterministic steps run dry, switch to Steer Chat and "
+                "ask your own question — you stay the driver.",
+            ],
+            "sources": [],
+        },
     })
 
     return steps
@@ -478,6 +552,11 @@ def briefing_to_markdown(brief: dict[str, Any]) -> str:
             lines.append(f"\n### {st.get('order')}. {st.get('title')} ({st.get('count', 0)})")
             if st.get("why"):
                 lines.append(str(st["why"]))
+            learn = st.get("learn") or {}
+            if learn.get("headline"):
+                lines.append(f"*Why this matters:* {learn['headline']}")
+            for w in (learn.get("why_matters") or [])[:3]:
+                lines.append(f"  - {w}")
             for a in (st.get("actions") or [])[:6]:
                 lines.append(f"- `{a.get('needle')}` — {a.get('label')}")
     alerts = brief.get("alerts") or []
@@ -485,6 +564,11 @@ def briefing_to_markdown(brief: dict[str, Any]) -> str:
         lines.append(f"\n## Alerts ({len(alerts)})")
         for a in alerts[:30]:
             lines.append(f"- [{a['level'].upper()}] {a['title']} — {a['host']} {a['time']}")
+            learn = (a.get("interpret") or {}).get("learn") or {}
+            if learn.get("headline"):
+                lines.append(f"  - why: {learn['headline']}")
+            for w in (learn.get("why_matters") or [])[:1]:
+                lines.append(f"  - {w}")
     scan = brief.get("needle_scan") or []
     if scan:
         lines.append(f"\n## Signal map ({len(scan)} needles with hits)")

@@ -113,6 +113,21 @@ export default function Briefing() {
                     {done && <span style={{ fontSize: 10, color: "var(--success)", marginLeft: 8 }}>done</span>}
                   </div>
                   <div style={{ fontSize: 11, color: "var(--text-muted)", margin: "2px 0 6px" }}>{st.why}</div>
+                  {st.learn && (st.learn.headline || st.learn.why_matters.length > 0) && (
+                    <div style={{
+                      fontSize: 11, marginBottom: 6, padding: "6px 8px",
+                      background: "var(--bg-tertiary)", borderRadius: 4,
+                    }}>
+                      {st.learn.headline && (
+                        <div style={{ fontWeight: 600, marginBottom: 2 }}>Why this matters: {st.learn.headline}</div>
+                      )}
+                      {st.learn.why_matters.length > 0 && (
+                        <ul style={{ margin: "2px 0 0 16px", padding: 0, color: "var(--text-muted)" }}>
+                          {st.learn.why_matters.map((w, wi) => <li key={wi}>{w}</li>)}
+                        </ul>
+                      )}
+                    </div>
+                  )}
                   {st.actions.length > 0 && (
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                       {st.actions.map((a, ai) => (
@@ -244,6 +259,18 @@ export default function Briefing() {
                               borderTop: "1px dashed var(--border)",
                             }}>
                               {it?.meaning && <div style={{ marginBottom: 4 }}>{it.meaning}</div>}
+                              {it?.learn && it.learn.why_matters.length > 0 && (
+                                <div style={{
+                                  marginBottom: 6, padding: "6px 8px",
+                                  background: "var(--bg-tertiary)", borderRadius: 4,
+                                }}>
+                                  <strong style={{ color: "var(--text-secondary)" }}>Why this matters:</strong>{" "}
+                                  <span>{it.learn.headline}</span>
+                                  <ul style={{ margin: "2px 0 0 16px", padding: 0, color: "var(--text-muted)" }}>
+                                    {it.learn.why_matters.slice(0, 3).map((w, wi) => <li key={wi}>{w}</li>)}
+                                  </ul>
+                                </div>
+                              )}
                               {it && (it.skills || []).length > 0 && (
                                 <div style={{ marginBottom: 6 }}>
                                   <strong style={{ color: "var(--text-secondary)" }}>Guided steps:</strong>

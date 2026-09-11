@@ -179,8 +179,17 @@ export interface N4Hit {
 }
 
 /** WP 4j.1 — POST /hit/interpret → what a hit means + what to check next. */
+export interface HitLearn {
+  headline: string;
+  why_matters: string[];
+  technique: { id: string; name: string; caveat: string }[];
+  watch_out: string[];
+  sources: string[];
+}
 export interface HitInterpretation {
   meaning: string;
+  /** WP 4j.4 — plain-language "why this matters" teaching block. */
+  learn?: HitLearn;
   skills: {
     name: string;
     title: string;
@@ -553,6 +562,8 @@ export interface BriefingWalkthroughStep {
     source?: string;
     etype?: string;
   }[];
+  /** WP 4j.4 — why this step matters (learning layer). */
+  learn?: { headline: string; why_matters: string[]; sources: string[] };
 }
 export interface BriefingResponse {
   inventory: Record<string, { files: number; rows: number; capped?: boolean }>;
