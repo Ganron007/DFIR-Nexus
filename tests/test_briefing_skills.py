@@ -212,3 +212,43 @@ def test_negative_evidence_recorded(tmp_path):
     # at least one skill step found nothing and recorded negative evidence
     assert negs, "expected negative evidence to be recorded for empty steps"
     assert any("negative_evidence" in n for n in negs)
+
+
+def test_briefing_route_excludes_llm_directions(tmp_path, monkeypatch):
+    """The deterministic briefing must never block on the LLM — ``directions``
+    is fetched lazily via a separate endpoint (was an inline 50s+ call)."""
+    from unittest.mock import patch
+
+    from starlette.applications import Starlette
+    from starlette.testclient import TestClient
+
+    from nexus.dashboard.app import create_dashboard
+
+    case = _mkcase(tmp_path)
+    with patch("nexus.dashboard.app._get_case_dir", return_value=case):
+        app = Starlette(routes=create_dashboard())
+        client = TestClient(app)
+        resp = client.get("/portal/api/case/briefing")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "directions" not in data  # LLM layer no longer inline
+    assert "walkthrough" in data and len(data["walkthrough"]) == 4
+
+
+def test_briefing_directions_endpoint_no_model(tmp_path):
+    """Lazy directions endpoint returns an empty list when no LLM is set."""
+    from unittest.mock import patch
+
+    from starlette.applications import Starlette
+    from starlette.testclient import TestClient
+
+    from nexus.dashboard.app import create_dashboard
+
+    case = _mkcase(tmp_path)
+    with patch("nexus.dashboard.app._get_case_dir", return_value=case), \
+         patch("nexus.langgraph.llm_pipeline.get_model", side_effect=RuntimeError("no model")):
+        app = Starlette(routes=create_dashboard())
+        client = TestClient(app)
+        resp = client.get("/portal/api/case/briefing/directions")
+    assert resp.status_code == 200
+    assert resp.json() == {"directions": []}

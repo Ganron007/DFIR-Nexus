@@ -800,6 +800,9 @@ export const api = {
       `/pipeline/ledger${caseId ? `?case_id=${encodeURIComponent(caseId)}` : ""}`,
     ),
   caseBriefing: () => request<BriefingResponse>("/case/briefing"),
+  /** Lazy LLM layer — fetched after the deterministic briefing renders. */
+  caseBriefingDirections: () =>
+    request<{ directions: BriefingDirection[] }>("/case/briefing/directions"),
   fsList: (path?: string) =>
     request<FsListResponse>(`/fs/list${path ? `?path=${encodeURIComponent(path)}` : ""}`),
   playbookNeedles: (families?: string) =>

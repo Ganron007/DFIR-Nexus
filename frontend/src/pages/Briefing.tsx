@@ -8,7 +8,7 @@
  */
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { api, type BriefingResponse } from "../api/client";
+import { api, type BriefingDirection, type BriefingResponse } from "../api/client";
 import { useCase } from "../context/CaseContext";
 
 export default function Briefing() {
@@ -17,6 +17,9 @@ export default function Briefing() {
   const [brief, setBrief] = useState<BriefingResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  // Lazy LLM layer — loaded after the deterministic briefing renders so a
+  // slow local model never blocks the page (was an inline route call).
+  const [directions, setDirections] = useState<BriefingDirection[] | null>(null);
   // WP 4j.1: alert rows expand to show interpretation (meaning + what to check)
   const [openAlert, setOpenAlert] = useState<number | null>(null);
   // WP 4j.3: guided first-pass step completion (per-case, local)
@@ -47,10 +50,20 @@ export default function Briefing() {
   useEffect(() => {
     setLoading(true);
     setError("");
+    setDirections(null);
+    let stale = false;
     api.caseBriefing()
-      .then(setBrief)
-      .catch((e) => setError((e as Error).message))
-      .finally(() => setLoading(false));
+      .then((b) => {
+        if (stale) return;
+        setBrief(b);
+        setLoading(false);
+        // Lazy LLM layer — fire after the deterministic briefing renders.
+        api.caseBriefingDirections()
+          .then((d) => { if (!stale) setDirections(d.directions || []); })
+          .catch(() => { if (!stale) setDirections([]); });
+      })
+      .catch((e) => { if (!stale) { setError((e as Error).message); setLoading(false); } });
+    return () => { stale = true; };
   }, [activeCase]);
 
   const searchNeedle = (needle: string, family?: string) => {
@@ -69,7 +82,6 @@ export default function Briefing() {
   const alerts = brief.alerts || [];
   const entities = brief.entities || {};
   const intake = brief.intake || {};
-  const directions = brief.directions || [];
   const walkthrough = brief.walkthrough || [];
 
   return (
@@ -166,7 +178,12 @@ export default function Briefing() {
       )}
 
       {/* WP 4i.5 — LLM investigation directions grounded in the deterministic numbers */}
-      {directions.length > 0 && (
+      {directions === null && (
+        <div className="card" style={{ borderLeft: "3px solid var(--warning)", padding: "8px 12px" }}>
+          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Generating LLM directions…</span>
+        </div>
+      )}
+      {directions !== null && directions.length > 0 && (
         <div className="card" style={{ borderLeft: "3px solid var(--warning)" }}>
           <div className="card-title" style={{ marginBottom: 8 }}>
             Suggested Directions <span style={{ fontSize: 10, color: "var(--text-muted)" }}>(LLM — grounded in the numbers below)</span>
