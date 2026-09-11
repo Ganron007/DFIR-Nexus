@@ -1,0 +1,47 @@
+skill: discovery_recon
+title: Discovery — recon commands and internal enumeration
+description: >-
+  Detect internal reconnaissance — whoami, net commands, system info,
+  domain enumeration, network scanning.
+trigger:
+  families: [evtx, sysmon, powershell, prefetch, cmd]
+  keywords: [recon, enum, whoami, net user, systeminfo, ipconfig, domain, scan]
+  techniques: [T1033, T1082, T1087, T1018, T1069, T1057]
+steps:
+  - name: whoami_chains
+    query: "whoami.exe OR whoami /all OR whoami /priv"
+    look_for: whoami runs by non-interactive processes or in quick succession.
+    pivot: CommandLine
+  - name: net_commands
+    query: "net user OR net group OR net localgroup OR net view OR net share"
+    look_for: >-
+      net user/group/localgroup/view/share — internal user and share
+      enumeration.
+    pivot: CommandLine
+  - name: system_info
+    query: "systeminfo OR hostname OR ver"
+    look_for: systeminfo/hostname — basic host recon.
+    pivot: CommandLine
+  - name: ipconfig_route
+    query: "ipconfig /all OR route print OR arp -a"
+    look_for: Network config discovery — routing/ARP table dumps.
+    pivot: CommandLine
+  - name: domain_enum
+    query: "nltest /dclist OR dsquery OR net group \"Domain Admins\""
+    look_for: Domain-controller listing and privileged-group enumeration.
+    pivot: CommandLine
+  - name: tasklist_scan
+    query: "tasklist OR tasklist /svc OR qprocess"
+    look_for: Process/service enumeration for target identification.
+    pivot: CommandLine
+negative: >-
+  No recon-command artifacts → the attacker may have used a C2 implant with
+  built-in discovery (no shell commands) or skipped enumeration.
+confidence_rules:
+  high: multiple distinct recon commands in a short window from one process
+  medium: single recon command by an unexpected parent
+  low: admin tools run by admins during maintenance
+mitre: [T1033, T1082, T1087, T1018, T1069]
+caveats:
+  - "Sysadmins run these commands daily — correlate with non-admin context and unusual parentage."
+  - "Discovery may run inside a C2 implant (no shell commands) — check network artifacts instead."

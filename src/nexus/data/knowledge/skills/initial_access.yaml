@@ -1,0 +1,53 @@
+skill: initial_access
+title: Initial access — LNK / MSI / CHM / HTML smuggling / macro
+description: >-
+  Detect user-execution initial-access payloads — shortcut files, MSI
+  installers, compiled help files, HTML smuggling, office macros.
+trigger:
+  families: [lnk, mft, usn, prefetch, evtx, sysmon, amcache, jumplist, browser]
+  keywords: [lnk, msi, chm, iso, smuggl, macro, invoice, attachment, download]
+  techniques: [T1204.001, T1204.002, T1204, T1566.001]
+steps:
+  - name: lnk_artifacts
+    query: ".lnk invoice document shortcut"
+    look_for: >-
+      LNK files in Downloads/Desktop/Temp with recent creation; check the
+      LNK target (cmd/powershell/mshta/rundll32 children).
+    pivot: LocalPath
+  - name: msi_execution
+    query: "msiexec /i OR .msi MsiInstaller"
+    look_for: >-
+      msiexec executions of unsigned/downloaded MSIs; MsiInstaller events
+      11707 (install success) near the suspected window.
+    pivot: CommandLine
+  - name: chm_execution
+    query: "hh.exe OR .chm"
+    look_for: hh.exe spawning cmd/powershell — CHM Shortcut-object abuse.
+    pivot: ParentImage
+  - name: html_smuggling_download
+    query: ".html blob: download FromCache OR browser"
+    look_for: Browser download of an HTML file followed by a new .exe/.dll write.
+    pivot: URL
+  - name: motw_mark
+    query: "Zone.Identifier Mark-of-the-Web OR ZoneId=3"
+    look_for: Zone.Identifier ADS on downloaded files (ZoneId=3 = internet).
+    pivot: FileName
+  - name: office_spawns
+    query: "winword.exe OR excel.exe OR powerpnt.exe cmd.exe powershell.exe"
+    look_for: Office binaries spawning script interpreters — macro execution.
+    pivot: ParentImage
+  - name: child_process_anomaly
+    query: "explorer.exe cmd.exe OR explorer.exe powershell.exe OR explorer.exe mshta.exe"
+    look_for: Script interpreters parented by explorer.exe near payload arrival.
+    pivot: CommandLine
+negative: >-
+  No LNK/MSI/CHM artifacts and no office-spawn chains → initial access likely
+  arrived through a different vector (exposed service, creds, drive-by).
+confidence_rules:
+  high: downloaded artifact (Zone.Identifier) + exec artifact (prefetch/amcache) + child-process chain
+  medium: payload exec artifact without clear delivery vector
+  low: single unsigned exec — corroborate delivery + persistence
+mitre: [T1204, T1566.001, T1204.001, T1204.002]
+caveats:
+  - "Users legitimately run MSIs and macros — the delivery chain (download → MOTW → exec) is what matters."
+  - "LNK files are everywhere; focus on recent ones in download/desktop/temp paths."

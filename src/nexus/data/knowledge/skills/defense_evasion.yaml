@@ -1,0 +1,49 @@
+skill: defense_evasion
+title: Defense evasion — AV disable, timestomp, masquerading, process injection
+description: >-
+  Detect defense-evasion techniques — disabling security tools, timestomping,
+  masquerading binaries, process injection, AMSI/ETW tampering.
+trigger:
+  families: [evtx, sysmon, powershell, prefetch, mft, registry]
+  keywords: [defender, disable, timestomp, masquerade, inject, etw, amsi, evade]
+  techniques: [T1562.001, T1070.006, T1036, T1055, T1562.006]
+steps:
+  - name: defender_disable
+    query: "Set-MpPreference -DisableRealtimeMonitoring OR sc stop windefend OR DisableAntiSpyware"
+    look_for: >-
+      Defender real-time monitoring disabled via cmdlet, service stop, or
+      registry DisableAntiSpyware.
+    pivot: CommandLine
+  - name: timestomp
+    query: "timestomp OR -M \" OR Copy-Item -Destination"
+    look_for: Timestomp tool runs or timestamp manipulation in mft/usn.
+    pivot: FileName
+  - name: masquerading
+    query: "svchost.exe OR smss.exe OR csrss.exe OR lsass.exe"
+    look_for: >-
+      System process names in non-standard paths (%TEMP%, user dirs,
+      wrong parentage) — masquerading.
+    pivot: Image
+  - name: process_injection
+    query: "CreateRemoteThread OR VirtualAllocEx OR WriteProcessMemory OR inject"
+    look_for: Cross-process memory/thread APIs in Sysmon 8 (CreateRemoteThread).
+    pivot: SourceImage
+  - name: etw_tamper
+    query: "EtwEventWrite OR EtwUnregister OR logman delete"
+    look_for: ETW provider tampering — unregister/delete or patch.
+    pivot: CommandLine
+  - name: amsi_patch
+    query: "amsi.dll patch OR AmsiScanBuffer OR amsiInitFailed"
+    look_for: In-memory AMSI patching — patch bytes in PowerShell process memory.
+    corroborate: suspicious script block follows
+negative: >-
+  No security-tool tampering or masquerading → defense evasion not evident;
+  check for LOLBin-only approach or signed-tool abuse.
+confidence_rules:
+  high: Defender disabled + injection artifact + suspicious process tree
+  medium: masquerading binary in non-standard path
+  low: single EDR service stop (may be maintenance)
+mitre: [T1562.001, T1036, T1055, T1070.006]
+caveats:
+  - "Windows updates legitimately restart Defender — check window and account context."
+  - "Masquerading needs path+parentage analysis, not just the process name."

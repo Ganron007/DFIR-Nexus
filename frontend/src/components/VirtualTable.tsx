@@ -22,6 +22,10 @@ interface VirtualTableProps<T> {
   rowKey: (row: T, index: number) => string;
   maxHeight?: string;
   onRowClick?: (row: T) => void;
+  /** WP 4i.3: sortable headers — called with the column key on click */
+  sortKey?: string;
+  sortDir?: "asc" | "desc";
+  onSort?: (key: string) => void;
 }
 
 const tdStyle: React.CSSProperties = {
@@ -39,6 +43,9 @@ export default function VirtualTable<T>({
   rowKey,
   maxHeight = "60vh",
   onRowClick,
+  sortKey,
+  sortDir,
+  onSort,
 }: VirtualTableProps<T>) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -89,6 +96,8 @@ export default function VirtualTable<T>({
             {columns.map((col) => (
               <th
                 key={col.key}
+                onClick={onSort ? () => onSort(col.key) : undefined}
+                title={onSort ? "Click to sort" : undefined}
                 style={{
                   ...(col.width ? { width: col.width } : {}),
                   height: ROW_HEIGHT,
@@ -96,9 +105,14 @@ export default function VirtualTable<T>({
                   top: 0,
                   background: "var(--bg-secondary)",
                   zIndex: 1,
+                  cursor: onSort ? "pointer" : undefined,
+                  userSelect: onSort ? "none" : undefined,
                 }}
               >
                 {col.header}
+                {sortKey === col.key && (
+                  <span style={{ marginLeft: 4, fontSize: 9 }}>{sortDir === "desc" ? "▼" : "▲"}</span>
+                )}
               </th>
             ))}
           </tr>

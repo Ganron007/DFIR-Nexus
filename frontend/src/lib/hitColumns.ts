@@ -69,3 +69,27 @@ export function pickHitColumns(hits: N4Hit[]): string[] {
   }
   return chosen;
 }
+
+/**
+ * WP 4i.3: ALL parsed fields present in a hit set, ordered by relevance —
+ * dominant family's priority fields first, then remaining fields
+ * alphabetically. Feeds the column picker; the examiner chooses which to
+ * show rather than the UI picking 4 for them.
+ */
+export function allHitColumns(hits: N4Hit[]): string[] {
+  const tally: Record<string, number> = {};
+  const freq: Record<string, number> = {};
+  for (const h of hits) {
+    const f = h.family || "other";
+    tally[f] = (tally[f] || 0) + 1;
+    for (const k of Object.keys(h.fields || {})) freq[k] = (freq[k] || 0) + 1;
+  }
+  const dominant = Object.entries(tally).sort((a, b) => b[1] - a[1])[0]?.[0] || "";
+  const priority = FAMILY_FIELD_PRIORITY[dominant] || GENERIC_FIELD_PRIORITY;
+  const present = Object.keys(freq);
+  const prio = priority.filter((f) => f in freq ? (freq[f] ?? 0) > 0 : false);
+  const rest = present
+    .filter((f) => !prio.includes(f))
+    .sort((a, b) => (freq[b] - freq[a]) || a.localeCompare(b));
+  return [...prio, ...rest];
+}

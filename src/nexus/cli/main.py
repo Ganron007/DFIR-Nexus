@@ -93,9 +93,18 @@ app.command(name="init", help="Quickstart — one-command onboarding")(init_cmd)
 
 from nexus.cli.doctor_cmd import doctor as doctor_cmd
 from nexus.cli.ingest_cmd import ingest as ingest_cmd
+from nexus.cli.investigate import brief as _brief_cmd
+from nexus.cli.investigate import hit_cmd as _hit_cmd
+from nexus.cli.investigate import hits_cmd as _hits_cmd
 
 app.command(name="ingest", help="Auto-detect and ingest a forensic file or tree")(ingest_cmd)
 app.command(name="doctor", help="Report extras, catalog binaries, indexes, optional keys")(doctor_cmd)
+
+# WP 4i.10: headless investigation verbs — the UI stays primary, these keep
+# the spine usable without a browser.
+app.command(name="brief", help="Case briefing — what was processed + signal map")(_brief_cmd)
+app.command(name="hits", help="Parsed hit table for a needle")(_hits_cmd)
+app.command(name="hit", help="Full field dump for one hit (file:line)")(_hit_cmd)
 
 _ACTIVE_CASE_FILE = Path(
     os.environ.get("NEXUS_ACTIVE_CASE_FILE", str(Path.home() / ".nexus" / "active_case"))

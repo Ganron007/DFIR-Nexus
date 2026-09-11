@@ -239,20 +239,55 @@ def propose_next_needles(
     hits: list[dict[str, Any]],
     already_run: list[str],
     model: Any = None,
+    briefing: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """LLM proposes the next needles from current hits. Heuristic fallback.
+
+    WP 4i.9: when ``briefing`` is provided (computed once by the caller), the
+    LLM sees the case's signal map — which playbook/ATT&CK/Sigma needles
+    already hit, the alert surface, and top entities — so proposals are
+    grounded in what the evidence actually contains, not generic vocabulary.
 
     Returns {"needles": [...], "rationale": str, "source": "llm"|"heuristic"}.
     """
     if model is not None:
         try:
-            return _propose_with_model(case_dir, hits, already_run, model)
+            return _propose_with_model(case_dir, hits, already_run, model, briefing=briefing)
         except Exception as exc:  # noqa: BLE001
             log.warning("Mode 2 LLM proposal failed (%s), using heuristic", exc)
     return _propose_heuristic(hits, already_run)
 
 
-def _propose_with_model(case_dir: Path, hits: list[dict], already_run: list[str], model: Any) -> dict:
+def _briefing_context(briefing: dict[str, Any] | None) -> str:
+    """WP 4i.9: compact signal-map block for the proposal prompt."""
+    if not briefing:
+        return ""
+    parts: list[str] = []
+    scan = briefing.get("needle_scan") or []
+    if scan:
+        top = ", ".join(f"{s['needle']}({s['hits']})" for s in scan[:20])
+        parts.append(f"Signal map (needle→hits): {top}")
+    alerts = briefing.get("alerts") or []
+    if alerts:
+        parts.append("Alerts: " + "; ".join(
+            f"[{a['level']}] {a['title']} @{a['host']}" for a in alerts[:8]
+        ))
+    ents = briefing.get("entities") or {}
+    if ents:
+        bits = []
+        for etype in ("process_name", "ipv4", "domain", "domain_user"):
+            vals = [e["value"] for e in (ents.get(etype) or [])[:6]]
+            if vals:
+                bits.append(f"{etype}={', '.join(vals)}")
+        if bits:
+            parts.append("Top entities: " + " | ".join(bits))
+    return "\n".join(parts)
+
+
+def _propose_with_model(
+    case_dir: Path, hits: list[dict], already_run: list[str], model: Any,
+    briefing: dict[str, Any] | None = None,
+) -> dict:
     from nexus.langgraph.query_pack import load_case_intake
 
     intake = load_case_intake(case_dir)
@@ -268,16 +303,22 @@ def _propose_with_model(case_dir: Path, hits: list[dict], already_run: list[str]
     agg_summary = _aggregation_summary(hits)
     top_hits = _top_hits_per_family(hits)
 
+    # WP 4i.9: case briefing signal map — which needles already hit
+    briefing_ctx = _briefing_context(briefing)
+
     user = (
         f"Case question: {intake.get('question', '(none)')}\n"
         f"Artifact families with hits: {', '.join(families) or '(none)'}\n"
         f"Already searched: {', '.join(already_run) or '(none)'}\n\n"
+        f"Case signal map (needles that already hit in processed evidence):\n"
+        f"{briefing_ctx or '(no briefing)'}\n\n"
         f"Aggregation summary:\n{agg_summary}\n\n"
         f"Top hits per family:\n{top_hits}\n\n"
-        f"RAG methodology:\n{rag_context[:2000] or '(none)'}\n\n"
-        f"Playbook guidance:\n{playbook_context[:1500] or '(none)'}\n\n"
+        f"RAG methodology:\n{rag_context[:1800] or '(none)'}\n\n"
+        f"Playbook guidance:\n{playbook_context[:1200] or '(none)'}\n\n"
         "Propose 2-6 NEW search needles to corroborate or expand this picture. "
-        "Use the RAG methodology and playbook caveats to guide your proposals. "
+        "Prefer needles shown in the signal map that have hits but haven't "
+        "been searched yet; use the RAG methodology and playbook caveats. "
         'Return ONLY JSON: {"needles": [...], "rationale": "..."}'
     )
     response = model.invoke([
@@ -385,11 +426,21 @@ def run_iterative_loop(
     _emit(on_event, iterations[-1])
     append_chat(case_dir, "llm", "mode2_iter0", f"Initial query: {', '.join(needles0)} -> {r0.get('count', 0)} hits")
 
+    # WP 4i.9: compute the case briefing once — proposals ground in the
+    # signal map (which needles already hit) rather than generic vocabulary.
+    briefing: dict[str, Any] | None = None
+    try:
+        from nexus.langgraph.briefing import case_briefing
+
+        briefing = case_briefing(case_dir)
+    except Exception as exc:  # noqa: BLE001
+        log.debug("Mode 2 briefing unavailable: %s", exc)
+
     # Iterative proposals
     for it in range(1, max_iterations + 1):
         if not hits:
             break
-        proposal = propose_next_needles(case_dir, question, hits, all_needles_run, model)
+        proposal = propose_next_needles(case_dir, question, hits, all_needles_run, model, briefing=briefing)
         new_needles = [
             n for n in proposal.get("needles", [])
             if n.lower() not in {x.lower() for x in all_needles_run}

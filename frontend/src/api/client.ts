@@ -471,6 +471,52 @@ export interface PipelineLedgerResponse {
   error?: string;
 }
 
+/** GET /case/briefing — WP 4i.1 deterministic case briefing */
+export interface BriefingAlert {
+  family: string;
+  level: string;
+  title: string;
+  time: string;
+  host: string;
+  file: string;
+  line: string;
+}
+export interface BriefingNeedle {
+  needle: string;
+  hits: number;
+  source: string;
+}
+export interface BriefingEntity {
+  value: string;
+  hits: number;
+  families?: string[];
+}
+export interface BriefingDirection {
+  title: string;
+  why: string;
+  needles: string[];
+  family: string;
+}
+export interface BriefingResponse {
+  inventory: Record<string, { files: number; rows: number; capped?: boolean }>;
+  families: string[];
+  total_files: number;
+  total_rows: number;
+  ledger: { run_id: string; entries: { tool: string; status: string; family: string; reason: string }[]; ok: number; skip: number; fail: number };
+  hosts: string[];
+  time_range: { start: string; end: string };
+  alerts: BriefingAlert[];
+  alert_count: number;
+  needle_scan: BriefingNeedle[];
+  scanned_needles: number;
+  entities: Record<string, BriefingEntity[]>;
+  intake: Record<string, string>;
+  directions?: BriefingDirection[];
+  backend: string;
+  hits_examined: number;
+  error?: string;
+}
+
 /** GET /fs/list → directory listing for the evidence picker */
 export interface FsEntry {
   name: string;
@@ -681,6 +727,7 @@ export const api = {
     request<PipelineLedgerResponse>(
       `/pipeline/ledger${caseId ? `?case_id=${encodeURIComponent(caseId)}` : ""}`,
     ),
+  caseBriefing: () => request<BriefingResponse>("/case/briefing"),
   fsList: (path?: string) =>
     request<FsListResponse>(`/fs/list${path ? `?path=${encodeURIComponent(path)}` : ""}`),
   playbookNeedles: (families?: string) =>

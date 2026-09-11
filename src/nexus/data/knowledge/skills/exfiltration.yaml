@@ -1,0 +1,45 @@
+skill: exfiltration
+title: Exfiltration — staging archives, cloud uploads, DNS tunneling
+description: >-
+  Detect data theft — archive creation, staging directories, cloud upload,
+  DNS tunneling, large outbound transfers.
+trigger:
+  families: [evtx, sysmon, browser, netstat, powershell, prefetch, mft]
+  keywords: [exfil, steal, upload, archive, rar, 7z, mega, dropbox, dns]
+  techniques: [T1041, T1567, T1071.004, T1560.001]
+steps:
+  - name: archive_creation
+    query: "rar.exe OR 7z.exe OR Compress-Archive OR .rar OR .7z"
+    look_for: Archive tool runs with staging paths; large new archives in mft/usn.
+    pivot: CommandLine
+  - name: staging_dirs
+    query: "staging OR exfil OR collect OR loot"
+    look_for: New directories under %TEMP%/%ProgramData% collecting files.
+    pivot: Path
+  - name: cloud_upload
+    query: "mega.nz OR dropbox OR drive.google OR pastebin OR transfer.sh"
+    look_for: Browser hits / netstat flows to upload-friendly services.
+    pivot: URL
+  - name: dns_tunneling
+    query: "nslookup OR dig OR TXT record OR dns"
+    look_for: High-volume DNS queries with long/random subdomains.
+    pivot: QueryName
+  - name: large_outbound
+    query: "netstat -an OR BytesSent"
+    look_for: SRUM/netstat showing large BytesSent from unusual processes.
+    pivot: AppName
+  - name: ftp_exfil
+    query: "ftp.exe OR sftp OR scp.exe OR pscp"
+    look_for: FTP/SFTP command-line transfers to external IPs.
+    pivot: CommandLine
+negative: >-
+  No archive creation, staging dirs, or large outbound flows → exfiltration
+  not evident; check for in-place destruction (ransomware) instead.
+confidence_rules:
+  high: archive + staging dir + upload flow to external service
+  medium: archive + external connection without confirmed transfer
+  low: single cloud-service browse (user activity plausible)
+mitre: [T1041, T1567, T1071.004, T1560.001]
+caveats:
+  - "Users legitimately upload to cloud storage — check account context and data volume."
+  - "SRUM/network counters are cumulative — a single large number isn't a transfer timestamp."

@@ -1,0 +1,47 @@
+skill: log_clearing
+title: Event log clearing and audit tampering
+description: >-
+  Detect clearing of Security/System/Application logs, audit-policy changes,
+  and Sysmon service tampering — anti-forensics.
+trigger:
+  families: [evtx, sysmon, security, hayabusa, services]
+  keywords: [clear, wevtutil, auditpol, log, tamper, anti-forensic, sysmon]
+  techniques: [T1070.001, T1070, T1562.002]
+steps:
+  - name: security_log_cleared
+    query: "1102"
+    look_for: >-
+      Security EventID 1102 (audit log cleared) — check SubjectUserName and
+      the gap in preceding events.
+    pivot: SubjectUserName
+  - name: system_log_cleared
+    query: "104"
+    look_for: System EventID 104 (event log cleared) by an interactive user.
+    pivot: SubjectUserName
+  - name: wevtutil_execution
+    query: "wevtutil cl OR wevtutil clear-log"
+    look_for: wevtutil cl <log> executions in process creation / prefetch.
+    pivot: CommandLine
+  - name: audit_policy_change
+    query: "auditpol /clear OR auditpol /set OR 4719"
+    look_for: auditpol clearing or 4719 audit-policy change events.
+    pivot: CommandLine
+  - name: sysmon_tamper
+    query: "Sysmon service stopped OR sysmon.exe delete OR sc stop sysmon"
+    look_for: Sysmon service stop/delete — blinds telemetry collection.
+    corroborate: gap in Sysmon event sequence
+  - name: usn_journal_delete
+    query: "fsutil usn deletejournal OR usn delete"
+    look_for: USN journal deletion (destroys file-change history).
+negative: >-
+  No 1102/104 events and no wevtutil/auditpol execution → logs were not
+  cleared on this host; look for logging-gap explanations instead (service
+  stop, forwarding failure).
+confidence_rules:
+  high: 1102 + wevtutil cl execution + preceding log gap
+  medium: single log-clear event with non-system subject
+  low: auditpol /set during patch windows (check maintenance context)
+mitre: [T1070.001, T1562.002]
+caveats:
+  - "Some SOCs clear logs during maintenance — check SubjectUserName against admin accounts and change windows."
+  - "A missing Sysmon sequence may mean the service was never running — check install state before claiming tamper."

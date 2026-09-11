@@ -395,6 +395,61 @@ def get_misp_opencti() -> list[dict]:
     return []
 
 
+# ── Skills (WP 4i.6) — executable investigation procedures ──────────────
+
+def get_skills() -> list[dict]:
+    """Agent investigation skills — structured procedures distilled from
+    the DFIR knowledge base (13Cubed, Volexity, SANS FOR508) plus
+    Sigma/CAR detection logic.
+
+    Directory: ``skills/*.yaml`` — one skill per file:
+
+        skill: lsass_credential_access
+        trigger: {families: [...], keywords: [...], techniques: [...]}
+        steps: [{name, query, look_for, pivot, corroborate, negative}, ...]
+        mitre: [T1003.001]
+        confidence_rules: {high: ..., medium: ..., low: ...}
+        caveats: [...]
+    """
+    return _load_all_in_dir("skills")
+
+
+def get_skill(name: str) -> dict | None:
+    """Get a skill by its ``skill`` id (case-insensitive)."""
+    name_lower = name.strip().lower()
+    for s in get_skills():
+        if str(s.get("skill", "")).lower() == name_lower:
+            return s
+    return None
+
+
+def validate_skill(skill: dict) -> list[str]:
+    """Schema check — returns a list of problems (empty = valid)."""
+    problems: list[str] = []
+    if not isinstance(skill, dict):
+        return ["skill is not a mapping"]
+    if not str(skill.get("skill") or "").strip():
+        problems.append("missing 'skill' id")
+    trig = skill.get("trigger")
+    if not isinstance(trig, dict) or not (
+        trig.get("families") or trig.get("keywords") or trig.get("techniques")
+    ):
+        problems.append("trigger needs at least one of families/keywords/techniques")
+    steps = skill.get("steps")
+    if not isinstance(steps, list) or not steps:
+        problems.append("missing 'steps' list")
+    else:
+        for i, st in enumerate(steps):
+            if not isinstance(st, dict) or not str(st.get("query") or "").strip():
+                problems.append(f"step {i} missing 'query'")
+    return problems
+
+
+def list_skills() -> list[str]:
+    """Skill ids available to agents."""
+    return [str(s.get("skill")) for s in get_skills() if s.get("skill")]
+
+
 def list_playbooks() -> list[dict]:
     return _load_all_in_dir("discipline/playbooks")
 

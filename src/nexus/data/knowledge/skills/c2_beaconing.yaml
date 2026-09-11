@@ -1,0 +1,47 @@
+skill: c2_beaconing
+title: C2 beaconing — periodic callbacks, beacon intervals, DGA
+description: >-
+  Detect command-and-control traffic — periodic connections, beacon jitter,
+  domain-generation algorithms, and proxy artifacts.
+trigger:
+  families: [netstat, dns, browser, evtx, sysmon, powershell]
+  keywords: [c2, beacon, callback, botnet, implant, cobalt, meterpreter, sliver]
+  techniques: [T1071, T1071.001, T1071.004, T1105]
+steps:
+  - name: periodic_connections
+    query: "netstat OR ESTABLISHED"
+    look_for: >-
+      Repeated connections to the same external IP/domain at regular
+      intervals — classic beacon signature.
+    pivot: RemoteAddress
+  - name: cobalt_beacon
+    query: "cobaltstrike OR beacon OR beacon.dll"
+    look_for: Cobalt Strike artifacts — beacon.dll in process, known C2 IPs.
+    pivot: Image
+  - name: dga_domains
+    query: "dns QueryName OR nslookup"
+    look_for: Long random subdomains, non-standard TLDs, high-entropy names.
+    pivot: QueryName
+  - name: dnscat_tunneling
+    query: "dnscat OR iodine OR dns2tcp"
+    look_for: DNS tunneling tool execution or TXT-record exfil patterns.
+    pivot: CommandLine
+  - name: proxy_pac
+    query: "proxy OR pac file OR ProxyServer"
+    look_for: Proxy settings that redirect traffic through attacker infra.
+    pivot: ValueName
+  - name: smb_beacon
+    query: "\\\\.\\pipe\\ OR named pipe"
+    look_for: Named-pipe creation/connection for SMB-beacon implants.
+    pivot: PipeName
+negative: >-
+  No periodic external connections or C2 artifacts → implant likely dormant,
+  destroyed, or using encrypted/unobserved channels.
+confidence_rules:
+  high: regular-interval connections + named-pipe/beacon artifact
+  medium: periodic DNS to suspicious domain without confirmed payload
+  low: single external connection (normal traffic)
+mitre: [T1071, T1105]
+caveats:
+  - "Some beacons use sleep/jitter to evade periodic detection — look at variance, not just regularity."
+  - "Legitimate telemetry (Windows, AV, update services) creates periodic traffic — filter by destination."

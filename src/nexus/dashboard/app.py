@@ -3706,6 +3706,39 @@ async def api_pipeline_ledger(request):
     })
 
 
+async def api_case_briefing(request):
+    """GET /portal/api/case/briefing — WP 4i.1 deterministic case briefing.
+
+    What was processed (inventory + parser ledger), what the signatures
+    already caught (alert surface), where the signal density is (playbook
+    auto-scan needle→hit counts), top entities, hosts, time range, and the
+    intake echo. One bounded extraction scan powers it; no LLM required.
+
+    WP 4i.5: when an LLM is configured, an optional `directions` block adds
+    plain-English investigation starting points grounded in the deterministic
+    numbers.
+    """
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    from nexus.langgraph.briefing import case_briefing, llm_directions
+
+    try:
+        brief = case_briefing(case_dir)
+        # Optional LLM layer — only when a model is configured
+        try:
+            from nexus.langgraph.llm_pipeline import get_model
+            model = get_model()
+        except Exception:  # noqa: BLE001
+            model = None
+        if model is not None:
+            brief["directions"] = llm_directions(case_dir, brief, model)
+        return JSONResponse(brief)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("briefing failed")
+        return JSONResponse({"error": f"briefing failed: {exc}"}, status_code=500)
+
+
 async def api_fs_list(request):
     """GET /portal/api/fs/list?path=... — filesystem browsing for the
     evidence picker (WP: evidence path selection UI).
@@ -4371,6 +4404,7 @@ def create_dashboard():
         Route("/portal/api/pipeline/run", api_pipeline_run, methods=["POST"]),
         Route("/portal/api/pipeline/status", api_pipeline_status, methods=["GET"]),
         Route("/portal/api/pipeline/ledger", api_pipeline_ledger, methods=["GET"]),
+        Route("/portal/api/case/briefing", api_case_briefing, methods=["GET"]),
         Route("/portal/api/needles/feedback", api_needle_feedback, methods=["POST"]),
         Route("/portal/api/fs/list", api_fs_list, methods=["GET"]),
         Route("/portal/api/playbook/needles", api_playbook_needles, methods=["GET"]),

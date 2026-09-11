@@ -1,0 +1,51 @@
+skill: persistence
+title: Persistence — registry run keys, services, scheduled tasks, WMI
+description: >-
+  Detect mechanisms that survive reboot — autostart registry keys, new
+  services, scheduled tasks, WMI event subscriptions.
+trigger:
+  families: [registry, evtx, sysmon, services, scheduled_tasks, security]
+  keywords: [persist, run key, autostart, service, schtasks, wmi, subscription]
+  techniques: [T1547.001, T1543.003, T1053.005, T1546.003]
+steps:
+  - name: run_keys
+    query: "\\Run OR \\RunOnce OR \\RunOnceEx CurrentVersion\\Run"
+    look_for: >-
+      Writes to HKLM/HKCU Run/RunOnce keys, especially values pointing into
+      user-writable or temp paths.
+    pivot: ValueName
+  - name: new_services
+    query: "7045 OR sc create OR sc.exe create"
+    look_for: >-
+      Service installs with ImagePath under %TEMP%, %APPDATA%, %ProgramData%,
+      or with non-standard binaries.
+    pivot: ImagePath
+  - name: scheduled_tasks
+    query: "schtasks /create OR 106 OR TaskScheduler"
+    look_for: >-
+      Task registrations running as SYSTEM or on logon, especially with
+      remote or hidden actions.
+    pivot: TaskName
+  - name: wmi_subscription
+    query: "EventFilter CommandLineEventConsumer wmi"
+    look_for: WMI permanent event subscriptions (__EventFilter → Consumer binding).
+    pivot: CommandLine
+  - name: image_file_execution_options
+    query: "Image File Execution Options OR IFEO OR SilentProcessExit"
+    look_for: Debugger hijacks on common binaries (sethc, utilman, osk).
+    pivot: KeyPath
+  - name: startup_folder_lnk
+    query: "Startup OR Start Menu\\Programs\\Startup .lnk"
+    look_for: LNK files dropped into Startup folders (lnk family + mft/usn).
+    pivot: FileName
+negative: >-
+  No autostart writes, service installs, or task registrations → the attacker
+  may rely on existing persistence or volatile-only presence.
+confidence_rules:
+  high: new autostart entry + the referenced binary present in prefetch/mft
+  medium: autostart write without execution artifact (may be pre-trigger)
+  low: legitimate installer service creations (signed, Program Files path)
+mitre: [T1547.001, T1543.003, T1053.005, T1546.003, T1053]
+caveats:
+  - "Installers constantly create services/tasks — filter by signer and path before flagging."
+  - "Run-key writes by AV/management tools are normal — check the value target, not just the key."

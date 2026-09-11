@@ -184,15 +184,19 @@ def _run_agent(
     case_dir: Path,
     model: Any = None,
     max_iterations: int = 3,
+    skills: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Run a single EvidenceAgent on its assigned evidence families.
 
-    The agent runs real N4 queries on its families, extracts entities from
-    hits, and iterates (query → see hits → refine → re-query up to
-    max_iterations). Returns entities found, queries run, hits reviewed,
-    and proposals with evidence citations.
+    WP 4i.8: when ``skills`` are provided (matched by the orchestrator against
+    the case's families + intake keywords + techniques), the agent executes
+    skill steps as its query plan — each step runs n4_query, records
+    per-step hits, and contributes pivot entities that feed the next round.
+    Steps that find nothing are recorded as negative evidence.
+
+    Falls back to playbook fan-out when no skills match.
     """
-    from nexus.langgraph.query_pack import load_case_intake, n4_query
+    from nexus.langgraph.query_pack import attach_hit_fields, load_case_intake, n4_query
 
     case_dir = Path(case_dir)
     intake = load_case_intake(case_dir)
@@ -222,45 +226,92 @@ def _run_agent(
     # Gather Sigma rule context for each family
     sigma_context = _sigma_for_family(families)
 
-    # Build initial queries from playbook terms + entity extraction
+    all_hits: list[dict[str, Any]] = []
+    queries_run: list[str] = []
+    skill_results: list[dict[str, Any]] = []
+    pivot_values: set[str] = set()
+
+    # ── Phase A: skill-step execution (procedure-driven, WP 4i.8) ────────
+    for skill in skills or []:
+        skill_id = str(skill.get("skill") or "")
+        for step in skill.get("steps") or []:
+            if not isinstance(step, dict):
+                continue
+            q = str(step.get("query") or "").strip()
+            if not q:
+                continue
+            queries_run.append(q)
+            step_hits: list[dict[str, Any]] = []
+            try:
+                result = n4_query(case_dir, q, limit=80)
+                step_hits = list(result.get("hits") or [])
+            except Exception as exc:
+                log.warning("Agent %s skill %s step query failed: %s", agent_name, skill_id, exc)
+            all_hits.extend(step_hits)
+            rec: dict[str, Any] = {
+                "skill": skill_id,
+                "step": str(step.get("name") or q[:40]),
+                "query": q,
+                "hits_found": len(step_hits),
+                "look_for": str(step.get("look_for") or "")[:300],
+                "corroborate": str(step.get("corroborate") or "")[:200],
+            }
+            if step_hits:
+                # pivot: extract the named field's values for the next round
+                pivot_field = str(step.get("pivot") or "")
+                if pivot_field:
+                    try:
+                        for h in attach_hit_fields(case_dir, step_hits):
+                            v = str((h.get("fields") or {}).get(pivot_field) or "").strip()
+                            if v and len(v) <= 120:
+                                pivot_values.add(v)
+                    except Exception:  # noqa: BLE001
+                        pass
+            elif skill.get("negative"):
+                # WP 4i.8: a step that ran clean is itself a finding —
+                # record the skill's negative-evidence interpretation.
+                rec["negative_evidence"] = str(skill.get("negative") or "")[:300]
+            skill_results.append(rec)
+
+    # ── Phase B: entity pivots — chase values surfaced by skill steps ────
+    for v in sorted(pivot_values)[:6]:
+        queries_run.append(f"pivot:{v}")
+        try:
+            result = n4_query(case_dir, v, limit=40)
+            all_hits.extend(result.get("hits") or [])
+        except Exception as exc:
+            log.debug("Agent %s pivot query failed: %s", agent_name, exc)
+
+    # ── Phase C: playbook fan-out (existing behaviour / fallback) ────────
     queries: list[str] = []
     for fam in families:
         pb = _playbook_for_family(fam)
         if pb:
-            # Extract query terms from playbook
             for line in pb.split("\n"):
                 line = line.strip()
                 if line.startswith("- "):
                     queries.append(line[2:].strip())
 
-    # If no playbook queries, use family names as initial queries
     if not queries:
         queries = families[:5]
 
-    # Run iterative query loop
-    all_hits: list[dict[str, Any]] = []
-    queries_run: list[str] = []
     iteration = 0
-
     while iteration < max_iterations and queries:
         iteration += 1
-        for q in queries[:5]:  # Limit per iteration
+        for q in queries[:5]:
             queries_run.append(q)
             try:
                 result = n4_query(case_dir, q, limit=80)
-                hits = result.get("hits") or []
-                all_hits.extend(hits)
+                all_hits.extend(result.get("hits") or [])
             except Exception as exc:
                 log.warning("Agent %s query '%s' failed: %s", agent_name, q, exc)
 
-        # Extract entities from this round's hits
         round_entities = extract_entities(all_hits)
         entity_values: set[str] = set()
         for entity_list in round_entities.values():
             for ent in entity_list:
                 entity_values.add(ent["value"].lower())
 
-        # Refine queries based on entities found (if LLM available)
         if model is not None and iteration < max_iterations:
             try:
                 prompt = (
@@ -268,10 +319,12 @@ def _run_agent(
                     f"evidence from families: {', '.join(families)}.\n\n"
                     f"Case question: {question}\n\n"
                     f"Entities found so far: {', '.join(sorted(entity_values)[:15])}\n\n"
-                    f"RAG methodology:\n{rag_context[:1500] or '(none)'}\n\n"
-                    f"Playbook guidance:\n{playbook_context[:1000] or '(none)'}\n\n"
-                    f"ATT&CK context:\n{attack_context[:800] or '(none)'}\n\n"
-                    f"Sigma rules:\n{sigma_context[:800] or '(none)'}\n\n"
+                    f"Skill steps run: {len(skill_results)} "
+                    f"(negative: {sum(1 for r in skill_results if 'negative_evidence' in r)})\n\n"
+                    f"RAG methodology:\n{rag_context[:1200] or '(none)'}\n\n"
+                    f"Playbook guidance:\n{playbook_context[:800] or '(none)'}\n\n"
+                    f"ATT&CK context:\n{attack_context[:600] or '(none)'}\n\n"
+                    f"Sigma rules:\n{sigma_context[:600] or '(none)'}\n\n"
                     f"Propose 2-3 NEW search queries to corroborate or expand "
                     f"on the entities found. Return ONLY JSON: {{\"queries\": [...]}}"
                 )
@@ -284,7 +337,7 @@ def _run_agent(
                     queries = new_queries
             except Exception as exc:
                 log.warning("Agent %s LLM query refinement failed: %s", agent_name, exc)
-                break  # No more refinement, use remaining queries
+                break
 
     # Final entity extraction on all hits
     entities = extract_entities(all_hits)
@@ -311,6 +364,9 @@ def _run_agent(
         "queries_run": queries_run,
         "hits_reviewed": len(all_hits),
         "proposals": proposals,
+        "skills_used": [s.get("skill") for s in (skills or [])],
+        "skill_results": skill_results,
+        "negative_evidence": [r for r in skill_results if "negative_evidence" in r],
         "rag_context": rag_context,
         "rag_provenance": rag_provenance,
         "playbook_context": playbook_context,
@@ -376,21 +432,34 @@ def run_orchestrator(
 
     # If hits provided (backward compat), use them; otherwise let agents query
     if hits is None:
-        # TriageAgent: identify evidence families from the case
-        from nexus.langgraph.pipeline_runs import resolve_tools_extractions
+        # TriageAgent: identify evidence families from the case — uses the
+        # same filename-hint family derivation as the N4 query engine so
+        # flat extraction dirs (no per-family subdirs) still resolve.
+        from nexus.langgraph.query_pack import iter_extraction_files
 
-        extractions = resolve_tools_extractions(case_dir)
-        families_present: set[str] = set()
-        if extractions.is_dir():
-            for item in extractions.iterdir():
-                if item.is_dir() and not item.name.startswith("_"):
-                    families_present.add(item.name)
+        families_present: set[str] = {
+            fam for _path, _root, fam in iter_extraction_files(case_dir, max_bytes=None)
+        }
 
-        # If no families found, try scanning the extractions dir directly
-        if not families_present:
-            for item in extractions.rglob("*"):
-                if item.is_file() and item.suffix in {".csv", ".json", ".txt"}:
-                    families_present.add(item.parent.name)
+        # WP 4i.8/4i.9: select skills for this case — matched on families
+        # present + intake keywords + ATT&CK techniques. Skills are the
+        # procedures agents EXECUTE, not documents they read.
+        from nexus.knowledge.attack_needles import extract_techniques
+        from nexus.knowledge.skills import skills_for
+
+        intake_text = " ".join(
+            str(intake.get(k) or "")
+            for k in ("question", "subjects", "hypothesis", "notes")
+        )
+        keywords = {
+            w.strip(".,;:!?()[]\"'").lower()
+            for w in intake_text.split()
+            if len(w.strip(".,;:!?()[]\"'")) >= 3
+        }
+        techniques = set(extract_techniques(intake_text))
+        selected_skills = skills_for(
+            families=families_present, keywords=keywords, techniques=techniques, limit=8,
+        )
 
         # Assign families to agents
         agent_to_families: dict[str, list[str]] = {}
@@ -398,10 +467,15 @@ def run_orchestrator(
             agent = _agent_for_family(fam)
             agent_to_families.setdefault(agent, []).append(fam)
 
+        skills_by_agent = _assign_skills(selected_skills, families_present, agent_to_families)
+
         # Run EvidenceAgents
         agent_runs: list[dict[str, Any]] = []
         for agent_name, families in agent_to_families.items():
-            run_result = _run_agent(agent_name, families, case_dir, model)
+            run_result = _run_agent(
+                agent_name, families, case_dir, model,
+                skills=skills_by_agent.get(agent_name),
+            )
             agent_runs.append(run_result)
             _log_agent_run(case_dir, {
                 "action": "orchestrator_agent_run",
@@ -429,9 +503,32 @@ def run_orchestrator(
                 family_to_agent[family] = agent
                 agent_to_families.setdefault(agent, []).append(family)
 
+        # WP 4i.8: skills for the hit families + intake context
+        from nexus.knowledge.attack_needles import extract_techniques
+        from nexus.knowledge.skills import skills_for
+
+        intake_text = " ".join(
+            str(intake.get(k) or "")
+            for k in ("question", "subjects", "hypothesis", "notes")
+        )
+        keywords = {
+            w.strip(".,;:!?()[]\"'").lower()
+            for w in intake_text.split()
+            if len(w.strip(".,;:!?()[]\"'")) >= 3
+        }
+        techniques = set(extract_techniques(intake_text))
+        hit_families = set(family_to_agent)
+        selected_skills = skills_for(
+            families=hit_families, keywords=keywords, techniques=techniques, limit=8,
+        )
+        skills_by_agent = _assign_skills(selected_skills, hit_families, agent_to_families)
+
         agent_runs = []
         for agent_name, families in agent_to_families.items():
-            run_result = _run_agent(agent_name, families, case_dir, model)
+            run_result = _run_agent(
+                agent_name, families, case_dir, model,
+                skills=skills_by_agent.get(agent_name),
+            )
             agent_runs.append(run_result)
             _log_agent_run(case_dir, {
                 "action": "orchestrator_agent_run",
@@ -525,3 +622,49 @@ def _agent_for_family(family: str) -> str:
             return agent
     # Default to endpoint for unknown families
     return "endpoint"
+
+
+def _families_to_agents(families: set[str] | list[str]) -> dict[str, list[str]]:
+    """Group a set of families by their owning agent (WP 4i.8)."""
+    out: dict[str, list[str]] = {}
+    for fam in families:
+        agent = _agent_for_family(str(fam))
+        out.setdefault(agent, []).append(str(fam))
+    return out
+
+
+def _assign_skills(
+    selected: list[dict[str, Any]],
+    families_present: set[str],
+    agent_to_families: dict[str, list[str]],
+) -> dict[str, list[dict[str, Any]]]:
+    """Route each selected skill to the agent(s) that should execute it.
+
+    A skill goes to every agent owning one of its trigger families that is
+    present in the case. When the skill matched on intake keywords/techniques
+    but none of its trigger families are present, it still gets executed —
+    assigned to the agent that would own the skill's primary trigger family
+    (its steps may still hit other families' evidence). Without that, a
+    keyword-driven skill silently never runs.
+    """
+    skills_by_agent: dict[str, list[dict[str, Any]]] = {}
+    present_lower = {f.lower() for f in families_present}
+    for s in selected:
+        trig_fams = [
+            str(f).lower() for f in (((s.get("trigger") or {}).get("families")) or [])
+        ]
+        targets = {
+            _agent_for_family(f) for f in trig_fams if f in present_lower
+        }
+        targets &= set(agent_to_families)
+        if not targets:
+            # keyword/technique-only match → primary trigger family's owner,
+            # else the first agent that has any families
+            primary_owner = _agent_for_family(trig_fams[0]) if trig_fams else ""
+            if primary_owner in agent_to_families:
+                targets = {primary_owner}
+            elif agent_to_families:
+                targets = {sorted(agent_to_families)[0]}
+        for agent_name in targets:
+            skills_by_agent.setdefault(agent_name, []).append(s)
+    return skills_by_agent

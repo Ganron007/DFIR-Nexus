@@ -1,0 +1,48 @@
+skill: powershell_abuse
+title: PowerShell abuse — encoded commands, download cradles, script blocks
+description: >-
+  Detect malicious PowerShell — encoded commands, download cradles, AMSI
+  bypass, suspicious script blocks, and shell profiles.
+trigger:
+  families: [powershell, evtx, sysmon, prefetch, hayabusa]
+  keywords: [powershell, encoded, downloadstring, iex, amsi, bypass, scriptblock]
+  techniques: [T1059.001, T1059, T1027]
+steps:
+  - name: encoded_commands
+    query: "-enc OR -encodedcommand OR FromBase64String"
+    look_for: >-
+      powershell -enc/-e payloads — decode candidate; check for very long
+      base64 strings in CommandLine.
+    pivot: CommandLine
+  - name: download_cradles
+    query: "DownloadString OR DownloadFile OR Invoke-WebRequest OR iwr OR curl.exe OR wget"
+    look_for: Net.WebClient DownloadString / IEX cradle patterns.
+    pivot: CommandLine
+  - name: script_block_4104
+    query: "4104"
+    look_for: >-
+      PowerShell 4104 script-block logging — suspicious code content
+      (invoke, credential, bypass, amsi strings).
+    pivot: ScriptBlockText
+  - name: amsi_bypass
+    query: "amsiInitFailed OR amsi.dll OR AmsiUtils"
+    look_for: AMSI patch/bypass strings in script blocks or command lines.
+    corroborate: subsequent suspicious 4104 content
+  - name: powershell_downgrade
+    query: "powershell -version 2 OR -Version 2.0"
+    look_for: '-Version 2 downgrade (bypasses script-block logging).'
+    pivot: CommandLine
+  - name: suspicious_modules
+    query: "Invoke-Mimikatz OR PowerSploit OR PowerView OR Invoke-Expression"
+    look_for: Offensive framework/module names in script blocks or args.
+negative: >-
+  No encoded commands, cradles, or suspicious script blocks → PowerShell
+  abuse unlikely; check cmd/wscript/mshta/python instead.
+confidence_rules:
+  high: encoded command + 4104 content showing download/exec + network artifact
+  medium: suspicious script block without matching network evidence
+  low: admin script with bypass flags (may be legit tooling)
+mitre: [T1059.001, T1027]
+caveats:
+  - "Legitimate admin scripts use -enc for credentials — decode before judging."
+  - "4104 volume is huge — filter by HostName/Path of the script block, not just keyword."

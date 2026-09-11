@@ -10,6 +10,7 @@ import { useCase } from "../context/CaseContext";
  */
 const NAV_SPINE = [
   { to: "/evidence", label: "Evidence", stage: "N2", hint: "Registered evidence + N2 processing status" },
+  { to: "/briefing", label: "Briefing", stage: "N3.5", hint: "Case briefing — what was found before you dig" },
   { to: "/explore", label: "Explore", stage: "N3·N4", hint: "Index-backed search over parsed evidence" },
   { to: "/steer", label: "Steer Chat", stage: "N5", hint: "Interpretation — scribe, iterative, or agentic" },
   { to: "/workbench", label: "Workbench", stage: "N5", hint: "Build DRAFT findings from bookmarked hits" },

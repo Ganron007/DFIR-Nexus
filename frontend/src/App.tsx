@@ -3,6 +3,7 @@ import { CaseProvider } from "./context/CaseContext";
 import Layout from "./components/Layout";
 import RequireCase from "./components/RequireCase";
 import Overview from "./pages/Overview";
+import Briefing from "./pages/Briefing";
 import Explore from "./pages/Explore";
 import Timeline from "./pages/Timeline";
 import SteerChat from "./pages/SteerChat";
@@ -28,6 +29,7 @@ export default function App() {
 
           {/* Cockpit — requires a server-confirmed active case */}
           <Route path="/explore" element={<RequireCase><Explore /></RequireCase>} />
+          <Route path="/briefing" element={<RequireCase><Briefing /></RequireCase>} />
           <Route path="/timeline" element={<RequireCase><Timeline /></RequireCase>} />
           <Route path="/steer" element={<RequireCase><SteerChat /></RequireCase>} />
           <Route path="/workbench" element={<RequireCase><Workbench /></RequireCase>} />

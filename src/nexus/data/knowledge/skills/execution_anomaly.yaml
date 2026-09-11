@@ -1,0 +1,51 @@
+skill: execution_anomaly
+title: Execution anomalies — suspicious parentage, unsigned binaries, LOLBins
+description: >-
+  Detect anomalous execution — unsigned binaries, suspicious parent-child
+  chains, LOLBin abuse, and process lineage analysis.
+trigger:
+  families: [prefetch, amcache, evtx, sysmon, pecmd, mft, appcompat]
+  keywords: [exec, unsigned, binary, process, anomaly, lolbin, rundll32, mshta]
+  techniques: [T1218, T1059.005, T1106, T1055.001]
+steps:
+  - name: unsigned_execution
+    query: "prefetch amcache unsigned OR .exe"
+    look_for: >-
+      Executables in prefetch/amcache without a signed counterpart —
+      unsigned binaries in user-writable paths.
+    pivot: ExecutableName
+  - name: lolbin_abuse
+    query: "rundll32 regsvr32 mshta wscript cscript msbuild installutil regasm"
+    look_for: >-
+      LOLBin execution with unexpected arguments or parents — rundll32
+      with unusual DLLs, mshta running remote scripts.
+    pivot: CommandLine
+  - name: suspicious_parentage
+    query: "winword.exe cmd.exe OR excel.exe powershell.exe OR wscript.exe"
+    look_for: >-
+      Office/browser binaries spawning cmd/powershell/wscript — macro or
+      exploit child-process chains.
+    pivot: ParentImage
+  - name: temp_exec
+    query: "\\Temp\\ OR \\AppData\\Local\\Temp\\ OR \\Downloads\\"
+    look_for: Executables running from temp/download paths — dropper pattern.
+    pivot: Image
+  - name: process_injection_indicators
+    query: "CreateRemoteThread OR QueueUserAPC OR SetThreadContext"
+    look_for: Injection API sequences in process-access events.
+    pivot: SourceImage
+  - name: renamed_system_binary
+    query: "svchost OR smss OR csrss OR wininit"
+    look_for: System process names executing from non-System32 paths.
+    corroborate: prefetch/amcache entry in user-writable path
+negative: >-
+  No unsigned binaries or suspicious parentage → execution was clean;
+  the compromise may be living-off-the-land only or in memory.
+confidence_rules:
+  high: unsigned binary + suspicious parent + network artifact
+  medium: LOLBin with unusual args or temp-path exec
+  low: single unsigned exec in a developer/build context
+mitre: [T1218, T1059.005, T1106]
+caveats:
+  - "Developers and IT tools run unsigned binaries — check signer and path context before flagging."
+  - "Prefetch only proves execution, not intent — corroborate with CommandLine or network evidence."

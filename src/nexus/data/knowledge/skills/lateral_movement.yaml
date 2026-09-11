@@ -1,0 +1,49 @@
+skill: lateral_movement
+title: Lateral movement (SMB / WinRM / RDP / psexec)
+description: >-
+  Detect movement between hosts — remote logons, admin share access, remote
+  service creation, remote execution tooling.
+trigger:
+  families: [evtx, sysmon, security, hayabusa, services, scheduled_tasks]
+  keywords: [lateral, movement, psexec, wmi, winrm, rdp, admin$, smb, remote]
+  techniques: [T1021, T1021.001, T1021.002, T1021.006, T1569.002, T1047]
+steps:
+  - name: remote_logons
+    query: "4624 10 OR 4648"
+    look_for: >-
+      Type-3/10 network logons from a source host to this host —
+      4624 with a remote IpAddress; 4648 explicit-credential use.
+    pivot: IpAddress
+  - name: admin_share_access
+    query: "ADMIN$ OR C$ OR IPC$"
+    look_for: 5140/5145 share access to ADMIN$/C$/IPC$ from a non-admin host.
+    pivot: SourceAddress
+  - name: remote_service_create
+    query: "7045 OR psexesvc OR remcom"
+    look_for: >-
+      Service Control Manager 7045 service installs (psexesvc, remcom,
+      random 8-char names) — remote exec via service.
+    pivot: ServiceName
+  - name: winrm_execution
+    query: "winrm 5985 OR 5986 OR wsman"
+    look_for: WinRM listener traffic / process spawns under wsmprovhost.exe.
+    pivot: ParentImage
+  - name: rdp_sessions
+    query: "4778 OR 4779 OR TerminalServices"
+    look_for: RDP session connect/reconnect events with foreign source hosts.
+    pivot: IpAddress
+  - name: remote_scheduled_task
+    query: "schtasks /s OR 106 OR 140"
+    look_for: Remote scheduled task registration (SchRpc 106) or schtasks /s.
+    pivot: TaskName
+negative: >-
+  No remote-logon/share/service/task artifacts from other hosts → this host
+  was not a lateral-movement target in the window (or telemetry gap).
+confidence_rules:
+  high: new service + admin-share access + remote logon from same source host
+  medium: remote logon + task creation without service install
+  low: isolated 4624 type-3 events (may be normal admin/file share traffic)
+mitre: [T1021, T1569.002, T1047]
+caveats:
+  - "File-server and admin activity legitimately produces 4624 type-3 — corroborate with share/service/task artifacts."
+  - "psexesvc can be renamed — look for unsigned/random service names, not just the literal string."

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api, type N4Hit, type HistogramResponse, type PlaybookSuggestion } from "../api/client";
 import { useCase } from "../context/CaseContext";
-import { pickHitColumns } from "../lib/hitColumns";
+import { allHitColumns } from "../lib/hitColumns";
 import VirtualTable, { type Column } from "../components/VirtualTable";
 import Histogram from "../components/Histogram";
 
@@ -28,6 +28,12 @@ export default function Explore() {
   const [showPlaybookHelp, setShowPlaybookHelp] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState("");
   const [timeRange, setTimeRange] = useState<{ start: string; end: string }>({ start: "", end: "" });
+  // WP 4i.3: full-field rendering — column picker, sorting, detail drawer, pivot
+  const [visibleFields, setVisibleFields] = useState<string[]>([]);
+  const [showColPicker, setShowColPicker] = useState(false);
+  const [sortKey, setSortKey] = useState("");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [selected, setSelected] = useState<N4Hit | null>(null);
   const reqIdRef = useRef(0);
 
   // Load family/host aggregates and workbench bookmarks on mount
@@ -135,6 +141,13 @@ export default function Explore() {
       setCount(searchResult.count);
       setOffset(targetOffset);
       setHistogram(histResult.buckets || {});
+      // WP 4i.3: default visible columns = first 6 fields (priority-ordered);
+      // the picker can show every parsed field. Keep prior selection if still valid.
+      const all = allHitColumns(searchResult.hits);
+      setVisibleFields((prev) => {
+        const stillValid = prev.filter((f) => all.includes(f));
+        return stillValid.length > 0 ? stillValid : all.slice(0, 6);
+      });
     } catch (e) {
       if (reqIdRef.current !== reqId) return;
       setError((e as Error).message);
@@ -184,16 +197,63 @@ export default function Explore() {
     .filter(([k]) => k && k !== "(unknown host)")
     .sort((a, b) => b[1] - a[1]);
 
-  // WP 4d.1: type-aware columns recomputed for the current page of hits
-  const typeColumns: Column<N4Hit>[] = pickHitColumns(hits).map((fieldName) => ({
-    key: `field-${fieldName}`,
+  // WP 4i.3: all parsed fields present in this hit set (priority-ordered)
+  const allFields = allHitColumns(hits);
+
+  // WP 4i.3: click a field value → pivot: search that value as a needle
+  const pivotOnValue = (value: string) => {
+    const v = value.trim();
+    if (!v) return;
+    setNeedles((prev) => (prev ? `${prev} ${v}` : v));
+    setSelected(null);
+    setTimeout(() => doSearch(0), 50);
+  };
+
+  // WP 4i.3: client-side sort of the current page
+  const sortedHits = (() => {
+    if (!sortKey) return hits;
+    const val = (h: N4Hit): string => {
+      if (sortKey === "family") return h.family || "";
+      if (sortKey === "host") return h.host || "";
+      if (sortKey === "file") return `${h.file}:${h.line}`;
+      if (sortKey === "terms") return h.terms || "";
+      return h.fields?.[sortKey] ?? "";
+    };
+    const sorted = [...hits].sort((a, b) => val(a).localeCompare(val(b), undefined, { numeric: true }));
+    return sortDir === "desc" ? sorted.reverse() : sorted;
+  })();
+
+  const onSort = (key: string) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  };
+
+  // WP 4i.3: type-aware columns — visible subset of ALL parsed fields;
+  // every cell is clickable to pivot on that value
+  const typeColumns: Column<N4Hit>[] = visibleFields.map((fieldName) => ({
+    key: fieldName,
     header: fieldName,
-    width: fieldName.toLowerCase().includes("message") || fieldName.toLowerCase().includes("text") ? undefined : 150,
-    render: (h: N4Hit) => (
-      <span style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", display: "block", whiteSpace: "nowrap" }}>
-        {h.fields?.[fieldName] ?? ""}
-      </span>
-    ),
+    width: fieldName.toLowerCase().includes("message") || fieldName.toLowerCase().includes("text") || fieldName.toLowerCase().includes("commandline") ? undefined : 150,
+    render: (h: N4Hit) => {
+      const v = h.fields?.[fieldName] ?? "";
+      return (
+        <span
+          style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", display: "block", whiteSpace: "nowrap", cursor: v ? "pointer" : undefined }}
+          title={v ? `${v}\n(click to pivot)` : ""}
+          onClick={(e) => {
+            if (!v) return;
+            e.stopPropagation();
+            pivotOnValue(v);
+          }}
+        >
+          {v}
+        </span>
+      );
+    },
   }));
 
   const columns: Column<N4Hit>[] = [
@@ -447,6 +507,12 @@ export default function Explore() {
             Hits ({count.toLocaleString()}{count > PAGE_SIZE && ` — page ${currentPage}/${pages}`})
           </span>
           <div style={{ display: "flex", gap: 8 }}>
+            {/* WP 4i.3: column picker — examiner chooses which parsed fields show */}
+            {allFields.length > 0 && (
+              <button className="btn btn-sm" onClick={() => setShowColPicker((v) => !v)}>
+                Columns ({visibleFields.length}/{allFields.length})
+              </button>
+            )}
             <button
               className="btn btn-sm"
               disabled={offset === 0 || loading}
@@ -463,6 +529,77 @@ export default function Explore() {
             </button>
           </div>
         </div>
+
+        {/* WP 4i.3: column picker panel */}
+        {showColPicker && allFields.length > 0 && (
+          <div style={{ padding: "8px 12px", background: "var(--bg-tertiary)", borderRadius: 6, marginBottom: 8 }}>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6, textTransform: "uppercase" }}>
+              Parsed fields — check to show; arrows reorder
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {allFields.map((f) => {
+                const on = visibleFields.includes(f);
+                return (
+                  <span key={f} style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
+                    <button
+                      className="btn btn-sm"
+                      style={{
+                        fontFamily: "monospace",
+                        fontSize: 11,
+                        borderColor: on ? "var(--accent)" : undefined,
+                        background: on ? "rgba(47,129,247,0.15)" : undefined,
+                      }}
+                      onClick={() =>
+                        setVisibleFields((prev) =>
+                          on ? prev.filter((x) => x !== f) : [...prev, f],
+                        )
+                      }
+                    >
+                      {f}
+                    </button>
+                    {on && (
+                      <>
+                        <button
+                          className="btn btn-sm"
+                          style={{ padding: "0 4px", fontSize: 10 }}
+                          title="Move left"
+                          onClick={() =>
+                            setVisibleFields((prev) => {
+                              const i = prev.indexOf(f);
+                              if (i <= 0) return prev;
+                              const next = [...prev];
+                              [next[i - 1], next[i]] = [next[i], next[i - 1]];
+                              return next;
+                            })
+                          }
+                        >
+                          ◀
+                        </button>
+                        <button
+                          className="btn btn-sm"
+                          style={{ padding: "0 4px", fontSize: 10 }}
+                          title="Move right"
+                          onClick={() =>
+                            setVisibleFields((prev) => {
+                              const i = prev.indexOf(f);
+                              if (i < 0 || i >= prev.length - 1) return prev;
+                              const next = [...prev];
+                              [next[i + 1], next[i]] = [next[i], next[i + 1]];
+                              return next;
+                            })
+                          }
+                        >
+                          ▶
+                        </button>
+                      </>
+                    )}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {loading ? (
           <div className="loading">Searching...</div>
         ) : hits.length === 0 ? (
@@ -486,13 +623,58 @@ export default function Explore() {
           </div>
         ) : (
           <VirtualTable
-            rows={hits}
+            rows={sortedHits}
             columns={columns}
             rowKey={(h, i) => `${h.family}:${h.file}:${h.line}:${i}`}
             maxHeight="60vh"
+            sortKey={sortKey}
+            sortDir={sortDir}
+            onSort={onSort}
+            onRowClick={(h) => setSelected(h)}
           />
         )}
       </div>
+
+      {/* WP 4i.3: hit detail drawer — every parsed field + raw row + provenance */}
+      {selected && (
+        <div className="card" style={{ position: "sticky", bottom: 0, maxHeight: "45vh", overflowY: "auto" }}>
+          <div className="card-header">
+            <span className="card-title">
+              Hit detail — {selected.family} · {selected.host || "unknown host"}
+            </span>
+            <button className="btn btn-sm" onClick={() => setSelected(null)}>Close</button>
+          </div>
+          <div style={{ padding: "8px 12px" }}>
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8 }}>
+              {selected.file}:{selected.line} · terms: {selected.terms || "—"}
+            </div>
+            {selected.fields && Object.keys(selected.fields).length > 0 ? (
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <tbody>
+                  {Object.entries(selected.fields).map(([k, v]) => (
+                    <tr key={k} style={{ borderBottom: "1px solid var(--border)" }}>
+                      <td style={{ padding: "4px 8px", fontFamily: "monospace", fontSize: 11, color: "var(--text-muted)", width: 200, verticalAlign: "top" }}>
+                        {k}
+                      </td>
+                      <td style={{ padding: "4px 8px", fontSize: 11, wordBreak: "break-all" }}>
+                        <span
+                          style={{ cursor: "pointer" }}
+                          title="click to pivot"
+                          onClick={() => pivotOnValue(v)}
+                        >
+                          {v}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <pre style={{ fontSize: 11, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>{selected.text}</pre>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

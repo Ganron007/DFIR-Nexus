@@ -1,0 +1,49 @@
+skill: impact_ransomware
+title: Impact — ransomware, backup destruction, disk encryption
+description: >-
+  Detect ransomware and destructive impact — shadow deletion, backup
+  removal, mass file encryption, ransom notes.
+trigger:
+  families: [evtx, sysmon, mft, usn, prefetch, services]
+  keywords: [ransom, encrypt, vssadmin, bcdedit, backup, shadow, wannacry, lockbit]
+  techniques: [T1490, T1486, T1489, T1491]
+steps:
+  - name: shadow_delete
+    query: "vssadmin delete shadows OR vssadmin resize shadowstorage OR wmic shadowcopy delete"
+    look_for: >-
+      Shadow-copy deletion — the canonical ransomware anti-recovery move.
+    pivot: CommandLine
+  - name: bcdedit_recovery
+    query: "bcdedit /set OR bootstatuspolicy OR recoveryenabled no"
+    look_for: >-
+      bcdedit disabling recovery/bootstatus — prevents safe-mode recovery.
+    pivot: CommandLine
+  - name: backup_kill
+    query: "wbadmin delete catalog OR backup delete"
+    look_for: wbadmin catalog deletion — removes backup inventory.
+    pivot: CommandLine
+  - name: mass_encryption
+    query: ".encrypted OR .locked OR .crypt OR readme OR ransom"
+    look_for: >-
+      Mass file renames to ransom extensions; readme/ransom-note files in
+      mft/usn with high write rates.
+    pivot: FileName
+  - name: service_stop
+    query: "sc stop OR net stop OR service stop"
+    look_for: Mass service stops (database, backup, AV) before encryption.
+    pivot: ServiceName
+  - name: crypto_process
+    query: "cipher /w OR diskcryptor OR vboxdrv"
+    look_for: Disk-encryption tool execution or crypto-loop patterns.
+    pivot: ProcessName
+negative: >-
+  No shadow deletion, recovery disable, or mass-encryption artifacts →
+  impact phase not reached or aborted.
+confidence_rules:
+  high: vss delete + bcdedit recovery-off + mass rename/encrypt + ransom note
+  medium: shadow deletion + backup kill without confirmed encryption
+  low: isolated vssadmin (admin maintenance possible)
+mitre: [T1490, T1486, T1489]
+caveats:
+  - "Backup software legitimately manages shadows — check the account and schedule context."
+  - "Some ransomware skips vss delete if it can encrypt directly — check for mass file writes instead."
