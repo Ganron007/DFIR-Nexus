@@ -123,6 +123,46 @@ export default function Layout({ children }: { children: ReactNode }) {
   const currentLabel =
     [...NAV_SPINE, ...NAV_UTILITIES].find((n) => n.to === location.pathname)?.label || "Dashboard";
 
+  // WP 4.8: Landing page is a clean case dashboard — no cockpit sidebar.
+  // The cockpit sidebar only appears on investigation pages (requires active case).
+  const isDashboard = location.pathname === "/" || location.pathname === "/case-setup";
+
+  if (isDashboard) {
+    return (
+      <div className="dashboard-layout">
+        <header className="dashboard-header">
+          <a
+            href="/"
+            title="Back to landing page"
+            style={{ display: "flex", alignItems: "center", gap: 12, textDecoration: "none", color: "inherit" }}
+          >
+            <span dangerouslySetInnerHTML={{ __html: LOGO_SVG }} />
+            <div>
+              <h1 className="brand">DFIR-Nexus</h1>
+              <span className="brand-sub">Case Management</span>
+            </div>
+          </a>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span
+              title={health === "ok" ? "System healthy" : health === "down" ? "Backend unreachable" : "Checking…"}
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: health === "ok" ? "var(--success)" : health === "down" ? "var(--danger)" : "var(--warning)",
+                boxShadow: health === "ok" ? "0 0 6px rgba(63,185,80,0.6)" : "none",
+              }}
+            />
+          </div>
+        </header>
+        <main className="dashboard-main">
+          <div className="dashboard-content">{children}</div>
+        </main>
+      </div>
+    );
+  }
+
+  // Cockpit layout — investigation pages only (requires active case via RequireCase)
   return (
     <div className="cockpit">
       <aside className="sidebar">

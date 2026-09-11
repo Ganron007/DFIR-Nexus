@@ -1,0 +1,12 @@
+category: analysis
+description: Parse browser history, downloads, cookies, cache
+exit_code_hints:
+  '0': success
+  '1': error
+name: BrowserParser
+output_notes:
+  format: text
+  key_fields: []
+platform:
+- windows
+quick_start: BrowserParser --help

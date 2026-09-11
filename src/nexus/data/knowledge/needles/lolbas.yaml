@@ -1,0 +1,556 @@
+# LOLBAS binaries and their abuse patterns — WP 3.27a.
+# Living-off-the-land binaries that attackers abuse. Each entry maps a
+# binary name to the command-line patterns that indicate abuse, the
+# expected parent processes, and FD-004 caveats.
+#
+# Source: https://lolbas-project.github.io/ + https://gtfobins.github.io/
+
+version: 1
+description: >
+  LOLBAS (Living Off The Land Binaries and Scripts) abuse patterns —
+  command-line args that indicate malicious use, expected parent
+  processes, network indicators, and FD-004 false-positive caveats.
+source: "https://lolbas-project.github.io/ + https://gtfobins.github.io/"
+
+packs:
+  # --- Execution / Download ---
+  - binary: "certutil"
+    name: "CertUtil"
+    mitre: ["T1105", "T1140", "T1027"]
+    needles: ["-urlcache", "-split", "-decode", "-encode", "-verifyctl", "-ping", "-?"]
+    abuse_patterns: ["download", "decode", "encode", "exfil"]
+    expected_parents: ["cmd.exe", "powershell.exe", "wscript.exe", "cscript.exe"]
+    network_indicators: ["http", "https", "ftp"]
+    caveats:
+      - "certutil is a legitimate Windows certificate tool; require -urlcache (download), -decode/-encode (data staging), or -verifyctl (C2) before calling suspicious (FD-004)."
+      - "Legitimate uses: certificate management, CA operations, SSL diagnostics."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Certutil/"
+
+  - binary: "bitsadmin"
+    name: "BITSAdmin"
+    mitre: ["T1105", "T1197"]
+    needles: ["/transfer", "/create", "/addfile", "/setnotifycmdline", "/setminretrydelay", "/setcustomheaders", "/complete"]
+    abuse_patterns: ["download", "persistence", "exfil"]
+    expected_parents: ["cmd.exe", "powershell.exe", "wscript.exe", "cscript.exe"]
+    network_indicators: ["http", "https", "ftp", "smb"]
+    caveats:
+      - "bitsadmin is a legitimate BITS management tool; require /transfer (download), /create (job creation), or /setnotifycmdline (persistence) before calling suspicious (FD-004)."
+      - "Legitimate uses: Windows Update, software deployment, SCCM."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Bitsadmin/"
+
+  - binary: "mshta"
+    name: "MSHTA"
+    mitre: ["T1059.005", "T1218.005"]
+    needles: ["javascript:", "vbscript:", "http", "https", "about:", ".hta"]
+    abuse_patterns: ["execute", "download", "bypass"]
+    expected_parents: ["cmd.exe", "powershell.exe", "explorer.exe", "wscript.exe", "cscript.exe"]
+    network_indicators: ["http", "https"]
+    caveats:
+      - "mshta is a legitimate HTML application host; require http/https URL or script scheme (javascript:/vbscript:) before calling suspicious (FD-004)."
+      - "Legitimate uses: HTML applications, system dialogs, IE-based tools."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Mshta/"
+
+  - binary: "rundll32"
+    name: "Rundll32"
+    mitre: ["T1059.001", "T1218.011"]
+    needles: ["javascript:", "shell32.dll", "url.dll", "mshtml.dll", "shdocvw.dll", "zipfldr.dll", "advpack.dll", "ieadvpack.dll", "syssetup.dll", "setupapi.dll", "appwiz.cpl", "desk.cpl", "main.cpl", "inetcpl.cpl", "intl.cpl", "mmsys.cpl", "ncpa.cpl", "powercfg.cpl", "sysdm.cpl", "timedate.cpl"]
+    abuse_patterns: ["execute", "bypass", "persistence"]
+    expected_parents: ["cmd.exe", "powershell.exe", "wscript.exe", "cscript.exe"]
+    network_indicators: []
+    caveats:
+      - "rundll32 is a legitimate DLL loader; require script scheme (javascript:/vbscript:) or specific DLL names before calling suspicious (FD-004)."
+      - "Legitimate uses: Control Panel applets, printer drivers, system settings."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Rundll32/"
+
+  - binary: "regsvr32"
+    name: "Regsvr32"
+    mitre: ["T1059.001", "T1218.010"]
+    needles: ["/s", "/n", "/i:", "scrobj.dll", "urlmon.dll", "shdocvw.dll", "mshtml.dll", "shell32.dll", "zipfldr.dll", "appwiz.cpl", "desk.cpl", "main.cpl", "inetcpl.cpl", "intl.cpl", "mmsys.cpl", "ncpa.cpl", "powercfg.cpl", "sysdm.cpl", "timedate.cpl"]
+    abuse_patterns: ["execute", "bypass", "persistence"]
+    expected_parents: ["cmd.exe", "powershell.exe", "wscript.exe", "cscript.exe"]
+    network_indicators: []
+    caveats:
+      - "regsvr32 is a legitimate COM registration tool; require /s (silent), /n (no DllRegisterServer), or /i: (install) flag before calling suspicious (FD-004)."
+      - "Legitimate uses: COM component registration, ActiveX controls."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Regsvr32/"
+
+  - binary: "msbuild"
+    name: "MSBuild"
+    mitre: ["T1127.001", "T1059.001"]
+    needles: ["/p:", "/t:", "InlineTask", "MSBuild.exe", "Microsoft.Common.Tasks", "UsingTask", "CodeTaskFactory", "System."]
+    abuse_patterns: ["execute", "compile", "bypass"]
+    expected_parents: ["cmd.exe", "powershell.exe", "devenv.exe", "msbuild.exe"]
+    network_indicators: []
+    caveats:
+      - "msbuild is a legitimate .NET build tool; require InlineTask or suspicious /t: targets before calling suspicious (FD-004)."
+      - "Legitimate uses: .NET project builds, CI/CD pipelines."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Msbuild/"
+
+  - binary: "wmic"
+    name: "WMIC"
+    mitre: ["T1047", "T1059.001", "T1059.003"]
+    needles: ["process call create", "/node:", "/format:", "os get", "process get", "service call", "qfe get", "nic get", "computersystem get", "bios get", "baseboard get"]
+    abuse_patterns: ["execute", "lateral", "discovery"]
+    expected_parents: ["cmd.exe", "powershell.exe"]
+    network_indicators: ["smb", "wmi"]
+    caveats:
+      - "wmic is a legitimate WMI command-line tool; require /node: (remote execution) or process call create (process spawning) before calling suspicious (FD-004)."
+      - "Legitimate uses: system inventory, patch management, remote administration."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Wmic/"
+
+  - binary: "forfiles"
+    name: "ForFiles"
+    mitre: ["T1059.001", "T1202"]
+    needles: ["/p", "/m", "/c", "/s", "/d"]
+    abuse_patterns: ["execute", "bypass"]
+    expected_parents: ["cmd.exe", "powershell.exe"]
+    network_indicators: []
+    caveats:
+      - "forfiles is a legitimate file selection tool; require /c (command execution) or /m (mask matching) before calling suspicious (FD-004)."
+      - "Legitimate uses: batch file processing, log rotation."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Forfiles/"
+
+  - binary: "pcalua"
+    name: "Pcalua"
+    mitre: ["T1059.001", "T1202"]
+    needles: ["-a", "-c"]
+    abuse_patterns: ["execute", "bypass"]
+    expected_parents: ["cmd.exe", "powershell.exe"]
+    network_indicators: []
+    caveats:
+      - "pcalua is a legitimate program compatibility assistant; require -a or -c flag before calling suspicious (FD-004)."
+      - "Legitimate uses: compatibility mode execution."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Pcalua/"
+
+  - binary: "conhost"
+    name: "ConHost"
+    mitre: ["T1059.001", "T1202"]
+    needles: ["--headless", "0xffffffff"]
+    abuse_patterns: ["execute", "evasion"]
+    expected_parents: ["cmd.exe", "powershell.exe"]
+    network_indicators: []
+    caveats:
+      - "conhost is a legitimate console host; require --headless flag before calling suspicious (FD-004)."
+      - "Legitimate uses: console window hosting for cmd.exe/powershell.exe."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Conhost/"
+
+  # --- Credential Access ---
+  - binary: "procdump"
+    name: "ProcDump"
+    mitre: ["T1003.001", "T1003.002"]
+    needles: ["-ma", "-mm", "-md", "-e", "-x", "-h", "-accepteula"]
+    abuse_patterns: ["dump", "credential"]
+    expected_parents: ["cmd.exe", "powershell.exe"]
+    network_indicators: []
+    caveats:
+      - "procdump is a legitimate Sysinternals tool; require -ma (full dump) or -mm (mini dump) on lsass.exe before calling suspicious (FD-004)."
+      - "Legitimate uses: crash dump collection, debugging."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Procdump/"
+
+  - binary: "esentutl"
+    name: "Esentutl"
+    mitre: ["T1003.002", "T1003.003"]
+    needles: ["/y", "/d", "/p", "/o", "/m", "/l", "/s"]
+    abuse_patterns: ["copy", "credential"]
+    expected_parents: ["cmd.exe", "powershell.exe"]
+    network_indicators: []
+    caveats:
+      - "esentutl is a legitimate ESE database tool; require /y (copy) or /d (dump) on SAM/NTDS before calling suspicious (FD-004)."
+      - "Legitimate uses: database maintenance, repair, defragmentation."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Esentutl/"
+
+  # --- Defense Evasion ---
+  - binary: "wevtutil"
+    name: "WevtUtil"
+    mitre: ["T1070", "T1562.002"]
+    needles: ["cl", "clear-log", "el", "qe", "epl", "al", "sl", "gl", "im", "um", "gp", "gi"]
+    abuse_patterns: ["clear", "evade"]
+    expected_parents: ["cmd.exe", "powershell.exe"]
+    network_indicators: []
+    caveats:
+      - "wevtutil is a legitimate event log tool; require cl (clear) or clear-log before calling suspicious (FD-004)."
+      - "Legitimate uses: event log management, export, query."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Wevtutil/"
+
+  - binary: "vssadmin"
+    name: "VssAdmin"
+    mitre: ["T1490", "T1070"]
+    needles: ["delete shadows", "create shadow", "list shadows", "resize shadowstorage"]
+    abuse_patterns: ["delete", "evade"]
+    expected_parents: ["cmd.exe", "powershell.exe"]
+    network_indicators: []
+    caveats:
+      - "vssadmin is a legitimate shadow copy tool; require delete shadows or resize shadowstorage before calling suspicious (FD-004)."
+      - "Legitimate uses: backup management, system restore."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Vssadmin/"
+
+  - binary: "bcdedit"
+    name: "BcdEdit"
+    mitre: ["T1490", "T1562.001"]
+    needles: ["/set", "bootstatuspolicy", "recoveryenabled", "ignoreallfailures", "safeboot"]
+    abuse_patterns: ["evade", "recovery"]
+    expected_parents: ["cmd.exe", "powershell.exe"]
+    network_indicators: []
+    caveats:
+      - "bcdedit is a legitimate boot configuration tool; require bootstatuspolicy or recoveryenabled changes before calling suspicious (FD-004)."
+      - "Legitimate uses: boot configuration, dual-boot setup."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Bcdedit/"
+
+  # --- Discovery ---
+  - binary: "systeminfo"
+    name: "SystemInfo"
+    mitre: ["T1082"]
+    needles: ["/s", "/u", "/p", "/fo"]
+    abuse_patterns: ["discovery"]
+    expected_parents: ["cmd.exe", "powershell.exe"]
+    network_indicators: []
+    caveats:
+      - "systeminfo is a legitimate system information tool; require /s (remote) or /fo (format) before calling suspicious (FD-004)."
+      - "Legitimate uses: system inventory, patch level check."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Systeminfo/"
+
+  - binary: "nltest"
+    name: "NlTest"
+    mitre: ["T1087.002", "T1482"]
+    needles: ["/dclist", "/dsgetdc", "/domain_trusts", "/user", "/whowill", "/finduser"]
+    abuse_patterns: ["discovery", "domain"]
+    expected_parents: ["cmd.exe", "powershell.exe"]
+    network_indicators: ["ldap", "smb"]
+    caveats:
+      - "nltest is a legitimate domain trust tool; require /dclist or /domain_trusts before calling suspicious (FD-004)."
+      - "Legitimate uses: domain trust verification, DC discovery."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Nltest/"
+
+  # --- Lateral Movement ---
+  - binary: "psexec"
+    name: "PsExec"
+    mitre: ["T1021.002", "T1569.002"]
+    needles: ["-s", "-d", "-h", "-u", "-p", "-accepteula", "\\\\", "admin$", "c$", "ipc$"]
+    abuse_patterns: ["lateral", "execute"]
+    expected_parents: ["cmd.exe", "powershell.exe", "services.exe"]
+    network_indicators: ["smb", "445", "139"]
+    caveats:
+      - "psexec is a legitimate Sysinternals tool; require -s (SYSTEM) or \\\\host (remote) before calling suspicious (FD-004)."
+      - "Legitimate uses: remote administration, software deployment."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Psexec/"
+
+  - binary: "winrs"
+    name: "WinRS"
+    mitre: ["T1021.006"]
+    needles: ["-r:", "-u:", "-p:", "-remote:", "-allowdelegate", "-compression", "-usessl"]
+    abuse_patterns: ["lateral", "execute"]
+    expected_parents: ["cmd.exe", "powershell.exe"]
+    network_indicators: ["http", "https", "5985", "5986"]
+    caveats:
+      - "winrs is a legitimate WinRM client; require -r: (remote) or -remote: before calling suspicious (FD-004)."
+      - "Legitimate uses: remote command execution, WinRM management."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Winrs/"
+
+  # --- Exfiltration ---
+  - binary: "rclone"
+    name: "Rclone"
+    mitre: ["T1567.002", "T1048"]
+    needles: ["copy", "sync", "move", "remote:", "--config", "--log-file", "--transfers", "--checkers", "--bwlimit"]
+    abuse_patterns: ["exfil", "sync"]
+    expected_parents: ["cmd.exe", "powershell.exe"]
+    network_indicators: ["http", "https", "s3", "ftp", "sftp"]
+    caveats:
+      - "rclone is a legitimate cloud sync tool; require remote: or --config before calling suspicious (FD-004)."
+      - "Legitimate uses: cloud backup, file sync."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Rclone/"
+
+  - binary: "ftp"
+    name: "FTP"
+    mitre: ["T1048", "T1105"]
+    needles: ["-s:", "-i", "-n", "-v", "-d", "open", "put", "get", "mput", "mget", "bye"]
+    abuse_patterns: ["exfil", "download"]
+    expected_parents: ["cmd.exe", "powershell.exe"]
+    network_indicators: ["ftp", "21"]
+    caveats:
+      - "ftp is a legitimate file transfer tool; require -s: (script) or put/mput before calling suspicious (FD-004)."
+      - "Legitimate uses: file transfer, website management."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Ftp/"
+
+  # --- Scripting ---
+  - binary: "powershell"
+    name: "PowerShell"
+    mitre: ["T1059.001", "T1059.003"]
+    needles: ["-enc", "-encodedcommand", "-nop", "-w hidden", "-noni", "-ep bypass", "-executionpolicy bypass", "IEX", "Invoke-Expression", "DownloadString", "FromBase64String", "ScriptBlock", "AMSI", "Invoke-Mimikatz", "Invoke-Shellcode", "Invoke-ReflectivePEInjection", "Invoke-DllInjection", "Invoke-PSInject", "Invoke-TokenManipulation", "Invoke-WmiMethod", "Invoke-Command", "Enter-PSSession", "New-PSSession", "Start-Process", "Start-Job", "Register-ScheduledJob", "Set-ExecutionPolicy", "Bypass", "Unrestricted", "RemoteSigned"]
+    abuse_patterns: ["execute", "download", "encode", "bypass", "inject"]
+    expected_parents: ["cmd.exe", "explorer.exe", "wscript.exe", "cscript.exe", "powershell.exe"]
+    network_indicators: ["http", "https", "ftp", "smb"]
+    caveats:
+      - "powershell is a legitimate admin tool; require -enc/-encodedcommand (obfuscation), -nop/-noni (non-interactive), -ep bypass (execution policy), or download cradle patterns before calling suspicious (FD-004)."
+      - "Legitimate uses: system administration, automation, configuration management."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Powershell/"
+
+  - binary: "wscript"
+    name: "WScript"
+    mitre: ["T1059.005", "T1059.007"]
+    needles: [".vbs", ".vbe", ".js", ".jse", ".wsf", ".wsh", "bypass", "exec", "run", "shell", "sleep", "echo"]
+    abuse_patterns: ["execute", "download", "bypass"]
+    expected_parents: ["explorer.exe", "cmd.exe", "powershell.exe"]
+    network_indicators: ["http", "https"]
+    caveats:
+      - "wscript is a legitimate Windows Script Host; require .vbs/.vbe/.js/.jse/.wsf/.wsh file execution before calling suspicious (FD-004)."
+      - "Legitimate uses: VBScript/JScript execution, logon scripts."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Wscript/"
+
+  - binary: "cscript"
+    name: "CScript"
+    mitre: ["T1059.005", "T1059.007"]
+    needles: [".vbs", ".vbe", ".js", ".jse", ".wsf", ".wsh", "//nologo", "//b", "//t:", "//d", "//x"]
+    abuse_patterns: ["execute", "download", "bypass"]
+    expected_parents: ["cmd.exe", "powershell.exe"]
+    network_indicators: ["http", "https"]
+    caveats:
+      - "cscript is a legitimate Windows Script Host console; require .vbs/.vbe/.js/.jse/.wsf/.wsh file execution before calling suspicious (FD-004)."
+      - "Legitimate uses: VBScript/JScript execution, batch scripting."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Cscript/"
+
+  # --- Data Staging ---
+  - binary: "makecab"
+    name: "MakeCab"
+    mitre: ["T1560.001", "T1002"]
+    needles: ["/d", "/l", "cab", "compress", "extract"]
+    abuse_patterns: ["compress", "stage"]
+    expected_parents: ["cmd.exe", "powershell.exe"]
+    network_indicators: []
+    caveats:
+      - "makecab is a legitimate CAB archive tool; require /d (directive) or compress on sensitive files before calling suspicious (FD-004)."
+      - "Legitimate uses: software packaging, driver distribution."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Makecab/"
+
+  - binary: "expand"
+    name: "Expand"
+    mitre: ["T1560.001", "T1002"]
+    needles: ["-r", "-d", "-f:", "-i", "-?"]
+    abuse_patterns: ["extract", "stage"]
+    expected_parents: ["cmd.exe", "powershell.exe"]
+    network_indicators: []
+    caveats:
+      - "expand is a legitimate file expansion tool; require -r (rename) or -f: (files) before calling suspicious (FD-004)."
+      - "Legitimate uses: file extraction, driver installation."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Expand/"
+
+  # --- Network ---
+  - binary: "netsh"
+    name: "NetSh"
+    mitre: ["T1090", "T1571", "T1049"]
+    needles: ["advfirewall", "firewall", "set", "add", "delete", "interface", "portproxy", "trace", "wlan", "lan", "dhcp", "winsock", "http", "ipsec", "bridge", "ras", "routing", "wfp", "mbn", "namespace", "rpc", "teredo", "isatap", "6to4"]
+    abuse_patterns: ["firewall", "proxy", "tunnel", "discovery"]
+    expected_parents: ["cmd.exe", "powershell.exe"]
+    network_indicators: ["netsh", "portproxy"]
+    caveats:
+      - "netsh is a legitimate network configuration tool; require portproxy (tunneling) or firewall rule changes before calling suspicious (FD-004)."
+      - "Legitimate uses: network configuration, firewall management, troubleshooting."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Netsh/"
+
+  - binary: "net"
+    name: "Net"
+    mitre: ["T1087.001", "T1087.002", "T1136.001", "T1069.001", "T1069.002", "T1078", "T1033"]
+    needles: ["user", "localgroup", "group", "view", "share", "use", "start", "stop", "session", "time", "config", "statistics", "accounts", "computer", "continue", "file", "help", "helpmsg", "name", "pause", "print", "send", "workstation"]
+    abuse_patterns: ["discovery", "persistence", "lateral"]
+    expected_parents: ["cmd.exe", "powershell.exe"]
+    network_indicators: ["smb", "445", "139"]
+    caveats:
+      - "net is a legitimate network management tool; require /domain, /add, or /delete before calling suspicious (FD-004)."
+      - "Legitimate uses: user management, share management, service control."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Net/"
+
+  # --- Registry ---
+  - binary: "reg"
+    name: "Reg"
+    mitre: ["T1112", "T1012", "T1547.001", "T1546", "T1003.002", "T1552.002", "T1562.001"]
+    needles: ["add", "delete", "query", "save", "export", "import", "load", "unload", "restore", "compare", "copy", "flags"]
+    abuse_patterns: ["persistence", "credential", "modify"]
+    expected_parents: ["cmd.exe", "powershell.exe"]
+    network_indicators: []
+    caveats:
+      - "reg is a legitimate registry tool; require add/delete on Run keys, save/export on hives, or query on credential keys before calling suspicious (FD-004)."
+      - "Legitimate uses: registry management, software installation, system configuration."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Reg/"
+
+  # --- Scheduled Tasks ---
+  - binary: "schtasks"
+    name: "SchTasks"
+    mitre: ["T1053.005", "T1053.002"]
+    needles: ["/create", "/delete", "/run", "/end", "/tn", "/tr", "/sc", "/mo", "/d", "/st", "/sd", "/ed", "/it", "/ru", "/rp", "/rl", "/f", "/z", "/v1", "/xml"]
+    abuse_patterns: ["persistence", "execute"]
+    expected_parents: ["cmd.exe", "powershell.exe"]
+    network_indicators: []
+    caveats:
+      - "schtasks is a legitimate task scheduler; require /create with suspicious /tr (target) or /sc (schedule) before calling suspicious (FD-004)."
+      - "Legitimate uses: scheduled tasks, maintenance scripts, system updates."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Schtasks/"
+
+  # --- Services ---
+  - binary: "sc"
+    name: "SC"
+    mitre: ["T1543.003", "T1569.002"]
+    needles: ["create", "delete", "start", "stop", "config", "query", "qc", "description", "failure", "sdset", "sdshow", "privs", "managedby", "getkeyname", "getdisplayname", "enumdepend", "boot", "lock"]
+    abuse_patterns: ["persistence", "execute", "privilege"]
+    expected_parents: ["cmd.exe", "powershell.exe", "services.exe"]
+    network_indicators: []
+    caveats:
+      - "sc is a legitimate service control tool; require create/delete on non-Microsoft services or config binPath changes before calling suspicious (FD-004)."
+      - "Legitimate uses: service management, driver installation."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Sc/"
+
+  # --- System ---
+  - binary: "shutdown"
+    name: "Shutdown"
+    mitre: ["T1529", "T1531"]
+    needles: ["/s", "/r", "/t", "/f", "/a", "/m", "/d", "/c", "/e", "/o", "/hybrid", "/soft", "/fw", "/p"]
+    abuse_patterns: ["impact", "shutdown"]
+    expected_parents: ["cmd.exe", "powershell.exe"]
+    network_indicators: []
+    caveats:
+      - "shutdown is a legitimate system power tool; require /s (shutdown) or /r (restart) with /f (force) before calling suspicious (FD-004)."
+      - "Legitimate uses: system maintenance, updates, power management."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Shutdown/"
+
+  - binary: "taskkill"
+    name: "TaskKill"
+    mitre: ["T1562.001", "T1489"]
+    needles: ["/f", "/im", "/pid", "/t", "/fi", "/s", "/u", "/p"]
+    abuse_patterns: ["impact", "kill"]
+    expected_parents: ["cmd.exe", "powershell.exe"]
+    network_indicators: []
+    caveats:
+      - "taskkill is a legitimate process termination tool; require /f (force) on critical processes or /im on security tools before calling suspicious (FD-004)."
+      - "Legitimate uses: process management, hung application termination."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Taskkill/"
+
+  # --- Additional LOLBins ---
+  - binary: "installutil"
+    name: "InstallUtil"
+    mitre: ["T1218.004", "T1059.001"]
+    needles: ["/u", "/uninstall", "System.Configuration.Install", "Installer", "InstallUtil.exe"]
+    abuse_patterns: ["execute", "bypass"]
+    expected_parents: ["cmd.exe", "powershell.exe", "devenv.exe"]
+    network_indicators: []
+    caveats:
+      - "installutil is a legitimate .NET installer tool; require /u (uninstall) or suspicious assembly paths before calling suspicious (FD-004)."
+      - "Legitimate uses: .NET component installation, Windows service installation."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Installutil/"
+
+  - binary: "regasm"
+    name: "RegAsm"
+    mitre: ["T1218.009", "T1059.001"]
+    needles: ["/unregister", "/u", "regasm.exe", "System.EnterpriseServices", "RegistrationServices"]
+    abuse_patterns: ["execute", "bypass"]
+    expected_parents: ["cmd.exe", "powershell.exe", "devenv.exe"]
+    network_indicators: []
+    caveats:
+      - "regasm is a legitimate .NET assembly registration tool; require /unregister or suspicious assembly paths before calling suspicious (FD-004)."
+      - "Legitimate uses: COM interop registration, .NET component registration."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Regasm/"
+
+  - binary: "regsvcs"
+    name: "RegSvcs"
+    mitre: ["T1218.009", "T1059.001"]
+    needles: ["/u", "/uninstall", "regsvcs.exe", "System.EnterpriseServices", "RegistrationServices"]
+    abuse_patterns: ["execute", "bypass"]
+    expected_parents: ["cmd.exe", "powershell.exe", "devenv.exe"]
+    network_indicators: []
+    caveats:
+      - "regsvcs is a legitimate .NET services registration tool; require /u or suspicious assembly paths before calling suspicious (FD-004)."
+      - "Legitimate uses: .NET Enterprise Services registration."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Regsvcs/"
+
+  - binary: "msdt"
+    name: "MSDT"
+    mitre: ["T1218.005", "T1059.001"]
+    needles: ["-path", "ms-msdt:", "id", "skip", "force", "cab", "pcwrun"]
+    abuse_patterns: ["execute", "bypass"]
+    expected_parents: ["cmd.exe", "powershell.exe", "explorer.exe"]
+    network_indicators: []
+    caveats:
+      - "msdt is a legitimate Microsoft Support Diagnostic Tool; require ms-msdt: protocol or -path before calling suspicious (FD-004)."
+      - "Legitimate uses: diagnostic troubleshooting, support assistance."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Msdt/"
+
+  - binary: "mavinject"
+    name: "MavInject"
+    mitre: ["T1055.001", "T1218.013"]
+    needles: ["/inject", "mavinject.exe", "AppV", "virtual"]
+    abuse_patterns: ["inject", "execute"]
+    expected_parents: ["cmd.exe", "powershell.exe"]
+    network_indicators: []
+    caveats:
+      - "mavinject is a legitimate App-V injection tool; require /inject on suspicious processes before calling suspicious (FD-004)."
+      - "Legitimate uses: App-V application virtualization."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Mavinject/"
+
+  - binary: "control"
+    name: "Control"
+    mitre: ["T1218.002", "T1059.001"]
+    needles: [".cpl", "control.exe", "timedate.cpl", "sysdm.cpl", "appwiz.cpl", "desk.cpl", "main.cpl", "inetcpl.cpl", "intl.cpl", "mmsys.cpl", "ncpa.cpl", "powercfg.cpl"]
+    abuse_patterns: ["execute", "bypass"]
+    expected_parents: ["cmd.exe", "powershell.exe", "explorer.exe"]
+    network_indicators: []
+    caveats:
+      - "control is a legitimate Control Panel launcher; require .cpl file execution before calling suspicious (FD-004)."
+      - "Legitimate uses: Control Panel access, system settings."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Control/"
+
+  - binary: "hh"
+    name: "HTML Help"
+    mitre: ["T1218.001", "T1059.007"]
+    needles: [".chm", ".hlp", "hh.exe", "javascript:", "vbscript:", "shortcut"]
+    abuse_patterns: ["execute", "bypass"]
+    expected_parents: ["explorer.exe", "cmd.exe", "powershell.exe"]
+    network_indicators: ["http", "https"]
+    caveats:
+      - "hh is a legitimate HTML Help viewer; require .chm/.hlp file with embedded script or shortcut before calling suspicious (FD-004)."
+      - "Legitimate uses: help file viewing, documentation."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Hh/"
+
+  - binary: "ieexec"
+    name: "IEExec"
+    mitre: ["T1218.003", "T1059.001"]
+    needles: ["ieexec.exe", ".exe", "http", "https"]
+    abuse_patterns: ["execute", "download"]
+    expected_parents: ["cmd.exe", "powershell.exe"]
+    network_indicators: ["http", "https"]
+    caveats:
+      - "ieexec is a legitimate IE execution tool; require http/https URL before calling suspicious (FD-004)."
+      - "Legitimate uses: .NET application execution in IE."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Ieexec/"
+
+  - binary: "odbcconf"
+    name: "ODBCConf"
+    mitre: ["T1218.008", "T1059.001"]
+    needles: ["/a", "REGSVR", "odbcconf.exe", "CONFIGDSN", "CONFIGSYSDSN", "CONFIGDRIVER", "INSTALLDRIVER", "INSTALLTRANSLATOR"]
+    abuse_patterns: ["execute", "bypass"]
+    expected_parents: ["cmd.exe", "powershell.exe"]
+    network_indicators: []
+    caveats:
+      - "odbcconf is a legitimate ODBC configuration tool; require /a REGSVR or suspicious DLL paths before calling suspicious (FD-004)."
+      - "Legitimate uses: ODBC driver configuration, data source management."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Odbcconf/"
+
+  - binary: "presentationhost"
+    name: "PresentationHost"
+    mitre: ["T1218.007", "T1059.001"]
+    needles: ["presentationhost.exe", ".xbap", "http", "https"]
+    abuse_patterns: ["execute", "download"]
+    expected_parents: ["cmd.exe", "powershell.exe", "explorer.exe"]
+    network_indicators: ["http", "https"]
+    caveats:
+      - "presentationhost is a legitimate WPF host; require .xbap file or http/https URL before calling suspicious (FD-004)."
+      - "Legitimate uses: WPF browser application hosting."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Presentationhost/"
+
+  - binary: "msiexec"
+    name: "MsiExec"
+    mitre: ["T1218.007", "T1059.001"]
+    needles: ["/i", "/q", "/quiet", "/passive", "/norestart", "/l*v", "/a", "/j", "/u", "/x", "/f", "/p", "/y", "/z", "msiexec.exe", ".msi", ".msp", ".mst"]
+    abuse_patterns: ["execute", "install", "bypass"]
+    expected_parents: ["cmd.exe", "powershell.exe", "explorer.exe"]
+    network_indicators: ["http", "https", "ftp"]
+    caveats:
+      - "msiexec is a legitimate Windows Installer; require /q (quiet) or /passive with suspicious .msi paths before calling suspicious (FD-004)."
+      - "Legitimate uses: software installation, updates, patches."
+    source: "https://lolbas-project.github.io/lolbas/Binaries/Msiexec/"

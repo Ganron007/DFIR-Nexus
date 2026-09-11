@@ -1,0 +1,176 @@
+# MISP / OpenCTI — WP 3.27d.
+# Structured threat intel platforms — IOCs, TTPs, campaigns. The scribe
+# can suggest needles based on curated threat intel feeds.
+
+version: 1
+description: >
+  MISP / OpenCTI structured threat intel — IOCs, TTPs, campaigns,
+  and threat actors from curated feeds. The scribe can suggest needles
+  based on structured threat intel.
+source: "https://www.misp-project.org/ + https://www.opencti.io/"
+
+platforms:
+  # --- MISP ---
+  - name: "MISP"
+    url: "https://www.misp-project.org/"
+    description: "Malware Information Sharing Platform — structured threat intel"
+    feed_types:
+      - name: "misp-galaxy"
+        description: "MISP Galaxy — threat actors, tools, campaigns, TTPs"
+        needles: ["apt29", "apt28", "lazarus", "fin7", "fin8", "conti", "lockbit", "blackcat", "emotet", "dridex", "trickbot", "qakbot", "bumblebee", "icedid", "systembc", "smokeloader"]
+      - name: "misp-warninglists"
+        description: "MISP Warning Lists — known-good indicators"
+        needles: ["known-good", "whitelist", "benign", "false-positive"]
+      - name: "misp-taxonomies"
+        description: "MISP Taxonomies — threat intel classification"
+        needles: ["tlp", "pap", "estimative-language", "admiralty-scale", "de-vs", "osint", "threatmatch", "malware", "ransomware", "phishing", "botnet", "c2", "exfil"]
+      - name: "misp-objects"
+        description: "MISP Objects — structured threat intel objects"
+        needles: ["file", "domain", "ip", "url", "hash", "email", "mutex", "registry", "process", "network", "service", "scheduled-task", "pipe", "driver"]
+      - name: "misp-feeds"
+        description: "MISP Feeds — curated threat intel feeds"
+        needles: ["threat-intel", "ioc", "indicator", "compromise", "malware", "ransomware", "phishing", "botnet", "c2", "exfil"]
+
+  # --- OpenCTI ---
+  - name: "OpenCTI"
+    url: "https://www.opencti.io/"
+    description: "Open Cyber Threat Intelligence — structured threat intel"
+    feed_types:
+      - name: "opencti-actors"
+        description: "Threat actors — APT groups, ransomware gangs, cybercriminals"
+        needles: ["apt29", "apt28", "lazarus", "fin7", "fin8", "conti", "lockbit", "blackcat", "emotet", "dridex", "trickbot", "qakbot", "bumblebee", "icedid", "systembc", "smokeloader"]
+      - name: "opencti-campaigns"
+        description: "Campaigns — attack campaigns with IOCs and TTPs"
+        needles: ["campaign", "operation", "attack", "intrusion", "breach", "exfil", "ransomware", "phishing", "botnet", "c2"]
+      - name: "opencti-tools"
+        description: "Tools — malware families, attack tools, utilities"
+        needles: ["malware", "tool", "utility", "loader", "dropper", "injector", "keylogger", "ransomware", "rootkit", "bootkit", "worm", "virus", "adware", "spyware", "rat", "bot", "zombie"]
+      - name: "opencti-vulnerabilities"
+        description: "Vulnerabilities — CVEs with exploit status"
+        needles: ["cve-", "exploit", "0day", "zeroday", "buffer overflow", "stack overflow", "heap overflow", "use-after-free", "uaf", "rce", "remote code execution", "privilege escalation", "privesc", "escalation"]
+      - name: "opencti-observables"
+        description: "Observables — IOCs with context"
+        needles: ["file", "domain", "ip", "url", "hash", "email", "mutex", "registry", "process", "network", "service", "scheduled-task", "pipe", "driver"]
+
+  # --- ThreatFox ---
+  - name: "ThreatFox"
+    url: "https://threatfox.abuse.ch/"
+    description: "ThreatFox — C2 indicators and botnet tracking"
+    feed_types:
+      - name: "threatfox-c2"
+        description: "C2 indicators — active botnet C2s"
+        needles: ["c2", "beacon", "callback", "exfil", "payload", "implant", "rat"]
+      - name: "threatfox-payload"
+        description: "Payload indicators — malware samples"
+        needles: ["malware", "payload", "sample", "hash", "sha256", "md5", "sha1"]
+
+  # --- URLhaus ---
+  - name: "URLhaus"
+    url: "https://urlhaus.abuse.ch/"
+    description: "URLhaus — malicious URL tracking"
+    feed_types:
+      - name: "urlhaus-payload"
+        description: "Payload URLs — malware download URLs"
+        needles: ["malware", "payload", "download", "c2", "exfil", "phishing", "exploit"]
+      - name: "urlhaus-domain"
+        description: "Malicious domains — known-bad domains"
+        needles: ["domain", "malware", "phishing", "c2", "exfil"]
+
+  # --- MalwareBazaar ---
+  - name: "MalwareBazaar"
+    url: "https://bazaar.abuse.ch/"
+    description: "MalwareBazaar — malware sample hashes"
+    feed_types:
+      - name: "bazaar-sample"
+        description: "Malware samples — SHA256 hashes"
+        needles: ["malware", "trojan", "backdoor", "ransomware", "spyware", "stealer", "loader", "dropper"]
+      - name: "bazaar-hash"
+        description: "Malware hashes — known-bad hashes"
+        needles: ["sha256", "md5", "sha1", "imphash"]
+
+  # --- FeodoTracker ---
+  - name: "FeodoTracker"
+    url: "https://feodotracker.abuse.ch/"
+    description: "FeodoTracker — botnet C2 tracking"
+    feed_types:
+      - name: "feodo-c2"
+        description: "Botnet C2s — active botnet command servers"
+        needles: ["emotet", "dridex", "trickbot", "qakbot", "bumblebee", "icedid", "systembc", "smokeloader"]
+      - name: "feodo-ip"
+        description: "Botnet IPs — known-bad IP addresses"
+        needles: ["ip", "c2", "botnet", "emotet", "dridex", "trickbot", "qakbot"]
+
+  # --- AbuseIPDB ---
+  - name: "AbuseIPDB"
+    url: "https://www.abuseipdb.com/"
+    description: "AbuseIPDB — malicious IP tracking"
+    feed_types:
+      - name: "abuseipdb-ip"
+        description: "Malicious IPs — reported abuse IPs"
+        needles: ["ip", "brute force", "scanner", "c2", "botnet", "proxy", "vpn", "tor"]
+      - name: "abuseipdb-domain"
+        description: "Malicious domains — reported abuse domains"
+        needles: ["domain", "phishing", "malware", "c2", "exfil"]
+
+  # --- AlienVault OTX ---
+  - name: "AlienVault OTX"
+    url: "https://otx.alienvault.com/"
+    description: "AlienVault OTX — open threat exchange"
+    feed_types:
+      - name: "otx-pulse"
+        description: "OTX Pulses — curated threat intel"
+        needles: ["pulse", "ioc", "indicator", "compromise", "malware", "ransomware", "phishing", "botnet", "c2", "exfil"]
+      - name: "otx-indicator"
+        description: "OTX Indicators — IOCs with context"
+        needles: ["file", "domain", "ip", "url", "hash", "email", "mutex", "registry", "process", "network"]
+
+  # --- VirusTotal ---
+  - name: "VirusTotal"
+    url: "https://www.virustotal.com/"
+    description: "VirusTotal — malware analysis and reputation"
+    feed_types:
+      - name: "vt-file"
+        description: "File reputation — malware analysis results"
+        needles: ["sha256", "md5", "sha1", "malware", "trojan", "backdoor", "ransomware", "spyware", "stealer", "loader", "dropper"]
+      - name: "vt-domain"
+        description: "Domain reputation — malicious domains"
+        needles: ["domain", "phishing", "malware", "c2", "exfil"]
+      - name: "vt-ip"
+        description: "IP reputation — malicious IPs"
+        needles: ["ip", "brute force", "scanner", "c2", "botnet", "proxy", "vpn", "tor"]
+
+  # --- GreyNoise ---
+  - name: "GreyNoise"
+    url: "https://www.greynoise.io/"
+    description: "GreyNoise — internet noise vs targeted attacks"
+    feed_types:
+      - name: "greynoise-noise"
+        description: "Internet noise — scanners, bots, crawlers"
+        needles: ["scanner", "bot", "crawler", "shodan", "censys", "masscan", "zmap", "nmap"]
+      - name: "greynoise-targeted"
+        description: "Targeted attacks — real attack traffic"
+        needles: ["targeted", "attack", "exploit", "brute force", "c2", "botnet"]
+
+  # --- Shodan ---
+  - name: "Shodan"
+    url: "https://www.shodan.io/"
+    description: "Shodan — internet-connected device search"
+    feed_types:
+      - name: "shodan-device"
+        description: "Device search — exposed services"
+        needles: ["open port", "service", "banner", "vulnerability", "exploit"]
+      - name: "shodan-vuln"
+        description: "Vulnerability search — CVE-matched devices"
+        needles: ["cve-", "vulnerability", "exploit", "unpatched"]
+
+  # --- Censys ---
+  - name: "Censys"
+    url: "https://censys.io/"
+    description: "Censys — internet-wide scan data"
+    feed_types:
+      - name: "censys-scan"
+        description: "Internet scan — exposed services"
+        needles: ["open port", "service", "banner", "certificate", "tls"]
+      - name: "censys-vuln"
+        description: "Vulnerability scan — CVE-matched services"
+        needles: ["cve-", "vulnerability", "exploit", "unpatched"]

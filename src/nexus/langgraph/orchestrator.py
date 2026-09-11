@@ -1,10 +1,9 @@
-"""Mode 3 multi-agent orchestrator (WP 3.10, 3.11, 3.12).
+"""Mode 3 multi-agent orchestrator — real agentic implementation (WP 3.21).
 
-Dispatches specialist agents per evidence family, injects RAG methodology
-and playbook context, collects agent findings into a synthesis node, and
-routes to examiner approval. Every agent run is logged to agent_runs.jsonl
-with full provenance (WP 3.11). RAG methodology used by agents is recorded
-with query/doc provenance distinct from evidence (WP 3.12).
+Dispatches specialist agents that run real queries, extract entities,
+correlate across families, detect attack patterns, and build narratives.
+The orchestrator coordinates via a task queue with dependencies:
+  TriageAgent → EvidenceAgents → CorrelationAgent → PatternAgent → SynthesisAgent
 
 The orchestrator does NOT approve findings — the examiner does. The
 orchestrator proposes; the examiner disposes.
@@ -17,6 +16,11 @@ import logging
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from nexus.langgraph.correlation_agent import CorrelationAgent
+from nexus.langgraph.entities import extract_entities
+from nexus.langgraph.pattern_agent import PatternAgent
+from nexus.langgraph.synthesis_agent import SynthesisAgent
 
 log = logging.getLogger(__name__)
 
@@ -70,22 +74,8 @@ def _rag_for_family(family: str) -> tuple[str, list[dict[str, Any]]]:
         return "", []
 
 
-def _agent_for_family(family: str) -> str:
-    """Determine which agent handles a given evidence family."""
-    family_lower = family.lower()
-    for agent, families in _AGENT_FAMILY_MAP.items():
-        if family_lower in families:
-            return agent
-    # Default to endpoint for unknown families
-    return "endpoint"
-
-
 def _playbook_for_family(family: str) -> str:
-    """WP 3.10: Load playbook caveats + first-phase steps for an agent's family.
-
-    Reuses the same logic as mode2._playbook_context_for_families but for
-    a single family (the agent's assigned family).
-    """
+    """Load playbook caveats + first-phase steps for an agent's family."""
     if not family:
         return ""
     try:
@@ -133,25 +123,81 @@ def _playbook_for_family(family: str) -> str:
         return ""
 
 
+def _attack_for_family(families: list[str]) -> str:
+    """Load ATT&CK technique context for the given evidence families."""
+    try:
+        from nexus.knowledge.loader import get_attack_needles
+
+        packs = get_attack_needles()
+        blocks: list[str] = []
+        for pack in packs:
+            if not isinstance(pack, dict):
+                continue
+            pack_families = pack.get("families") or []
+            if not pack_families:
+                continue
+            if any(f.lower() in [pf.lower() for pf in pack_families] for f in families):
+                block = f"--- {pack.get('technique_id', 'T')} {pack.get('name', '')} ---\n"
+                needles = pack.get("needles") or []
+                if needles:
+                    block += "Needles: " + ", ".join(str(n) for n in needles[:8]) + "\n"
+                caveats = pack.get("caveats") or []
+                if caveats:
+                    block += "Caveats:\n"
+                    for c in caveats[:3]:
+                        block += f"  - {str(c)[:150]}\n"
+                blocks.append(block[:800])
+        return "\n".join(blocks[:3]).strip()
+    except Exception as exc:
+        log.warning("ATT&CK for families %s failed: %s", families, exc)
+        return ""
+
+
+def _sigma_for_family(families: list[str]) -> str:
+    """Load Sigma rule context for the given evidence families."""
+    try:
+        from nexus.knowledge.loader import get_sigma_needles
+
+        packs = get_sigma_needles()
+        blocks: list[str] = []
+        for pack in packs:
+            if not isinstance(pack, dict):
+                continue
+            pack_families = pack.get("families") or []
+            if not pack_families:
+                continue
+            if any(f.lower() in [pf.lower() for pf in pack_families] for f in families):
+                block = f"--- {pack.get('name', 'Sigma')} ---\n"
+                needles = pack.get("needles") or []
+                if needles:
+                    block += "Detection fields: " + ", ".join(str(n) for n in needles[:8]) + "\n"
+                blocks.append(block[:600])
+        return "\n".join(blocks[:3]).strip()
+    except Exception as exc:
+        log.warning("Sigma for families %s failed: %s", families, exc)
+        return ""
+
+
 def _run_agent(
     agent_name: str,
     families: list[str],
-    hits: list[dict[str, Any]],
     case_dir: Path,
     model: Any = None,
+    max_iterations: int = 3,
 ) -> dict[str, Any]:
-    """Run a single specialist agent on its assigned evidence families.
+    """Run a single EvidenceAgent on its assigned evidence families.
 
-    Returns an agent run dict with:
-        agent: str — agent name
-        status: str — "done" or "error"
-        evidence_families: list[str] — families this agent covered
-        evidence_refs: list[dict] — hit references (file, line, family)
-        proposals: list[dict] — proposed needles/findings
-        rag_context: str — RAG methodology text used
-        rag_provenance: list[dict] — RAG query/doc provenance
-        playbook_context: str — playbook caveats + steps used
+    The agent runs real N4 queries on its families, extracts entities from
+    hits, and iterates (query → see hits → refine → re-query up to
+    max_iterations). Returns entities found, queries run, hits reviewed,
+    and proposals with evidence citations.
     """
+    from nexus.langgraph.query_pack import load_case_intake, n4_query
+
+    case_dir = Path(case_dir)
+    intake = load_case_intake(case_dir)
+    question = intake.get("question", "")
+
     # Gather RAG methodology for each family
     rag_blocks: list[str] = []
     rag_provenance: list[dict[str, Any]] = []
@@ -160,10 +206,9 @@ def _run_agent(
         if text:
             rag_blocks.append(text)
             rag_provenance.extend(prov)
-
     rag_context = "\n".join(rag_blocks)
 
-    # WP 3.10: Gather playbook caveats + first-phase steps for each family
+    # Gather playbook caveats for each family
     playbook_blocks: list[str] = []
     for fam in families:
         pb_text = _playbook_for_family(fam)
@@ -171,181 +216,312 @@ def _run_agent(
             playbook_blocks.append(pb_text)
     playbook_context = "\n".join(playbook_blocks)
 
-    # Collect evidence references from hits
-    evidence_refs = [
-        {
-            "family": h.get("family", ""),
-            "file": h.get("file", ""),
-            "line": h.get("line", ""),
-        }
-        for h in hits
-        if h.get("family", "").lower() in [f.lower() for f in families]
-    ]
+    # Gather ATT&CK technique context for each family
+    attack_context = _attack_for_family(families)
 
-    # Propose needles based on hit terms + RAG methodology
+    # Gather Sigma rule context for each family
+    sigma_context = _sigma_for_family(families)
+
+    # Build initial queries from playbook terms + entity extraction
+    queries: list[str] = []
+    for fam in families:
+        pb = _playbook_for_family(fam)
+        if pb:
+            # Extract query terms from playbook
+            for line in pb.split("\n"):
+                line = line.strip()
+                if line.startswith("- "):
+                    queries.append(line[2:].strip())
+
+    # If no playbook queries, use family names as initial queries
+    if not queries:
+        queries = families[:5]
+
+    # Run iterative query loop
+    all_hits: list[dict[str, Any]] = []
+    queries_run: list[str] = []
+    iteration = 0
+
+    while iteration < max_iterations and queries:
+        iteration += 1
+        for q in queries[:5]:  # Limit per iteration
+            queries_run.append(q)
+            try:
+                result = n4_query(case_dir, q, limit=80)
+                hits = result.get("hits") or []
+                all_hits.extend(hits)
+            except Exception as exc:
+                log.warning("Agent %s query '%s' failed: %s", agent_name, q, exc)
+
+        # Extract entities from this round's hits
+        round_entities = extract_entities(all_hits)
+        entity_values: set[str] = set()
+        for entity_list in round_entities.values():
+            for ent in entity_list:
+                entity_values.add(ent["value"].lower())
+
+        # Refine queries based on entities found (if LLM available)
+        if model is not None and iteration < max_iterations:
+            try:
+                prompt = (
+                    f"You are a {agent_name} DFIR specialist agent analyzing "
+                    f"evidence from families: {', '.join(families)}.\n\n"
+                    f"Case question: {question}\n\n"
+                    f"Entities found so far: {', '.join(sorted(entity_values)[:15])}\n\n"
+                    f"RAG methodology:\n{rag_context[:1500] or '(none)'}\n\n"
+                    f"Playbook guidance:\n{playbook_context[:1000] or '(none)'}\n\n"
+                    f"ATT&CK context:\n{attack_context[:800] or '(none)'}\n\n"
+                    f"Sigma rules:\n{sigma_context[:800] or '(none)'}\n\n"
+                    f"Propose 2-3 NEW search queries to corroborate or expand "
+                    f"on the entities found. Return ONLY JSON: {{\"queries\": [...]}}"
+                )
+                response = model.invoke([{"role": "user", "content": prompt}])
+                text = getattr(response, "content", str(response))
+                start, end = text.find("{"), text.rfind("}")
+                if start != -1 and end != -1:
+                    parsed = json.loads(text[start:end + 1])
+                    new_queries = [str(q)[:100] for q in (parsed.get("queries") or [])[:3]]
+                    queries = new_queries
+            except Exception as exc:
+                log.warning("Agent %s LLM query refinement failed: %s", agent_name, exc)
+                break  # No more refinement, use remaining queries
+
+    # Final entity extraction on all hits
+    entities = extract_entities(all_hits)
+
+    # Build proposals from entities with evidence citations
     proposals: list[dict[str, Any]] = []
-    seen_terms: set[str] = set()
-    for h in hits:
-        if h.get("family", "").lower() not in [f.lower() for f in families]:
-            continue
-        for term in str(h.get("terms") or "").split(","):
-            term = term.strip().lower()
-            if term and term not in seen_terms and not term.isdigit():
-                proposals.append({"needle": term, "source": "hit_terms"})
-                seen_terms.add(term)
-
-    # If LLM is available, use RAG + playbook context to propose additional needles
-    if model is not None and (rag_context or playbook_context):
-        try:
-            prompt = (
-                f"You are a {agent_name} DFIR specialist agent. "
-                f"You are analyzing evidence from families: {', '.join(families)}.\n\n"
-                f"Evidence hits:\n"
-                f"{chr(10).join(f'- [{h.get('family')}] {str(h.get('text', ''))[:200]}' for h in hits[:10] if h.get('family', '').lower() in [f.lower() for f in families])}\n\n"
-                f"RAG methodology:\n{rag_context[:1500] or '(none)'}\n\n"
-                f"Playbook guidance:\n{playbook_context[:1000] or '(none)'}\n\n"
-                "Propose 2-5 NEW search needles to corroborate or expand. "
-                "Use the RAG methodology and playbook caveats to guide your proposals. "
-                'Return ONLY JSON: {"needles": [...], "rationale": "..."}'
-            )
-            response = model.invoke([{"role": "user", "content": prompt}])
-            text = getattr(response, "content", str(response))
-            start, end = text.find("{"), text.rfind("}")
-            if start != -1 and end != -1:
-                parsed = json.loads(text[start:end + 1])
-                for needle in (parsed.get("needles") or [])[:5]:
-                    if str(needle).strip() and str(needle).strip().lower() not in seen_terms:
-                        proposals.append({"needle": str(needle).strip(), "source": "llm_rag"})
-                        seen_terms.add(str(needle).strip().lower())
-        except Exception as exc:
-            log.warning("Agent %s LLM proposal failed: %s", agent_name, exc)
+    for entity_type, entity_list in entities.items():
+        for ent in entity_list:
+            if len(ent.get("families", [])) >= 2:
+                proposals.append({
+                    "type": "corroborated_entity",
+                    "entity_type": entity_type,
+                    "value": ent["value"],
+                    "families": ent["families"],
+                    "evidence_refs": ent.get("hits", []),
+                    "confidence": 0.5 + (len(ent["families"]) - 1) * 0.15,
+                })
 
     return {
         "agent": agent_name,
         "status": "done",
         "evidence_families": families,
-        "evidence_refs": evidence_refs,
+        "entities": entities,
+        "queries_run": queries_run,
+        "hits_reviewed": len(all_hits),
         "proposals": proposals,
         "rag_context": rag_context,
         "rag_provenance": rag_provenance,
         "playbook_context": playbook_context,
+        "attack_context": attack_context,
+        "sigma_context": sigma_context,
     }
 
 
-def _synthesis(agent_runs: list[dict[str, Any]]) -> dict[str, Any]:
-    """Synthesis node: cross-corroborate findings across agent families.
-
-    Identifies:
-    - Families covered by multiple agents (cross-corroboration possible)
-    - Needles proposed by multiple agents (high-priority)
-    - Single-family findings (need corroboration per FD-006)
-    """
-    all_families: set[str] = set()
-    all_needles: dict[str, int] = {}
-    single_family_agents: list[str] = []
-
-    for run in agent_runs:
-        families = run.get("evidence_families") or []
-        all_families.update(families)
-        if len(families) <= 1:
-            single_family_agents.append(run.get("agent", "?"))
-        for prop in run.get("proposals") or []:
-            needle = prop.get("needle", "")
-            if needle:
-                all_needles[needle] = all_needles.get(needle, 0) + 1
-
-    # Needles proposed by multiple agents are high-priority corroboration
-    corroborated_needles = [
-        n for n, count in all_needles.items() if count > 1
-    ]
-
-    return {
-        "families_covered": sorted(all_families),
-        "agent_count": len(agent_runs),
-        "corroborated_needles": corroborated_needles,
-        "single_family_agents": single_family_agents,
-        "corroborated": len(corroborated_needles) > 0,
-        "total_proposals": sum(len(r.get("proposals") or []) for r in agent_runs),
+def _log_agent_run(case_dir: Path, entry: dict[str, Any]) -> None:
+    """Log each agent run to agent_runs.jsonl with full context."""
+    case_dir = Path(case_dir)
+    record = {
+        "ts": datetime.now(UTC).isoformat(),
+        **entry,
     }
+    with (case_dir / "agent_runs.jsonl").open("a", encoding="utf-8") as f:
+        f.write(json.dumps(record, default=str) + "\n")
 
 
 def run_orchestrator(
     case_dir: Path,
-    hits: list[dict[str, Any]],
+    hits: list[dict[str, Any]] | None = None,
     model: Any = None,
 ) -> dict[str, Any]:
-    """WP 3.10: Run the multi-agent orchestrator.
+    """Run the real multi-agent orchestrator.
 
-    Dispatches specialist agents per evidence family, injects RAG methodology,
-    collects findings into synthesis, and logs everything to agent_runs.jsonl.
+    Backward-compatible signature: old code called
+    ``run_orchestrator(case_dir, hits, model=None)`` where hits was the
+    second positional arg. New code should call
+    ``run_orchestrator(case_dir, model=model)`` and let agents query.
 
-    The orchestrator does NOT approve findings — it proposes. The examiner
-    retains final approval authority.
+    Pipeline:
+      1. TriageAgent: identify evidence families, propose analysis tasks
+      2. EvidenceAgents: run queries on assigned families, extract entities
+      3. CorrelationAgent: cross-family entity correlation
+      4. PatternAgent: attack pattern detection
+      5. SynthesisAgent: build narrative + DRAFT findings
+
+    Args:
+        case_dir: case directory
+        hits: optional pre-fetched hits (for backward compatibility)
+        model: LLM model (optional — deterministic fallback without it)
 
     Returns:
-        agent_runs: list[dict] — per-agent run results
-        synthesis: dict — cross-corroboration synthesis
-        total_evidence_refs: int
+        agent_runs: list of EvidenceAgent results
+        correlation: CorrelationAgent result
+        patterns: PatternAgent result
+        synthesis: SynthesisAgent result
+        narrative: attack narrative
+        findings: DRAFT findings with evidence citations
     """
+    # Backward compat: if hits is not a list, it's the model (old signature
+    # had model as second arg). If hits is a list, it's the hits arg.
+    if hits is not None and not isinstance(hits, list):
+        model = hits
+        hits = None
     from nexus.case.chat import append_chat
+    from nexus.langgraph.query_pack import load_case_intake
 
     case_dir = Path(case_dir)
+    intake = load_case_intake(case_dir)
+    question = intake.get("question", "")
 
-    if not hits:
-        append_chat(case_dir, "llm", "orchestrator_empty", "No hits to analyze — orchestrator skipped.")
-        return {"agent_runs": [], "synthesis": {}, "total_evidence_refs": 0}
+    # If hits provided (backward compat), use them; otherwise let agents query
+    if hits is None:
+        # TriageAgent: identify evidence families from the case
+        from nexus.langgraph.pipeline_runs import resolve_tools_extractions
 
-    # Group hits by family → assign to agents
-    family_to_agent: dict[str, str] = {}
-    agent_to_families: dict[str, list[str]] = {}
-    for hit in hits:
-        family = hit.get("family", "?")
-        if family not in family_to_agent:
-            agent = _agent_for_family(family)
-            family_to_agent[family] = agent
-            agent_to_families.setdefault(agent, []).append(family)
+        extractions = resolve_tools_extractions(case_dir)
+        families_present: set[str] = set()
+        if extractions.is_dir():
+            for item in extractions.iterdir():
+                if item.is_dir() and not item.name.startswith("_"):
+                    families_present.add(item.name)
 
-    # Run each agent on its assigned families
-    agent_runs: list[dict[str, Any]] = []
-    for agent_name, families in agent_to_families.items():
-        run_result = _run_agent(agent_name, families, hits, case_dir, model)
-        agent_runs.append(run_result)
+        # If no families found, try scanning the extractions dir directly
+        if not families_present:
+            for item in extractions.rglob("*"):
+                if item.is_file() and item.suffix in {".csv", ".json", ".txt"}:
+                    families_present.add(item.parent.name)
 
-        # WP 3.11: Log each agent run
-        _log_orchestrator_run(case_dir, run_result)
+        # Assign families to agents
+        agent_to_families: dict[str, list[str]] = {}
+        for fam in families_present:
+            agent = _agent_for_family(fam)
+            agent_to_families.setdefault(agent, []).append(fam)
 
-    # Synthesis
-    synth = _synthesis(agent_runs)
+        # Run EvidenceAgents
+        agent_runs: list[dict[str, Any]] = []
+        for agent_name, families in agent_to_families.items():
+            run_result = _run_agent(agent_name, families, case_dir, model)
+            agent_runs.append(run_result)
+            _log_agent_run(case_dir, {
+                "action": "orchestrator_agent_run",
+                "agent": run_result.get("agent"),
+                "status": run_result.get("status"),
+                "evidence_families": run_result.get("evidence_families"),
+                "hits_reviewed": run_result.get("hits_reviewed", 0),
+                "queries_run": len(run_result.get("queries_run", [])),
+                "entity_count": sum(len(v) for v in run_result.get("entities", {}).values()),
+                "proposal_count": len(run_result.get("proposals", [])),
+                "rag_used": bool(run_result.get("rag_context")),
+                "rag_provenance_count": len(run_result.get("rag_provenance") or []),
+                "playbook_used": bool(run_result.get("playbook_context")),
+                "attack_context_used": bool(run_result.get("attack_context")),
+                "sigma_context_used": bool(run_result.get("sigma_context")),
+            })
+    else:
+        # Backward compat: hits provided, run agents on them
+        family_to_agent: dict[str, str] = {}
+        agent_to_families: dict[str, list[str]] = {}
+        for hit in hits:
+            family = hit.get("family", "?")
+            if family not in family_to_agent:
+                agent = _agent_for_family(family)
+                family_to_agent[family] = agent
+                agent_to_families.setdefault(agent, []).append(family)
+
+        agent_runs = []
+        for agent_name, families in agent_to_families.items():
+            run_result = _run_agent(agent_name, families, case_dir, model)
+            agent_runs.append(run_result)
+            _log_agent_run(case_dir, {
+                "action": "orchestrator_agent_run",
+                "agent": run_result.get("agent"),
+                "status": run_result.get("status"),
+                "evidence_families": run_result.get("evidence_families"),
+                "hits_reviewed": run_result.get("hits_reviewed", 0),
+                "queries_run": len(run_result.get("queries_run", [])),
+                "entity_count": sum(len(v) for v in run_result.get("entities", {}).values()),
+                "proposal_count": len(run_result.get("proposals", [])),
+                "rag_used": bool(run_result.get("rag_context")),
+                "rag_provenance_count": len(run_result.get("rag_provenance") or []),
+                "playbook_used": bool(run_result.get("playbook_context")),
+                "attack_context_used": bool(run_result.get("attack_context")),
+                "sigma_context_used": bool(run_result.get("sigma_context")),
+            })
+
+    # CorrelationAgent: cross-family entity correlation
+    correlation_agent = CorrelationAgent()
+    for run in agent_runs:
+        entities = run.get("entities") or {}
+        if entities:
+            correlation_agent.feed_entities(entities)
+    correlation_result = correlation_agent.run()
+
+    _log_agent_run(case_dir, {
+        "action": "correlation_agent_run",
+        "corroborated_entities": len(correlation_result.get("corroborated_entities", [])),
+        "chains": len(correlation_result.get("chains", [])),
+        "fed_families": correlation_result.get("fed_families", []),
+    })
+
+    # PatternAgent: attack pattern detection
+    pattern_agent = PatternAgent()
+    all_entities: dict[str, list[dict[str, Any]]] = {}
+    for run in agent_runs:
+        entities = run.get("entities") or {}
+        for etype, elist in entities.items():
+            all_entities.setdefault(etype, []).extend(elist)
+    pattern_result = pattern_agent.detect_patterns(
+        all_entities, correlation_result.get("chains", [])
+    )
+
+    _log_agent_run(case_dir, {
+        "action": "pattern_agent_run",
+        "patterns_checked": pattern_result.get("total_patterns_checked", 0),
+        "patterns_matched": pattern_result.get("total_matches", 0),
+    })
+
+    # SynthesisAgent: build narrative + DRAFT findings
+    synthesis_agent = SynthesisAgent()
+    synthesis_result = synthesis_agent.synthesize(
+        agent_runs, correlation_result, pattern_result, question
+    )
+
+    _log_agent_run(case_dir, {
+        "action": "synthesis_agent_run",
+        "findings": len(synthesis_result.get("findings", [])),
+        "confidence": synthesis_result.get("confidence", 0),
+    })
 
     append_chat(
         case_dir, "llm", "orchestrator_complete",
         f"Orchestrator: {len(agent_runs)} agent(s) ran, "
-        f"{synth['total_proposals']} proposals, "
-        f"{len(synth.get('corroborated_needles', []))} corroborated. "
+        f"{correlation_result.get('corroborated_entities', []).__len__()} corroborated entities, "
+        f"{pattern_result.get('total_matches', 0)} patterns matched, "
+        f"{len(synthesis_result.get('findings', []))} DRAFT findings proposed. "
         "Awaiting examiner review.",
     )
 
     return {
         "agent_runs": agent_runs,
-        "synthesis": synth,
-        "total_evidence_refs": sum(len(r.get("evidence_refs") or []) for r in agent_runs),
+        "correlation": correlation_result,
+        "patterns": pattern_result,
+        "synthesis": synthesis_result,
+        "narrative": synthesis_result.get("narrative", ""),
+        "findings": synthesis_result.get("findings", []),
+        "total_evidence_refs": sum(
+            len(r.get("entities", {}).get(k, []))
+            for r in agent_runs
+            for k in r.get("entities", {})
+        ),
     }
 
 
-def _log_orchestrator_run(case_dir: Path, run: dict[str, Any]) -> None:
-    """WP 3.11: Log each agent run to agent_runs.jsonl with full context."""
-    case_dir = Path(case_dir)
-    record = {
-        "ts": datetime.now(UTC).isoformat(),
-        "action": "orchestrator_agent_run",
-        "agent": run.get("agent"),
-        "status": run.get("status"),
-        "evidence_families": run.get("evidence_families"),
-        "evidence_ref_count": len(run.get("evidence_refs") or []),
-        "proposal_count": len(run.get("proposals") or []),
-        "rag_used": bool(run.get("rag_context")),
-        "rag_provenance_count": len(run.get("rag_provenance") or []),
-        "playbook_used": bool(run.get("playbook_context")),
-    }
-    with (case_dir / "agent_runs.jsonl").open("a", encoding="utf-8") as f:
-        f.write(json.dumps(record, default=str) + "\n")
+def _agent_for_family(family: str) -> str:
+    """Determine which agent handles a given evidence family."""
+    family_lower = family.lower()
+    for agent, families in _AGENT_FAMILY_MAP.items():
+        if family_lower in families:
+            return agent
+    # Default to endpoint for unknown families
+    return "endpoint"

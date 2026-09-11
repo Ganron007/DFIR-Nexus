@@ -1,0 +1,12 @@
+category: analysis
+description: Parse USB device history from registry
+exit_code_hints:
+  '0': success
+  '1': error
+name: USBDeview
+output_notes:
+  format: text
+  key_fields: []
+platform:
+- windows
+quick_start: USBDeview --help

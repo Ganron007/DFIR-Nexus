@@ -1,0 +1,434 @@
+# CISA KEV (Known Exploited Vulnerabilities) — WP 3.27d.
+# Actively exploited CVEs — the scribe can suggest needles based on
+# which CVEs are currently being exploited in the wild.
+
+version: 1
+description: >
+  CISA KEV — actively exploited CVEs with exploit detection needles
+  and ATT&CK mapping. The scribe can suggest needles based on which
+  CVEs are currently being exploited.
+source: "https://www.cisa.gov/known-exploited-vulnerabilities-catalog"
+
+cves:
+  # --- Critical / Recently Added ---
+  - cve: "CVE-2024-3400"
+    name: "Palo Alto PAN-OS Command Injection"
+    severity: "critical"
+    exploited: true
+    added_to_kev: "2024-04-12"
+    vendor: "Palo Alto"
+    product: "PAN-OS"
+    attack_vector: "network"
+    needles: ["GlobalProtect", "PAN-OS", "device telemetry", "command injection", "unauthenticated"]
+    attck: ["T1190", "T1059"]
+    caveats:
+      - "CVE-2024-3400 is a PAN-OS command injection — look for GlobalProtect exploitation attempts"
+
+  - cve: "CVE-2024-29895"
+    name: "Cacti Command Injection"
+    severity: "high"
+    exploited: true
+    added_to_kev: "2024-05-02"
+    vendor: "Cacti"
+    product: "Cacti"
+    attack_vector: "network"
+    needles: ["cacti", "package import", "command injection", "unauthenticated"]
+    attck: ["T1190", "T1059"]
+    caveats:
+      - "CVE-2024-29895 is a Cacti command injection — look for package import exploitation"
+
+  - cve: "CVE-2024-29824"
+    name: "Ivanti EPMM SQL Injection"
+    severity: "critical"
+    exploited: true
+    added_to_kev: "2024-05-02"
+    vendor: "Ivanti"
+    product: "EPMM"
+    attack_vector: "network"
+    needles: ["ivanti", "epmm", "sql injection", "unauthenticated"]
+    attck: ["T1190", "T1059"]
+    caveats:
+      - "CVE-2024-29824 is an Ivanti EPMM SQL injection — look for SQL injection attempts"
+
+  - cve: "CVE-2024-27198"
+    name: "JetBrains TeamCity Authentication Bypass"
+    severity: "critical"
+    exploited: true
+    added_to_kev: "2024-03-05"
+    vendor: "JetBrains"
+    product: "TeamCity"
+    attack_vector: "network"
+    needles: ["jetbrains", "teamcity", "authentication bypass", "unauthenticated"]
+    attck: ["T1190", "T1078"]
+    caveats:
+      - "CVE-2024-27198 is a TeamCity auth bypass — look for unauthenticated access attempts"
+
+  - cve: "CVE-2024-21887"
+    name: "Ivanti Connect Secure Command Injection"
+    severity: "critical"
+    exploited: true
+    added_to_kev: "2024-01-10"
+    vendor: "Ivanti"
+    product: "Connect Secure"
+    attack_vector: "network"
+    needles: ["ivanti", "connect secure", "command injection", "unauthenticated"]
+    attck: ["T1190", "T1059"]
+    caveats:
+      - "CVE-2024-21887 is an Ivanti Connect Secure command injection — look for command injection attempts"
+
+  - cve: "CVE-2024-21893"
+    name: "Ivanti Connect Secure SSRF"
+    severity: "high"
+    exploited: true
+    added_to_kev: "2024-01-31"
+    vendor: "Ivanti"
+    product: "Connect Secure"
+    attack_vector: "network"
+    needles: ["ivanti", "connect secure", "ssrf", "server-side request forgery"]
+    attck: ["T1190", "T1071"]
+    caveats:
+      - "CVE-2024-21893 is an Ivanti Connect Secure SSRF — look for SSRF attempts"
+
+  - cve: "CVE-2024-21888"
+    name: "Ivanti Connect Secure Privilege Escalation"
+    severity: "high"
+    exploited: true
+    added_to_kev: "2024-01-12"
+    vendor: "Ivanti"
+    product: "Connect Secure"
+    attack_vector: "network"
+    needles: ["ivanti", "connect secure", "privilege escalation", "unauthenticated"]
+    attck: ["T1190", "T1068"]
+    caveats:
+      - "CVE-2024-21888 is an Ivanti Connect Secure privilege escalation — look for privilege escalation attempts"
+
+  - cve: "CVE-2024-21762"
+    name: "Fortinet FortiOS Out-of-Bounds Write"
+    severity: "critical"
+    exploited: true
+    added_to_kev: "2024-02-08"
+    vendor: "Fortinet"
+    product: "FortiOS"
+    attack_vector: "network"
+    needles: ["fortinet", "fortios", "out-of-bounds write", "ssl vpn", "unauthenticated"]
+    attck: ["T1190", "T1059"]
+    caveats:
+      - "CVE-2024-21762 is a FortiOS out-of-bounds write — look for SSL VPN exploitation attempts"
+
+  - cve: "CVE-2024-21626"
+    name: "RunC Container Escape"
+    severity: "high"
+    exploited: true
+    added_to_kev: "2024-01-31"
+    vendor: "OpenContainers"
+    product: "RunC"
+    attack_vector: "local"
+    needles: ["runc", "container escape", "docker", "kubernetes", "container breakout"]
+    attck: ["T1611", "T1610"]
+    caveats:
+      - "CVE-2024-21626 is a RunC container escape — look for container breakout attempts"
+
+  - cve: "CVE-2024-21412"
+    name: "Windows SmartScreen Bypass"
+    severity: "high"
+    exploited: true
+    added_to_kev: "2024-02-13"
+    vendor: "Microsoft"
+    product: "Windows"
+    attack_vector: "local"
+    needles: ["smartscreen", "windows", "bypass", "mark-of-the-web", "motw"]
+    attck: ["T1204", "T1553"]
+    caveats:
+      - "CVE-2024-21412 is a Windows SmartScreen bypass — look for MOTW bypass attempts"
+
+  - cve: "CVE-2024-21338"
+    name: "Windows Kernel Privilege Escalation"
+    severity: "high"
+    exploited: true
+    added_to_kev: "2024-02-13"
+    vendor: "Microsoft"
+    product: "Windows"
+    attack_vector: "local"
+    needles: ["windows", "kernel", "privilege escalation", "0x80070005", "access denied"]
+    attck: ["T1068", "T1134"]
+    caveats:
+      - "CVE-2024-21338 is a Windows kernel privilege escalation — look for privilege escalation attempts"
+
+  - cve: "CVE-2024-21351"
+    name: "Windows SmartScreen Bypass"
+    severity: "high"
+    exploited: true
+    added_to_kev: "2024-02-13"
+    vendor: "Microsoft"
+    product: "Windows"
+    attack_vector: "local"
+    needles: ["smartscreen", "windows", "bypass", "mark-of-the-web", "motw"]
+    attck: ["T1204", "T1553"]
+    caveats:
+      - "CVE-2024-21351 is a Windows SmartScreen bypass — look for MOTW bypass attempts"
+
+  # --- Windows ---
+  - cve: "CVE-2023-36025"
+    name: "Windows SmartScreen Bypass"
+    severity: "high"
+    exploited: true
+    added_to_kev: "2023-11-14"
+    vendor: "Microsoft"
+    product: "Windows"
+    attack_vector: "local"
+    needles: ["smartscreen", "windows", "bypass", "mark-of-the-web", "motw", "internet shortcut", ".url"]
+    attck: ["T1204", "T1553"]
+    caveats:
+      - "CVE-2023-36025 is a Windows SmartScreen bypass — look for .url file exploitation"
+
+  - cve: "CVE-2023-36036"
+    name: "Windows Cloud Files Mini Filter Driver"
+    severity: "high"
+    exploited: true
+    added_to_kev: "2023-11-14"
+    vendor: "Microsoft"
+    product: "Windows"
+    attack_vector: "local"
+    needles: ["windows", "cloud files", "mini filter", "privilege escalation", "cldflt"]
+    attck: ["T1068", "T1134"]
+    caveats:
+      - "CVE-2023-36036 is a Windows Cloud Files privilege escalation — look for cldflt exploitation"
+
+  - cve: "CVE-2023-36052"
+    name: "Azure CLI REST Command Vulnerability"
+    severity: "high"
+    exploited: true
+    added_to_kev: "2023-11-14"
+    vendor: "Microsoft"
+    product: "Azure CLI"
+    attack_vector: "local"
+    needles: ["azure cli", "az rest", "command injection", "rest command"]
+    attck: ["T1059", "T1190"]
+    caveats:
+      - "CVE-2023-36052 is an Azure CLI command injection — look for az rest exploitation"
+
+  - cve: "CVE-2023-36884"
+    name: "Microsoft Office Remote Code Execution"
+    severity: "high"
+    exploited: true
+    added_to_kev: "2023-08-08"
+    vendor: "Microsoft"
+    product: "Office"
+    attack_vector: "local"
+    needles: ["office", "microsoft office", "remote code execution", "rce", "html", "mhtml"]
+    attck: ["T1203", "T1204"]
+    caveats:
+      - "CVE-2023-36884 is a Microsoft Office RCE — look for malicious Office documents"
+
+  - cve: "CVE-2023-36874"
+    name: "Windows Error Reporting Service"
+    severity: "high"
+    exploited: true
+    added_to_kev: "2023-07-11"
+    vendor: "Microsoft"
+    product: "Windows"
+    attack_vector: "local"
+    needles: ["windows", "error reporting", "privilege escalation", "wercplsupport"]
+    attck: ["T1068", "T1134"]
+    caveats:
+      - "CVE-2023-36874 is a Windows Error Reporting privilege escalation — look for wercplsupport exploitation"
+
+  - cve: "CVE-2023-23397"
+    name: "Microsoft Outlook Elevation of Privilege"
+    severity: "critical"
+    exploited: true
+    added_to_kev: "2023-03-14"
+    vendor: "Microsoft"
+    product: "Outlook"
+    attack_vector: "network"
+    needles: ["outlook", "microsoft outlook", "elevation of privilege", "eop", "net-ntlm", "net-ntlmv2"]
+    attck: ["T1557", "T1040"]
+    caveats:
+      - "CVE-2023-23397 is an Outlook elevation of privilege — look for Net-NTLMv2 hash theft"
+
+  - cve: "CVE-2023-23396"
+    name: "Microsoft Excel Remote Code Execution"
+    severity: "high"
+    exploited: true
+    added_to_kev: "2023-03-14"
+    vendor: "Microsoft"
+    product: "Excel"
+    attack_vector: "local"
+    needles: ["excel", "microsoft excel", "remote code execution", "rce", "macro"]
+    attck: ["T1203", "T1204"]
+    caveats:
+      - "CVE-2023-23396 is an Excel RCE — look for malicious Excel documents"
+
+  - cve: "CVE-2023-21746"
+    name: "Windows NTLM Elevation of Privilege"
+    severity: "high"
+    exploited: true
+    added_to_kev: "2023-01-10"
+    vendor: "Microsoft"
+    product: "Windows"
+    attack_vector: "local"
+    needles: ["windows", "ntlm", "elevation of privilege", "eop", "ntlm relay"]
+    attck: ["T1557", "T1134"]
+    caveats:
+      - "CVE-2023-21746 is a Windows NTLM elevation of privilege — look for NTLM relay attacks"
+
+  # --- Exchange ---
+  - cve: "CVE-2023-36745"
+    name: "Microsoft Exchange Server Remote Code Execution"
+    severity: "high"
+    exploited: true
+    added_to_kev: "2023-09-12"
+    vendor: "Microsoft"
+    product: "Exchange Server"
+    attack_vector: "network"
+    needles: ["exchange", "microsoft exchange", "remote code execution", "rce", "ews", "owa"]
+    attck: ["T1190", "T1059"]
+    caveats:
+      - "CVE-2023-36745 is an Exchange RCE — look for EWS/OWA exploitation"
+
+  - cve: "CVE-2023-36744"
+    name: "Microsoft Exchange Server Remote Code Execution"
+    severity: "high"
+    exploited: true
+    added_to_kev: "2023-09-12"
+    vendor: "Microsoft"
+    product: "Exchange Server"
+    attack_vector: "network"
+    needles: ["exchange", "microsoft exchange", "remote code execution", "rce", "ews", "owa"]
+    attck: ["T1190", "T1059"]
+    caveats:
+      - "CVE-2023-36744 is an Exchange RCE — look for EWS/OWA exploitation"
+
+  - cve: "CVE-2023-36743"
+    name: "Microsoft Exchange Server Remote Code Execution"
+    severity: "high"
+    exploited: true
+    added_to_kev: "2023-09-12"
+    vendor: "Microsoft"
+    product: "Exchange Server"
+    attack_vector: "network"
+    needles: ["exchange", "microsoft exchange", "remote code execution", "rce", "ews", "owa"]
+    attck: ["T1190", "T1059"]
+    caveats:
+      - "CVE-2023-36743 is an Exchange RCE — look for EWS/OWA exploitation"
+
+  # --- Browser ---
+  - cve: "CVE-2023-4863"
+    name: "Chrome WebP Heap Buffer Overflow"
+    severity: "critical"
+    exploited: true
+    added_to_kev: "2023-09-13"
+    vendor: "Google"
+    product: "Chrome"
+    attack_vector: "network"
+    needles: ["chrome", "webp", "heap buffer overflow", "0day", "browser exploit"]
+    attck: ["T1203", "T1189"]
+    caveats:
+      - "CVE-2023-4863 is a Chrome WebP heap overflow — look for malicious WebP images"
+
+  - cve: "CVE-2023-5217"
+    name: "Chrome V8 Type Confusion"
+    severity: "high"
+    exploited: true
+    added_to_kev: "2023-09-28"
+    vendor: "Google"
+    product: "Chrome"
+    attack_vector: "network"
+    needles: ["chrome", "v8", "type confusion", "0day", "browser exploit"]
+    attck: ["T1203", "T1189"]
+    caveats:
+      - "CVE-2023-5217 is a Chrome V8 type confusion — look for browser exploitation"
+
+  # --- VPN ---
+  - cve: "CVE-2023-46805"
+    name: "Ivanti Connect Secure Authentication Bypass"
+    severity: "critical"
+    exploited: true
+    added_to_kev: "2024-01-10"
+    vendor: "Ivanti"
+    product: "Connect Secure"
+    attack_vector: "network"
+    needles: ["ivanti", "connect secure", "authentication bypass", "unauthenticated"]
+    attck: ["T1190", "T1078"]
+    caveats:
+      - "CVE-2023-46805 is an Ivanti Connect Secure auth bypass — look for unauthenticated access"
+
+  - cve: "CVE-2024-21887"
+    name: "Ivanti Connect Secure Command Injection"
+    severity: "critical"
+    exploited: true
+    added_to_kev: "2024-01-10"
+    vendor: "Ivanti"
+    product: "Connect Secure"
+    attack_vector: "network"
+    needles: ["ivanti", "connect secure", "command injection", "unauthenticated"]
+    attck: ["T1190", "T1059"]
+    caveats:
+      - "CVE-2024-21887 is an Ivanti Connect Secure command injection — look for command injection"
+
+  - cve: "CVE-2023-27997"
+    name: "FortiOS SSL VPN Heap Overflow"
+    severity: "critical"
+    exploited: true
+    added_to_kev: "2023-06-12"
+    vendor: "Fortinet"
+    product: "FortiOS"
+    attack_vector: "network"
+    needles: ["fortios", "ssl vpn", "heap overflow", "unauthenticated", "fortigate"]
+    attck: ["T1190", "T1059"]
+    caveats:
+      - "CVE-2023-27997 is a FortiOS SSL VPN heap overflow — look for VPN exploitation"
+
+  # --- Citrix ---
+  - cve: "CVE-2023-4966"
+    name: "Citrix Bleed"
+    severity: "critical"
+    exploited: true
+    added_to_kev: "2023-10-10"
+    vendor: "Citrix"
+    product: "NetScaler ADC / Gateway"
+    attack_vector: "network"
+    needles: ["citrix", "netscaler", "citrix bleed", "session token", "memory disclosure"]
+    attck: ["T1190", "T1552"]
+    caveats:
+      - "CVE-2023-4966 is Citrix Bleed — look for session token theft from NetScaler"
+
+  - cve: "CVE-2023-3519"
+    name: "Citrix NetScaler ADC/Gateway Remote Code Execution"
+    severity: "critical"
+    exploited: true
+    added_to_kev: "2023-07-18"
+    vendor: "Citrix"
+    product: "NetScaler ADC / Gateway"
+    attack_vector: "network"
+    needles: ["citrix", "netscaler", "remote code execution", "rce", "unauthenticated"]
+    attck: ["T1190", "T1059"]
+    caveats:
+      - "CVE-2023-3519 is a Citrix NetScaler RCE — look for unauthenticated RCE"
+
+  # --- Confluence ---
+  - cve: "CVE-2023-22518"
+    name: "Confluence Improper Authorization"
+    severity: "critical"
+    exploited: true
+    added_to_kev: "2023-10-31"
+    vendor: "Atlassian"
+    product: "Confluence"
+    attack_vector: "network"
+    needles: ["confluence", "atlassian", "improper authorization", "unauthenticated"]
+    attck: ["T1190", "T1078"]
+    caveats:
+      - "CVE-2023-22518 is a Confluence improper authorization — look for unauthenticated access"
+
+  - cve: "CVE-2023-22515"
+    name: "Confluence Privilege Escalation"
+    severity: "critical"
+    exploited: true
+    added_to_kev: "2023-10-04"
+    vendor: "Atlassian"
+    product: "Confluence"
+    attack_vector: "network"
+    needles: ["confluence", "atlassian", "privilege escalation", "unauthenticated"]
+    attck: ["T1190", "T1068"]
+    caveats:
+      - "CVE-2023-22515 is a Confluence privilege escalation — look for privilege escalation"

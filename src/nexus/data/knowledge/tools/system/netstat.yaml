@@ -1,0 +1,12 @@
+category: system
+description: Parse network connections
+exit_code_hints:
+  '0': success
+  '1': error
+name: netstat
+output_notes:
+  format: text
+  key_fields: []
+platform:
+- windows
+quick_start: netstat --help

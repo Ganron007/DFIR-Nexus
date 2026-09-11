@@ -624,6 +624,35 @@ tr:hover td {
   font-size: 13px;
 }
 
+/* WP 4.8: Dashboard layout — clean case management surface, no cockpit sidebar */
+.dashboard-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.dashboard-header {
+  height: var(--topbar-height);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  flex-shrink: 0;
+}
+
+.dashboard-main {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.dashboard-content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar {
   width: 8px;

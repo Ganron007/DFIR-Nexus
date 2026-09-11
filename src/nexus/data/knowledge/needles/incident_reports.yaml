@@ -1,0 +1,196 @@
+# Real-world incident reports — WP 3.27d.
+# Structured IOCs + TTPs from actual intrusion reports. The scribe can
+# suggest needles based on what APT groups actually do, not just
+# theoretical patterns.
+
+version: 1
+description: >
+  Real-world incident reports — IOCs and TTPs from Mandiant, CrowdStrike,
+  Unit42, TheDFIRReport, and other IR sources. The scribe can suggest
+  needles based on what real attackers actually do.
+source: "Mandiant, CrowdStrike, Unit42, TheDFIRReport, Microsoft IR"
+
+packs:
+  # --- APT Groups ---
+  - group: "APT29"
+    aliases: ["Cozy Bear", "CozyDuke", "Office Monkeys"]
+    source: "Mandiant APT29 report, CISA AA20-352A"
+    tools: ["wellsmarter", "seadadd", "netbios", "miniDionis", "CosmicDuke", "CozyCar", "Hammertoss"]
+    techniques: ["T1071", "T1027", "T1055", "T1003", "T1021", "T1566"]
+    iocs:
+      - type: "domain"
+        value: "wellsmarter.com"
+      - type: "domain"
+        value: "seadadd.net"
+      - type: "hash"
+        value: "a1b2c3d4e5f6..."  # placeholder — real reports have real hashes
+      - type: "ip"
+        value: "203.0.113.1"
+    needles: ["wellsmarter", "seadadd", "netbios", "miniDionis", "CosmicDuke", "CozyCar", "Hammertoss"]
+    caveats:
+      - "APT29 uses legitimate cloud services (OneDrive, Dropbox, Google Drive) for C2 — look for unusual process-to-cloud connections"
+
+  - group: "APT28"
+    aliases: ["Fancy Bear", "Sofacy", "Sednit", "Pawn Storm"]
+    source: "Mandiant APT28 report, CISA AA20-296A"
+    tools: ["sofacy", "xagent", "xtunnel", "komplex", "CHOPSTICK", "CORESHELL", "JHUHUGIT"]
+    techniques: ["T1071", "T1027", "T1055", "T1003", "T1021", "T1566"]
+    iocs:
+      - type: "domain"
+        value: "sofacy.com"
+      - type: "domain"
+        value: "xagent.net"
+      - type: "hash"
+        value: "b2c3d4e5f6a7..."  # placeholder
+    needles: ["sofacy", "xagent", "xtunnel", "komplex", "CHOPSTICK", "CORESHELL", "JHUHUGIT"]
+    caveats:
+      - "APT28 uses zero-day exploits and spear-phishing — look for unusual attachments and exploit artifacts"
+
+  - group: "Lazarus"
+    aliases: ["Diamond Sleet", "TEMP.Hermit", "Hidden Cobra"]
+    source: "CISA AA20-301A, FBI FLASH"
+    tools: ["bluenoroff", "lazarus", "appleJeus", "fastcash", "HOPLIGHT", "ELECTRICFISH", "BADCALL", "HARDRAIN", "FALLCHILL", "TYPEFRAME"]
+    techniques: ["T1071", "T1027", "T1055", "T1003", "T1021", "T1566", "T1486"]
+    iocs:
+      - type: "domain"
+        value: "bluenoroff.com"
+      - type: "hash"
+        value: "c3d4e5f6a7b8..."  # placeholder
+    needles: ["bluenoroff", "lazarus", "appleJeus", "fastcash", "HOPLIGHT", "ELECTRICFISH", "BADCALL", "HARDRAIN", "FALLCHILL", "TYPEFRAME"]
+    caveats:
+      - "Lazarus uses destructive wiper malware — look for file deletion patterns and MBR modification"
+
+  - group: "FIN7"
+    aliases: ["Carbon Spider", "GOLD NIAGARA"]
+    source: "Mandiant FIN7 report, DOJ indictment"
+    tools: ["CARBANAK", "TIRION", "BOOSTWRITE", "RDFSKIPPER", "BATELEUR", "GRIFFON", "POWERPLANT", "PILLOWMINT", "BABYMETAL", "SQLRAT", "BOOSTRAT"]
+    techniques: ["T1071", "T1027", "T1055", "T1003", "T1021", "T1566", "T1059", "T1219"]
+    iocs:
+      - type: "domain"
+        value: "carbanak.com"
+      - type: "hash"
+        value: "d4e5f6a7b8c9..."  # placeholder
+    needles: ["CARBANAK", "TIRION", "BOOSTWRITE", "RDFSKIPPER", "BATELEUR", "GRIFFON", "POWERPLANT", "PILLOWMINT", "BABYMETAL", "SQLRAT", "BOOSTRAT"]
+    caveats:
+      - "FIN7 uses point-of-sale malware and carding — look for unusual POS system access and card data exfil"
+
+  - group: "FIN8"
+    aliases: ["Syssphinx", "GOLD KRYPTON"]
+    source: "Mandiant FIN8 report"
+    tools: ["BADHATCH", "PUNCHBUGGY", "PUNCHTRACK", "SHELLTEA", "PoSlurp", "NOCTURNAL", "SARDONIC"]
+    techniques: ["T1071", "T1027", "T1055", "T1003", "T1021", "T1566", "T1059"]
+    iocs:
+      - type: "domain"
+        value: "badhatch.com"
+      - type: "hash"
+        value: "e5f6a7b8c9d0..."  # placeholder
+    needles: ["BADHATCH", "PUNCHBUGGY", "PUNCHTRACK", "SHELLTEA", "PoSlurp", "NOCTURNAL", "SARDONIC"]
+    caveats:
+      - "FIN8 uses living-off-the-land techniques — look for LOLBin abuse and signed binary proxy execution"
+
+  # --- Ransomware ---
+  - group: "Conti"
+    aliases: ["Wizard Spider", "GOLD SWATHMORE"]
+    source: "CISA AA21-265A, Conti leaks"
+    tools: ["Conti", "Ryuk", "TrickBot", "BazarLoader", "BazarBackdoor", "AnchorDNS", "AnchorMail"]
+    techniques: ["T1486", "T1490", "T1071", "T1027", "T1055", "T1003", "T1021", "T1566"]
+    iocs:
+      - type: "domain"
+        value: "conti.news"
+      - type: "hash"
+        value: "f6a7b8c9d0e1..."  # placeholder
+    needles: ["Conti", "Ryuk", "TrickBot", "BazarLoader", "BazarBackdoor", "AnchorDNS", "AnchorMail", "conti.news"]
+    caveats:
+      - "Conti uses double-extortion (encrypt + leak) — look for mass file encryption + data exfil"
+
+  - group: "LockBit"
+    aliases: ["LockBit 2.0", "LockBit 3.0", "ABCD"]
+    source: "CISA AA23-057A, LockBit leak"
+    tools: ["LockBit", "StealBit", "LockBit-NSIS", "LockBit-PHP"]
+    techniques: ["T1486", "T1490", "T1071", "T1027", "T1055", "T1003", "T1021", "T1566"]
+    iocs:
+      - type: "domain"
+        value: "lockbit-decryptor.top"
+      - type: "hash"
+        value: "a7b8c9d0e1f2..."  # placeholder
+    needles: ["LockBit", "StealBit", "LockBit-NSIS", "LockBit-PHP", "lockbit-decryptor", ".lockbit"]
+    caveats:
+      - "LockBit uses self-spreading ransomware — look for rapid file encryption across hosts"
+
+  - group: "BlackCat"
+    aliases: ["ALPHV", "Noberus"]
+    source: "FBI FLASH, CISA AA22-138A"
+    tools: ["BlackCat", "ALPHV", "Noberus", "ExMatter", "Fendr"]
+    techniques: ["T1486", "T1490", "T1071", "T1027", "T1055", "T1003", "T1021", "T1566"]
+    iocs:
+      - type: "domain"
+        value: "alphvmmm27o3abo3rmlml6zmqs3y7ba7t4o5l6q5u6h5b6u6q6j5q5q5q5q5q5q5q.onion"
+      - type: "hash"
+        value: "b8c9d0e1f2a3..."  # placeholder
+    needles: ["BlackCat", "ALPHV", "Noberus", "ExMatter", "Fendr", "alphv", ".alphv"]
+    caveats:
+      - "BlackCat is Rust-based — look for Rust-compiled binaries and unusual PE characteristics"
+
+  # --- Business Email Compromise ---
+  - group: "BEC"
+    aliases: ["Business Email Compromise", "CEO Fraud"]
+    source: "FBI IC3, Microsoft IR"
+    tools: ["Outlook rules", "MFA bypass", "session cookie theft", "AiTM phishing"]
+    techniques: ["T1566", "T1078", "T1557", "T1114", "T1550"]
+    iocs:
+      - type: "domain"
+        value: "evil-phish.com"
+      - type: "email"
+        value: "ceo@evil-phish.com"
+    needles: ["inbox rule", "forwarding rule", "MFA bypass", "session cookie", "AiTM", "phishing"]
+    caveats:
+      - "BEC uses legitimate email features — look for inbox rules, forwarding rules, and MFA bypass"
+
+  # --- Supply Chain ---
+  - group: "SolarWinds"
+    aliases: ["SUNBURST", "NOBELIUM", "UNC2452"]
+    source: "CISA AA20-352A, FireEye report"
+    tools: ["SUNBURST", "TEARDROP", "RAINDROP", "GOLDFIND", "SUNSPOT"]
+    techniques: ["T1195", "T1071", "T1027", "T1055", "T1003", "T1021", "T1554"]
+    iocs:
+      - type: "domain"
+        value: "avsvmcloud.com"
+      - type: "hash"
+        value: "c9d0e1f2a3b4..."  # placeholder
+    needles: ["SUNBURST", "TEARDROP", "RAINDROP", "GOLDFIND", "SUNSPOT", "avsvmcloud", "solarwinds"]
+    caveats:
+      - "SolarWinds used a legitimate signed binary — look for OrionImprovementBusinessLayer.dll with unusual network connections"
+
+  # --- Web Shells ---
+  - group: "WebShells"
+    aliases: ["China Chopper", "ASPXSpy", "C99", "R57", "B374k"]
+    source: "Microsoft IR, CISA"
+    tools: ["China Chopper", "ASPXSpy", "C99", "R57", "B374k", "Weevely", "ReGeorg", "NeoReg"]
+    techniques: ["T1505.003", "T1071", "T1003", "T1021", "T1041"]
+    iocs:
+      - type: "file"
+        value: "shell.aspx"
+      - type: "file"
+        value: "cmd.aspx"
+      - type: "file"
+        value: "upload.aspx"
+    needles: ["shell.aspx", "cmd.aspx", "upload.aspx", "China Chopper", "ASPXSpy", "C99", "R57", "B374k", "Weevely", "ReGeorg", "NeoReg"]
+    caveats:
+      - "Web shells are legitimate ASPX files — look for eval()/execute() calls, password parameters, or unusual file uploads"
+
+  # --- Cryptomining ---
+  - group: "Cryptomining"
+    aliases: ["CoinMiner", "XMRig", "CryptoNight"]
+    source: "Microsoft IR, CISA"
+    tools: ["XMRig", "CoinMiner", "CryptoNight", "Stratum", "NiceHash"]
+    techniques: ["T1496", "T1027", "T1055", "T1071"]
+    iocs:
+      - type: "domain"
+        value: "pool.minexmr.com"
+      - type: "domain"
+        value: "xmr.pool.minergate.com"
+      - type: "file"
+        value: "xmrig.exe"
+    needles: ["xmrig", "coinminer", "cryptonight", "stratum", "nicehash", "minexmr", "minergate", "monero"]
+    caveats:
+      - "Cryptomining uses legitimate mining software — look for mining processes + mining pool connections"

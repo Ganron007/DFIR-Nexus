@@ -1,0 +1,12 @@
+category: system
+description: Parse Windows scheduled tasks
+exit_code_hints:
+  '0': success
+  '1': error
+name: schtasks
+output_notes:
+  format: text
+  key_fields: []
+platform:
+- windows
+quick_start: schtasks --help

@@ -1102,6 +1102,196 @@ def _plan_gap_parsers(
                 600,
             )
 
+    # -----------------------------------------------------------------------
+    # KAPE-better: additional parsers for coverage parity + correlation
+    # -----------------------------------------------------------------------
+
+    # $LogFile — NTFS change journal (file system activity timeline)
+    logfile = root / "$LogFile"
+    if logfile.is_file() and logfile.stat().st_size >= 4096 and not quick:
+        d = extractions / "ntfslogtracker"
+        d.mkdir(parents=True, exist_ok=True)
+        add(
+            "ntfslogtracker",
+            ["ntfslogtracker", "-f", str(logfile), "-o", str(d)],
+            "NTFS $LogFile (transaction journal)",
+            600,
+        )
+    elif logfile.is_file() and quick:
+        skip("ntfslogtracker", "skipped (NEXUS_TOOL_LANE_QUICK=1)")
+    else:
+        skip("ntfslogtracker", f"missing or too small {logfile}")
+
+    # Per-hive RegRipper — registry persistence, user activity, SAM/SYSTEM
+    config_dir = root / "Windows/System32/config"
+    reg_hives = {
+        "NTUSER.DAT": "ntuser",
+        "SAM": "sam",
+        "SECURITY": "security",
+        "SOFTWARE": "software",
+        "SYSTEM": "system",
+    }
+    regripper_ok = _windows_tool_available("regripper")
+    for hive_name, slug in reg_hives.items():
+        hive_path = config_dir / hive_name
+        if not hive_path.is_file():
+            continue
+        if not regripper_ok:
+            skip("regripper", "regripper not installed — run tools/fetch-windows-tools.ps1 then nexus doctor")
+            break
+        d = extractions / "regripper" / slug
+        d.mkdir(parents=True, exist_ok=True)
+        add(
+            "regripper",
+            ["rip.exe", "-r", str(hive_path), "-f", slug, "-p", str(d)],
+            f"RegRipper {hive_name} ({slug})",
+            300,
+        )
+
+    # UsrClass.dat per user (shellbags + user activity)
+    for user in users:
+        usrclass = user / "AppData/Local/Microsoft/Windows/UsrClass.dat"
+        if usrclass.is_file() and regripper_ok:
+            d = extractions / "regripper" / f"usrclass-{user.name}"
+            d.mkdir(parents=True, exist_ok=True)
+            add(
+                "regripper",
+                ["rip.exe", "-r", str(usrclass), "-f", "usrclass", "-p", str(d)],
+                f"RegRipper UsrClass.dat ({user.name})",
+                300,
+            )
+
+    # Scheduled tasks — Windows scheduled task parsing
+    tasks_dir = root / "Windows/System32/Tasks"
+    if tasks_dir.is_dir():
+        d = extractions / "schtasks"
+        d.mkdir(parents=True, exist_ok=True)
+        add(
+            "schtasks",
+            ["schtasks", "/query", "/fo", "csv", "/v", "/nh"],
+            "Scheduled tasks (live query)",
+            120,
+        )
+        # Also copy the task XML files for offline parsing
+        task_files = list(tasks_dir.rglob("*"))[:50]
+        for tf in task_files:
+            if tf.is_file():
+                rel = f"schtasks/files/{tf.relative_to(tasks_dir)}"
+                _copy_text(extractions, rel, tf)
+    else:
+        skip("schtasks", f"missing {tasks_dir}")
+
+    # PowerShell history — parse the already-copied ConsoleHost_history.txt
+    for user in users:
+        hist = (
+            user / "AppData/Roaming/Microsoft/Windows/PowerShell"
+            / "PSReadLine/ConsoleHost_history.txt"
+        )
+        if hist.is_file():
+            d = extractions / "powershell_history"
+            d.mkdir(parents=True, exist_ok=True)
+            _copy_text(extractions, f"powershell_history/{user.name}-history.txt", hist)
+
+    # Browser artifacts — Hindsight for Chrome/Chromium
+    for user in users:
+        chrome_ud = user / "AppData/Local/Google/Chrome/User Data"
+        if chrome_ud.is_dir():
+            for prof in chrome_ud.iterdir():
+                if not prof.is_dir():
+                    continue
+                if prof.name.lower() in {"default", "system profile", "guest profile"}:
+                    continue
+                hist = prof / "History"
+                if hist.is_file():
+                    d = extractions / "hindsight" / f"{user.name}-{prof.name}"
+                    d.mkdir(parents=True, exist_ok=True)
+                    if _windows_tool_available("hindsight"):
+                        add(
+                            "hindsight",
+                            ["hindsight", "-i", str(prof), "-o", str(d)],
+                            f"Hindsight Chrome ({user.name}-{prof.name})",
+                            300,
+                        )
+                    else:
+                        skip("hindsight", "hindsight not installed — run tools/fetch-windows-tools.ps1 then nexus doctor")
+                        break
+
+    # USB artifacts — USBDeview for USB device history
+    usbstor = root / "Windows/System32/config/SYSTEM"
+    if usbstor.is_file() and _windows_tool_available("usbdeview"):
+        d = extractions / "usbdeview"
+        d.mkdir(parents=True, exist_ok=True)
+        add(
+            "usbdeview",
+            ["usbdeview", "/reg_file", str(usbstor), "/scomma", str(d / "usb.csv")],
+            "USB device history (USBDeview)",
+            300,
+        )
+    elif usbstor.is_file():
+        skip("usbdeview", "usbdeview not installed — run tools/fetch-windows-tools.ps1 then nexus doctor")
+
+    # Zircolite — fast Sigma-based EVTX analysis
+    if _windows_tool_available("zircolite"):
+        evtx_out = extractions / "evtxecmd"
+        if evtx_out.is_dir():
+            d = extractions / "zircolite"
+            d.mkdir(parents=True, exist_ok=True)
+            add(
+                "zircolite",
+                ["zircolite", "-e", str(evtx_out), "-o", str(d / "zircolite.json")],
+                "Zircolite Sigma EVTX analysis",
+                600,
+            )
+    else:
+        skip("zircolite", "zircolite not installed — run tools/fetch-windows-tools.ps1 then nexus doctor")
+
+    # DeepblueCLI — EVTX attack pattern detection
+    if _windows_tool_available("deepbluecli"):
+        evtx_out = extractions / "evtxecmd"
+        if evtx_out.is_dir():
+            d = extractions / "deepbluecli"
+            d.mkdir(parents=True, exist_ok=True)
+            add(
+                "deepbluecli",
+                ["deepbluecli", "-e", str(evtx_out), "-o", str(d)],
+                "DeepBlueCLI attack pattern EVTX",
+                300,
+            )
+    else:
+        skip("deepbluecli", "deepbluecli not installed — run tools/fetch-windows-tools.ps1 then nexus doctor")
+
+    # Events-Ripper — structured EVTX parsing
+    if _windows_tool_available("events_ripper"):
+        evtx_out = extractions / "evtxecmd"
+        if evtx_out.is_dir():
+            d = extractions / "events_ripper"
+            d.mkdir(parents=True, exist_ok=True)
+            add(
+                "events_ripper",
+                ["events_ripper", "-d", str(evtx_out), "-o", str(d)],
+                "Events-Ripper structured EVTX",
+                300,
+            )
+    else:
+        skip("events_ripper", "events_ripper not installed — run tools/fetch-windows-tools.ps1 then nexus doctor")
+
+    # LevelDB — Chrome/Edge LevelDB parsing
+    for user in users:
+        leveldb_dirs = [
+            user / "AppData/Local/Google/Chrome/User Data/Default/Local Storage/leveldb",
+            user / "AppData/Local/Microsoft/Edge/User Data/Default/Local Storage/leveldb",
+        ]
+        for ldb in leveldb_dirs:
+            if ldb.is_dir() and _windows_tool_available("leveldb"):
+                d = extractions / "leveldb" / user.name
+                d.mkdir(parents=True, exist_ok=True)
+                add(
+                    "leveldb",
+                    ["leveldbdumper", "-d", str(ldb), "-o", str(d)],
+                    f"LevelDB ({user.name})",
+                    300,
+                )
+
     samples = list(sample_files or [])
     env_samples = os.environ.get("NEXUS_SAMPLE_FILES", "").strip()
     if env_samples:

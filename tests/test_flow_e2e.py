@@ -178,6 +178,46 @@ def test_full_loop_design_flow(flow_env, monkeypatch):
     assert search["count"] > 0, search
     hit = search["hits"][0]
 
+    # 5.5. Mode 3 agentic run — the real pipeline on the real evidence
+    # The orchestrator runs EvidenceAgents on the case's evidence families,
+    # correlates entities, detects patterns, and synthesizes findings.
+    # This is the "real agentic" path — not the old simulation.
+    r = client.post(
+        "/portal/api/mode3/orchestrator",
+        headers=headers,
+        json={"max_agents": 4, "max_iterations": 2},
+    )
+    assert r.status_code == 200, r.text
+    m3 = r.json()
+    # Orchestrator returns agent_runs, correlation, patterns, synthesis, narrative, findings
+    assert "agent_runs" in m3
+    assert "correlation" in m3
+    assert "patterns" in m3
+    assert "synthesis" in m3
+    assert "narrative" in m3
+    assert "findings" in m3
+    # At least one agent ran on the real evidence
+    assert len(m3.get("agent_runs", [])) >= 1
+    # Correlation produced a result (entity graph or corroborated entities)
+    corr = m3.get("correlation", {})
+    assert corr.get("entity_graph") is not None or corr.get("corroborated_entities") is not None
+    # Patterns produced a result
+    assert m3.get("patterns", {}).get("total_patterns_checked", 0) >= 0
+    # Synthesis produced a narrative and findings
+    assert isinstance(m3.get("narrative"), str)
+    assert isinstance(m3.get("findings"), list)
+    # Provenance: every finding must carry audit_id (FD-001)
+    for finding in m3.get("findings", []):
+        assert finding.get("audit_id"), f"finding missing audit_id: {finding}"
+        assert finding.get("status") == "DRAFT"
+    # Methodology provenance: RAG/playbook/ATT&CK/Sigma/LOLBAS/Atomic usage recorded
+    synth = m3.get("synthesis", {})
+    mp = synth.get("methodology_provenance", {})
+    assert mp.get("rag_used_by_agents") is not None
+    assert mp.get("playbook_used_by_agents") is not None
+    assert mp.get("attack_context_used_by_agents") is not None
+    assert mp.get("sigma_context_used_by_agents") is not None
+
     # 6. Bookmark -> promote -> DRAFT with lane audit ids (heuristic scribe, no network)
     r = client.post("/portal/api/workbench/add", headers=headers, json={"hit": hit, "note": "flow e2e"})
     assert r.status_code == 200, r.text

@@ -1,0 +1,444 @@
+# MITRE CAR (Cyber Analytics Repository) — WP 3.27c.
+# Structured detection logic with data model fields, pseudocode, and
+# ATT&CK mapping. Each analytic tells the scribe which fields to search
+# and what combinations indicate malice.
+
+version: 1
+description: >
+  MITRE CAR analytics — detection logic, data model fields, pseudocode,
+  and ATT&CK mapping for each technique. The missing link between
+  "what to search" (needles) and "what fields to search" (structured
+  detection).
+source: "https://car.mitre.org/"
+
+packs:
+  # --- Process Execution ---
+  - analytic: "CAR-2014-11-004"
+    name: "Process Creation with Command Line"
+    technique: "T1059"
+    data_model: ["Image", "CommandLine", "ParentImage", "User", "ProcessId", "ProcessGuid"]
+    pseudocode: "process_create where CommandLine contains suspicious_flags"
+    needles: ["Image", "CommandLine", "ParentImage", "ProcessId"]
+    field_meanings:
+      Image: "Full path to the executable"
+      CommandLine: "Command line arguments passed to the process"
+      ParentImage: "Full path to the parent process executable"
+      User: "Security context (user account)"
+      ProcessId: "Process ID"
+      ProcessGuid: "Unique process GUID for correlation"
+    caveats:
+      - "CommandLine alone is weak; combine with ParentImage for parent-child context"
+      - "Legitimate admin tools use the same processes; require suspicious flags or unusual parents"
+
+  - analytic: "CAR-2014-11-005"
+    name: "Process Termination"
+    technique: "T1562.001"
+    data_model: ["Image", "ProcessId", "ProcessGuid", "User", "ExitCode"]
+    pseudocode: "process_terminate where Image in security_tools"
+    needles: ["Image", "ProcessId", "ExitCode"]
+    field_meanings:
+      Image: "Full path to the terminated process"
+      ProcessId: "Process ID of terminated process"
+      User: "Security context"
+      ExitCode: "Exit code (0=normal, non-zero=error/kill)"
+    caveats:
+      - "Normal process termination is common; require security tool names or /f flag"
+
+  - analytic: "CAR-2014-11-007"
+    name: "Remote Thread Creation"
+    technique: "T1055"
+    data_model: ["SourceImage", "TargetImage", "SourceProcessId", "TargetProcessId", "ThreadId"]
+    pseudocode: "remote_thread_create where SourceImage != TargetImage"
+    needles: ["SourceImage", "TargetImage", "SourceProcessId", "TargetProcessId"]
+    field_meanings:
+      SourceImage: "Process that created the remote thread"
+      TargetImage: "Process that received the remote thread"
+      SourceProcessId: "PID of the source process"
+      TargetProcessId: "PID of the target process"
+    caveats:
+      - "Remote threads are used by legitimate tools (debuggers, profilers); require unsigned SourceImage or unusual TargetImage"
+
+  - analytic: "CAR-2014-11-008"
+    name: "Process Access"
+    technique: "T1003"
+    data_model: ["SourceImage", "TargetImage", "SourceProcessId", "TargetProcessId", "GrantedAccess", "CallTrace"]
+    pseudocode: "process_access where TargetImage == 'lsass.exe' and GrantedAccess contains '0x1010'"
+    needles: ["SourceImage", "TargetImage", "GrantedAccess", "CallTrace"]
+    field_meanings:
+      SourceImage: "Process requesting access"
+      TargetImage: "Process being accessed"
+      GrantedAccess: "Access rights requested (0x1010=VM_READ, 0x1410=QUERY_INFORMATION+VM_READ)"
+      CallTrace: "Call stack of the access request"
+    caveats:
+      - "EDR/AV legitimately access LSASS; require non-standard access rights or unsigned SourceImage"
+
+  # --- Authentication ---
+  - analytic: "CAR-2016-04-003"
+    name: "User Logon"
+    technique: "T1078"
+    data_model: ["EventID", "User", "LogonType", "SourceAddress", "DestinationAddress", "LogonProcess", "AuthenticationPackage", "Status"]
+    pseudocode: "logon where LogonType == 10 and SourceAddress not in known_hosts"
+    needles: ["4624", "4625", "4648", "4672", "4768", "4769", "4770", "4771", "4776"]
+    field_meanings:
+      EventID: "Windows event ID (4624=logon, 4625=failed, 4648=explicit credentials, 4672=special privileges)"
+      LogonType: "Type of logon (2=interactive, 3=network, 4=batch, 5=service, 7=unlock, 8=network cleartext, 9=new credentials, 10=remote interactive, 11=cached interactive)"
+      SourceAddress: "Source IP/hostname of the logon"
+      DestinationAddress: "Target IP/hostname"
+      LogonProcess: "Process that performed the logon (NTLM, Kerberos, Negotiate)"
+      AuthenticationPackage: "Authentication package used"
+      Status: "Logon status code"
+    caveats:
+      - "LogonType 10 (RDP) is common for admins; require unusual SourceAddress or time"
+      - "4625 alone is common; require pattern (multiple failures then success) or unusual source"
+
+  - analytic: "CAR-2016-04-004"
+    name: "Account Management"
+    technique: "T1136"
+    data_model: ["EventID", "User", "TargetUser", "TargetDomain", "SourceAddress", "CallerProcess"]
+    pseudocode: "account_management where EventID in (4720, 4728, 4732, 4756)"
+    needles: ["4720", "4722", "4723", "4724", "4725", "4726", "4727", "4728", "4729", "4730", "4731", "4732", "4733", "4734", "4735", "4737", "4738", "4740", "4741", "4742", "4743", "4754", "4755", "4756", "4757", "4758", "4765", "4766", "4767", "4780", "4781", "4794", "4798", "4799"]
+    field_meanings:
+      EventID: "Account management event ID"
+      User: "Account that performed the action"
+      TargetUser: "Account that was modified"
+      TargetDomain: "Domain of the target account"
+      CallerProcess: "Process that performed the action"
+    caveats:
+      - "Account creation is common during provisioning; require unusual time, unusual caller, or rapid creation"
+
+  - analytic: "CAR-2016-04-005"
+    name: "Privilege Escalation"
+    technique: "T1078"
+    data_model: ["EventID", "User", "Privileges", "ProcessId", "ProcessName", "SourceAddress"]
+    pseudocode: "privilege_escalation where EventID == 4672 and Privileges contains sensitive_privileges"
+    needles: ["4672", "4673", "4674", "SeDebugPrivilege", "SeImpersonatePrivilege", "SeAssignPrimaryTokenPrivilege", "SeBackupPrivilege", "SeRestorePrivilege", "SeTakeOwnershipPrivilege", "SeLoadDriverPrivilege", "SeSystemtimePrivilege", "SeShutdownPrivilege", "SeAuditPrivilege", "SeChangeNotifyPrivilege", "SeUndockPrivilege", "SeIncreaseWorkingSetPrivilege", "SeTimeZonePrivilege", "SeCreateSymbolicLinkPrivilege", "SeDelegateSessionUserImpersonatePrivilege"]
+    field_meanings:
+      EventID: "Privilege use event ID (4672=special privileges assigned, 4673=privileged service called, 4674=privileged operation attempted)"
+      User: "Account that received the privileges"
+      Privileges: "List of privileges assigned"
+      ProcessId: "Process that requested the privileges"
+      ProcessName: "Name of the process"
+    caveats:
+      - "4672 is common for services; require unusual process names or privilege combinations"
+
+  # --- Persistence ---
+  - analytic: "CAR-2014-11-001"
+    name: "Service Creation"
+    technique: "T1543.003"
+    data_model: ["EventID", "ServiceName", "ServiceFileName", "ServiceType", "ServiceStartType", "ServiceAccount", "ServiceDll"]
+    pseudocode: "service_create where ServiceFileName not in known_services"
+    needles: ["7045", "4697", "ServiceName", "ServiceFileName", "ImagePath", "ServiceStartType", "ServiceAccount"]
+    field_meanings:
+      EventID: "Service creation event ID (7045=system, 4697=security)"
+      ServiceName: "Name of the created service"
+      ServiceFileName: "Path to the service binary"
+      ServiceType: "Type of service (kernel driver, file system driver, etc.)"
+      ServiceStartType: "Start type (auto, demand, disabled)"
+      ServiceAccount: "Account the service runs as"
+      ServiceDll: "Service DLL path (for svchost services)"
+    caveats:
+      - "Service creation is common during software install; require unsigned binary or unusual path"
+
+  - analytic: "CAR-2014-11-002"
+    name: "Registry Modification"
+    technique: "T1547.001"
+    data_model: ["EventID", "TargetObject", "Details", "ProcessName", "ProcessId", "User"]
+    pseudocode: "registry_event where TargetObject contains 'Run' and Details contains suspicious_binary"
+    needles: ["4657", "4656", "4663", "4660", "4661", "4662", "Run", "RunOnce", "Winlogon", "Userinit", "Shell", "StartupApproved", "RunMRU", "Start Menu\\Programs\\Startup"]
+    field_meanings:
+      EventID: "Registry event ID (4657=value modified, 4656=handle requested, 4663=access attempt, 4660=object deleted, 4661=handle requested, 4662=operation performed)"
+      TargetObject: "Registry key path"
+      Details: "Value name and data"
+      ProcessName: "Process that modified the registry"
+      ProcessId: "PID of the process"
+      User: "Account that performed the modification"
+    caveats:
+      - "Registry modification is common; require Run/RunOnce keys or suspicious binary paths"
+
+  - analytic: "CAR-2014-11-003"
+    name: "File Creation"
+    technique: "T1059"
+    data_model: ["EventID", "TargetFilename", "ProcessName", "ProcessId", "User", "CreationUtcTime"]
+    pseudocode: "file_create where TargetFilename contains suspicious_extensions"
+    needles: ["4663", "4656", "11", "15", "TargetFilename", ".exe", ".dll", ".ps1", ".bat", ".cmd", ".vbs", ".js", ".hta", ".lnk", ".url", ".scf", ".inf", ".reg", ".msi", ".msp", ".mst", ".cab", ".iso", ".img", ".vhd", ".vhdx", ".zip", ".rar", ".7z", ".tar", ".gz"]
+    field_meanings:
+      EventID: "File creation event ID (4663=access, 4656=handle, 11=file created, 15=file stream created)"
+      TargetFilename: "Full path to the created file"
+      ProcessName: "Process that created the file"
+      ProcessId: "PID of the process"
+      CreationUtcTime: "UTC timestamp of file creation"
+    caveats:
+      - "File creation is constant; require suspicious extensions or unusual paths (temp, appdata, public)"
+
+  # --- Network ---
+  - analytic: "CAR-2014-11-006"
+    name: "Network Connection"
+    technique: "T1071"
+    data_model: ["EventID", "SourceIp", "DestinationIp", "SourcePort", "DestinationPort", "Protocol", "ProcessName", "ProcessId", "User"]
+    pseudocode: "network_connection where DestinationPort in suspicious_ports or DestinationIp in known_bad"
+    needles: ["5156", "5158", "3", "SourceIp", "DestinationIp", "SourcePort", "DestinationPort", "Protocol", "ProcessName"]
+    field_meanings:
+      EventID: "Network event ID (5156=connection allowed, 5158=bind, 3=network connection)"
+      SourceIp: "Source IP address"
+      DestinationIp: "Destination IP address"
+      SourcePort: "Source port"
+      DestinationPort: "Destination port"
+      Protocol: "Protocol (TCP, UDP, ICMP)"
+      ProcessName: "Process that initiated the connection"
+      ProcessId: "PID of the process"
+    caveats:
+      - "Network connections are constant; require unusual ports, known-bad IPs, or suspicious process names"
+
+  - analytic: "CAR-2016-04-001"
+    name: "DNS Query"
+    technique: "T1071.004"
+    data_model: ["EventID", "QueryName", "QueryType", "QueryResult", "SourceIp", "ProcessName", "ProcessId"]
+    pseudocode: "dns_query where QueryName in known_bad_domains or QueryType in suspicious_types"
+    needles: ["22", "QueryName", "QueryType", "QueryResult", "SourceIp", "ProcessName"]
+    field_meanings:
+      EventID: "DNS event ID (22=query results)"
+      QueryName: "Domain name queried"
+      QueryType: "DNS record type (A, AAAA, CNAME, TXT, MX, NS, PTR, SRV)"
+      QueryResult: "DNS query result (IP addresses)"
+      SourceIp: "Source IP that made the query"
+      ProcessName: "Process that made the query"
+    caveats:
+      - "DNS queries are constant; require DGA patterns, known-bad domains, or TXT records (data exfil)"
+
+  # --- File System ---
+  - analytic: "CAR-2016-04-002"
+    name: "File Access"
+    technique: "T1003"
+    data_model: ["EventID", "TargetFilename", "ProcessName", "ProcessId", "User", "AccessMask", "AccessList"]
+    pseudocode: "file_access where TargetFilename contains sensitive_files and AccessMask contains '0x2' (write)"
+    needles: ["4663", "4656", "4658", "4660", "4664", "4670", "4673", "4688", "TargetFilename", "AccessMask", "AccessList"]
+    field_meanings:
+      EventID: "File access event ID (4663=access, 4656=handle, 4658=handle closed, 4660=object deleted, 4664=hard link created, 4670=permissions changed, 4673=privileged service called)"
+      TargetFilename: "Full path to the accessed file"
+      ProcessName: "Process that accessed the file"
+      AccessMask: "Access mask (0x1=read, 0x2=write, 0x4=append, 0x10=delete, 0x20=read_control, 0x40=write_dac, 0x80=write_owner, 0x100=sync, 0x10000=generic_all, 0x20000=generic_execute, 0x40000=generic_write, 0x80000=generic_read)"
+      AccessList: "List of access types requested"
+    caveats:
+      - "File access is constant; require sensitive file paths (SAM, NTDS, SECURITY) or write access to system files"
+
+  # --- Driver / Module ---
+  - analytic: "CAR-2016-04-006"
+    name: "Driver Load"
+    technique: "T1068"
+    data_model: ["EventID", "ImageLoaded", "Signed", "Signature", "SignatureStatus", "ProcessId", "ProcessName"]
+    pseudocode: "driver_load where Signed == false or SignatureStatus != 'Valid'"
+    needles: ["6", "7", "ImageLoaded", "Signed", "Signature", "SignatureStatus"]
+    field_meanings:
+      EventID: "Driver load event ID (6=driver loaded, 7=module loaded)"
+      ImageLoaded: "Full path to the loaded driver/module"
+      Signed: "Whether the driver is signed"
+      Signature: "Signer name"
+      SignatureStatus: "Signature validation status"
+    caveats:
+      - "Driver loads are common; require unsigned drivers or suspicious paths (temp, appdata, user profile)"
+
+  # --- Named Pipe ---
+  - analytic: "CAR-2016-04-007"
+    name: "Named Pipe"
+    technique: "T1071.001"
+    data_model: ["EventID", "PipeName", "ProcessName", "ProcessId", "User"]
+    pseudocode: "named_pipe where PipeName in suspicious_pipes"
+    needles: ["17", "18", "PipeName", "ProcessName"]
+    field_meanings:
+      EventID: "Named pipe event ID (17=pipe created, 18=pipe connected)"
+      PipeName: "Name of the named pipe"
+      ProcessName: "Process that created/connected the pipe"
+      ProcessId: "PID of the process"
+    caveats:
+      - "Named pipes are used by legitimate tools (SMB, RPC); require suspicious pipe names (psedsvc, psexesvc, csexec, remcom, paexec)"
+
+  # --- WMI ---
+  - analytic: "CAR-2016-04-008"
+    name: "WMI Event Subscription"
+    technique: "T1546.003"
+    data_model: ["EventID", "Namespace", "Name", "Query", "Consumer", "ProcessName", "ProcessId"]
+    pseudocode: "wmi_subscription where Consumer in suspicious_consumers"
+    needles: ["5861", "19", "20", "21", "Namespace", "Name", "Query", "Consumer", "__EventFilter", "__EventConsumer", "CommandLineEventConsumer", "ActiveScriptEventConsumer", "LogFileEventConsumer", "NTEventLogEventConsumer", "SMTPEventConsumer"]
+    field_meanings:
+      EventID: "WMI event ID (5861=permanent event subscription, 19=filter created, 20=consumer created, 21=consumer bound)"
+      Namespace: "WMI namespace (root\\subscription, root\\cimv2)"
+      Name: "Name of the filter/consumer"
+      Query: "WQL query for the filter"
+      Consumer: "Consumer type (CommandLineEventConsumer, ActiveScriptEventConsumer, etc.)"
+      ProcessName: "Process that created the subscription"
+      ProcessId: "PID of the process"
+    caveats:
+      - "WMI subscriptions are used by legitimate management tools; require CommandLineEventConsumer or ActiveScriptEventConsumer with suspicious commands"
+
+  # --- Scheduled Task ---
+  - analytic: "CAR-2016-04-009"
+    name: "Scheduled Task"
+    technique: "T1053.005"
+    data_model: ["EventID", "TaskName", "TaskContent", "User", "ProcessName", "ProcessId"]
+    pseudocode: "scheduled_task where TaskContent contains suspicious_commands"
+    needles: ["4698", "4699", "4700", "4701", "4702", "106", "200", "201", "TaskName", "TaskContent", "User"]
+    field_meanings:
+      EventID: "Scheduled task event ID (4698=created, 4699=deleted, 4700=enabled, 4701=disabled, 4702=updated, 106=registered, 200=started, 201=completed)"
+      TaskName: "Name of the scheduled task"
+      TaskContent: "XML definition of the task (contains command, args, schedule)"
+      User: "Account that created the task"
+      ProcessName: "Process that created the task"
+      ProcessId: "PID of the process"
+    caveats:
+      - "Scheduled tasks are created by Windows and updaters; require non-Microsoft paths or suspicious commands in TaskContent"
+
+  # --- Process Injection ---
+  - analytic: "CAR-2016-04-010"
+    name: "Process Injection"
+    technique: "T1055"
+    data_model: ["EventID", "SourceImage", "TargetImage", "SourceProcessId", "TargetProcessId", "StartAddress", "StartModule", "StartFunction"]
+    pseudocode: "process_injection where SourceImage != TargetImage and StartAddress not in TargetImage"
+    needles: ["8", "10", "SourceImage", "TargetImage", "SourceProcessId", "TargetProcessId", "StartAddress", "StartModule", "StartFunction"]
+    field_meanings:
+      EventID: "Process injection event ID (8=create remote thread, 10=process access)"
+      SourceImage: "Process that injected the code"
+      TargetImage: "Process that received the code"
+      SourceProcessId: "PID of the source process"
+      TargetProcessId: "PID of the target process"
+      StartAddress: "Start address of the injected code"
+      StartModule: "Module containing the start address"
+      StartFunction: "Function at the start address"
+    caveats:
+      - "Process injection is used by legitimate tools (debuggers, AV); require unsigned SourceImage or unusual TargetImage"
+
+  # --- Token ---
+  - analytic: "CAR-2016-04-011"
+    name: "Token Manipulation"
+    technique: "T1134"
+    data_model: ["EventID", "SourceImage", "TargetImage", "SourceProcessId", "TargetProcessId", "SourceUser", "TargetUser", "LogonId"]
+    pseudocode: "token_manipulation where SourceUser != TargetUser"
+    needles: ["4648", "4672", "4703", "SourceImage", "TargetImage", "SourceUser", "TargetUser", "LogonId"]
+    field_meanings:
+      EventID: "Token event ID (4648=explicit credentials, 4672=special privileges, 4703=token user adjusted)"
+      SourceImage: "Process that manipulated the token"
+      TargetImage: "Process that received the token"
+      SourceUser: "Original user context"
+      TargetUser: "New user context"
+      LogonId: "Logon ID of the token"
+    caveats:
+      - "Token manipulation is used by legitimate tools (UAC, runas); require different SourceUser/TargetUser or unsigned SourceImage"
+
+  # --- PowerShell ---
+  - analytic: "CAR-2016-04-012"
+    name: "PowerShell Script Block"
+    technique: "T1059.001"
+    data_model: ["EventID", "ScriptBlockText", "ScriptBlockId", "Path", "SequenceNumber", "User", "ProcessName", "ProcessId"]
+    pseudocode: "powershell_script where ScriptBlockText contains suspicious_functions"
+    needles: ["4104", "4103", "400", "600", "ScriptBlockText", "ScriptBlockId", "Path", "IEX", "Invoke-Expression", "DownloadString", "FromBase64String", "Invoke-Mimikatz", "Invoke-Shellcode", "Invoke-ReflectivePEInjection", "Invoke-DllInjection", "Invoke-PSInject", "Invoke-TokenManipulation", "Invoke-WmiMethod", "Invoke-Command", "Enter-PSSession", "New-PSSession", "Start-Process", "Start-Job", "Register-ScheduledJob", "Set-ExecutionPolicy", "Bypass", "Unrestricted", "RemoteSigned"]
+    field_meanings:
+      EventID: "PowerShell event ID (4104=script block, 4103=module logging, 400=engine state, 600=provider lifecycle)"
+      ScriptBlockText: "Full text of the script block"
+      ScriptBlockId: "Unique ID of the script block"
+      Path: "Path to the script file"
+      SequenceNumber: "Sequence number of the script block"
+      User: "Account that executed the script"
+      ProcessName: "Process that executed the script"
+      ProcessId: "PID of the process"
+    caveats:
+      - "Script block logging is verbose; require suspicious functions (IEX, DownloadString, Invoke-*) or encoded content"
+
+  # --- Registry ---
+  - analytic: "CAR-2016-04-013"
+    name: "Registry Value Set"
+    technique: "T1547.001"
+    data_model: ["EventID", "TargetObject", "Details", "ValueName", "ProcessName", "ProcessId", "User"]
+    pseudocode: "registry_value_set where TargetObject contains 'Run' and Details contains suspicious_binary"
+    needles: ["4657", "4656", "4663", "TargetObject", "Details", "ValueName", "Run", "RunOnce", "Winlogon", "Userinit", "Shell", "StartupApproved", "RunMRU", "Start Menu\\Programs\\Startup"]
+    field_meanings:
+      EventID: "Registry event ID (4657=value modified, 4656=handle requested, 4663=access attempt)"
+      TargetObject: "Registry key path"
+      Details: "Value data (the binary path or command)"
+      ValueName: "Name of the registry value"
+      ProcessName: "Process that set the value"
+      ProcessId: "PID of the process"
+      User: "Account that set the value"
+    caveats:
+      - "Registry value sets are common; require Run/RunOnce keys or suspicious binary paths in Details"
+
+  # --- Lateral Movement ---
+  - analytic: "CAR-2016-04-014"
+    name: "SMB Share Access"
+    technique: "T1021.002"
+    data_model: ["EventID", "ShareName", "SourceAddress", "DestinationAddress", "User", "ProcessName", "ProcessId", "AccessMask", "AccessList"]
+    pseudocode: "smb_access where ShareName in ('ADMIN$', 'C$', 'IPC$') and SourceAddress not in known_hosts"
+    needles: ["5140", "5145", "5142", "5143", "5144", "5145", "5168", "ShareName", "SourceAddress", "DestinationAddress", "ADMIN$", "C$", "IPC$", "print$", "netlogon", "sysvol"]
+    field_meanings:
+      EventID: "SMB share event ID (5140=share accessed, 5145=detailed share check, 5142=share added, 5143=share modified, 5144=share deleted, 5168=SPN check)"
+      ShareName: "Name of the accessed share"
+      SourceAddress: "Source IP that accessed the share"
+      DestinationAddress: "Target IP hosting the share"
+      User: "Account that accessed the share"
+      ProcessName: "Process that accessed the share"
+      AccessMask: "Access mask (read, write, delete)"
+      AccessList: "List of access types"
+    caveats:
+      - "ADMIN$/C$/IPC$ are common for admins; require unusual SourceAddress or account"
+
+  # --- Kerberos ---
+  - analytic: "CAR-2016-04-015"
+    name: "Kerberos Ticket"
+    technique: "T1558"
+    data_model: ["EventID", "TargetUserName", "TargetDomainName", "ServiceName", "TicketOptions", "TicketEncryptionType", "IpAddress", "Status"]
+    pseudocode: "kerberos_ticket where ServiceName in suspicious_services or TicketEncryptionType == '0x17' (RC4)"
+    needles: ["4768", "4769", "4770", "4771", "4776", "TargetUserName", "ServiceName", "TicketOptions", "TicketEncryptionType", "IpAddress", "krbtgt", "cifs", "host", "ldap", "http", "mssql", "wsman"]
+    field_meanings:
+      EventID: "Kerberos event ID (4768=TGT requested, 4769=service ticket requested, 4770=service ticket renewed, 4771=pre-auth failed, 4776=credential validation)"
+      TargetUserName: "Account that requested the ticket"
+      TargetDomainName: "Domain of the target account"
+      ServiceName: "Service principal name (SPN)"
+      TicketOptions: "Ticket options (forwardable, renewable, etc.)"
+      TicketEncryptionType: "Encryption type (0x17=RC4, 0x12=AES256)"
+      IpAddress: "IP address that requested the ticket"
+      Status: "Ticket request status"
+    caveats:
+      - "Kerberos tickets are constant; require RC4 encryption (0x17) or unusual SPNs"
+
+  # --- AppLocker ---
+  - analytic: "CAR-2016-04-016"
+    name: "AppLocker"
+    technique: "T1218"
+    data_model: ["EventID", "FileName", "FilePath", "FileHash", "User", "PolicyName", "RuleId", "RuleName"]
+    pseudocode: "applocker where PolicyName == 'Denied' or RuleName in suspicious_rules"
+    needles: ["8004", "8005", "8006", "8007", "FileName", "FilePath", "FileHash", "PolicyName", "RuleId", "RuleName"]
+    field_meanings:
+      EventID: "AppLocker event ID (8004=denied, 8005=allowed, 8006=audit, 8007=packaged app denied)"
+      FileName: "Name of the file"
+      FilePath: "Path to the file"
+      FileHash: "Hash of the file"
+      User: "Account that ran the file"
+      PolicyName: "AppLocker policy name"
+      RuleId: "Rule ID"
+      RuleName: "Rule name"
+    caveats:
+      - "AppLocker events are informative; require Denied policy or suspicious file paths"
+
+  # --- Sysmon ---
+  - analytic: "CAR-2016-04-017"
+    name: "Sysmon Process Create"
+    technique: "T1059"
+    data_model: ["EventID", "Image", "CommandLine", "ParentImage", "ParentCommandLine", "User", "ProcessId", "ProcessGuid", "IntegrityLevel", "Hashes", "FileVersion", "Description", "Product", "Company", "OriginalFileName"]
+    pseudocode: "sysmon_process where Image in suspicious_processes or ParentImage in suspicious_parents"
+    needles: ["1", "Image", "CommandLine", "ParentImage", "ParentCommandLine", "User", "ProcessId", "ProcessGuid", "IntegrityLevel", "Hashes", "FileVersion", "Description", "Product", "Company", "OriginalFileName"]
+    field_meanings:
+      EventID: "Sysmon event ID (1=process create)"
+      Image: "Full path to the process executable"
+      CommandLine: "Command line arguments"
+      ParentImage: "Full path to the parent process"
+      ParentCommandLine: "Parent command line arguments"
+      User: "Security context"
+      ProcessId: "Process ID"
+      ProcessGuid: "Unique process GUID"
+      IntegrityLevel: "Process integrity level (Low, Medium, High, System)"
+      Hashes: "File hashes (MD5, SHA1, SHA256, IMPHASH)"
+      FileVersion: "File version"
+      Description: "File description"
+      Product: "Product name"
+      Company: "Company name"
+      OriginalFileName: "Original filename"
+    caveats:
+      - "Sysmon process create is verbose; require suspicious process names or unusual parent-child relationships"

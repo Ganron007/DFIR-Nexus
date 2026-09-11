@@ -152,6 +152,66 @@ def _context_block(context: dict[str, Any] | None) -> str:
         lines.append(
             "SigmaHQ-derived detection patterns for this case:\n" + sigma_context[:1500]
         )
+    lolbas_context = str(context.get("lolbas_context") or "").strip()
+    if lolbas_context:
+        lines.append(
+            "LOLBAS abuse patterns for this case:\n" + lolbas_context[:1200]
+        )
+    atomic_context = str(context.get("atomic_context") or "").strip()
+    if atomic_context:
+        lines.append(
+            "Atomic Red Team test procedures for this case:\n" + atomic_context[:1200]
+        )
+    car_context = str(context.get("car_context") or "").strip()
+    if car_context:
+        lines.append(
+            "CAR analytics (data model fields) for this case:\n" + car_context[:1200]
+        )
+    ossem_context = str(context.get("ossem_context") or "").strip()
+    if ossem_context:
+        lines.append(
+            "OSSEM event data models for this case:\n" + ossem_context[:1200]
+        )
+    evtx_context = str(context.get("evtx_context") or "").strip()
+    if evtx_context:
+        lines.append(
+            "EVTX-ATTACK-SAMPLES for this case:\n" + evtx_context[:1200]
+        )
+    incident_context = str(context.get("incident_context") or "").strip()
+    if incident_context:
+        lines.append(
+            "Incident report IOCs/TTPs for this case:\n" + incident_context[:1200]
+        )
+    threat_feeds = context.get("threat_feeds") or []
+    if threat_feeds:
+        lines.append(
+            "Threat intel feeds available: " + ", ".join(str(f) for f in threat_feeds[:8])
+        )
+    vendor_guides = context.get("vendor_guides") or []
+    if vendor_guides:
+        lines.append(
+            "Vendor detection guides available: " + ", ".join(str(v) for v in vendor_guides[:6])
+        )
+    sysmon_configs = context.get("sysmon_configs") or []
+    if sysmon_configs:
+        lines.append(
+            "Sysmon configs available: " + ", ".join(str(c) for c in sysmon_configs[:4])
+        )
+    yara_rules = context.get("yara_rules") or []
+    if yara_rules:
+        lines.append(
+            "YARA rules available: " + ", ".join(str(r) for r in yara_rules[:6])
+        )
+    cisa_kev = context.get("cisa_kev") or []
+    if cisa_kev:
+        lines.append(
+            "CISA KEV (actively exploited CVEs): " + ", ".join(str(c) for c in cisa_kev[:8])
+        )
+    misp_opencti = context.get("misp_opencti") or []
+    if misp_opencti:
+        lines.append(
+            "MISP/OpenCTI platforms available: " + ", ".join(str(p) for p in misp_opencti[:4])
+        )
     rag = str(context.get("rag") or "").strip()
     if rag:
         lines.append("RAG methodology:\n" + rag[:1200])
@@ -205,6 +265,54 @@ def nl_to_needles(
     ] + [
         str(t)
         for t in (context or {}).get("overlay_needles") or []
+        if str(t).strip()
+    ] + [
+        str(t)
+        for t in (context or {}).get("lolbas_needles") or []
+        if str(t).strip()
+    ] + [
+        str(t)
+        for t in (context or {}).get("atomic_needles") or []
+        if str(t).strip()
+    ] + [
+        str(t)
+        for t in (context or {}).get("car_needles") or []
+        if str(t).strip()
+    ] + [
+        str(t)
+        for t in (context or {}).get("ossem_needles") or []
+        if str(t).strip()
+    ] + [
+        str(t)
+        for t in (context or {}).get("evtx_needles") or []
+        if str(t).strip()
+    ] + [
+        str(t)
+        for t in (context or {}).get("incident_needles") or []
+        if str(t).strip()
+    ] + [
+        str(t)
+        for t in (context or {}).get("threat_needles") or []
+        if str(t).strip()
+    ] + [
+        str(t)
+        for t in (context or {}).get("vendor_needles") or []
+        if str(t).strip()
+    ] + [
+        str(t)
+        for t in (context or {}).get("sysmon_needles") or []
+        if str(t).strip()
+    ] + [
+        str(t)
+        for t in (context or {}).get("yara_needles") or []
+        if str(t).strip()
+    ] + [
+        str(t)
+        for t in (context or {}).get("cisa_needles") or []
+        if str(t).strip()
+    ] + [
+        str(t)
+        for t in (context or {}).get("misp_needles") or []
         if str(t).strip()
     ]
 

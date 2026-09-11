@@ -353,7 +353,8 @@ N8 report from APPROVED only
 4. **Phase 4 enterprise UI rewrite** — React SPA cockpit at `/portal/app/*`
    replaced the hand-written HTML/JS proof-of-concept. API contracts unchanged.
    **Status: complete (Phase 4b workflow cockpit + Phase 4d UI hardening +
-   Phase 4e case-management segregation).**
+   Phase 4e case-management segregation + Phase 4f design conformance +
+   Phase 4g needle quality + Phase 4h evidence intake).**
 
 ## Product flow (canonical)
 

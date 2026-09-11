@@ -1419,6 +1419,218 @@ def _mode1_ask_context(case_dir: Path, question: str) -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         logger.debug("sigma/overlay context skipped: %s", exc)
 
+    # WP 3.27a: LOLBAS + Atomic Red Team needle packs.
+    try:
+        from nexus.knowledge.loader import get_atomic_red_team, get_lolbas_needles
+
+        lolbas_packs = get_lolbas_needles()
+        if lolbas_packs:
+            # Filter LOLBAS packs to families present in the case
+            relevant = [
+                p for p in lolbas_packs
+                if any(f.lower() in (p.get("binary") or "").lower() for f in families)
+                or any(m.lower() in (p.get("binary") or "").lower() for m in techniques)
+            ]
+            if relevant:
+                context["lolbas_needles"] = [
+                    str(n) for p in relevant[:6]
+                    for n in (p.get("needles") or [])
+                ]
+                context["lolbas_context"] = "\n".join(
+                    f"- {p.get('name', '')}: {', '.join(p.get('needles', [])[:5])}"
+                    for p in relevant[:4]
+                )
+                context["sources"].append("lolbas")
+        atomic_packs = get_atomic_red_team()
+        if atomic_packs:
+            relevant_atomic = [
+                p for p in atomic_packs
+                if any(t.lower() in (p.get("technique") or "").lower() for t in techniques)
+            ]
+            if relevant_atomic:
+                context["atomic_needles"] = [
+                    str(a) for p in relevant_atomic[:6]
+                    for t in (p.get("tests") or [])
+                    for a in (t.get("artifacts") or [])
+                ]
+                context["atomic_context"] = "\n".join(
+                    f"- {p.get('name', '')}: {p.get('technique', '')}"
+                    for p in relevant_atomic[:4]
+                )
+                context["sources"].append("atomic-red-team")
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("lolbas/atomic context skipped: %s", exc)
+
+    # WP 3.27c: CAR analytics + OSSEM + EVTX-ATTACK-SAMPLES.
+    try:
+        from nexus.knowledge.loader import (
+            get_car_analytics,
+            get_evtx_attack_samples,
+            get_ossem_events,
+        )
+
+        car_packs = get_car_analytics()
+        if car_packs:
+            relevant_car = [
+                p for p in car_packs
+                if any(t.lower() in (p.get("technique") or "").lower() for t in techniques)
+                or any(f.lower() in (p.get("data_model") or []) for f in families)
+            ]
+            if relevant_car:
+                context["car_needles"] = [
+                    str(n) for p in relevant_car[:6]
+                    for n in (p.get("needles") or [])
+                ]
+                context["car_context"] = "\n".join(
+                    f"- {p.get('name', '')}: {', '.join(p.get('data_model', [])[:5])}"
+                    for p in relevant_car[:4]
+                )
+                context["sources"].append("car")
+        ossem_events = get_ossem_events()
+        if ossem_events:
+            relevant_ossem = [
+                e for e in ossem_events
+                if any(f.lower() in (e.get("name") or "").lower() for f in families)
+            ]
+            if relevant_ossem:
+                context["ossem_needles"] = [
+                    str(f.get("name")) for e in relevant_ossem[:6]
+                    for f in (e.get("fields") or [])
+                ]
+                context["ossem_context"] = "\n".join(
+                    f"- {e.get('name', '')}: {', '.join(str(f.get('name', '')) for f in (e.get('fields') or [])[:5])}"
+                    for e in relevant_ossem[:4]
+                )
+                context["sources"].append("ossem")
+        evtx_packs = get_evtx_attack_samples()
+        if evtx_packs:
+            relevant_evtx = [
+                p for p in evtx_packs
+                if any(t.lower() in (p.get("technique") or "").lower() for t in techniques)
+            ]
+            if relevant_evtx:
+                context["evtx_needles"] = [
+                    str(v) for p in relevant_evtx[:6]
+                    for e in (p.get("events") or [])
+                    for v in (e.get("fields") or {}).values()
+                ]
+                context["evtx_context"] = "\n".join(
+                    f"- {p.get('name', '')}: {p.get('technique', '')}"
+                    for p in relevant_evtx[:4]
+                )
+                context["sources"].append("evtx-attack-samples")
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("car/ossem/evtx context skipped: %s", exc)
+
+    # WP 3.27d: Incident reports + threat feeds + vendor guides + Sysmon + YARA + KEV + MISP.
+    try:
+        from nexus.knowledge.loader import (
+            get_cisa_kev,
+            get_incident_reports,
+            get_misp_opencti,
+            get_sysmon_configs,
+            get_threat_feeds,
+            get_vendor_guides,
+            get_yara_rules,
+        )
+
+        # Incident reports — APT group IOCs and TTPs
+        incident_packs = get_incident_reports()
+        if incident_packs:
+            relevant_incidents = [
+                p for p in incident_packs
+                if any(t.lower() in (p.get("group") or "").lower() for t in techniques)
+                or any(m.lower() in (p.get("group") or "").lower() for m in techniques)
+            ]
+            if relevant_incidents:
+                context["incident_needles"] = [
+                    str(n) for p in relevant_incidents[:6]
+                    for n in (p.get("needles") or [])
+                ]
+                context["incident_context"] = "\n".join(
+                    f"- {p.get('group', '')}: {', '.join(p.get('needles', [])[:5])}"
+                    for p in relevant_incidents[:4]
+                )
+                context["sources"].append("incident-reports")
+
+        # Threat feeds — current known-bad IOCs
+        threat_feeds = get_threat_feeds()
+        if threat_feeds:
+            context["threat_feeds"] = [
+                f.get("name") for f in threat_feeds[:8]
+            ]
+            context["threat_needles"] = [
+                str(n) for f in threat_feeds[:8]
+                for n in (f.get("needles") or [])
+            ]
+            context["sources"].append("threat-feeds")
+
+        # Vendor guides — detection logic and field names
+        vendor_guides = get_vendor_guides()
+        if vendor_guides:
+            context["vendor_guides"] = [
+                v.get("vendor") for v in vendor_guides[:6]
+            ]
+            context["vendor_needles"] = [
+                str(n) for v in vendor_guides[:6]
+                for d in (v.get("detection_logic") or [])
+                for n in (d.get("needles") or [])
+            ]
+            context["sources"].append("vendor-guides")
+
+        # Sysmon configs — event coverage and field names
+        sysmon_configs = get_sysmon_configs()
+        if sysmon_configs:
+            context["sysmon_configs"] = [
+                c.get("name") for c in sysmon_configs[:4]
+            ]
+            context["sysmon_needles"] = [
+                str(n) for c in sysmon_configs[:4]
+                for e in (c.get("events") or [])
+                for n in (e.get("needles") or [])
+            ]
+            context["sources"].append("sysmon")
+
+        # YARA rules — malware family detection
+        yara_rules = get_yara_rules()
+        if yara_rules:
+            context["yara_rules"] = [
+                r.get("family") for r in yara_rules[:6]
+            ]
+            context["yara_needles"] = [
+                str(s) for r in yara_rules[:6]
+                for ru in (r.get("rules") or [])
+                for s in (ru.get("strings") or [])
+            ]
+            context["sources"].append("yara")
+
+        # CISA KEV — actively exploited CVEs
+        cisa_kev = get_cisa_kev()
+        if cisa_kev:
+            context["cisa_kev"] = [
+                c.get("cve") for c in cisa_kev[:8]
+            ]
+            context["cisa_needles"] = [
+                str(n) for c in cisa_kev[:8]
+                for n in (c.get("needles") or [])
+            ]
+            context["sources"].append("cisa-kev")
+
+        # MISP / OpenCTI — structured threat intel
+        misp_opencti = get_misp_opencti()
+        if misp_opencti:
+            context["misp_opencti"] = [
+                p.get("name") for p in misp_opencti[:4]
+            ]
+            context["misp_needles"] = [
+                str(n) for p in misp_opencti[:4]
+                for f in (p.get("feed_types") or [])
+                for n in (f.get("needles") or [])
+            ]
+            context["sources"].append("misp-opencti")
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("incident/threat/vendor/sysmon/yara/kev/misp context skipped: %s", exc)
+
     return context
 
 
@@ -2942,12 +3154,12 @@ async def health(request):
 
 
 async def api_mode3_orchestrator(request):
-    """POST /portal/api/mode3/orchestrator — run multi-agent orchestrator (WP 3.10).
+    """POST /portal/api/mode3/orchestrator — run real multi-agent orchestrator (WP 3.21).
 
-    Body: {hits? (optional — defaults to current N4 hits)}
-    Dispatches specialist agents per evidence family, injects RAG methodology,
-    collects findings into synthesis. Examiner reviews proposals — nothing
-    is auto-staged.
+    Body: {hits? (optional — agents run their own queries if not provided)}
+    Dispatches EvidenceAgents that run real N4 queries on assigned families,
+    extract entities, correlate across families, detect attack patterns, and
+    build a narrative. Examiner reviews proposals — nothing is auto-staged.
     """
     case_dir = _get_case_dir(request)
     if not case_dir:
@@ -2965,18 +3177,8 @@ async def api_mode3_orchestrator(request):
     except Exception:
         body = {}
 
-    hits = body.get("hits") or []
-    if not hits:
-        # Load current N4 hits if no hits provided
-        from nexus.langgraph.query_pack import load_case_intake, n4_query
-
-        intake = load_case_intake(case_dir)
-        needles = intake.get("question", "")
-        if needles:
-            r = n4_query(case_dir, needles, limit=80)
-            hits = r.get("hits", [])
-
-    result = run_orchestrator(case_dir, hits, model=model)
+    hits = body.get("hits") or None
+    result = run_orchestrator(case_dir, model=model, hits=hits)
     return JSONResponse(result)
 
 

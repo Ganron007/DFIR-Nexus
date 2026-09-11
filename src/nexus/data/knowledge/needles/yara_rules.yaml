@@ -1,0 +1,229 @@
+# YARA rules — WP 3.27d.
+# YARA rule matches for malware families — rule names, strings,
+# conditions. The scribe can suggest needles based on YARA rule matches.
+
+version: 1
+description: >
+  YARA rules — rule names, strings, and conditions for malware family
+  detection. The scribe can suggest needles based on YARA rule matches.
+source: "https://github.com/Yara-Rules/rules + https://github.com/Neo23x0/signature-base"
+
+rules:
+  # --- APT Groups ---
+  - family: "APT29"
+    rules:
+      - name: "APT29_WellSmarter"
+        strings: ["wellsmarter", "seadadd", "netbios", "miniDionis", "CosmicDuke", "CozyCar", "Hammertoss"]
+        condition: "any of them"
+        description: "APT29 tool names and strings"
+      - name: "APT29_CozyDuke"
+        strings: ["CozyDuke", "Office Monkeys", "Eurograbber", "OnionDuke"]
+        condition: "any of them"
+        description: "APT29 CozyDuke strings"
+
+  - family: "APT28"
+    rules:
+      - name: "APT28_Sofacy"
+        strings: ["sofacy", "xagent", "xtunnel", "komplex", "CHOPSTICK", "CORESHELL", "JHUHUGIT"]
+        condition: "any of them"
+        description: "APT28 Sofacy strings"
+      - name: "APT28_XAgent"
+        strings: ["xagent", "xtunnel", "komplex", "CHOPSTICK"]
+        condition: "any of them"
+        description: "APT28 XAgent strings"
+
+  - family: "Lazarus"
+    rules:
+      - name: "Lazarus_Bluenoroff"
+        strings: ["bluenoroff", "lazarus", "appleJeus", "fastcash", "HOPLIGHT", "ELECTRICFISH", "BADCALL", "HARDRAIN", "FALLCHILL", "TYPEFRAME"]
+        condition: "any of them"
+        description: "Lazarus Bluenoroff strings"
+      - name: "Lazarus_AppleJeus"
+        strings: ["appleJeus", "fastcash", "HOPLIGHT", "ELECTRICFISH"]
+        condition: "any of them"
+        description: "Lazarus AppleJeus strings"
+
+  # --- Ransomware ---
+  - family: "Conti"
+    rules:
+      - name: "Conti_Ransomware"
+        strings: ["Conti", "Ryuk", "TrickBot", "BazarLoader", "BazarBackdoor", "AnchorDNS", "AnchorMail", "conti.news"]
+        condition: "any of them"
+        description: "Conti ransomware strings"
+      - name: "Conti_Leak"
+        strings: ["conti.news", "conti leak", "conti locker"]
+        condition: "any of them"
+        description: "Conti leak site strings"
+
+  - family: "LockBit"
+    rules:
+      - name: "LockBit_Ransomware"
+        strings: ["LockBit", "StealBit", "LockBit-NSIS", "LockBit-PHP", "lockbit-decryptor", ".lockbit"]
+        condition: "any of them"
+        description: "LockBit ransomware strings"
+      - name: "LockBit_Decryptor"
+        strings: ["lockbit-decryptor", "lockbit decryptor", "lockbit-2.0", "lockbit-3.0"]
+        condition: "any of them"
+        description: "LockBit decryptor strings"
+
+  - family: "BlackCat"
+    rules:
+      - name: "BlackCat_Ransomware"
+        strings: ["BlackCat", "ALPHV", "Noberus", "ExMatter", "Fendr", "alphv", ".alphv"]
+        condition: "any of them"
+        description: "BlackCat/ALPHV ransomware strings"
+      - name: "BlackCat_ExMatter"
+        strings: ["ExMatter", "Fendr", "BlackCat", "ALPHV"]
+        condition: "any of them"
+        description: "BlackCat ExMatter strings"
+
+  # --- Banking Trojans ---
+  - family: "Emotet"
+    rules:
+      - name: "Emotet_Loader"
+        strings: ["emotet", "epoch1", "epoch2", "epoch3", "epoch4", "epoch5", "heodo", "geodo"]
+        condition: "any of them"
+        description: "Emotet loader strings"
+      - name: "Emotet_Payload"
+        strings: ["emotet", "heodo", "geodo", "epoch"]
+        condition: "any of them"
+        description: "Emotet payload strings"
+
+  - family: "Dridex"
+    rules:
+      - name: "Dridex_Loader"
+        strings: ["dridex", "dridex loader", "dridex botnet"]
+        condition: "any of them"
+        description: "Dridex loader strings"
+      - name: "Dridex_Botnet"
+        strings: ["dridex", "dridex botnet", "dridex payload"]
+        condition: "any of them"
+        description: "Dridex botnet strings"
+
+  - family: "TrickBot"
+    rules:
+      - name: "TrickBot_Loader"
+        strings: ["trickbot", "trickbot loader", "trickbot botnet", "anchor", "anchormail"]
+        condition: "any of them"
+        description: "TrickBot loader strings"
+      - name: "TrickBot_Anchor"
+        strings: ["anchor", "anchormail", "trickbot anchor"]
+        condition: "any of them"
+        description: "TrickBot Anchor strings"
+
+  - family: "QakBot"
+    rules:
+      - name: "QakBot_Loader"
+        strings: ["qakbot", "qbot", "quackbot", "pinkslipbot"]
+        condition: "any of them"
+        description: "QakBot loader strings"
+      - name: "QakBot_WebInject"
+        strings: ["qakbot", "webinject", "qbot inject"]
+        condition: "any of them"
+        description: "QakBot web inject strings"
+
+  # --- Loaders ---
+  - family: "BumbleBee"
+    rules:
+      - name: "BumbleBee_Loader"
+        strings: ["bumblebee", "bumblebee loader", "bumblebee botnet"]
+        condition: "any of them"
+        description: "BumbleBee loader strings"
+
+  - family: "IcedID"
+    rules:
+      - name: "IcedID_Loader"
+        strings: ["icedid", "icedid loader", "icedid botnet", "bokbot"]
+        condition: "any of them"
+        description: "IcedID loader strings"
+      - name: "IcedID_Steganography"
+        strings: ["icedid", "steganography", "bokbot", "png", "jpeg"]
+        condition: "any of them"
+        description: "IcedID steganography strings"
+
+  # --- Proxies ---
+  - family: "SystemBC"
+    rules:
+      - name: "SystemBC_Proxy"
+        strings: ["systembc", "systembc proxy", "systembc socks5", "socks5"]
+        condition: "any of them"
+        description: "SystemBC proxy strings"
+
+  - family: "SmokeLoader"
+    rules:
+      - name: "SmokeLoader_Downloader"
+        strings: ["smokeloader", "smoke loader", "smokebot", "dofoil"]
+        condition: "any of them"
+        description: "SmokeLoader downloader strings"
+
+  # --- Web Shells ---
+  - family: "WebShells"
+    rules:
+      - name: "WebShell_ChinaChopper"
+        strings: ["China Chopper", "chopper", "cmd.aspx", "shell.aspx", "upload.aspx", "eval", "execute"]
+        condition: "any of them"
+        description: "China Chopper web shell strings"
+      - name: "WebShell_ASPXSpy"
+        strings: ["ASPXSpy", "aspxspy", "cmd.aspx", "shell.aspx", "upload.aspx", "eval", "execute"]
+        condition: "any of them"
+        description: "ASPXSpy web shell strings"
+      - name: "WebShell_C99"
+        strings: ["C99", "c99", "cmd.php", "shell.php", "upload.php", "eval", "execute"]
+        condition: "any of them"
+        description: "C99 web shell strings"
+      - name: "WebShell_R57"
+        strings: ["R57", "r57", "cmd.php", "shell.php", "upload.php", "eval", "execute"]
+        condition: "any of them"
+        description: "R57 web shell strings"
+      - name: "WebShell_B374k"
+        strings: ["B374k", "b374k", "cmd.php", "shell.php", "upload.php", "eval", "execute"]
+        condition: "any of them"
+        description: "B374k web shell strings"
+      - name: "WebShell_Weevely"
+        strings: ["Weevely", "weevely", "cmd.php", "shell.php", "upload.php", "eval", "execute"]
+        condition: "any of them"
+        description: "Weevely web shell strings"
+      - name: "WebShell_ReGeorg"
+        strings: ["ReGeorg", "regeorg", "tunnel", "proxy", "socks5"]
+        condition: "any of them"
+        description: "ReGeorg web shell strings"
+      - name: "WebShell_NeoReg"
+        strings: ["NeoReg", "neoreg", "tunnel", "proxy", "socks5"]
+        condition: "any of them"
+        description: "NeoReg web shell strings"
+
+  # --- Cryptominers ---
+  - family: "Cryptomining"
+    rules:
+      - name: "Cryptominer_XMRig"
+        strings: ["xmrig", "coinminer", "cryptonight", "stratum", "nicehash", "minexmr", "minergate", "monero"]
+        condition: "any of them"
+        description: "XMRig cryptominer strings"
+      - name: "Cryptominer_CoinMiner"
+        strings: ["coinminer", "cryptonight", "stratum", "nicehash", "minexmr", "minergate", "monero"]
+        condition: "any of them"
+        description: "CoinMiner cryptominer strings"
+      - name: "Cryptominer_Stratum"
+        strings: ["stratum", "stratum+tcp", "stratum+ssl", "mining pool", "pool.minexmr", "xmr.pool.minergate"]
+        condition: "any of them"
+        description: "Stratum mining protocol strings"
+
+  # --- Generic Malware ---
+  - family: "Generic"
+    rules:
+      - name: "Generic_Trojan"
+        strings: ["trojan", "backdoor", "spyware", "stealer", "loader", "dropper", "injector", "keylogger", "ransomware", "rootkit", "bootkit", "worm", "virus", "adware", "spyware", "rat", "bot", "zombie"]
+        condition: "any of them"
+        description: "Generic malware strings"
+      - name: "Generic_Exploit"
+        strings: ["exploit", "cve-", "0day", "zeroday", "buffer overflow", "stack overflow", "heap overflow", "use-after-free", "uaf", "rce", "remote code execution", "privilege escalation", "privesc", "escalation"]
+        condition: "any of them"
+        description: "Generic exploit strings"
+      - name: "Generic_Obfuscation"
+        strings: ["obfuscate", "obfuscated", "packed", "crypted", "encrypted", "encoded", "base64", "xor", "rot13", "upx", "aspack", "themida", "vmprotect", "enigma", "confuser", "babel", "eazfuscator"]
+        condition: "any of them"
+        description: "Generic obfuscation strings"
+      - name: "Generic_Persistence"
+        strings: ["persistence", "autorun", "autostart", "startup", "run key", "runonce", "winlogon", "userinit", "shell", "startupapproved", "runmru", "start menu\\programs\\startup", "scheduled task", "service", "wmi", "com", "dll hijack", "dll sideload", "dll search order"]
+        condition: "any of them"
+        description: "Generic persistence strings"

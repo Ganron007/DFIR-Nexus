@@ -1,0 +1,167 @@
+# Vendor detection guides — WP 3.27d.
+# Detection guidance from security vendors — Microsoft, CrowdStrike,
+# SentinelOne, Palo Alto, FireEye. Vendor-specific detection logic and
+# field names for needle suggestions.
+
+version: 1
+description: >
+  Vendor detection guides — detection logic and field names from
+  Microsoft, CrowdStrike, SentinelOne, Palo Alto, FireEye, and other
+  security vendors. The scribe can suggest needles based on vendor-
+  specific detection logic.
+source: "Microsoft, CrowdStrike, SentinelOne, Palo Alto, FireEye, Elastic"
+
+vendors:
+  # --- Microsoft ---
+  - vendor: "Microsoft"
+    product: "Microsoft Defender for Endpoint"
+    detection_logic:
+      - name: "Process creation"
+        fields: ["FileName", "ProcessCommandLine", "InitiatingProcessFileName", "InitiatingProcessCommandLine", "InitiatingProcessParentFileName", "AccountName", "AccountDomain", "LogonId"]
+        needles: ["powershell.exe", "cmd.exe", "wscript.exe", "cscript.exe", "mshta.exe", "rundll32.exe", "regsvr32.exe", "certutil.exe", "bitsadmin.exe", "wmic.exe", "schtasks.exe", "sc.exe", "net.exe", "netstat.exe", "ipconfig.exe", "route.exe", "arp.exe", "whoami.exe", "systeminfo.exe", "tasklist.exe", "taskkill.exe", "shutdown.exe", "reg.exe", "vssadmin.exe", "bcdedit.exe", "wevtutil.exe", "esentutl.exe", "procdump.exe", "psexec.exe", "winrs.exe", "rclone.exe", "ftp.exe", "curl.exe", "wget.exe"]
+        caveats:
+          - "Microsoft Defender uses cloud-delivered protection — look for process names + command lines"
+      - name: "Network connection"
+        fields: ["RemoteIP", "RemotePort", "LocalIP", "LocalPort", "Protocol", "ProcessName", "ProcessId"]
+        needles: ["RemoteIP", "RemotePort", "Protocol", "ProcessName"]
+        caveats:
+          - "Microsoft Defender tracks network connections per process — look for unusual process-to-IP connections"
+      - name: "Registry"
+        fields: ["RegistryKey", "RegistryValueName", "RegistryValueData", "ProcessName", "ProcessId"]
+        needles: ["RegistryKey", "RegistryValueName", "RegistryValueData"]
+        caveats:
+          - "Microsoft Defender tracks registry modifications — look for Run/RunOnce keys and suspicious values"
+      - name: "File"
+        fields: ["FileName", "FilePath", "FileSize", "FileHash", "ProcessName", "ProcessId"]
+        needles: ["FileName", "FilePath", "FileHash"]
+        caveats:
+          - "Microsoft Defender tracks file operations — look for suspicious file paths and hashes"
+
+  - vendor: "Microsoft"
+    product: "Microsoft Sentinel"
+    detection_logic:
+      - name: "Analytics rules"
+        fields: ["FileName", "ProcessCommandLine", "InitiatingProcessFileName", "InitiatingProcessCommandLine", "AccountName", "AccountDomain", "LogonId", "RemoteIP", "RemotePort", "LocalIP", "LocalPort", "Protocol", "ProcessName", "ProcessId", "RegistryKey", "RegistryValueName", "RegistryValueData", "FileName", "FilePath", "FileSize", "FileHash"]
+        needles: ["powershell.exe", "cmd.exe", "wscript.exe", "cscript.exe", "mshta.exe", "rundll32.exe", "regsvr32.exe", "certutil.exe", "bitsadmin.exe", "wmic.exe", "schtasks.exe", "sc.exe", "net.exe", "netstat.exe", "ipconfig.exe", "route.exe", "arp.exe", "whoami.exe", "systeminfo.exe", "tasklist.exe", "taskkill.exe", "shutdown.exe", "reg.exe", "vssadmin.exe", "bcdedit.exe", "wevtutil.exe", "esentutl.exe", "procdump.exe", "psexec.exe", "winrs.exe", "rclone.exe", "ftp.exe", "curl.exe", "wget.exe"]
+        caveats:
+          - "Microsoft Sentinel uses KQL analytics — look for process names, command lines, and network indicators"
+
+  # --- CrowdStrike ---
+  - vendor: "CrowdStrike"
+    product: "Falcon"
+    detection_logic:
+      - name: "Process execution"
+        fields: ["ImageFileName", "CommandLine", "ParentImageFileName", "ParentCommandLine", "UserName", "UserSid", "ProcessId", "ProcessGuid"]
+        needles: ["powershell.exe", "cmd.exe", "wscript.exe", "cscript.exe", "mshta.exe", "rundll32.exe", "regsvr32.exe", "certutil.exe", "bitsadmin.exe", "wmic.exe", "schtasks.exe", "sc.exe", "net.exe", "netstat.exe", "ipconfig.exe", "route.exe", "arp.exe", "whoami.exe", "systeminfo.exe", "tasklist.exe", "taskkill.exe", "shutdown.exe", "reg.exe", "vssadmin.exe", "bcdedit.exe", "wevtutil.exe", "esentutl.exe", "procdump.exe", "psexec.exe", "winrs.exe", "rclone.exe", "ftp.exe", "curl.exe", "wget.exe"]
+        caveats:
+          - "CrowdStrike tracks process execution with parent-child relationships — look for unusual parents"
+      - name: "Network connection"
+        fields: ["RemoteAddressIP4", "RemotePort", "LocalAddressIP4", "LocalPort", "Protocol", "ImageFileName", "ProcessId"]
+        needles: ["RemoteAddressIP4", "RemotePort", "Protocol", "ImageFileName"]
+        caveats:
+          - "CrowdStrike tracks network connections per process — look for unusual process-to-IP connections"
+      - name: "Registry"
+        fields: ["RegistryPath", "RegistryValueName", "RegistryValueData", "ImageFileName", "ProcessId"]
+        needles: ["RegistryPath", "RegistryValueName", "RegistryValueData"]
+        caveats:
+          - "CrowdStrike tracks registry modifications — look for Run/RunOnce keys and suspicious values"
+
+  # --- SentinelOne ---
+  - vendor: "SentinelOne"
+    product: "SentinelOne"
+    detection_logic:
+      - name: "Process execution"
+        fields: ["ProcessName", "ProcessCmd", "ParentProcessName", "ParentProcessCmd", "UserName", "UserSid", "ProcessId", "ProcessGuid", "IntegrityLevel"]
+        needles: ["powershell.exe", "cmd.exe", "wscript.exe", "cscript.exe", "mshta.exe", "rundll32.exe", "regsvr32.exe", "certutil.exe", "bitsadmin.exe", "wmic.exe", "schtasks.exe", "sc.exe", "net.exe", "netstat.exe", "ipconfig.exe", "route.exe", "arp.exe", "whoami.exe", "systeminfo.exe", "tasklist.exe", "taskkill.exe", "shutdown.exe", "reg.exe", "vssadmin.exe", "bcdedit.exe", "wevtutil.exe", "esentutl.exe", "procdump.exe", "psexec.exe", "winrs.exe", "rclone.exe", "ftp.exe", "curl.exe", "wget.exe"]
+        caveats:
+          - "SentinelOne tracks process execution with integrity levels — look for low-integrity processes making network connections"
+      - name: "Network connection"
+        fields: ["DstIp", "DstPort", "SrcIp", "SrcPort", "Protocol", "ProcessName", "ProcessId"]
+        needles: ["DstIp", "DstPort", "Protocol", "ProcessName"]
+        caveats:
+          - "SentinelOne tracks network connections per process — look for unusual process-to-IP connections"
+      - name: "Registry"
+        fields: ["RegistryPath", "RegistryValueName", "RegistryValueData", "ProcessName", "ProcessId"]
+        needles: ["RegistryPath", "RegistryValueName", "RegistryValueData"]
+        caveats:
+          - "SentinelOne tracks registry modifications — look for Run/RunOnce keys and suspicious values"
+
+  # --- Palo Alto ---
+  - vendor: "Palo Alto"
+    product: "Cortex XDR"
+    detection_logic:
+      - name: "Process execution"
+        fields: ["process_name", "process_command_line", "parent_process_name", "parent_process_command_line", "actor_effective_username", "actor_process_id", "process_id"]
+        needles: ["powershell.exe", "cmd.exe", "wscript.exe", "cscript.exe", "mshta.exe", "rundll32.exe", "regsvr32.exe", "certutil.exe", "bitsadmin.exe", "wmic.exe", "schtasks.exe", "sc.exe", "net.exe", "netstat.exe", "ipconfig.exe", "route.exe", "arp.exe", "whoami.exe", "systeminfo.exe", "tasklist.exe", "taskkill.exe", "shutdown.exe", "reg.exe", "vssadmin.exe", "bcdedit.exe", "wevtutil.exe", "esentutl.exe", "procdump.exe", "psexec.exe", "winrs.exe", "rclone.exe", "ftp.exe", "curl.exe", "wget.exe"]
+        caveats:
+          - "Cortex XDR tracks process execution with actor context — look for unusual process-to-user relationships"
+      - name: "Network connection"
+        fields: ["dst_ip", "dst_port", "src_ip", "src_port", "protocol", "process_name", "process_id"]
+        needles: ["dst_ip", "dst_port", "protocol", "process_name"]
+        caveats:
+          - "Cortex XDR tracks network connections per process — look for unusual process-to-IP connections"
+      - name: "Registry"
+        fields: ["registry_key_name", "registry_value_name", "registry_value_data", "process_name", "process_id"]
+        needles: ["registry_key_name", "registry_value_name", "registry_value_data"]
+        caveats:
+          - "Cortex XDR tracks registry modifications — look for Run/RunOnce keys and suspicious values"
+
+  # --- FireEye ---
+  - vendor: "FireEye"
+    product: "Helix"
+    detection_logic:
+      - name: "Process execution"
+        fields: ["processName", "processCommandLine", "parentProcessName", "parentProcessCommandLine", "userName", "userSid", "processId", "processGuid"]
+        needles: ["powershell.exe", "cmd.exe", "wscript.exe", "cscript.exe", "mshta.exe", "rundll32.exe", "regsvr32.exe", "certutil.exe", "bitsadmin.exe", "wmic.exe", "schtasks.exe", "sc.exe", "net.exe", "netstat.exe", "ipconfig.exe", "route.exe", "arp.exe", "whoami.exe", "systeminfo.exe", "tasklist.exe", "taskkill.exe", "shutdown.exe", "reg.exe", "vssadmin.exe", "bcdedit.exe", "wevtutil.exe", "esentutl.exe", "procdump.exe", "psexec.exe", "winrs.exe", "rclone.exe", "ftp.exe", "curl.exe", "wget.exe"]
+        caveats:
+          - "FireEye tracks process execution with parent-child relationships — look for unusual parents"
+      - name: "Network connection"
+        fields: ["remoteIp", "remotePort", "localIp", "localPort", "protocol", "processName", "processId"]
+        needles: ["remoteIp", "remotePort", "protocol", "processName"]
+        caveats:
+          - "FireEye tracks network connections per process — look for unusual process-to-IP connections"
+      - name: "Registry"
+        fields: ["registryPath", "registryValueName", "registryValueData", "processName", "processId"]
+        needles: ["registryPath", "registryValueName", "registryValueData"]
+        caveats:
+          - "FireEye tracks registry modifications — look for Run/RunOnce keys and suspicious values"
+
+  # --- Elastic ---
+  - vendor: "Elastic"
+    product: "Elastic Security"
+    detection_logic:
+      - name: "Process execution"
+        fields: ["process.name", "process.command_line", "process.parent.name", "process.parent.command_line", "user.name", "user.id", "process.pid", "process.entity_id"]
+        needles: ["powershell.exe", "cmd.exe", "wscript.exe", "cscript.exe", "mshta.exe", "rundll32.exe", "regsvr32.exe", "certutil.exe", "bitsadmin.exe", "wmic.exe", "schtasks.exe", "sc.exe", "net.exe", "netstat.exe", "ipconfig.exe", "route.exe", "arp.exe", "whoami.exe", "systeminfo.exe", "tasklist.exe", "taskkill.exe", "shutdown.exe", "reg.exe", "vssadmin.exe", "bcdedit.exe", "wevtutil.exe", "esentutl.exe", "procdump.exe", "psexec.exe", "winrs.exe", "rclone.exe", "ftp.exe", "curl.exe", "wget.exe"]
+        caveats:
+          - "Elastic Security uses ECS field names — look for process.name, process.command_line, process.parent.name"
+      - name: "Network connection"
+        fields: ["destination.ip", "destination.port", "source.ip", "source.port", "network.protocol", "process.name", "process.pid"]
+        needles: ["destination.ip", "destination.port", "network.protocol", "process.name"]
+        caveats:
+          - "Elastic Security uses ECS field names — look for destination.ip, destination.port, network.protocol"
+      - name: "Registry"
+        fields: ["registry.key", "registry.value", "registry.data.strings", "process.name", "process.pid"]
+        needles: ["registry.key", "registry.value", "registry.data.strings"]
+        caveats:
+          - "Elastic Security uses ECS field names — look for registry.key, registry.value, registry.data.strings"
+
+  # --- Splunk ---
+  - vendor: "Splunk"
+    product: "Splunk Enterprise Security"
+    detection_logic:
+      - name: "Process execution"
+        fields: ["process_name", "process_command_line", "parent_process_name", "parent_process_command_line", "user_name", "user_id", "process_id", "process_guid"]
+        needles: ["powershell.exe", "cmd.exe", "wscript.exe", "cscript.exe", "mshta.exe", "rundll32.exe", "regsvr32.exe", "certutil.exe", "bitsadmin.exe", "wmic.exe", "schtasks.exe", "sc.exe", "net.exe", "netstat.exe", "ipconfig.exe", "route.exe", "arp.exe", "whoami.exe", "systeminfo.exe", "tasklist.exe", "taskkill.exe", "shutdown.exe", "reg.exe", "vssadmin.exe", "bcdedit.exe", "wevtutil.exe", "esentutl.exe", "procdump.exe", "psexec.exe", "winrs.exe", "rclone.exe", "ftp.exe", "curl.exe", "wget.exe"]
+        caveats:
+          - "Splunk uses CIM field names — look for process_name, process_command_line, parent_process_name"
+      - name: "Network connection"
+        fields: ["dest_ip", "dest_port", "src_ip", "src_port", "protocol", "process_name", "process_id"]
+        needles: ["dest_ip", "dest_port", "protocol", "process_name"]
+        caveats:
+          - "Splunk uses CIM field names — look for dest_ip, dest_port, protocol"
+      - name: "Registry"
+        fields: ["registry_path", "registry_value_name", "registry_value_data", "process_name", "process_id"]
+        needles: ["registry_path", "registry_value_name", "registry_value_data"]
+        caveats:
+          - "Splunk uses CIM field names — look for registry_path, registry_value_name, registry_value_data"

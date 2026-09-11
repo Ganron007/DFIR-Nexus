@@ -1,0 +1,218 @@
+# Threat intel feeds — WP 3.27d.
+# Known-bad IOCs from threat intel feeds — MalwareBazaar, URLhaus,
+# AbuseIPDB, ThreatFox. Current known-bad indicators for needle
+# suggestions.
+
+version: 1
+description: >
+  Threat intel feeds — known-bad IOCs from MalwareBazaar, URLhaus,
+  AbuseIPDB, ThreatFox, and other feeds. The scribe can suggest needles
+  based on current known-bad indicators.
+source: "MalwareBazaar, URLhaus, AbuseIPDB, ThreatFox, FeodoTracker"
+
+feeds:
+  # --- MalwareBazaar ---
+  - name: "MalwareBazaar"
+    url: "https://bazaar.abuse.ch/"
+    type: "malware_hashes"
+    update_frequency: "hourly"
+    description: "Recent malware sample hashes"
+    ioc_types: ["sha256", "md5", "sha1", "imphash"]
+    needles: ["malware", "trojan", "backdoor", "ransomware", "spyware", "stealer", "loader", "dropper"]
+    caveats:
+      - "MalwareBazaar hashes are current known-bad — use for hash-based needle suggestions"
+
+  - name: "URLhaus"
+    url: "https://urlhaus.abuse.ch/"
+    type: "malicious_urls"
+    update_frequency: "hourly"
+    description: "Recent malicious URLs"
+    ioc_types: ["url", "domain", "ip"]
+    needles: ["malware", "payload", "download", "c2", "exfil", "phishing", "exploit"]
+    caveats:
+      - "URLhaus URLs are current known-bad — use for domain/IP-based needle suggestions"
+
+  - name: "AbuseIPDB"
+    url: "https://www.abuseipdb.com/"
+    type: "malicious_ips"
+    update_frequency: "hourly"
+    description: "Recent malicious IPs"
+    ioc_types: ["ip"]
+    needles: ["brute force", "scanner", "c2", "botnet", "proxy", "vpn", "tor"]
+    caveats:
+      - "AbuseIPDB IPs are current known-bad — use for IP-based needle suggestions"
+
+  - name: "ThreatFox"
+    url: "https://threatfox.abuse.ch/"
+    type: "c2_indicators"
+    update_frequency: "hourly"
+    description: "Recent C2 indicators"
+    ioc_types: ["domain", "ip", "url", "hash"]
+    needles: ["c2", "beacon", "callback", "exfil", "payload", "implant", "rat"]
+    caveats:
+      - "ThreatFox indicators are current known-bad — use for C2-based needle suggestions"
+
+  - name: "FeodoTracker"
+    url: "https://feodotracker.abuse.ch/"
+    type: "botnet_c2"
+    update_frequency: "hourly"
+    description: "Recent botnet C2 IPs"
+    ioc_types: ["ip", "domain"]
+    needles: ["emotet", "dridex", "trickbot", "qakbot", "bumblebee", "icedid", "systembc", "smokeloader"]
+    caveats:
+      - "FeodoTracker tracks active botnet C2s — use for botnet-based needle suggestions"
+
+  # --- Malware Families ---
+  - name: "Emotet"
+    url: "https://feodotracker.abuse.ch/browse/emotet/"
+    type: "botnet"
+    update_frequency: "daily"
+    description: "Emotet botnet indicators"
+    ioc_types: ["ip", "domain", "hash"]
+    needles: ["emotet", "epoch1", "epoch2", "epoch3", "epoch4", "epoch5", "heodo", "geodo"]
+    caveats:
+      - "Emotet uses multiple epochs — look for epoch-specific C2 patterns"
+
+  - name: "Dridex"
+    url: "https://feodotracker.abuse.ch/browse/dridex/"
+    type: "botnet"
+    update_frequency: "daily"
+    description: "Dridex botnet indicators"
+    ioc_types: ["ip", "domain", "hash"]
+    needles: ["dridex", "dridex loader", "dridex botnet"]
+    caveats:
+      - "Dridex uses modular architecture — look for loader + botnet components"
+
+  - name: "TrickBot"
+    url: "https://feodotracker.abuse.ch/browse/trickbot/"
+    type: "botnet"
+    update_frequency: "daily"
+    description: "TrickBot botnet indicators"
+    ioc_types: ["ip", "domain", "hash"]
+    needles: ["trickbot", "trickbot loader", "trickbot botnet", "anchor", "anchormail"]
+    caveats:
+      - "TrickBot uses modular architecture — look for loader + botnet components"
+
+  - name: "QakBot"
+    url: "https://feodotracker.abuse.ch/browse/qakbot/"
+    type: "botnet"
+    update_frequency: "daily"
+    description: "QakBot botnet indicators"
+    ioc_types: ["ip", "domain", "hash"]
+    needles: ["qakbot", "qbot", "quackbot", "pinkslipbot"]
+    caveats:
+      - "QakBot uses web injects — look for unusual browser network activity"
+
+  - name: "BumbleBee"
+    url: "https://feodotracker.abuse.ch/browse/bumblebee/"
+    type: "botnet"
+    update_frequency: "daily"
+    description: "BumbleBee botnet indicators"
+    ioc_types: ["ip", "domain", "hash"]
+    needles: ["bumblebee", "bumblebee loader", "bumblebee botnet"]
+    caveats:
+      - "BumbleBee is a loader — look for follow-on payloads (Cobalt Strike, ransomware)"
+
+  - name: "IcedID"
+    url: "https://feodotracker.abuse.ch/browse/icedid/"
+    type: "botnet"
+    update_frequency: "daily"
+    description: "IcedID botnet indicators"
+    ioc_types: ["ip", "domain", "hash"]
+    needles: ["icedid", "icedid loader", "icedid botnet", "bokbot"]
+    caveats:
+      - "IcedID uses steganography — look for PNG/JPEG with embedded payloads"
+
+  - name: "SystemBC"
+    url: "https://feodotracker.abuse.ch/browse/systembc/"
+    type: "botnet"
+    update_frequency: "daily"
+    description: "SystemBC proxy botnet"
+    ioc_types: ["ip", "domain", "hash"]
+    needles: ["systembc", "systembc proxy", "systembc socks5"]
+    caveats:
+      - "SystemBC is a SOCKS5 proxy — look for unusual proxy connections"
+
+  - name: "SmokeLoader"
+    url: "https://feodotracker.abuse.ch/browse/smokeloader/"
+    type: "botnet"
+    update_frequency: "daily"
+    description: "SmokeLoader botnet indicators"
+    ioc_types: ["ip", "domain", "hash"]
+    needles: ["smokeloader", "smoke loader", "smokebot", "dofoil"]
+    caveats:
+      - "SmokeLoader is a downloader — look for follow-on payloads"
+
+  # --- Ransomware ---
+  - name: "Conti"
+    url: "https://www.cisa.gov/news-events/cybersecurity-advisories/aa21-265a"
+    type: "ransomware"
+    update_frequency: "weekly"
+    description: "Conti ransomware indicators"
+    ioc_types: ["hash", "domain", "ip"]
+    needles: ["conti", "conti ransomware", "conti leak", "conti locker"]
+    caveats:
+      - "Conti is defunct — indicators are historical but still relevant for old cases"
+
+  - name: "LockBit"
+    url: "https://www.cisa.gov/news-events/cybersecurity-advisories/aa23-057a"
+    type: "ransomware"
+    update_frequency: "weekly"
+    description: "LockBit ransomware indicators"
+    ioc_types: ["hash", "domain", "ip"]
+    needles: ["lockbit", "lockbit 2.0", "lockbit 3.0", "abcd", "lockbit-decryptor"]
+    caveats:
+      - "LockBit is active — look for self-spreading ransomware and data leak sites"
+
+  - name: "BlackCat"
+    url: "https://www.cisa.gov/news-events/cybersecurity-advisories/aa22-138a"
+    type: "ransomware"
+    update_frequency: "weekly"
+    description: "BlackCat/ALPHV ransomware indicators"
+    ioc_types: ["hash", "domain", "ip"]
+    needles: ["blackcat", "alphv", "noberus", "exmatter", "fendr", ".alphv"]
+    caveats:
+      - "BlackCat is Rust-based — look for Rust-compiled binaries"
+
+  # --- Phishing ---
+  - name: "OpenPhish"
+    url: "https://openphish.com/"
+    type: "phishing"
+    update_frequency: "hourly"
+    description: "Recent phishing URLs"
+    ioc_types: ["url", "domain"]
+    needles: ["phishing", "credential theft", "fake login", "password steal"]
+    caveats:
+      - "OpenPhish URLs are current known-bad — use for phishing-based needle suggestions"
+
+  - name: "PhishTank"
+    url: "https://phishtank.org/"
+    type: "phishing"
+    update_frequency: "hourly"
+    description: "Community-verified phishing URLs"
+    ioc_types: ["url", "domain"]
+    needles: ["phishing", "credential theft", "fake login", "password steal"]
+    caveats:
+      - "PhishTank URLs are community-verified — use for phishing-based needle suggestions"
+
+  # --- Exploit Kits ---
+  - name: "ExploitKit"
+    url: "https://www.cisa.gov/news-events/cybersecurity-advisories"
+    type: "exploit_kit"
+    update_frequency: "weekly"
+    description: "Exploit kit indicators"
+    ioc_types: ["hash", "domain", "ip", "url"]
+    needles: ["exploit kit", "rig ek", "magnitude ek", "fallout ek", "spelevo ek", "underminer ek"]
+    caveats:
+      - "Exploit kits use browser exploits — look for unusual browser network activity"
+
+  # --- Cryptomining ---
+  - name: "Cryptomining"
+    url: "https://www.cisa.gov/news-events/cybersecurity-advisories"
+    type: "cryptomining"
+    update_frequency: "weekly"
+    description: "Cryptomining indicators"
+    ioc_types: ["hash", "domain", "ip"]
+    needles: ["xmrig", "coinminer", "cryptonight", "stratum", "nicehash", "minexmr", "minergate", "monero"]
+    caveats:
+      - "Cryptomining uses legitimate mining software — look for mining processes + pool connections"

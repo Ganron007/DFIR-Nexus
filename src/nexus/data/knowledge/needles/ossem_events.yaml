@@ -1,0 +1,538 @@
+# OSSEM (Open Source Security Events Metadata) — WP 3.27c.
+# Event data models: which fields exist per event type, data types,
+# common values, and detection guidance. Tells the scribe which fields
+# to search for field-specific needle suggestions.
+
+version: 1
+description: >
+  OSSEM event data models — field names, data types, common values,
+  and detection guidance per event type. Enables the scribe to suggest
+  field-specific needles (e.g., "search CommandLine for -enc" not just
+  "search for powershell -enc").
+source: "https://ossemproject.com/"
+
+events:
+  # --- Process Events ---
+  process_create:
+    event_id: 1
+    source: "Sysmon"
+    description: "Process creation event"
+    fields:
+      - name: "Image"
+        type: "string"
+        description: "Full path to the executable"
+        common_values: ["C:\\Windows\\System32\\", "C:\\Program Files\\", "C:\\Program Files (x86)\\"]
+        detection_hint: "Suspicious if Image is in temp/appdata/user profile or unsigned"
+      - name: "CommandLine"
+        type: "string"
+        description: "Command line arguments"
+        common_values: ["-enc", "-encodedcommand", "-nop", "-w hidden", "/c", "/k"]
+        detection_hint: "High value field — encoded commands, download cradles, LOLBin flags"
+      - name: "ParentImage"
+        type: "string"
+        description: "Full path to the parent process"
+        common_values: ["C:\\Windows\\System32\\", "C:\\Windows\\Explorer.exe", "C:\\Windows\\System32\\cmd.exe"]
+        detection_hint: "Parent-child relationship is key — explorer→powershell is suspicious"
+      - name: "ParentCommandLine"
+        type: "string"
+        description: "Parent command line arguments"
+        common_values: []
+        detection_hint: "Parent command reveals how the process was spawned"
+      - name: "User"
+        type: "string"
+        description: "Security context"
+        common_values: ["NT AUTHORITY\\SYSTEM", "NT AUTHORITY\\LOCAL SERVICE", "NT AUTHORITY\\NETWORK SERVICE"]
+        detection_hint: "User context matters — SYSTEM is normal for services, suspicious for user processes"
+      - name: "ProcessId"
+        type: "integer"
+        description: "Process ID"
+        common_values: []
+        detection_hint: "PID for correlation across events"
+      - name: "ProcessGuid"
+        type: "string"
+        description: "Unique process GUID"
+        common_values: []
+        detection_hint: "GUID for correlation across events"
+      - name: "IntegrityLevel"
+        type: "string"
+        description: "Process integrity level"
+        common_values: ["Low", "Medium", "High", "System"]
+        detection_hint: "Low integrity + network = potential browser exploit"
+      - name: "Hashes"
+        type: "string"
+        description: "File hashes"
+        common_values: ["MD5", "SHA1", "SHA256", "IMPHASH"]
+        detection_hint: "Hash for known-bad lookup"
+      - name: "FileVersion"
+        type: "string"
+        description: "File version"
+        common_values: []
+        detection_hint: "Version info for known-vulnerable software"
+      - name: "Description"
+        type: "string"
+        description: "File description"
+        common_values: []
+        detection_hint: "Description mismatch with filename indicates masquerading"
+      - name: "Product"
+        type: "string"
+        description: "Product name"
+        common_values: []
+        detection_hint: "Product mismatch indicates masquerading"
+      - name: "Company"
+        type: "string"
+        description: "Company name"
+        common_values: ["Microsoft Corporation", "Microsoft", "Google LLC", "Mozilla Corporation"]
+        detection_hint: "Company mismatch indicates masquerading"
+      - name: "OriginalFileName"
+        type: "string"
+        description: "Original filename"
+        common_values: []
+        detection_hint: "OriginalFileName mismatch with Image name indicates masquerading"
+
+  process_access:
+    event_id: 10
+    source: "Sysmon"
+    description: "Process access event (handle opened)"
+    fields:
+      - name: "SourceImage"
+        type: "string"
+        description: "Process requesting access"
+        common_values: ["C:\\Windows\\System32\\", "C:\\Program Files\\"]
+        detection_hint: "Suspicious if unsigned or in temp/appdata"
+      - name: "TargetImage"
+        type: "string"
+        description: "Process being accessed"
+        common_values: ["lsass.exe", "csrss.exe", "services.exe", "winlogon.exe"]
+        detection_hint: "TargetImage == lsass.exe + suspicious SourceImage = credential access"
+      - name: "GrantedAccess"
+        type: "string"
+        description: "Access rights requested"
+        common_values: ["0x1010", "0x1410", "0x1fffff", "0x40", "0x80"]
+        detection_hint: "0x1010 = VM_READ (credential dump), 0x1410 = QUERY+VM_READ"
+      - name: "CallTrace"
+        type: "string"
+        description: "Call stack of the access request"
+        common_values: []
+        detection_hint: "CallTrace reveals the code path that triggered the access"
+
+  process_terminate:
+    event_id: 5
+    source: "Sysmon"
+    description: "Process termination event"
+    fields:
+      - name: "Image"
+        type: "string"
+        description: "Terminated process"
+        common_values: ["security tools", "edr", "av"]
+        detection_hint: "Termination of security tools = evasion"
+      - name: "ProcessId"
+        type: "integer"
+        description: "Terminated PID"
+        common_values: []
+        detection_hint: "PID for correlation"
+      - name: "User"
+        type: "string"
+        description: "Security context"
+        common_values: ["NT AUTHORITY\\SYSTEM"]
+        detection_hint: "User context matters"
+
+  # --- Network Events ---
+  network_connection:
+    event_id: 3
+    source: "Sysmon"
+    description: "Network connection event"
+    fields:
+      - name: "SourceIp"
+        type: "string"
+        description: "Source IP"
+        common_values: []
+        detection_hint: "Internal vs external source matters"
+      - name: "DestinationIp"
+        type: "string"
+        description: "Destination IP"
+        common_values: []
+        detection_hint: "Known-bad IPs, DGA domains, C2 IPs"
+      - name: "SourcePort"
+        type: "integer"
+        description: "Source port"
+        common_values: ["49152-65535"]
+        detection_hint: "High ports are normal for clients; low ports indicate servers"
+      - name: "DestinationPort"
+        type: "integer"
+        description: "Destination port"
+        common_values: ["80", "443", "53", "25", "445", "139", "3389", "5985", "5986"]
+        detection_hint: "Unusual ports (4444, 5555, 6666, 8080, 8443) or known-bad ports"
+      - name: "Protocol"
+        type: "string"
+        description: "Protocol"
+        common_values: ["TCP", "UDP", "ICMP"]
+        detection_hint: "ICMP for tunneling, UDP for DNS exfil"
+      - name: "ProcessName"
+        type: "string"
+        description: "Process that made the connection"
+        common_values: []
+        detection_hint: "Suspicious if process doesn't normally make network connections"
+
+  dns_query:
+    event_id: 22
+    source: "Sysmon"
+    description: "DNS query event"
+    fields:
+      - name: "QueryName"
+        type: "string"
+        description: "Domain name queried"
+        common_values: []
+        detection_hint: "DGA patterns, known-bad domains, TXT records (data exfil)"
+      - name: "QueryType"
+        type: "string"
+        description: "DNS record type"
+        common_values: ["A", "AAAA", "CNAME", "TXT", "MX", "NS", "PTR", "SRV"]
+        detection_hint: "TXT records for data exfil, NULL for DNS tunneling"
+      - name: "QueryResult"
+        type: "string"
+        description: "DNS query result"
+        common_values: []
+        detection_hint: "Result IPs for known-bad lookup"
+      - name: "SourceIp"
+        type: "string"
+        description: "Source IP"
+        common_values: []
+        detection_hint: "Source for correlation"
+      - name: "ProcessName"
+        type: "string"
+        description: "Process that made the query"
+        common_values: []
+        detection_hint: "Suspicious if process doesn't normally do DNS"
+
+  # --- Authentication Events ---
+  logon:
+    event_id: 4624
+    source: "Security"
+    description: "Successful logon"
+    fields:
+      - name: "EventID"
+        type: "integer"
+        description: "Event ID"
+        common_values: ["4624", "4625", "4648", "4672", "4768", "4769", "4770", "4771", "4776"]
+        detection_hint: "Event ID determines the logon type"
+      - name: "User"
+        type: "string"
+        description: "Account that logged on"
+        common_values: []
+        detection_hint: "User context for correlation"
+      - name: "LogonType"
+        type: "integer"
+        description: "Type of logon"
+        common_values: ["2", "3", "4", "5", "7", "8", "9", "10", "11"]
+        detection_hint: "2=interactive, 3=network, 4=batch, 5=service, 7=unlock, 8=network cleartext, 9=new credentials, 10=remote interactive (RDP), 11=cached"
+      - name: "SourceAddress"
+        type: "string"
+        description: "Source IP/hostname"
+        common_values: []
+        detection_hint: "Source for lateral movement detection"
+      - name: "DestinationAddress"
+        type: "string"
+        description: "Target IP/hostname"
+        common_values: []
+        detection_hint: "Target for lateral movement detection"
+      - name: "LogonProcess"
+        type: "string"
+        description: "Process that performed the logon"
+        common_values: ["NTLM", "Kerberos", "Negotiate", "Advapi", "User32", "Winlogon"]
+        detection_hint: "NTLM vs Kerberos indicates authentication method"
+      - name: "AuthenticationPackage"
+        type: "string"
+        description: "Authentication package"
+        common_values: ["NTLM", "Kerberos", "Negotiate", "MICROSOFT_AUTHENTICATION_PACKAGE_V1_0"]
+        detection_hint: "Package indicates authentication method"
+      - name: "Status"
+        type: "string"
+        description: "Logon status code"
+        common_values: ["0x0", "0xC0000064", "0xC000006A", "0xC0000234", "0xC0000072"]
+        detection_hint: "Status code indicates success/failure reason"
+
+  # --- Registry Events ---
+  registry_event:
+    event_id: 13
+    source: "Sysmon"
+    description: "Registry event (value set)"
+    fields:
+      - name: "EventID"
+        type: "integer"
+        description: "Event ID"
+        common_values: ["13", "14", "15", "4657", "4656", "4663"]
+        detection_hint: "13=value set, 14=key created, 15=key deleted"
+      - name: "TargetObject"
+        type: "string"
+        description: "Registry key path"
+        common_values: ["HKLM\\SOFTWARE\\", "HKCU\\SOFTWARE\\", "HKLM\\SYSTEM\\", "HKLM\\SECURITY\\"]
+        detection_hint: "Run/RunOnce keys, Winlogon, Userinit, Shell for persistence"
+      - name: "Details"
+        type: "string"
+        description: "Value data"
+        common_values: []
+        detection_hint: "Details contains the binary path or command"
+      - name: "ValueName"
+        type: "string"
+        description: "Value name"
+        common_values: ["Run", "RunOnce", "Winlogon", "Userinit", "Shell"]
+        detection_hint: "ValueName indicates the persistence mechanism"
+      - name: "ProcessName"
+        type: "string"
+        description: "Process that set the value"
+        common_values: []
+        detection_hint: "Process for correlation"
+      - name: "ProcessId"
+        type: "integer"
+        description: "PID"
+        common_values: []
+        detection_hint: "PID for correlation"
+      - name: "User"
+        type: "string"
+        description: "Account that set the value"
+        common_values: []
+        detection_hint: "User context for correlation"
+
+  # --- File Events ---
+  file_create:
+    event_id: 11
+    source: "Sysmon"
+    description: "File created"
+    fields:
+      - name: "EventID"
+        type: "integer"
+        description: "Event ID"
+        common_values: ["11", "15", "4663", "4656"]
+        detection_hint: "11=file created, 15=file stream created"
+      - name: "TargetFilename"
+        type: "string"
+        description: "Full path to the created file"
+        common_values: ["C:\\Windows\\Temp\\", "C:\\Users\\*\\AppData\\", "C:\\ProgramData\\"]
+        detection_hint: "Suspicious if in temp/appdata/public or with suspicious extension"
+      - name: "ProcessName"
+        type: "string"
+        description: "Process that created the file"
+        common_values: []
+        detection_hint: "Process for correlation"
+      - name: "ProcessId"
+        type: "integer"
+        description: "PID"
+        common_values: []
+        detection_hint: "PID for correlation"
+      - name: "CreationUtcTime"
+        type: "string"
+        description: "UTC timestamp"
+        common_values: []
+        detection_hint: "Timestamp for timeline correlation"
+
+  # --- WMI Events ---
+  wmi_event:
+    event_id: 19
+    source: "Sysmon"
+    description: "WMI event filter created"
+    fields:
+      - name: "EventID"
+        type: "integer"
+        description: "Event ID"
+        common_values: ["19", "20", "21", "5861"]
+        detection_hint: "19=filter, 20=consumer, 21=consumer bound"
+      - name: "Namespace"
+        type: "string"
+        description: "WMI namespace"
+        common_values: ["root\\subscription", "root\\cimv2"]
+        detection_hint: "root\\subscription is used for persistence"
+      - name: "Name"
+        type: "string"
+        description: "Filter/consumer name"
+        common_values: []
+        detection_hint: "Name for correlation"
+      - name: "Query"
+        type: "string"
+        description: "WQL query"
+        common_values: []
+        detection_hint: "Query reveals what triggers the consumer"
+      - name: "Consumer"
+        type: "string"
+        description: "Consumer type"
+        common_values: ["CommandLineEventConsumer", "ActiveScriptEventConsumer", "LogFileEventConsumer", "NTEventLogEventConsumer", "SMTPEventConsumer"]
+        detection_hint: "CommandLineEventConsumer and ActiveScriptEventConsumer are most common for persistence"
+
+  # --- Scheduled Task Events ---
+  scheduled_task:
+    event_id: 4698
+    source: "Security"
+    description: "Scheduled task created"
+    fields:
+      - name: "EventID"
+        type: "integer"
+        description: "Event ID"
+        common_values: ["4698", "4699", "4700", "4701", "4702", "106", "200", "201"]
+        detection_hint: "4698=created, 4699=deleted, 4700=enabled, 4701=disabled, 4702=updated"
+      - name: "TaskName"
+        type: "string"
+        description: "Task name"
+        common_values: []
+        detection_hint: "Task name for correlation"
+      - name: "TaskContent"
+        type: "string"
+        description: "XML task definition"
+        common_values: []
+        detection_hint: "TaskContent contains the command, args, schedule"
+      - name: "User"
+        type: "string"
+        description: "Account that created the task"
+        common_values: []
+        detection_hint: "User context for correlation"
+
+  # --- Service Events ---
+  service_create:
+    event_id: 7045
+    source: "System"
+    description: "Service created"
+    fields:
+      - name: "EventID"
+        type: "integer"
+        description: "Event ID"
+        common_values: ["7045", "4697"]
+        detection_hint: "7045=service created (system), 4697=service created (security)"
+      - name: "ServiceName"
+        type: "string"
+        description: "Service name"
+        common_values: []
+        detection_hint: "Service name for correlation"
+      - name: "ServiceFileName"
+        type: "string"
+        description: "Service binary path"
+        common_values: []
+        detection_hint: "Service binary path for correlation"
+      - name: "ServiceType"
+        type: "string"
+        description: "Service type"
+        common_values: ["kernel driver", "file system driver", "win32 own process", "win32 share process"]
+        detection_hint: "Kernel drivers are most suspicious"
+      - name: "ServiceStartType"
+        type: "string"
+        description: "Start type"
+        common_values: ["auto", "demand", "disabled", "boot", "system"]
+        detection_hint: "Auto-start services are persistence"
+      - name: "ServiceAccount"
+        type: "string"
+        description: "Service account"
+        common_values: ["LocalSystem", "LocalService", "NetworkService", "NT AUTHORITY\\SYSTEM"]
+        detection_hint: "Service account for privilege level"
+
+  # --- Share Events ---
+  smb_access:
+    event_id: 5140
+    source: "Security"
+    description: "SMB share accessed"
+    fields:
+      - name: "EventID"
+        type: "integer"
+        description: "Event ID"
+        common_values: ["5140", "5145", "5142", "5143", "5144", "5168"]
+        detection_hint: "5140=share accessed, 5145=detailed share check"
+      - name: "ShareName"
+        type: "string"
+        description: "Share name"
+        common_values: ["ADMIN$", "C$", "IPC$", "print$", "netlogon", "sysvol"]
+        detection_hint: "ADMIN$/C$/IPC$ are lateral movement targets"
+      - name: "SourceAddress"
+        type: "string"
+        description: "Source IP"
+        common_values: []
+        detection_hint: "Source for lateral movement detection"
+      - name: "DestinationAddress"
+        type: "string"
+        description: "Target IP"
+        common_values: []
+        detection_hint: "Target for lateral movement detection"
+      - name: "User"
+        type: "string"
+        description: "Account that accessed the share"
+        common_values: []
+        detection_hint: "User context for correlation"
+      - name: "ProcessName"
+        type: "string"
+        description: "Process that accessed the share"
+        common_values: []
+        detection_hint: "Process for correlation"
+
+  # --- Kerberos Events ---
+  kerberos_ticket:
+    event_id: 4768
+    source: "Security"
+    description: "Kerberos TGT requested"
+    fields:
+      - name: "EventID"
+        type: "integer"
+        description: "Event ID"
+        common_values: ["4768", "4769", "4770", "4771", "4776"]
+        detection_hint: "4768=TGT, 4769=service ticket, 4770=renewed, 4771=pre-auth failed"
+      - name: "TargetUserName"
+        type: "string"
+        description: "Account that requested the ticket"
+        common_values: []
+        detection_hint: "User context for correlation"
+      - name: "ServiceName"
+        type: "string"
+        description: "Service principal name"
+        common_values: ["krbtgt", "cifs", "host", "ldap", "http", "mssql", "wsman"]
+        detection_hint: "ServiceName for correlation"
+      - name: "TicketOptions"
+        type: "string"
+        description: "Ticket options"
+        common_values: ["0x40810010", "0x60810010", "0x40810014"]
+        detection_hint: "Ticket options for correlation"
+      - name: "TicketEncryptionType"
+        type: "string"
+        description: "Encryption type"
+        common_values: ["0x12", "0x17", "0x11", "0x18"]
+        detection_hint: "0x17=RC4 (downgrade attack), 0x12=AES256"
+      - name: "IpAddress"
+        type: "string"
+        description: "IP that requested the ticket"
+        common_values: []
+        detection_hint: "Source for correlation"
+
+  # --- PowerShell Events ---
+  powershell_script:
+    event_id: 4104
+    source: "Microsoft-Windows-PowerShell"
+    description: "PowerShell script block logged"
+    fields:
+      - name: "EventID"
+        type: "integer"
+        description: "Event ID"
+        common_values: ["4104", "4103", "400", "600"]
+        detection_hint: "4104=script block, 4103=module logging, 400=engine state, 600=provider lifecycle"
+      - name: "ScriptBlockText"
+        type: "string"
+        description: "Full script block text"
+        common_values: []
+        detection_hint: "ScriptBlockText contains the actual script — search for IEX, DownloadString, Invoke-*"
+      - name: "ScriptBlockId"
+        type: "string"
+        description: "Script block ID"
+        common_values: []
+        detection_hint: "ID for correlation"
+      - name: "Path"
+        type: "string"
+        description: "Script file path"
+        common_values: []
+        detection_hint: "Path for correlation"
+      - name: "SequenceNumber"
+        type: "integer"
+        description: "Sequence number"
+        common_values: []
+        detection_hint: "Sequence for multi-block scripts"
+      - name: "User"
+        type: "string"
+        description: "Account that executed the script"
+        common_values: []
+        detection_hint: "User context for correlation"
+      - name: "ProcessName"
+        type: "string"
+        description: "Process that executed the script"
+        common_values: ["powershell.exe", "powershell_ise.exe", "pwsh.exe"]
+        detection_hint: "Process for correlation"
