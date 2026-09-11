@@ -184,7 +184,16 @@ export interface HitInterpretation {
   skills: {
     name: string;
     title: string;
+    description?: string;
     mitre: string[];
+    /** WP 4j.2 — why this skill matched the alert (technique/keyword/family). */
+    why?: string[];
+    /** WP 4j.2 — high/medium/low confidence rules for this skill. */
+    confidence?: Record<string, string>;
+    /** WP 4j.2 — steps that would confirm the alert (query + what to look for). */
+    confirm?: { query: string; look_for: string; corroborate: string }[];
+    /** WP 4j.2 — what absence of the procedure would mean. */
+    refute?: string;
     matched_steps: {
       name: string;
       query: string;

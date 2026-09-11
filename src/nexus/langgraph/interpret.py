@@ -142,6 +142,24 @@ def _rag_methodology(family: str) -> str:
         return ""
 
 
+def _match_reasons(
+    skill: dict[str, Any],
+    family: str,
+    keywords: set[str],
+    techniques: list[str],
+) -> list[str]:
+    """Why this skill matched — technique / keyword / family (WP 4j.2)."""
+    trig = skill.get("trigger") or {}
+    reasons: list[str] = []
+    for t in sorted(set(techniques) & {str(x).upper() for x in (trig.get("techniques") or [])}):
+        reasons.append(f"technique {t}")
+    for k in sorted(keywords & {str(x).lower() for x in (trig.get("keywords") or [])}):
+        reasons.append(f"keyword {k}")
+    if family and family in {str(f).lower() for f in (trig.get("families") or [])}:
+        reasons.append(f"family {family}")
+    return reasons[:6]
+
+
 def interpret_hit(
     case_dir: Path | None,
     hit: dict[str, Any],
@@ -196,6 +214,7 @@ def interpret_hit(
     for skill in matched:
         steps = _matched_steps(skill, keywords)
         step_rows: list[dict[str, Any]] = []
+        confirm_rows: list[dict[str, Any]] = []
         for st in steps:
             q = str(st.get("query") or "").strip()
             lf = str(st.get("look_for") or "").strip()
@@ -208,6 +227,8 @@ def interpret_hit(
                 "corroborate": co,
                 "pivot": pv,
             })
+            if q or lf or co:
+                confirm_rows.append({"query": q, "look_for": lf, "corroborate": co})
             if lf and lf not in look_for:
                 look_for.append(lf)
             if co and co not in corroborate:
@@ -228,7 +249,19 @@ def interpret_hit(
         skills_out.append({
             "name": str(skill.get("skill") or ""),
             "title": str(skill.get("title") or skill.get("skill") or ""),
+            "description": str(skill.get("description") or "")[:300],
             "mitre": [str(t) for t in (skill.get("mitre") or [])],
+            # WP 4j.2: alert -> skill linkage. ``why`` explains the match;
+            # ``confirm`` are the steps that would confirm the alert;
+            # ``refute`` is what absence of the procedure would mean.
+            "why": _match_reasons(skill, family, keywords, techniques),
+            "confidence": (
+                skill.get("confidence_rules")
+                if isinstance(skill.get("confidence_rules"), dict)
+                else {}
+            ),
+            "confirm": confirm_rows[: _MAX_STEPS_PER_SKILL + 1],
+            "refute": str(skill.get("negative") or "").strip()[:400],
             "matched_steps": step_rows,
         })
 

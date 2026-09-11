@@ -159,6 +159,50 @@ export default function Briefing() {
                               borderTop: "1px dashed var(--border)",
                             }}>
                               {it?.meaning && <div style={{ marginBottom: 4 }}>{it.meaning}</div>}
+                              {it && (it.skills || []).length > 0 && (
+                                <div style={{ marginBottom: 6 }}>
+                                  <strong style={{ color: "var(--text-secondary)" }}>Guided steps:</strong>
+                                  {(it.skills || []).map((sk, si) => (
+                                    <div key={si} style={{
+                                      margin: "4px 0 0 0", padding: "4px 8px",
+                                      borderLeft: "2px solid var(--accent)", background: "var(--bg-subtle, transparent)",
+                                    }}>
+                                      <div style={{ fontSize: 11, fontWeight: 600 }}>
+                                        {sk.title || sk.name}
+                                        {sk.mitre?.length > 0 && (
+                                          <span style={{ fontSize: 9, color: "var(--text-muted)", marginLeft: 6 }}>
+                                            {sk.mitre.join(", ")}
+                                          </span>
+                                        )}
+                                      </div>
+                                      {sk.why && sk.why.length > 0 && (
+                                        <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                                          matched: {sk.why.join(" · ")}
+                                        </div>
+                                      )}
+                                      {(sk.confirm || []).slice(0, 3).map((c, ci) => (
+                                        <div key={ci} style={{ fontSize: 10, marginTop: 2 }}>
+                                          <span style={{ color: "var(--success, #2f9e44)" }}>confirm:</span>{" "}
+                                          {c.look_for || c.corroborate}
+                                          {c.query && (
+                                            <button className="btn btn-sm"
+                                                    style={{ fontFamily: "monospace", fontSize: 9, marginLeft: 4, padding: "0 4px" }}
+                                                    onClick={(e) => { e.stopPropagation(); searchNeedle(c.query, a.family); }}>
+                                              {c.query.length > 32 ? c.query.slice(0, 32) + "…" : c.query}
+                                            </button>
+                                          )}
+                                        </div>
+                                      ))}
+                                      {sk.refute && (
+                                        <div style={{ fontSize: 10, marginTop: 2 }}>
+                                          <span style={{ color: "var(--text-muted)" }}>refute:</span>{" "}
+                                          <span style={{ color: "var(--text-muted)" }}>{sk.refute}</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                               {it && it.look_for.length > 0 && (
                                 <div style={{ marginBottom: 4 }}>
                                   <strong style={{ color: "var(--text-secondary)" }}>Check next:</strong>

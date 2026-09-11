@@ -94,6 +94,34 @@ def test_interpret_hit_negative_and_caveats():
     assert "confidence_rules" in out and out["confidence_rules"]
 
 
+def test_interpret_hit_alert_skill_linkage():
+    """WP 4j.2: matched skills explain why + confirm/refute next steps."""
+    from nexus.langgraph.interpret import interpret_hit
+
+    out = interpret_hit(None, _lsass_hit())
+    lsass = next(s for s in out["skills"] if s["name"] == "lsass_credential_access")
+    # why-matched is surfaced (technique T1003.001 drives the match)
+    assert lsass.get("why"), "expected match reasons"
+    assert any("T1003.001" in w for w in lsass["why"])
+    # confirm steps carry an action already executed + what to verify
+    assert lsass.get("confirm"), "expected confirm steps"
+    assert any(c.get("query") or c.get("look_for") for c in lsass["confirm"])
+    # refute = the skill's negative-evidence statement
+    assert lsass.get("refute")
+    assert lsass.get("description")
+    assert isinstance(lsass.get("confidence"), dict)
+
+
+def test_interpret_hit_confirm_corroborate_present():
+    """Confirm rows expose corroboration so a hit becomes a guided to-do."""
+    from nexus.langgraph.interpret import interpret_hit
+
+    out = interpret_hit(None, _lsass_hit())
+    all_confirm = [c for s in out["skills"] for c in (s.get("confirm") or [])]
+    assert all_confirm, "expected confirm rows across matched skills"
+    assert any(c.get("corroborate") for c in all_confirm)
+
+
 def test_interpret_hit_unknown_family_no_crash():
     """A family with no skills still returns a shaped payload."""
     from nexus.langgraph.interpret import interpret_hit
@@ -129,6 +157,20 @@ def test_briefing_alerts_carry_interpret(tmp_path):
     cit = cleared.get("interpret") or {}
     cnames = [s["name"] for s in cit.get("skills", [])]
     assert "log_clearing" in cnames
+
+
+def test_briefing_alert_skill_linkage_shape(tmp_path):
+    """WP 4j.2 surface: briefing alert skills expose confirm/refute."""
+    from nexus.langgraph.briefing import case_briefing
+
+    b = case_briefing(_mkcase(tmp_path))
+    by_title = {a["title"]: a for a in b["alerts"]}
+    it = (by_title.get("LSASS Memory Access") or {}).get("interpret") or {}
+    lsass = next(s for s in it.get("skills", []) if s["name"] == "lsass_credential_access")
+    assert lsass.get("why")
+    assert lsass.get("confirm")
+    assert lsass.get("refute")
+    assert lsass.get("confidence")
 
 
 @pytest.fixture()
@@ -169,6 +211,9 @@ def test_hit_interpret_endpoint(client, tmp_path):
     names = [s["name"] for s in body["skills"]]
     assert "lsass_credential_access" in names
     assert body["look_for"]
+    # WP 4j.2: linkage fields survive the endpoint round-trip
+    lsass = next(s for s in body["skills"] if s["name"] == "lsass_credential_access")
+    assert lsass.get("why") and lsass.get("confirm") and lsass.get("refute")
 
 
 def test_hit_interpret_endpoint_requires_hit(client, tmp_path):
