@@ -1769,6 +1769,12 @@ async def api_select(request):
         except Exception:
             model = None
         draft = scribe_finding(draft, hits=selected, model=model)
+    else:
+        # scribe=false = fast deterministic fill, not "no scribe" — a bare
+        # skeleton with empty observation used to reach findings.json.
+        from nexus.langgraph.mode1 import _heuristic_scribe
+
+        draft = _heuristic_scribe(draft, selected)
 
     result = save_draft_finding(case_dir, draft)
     if result.get("status") == "STAGED":
@@ -2418,6 +2424,149 @@ async def api_workbench_add_many(request):
     return JSONResponse(r)
 
 
+async def api_mode1_full_run(request):
+    """POST /portal/api/mode1/full-run — Mode 1 'full run' (WP 4j.5d).
+
+    One button after processing: scan every playbook needle → bookmark all
+    its hits → stage one DRAFT finding per needle. Examiner approval stays
+    fully manual (HMAC in Approve) — this only accelerates the deterministic
+    N4→N5 leg. Drafts use the heuristic scribe (instant, deterministic);
+    the examiner can re-scribe any draft with the LLM later.
+
+    Body: {max_needles?: 40, needle_filter?: "a,b" (subset)}.
+    """
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
+
+    from nexus.audit import resolve_examiner
+    from nexus.case.workbench import add_bookmarks
+    from nexus.langgraph.briefing import case_briefing
+    from nexus.langgraph.mode1 import (
+        _heuristic_scribe,
+        promote_hits_to_draft,
+        save_draft_finding,
+    )
+    from nexus.langgraph.query_pack import (
+        attach_hit_fields,
+        load_case_intake,
+        n4_query,
+        parse_intake_window,
+    )
+
+    body: dict = {}
+    with contextlib.suppress(Exception):
+        body = await request.json()
+
+    try:
+        max_needles = max(1, min(int(body.get("max_needles") or 40), 120))
+    except (TypeError, ValueError):
+        return JSONResponse({"error": "max_needles must be an integer"}, status_code=400)
+
+    # Stage 1 — deterministic scan of every playbook/ATT&CK/Sigma needle
+    brief = case_briefing(case_dir)
+    scan = list(brief.get("needle_scan") or [])
+    only = {n.strip().lower() for n in str(body.get("needle_filter") or "").split(",") if n.strip()}
+    if only:
+        scan = [s for s in scan if str(s.get("needle", "")).lower() in only]
+    scan = scan[:max_needles]
+    if not scan:
+        return JSONResponse({
+            "status": "complete",
+            "needles_scanned": int(brief.get("scanned_needles") or 0),
+            "needles_hit": 0,
+            "bookmarks_added": 0,
+            "drafts": [],
+            "skipped": [{"reason": "no playbook needles matched any evidence"}],
+            "next": "Nothing to promote — no needle hits in this case.",
+        })
+
+    # Existing DRAFT titles — re-runs must not duplicate staged findings
+    existing: set[str] = set()
+    findings_path = case_dir / "findings.json"
+    if findings_path.is_file():
+        try:
+            for f in json.loads(findings_path.read_text(encoding="utf-8")):
+                if str(f.get("status") or "").upper() == "DRAFT" and f.get("title"):
+                    existing.add(str(f["title"]))
+        except (OSError, json.JSONDecodeError):
+            pass
+
+    examiner = resolve_examiner()
+    window = parse_intake_window(load_case_intake(case_dir))
+    bookmarks_total = 0
+    drafts: list[dict] = []
+    skipped: list[dict] = []
+
+    for s in scan:
+        needle = str(s.get("needle") or "").strip()
+        if not needle:
+            continue
+        # Low-signal guard: pure digits / single chars match everything and
+        # produce garbage drafts ("Signal: 21 — 37 hits"). Report, don't stage.
+        if len(needle) < 3 or needle.isdigit():
+            skipped.append({"needle": needle, "reason": "low-signal needle (numeric/too short)"})
+            continue
+        # Stage 2 — re-query just this needle and keep only rows that
+        # actually matched it (n4_query can add intake terms otherwise).
+        result = n4_query(case_dir, needle, window=window, limit=500, offset=0)
+        if result.get("error"):
+            skipped.append({"needle": needle, "reason": result["error"]})
+            continue
+        hits = [
+            h for h in attach_hit_fields(case_dir, list(result.get("hits") or []))
+            if needle.lower() in str(h.get("terms") or "").lower()
+        ]
+        if not hits:
+            skipped.append({"needle": needle, "reason": "no hits matched this needle"})
+            continue
+        bookmarks_total += int(add_bookmarks(case_dir, hits).get("added") or 0)
+
+        # Stage 3 — one DRAFT per needle (candidate signal, not a verdict)
+        families = sorted({str(h.get("family") or "?") for h in hits})
+        title = f"Signal: {needle} — {len(hits)} hit(s) across {', '.join(families)}"
+        if title in existing:
+            skipped.append({"needle": needle, "reason": "draft already staged"})
+            continue
+        draft = promote_hits_to_draft(
+            case_dir,
+            hits=hits,
+            title=title,
+            examiner=examiner,
+            interpretation_hint=(
+                f"Needle '{needle}' ({s.get('source', 'playbook')}) matched "
+                f"{len(hits)} row(s) — candidate signal pending examiner review."
+            ),
+        )
+        draft = _heuristic_scribe(draft, hits)
+        res = save_draft_finding(case_dir, draft)
+        if res.get("status") == "STAGED":
+            drafts.append({
+                "finding_id": res.get("finding_id"),
+                "title": title,
+                "hits": len(hits),
+                "families": families,
+            })
+            existing.add(title)
+        else:
+            detail = res.get("errors") or [str(res.get("error") or "stage failed")]
+            skipped.append({"needle": needle, "reason": "; ".join(str(d) for d in detail)})
+
+    return JSONResponse({
+        "status": "complete",
+        "needles_scanned": int(brief.get("scanned_needles") or 0),
+        "needles_hit": len(scan),
+        "bookmarks_added": bookmarks_total,
+        "drafts": drafts,
+        "drafts_staged": len(drafts),
+        "skipped": skipped,
+        "next": "Review DRAFT findings in Approve (manual HMAC), then generate the report (N8).",
+    })
+
+
 async def api_workbench_remove(request):
     """POST /portal/api/workbench/remove — {bookmark_id}."""
     case_dir = _get_case_dir(request)
@@ -2487,6 +2636,13 @@ async def api_workbench_promote(request):
         except Exception:
             model = None
         draft = scribe_finding(draft, hits=selected, model=model)
+    else:
+        # WP 4j.5d: scribe=false is the fast path — deterministic heuristic
+        # fill, no LLM. Never leave the draft empty: a skipped scribe used
+        # to produce a bare skeleton with no observation.
+        from nexus.langgraph.mode1 import _heuristic_scribe
+
+        draft = _heuristic_scribe(draft, selected)
 
     result = save_draft_finding(case_dir, draft)
     if result.get("status") == "STAGED":
@@ -3758,6 +3914,41 @@ async def api_pipeline_status(request):
         except Exception:  # noqa: BLE001 — reconciliation is best-effort
             pass
 
+    # WP 4j.5d: live per-tool progress — the tool lane writes
+    # _tool_lane_progress.json after every job; surface it while running.
+    # The file lives under runs/<run_id>/extractions/ (per-run dir), so
+    # resolve it through resolve_run — the case-level paths are a legacy
+    # fallback only.
+    if record.get("status") == "running" and case_dir is not None:
+        prog_paths: list[Path] = []
+        with contextlib.suppress(Exception):
+            from nexus.langgraph.pipeline_runs import resolve_run
+
+            prog_paths.append(
+                resolve_run(
+                    case_dir, str(record.get("mode") or "tools"), run_id=run_id
+                ).extractions / "_tool_lane_progress.json"
+            )
+        prog_paths += [
+            case_dir / "extractions" / "_tool_lane_progress.json",
+            case_dir / "ledger" / "_tool_lane_progress.json",
+        ]
+        for prog_path in prog_paths:
+            if not prog_path.is_file():
+                continue
+            try:
+                prog = json.loads(prog_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if isinstance(prog, dict):
+                record["progress"] = {
+                    "done": prog.get("done", 0),
+                    "total": prog.get("total", 0),
+                    "current": prog.get("current", ""),
+                }
+                record["stages"] = prog.get("entries") or []
+            break
+
     return JSONResponse(record)
 
 
@@ -4515,6 +4706,7 @@ def create_dashboard():
         Route("/portal/api/workbench", api_workbench, methods=["GET"]),
         Route("/portal/api/workbench/add", api_workbench_add, methods=["POST"]),
         Route("/portal/api/workbench/add_many", api_workbench_add_many, methods=["POST"]),
+        Route("/portal/api/mode1/full-run", api_mode1_full_run, methods=["POST"]),
         Route("/portal/api/workbench/remove", api_workbench_remove, methods=["POST"]),
         Route("/portal/api/workbench/clear", api_workbench_clear, methods=["POST"]),
         Route("/portal/api/workbench/promote", api_workbench_promote, methods=["POST"]),

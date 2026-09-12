@@ -197,6 +197,51 @@ def test_pipeline_status_not_found(client):
     assert r.status_code == 404
 
 
+def test_pipeline_status_surfaces_tool_progress(client, tmp_path, monkeypatch):
+    """WP 4j.5d: while a run is live, /pipeline/status must surface the
+    per-tool counters the tool lane writes to
+    runs/<run_id>/extractions/_tool_lane_progress.json."""
+    import json
+
+    from nexus.config import settings
+
+    r = client.post("/portal/api/case/create", json={"name": "Progress Case", "activate": True})
+    case_id = r.json()["case_id"]
+    case_dir = settings.cases_root / case_id
+    run_id = "RUN-progtest-tools-abc123"
+
+    # Per-run dir + manifest (status stays "running" so reconciliation passes)
+    run_dir = case_dir / "runs" / run_id
+    (run_dir / "extractions").mkdir(parents=True)
+    (run_dir / "manifest.json").write_text(json.dumps({
+        "run_id": run_id, "case_id": case_id, "mode": "tools",
+        "status": "running", "created_at": "2026-08-12T00:00:00+00:00",
+    }))
+    # Persisted run record the status endpoint loads
+    rec_dir = case_dir / "analysis" / "pipeline_runs"
+    rec_dir.mkdir(parents=True)
+    (rec_dir / f"{run_id}.json").write_text(json.dumps({
+        "run_id": run_id, "case_id": case_id, "mode": "tools", "status": "running",
+    }))
+    # The file the tool lane keeps rewriting mid-run
+    (run_dir / "extractions" / "_tool_lane_progress.json").write_text(json.dumps({
+        "done": 3, "total": 9, "current": "hayabusa",
+        "entries": [
+            {"tool": "evtxecmd", "host": "windows", "status": "OK"},
+            {"tool": "mfecmd", "host": "windows", "status": "OK"},
+            {"tool": "amcacheparser", "host": "windows", "status": "FAIL"},
+        ],
+    }))
+
+    s = client.get(f"/portal/api/pipeline/status?run_id={run_id}")
+    assert s.status_code == 200
+    body = s.json()
+    assert body["status"] == "running"
+    assert body["progress"] == {"done": 3, "total": 9, "current": "hayabusa"}
+    assert len(body["stages"]) == 3
+    assert body["stages"][2]["status"] == "FAIL"
+
+
 def test_system_health(client):
     """System health endpoint reports cheap component status."""
     r = client.get("/portal/api/system/health")

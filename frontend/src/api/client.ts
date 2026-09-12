@@ -299,6 +299,19 @@ export interface WorkbenchAddManyResponse {
   error?: string;
 }
 
+/** POST /mode1/full-run → staged summary of the deterministic N4→N5 leg */
+export interface Mode1FullRunResponse {
+  status: string;
+  needles_scanned: number;
+  needles_hit: number;
+  bookmarks_added: number;
+  drafts: { finding_id?: string; title: string; hits: number; families: string[] }[];
+  drafts_staged?: number;
+  skipped: { needle?: string; reason: string }[];
+  next?: string;
+  error?: string;
+}
+
 /** POST /workbench/remove → {status, total} */
 export interface WorkbenchRemoveResponse {
   status: string;
@@ -500,7 +513,10 @@ export interface PipelineStatusResponse {
   started_at?: string;
   completed_at?: string;
   error?: string;
-  stages?: string[];
+  /** WP 4j.5d — per-tool entries while the lane runs (tool/host/status). */
+  stages?: { tool?: string; host?: string; status?: string }[];
+  /** WP 4j.5d — live counters from _tool_lane_progress.json. */
+  progress?: { done: number; total: number; current?: string };
 }
 
 /** GET /pipeline/ledger → tool-lane parser run status */
@@ -738,6 +754,10 @@ export const api = {
     needles?: string; query?: string; family?: string; host?: string;
     start?: string; end?: string; note?: string;
   }) => post<WorkbenchAddManyResponse>("/workbench/add_many", params),
+  /** Mode 1 full run — scan all needles → bookmark all hits → stage one
+   *  DRAFT per needle (heuristic scribe). Approval stays manual. */
+  mode1FullRun: (params?: { max_needles?: number; needle_filter?: string }) =>
+    post<Mode1FullRunResponse>("/mode1/full-run", params || {}),
   workbenchRemove: (bookmarkId: string) =>
     post<WorkbenchRemoveResponse>("/workbench/remove", { bookmark_id: bookmarkId }),
   workbenchClear: () => post<WorkbenchClearResponse>("/workbench/clear"),

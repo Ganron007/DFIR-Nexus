@@ -1660,15 +1660,50 @@ async def run_tool_lane(
     audit_ids: list[str] = []
     ledger: list[dict[str, Any]] = []
 
+    # WP 4j.5d: incremental progress — every completed job updates
+    # _tool_lane_progress.json so /pipeline/status can show per-tool
+    # progress mid-run instead of a bare "running" for minutes. Clear any
+    # stale file first so a new run never reports the previous run's tools.
+    win_total = [0]  # set after job lists are built (mactime can grow sift)
+    for stale_dir in (extractions, Path(case_dir) / "ledger"):
+        with contextlib.suppress(OSError):
+            (stale_dir / "_tool_lane_progress.json").unlink(missing_ok=True)
+
+    def _write_progress(current: str = "") -> None:
+        try:
+            import json as _json
+
+            total = win_total[0] or len(jobs)
+            done = len(ledger)
+            entries = [
+                {"tool": e.get("tool"), "host": e.get("host"), "status": e.get("status")}
+                for e in ledger
+            ]
+            (extractions / "_tool_lane_progress.json").write_text(
+                _json.dumps({
+                    "done": done,
+                    "total": total,
+                    "current": current,
+                    "entries": entries,
+                }, indent=2),
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
+
+    def _mark(job: ToolJob) -> None:
+        ledger.append(asdict(job))
+        _write_progress(job.tool)
+
     async def _run_one(job: ToolJob) -> None:
         if job.status in ("SKIP", "OK"):
-            ledger.append(asdict(job))
+            _mark(job)
             return
         if job.host == "windows":
             if not win_tool:
                 job.status = "SKIP"
                 job.reason = "run_windows_command not available on MCP"
-                ledger.append(asdict(job))
+                _mark(job)
                 return
             try:
                 raw = await win_tool.ainvoke({
@@ -1681,13 +1716,13 @@ async def run_tool_lane(
             except Exception as exc:  # noqa: BLE001
                 job.status = "FAIL"
                 job.reason = str(exc)
-                ledger.append(asdict(job))
+                _mark(job)
                 return
         else:
             if not sift_tool:
                 job.status = "SKIP"
                 job.reason = "run_command not available on MCP"
-                ledger.append(asdict(job))
+                _mark(job)
                 return
             cmd = " ".join(shlex.quote(a) for a in job.argv)
             try:
@@ -1700,7 +1735,7 @@ async def run_tool_lane(
             except Exception as exc:  # noqa: BLE001
                 job.status = "FAIL"
                 job.reason = str(exc)
-                ledger.append(asdict(job))
+                _mark(job)
                 return
 
         aid = str(result.get("audit_id") or "")
@@ -1722,7 +1757,7 @@ async def run_tool_lane(
                 job.reason = soft[:500]
         if aid:
             audit_ids.append(aid)
-        ledger.append(asdict(job))
+        _mark(job)
         log.info(
             "tool_lane %s/%s -> %s audit_id=%s saved=%s",
             job.host, job.tool, job.status, aid, job.output_saved_to or "-",
@@ -1730,6 +1765,8 @@ async def run_tool_lane(
 
     win_jobs = [j for j in jobs if j.host == "windows"]
     sift_jobs = [j for j in jobs if j.host != "windows"]
+    win_total[0] = len(win_jobs) + len(sift_jobs)
+    _write_progress("")
     for job in win_jobs:
         await _run_one(job)
 
@@ -1760,6 +1797,7 @@ async def run_tool_lane(
         elif mactime_on and not pushed:
             log.warning("NEXUS_SIFT_MACTIME=1 but bodyfile push failed; not FAIL")
 
+    win_total[0] = len(win_jobs) + len(sift_jobs)
     for job in sift_jobs:
         await _run_one(job)
 

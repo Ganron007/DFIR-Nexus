@@ -612,6 +612,42 @@ If the case is already open: `{"ok": true, "status": "created", "note": "already
 
 ---
 
+### POST /portal/api/mode1/full-run
+**Description:** Mode 1 "full run" (WP 4j.5d) — one click after evidence processing: scans every playbook/ATT&CK/Sigma needle, bookmarks all matching hits into the workbench, and stages one DRAFT finding per needle. Drafts are written by the deterministic heuristic scribe (instant; no LLM wait). **Approval stays examiner-manual** — the run ends at DRAFTs and points the examiner at Approve (HMAC), then report generation (N8). Idempotent: needles whose identical draft title is already staged are skipped, and bookmarks dedupe.
+
+**Request (all fields optional):**
+```json
+{
+  "max_needles": "integer (optional — cap on needles to process, 1-120, default 40)",
+  "needle_filter": "string (optional — comma-separated subset of needles to run)"
+}
+```
+
+**Response 200:**
+```json
+{
+  "status": "complete",
+  "needles_scanned": 162,
+  "needles_hit": 9,
+  "bookmarks_added": 7,
+  "drafts": [
+    {"finding_id": "string", "title": "string", "hits": 0, "families": ["string"]}
+  ],
+  "drafts_staged": 0,
+  "skipped": [{"needle": "string", "reason": "string"}],
+  "next": "Review DRAFT findings in Approve (manual HMAC), then generate the report (N8)."
+}
+```
+
+`skipped` entries are reported honestly — e.g. `low-signal needle (numeric/too short)` (pure-digit or <3-char needles are never staged), `draft already staged`, `no hits matched this needle`, or a query error.
+
+**Errors:**
+- `400` — `max_needles` not an integer.
+- `404` — No active case.
+- `409` — Case is sealed.
+
+---
+
 ## 5. Explore
 
 ### POST /portal/api/explore/search
@@ -852,7 +888,7 @@ no-op, `added: 0`).
 {
   "bookmark_ids": ["string"] (required — bookmark IDs, e.g. ["B-001", "B-003"]),
   "title": "string (required — finding title)",
-  "scribe": "boolean (optional — run LLM scribe, default true)",
+  "scribe": "boolean (optional — run LLM scribe, default true; false = deterministic heuristic scribe — instant, still fills observation/interpretation/confidence, marks scribe_source='heuristic')",
   "interpretation": "string (optional — examiner interpretation hint)"
 }
 ```

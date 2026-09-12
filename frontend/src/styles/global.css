@@ -671,3 +671,11 @@ tr:hover td {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--border-light);
 }
+
+/* WP 4j.5d — workbench two-column layout collapses below ~1100px so the
+   DRAFT builder never slides off a narrow display. */
+@media (max-width: 1100px) {
+  .workbench-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}

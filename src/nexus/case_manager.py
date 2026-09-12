@@ -275,7 +275,8 @@ class CaseManager:
                               "mitre_techniques", "host", "event_timestamp",
                               "affected_account", "attack_ids", "audit_ids", "iocs",
                               "event_type", "artifact_ref", "related_findings",
-                              "itm_stage", "itm_objects", "evidence"}}
+                              "itm_stage", "itm_objects", "evidence",
+                              "scribe_source", "examiner_selected"}}
         if sanitized.get("host"):
             sanitized["host"] = str(sanitized["host"])[:200]
         if sanitized.get("affected_account"):
@@ -363,6 +364,10 @@ class CaseManager:
             "itm_objects": sanitized.get("itm_objects") or [],
             "mitre_techniques": sanitized.get("mitre_techniques") or [],
             "iocs": sanitized.get("iocs") or [],
+            # Provenance: how the draft was written + who selected the hits —
+            # Mode 1 examiner-picked vs Mode 2 LLM-proposed, heuristic vs LLM.
+            "scribe_source": sanitized.get("scribe_source") or "",
+            "examiner_selected": sanitized.get("examiner_selected"),
             "artifacts": validated_artifacts,
             "supporting_commands": validated_commands,
             "content_hash": "",

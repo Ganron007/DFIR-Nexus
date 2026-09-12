@@ -65,6 +65,11 @@ export default function Workbench() {
   const [result, setResult] = useState("");
   const [error, setError] = useState("");
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  // WP 4j.5d: promote must never look dead — the LLM scribe is a synchronous
+  // ~1min call server-side, so busy state + an opt-in checkbox (default OFF =
+  // instant heuristic scribe) keep the examiner in control.
+  const [promoting, setPromoting] = useState(false);
+  const [useLlmScribe, setUseLlmScribe] = useState(false);
 
   const form = useHistory();
 
@@ -121,22 +126,26 @@ export default function Workbench() {
       setError("Select at least one bookmark to promote");
       return;
     }
+    setPromoting(true);
     try {
       const r = await api.workbenchPromote({
         bookmark_ids: Array.from(selected),
         title: f.title,
         interpretation: f.interpretation || undefined,
+        scribe: useLlmScribe,
       });
       if (r.error) {
         setError(Array.isArray(r.error) ? r.error.join("; ") : r.error);
         return;
       }
-      setResult(`Promoted to DRAFT: ${r.finding_id} (${r.bookmark_count} bookmark(s))`);
+      setResult(`Promoted to DRAFT: ${r.finding_id} (${r.bookmark_count} bookmark(s)) — review in Approve →`);
       form.reset(initialForm);
       // Reload workbench — promoted bookmarks are consumed but others remain
       load();
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      setPromoting(false);
     }
   };
 
@@ -165,9 +174,14 @@ export default function Workbench() {
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+      {/* WP 4j.5d: minmax(0,1fr) — a plain "1fr" column is minmax(auto,1fr),
+          so long unbreakable content (file paths, 100%-width inputs) could
+          force the track wider than the viewport and push the DRAFT builder
+          off-screen. minmax(0,1fr) lets tracks shrink; children get
+          minWidth:0 so their content can't blow the track out. */}
+      <div className="workbench-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 16 }}>
         {/* Bookmarked hits with drag-and-drop */}
-        <div className="card">
+        <div className="card" style={{ minWidth: 0 }}>
           <div className="card-header">
             <span className="card-title">Bookmarked Hits ({items.length})</span>
             {items.length > 0 && (
@@ -230,7 +244,7 @@ export default function Workbench() {
                         </button>
                       </div>
                     </div>
-                    <div style={{ marginTop: 4, color: "var(--text-secondary)", fontSize: 11 }}>
+                    <div style={{ marginTop: 4, color: "var(--text-secondary)", fontSize: 11, wordBreak: "break-all" }}>
                       {item.file}:{item.line}
                     </div>
                     <div style={{ fontSize: 10, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -249,7 +263,7 @@ export default function Workbench() {
         </div>
 
         {/* Finding builder with undo/redo */}
-        <div className="card">
+        <div className="card" style={{ minWidth: 0 }}>
           <div className="card-header">
             <span className="card-title">DRAFT Finding Builder</span>
             <div style={{ display: "flex", gap: 4 }}>
@@ -299,21 +313,41 @@ export default function Workbench() {
                 onChange={(e) => form.set((p) => ({ ...p, justification: e.target.value }))}
               />
             </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--text-muted)", cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={useLlmScribe}
+                onChange={(e) => setUseLlmScribe(e.target.checked)}
+                style={{ margin: 0, width: "auto" }}
+              />
+              LLM scribe — richer observation, but the local model can take ~1 min per draft
+            </label>
             <div style={{ display: "flex", gap: 8 }}>
-              <button className="btn btn-primary" onClick={promote} style={{ flex: 1 }} disabled={selected.size === 0}>
-                Promote to DRAFT ({selected.size} bookmark{selected.size !== 1 ? "s" : ""})
+              <button
+                className="btn btn-primary"
+                onClick={promote}
+                style={{ flex: 1 }}
+                disabled={selected.size === 0 || promoting}
+              >
+                {promoting
+                  ? (useLlmScribe ? "Promoting… (LLM scribe running — up to ~1 min)" : "Promoting…")
+                  : `Promote to DRAFT (${selected.size} bookmark${selected.size !== 1 ? "s" : ""})`}
               </button>
               <button
                 className="btn"
                 onClick={() => form.reset(initialForm)}
                 title="Reset form"
+                disabled={promoting}
               >
                 Reset
               </button>
             </div>
             {selected.size > 0 && (
               <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
-                {selected.size} bookmarked hit(s) will be attached as evidence. Scribe will auto-generate observation.
+                {selected.size} bookmarked hit(s) will be attached as evidence.{" "}
+                {useLlmScribe
+                  ? "The LLM scribe writes observation/interpretation — the request stays open until it finishes."
+                  : "Heuristic scribe fills observation/interpretation instantly — enable LLM scribe for a richer draft."}
               </div>
             )}
           </div>

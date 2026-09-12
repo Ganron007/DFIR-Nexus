@@ -48,6 +48,8 @@ export default function CaseSetup() {
   // Step 4 state
   const [pipelineRunId, setPipelineRunId] = useState("");
   const [pipelineStatus, setPipelineStatus] = useState("");
+  const [pipelineProg, setPipelineProg] = useState<{ done: number; total: number; current?: string } | null>(null);
+  const [pipelineStages, setPipelineStages] = useState<{ tool?: string; host?: string; status?: string }[]>([]);
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
 
   const createCase = async () => {
@@ -145,6 +147,8 @@ export default function CaseSetup() {
         try {
           const s = await api.pipelineStatus(r.run_id);
           setPipelineStatus(s.status);
+          if (s.progress) setPipelineProg(s.progress);
+          if (s.stages) setPipelineStages(s.stages);
           if (s.status === "complete" || s.status === "error") {
             clearInterval(poll);
             pollRef.current = null;
@@ -431,8 +435,48 @@ export default function CaseSetup() {
                 </span>
               </div>
               {pipelineStatus === "running" && (
-                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                  Pipeline is running... This may take several minutes.
+                <div>
+                  {/* WP 4j.5d: real per-tool progress, not a bare spinner */}
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>
+                    <span>
+                      {pipelineProg?.current
+                        ? `Running: ${pipelineProg.current}`
+                        : "Pipeline is running…"}
+                    </span>
+                    {pipelineProg && pipelineProg.total > 0 && (
+                      <span>{pipelineProg.done}/{pipelineProg.total} tools</span>
+                    )}
+                  </div>
+                  <div style={{ height: 8, background: "var(--bg-tertiary)", borderRadius: 4, overflow: "hidden", marginBottom: 8 }}>
+                    <div
+                      style={{
+                        height: "100%",
+                        width: pipelineProg && pipelineProg.total > 0
+                          ? `${Math.round((pipelineProg.done / pipelineProg.total) * 100)}%`
+                          : "15%",
+                        background: "var(--accent)",
+                        transition: "width 0.5s ease",
+                      }}
+                    />
+                  </div>
+                  {pipelineStages.length > 0 && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, fontSize: 10 }}>
+                      {pipelineStages.map((st, i) => (
+                        <span
+                          key={i}
+                          className={`badge ${(st.status || "").toUpperCase() === "OK" ? "approved" : (st.status || "").toUpperCase() === "SKIP" ? "draft" : "rejected"}`}
+                          title={`${st.host || ""} — ${st.status || ""}`}
+                        >
+                          {st.tool}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {!pipelineProg && (
+                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                      This may take several minutes.
+                    </div>
+                  )}
                 </div>
               )}
               {pipelineStatus === "complete" && (

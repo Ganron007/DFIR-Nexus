@@ -8,7 +8,7 @@
  */
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { api, type BriefingDirection, type BriefingResponse } from "../api/client";
+import { api, type BriefingDirection, type BriefingResponse, type Mode1FullRunResponse } from "../api/client";
 import { useCase } from "../context/CaseContext";
 
 export default function Briefing() {
@@ -24,6 +24,28 @@ export default function Briefing() {
   const [openAlert, setOpenAlert] = useState<number | null>(null);
   // WP 4j.3: guided first-pass step completion (per-case, local)
   const [doneSteps, setDoneSteps] = useState<Record<string, boolean>>({});
+  // WP 4j.5d: Mode 1 full run — scan → bookmark → draft in one click
+  const [fullRunBusy, setFullRunBusy] = useState(false);
+  const [fullRunResult, setFullRunResult] = useState<Mode1FullRunResponse | null>(null);
+  const [fullRunError, setFullRunError] = useState("");
+
+  const fullRun = async () => {
+    setFullRunBusy(true);
+    setFullRunError("");
+    setFullRunResult(null);
+    try {
+      const r = await api.mode1FullRun();
+      if (r.error) {
+        setFullRunError(r.error);
+      } else {
+        setFullRunResult(r);
+      }
+    } catch (e) {
+      setFullRunError((e as Error).message);
+    } finally {
+      setFullRunBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (!activeCase) return;
@@ -86,11 +108,63 @@ export default function Briefing() {
 
   return (
     <div>
-      <h2 style={{ marginBottom: 4 }}>Case Briefing</h2>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4, flexWrap: "wrap" }}>
+        <h2 style={{ marginBottom: 0 }}>Case Briefing</h2>
+        <button
+          className="btn btn-sm"
+          style={{ marginLeft: "auto", fontWeight: 600 }}
+          disabled={fullRunBusy || scan.length === 0}
+          title={scan.length === 0
+            ? "No playbook needles matched any evidence — nothing to promote"
+            : `Full run: bookmark all hits from ${scan.length} needle(s) and stage one DRAFT finding per needle — you approve manually in Approve`}
+          onClick={fullRun}
+        >
+          {fullRunBusy ? "Running Mode 1 full run…" : "▶ Mode 1 full run"}
+        </button>
+      </div>
       <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16 }}>
         Auto-generated after processing — what was collected, what the signatures
         already caught, and where to start digging.
       </p>
+
+      {/* WP 4j.5d — full run result: honest per-stage summary */}
+      {fullRunBusy && (
+        <div className="card" style={{ borderLeft: "3px solid var(--accent)", padding: "8px 12px" }}>
+          <span style={{ fontSize: 12 }}>
+            Full run in progress — scanning needles, bookmarking hits, staging DRAFTs…
+          </span>
+        </div>
+      )}
+      {fullRunError && <div className="error-banner">{fullRunError}</div>}
+      {fullRunResult && (
+        <div className="card" style={{ borderLeft: "3px solid var(--ok)" }}>
+          <div className="card-title" style={{ marginBottom: 6 }}>
+            Full run complete — {fullRunResult.drafts_staged ?? fullRunResult.drafts.length} DRAFT finding(s) staged
+          </div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>
+            {fullRunResult.needles_scanned} needles scanned · {fullRunResult.needles_hit} with hits ·{" "}
+            {fullRunResult.bookmarks_added} bookmark(s) added to Workbench
+          </div>
+          {fullRunResult.drafts.length > 0 && (
+            <ul style={{ fontSize: 12, margin: "0 0 8px 18px", padding: 0 }}>
+              {fullRunResult.drafts.map((d) => (
+                <li key={d.finding_id || d.title}>{d.title}</li>
+              ))}
+            </ul>
+          )}
+          {fullRunResult.skipped.length > 0 && (
+            <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8 }}>
+              Skipped: {fullRunResult.skipped.map((s) => `${s.needle || "?"} (${s.reason})`).join(" · ")}
+            </div>
+          )}
+          <div style={{ fontSize: 12 }}>
+            {fullRunResult.next}{" "}
+            <button className="btn btn-sm" onClick={() => navigate("/approve")}>
+              Review in Approve →
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* WP 4j.3 — guided first pass: the walkthrough an examiner follows */}
       {walkthrough.length > 0 && (

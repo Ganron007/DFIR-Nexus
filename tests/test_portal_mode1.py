@@ -239,3 +239,100 @@ def test_api_workbench_add_many(mock_n4q, mock_get_dir, tmp_path):
     resp2 = client.post("/portal/api/workbench/add_many", json={"needles": "sdelete", "family": "hayabusa"})
     assert resp2.json()["added"] == 0
     assert resp2.json()["skipped"] == 3
+
+
+@patch("nexus.dashboard.app._get_case_dir")
+@patch("nexus.langgraph.mode1.save_draft_finding")
+@patch("nexus.langgraph.query_pack.attach_hit_fields")
+@patch("nexus.langgraph.query_pack.n4_query")
+@patch("nexus.langgraph.briefing.case_briefing")
+def test_api_mode1_full_run(mock_brief, mock_n4q, mock_attach, mock_save, mock_get_dir, tmp_path):
+    """WP 4j.5d — POST /mode1/full-run: scan all needles → bookmark all hits
+    → stage one DRAFT per needle (heuristic scribe). Approval stays manual —
+    the response must stop at DRAFTs and point the examiner at Approve."""
+    from starlette.applications import Starlette
+    from starlette.testclient import TestClient
+
+    from nexus.dashboard.app import create_dashboard
+
+    case_dir = _make_case_dir(tmp_path)
+    mock_get_dir.return_value = case_dir
+    mock_brief.return_value = {
+        "scanned_needles": 12,
+        "needle_scan": [
+            {"needle": "sdelete", "hits": 2, "source": "playbook"},
+            {"needle": "rundll32", "hits": 1, "source": "playbook"},
+            {"needle": "nohit", "hits": 1, "source": "playbook"},
+        ],
+    }
+    mock_attach.side_effect = lambda _cd, hits: hits
+
+    def _query(_cd, q, **_kw):
+        if "sdelete" in q:
+            return {"count": 2, "backend": "csv", "hits": [
+                {"family": "hayabusa", "file": "a.csv", "line": "1", "text": "sdelete x", "terms": "sdelete"},
+                {"family": "hayabusa", "file": "a.csv", "line": "2", "text": "sdelete y", "terms": "sdelete"},
+            ]}
+        if "rundll32" in q:
+            return {"count": 1, "backend": "csv", "hits": [
+                {"family": "evtx", "file": "b.csv", "line": "9", "text": "rundll32 z", "terms": "rundll32"},
+            ]}
+        return {"count": 0, "backend": "csv", "hits": []}
+
+    mock_n4q.side_effect = _query
+    mock_save.side_effect = lambda _cd, draft: {"status": "STAGED", "finding_id": "F-test-001"}
+
+    app = Starlette(routes=create_dashboard())
+    client = TestClient(app)
+    resp = client.post("/portal/api/mode1/full-run", json={})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "complete"
+    assert data["needles_scanned"] == 12
+    assert data["needles_hit"] == 3
+    assert data["bookmarks_added"] == 3
+    assert data["drafts_staged"] == 2
+    assert len(data["drafts"]) == 2
+    # no-hit needle is reported, not silently dropped
+    assert any(s.get("needle") == "nohit" for s in data["skipped"])
+    # HITL boundary — the run ends at DRAFTs and routes the examiner to Approve
+    assert "Approve" in data["next"]
+    # hits really landed in the workbench
+    from nexus.case.workbench import load_bookmarks
+    assert len(load_bookmarks(case_dir)) == 3
+
+    # a pre-existing DRAFT with the same title is skipped, not duplicated
+    import json as _json
+    (case_dir / "findings.json").write_text(_json.dumps([
+        {"title": "Signal: sdelete — 2 hit(s) across hayabusa", "status": "DRAFT"},
+    ]))
+    resp2 = client.post("/portal/api/mode1/full-run", json={})
+    data2 = resp2.json()
+    assert data2["drafts_staged"] == 1   # only rundll32 stages this time
+    assert any("already staged" in s.get("reason", "") for s in data2["skipped"])
+    # bookmarks still dedupe — nothing new added
+    assert data2["bookmarks_added"] == 0
+
+
+@patch("nexus.dashboard.app._get_case_dir")
+@patch("nexus.langgraph.briefing.case_briefing")
+def test_api_mode1_full_run_no_hits(mock_brief, mock_get_dir, tmp_path):
+    """Full run on a case with zero needle hits exits cleanly — no drafts,
+    no crash, honest 'nothing to promote'."""
+    from starlette.applications import Starlette
+    from starlette.testclient import TestClient
+
+    from nexus.dashboard.app import create_dashboard
+
+    case_dir = _make_case_dir(tmp_path)
+    mock_get_dir.return_value = case_dir
+    mock_brief.return_value = {"scanned_needles": 40, "needle_scan": []}
+
+    app = Starlette(routes=create_dashboard())
+    client = TestClient(app)
+    resp = client.post("/portal/api/mode1/full-run", json={})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["drafts_staged"] if "drafts_staged" in data else data["drafts"] == []
+    assert data["needles_hit"] == 0
+    assert data["bookmarks_added"] == 0
