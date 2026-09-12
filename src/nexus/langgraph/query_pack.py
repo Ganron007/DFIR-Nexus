@@ -721,12 +721,16 @@ def n4_aggregate(
     terms = collect_query_terms(intake)
     pb_terms = collect_playbook_query_terms(intake)
     merged = list(dict.fromkeys(dsl_terms + terms))
+    # Always pass the parsed query — an EMPTY query is a match-all, which is
+    # exactly what a facet aggregate wants: cases without intake query terms
+    # (or a fresh Explore load) still get real family/host buckets instead of
+    # an empty rail.
     all_hits, _ = n4_hits(
         case_dir,
         merged,
         window,
         priority_terms=list(dict.fromkeys(pb_terms + dsl_terms)),
-        query=parsed if not parsed.is_empty() else None,
+        query=parsed,
     )
 
     buckets: dict[str, int] = {}

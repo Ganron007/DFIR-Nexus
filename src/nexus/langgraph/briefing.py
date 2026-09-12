@@ -390,6 +390,10 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
         except Exception as exc:  # noqa: BLE001
             log.debug("briefing scan failed: %s", exc)
             hits, backend = [], ""
+    # Per-needle counts below are computed inside this window — when the scan
+    # is truncated, "rundll32 (21)" means "at least 21", and Explore may find
+    # more. The flag lets the UI mark those chips honestly.
+    scan_truncated = len(hits) > limit
     hits = attach_hit_fields(case_dir, hits)[:limit]
 
     # --- needle -> hit count (from matched terms recorded per hit) ---
@@ -525,6 +529,7 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
         "walkthrough": walkthrough,
         "backend": backend,
         "hits_examined": len(hits),
+        "scan_truncated": scan_truncated,
     }
 
 

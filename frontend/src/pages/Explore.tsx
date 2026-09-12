@@ -8,6 +8,52 @@ import Histogram from "../components/Histogram";
 
 const PAGE_SIZE = 200;
 
+// WP 4j.5: interpretation payloads can arrive partial (older backend, RAG
+// failure, family-less row) — fill defaults so the drawer never dereferences
+// an undefined list, and distinguish "no interpretation" from "still loading".
+const normalizeInterp = (r: HitInterpretation): HitInterpretation => ({
+  meaning: r?.meaning || "",
+  learn: r?.learn
+    ? {
+        headline: r.learn.headline || "",
+        why_matters: r.learn.why_matters || [],
+        technique: r.learn.technique || [],
+        watch_out: r.learn.watch_out || [],
+        sources: r.learn.sources || [],
+      }
+    : undefined,
+  skills: (r?.skills || []).map((s) => ({
+    ...s,
+    mitre: s.mitre || [],
+    matched_steps: s.matched_steps || [],
+  })),
+  techniques: r?.techniques || [],
+  look_for: r?.look_for || [],
+  corroborate: r?.corroborate || [],
+  next_queries: r?.next_queries || [],
+  pivots: r?.pivots || [],
+  negative: r?.negative || [],
+  caveats: r?.caveats || [],
+  confidence_rules: r?.confidence_rules || {},
+  methodology: r?.methodology,
+  sources: r?.sources || [],
+  error: r?.error,
+});
+
+const hasInterpContent = (i: HitInterpretation): boolean =>
+  !!(
+    i.meaning ||
+    i.skills.length ||
+    i.look_for.length ||
+    i.next_queries.length ||
+    i.corroborate.length ||
+    i.pivots.length ||
+    i.negative.length ||
+    i.caveats.length ||
+    i.methodology ||
+    (i.learn && i.learn.why_matters.length)
+  );
+
 export default function Explore() {
   const { activeCase } = useCase();
   const [searchParams] = useSearchParams();
@@ -37,6 +83,7 @@ export default function Explore() {
   // WP 4j.1: hit interpretation — meaning + what to check next, from skills/playbooks/RAG
   const [interp, setInterp] = useState<HitInterpretation | null>(null);
   const [interpLoading, setInterpLoading] = useState(false);
+  const [interpReady, setInterpReady] = useState(false);
   const reqIdRef = useRef(0);
 
   // Load family/host aggregates and workbench bookmarks on mount
@@ -99,44 +146,65 @@ export default function Explore() {
           ? "var(--success)"
           : undefined;
 
-  // WP 4b.10: Read URL params from Timeline brush navigation
+  // WP 4b.10: Read URL params from Timeline brush navigation / Briefing pivots.
+  // Any single param (incl. a needles-only link) re-arms the search; values are
+  // passed to doSearch explicitly so the fetch never sees stale state.
   useEffect(() => {
     const start = searchParams.get("start");
     const end = searchParams.get("end");
     const fam = searchParams.get("family");
     const host = searchParams.get("host");
-    if (fam) setFamily(fam);
-    if (host) setHostFilter(host);
-    if (start || end || fam || host) {
-      const n = searchParams.get("needles") || "";
-      setNeedles(n);
-      setTimeRange({ start: start || "", end: end || "" });
-      setTimeout(() => doSearch(0, fam || undefined), 100);
-    }
+    const n = searchParams.get("needles");
+    if (start === null && end === null && fam === null && host === null && n === null) return;
+    setFamily(fam || "");
+    setHostFilter(host || "");
+    setNeedles(n || "");
+    setTimeRange({ start: start || "", end: end || "" });
+    setSelected(null);
+    doSearch(0, {
+      needles: n || "",
+      family: fam || "",
+      host: host || "",
+      start: start || "",
+      end: end || "",
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
-  const doSearch = useCallback(async (targetOffset: number, fam?: string, host?: string) => {
+  // Explicit overrides beat component state — callers that just changed a value
+  // pass it here instead of relying on a setTimeout against a stale closure.
+  interface SearchOverrides {
+    needles?: string;
+    family?: string;
+    host?: string;
+    start?: string;
+    end?: string;
+  }
+
+  const doSearch = useCallback(async (targetOffset: number, overrides: SearchOverrides = {}) => {
     const reqId = ++reqIdRef.current;
     setLoading(true);
     setError("");
-    const famValue = fam !== undefined ? fam : family;
-    const hostValue = host !== undefined ? host : hostFilter;
+    const needleValue = overrides.needles !== undefined ? overrides.needles : needles;
+    const famValue = overrides.family !== undefined ? overrides.family : family;
+    const hostValue = overrides.host !== undefined ? overrides.host : hostFilter;
+    const startValue = overrides.start !== undefined ? overrides.start : timeRange.start;
+    const endValue = overrides.end !== undefined ? overrides.end : timeRange.end;
     try {
       const [searchResult, histResult] = await Promise.all([
         api.search({
-          needles: needles || undefined,
+          needles: needleValue || undefined,
           family: famValue || undefined,
           host: hostValue || undefined,
-          start: timeRange.start || undefined,
-          end: timeRange.end || undefined,
+          start: startValue || undefined,
+          end: endValue || undefined,
           limit: PAGE_SIZE,
           offset: targetOffset,
         }),
         api.histogram({
           family: famValue || undefined,
-          start: timeRange.start || undefined,
-          end: timeRange.end || undefined,
+          start: startValue || undefined,
+          end: endValue || undefined,
         }).catch(() => ({ buckets: {}, count: 0 }) as HistogramResponse),
       ]);
       if (reqIdRef.current !== reqId) return;
@@ -168,13 +236,13 @@ export default function Explore() {
   const toggleFamilyChip = (fam: string) => {
     const newFam = family === fam ? "" : fam;
     setFamily(newFam);
-    doSearch(0, newFam);
+    doSearch(0, { family: newFam });
   };
 
   const toggleHostChip = (host: string) => {
     const newHost = hostFilter === host ? "" : host;
     setHostFilter(newHost);
-    doSearch(0, family, newHost);
+    doSearch(0, { host: newHost });
   };
 
   const toggleBookmark = (hit: N4Hit) => {
@@ -203,13 +271,15 @@ export default function Explore() {
   // WP 4i.3: all parsed fields present in this hit set (priority-ordered)
   const allFields = allHitColumns(hits);
 
-  // WP 4i.3: click a field value → pivot: search that value as a needle
+  // WP 4i.3: click a field value → rotate the active needle to that value.
+  // The needle box shows exactly what is being searched; clicking a new value
+  // replaces it rather than piling terms into an unmatchable string.
   const pivotOnValue = (value: string) => {
     const v = value.trim();
     if (!v) return;
-    setNeedles((prev) => (prev ? `${prev} ${v}` : v));
+    setNeedles(v);
     setSelected(null);
-    setTimeout(() => doSearch(0), 50);
+    doSearch(0, { needles: v });
   };
 
   // WP 4j.1: fetch interpretation when a hit is selected for the drawer
@@ -217,14 +287,17 @@ export default function Explore() {
     if (!selected) {
       setInterp(null);
       setInterpLoading(false);
+      setInterpReady(false);
       return;
     }
     let stale = false;
+    setInterp(null);
     setInterpLoading(true);
+    setInterpReady(false);
     api.hitInterpret(selected)
-      .then((r) => { if (!stale) setInterp(r); })
+      .then((r) => { if (!stale) setInterp(normalizeInterp(r)); })
       .catch(() => { if (!stale) setInterp(null); })
-      .finally(() => { if (!stale) setInterpLoading(false); });
+      .finally(() => { if (!stale) { setInterpLoading(false); setInterpReady(true); } });
     return () => { stale = true; };
   }, [selected]);
 
@@ -348,7 +421,7 @@ export default function Explore() {
           <button
             className="btn btn-sm"
             style={{ marginLeft: 12 }}
-            onClick={() => { setTimeRange({ start: "", end: "" }); setTimeout(() => search(), 50); }}
+            onClick={() => { setTimeRange({ start: "", end: "" }); doSearch(0, { start: "", end: "" }); }}
           >
             Clear time filter
           </button>
@@ -384,6 +457,8 @@ export default function Explore() {
         <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>
           <strong>Needles</strong> are search terms — IOCs, technique names, file names, event IDs —
           that the N4 query engine searches for across parsed evidence.
+          Clicking a briefing chip, field value, or suggested needle replaces this box —
+          it always shows exactly what was last searched.
           {" "}
           <button
             onClick={() => setShowPlaybookHelp(!showPlaybookHelp)}
@@ -435,10 +510,7 @@ export default function Explore() {
                           borderColor: (pb.strong_needles || []).includes(n) ? "var(--accent)" : undefined,
                         }}
                         title={(pb.strong_needles || []).includes(n) ? "high-signal" : ""}
-                        onClick={() => {
-                          setNeedles(n);
-                          setTimeout(() => search(), 50);
-                        }}
+                        onClick={() => { setNeedles(n); doSearch(0, { needles: n }); }}
                       >
                         {n}
                       </button>
@@ -668,18 +740,36 @@ export default function Explore() {
               {selected.file}:{selected.line} · terms: {selected.terms || "—"}
             </div>
 
-            {/* WP 4j.1: what this means + what to check next */}
+            {/* WP 4j.1: what this means + what to check next. The panel always
+                resolves — a row with no skill coverage gets an honest note
+                instead of a silent gap. */}
             {interpLoading && (
               <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8 }}>
                 Interpreting…
               </div>
             )}
-            {interp && (interp.meaning || interp.look_for.length > 0 || interp.caveats.length > 0) && (
+            {!interpLoading && interpReady && !interp && (
+              <div style={{
+                marginBottom: 10, padding: "8px 10px", fontSize: 11,
+                background: "var(--bg-tertiary)", borderRadius: 6,
+                borderLeft: "3px solid var(--text-muted)", color: "var(--text-muted)",
+              }}>
+                Interpretation unavailable for this row — the source fields are below;
+                pivot on a value to keep digging.
+              </div>
+            )}
+            {interp && (
               <div style={{
                 marginBottom: 10, padding: "8px 10px",
                 background: "var(--bg-tertiary)", borderRadius: 6,
                 borderLeft: "3px solid var(--accent)",
               }}>
+                {!hasInterpContent(interp) && (
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                    No skill procedure covers this row yet — pivot on a field value
+                    below or open the source file for context.
+                  </div>
+                )}
                 {interp.meaning && (
                   <div style={{ fontSize: 12, marginBottom: 6 }}>{interp.meaning}</div>
                 )}
@@ -720,7 +810,7 @@ export default function Explore() {
                       <button key={q} className="btn btn-sm"
                               style={{ fontFamily: "monospace", fontSize: 10, marginRight: 4 }}
                               title="Search this query"
-                              onClick={() => { setNeedles(q); setSelected(null); setTimeout(() => doSearch(0), 50); }}>
+                              onClick={() => { setNeedles(q); setSelected(null); doSearch(0, { needles: q }); }}>
                         {q.length > 40 ? q.slice(0, 40) + "…" : q}
                       </button>
                     ))}
@@ -752,7 +842,9 @@ export default function Explore() {
                 )}
                 {interp.methodology && (
                   <details style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
-                    <summary style={{ cursor: "pointer" }}>Methodology (RAG)</summary>
+                    <summary style={{ cursor: "pointer" }} title="Text excerpt retrieved from the knowledge base — not generated by an LLM">
+                      Methodology (KB retrieval — not LLM-generated)
+                    </summary>
                     <div style={{ whiteSpace: "pre-wrap", marginTop: 4 }}>{interp.methodology}</div>
                   </details>
                 )}

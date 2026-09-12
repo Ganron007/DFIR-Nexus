@@ -1869,29 +1869,39 @@ async def api_explore_search(request):
     elif needles and not query_text:
         query_text = ' OR '.join(needles)
 
+    # Push single-value family + host filters into the DSL so n4_query's
+    # `count` is the TRUE filtered total — post-filtering a 400-row page
+    # under-reports and breaks pagination vs. the briefing's chip counts.
+    host_filter = str(body.get('host') or '').strip().lower()
+    if len(family_filter) == 1:
+        query_text = f"{query_text} family:{family_filter[0].lower()}".strip()
+        family_filter = []
+    if host_filter:
+        query_text = f"{query_text} host:{host_filter}".strip()
+
     result = n4_query(case_dir, query_text, window=window, limit=400, offset=offset)
     if result.get('error'):
         return JSONResponse({'error': result['error']}, status_code=400)
     hits = list(result.get('hits') or [])
-    total_before_filter = int(result.get('count') or 0)
+    total = int(result.get('count') or 0)
 
     if family_filter:
         want = {f.lower() for f in family_filter}
         hits = [h for h in hits if (h.get('family') or '').lower() in want]
+        total = len(hits)  # multi-family lists still post-filter (page-level)
 
     # WP 4d.1: parsed CSV fields + best-effort host per hit for type-aware UI
     from nexus.langgraph.query_pack import attach_hit_fields
 
     hits = attach_hit_fields(case_dir, hits)
 
-    host_filter = str(body.get('host') or '').strip().lower()
     if host_filter:
         hits = [h for h in hits if (h.get('host') or '').lower() == host_filter]
 
     return JSONResponse({
         'hits': hits[:limit],
-        'count': len(hits),
-        'total_before_family_filter': total_before_filter,
+        'count': total,
+        'total_before_family_filter': total,
         'backend': result.get('backend', ''),
         'families': _available_families(case_dir),
         'needles': collect_query_terms(intake),
@@ -3511,6 +3521,37 @@ async def api_pipeline_run(request):
     sealed = _sealed_case_error(case_id)
     if sealed:
         return sealed
+
+    # Mode 2/3 hard-gate: the LLM works against the N3 Elasticsearch index, so
+    # a case processed while ES is down would silently run on the CSV pack and
+    # leave the index empty — hollow Mode 2. Refuse before any work starts.
+    import yaml
+    case_mode = ""
+    case_yaml = case_dir / "CASE.yaml"
+    if case_yaml.is_file():
+        try:
+            _meta = yaml.safe_load(case_yaml.read_text(encoding="utf-8")) or {}
+            if isinstance(_meta, dict):
+                case_mode = str(_meta.get("investigation_mode") or "")
+        except Exception:
+            case_mode = ""
+    if case_mode in ("2", "3"):
+        from nexus.langgraph.case_index import es_available
+
+        if not (os.environ.get("NEXUS_ES_URL") or "").strip():
+            return JSONResponse({
+                "error": (
+                    f"Mode {case_mode} requires Elasticsearch — set NEXUS_ES_URL so parsed "
+                    "evidence lands in the N3 index the LLM queries, or run this case in Mode 1."
+                )
+            }, status_code=409)
+        if not es_available():
+            return JSONResponse({
+                "error": (
+                    f"Mode {case_mode} requires Elasticsearch — NEXUS_ES_URL is set but the "
+                    "cluster is unreachable. Start ES and retry, or run this case in Mode 1."
+                )
+            }, status_code=409)
 
     # Resolve the case's registered evidence so the N2 lane has data to parse.
     # Without this the pipeline would run against an empty evidence list.

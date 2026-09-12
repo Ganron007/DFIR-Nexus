@@ -207,3 +207,67 @@ def test_system_health(client):
     assert "rag" in body
     assert "llm" in body
     assert "parser" in body
+
+
+def _make_mode2_case(client) -> str:
+    r = client.post("/portal/api/case/create", json={"name": "M2 Gate"})
+    case_id = r.json()["case_id"]
+    client.post("/portal/api/case/mode", json={"mode": "2", "case_id": case_id})
+    return case_id
+
+
+def test_pipeline_run_mode2_requires_es_url(client, monkeypatch):
+    """WP 4j.5: a Mode 2 case refuses to process while ES is unconfigured —
+    evidence would land only in the CSV pack and the LLM would query an
+    index that never got built."""
+    monkeypatch.delenv("NEXUS_ES_URL", raising=False)
+    case_id = _make_mode2_case(client)
+    r = client.post("/portal/api/pipeline/run", json={"mode": "tools", "case_id": case_id})
+    assert r.status_code == 409
+    assert "elasticsearch" in r.json()["error"].lower()
+    assert "nexus_es_url" in r.json()["error"].lower()
+
+
+def test_pipeline_run_mode2_es_unreachable(client, monkeypatch):
+    """WP 4j.5: Mode 2 + configured-but-unreachable ES → 409, distinct message."""
+    import nexus.langgraph.case_index as ci
+
+    monkeypatch.setenv("NEXUS_ES_URL", "http://localhost:1")
+    monkeypatch.setattr(ci, "es_available", lambda: False)
+    case_id = _make_mode2_case(client)
+    r = client.post("/portal/api/pipeline/run", json={"mode": "tools", "case_id": case_id})
+    assert r.status_code == 409
+    assert "unreachable" in r.json()["error"].lower()
+
+
+def test_pipeline_run_mode2_es_up_passes_gate(client, monkeypatch):
+    """WP 4j.5: Mode 2 + reachable ES → the gate lets the run proceed
+    (this case has no evidence, so it must reach the evidence check)."""
+    import nexus.langgraph.case_index as ci
+
+    monkeypatch.setenv("NEXUS_ES_URL", "http://localhost:9200")
+    monkeypatch.setattr(ci, "es_available", lambda: True)
+    case_id = _make_mode2_case(client)
+    r = client.post("/portal/api/pipeline/run", json={"mode": "tools", "case_id": case_id})
+    assert r.status_code == 400
+    assert "evidence" in r.json()["error"].lower()
+
+
+def test_pipeline_run_mode1_ignores_es(client, monkeypatch):
+    """WP 4j.5: Mode 1 runs on the CSV pack — ES state must not gate it."""
+    monkeypatch.delenv("NEXUS_ES_URL", raising=False)
+    r = client.post("/portal/api/case/create", json={"name": "M1 No ES"})
+    case_id = r.json()["case_id"]
+    client.post("/portal/api/case/mode", json={"mode": "1", "case_id": case_id})
+    r = client.post("/portal/api/pipeline/run", json={"mode": "tools", "case_id": case_id})
+    assert r.status_code == 400  # reaches the evidence check, not a 409 ES gate
+
+
+def test_pipeline_run_mode3_requires_es(client, monkeypatch):
+    """WP 4j.5: Mode 3 (agentic) shares the Mode 2 ES invariant."""
+    monkeypatch.delenv("NEXUS_ES_URL", raising=False)
+    r = client.post("/portal/api/case/create", json={"name": "M3 Gate"})
+    case_id = r.json()["case_id"]
+    client.post("/portal/api/case/mode", json={"mode": "3", "case_id": case_id})
+    r = client.post("/portal/api/pipeline/run", json={"mode": "tools", "case_id": case_id})
+    assert r.status_code == 409

@@ -407,3 +407,60 @@ def test_n4_skips_artifacts_jsonl_and_hash_1102(tmp_path: Path):
     blob = " ".join(f"{c['title']} {c['observation']}" for c in cands).lower()
     assert "sdelete" not in blob
     assert "wevtutil" in blob or "1102" in blob
+
+
+def test_parse_needles_splits_commas_not_spaces():
+    """WP 4j.5: the plain-needles field splits on , and ; only. A space-joined
+    briefing direction stays ONE needle — the DSL tokenizer below turns it
+    into OR terms, so multi-token chips keep working."""
+    from nexus.langgraph.query_pack import _parse_needles
+
+    assert _parse_needles("rundll32, regsvr32;mshta") == ["rundll32", "regsvr32", "mshta"]
+    assert _parse_needles("rundll32 regsvr32 mshta") == ["rundll32 regsvr32 mshta"]
+    assert _parse_needles("") == []
+
+
+def test_multi_token_direction_query_matches_any_term(tmp_path: Path):
+    """WP 4j.5: a briefing confirm-query like 'rundll32 regsvr32' routed
+    through the needles field must still match rows containing ANY token."""
+    from nexus.langgraph.query_pack import _parse_needles, n4_query
+
+    ext = tmp_path / "extractions" / "evtx"
+    ext.mkdir(parents=True)
+    (ext / "sec.csv").write_text(
+        "TimeCreated,Message\n"
+        "2020-11-14 10:00:00,rundll32.exe invoked\n"
+        "2020-11-14 10:01:00,benign.exe ran\n",
+        encoding="utf-8",
+    )
+    needles = _parse_needles("rundll32 regsvr32")
+    result = n4_query(tmp_path, " OR ".join(needles))
+    assert "error" not in result
+    assert result["count"] == 1
+    assert "rundll32" in result["hits"][0]["text"].lower()
+
+
+def test_single_needle_count_matches_per_term_scan(tmp_path: Path):
+    """WP 4j.5: briefing 'rundll32 (N)' counts rows whose matched terms include
+    rundll32 — Explore must return the same set for the same needle."""
+    from nexus.langgraph.query_pack import _parse_needles, n4_hits, n4_query
+
+    ext = tmp_path / "extractions" / "pecmd"
+    ext.mkdir(parents=True)
+    (ext / "prefetch.csv").write_text(
+        "RunTime,ExecutableName\n"
+        "2020-11-14 04:49:43,rundll32.exe\n"
+        "2020-11-14 13:42:11,mshta.exe\n"
+        "2020-11-14 13:43:00,RUNDLL32.EXE\n",
+        encoding="utf-8",
+    )
+    # briefing path: scan all terms, count rows whose hit.terms include the needle
+    all_hits, _backend = n4_hits(tmp_path, ["rundll32", "mshta"], (None, None))
+    briefing_count = sum(
+        1 for h in all_hits if "rundll32" in str(h.get("terms") or "").lower()
+    )
+    # explore path: needles -> ' OR '.join -> DSL query
+    needles = _parse_needles("rundll32")
+    result = n4_query(tmp_path, " OR ".join(needles))
+    assert briefing_count == 2
+    assert result["count"] == briefing_count

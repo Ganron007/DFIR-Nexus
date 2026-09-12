@@ -384,19 +384,26 @@ export default function Briefing() {
                 No playbook needles matched. Try the Explore page with your own terms.
               </p>
             ) : (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                {scan.slice(0, 60).map((s) => (
-                  <button
-                    key={s.needle}
-                    className="btn btn-sm"
-                    style={{ fontFamily: "monospace", fontSize: 11 }}
-                    title={`${s.hits} hits — ${s.source}`}
-                    onClick={() => searchNeedle(s.needle)}
-                  >
-                    {s.needle} <strong>{s.hits}</strong>
-                  </button>
-                ))}
-              </div>
+              <>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                  {scan.slice(0, 60).map((s) => (
+                    <button
+                      key={s.needle}
+                      className="btn btn-sm"
+                      style={{ fontFamily: "monospace", fontSize: 11 }}
+                      title={`${s.hits}${brief.scan_truncated ? "+" : ""} hits — ${s.source} — click to open in Explore`}
+                      onClick={() => searchNeedle(s.needle)}
+                    >
+                      {s.needle} <strong>{s.hits}{brief.scan_truncated ? "+" : ""}</strong>
+                    </button>
+                  ))}
+                </div>
+                {brief.scan_truncated && (
+                  <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 6 }}>
+                    Counts are lower bounds — the scan stopped at the briefing window; Explore shows the true total.
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>

@@ -157,8 +157,10 @@ def test_explore_page_renders(mock_get_dir, tmp_path):
 
 
 @patch("nexus.dashboard.app._get_case_dir")
-@patch("nexus.langgraph.query_pack.n4_hits")
-def test_api_explore_search(mock_n4, mock_get_dir, tmp_path):
+@patch("nexus.langgraph.query_pack.n4_query")
+def test_api_explore_search(mock_n4q, mock_get_dir, tmp_path):
+    """WP 4j.5: a single family filter is pushed into the DSL so the engine's
+    `count` is the true filtered total — not the post-filtered page size."""
     from starlette.applications import Starlette
     from starlette.testclient import TestClient
 
@@ -166,13 +168,14 @@ def test_api_explore_search(mock_n4, mock_get_dir, tmp_path):
 
     case_dir = _make_case_dir(tmp_path)
     mock_get_dir.return_value = case_dir
-    mock_n4.return_value = (
-        [
+    mock_n4q.return_value = {
+        "count": 1,
+        "backend": "csv",
+        "query": "sdelete family:hayabusa",
+        "hits": [
             {"family": "hayabusa", "file": "a.csv", "line": "1", "text": "2026-08-10T15:00:00Z hit", "terms": "sdelete"},
-            {"family": "prefetch", "file": "b.csv", "line": "2", "text": "2026-08-10T16:00:00Z hit", "terms": "sdelete"},
         ],
-        "csv",
-    )
+    }
 
     app = Starlette(routes=create_dashboard())
     client = TestClient(app)
@@ -185,3 +188,7 @@ def test_api_explore_search(mock_n4, mock_get_dir, tmp_path):
     assert data.get("count") == 1
     assert len(data.get("hits", [])) == 1
     assert data["hits"][0]["family"] == "hayabusa"
+    # the family filter reached the engine as a DSL field, not a page post-filter
+    sent_query = mock_n4q.call_args[0][1]
+    assert "family:hayabusa" in sent_query
+    assert "sdelete" in sent_query

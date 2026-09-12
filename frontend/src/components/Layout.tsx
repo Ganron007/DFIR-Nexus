@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
-import { useCase } from "../context/CaseContext";
+import { useCase, type EsStatus } from "../context/CaseContext";
 
 /**
  * Phase 4e: the sidebar follows the N1-N8 investigation spine only when a
@@ -82,6 +82,52 @@ function StageStepper({ stages }: { stages: Record<string, boolean> }) {
   );
 }
 
+/**
+ * Backend liveness + Elasticsearch state as two separate signals — a green
+ * backend dot must never be read as "ES is up". ES truthfully shows:
+ *   off      — NEXUS_ES_URL not set (Mode 1 runs on the CSV pack)
+ *   down     — configured but unreachable (Mode 2/3 processing is blocked)
+ *   (green)  — reachable; the N3 index can receive evidence
+ */
+function StatusCluster({ health, es }: { health: "ok" | "down" | "checking"; es: EsStatus }) {
+  const esTitle = !es.configured
+    ? "Elasticsearch not configured — Mode 1 searches the CSV pack. Mode 2/3 require NEXUS_ES_URL."
+    : es.reachable
+      ? "Elasticsearch reachable — evidence can land in the N3 index for Mode 2/3 queries."
+      : "Elasticsearch configured but UNREACHABLE — Mode 2/3 processing is blocked until ES comes online.";
+  const esColor = !es.configured ? "var(--text-muted)" : es.reachable ? "var(--success)" : "var(--danger)";
+  const esLabel = !es.configured ? "ES off" : es.reachable ? "ES" : "ES down";
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+      <span
+        title={health === "ok" ? "Backend reachable" : health === "down" ? "Backend unreachable" : "Checking…"}
+        style={{
+          width: 8,
+          height: 8,
+          borderRadius: "50%",
+          background: health === "ok" ? "var(--success)" : health === "down" ? "var(--danger)" : "var(--warning)",
+          boxShadow: health === "ok" ? "0 0 6px rgba(63,185,80,0.6)" : "none",
+        }}
+      />
+      <span
+        title={esTitle}
+        style={{
+          fontSize: 9,
+          fontFamily: "monospace",
+          letterSpacing: 0.4,
+          color: esColor,
+          border: `1px solid ${esColor}`,
+          borderRadius: 3,
+          padding: "0 3px",
+          lineHeight: 1.4,
+        }}
+      >
+        {esLabel}
+      </span>
+    </span>
+  );
+}
+
 export default function Layout({ children }: { children: ReactNode }) {
   const {
     cases,
@@ -89,6 +135,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     activeCase,
     mode,
     health,
+    es,
     stages,
     setActiveCase,
     setPreviewCase,
@@ -144,16 +191,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             </div>
           </a>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <span
-              title={health === "ok" ? "System healthy" : health === "down" ? "Backend unreachable" : "Checking…"}
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: "50%",
-                background: health === "ok" ? "var(--success)" : health === "down" ? "var(--danger)" : "var(--warning)",
-                boxShadow: health === "ok" ? "0 0 6px rgba(63,185,80,0.6)" : "none",
-              }}
-            />
+            <StatusCluster health={health} es={es} />
           </div>
         </header>
         <main className="dashboard-main">
@@ -273,16 +311,7 @@ export default function Layout({ children }: { children: ReactNode }) {
                 Exit
               </button>
             )}
-            <span
-              title={health === "ok" ? "System healthy" : health === "down" ? "Backend unreachable" : "Checking…"}
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: "50%",
-                background: health === "ok" ? "var(--success)" : health === "down" ? "var(--danger)" : "var(--warning)",
-                boxShadow: health === "ok" ? "0 0 6px rgba(63,185,80,0.6)" : "none",
-              }}
-            />
+            <StatusCluster health={health} es={es} />
           </div>
         </div>
       </aside>

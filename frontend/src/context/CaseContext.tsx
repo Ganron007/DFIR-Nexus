@@ -18,6 +18,13 @@ import { api, setRequestCaseId, type CaseSummary } from "../api/client";
 
 export type StageStatus = Record<string, boolean>;
 
+export interface EsStatus {
+  /** NEXUS_ES_URL configured at all */
+  configured: boolean;
+  /** cluster answered a version probe */
+  reachable: boolean;
+}
+
 interface CaseContextValue {
   cases: string[];
   caseSummaries: Record<string, CaseSummary>;
@@ -26,6 +33,8 @@ interface CaseContextValue {
   booting: boolean;
   mode: string;
   health: "ok" | "down" | "checking";
+  /** Real Elasticsearch state — NOT implied by backend liveness. */
+  es: EsStatus;
   stages: Record<string, boolean>;
   setActiveCase: (caseId: string) => Promise<void>;
   setPreviewCase: (caseId: string) => void;
@@ -45,6 +54,7 @@ export function CaseProvider({ children }: { children: ReactNode }) {
   const [booting, setBooting] = useState<boolean>(true);
   const [mode, setModeState] = useState<string>("");
   const [health, setHealth] = useState<"ok" | "down" | "checking">("checking");
+  const [es, setEs] = useState<EsStatus>({ configured: false, reachable: false });
   const [stages, setStages] = useState<Record<string, boolean>>({});
 
   const refreshCases = useCallback(async () => {
@@ -136,9 +146,20 @@ export function CaseProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     refreshCases();
-    fetch("/health")
-      .then((r) => setHealth(r.ok ? "ok" : "down"))
-      .catch(() => setHealth("down"));
+    // Backend liveness AND Elasticsearch state are separate signals —
+    // a green backend dot must never imply ES is up.
+    api.systemHealth()
+      .then((r) => {
+        setHealth(r.backend === "ok" ? "ok" : "down");
+        setEs({
+          configured: r.es?.configured !== false,
+          reachable: r.es?.reachable === true,
+        });
+      })
+      .catch(() => {
+        setHealth("down");
+        setEs({ configured: false, reachable: false });
+      });
   }, [refreshCases]);
 
   // Every API request from now on carries the explicit case identity.
@@ -166,6 +187,7 @@ export function CaseProvider({ children }: { children: ReactNode }) {
         booting,
         mode,
         health,
+        es,
         stages,
         setActiveCase,
         setPreviewCase,

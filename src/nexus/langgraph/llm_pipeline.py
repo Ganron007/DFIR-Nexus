@@ -1118,12 +1118,32 @@ def _autoindex_case(case_dir: Path) -> list[str]:
         return ["N3 auto-index disabled (NEXUS_ES_AUTOINDEX=0)"]
     if not (os.environ.get("NEXUS_ES_URL") or "").strip():
         return ["N3 auto-index skipped (NEXUS_ES_URL empty — CSV pack remains the backend)"]
+
+    # The LLM-driven modes promise ES-backed evidence — a mid-run index failure
+    # silently degrades them to the CSV pack, so the note must say so loudly.
+    case_mode = ""
+    try:
+        import yaml
+
+        meta_yaml = case_dir / "CASE.yaml"
+        if meta_yaml.is_file():
+            _m = yaml.safe_load(meta_yaml.read_text(encoding="utf-8")) or {}
+            if isinstance(_m, dict):
+                case_mode = str(_m.get("investigation_mode") or "")
+    except Exception:
+        case_mode = ""
+
     try:
         from nexus.langgraph.case_index import index_case
 
         meta = index_case(case_dir)
         return [f"N3 auto-index: {meta.get('docs')} docs -> {meta.get('index')}"]
     except Exception as exc:  # noqa: BLE001
+        if case_mode in ("2", "3"):
+            return [
+                f"N3 auto-index FAILED — Mode {case_mode} degraded to the CSV pack "
+                f"(the LLM cannot see an index that never built): {exc}"
+            ]
         return [f"N3 auto-index failed (CSV pack remains usable): {exc}"]
 
 

@@ -646,6 +646,13 @@ If the case is already open: `{"ok": true, "status": "created", "note": "already
 }
 ```
 
+`count` is the engine's total for the effective query (WP 4j.5). A single
+`family` value and a `host` value are pushed into the DSL (`family:x host:y`)
+before execution, so `count` is the true filtered total rather than the
+post-filtered page size; `total_before_family_filter` mirrors `count`. A
+comma-separated multi-family list still post-filters the returned page.
+`count` is bounded by the engine's hit cap (`_MAX_HITS_TOTAL`, 400).
+
 **Errors:**
 - `400` — `limit`/`offset` not integers, or query syntax error.
 - `404` — No active case.
@@ -1350,6 +1357,13 @@ If the case is already open: `{"ok": true, "status": "created", "note": "already
 ```
 
 **Response 400:** `{"error": "Invalid mode: ..."}` or `{"error": "No active case"}` (404)
+
+**Response 409 — ES gate (WP 4j.5):** when the case's `investigation_mode`
+is `2` or `3`, the run refuses to start unless Elasticsearch is configured
+(`NEXUS_ES_URL`) and reachable — Mode 2/3 promise that parsed evidence lands
+in the N3 index the LLM queries; silently degrading to the CSV pack would
+make the mode hollow. Mode `1` (or unset) is not gated — it is designed to
+run on the CSV pack.
 
 ---
 

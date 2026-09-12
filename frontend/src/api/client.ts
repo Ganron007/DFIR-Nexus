@@ -583,6 +583,8 @@ export interface BriefingResponse {
   walkthrough?: BriefingWalkthroughStep[];
   backend: string;
   hits_examined: number;
+  /** WP 4j.5 — true when the needle scan hit its cap; chip counts are lower bounds. */
+  scan_truncated?: boolean;
   error?: string;
 }
 
