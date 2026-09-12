@@ -1,17 +1,13 @@
 """Tests for Phase 3 real agentic components (WPs 3.14-3.21)."""
 
-import json
-import tempfile
-from pathlib import Path
 
 import pytest
 
-from nexus.langgraph.entities import extract_entities, entities_to_dict
 from nexus.langgraph.correlation import EntityGraph, correlate_entities
 from nexus.langgraph.correlation_agent import CorrelationAgent, correlate_agent_runs
+from nexus.langgraph.entities import entities_to_dict, extract_entities
 from nexus.langgraph.pattern_agent import PatternAgent
-from nexus.langgraph.synthesis_agent import SynthesisAgent, synthesize_findings
-
+from nexus.langgraph.synthesis_agent import SynthesisAgent
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -98,7 +94,7 @@ class TestEntityExtraction:
 
     def test_entity_has_hit_references(self, evtx_hits):
         entities = extract_entities(evtx_hits)
-        for entity_type, entity_list in entities.items():
+        for entity_list in entities.values():
             for ent in entity_list:
                 assert "hits" in ent
                 assert len(ent["hits"]) > 0
@@ -109,7 +105,7 @@ class TestEntityExtraction:
         entities = extract_entities(evtx_hits)
         flat = entities_to_dict(entities)
         assert isinstance(flat, dict)
-        for k, v in flat.items():
+        for v in flat.values():
             assert isinstance(v, list)
 
 
