@@ -629,6 +629,9 @@ If the case is already open: `{"ok": true, "status": "created", "note": "already
   "status": "complete",
   "needles_scanned": 162,
   "needles_hit": 9,
+  "needles_hit_total": 9,
+  "needles_capped": 0,
+  "scan_truncated": false,
   "bookmarks_added": 7,
   "drafts": [
     {"finding_id": "string", "title": "string", "hits": 0, "families": ["string"]}
@@ -638,6 +641,13 @@ If the case is already open: `{"ok": true, "status": "created", "note": "already
   "next": "Review DRAFT findings in Approve (manual HMAC), then generate the report (N8)."
 }
 ```
+
+`needles_hit` counts the needles actually processed (capped at `max_needles`);
+`needles_hit_total` is the full hitting-needle count before the cap, so
+`needles_capped` > 0 honestly reports needles left unprocessed. `scan_truncated`
+means the briefing's hit-scan hit its row limit — needle counts are lower
+bounds. Draft titles carry `N+` when the 500-row query page may not hold every
+matching row.
 
 `skipped` entries are reported honestly — e.g. `low-signal needle (numeric/too short)` (pure-digit or <3-char needles are never staged), `draft already staged`, `no hits matched this needle`, or a query error.
 

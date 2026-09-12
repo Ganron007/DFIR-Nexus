@@ -1669,7 +1669,7 @@ async def run_tool_lane(
         with contextlib.suppress(OSError):
             (stale_dir / "_tool_lane_progress.json").unlink(missing_ok=True)
 
-    def _write_progress(current: str = "") -> None:
+    def _write_progress() -> None:
         try:
             import json as _json
 
@@ -1679,6 +1679,14 @@ async def run_tool_lane(
                 {"tool": e.get("tool"), "host": e.get("host"), "status": e.get("status")}
                 for e in ledger
             ]
+            # "current" is the next job still pending — the completed job is
+            # already in entries, so naming it here would lie to the UI.
+            # Iterate win_jobs+sift_jobs (not jobs): mactime appends to
+            # sift_jobs only, and both lists exist before any progress write.
+            current = next(
+                (j.tool for j in [*win_jobs, *sift_jobs] if j.status == "PENDING"),
+                "",
+            )
             (extractions / "_tool_lane_progress.json").write_text(
                 _json.dumps({
                     "done": done,
@@ -1693,7 +1701,7 @@ async def run_tool_lane(
 
     def _mark(job: ToolJob) -> None:
         ledger.append(asdict(job))
-        _write_progress(job.tool)
+        _write_progress()
 
     async def _run_one(job: ToolJob) -> None:
         if job.status in ("SKIP", "OK"):
@@ -1766,7 +1774,7 @@ async def run_tool_lane(
     win_jobs = [j for j in jobs if j.host == "windows"]
     sift_jobs = [j for j in jobs if j.host != "windows"]
     win_total[0] = len(win_jobs) + len(sift_jobs)
-    _write_progress("")
+    _write_progress()
     for job in win_jobs:
         await _run_one(job)
 

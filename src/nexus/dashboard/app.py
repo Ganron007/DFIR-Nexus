@@ -2411,12 +2411,16 @@ async def api_workbench_add_many(request):
     hits = _post_filter_hits(list(result.get('hits') or []), family_filter, "")
     matched = int(result.get('count') or 0)
     if family_filter:
+        # multi-family residual post-filter — count only covers query+host,
+        # so the page-filtered length is the honest (lower-bound) matched.
         matched = len(hits)
 
     hits = attach_hit_fields(case_dir, hits)
     hits = _post_filter_hits(hits, [], host_filter)
-    if host_filter:
-        matched = len(hits)
+    # host is ALWAYS pushed into the DSL — result["count"] is already the
+    # true host-filtered total; overwriting with len(hits) would hide page
+    # truncation. The post-filter above is only a belt re-check on attached
+    # fields.
 
     r = add_bookmarks(case_dir, hits, note=str(body.get("note") or ""))
     r["matched"] = matched
@@ -2472,6 +2476,7 @@ async def api_mode1_full_run(request):
     only = {n.strip().lower() for n in str(body.get("needle_filter") or "").split(",") if n.strip()}
     if only:
         scan = [s for s in scan if str(s.get("needle", "")).lower() in only]
+    needles_hit_total = len(scan)  # before the max_needles cap — report honestly
     scan = scan[:max_needles]
     if not scan:
         return JSONResponse({
@@ -2518,16 +2523,21 @@ async def api_mode1_full_run(request):
             continue
         hits = [
             h for h in attach_hit_fields(case_dir, list(result.get("hits") or []))
-            if needle.lower() in str(h.get("terms") or "").lower()
+            if needle.lower() in {
+                t.strip().lower() for t in str(h.get("terms") or "").split(",")
+            }
         ]
         if not hits:
             skipped.append({"needle": needle, "reason": "no hits matched this needle"})
             continue
         bookmarks_total += int(add_bookmarks(case_dir, hits).get("added") or 0)
 
-        # Stage 3 — one DRAFT per needle (candidate signal, not a verdict)
+        # Stage 3 — one DRAFT per needle (candidate signal, not a verdict).
+        # len(hits) is a lower bound: the 500-row page may not hold every
+        # needle-matched row, and intake terms inflate result["count"].
         families = sorted({str(h.get("family") or "?") for h in hits})
-        title = f"Signal: {needle} — {len(hits)} hit(s) across {', '.join(families)}"
+        more = "+" if int(result.get("count") or 0) > len(hits) else ""
+        title = f"Signal: {needle} — {len(hits)}{more} hit(s) across {', '.join(families)}"
         if title in existing:
             skipped.append({"needle": needle, "reason": "draft already staged"})
             continue
@@ -2559,6 +2569,11 @@ async def api_mode1_full_run(request):
         "status": "complete",
         "needles_scanned": int(brief.get("scanned_needles") or 0),
         "needles_hit": len(scan),
+        "needles_hit_total": needles_hit_total,
+        "needles_capped": needles_hit_total - len(scan),
+        # briefing hit-scan was truncated — needle counts are lower bounds
+        # and needles matching only beyond-limit rows are invisible here.
+        "scan_truncated": bool(brief.get("scan_truncated")),
         "bookmarks_added": bookmarks_total,
         "drafts": drafts,
         "drafts_staged": len(drafts),

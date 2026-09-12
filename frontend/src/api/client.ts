@@ -304,6 +304,9 @@ export interface Mode1FullRunResponse {
   status: string;
   needles_scanned: number;
   needles_hit: number;
+  needles_hit_total?: number;
+  needles_capped?: number;
+  scan_truncated?: boolean;
   bookmarks_added: number;
   drafts: { finding_id?: string; title: string; hits: number; families: string[] }[];
   drafts_staged?: number;

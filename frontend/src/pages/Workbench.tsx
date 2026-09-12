@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { Link } from "react-router-dom";
 import { api, type Bookmark } from "../api/client";
 import { useCase } from "../context/CaseContext";
 
@@ -138,7 +139,7 @@ export default function Workbench() {
         setError(Array.isArray(r.error) ? r.error.join("; ") : r.error);
         return;
       }
-      setResult(`Promoted to DRAFT: ${r.finding_id} (${r.bookmark_count} bookmark(s)) — review in Approve →`);
+      setResult(`Promoted to DRAFT: ${r.finding_id} (${r.bookmark_count} bookmark(s))`);
       form.reset(initialForm);
       // Reload workbench — promoted bookmarks are consumed but others remain
       load();
@@ -170,7 +171,7 @@ export default function Workbench() {
       {error && <div className="error-banner">{error}</div>}
       {result && (
         <div style={{ background: "rgba(63,185,80,0.1)", border: "1px solid var(--success)", borderRadius: 6, padding: 10, marginBottom: 16, color: "var(--success)" }}>
-          {result}
+          {result} — <Link to="/approve" style={{ color: "var(--success)", fontWeight: 600 }}>review in Approve →</Link>
         </div>
       )}
 

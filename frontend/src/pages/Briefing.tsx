@@ -142,8 +142,10 @@ export default function Briefing() {
             Full run complete — {fullRunResult.drafts_staged ?? fullRunResult.drafts.length} DRAFT finding(s) staged
           </div>
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>
-            {fullRunResult.needles_scanned} needles scanned · {fullRunResult.needles_hit} with hits ·{" "}
-            {fullRunResult.bookmarks_added} bookmark(s) added to Workbench
+            {fullRunResult.needles_scanned} needles scanned · {fullRunResult.needles_hit} with hits
+            {(fullRunResult.needles_capped ?? 0) > 0 && ` (${fullRunResult.needles_capped} more hit — raise max_needles to include)`}
+            {fullRunResult.scan_truncated && " · counts are lower bounds (scan truncated)"}
+            {" · "}{fullRunResult.bookmarks_added} bookmark(s) added to Workbench
           </div>
           {fullRunResult.drafts.length > 0 && (
             <ul style={{ fontSize: 12, margin: "0 0 8px 18px", padding: 0 }}>
