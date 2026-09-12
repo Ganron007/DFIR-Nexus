@@ -58,6 +58,25 @@ export default function Timeline() {
   const [selected, setSelected] = useState<N4Hit | null>(null);
   const [interp, setInterp] = useState<HitInterpretation | null>(null);
   const [interpLoading, setInterpLoading] = useState(false);
+  // TimelineExplorer-parity: instant text filter + severity floor + persisted view
+  const [filterText, setFilterText] = useState("");
+  const [minSev, setMinSev] = useState("");
+  // Pending brush restore — hour strings resolve to indices once lanes load
+  const [pendingBrush, setPendingBrush] = useState<{ start: string; end: string } | null>(null);
+
+  const caseKey = activeCase?.id || "";
+  // Restore lane/brush/filter per case (stored as hour strings — stable across reloads)
+  useEffect(() => {
+    if (!caseKey) return;
+    try {
+      const saved = JSON.parse(localStorage.getItem(`tl:${caseKey}`) || "{}");
+      if (saved.lane) setSelectedLane(saved.lane);
+      if (saved.filter) setFilterText(saved.filter);
+      if (saved.minSev) setMinSev(saved.minSev);
+      if (saved.startHour) setPendingBrush({ start: saved.startHour, end: saved.endHour || "" });
+    } catch { /* ignore corrupt state */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [caseKey]);
 
   useEffect(() => {
     api.timelineLanes({})
@@ -83,6 +102,32 @@ export default function Timeline() {
     ? [...new Set(laneData.flatMap((l) => l.buckets.map((b) => b.hour)))].sort()
     : [];
   const hourToIndex = new Map(allHours.map((h, i) => [h, i]));
+
+  // Resolve a persisted brush once lane hours exist
+  useEffect(() => {
+    if (!pendingBrush || allHours.length === 0) return;
+    const si = hourToIndex.get(pendingBrush.start);
+    if (si !== undefined) {
+      setBrushStart(si);
+      const ei = pendingBrush.end ? hourToIndex.get(pendingBrush.end) : undefined;
+      setBrushEnd(ei !== undefined ? ei : null);
+    }
+    setPendingBrush(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingBrush, lanes]);
+
+  // Persist the current view per case
+  useEffect(() => {
+    if (!caseKey) return;
+    localStorage.setItem(`tl:${caseKey}`, JSON.stringify({
+      lane: selectedLane,
+      startHour: brushStart !== null ? allHours[brushStart] : "",
+      endHour: brushEnd !== null ? allHours[brushEnd] : "",
+      filter: filterText,
+      minSev,
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [caseKey, selectedLane, brushStart, brushEnd, filterText, minSev]);
 
   const handleBarClick = (hour: string) => {
     const idx = hourToIndex.get(hour) ?? 0;
@@ -163,6 +208,22 @@ export default function Timeline() {
   const visibleLanes = laneData.filter((lane) => !selectedLane || lane.family === selectedLane);
   const typeColumns = pickHitColumns(events);
 
+  // Instant filter (TimelineExplorer parity): text across all parsed fields
+  // + raw row, and a minimum-severity floor on detection-family rows.
+  const SEV_RANK: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, informational: 4 };
+  const q = filterText.trim().toLowerCase();
+  const visibleEvents = events.filter((h) => {
+    if (minSev) {
+      const sev = hitSeverity(h);
+      if (!sev || (SEV_RANK[sev] ?? 9) > (SEV_RANK[minSev] ?? 9)) return false;
+    }
+    if (q) {
+      const blob = `${h.family} ${h.host || ""} ${h.terms || ""} ${h.text || ""} ${Object.values(h.fields || {}).join(" ")}`.toLowerCase();
+      if (!blob.includes(q)) return false;
+    }
+    return true;
+  });
+
   const eventColumns: Column<N4Hit>[] = [
     {
       key: "sev",
@@ -187,7 +248,8 @@ export default function Timeline() {
       header: "Time",
       width: 150,
       render: (h) => {
-        const m = /(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2})/.exec(h.text || "");
+        const ft = h.fields?.Timestamp || h.fields?.TimeCreated || h.fields?.timestamp || "";
+        const m = /(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2})?)/.exec(ft || h.text || "");
         return <span style={{ fontFamily: "monospace", fontSize: 11 }}>{m ? m[1] : "—"}</span>;
       },
     },
@@ -344,9 +406,36 @@ export default function Timeline() {
                   ? ` · ${brushRange.start || "…"} → ${brushRange.end || "…"}`
                   : ""}
                 {` (${eventCount.toLocaleString()})`}
+                {(q || minSev) && ` — ${visibleEvents.length.toLocaleString()} shown`}
               </span>
-              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                click bars to set a range · click a lane title to filter
+              <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                <input
+                  type="text"
+                  placeholder="Filter events…"
+                  value={filterText}
+                  onChange={(e) => setFilterText(e.target.value)}
+                  style={{
+                    fontSize: 11, padding: "2px 8px", width: 160,
+                    background: "var(--bg-tertiary)", border: "1px solid var(--border)",
+                    borderRadius: 4, color: "var(--text-primary)",
+                  }}
+                />
+                {["", "medium", "high", "critical"].map((s) => (
+                  <button
+                    key={s || "all"}
+                    className="btn btn-sm"
+                    onClick={() => setMinSev(s)}
+                    style={{
+                      fontSize: 10, padding: "1px 7px",
+                      color: s && minSev === s ? "#fff" : s ? sevColor(s) : "var(--text-muted)",
+                      borderColor: minSev === s ? sevColor(s) : "var(--border)",
+                      fontWeight: minSev === s ? 700 : 400,
+                    }}
+                    title={s ? `Show ${s}+ severity only` : "Show all severities"}
+                  >
+                    {s ? `${s}+` : "all"}
+                  </button>
+                ))}
               </span>
             </div>
             {eventsLoading ? (
@@ -359,7 +448,7 @@ export default function Timeline() {
               </div>
             ) : (
               <VirtualTable
-                rows={events}
+                rows={visibleEvents}
                 columns={eventColumns}
                 rowKey={(h, i) => `${h.family}:${h.file}:${h.line}:${i}`}
                 maxHeight="45vh"
@@ -401,7 +490,22 @@ export default function Timeline() {
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                 <strong style={{ fontSize: 13 }}>Event interpretation</strong>
-                <button className="btn btn-sm" onClick={() => setSelected(null)}>✕</button>
+                <span>
+                  <button
+                    className="btn btn-sm"
+                    style={{ marginRight: 6 }}
+                    title="Pivot to Explore with this event's terms"
+                    onClick={() => {
+                      const p = new URLSearchParams();
+                      if (selected.terms) p.set("needles", selected.terms.split(",")[0]);
+                      if (selected.family) p.set("family", selected.family);
+                      navigate(`/explore?${p.toString()}`);
+                    }}
+                  >
+                    Open in Explore →
+                  </button>
+                  <button className="btn btn-sm" onClick={() => setSelected(null)}>✕</button>
+                </span>
               </div>
               {(() => {
                 const sev = hitSeverity(selected);

@@ -1054,13 +1054,19 @@ no-op, `added: 0`).
   "families": [
     {
       "family": "string",
-      "buckets": {"YYYY-MM-DD": 0, "YYYY-MM-DDTHH:00": 0}
+      "buckets": {"YYYY-MM-DD": 0, "YYYY-MM-DDTHH:00": 0},
+      "buckets_sev": {"YYYY-MM-DDTHH:00": "high"}
     }
   ],
   "total": 0,
   "bucket": "string (hour | day)"
 }
 ```
+
+`buckets_sev` (added 2026-09-13) — max detection severity per bucket
+(`critical|high|medium|low|informational`), derived from Hayabusa/Chainsaw
+`Level`/`detections` fields. Buckets without detection-family hits may be
+absent. The Timeline page colors lane bars by this map.
 
 **Errors:**
 - `400` — Query syntax error.
