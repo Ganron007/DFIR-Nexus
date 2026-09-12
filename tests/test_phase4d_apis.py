@@ -1,4 +1,6 @@
 """Tests for Phase 4d workflow APIs: filesystem picker + parser ledger."""
+import sys
+
 import pytest
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
@@ -19,11 +21,24 @@ def client(tmp_path, monkeypatch):
 
 
 def test_fs_list_drives(client):
-    """Drive roots listed when no path given (Windows)."""
+    """Drive roots listed when no path given (Windows-only; POSIX lists /)."""
+    if sys.platform != "win32":
+        pytest.skip("drive-letter listing is Windows-only")
     r = client.get("/portal/api/fs/list")
     assert r.status_code == 200
     body = r.json()
     assert body["drives"] is True
+    assert isinstance(body["entries"], list)
+
+
+def test_fs_list_root_posix(client):
+    """No path on POSIX → root listing, not drive letters."""
+    if sys.platform == "win32":
+        pytest.skip("POSIX-only behavior")
+    r = client.get("/portal/api/fs/list")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["drives"] is False
     assert isinstance(body["entries"], list)
 
 

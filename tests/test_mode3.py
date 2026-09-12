@@ -43,6 +43,9 @@ class TestPlanExtras:
         assert any(s.get("tool") == "srumecmd" for s in skips)
 
     def test_excludes_suzaku_on_windows(self, tmp_path):
+        if sys.platform != "win32":
+            import pytest
+            pytest.skip("suzaku is only platform-filtered on Windows")
         case_dir = _make_case(tmp_path)
         # Add a suzaku SKIP
         ledger = json.loads((case_dir / "extractions" / "_tool_lane_ledger.json").read_text())
