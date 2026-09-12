@@ -1821,36 +1821,25 @@ def _bucket_times(hits: list[dict], bucket_minutes: int = 60) -> dict[str, int]:
     return dict(sorted(buckets.items()))
 
 
-async def api_explore_search(request):
-    """POST /portal/api/explore/search — faceted N4 search.
+def _explore_query_from_body(case_dir, body):
+    """Shared needle→DSL construction for /explore/search and
+    /workbench/add_many — both endpoints must see the identical result set.
 
-    Body: {query?: "<DSL>", needles?: "a,b", family?: "evtx,prefetch",
-           start?, end?, limit?, offset?}. When ``query`` (DSL) is provided
-    it takes precedence over plain needles.
+    Returns (query_text, window, family_filter, host_filter). Single-value
+    family + host are pushed INTO the DSL (true totals); multi-family lists
+    and host stay for post-filtering.
     """
-    case_dir = _get_case_dir(request)
-    if not case_dir:
-        return JSONResponse({'error': 'No active case'}, status_code=404)
-
     from nexus.langgraph.query_pack import (
         _parse_needles,
-        collect_query_terms,
         load_case_intake,
-        n4_query,
         parse_intake_window,
     )
 
-    body = await request.json()
     needles = _parse_needles(str(body.get('needles') or ''))
     query_text = str(body.get('query') or '').strip()
     family_filter = [f.strip() for f in str(body.get('family') or '').split(',') if f.strip()]
     start = str(body.get('start') or '').strip()
     end = str(body.get('end') or '').strip()
-    try:
-        limit = max(1, min(int(body.get('limit') or 80), 400))
-        offset = max(0, int(body.get('offset') or 0))
-    except (TypeError, ValueError):
-        return JSONResponse({'error': 'limit/offset must be integers'}, status_code=400)
 
     intake = load_case_intake(case_dir)
     if needles:
@@ -1879,24 +1868,61 @@ async def api_explore_search(request):
     if host_filter:
         query_text = f"{query_text} host:{host_filter}".strip()
 
+    return query_text, window, family_filter, host_filter
+
+
+def _post_filter_hits(hits, family_filter, host_filter):
+    """Apply the residual filters the DSL push-down left behind
+    (multi-family lists, host re-check on attached fields)."""
+    if family_filter:
+        want = {f.lower() for f in family_filter}
+        hits = [h for h in hits if (h.get('family') or '').lower() in want]
+    if host_filter:
+        hits = [h for h in hits if (h.get('host') or '').lower() == host_filter]
+    return hits
+
+
+async def api_explore_search(request):
+    """POST /portal/api/explore/search — faceted N4 search.
+
+    Body: {query?: "<DSL>", needles?: "a,b", family?: "evtx,prefetch",
+           start?, end?, limit?, offset?}. When ``query`` (DSL) is provided
+    it takes precedence over plain needles.
+    """
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({'error': 'No active case'}, status_code=404)
+
+    from nexus.langgraph.query_pack import (
+        attach_hit_fields,
+        collect_query_terms,
+        load_case_intake,
+        n4_query,
+    )
+
+    body = await request.json()
+    try:
+        limit = max(1, min(int(body.get('limit') or 80), 400))
+        offset = max(0, int(body.get('offset') or 0))
+    except (TypeError, ValueError):
+        return JSONResponse({'error': 'limit/offset must be integers'}, status_code=400)
+
+    query_text, window, family_filter, host_filter = _explore_query_from_body(case_dir, body)
+
     result = n4_query(case_dir, query_text, window=window, limit=400, offset=offset)
     if result.get('error'):
         return JSONResponse({'error': result['error']}, status_code=400)
     hits = list(result.get('hits') or [])
     total = int(result.get('count') or 0)
 
+    hits = _post_filter_hits(hits, family_filter, "")
     if family_filter:
-        want = {f.lower() for f in family_filter}
-        hits = [h for h in hits if (h.get('family') or '').lower() in want]
         total = len(hits)  # multi-family lists still post-filter (page-level)
 
-    # WP 4d.1: parsed CSV fields + best-effort host per hit for type-aware UI
-    from nexus.langgraph.query_pack import attach_hit_fields
-
+    # WP 4d.1: parsed CSV fields + best-effort host per hit for type-aware UI.
+    # The host re-check runs AFTER attach (raw hits may not carry `host`).
     hits = attach_hit_fields(case_dir, hits)
-
-    if host_filter:
-        hits = [h for h in hits if (h.get('host') or '').lower() == host_filter]
+    hits = _post_filter_hits(hits, [], host_filter)
 
     return JSONResponse({
         'hits': hits[:limit],
@@ -1904,7 +1930,7 @@ async def api_explore_search(request):
         'total_before_family_filter': total,
         'backend': result.get('backend', ''),
         'families': _available_families(case_dir),
-        'needles': collect_query_terms(intake),
+        'needles': collect_query_terms(load_case_intake(case_dir)),
         'query': result.get('query', ''),
         'offset': offset,
     })
@@ -2353,6 +2379,43 @@ async def api_workbench_add(request):
     from nexus.case.workbench import add_bookmark
 
     return JSONResponse(add_bookmark(case_dir, hit, note=str(body.get("note") or "")))
+
+
+async def api_workbench_add_many(request):
+    """POST /portal/api/workbench/add_many — bookmark every hit matching the
+    current Explore query. Body takes the same fields as /explore/search
+    {needles?, query?, family?, host?, start?, end?, note?} so "bookmark all"
+    means the FULL result set, not just the rendered page. Re-runs the N4
+    query server-side; bounded at 5000 rows with an honest truncated flag.
+    """
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+
+    from nexus.case.workbench import add_bookmarks
+    from nexus.langgraph.query_pack import attach_hit_fields, n4_query
+
+    body = await request.json()
+    cap = 5000
+    query_text, window, family_filter, host_filter = _explore_query_from_body(case_dir, body)
+
+    result = n4_query(case_dir, query_text, window=window, limit=cap, offset=0)
+    if result.get('error'):
+        return JSONResponse({'error': result['error']}, status_code=400)
+    hits = _post_filter_hits(list(result.get('hits') or []), family_filter, "")
+    matched = int(result.get('count') or 0)
+    if family_filter:
+        matched = len(hits)
+
+    hits = attach_hit_fields(case_dir, hits)
+    hits = _post_filter_hits(hits, [], host_filter)
+    if host_filter:
+        matched = len(hits)
+
+    r = add_bookmarks(case_dir, hits, note=str(body.get("note") or ""))
+    r["matched"] = matched
+    r["truncated"] = matched > len(hits)
+    return JSONResponse(r)
 
 
 async def api_workbench_remove(request):
@@ -4451,6 +4514,7 @@ def create_dashboard():
         Route("/portal/api/explore/aggregate", api_explore_aggregate, methods=["POST"]),
         Route("/portal/api/workbench", api_workbench, methods=["GET"]),
         Route("/portal/api/workbench/add", api_workbench_add, methods=["POST"]),
+        Route("/portal/api/workbench/add_many", api_workbench_add_many, methods=["POST"]),
         Route("/portal/api/workbench/remove", api_workbench_remove, methods=["POST"]),
         Route("/portal/api/workbench/clear", api_workbench_clear, methods=["POST"]),
         Route("/portal/api/workbench/promote", api_workbench_promote, methods=["POST"]),

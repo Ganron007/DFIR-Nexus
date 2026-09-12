@@ -192,3 +192,50 @@ def test_api_explore_search(mock_n4q, mock_get_dir, tmp_path):
     sent_query = mock_n4q.call_args[0][1]
     assert "family:hayabusa" in sent_query
     assert "sdelete" in sent_query
+
+
+@patch("nexus.dashboard.app._get_case_dir")
+@patch("nexus.langgraph.query_pack.n4_query")
+def test_api_workbench_add_many(mock_n4q, mock_get_dir, tmp_path):
+    """WP 4j.5c — POST /workbench/add_many bookmarks the FULL result set of
+    the current Explore query (re-runs server-side), dedupes, and reports
+    matched/added/skipped honestly."""
+    from starlette.applications import Starlette
+    from starlette.testclient import TestClient
+
+    from nexus.dashboard.app import create_dashboard
+
+    case_dir = _make_case_dir(tmp_path)
+    mock_get_dir.return_value = case_dir
+    mock_n4q.return_value = {
+        "count": 3,
+        "backend": "csv",
+        "query": "sdelete family:hayabusa",
+        "hits": [
+            {"family": "hayabusa", "file": "a.csv", "line": "1", "text": "2026-08-10T15:00:00Z sdelete", "terms": "sdelete"},
+            {"family": "hayabusa", "file": "a.csv", "line": "2", "text": "2026-08-10T15:01:00Z sdelete", "terms": "sdelete"},
+            {"family": "hayabusa", "file": "a.csv", "line": "1", "text": "dupe row", "terms": "sdelete"},
+        ],
+    }
+
+    app = Starlette(routes=create_dashboard())
+    client = TestClient(app)
+    resp = client.post("/portal/api/workbench/add_many", json={
+        "needles": "sdelete",
+        "family": "hayabusa",
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["matched"] == 3
+    assert data["added"] == 2          # same file+line dedupes
+    assert data["skipped"] == 1
+    assert data["total"] == 2
+    assert data["truncated"] is False
+    # same DSL construction as /explore/search — family pushed into the query
+    sent_query = mock_n4q.call_args[0][1]
+    assert "family:hayabusa" in sent_query
+
+    # second call is a no-op — everything already bookmarked
+    resp2 = client.post("/portal/api/workbench/add_many", json={"needles": "sdelete", "family": "hayabusa"})
+    assert resp2.json()["added"] == 0
+    assert resp2.json()["skipped"] == 3

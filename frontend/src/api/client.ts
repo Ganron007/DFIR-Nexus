@@ -288,6 +288,17 @@ export interface WorkbenchAddResponse {
   error?: string;
 }
 
+/** POST /workbench/add_many → {added, skipped, matched, truncated, total} */
+export interface WorkbenchAddManyResponse {
+  status: string;
+  added: number;
+  skipped: number;
+  matched: number;
+  truncated?: boolean;
+  total: number;
+  error?: string;
+}
+
 /** POST /workbench/remove → {status, total} */
 export interface WorkbenchRemoveResponse {
   status: string;
@@ -720,6 +731,13 @@ export const api = {
   workbench: () => request<WorkbenchResponse>("/workbench"),
   workbenchAdd: (hit: N4Hit, note?: string) =>
     post<WorkbenchAddResponse>("/workbench/add", { hit, note }),
+  /** Bookmark every hit matching the current Explore query (same params as
+   *  api.search) — the server re-runs the N4 query so "all" means the full
+   *  result set, not just the rendered page. */
+  workbenchAddMany: (params: {
+    needles?: string; query?: string; family?: string; host?: string;
+    start?: string; end?: string; note?: string;
+  }) => post<WorkbenchAddManyResponse>("/workbench/add_many", params),
   workbenchRemove: (bookmarkId: string) =>
     post<WorkbenchRemoveResponse>("/workbench/remove", { bookmark_id: bookmarkId }),
   workbenchClear: () => post<WorkbenchClearResponse>("/workbench/clear"),

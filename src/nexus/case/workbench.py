@@ -64,6 +64,38 @@ def add_bookmark(case_dir: Path, hit: dict, note: str = "") -> dict:
     return {"status": "added", "bookmark_id": entry["id"], "total": len(hits)}
 
 
+def add_bookmarks(case_dir: Path, hits_in: list[dict], note: str = "") -> dict:
+    """Bookmark many hits in one write. Dedupes on (family, file, line)
+    against existing bookmarks AND within the batch — the same hit can
+    appear once in workbench.json no matter how many terms it matched."""
+    case_dir = Path(case_dir)
+    hits = load_bookmarks(case_dir)
+    seen = {(h.get("family"), h.get("file"), str(h.get("line"))) for h in hits}
+    added = 0
+    for hit in hits_in:
+        key = (str(hit.get("family") or ""), str(hit.get("file") or ""), str(hit.get("line") or ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        seq = len(hits) + 1
+        text = str(hit.get("text") or "")
+        m = _DATE_RE.search(text)
+        hits.append({
+            "id": f"B-{seq:03d}",
+            "family": key[0],
+            "file": key[1],
+            "line": key[2],
+            "time": m.group(1) + (f"T{m.group(2)}" if m.group(2) else "") if m else "",
+            "text": text[:500],
+            "note": str(note or "")[:300],
+            "bookmarked_at": _now_iso(),
+        })
+        added += 1
+    if added:
+        _atomic_write(case_dir / "workbench.json", json.dumps(hits, indent=2, default=str))
+    return {"status": "added", "added": added, "skipped": len(hits_in) - added, "total": len(hits)}
+
+
 def remove_bookmark(case_dir: Path, bookmark_id: str) -> dict:
     case_dir = Path(case_dir)
     hits = load_bookmarks(case_dir)

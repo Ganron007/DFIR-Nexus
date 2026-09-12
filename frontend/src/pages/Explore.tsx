@@ -68,6 +68,9 @@ export default function Explore() {
   const [familyAgg, setFamilyAgg] = useState<Record<string, number>>({});
   const [hostAgg, setHostAgg] = useState<Record<string, number>>({});
   const [bookmarked, setBookmarked] = useState<Set<string>>(new Set());
+  const [bookmarkIds, setBookmarkIds] = useState<Map<string, string>>(new Map());
+  const [bookmarking, setBookmarking] = useState(false);
+  const [bookmarkNote, setBookmarkNote] = useState("");
   const [histogram, setHistogram] = useState<Record<string, number>>({});
   const [showHistogram, setShowHistogram] = useState(true);
   const [playbookSuggestions, setPlaybookSuggestions] = useState<PlaybookSuggestion[]>([]);
@@ -96,8 +99,17 @@ export default function Explore() {
       .catch(() => setHostAgg({}));
     api.workbench()
       .then((r) => {
-        const ids = new Set(r.bookmarks.map((b) => b.id));
+        // Star state is keyed family:file:line (same as the row check);
+        // bookmarkIds keeps the B-### ids so un-starring removes correctly.
+        const ids = new Set<string>();
+        const idMap = new Map<string, string>();
+        for (const b of r.bookmarks) {
+          const k = `${b.family}:${b.file}:${b.line}`;
+          ids.add(k);
+          idMap.set(k, b.id);
+        }
         setBookmarked(ids);
+        setBookmarkIds(idMap);
       })
       .catch((e) => setError(`Bookmark state load failed: ${(e as Error).message}`));
   }, [activeCase]);
@@ -249,15 +261,61 @@ export default function Explore() {
     const key = `${hit.family}:${hit.file}:${hit.line}`;
     const next = new Set(bookmarked);
     if (next.has(key)) {
-      api.workbenchRemove(key)
-        .catch((e) => setError(`Bookmark remove failed: ${(e as Error).message}`));
+      const bid = bookmarkIds.get(key);
+      if (bid) {
+        api.workbenchRemove(bid)
+          .catch((e) => setError(`Bookmark remove failed: ${(e as Error).message}`));
+      }
       next.delete(key);
+      setBookmarkIds((m) => { const n = new Map(m); n.delete(key); return n; });
     } else {
       api.workbenchAdd(hit)
+        .then((r) => {
+          if (r.bookmark_id) {
+            setBookmarkIds((m) => new Map(m).set(key, r.bookmark_id!));
+          }
+        })
         .catch((e) => setError(`Bookmark add failed: ${(e as Error).message}`));
       next.add(key);
     }
     setBookmarked(next);
+  };
+
+  // WP 4j.5c: bookmark the ENTIRE current result set — the server re-runs the
+  // same N4 query so "all" means every matching row, not just the 80 rendered.
+  const bookmarkAll = async () => {
+    setBookmarking(true);
+    setBookmarkNote("");
+    try {
+      const r = await api.workbenchAddMany({
+        needles: needles || undefined,
+        family: family || undefined,
+        host: hostFilter || undefined,
+        start: timeRange.start || undefined,
+        end: timeRange.end || undefined,
+      });
+      setBookmarkNote(
+        `Bookmarked ${r.added} hit${r.added === 1 ? "" : "s"}` +
+          (r.skipped ? ` (${r.skipped} already saved)` : "") +
+          (r.truncated ? ` — capped at 5000 of ${r.matched.toLocaleString()} matched` : "") +
+          ` — workbench holds ${r.total}`,
+      );
+      // refresh star state so the table reflects the new bookmarks
+      const wb = await api.workbench();
+      const ids = new Set<string>();
+      const idMap = new Map<string, string>();
+      for (const b of wb.bookmarks) {
+        const k = `${b.family}:${b.file}:${b.line}`;
+        ids.add(k);
+        idMap.set(k, b.id);
+      }
+      setBookmarked(ids);
+      setBookmarkIds(idMap);
+    } catch (e) {
+      setError(`Bookmark all failed: ${(e as Error).message}`);
+    } finally {
+      setBookmarking(false);
+    }
   };
 
   const pages = Math.ceil(count / PAGE_SIZE);
@@ -601,6 +659,16 @@ export default function Explore() {
                 Columns ({visibleFields.length}/{allFields.length})
               </button>
             )}
+            {count > 0 && (
+              <button
+                className="btn btn-sm"
+                disabled={bookmarking || loading}
+                title="Bookmark EVERY hit matching the current search — the full result set, not just this page"
+                onClick={bookmarkAll}
+              >
+                {bookmarking ? "Bookmarking…" : `☆ Bookmark all ${count.toLocaleString()}`}
+              </button>
+            )}
             <button
               className="btn btn-sm"
               disabled={offset === 0 || loading}
@@ -617,6 +685,12 @@ export default function Explore() {
             </button>
           </div>
         </div>
+
+        {bookmarkNote && (
+          <div style={{ fontSize: 11, color: "var(--warning)", padding: "4px 2px 8px" }}>
+            {bookmarkNote} — <Link to="/workbench" style={{ color: "var(--accent)" }}>open Workbench →</Link>
+          </div>
+        )}
 
         {/* WP 4i.3: column picker panel */}
         {showColPicker && allFields.length > 0 && (

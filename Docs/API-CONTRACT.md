@@ -743,6 +743,18 @@ comma-separated multi-family list still post-filters the returned page.
 
 ---
 
+### POST /portal/api/workbench/add_many
+**Description:** Bookmark EVERY hit matching the current Explore query (WP
+4j.5c). Re-runs the N4 query server-side — "all" means the full result set,
+not just the rendered page. Same body fields as `/explore/search`
+(`needles`, `query`, `family`, `host`, `start`, `end`) plus optional `note`.
+
+**Response 200:** `{status, added, skipped, matched, truncated, total}` —
+`matched` = true filtered total; `truncated` is true when the result set
+exceeded the 5000-row cap. Dedupes on (family, file, line) against existing
+bookmarks and within the batch — safe to call repeatedly (second call is a
+no-op, `added: 0`).
+
 ### POST /portal/api/workbench/add
 **Description:** Bookmarks a single hit to the workbench. Deduplicates on `(family, file, line)`.
 

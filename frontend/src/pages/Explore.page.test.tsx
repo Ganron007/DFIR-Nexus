@@ -23,6 +23,7 @@ const { mockApi, mockUseCase } = vi.hoisted(() => ({
     histogram: vi.fn(),
     hitInterpret: vi.fn(),
     workbenchAdd: vi.fn(),
+    workbenchAddMany: vi.fn(),
     workbenchRemove: vi.fn(),
     needleFeedback: vi.fn(),
   },
@@ -76,6 +77,9 @@ function setup() {
   mockApi.search.mockResolvedValue({ hits: [HIT], count: 1, backend: "csv" });
   mockApi.histogram.mockResolvedValue({ buckets: {}, count: 0 });
   mockApi.hitInterpret.mockResolvedValue(EMPTY_INTERP);
+  mockApi.workbenchAddMany.mockResolvedValue({
+    status: "added", added: 1, skipped: 0, matched: 1, truncated: false, total: 1,
+  });
 }
 
 function renderExplore(entry = "/explore") {
@@ -147,6 +151,20 @@ describe("Explore page (WP 4j.5)", () => {
     expect(row).toBeTruthy();
     fireEvent.click(row!);
     await screen.findByText(/No skill procedure covers this row yet/i);
+  });
+
+  it("bookmark-all sends the current search params, not the rendered page (4j.5c)", async () => {
+    renderExplore("/explore?needles=rundll32&family=hayabusa");
+    await waitFor(() => screen.getByText("4688"));
+    fireEvent.click(await screen.findByText(/Bookmark all/i));
+    await waitFor(() =>
+      expect(mockApi.workbenchAddMany).toHaveBeenCalledWith(
+        expect.objectContaining({ needles: "rundll32", family: "hayabusa" }),
+      ),
+    );
+    await screen.findByText(/Bookmarked 1 hit/i);
+    // star state refreshed — the workbench list was reloaded
+    await waitFor(() => expect(mockApi.workbench).toHaveBeenCalledTimes(2));
   });
 
   it("shows an honest note when interpretation fails outright", async () => {
