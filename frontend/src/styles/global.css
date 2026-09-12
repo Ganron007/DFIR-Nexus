@@ -342,7 +342,7 @@ body {
   font-size: 12px;
 }
 
-input, textarea, select {
+input:not([type="checkbox"]):not([type="radio"]), textarea, select {
   background: var(--bg-tertiary);
   border: 1px solid var(--border);
   color: var(--text-primary);

@@ -116,7 +116,7 @@ export default function Briefing() {
                   type="checkbox"
                   checked={done}
                   onChange={() => toggleStep(st.key)}
-                  style={{ marginTop: 3, flexShrink: 0, cursor: "pointer" }}
+                  style={{ width: "auto", alignSelf: "flex-start", marginTop: 3, flexShrink: 0, cursor: "pointer" }}
                 />
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13, fontWeight: 600 }}>
