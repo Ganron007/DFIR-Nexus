@@ -82,7 +82,7 @@ export default function Overview() {
     try {
       await setActiveCase(caseId);
       const caseMode = caseSummaries[caseId]?.mode || "1";
-      navigate(caseMode === "1" ? "/explore" : "/steer");
+      navigate(caseMode === "1" ? "/briefing" : "/steer");
     } catch (e) {
       setBanner(`Failed to open ${caseId}: ${(e as Error).message}`);
     } finally {
@@ -145,7 +145,7 @@ export default function Overview() {
             Current investigation: <strong>{activeCase}</strong>
             {mode && <> · Mode {mode}</>}
           </span>
-          <button className="btn btn-primary btn-sm" onClick={() => navigate(mode === "1" ? "/explore" : "/steer")}>
+          <button className="btn btn-primary btn-sm" onClick={() => navigate(mode === "1" ? "/briefing" : "/steer")}>
             Continue →
           </button>
         </div>

@@ -187,7 +187,7 @@ export default function CaseSetup() {
     try {
       // Enter Cockpit = the explicit activation point.
       await setActiveCase(caseId);
-      navigate(mode === "1" ? "/explore" : "/steer");
+      navigate(mode === "1" ? "/briefing" : "/steer");
     } catch (e) {
       setError((e as Error).message);
       setBusy(false);

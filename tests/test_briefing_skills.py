@@ -252,3 +252,37 @@ def test_briefing_directions_endpoint_no_model(tmp_path):
         resp = client.get("/portal/api/case/briefing/directions")
     assert resp.status_code == 200
     assert resp.json() == {"directions": []}
+
+
+def test_briefing_writes_offline_artifacts(tmp_path):
+    """WP 4j.5c — briefing persists analysis/briefing.md + signal_map.csv so the
+    examiner can review the analysis even when the UI isn't usable."""
+    from nexus.langgraph.briefing import case_briefing
+
+    case = _mkcase(tmp_path)
+    b = case_briefing(case)
+
+    md = case / "analysis" / "briefing.md"
+    csv_path = case / "analysis" / "signal_map.csv"
+    assert b["artifacts"]["briefing_md"] == str(md)
+    assert b["artifacts"]["signal_map_csv"] == str(csv_path)
+    assert md.exists() and csv_path.exists()
+    assert "# Case Briefing" in md.read_text(encoding="utf-8")
+    rows = csv_path.read_text(encoding="utf-8").splitlines()
+    assert rows[0] == "needle,hits,source"
+    # every scanned needle is recorded — including 0-hit ones (negative evidence)
+    assert len(rows) - 1 == b["scanned_needles"]
+    assert any(r.startswith("4624,2,") for r in rows)
+
+
+def test_briefing_artifact_write_failure_is_nonfatal(tmp_path):
+    """A read-only case dir must never break the briefing itself."""
+    from unittest.mock import patch
+
+    from nexus.langgraph.briefing import case_briefing
+
+    case = _mkcase(tmp_path)
+    with patch("nexus.langgraph.briefing.Path.write_text", side_effect=OSError("ro fs")):
+        b = case_briefing(case)
+    assert b["artifacts"] == {}
+    assert b["alert_count"] == 2

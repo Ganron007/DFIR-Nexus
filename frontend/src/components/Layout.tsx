@@ -244,11 +244,11 @@ export default function Layout({ children }: { children: ReactNode }) {
         {activeCase && mode && (
           <div className="mode-indicator">
             <NavLink
-              to={mode === "1" ? "/explore" : "/steer"}
+              to={mode === "1" ? "/briefing" : "/steer"}
               className={`mode-badge mode-${mode}`}
               title={
                 mode === "1"
-                  ? "Mode 1 — Examiner-driven. Primary surface: Explore"
+                  ? "Mode 1 — Examiner-driven. Primary surface: Briefing"
                   : mode === "2"
                     ? "Mode 2 — LLM-guided. Primary surface: Steer Chat"
                     : "Mode 3 — Agentic. Primary surface: Steer Chat (plan/execute/seal)"

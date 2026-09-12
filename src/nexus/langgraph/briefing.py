@@ -512,7 +512,7 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
         families=families,
     )
 
-    return {
+    out: dict[str, Any] = {
         "inventory": inventory,
         "families": families,
         "total_files": sum(v["files"] for v in inventory.values()),
@@ -531,6 +531,43 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
         "hits_examined": len(hits),
         "scan_truncated": scan_truncated,
     }
+
+    # WP 4j.5c: persist an offline copy — the briefing and signal map must be
+    # reviewable without the UI (DFIR practice: every analysis leaves a file
+    # artifact the examiner can open, diff, or attach to notes).
+    out["artifacts"] = _write_briefing_artifacts(case_dir, out, counts, needle_map)
+    return out
+
+
+def _write_briefing_artifacts(
+    case_dir: Path,
+    brief: dict[str, Any],
+    needle_counts: dict[str, int],
+    needle_map: dict[str, str],
+) -> dict[str, str]:
+    """Write analysis/briefing.md + analysis/signal_map.csv; return paths.
+
+    Best-effort — a read-only case dir or IO failure must never break the
+    briefing itself. The CSV records EVERY scanned needle (0 hits included)
+    because "checked, absent" is negative evidence, not noise.
+    """
+    import csv
+
+    try:
+        analysis_dir = case_dir / "analysis"
+        analysis_dir.mkdir(parents=True, exist_ok=True)
+        md_path = analysis_dir / "briefing.md"
+        md_path.write_text(briefing_to_markdown(brief), encoding="utf-8")
+
+        csv_path = analysis_dir / "signal_map.csv"
+        with csv_path.open("w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(["needle", "hits", "source"])
+            for needle, count in sorted(needle_counts.items(), key=lambda kv: -kv[1]):
+                w.writerow([needle, count, needle_map.get(needle, "")])
+        return {"briefing_md": str(md_path), "signal_map_csv": str(csv_path)}
+    except Exception:  # noqa: BLE001
+        return {}
 
 
 def briefing_to_markdown(brief: dict[str, Any]) -> str:

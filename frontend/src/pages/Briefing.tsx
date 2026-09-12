@@ -489,6 +489,18 @@ export default function Briefing() {
         Backend: {brief.backend || "csv"} · {brief.hits_examined} hits examined ·{" "}
         <Link to="/explore" style={{ color: "var(--accent)" }}>Open Explore →</Link>
       </div>
+
+      {/* WP 4j.5c — offline copies: the briefing + full signal map persist to the
+          case dir on every render so the examiner can review them without the UI. */}
+      {brief.artifacts?.briefing_md && (
+        <div style={{ marginTop: 6, fontSize: 11, color: "var(--text-muted)" }}>
+          Offline copies (rebuilt each view — open these if the UI misbehaves):{" "}
+          <code style={{ color: "var(--text-primary)" }}>{brief.artifacts.briefing_md}</code>
+          {brief.artifacts.signal_map_csv && (
+            <>{" · "}<code style={{ color: "var(--text-primary)" }}>{brief.artifacts.signal_map_csv}</code></>
+          )}
+        </div>
+      )}
     </div>
   );
 }

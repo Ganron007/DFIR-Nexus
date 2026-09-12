@@ -324,8 +324,10 @@ export default function Explore() {
     }
   };
 
-  // WP 4i.3: type-aware columns — visible subset of ALL parsed fields;
-  // every cell is clickable to pivot on that value
+  // WP 4j.5c: cells render plainly — clicking a row opens the event detail,
+  // it must NEVER rotate the needle out from under the examiner. Pivoting is
+  // deliberate-only: briefing chips, Run-query buttons, or the ⌕ control in
+  // the drawer field table.
   const typeColumns: Column<N4Hit>[] = visibleFields.map((fieldName) => ({
     key: fieldName,
     header: fieldName,
@@ -334,13 +336,8 @@ export default function Explore() {
       const v = h.fields?.[fieldName] ?? "";
       return (
         <span
-          style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", display: "block", whiteSpace: "nowrap", cursor: v ? "pointer" : undefined }}
-          title={v ? `${v}\n(click to pivot)` : ""}
-          onClick={(e) => {
-            if (!v) return;
-            e.stopPropagation();
-            pivotOnValue(v);
-          }}
+          style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", display: "block", whiteSpace: "nowrap" }}
+          title={v || undefined}
         >
           {v}
         </span>
@@ -755,7 +752,7 @@ export default function Explore() {
                 borderLeft: "3px solid var(--text-muted)", color: "var(--text-muted)",
               }}>
                 Interpretation unavailable for this row — the source fields are below;
-                pivot on a value to keep digging.
+                use ⌕ search on a value to keep digging.
               </div>
             )}
             {interp && (
@@ -766,8 +763,8 @@ export default function Explore() {
               }}>
                 {!hasInterpContent(interp) && (
                   <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                    No skill procedure covers this row yet — pivot on a field value
-                    below or open the source file for context.
+                    No skill procedure covers this row yet — use ⌕ search on a
+                    field value below or open the source file for context.
                   </div>
                 )}
                 {interp.meaning && (
@@ -860,13 +857,17 @@ export default function Explore() {
                         {k}
                       </td>
                       <td style={{ padding: "4px 8px", fontSize: 11, wordBreak: "break-all" }}>
-                        <span
-                          style={{ cursor: "pointer" }}
-                          title="click to pivot"
-                          onClick={() => pivotOnValue(v)}
-                        >
-                          {v}
-                        </span>
+                        {v}
+                        {v && (
+                          <button
+                            className="btn btn-sm"
+                            style={{ marginLeft: 8, padding: "0 5px", fontSize: 10, lineHeight: 1.4 }}
+                            title={`Search this value (rotates the needle to "${v.slice(0, 60)}")`}
+                            onClick={() => pivotOnValue(v)}
+                          >
+                            ⌕ search
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}

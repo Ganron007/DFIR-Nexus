@@ -3,8 +3,10 @@
  *
  * Regression cover for the manual-test findings:
  *  - a needles-only briefing link (?needles=X) must fire a search for X
- *  - clicking a suggested needle / field value ROTATES the active needle —
- *    it never appends terms into an unmatchable blob
+ *  - clicking a suggested needle ROTATES the active needle — it never
+ *    appends terms into an unmatchable blob
+ *  - 4j.5c: clicking a hits-table cell selects the row (event detail); the
+ *    needle rotates only via deliberate controls — never a cell click
  *  - the Hit Explanation panel always resolves: empty or failed
  *    interpretations render an honest note instead of a silent gap
  */
@@ -114,13 +116,26 @@ describe("Explore page (WP 4j.5)", () => {
     expect((screen.getByDisplayValue("regsvr32") as HTMLInputElement).value).toBe("regsvr32");
   });
 
-  it("rotates the needle on a field-value pivot — never appends", async () => {
+  it("opens the event detail on a cell click — never rotates the needle (4j.5c)", async () => {
     renderExplore("/explore?needles=rundll32");
     await waitFor(() => screen.getByText("4688"));
+    const callsBefore = mockApi.search.mock.calls.length;
+    // clicking a field cell selects the row — the needle must not move
     fireEvent.click(screen.getByText("4688"));
+    await screen.findByText(/No skill procedure covers this row yet/i);
+    expect(mockApi.search.mock.calls.length).toBe(callsBefore);
+    expect((screen.getByDisplayValue("rundll32") as HTMLInputElement).value).toBe("rundll32");
+  });
+
+  it("rotates the needle only via the drawer's explicit search-this-value control", async () => {
+    renderExplore("/explore?needles=rundll32");
+    await waitFor(() => screen.getByText("4688"));
+    fireEvent.click(document.querySelector("tbody tr")!);
+    const btns = await screen.findAllByTitle(/Search this value/i);
+    fireEvent.click(btns[0]);
     await waitFor(() =>
       expect(mockApi.search).toHaveBeenLastCalledWith(
-        expect.objectContaining({ needles: "4688" }),
+        expect.objectContaining({ needles: expect.stringContaining("4688") }),
       ),
     );
   });

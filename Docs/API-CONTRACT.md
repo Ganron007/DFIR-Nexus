@@ -1573,7 +1573,13 @@ also resolves it).
 
 **Response 200:** `{inventory, families, total_files, total_rows, ledger,
 hosts, time_range, alerts, alert_count, needle_scan, scanned_needles,
-entities, intake, walkthrough, backend, hits_examined}`
+entities, intake, walkthrough, backend, hits_examined, scan_truncated,
+artifacts}`
+
+`artifacts` (WP 4j.5c) — `{briefing_md, signal_map_csv}` absolute paths to
+offline copies written under `<case>/analysis/` on every render. The CSV
+records every scanned needle (0 hits included — negative evidence). Empty
+when the write fails; never breaks the payload.
 
 `walkthrough[]` — `{order, key, title, why, count, actions[{label, needle,
 family?, hits?, level?, host?, source?, etype?}], learn{headline,

@@ -585,6 +585,8 @@ export interface BriefingResponse {
   hits_examined: number;
   /** WP 4j.5 — true when the needle scan hit its cap; chip counts are lower bounds. */
   scan_truncated?: boolean;
+  /** WP 4j.5c — persisted offline copies (absolute paths on the server host). */
+  artifacts?: { briefing_md?: string; signal_map_csv?: string };
   error?: string;
 }
 
