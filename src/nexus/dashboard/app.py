@@ -1771,6 +1771,8 @@ async def api_select(request):
 
     selected = [all_hits[i] for i in indices]
     from nexus.audit import resolve_examiner
+    from nexus.langgraph.query_pack import attach_hit_fields
+    selected = attach_hit_fields(case_dir, selected)  # re-parse fields for the report
     examiner = resolve_examiner()
     draft = promote_hits_to_draft(
         case_dir,
@@ -1785,13 +1787,13 @@ async def api_select(request):
             model = get_model()
         except Exception:
             model = None
-        draft = scribe_finding(draft, hits=selected, model=model)
+        draft = scribe_finding(draft, hits=selected, model=model, case_dir=case_dir)
     else:
         # scribe=false = fast deterministic fill, not "no scribe" — a bare
         # skeleton with empty observation used to reach findings.json.
         from nexus.langgraph.mode1 import _heuristic_scribe
 
-        draft = _heuristic_scribe(draft, selected)
+        draft = _heuristic_scribe(draft, selected, case_dir=case_dir)
 
     result = save_draft_finding(case_dir, draft)
     if result.get("status") == "STAGED":
@@ -2573,7 +2575,7 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
                     f"{len(hits)} row(s) — candidate signal pending examiner review."
                 ),
             )
-            draft = _heuristic_scribe(draft, hits)
+            draft = _heuristic_scribe(draft, hits, case_dir=case_dir)
             res = save_draft_finding(case_dir, draft)
             if res.get("status") == "STAGED":
                 record["drafts"].append({
@@ -2767,6 +2769,12 @@ async def api_workbench_promote(request):
     if not selected:
         return JSONResponse({"error": "Bookmark IDs not found"}, status_code=400)
 
+    # Bookmarks store only raw text — re-attach parsed fields so the draft
+    # evidence rows render 'RuleTitle: X · Details: Y' instead of CSV lines.
+    from nexus.langgraph.query_pack import attach_hit_fields
+
+    selected = attach_hit_fields(case_dir, selected)
+
     from nexus.audit import resolve_examiner
 
     examiner = resolve_examiner()
@@ -2782,14 +2790,14 @@ async def api_workbench_promote(request):
             model = get_model()
         except Exception:
             model = None
-        draft = scribe_finding(draft, hits=selected, model=model)
+        draft = scribe_finding(draft, hits=selected, model=model, case_dir=case_dir)
     else:
         # WP 4j.5d: scribe=false is the fast path — deterministic heuristic
         # fill, no LLM. Never leave the draft empty: a skipped scribe used
         # to produce a bare skeleton with no observation.
         from nexus.langgraph.mode1 import _heuristic_scribe
 
-        draft = _heuristic_scribe(draft, selected)
+        draft = _heuristic_scribe(draft, selected, case_dir=case_dir)
 
     result = save_draft_finding(case_dir, draft)
     if result.get("status") == "STAGED":
@@ -3161,10 +3169,14 @@ async def api_timeline_lanes(request):
     result = n4_query(case_dir, str(body.get("query") or ""), limit=400)
     if result.get("error"):
         return JSONResponse({"error": result["error"]}, status_code=400)
-    hits = result.get("hits", [])
+    from nexus.langgraph.mode1 import _SEV_ORDER, _severity_from_hits
+    from nexus.langgraph.query_pack import attach_hit_fields
+
+    hits = attach_hit_fields(case_dir, result.get("hits", []))
     bucket = "day" if str(body.get("bucket") or "hour") == "day" else "hour"
 
     families: dict[str, dict[str, int]] = {}
+    sev_lanes: dict[str, dict[str, str]] = {}
     for h in hits:
         fam = h.get("family") or "other"
         m = _DATE_RE.search(h.get("text", ""))
@@ -3176,9 +3188,20 @@ async def api_timeline_lanes(request):
             key = f"{m.group(1)}T{(m.group(2) or '00:00:00')[:2]}:00"
         lanes = families.setdefault(fam, {})
         lanes[key] = lanes.get(key, 0) + 1
+        # Bucket severity = highest detection level seen in the bucket —
+        # examiner reads "worst thing in this hour" at a glance.
+        sev = _severity_from_hits([h])
+        sb = sev_lanes.setdefault(fam, {})
+        prev = sb.get(key, "informational")
+        if sev in _SEV_ORDER and _SEV_ORDER.index(sev) < _SEV_ORDER.index(prev):
+            sb[key] = sev
 
     ordered = [
-        {"family": fam, "buckets": dict(sorted(lanes.items()))}
+        {
+            "family": fam,
+            "buckets": dict(sorted(lanes.items())),
+            "buckets_sev": sev_lanes.get(fam, {}),
+        }
         for fam, lanes in sorted(families.items(), key=lambda kv: -sum(kv[1].values()))
     ]
     return JSONResponse({"families": ordered, "total": result.get("count", 0), "bucket": bucket})
@@ -4719,6 +4742,7 @@ async def api_report_generate(request):
             case_summary=str(meta.get("description") or ""),
             tool_ledger=ledger,
             questions=questions,
+            case_dir=case_dir,
         )
         reports_dir = case_dir / "reports"
         reports_dir.mkdir(exist_ok=True)

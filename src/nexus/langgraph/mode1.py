@@ -446,6 +446,7 @@ def scribe_finding(
     hits: list[dict[str, Any]],
     rag_context: str = "",
     model: Any = None,
+    case_dir: Path | None = None,
 ) -> dict[str, Any]:
     """LLM scribe: format a DRAFT finding with RAG methodology.
 
@@ -456,7 +457,7 @@ def scribe_finding(
     Returns the updated finding dict (merged with scribe output).
     """
     if model is None:
-        return _heuristic_scribe(draft, hits)
+        return _heuristic_scribe(draft, hits, case_dir=case_dir)
 
     hit_rows = []
     for h in hits[:20]:
@@ -498,7 +499,7 @@ def scribe_finding(
     except Exception as exc:
         log.warning("Scribe LLM failed (%s), using heuristic", exc)
 
-    return _heuristic_scribe(draft, hits)
+    return _heuristic_scribe(draft, hits, case_dir=case_dir)
 
 
 def _rag_methodology_for_families(families: set[str]) -> str:
@@ -548,7 +549,11 @@ def _rag_methodology_for_families(families: set[str]) -> str:
         return "Artifact families: " + ", ".join(sorted(families))
 
 
-def _heuristic_scribe(draft: dict[str, Any], hits: list[dict[str, Any]]) -> dict[str, Any]:
+def _heuristic_scribe(
+    draft: dict[str, Any],
+    hits: list[dict[str, Any]],
+    case_dir: Path | None = None,
+) -> dict[str, Any]:
     """Format a finding without an LLM (basic structuring from hits)."""
     merged = dict(draft)
     if not merged.get("observation") and hits:
@@ -557,23 +562,114 @@ def _heuristic_scribe(draft: dict[str, Any], hits: list[dict[str, Any]]) -> dict
             f"{len(hits)} hit(s) across {', '.join(families)} matching "
             f"examiner-selected needles."
         )
+    # Real interpretation from the skill layer — meaning, matched skills,
+    # MITRE techniques, what to verify — not the bare placeholder.
+    if hits and case_dir is not None:
+        try:
+            from nexus.langgraph.interpret import interpret_hit
+
+            interps = [interpret_hit(case_dir, h) for h in hits[:3]]
+            meanings = [i.get("meaning") for i in interps if i.get("meaning")]
+            skill_names = sorted({
+                str(s.get("name") or s.get("title") or "")
+                for i in interps for s in (i.get("skills") or [])
+            } - {""})
+            look_for = [x for i in interps for x in (i.get("look_for") or [])][:4]
+            caveats = [x for i in interps for x in (i.get("caveats") or [])][:2]
+            techniques = sorted({
+                str(t) for i in interps for t in (i.get("techniques") or [])
+            } | {
+                str(t)
+                for i in interps for s in (i.get("skills") or [])
+                for t in (s.get("mitre") or [])
+            } - {""})
+            if meanings:
+                parts = [f"{meanings[0]}."]
+                if len(set(meanings)) > 1:
+                    parts.append(f"Correlated: {'; '.join(dict.fromkeys(meanings[1:]))}.")
+                if skill_names:
+                    parts.append(f"Matched skills: {', '.join(skill_names[:5])}.")
+                if look_for:
+                    parts.append(f"Verify: {'; '.join(dict.fromkeys(look_for))}.")
+                if caveats:
+                    parts.append(f"Caveat: {'; '.join(dict.fromkeys(caveats))}.")
+                merged["interpretation"] = " ".join(parts)
+            if techniques and not merged.get("technique_ids"):
+                merged["technique_ids"] = techniques
+        except Exception:
+            pass  # interpretation layer is best-effort — keep the skeleton
     if not merged.get("interpretation"):
         merged["interpretation"] = (
             "Examiner-selected hit set pending interpretation. "
             "Review the evidence rows and provide an interpretation "
             "under the case hypothesis."
         )
+    # Severity from detection levels carried on the hits (hayabusa Level /
+    # chainsaw detections) — never leave severity unset on a staged draft.
+    if not merged.get("severity"):
+        merged["severity"] = _severity_from_hits(hits)
     if not merged.get("confidence"):
-        merged["confidence"] = "LOW"
+        families = {h.get("family", "") for h in hits}
+        merged["confidence"] = "MEDIUM" if len(families) > 1 else "LOW"
     if not merged.get("confidence_justification"):
+        n_fam = len({h.get("family", "") for h in hits})
         merged["confidence_justification"] = (
-            "Auto-staged from examiner hit selection. "
+            f"Auto-staged from {n_fam} parser family(ies). "
             "Confidence pending corroboration review."
         )
     if not merged.get("type"):
         merged["type"] = "finding"
     merged["scribe_source"] = "heuristic"
     return merged
+
+
+_LEVEL_SEVERITY = {
+    "crit": "critical",
+    "critical": "critical",
+    "high": "high",
+    "med": "medium",
+    "medium": "medium",
+    "low": "low",
+    "info": "informational",
+    "informational": "informational",
+}
+_SEV_ORDER = ["critical", "high", "medium", "low", "informational"]
+# Detection families whose level/detection columns carry real severity.
+# evtxecmd 'Level' is the Windows event level (Info/Error) — not severity.
+_DETECTION_FAMILIES = {"hayabusa", "chainsaw", "sigma", "suzaku"}
+
+
+def _severity_from_hits(hits: list[dict[str, Any]]) -> str:
+    """Map the highest detection level across hits to report severity."""
+    best = "low"
+    saw_detection = False
+    for h in hits or []:
+        fam = str(h.get("family") or "").lower()
+        if fam not in _DETECTION_FAMILIES:
+            continue
+        fields = h.get("fields") or {}
+        raw = str(
+            fields.get("Level") or fields.get("level")
+            or fields.get("Severity") or "",
+        ).strip().lower()
+        if raw in _LEVEL_SEVERITY:
+            saw_detection = True
+            sev = _LEVEL_SEVERITY[raw]
+            if _SEV_ORDER.index(sev) < _SEV_ORDER.index(best):
+                best = sev
+        elif str(fields.get("detections") or "").strip():
+            saw_detection = True  # named rule fired — at least medium
+            if _SEV_ORDER.index("medium") < _SEV_ORDER.index(best):
+                best = "medium"
+    return best if saw_detection else "low"
+
+
+def _render_hit_detail(hit: dict[str, Any]) -> str:
+    """Readable 'what it shows' for a hit — parsed fields, not raw CSV."""
+    from nexus.integration.evidence_table import render_hit_fields
+
+    detail = render_hit_fields(hit.get("fields") or {})
+    return detail[:500] if detail else str(hit.get("text") or "")[:500]
 
 
 def promote_hits_to_draft(
@@ -605,12 +701,18 @@ def promote_hits_to_draft(
                     hit_time = m.group(1) + (f"T{m.group(2)}" if m.group(2) else "")
             except Exception:
                 pass
+        fields = h.get("fields") or {}
         row = {
             "time": hit_time,
             "source": f"{h.get('family', '')}/{h.get('file', '')}",
             "artifact": h.get("file", ""),
-            "detail": str(h.get("text", ""))[:500],
+            "detail": _render_hit_detail(h),
+            "loc": f"{h.get('file', '')}:{h.get('line', '')}",
         }
+        if fields:
+            row["fields"] = {
+                k: str(v)[:240] for k, v in list(fields.items())[:24]
+            }
         evidence_rows.append(row)
 
     # Resolve audit_ids from the ledger by matching hit families to tool names

@@ -1808,6 +1808,7 @@ async def generate_report(state: InvestigationState, tools: dict) -> dict:
             finding_ids=list(state.get("approved_finding_ids") or []) or None,
             questions=questions,
             severity=str(meta.get("severity") or "unrated"),
+            case_dir=case_dir,
         )
         # Append analysis pointers for examiners
         qp = pipeline_run.analysis / "query_pack.md"

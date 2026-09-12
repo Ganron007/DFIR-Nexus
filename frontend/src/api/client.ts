@@ -377,10 +377,12 @@ export interface ChatPostResponse {
   backend?: string;
 }
 
-/** POST /timeline/lanes → {families: [{family, buckets}], total, bucket} */
+/** POST /timeline/lanes → {families: [{family, buckets, buckets_sev}], total, bucket} */
 export interface TimelineLaneEntry {
   family: string;
   buckets: Record<string, number>;
+  /** WP — max detection severity per bucket (critical|high|medium|low|informational). */
+  buckets_sev?: Record<string, string>;
 }
 export interface TimelineLanesResponse {
   families: TimelineLaneEntry[];

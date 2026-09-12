@@ -61,6 +61,39 @@ _USB_PRODUCT = re.compile(
 _MAX_ROWS = 12
 _CELL = 160
 
+# Most-informative parsed CSV fields first — what an examiner reads.
+SALIENT_HIT_FIELDS = (
+    "RuleTitle", "detections", "MapDescription", "Payload", "CommandLine",
+    "Details", "Message", "ExecutableInfo", "ImagePath", "ParentCommandLine",
+    "TargetFilename", "Path", "IpAddress", "RemoteHost", "UserName",
+)
+
+
+def render_hit_fields(fields: dict[str, Any], max_pairs: int = 8) -> str:
+    """'What it shows' from parsed CSV fields — 'k: v' pairs, not raw text."""
+    if not isinstance(fields, dict):
+        return ""
+    parts = [
+        f"{k}: {' '.join(str(fields[k]).split())}"
+        for k in SALIENT_HIT_FIELDS
+        if str(fields.get(k) or "").strip()
+    ]
+    if not parts:
+        parts = []
+        for k, v in list(fields.items())[:8]:
+            v = " ".join(str(v).split())
+            if not v.strip():
+                continue
+            # Continuation rows misalign a timestamp column onto free text —
+            # show the value bare instead of 'timestamp: CommandLine: …'.
+            if k.lower() in ("timestamp", "timecreated", "time") and not v[:4].isdigit():
+                parts.append(v)
+            else:
+                parts.append(f"{k}: {v}")
+            if len(parts) >= 6:
+                break
+    return " · ".join(parts[:max_pairs])
+
 
 def _cell(value: Any) -> str:
     text = " ".join(str(value or "").split())
@@ -271,11 +304,16 @@ def normalize_evidence_rows(finding: dict[str, Any]) -> list[dict[str, str]]:
         for item in structured:
             if not isinstance(item, dict):
                 continue
+            detail = (
+                str(item.get("detail") or item.get("what") or "").strip()
+                or render_hit_fields(item.get("fields"))
+                or str(item.get("text") or "—")
+            )
             rows.append(_row(
                 str(item.get("time") or item.get("timestamp") or "—"),
                 str(item.get("source") or item.get("family") or item.get("tool") or "host"),
                 str(item.get("artifact") or item.get("path") or item.get("name") or "—"),
-                str(item.get("detail") or item.get("what") or item.get("text") or "—"),
+                detail,
                 audit_id=str(item.get("audit_id") or ""),
                 loc=str(item.get("loc") or item.get("file_line") or ""),
             ))

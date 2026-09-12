@@ -60,6 +60,13 @@ def hits_to_events(hits: list[dict[str, str]], source: str = "n4") -> list[dict[
             desc = f"{fam} [{terms}]: {str(rows[0].get('detail'))[:120]}"
         else:
             desc = f"{fam} [{terms}]: {text[:120]}"
+        sev = ""
+        try:
+            from nexus.langgraph.mode1 import _severity_from_hits
+
+            sev = _severity_from_hits([h]) if h.get("fields") else ""
+        except Exception:
+            sev = ""
         events.append({
             "timestamp": ts or "",
             "host": host,
@@ -70,6 +77,7 @@ def hits_to_events(hits: list[dict[str, str]], source: str = "n4") -> list[dict[
             "line": h.get("line") or "",
             "terms": terms,
             "artifact": art[:160] if art else "",
+            "severity": sev,
         })
     return events
 
@@ -194,6 +202,12 @@ def rebuild_case_timeline(
         hits, _backend = n4_hits(
             case_dir, terms, window, priority_terms=collect_playbook_query_terms(intake),
         )
+        try:
+            from nexus.langgraph.query_pack import attach_hit_fields
+
+            hits = attach_hit_fields(case_dir, hits)
+        except Exception:
+            pass  # fields absent → severity stays unset, timeline still builds
     host_events = hits_to_events(hits or [])
     ingest_events = artifacts_to_events(load_ingest_artifacts(case_dir))
     merged = merge_events(host_events, ingest_events)

@@ -210,6 +210,7 @@ def generate(
                     case_summary=str(case_summary),
                     tool_ledger=ledger,
                     questions=questions,
+                    case_dir=candidate,
                 )
             else:
                 approved = [f for f in findings if str(f.get("status", "")).upper() == "APPROVED"]
@@ -326,6 +327,7 @@ def generate(
             case_summary=str(case_summary),
             tool_ledger=ledger,
             questions=questions,
+            case_dir=flat_dir if flat_dir.is_dir() else None,
         )
     else:
         # Legacy compact markdown

@@ -157,6 +157,186 @@ def _sev_rank(sev: str) -> int:
     return order.get((sev or "").lower(), 9)
 
 
+def _finding_locs(f: dict[str, Any]) -> set[str]:
+    """file:line provenance keys on a finding's evidence rows."""
+    from nexus.integration.evidence_table import normalize_evidence_rows
+
+    return {
+        str(r.get("loc") or "")
+        for r in normalize_evidence_rows(f)
+        if str(r.get("loc") or "").strip()
+    }
+
+
+_PLACEHOLDER_INTERP = re.compile(
+    r"matched \d+ row\(s\).*pending examiner review|"
+    r"pending interpretation\.",
+    re.I | re.S,
+)
+
+
+def _rehydrate_finding(f: dict[str, Any], case_dir) -> dict[str, Any]:
+    """Backfill legacy findings staged before parsed evidence rows existed.
+
+    Older DRAFT/APPROVED findings store only the raw CSV row as ``detail``
+    with no ``fields`` and no ``loc``. At report time we re-parse the row
+    against the source file's header (salient columns render), recover the
+    true ``file:line`` by matching the row back into the artifact (same-event
+    clustering keys), and regenerate placeholder interpretations through the
+    same ``_heuristic_scribe`` path new drafts use.
+    """
+    ev = f.get("evidence")
+    if not isinstance(ev, list):
+        return f
+    interp = str(f.get("interpretation") or "")
+    needs_interp = not interp.strip() or bool(_PLACEHOLDER_INTERP.search(interp))
+    legacy_idx = [
+        i for i, r in enumerate(ev)
+        if isinstance(r, dict)
+        and not r.get("fields")
+        and str(r.get("detail") or "").strip()
+        and str(r.get("artifact") or "").strip()
+        and str(r.get("artifact") or "") != "—"
+    ]
+    if not needs_interp and not legacy_idx:
+        return f
+    out = dict(f)
+    new_ev = [dict(r) if isinstance(r, dict) else r for r in ev]
+
+    attached: list[dict[str, Any]] = []
+    raw_texts: list[str] = []
+    if legacy_idx or needs_interp:
+        pseudo = [
+            {
+                "file": str(ev[i].get("artifact") or ""),
+                "text": str(ev[i].get("detail") or ""),
+                "family": str(ev[i].get("source") or "").split("/")[0],
+            }
+            for i in legacy_idx
+        ]
+        raw_texts = [p["text"] for p in pseudo]
+        try:
+            from nexus.langgraph.query_pack import attach_hit_fields
+
+            attached = attach_hit_fields(case_dir, pseudo)
+        except Exception:
+            attached = []
+
+    if attached:
+        from nexus.integration.evidence_table import render_hit_fields
+
+        for idx, ph in zip(legacy_idx, attached, strict=False):
+            r = new_ev[idx]
+            if ph.get("fields"):
+                r["fields"] = ph["fields"]
+                rendered = render_hit_fields(ph["fields"])
+                if rendered:
+                    r["detail"] = rendered[:500]
+            if ph.get("host") and not r.get("host"):
+                r["host"] = ph["host"]
+
+        # Recover file:line — match the stored raw row back into the artifact.
+        # Detail may have been truncated at staging, so prefix-match.
+        try:
+            from nexus.langgraph.pipeline_runs import resolve_tools_extractions
+
+            root = resolve_tools_extractions(case_dir)
+            by_file: dict[str, list[str]] = {}
+            for idx, raw in zip(legacy_idx, raw_texts, strict=False):
+                r = new_ev[idx]
+                if str(r.get("loc") or "").strip():
+                    continue
+                rel = str(r.get("artifact") or "")
+                p = root / rel if rel else None
+                if not (p is not None and p.is_file()):
+                    continue
+                if rel not in by_file:
+                    try:
+                        by_file[rel] = p.read_text(
+                            encoding="utf-8", errors="replace",
+                        ).splitlines()
+                    except OSError:
+                        by_file[rel] = []
+                needle = raw.strip()[:160]
+                loc = ""
+                if needle:
+                    for ln, file_line in enumerate(by_file[rel], 1):
+                        if needle in file_line:
+                            loc = f"{rel}:{ln}"
+                            break
+                if not loc:
+                    t = str(r.get("time") or "").strip()
+                    loc = f"{rel}@{t}" if t and t != "—" else rel
+                r["loc"] = loc
+        except Exception:
+            pass
+
+    out["evidence"] = new_ev
+
+    # Regenerate placeholder interpretation + missing severity/techniques via
+    # the same heuristic scribe new drafts run — report-layer only, the stored
+    # finding record is untouched.
+    if needs_interp:
+        interp_hits = attached or [
+            {
+                "family": str(r.get("source") or "").split("/")[0],
+                "text": str(r.get("detail") or ""),
+                "fields": r.get("fields") or {},
+                "file": str(r.get("artifact") or ""),
+            }
+            for r in new_ev
+            if isinstance(r, dict)
+        ][:12]
+        if interp_hits:
+            try:
+                from nexus.langgraph.mode1 import _heuristic_scribe
+
+                rescribed = _heuristic_scribe(dict(f), interp_hits, case_dir)
+                new_interp = str(rescribed.get("interpretation") or "").strip()
+                if new_interp and not _PLACEHOLDER_INTERP.search(new_interp):
+                    out["interpretation"] = new_interp
+                if not out.get("severity") and rescribed.get("severity"):
+                    out["severity"] = rescribed["severity"]
+                if not (out.get("technique_ids") or out.get("attack_ids")) and rescribed.get("technique_ids"):
+                    out["technique_ids"] = rescribed["technique_ids"]
+            except Exception:
+                pass
+    return out
+
+
+def _cluster_findings(findings: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
+    """Group findings that share ≥50% of the smaller evidence set.
+
+    Distinct needles routinely match the same attack rows (mshta vs
+    mshta.exe vs rundll32 pivoting the same Sysmon events) — they are one
+    chain, not four findings. Union-find over pairwise overlap.
+    """
+    locs = [_finding_locs(f) for f in findings]
+    parent = list(range(len(findings)))
+
+    def find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for i in range(len(findings)):
+        for j in range(i + 1, len(findings)):
+            a, b = locs[i], locs[j]
+            if not a or not b:
+                continue
+            shared = len(a & b)
+            if shared and shared / min(len(a), len(b)) >= 0.5:
+                pi, pj = find(i), find(j)
+                if pi != pj:
+                    parent[pj] = pi
+
+    groups: dict[int, list[dict[str, Any]]] = {}
+    for i, f in enumerate(findings):
+        groups.setdefault(find(i), []).append(f)
+    return list(groups.values())
+
+
 def dated_timeline(events: list[dict[str, Any]] | None) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Split N7 events into timestamped chronology vs untimed keyword hits."""
     dated: list[dict[str, Any]] = []
@@ -231,11 +411,14 @@ def build_dfir_markdown(
     finding_ids: list[str] | None = None,
     questions: list[str] | None = None,
     include_draft: bool = False,
+    case_dir=None,
 ) -> str:
     """Render a detailed DFIR-style Markdown report from case findings.
 
     Official ``REPORT.md`` uses APPROVED rows only (``include_draft=False``).
     Examiner preview ``REPORT-DRAFT.md`` sets ``include_draft=True``.
+    ``case_dir`` enables report-time rehydration of legacy findings (raw-CSV
+    evidence rows, placeholder interpretations) — display-layer only.
     """
     if finding_ids:
         want = set(finding_ids)
@@ -245,6 +428,8 @@ def build_dfir_markdown(
         f for f in findings
         if str(f.get("status") or f.get("approval_state") or "").upper() in statuses
     ]
+    if case_dir is not None:
+        approved = [_rehydrate_finding(f, case_dir) for f in approved]
     approved.sort(key=lambda f: (_sev_rank(str(f.get("severity", ""))), f.get("title", "")))
 
     mitre: dict[str, list[str]] = defaultdict(list)
@@ -325,7 +510,7 @@ def build_dfir_markdown(
     else:
         for f in approved[:8]:
             title = f.get("title") or "Untitled finding"
-            sev = f.get("severity") or "?"
+            sev = f.get("severity") or "unrated"
             lines.append(f"- **[{sev}]** {title}")
         custody = (
             f"**{len(approved)}** staged DRAFT findings (not HMAC-approved)."
@@ -420,42 +605,111 @@ def build_dfir_markdown(
             else "_No approved findings._"
         )
         lines.append("")
-    for f in approved:
-        lines.append(f"### {f.get('title', 'Untitled')}")
-        lines.append("")
-        lines.append(f"- **ID:** `{f.get('id')}`")
+    def _finding_lines(f: dict[str, Any]) -> list[str]:
+        out = [f"### {f.get('title', 'Untitled')}", ""]
+        out.append(f"- **ID:** `{f.get('id')}`")
         st = str(f.get("status") or f.get("approval_state") or "").upper()
         if include_draft and st:
-            lines.append(f"- **Status:** {st}")
-        lines.append(f"- **Severity:** {f.get('severity')}")
+            out.append(f"- **Status:** {st}")
+        out.append(f"- **Severity:** {f.get('severity') or 'unrated'}")
         if f.get("approved_by"):
-            lines.append(f"- **Approved by:** {f.get('approved_by')}")
+            out.append(f"- **Approved by:** {f.get('approved_by')}")
         tids = f.get("mitre_ids") or f.get("attack_ids") or f.get("technique_ids") or []
         if tids:
-            lines.append(f"- **MITRE:** {', '.join(str(t) for t in tids)}")
-        lines.append("")
+            out.append(f"- **MITRE:** {', '.join(str(t) for t in tids)}")
+        out.append("")
         obs = str(f.get("observation") or f.get("description") or "").strip()
         interp = str(f.get("interpretation") or "").strip()
+        if _PLACEHOLDER_INTERP.search(interp):
+            interp = ""
         from nexus.integration.evidence_table import (
             normalize_evidence_rows,
             render_evidence_table,
         )
 
         rows = normalize_evidence_rows(f)
+        out.append("**Evidence**")
+        out.append("")
+        if rows:
+            out.extend(render_evidence_table(rows))
+        elif obs:
+            out.append(obs)
+            out.append("")
+        if interp and interp != obs:
+            out.append("**Interpretation**")
+            out.append("")
+            out.append(interp)
+            out.append("")
+        elif not obs and not rows and interp:
+            out.append(interp)
+            out.append("")
+        return out
+
+    # Fuse findings that share evidence rows — distinct needles on the same
+    # attack chain read as one coherent section, not four partial repeats.
+    needle_re = re.compile(r"Signal:\s*(.+?)\s*—\s*", re.I)
+    for cluster in _cluster_findings(approved):
+        if len(cluster) == 1:
+            lines.extend(_finding_lines(cluster[0]))
+            continue
+        names = [
+            (m.group(1) if (m := needle_re.search(str(f.get("title") or ""))) else str(f.get("title") or ""))
+            for f in cluster
+        ]
+        best = min(cluster, key=lambda f: _sev_rank(str(f.get("severity") or "")))
+        tids = sorted({
+            str(t)
+            for f in cluster
+            for t in (f.get("mitre_ids") or f.get("attack_ids") or f.get("technique_ids") or [])
+        })
+        lines.append(
+            f"### Correlated signal — {len(cluster)} findings share the same evidence rows"
+        )
+        lines.append("")
+        lines.append(
+            f"Needles {', '.join(f'`{n}`' for n in names)} matched an overlapping "
+            "hit set — one attack chain, reported once."
+        )
+        lines.append("")
+        for f in cluster:
+            lines.append(
+                f"- `{f.get('id')}` **{f.get('title', 'Untitled')}** "
+                f"(severity: {f.get('severity') or 'unrated'}"
+                + (f", approved by {f.get('approved_by')}" if f.get("approved_by") else "")
+                + ")"
+            )
+        lines.append(f"- **Cluster severity:** {best.get('severity') or 'unrated'}")
+        if tids:
+            lines.append(f"- **MITRE:** {', '.join(tids)}")
+        lines.append("")
+        # Merged evidence table — union of member rows, deduped on loc.
+        from nexus.integration.evidence_table import (
+            normalize_evidence_rows,
+            render_evidence_table,
+        )
+
+        seen_locs: set[str] = set()
+        merged_rows: list[dict[str, str]] = []
+        for f in cluster:
+            for r in normalize_evidence_rows(f):
+                key = str(r.get("loc") or "") or f"{r.get('time')}|{r.get('detail')}"
+                if key in seen_locs:
+                    continue
+                seen_locs.add(key)
+                merged_rows.append(r)
         lines.append("**Evidence**")
         lines.append("")
-        if rows:
-            lines.extend(render_evidence_table(rows))
-        elif obs:
-            lines.append(obs)
-            lines.append("")
-        if interp and interp != obs:
+        lines.extend(render_evidence_table(merged_rows))
+        interps = [
+            str(f.get("interpretation") or "").strip()
+            for f in cluster
+            if str(f.get("interpretation") or "").strip()
+            and not _PLACEHOLDER_INTERP.search(str(f.get("interpretation") or ""))
+        ]
+        if interps:
             lines.append("**Interpretation**")
             lines.append("")
-            lines.append(interp)
-            lines.append("")
-        elif not obs and not rows and interp:
-            lines.append(interp)
+            lines.append(interps[0])
             lines.append("")
 
     # Tactic-ish sections derived from finding titles/sources
@@ -790,6 +1044,7 @@ def write_findings_preview(case_dir) -> Path:
         questions=questions,
         include_draft=True,
         sift_notes=sift_notes_from_ledger(ledger),
+        case_dir=case_dir,
     )
     out = case_dir / "reports" / "REPORT-DRAFT.md"
     out.parent.mkdir(parents=True, exist_ok=True)
