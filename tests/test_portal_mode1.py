@@ -241,15 +241,29 @@ def test_api_workbench_add_many(mock_n4q, mock_get_dir, tmp_path):
     assert resp2.json()["skipped"] == 3
 
 
+def _wait_full_run(client, timeout=15):
+    """Poll the status endpoint until the tracked run reaches a terminal state."""
+    import time as _t
+
+    deadline = _t.time() + timeout
+    while _t.time() < deadline:
+        d = client.get("/portal/api/mode1/full-run/status").json()
+        if d.get("status") not in ("running",):
+            return d
+        _t.sleep(0.05)
+    raise AssertionError("Mode 1 full run did not reach a terminal state")
+
+
 @patch("nexus.dashboard.app._get_case_dir")
 @patch("nexus.langgraph.mode1.save_draft_finding")
 @patch("nexus.langgraph.query_pack.attach_hit_fields")
 @patch("nexus.langgraph.query_pack.n4_query")
 @patch("nexus.langgraph.briefing.case_briefing")
 def test_api_mode1_full_run(mock_brief, mock_n4q, mock_attach, mock_save, mock_get_dir, tmp_path):
-    """WP 4j.5d — POST /mode1/full-run: scan all needles → bookmark all hits
-    → stage one DRAFT per needle (heuristic scribe). Approval stays manual —
-    the response must stop at DRAFTs and point the examiner at Approve."""
+    """WP 4j.5d — POST /mode1/full-run starts a tracked run: 202 + live record,
+    409 on concurrent start, terminal state persisted for reconnect."""
+    import threading
+
     from starlette.applications import Starlette
     from starlette.testclient import TestClient
 
@@ -266,8 +280,10 @@ def test_api_mode1_full_run(mock_brief, mock_n4q, mock_attach, mock_save, mock_g
         ],
     }
     mock_attach.side_effect = lambda _cd, hits: hits
+    gate = threading.Event()  # hold the worker mid-run to test the 409 guard
 
     def _query(_cd, q, **_kw):
+        gate.wait(timeout=10)
         if "sdelete" in q:
             return {"count": 2, "backend": "csv", "hits": [
                 {"family": "hayabusa", "file": "a.csv", "line": "1", "text": "sdelete x", "terms": "sdelete"},
@@ -284,12 +300,29 @@ def test_api_mode1_full_run(mock_brief, mock_n4q, mock_attach, mock_save, mock_g
 
     app = Starlette(routes=create_dashboard())
     client = TestClient(app)
+
     resp = client.post("/portal/api/mode1/full-run", json={})
-    assert resp.status_code == 200
-    data = resp.json()
+    assert resp.status_code == 202
+    assert resp.json()["status"] == "running"
+    assert resp.json()["needles_total"] == 3
+
+    # A second POST while the worker is live → 409 + the running record,
+    # not a duplicate run.
+    resp_dup = client.post("/portal/api/mode1/full-run", json={})
+    assert resp_dup.status_code == 409
+    assert resp_dup.json()["status"] == "running"
+    assert "already in progress" in resp_dup.json()["error"]
+
+    # Status endpoint reflects the live run (what a remounted page sees).
+    live = client.get("/portal/api/mode1/full-run/status").json()
+    assert live["status"] == "running"
+
+    gate.set()
+    data = _wait_full_run(client)
     assert data["status"] == "complete"
     assert data["needles_scanned"] == 12
-    assert data["needles_hit"] == 3
+    assert data["needles_total"] == 3
+    assert data["needles_done"] == 3
     assert data["bookmarks_added"] == 3
     assert data["drafts_staged"] == 2
     assert len(data["drafts"]) == 2
@@ -297,6 +330,8 @@ def test_api_mode1_full_run(mock_brief, mock_n4q, mock_attach, mock_save, mock_g
     assert any(s.get("needle") == "nohit" for s in data["skipped"])
     # HITL boundary — the run ends at DRAFTs and routes the examiner to Approve
     assert "Approve" in data["next"]
+    # the record persists — a page remount after completion sees the summary
+    assert (case_dir / "analysis" / "mode1_full_run.json").is_file()
     # hits really landed in the workbench
     from nexus.case.workbench import load_bookmarks
     assert len(load_bookmarks(case_dir)) == 3
@@ -307,11 +342,41 @@ def test_api_mode1_full_run(mock_brief, mock_n4q, mock_attach, mock_save, mock_g
         {"title": "Signal: sdelete — 2 hit(s) across hayabusa", "status": "DRAFT"},
     ]))
     resp2 = client.post("/portal/api/mode1/full-run", json={})
-    data2 = resp2.json()
+    assert resp2.status_code == 202
+    data2 = _wait_full_run(client)
     assert data2["drafts_staged"] == 1   # only rundll32 stages this time
     assert any("already staged" in s.get("reason", "") for s in data2["skipped"])
     # bookmarks still dedupe — nothing new added
     assert data2["bookmarks_added"] == 0
+
+
+@patch("nexus.dashboard.app._get_case_dir")
+def test_api_mode1_full_run_interrupted_record(mock_get_dir, tmp_path):
+    """A stale 'running' record with no live worker = interrupted, not a block."""
+    import json as _json
+
+    from starlette.applications import Starlette
+    from starlette.testclient import TestClient
+
+    from nexus.dashboard.app import create_dashboard
+
+    case_dir = _make_case_dir(tmp_path)
+    mock_get_dir.return_value = case_dir
+    (case_dir / "analysis").mkdir(parents=True, exist_ok=True)
+    (case_dir / "analysis" / "mode1_full_run.json").write_text(_json.dumps({
+        "status": "running", "needles_done": 4, "needles_total": 10,
+    }), encoding="utf-8")
+
+    app = Starlette(routes=create_dashboard())
+    client = TestClient(app)
+    d = client.get("/portal/api/mode1/full-run/status").json()
+    assert d["status"] == "interrupted"
+    assert d["thread_alive"] is False
+
+    # never-run case returns a clean marker, not an error
+    (case_dir / "analysis" / "mode1_full_run.json").unlink()
+    d2 = client.get("/portal/api/mode1/full-run/status").json()
+    assert d2["status"] == "never_run"
 
 
 @patch("nexus.dashboard.app._get_case_dir")
@@ -333,6 +398,6 @@ def test_api_mode1_full_run_no_hits(mock_brief, mock_get_dir, tmp_path):
     resp = client.post("/portal/api/mode1/full-run", json={})
     assert resp.status_code == 200
     data = resp.json()
-    assert data["drafts_staged"] if "drafts_staged" in data else data["drafts"] == []
+    assert data["drafts_staged"] == 0
     assert data["needles_hit"] == 0
     assert data["bookmarks_added"] == 0

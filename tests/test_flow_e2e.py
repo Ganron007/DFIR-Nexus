@@ -103,6 +103,24 @@ def flow_env(tmp_path, monkeypatch):
     }
 
 
+def test_commit_status_probe(flow_env):
+    """GET /commit/status reports the resolved examiner + whether a password
+    entry exists — no side effects (must NOT issue a challenge)."""
+    client: TestClient = flow_env["client"]
+
+    # No password entry yet → not configured, with a setup hint
+    d = client.get("/portal/api/commit/status").json()
+    assert d["examiner"] == EXAMINER
+    assert d["password_configured"] is False
+    assert "setup-password" in (d["setup_hint"] or "")
+
+    # After an entry exists → configured, no hint
+    _write_password_entry(flow_env["tmp_path"])
+    d = client.get("/portal/api/commit/status").json()
+    assert d["password_configured"] is True
+    assert d["setup_hint"] is None
+
+
 def test_full_loop_design_flow(flow_env, monkeypatch):
     tmp_path: Path = flow_env["tmp_path"]
     client: TestClient = flow_env["client"]

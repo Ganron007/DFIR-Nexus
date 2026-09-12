@@ -327,6 +327,23 @@ async def get_commit_challenge(request) -> JSONResponse:
     })
 
 
+async def get_commit_status(request) -> JSONResponse:
+    """Probe approval readiness — no side effects (no challenge issued).
+
+    Lets the UI explain up front whether the examiner password is configured
+    and which identity it belongs to, instead of failing on Approve click.
+    """
+    examiner = _resolve_examiner(request)
+    if not examiner:
+        return JSONResponse({"examiner": None, "password_configured": False})
+    entry = _load_password_entry(examiner)
+    return JSONResponse({
+        "examiner": examiner,
+        "password_configured": bool(entry),
+        "setup_hint": None if entry else "nexus config --setup-password",
+    })
+
+
 async def post_commit(request) -> JSONResponse:
     """Apply finding approvals with challenge-response authentication."""
     case_dir = _get_case_dir(request)
@@ -2428,27 +2445,47 @@ async def api_workbench_add_many(request):
     return JSONResponse(r)
 
 
-async def api_mode1_full_run(request):
-    """POST /portal/api/mode1/full-run — Mode 1 'full run' (WP 4j.5d).
+_MODE1_RUN_FILE = "mode1_full_run.json"
+_mode1_run_threads: dict[str, threading.Thread] = {}
+_mode1_run_lock = threading.Lock()
 
-    One button after processing: scan every playbook needle → bookmark all
-    its hits → stage one DRAFT finding per needle. Examiner approval stays
-    fully manual (HMAC in Approve) — this only accelerates the deterministic
-    N4→N5 leg. Drafts use the heuristic scribe (instant, deterministic);
-    the examiner can re-scribe any draft with the LLM later.
 
-    Body: {max_needles?: 40, needle_filter?: "a,b" (subset)}.
+def _mode1_run_path(case_dir: Path) -> Path:
+    return case_dir / "analysis" / _MODE1_RUN_FILE
+
+
+def _mode1_run_record(case_dir: Path) -> dict | None:
+    """Read the persisted full-run record, marking dead runs as interrupted."""
+    path = _mode1_run_path(case_dir)
+    if not path.is_file():
+        return None
+    try:
+        rec = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if rec.get("status") == "running":
+        with _mode1_run_lock:
+            alive = _mode1_run_threads.get(case_dir.name)
+            alive = bool(alive and alive.is_alive())
+        rec["thread_alive"] = alive
+        if not alive:
+            # Server restarted (or the worker died) mid-run — the record is a
+            # tombstone, not a live run. New POSTs may proceed.
+            rec["status"] = "interrupted"
+            rec["error"] = "Run interrupted — server restarted or worker stopped"
+            _atomic_write_json(path, rec)
+    return rec
+
+
+def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
+                           scan: list[dict], brief: dict, needles_hit_total: int) -> None:
+    """Background Mode 1 full-run worker.
+
+    Writes the run record after every needle so navigation/reload/poll always
+    sees live state. Stops at DRAFTs — examiner approval stays manual (HMAC).
     """
-    case_dir = _get_case_dir(request)
-    if not case_dir:
-        return JSONResponse({"error": "No active case"}, status_code=404)
-    sealed = _sealed_case_error(case_dir.name)
-    if sealed:
-        return sealed
-
     from nexus.audit import resolve_examiner
     from nexus.case.workbench import add_bookmarks
-    from nexus.langgraph.briefing import case_briefing
     from nexus.langgraph.mode1 import (
         _heuristic_scribe,
         promote_hits_to_draft,
@@ -2461,6 +2498,137 @@ async def api_mode1_full_run(request):
         parse_intake_window,
     )
 
+    write_lock = threading.Lock()
+
+    def _persist() -> None:
+        record["updated_at"] = time.time()
+        with write_lock:
+            _atomic_write_json(record_path, record)
+
+    try:
+        # Existing DRAFT titles — re-runs must not duplicate staged findings
+        existing: set[str] = set()
+        findings_path = case_dir / "findings.json"
+        if findings_path.is_file():
+            try:
+                for f in json.loads(findings_path.read_text(encoding="utf-8")):
+                    if str(f.get("status") or "").upper() == "DRAFT" and f.get("title"):
+                        existing.add(str(f["title"]))
+            except (OSError, json.JSONDecodeError):
+                pass
+
+        examiner = resolve_examiner()
+        window = parse_intake_window(load_case_intake(case_dir))
+        record["stage"] = "scanning"
+        _persist()
+
+        for i, s in enumerate(scan):
+            needle = str(s.get("needle") or "").strip()
+            record["needles_done"] = i
+            record["current"] = needle
+            _persist()
+            if not needle:
+                continue
+            # Low-signal guard: pure digits / single chars match everything and
+            # produce garbage drafts ("Signal: 21 — 37 hits"). Report, don't stage.
+            if len(needle) < 3 or needle.isdigit():
+                record["skipped"].append(
+                    {"needle": needle, "reason": "low-signal needle (numeric/too short)"})
+                continue
+            # Re-query just this needle and keep only rows that actually
+            # matched it (n4_query can add intake terms otherwise).
+            result = n4_query(case_dir, needle, window=window, limit=500, offset=0)
+            if result.get("error"):
+                record["skipped"].append({"needle": needle, "reason": result["error"]})
+                continue
+            hits = [
+                h for h in attach_hit_fields(case_dir, list(result.get("hits") or []))
+                if needle.lower() in {
+                    t.strip().lower() for t in str(h.get("terms") or "").split(",")
+                }
+            ]
+            if not hits:
+                record["skipped"].append({"needle": needle, "reason": "no hits matched this needle"})
+                continue
+            record["stage"] = "bookmarking"
+            record["bookmarks_added"] += int(add_bookmarks(case_dir, hits).get("added") or 0)
+
+            # One DRAFT per needle (candidate signal, not a verdict).
+            # len(hits) is a lower bound: the 500-row page may not hold every
+            # needle-matched row, and intake terms inflate result["count"].
+            record["stage"] = "staging draft"
+            families = sorted({str(h.get("family") or "?") for h in hits})
+            more = "+" if int(result.get("count") or 0) > len(hits) else ""
+            title = f"Signal: {needle} — {len(hits)}{more} hit(s) across {', '.join(families)}"
+            if title in existing:
+                record["skipped"].append({"needle": needle, "reason": "draft already staged"})
+                continue
+            draft = promote_hits_to_draft(
+                case_dir,
+                hits=hits,
+                title=title,
+                examiner=examiner,
+                interpretation_hint=(
+                    f"Needle '{needle}' ({s.get('source', 'playbook')}) matched "
+                    f"{len(hits)} row(s) — candidate signal pending examiner review."
+                ),
+            )
+            draft = _heuristic_scribe(draft, hits)
+            res = save_draft_finding(case_dir, draft)
+            if res.get("status") == "STAGED":
+                record["drafts"].append({
+                    "finding_id": res.get("finding_id"),
+                    "title": title,
+                    "hits": len(hits),
+                    "families": families,
+                })
+                existing.add(title)
+            else:
+                detail = res.get("errors") or [str(res.get("error") or "stage failed")]
+                record["skipped"].append(
+                    {"needle": needle, "reason": "; ".join(str(d) for d in detail)})
+
+        record["needles_done"] = len(scan)
+        record["current"] = ""
+        record["status"] = "complete"
+        record["stage"] = "awaiting examiner approval"
+        record["drafts_staged"] = len(record["drafts"])
+        record["completed_at"] = time.time()
+        record["next"] = (
+            "Review DRAFT findings in Approve (manual HMAC), then generate the report (N8)."
+        )
+        _persist()
+    except Exception as exc:  # noqa: BLE001 — record must always reach terminal state
+        logger.exception("Mode 1 full-run failed for %s", case_dir.name)
+        record["status"] = "error"
+        record["stage"] = "failed"
+        record["error"] = str(exc)
+        record["completed_at"] = time.time()
+        _persist()
+    finally:
+        with _mode1_run_lock:
+            _mode1_run_threads.pop(case_dir.name, None)
+
+
+async def api_mode1_full_run(request):
+    """POST /portal/api/mode1/full-run — start a tracked Mode 1 'full run' (WP 4j.5d).
+
+    Runs in a background thread with a persisted record at
+    analysis/mode1_full_run.json so the cockpit can reconnect after
+    navigation/reload. One run per case at a time — a second POST while a
+    run is live returns 409 with the existing record.
+
+    Body: {max_needles?: 40, needle_filter?: "a,b" (subset)}.
+    """
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
+
+    from nexus.langgraph.briefing import case_briefing
+
     body: dict = {}
     with contextlib.suppress(Exception):
         body = await request.json()
@@ -2469,6 +2637,15 @@ async def api_mode1_full_run(request):
         max_needles = max(1, min(int(body.get("max_needles") or 40), 120))
     except (TypeError, ValueError):
         return JSONResponse({"error": "max_needles must be an integer"}, status_code=400)
+
+    # Concurrency guard — one live run per case. The record file survives
+    # navigation/reload; "interrupted" records (thread dead) don't block.
+    existing_run = _mode1_run_record(case_dir)
+    if existing_run and existing_run.get("status") == "running":
+        return JSONResponse(
+            {**existing_run, "error": "Mode 1 full run already in progress"},
+            status_code=409,
+        )
 
     # Stage 1 — deterministic scan of every playbook/ATT&CK/Sigma needle
     brief = case_briefing(case_dir)
@@ -2483,103 +2660,58 @@ async def api_mode1_full_run(request):
             "status": "complete",
             "needles_scanned": int(brief.get("scanned_needles") or 0),
             "needles_hit": 0,
+            "needles_hit_total": 0,
             "bookmarks_added": 0,
             "drafts": [],
+            "drafts_staged": 0,
             "skipped": [{"reason": "no playbook needles matched any evidence"}],
             "next": "Nothing to promote — no needle hits in this case.",
         })
 
-    # Existing DRAFT titles — re-runs must not duplicate staged findings
-    existing: set[str] = set()
-    findings_path = case_dir / "findings.json"
-    if findings_path.is_file():
-        try:
-            for f in json.loads(findings_path.read_text(encoding="utf-8")):
-                if str(f.get("status") or "").upper() == "DRAFT" and f.get("title"):
-                    existing.add(str(f["title"]))
-        except (OSError, json.JSONDecodeError):
-            pass
-
-    examiner = resolve_examiner()
-    window = parse_intake_window(load_case_intake(case_dir))
-    bookmarks_total = 0
-    drafts: list[dict] = []
-    skipped: list[dict] = []
-
-    for s in scan:
-        needle = str(s.get("needle") or "").strip()
-        if not needle:
-            continue
-        # Low-signal guard: pure digits / single chars match everything and
-        # produce garbage drafts ("Signal: 21 — 37 hits"). Report, don't stage.
-        if len(needle) < 3 or needle.isdigit():
-            skipped.append({"needle": needle, "reason": "low-signal needle (numeric/too short)"})
-            continue
-        # Stage 2 — re-query just this needle and keep only rows that
-        # actually matched it (n4_query can add intake terms otherwise).
-        result = n4_query(case_dir, needle, window=window, limit=500, offset=0)
-        if result.get("error"):
-            skipped.append({"needle": needle, "reason": result["error"]})
-            continue
-        hits = [
-            h for h in attach_hit_fields(case_dir, list(result.get("hits") or []))
-            if needle.lower() in {
-                t.strip().lower() for t in str(h.get("terms") or "").split(",")
-            }
-        ]
-        if not hits:
-            skipped.append({"needle": needle, "reason": "no hits matched this needle"})
-            continue
-        bookmarks_total += int(add_bookmarks(case_dir, hits).get("added") or 0)
-
-        # Stage 3 — one DRAFT per needle (candidate signal, not a verdict).
-        # len(hits) is a lower bound: the 500-row page may not hold every
-        # needle-matched row, and intake terms inflate result["count"].
-        families = sorted({str(h.get("family") or "?") for h in hits})
-        more = "+" if int(result.get("count") or 0) > len(hits) else ""
-        title = f"Signal: {needle} — {len(hits)}{more} hit(s) across {', '.join(families)}"
-        if title in existing:
-            skipped.append({"needle": needle, "reason": "draft already staged"})
-            continue
-        draft = promote_hits_to_draft(
-            case_dir,
-            hits=hits,
-            title=title,
-            examiner=examiner,
-            interpretation_hint=(
-                f"Needle '{needle}' ({s.get('source', 'playbook')}) matched "
-                f"{len(hits)} row(s) — candidate signal pending examiner review."
-            ),
-        )
-        draft = _heuristic_scribe(draft, hits)
-        res = save_draft_finding(case_dir, draft)
-        if res.get("status") == "STAGED":
-            drafts.append({
-                "finding_id": res.get("finding_id"),
-                "title": title,
-                "hits": len(hits),
-                "families": families,
-            })
-            existing.add(title)
-        else:
-            detail = res.get("errors") or [str(res.get("error") or "stage failed")]
-            skipped.append({"needle": needle, "reason": "; ".join(str(d) for d in detail)})
-
-    return JSONResponse({
-        "status": "complete",
+    record: dict = {
+        "run_id": f"M1-{int(time.time())}",
+        "case_id": case_dir.name,
+        "mode": "mode1_full_run",
+        "status": "running",
+        "stage": "starting",
+        "current": "",
+        "started_at": time.time(),
+        "updated_at": time.time(),
+        "needles_done": 0,
+        "needles_total": len(scan),
         "needles_scanned": int(brief.get("scanned_needles") or 0),
-        "needles_hit": len(scan),
         "needles_hit_total": needles_hit_total,
         "needles_capped": needles_hit_total - len(scan),
-        # briefing hit-scan was truncated — needle counts are lower bounds
-        # and needles matching only beyond-limit rows are invisible here.
         "scan_truncated": bool(brief.get("scan_truncated")),
-        "bookmarks_added": bookmarks_total,
-        "drafts": drafts,
-        "drafts_staged": len(drafts),
-        "skipped": skipped,
-        "next": "Review DRAFT findings in Approve (manual HMAC), then generate the report (N8).",
-    })
+        "bookmarks_added": 0,
+        "drafts": [],
+        "skipped": [],
+    }
+    record_path = _mode1_run_path(case_dir)
+    record_path.parent.mkdir(parents=True, exist_ok=True)
+    _atomic_write_json(record_path, record)
+
+    worker = threading.Thread(
+        target=_mode1_full_run_worker,
+        args=(case_dir, record_path, record, scan, brief, needles_hit_total),
+        name=f"mode1-full-run-{case_dir.name}",
+        daemon=True,
+    )
+    with _mode1_run_lock:
+        _mode1_run_threads[case_dir.name] = worker
+    worker.start()
+    return JSONResponse(record, status_code=202)
+
+
+async def api_mode1_full_run_status(request):
+    """GET /portal/api/mode1/full-run/status — latest run record for the case."""
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    rec = _mode1_run_record(case_dir)
+    if rec is None:
+        return JSONResponse({"status": "never_run"})
+    return JSONResponse(rec)
 
 
 async def api_workbench_remove(request):
@@ -4695,6 +4827,7 @@ def create_dashboard():
         Route("/portal/query", endpoint=query_page),
         # API endpoints
         Route("/portal/api/commit/challenge", get_commit_challenge, methods=["GET"]),
+        Route("/portal/api/commit/status", get_commit_status, methods=["GET"]),
         Route("/portal/api/commit", post_commit, methods=["POST"]),
         Route("/portal/api/findings", api_findings, methods=["GET"]),
         Route("/portal/api/timeline", api_timeline, methods=["GET"]),
@@ -4722,6 +4855,7 @@ def create_dashboard():
         Route("/portal/api/workbench/add", api_workbench_add, methods=["POST"]),
         Route("/portal/api/workbench/add_many", api_workbench_add_many, methods=["POST"]),
         Route("/portal/api/mode1/full-run", api_mode1_full_run, methods=["POST"]),
+        Route("/portal/api/mode1/full-run/status", api_mode1_full_run_status, methods=["GET"]),
         Route("/portal/api/workbench/remove", api_workbench_remove, methods=["POST"]),
         Route("/portal/api/workbench/clear", api_workbench_clear, methods=["POST"]),
         Route("/portal/api/workbench/promote", api_workbench_promote, methods=["POST"]),

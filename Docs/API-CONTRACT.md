@@ -69,6 +69,22 @@
 
 ---
 
+### GET /portal/api/commit/status
+**Description:** Side-effect-free approval-readiness probe — which examiner identity will sign and whether a password entry exists. Lets the UI explain requirements up front instead of failing on Approve click. Does NOT issue a challenge.
+
+**Request:** No body. No query params.
+
+**Response 200:**
+```json
+{
+  "examiner": "string | null (resolved examiner identity)",
+  "password_configured": true,
+  "setup_hint": "nexus config --setup-password (null when configured)"
+}
+```
+
+---
+
 ### POST /portal/api/commit
 **Description:** Approves one or more DRAFT findings using HMAC challenge-response authentication. Promotes each finding from `DRAFT` to `APPROVED`, writes an HMAC-signed entry to the verification ledger, and appends to the transparency log.
 
@@ -623,38 +639,43 @@ If the case is already open: `{"ok": true, "status": "created", "note": "already
 }
 ```
 
-**Response 200:**
+**Response 202 (started):**
 ```json
 {
-  "status": "complete",
+  "run_id": "M1-<epoch>",
+  "status": "running",
+  "stage": "starting",
+  "needles_done": 0,
+  "needles_total": 9,
   "needles_scanned": 162,
-  "needles_hit": 9,
   "needles_hit_total": 9,
   "needles_capped": 0,
   "scan_truncated": false,
-  "bookmarks_added": 7,
-  "drafts": [
-    {"finding_id": "string", "title": "string", "hits": 0, "families": ["string"]}
-  ],
-  "drafts_staged": 0,
-  "skipped": [{"needle": "string", "reason": "string"}],
-  "next": "Review DRAFT findings in Approve (manual HMAC), then generate the report (N8)."
+  "bookmarks_added": 0,
+  "drafts": [],
+  "skipped": []
 }
 ```
 
-`needles_hit` counts the needles actually processed (capped at `max_needles`);
-`needles_hit_total` is the full hitting-needle count before the cap, so
-`needles_capped` > 0 honestly reports needles left unprocessed. `scan_truncated`
-means the briefing's hit-scan hit its row limit — needle counts are lower
-bounds. Draft titles carry `N+` when the 500-row query page may not hold every
-matching row.
+The run executes in a background worker with a persisted record at
+`analysis/mode1_full_run.json` — navigation/reload never loses it. Poll
+`GET /portal/api/mode1/full-run/status` for live progress
+(`needles_done`/`needles_total`, `stage`, `current` needle, `drafts`,
+`bookmarks_added`) until `status` reaches `complete` (then `drafts_staged`,
+`next`) or `error`/`interrupted` (then `error`). A second POST while a run is
+live returns **409** with the running record — never a duplicate run. A stale
+`running` record with a dead worker (e.g. server restarted mid-run) is
+relabelled `interrupted` and does not block a new run.
 
 `skipped` entries are reported honestly — e.g. `low-signal needle (numeric/too short)` (pure-digit or <3-char needles are never staged), `draft already staged`, `no hits matched this needle`, or a query error.
 
 **Errors:**
 - `400` — `max_needles` not an integer.
 - `404` — No active case.
-- `409` — Case is sealed.
+- `409` — A full run is already in progress (body carries the live record) OR case is sealed.
+
+### GET /portal/api/mode1/full-run/status
+**Description:** Latest Mode 1 full-run record for the active case. Returns `{status: "never_run"}` when no run exists.
 
 ---
 

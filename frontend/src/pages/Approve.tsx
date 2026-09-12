@@ -19,6 +19,12 @@ export default function Approve() {
   const [rejectMode, setRejectMode] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
 
+  // Readiness probe — which examiner identity will sign, and whether a
+  // password is configured at all. Shown up front, not after a failed click.
+  const [examinerIdentity, setExaminerIdentity] = useState<string | null>(null);
+  const [passwordConfigured, setPasswordConfigured] = useState<boolean | null>(null);
+  const [setupHint, setSetupHint] = useState<string | null>(null);
+
   const load = () => {
     setLoading(true);
     api.findings("DRAFT")
@@ -33,6 +39,13 @@ export default function Approve() {
 
   useEffect(() => {
     load();
+    api.commitStatus()
+      .then((s) => {
+        setExaminerIdentity(s.examiner);
+        setPasswordConfigured(s.password_configured);
+        setSetupHint(s.setup_hint);
+      })
+      .catch(() => setPasswordConfigured(null));
   }, [activeCase]);
 
   const toggle = (id: string) => {
@@ -52,7 +65,11 @@ export default function Approve() {
       return;
     }
     if (!password) {
-      setError("Approval password is required");
+      setError(
+        "Approval password required — the examiner password set via `nexus config --setup-password`" +
+        (examinerIdentity ? ` for identity '${examinerIdentity}'` : "") +
+        ". It never leaves this browser: it only derives the local HMAC signature.",
+      );
       return;
     }
 
@@ -209,8 +226,20 @@ export default function Approve() {
           <div style={{ maxWidth: 440, display: "flex", flexDirection: "column", gap: 12 }}>
             <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: 0 }}>
               Approving signs a PBKDF2-HMAC-SHA256 entry to the immutable ledger.
-              The signature is derived locally in your browser via Web Crypto.
+              Enter the <strong>examiner approval password</strong>
+              {examinerIdentity ? ` for identity '${examinerIdentity}'` : ""} — the one
+              set with <code>nexus config --setup-password</code>. It never leaves this
+              browser: Web Crypto derives the signature locally, and the server sees
+              only an HMAC of a one-time challenge.
             </p>
+
+            {passwordConfigured === false && (
+              <div className="error-banner" style={{ margin: 0 }}>
+                No approval password is configured
+                {examinerIdentity ? ` for '${examinerIdentity}'` : ""} — approving will
+                fail. Set one first: <code>{setupHint || "nexus config --setup-password"}</code>
+              </div>
+            )}
 
             <div>
               <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
@@ -230,7 +259,11 @@ export default function Approve() {
               </label>
               <input
                 type="password"
-                placeholder="Enter examiner password"
+                placeholder={
+                  passwordConfigured === false
+                    ? "No password configured yet — see warning above"
+                    : "Examiner approval password (nexus config --setup-password)"
+                }
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleApprove()}
@@ -248,7 +281,8 @@ export default function Approve() {
               <button
                 className="btn btn-primary"
                 onClick={handleApprove}
-                disabled={busy || selected.size === 0 || !password}
+                disabled={busy || selected.size === 0}
+                title={!password ? "Enter the examiner approval password first — click for details" : undefined}
                 style={{ flex: 1 }}
               >
                 {busy ? "Signing..." : `Approve ${selected.size} Finding(s)`}

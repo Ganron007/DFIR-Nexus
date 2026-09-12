@@ -299,11 +299,19 @@ export interface WorkbenchAddManyResponse {
   error?: string;
 }
 
-/** POST /mode1/full-run → staged summary of the deterministic N4→N5 leg */
+/** POST/GET /mode1/full-run[/status] → tracked run record (202 on start) */
 export interface Mode1FullRunResponse {
-  status: string;
+  status: string; // running | complete | error | interrupted | never_run
+  run_id?: string;
+  stage?: string;
+  current?: string;
+  started_at?: number;
+  updated_at?: number;
+  completed_at?: number;
+  needles_done?: number;
+  needles_total?: number;
   needles_scanned: number;
-  needles_hit: number;
+  needles_hit?: number;
   needles_hit_total?: number;
   needles_capped?: number;
   scan_truncated?: boolean;
@@ -313,6 +321,14 @@ export interface Mode1FullRunResponse {
   skipped: { needle?: string; reason: string }[];
   next?: string;
   error?: string;
+  thread_alive?: boolean;
+}
+
+/** GET /commit/status → {examiner, password_configured, setup_hint} */
+export interface CommitStatusResponse {
+  examiner: string | null;
+  password_configured: boolean;
+  setup_hint: string | null;
 }
 
 /** POST /workbench/remove → {status, total} */
@@ -761,6 +777,7 @@ export const api = {
    *  DRAFT per needle (heuristic scribe). Approval stays manual. */
   mode1FullRun: (params?: { max_needles?: number; needle_filter?: string }) =>
     post<Mode1FullRunResponse>("/mode1/full-run", params || {}),
+  mode1FullRunStatus: () => request<Mode1FullRunResponse>("/mode1/full-run/status"),
   workbenchRemove: (bookmarkId: string) =>
     post<WorkbenchRemoveResponse>("/workbench/remove", { bookmark_id: bookmarkId }),
   workbenchClear: () => post<WorkbenchClearResponse>("/workbench/clear"),
@@ -812,6 +829,7 @@ export const api = {
 
   // Approval & Rejection
   getChallenge: () => request<ChallengeResponse>("/commit/challenge"),
+  commitStatus: () => request<CommitStatusResponse>("/commit/status"),
   commit: (params: {
     finding_ids: string[];
     challenge_id: string;

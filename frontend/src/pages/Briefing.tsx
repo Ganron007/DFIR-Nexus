@@ -6,7 +6,7 @@
  * top entities, hosts, time range, and the intake echo. Deterministic — no
  * LLM required. Clicking a needle drops into Explore with that needle set.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, type BriefingDirection, type BriefingResponse, type Mode1FullRunResponse } from "../api/client";
 import { useCase } from "../context/CaseContext";
@@ -24,26 +24,66 @@ export default function Briefing() {
   const [openAlert, setOpenAlert] = useState<number | null>(null);
   // WP 4j.3: guided first-pass step completion (per-case, local)
   const [doneSteps, setDoneSteps] = useState<Record<string, boolean>>({});
-  // WP 4j.5d: Mode 1 full run — scan → bookmark → draft in one click
-  const [fullRunBusy, setFullRunBusy] = useState(false);
+  // WP 4j.5d: Mode 1 full run — tracked server-side run; survives navigation
   const [fullRunResult, setFullRunResult] = useState<Mode1FullRunResponse | null>(null);
   const [fullRunError, setFullRunError] = useState("");
+  const fullRunPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopFullRunPoll = () => {
+    if (fullRunPollRef.current) {
+      clearInterval(fullRunPollRef.current);
+      fullRunPollRef.current = null;
+    }
+  };
+
+  const pollFullRun = () => {
+    stopFullRunPoll();
+    fullRunPollRef.current = setInterval(async () => {
+      try {
+        const r = await api.mode1FullRunStatus();
+        setFullRunResult(r);
+        if (r.status !== "running") stopFullRunPoll();
+      } catch {
+        /* transient poll failure — keep polling */
+      }
+    }, 1500);
+  };
+
+  // On mount / case switch: reconnect to an in-flight or finished run.
+  useEffect(() => {
+    if (!activeCase) return;
+    let stale = false;
+    api.mode1FullRunStatus()
+      .then((r) => {
+        if (stale || r.status === "never_run") return;
+        setFullRunResult(r);
+        if (r.status === "running") pollFullRun();
+      })
+      .catch(() => { /* no record yet — fine */ });
+    return () => {
+      stale = true;
+      stopFullRunPoll();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCase]);
+
+  const fullRunRunning = fullRunResult?.status === "running";
 
   const fullRun = async () => {
-    setFullRunBusy(true);
     setFullRunError("");
-    setFullRunResult(null);
     try {
       const r = await api.mode1FullRun();
-      if (r.error) {
-        setFullRunError(r.error);
-      } else {
-        setFullRunResult(r);
-      }
+      setFullRunResult(r);
+      if (r.status === "running") pollFullRun();
     } catch (e) {
-      setFullRunError((e as Error).message);
-    } finally {
-      setFullRunBusy(false);
+      // 409 = a run is already live — attach to it instead of failing
+      const rec = (e as { detail?: Mode1FullRunResponse }).detail;
+      if ((e as { status?: number }).status === 409 && rec) {
+        setFullRunResult(rec);
+        if (rec.status === "running") pollFullRun();
+      } else {
+        setFullRunError((e as Error).message);
+      }
     }
   };
 
@@ -113,13 +153,17 @@ export default function Briefing() {
         <button
           className="btn btn-sm"
           style={{ marginLeft: "auto", fontWeight: 600 }}
-          disabled={fullRunBusy || scan.length === 0}
-          title={scan.length === 0
-            ? "No playbook needles matched any evidence — nothing to promote"
-            : `Full run: bookmark all hits from ${scan.length} needle(s) and stage one DRAFT finding per needle — you approve manually in Approve`}
+          disabled={fullRunRunning || scan.length === 0}
+          title={
+            fullRunRunning
+              ? "A Mode 1 full run is already in progress — status below"
+              : scan.length === 0
+                ? "No playbook needles matched any evidence — nothing to promote"
+                : `Full run: bookmark all hits from ${scan.length} needle(s) and stage one DRAFT finding per needle — you approve manually in Approve`
+          }
           onClick={fullRun}
         >
-          {fullRunBusy ? "Running Mode 1 full run…" : "▶ Mode 1 full run"}
+          {fullRunRunning ? "Mode 1 full run in progress…" : "▶ Mode 1 full run"}
         </button>
       </div>
       <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16 }}>
@@ -127,22 +171,39 @@ export default function Briefing() {
         already caught, and where to start digging.
       </p>
 
-      {/* WP 4j.5d — full run result: honest per-stage summary */}
-      {fullRunBusy && (
-        <div className="card" style={{ borderLeft: "3px solid var(--accent)", padding: "8px 12px" }}>
-          <span style={{ fontSize: 12 }}>
-            Full run in progress — scanning needles, bookmarking hits, staging DRAFTs…
-          </span>
-        </div>
-      )}
+      {/* WP 4j.5d — tracked full run: live progress, then per-stage summary */}
       {fullRunError && <div className="error-banner">{fullRunError}</div>}
-      {fullRunResult && (
-        <div className="card" style={{ borderLeft: "3px solid var(--ok)" }}>
+      {fullRunRunning && (
+        <div className="card" style={{ borderLeft: "3px solid var(--accent)" }}>
           <div className="card-title" style={{ marginBottom: 6 }}>
-            Full run complete — {fullRunResult.drafts_staged ?? fullRunResult.drafts.length} DRAFT finding(s) staged
+            Full run in progress — {fullRunResult?.stage || "starting"}
           </div>
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>
-            {fullRunResult.needles_scanned} needles scanned · {fullRunResult.needles_hit} with hits
+            Needle {fullRunResult?.needles_done ?? 0}/{fullRunResult?.needles_total ?? 0}
+            {fullRunResult?.current && ` — ${fullRunResult.current}`}
+            {" · "}{fullRunResult?.drafts.length ?? 0} draft(s) staged
+            {" · "}{fullRunResult?.bookmarks_added ?? 0} bookmark(s) added
+          </div>
+          <div style={{ height: 6, background: "var(--bg-tertiary)", borderRadius: 3, overflow: "hidden" }}>
+            <div style={{
+              height: "100%",
+              width: `${fullRunResult?.needles_total ? Math.round(((fullRunResult.needles_done ?? 0) / fullRunResult.needles_total) * 100) : 0}%`,
+              background: "var(--accent)", transition: "width 0.5s",
+            }} />
+          </div>
+        </div>
+      )}
+      {fullRunResult && !fullRunRunning && (
+        <div className="card" style={{ borderLeft: `3px solid ${fullRunResult.status === "complete" ? "var(--ok)" : "var(--danger)"}` }}>
+          <div className="card-title" style={{ marginBottom: 6 }}>
+            {fullRunResult.status === "complete"
+              ? `Full run complete — ${fullRunResult.drafts_staged ?? fullRunResult.drafts.length} DRAFT finding(s) staged`
+              : fullRunResult.status === "interrupted"
+                ? "Full run interrupted — server restarted mid-run; safe to re-run"
+                : `Full run failed — ${fullRunResult.error || "unknown error"}`}
+          </div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>
+            {fullRunResult.needles_scanned} needles scanned · {fullRunResult.needles_hit ?? fullRunResult.needles_total ?? 0} with hits
             {(fullRunResult.needles_capped ?? 0) > 0 && ` (${fullRunResult.needles_capped} more hit — raise max_needles to include)`}
             {fullRunResult.scan_truncated && " · counts are lower bounds (scan truncated)"}
             {" · "}{fullRunResult.bookmarks_added} bookmark(s) added to Workbench
