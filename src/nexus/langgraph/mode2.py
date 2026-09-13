@@ -521,7 +521,7 @@ def corroboration_check(finding: dict[str, Any]) -> dict[str, Any]:
     audit_ids = finding.get("audit_ids") or []
 
     problems: list[str] = []
-    if n_families <= 1 and confidence in ("MEDIUM", "HIGH", "SPECULATIVE"):
+    if n_families <= 1 and confidence in ("MEDIUM", "HIGH"):
         problems.append(
             f"FD-006/007: single evidence family ({families or ['none']}) with confidence {confidence} — "
             "corroborate across artifact families or lower to LOW."
@@ -540,7 +540,7 @@ def corroboration_check(finding: dict[str, Any]) -> dict[str, Any]:
         "families": families,
         "distinct_families": n_families,
         "confidence": confidence,
-        "ok": n_families >= 2 or confidence == "LOW",
+        "ok": n_families >= 2 or confidence in ("LOW", "SPECULATIVE"),
         "problems": problems,
         "suggested_queries": suggestions,
     }

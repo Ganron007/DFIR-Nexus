@@ -255,10 +255,42 @@ class CaseManager:
         if artifacts is None and isinstance(finding.get("artifacts"), list):
             artifacts = finding.pop("artifacts")
 
+        # FD-006/007 auto-cap: a DRAFT is a candidate, not a claim — an
+        # over-claimed confidence is corrected to LOW with an auditable
+        # note instead of rejecting the draft outright. To escalate, the
+        # examiner adds corroborating evidence (another artifact family
+        # or a second audit_id) and re-stages. validate_finding below
+        # remains the backstop for direct/uncapped calls.
+        cap_notes: list[str] = []
+        _conf = str(finding.get("confidence") or "").upper()
+        if _conf in ("MEDIUM", "HIGH"):
+            _fams = {
+                str(e.get("source", "")).split("/")[0]
+                for e in (finding.get("evidence") or [])
+                if isinstance(e, dict)
+            } - {""}
+            _n_aud = len(finding.get("audit_ids") or [])
+            _why = []
+            if len(_fams) <= 1:
+                _why.append(f"single evidence family ({sorted(_fams) or ['none']})")
+            if _n_aud < 2:
+                _why.append(f"{_n_aud} audit_id(s)")
+            if _why:
+                note = (
+                    f"Auto-capped {_conf}->LOW per FD-006/007: "
+                    + " and ".join(_why)
+                    + " — corroborate across independent artifact "
+                    "families/audit runs to escalate."
+                )
+                finding["confidence"] = "LOW"
+                just = str(finding.get("confidence_justification") or "").strip()
+                finding["confidence_justification"] = f"{just} {note}".strip()
+                cap_notes.append(note)
+
         validation = validate_finding(finding)
         if not validation.get("valid", False):
             return {"status": "VALIDATION_FAILED", "errors": validation.get("errors", [])}
-        warnings = validation.get("warnings", [])
+        warnings = validation.get("warnings", []) + cap_notes
 
         exam = (examiner_override.strip().lower()
                 if examiner_override and examiner_override.strip()
@@ -351,7 +383,7 @@ class CaseManager:
             "title": sanitized.get("title", ""),
             "observation": sanitized.get("observation", ""),
             "interpretation": sanitized.get("interpretation", ""),
-            "confidence": sanitized.get("confidence", "MEDIUM").upper(),
+            "confidence": (sanitized.get("confidence") or "LOW").upper(),
             "confidence_justification": sanitized.get("confidence_justification", ""),
             "evidence": sanitized.get("evidence") or [],
             "type": sanitized.get("type", ""),
@@ -445,6 +477,8 @@ class CaseManager:
             "provenance": {"summary": provenance["summary"],
                            "detail": provenance["detail"]},
         }
+        if cap_notes:
+            result["confidence_adjusted"] = cap_notes
         if timeline_event_id:
             result["timeline_event_id"] = timeline_event_id
 

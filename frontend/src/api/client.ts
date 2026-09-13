@@ -318,7 +318,7 @@ export interface Mode1FullRunResponse {
   needles_capped?: number;
   scan_truncated?: boolean;
   bookmarks_added: number;
-  drafts: { finding_id?: string; title: string; hits: number; families: string[] }[];
+  drafts: { finding_id?: string; title: string; hits: number; families: string[]; confidence_adjusted?: string[] }[];
   drafts_staged?: number;
   skipped: { needle?: string; reason: string }[];
   next?: string;
@@ -350,6 +350,9 @@ export interface WorkbenchPromoteResponse {
   status?: string;
   title?: string;
   bookmark_count?: number;
+  /** FD-006/007 auto-cap note — set when the draft's confidence was
+      lowered to LOW because corroboration requirements weren't met. */
+  confidence_adjusted?: string[];
   error?: string | string[];
 }
 
@@ -438,6 +441,8 @@ export interface ProposeDraftResponse {
   finding_id?: string;
   status?: string;
   corroboration?: CorroborationResponse;
+  /** FD-006/007 auto-cap note — set when confidence was lowered to LOW. */
+  confidence_adjusted?: string[];
   error?: string | string[];
 }
 

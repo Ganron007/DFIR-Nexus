@@ -63,12 +63,14 @@ def validate_finding(finding: dict) -> dict:
     # FD-006: single evidence family with MEDIUM/HIGH confidence is rejected.
     # Corroboration across independent artifact families is mandatory for
     # escalating confidence above LOW. This is a HARD gate, not advisory.
+    # SPECULATIVE and LOW are both below the escalation bar — a hunch
+    # cannot be downgraded, so neither is rejected on family count alone.
     evidence = finding.get("evidence") or []
     families = sorted(
         {str(e.get("source", "")).split("/")[0] for e in evidence if isinstance(e, dict)}
     )
     distinct_families = len([f for f in families if f])
-    if distinct_families <= 1 and confidence in ("MEDIUM", "HIGH", "SPECULATIVE"):
+    if distinct_families <= 1 and confidence in ("MEDIUM", "HIGH"):
         errors.append(
             f"FD-006: single evidence family ({families or ['none']}) with confidence "
             f"{confidence} — corroborate across independent artifact families or "

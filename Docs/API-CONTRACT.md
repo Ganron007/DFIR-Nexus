@@ -1150,6 +1150,8 @@ absent. The Timeline page colors lane bars by this map.
 ### POST /portal/api/mode2/corroborate
 **Description:** Runs an FD-006/007 corroboration check on a finding. Checks whether the finding has sufficient evidence family diversity and audit_id count for its confidence level. Returns problems and suggested corroboration queries.
 
+**Draft-staging behavior (FD-006/007 auto-cap):** when any draft is staged through `record_finding` (workbench promote, hit-promote, mode2/mode3 draft, full-run), a `MEDIUM`/`HIGH` confidence that fails these requirements is automatically lowered to `LOW` with an auditable note appended to `confidence_justification` and returned as `confidence_adjusted` in the response — the draft stages rather than being rejected. `LOW` and `SPECULATIVE` are below the escalation bar and never capped. To escalate, add corroborating evidence (another artifact family, or a second audit_id) and re-stage. `validate_finding` still rejects over-claimed confidence for direct/uncapped calls.
+
 **Request:**
 ```json
 {

@@ -211,7 +211,14 @@ export default function Briefing() {
           {fullRunResult.drafts.length > 0 && (
             <ul style={{ fontSize: 12, margin: "0 0 8px 18px", padding: 0 }}>
               {fullRunResult.drafts.map((d) => (
-                <li key={d.finding_id || d.title}>{d.title}</li>
+                <li key={d.finding_id || d.title}>
+                  {d.title}
+                  {d.confidence_adjusted?.length ? (
+                    <span style={{ color: "var(--warn)", fontSize: 11 }} title={d.confidence_adjusted.join("\n")}>
+                      {" "}· confidence capped → LOW (needs corroboration)
+                    </span>
+                  ) : null}
+                </li>
               ))}
             </ul>
           )}

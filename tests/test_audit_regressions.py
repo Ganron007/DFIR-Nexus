@@ -215,6 +215,99 @@ def test_load_chat_honors_limit(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# FD-006/007 auto-cap — over-claimed draft confidence is lowered to LOW with
+# an auditable note instead of rejecting the draft outright.
+# ---------------------------------------------------------------------------
+
+
+def _stageable_case(tmp_path, monkeypatch, case_id="CASE-AUTOCAP"):
+    """Case dir + audit log so record_finding's provenance check passes."""
+    from nexus.case_manager import CaseManager
+
+    monkeypatch.setenv("NEXUS_CASES_ROOT", str(tmp_path / "cases"))
+    case_dir = tmp_path / "cases" / case_id
+    case_dir.mkdir(parents=True)
+    (case_dir / "CASE.yaml").write_text(f"case_id: {case_id}\ncase_name: t\n")
+    audit_dir = case_dir / "audit"
+    audit_dir.mkdir(exist_ok=True)
+    a1, a2 = "hayabusa-examiner-20260908-001", "evtx-examiner-20260908-002"
+    (audit_dir / "tool.jsonl").write_text(
+        json.dumps({"audit_id": a1, "source": "mcp", "tool": "t"}) + "\n"
+        + json.dumps({"audit_id": a2, "source": "mcp", "tool": "t"}) + "\n"
+    )
+    return case_dir, CaseManager(), a1, a2
+
+
+def test_record_finding_autocaps_single_family_high(tmp_path, monkeypatch):
+    """Single-family HIGH → stages as LOW with an audit note, not rejected."""
+    case_dir, mgr, a1, a2 = _stageable_case(tmp_path, monkeypatch)
+    finding = {
+        "title": "T", "observation": "O", "interpretation": "I",
+        "confidence": "HIGH", "confidence_justification": "strong signal",
+        "type": "finding", "audit_ids": [a1, a2],
+        "evidence": [{"source": "hayabusa/x"}, {"source": "hayabusa/y"}],
+    }
+    result = mgr.record_finding(finding=finding, examiner_override="lead",
+                                case_dir=case_dir)
+    assert result.get("status") == "STAGED", result
+    assert result.get("confidence_adjusted"), "cap note must surface in result"
+    stored = json.loads((case_dir / "findings.json").read_text())[0]
+    assert stored["confidence"] == "LOW"
+    assert "Auto-capped HIGH->LOW" in stored["confidence_justification"]
+    assert "hayabusa" in stored["confidence_justification"]
+
+
+def test_record_finding_autocaps_fd007_single_audit(tmp_path, monkeypatch):
+    """Multi-family MEDIUM with only 1 audit_id → capped to LOW."""
+    case_dir, mgr, a1, _a2 = _stageable_case(tmp_path, monkeypatch)
+    finding = {
+        "title": "T", "observation": "O", "interpretation": "I",
+        "confidence": "MEDIUM", "confidence_justification": "j",
+        "type": "finding", "audit_ids": [a1],
+        "evidence": [{"source": "hayabusa/x"}, {"source": "evtx/y"}],
+    }
+    result = mgr.record_finding(finding=finding, examiner_override="lead",
+                                case_dir=case_dir)
+    assert result.get("status") == "STAGED", result
+    stored = json.loads((case_dir / "findings.json").read_text())[0]
+    assert stored["confidence"] == "LOW"
+
+
+def test_record_finding_keeps_corroborated_high(tmp_path, monkeypatch):
+    """Multi-family HIGH with 2+ audit_ids → untouched (no cap)."""
+    case_dir, mgr, a1, a2 = _stageable_case(tmp_path, monkeypatch)
+    finding = {
+        "title": "T", "observation": "O", "interpretation": "I",
+        "confidence": "HIGH", "confidence_justification": "two sources",
+        "type": "finding", "audit_ids": [a1, a2],
+        "evidence": [{"source": "hayabusa/x"}, {"source": "evtx/y"}],
+    }
+    result = mgr.record_finding(finding=finding, examiner_override="lead",
+                                case_dir=case_dir)
+    assert result.get("status") == "STAGED", result
+    assert "confidence_adjusted" not in result
+    stored = json.loads((case_dir / "findings.json").read_text())[0]
+    assert stored["confidence"] == "HIGH"
+
+
+def test_record_finding_single_family_low_unchanged(tmp_path, monkeypatch):
+    """Single-family LOW was always stageable — no cap note added."""
+    case_dir, mgr, a1, _a2 = _stageable_case(tmp_path, monkeypatch)
+    finding = {
+        "title": "T", "observation": "O", "interpretation": "I",
+        "confidence": "LOW", "confidence_justification": "one source",
+        "type": "finding", "audit_ids": [a1],
+        "evidence": [{"source": "hayabusa/x"}],
+    }
+    result = mgr.record_finding(finding=finding, examiner_override="lead",
+                                case_dir=case_dir)
+    assert result.get("status") == "STAGED", result
+    assert "confidence_adjusted" not in result
+    stored = json.loads((case_dir / "findings.json").read_text())[0]
+    assert stored["confidence"] == "LOW"
+
+
+# ---------------------------------------------------------------------------
 # 1.8 — llm_pipeline resume must use settings.cases_root, not ~/.nexus/cases
 # ---------------------------------------------------------------------------
 

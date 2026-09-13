@@ -139,7 +139,10 @@ export default function Workbench() {
         setError(Array.isArray(r.error) ? r.error.join("; ") : r.error);
         return;
       }
-      setResult(`Promoted to DRAFT: ${r.finding_id} (${r.bookmark_count} bookmark(s))`);
+      setResult(
+        `Promoted to DRAFT: ${r.finding_id} (${r.bookmark_count} bookmark(s))` +
+        (r.confidence_adjusted?.length ? ` — ${r.confidence_adjusted.join("; ")}` : "")
+      );
       form.reset(initialForm);
       // Reload workbench — promoted bookmarks are consumed but others remain
       load();

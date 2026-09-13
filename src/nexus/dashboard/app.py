@@ -1797,12 +1797,15 @@ async def api_select(request):
 
     result = save_draft_finding(case_dir, draft)
     if result.get("status") == "STAGED":
-        return JSONResponse({
+        resp: dict = {
             "finding_id": result.get("finding_id"),
             "title": title,
             "status": "DRAFT",
             "audit_ids": draft.get("audit_ids", []),
-        })
+        }
+        if result.get("confidence_adjusted"):
+            resp["confidence_adjusted"] = result["confidence_adjusted"]
+        return JSONResponse(resp)
     # Surface the real rejection reason (validation errors, provenance
     # detail, missing audit_ids) instead of a bare status code.
     detail: list = list(result.get("errors") or [])
@@ -2578,12 +2581,15 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
             draft = _heuristic_scribe(draft, hits, case_dir=case_dir)
             res = save_draft_finding(case_dir, draft)
             if res.get("status") == "STAGED":
-                record["drafts"].append({
+                d: dict = {
                     "finding_id": res.get("finding_id"),
                     "title": title,
                     "hits": len(hits),
                     "families": families,
-                })
+                }
+                if res.get("confidence_adjusted"):
+                    d["confidence_adjusted"] = res["confidence_adjusted"]
+                record["drafts"].append(d)
                 existing.add(title)
             else:
                 detail = res.get("errors") or [str(res.get("error") or "stage failed")]
@@ -2801,12 +2807,15 @@ async def api_workbench_promote(request):
 
     result = save_draft_finding(case_dir, draft)
     if result.get("status") == "STAGED":
-        return JSONResponse({
+        resp: dict = {
             "finding_id": result.get("finding_id"),
             "status": "DRAFT",
             "title": title,
             "bookmark_count": len(selected),
-        })
+        }
+        if result.get("confidence_adjusted"):
+            resp["confidence_adjusted"] = result["confidence_adjusted"]
+        return JSONResponse(resp)
     detail: list = list(result.get("errors") or [])
     if result.get("error"):
         detail.append(str(result["error"]))
@@ -3351,11 +3360,14 @@ async def api_mode2_propose_draft(request):
             "finding_id": saved.get("finding_id", ""),
             "confidence": draft.get("confidence", ""),
         })
-        return JSONResponse({
+        resp: dict = {
             "finding_id": saved.get("finding_id"),
             "status": "DRAFT",
             "corroboration": outcome.get("corroboration", {}),
-        })
+        }
+        if saved.get("confidence_adjusted"):
+            resp["confidence_adjusted"] = saved["confidence_adjusted"]
+        return JSONResponse(resp)
     detail: list = list(saved.get("errors") or [])
     if saved.get("error"):
         detail.append(str(saved["error"]))
