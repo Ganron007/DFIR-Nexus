@@ -154,6 +154,15 @@ nexus config --setup-password             # Set approval password (new identity)
 #   nexus config --examiner e2e_host --setup-password --replace
 nexus config --show                       # Show current config
 # Subcommand form also works: nexus config set --examiner "alice" / nexus config show
+
+# Runtime environment (.env — LLM / Elasticsearch):
+nexus config env NEXUS_ES_URL=http://127.0.0.1:9200   # Set ES backend (empty value removes)
+nexus config env NEXUS_LLM_MODEL=step-3.7-flash NEXUS_LLM_BASE_URL=https://...
+# Allowed keys: NEXUS_ES_URL, NEXUS_LLM_MODEL, NEXUS_LLM_BASE_URL,
+#               NEXUS_LLM_API_KEY, NEXUS_LLM_PROVIDER, NEXUS_LLM_REASONING
+# Same keys are settable from the portal Overview preflight panel.
+nexus data download-rag                   # Fetch the RAG index (~50MB, also in the portal)
+nexus doctor                              # Full environment check (ES/LLM/RAG/tools/keys)
 ```
 
 ## Onboarding (quickstart)

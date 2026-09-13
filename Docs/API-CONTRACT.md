@@ -1536,14 +1536,44 @@ run on the CSV pack.
 {
   "backend": "ok",
   "es": {"configured": true, "reachable": true, "url": "http://..."},
-  "rag": {"configured": true},
-  "llm": {"configured": true, "model": "openai/gpt-4o"},
-  "parser": "ok"
+  "rag": {"configured": true, "path": "C:\\...\\data\\rag"},
+  "llm": {"configured": true, "model": "openai/gpt-4o", "base_url": "https://..."},
+  "parser": "ok",
+  "fixes": {"es": "...", "rag": "...", "llm": "...", "parser": "..."}
 }
 ```
 - `es.configured=false` means `NEXUS_ES_URL` is empty (CSV pack backend — not an error).
 - `rag.configured` reports index presence only (no model load); use `/rag/status` for the full preflight.
 - `llm.configured=false` means heuristic scribe fallback is active (not an error).
+- `parser="missing"` includes `parser_error` with the import failure detail.
+- `fixes` maps each component to its remediation surface (the `setup/*` endpoints below or the `nexus` CLI equivalents).
+
+---
+
+### POST /portal/api/setup/env
+**Description:** Environment preflight — write allowlisted `NEXUS_*` keys to the repo-root `.env` and apply them to the running process immediately (no restart). Keys outside the allowlist are rejected; secret values are masked in the response. CLI equivalent: `nexus config env KEY=VALUE`.
+
+**Request:** `{"NEXUS_ES_URL": "http://127.0.0.1:9200", "NEXUS_LLM_MODEL": "...", ...}`
+- Allowlisted keys: `NEXUS_ES_URL`, `NEXUS_LLM_MODEL`, `NEXUS_LLM_BASE_URL`, `NEXUS_LLM_API_KEY`, `NEXUS_LLM_PROVIDER`, `NEXUS_LLM_REASONING`
+- Empty string value removes the key (e.g. clearing `NEXUS_ES_URL` returns to CSV-pack mode).
+
+**Response 200:** `{"ok": true, "applied": {"NEXUS_ES_URL": "http://..."}, "env_file": "..."}`
+**Response 400:** `{"error": "key not allowed: ..."}` or `{"error": "no keys provided"}`
+
+---
+
+### POST /portal/api/setup/rag
+**Description:** Download the prebuilt RAG index (~50 MB, GitHub release) in a background thread — same operation as `nexus data download-rag`.
+
+**Response 202:** `{"status": "started", "task": {"status": "running", "started_at": "..."}}`
+**Response 409:** `{"error": "RAG download already running", "task": {...}}`
+
+---
+
+### GET /portal/api/setup/status
+**Description:** Pollable state for setup tasks started via `POST /setup/rag`.
+
+**Response 200:** `{"tasks": {"rag": {"status": "running|done|error", "detail": "...", "started_at": "...", "finished_at": "..."}}}`
 
 ---
 

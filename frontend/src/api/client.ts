@@ -688,10 +688,31 @@ export interface CaseModeResponse {
 /** GET /system/health → cheap backend/ES/RAG/LLM/parser status */
 export interface SystemHealthResponse {
   backend: string;
-  es?: { configured?: boolean; reachable?: boolean; url?: string };
-  rag?: { configured?: boolean };
-  llm?: { configured?: boolean; model?: string };
+  es?: { configured?: boolean; reachable?: boolean; url?: string; note?: string };
+  rag?: { configured?: boolean; path?: string };
+  llm?: { configured?: boolean; model?: string; base_url?: string };
   parser?: string;
+  parser_error?: string;
+  fixes?: Record<string, string>;
+}
+
+/** POST /setup/env → writes allowlisted NEXUS_* keys to .env (secrets masked) */
+export interface SetupEnvResponse {
+  ok?: boolean;
+  applied?: Record<string, string>;
+  env_file?: string;
+  error?: string;
+}
+
+/** POST /setup/rag → starts the RAG index download (202/409) */
+export interface SetupTask {
+  status: string;
+  detail?: string;
+  started_at?: string;
+  finished_at?: string;
+}
+export interface SetupStatusResponse {
+  tasks: Record<string, SetupTask>;
 }
 
 // --- API ---
@@ -894,6 +915,10 @@ export const api = {
   getCaseMode: (caseId?: string) =>
     request<CaseModeResponse>(`/case/mode${caseId ? `?case_id=${caseId}` : ""}`),
   systemHealth: () => request<SystemHealthResponse>("/system/health"),
+  setupEnv: (env: Record<string, string>) =>
+    post<SetupEnvResponse>("/setup/env", env),
+  setupRag: () => post<{ status?: string; task?: SetupTask; error?: string }>("/setup/rag", {}),
+  setupStatus: () => request<SetupStatusResponse>("/setup/status"),
 
   // Report & Evidence Verification
   reportGenerate: (params?: { profile?: string }) =>

@@ -57,12 +57,19 @@ export default function Overview() {
   const [banner, setBanner] = useState("");
   const [seeding, setSeeding] = useState(false);
   const [entering, setEntering] = useState("");
+  // Environment preflight — fix missing deps without leaving the portal.
+  const [editing, setEditing] = useState<"" | "es" | "llm">("");
+  const [envForm, setEnvForm] = useState({ es_url: "", llm_model: "", llm_base: "", llm_key: "" });
+  const [setupMsg, setSetupMsg] = useState("");
+  const [setupErr, setSetupErr] = useState("");
+  const [ragState, setRagState] = useState("");
+
+  const recheck = () => {
+    api.systemHealth().then(setSys).catch(() => setSys(null));
+  };
 
   useEffect(() => {
-    api
-      .systemHealth()
-      .then(setSys)
-      .catch(() => setSys(null));
+    recheck();
   }, [activeCase]);
 
   useEffect(() => {
@@ -87,6 +94,43 @@ export default function Overview() {
       setBanner(`Failed to open ${caseId}: ${(e as Error).message}`);
     } finally {
       setEntering("");
+    }
+  };
+
+  const saveEnv = async (env: Record<string, string>) => {
+    setSetupErr(""); setSetupMsg("");
+    try {
+      const r = await api.setupEnv(env);
+      if (r.error) { setSetupErr(r.error); return; }
+      setSetupMsg(`Applied (${r.env_file?.split(/[\\/]/).pop()})`);
+      setEditing("");
+      recheck();
+    } catch (e) {
+      setSetupErr((e as Error).message);
+    }
+  };
+
+  const startRagDownload = async () => {
+    setSetupErr(""); setSetupMsg(""); setRagState("starting");
+    try {
+      const r = await api.setupRag();
+      if (r.error) { setSetupErr(r.error); setRagState(""); return; }
+      // Poll task status until the download finishes, then re-check health.
+      const poll = setInterval(async () => {
+        try {
+          const s = await api.setupStatus();
+          const t = s.tasks?.rag;
+          if (!t || t.status === "running") { setRagState("running"); return; }
+          clearInterval(poll);
+          setRagState(t.status === "done" ? "" : "error");
+          if (t.status === "error") setSetupErr(`RAG download failed: ${t.detail || "unknown"}`);
+          else setSetupMsg("RAG index installed.");
+          recheck();
+        } catch { clearInterval(poll); setRagState(""); }
+      }, 2000);
+    } catch (e) {
+      setSetupErr((e as Error).message);
+      setRagState("");
     }
   };
 
@@ -151,9 +195,9 @@ export default function Overview() {
         </div>
       )}
 
-      {/* System health */}
+      {/* System health + environment preflight — fix missing pieces in place */}
       <div className="card" style={{ marginBottom: 16, padding: 12 }}>
-        <div style={{ display: "flex", gap: 20, flexWrap: "wrap", fontSize: 12 }}>
+        <div style={{ display: "flex", gap: 20, flexWrap: "wrap", fontSize: 12, alignItems: "center" }}>
           <span>
             <span style={{ color: "var(--text-muted)" }}>Backend:</span>{" "}
             <span style={{ color: health === "ok" ? "var(--success)" : "var(--danger)" }}>
@@ -165,26 +209,98 @@ export default function Overview() {
             <span style={{ color: sys?.es?.configured === false ? "var(--text-muted)" : sys?.es?.reachable ? "var(--success)" : "var(--danger)" }}>
               {sys?.es?.configured === false ? "CSV pack (not configured)" : sys?.es?.reachable ? "✓ reachable" : "✗ unreachable"}
             </span>
+            {sys && (
+              <button className="btn btn-sm" style={{ marginLeft: 6, padding: "0 6px", fontSize: 10 }}
+                onClick={() => { setEditing(editing === "es" ? "" : "es"); setEnvForm({ ...envForm, es_url: sys.es?.url || "" }); }}
+                title="Set or test the ES URL">
+                {sys.es?.configured ? "edit" : "set up"}
+              </button>
+            )}
           </span>
           <span>
             <span style={{ color: "var(--text-muted)" }}>RAG index:</span>{" "}
             <span style={{ color: sys?.rag?.configured ? "var(--success)" : "var(--danger)" }}>
               {sys?.rag?.configured ? "✓ present" : "✗ missing"}
             </span>
+            {sys && !sys.rag?.configured && (
+              <button className="btn btn-sm" style={{ marginLeft: 6, padding: "0 6px", fontSize: 10 }}
+                onClick={startRagDownload} disabled={ragState === "running" || ragState === "starting"}
+                title="Download the ~50MB IR knowledge index">
+                {ragState === "running" ? "downloading…" : ragState === "starting" ? "starting…" : "download"}
+              </button>
+            )}
+            {ragState === "running" && <span style={{ color: "var(--warning)", fontSize: 11 }}> (in background)</span>}
           </span>
           <span>
             <span style={{ color: "var(--text-muted)" }}>LLM:</span>{" "}
             <span style={{ color: sys?.llm?.configured ? "var(--success)" : "var(--warning)" }}>
               {sys?.llm?.configured ? `✓ ${sys.llm.model || "configured"}` : "heuristic fallback"}
             </span>
+            {sys && (
+              <button className="btn btn-sm" style={{ marginLeft: 6, padding: "0 6px", fontSize: 10 }}
+                onClick={() => setEditing(editing === "llm" ? "" : "llm")}>
+                {sys.llm?.configured ? "edit" : "set up"}
+              </button>
+            )}
           </span>
           <span>
             <span style={{ color: "var(--text-muted)" }}>Parser lane:</span>{" "}
-            <span style={{ color: sys?.parser === "ok" ? "var(--success)" : "var(--danger)" }}>
+            <span style={{ color: sys?.parser === "ok" ? "var(--success)" : "var(--danger)" }}
+              title={sys?.parser_error || ""}>
               {sys?.parser === "ok" ? "✓ available" : "✗ missing"}
             </span>
           </span>
+          <button className="btn btn-sm" style={{ marginLeft: "auto", padding: "0 8px", fontSize: 10 }}
+            onClick={recheck} title="Re-run all checks">
+            re-check
+          </button>
         </div>
+        {sys?.parser === "missing" && sys.parser_error && (
+          <div style={{ fontSize: 11, color: "var(--danger)", marginTop: 6 }}>
+            Parser lane import failed: {sys.parser_error}
+          </div>
+        )}
+        {(setupMsg || setupErr) && (
+          <div style={{ fontSize: 11, marginTop: 6, color: setupErr ? "var(--danger)" : "var(--success)" }}>
+            {setupErr || setupMsg}
+          </div>
+        )}
+        {editing === "es" && (
+          <div style={{ display: "flex", gap: 6, marginTop: 8, alignItems: "center" }}>
+            <input
+              placeholder="NEXUS_ES_URL — e.g. http://127.0.0.1:9200 (empty = CSV pack)"
+              value={envForm.es_url}
+              onChange={(e) => setEnvForm({ ...envForm, es_url: e.target.value })}
+              style={{ flex: 1, fontSize: 12 }}
+            />
+            <button className="btn btn-sm btn-primary" onClick={() => saveEnv({ NEXUS_ES_URL: envForm.es_url })}>
+              Save &amp; test
+            </button>
+          </div>
+        )}
+        {editing === "llm" && (
+          <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+            <input placeholder="Model (NEXUS_LLM_MODEL)" value={envForm.llm_model}
+              onChange={(e) => setEnvForm({ ...envForm, llm_model: e.target.value })} style={{ flex: 1, fontSize: 12, minWidth: 140 }} />
+            <input placeholder="Base URL (NEXUS_LLM_BASE_URL)" value={envForm.llm_base}
+              onChange={(e) => setEnvForm({ ...envForm, llm_base: e.target.value })} style={{ flex: 2, fontSize: 12, minWidth: 200 }} />
+            <input placeholder="API key (optional)" type="password" value={envForm.llm_key}
+              onChange={(e) => setEnvForm({ ...envForm, llm_key: e.target.value })} style={{ flex: 1, fontSize: 12, minWidth: 140 }} />
+            <button className="btn btn-sm btn-primary"
+              onClick={() => saveEnv({
+                ...(envForm.llm_model && { NEXUS_LLM_MODEL: envForm.llm_model }),
+                ...(envForm.llm_base && { NEXUS_LLM_BASE_URL: envForm.llm_base }),
+                ...(envForm.llm_key && { NEXUS_LLM_API_KEY: envForm.llm_key }),
+              })}>
+              Save
+            </button>
+          </div>
+        )}
+        {sys && (sys.es?.configured === false || !sys.rag?.configured || !sys.llm?.configured || sys.parser !== "ok") && (
+          <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 6 }}>
+            CLI equivalents — ES/LLM: <code>nexus config env KEY=VALUE</code> · RAG: <code>nexus data download-rag</code> · full check: <code>nexus doctor</code>
+          </div>
+        )}
       </div>
 
       {/* Preview panel — inspect a case without activating it */}

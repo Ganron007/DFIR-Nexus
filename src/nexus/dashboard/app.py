@@ -4602,10 +4602,94 @@ async def api_system_health(request):
     try:
         from nexus.langgraph.tool_lane import run_tool_lane  # noqa: F401
         health["parser"] = "ok"
-    except Exception:
+    except Exception as exc:
         health["parser"] = "missing"
+        health["parser_error"] = str(exc)[:200]
 
+    # Actionable detail for the preflight panel — where to fix each item.
+    health["fixes"] = {
+        "es": "POST /portal/api/setup/env {NEXUS_ES_URL} or `nexus config env NEXUS_ES_URL=...`",
+        "rag": "POST /portal/api/setup/rag or `nexus data download-rag`",
+        "llm": "POST /portal/api/setup/env {NEXUS_LLM_*} or `nexus config env ...`",
+        "parser": "fix the import error shown in parser_error (usually a missing extra)",
+    }
+    try:
+        from nexus.tools.rag import _get_index_dir as _gid
+        health["rag"]["path"] = str(_gid())
+    except Exception:
+        pass
+    if llm_base:
+        health["llm"]["base_url"] = llm_base
     return JSONResponse(health)
+
+
+_SETUP_TASKS: dict[str, dict[str, Any]] = {}
+
+
+async def api_setup_status(request):
+    """GET /portal/api/setup/status — in-flight/finished setup task states."""
+    return JSONResponse({"tasks": _SETUP_TASKS})
+
+
+async def api_setup_env(request):
+    """POST /portal/api/setup/env — write allowlisted NEXUS_* keys to .env.
+
+    Body: {"NEXUS_ES_URL": "http://...", "NEXUS_LLM_MODEL": "...", ...}
+    Empty value removes the key. Applied to os.environ immediately — no
+    restart needed. Secret values are masked in the response.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+    if not isinstance(body, dict):
+        return JSONResponse({"error": "Body must be a JSON object of key=value"}, status_code=400)
+    from nexus.envfile import apply_env, env_file_path
+    try:
+        applied = apply_env(body)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    return JSONResponse({"ok": True, "applied": applied, "env_file": str(env_file_path())})
+
+
+async def api_setup_rag(request):
+    """POST /portal/api/setup/rag — download the RAG index in the background.
+
+    202 while running; 409 if a download is already in flight. Poll
+    GET /portal/api/setup/status for progress, then re-GET system/health.
+    """
+    task = _SETUP_TASKS.get("rag")
+    if task and task.get("status") == "running":
+        return JSONResponse({"error": "RAG download already running", "task": task},
+                            status_code=409)
+    _SETUP_TASKS["rag"] = {"status": "running", "detail": "downloading…",
+                           "started_at": datetime.now(UTC).isoformat()}
+
+    def _run() -> None:
+        try:
+            from mcp.server.fastmcp import FastMCP
+
+            from nexus.audit import AuditWriter
+            from nexus.tools.rag import register_tools
+
+            server = FastMCP("setup")
+            register_tools(server, AuditWriter("setup"))
+            fn = server._tool_manager._tools["forensic_rag_download"].fn
+            result = fn(tag="latest")
+            _SETUP_TASKS["rag"] = {
+                "status": "done", "detail": str(result)[:300],
+                "finished_at": datetime.now(UTC).isoformat(),
+            }
+        except Exception as exc:
+            _SETUP_TASKS["rag"] = {
+                "status": "error", "detail": str(exc)[:300],
+                "finished_at": datetime.now(UTC).isoformat(),
+            }
+
+    import threading
+    threading.Thread(target=_run, daemon=True, name="setup-rag").start()
+    return JSONResponse({"status": "started", "task": _SETUP_TASKS["rag"]},
+                        status_code=202)
 
 
 async def api_case_seed_demo(request):
@@ -4939,6 +5023,9 @@ def create_dashboard():
         Route("/portal/api/case/mode", api_case_mode, methods=["POST"]),
         Route("/portal/api/case/mode", api_get_case_mode, methods=["GET"]),
         Route("/portal/api/system/health", api_system_health, methods=["GET"]),
+        Route("/portal/api/setup/env", api_setup_env, methods=["POST"]),
+        Route("/portal/api/setup/rag", api_setup_rag, methods=["POST"]),
+        Route("/portal/api/setup/status", api_setup_status, methods=["GET"]),
         Route("/portal/api/case/seed-demo", api_case_seed_demo, methods=["POST"]),
         Route("/portal/api/findings/reject", api_findings_reject, methods=["POST"]),
         Route("/portal/api/report/generate", api_report_generate, methods=["POST"]),

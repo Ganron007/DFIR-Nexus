@@ -163,3 +163,33 @@ def set(
 def show():
     """Show current configuration."""
     _run_show()
+
+
+@app.command("env")
+def env_cmd(
+    pairs: list[str] = typer.Argument(
+        None, help="KEY=VALUE pairs (allowlisted NEXUS_* keys; empty value removes)"
+    ),
+):
+    """Set runtime config in .env — e.g. `nexus config env NEXUS_ES_URL=http://127.0.0.1:9200`.
+
+    Allowlisted keys: NEXUS_ES_URL, NEXUS_LLM_MODEL, NEXUS_LLM_BASE_URL,
+    NEXUS_LLM_API_KEY, NEXUS_LLM_PROVIDER, NEXUS_LLM_REASONING.
+    """
+    if not pairs:
+        typer.echo("Usage: nexus config env KEY=VALUE [KEY=VALUE ...]")
+        raise typer.Exit(1)
+    mapping: dict[str, str] = {}
+    for pair in pairs:
+        key, _, value = pair.partition("=")
+        mapping[key.strip()] = value.strip()
+    from nexus.envfile import SETUP_ENV_KEYS, apply_env, env_file_path
+    try:
+        applied = apply_env(mapping)
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        typer.echo(f"Allowed keys: {', '.join(sorted(SETUP_ENV_KEYS))}", err=True)
+        raise typer.Exit(1) from None
+    typer.echo(f"Wrote {env_file_path()}:")
+    for key, value in applied.items():
+        typer.echo(f"  {key}={value or '(removed)'}")
