@@ -2509,6 +2509,32 @@ _MODE1_RUN_FILE = "mode1_full_run.json"
 _mode1_run_threads: dict[str, threading.Thread] = {}
 _mode1_run_lock = threading.Lock()
 
+# Briefing cache — case_briefing scans every playbook needle over the evidence
+# (~seconds on small cases, worse on massive ones) and is re-requested on every
+# Briefing mount + again by the directions endpoint. Short TTL keeps
+# re-navigation instant; mutations invalidate explicitly.
+_briefing_cache: dict[str, tuple[float, dict]] = {}
+_briefing_lock = threading.Lock()
+_BRIEFING_TTL = 45.0  # seconds
+
+
+def _cached_briefing(case_dir: Path) -> dict:
+    from nexus.langgraph.briefing import case_briefing
+    key = case_dir.name
+    with _briefing_lock:
+        hit = _briefing_cache.get(key)
+        if hit and time.time() - hit[0] < _BRIEFING_TTL:
+            return hit[1]
+    payload = case_briefing(case_dir)
+    with _briefing_lock:
+        _briefing_cache[key] = (time.time(), payload)
+    return payload
+
+
+def _invalidate_briefing(case_id: str) -> None:
+    with _briefing_lock:
+        _briefing_cache.pop(case_id, None)
+
 
 def _mode1_run_path(case_dir: Path) -> Path:
     return case_dir / "analysis" / _MODE1_RUN_FILE
@@ -2592,12 +2618,15 @@ def _supersede_drafts(case_dir: Path, finding_ids: list[str], *,
 
 
 def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
-                           scan: list[dict], brief: dict, needles_hit_total: int,
+                           max_needles: int, only: set[str],
                            reprocess: bool = False) -> None:
     """Background Mode 1 full-run worker.
 
     Writes the run record after every needle so navigation/reload/poll always
     sees live state. Stops at DRAFTs — examiner approval stays manual (HMAC).
+    The briefing scan runs here, not in the POST — the endpoint returns 202
+    instantly; the UI shows stage "scanning briefing" while the vocabulary
+    and hit counts are computed.
 
     reprocess=True supersedes existing DRAFTs for covered needles and re-stages
     them fresh (drafts are unsigned machine output — safe to replace). APPROVED
@@ -2606,6 +2635,7 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
     """
     from nexus.audit import resolve_examiner
     from nexus.case.workbench import add_bookmarks
+    from nexus.langgraph.briefing import case_briefing
     from nexus.langgraph.mode1 import (
         _heuristic_scribe,
         promote_hits_to_draft,
@@ -2626,6 +2656,34 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
             _atomic_write_json(record_path, record)
 
     try:
+        # Stage 1 — deterministic scan of every playbook/ATT&CK/Sigma needle.
+        # This is the expensive step (~seconds on big evidence) — it lives in
+        # the worker so the POST returns instantly.
+        record["stage"] = "scanning briefing"
+        _persist()
+        brief = case_briefing(case_dir)
+        scan = list(brief.get("needle_scan") or [])
+        if only:
+            scan = [s for s in scan if str(s.get("needle", "")).lower() in only]
+        needles_hit_total = len(scan)  # before the max_needles cap — report honestly
+        scan = scan[:max_needles]
+        record["needles"] = [str(s.get("needle") or "") for s in scan]
+        record["needles_total"] = len(scan)
+        record["needles_scanned"] = int(brief.get("scanned_needles") or 0)
+        record["needles_hit_total"] = needles_hit_total
+        record["needles_capped"] = needles_hit_total - len(scan)
+        record["scan_truncated"] = bool(brief.get("scan_truncated"))
+        _persist()
+        if not scan:
+            record["status"] = "complete"
+            record["stage"] = "nothing to promote"
+            record["needles_hit"] = 0
+            record["skipped"] = [{"reason": "no playbook needles matched any evidence"}]
+            record["drafts_staged"] = 0
+            record["completed_at"] = time.time()
+            record["next"] = "Nothing to promote — no needle hits in this case."
+            _persist()
+            return
         # Existing DRAFT/APPROVED needles — re-runs must not duplicate staged
         # findings (titles embed hit counts, so match the needle, not the
         # string). REJECTED/superseded needles are NOT skipped: the examiner may
@@ -2788,6 +2846,7 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
     finally:
         with _mode1_run_lock:
             _mode1_run_threads.pop(case_dir.name, None)
+        _invalidate_briefing(case_dir.name)  # run changed drafts/bookmarks
 
 
 async def api_mode1_full_run(request):
@@ -2810,8 +2869,6 @@ async def api_mode1_full_run(request):
     if sealed:
         return sealed
 
-    from nexus.langgraph.briefing import case_briefing
-
     body: dict = {}
     with contextlib.suppress(Exception):
         body = await request.json()
@@ -2821,6 +2878,7 @@ async def api_mode1_full_run(request):
     except (TypeError, ValueError):
         return JSONResponse({"error": "max_needles must be an integer"}, status_code=400)
     reprocess = bool(body.get("reprocess"))
+    only = {n.strip().lower() for n in str(body.get("needle_filter") or "").split(",") if n.strip()}
 
     # Concurrency guard — one live run per case. The record file survives
     # navigation/reload; "interrupted" records (thread dead) don't block.
@@ -2831,27 +2889,9 @@ async def api_mode1_full_run(request):
             status_code=409,
         )
 
-    # Stage 1 — deterministic scan of every playbook/ATT&CK/Sigma needle
-    brief = case_briefing(case_dir)
-    scan = list(brief.get("needle_scan") or [])
-    only = {n.strip().lower() for n in str(body.get("needle_filter") or "").split(",") if n.strip()}
-    if only:
-        scan = [s for s in scan if str(s.get("needle", "")).lower() in only]
-    needles_hit_total = len(scan)  # before the max_needles cap — report honestly
-    scan = scan[:max_needles]
-    if not scan:
-        return JSONResponse({
-            "status": "complete",
-            "needles_scanned": int(brief.get("scanned_needles") or 0),
-            "needles_hit": 0,
-            "needles_hit_total": 0,
-            "bookmarks_added": 0,
-            "drafts": [],
-            "drafts_staged": 0,
-            "skipped": [{"reason": "no playbook needles matched any evidence"}],
-            "next": "Nothing to promote — no needle hits in this case.",
-        })
-
+    # The needle scan runs inside the worker — this POST returns instantly so
+    # the click always produces immediate feedback. The worker fills in
+    # needles_total / needles_scanned once the briefing lands.
     record: dict = {
         "run_id": f"M1-{int(time.time())}",
         "case_id": case_dir.name,
@@ -2862,17 +2902,12 @@ async def api_mode1_full_run(request):
         "started_at": time.time(),
         "updated_at": time.time(),
         "needles_done": 0,
-        "needles_total": len(scan),
-        # Persist the scanned needle list — rebuild_case_timeline falls back
-        # to these when a case has no intake terms (portal-created cases).
-        "needles": [str(s.get("needle") or "") for s in scan],
-        "needles_scanned": int(brief.get("scanned_needles") or 0),
-        "needles_hit_total": needles_hit_total,
-        "needles_capped": needles_hit_total - len(scan),
-        "scan_truncated": bool(brief.get("scan_truncated")),
+        "needles_total": 0,
+        "reprocess": reprocess,
         "bookmarks_added": 0,
         "drafts": [],
         "skipped": [],
+        "superseded": [],
     }
     record_path = _mode1_run_path(case_dir)
     record_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2880,7 +2915,7 @@ async def api_mode1_full_run(request):
 
     worker = threading.Thread(
         target=_mode1_full_run_worker,
-        args=(case_dir, record_path, record, scan, brief, needles_hit_total, reprocess),
+        args=(case_dir, record_path, record, max_needles, only, reprocess),
         name=f"mode1-full-run-{case_dir.name}",
         daemon=True,
     )
@@ -4439,10 +4474,9 @@ async def api_case_briefing(request):
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
-    from nexus.langgraph.briefing import case_briefing
 
     try:
-        return JSONResponse(case_briefing(case_dir))
+        return JSONResponse(_cached_briefing(case_dir))
     except Exception as exc:  # noqa: BLE001
         logger.exception("briefing failed")
         return JSONResponse({"error": f"briefing failed: {exc}"}, status_code=500)
@@ -4458,7 +4492,7 @@ async def api_case_briefing_directions(request):
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
-    from nexus.langgraph.briefing import case_briefing, llm_directions
+    from nexus.langgraph.briefing import llm_directions
 
     try:
         from nexus.langgraph.llm_pipeline import get_model
@@ -4468,7 +4502,7 @@ async def api_case_briefing_directions(request):
     if model is None:
         return JSONResponse({"directions": []})
     try:
-        directions = llm_directions(case_dir, case_briefing(case_dir), model)
+        directions = llm_directions(case_dir, _cached_briefing(case_dir), model)
     except Exception as exc:  # noqa: BLE001
         logger.exception("briefing directions failed")
         return JSONResponse({"error": f"directions failed: {exc}"}, status_code=500)

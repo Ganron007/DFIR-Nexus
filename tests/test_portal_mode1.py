@@ -304,7 +304,9 @@ def test_api_mode1_full_run(mock_brief, mock_n4q, mock_attach, mock_save, mock_g
     resp = client.post("/portal/api/mode1/full-run", json={})
     assert resp.status_code == 202
     assert resp.json()["status"] == "running"
-    assert resp.json()["needles_total"] == 3
+    # POST returns instantly — the briefing scan runs in the worker, so
+    # needles_total lands via the status poll, not the POST response.
+    assert resp.json()["needles_total"] == 0
 
     # A second POST while the worker is live → 409 + the running record,
     # not a duplicate run.
@@ -459,11 +461,13 @@ def test_api_mode1_full_run_no_hits(mock_brief, mock_get_dir, tmp_path):
     app = Starlette(routes=create_dashboard())
     client = TestClient(app)
     resp = client.post("/portal/api/mode1/full-run", json={})
-    assert resp.status_code == 200
-    data = resp.json()
+    assert resp.status_code == 202  # scan runs in the worker — poll status
+    data = _wait_full_run(client)
+    assert data["status"] == "complete"
     assert data["drafts_staged"] == 0
     assert data["needles_hit"] == 0
     assert data["bookmarks_added"] == 0
+    assert any("no playbook needles" in s.get("reason", "") for s in data["skipped"])
 
 
 @patch("nexus.dashboard.app._get_case_dir")

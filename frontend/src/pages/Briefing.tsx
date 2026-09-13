@@ -75,6 +75,18 @@ export default function Briefing() {
 
   const fullRun = async () => {
     setFullRunError("");
+    // Optimistic state — the POST returns instantly now, but show the running
+    // card the moment the click lands so there's never a dead-looking gap.
+    setFullRunResult({
+      status: "running",
+      stage: "starting",
+      needles_done: 0,
+      needles_total: 0,
+      needles_scanned: 0,
+      bookmarks_added: 0,
+      drafts: [],
+      skipped: [],
+    });
     try {
       const r = await api.mode1FullRun({ reprocess });
       setFullRunResult(r);
