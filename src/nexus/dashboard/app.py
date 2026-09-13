@@ -14,6 +14,7 @@ import html
 import json
 import logging
 import os
+import re
 import secrets
 import threading
 import time
@@ -432,11 +433,21 @@ async def post_commit(request) -> JSONResponse:
         except Exception as e:
             errors.append({"id": fid, "error": str(e)})
 
+    # Finding-sourced timeline events carry the finding's status — refresh
+    # after commit so approved evidence flips DRAFT → APPROVED on the wire.
+    timeline_events = 0
+    if approved:
+        with contextlib.suppress(Exception):
+            from nexus.langgraph.timeline_merge import rebuild_case_timeline
+
+            timeline_events = len(rebuild_case_timeline(case_dir))
+
     return JSONResponse({
         "status": "committed",
         "approved": approved,
         "errors": errors,
         "examiner": examiner,
+        "timeline_events": timeline_events,
     })
 
 
@@ -1849,6 +1860,28 @@ def _bucket_times(hits: list[dict], bucket_minutes: int = 60) -> dict[str, int]:
     return dict(sorted(buckets.items()))
 
 
+def _case_default_needles(case_dir, cap: int = 120) -> list[str]:
+    """The 'no query given' vocabulary: what the investigation flagged.
+
+    Order: needles the Mode 1 full-run actually scanned (persisted in the
+    run record — the honest set for this case), else the briefing scan
+    vocabulary for the case's families. Lets the Timeline show matched
+    events for portal cases whose intake is empty.
+    """
+    try:
+        rec = _mode1_run_record(case_dir)
+    except Exception:  # noqa: BLE001
+        rec = None
+    if rec and rec.get("needles"):
+        return [str(n) for n in rec["needles"] if str(n).strip()][:cap]
+    try:
+        from nexus.langgraph.briefing import _family_inventory, _scan_needles
+
+        return list(_scan_needles(case_dir, sorted(_family_inventory(case_dir))))[:cap]
+    except Exception:  # noqa: BLE001
+        return []
+
+
 def _explore_query_from_body(case_dir, body):
     """Shared needle→DSL construction for /explore/search and
     /workbench/add_many — both endpoints must see the identical result set.
@@ -1937,7 +1970,28 @@ async def api_explore_search(request):
 
     query_text, window, family_filter, host_filter = _explore_query_from_body(case_dir, body)
 
-    result = n4_query(case_dir, query_text, window=window, limit=400, offset=offset)
+    defaulted = 0
+    if not query_text and body.get('default_needles'):
+        # Timeline events panel opt-in: no query = "rows the investigation
+        # flagged". Term lists go straight to n4_hits — the DSL's 24-term
+        # OR cap is for examiner queries, not internal vocabulary.
+        vocab = _case_default_needles(case_dir)
+        if vocab:
+            from nexus.langgraph.query_pack import n4_hits
+
+            all_hits, backend_used = n4_hits(
+                case_dir, vocab, window, priority_terms=vocab)
+            result = {
+                'count': len(all_hits),
+                'hits': all_hits[offset:offset + 400],
+                'backend': backend_used,
+                'query': f'{len(vocab)} case needles (auto)',
+            }
+            defaulted = len(vocab)
+        else:
+            result = {'count': 0, 'hits': [], 'backend': '', 'query': ''}
+    else:
+        result = n4_query(case_dir, query_text, window=window, limit=400, offset=offset)
     if result.get('error'):
         return JSONResponse({'error': result['error']}, status_code=400)
     hits = list(result.get('hits') or [])
@@ -1961,6 +2015,7 @@ async def api_explore_search(request):
         'needles': collect_query_terms(load_case_intake(case_dir)),
         'query': result.get('query', ''),
         'offset': offset,
+        'default_needles': defaulted,
     })
 
 
@@ -2511,14 +2566,20 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
             _atomic_write_json(record_path, record)
 
     try:
-        # Existing DRAFT titles — re-runs must not duplicate staged findings
+        # Existing DRAFT/APPROVED needles — re-runs must not duplicate staged
+        # findings (titles embed hit counts, so match the needle, not the
+        # string). REJECTED/deleted needles are NOT skipped: the examiner may
+        # legitimately re-stage a signal after rejecting a first attempt.
         existing: set[str] = set()
         findings_path = case_dir / "findings.json"
         if findings_path.is_file():
             try:
                 for f in json.loads(findings_path.read_text(encoding="utf-8")):
-                    if str(f.get("status") or "").upper() == "DRAFT" and f.get("title"):
-                        existing.add(str(f["title"]))
+                    st = str(f.get("status") or "").upper()
+                    title = str(f.get("title") or "")
+                    m = re.match(r"Signal:\s*(.+?)\s*—", title)
+                    if st in {"DRAFT", "APPROVED"} and m:
+                        existing.add(m.group(1).strip().lower())
             except (OSError, json.JSONDecodeError):
                 pass
 
@@ -2527,6 +2588,7 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
         record["stage"] = "scanning"
         _persist()
 
+        all_hits: list[dict] = []
         for i, s in enumerate(scan):
             needle = str(s.get("needle") or "").strip()
             record["needles_done"] = i
@@ -2555,6 +2617,7 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
             if not hits:
                 record["skipped"].append({"needle": needle, "reason": "no hits matched this needle"})
                 continue
+            all_hits.extend(hits)
             record["stage"] = "bookmarking"
             record["bookmarks_added"] += int(add_bookmarks(case_dir, hits).get("added") or 0)
 
@@ -2565,8 +2628,9 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
             families = sorted({str(h.get("family") or "?") for h in hits})
             more = "+" if int(result.get("count") or 0) > len(hits) else ""
             title = f"Signal: {needle} — {len(hits)}{more} hit(s) across {', '.join(families)}"
-            if title in existing:
-                record["skipped"].append({"needle": needle, "reason": "draft already staged"})
+            if needle.lower() in existing:
+                record["skipped"].append(
+                    {"needle": needle, "reason": "draft already staged/approved"})
                 continue
             draft = promote_hits_to_draft(
                 case_dir,
@@ -2590,11 +2654,22 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
                 if res.get("confidence_adjusted"):
                     d["confidence_adjusted"] = res["confidence_adjusted"]
                 record["drafts"].append(d)
-                existing.add(title)
+                existing.add(needle.lower())
             else:
                 detail = res.get("errors") or [str(res.get("error") or "stage failed")]
                 record["skipped"].append(
                     {"needle": needle, "reason": "; ".join(str(d) for d in detail)})
+
+        # N7: every matched row is timeline-worthy BEFORE approval — the
+        # examiner needs the chronology to review the drafts against.
+        record["stage"] = "building timeline"
+        _persist()
+        try:
+            from nexus.langgraph.timeline_merge import rebuild_case_timeline
+
+            record["timeline_events"] = len(rebuild_case_timeline(case_dir, hits=all_hits))
+        except Exception as exc:  # noqa: BLE001 — drafts are already staged; report, don't fail
+            record["timeline_error"] = str(exc)
 
         record["needles_done"] = len(scan)
         record["current"] = ""
@@ -2687,6 +2762,9 @@ async def api_mode1_full_run(request):
         "updated_at": time.time(),
         "needles_done": 0,
         "needles_total": len(scan),
+        # Persist the scanned needle list — rebuild_case_timeline falls back
+        # to these when a case has no intake terms (portal-created cases).
+        "needles": [str(s.get("needle") or "") for s in scan],
         "needles_scanned": int(brief.get("scanned_needles") or 0),
         "needles_hit_total": needles_hit_total,
         "needles_capped": needles_hit_total - len(scan),
@@ -2815,6 +2893,12 @@ async def api_workbench_promote(request):
         }
         if result.get("confidence_adjusted"):
             resp["confidence_adjusted"] = result["confidence_adjusted"]
+        # Promoted evidence belongs on the timeline the moment it becomes a
+        # DRAFT — approval changes state, not existence.
+        with contextlib.suppress(Exception):
+            from nexus.langgraph.timeline_merge import rebuild_case_timeline
+
+            resp["timeline_events"] = len(rebuild_case_timeline(case_dir))
         return JSONResponse(resp)
     detail: list = list(result.get("errors") or [])
     if result.get("error"):
@@ -3175,13 +3259,42 @@ async def api_timeline_lanes(request):
     body = await request.json()
     from nexus.langgraph.query_pack import _DATE_RE, n4_query
 
-    result = n4_query(case_dir, str(body.get("query") or ""), limit=400)
-    if result.get("error"):
-        return JSONResponse({"error": result["error"]}, status_code=400)
+    query_text = str(body.get("query") or "")
+    hits: list[dict] = []
+    count = 0
+    defaulted = 0
+    if query_text.strip():
+        result = n4_query(case_dir, query_text, limit=400)
+        if result.get("error"):
+            return JSONResponse({"error": result["error"]}, status_code=400)
+        hits = list(result.get("hits") or [])
+        count = int(result.get("count") or 0)
+    else:
+        # Empty query = "everything the investigation flagged" — full-run
+        # needles, else the case's scan vocabulary. Term lists go straight
+        # to n4_hits — the DSL's 24-term OR cap is for examiner queries,
+        # not internal vocabulary. Without this a portal case with empty
+        # intake renders a blank timeline.
+        from nexus.langgraph.query_pack import _parse_needles
+
+        user_vocab = _parse_needles(str(body.get("needles") or ""))
+        vocab = user_vocab or _case_default_needles(case_dir)
+        if vocab:
+            from nexus.langgraph.query_pack import (
+                load_case_intake,
+                n4_hits,
+                parse_intake_window,
+            )
+
+            window = parse_intake_window(load_case_intake(case_dir))
+            all_hits, _be = n4_hits(case_dir, vocab, window)
+            count = len(all_hits)
+            hits = all_hits[:400]
+            defaulted = 0 if user_vocab else len(vocab)
     from nexus.langgraph.mode1 import _SEV_ORDER, _severity_from_hits
     from nexus.langgraph.query_pack import attach_hit_fields
 
-    hits = attach_hit_fields(case_dir, result.get("hits", []))
+    hits = attach_hit_fields(case_dir, hits)
     bucket = "day" if str(body.get("bucket") or "hour") == "day" else "hour"
 
     families: dict[str, dict[str, int]] = {}
@@ -3213,7 +3326,33 @@ async def api_timeline_lanes(request):
         }
         for fam, lanes in sorted(families.items(), key=lambda kv: -sum(kv[1].values()))
     ]
-    return JSONResponse({"families": ordered, "total": result.get("count", 0), "bucket": bucket})
+    return JSONResponse({
+        "families": ordered,
+        "total": count,
+        "bucket": bucket,
+        "default_needles": defaulted,
+    })
+
+
+async def api_timeline_rebuild(request):
+    """POST /portal/api/timeline/rebuild — regenerate timeline.json (N7).
+
+    Merges N4 hits (intake terms, or the persisted full-run needle list for
+    portal cases), finding evidence rows, ingest artifacts, and existing
+    ledger events (T-*) — which are never dropped. Bookmarks are the
+    examiner's curated subset of those hits, so this is what "approving
+    bookmarks" is expected to surface.
+    """
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
+    from nexus.langgraph.timeline_merge import rebuild_case_timeline
+
+    events = rebuild_case_timeline(case_dir)
+    return JSONResponse({"events": len(events), "status": "rebuilt"})
 
 
 async def api_entities(request):
@@ -4785,8 +4924,9 @@ async def api_report_generate(request):
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
 
+    body: dict = {}
     with contextlib.suppress(Exception):
-        await request.json()
+        body = await request.json() or {}
 
     from nexus.cli.report import _load_flat_evidence
     from nexus.integration.dfir_report import (
@@ -4839,6 +4979,9 @@ async def api_report_generate(request):
             tool_ledger=ledger,
             questions=questions,
             case_dir=case_dir,
+            # N8 analysis layer on by default; {"llm": false} forces the
+            # deterministic render (fast regen, offline, tests).
+            llm=bool(body.get("llm", True)),
         )
         reports_dir = case_dir / "reports"
         reports_dir.mkdir(exist_ok=True)
@@ -4987,6 +5130,7 @@ def create_dashboard():
         Route("/portal/api/chat/stream", api_chat_stream, methods=["POST"]),
         # Timeline lanes
         Route("/portal/api/timeline/lanes", api_timeline_lanes, methods=["POST"]),
+        Route("/portal/api/timeline/rebuild", api_timeline_rebuild, methods=["POST"]),
         # Entity pivot
         Route("/portal/api/entities", api_entities, methods=["POST"]),
         # Mode 2 (LLM-guided)

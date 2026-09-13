@@ -129,6 +129,7 @@ def test_report_normalize_case_ref_strips_path(tmp_path: Path, monkeypatch):
         findings=[],
         evidence=[],
         case_summary="Rocba FOR500 host triage — Win10 memory + E01 disk.",
+        llm=False,
     )
     assert "Rocba FOR500 host triage" in md
     assert "Zeek" not in md

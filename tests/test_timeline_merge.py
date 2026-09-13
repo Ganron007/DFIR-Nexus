@@ -105,3 +105,73 @@ def test_generic_jsonl_is_not_a_timeline_event():
         description="Generic JSONL record",
     )
     assert artifacts_to_events([art]) == []
+
+
+def test_rebuild_preserves_ledger_events(tmp_path: Path):
+    """T-* ledger events (evidence registration, examiner notes) must
+    survive an N7 rebuild — they are case activity, not host telemetry."""
+    import json
+
+    (tmp_path / "timeline.json").write_text(json.dumps([{
+        "id": "T-EV-001", "status": "APPROVED", "event_type": "evidence",
+        "timestamp": "2026-09-13T08:00:00", "description": "portal register",
+        "source": "sample.evtx",
+    }]), encoding="utf-8")
+    (tmp_path / "CASE.yaml").write_text("intake: {}\n", encoding="utf-8")
+    events = rebuild_case_timeline(tmp_path)
+    assert any(e.get("id") == "T-EV-001" for e in events)
+
+
+def test_rebuild_includes_workbench_bookmarks(tmp_path: Path):
+    """Examiner-bookmarked rows appear on the timeline pre-approval as
+    UNREVIEWED candidates — approval changes state, not existence."""
+    import json
+
+    (tmp_path / "CASE.yaml").write_text("intake: {}\n", encoding="utf-8")
+    (tmp_path / "workbench.json").write_text(json.dumps([{
+        "id": "B-001", "family": "hayabusa", "file": "evtx-timeline.csv",
+        "line": "3", "time": "2019-05-21T21:02:57",
+        "text": "2019-05-21 21:02:57,cmd.exe spawned rundll32 mshta",
+        "note": "suspicious chain",
+    }]), encoding="utf-8")
+    events = rebuild_case_timeline(tmp_path)
+    wb = [e for e in events if str(e.get("source") or "") == "workbench"]
+    assert wb, "bookmark rows must reach the timeline"
+    assert wb[0]["status"] == "UNREVIEWED"
+    assert wb[0]["note"] == "suspicious chain"
+
+
+def test_merge_dedupes_same_row_across_needles(tmp_path: Path):
+    """The same artifact row matched by two needles is ONE event with the
+    union of terms — not two rows."""
+    row = {
+        "family": "hayabusa", "file": "f.csv", "line": "9",
+        "text": "2019-05-21 15:32:57,mshta http://x",
+    }
+    evs = merge_events(
+        hits_to_events([{**row, "terms": "mshta"}]),
+        hits_to_events([{**row, "terms": "rundll32"}]),
+    )
+    assert len(evs) == 1
+    assert set(evs[0]["terms"].split(",")) == {"mshta", "rundll32"}
+
+
+def test_rebuild_includes_finding_evidence(tmp_path: Path):
+    """Finding evidence rows (promoted bookmarks) join the timeline tagged
+    with the finding's id + status."""
+    import json
+
+    (tmp_path / "CASE.yaml").write_text("intake: {}\n", encoding="utf-8")
+    (tmp_path / "findings.json").write_text(json.dumps([{
+        "id": "F-x-001", "status": "DRAFT", "title": "Signal: mshta",
+        "severity": "high",
+        "evidence": [{
+            "time": "2019-05-21T15:32:57", "source": "hayabusa/evtx.csv",
+            "detail": "RuleTitle: MSHTA exec", "loc": "hayabusa\evtx.csv:3",
+        }],
+    }]), encoding="utf-8")
+    events = rebuild_case_timeline(tmp_path)
+    fe = [e for e in events if str(e.get("source") or "").startswith("finding:")]
+    assert fe and fe[0]["source"] == "finding:F-x-001"
+    assert fe[0]["status"] == "DRAFT"
+    assert fe[0]["severity"] == "high"

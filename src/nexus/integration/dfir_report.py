@@ -412,6 +412,7 @@ def build_dfir_markdown(
     questions: list[str] | None = None,
     include_draft: bool = False,
     case_dir=None,
+    llm: bool = True,
 ) -> str:
     """Render a detailed DFIR-style Markdown report from case findings.
 
@@ -419,6 +420,9 @@ def build_dfir_markdown(
     Examiner preview ``REPORT-DRAFT.md`` sets ``include_draft=True``.
     ``case_dir`` enables report-time rehydration of legacy findings (raw-CSV
     evidence rows, placeholder interpretations) — display-layer only.
+    ``llm`` enables the N8 analysis layer (per-cluster analyst reads + a
+    case assessment) — deterministic category mapping always runs; the LLM
+    narrative is labeled and constrained to the evidence rows shown.
     """
     if finding_ids:
         want = set(finding_ids)
@@ -431,6 +435,39 @@ def build_dfir_markdown(
     if case_dir is not None:
         approved = [_rehydrate_finding(f, case_dir) for f in approved]
     approved.sort(key=lambda f: (_sev_rank(str(f.get("severity", ""))), f.get("title", "")))
+
+    # Clusters + per-cluster evidence rows, computed once — the render loop
+    # and the analysis layer share them.
+    clusters = _cluster_findings(approved)
+    from nexus.integration.evidence_table import normalize_evidence_rows
+
+    def _cluster_rows(cluster: list[dict[str, Any]]) -> list[dict[str, str]]:
+        seen: set[str] = set()
+        merged: list[dict[str, str]] = []
+        for f in cluster:
+            for r in normalize_evidence_rows(f):
+                key = str(r.get("loc") or "") or f"{r.get('time')}|{r.get('detail')}"
+                if key in seen:
+                    continue
+                seen.add(key)
+                merged.append(r)
+        return merged
+
+    rows_for = {i: _cluster_rows(c) for i, c in enumerate(clusters)}
+
+    # N8 analysis layer — per-cluster analyst read + case assessment. The
+    # deterministic category map always runs; LLM narrative when configured.
+    analyses: dict[int, dict[str, Any]] = {}
+    assessment: dict[str, Any] = {}
+    llm_ran = False
+    if clusters:
+        from nexus.langgraph import report_analysis
+
+        model = report_analysis.resolve_model() if llm else None
+        analyses = report_analysis.analyze_clusters(clusters, rows_for, model)
+        assessment = report_analysis.case_assessment(
+            clusters, analyses, rows_for, model)
+        llm_ran = any(a.get("source") == "llm" for a in analyses.values())
 
     mitre: dict[str, list[str]] = defaultdict(list)
     for f in approved:
@@ -488,15 +525,19 @@ def build_dfir_markdown(
         lines.append(f"**Examiner:** {examiner}  ")
     lines.append(f"**Generated:** {generated}  ")
     lines.append("")
-    lines.append(
+    banner = (
         "> PREVIEW from **DRAFT** findings. Not HMAC-approved. "
         "Official `REPORT.md` is written after `nexus approve`."
         if include_draft
         else
-        "> Lab IR report from **APPROVED** findings (template, not an LLM file). "
-        "Key takeaways, "
-        "case summary, evidence-backed sections, timeline, indicators, detections, MITRE."
+        "> Lab IR report from **APPROVED** findings — deterministic evidence "
+        "tables plus per-section analyst reads."
     )
+    if llm_ran:
+        banner += (" *Assessment and Analyst read blocks are LLM-assisted — "
+                   "verify against the evidence rows; they are not "
+                   "examiner-approved conclusions.*")
+    lines.append(banner)
     lines.append("")
 
     # Key Takeaways
@@ -528,6 +569,12 @@ def build_dfir_markdown(
                 f"({len(sift_notes)})."
             )
     lines.append("")
+
+    # N8 case assessment — theory of what/why/how/who/when across clusters.
+    if assessment:
+        from nexus.langgraph.report_analysis import render_assessment
+
+        lines.extend(render_assessment(assessment))
 
     # N8 Q&A spine
     qs = list(questions or [])
@@ -577,6 +624,7 @@ def build_dfir_markdown(
     lines.append("")
     for item in (
         "Key Takeaways",
+        "Assessment",
         "Examiner questions",
         "Case Summary",
         "Findings (Evidence-Backed)",
@@ -605,7 +653,8 @@ def build_dfir_markdown(
             else "_No approved findings._"
         )
         lines.append("")
-    def _finding_lines(f: dict[str, Any]) -> list[str]:
+    def _finding_lines(f: dict[str, Any],
+                       analysis: dict[str, Any] | None = None) -> list[str]:
         out = [f"### {f.get('title', 'Untitled')}", ""]
         out.append(f"- **ID:** `{f.get('id')}`")
         st = str(f.get("status") or f.get("approval_state") or "").upper()
@@ -643,19 +692,23 @@ def build_dfir_markdown(
         elif not obs and not rows and interp:
             out.append(interp)
             out.append("")
+        if analysis:
+            from nexus.langgraph.report_analysis import render_analysis_block
+
+            out.extend(render_analysis_block(analysis))
         return out
 
     # Fuse findings that share evidence rows — distinct needles on the same
     # attack chain read as one coherent section, not four partial repeats.
     needle_re = re.compile(r"Signal:\s*(.+?)\s*—\s*", re.I)
-    for cluster in _cluster_findings(approved):
+    for ci, cluster in enumerate(clusters):
         if len(cluster) == 1:
-            lines.extend(_finding_lines(cluster[0]))
+            lines.extend(_finding_lines(cluster[0], analyses.get(ci)))
             continue
-        names = [
+        names = list(dict.fromkeys(
             (m.group(1) if (m := needle_re.search(str(f.get("title") or ""))) else str(f.get("title") or ""))
             for f in cluster
-        ]
+        ))
         best = min(cluster, key=lambda f: _sev_rank(str(f.get("severity") or "")))
         tids = sorted({
             str(t)
@@ -682,21 +735,11 @@ def build_dfir_markdown(
         if tids:
             lines.append(f"- **MITRE:** {', '.join(tids)}")
         lines.append("")
-        # Merged evidence table — union of member rows, deduped on loc.
-        from nexus.integration.evidence_table import (
-            normalize_evidence_rows,
-            render_evidence_table,
-        )
+        # Merged evidence table — union of member rows, deduped on loc
+        # (precomputed in rows_for so the analysis layer saw the same set).
+        from nexus.integration.evidence_table import render_evidence_table
 
-        seen_locs: set[str] = set()
-        merged_rows: list[dict[str, str]] = []
-        for f in cluster:
-            for r in normalize_evidence_rows(f):
-                key = str(r.get("loc") or "") or f"{r.get('time')}|{r.get('detail')}"
-                if key in seen_locs:
-                    continue
-                seen_locs.add(key)
-                merged_rows.append(r)
+        merged_rows = rows_for.get(ci, [])
         lines.append("**Evidence**")
         lines.append("")
         lines.extend(render_evidence_table(merged_rows))
@@ -711,6 +754,10 @@ def build_dfir_markdown(
             lines.append("")
             lines.append(interps[0])
             lines.append("")
+        if analyses.get(ci):
+            from nexus.langgraph.report_analysis import render_analysis_block
+
+            lines.extend(render_analysis_block(analyses[ci]))
 
     # Tactic-ish sections derived from finding titles/sources
     def _section(title: str, predicate) -> None:
@@ -996,8 +1043,12 @@ def build_dfir_markdown(
     return "\n".join(lines)
 
 
-def write_findings_preview(case_dir) -> Path:
-    """Write ``reports/REPORT-DRAFT.md`` from staged DRAFT+APPROVED findings."""
+def write_findings_preview(case_dir, llm: bool = True) -> Path:
+    """Write ``reports/REPORT-DRAFT.md`` from staged DRAFT+APPROVED findings.
+
+    ``llm`` toggles the N8 analysis layer's model calls — tests and offline
+    use pass ``llm=False`` (deterministic category mapping still runs).
+    """
     import json
 
     import yaml
@@ -1045,6 +1096,7 @@ def write_findings_preview(case_dir) -> Path:
         include_draft=True,
         sift_notes=sift_notes_from_ledger(ledger),
         case_dir=case_dir,
+        llm=llm,
     )
     out = case_dir / "reports" / "REPORT-DRAFT.md"
     out.parent.mkdir(parents=True, exist_ok=True)

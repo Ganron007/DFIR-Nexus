@@ -62,7 +62,7 @@ def test_dfir_markdown_sections():
         sift_notes=["tshark -r conn.pcap -q -z io,phs → OK"],
         rag_notes=["RAG grounded: 4/4 queries"],
         examiner="e2e_host",
-    )
+        llm=False,)
     for section in (
         "## Key Takeaways",
         "## Case Summary",
@@ -92,7 +92,7 @@ def test_rag_notes_are_human_readable():
             "RAG ready model=BAAI/bge-base-en-v1.5 records=22268",
             "[{'rank': 1, 'score': 0.73, 'source': 'SANS_FOR508', 'title': 'Prefetch PECmd'}]",
         ],
-    )
+        llm=False,)
     assert "RAG ready model=BAAI/bge-base-en-v1.5 records=22268" in md
     assert "Prefetch PECmd" in md
     assert "[{'rank'" not in md
@@ -120,7 +120,7 @@ def test_dfir_markdown_filters_to_this_run_finding_ids():
         ],
         evidence=[],
         finding_ids=["F-new"],
-    )
+        llm=False,)
     assert "SDelete" in md
     assert "Acrobat" not in md
 
@@ -154,7 +154,7 @@ def test_timeline_keeps_i1_when_n4_is_truncated():
         findings=[],
         evidence=[],
         timeline=n4,
-    )
+        llm=False,)
     assert "### Import/ingest (I1)" in md
     assert "i1:zeek" in md
     assert "192.168.77.10" in md
@@ -285,7 +285,7 @@ def test_finding_evidence_renders_as_table_not_prose_wall():
             "interpretation": "Authorized cloud sync used for staging.",
         }],
         evidence=[],
-    )
+        llm=False,)
     assert "**Evidence**" in md
     assert "| Time (UTC) | Source | Artifact / path | What it shows |" in md
     assert "pecmd" in md
@@ -317,7 +317,7 @@ def test_n4_usb_dump_becomes_table_and_drops_garbage():
             "interpretation": "Removable media was attached.",
         }],
         evidence=[],
-    )
+        llm=False,)
     assert "TOSHIBA External USB 3.0" in md
     assert "2020-11-16 02:29:46" in md
     assert "\ufffd" not in md
@@ -343,7 +343,7 @@ def test_structured_evidence_wins_over_observation():
             "interpretation": "Anti-forensics.",
         }],
         evidence=[],
-    )
+        llm=False,)
     assert "2020-11-14 13:42:33" in md
     assert "amcache" in md
     assert "sdelete.exe" in md
@@ -364,7 +364,7 @@ def test_dfir_markdown_include_draft_watermark():
         }],
         evidence=[],
         include_draft=True,
-    )
+        llm=False,)
     assert "PREVIEW" in md
     assert "Not HMAC-approved" in md
     assert "wacsvc accessed SRL-Eyes-Only" in md
@@ -382,12 +382,13 @@ def test_dfir_markdown_include_draft_watermark():
         }],
         evidence=[],
         include_draft=False,
-    )
+        llm=False,)
     assert "wacsvc accessed SRL-Eyes-Only" not in official
     assert "No APPROVED findings yet" in official
 
 
-def test_write_findings_preview(tmp_path):
+def test_write_findings_preview(tmp_path,
+        llm=False,):
     case = tmp_path / "INC-PREVIEW"
     (case / "reports").mkdir(parents=True)
     (case / "CASE.yaml").write_text(
@@ -399,7 +400,8 @@ def test_write_findings_preview(tmp_path):
         '"severity":"high","observation":"USN close+overwrite"}]',
         encoding="utf-8",
     )
-    out = write_findings_preview(case)
+    out = write_findings_preview(case,
+        llm=False,)
     assert out.name == "REPORT-DRAFT.md"
     text = out.read_text(encoding="utf-8")
     assert "PREVIEW" in text
@@ -498,7 +500,7 @@ def test_report_rehydrates_legacy_raw_csv_rows(tmp_path):
     md = build_dfir_markdown(
         case_id="CASE-LEGACY", case_name="t", findings=[f], evidence=[],
         case_dir=case,
-    )
+        llm=False,)
     assert "RuleTitle: Proc Exec" in md
     assert "pending examiner review" not in md
     assert "evtx-timeline.csv:2" in md  # true file:line recovered
@@ -519,7 +521,7 @@ def test_report_fuses_findings_sharing_evidence_rows(tmp_path):
     md = build_dfir_markdown(
         case_id="CASE-LEGACY", case_name="t", findings=[fa, fb], evidence=[],
         case_dir=case,
-    )
+        llm=False,)
     assert "Correlated signal" in md
     assert "one attack chain" in md
     assert md.count("### Signal:") == 0  # no standalone sections
@@ -539,7 +541,7 @@ def test_report_keeps_distinct_findings_separate(tmp_path):
     md = build_dfir_markdown(
         case_id="CASE-LEGACY", case_name="t", findings=[fa, fb], evidence=[],
         case_dir=case,
-    )
+        llm=False,)
     assert "Correlated signal" not in md
     assert md.count("### Signal:") == 2
 
@@ -551,7 +553,7 @@ def test_report_without_case_dir_keeps_working(tmp_path):
     ])
     md = build_dfir_markdown(
         case_id="CASE-LEGACY", case_name="t", findings=[f], evidence=[],
-    )
+        llm=False,)
     assert "### Signal: mshta" in md
 
 
@@ -582,6 +584,6 @@ def test_report_sorts_key_takeaways_by_severity():
              "severity": "critical", "observation": "x"},
         ],
         evidence=[],
-    )
+        llm=False,)
     kt = md.split("## Key Takeaways")[1].split("##")[0]
     assert kt.index("[critical]") < kt.index("[low]")

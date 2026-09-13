@@ -77,7 +77,8 @@ def test_report_generate_and_view_api(client):
     client.post("/portal/api/case/seed-demo", json={"activate": True})
 
     # Generate report
-    gen_res = client.post("/portal/api/report/generate", json={"profile": "markdown"})
+    gen_res = client.post("/portal/api/report/generate",
+                          json={"profile": "markdown", "llm": False})
     assert gen_res.status_code == 200
     gen_body = gen_res.json()
     assert gen_body["ok"] is True

@@ -669,6 +669,12 @@ relabelled `interrupted` and does not block a new run.
 
 `skipped` entries are reported honestly — e.g. `low-signal needle (numeric/too short)` (pure-digit or <3-char needles are never staged), `draft already staged`, `no hits matched this needle`, or a query error.
 
+The run record persists `needles` (the scan vocabulary used). On completion
+the worker rebuilds the N7 timeline from the collected hits + finding
+evidence + workbench bookmarks — so the Timeline page is populated before
+examiner approval. Re-runs dedupe against DRAFT **and** APPROVED findings by
+needle name, so an identical needle never re-stages under a new hit count.
+
 **Errors:**
 - `400` — `max_needles` not an integer.
 - `404` — No active case.
@@ -690,6 +696,7 @@ relabelled `interrupted` and does not block a new run.
   "query": "string (optional — DSL query text, e.g. 'error AND family:evtx NOT defender')",
   "needles": "string (optional — comma-separated plain search terms)",
   "family": "string (optional — comma-separated family names to filter)",
+  "default_needles": "boolean (optional — when true and query is empty, resolve the case investigation vocabulary: full-run needles → briefing scan vocabulary; response echoes default_needles count)",
   "start": "string (optional — start date YYYY-MM-DD)",
   "end": "string (optional — end date YYYY-MM-DD)",
   "limit": "integer (optional — max hits, clamped 1-400, default 80)",
@@ -1068,9 +1075,39 @@ no-op, `added: 0`).
 `Level`/`detections` fields. Buckets without detection-family hits may be
 absent. The Timeline page colors lane bars by this map.
 
+**Empty-query vocabulary (added 2026-09-13):** when `query` is empty the
+handler no longer returns zero hits — it resolves the case's investigation
+vocabulary: `needles` from the request when given, else the Mode 1 full-run's
+persisted needle list (`analysis/mode1_full_run.json`), else the briefing
+scan vocabulary (playbook/ATT&CK/Sigma needles for the case's families).
+Terms go straight to `n4_hits` — the DSL's 24-term OR cap is not involved.
+The response carries `default_needles: <n>` when the auto-vocabulary was used
+(`0` for explicit/user needles). This is what lets a portal-created case
+with empty intake render a populated timeline.
+
+`POST /explore/search` accepts `"default_needles": true` for the same
+resolution (Timeline's events panel uses it); the response echoes
+`default_needles: <n>`.
+
 **Errors:**
 - `400` — Query syntax error.
 - `404` — No active case.
+
+---
+
+### POST /portal/api/timeline/rebuild
+**Description:** Regenerates `timeline.json` (N7) for the active case.
+Merges, in dedupe order: existing ledger events (`T-*` entries — never
+dropped), finding evidence rows (tagged `finding:<id>`, inherit the
+finding's status), N4 hits (intake terms, or the persisted full-run needle
+list when intake is empty), workbench bookmarks (`workbench` source,
+`status: UNREVIEWED`), and ingest artifacts. Rows sharing `file:line`
+collapse to one event with unioned matched terms — the same row hit by two
+needles is one event.
+
+**Response 200:** `{"events": <n>, "status": "rebuilt"}`
+
+**Errors:** `404` no active case; sealed cases rejected.
 
 ---
 
@@ -1899,7 +1936,12 @@ These are server-side rendered HTML pages in the current portal. In the React SP
 ### POST /portal/api/report/generate
 **Description:** Trigger official case report generation. Assembles findings, evidence, timeline, case metadata, and tool ledger into a Markdown report written to `CASE-XXXX/reports/REPORT.md`.
 
-**Request:** No body required (empty JSON accepted).
+**Request:** `{"llm": true}` (optional, default `true`). `llm: false` forces
+the deterministic render — fast regen, offline use, tests. When an LLM is
+configured the report gains labeled **Assessment** (case-level sequence /
+scope / confidence / gaps / next steps) and per-cluster **Analyst read**
+blocks (category + what/why/how/who-when/verify/caveats) constrained to the
+evidence rows shown. LLM output is marked and never examiner-approved.
 
 **Response 200:**
 ```json

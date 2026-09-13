@@ -105,19 +105,34 @@ def artifacts_to_events(artifacts: list[Artifact], source: str = "i1") -> list[d
 
 
 def merge_events(*groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    seen: set[str] = set()
+    seen: dict[str, int] = {}
     out: list[dict[str, Any]] = []
     for group in groups:
         for ev in group:
-            key = "|".join([
+            # file:line identifies the underlying artifact row — the same
+            # row matched by two needles is ONE event (union the terms),
+            # not two. Fall back to the content key for rows without loc.
+            loc = "|".join([str(ev.get("file") or ""), str(ev.get("line") or "")])
+            has_loc = bool(ev.get("file") and ev.get("line"))
+            key = f"loc:{loc}" if has_loc else "|".join([
                 str(ev.get("timestamp") or ""),
                 str(ev.get("description") or "")[:120],
                 str(ev.get("source") or ""),
                 str(ev.get("file") or ""),
             ])
             if key in seen:
+                prev = out[seen[key]]
+                # Union matched needles + fill any fields the first event lacked.
+                prev_terms = {t.strip() for t in str(prev.get("terms") or "").split(",") if t.strip()}
+                new_terms = {t.strip() for t in str(ev.get("terms") or "").split(",") if t.strip()}
+                union = prev_terms | new_terms
+                if union:
+                    prev["terms"] = ",".join(sorted(union))
+                for k in ("severity", "host", "timestamp", "artifact", "note"):
+                    if not prev.get(k) and ev.get(k):
+                        prev[k] = ev[k]
                 continue
-            seen.add(key)
+            seen[key] = len(out)
             out.append(ev)
     out.sort(key=lambda e: (e.get("timestamp") or "9999", e.get("source") or "", e.get("file") or ""))
     return out
@@ -182,11 +197,100 @@ def ingest_into_case(
     }
 
 
+def _bookmark_events(case_dir: Path) -> list[dict[str, Any]]:
+    """Workbench bookmarks → timeline events (source ``workbench``).
+
+    Bookmarks are the examiner's flagged rows — they belong on the timeline
+    the moment they're starred, pre-approval. Rows also matched by needles
+    dedupe onto the richer n4 event via the file:line key; the examiner's
+    note is carried across in the merge. Fields are re-attached so severity
+    survives even though workbench.json strips them.
+    """
+    try:
+        from nexus.case.workbench import load_bookmarks
+
+        bookmarks = load_bookmarks(case_dir)
+    except Exception:
+        return []
+    if not bookmarks:
+        return []
+    hits = [
+        {
+            "family": str(b.get("family") or ""),
+            "file": str(b.get("file") or ""),
+            "line": str(b.get("line") or ""),
+            "text": str(b.get("text") or ""),
+            "terms": "",
+        }
+        for b in bookmarks if isinstance(b, dict)
+    ]
+    try:
+        from nexus.langgraph.query_pack import attach_hit_fields
+
+        hits = attach_hit_fields(case_dir, hits)
+    except Exception:
+        pass
+    events = hits_to_events(hits, source="workbench")
+    for ev, b in zip(events, bookmarks, strict=False):
+        if b.get("note"):
+            ev["note"] = str(b["note"])[:200]
+        if b.get("time") and not ev.get("timestamp"):
+            ev["timestamp"] = str(b["time"])
+        ev["status"] = "UNREVIEWED"  # bookmarked, pre-approval
+    return events
+
+
+def _finding_evidence_events(case_dir: Path) -> list[dict[str, Any]]:
+    """Staged/approved findings' evidence rows → timeline events.
+
+    The finding's own severity stamps the row; source tags it back to the
+    finding so the timeline shows why the row matters.
+    """
+    events: list[dict[str, Any]] = []
+    fp = case_dir / "findings.json"
+    if not fp.is_file():
+        return events
+    try:
+        findings = json.loads(fp.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return events
+    for f in findings if isinstance(findings, list) else []:
+        if not isinstance(f, dict):
+            continue
+        fid = str(f.get("id") or "")
+        fsev = str(f.get("severity") or "")
+        for row in (f.get("evidence") or [])[:20]:
+            if not isinstance(row, dict):
+                continue
+            loc = str(row.get("loc") or "")
+            rfile, _, rline = loc.partition(":")
+            if not rfile:
+                rfile = str(row.get("artifact") or "")
+            fam = str(row.get("source") or "").split("/")[0]
+            events.append({
+                "timestamp": str(row.get("time") or ""),
+                "host": str(f.get("host") or ""),
+                "description": str(row.get("detail") or f.get("title") or "")[:240],
+                "status": str(f.get("status") or "DRAFT"),
+                "source": f"finding:{fid}" if fid else "finding",
+                "family": fam,
+                "file": rfile,
+                "line": rline,
+                "terms": "",
+                "severity": fsev,
+            })
+    return events
+
+
 def rebuild_case_timeline(
     case_dir: Path,
     hits: list[dict[str, str]] | None = None,
 ) -> list[dict[str, Any]]:
-    """N7: N4 hits + I1 artifacts, window-scoped, written to timeline.json."""
+    """N7: N4 hits + I1 artifacts + finding evidence + ledger events.
+
+    Ledger events (T-* entries written by record_timeline_event / evidence
+    registration) are MERGED back in — never dropped by a rebuild.
+    """
     case_dir = Path(case_dir)
     intake = load_case_intake(case_dir)
     window = parse_intake_window(intake)
@@ -199,6 +303,16 @@ def rebuild_case_timeline(
         )
 
         terms = collect_query_terms(intake)
+        if not terms:
+            # Portal-created cases have no intake terms — fall back to the
+            # needles a Mode 1 full-run actually scanned, so the timeline
+            # still populates from real investigation work.
+            run_path = case_dir / "analysis" / "mode1_full_run.json"
+            try:
+                rec = json.loads(run_path.read_text(encoding="utf-8"))
+                terms = [str(t) for t in (rec.get("needles") or []) if str(t).strip()]
+            except (OSError, json.JSONDecodeError, AttributeError):
+                terms = []
         hits, _backend = n4_hits(
             case_dir, terms, window, priority_terms=collect_playbook_query_terms(intake),
         )
@@ -208,10 +322,37 @@ def rebuild_case_timeline(
             hits = attach_hit_fields(case_dir, hits)
         except Exception:
             pass  # fields absent → severity stays unset, timeline still builds
+    # Ledger events already staged in timeline.json (evidence registration,
+    # examiner notes, finding-linked events) must survive a rebuild.
+    ledger_events: list[dict[str, Any]] = []
+    tl_path = case_dir / "timeline.json"
+    if tl_path.is_file():
+        try:
+            existing = json.loads(tl_path.read_text(encoding="utf-8"))
+            if isinstance(existing, dict):
+                existing = existing.get("events", [])
+            ledger_events = [
+                e for e in existing
+                if isinstance(e, dict) and (e.get("id") or e.get("event_type"))
+            ]
+        except (OSError, json.JSONDecodeError):
+            pass
     host_events = hits_to_events(hits or [])
     ingest_events = artifacts_to_events(load_ingest_artifacts(case_dir))
-    merged = merge_events(host_events, ingest_events)
-    scoped = [e for e in merged if _in_window(e.get("timestamp") or None, start, end)]
+    merged = merge_events(
+        ledger_events,
+        _finding_evidence_events(case_dir),
+        host_events,
+        _bookmark_events(case_dir),
+        ingest_events,
+    )
+    # Window scopes host telemetry; ledger events (id/event_type — evidence
+    # registration, examiner notes) are case activity and always kept.
+    scoped = [
+        e for e in merged
+        if (e.get("id") or e.get("event_type"))
+        or _in_window(e.get("timestamp") or None, start, end)
+    ]
     tl_path = case_dir / "timeline.json"
     tl_path.write_text(json.dumps(scoped, indent=2), encoding="utf-8")
     analysis = case_dir / "analysis"

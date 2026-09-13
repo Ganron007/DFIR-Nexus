@@ -285,8 +285,9 @@ def test_full_loop_design_flow(flow_env, monkeypatch):
     assert r.status_code == 200, r.text
     assert finding_id in r.json()["approved"]
 
-    # 8. Official report (APPROVED only)
-    r = client.post("/portal/api/report/generate", headers=headers, json={})
+    # 8. Official report (APPROVED only) — llm=false keeps the test
+    # deterministic/offline; the analysis layer still runs heuristically.
+    r = client.post("/portal/api/report/generate", headers=headers, json={"llm": False})
     assert r.status_code == 200, r.text
     assert r.json()["findings_count"] >= 1
     view = client.get("/portal/api/report/view", headers=headers).json()

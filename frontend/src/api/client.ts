@@ -393,6 +393,8 @@ export interface TimelineLanesResponse {
   families: TimelineLaneEntry[];
   total: number;
   bucket: string;
+  /** Needles auto-injected when the query was empty (0 = explicit query). */
+  default_needles?: number;
 }
 
 /** POST /entities → {entities: {ips, users, processes, paths}, total} */
@@ -778,6 +780,9 @@ export const api = {
     end?: string;
     limit?: number;
     offset?: number;
+    /** Timeline events panel — resolve the case's needle vocabulary when
+     *  no query/needles are given (empty-intake portal cases). */
+    default_needles?: boolean;
   }) => post<SearchResponse>("/explore/search", params),
   aggregate: (params: { query?: string; group_by: string }) =>
     post<AggregateResponse>("/explore/aggregate", params),
@@ -833,6 +838,8 @@ export const api = {
     end?: string;
     bucket?: string;
   }) => post<TimelineLanesResponse>("/timeline/lanes", params || {}),
+  timelineRebuild: () =>
+    post<{ events: number; status: string }>("/timeline/rebuild", {}),
 
   // Entities
   entities: (params: { query?: string; needles?: string }) =>

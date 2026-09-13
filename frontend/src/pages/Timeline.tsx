@@ -78,15 +78,32 @@ export default function Timeline() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [caseKey]);
 
-  useEffect(() => {
+  const loadLanes = () => {
+    setLoading(true);
     api.timelineLanes({})
       .then((r) => {
         setLanes(r.families || []);
         setTotal(r.total);
+        setDefaultedNeedles(r.default_needles || 0);
       })
       .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    loadLanes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeCase]);
+
+  const [defaultedNeedles, setDefaultedNeedles] = useState(0);
+  const [rebuilding, setRebuilding] = useState(false);
+  const rebuildTimeline = () => {
+    setRebuilding(true);
+    api.timelineRebuild()
+      .then(() => loadLanes())
+      .catch((e) => setError((e as Error).message))
+      .finally(() => setRebuilding(false));
+  };
 
   const laneData = lanes.map((lane) => {
     const buckets = Object.entries(lane.buckets)
@@ -171,6 +188,7 @@ export default function Timeline() {
       end: brushRange.end || undefined,
       limit: 200,
       offset: 0,
+      default_needles: true,
     })
       .then((r) => {
         setEvents(r.hits);
@@ -291,7 +309,23 @@ export default function Timeline() {
     <div>
       <h2 style={{ marginBottom: 16 }}>
         Timeline ({totalEvents.toLocaleString()} events · {total} total hits)
+        <button
+          className="btn btn-sm"
+          style={{ marginLeft: 12, verticalAlign: "middle" }}
+          onClick={rebuildTimeline}
+          disabled={rebuilding}
+          title="Rebuild timeline.json — merges needle hits, finding evidence, bookmarks, and ledger events (N7)"
+        >
+          {rebuilding ? "Rebuilding…" : "Rebuild"}
+        </button>
       </h2>
+      {defaultedNeedles > 0 && (
+        <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8 }}>
+          Showing rows matched by the case&apos;s needle vocabulary
+          ({defaultedNeedles} needles — full-run scan or playbook terms for
+          this case&apos;s families). Use Explore for arbitrary queries.
+        </div>
+      )}
       {error && <div className="error-banner">{error}</div>}
       {laneData.length === 0 ? (
         <div className="empty-state">
