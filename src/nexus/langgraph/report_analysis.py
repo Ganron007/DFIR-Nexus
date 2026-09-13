@@ -197,8 +197,16 @@ def category_for(cluster: list[dict[str, Any]], rows: list[dict[str, str]]) -> s
 
 
 def _cluster_blob(cluster: list[dict[str, Any]], rows: list[dict[str, str]],
-                  *, cap_rows: int = 8) -> str:
-    """Compact evidence block for the prompt — rendered fields, not raw CSV."""
+                  *, cap_rows: int = 16) -> str:
+    """Compact evidence block for the prompt — signature-collapsed rows.
+
+    Distinct detection signatures (not raw row count) are what the LLM
+    dissects — 300 rows collapse to their ~30 signatures so massive
+    evidence sets still fit the context window.
+    """
+    from nexus.integration.evidence_table import collapse_signatures
+
+    sig_rows = collapse_signatures(rows)
     titles = "; ".join(dict.fromkeys(str(f.get("title") or "") for f in cluster))
     sev = str(cluster[0].get("severity") or "unrated")
     tids = sorted({
@@ -210,9 +218,10 @@ def _cluster_blob(cluster: list[dict[str, Any]], rows: list[dict[str, str]],
     parts = [
         f"Finding(s): {titles}",
         f"Severity: {sev}" + (f"  MITRE: {', '.join(tids)}" if tids else ""),
-        "Evidence rows (ONLY source of facts):",
+        (f"Evidence: {len(rows)} rows grouped into {len(sig_rows)} distinct "
+         "signatures (ONLY source of facts):"),
     ]
-    for r in rows[:cap_rows]:
+    for r in sig_rows[:cap_rows]:
         line = " | ".join(
             x for x in (
                 str(r.get("time") or ""),
@@ -222,6 +231,8 @@ def _cluster_blob(cluster: list[dict[str, Any]], rows: list[dict[str, str]],
             ) if x
         )
         parts.append(f"- {line[:420]}")
+    if len(sig_rows) > cap_rows:
+        parts.append(f"- … {len(sig_rows) - cap_rows} more signatures not shown")
     interp = next(
         (str(f.get("interpretation") or "").strip() for f in cluster
          if str(f.get("interpretation") or "").strip()),
@@ -266,13 +277,19 @@ def _heuristic_analysis(cluster: list[dict[str, Any]],
 
 
 def analyze_cluster(cluster: list[dict[str, Any]], rows: list[dict[str, str]],
-                    model=None) -> dict[str, Any]:
+                    model=None, steer: str = "") -> dict[str, Any]:
     """One analyst read for a cluster — LLM JSON when a model is available."""
     base = _heuristic_analysis(cluster, rows)
     if model is None:
         return base
+    steer_block = (
+        f"\n\nExaminer steering — honor this direction in the read "
+        f"(still only facts from the evidence shown): {steer[:400]}"
+        if steer.strip() else ""
+    )
     user_msg = (
         _cluster_blob(cluster, rows)
+        + steer_block
         + "\n\nReturn JSON only:\n" + _ANALYSIS_SCHEMA
     )
     try:
@@ -308,18 +325,19 @@ def analyze_cluster(cluster: list[dict[str, Any]], rows: list[dict[str, str]],
 
 def analyze_clusters(clusters: list[list[dict[str, Any]]],
                      rows_for: dict[int, list[dict[str, str]]],
-                     model=None) -> dict[int, dict[str, Any]]:
+                     model=None, steer: str = "") -> dict[int, dict[str, Any]]:
     """Analyst read per cluster, keyed by cluster index."""
     out: dict[int, dict[str, Any]] = {}
     for i, cluster in enumerate(clusters):
-        out[i] = analyze_cluster(cluster, rows_for.get(i, []), model=model)
+        out[i] = analyze_cluster(
+            cluster, rows_for.get(i, []), model=model, steer=steer)
     return out
 
 
 def case_assessment(clusters: list[list[dict[str, Any]]],
                     analyses: dict[int, dict[str, Any]],
                     rows_for: dict[int, list[dict[str, str]]],
-                    model=None) -> dict[str, Any]:
+                    model=None, steer: str = "") -> dict[str, Any]:
     """Case-level theory: sequence, scope, confidence, gaps, next steps."""
     if not clusters:
         return {}
@@ -360,6 +378,9 @@ def case_assessment(clusters: list[list[dict[str, Any]]],
         )
     user_msg = (
         "Cluster reads:\n" + "\n".join(briefs[:24])
+        + (f"\n\nExaminer steering — shape the assessment around this "
+           f"direction (facts still only from the reads): {steer[:400]}"
+           if steer.strip() else "")
         + "\n\nReturn JSON only."
     )
     try:

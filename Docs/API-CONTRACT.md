@@ -1956,6 +1956,45 @@ evidence rows shown. LLM output is marked and never examiner-approved.
 **Response 404:** `{"error": "No active case"}`
 **Response 500:** `{"error": "string"}` — report generation failed.
 
+**Report structure (2026-09-13):** Key Takeaways (deduped signals) →
+Assessment (LLM case-level theory) → Case Summary → Findings grouped by
+investigative category in kill-chain order (each cluster: evidence table +
+interpretation + analyst read) → interpreted Timeline (bucketed, deduped,
+salient labels) → Indicators (URLs/domains/tasks/paths extracted from
+evidence content + registry IPs/hosts/hashes) → Detections → MITRE →
+Insider Threat Matrix → Evidence Registry → tool-run inventory. Same-signal
+findings approved twice collapse to one section citing every ID; evidence
+rows signature-collapse (×N) and tables cap at 40 rows.
+
+---
+
+### POST /portal/api/report/steer
+**Description:** Mode 1 narrative loop — the examiner steers the report's
+LLM analysis and regenerates. Each round persists the instruction, the
+accumulated steering (all rounds, last 8 in prompt) is injected into every
+analysis prompt, and `REPORT.md` is rewritten. Facts still come only from
+the evidence rows; the LLM never approves anything.
+
+**Request:**
+```json
+{
+  "instruction": "dig into the mshta chain / focus on persistence / that inference is wrong because…",
+  "finding_id": "F-… (optional — focus this round on one finding)",
+  "llm": true
+}
+```
+
+**Response 200:** `{ok, report_path, findings_count, round, instructions_applied, steer_preview}`
+**Errors:** `400` empty instruction; `404` no active case; `500` render failure.
+
+Round records persist to `analysis/report_rounds.json`:
+`{round, ts, instruction, finding_id, model, findings_hash}` — the audit
+trail of what the examiner asked and what state was analyzed.
+
+### GET /portal/api/report/rounds
+**Description:** Steering history for the active case.
+**Response 200:** `{"rounds": [{round, ts, instruction, …}]}`
+
 ---
 
 ### GET /portal/api/report/view

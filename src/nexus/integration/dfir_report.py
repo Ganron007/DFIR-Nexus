@@ -158,12 +158,16 @@ def _sev_rank(sev: str) -> int:
 
 
 def _finding_locs(f: dict[str, Any]) -> set[str]:
-    """file:line provenance keys on a finding's evidence rows."""
+    """file:line provenance keys on a finding's evidence rows.
+
+    Uncapped — cluster fusion must see the full evidence set; the 12-row
+    display cap made genuinely-overlapping findings look disjoint.
+    """
     from nexus.integration.evidence_table import normalize_evidence_rows
 
     return {
         str(r.get("loc") or "")
-        for r in normalize_evidence_rows(f)
+        for r in normalize_evidence_rows(f, limit=None)
         if str(r.get("loc") or "").strip()
     }
 
@@ -304,6 +308,81 @@ def _rehydrate_finding(f: dict[str, Any], case_dir) -> dict[str, Any]:
     return out
 
 
+_SIGNAL_TITLE = re.compile(r"^Signal:\s*(.+?)\s*—\s*\d+\s*hit", re.I)
+
+
+def _finding_dedupe_key(f: dict[str, Any]) -> str:
+    """Same signal = same finding regardless of re-run hit counts.
+
+    'Signal: mshta — 39 hit(s) across …' → 'signal:mshta'. Non-signal
+    titles key on normalized text.
+    """
+    title = str(f.get("title") or "")
+    m = _SIGNAL_TITLE.search(title)
+    if m:
+        return f"signal:{m.group(1).strip().lower()}"
+    return f"title:{' '.join(title.lower().split())[:100]}"
+
+
+def _merge_duplicate_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Collapse findings staged more than once for the same signal.
+
+    A full-run re-executed after approval staged F-009…F-016 as literal
+    copies of F-001…F-008 — same needle, same evidence. The report shows
+    one logical finding citing every ID instead of rendering the chain
+    twice. Merged members keep the highest severity and union their
+    evidence rows (deduped on file:line).
+    """
+    groups: dict[str, list[dict[str, Any]]] = {}
+    order: list[str] = []
+    for f in findings:
+        key = _finding_dedupe_key(f)
+        if key not in groups:
+            order.append(key)
+        groups.setdefault(key, []).append(f)
+
+    out: list[dict[str, Any]] = []
+    for key in order:
+        members = groups[key]
+        if len(members) == 1:
+            out.append(members[0])
+            continue
+        base = dict(min(members, key=lambda f: _sev_rank(str(f.get("severity") or ""))))
+        base["id"] = members[0].get("id")
+        base["merged_ids"] = [str(f.get("id")) for f in members if f.get("id")]
+        ev_seen: set[str] = set()
+        merged_ev: list[Any] = []
+        for f in members:
+            for item in (f.get("evidence") or []):
+                if not isinstance(item, dict):
+                    merged_ev.append(item)
+                    continue
+                k = str(item.get("loc") or "") or str(item.get("detail") or "")[:140]
+                if k in ev_seen:
+                    continue
+                ev_seen.add(k)
+                merged_ev.append(item)
+        base["evidence"] = merged_ev
+        tids = sorted({
+            str(t)
+            for f in members
+            for t in (f.get("mitre_ids") or f.get("attack_ids")
+                      or f.get("technique_ids") or [])
+        })
+        if tids:
+            base["technique_ids"] = tids
+        interp = next(
+            (str(f.get("interpretation") or "").strip() for f in members
+             if str(f.get("interpretation") or "").strip()
+             and not _PLACEHOLDER_INTERP.search(str(f.get("interpretation") or ""))),
+            "",
+        )
+        if interp:
+            base["interpretation"] = interp
+        out.append(base)
+    return out
+
+
 def _cluster_findings(findings: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
     """Group findings that share ≥50% of the smaller evidence set.
 
@@ -373,6 +452,144 @@ def sift_notes_from_ledger(ledger: list[dict[str, Any]] | None) -> list[str]:
     return notes
 
 
+_TL_DETECTIONS = re.compile(r"detections:\s*(.+)", re.I)
+_TL_RULETITLE = re.compile(r"RuleTitle:\s*([^·|]+)", re.I)
+_TL_DETAILS = re.compile(r"Details:\s*(.+)", re.I)
+_TL_MAPDESC = re.compile(r"MapDescription:\s*([^·|]+)", re.I)
+_TL_USERNAME = re.compile(r"UserName:\s*([^·|]+)", re.I)
+_TL_HITLOC = re.compile(r"^\S+\s+\[\]:\s+(\S+:\d+)")
+_TL_RAWCSV = re.compile(r"^\d+,")
+_TL_TS_PREFIX = re.compile(r"^\d{4}-\d{2}-\d{2}[T ][\d:.]+(?:[+-]\d{2}:?\d{2})?,\"?")
+_TL_CMDLINE = re.compile(r"Cmdline:\s*(.+)", re.I)
+
+
+def _det_list(text: str) -> str:
+    """First two detection names from a semicolon list."""
+    dets = [d.strip().strip('"') for d in text.split(";") if d.strip()]
+    if not dets:
+        return ""
+    return "; ".join(dets[:2])[:110] + ("…" if len(dets) > 2 else "")
+
+
+def _timeline_label(e: dict[str, Any]) -> str:
+    """Salient one-line label for a timeline event — what an examiner
+    scans, not the raw parser row. Priority: detection names → rule
+    title+details → map description → hit location → 'event record'."""
+    desc = " ".join(str(e.get("description") or "").split())
+    if not desc:
+        return "event"
+    m = _TL_DETECTIONS.search(desc)
+    if m:
+        label = _det_list(m.group(1))
+        if label:
+            return label
+    m = _TL_RULETITLE.search(desc)
+    if m:
+        title = m.group(1).strip()
+        det = _TL_DETAILS.search(desc)
+        d = det.group(1).strip()[:80] if det else ""
+        return f"{title} — {d}"[:110] if d else title[:110]
+    m = _TL_MAPDESC.search(desc)
+    if m:
+        user = _TL_USERNAME.search(desc)
+        u = f" ({user.group(1).strip()})" if user else ""
+        return f"{m.group(1).strip()}{u}"[:110]
+    m = _TL_HITLOC.match(desc)
+    if m:
+        return f"hit {m.group(1)}"
+    # Timestamp-prefixed detection list: '2019-05-21T15:32:57.2+00:00,Hacktool - X;Y;Z'
+    m = _TL_TS_PREFIX.match(desc)
+    if m:
+        rest = desc[m.end():]
+        if ";" in rest:
+            label = _det_list(rest)
+            if label:
+                return label
+    # Quoted CSV row: '"ts","RuleTitle","level","host","chan",eid,"Cmdline: x"'
+    if desc.startswith('"') and '","' in desc:
+        cols = [c.strip('" ') for c in desc.split('","')]
+        title = cols[1] if len(cols) > 1 else ""
+        cmd = _TL_CMDLINE.search(desc)
+        c = cmd.group(1).strip().strip('"')[:80] if cmd else ""
+        if title and c:
+            return f"{title} — {c}"[:110]
+        if title:
+            return title[:110]
+    if _TL_RAWCSV.match(desc) and desc.count(",") >= 4:
+        # Unparsed CSV row — e.g. '1,4125,2019-05-21 15:32:57.2,1,Info,…'
+        cols = desc.split(",")
+        chan = next((c for c in cols if "/" in c or "Sysmon" in c), "")
+        eid = cols[3].strip() if len(cols) > 3 else ""
+        return f"event record {eid} {chan}".strip()[:110] or "event record"
+    return desc[:110]
+
+
+_IOC_URL = re.compile(r"https?://[^\s\"'<>)\]]+", re.I)
+_IOC_IP = re.compile(r"\b(?!(?:0|127|224|255)\.)\d{1,3}(?:\.\d{1,3}){3}\b")
+_IOC_DOMAIN = re.compile(
+    r"\b(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+(?:com|net|org|io|ru|cn|info|"
+    r"biz|xyz|top|tk|me|co|uk|de|fr|jp|au|us|club|site|online)\b",
+    re.I,
+)
+_IOC_TASK = re.compile(r"/TN\s+\"?([^\"\s,;]+)", re.I)
+_BENIGN_DOMAINS = {
+    "microsoft.com", "windows.com", "live.com", "msn.com", "office.com",
+    "office365.com", "schemas.microsoft.com", "w3.org", "localhost",
+}
+
+
+def _extract_iocs(rows: list[dict[str, str]]) -> dict[str, list[str]]:
+    """Pull indicators out of evidence row content — URLs, domains, IPs,
+    scheduled-task names, notable host paths. Deterministic extraction;
+    the report cites what the rows actually contain."""
+    urls: set[str] = set()
+    domains: set[str] = set()
+    ips: set[str] = set()
+    tasks: set[str] = set()
+    paths: set[str] = set()
+    for r in rows:
+        blob = str(r.get("detail") or "")
+        for u in _IOC_URL.findall(blob):
+            u = u.rstrip(".,;'\"")
+            urls.add(u)
+            host = u.split("://", 1)[-1].split("/")[0].lower()
+            if host and not _IOC_IP.match(host):
+                domains.add(host)
+        for ip in _IOC_IP.findall(blob):
+            if not ip.startswith(("169.254.", "192.168.0.", "10.255.")):
+                ips.add(ip)
+        for d in _IOC_DOMAIN.findall(blob.lower()):
+            if d not in _BENIGN_DOMAINS and not d.endswith(".microsoft.com"):
+                domains.add(d)
+        for t in _IOC_TASK.findall(blob):
+            tasks.add(t.strip())
+        for p in re.findall(r"C:\\[^\s\"',;|]+", blob):
+            if len(p) < 100 and re.search(
+                r"\\(Tasks|Temp|AppData|ProgramData|Users\\Public|"
+                r"System32\\(?!drivers)\\[^\\]+$)",
+                p,
+                re.I,
+            ):
+                paths.add(p)
+    # Truncated fragments: 'https://hoteles' is a cut-off of the full URL —
+    # drop any value that is a strict prefix of a longer sibling.
+    urls = {
+        u for u in urls
+        if not any(o != u and o.startswith(u) for o in urls)
+    }
+    domains = {
+        d for d in domains
+        if not any(o != d and o.startswith(d) for o in domains)
+    }
+    return {
+        "urls": sorted(urls)[:20],
+        "domains": sorted(domains)[:20],
+        "ips": sorted(ips)[:20],
+        "tasks": sorted(tasks)[:10],
+        "paths": sorted(paths)[:15],
+    }
+
+
 def load_case_ledger(case_dir) -> list[dict[str, Any]]:
     import json
     from pathlib import Path
@@ -413,6 +630,7 @@ def build_dfir_markdown(
     include_draft: bool = False,
     case_dir=None,
     llm: bool = True,
+    steer: str = "",
 ) -> str:
     """Render a detailed DFIR-style Markdown report from case findings.
 
@@ -434,10 +652,15 @@ def build_dfir_markdown(
     ]
     if case_dir is not None:
         approved = [_rehydrate_finding(f, case_dir) for f in approved]
+    # Re-run duplicates (same signal approved twice) collapse to one logical
+    # finding citing every ID — before clustering so copies can't scatter
+    # the same evidence across sections.
+    approved = _merge_duplicate_findings(approved)
     approved.sort(key=lambda f: (_sev_rank(str(f.get("severity", ""))), f.get("title", "")))
 
     # Clusters + per-cluster evidence rows, computed once — the render loop
-    # and the analysis layer share them.
+    # and the analysis layer share them. Uncapped: fusion + analysis need
+    # the full evidence set; the renderer signature-collapses for display.
     clusters = _cluster_findings(approved)
     from nexus.integration.evidence_table import normalize_evidence_rows
 
@@ -445,7 +668,7 @@ def build_dfir_markdown(
         seen: set[str] = set()
         merged: list[dict[str, str]] = []
         for f in cluster:
-            for r in normalize_evidence_rows(f):
+            for r in normalize_evidence_rows(f, limit=None):
                 key = str(r.get("loc") or "") or f"{r.get('time')}|{r.get('detail')}"
                 if key in seen:
                     continue
@@ -464,9 +687,10 @@ def build_dfir_markdown(
         from nexus.langgraph import report_analysis
 
         model = report_analysis.resolve_model() if llm else None
-        analyses = report_analysis.analyze_clusters(clusters, rows_for, model)
+        analyses = report_analysis.analyze_clusters(
+            clusters, rows_for, model, steer=steer)
         assessment = report_analysis.case_assessment(
-            clusters, analyses, rows_for, model)
+            clusters, analyses, rows_for, model, steer=steer)
         llm_ran = any(a.get("source") == "llm" for a in analyses.values())
 
     mitre: dict[str, list[str]] = defaultdict(list)
@@ -622,29 +846,32 @@ def build_dfir_markdown(
     # Table of Contents
     lines.append("#### Table of Contents")
     lines.append("")
-    for item in (
+    toc = [
         "Key Takeaways",
         "Assessment",
         "Examiner questions",
         "Case Summary",
-        "Findings (Evidence-Backed)",
-        "Network",
-        "Endpoint / Memory",
-        "Timeline / Host",
-        "SIFT Linux Tooling",
-        "Knowledge / Detection Assist",
+        "Findings",
         "Timeline",
         "Indicators",
         "Detections",
         "MITRE ATT&CK",
         "Insider Threat Matrix",
-        "Evidence Registry",
-    ):
+    ]
+    if sift_notes:
+        toc.append("SIFT Linux Tooling")
+    if rag_notes or detections:
+        toc.append("Knowledge / Detection Assist")
+    toc.append("Evidence Registry")
+    for item in toc:
         lines.append(f"- {item}")
     lines.append("")
 
-    # Findings detail
-    lines.append("## Findings (Evidence-Backed)")
+    # Findings detail — grouped by investigative category (kill-chain
+    # order) so the report reads as an investigation, not a flat list of
+    # parser signals. Categories come from the analysis layer (LLM or
+    # deterministic map); evidence tables are signature-collapsed.
+    lines.append("## Findings")
     lines.append("")
     if not approved:
         lines.append(
@@ -653,10 +880,22 @@ def build_dfir_markdown(
             else "_No approved findings._"
         )
         lines.append("")
+
+    _CAT_ORDER = {
+        "authentication": 0, "execution": 1, "persistence": 2,
+        "defense_evasion": 3, "credential_access": 4, "discovery": 5,
+        "lateral_movement": 6, "collection": 7, "command_and_control": 8,
+        "exfiltration": 9, "impact": 10, "other": 11,
+    }
+
+    def _cat_of(ci: int) -> str:
+        return str((analyses.get(ci) or {}).get("category") or "other")
+
     def _finding_lines(f: dict[str, Any],
                        analysis: dict[str, Any] | None = None) -> list[str]:
-        out = [f"### {f.get('title', 'Untitled')}", ""]
-        out.append(f"- **ID:** `{f.get('id')}`")
+        out = [f"#### {f.get('title', 'Untitled')}", ""]
+        ids = f.get("merged_ids") or [f.get("id")]
+        out.append("- **ID(s):** " + ", ".join(f"`{i}`" for i in ids))
         st = str(f.get("status") or f.get("approval_state") or "").upper()
         if include_draft and st:
             out.append(f"- **Status:** {st}")
@@ -676,7 +915,7 @@ def build_dfir_markdown(
             render_evidence_table,
         )
 
-        rows = normalize_evidence_rows(f)
+        rows = normalize_evidence_rows(f, limit=None)
         out.append("**Evidence**")
         out.append("")
         if rows:
@@ -698,15 +937,11 @@ def build_dfir_markdown(
             out.extend(render_analysis_block(analysis))
         return out
 
-    # Fuse findings that share evidence rows — distinct needles on the same
-    # attack chain read as one coherent section, not four partial repeats.
-    needle_re = re.compile(r"Signal:\s*(.+?)\s*—\s*", re.I)
-    for ci, cluster in enumerate(clusters):
-        if len(cluster) == 1:
-            lines.extend(_finding_lines(cluster[0], analyses.get(ci)))
-            continue
+    def _cluster_lines(ci: int, cluster: list[dict[str, Any]]) -> list[str]:
+        """One fused section for needles that hit the same attack chain."""
         names = list(dict.fromkeys(
-            (m.group(1) if (m := needle_re.search(str(f.get("title") or ""))) else str(f.get("title") or ""))
+            (m.group(1) if (m := _SIGNAL_TITLE.search(str(f.get("title") or "")))
+             else str(f.get("title") or ""))
             for f in cluster
         ))
         best = min(cluster, key=lambda f: _sev_rank(str(f.get("severity") or "")))
@@ -715,34 +950,31 @@ def build_dfir_markdown(
             for f in cluster
             for t in (f.get("mitre_ids") or f.get("attack_ids") or f.get("technique_ids") or [])
         })
-        lines.append(
-            f"### Correlated signal — {len(cluster)} findings share the same evidence rows"
-        )
-        lines.append("")
-        lines.append(
-            f"Needles {', '.join(f'`{n}`' for n in names)} matched an overlapping "
-            "hit set — one attack chain, reported once."
-        )
-        lines.append("")
+        out = [
+            f"#### Correlated signal — {len(names)} needle(s) on one attack chain",
+            "",
+            f"Needles {', '.join(f'`{n}`' for n in names)} matched an "
+            "overlapping hit set — one attack chain, reported once.",
+            "",
+        ]
         for f in cluster:
-            lines.append(
-                f"- `{f.get('id')}` **{f.get('title', 'Untitled')}** "
+            ids = f.get("merged_ids") or [f.get("id")]
+            out.append(
+                f"- {' '.join(f'`{i}`' for i in ids)} "
+                f"**{f.get('title', 'Untitled')}** "
                 f"(severity: {f.get('severity') or 'unrated'}"
                 + (f", approved by {f.get('approved_by')}" if f.get("approved_by") else "")
                 + ")"
             )
-        lines.append(f"- **Cluster severity:** {best.get('severity') or 'unrated'}")
+        out.append(f"- **Cluster severity:** {best.get('severity') or 'unrated'}")
         if tids:
-            lines.append(f"- **MITRE:** {', '.join(tids)}")
-        lines.append("")
-        # Merged evidence table — union of member rows, deduped on loc
-        # (precomputed in rows_for so the analysis layer saw the same set).
+            out.append(f"- **MITRE:** {', '.join(tids)}")
+        out.append("")
         from nexus.integration.evidence_table import render_evidence_table
 
-        merged_rows = rows_for.get(ci, [])
-        lines.append("**Evidence**")
-        lines.append("")
-        lines.extend(render_evidence_table(merged_rows))
+        out.append("**Evidence**")
+        out.append("")
+        out.extend(render_evidence_table(rows_for.get(ci, [])))
         interps = [
             str(f.get("interpretation") or "").strip()
             for f in cluster
@@ -750,104 +982,33 @@ def build_dfir_markdown(
             and not _PLACEHOLDER_INTERP.search(str(f.get("interpretation") or ""))
         ]
         if interps:
-            lines.append("**Interpretation**")
-            lines.append("")
-            lines.append(interps[0])
-            lines.append("")
+            out.append("**Interpretation**")
+            out.append("")
+            out.append(interps[0])
+            out.append("")
         if analyses.get(ci):
             from nexus.langgraph.report_analysis import render_analysis_block
 
-            lines.extend(render_analysis_block(analyses[ci]))
+            out.extend(render_analysis_block(analyses[ci]))
+        return out
 
-    # Tactic-ish sections derived from finding titles/sources
-    def _section(title: str, predicate) -> None:
-        matched = [f for f in approved if predicate(f)]
-        lines.append(f"## {title}")
+    by_cat: dict[str, list[int]] = {}
+    for ci in range(len(clusters)):
+        by_cat.setdefault(_cat_of(ci), []).append(ci)
+    for cat in sorted(by_cat, key=lambda c: (_CAT_ORDER.get(c, 99), c)):
+        lines.append(f"### {cat.replace('_', ' ').title()}")
         lines.append("")
-        if not matched:
-            lines.append("_No approved findings mapped to this section for this case._")
-            lines.append("")
-            return
-        for f in matched:
-            lines.append(f"- **{f.get('title')}** (`{f.get('id')}`)")
-            interp = (f.get("interpretation") or "").strip().split("\n")[0].strip()
-            if interp:
-                lines.append(f"  - {interp[:280]}")
-        lines.append("")
+        for ci in by_cat[cat]:
+            cluster = clusters[ci]
+            if len(cluster) == 1:
+                lines.extend(_finding_lines(cluster[0], analyses.get(ci)))
+            else:
+                lines.extend(_cluster_lines(ci, cluster))
 
-    _section(
-        "Network",
-        lambda f: "network" in (f.get("title") or "").lower()
-        or "onedrive" in (f.get("title") or "").lower()
-        or "cloud" in (f.get("title") or "").lower()
-        or "ntlm" in (f.get("title") or "").lower()
-        or any(
-            str(t).startswith(("T1071", "T1021", "T1567", "T1110", "T1087"))
-            for t in (f.get("mitre_ids") or f.get("attack_ids") or f.get("technique_ids") or [])
-        ),
-    )
-    _section(
-        "Endpoint / Memory",
-        lambda f: "process" in (f.get("title") or "").lower()
-        or "endpoint" in (f.get("title") or "").lower()
-        or "prefetch" in (f.get("title") or "").lower()
-        or "temp-directory" in (f.get("title") or "").lower()
-        or "bits" in (f.get("title") or "").lower()
-        or any(
-            str(t).startswith(("T1547", "T1055", "T1105", "T1197"))
-            for t in (f.get("mitre_ids") or f.get("attack_ids") or f.get("technique_ids") or [])
-        ),
-    )
-    _section(
-        "Timeline / Host",
-        lambda f: "timeline" in (f.get("title") or "").lower()
-        or "cluster" in (f.get("title") or "").lower()
-        or "removable" in (f.get("title") or "").lower()
-        or "recent document" in (f.get("title") or "").lower()
-        or "email" in (f.get("title") or "").lower()
-        or any(
-            str(t).startswith(("T1074", "T1025"))
-            for t in (f.get("mitre_ids") or f.get("attack_ids") or f.get("technique_ids") or [])
-        ),
-    )
-
-    # SIFT
-    lines.append("## SIFT Linux Tooling")
-    lines.append("")
-    if sift_notes:
-        lines.append(
-            "Linux tool-host (SIFT) jobs from the tool-run ledger:"
-        )
-        lines.append("")
-        for note in sift_notes:
-            lines.append(f"- {note}")
-    else:
-        lines.append(
-            "_No SIFT host jobs in the ledger. Windows examiner-host parsers "
-            "are listed under Tool-run inventory when present._"
-        )
-    lines.append("")
-
-    # RAG / detection assist
-    lines.append("## Knowledge / Detection Assist")
-    lines.append("")
-    if rag_notes:
-        for note in _format_rag_notes(list(rag_notes)):
-            lines.append(f"- {note}")
-    else:
-        lines.append("- RAG / detection assist notes not attached to this export.")
-    if detections:
-        lines.append("")
-        lines.append("Sample Sigma / detection hits consulted during analysis:")
-        lines.append("")
-        for d in detections[:15]:
-            title = d.get("title") or d.get("id") or str(d)
-            tids = d.get("technique_ids") or []
-            extra = f" ({', '.join(tids[:3])})" if tids else ""
-            lines.append(f"- {title}{extra}")
-    lines.append("")
-
-    # Timeline
+    # Timeline — interpreted chronology, not a raw row dump. Events are
+    # bucketed per timestamp, identical descriptions collapse with counts,
+    # and each family contributes its salient label (detection name /
+    # map description / rule title + command line) instead of raw CSV.
     lines.append("## Timeline")
     lines.append("")
     dated, untimed = dated_timeline(timeline)
@@ -855,17 +1016,41 @@ def build_dfir_markdown(
         lines.append("_No timeline events recorded._")
     else:
         if dated:
-            lines.append("| Timestamp | Host | Description | Source |")
-            lines.append("|-----------|------|-------------|--------|")
-            for e in dated[:80]:
-                ts = str(e.get("timestamp") or "")[:25]
-                host = str(e.get("host") or "").replace("|", "/")
-                desc = str(e.get("description") or "").replace("|", "/")[:120]
-                src = str(e.get("family") or e.get("source") or "").replace("|", "/")
-                lines.append(f"| {ts} | {host} | {desc} | {src} |")
-            if len(dated) > 80:
-                lines.append("")
-                lines.append(f"_… {len(dated) - 80} additional dated rows omitted._")
+            from collections import Counter
+
+            by_ts: dict[str, dict[str, Counter]] = {}
+            for e in dated:
+                ts = str(e.get("timestamp") or "")[:19]
+                if not ts:
+                    continue
+                fam = str(e.get("family") or e.get("source") or "?").replace("|", "/")
+                label = _timeline_label(e)
+                by_ts.setdefault(ts, {}).setdefault(fam, Counter())[label] += 1
+            lines.append("| Time (UTC) | What happened |")
+            lines.append("|---|---|")
+            shown = 0
+            for ts in sorted(by_ts):
+                if shown >= 45:
+                    break
+                parts = []
+                for fam in sorted(by_ts[ts]):
+                    labels = by_ts[ts][fam]
+                    total = sum(labels.values())
+                    top = "; ".join(
+                        f"{lab} ×{n}" if n > 1 else lab
+                        for lab, n in labels.most_common(2)
+                    )
+                    if len(labels) > 2:
+                        top += "; …"
+                    parts.append(f"**{fam}** ×{total} — {top}")
+                lines.append(f"| {ts} | {' · '.join(parts)} |")
+                shown += 1
+            remaining = len(by_ts) - shown
+            if remaining > 0:
+                lines.append(
+                    f"\n_… {remaining} more timestamp group(s) — full set on "
+                    "the Timeline page._"
+                )
         else:
             lines.append("_No dated N7 events. Keyword hits without timestamps are below._")
         i1_events = [
@@ -876,52 +1061,56 @@ def build_dfir_markdown(
             lines.append("")
             lines.append("### Import/ingest (I1)")
             lines.append("")
-            lines.append("| Timestamp | Description | Source |")
-            lines.append("|-----------|-------------|--------|")
-            for e in i1_events[:40]:
-                ts = str(e.get("timestamp") or "")[:25]
-                desc = str(e.get("description") or "").replace("|", "/")[:120]
+            for e in i1_events[:15]:
+                ts = str(e.get("timestamp") or "")[:19]
+                desc = _timeline_label(e)
                 src = str(e.get("source") or "").replace("|", "/")
-                lines.append(f"| {ts} | {desc} | {src} |")
+                lines.append(f"- {ts} — {desc} `{src}`")
+            if len(i1_events) > 15:
+                lines.append(f"- _… {len(i1_events) - 15} more ingest events._")
         if untimed:
             lines.append("")
-            lines.append("### Untimed keyword hits")
-            lines.append("")
-            for e in untimed[:15]:
-                desc = str(e.get("description") or "").replace("|", "/")[:160]
-                src = str(e.get("source") or "").replace("|", "/")
-                lines.append(f"- [{src}] {desc}")
-            if len(untimed) > 15:
-                lines.append(f"- _… {len(untimed) - 15} additional untimed rows omitted._")
+            lines.append(
+                f"_{len(untimed)} untimed keyword hit(s) — review on the "
+                "Timeline page._"
+            )
     lines.append("")
 
-    # Indicators
+    # Indicators — extracted from evidence row content (URLs, domains,
+    # task names, host paths) merged with the custody registry's
+    # IPs/hosts/hashes.
+    all_rows = [r for rows in rows_for.values() for r in rows]
+    content_iocs = _extract_iocs(all_rows)
+    ip_set.update(content_iocs["ips"])
     lines.append("## Indicators")
     lines.append("")
-    lines.append("### Network")
-    lines.append("")
-    if ip_set:
-        for ip in sorted(ip_set)[:50]:
-            lines.append(f"- `{ip}`")
-    else:
-        lines.append("- _None extracted._")
-    lines.append("")
-    lines.append("### Hosts")
-    lines.append("")
+
+    def _ioc_block(title: str, items: list[str]) -> None:
+        if not items:
+            return
+        lines.append(f"### {title}")
+        lines.append("")
+        for it in items:
+            lines.append(f"- `{it}`")
+        lines.append("")
+
+    _ioc_block("URLs / domains", content_iocs["urls"] + [
+        d for d in content_iocs["domains"]
+        if not any(d in u for u in content_iocs["urls"])
+    ])
+    _ioc_block("IP addresses", sorted(ip_set)[:50])
+    _ioc_block("Scheduled tasks / persistence objects", content_iocs["tasks"])
+    _ioc_block("Notable host paths", content_iocs["paths"])
     if host_set:
-        for h in sorted(host_set)[:50]:
-            lines.append(f"- `{h}`")
-    else:
-        lines.append("- _None extracted._")
-    lines.append("")
-    lines.append("### Hashes")
-    lines.append("")
+        _ioc_block("Hosts", sorted(host_set)[:50])
     if hash_set:
-        for h in sorted(hash_set)[:30]:
-            lines.append(f"- `{h}`")
-    else:
-        lines.append("- _None extracted._")
-    lines.append("")
+        _ioc_block("Hashes", sorted(hash_set)[:30])
+    if not any([
+        content_iocs["urls"], content_iocs["domains"], ip_set,
+        content_iocs["tasks"], content_iocs["paths"], host_set, hash_set,
+    ]):
+        lines.append("- _No indicators extracted from approved evidence._")
+        lines.append("")
 
     # Detections
     lines.append("## Detections")
@@ -980,6 +1169,32 @@ def build_dfir_markdown(
     lines.append("")
 
     # Evidence registry
+    # Methodology appendix — SIFT tool-host jobs + RAG/detection assist
+    # live near the end; the report body is evidence + analysis.
+    if sift_notes:
+        lines.append("## SIFT Linux Tooling")
+        lines.append("")
+        for note in sift_notes:
+            lines.append(f"- {note}")
+        lines.append("")
+
+    if rag_notes or detections:
+        lines.append("## Knowledge / Detection Assist")
+        lines.append("")
+        if rag_notes:
+            for note in _format_rag_notes(list(rag_notes)):
+                lines.append(f"- {note}")
+        if detections:
+            lines.append("")
+            lines.append("Sample Sigma / detection hits consulted during analysis:")
+            lines.append("")
+            for d in detections[:15]:
+                title = d.get("title") or d.get("id") or str(d)
+                tids = d.get("technique_ids") or []
+                extra = f" ({', '.join(tids[:3])})" if tids else ""
+                lines.append(f"- {title}{extra}")
+        lines.append("")
+
     lines.append("## Evidence Registry")
     lines.append("")
     lines.append(f"Registered items: **{len(evidence)}**")

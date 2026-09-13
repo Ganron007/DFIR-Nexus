@@ -297,8 +297,15 @@ def rows_from_observation(text: str) -> list[dict[str, str]]:
     return cleaned[:_MAX_ROWS] or rows[:_MAX_ROWS]
 
 
-def normalize_evidence_rows(finding: dict[str, Any]) -> list[dict[str, str]]:
-    """Prefer structured `evidence` on the finding; else parse observation."""
+def normalize_evidence_rows(
+    finding: dict[str, Any],
+    limit: int | None = _MAX_ROWS,
+) -> list[dict[str, str]]:
+    """Prefer structured `evidence` on the finding; else parse observation.
+
+    ``limit=None`` returns every row — cluster fusion and the analysis layer
+    need the full evidence set, not the 12-row display cap.
+    """
     structured = finding.get("evidence") or (finding.get("metadata") or {}).get("evidence")
     rows: list[dict[str, str]] = []
     if isinstance(structured, list):
@@ -310,15 +317,18 @@ def normalize_evidence_rows(finding: dict[str, Any]) -> list[dict[str, str]]:
                 or render_hit_fields(item.get("fields"))
                 or str(item.get("text") or "—")
             )
+            ts = str(item.get("time") or item.get("timestamp") or "")
+            if not ts or ts == "—":
+                ts = _first_ts(detail)
             rows.append(_row(
-                str(item.get("time") or item.get("timestamp") or "—"),
+                ts or "—",
                 str(item.get("source") or item.get("family") or item.get("tool") or "host"),
                 str(item.get("artifact") or item.get("path") or item.get("name") or "—"),
                 detail,
                 audit_id=str(item.get("audit_id") or ""),
                 loc=str(item.get("loc") or item.get("file_line") or ""),
             ))
-            if len(rows) >= _MAX_ROWS:
+            if limit is not None and len(rows) >= limit:
                 break
     if rows:
         return rows
@@ -326,31 +336,84 @@ def normalize_evidence_rows(finding: dict[str, Any]) -> list[dict[str, str]]:
     return rows_from_observation(obs)
 
 
-def render_evidence_table(rows: list[dict[str, str]]) -> list[str]:
+_MAX_TABLE_ROWS = 40
+
+
+def _family_of(source: str) -> str:
+    """'chainsaw/chainsaw\\hunt.csv\\sigma.csv' → 'chainsaw'."""
+    head = str(source or "").replace("\\", "/").split("/")[0].strip()
+    return head or str(source or "host")
+
+
+def _detail_with_artifact(r: dict[str, str]) -> str:
+    """Fold a meaningful artifact into the detail cell — no junk column."""
+    art = str(r.get("artifact") or "").strip()
+    detail = str(r.get("detail") or "")
+    if not art or art == "—" or art in detail or art in str(r.get("loc") or ""):
+        return detail
+    return f"{art} — {detail}"
+
+
+def collapse_signatures(rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Group identical detection rows — 'what it shows' + source — into one
+    row with a ×N count. Massive evidence sets (40 near-identical detections)
+    collapse to their distinct signatures; file:line cites the first."""
+    order: list[tuple[str, str]] = []
+    sigs: dict[tuple[str, str], dict[str, Any]] = {}
+    for r in rows:
+        detail = _detail_with_artifact(r)
+        key = (_family_of(str(r.get("source") or "")), detail[:140].lower())
+        if key in sigs:
+            sigs[key]["n"] += 1
+            continue
+        order.append(key)
+        sigs[key] = {"row": r, "detail": detail, "n": 1}
+    out: list[dict[str, str]] = []
+    for key in order:
+        entry = sigs[key]
+        r = dict(entry["row"])
+        r["source"] = key[0]
+        r["detail"] = (
+            f"{entry['detail']}  _(×{entry['n']})_" if entry["n"] > 1
+            else entry["detail"]
+        )
+        out.append(r)
+    return out
+
+
+def render_evidence_table(
+    rows: list[dict[str, str]],
+    max_rows: int = _MAX_TABLE_ROWS,
+) -> list[str]:
     if not rows:
         return ["_No structured evidence rows._", ""]
-    has_audit = any(r.get("audit_id") or r.get("loc") for r in rows)
+    sig = collapse_signatures(rows)
+    has_audit = any(str(r.get("audit_id") or "").strip() for r in sig)
+    has_loc = any(str(r.get("loc") or "").strip() for r in sig)
+    cols = "| Time (UTC) | Source | What it shows |"
+    rule = "|---|---|---|"
     if has_audit:
-        lines = [
-            "| Time (UTC) | Source | Artifact / path | What it shows | audit_id | file:line |",
-            "|---|---|---|---|---|---|",
-        ]
-        for r in rows:
-            lines.append(
-                f"| {_cell(r.get('time'))} | {_cell(r.get('source'))} | "
-                f"{_cell(r.get('artifact'))} | {_cell(r.get('detail'))} | "
-                f"{_cell(r.get('audit_id'))} | {_cell(r.get('loc'))} |"
-            )
-    else:
-        lines = [
-            "| Time (UTC) | Source | Artifact / path | What it shows |",
-            "|---|---|---|---|",
-        ]
-        for r in rows:
-            lines.append(
-                f"| {_cell(r.get('time'))} | {_cell(r.get('source'))} | "
-                f"{_cell(r.get('artifact'))} | {_cell(r.get('detail'))} |"
-            )
+        cols += " audit_id |"
+        rule += "---|"
+    if has_loc:
+        cols += " file:line |"
+        rule += "---|"
+    lines = [cols, rule]
+    for r in sig[:max_rows]:
+        cells = (
+            f"| {_cell(r.get('time'))} | {_cell(_family_of(str(r.get('source') or '')))} "
+            f"| {_cell(r.get('detail'))} |"
+        )
+        if has_audit:
+            cells += f" {_cell(r.get('audit_id'))} |"
+        if has_loc:
+            cells += f" {_cell(r.get('loc'))} |"
+        lines.append(cells)
+    if len(sig) > max_rows:
+        lines.append(
+            f"\n_… {len(sig) - max_rows} more distinct evidence row(s) — "
+            "full set on the Timeline / Explore pages._"
+        )
     lines.append("")
     return lines
 

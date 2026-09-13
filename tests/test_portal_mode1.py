@@ -401,3 +401,46 @@ def test_api_mode1_full_run_no_hits(mock_brief, mock_get_dir, tmp_path):
     assert data["drafts_staged"] == 0
     assert data["needles_hit"] == 0
     assert data["bookmarks_added"] == 0
+
+
+@patch("nexus.dashboard.app._get_case_dir")
+def test_api_report_steer_records_round_and_regenerates(mock_get_dir, tmp_path):
+    """4j.5i — POST /report/steer persists a round and regenerates REPORT.md."""
+    import json as _json
+
+    from starlette.applications import Starlette
+    from starlette.testclient import TestClient
+
+    from nexus.dashboard.app import create_dashboard
+
+    case_dir = _make_case_dir(tmp_path)
+    (case_dir / "findings.json").write_text(_json.dumps([{
+        "id": "F-1", "title": "Signal: mshta — 2 hit(s) across hayabusa",
+        "status": "APPROVED", "severity": "high",
+        "evidence": [{"time": "2019-05-21T15:32:57", "source": "hayabusa/x.csv",
+                      "detail": "RuleTitle: MSHTA exec", "loc": "x.csv:3"}],
+    }]))
+    mock_get_dir.return_value = case_dir
+    app = Starlette(routes=create_dashboard())
+    client = TestClient(app)
+
+    bad = client.post("/portal/api/report/steer", json={})
+    assert bad.status_code == 400
+
+    res = client.post("/portal/api/report/steer", json={
+        "instruction": "dig into the mshta chain", "llm": False,
+    })
+    assert res.status_code == 200
+    assert res.json()["round"] == 1
+    assert (case_dir / "reports" / "REPORT.md").is_file()
+
+    res2 = client.post("/portal/api/report/steer", json={
+        "instruction": "focus on persistence next", "llm": False,
+    })
+    assert res2.json()["round"] == 2
+    assert res2.json()["instructions_applied"] == 2
+
+    rounds = client.get("/portal/api/report/rounds").json()["rounds"]
+    assert len(rounds) == 2
+    assert rounds[0]["instruction"] == "dig into the mshta chain"
+    assert rounds[1]["model"]  # model name or 'heuristic' recorded

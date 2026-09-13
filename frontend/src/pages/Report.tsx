@@ -17,6 +17,9 @@ export default function Report() {
   const [success, setSuccess] = useState("");
   const [officialMarkdown, setOfficialMarkdown] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"official" | "findings">("official");
+  const [steer, setSteer] = useState("");
+  const [steering, setSteering] = useState(false);
+  const [rounds, setRounds] = useState<Array<{ round: number; ts: string; instruction: string; model?: string }>>([]);
 
   const loadData = async () => {
     setLoading(true);
@@ -46,8 +49,30 @@ export default function Report() {
       } else {
         setActiveTab("findings");
       }
+      api.reportRounds().then((r) => setRounds(r.rounds || [])).catch(() => {});
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSteer = async () => {
+    if (!steer.trim()) return;
+    setSteering(true);
+    setError("");
+    setSuccess("");
+    try {
+      const res = await api.reportSteer({ instruction: steer.trim() });
+      if (!res.ok) throw new Error(res.error || "Steer failed");
+      setSuccess(`Round ${res.round} applied — analysis re-read with your direction (${res.instructions_applied} instruction${res.instructions_applied === 1 ? "" : "s"} in effect)`);
+      setSteer("");
+      const rep = await api.reportView();
+      if (rep && rep.ok && rep.markdown) setOfficialMarkdown(rep.markdown);
+      const r = await api.reportRounds();
+      setRounds(r.rounds || []);
+    } catch (err: unknown) {
+      setError((err as Error).message || "Error steering report");
+    } finally {
+      setSteering(false);
     }
   };
 
@@ -212,6 +237,36 @@ export default function Report() {
             )}
           </div>
           <div style={{ padding: 16 }}>
+            {/* Mode 1 narrative loop — steer the LLM analysis, iterate until satisfied */}
+            <div style={{ marginBottom: 14, padding: "10px 14px", border: "1px solid var(--border)", borderRadius: 6, background: "rgba(56, 189, 248, 0.05)" }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <input
+                  type="text"
+                  value={steer}
+                  onChange={(e) => setSteer(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSteer()}
+                  placeholder="Steer the analysis — e.g. 'dig into the mshta execution chain', 'focus on persistence', 'that inference is wrong because…'"
+                  style={{ flex: 1, padding: "8px 10px", fontSize: 13, background: "var(--bg-secondary, #0f172a)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--text-primary, #f8fafc)" }}
+                  disabled={steering}
+                />
+                <button className="btn btn-primary btn-sm" onClick={handleSteer} disabled={steering || !steer.trim()}>
+                  {steering ? "Re-analyzing…" : "Steer & re-analyze"}
+                </button>
+              </div>
+              <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 6 }}>
+                Each round re-reads the live evidence + findings with your direction and regenerates the report. Steering is recorded per round for audit — LLM output is never examiner-approved.
+              </div>
+              {rounds.length > 0 && (
+                <div style={{ marginTop: 8, fontSize: 12, color: "var(--text-secondary)" }}>
+                  {rounds.map((r) => (
+                    <div key={r.round} style={{ padding: "2px 0" }}>
+                      <span style={{ color: "var(--accent, #38bdf8)" }}>r{r.round}</span> {r.instruction}
+                      <span style={{ opacity: 0.6 }}> · {r.model || "heuristic"} · {String(r.ts || "").slice(0, 19).replace("T", " ")}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             {officialMarkdown ? (
               <pre
                 style={{

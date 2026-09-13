@@ -66,8 +66,7 @@ def test_dfir_markdown_sections():
     for section in (
         "## Key Takeaways",
         "## Case Summary",
-        "## Findings (Evidence-Backed)",
-        "## Network",
+        "## Findings",
         "## SIFT Linux Tooling",
         "## Timeline",
         "## Indicators",
@@ -287,7 +286,7 @@ def test_finding_evidence_renders_as_table_not_prose_wall():
         evidence=[],
         llm=False,)
     assert "**Evidence**" in md
-    assert "| Time (UTC) | Source | Artifact / path | What it shows |" in md
+    assert "| Time (UTC) | Source | What it shows |" in md
     assert "pecmd" in md
     assert "2020-11-15 09:05:16" in md
     assert r"G:\My Drive" in md

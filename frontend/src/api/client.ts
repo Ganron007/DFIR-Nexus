@@ -928,10 +928,31 @@ export const api = {
   setupStatus: () => request<SetupStatusResponse>("/setup/status"),
 
   // Report & Evidence Verification
-  reportGenerate: (params?: { profile?: string }) =>
+  reportGenerate: (params?: { profile?: string; llm?: boolean }) =>
     post<{ ok: boolean; report_path: string; findings_count: number; error?: string }>("/report/generate", params || {}),
   reportView: () =>
     request<{ ok: boolean; markdown: string; title?: string; error?: string }>("/report/view"),
+  reportSteer: (params: { instruction: string; finding_id?: string; llm?: boolean }) =>
+    post<{
+      ok: boolean;
+      report_path: string;
+      findings_count: number;
+      round: number;
+      instructions_applied: number;
+      steer_preview?: string;
+      error?: string;
+    }>("/report/steer", params),
+  reportRounds: () =>
+    request<{
+      rounds: Array<{
+        round: number;
+        ts: string;
+        instruction: string;
+        finding_id?: string;
+        model?: string;
+        findings_hash?: string;
+      }>;
+    }>("/report/rounds"),
   evidenceVerify: () =>
     post<{ ok: boolean; results: Array<{ name: string; file_path: string; valid: boolean; error?: string }> }>("/evidence/verify", {}),
 };

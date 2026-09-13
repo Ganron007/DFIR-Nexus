@@ -4918,16 +4918,10 @@ async def api_findings_reject(request):
     return JSONResponse({"ok": True, "rejected": rejected})
 
 
-async def api_report_generate(request):
-    """POST /portal/api/report/generate — trigger official case report generation."""
-    case_dir = _get_case_dir(request)
-    if not case_dir:
-        return JSONResponse({"error": "No active case"}, status_code=404)
-
-    body: dict = {}
-    with contextlib.suppress(Exception):
-        body = await request.json() or {}
-
+def _write_case_report(case_dir, *, llm: bool = True, steer: str = ""):
+    """Shared report build — findings/timeline/meta loaded from the case
+    dir, markdown written to reports/REPORT.md. Returns the response
+    payload or raises."""
     from nexus.cli.report import _load_flat_evidence
     from nexus.integration.dfir_report import (
         _split_questions,
@@ -4964,38 +4958,153 @@ async def api_report_generate(request):
     questions = _split_questions(str(intake.get("question") or meta.get("question") or ""))
     ledger = load_case_ledger(case_dir)
 
+    report_text = build_dfir_markdown(
+        case_id=case_dir.name,
+        case_name=meta.get("name") or case_dir.name,
+        findings=findings,
+        evidence=evidence,
+        timeline=timeline if isinstance(timeline, list) else [],
+        sift_notes=sift_notes_from_ledger(ledger),
+        examiner=meta.get("examiner") or meta.get("created_by") or "examiner",
+        status=str(meta.get("status") or "open"),
+        severity=str(meta.get("severity") or "unrated"),
+        case_summary=str(meta.get("description") or ""),
+        tool_ledger=ledger,
+        questions=questions,
+        case_dir=case_dir,
+        llm=llm,
+        steer=steer,
+    )
+    reports_dir = case_dir / "reports"
+    reports_dir.mkdir(exist_ok=True)
+    out_file = reports_dir / "REPORT.md"
+    out_file.write_text(report_text, encoding="utf-8")
+    approved_count = len([f for f in findings if str(f.get("status") or "").upper() == "APPROVED"])
+    return {
+        "ok": True,
+        "report_path": str(out_file),
+        "findings_count": approved_count,
+    }
+
+
+async def api_report_generate(request):
+    """POST /portal/api/report/generate — trigger official case report generation."""
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+
+    body: dict = {}
+    with contextlib.suppress(Exception):
+        body = await request.json() or {}
+
     try:
-        report_text = build_dfir_markdown(
-            case_id=case_dir.name,
-            case_name=meta.get("name") or case_dir.name,
-            findings=findings,
-            evidence=evidence,
-            timeline=timeline if isinstance(timeline, list) else [],
-            sift_notes=sift_notes_from_ledger(ledger),
-            examiner=meta.get("examiner") or meta.get("created_by") or "examiner",
-            status=str(meta.get("status") or "open"),
-            severity=str(meta.get("severity") or "unrated"),
-            case_summary=str(meta.get("description") or ""),
-            tool_ledger=ledger,
-            questions=questions,
-            case_dir=case_dir,
-            # N8 analysis layer on by default; {"llm": false} forces the
-            # deterministic render (fast regen, offline, tests).
-            llm=bool(body.get("llm", True)),
-        )
-        reports_dir = case_dir / "reports"
-        reports_dir.mkdir(exist_ok=True)
-        out_file = reports_dir / "REPORT.md"
-        out_file.write_text(report_text, encoding="utf-8")
-        approved_count = len([f for f in findings if str(f.get("status") or "").upper() == "APPROVED"])
-        return JSONResponse({
-            "ok": True,
-            "report_path": str(out_file),
-            "findings_count": approved_count,
-        })
+        # N8 analysis layer on by default; {"llm": false} forces the
+        # deterministic render (fast regen, offline, tests).
+        return JSONResponse(_write_case_report(
+            case_dir, llm=bool(body.get("llm", True))))
     except Exception as exc:
         logger.exception("Report generation failed: %s", exc)
         return JSONResponse({"error": str(exc)}, status_code=500)
+
+
+def _report_rounds_file(case_dir):
+    return case_dir / "analysis" / "report_rounds.json"
+
+
+def _load_report_rounds(case_dir) -> list[dict[str, Any]]:
+    f = _report_rounds_file(case_dir)
+    if not f.is_file():
+        return []
+    try:
+        data = json.loads(f.read_text(encoding="utf-8"))
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+async def api_report_steer(request):
+    """POST /portal/api/report/steer — the Mode 1 narrative loop.
+
+    The examiner steers the report's analysis ("dig into mshta", "focus on
+    lateral movement", "that inference is wrong — explain"). Each round is
+    persisted (instruction + timestamp + model + findings state hash), the
+    accumulated steering is injected into the analysis prompts, and the
+    report regenerates — examiner ↔ LLM until satisfied. Facts still come
+    only from the evidence rows; the LLM never approves anything.
+    """
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    try:
+        body = await request.json() or {}
+    except Exception:
+        body = {}
+    instruction = str(body.get("instruction") or "").strip()
+    if not instruction:
+        return JSONResponse({"error": "instruction required"}, status_code=400)
+
+    import hashlib
+    rounds = _load_report_rounds(case_dir)
+    findings_file = case_dir / "findings.json"
+    f_hash = ""
+    if findings_file.is_file():
+        f_hash = hashlib.sha256(
+            findings_file.read_bytes()).hexdigest()[:12]
+    model_name = ""
+    try:
+        from nexus.langgraph.report_analysis import resolve_model
+
+        m = resolve_model()
+        model_name = getattr(m, "model_name", None) or getattr(m, "model", "") or ""
+    except Exception:
+        model_name = ""
+
+    rnd = {
+        "round": len(rounds) + 1,
+        "ts": datetime.now(UTC).isoformat(),
+        "instruction": instruction[:500],
+        "finding_id": str(body.get("finding_id") or ""),
+        "model": model_name or "heuristic",
+        "findings_hash": f_hash,
+    }
+
+    # Accumulated steering — every prior round stays in effect; the latest
+    # instruction refines, it doesn't reset. Last 8 rounds bound the prompt.
+    steer = " ; ".join(
+        f"(r{r['round']}) {r['instruction']}" for r in (rounds + [rnd])[-8:]
+    )
+    if rnd["finding_id"]:
+        steer += f" ; focus especially on finding {rnd['finding_id']}"
+
+    try:
+        result = _write_case_report(
+            case_dir, llm=bool(body.get("llm", True)), steer=steer)
+    except Exception as exc:
+        logger.exception("Steered report generation failed: %s", exc)
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+    rounds.append(rnd)
+    try:
+        _report_rounds_file(case_dir).parent.mkdir(exist_ok=True)
+        _report_rounds_file(case_dir).write_text(
+            json.dumps(rounds, indent=2), encoding="utf-8")
+    except Exception as exc:
+        logger.warning("Could not persist report round: %s", exc)
+
+    return JSONResponse({
+        **result,
+        "round": rnd["round"],
+        "instructions_applied": len(rounds),
+        "steer_preview": steer[:300],
+    })
+
+
+async def api_report_rounds(request):
+    """GET /portal/api/report/rounds — steering history for the case."""
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    return JSONResponse({"rounds": _load_report_rounds(case_dir)})
 
 
 async def api_report_view(request):
@@ -5174,6 +5283,8 @@ def create_dashboard():
         Route("/portal/api/findings/reject", api_findings_reject, methods=["POST"]),
         Route("/portal/api/report/generate", api_report_generate, methods=["POST"]),
         Route("/portal/api/report/view", api_report_view, methods=["GET"]),
+        Route("/portal/api/report/steer", api_report_steer, methods=["POST"]),
+        Route("/portal/api/report/rounds", api_report_rounds, methods=["GET"]),
         Route("/portal/api/evidence/verify", api_evidence_verify, methods=["POST"]),
         # Phase 4: React SPA (served after API + legacy HTML routes)
         Route("/portal/app/assets/{path:path}", spa_asset),
