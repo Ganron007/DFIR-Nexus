@@ -635,9 +635,20 @@ If the case is already open: `{"ok": true, "status": "created", "note": "already
 ```json
 {
   "max_needles": "integer (optional — cap on needles to process, 1-120, default 40)",
-  "needle_filter": "string (optional — comma-separated subset of needles to run)"
+  "needle_filter": "string (optional — comma-separated subset of needles to run)",
+  "reprocess": "boolean (optional — supersede existing DRAFTs for hit needles and re-stage fresh; APPROVED findings are never overwritten — they skip with 'reject in Approve first' guidance)"
 }
 ```
+
+**Re-run semantics:** a second POST after a terminal run always executes.
+Incremental mode (default) skips needles already covered by a DRAFT or
+APPROVED finding. `reprocess: true` additionally retires covered DRAFTs —
+marked `REJECTED` with `superseded_by`/`rejection_reason` naming the
+replacement (drafts are unsigned machine output — safe to replace; the
+audit trail is preserved) — and stages fresh drafts. Approved needles skip
+with `approved finding(s) exist (F-…) — reject in Approve first` since
+signed findings are never superseded programmatically. The run record
+echoes `reprocess` and lists `superseded: [{needle, finding_id, replaced_by}]`.
 
 **Response 202 (started):**
 ```json

@@ -2537,12 +2537,72 @@ def _mode1_run_record(case_dir: Path) -> dict | None:
     return rec
 
 
+def _supersede_drafts(case_dir: Path, finding_ids: list[str], *,
+                      run_id: str, replaced_by: str) -> list[str]:
+    """Retire DRAFT findings superseded by a reprocess re-run.
+
+    Marked REJECTED with a superseded_by link rather than deleted — the audit
+    trail keeps the old draft, the reason, and its replacement. Only drafts
+    reach here (the caller skips approved needles first); APPROVED findings
+    are signed and never superseded programmatically.
+    Returns the ids actually updated.
+    """
+    done: list[str] = []
+    findings_path = case_dir / "findings.json"
+    if not findings_path.is_file():
+        return done
+    try:
+        findings = json.loads(findings_path.read_text(encoding="utf-8"))
+        changed = False
+        for f in findings:
+            fid = str(f.get("id") or f.get("finding_id") or "")
+            if fid in finding_ids and str(f.get("status") or "").upper() == "DRAFT":
+                f["status"] = "REJECTED"
+                f["rejected_by"] = "mode1-full-run"
+                f["rejected_at"] = datetime.now(UTC).isoformat()
+                f["rejection_reason"] = (
+                    f"Superseded by re-run {run_id}"
+                    + (f" — replaced by {replaced_by}" if replaced_by else "")
+                )
+                f["superseded_by"] = replaced_by
+                done.append(fid)
+                changed = True
+        if changed:
+            _atomic_write_json(findings_path, findings)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed superseding drafts in findings.json: %s", exc)
+    # Best-effort SQLite sync — same dual-store pattern as the reject endpoint
+    try:
+        from nexus.case import CaseManager
+        from nexus.case.schemas import ApprovalState
+        from nexus.config import settings
+        mgr = CaseManager(settings.cases_root / "cases.db")
+        for fid in done:
+            f_obj = mgr.store.get_finding(fid)
+            if f_obj and f_obj.approval_state == ApprovalState.DRAFT:
+                f_obj.approval_state = ApprovalState.REJECTED
+                f_obj.rejected_by = "mode1-full-run"
+                f_obj.rejected_at = datetime.now(UTC)
+                f_obj.rejection_reason = f"Superseded by re-run {run_id}"
+                mgr.store.save_finding(f_obj)
+        mgr.close()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed syncing superseded drafts to SQLite: %s", exc)
+    return done
+
+
 def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
-                           scan: list[dict], brief: dict, needles_hit_total: int) -> None:
+                           scan: list[dict], brief: dict, needles_hit_total: int,
+                           reprocess: bool = False) -> None:
     """Background Mode 1 full-run worker.
 
     Writes the run record after every needle so navigation/reload/poll always
     sees live state. Stops at DRAFTs — examiner approval stays manual (HMAC).
+
+    reprocess=True supersedes existing DRAFTs for covered needles and re-stages
+    them fresh (drafts are unsigned machine output — safe to replace). APPROVED
+    findings are never touched: they are signed examiner decisions — reject them
+    in Approve first, then re-run to re-stage that signal.
     """
     from nexus.audit import resolve_examiner
     from nexus.case.workbench import add_bookmarks
@@ -2568,9 +2628,11 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
     try:
         # Existing DRAFT/APPROVED needles — re-runs must not duplicate staged
         # findings (titles embed hit counts, so match the needle, not the
-        # string). REJECTED/deleted needles are NOT skipped: the examiner may
+        # string). REJECTED/superseded needles are NOT skipped: the examiner may
         # legitimately re-stage a signal after rejecting a first attempt.
         existing: set[str] = set()
+        drafts_by_needle: dict[str, list[str]] = {}
+        approved_by_needle: dict[str, list[str]] = {}
         findings_path = case_dir / "findings.json"
         if findings_path.is_file():
             try:
@@ -2579,9 +2641,15 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
                     title = str(f.get("title") or "")
                     m = re.match(r"Signal:\s*(.+?)\s*—", title)
                     if st in {"DRAFT", "APPROVED"} and m:
-                        existing.add(m.group(1).strip().lower())
+                        needle_key = m.group(1).strip().lower()
+                        existing.add(needle_key)
+                        fid = str(f.get("id") or f.get("finding_id") or "")
+                        (approved_by_needle if st == "APPROVED" else drafts_by_needle
+                         ).setdefault(needle_key, []).append(fid)
             except (OSError, json.JSONDecodeError):
                 pass
+        record["reprocess"] = reprocess
+        record["superseded"] = []
 
         examiner = resolve_examiner()
         window = parse_intake_window(load_case_intake(case_dir))
@@ -2628,10 +2696,24 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
             families = sorted({str(h.get("family") or "?") for h in hits})
             more = "+" if int(result.get("count") or 0) > len(hits) else ""
             title = f"Signal: {needle} — {len(hits)}{more} hit(s) across {', '.join(families)}"
-            if needle.lower() in existing:
-                record["skipped"].append(
-                    {"needle": needle, "reason": "draft already staged/approved"})
-                continue
+            needle_key = needle.lower()
+            if needle_key in existing:
+                approved_ids = approved_by_needle.get(needle_key) or []
+                if approved_ids:
+                    record["skipped"].append({
+                        "needle": needle,
+                        "reason": (
+                            f"approved finding(s) exist ({', '.join(approved_ids)}) — "
+                            "signed examiner decisions are never overwritten; "
+                            "reject them in Approve first to re-stage"
+                        ),
+                    })
+                    continue
+                if not reprocess:
+                    record["skipped"].append(
+                        {"needle": needle, "reason": "draft already staged/approved"})
+                    continue
+                # reprocess — fall through: stage fresh, then supersede drafts
             draft = promote_hits_to_draft(
                 case_dir,
                 hits=hits,
@@ -2654,7 +2736,22 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
                 if res.get("confidence_adjusted"):
                     d["confidence_adjusted"] = res["confidence_adjusted"]
                 record["drafts"].append(d)
-                existing.add(needle.lower())
+                # Reprocess: the fresh draft landed — retire the old DRAFTs.
+                # Rejected (not deleted) keeps the audit trail; the reason names
+                # the replacement so the chain is self-documenting.
+                old_drafts = drafts_by_needle.pop(needle_key, [])
+                if reprocess and old_drafts:
+                    sup = _supersede_drafts(
+                        case_dir, old_drafts,
+                        run_id=str(record.get("run_id") or ""),
+                        replaced_by=str(res.get("finding_id") or ""),
+                    )
+                    record["superseded"].extend(
+                        {"needle": needle, "finding_id": fid,
+                         "replaced_by": res.get("finding_id")}
+                        for fid in sup
+                    )
+                existing.add(needle_key)
             else:
                 detail = res.get("errors") or [str(res.get("error") or "stage failed")]
                 record["skipped"].append(
@@ -2701,7 +2798,10 @@ async def api_mode1_full_run(request):
     navigation/reload. One run per case at a time — a second POST while a
     run is live returns 409 with the existing record.
 
-    Body: {max_needles?: 40, needle_filter?: "a,b" (subset)}.
+    Body: {max_needles?: 40, needle_filter?: "a,b" (subset),
+           reprocess?: bool — supersede existing DRAFTs for hit needles and
+           re-stage them fresh. APPROVED findings are never overwritten
+           (signed examiner decisions — reject them first to re-stage)}.
     """
     case_dir = _get_case_dir(request)
     if not case_dir:
@@ -2720,6 +2820,7 @@ async def api_mode1_full_run(request):
         max_needles = max(1, min(int(body.get("max_needles") or 40), 120))
     except (TypeError, ValueError):
         return JSONResponse({"error": "max_needles must be an integer"}, status_code=400)
+    reprocess = bool(body.get("reprocess"))
 
     # Concurrency guard — one live run per case. The record file survives
     # navigation/reload; "interrupted" records (thread dead) don't block.
@@ -2779,7 +2880,7 @@ async def api_mode1_full_run(request):
 
     worker = threading.Thread(
         target=_mode1_full_run_worker,
-        args=(case_dir, record_path, record, scan, brief, needles_hit_total),
+        args=(case_dir, record_path, record, scan, brief, needles_hit_total, reprocess),
         name=f"mode1-full-run-{case_dir.name}",
         daemon=True,
     )

@@ -27,6 +27,7 @@ export default function Briefing() {
   // WP 4j.5d: Mode 1 full run — tracked server-side run; survives navigation
   const [fullRunResult, setFullRunResult] = useState<Mode1FullRunResponse | null>(null);
   const [fullRunError, setFullRunError] = useState("");
+  const [reprocess, setReprocess] = useState(false);
   const fullRunPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stopFullRunPoll = () => {
@@ -68,11 +69,14 @@ export default function Briefing() {
   }, [activeCase]);
 
   const fullRunRunning = fullRunResult?.status === "running";
+  // A prior terminal run exists → the button is a re-run; the reprocess
+  // checkbox lets the examiner supersede open DRAFTs and re-stage fresh.
+  const hasPriorRun = !!fullRunResult && !fullRunRunning && fullRunResult.status !== "never_run";
 
   const fullRun = async () => {
     setFullRunError("");
     try {
-      const r = await api.mode1FullRun();
+      const r = await api.mode1FullRun({ reprocess });
       setFullRunResult(r);
       if (r.status === "running") pollFullRun();
     } catch (e) {
@@ -163,8 +167,15 @@ export default function Briefing() {
           }
           onClick={fullRun}
         >
-          {fullRunRunning ? "Mode 1 full run in progress…" : "▶ Mode 1 full run"}
+          {fullRunRunning ? "Mode 1 full run in progress…" : hasPriorRun ? "↻ Re-run full scan" : "▶ Mode 1 full run"}
         </button>
+        {hasPriorRun && !fullRunRunning && (
+          <label style={{ fontSize: 12, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4 }}
+            title="Supersede open DRAFT findings for hit needles and stage fresh ones. APPROVED findings are never overwritten — reject them in Approve first to re-stage that signal.">
+            <input type="checkbox" checked={reprocess} onChange={(e) => setReprocess(e.target.checked)} />
+            reprocess (supersede drafts)
+          </label>
+        )}
       </div>
       <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16 }}>
         Auto-generated after processing — what was collected, what the signatures
@@ -207,6 +218,7 @@ export default function Briefing() {
             {(fullRunResult.needles_capped ?? 0) > 0 && ` (${fullRunResult.needles_capped} more hit — raise max_needles to include)`}
             {fullRunResult.scan_truncated && " · counts are lower bounds (scan truncated)"}
             {" · "}{fullRunResult.bookmarks_added} bookmark(s) added to Workbench
+            {(fullRunResult.superseded?.length ?? 0) > 0 && ` · ${fullRunResult.superseded!.length} draft(s) superseded`}
           </div>
           {fullRunResult.drafts.length > 0 && (
             <ul style={{ fontSize: 12, margin: "0 0 8px 18px", padding: 0 }}>

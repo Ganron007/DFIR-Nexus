@@ -351,6 +351,69 @@ def test_api_mode1_full_run(mock_brief, mock_n4q, mock_attach, mock_save, mock_g
 
 
 @patch("nexus.dashboard.app._get_case_dir")
+@patch("nexus.langgraph.mode1.save_draft_finding")
+@patch("nexus.langgraph.query_pack.attach_hit_fields")
+@patch("nexus.langgraph.query_pack.n4_query")
+@patch("nexus.langgraph.briefing.case_briefing")
+def test_api_mode1_full_run_reprocess(mock_brief, mock_n4q, mock_attach, mock_save, mock_get_dir, tmp_path):
+    """Reprocess mode supersedes DRAFTs and re-stages; APPROVED findings are
+    never overwritten — they skip with 'reject first' guidance."""
+    import json as _json
+
+    from starlette.applications import Starlette
+    from starlette.testclient import TestClient
+
+    from nexus.dashboard.app import create_dashboard
+
+    case_dir = _make_case_dir(tmp_path)
+    mock_get_dir.return_value = case_dir
+    mock_brief.return_value = {
+        "scanned_needles": 5,
+        "needle_scan": [
+            {"needle": "sdelete", "hits": 1, "source": "playbook"},
+            {"needle": "rundll32", "hits": 1, "source": "playbook"},
+        ],
+    }
+    mock_attach.side_effect = lambda _cd, hits: hits
+    mock_n4q.side_effect = lambda _cd, q, **_kw: {
+        "count": 1, "backend": "csv",
+        "hits": [{"family": "hayabusa", "file": "a.csv", "line": "1",
+                  "text": f"{q} hit", "terms": q}],
+    }
+    seq = iter(["F-new-1", "F-new-2"])
+    mock_save.side_effect = lambda _cd, draft: {"status": "STAGED", "finding_id": next(seq)}
+
+    # Pre-existing coverage: sdelete has a DRAFT, rundll32 is APPROVED.
+    (case_dir / "findings.json").write_text(_json.dumps([
+        {"id": "F-old-draft", "title": "Signal: sdelete — 1 hit(s) across hayabusa", "status": "DRAFT"},
+        {"id": "F-approved", "title": "Signal: rundll32 — 1 hit(s) across hayabusa", "status": "APPROVED",
+         "approved_by": "examiner"},
+    ]), encoding="utf-8")
+
+    app = Starlette(routes=create_dashboard())
+    client = TestClient(app)
+
+    resp = client.post("/portal/api/mode1/full-run", json={"reprocess": True})
+    assert resp.status_code == 202
+    data = _wait_full_run(client)
+    assert data["status"] == "complete"
+    # sdelete: old draft superseded, fresh staged
+    assert data["drafts_staged"] == 1
+    assert any(s["finding_id"] == "F-old-draft" for s in data["superseded"])
+    # rundll32: approved — skipped with explicit guidance, not touched
+    skip = next(s for s in data["skipped"] if s.get("needle") == "rundll32")
+    assert "approved" in skip["reason"] and "reject" in skip["reason"]
+
+    findings = _json.loads((case_dir / "findings.json").read_text(encoding="utf-8"))
+    old = next(f for f in findings if f.get("id") == "F-old-draft")
+    assert old["status"] == "REJECTED"
+    assert old["superseded_by"] == "F-new-1"
+    assert "re-run" in old["rejection_reason"]
+    appr = next(f for f in findings if f.get("id") == "F-approved")
+    assert appr["status"] == "APPROVED"  # signed finding untouched
+
+
+@patch("nexus.dashboard.app._get_case_dir")
 def test_api_mode1_full_run_interrupted_record(mock_get_dir, tmp_path):
     """A stale 'running' record with no live worker = interrupted, not a block."""
     import json as _json
