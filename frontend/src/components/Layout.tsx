@@ -254,7 +254,7 @@ export default function Layout({ children }: { children: ReactNode }) {
                     : "Mode 3 — Agentic. Primary surface: Steer Chat (plan/execute/seal)"
               }
             >
-              Mode {mode} · {mode === "1" ? "Explore" : "Steer Chat"} primary
+              Mode {mode} · {mode === "1" ? "Briefing" : "Steer Chat"} primary
             </NavLink>
           </div>
         )}

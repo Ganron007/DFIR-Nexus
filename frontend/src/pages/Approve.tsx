@@ -4,7 +4,7 @@ import { computeApprovalResponse } from "../lib/crypto";
 import { useCase } from "../context/CaseContext";
 
 export default function Approve() {
-  const { activeCase } = useCase();
+  const { activeCase, refreshStages } = useCase();
   const [findings, setFindings] = useState<Finding[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [password, setPassword] = useState("");
@@ -100,6 +100,7 @@ export default function Approve() {
       if (r.approved.length > 0) {
         setResult(`✓ Successfully approved ${r.approved.length} finding(s): ${r.approved.join(", ")}`);
         setPassword("");
+        if (activeCase) refreshStages(activeCase);
         load();
       }
     } catch (e) {
@@ -135,6 +136,7 @@ export default function Approve() {
         setResult(`✗ Rejected ${r.rejected.length} finding(s)`);
         setRejectMode(false);
         setRejectReason("");
+        if (activeCase) refreshStages(activeCase);
         load();
       } else {
         setError(r.error || "Failed to reject findings");

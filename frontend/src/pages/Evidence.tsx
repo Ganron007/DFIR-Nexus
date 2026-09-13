@@ -10,7 +10,7 @@ import { useCase } from "../context/CaseContext";
 import EvidencePicker from "../components/EvidencePicker";
 
 export default function Evidence() {
-  const { activeCase } = useCase();
+  const { activeCase, refreshStages } = useCase();
   const [evidence, setEvidence] = useState<unknown[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -114,6 +114,7 @@ export default function Evidence() {
     }
     if (failures.length) setError(`Some paths failed: ${failures.join("; ")}`);
     load();
+    if (activeCase) await refreshStages(activeCase);
   };
 
   const runN2 = async () => {
@@ -132,6 +133,7 @@ export default function Evidence() {
             pollRef.current = null;
             setBusy(false);
             setPipelineComplete(true);
+            refreshStages(activeCase);
           } else if (s.status === "error") {
             clearInterval(poll);
             pollRef.current = null;

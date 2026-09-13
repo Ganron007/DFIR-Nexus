@@ -12,7 +12,7 @@ import { api, type BriefingDirection, type BriefingResponse, type Mode1FullRunRe
 import { useCase } from "../context/CaseContext";
 
 export default function Briefing() {
-  const { activeCase } = useCase();
+  const { activeCase, refreshStages } = useCase();
   const navigate = useNavigate();
   const [brief, setBrief] = useState<BriefingResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -43,7 +43,10 @@ export default function Briefing() {
       try {
         const r = await api.mode1FullRunStatus();
         setFullRunResult(r);
-        if (r.status !== "running") stopFullRunPoll();
+        if (r.status !== "running") {
+          stopFullRunPoll();
+          if (activeCase) refreshStages(activeCase);
+        }
       } catch {
         /* transient poll failure — keep polling */
       }
@@ -183,9 +186,9 @@ export default function Briefing() {
         </button>
         {hasPriorRun && !fullRunRunning && (
           <label style={{ fontSize: 12, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4 }}
-            title="Supersede open DRAFT findings for hit needles and stage fresh ones. APPROVED findings are never overwritten — reject them in Approve first to re-stage that signal.">
+            title="Supersede open DRAFT findings for hit needles and stage fresh ones. APPROVED findings stay signed — a fresh DRAFT revision is staged alongside them for comparison and approval.">
             <input type="checkbox" checked={reprocess} onChange={(e) => setReprocess(e.target.checked)} />
-            reprocess (supersede drafts)
+            reprocess (refresh drafts / revise approved)
           </label>
         )}
       </div>
@@ -231,6 +234,7 @@ export default function Briefing() {
             {fullRunResult.scan_truncated && " · counts are lower bounds (scan truncated)"}
             {" · "}{fullRunResult.bookmarks_added} bookmark(s) added to Workbench
             {(fullRunResult.superseded?.length ?? 0) > 0 && ` · ${fullRunResult.superseded!.length} draft(s) superseded`}
+            {(fullRunResult.revised_approved?.length ?? 0) > 0 && ` · ${fullRunResult.revised_approved!.length} approved signal(s) revised (fresh DRAFT staged)`}
           </div>
           {fullRunResult.drafts.length > 0 && (
             <ul style={{ fontSize: 12, margin: "0 0 8px 18px", padding: 0 }}>

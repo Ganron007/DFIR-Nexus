@@ -321,6 +321,7 @@ export interface Mode1FullRunResponse {
   drafts: { finding_id?: string; title: string; hits: number; families: string[]; confidence_adjusted?: string[] }[];
   drafts_staged?: number;
   superseded?: { needle: string; finding_id: string; replaced_by?: string }[];
+  revised_approved?: { needle: string; finding_id?: string; prior_approved_ids: string[] }[];
   reprocess?: boolean;
   skipped: { needle?: string; reason: string }[];
   next?: string;
@@ -823,6 +824,8 @@ export const api = {
     title: string;
     scribe?: boolean;
     interpretation?: string;
+    confidence?: string;
+    confidence_justification?: string;
   }) => post<WorkbenchPromoteResponse>("/workbench/promote", params),
 
   // Chat
@@ -942,6 +945,8 @@ export const api = {
       round: number;
       instructions_applied: number;
       steer_preview?: string;
+      report_sha256?: string;
+      snapshot_path?: string;
       error?: string;
     }>("/report/steer", params),
   reportRounds: () =>
@@ -953,6 +958,9 @@ export const api = {
         finding_id?: string;
         model?: string;
         findings_hash?: string;
+        report_sha256?: string;
+        snapshot_path?: string;
+        previous_report_sha256?: string;
       }>;
     }>("/report/rounds"),
   evidenceVerify: () =>

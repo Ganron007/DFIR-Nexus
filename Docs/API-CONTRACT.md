@@ -636,19 +636,22 @@ If the case is already open: `{"ok": true, "status": "created", "note": "already
 {
   "max_needles": "integer (optional — cap on needles to process, 1-120, default 40)",
   "needle_filter": "string (optional — comma-separated subset of needles to run)",
-  "reprocess": "boolean (optional — supersede existing DRAFTs for hit needles and re-stage fresh; APPROVED findings are never overwritten — they skip with 'reject in Approve first' guidance)"
+  "reprocess": "boolean (optional — supersede existing DRAFTs for hit needles and re-stage fresh; APPROVED findings are never overwritten or rejected — a fresh DRAFT revision is staged alongside each for examiner comparison)"
 }
 ```
 
 **Re-run semantics:** a second POST after a terminal run always executes.
 Incremental mode (default) skips needles already covered by a DRAFT or
-APPROVED finding. `reprocess: true` additionally retires covered DRAFTs —
-marked `REJECTED` with `superseded_by`/`rejection_reason` naming the
-replacement (drafts are unsigned machine output — safe to replace; the
-audit trail is preserved) — and stages fresh drafts. Approved needles skip
-with `approved finding(s) exist (F-…) — reject in Approve first` since
-signed findings are never superseded programmatically. The run record
-echoes `reprocess` and lists `superseded: [{needle, finding_id, replaced_by}]`.
+APPROVED finding. `reprocess: true` retires covered DRAFTs — marked
+`REJECTED` with `superseded_by`/`rejection_reason` naming the replacement
+(drafts are unsigned machine output — safe to replace; the audit trail is
+preserved) — and stages fresh drafts. Needles covered by APPROVED findings
+are *revised*, not touched: the signed finding stays `APPROVED` and a fresh
+DRAFT revision is staged alongside it with `related_findings` naming the
+prior approved id(s) — the examiner compares and approves manually. The run
+record echoes `reprocess`, lists `superseded: [{needle, finding_id,
+replaced_by}]`, and lists `revised_approved: [{needle, finding_id,
+prior_approved_ids}]`.
 
 **Response 202 (started):**
 ```json
@@ -657,16 +660,22 @@ echoes `reprocess` and lists `superseded: [{needle, finding_id, replaced_by}]`.
   "status": "running",
   "stage": "starting",
   "needles_done": 0,
-  "needles_total": 9,
-  "needles_scanned": 162,
-  "needles_hit_total": 9,
+  "needles_total": 0,
+  "needles_scanned": 0,
+  "needles_hit_total": 0,
   "needles_capped": 0,
   "scan_truncated": false,
   "bookmarks_added": 0,
   "drafts": [],
-  "skipped": []
+  "skipped": [],
+  "superseded": [],
+  "revised_approved": []
 }
 ```
+
+The 202 record is the reservation stub — the worker fills the scan counts
+(`needles_total`, `needles_scanned`, `needles_hit_total`, …) once the
+briefing vocabulary lands; poll the status endpoint for real values.
 
 The run executes in a background worker with a persisted record at
 `analysis/mode1_full_run.json` — navigation/reload never loses it. Poll
@@ -938,7 +947,9 @@ no-op, `added: 0`).
   "bookmark_ids": ["string"] (required — bookmark IDs, e.g. ["B-001", "B-003"]),
   "title": "string (required — finding title)",
   "scribe": "boolean (optional — run LLM scribe, default true; false = deterministic heuristic scribe — instant, still fills observation/interpretation/confidence, marks scribe_source='heuristic')",
-  "interpretation": "string (optional — examiner interpretation hint)"
+  "interpretation": "string (optional — examiner interpretation hint)",
+  "confidence": "string (optional — LOW|MEDIUM|HIGH|SPECULATIVE; overrides the scribe's value on the staged draft)",
+  "confidence_justification": "string (optional — examiner justification; overrides the scribe fallback only when non-empty)"
 }
 ```
 
@@ -960,8 +971,9 @@ no-op, `added: 0`).
 ```
 
 **Errors:**
-- `400` — Missing title, no bookmarks selected, or bookmark IDs not found.
+- `400` — Missing title, no bookmarks selected, bookmark IDs not found, or an invalid `confidence` value.
 - `404` — No active case.
+- `409` — Case is sealed.
 
 ---
 
@@ -1907,9 +1919,11 @@ These are server-side rendered HTML pages in the current portal. In the React SP
 ```
 
 **Response 400:** `{"error": "finding_ids is required"}` or `{"error": "reason is required"}`
-**Response 404:** `{"error": "No active case"}`
+**Response 404:** `{"error": "No active case"}` or `{"error": "finding_ids not found", "missing": ["F-…"]}` — any requested id not present.
+**Response 409:** `{"error": "only DRAFT findings can be rejected", "blocked": [{"finding_id": "F-…", "status": "APPROVED"}]}` — any requested finding is not DRAFT. The request is validated atomically before mutation: a mixed DRAFT+APPROVED batch changes nothing.
+**Response 409:** Case is sealed.
 
-**Security note:** Rejection does not require HMAC because it is a non-cryptographic state transition (DRAFT → REJECTED). Approval (DRAFT → APPROVED) always requires HMAC challenge-response via `POST /portal/api/commit`. Rejection is logged with examiner identity, timestamp, and reason in both `findings.json` and the SQLite store.
+**Security note:** Rejection does not require HMAC because it is a non-cryptographic state transition (DRAFT → REJECTED). The transition is DRAFT-only — APPROVED findings are signed examiner decisions and can never be rejected through this endpoint. Approval (DRAFT → APPROVED) always requires HMAC challenge-response via `POST /portal/api/commit`. Rejection is logged with examiner identity, timestamp, and reason in both `findings.json` and the SQLite store.
 
 ---
 
@@ -1953,6 +1967,9 @@ configured the report gains labeled **Assessment** (case-level sequence /
 scope / confidence / gaps / next steps) and per-cluster **Analyst read**
 blocks (category + what/why/how/who-when/verify/caveats) constrained to the
 evidence rows shown. LLM output is marked and never examiner-approved.
+Accumulated steering rounds (see `/report/steer`) stay in effect on an
+ordinary regenerate — the last 8 instructions are injected into every
+analysis prompt, so "Generate" is a rebuild, not a reset.
 
 **Response 200:**
 ```json
@@ -1965,6 +1982,7 @@ evidence rows shown. LLM output is marked and never examiner-approved.
 - `findings_count` = number of APPROVED findings included.
 
 **Response 404:** `{"error": "No active case"}`
+**Response 409:** Case is sealed.
 **Response 500:** `{"error": "string"}` — report generation failed.
 
 **Report structure (2026-09-13):** Key Takeaways (deduped signals) →
@@ -1995,12 +2013,16 @@ the evidence rows; the LLM never approves anything.
 }
 ```
 
-**Response 200:** `{ok, report_path, findings_count, round, instructions_applied, steer_preview}`
-**Errors:** `400` empty instruction; `404` no active case; `500` render failure.
+**Response 200:** `{ok, report_path, findings_count, round, instructions_applied, steer_preview, report_sha256, snapshot_path}`
+**Errors:** `400` empty instruction; `404` no active case; `409` sealed case; `500` render failure.
 
 Round records persist to `analysis/report_rounds.json`:
-`{round, ts, instruction, finding_id, model, findings_hash}` — the audit
-trail of what the examiner asked and what state was analyzed.
+`{round, ts, instruction, finding_id, model, findings_hash, report_sha256,
+snapshot_path, previous_report_sha256}` — the audit trail of what the
+examiner asked and what state was analyzed. Each round writes an immutable
+snapshot of the generated report to `analysis/report_rounds/round-NNNN.md`;
+`report_sha256` is the full SHA-256 of that snapshot, and
+`previous_report_sha256` chains each round to the prior round's hash.
 
 ### GET /portal/api/report/rounds
 **Description:** Steering history for the active case.

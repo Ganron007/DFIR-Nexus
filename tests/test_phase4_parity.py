@@ -54,6 +54,12 @@ def test_findings_reject_api(client):
     assert r_bad.status_code == 400
     assert "reason" in r_bad.json()["error"].lower()
 
+    r_shape = client.post("/portal/api/findings/reject", json={
+        "finding_ids": "F-DEMO-002",
+        "reason": "not a list",
+    })
+    assert r_shape.status_code == 400
+
     # Reject with reason succeeds
     r_good = client.post("/portal/api/findings/reject", json={
         "finding_ids": ["F-DEMO-001"],
@@ -69,6 +75,33 @@ def test_findings_reject_api(client):
     assert f_res.status_code == 200
     rejected_ids = [f["id"] for f in f_res.json().get("findings", [])]
     assert "F-DEMO-001" in rejected_ids
+
+    r_missing = client.post("/portal/api/findings/reject", json={
+        "finding_ids": ["F-NOPE"],
+        "reason": "does not exist",
+    })
+    assert r_missing.status_code == 404
+    assert "F-NOPE" in r_missing.json()["missing"]
+
+    r_appr = client.post("/portal/api/findings/reject", json={
+        "finding_ids": ["F-DEMO-003"],
+        "reason": "must not apply",
+    })
+    assert r_appr.status_code == 409
+    assert any(
+        b["finding_id"] == "F-DEMO-003" and b["status"] == "APPROVED"
+        for b in r_appr.json()["blocked"]
+    )
+
+    r_mix = client.post("/portal/api/findings/reject", json={
+        "finding_ids": ["F-DEMO-002", "F-DEMO-003"],
+        "reason": "mixed batch",
+    })
+    assert r_mix.status_code == 409
+    appr_ids = [f["id"] for f in client.get("/portal/api/findings?status=APPROVED").json()["findings"]]
+    assert "F-DEMO-003" in appr_ids
+    draft_ids = [f["id"] for f in client.get("/portal/api/findings?status=DRAFT").json()["findings"]]
+    assert "F-DEMO-002" in draft_ids
 
 
 def test_report_generate_and_view_api(client):

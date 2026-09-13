@@ -162,7 +162,7 @@ scripting and headless work, but the UI must expose every N1–N8 action:
 | **Steer Chat** | Ask English questions, accept/reject LLM proposals, say "corroborate this" or "drill into WS01". | Always the co-pilot. In Mode 1 it only translates/scribe. In Mode 2 it proposes. In Mode 3 it executes. |
 | **Finding Workbench** | Bookmarked hits -> DRAFT builder + evidence list + scribe + validation. | Format DRAFTs (Mode 1). Propose DRAFTs (Mode 2/3). Never self-approve. |
 | **Approval Desk** | HMAC sign-off on DRAFT findings. | Nothing. Approval is always human. |
-| **Report** | Trigger N8 from APPROVED. | Nothing. No new facts. |
+| **Report** | Trigger N8 from APPROVED. Steer the narrative per round (whole report or one finding). | Mode 1: shapes an evidence-constrained narrative from APPROVED findings under examiner steering — adds no evidence or facts, never approves. Mode 2/3: same boundary over agent-gathered evidence. |
 
 ### Mode 1 — Examiner-Driven (ship door)
 
@@ -207,13 +207,16 @@ N8 report from APPROVED only
 - Translates English questions into N4 search terms
 - Calls `forensic_rag_search` for methodology context
 - Formats the examiner's selected hits into structured DRAFT findings
+- Shapes the N8 report narrative from APPROVED findings under examiner
+  steering (`/report/steer` rounds, whole-report or per-finding) — every
+  claim stays constrained to the evidence rows shown
 
 **What the LLM does NOT do in Mode 1:**
 - Does not choose which hits become findings
 - Does not write findings from scratch
 - Does not choose tools or parsers
 - Does not approve
-- Does not invent facts beyond N4 hits
+- Does not invent facts or evidence beyond N4 hits and approved findings
 
 **Mode 1 is complete when the Portal has:**
 - ~~Explore pane with faceted search + histogram~~ — **implemented** (Phase 1.3)

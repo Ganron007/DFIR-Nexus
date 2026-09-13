@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { api, type Finding } from "../api/client";
 import { useCase } from "../context/CaseContext";
 
 export default function Report() {
-  const { activeCase } = useCase();
+  const { activeCase, refreshStages } = useCase();
   const [findings, setFindings] = useState<Finding[]>([]);
   const [summary, setSummary] = useState<{
     total: number;
@@ -19,7 +21,18 @@ export default function Report() {
   const [activeTab, setActiveTab] = useState<"official" | "findings">("official");
   const [steer, setSteer] = useState("");
   const [steering, setSteering] = useState(false);
-  const [rounds, setRounds] = useState<Array<{ round: number; ts: string; instruction: string; model?: string }>>([]);
+  const [steerFindingId, setSteerFindingId] = useState("");
+  const [rounds, setRounds] = useState<Array<{
+    round: number;
+    ts: string;
+    instruction: string;
+    finding_id?: string;
+    model?: string;
+    findings_hash?: string;
+    report_sha256?: string;
+    snapshot_path?: string;
+    previous_report_sha256?: string;
+  }>>([]);
 
   const loadData = async () => {
     setLoading(true);
@@ -61,10 +74,14 @@ export default function Report() {
     setError("");
     setSuccess("");
     try {
-      const res = await api.reportSteer({ instruction: steer.trim() });
+      const res = await api.reportSteer({
+        instruction: steer.trim(),
+        finding_id: steerFindingId || undefined,
+      });
       if (!res.ok) throw new Error(res.error || "Steer failed");
       setSuccess(`Round ${res.round} applied — analysis re-read with your direction (${res.instructions_applied} instruction${res.instructions_applied === 1 ? "" : "s"} in effect)`);
       setSteer("");
+      if (activeCase) refreshStages(activeCase);
       const rep = await api.reportView();
       if (rep && rep.ok && rep.markdown) setOfficialMarkdown(rep.markdown);
       const r = await api.reportRounds();
@@ -90,6 +107,7 @@ export default function Report() {
         throw new Error(res.error || "Failed to generate report");
       }
       setSuccess(`Official report generated (${res.findings_count} approved finding${res.findings_count === 1 ? "" : "s"} incorporated)`);
+      if (activeCase) refreshStages(activeCase);
       const rep = await api.reportView();
       if (rep && rep.ok && rep.markdown) {
         setOfficialMarkdown(rep.markdown);
@@ -240,6 +258,18 @@ export default function Report() {
             {/* Mode 1 narrative loop — steer the LLM analysis, iterate until satisfied */}
             <div style={{ marginBottom: 14, padding: "10px 14px", border: "1px solid var(--border)", borderRadius: 6, background: "rgba(56, 189, 248, 0.05)" }}>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <select
+                  value={steerFindingId}
+                  onChange={(e) => setSteerFindingId(e.target.value)}
+                  disabled={steering}
+                  title="Scope this round to one approved finding, or the whole report"
+                  style={{ width: "auto", maxWidth: 240, padding: "8px 6px", fontSize: 12, background: "var(--bg-secondary, #0f172a)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--text-primary, #f8fafc)" }}
+                >
+                  <option value="">Entire report</option>
+                  {findings.map((f) => (
+                    <option key={f.id} value={f.id}>{f.id} — {f.title}</option>
+                  ))}
+                </select>
                 <input
                   type="text"
                   value={steer}
@@ -261,28 +291,25 @@ export default function Report() {
                   {rounds.map((r) => (
                     <div key={r.round} style={{ padding: "2px 0" }}>
                       <span style={{ color: "var(--accent, #38bdf8)" }}>r{r.round}</span> {r.instruction}
+                      {r.finding_id && <span style={{ color: "var(--accent, #38bdf8)" }}> · focus {r.finding_id}</span>}
                       <span style={{ opacity: 0.6 }}> · {r.model || "heuristic"} · {String(r.ts || "").slice(0, 19).replace("T", " ")}</span>
+                      {r.report_sha256 && (
+                        <span
+                          style={{ opacity: 0.6, fontFamily: "monospace" }}
+                          title={`${r.report_sha256}${r.snapshot_path ? `\n${r.snapshot_path}` : ""}`}
+                        >
+                          {" "}· sha {r.report_sha256.slice(0, 12)}
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>
               )}
             </div>
             {officialMarkdown ? (
-              <pre
-                style={{
-                  background: "var(--bg-secondary, #0f172a)",
-                  color: "var(--text-primary, #f8fafc)",
-                  padding: 16,
-                  borderRadius: 6,
-                  fontSize: 13,
-                  lineHeight: 1.5,
-                  overflowX: "auto",
-                  whiteSpace: "pre-wrap",
-                  fontFamily: "monospace",
-                }}
-              >
-                {officialMarkdown}
-              </pre>
+              <article className="report-markdown">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{officialMarkdown}</ReactMarkdown>
+              </article>
             ) : (
               <div style={{ textAlign: "center", padding: "40px 20px", color: "var(--text-secondary)" }}>
                 <p style={{ marginBottom: 12 }}>No official report has been compiled for this case yet.</p>

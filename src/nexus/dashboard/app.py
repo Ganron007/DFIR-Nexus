@@ -46,11 +46,28 @@ _LOCKOUT_FILE = Path.home() / ".nexus" / ".commit_lockout"
 def _atomic_write_json(path: Path, data: Any) -> None:
     """Write JSON atomically to avoid corruption on crash."""
     import tempfile
+    path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
     try:
         os.close(fd)
         with open(tmp, "w") as f:
             json.dump(data, f, indent=2, default=str)
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
+
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    """Write UTF-8 text atomically to avoid corruption on crash."""
+    import tempfile
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+    try:
+        os.close(fd)
+        with open(tmp, "w", encoding="utf-8", newline="") as f:
+            f.write(text)
         os.replace(tmp, path)
     except BaseException:
         with contextlib.suppress(OSError):
@@ -1052,6 +1069,9 @@ async def api_intake(request):
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"ok": False, "error": "no active case"}, status_code=400)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
     from nexus.langgraph.case_intake import persist_case_intake
     written = persist_case_intake(case_dir, {
         k: str(body.get(k) or "")
@@ -1101,6 +1121,9 @@ async def api_query_rerun(request):
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"ok": False, "error": "no active case"}, status_code=400)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
     from nexus.langgraph.query_pack import _parse_needles, run_ad_hoc_query, write_query_pack
 
     try:
@@ -1667,6 +1690,9 @@ async def api_ask(request):
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
     body = await request.json()
     question = str(body.get("question") or "").strip()
     if not question:
@@ -1714,6 +1740,9 @@ async def api_select(request):
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
 
     body = await request.json()
     raw_indices = body.get("hits", [])
@@ -2455,6 +2484,9 @@ async def api_workbench_add(request):
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
     body = await request.json()
     hit = body.get("hit") or {}
     if not isinstance(hit, dict) or not (hit.get("file") or hit.get("text")):
@@ -2474,6 +2506,9 @@ async def api_workbench_add_many(request):
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
 
     from nexus.case.workbench import add_bookmarks
     from nexus.langgraph.query_pack import attach_hit_fields, n4_query
@@ -2507,6 +2542,7 @@ async def api_workbench_add_many(request):
 
 _MODE1_RUN_FILE = "mode1_full_run.json"
 _mode1_run_threads: dict[str, threading.Thread] = {}
+_mode1_run_starting: set[str] = set()
 _mode1_run_lock = threading.Lock()
 
 # Briefing cache — case_briefing scans every playbook needle over the evidence
@@ -2630,8 +2666,9 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
 
     reprocess=True supersedes existing DRAFTs for covered needles and re-stages
     them fresh (drafts are unsigned machine output — safe to replace). APPROVED
-    findings are never touched: they are signed examiner decisions — reject them
-    in Approve first, then re-run to re-stage that signal.
+    findings are never overwritten or rejected: they are signed examiner
+    decisions — reprocess instead stages a fresh DRAFT revision alongside them
+    (recorded under revised_approved) for examiner comparison and approval.
     """
     from nexus.audit import resolve_examiner
     from nexus.case.workbench import add_bookmarks
@@ -2708,6 +2745,7 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
                 pass
         record["reprocess"] = reprocess
         record["superseded"] = []
+        record["revised_approved"] = []
 
         examiner = resolve_examiner()
         window = parse_intake_window(load_case_intake(case_dir))
@@ -2755,19 +2793,19 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
             more = "+" if int(result.get("count") or 0) > len(hits) else ""
             title = f"Signal: {needle} — {len(hits)}{more} hit(s) across {', '.join(families)}"
             needle_key = needle.lower()
+            approved_ids = approved_by_needle.get(needle_key) or []
             if needle_key in existing:
-                approved_ids = approved_by_needle.get(needle_key) or []
-                if approved_ids:
+                if approved_ids and not reprocess:
                     record["skipped"].append({
                         "needle": needle,
                         "reason": (
                             f"approved finding(s) exist ({', '.join(approved_ids)}) — "
                             "signed examiner decisions are never overwritten; "
-                            "reject them in Approve first to re-stage"
+                            "use reprocess to stage a fresh revision"
                         ),
                     })
                     continue
-                if not reprocess:
+                if not approved_ids and not reprocess:
                     record["skipped"].append(
                         {"needle": needle, "reason": "draft already staged/approved"})
                     continue
@@ -2783,6 +2821,8 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
                 ),
             )
             draft = _heuristic_scribe(draft, hits, case_dir=case_dir)
+            if approved_ids:
+                draft["related_findings"] = approved_ids
             res = save_draft_finding(case_dir, draft)
             if res.get("status") == "STAGED":
                 d: dict = {
@@ -2794,6 +2834,12 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
                 if res.get("confidence_adjusted"):
                     d["confidence_adjusted"] = res["confidence_adjusted"]
                 record["drafts"].append(d)
+                if approved_ids:
+                    record["revised_approved"].append({
+                        "needle": needle,
+                        "finding_id": res.get("finding_id"),
+                        "prior_approved_ids": approved_ids,
+                    })
                 # Reprocess: the fresh draft landed — retire the old DRAFTs.
                 # Rejected (not deleted) keeps the audit trail; the reason names
                 # the replacement so the chain is self-documenting.
@@ -2859,8 +2905,9 @@ async def api_mode1_full_run(request):
 
     Body: {max_needles?: 40, needle_filter?: "a,b" (subset),
            reprocess?: bool — supersede existing DRAFTs for hit needles and
-           re-stage them fresh. APPROVED findings are never overwritten
-           (signed examiner decisions — reject them first to re-stage)}.
+           re-stage them fresh. APPROVED findings are never overwritten or
+           rejected (signed examiner decisions); reprocess stages a fresh
+           DRAFT revision alongside them for examiner comparison}.
     """
     case_dir = _get_case_dir(request)
     if not case_dir:
@@ -2882,47 +2929,68 @@ async def api_mode1_full_run(request):
 
     # Concurrency guard — one live run per case. The record file survives
     # navigation/reload; "interrupted" records (thread dead) don't block.
-    existing_run = _mode1_run_record(case_dir)
-    if existing_run and existing_run.get("status") == "running":
-        return JSONResponse(
-            {**existing_run, "error": "Mode 1 full run already in progress"},
-            status_code=409,
-        )
-
-    # The needle scan runs inside the worker — this POST returns instantly so
-    # the click always produces immediate feedback. The worker fills in
-    # needles_total / needles_scanned once the briefing lands.
-    record: dict = {
-        "run_id": f"M1-{int(time.time())}",
-        "case_id": case_dir.name,
-        "mode": "mode1_full_run",
-        "status": "running",
-        "stage": "starting",
-        "current": "",
-        "started_at": time.time(),
-        "updated_at": time.time(),
-        "needles_done": 0,
-        "needles_total": 0,
-        "reprocess": reprocess,
-        "bookmarks_added": 0,
-        "drafts": [],
-        "skipped": [],
-        "superseded": [],
-    }
-    record_path = _mode1_run_path(case_dir)
-    record_path.parent.mkdir(parents=True, exist_ok=True)
-    _atomic_write_json(record_path, record)
-
-    worker = threading.Thread(
-        target=_mode1_full_run_worker,
-        args=(case_dir, record_path, record, max_needles, only, reprocess),
-        name=f"mode1-full-run-{case_dir.name}",
-        daemon=True,
-    )
     with _mode1_run_lock:
-        _mode1_run_threads[case_dir.name] = worker
-    worker.start()
-    return JSONResponse(record, status_code=202)
+        live_thread = _mode1_run_threads.get(case_dir.name)
+        live = (case_dir.name in _mode1_run_starting
+                or bool(live_thread and live_thread.is_alive()))
+        if not live:
+            _mode1_run_starting.add(case_dir.name)
+    if live:
+        existing_run = _mode1_run_record(case_dir)
+        payload = dict(existing_run) if isinstance(existing_run, dict) else {"status": "running"}
+        payload["error"] = "Mode 1 full run already in progress"
+        return JSONResponse(payload, status_code=409)
+    try:
+        existing_run = _mode1_run_record(case_dir)
+        if existing_run and existing_run.get("status") == "running":
+            return JSONResponse(
+                {**existing_run, "error": "Mode 1 full run already in progress"},
+                status_code=409,
+            )
+
+        # The needle scan runs inside the worker — this POST returns instantly so
+        # the click always produces immediate feedback. The worker fills in
+        # needles_total / needles_scanned once the briefing lands.
+        record: dict = {
+            "run_id": f"M1-{int(time.time())}",
+            "case_id": case_dir.name,
+            "mode": "mode1_full_run",
+            "status": "running",
+            "stage": "starting",
+            "current": "",
+            "started_at": time.time(),
+            "updated_at": time.time(),
+            "needles_done": 0,
+            "needles_total": 0,
+            "needles_scanned": 0,
+            "needles_hit_total": 0,
+            "needles_capped": 0,
+            "scan_truncated": False,
+            "reprocess": reprocess,
+            "bookmarks_added": 0,
+            "drafts": [],
+            "skipped": [],
+            "superseded": [],
+            "revised_approved": [],
+        }
+        record_path = _mode1_run_path(case_dir)
+        record_path.parent.mkdir(parents=True, exist_ok=True)
+        _atomic_write_json(record_path, record)
+
+        worker = threading.Thread(
+            target=_mode1_full_run_worker,
+            args=(case_dir, record_path, record, max_needles, only, reprocess),
+            name=f"mode1-full-run-{case_dir.name}",
+            daemon=True,
+        )
+        with _mode1_run_lock:
+            _mode1_run_threads[case_dir.name] = worker
+            worker.start()
+            _mode1_run_starting.discard(case_dir.name)
+        return JSONResponse(record, status_code=202)
+    finally:
+        with _mode1_run_lock:
+            _mode1_run_starting.discard(case_dir.name)
 
 
 async def api_mode1_full_run_status(request):
@@ -2941,6 +3009,9 @@ async def api_workbench_remove(request):
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
     body = await request.json()
     from nexus.case.workbench import remove_bookmark
 
@@ -2952,6 +3023,9 @@ async def api_workbench_clear(request):
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
     from nexus.case.workbench import clear_bookmarks
 
     return JSONResponse(clear_bookmarks(case_dir))
@@ -2960,7 +3034,8 @@ async def api_workbench_clear(request):
 async def api_workbench_promote(request):
     """POST /portal/api/workbench/promote - bookmarked hits -> DRAFT finding.
 
-    Body: {bookmark_ids: ["B-001", ...], title, scribe?, interpretation?}
+    Body: {bookmark_ids: ["B-001", ...], title, scribe?, interpretation?,
+           confidence?, confidence_justification?}
     """
     case_dir = _get_case_dir(request)
     if not case_dir:
@@ -2971,6 +3046,12 @@ async def api_workbench_promote(request):
     body = await request.json()
     title = str(body.get("title") or "").strip()
     wanted = [str(b) for b in (body.get("bookmark_ids") or []) if str(b).strip()]
+    confidence = str(body.get("confidence") or "").strip().upper()
+    if confidence and confidence not in {"LOW", "MEDIUM", "HIGH", "SPECULATIVE"}:
+        return JSONResponse(
+            {"error": "confidence must be one of LOW|MEDIUM|HIGH|SPECULATIVE"},
+            status_code=400)
+    confidence_justification = str(body.get("confidence_justification") or "").strip()
     if not title:
         return JSONResponse({"error": "Missing title"}, status_code=400)
     if not wanted:
@@ -3018,6 +3099,11 @@ async def api_workbench_promote(request):
         from nexus.langgraph.mode1 import _heuristic_scribe
 
         draft = _heuristic_scribe(draft, selected, case_dir=case_dir)
+
+    if confidence:
+        draft["confidence"] = confidence
+    if confidence_justification:
+        draft["confidence_justification"] = confidence_justification
 
     result = save_draft_finding(case_dir, draft)
     if result.get("status") == "STAGED":
@@ -3138,6 +3224,9 @@ async def api_chat_post(request):
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
     body = await request.json()
     message = str(body.get("message") or "").strip()
     if not message:
@@ -3195,6 +3284,9 @@ async def api_chat_clear(request):
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
     from nexus.case.chat import clear_chat
 
     return JSONResponse(clear_chat(case_dir))
@@ -3233,6 +3325,9 @@ async def api_chat_stream(request):
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
     try:
         body = await request.json()
     except Exception:
@@ -4292,6 +4387,7 @@ async def api_pipeline_run(request):
             _transition_case_status(case_id, "intake", allowed_from={"processing"})
         finally:
             _persist_pipeline_run(case_dir, record)
+            _invalidate_briefing(case_id)
 
     thread = threading.Thread(target=_run_in_thread, daemon=True)
     thread.start()
@@ -5001,7 +5097,11 @@ async def api_findings_reject(request):
         body = await request.json()
     except Exception:
         return JSONResponse({"error": "Invalid JSON"}, status_code=400)
-    finding_ids = body.get("finding_ids", [])
+    raw_ids = body.get("finding_ids", [])
+    if not isinstance(raw_ids, list):
+        return JSONResponse({"error": "finding_ids must be a list"}, status_code=400)
+    finding_ids = list(dict.fromkeys(
+        s for s in (str(fid).strip() for fid in raw_ids) if s))
     reason = str(body.get("reason") or "").strip()
     if not finding_ids:
         return JSONResponse({"error": "finding_ids is required"}, status_code=400)
@@ -5011,26 +5111,81 @@ async def api_findings_reject(request):
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
 
     examiner = str(body.get("examiner") or "").strip() or _resolve_examiner(request)
 
-    rejected = []
-    # Update findings.json
     findings_path = case_dir / "findings.json"
+    findings: list[dict[str, Any]] = []
     if findings_path.is_file():
         try:
-            findings = json.loads(findings_path.read_text(encoding="utf-8"))
-            for f in findings:
-                fid = f.get("id") or f.get("finding_id", "")
-                if fid in finding_ids:
-                    f["status"] = "REJECTED"
-                    f["rejected_by"] = examiner
-                    f["rejected_at"] = datetime.now(UTC).isoformat()
-                    f["rejection_reason"] = reason
-                    rejected.append(fid)
-            _atomic_write_json(findings_path, findings)
-        except Exception as exc:
-            logger.warning("Failed updating findings.json on reject: %s", exc)
+            data = json.loads(findings_path.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                findings = data
+        except Exception:
+            findings = []
+    by_id = {}
+    for f in findings:
+        fid = f.get("id") or f.get("finding_id", "")
+        if fid:
+            by_id[fid] = f
+    missing = [fid for fid in finding_ids if fid not in by_id]
+    if missing:
+        return JSONResponse(
+            {"error": "finding_ids not found", "missing": missing},
+            status_code=404)
+    blocked = [
+        {
+            "finding_id": fid,
+            "status": str(by_id[fid].get("status") or ""),
+        }
+        for fid in finding_ids
+        if str(by_id[fid].get("status") or "").upper() != "DRAFT"
+    ]
+    try:
+        from nexus.case import CaseManager
+        from nexus.case.schemas import ApprovalState
+        from nexus.config import settings
+        mgr = CaseManager(settings.cases_root / "cases.db")
+        try:
+            for fid in finding_ids:
+                if any(b["finding_id"] == fid for b in blocked):
+                    continue
+                f_obj = mgr.store.get_finding(fid)
+                if (f_obj is not None
+                        and f_obj.approval_state != ApprovalState.DRAFT):
+                    blocked.append({
+                        "finding_id": fid,
+                        "status": str(f_obj.approval_state).upper(),
+                    })
+        finally:
+            mgr.close()
+    except Exception as exc:
+        logger.warning("Failed prevalidating SQLite states on reject: %s", exc)
+    if blocked:
+        return JSONResponse(
+            {"error": "only DRAFT findings can be rejected", "blocked": blocked},
+            status_code=409)
+
+    rejected = []
+    # Update findings.json
+    try:
+        for f in findings:
+            fid = f.get("id") or f.get("finding_id", "")
+            if fid in finding_ids:
+                f["status"] = "REJECTED"
+                f["rejected_by"] = examiner
+                f["rejected_at"] = datetime.now(UTC).isoformat()
+                f["rejection_reason"] = reason
+                rejected.append(fid)
+        _atomic_write_json(findings_path, findings)
+    except Exception as exc:
+        logger.warning("Failed updating findings.json on reject: %s", exc)
+        return JSONResponse(
+            {"error": f"could not update findings.json: {exc}"},
+            status_code=500)
 
     # Best-effort sync to SQLite store
     try:
@@ -5038,14 +5193,18 @@ async def api_findings_reject(request):
         from nexus.case.schemas import ApprovalState
         from nexus.config import settings
         mgr = CaseManager(settings.cases_root / "cases.db")
-        for fid in finding_ids:
+        for fid in rejected:
             f_obj = mgr.store.get_finding(fid)
-            if f_obj:
+            if f_obj and f_obj.approval_state == ApprovalState.DRAFT:
                 f_obj.approval_state = ApprovalState.REJECTED
                 f_obj.rejected_by = examiner
                 f_obj.rejected_at = datetime.now(UTC)
                 f_obj.rejection_reason = reason
                 mgr.store.save_finding(f_obj)
+            elif f_obj:
+                logger.warning(
+                    "Skipping SQLite reject for %s: state %s is not DRAFT",
+                    fid, f_obj.approval_state)
         mgr.close()
     except Exception as exc:
         logger.warning("Failed updating SQLite on reject: %s", exc)
@@ -5113,7 +5272,7 @@ def _write_case_report(case_dir, *, llm: bool = True, steer: str = ""):
     reports_dir = case_dir / "reports"
     reports_dir.mkdir(exist_ok=True)
     out_file = reports_dir / "REPORT.md"
-    out_file.write_text(report_text, encoding="utf-8")
+    _atomic_write_text(out_file, report_text)
     approved_count = len([f for f in findings if str(f.get("status") or "").upper() == "APPROVED"])
     return {
         "ok": True,
@@ -5127,6 +5286,9 @@ async def api_report_generate(request):
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
 
     body: dict = {}
     with contextlib.suppress(Exception):
@@ -5136,7 +5298,8 @@ async def api_report_generate(request):
         # N8 analysis layer on by default; {"llm": false} forces the
         # deterministic render (fast regen, offline, tests).
         return JSONResponse(_write_case_report(
-            case_dir, llm=bool(body.get("llm", True))))
+            case_dir, llm=bool(body.get("llm", True)),
+            steer=_report_steer_context(_load_report_rounds(case_dir))))
     except Exception as exc:
         logger.exception("Report generation failed: %s", exc)
         return JSONResponse({"error": str(exc)}, status_code=500)
@@ -5157,6 +5320,16 @@ def _load_report_rounds(case_dir) -> list[dict[str, Any]]:
         return []
 
 
+def _report_steer_context(rounds: list[dict[str, Any]]) -> str:
+    parts = []
+    for row in rounds[-8:]:
+        part = f"(r{row.get('round', '?')}) {str(row.get('instruction') or '').strip()}"
+        if row.get('finding_id'):
+            part += f" [focus: {row['finding_id']}]"
+        parts.append(part)
+    return " ; ".join(p for p in parts if p.strip())
+
+
 async def api_report_steer(request):
     """POST /portal/api/report/steer — the Mode 1 narrative loop.
 
@@ -5170,6 +5343,9 @@ async def api_report_steer(request):
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
     try:
         body = await request.json() or {}
     except Exception:
@@ -5195,21 +5371,24 @@ async def api_report_steer(request):
         model_name = ""
 
     rnd = {
-        "round": len(rounds) + 1,
+        "round": max([int(r.get("round") or 0) for r in rounds] + [0]) + 1,
         "ts": datetime.now(UTC).isoformat(),
         "instruction": instruction[:500],
         "finding_id": str(body.get("finding_id") or ""),
         "model": model_name or "heuristic",
         "findings_hash": f_hash,
     }
+    snap_rel = f"analysis/report_rounds/round-{rnd['round']:04d}.md"
+    snap_path = case_dir / snap_rel
+    if snap_path.exists():
+        return JSONResponse(
+            {"error": "report round snapshot already exists; repair "
+                      "report_rounds.json before retrying"},
+            status_code=409)
 
     # Accumulated steering — every prior round stays in effect; the latest
     # instruction refines, it doesn't reset. Last 8 rounds bound the prompt.
-    steer = " ; ".join(
-        f"(r{r['round']}) {r['instruction']}" for r in (rounds + [rnd])[-8:]
-    )
-    if rnd["finding_id"]:
-        steer += f" ; focus especially on finding {rnd['finding_id']}"
+    steer = _report_steer_context(rounds + [rnd])
 
     try:
         result = _write_case_report(
@@ -5218,19 +5397,34 @@ async def api_report_steer(request):
         logger.exception("Steered report generation failed: %s", exc)
         return JSONResponse({"error": str(exc)}, status_code=500)
 
+    report_file = case_dir / "reports" / "REPORT.md"
+    report_bytes = report_file.read_bytes() if report_file.is_file() else b""
+    rnd["report_sha256"] = hashlib.sha256(report_bytes).hexdigest()
+    rnd["snapshot_path"] = snap_rel
+    prev_sha = next(
+        (r.get("report_sha256") for r in reversed(rounds)
+         if r.get("report_sha256")),
+        None)
+    if prev_sha:
+        rnd["previous_report_sha256"] = prev_sha
+
     rounds.append(rnd)
     try:
-        _report_rounds_file(case_dir).parent.mkdir(exist_ok=True)
-        _report_rounds_file(case_dir).write_text(
-            json.dumps(rounds, indent=2), encoding="utf-8")
+        _atomic_write_text(snap_path, report_bytes.decode("utf-8"))
+        _atomic_write_json(_report_rounds_file(case_dir), rounds)
     except Exception as exc:
         logger.warning("Could not persist report round: %s", exc)
+        return JSONResponse(
+            {"error": f"could not persist report round: {exc}"},
+            status_code=500)
 
     return JSONResponse({
         **result,
         "round": rnd["round"],
         "instructions_applied": len(rounds),
         "steer_preview": steer[:300],
+        "report_sha256": rnd["report_sha256"],
+        "snapshot_path": rnd["snapshot_path"],
     })
 
 

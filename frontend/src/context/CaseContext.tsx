@@ -41,6 +41,7 @@ interface CaseContextValue {
   exitToDashboard: () => Promise<void>;
   refreshCases: () => Promise<void>;
   refreshMode: (caseId?: string) => Promise<void>;
+  refreshStages: (caseId: string) => Promise<void>;
   setMode: (mode: string) => Promise<void>;
 }
 
@@ -194,6 +195,7 @@ export function CaseProvider({ children }: { children: ReactNode }) {
         exitToDashboard,
         refreshCases,
         refreshMode,
+        refreshStages,
         setMode,
       }}
     >

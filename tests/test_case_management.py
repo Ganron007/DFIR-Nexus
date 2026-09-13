@@ -224,6 +224,28 @@ def test_sealed_case_locks_actions_until_reopened(client, tmp_path):
         "/portal/api/case/mode", json={"mode": "2", "case_id": case_id}
     ).status_code == 409
 
+    hdr = {"X-Nexus-Case": case_id}
+    assert client.post(
+        "/portal/api/mode1/ask", json={"question": "sdelete?"}, headers=hdr
+    ).status_code == 409
+    assert client.post(
+        "/portal/api/workbench/add",
+        json={"hit": {"file": "x.csv", "text": "t"}},
+        headers=hdr,
+    ).status_code == 409
+    assert client.post(
+        "/portal/api/chat/clear", json={}, headers=hdr
+    ).status_code == 409
+    assert client.post(
+        "/portal/api/report/generate", json={"llm": False}, headers=hdr
+    ).status_code == 409
+    assert client.post(
+        "/portal/api/report/steer", json={"instruction": "dig"}, headers=hdr
+    ).status_code == 409
+    assert client.post(
+        "/portal/api/query-rerun", json={"needles": "sdelete"}, headers=hdr
+    ).status_code == 409
+
     r = client.post("/portal/api/case/reopen", json={"case_id": case_id})
     assert r.status_code == 200
     assert r.json()["status"] == "active"

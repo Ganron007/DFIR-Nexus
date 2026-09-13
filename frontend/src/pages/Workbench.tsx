@@ -59,7 +59,7 @@ function useHistory() {
 }
 
 export default function Workbench() {
-  const { activeCase } = useCase();
+  const { activeCase, refreshStages } = useCase();
   const [items, setItems] = useState<Bookmark[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -98,6 +98,7 @@ export default function Workbench() {
   };
 
   const clearAll = async () => {
+    if (!window.confirm("Clear all workbench bookmarks? Findings and registered evidence are not affected.")) return;
     try {
       await api.workbenchClear();
     } catch (e) {
@@ -133,6 +134,8 @@ export default function Workbench() {
         bookmark_ids: Array.from(selected),
         title: f.title,
         interpretation: f.interpretation || undefined,
+        confidence: f.confidence,
+        confidence_justification: f.justification || undefined,
         scribe: useLlmScribe,
       });
       if (r.error) {
@@ -144,6 +147,7 @@ export default function Workbench() {
         (r.confidence_adjusted?.length ? ` — ${r.confidence_adjusted.join("; ")}` : "")
       );
       form.reset(initialForm);
+      if (activeCase) refreshStages(activeCase);
       // Reload workbench — promoted bookmarks are consumed but others remain
       load();
     } catch (e) {
@@ -310,6 +314,7 @@ export default function Workbench() {
                 <option value="LOW">LOW</option>
                 <option value="MEDIUM">MEDIUM</option>
                 <option value="HIGH">HIGH</option>
+                <option value="SPECULATIVE">SPECULATIVE</option>
               </select>
               <input
                 placeholder="Confidence justification (FD-005)"
