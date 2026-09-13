@@ -493,6 +493,10 @@ def scribe_finding(
                        "confidence_justification", "mitre_ids", "type"):
                 if parsed.get(k):
                     merged[k] = parsed[k]
+            # Structured fields come from the parser rows, not the LLM —
+            # severity + techniques are deterministic regardless of scribe.
+            if not merged.get("severity"):
+                merged["severity"] = _severity_from_hits(hits)
             merged["scribe_source"] = "llm"
             return merged
         log.warning("Scribe returned unparseable JSON, using heuristic")

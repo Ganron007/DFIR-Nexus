@@ -65,7 +65,8 @@ _CELL = 160
 SALIENT_HIT_FIELDS = (
     "RuleTitle", "detections", "MapDescription", "Payload", "CommandLine",
     "Details", "Message", "ExecutableInfo", "ImagePath", "ParentCommandLine",
-    "TargetFilename", "Path", "IpAddress", "RemoteHost", "UserName",
+    "TargetFilename", "Event Data", "Path", "IpAddress", "RemoteHost",
+    "UserName", "EventID", "Event ID",
 )
 
 

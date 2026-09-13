@@ -64,7 +64,7 @@ export default function Timeline() {
   // Pending brush restore — hour strings resolve to indices once lanes load
   const [pendingBrush, setPendingBrush] = useState<{ start: string; end: string } | null>(null);
 
-  const caseKey = activeCase?.id || "";
+  const caseKey = activeCase || "";
   // Restore lane/brush/filter per case (stored as hour strings — stable across reloads)
   useEffect(() => {
     if (!caseKey) return;
@@ -526,7 +526,9 @@ export default function Timeline() {
                   {Object.entries(selected.fields).slice(0, 14).map(([k, v]) => (
                     <div key={k} style={{ fontSize: 11, marginBottom: 3 }}>
                       <span style={{ color: "var(--text-muted)" }}>{k}: </span>
-                      <span style={{ wordBreak: "break-all" }}>{v}</span>
+                      <span style={{ wordBreak: "break-all" }}>
+                        {String(v).length > 220 ? String(v).slice(0, 220) + "…" : v}
+                      </span>
                     </div>
                   ))}
                 </div>

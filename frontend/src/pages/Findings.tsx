@@ -57,6 +57,20 @@ export default function Findings() {
                   <span className="card-title">{f.title}</span>
                   <div style={{ display: "flex", gap: 8 }}>
                     <span className={`badge badge-${f.status.toLowerCase()}`}>{f.status}</span>
+                    {f.severity && (
+                      <span
+                        className="badge"
+                        style={{
+                          color: f.severity === "critical" ? "var(--danger)"
+                            : f.severity === "high" ? "#f0883e"
+                            : f.severity === "medium" ? "var(--warning)"
+                            : "var(--text-muted)",
+                          borderColor: "currentColor",
+                        }}
+                      >
+                        {f.severity}
+                      </span>
+                    )}
                     <span className={`badge badge-${f.confidence.toLowerCase()}`}>{f.confidence}</span>
                   </div>
                 </div>

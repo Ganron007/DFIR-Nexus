@@ -101,6 +101,8 @@ export interface Finding {
   interpretation: string;
   confidence: "LOW" | "MEDIUM" | "HIGH" | "SPECULATIVE";
   confidence_justification?: string;
+  /** Detection severity propagated from parser levels (critical..informational). */
+  severity?: string;
   type?: string;
   host?: string;
   audit_ids: string[];
