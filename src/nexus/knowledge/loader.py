@@ -455,6 +455,41 @@ def get_misp_opencti() -> list[dict]:
 
 # ── Skills (WP 4i.6) — executable investigation procedures ──────────────
 
+def get_query_examples() -> dict:
+    """N4 DSL few-shot patterns (WP 9.8).
+
+    File: ``dsl/query_examples.yaml`` — grammar, field schema, and NL→DSL
+    examples consumed by Mode 2/3 query prompts (4j.10+).
+    """
+    data = _load_yaml("dsl/query_examples.yaml")
+    return data if isinstance(data, dict) else {}
+
+
+def dsl_prompt_block(cap: int = 12) -> str:
+    """Compact prompt block: grammar + field schema + few-shot examples.
+
+    Empty string when the pack is absent — callers fall back to term queries.
+    """
+    data = get_query_examples()
+    if not data:
+        return ""
+    lines: list[str] = []
+    grammar = str(data.get("grammar") or "").strip()
+    if grammar:
+        lines.append(grammar)
+    schema = data.get("schema")
+    if isinstance(schema, list) and schema:
+        lines.append("Fields:")
+        lines.extend(f"  - {str(s).strip()}" for s in schema[:8])
+    examples = data.get("examples") or []
+    if examples:
+        lines.append("Examples (natural language -> N4 query):")
+        for ex in examples[:cap]:
+            if isinstance(ex, dict) and ex.get("dsl"):
+                lines.append(f'  "{ex.get("nl", "")}" -> {ex["dsl"]}')
+    return "\n".join(lines)
+
+
 def get_skills() -> list[dict]:
     """Agent investigation skills — structured procedures distilled from
     the DFIR knowledge base (13Cubed, Volexity, SANS FOR508) plus

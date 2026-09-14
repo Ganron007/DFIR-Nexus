@@ -43,6 +43,26 @@ _COMMIT_LOCKOUT_SECONDS = 900
 _LOCKOUT_FILE = Path.home() / ".nexus" / ".commit_lockout"
 
 
+def _replace_with_retry(tmp: str, path: Path) -> None:
+    """``os.replace`` with a short retry.
+
+    On Windows, replacing a file that another thread/process (or an AV/indexer)
+    momentarily holds open raises ``PermissionError``. The Mode 1 run record is
+    written by both the POST handler and the background worker, so a transient
+    collision must not fail the run.
+    """
+    last: Exception | None = None
+    for attempt in range(6):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError as exc:  # transient on Windows
+            last = exc
+            time.sleep(0.05 * (attempt + 1))
+    if last is not None:
+        raise last
+
+
 def _atomic_write_json(path: Path, data: Any) -> None:
     """Write JSON atomically to avoid corruption on crash."""
     import tempfile
@@ -52,7 +72,7 @@ def _atomic_write_json(path: Path, data: Any) -> None:
         os.close(fd)
         with open(tmp, "w") as f:
             json.dump(data, f, indent=2, default=str)
-        os.replace(tmp, path)
+        _replace_with_retry(tmp, path)
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(tmp)
@@ -68,7 +88,7 @@ def _atomic_write_text(path: Path, text: str) -> None:
         os.close(fd)
         with open(tmp, "w", encoding="utf-8", newline="") as f:
             f.write(text)
-        os.replace(tmp, path)
+        _replace_with_retry(tmp, path)
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(tmp)
@@ -3063,12 +3083,21 @@ async def api_mode1_full_run(request):
 
     # Concurrency guard — one live run per case. The record file survives
     # navigation/reload; "interrupted" records (thread dead) don't block.
+    key = _case_key(case_dir)
     with _mode1_run_lock:
-        live_thread = _mode1_run_threads.get(_case_key(case_dir))
-        live = (_case_key(case_dir) in _mode1_run_starting
+        live_thread = _mode1_run_threads.get(key)
+        live = (key in _mode1_run_starting
                 or bool(live_thread and live_thread.is_alive()))
-        if not live:
-            _mode1_run_starting.add(_case_key(case_dir))
+    if live:
+        # A terminal persisted record means the worker finished the run and is
+        # only unwinding its thread — not a live run. Closes the completion
+        # race where is_alive() is still true for a few ms after "complete".
+        done = _mode1_run_record(case_dir)
+        if isinstance(done, dict) and done.get("status") in ("complete", "error", "interrupted"):
+            live = False
+    if not live:
+        with _mode1_run_lock:
+            _mode1_run_starting.add(key)
     if live:
         existing_run = _mode1_run_record(case_dir)
         payload = dict(existing_run) if isinstance(existing_run, dict) else {"status": "running"}

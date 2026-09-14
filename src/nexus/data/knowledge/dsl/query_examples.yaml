@@ -1,0 +1,55 @@
+version: 1
+kind: dsl
+description: >-
+  N4 query-DSL few-shot patterns (WP 9.8) — teaches the LLM to emit structured
+  field-scoped queries instead of plain needle terms. Consumed by Mode 2's
+  NL→query step (4j.10) and Mode 3 planning. Every example parses through
+  `nexus.langgraph.query_dsl.parse_query` (tested).
+grammar: >-
+  Operators (case-insensitive): a bare term is an any-of group; A OR B is a
+  union; A AND B requires both; NOT C excludes; "quoted phrase" is a
+  case-insensitive substring; regex:<pattern> matches the whole row text
+  (ReDoS-guarded). Fields: family (exact), file (substring of the relative
+  path), host/user/event (substring of the row text). Combine filters with AND.
+schema:
+  - "family:<exact artifact family, e.g. evtx, hayabusa, sysmon, prefetch, mftecmd, registry, zeek>"
+  - "event:<event id or event name substring, e.g. 4625, 7045, 4104, SetValue>"
+  - "host:<hostname substring>"
+  - "user:<account substring>"
+  - "file:<relative-path substring, e.g. Prefetch, USB, NTUSER.DAT>"
+  - "regex:<pattern>  (use sparingly; anchor to avoid ReDoS)"
+examples:
+  - nl: "all failed logons from 10.0.0.5"
+    dsl: "family:evtx event:4625 AND 10.0.0.5"
+  - nl: "successful interactive logons (type 2) on WS01"
+    dsl: "family:evtx event:4624 AND host:WS01"
+  - nl: "process creation from a temp directory"
+    dsl: "family:sysmon event:1 AND Temp"
+  - nl: "PowerShell executed with an encoded command"
+    dsl: "family:powershell encodedcommand OR -enc OR -encodedcommand"
+  - nl: "LSASS handle access captured by Hayabusa/Sysmon 10"
+    dsl: "family:hayabusa event:10 AND lsass"
+  - nl: "new service installed"
+    dsl: "family:evtx event:7045"
+  - nl: "scheduled task registered with schtasks"
+    dsl: "family:evtx event:4698 AND schtasks"
+  - nl: "SMB admin-share (C$) access indicating lateral movement"
+    dsl: "family:evtx event:5140 AND C$"
+  - nl: "rundll32 executed, from prefetch"
+    dsl: "family:prefetch rundll32"
+  - nl: "lsass dump files on disk"
+    dsl: "family:mftecmd lsass.dmp OR lsass.exe.dmp"
+  - nl: "Run-key autostart writes in the registry"
+    dsl: "family:registry Run AND CurrentVersion"
+  - nl: "USB mass-storage first connection events"
+    dsl: "family:evtx event:20001 OR event:20003 OR usbstor"
+  - nl: "suspicious process creation excluding known-good binaries"
+    dsl: "family:sysmon event:1 NOT svchost.exe NOT MsMpEng.exe"
+  - nl: "logons for a specific account"
+    dsl: "family:evtx event:4624 AND user:analyst"
+  - nl: "application crash / faulting-application events"
+    dsl: 'family:evtx "faulting application"'
+  - nl: "any prefetch artifacts for this case"
+    dsl: "file:Prefetch"
+  - nl: "process names matching a pattern (regex, anchored)"
+    dsl: "regex:(?i)procdump|nanodump|mimikatz"
