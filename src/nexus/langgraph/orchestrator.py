@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from nexus.knowledge.skills import skill_provenance
 from nexus.langgraph.correlation_agent import CorrelationAgent
 from nexus.langgraph.entities import extract_entities
 from nexus.langgraph.pattern_agent import PatternAgent
@@ -234,6 +235,7 @@ def _run_agent(
     # ── Phase A: skill-step execution (procedure-driven, WP 4i.8) ────────
     for skill in skills or []:
         skill_id = str(skill.get("skill") or "")
+        prov = skill_provenance(skill)  # WP 9.5 — id/version/citations for the run
         for step in skill.get("steps") or []:
             if not isinstance(step, dict):
                 continue
@@ -250,6 +252,9 @@ def _run_agent(
             all_hits.extend(step_hits)
             rec: dict[str, Any] = {
                 "skill": skill_id,
+                "skill_title": prov["title"],
+                "skill_version": prov["version"],
+                "skill_citations": prov["citations"],
                 "step": str(step.get("name") or q[:40]),
                 "query": q,
                 "hits_found": len(step_hits),
@@ -365,6 +370,7 @@ def _run_agent(
         "hits_reviewed": len(all_hits),
         "proposals": proposals,
         "skills_used": [s.get("skill") for s in (skills or [])],
+        "skill_provenance": [skill_provenance(s) for s in (skills or [])],
         "skill_results": skill_results,
         "negative_evidence": [r for r in skill_results if "negative_evidence" in r],
         "rag_context": rag_context,
