@@ -1,0 +1,83 @@
+# kb: d_762a214e1f4a:c0041 (SANS FOR500.4 — M365 audit/Exchange Online/
+#      SharePoint/OneDrive log latency: events appear 15-30+ min after the
+#      action; Purview content search)
+# kb: d_0d8eeaa8ab62:c0396-0398 (SANS SEC699 — Azure AD sign-in logs, export
+#      to a storage account; WMI/consent persistence detection)
+# kb: d_a83af400caf0 (SANS SEC541 — cloud security monitoring, CloudTrail/GuardDuty
+#      noise vs signal, atomic vs behavioral indicators)
+# kb: d_5d6485613561 (PwnedLabs ACRTP — AWS attack/defense: IAM, S3, STS,
+#      ListAllMyBuckets and API-driven enumeration)
+skill: cloud_identity_forensics
+title: Cloud identity investigation — CloudTrail, Azure/Entra sign-in, M365 audit
+description: >-
+  Investigate suspected compromise of a cloud identity or tenant: read the
+  provider audit trail (AWS CloudTrail, Azure/Entra sign-in, Microsoft 365
+  Unified Audit Log), reconstruct the authentication and API sequence, find
+  persistence (new credentials, OAuth consent, role/policy changes), and
+  trace data access/exfiltration from storage.
+trigger:
+  families: [azure, cloudtrail, m365, elastic, splunk, syslog]
+  keywords: [cloudtrail, azure, entra, m365, signin, audit, iam, role, oauth, consent, s3, accesskey, cloud]
+  techniques: [T1078.004, T1098.001, T1098.003, T1526, T1530, T1567.002, T1556.006]
+steps:
+  - name: audit_trail_reconstruction
+    query: "CloudTrail OR AuditLog OR signin OR SignInLogs OR eventName"
+    look_for: >-
+      Pull the provider audit trail for the actor and window: AWS CloudTrail
+      (eventName/eventSource/userIdentity/sourceIPAddress), Azure/Entra
+      sign-in logs (user, app, IP, conditional-access result, MFA), M365
+      Unified Audit Log (Workload/Operation/UserId/ClientIP). Reconstruct the
+      sequence: logon → enumeration → privilege change → resource access.
+    pivot: sourceIPAddress
+    corroborate: the actor's IP/User-Agent also appears in another provider's logs
+  - name: unusual_authentication
+    query: "impossible travel OR MFA OR conditional access OR failed signin OR unfamiliar"
+    look_for: >-
+      Flag authentication anomalies: impossible travel, MFA fatigue/prompt
+      bombing, legacy-auth (no-MFA) sessions, failed-then-succeeded bursts, and
+      sign-ins from hosting/VPN/anonymous IPs. A successful unfamiliar sign-in
+      that later performs admin API calls is the pivot, not the sign-in alone.
+    pivot: userPrincipalName
+    corroborate: the same session IP performs a privileged operation minutes later
+  - name: persistence_and_credentials
+    query: "CreateAccessKey OR AddServicePrincipal OR consent OR ApplicationPassword OR role assignment"
+    look_for: >-
+      Cloud persistence: IAM CreateAccessKey / CreateUser, new role or
+      ClusterRoleBinding, ADD service principal / app registration, OAuth
+      consent grants (illicit consent grant), mailbox rules, and adding
+      credentials to an app. These outlive password resets — find them before
+      declaring containment.
+    pivot: requestParameters.userName
+    corroborate: the new principal/credential is used later from the attacker IP
+  - name: data_access_and_exfil
+    query: "GetObject OR ListBuckets OR ShareFile OR DownloadFile OR mailItemsAccessed"
+    look_for: >-
+      Determine what was touched: S3 GetObject/ListBuckets (and PublicAccessBlock
+      changes), storage snapshot/share creation, OneDrive/SharePoint downloads,
+      Exchange mailItemsAccessed, and mailbox forward/delegate rules. Volume and
+      destination distinguish recon from exfiltration.
+    pivot: requestParameters.bucketName
+    corroborate: matching egress flow to a file-sharing/cloud destination in network logs
+  - name: audit_coverage_check
+    query: "retention OR region OR logging disabled OR StopLogging OR PurgeLogs"
+    look_for: >-
+      Check whether the attacker degraded evidence: CloudTrail StopLogging/
+      DeleteTrail, log retention/region gaps, audit-disabled scopes. Audit
+      gaps are findings themselves and bound what can be concluded. Note log
+      latency too — M365/Azure events can take 15-30+ minutes to appear.
+    pivot: eventName
+negative: >-
+  No anomalous authentication, no new principal/credential/consent, and no
+  unusual resource access in the audit trail → no cloud identity compromise
+  in the retained window. Audit retention and provider latency limit this
+  conclusion — state the window and any logging gaps.
+confidence_rules:
+  high: unfamiliar sign-in + subsequent privileged API change + new credential/consent confirmed in the same session
+  medium: anomalous authentication or a lone suspicious API call without a full attacker chain
+  low: a single unusual sign-in that also matches the user's known travel/VPN (FD-004)
+mitre: [T1078.004, T1098.001, T1098.003, T1530, T1567.002, T1556.006]
+caveats:
+  - "Cloud audit logs have retention limits and latency (M365/Azure events can lag 15-30+ min) — a quiet window may be a retention/latency gap, not absence of activity."
+  - "A single ISP/VPN IP is shared by many users — corroborate with user-agent, device, and the subsequent action, never IP alone (FD-004)."
+  - "Automation, CI/CD, and break-glass accounts legitimately create credentials and change roles — identify the workload identity before calling it malicious."
+  - "Provider log verbosity varies (metadata by default) — missing request bodies/parameters is a coverage limit to state explicitly."

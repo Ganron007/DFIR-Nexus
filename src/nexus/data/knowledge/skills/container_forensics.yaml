@@ -1,0 +1,79 @@
+# kb: d_6039bdfd5d72:c0400 (SANS FOR608 Part 4 — Container DFIR: image
+#      enumeration `docker image ls`, runtime/security options, container
+#      inception context, cloud-hosted container triage)
+# kb: d_6039bdfd5d72:c0425 (SANS FOR608 — `docker info`: Storage/Logging
+#      driver json-file, Docker Root Dir, cgroup version, runc/containerd)
+# kb: d_edee2fc1a0ec (13Cubed Linux — appliances/containers as Linux hosts;
+#      /var/log inside the appliance and host)
+skill: container_forensics
+title: Container & Kubernetes investigation — images, overlay layers, runtime
+description: >-
+  Investigate a compromised container or Kubernetes workload: enumerate images
+  and running containers from the host, read the container logs and overlay2
+  upper layers for changes, trace exec/entrypoint activity, and follow the
+  host-side runtime evidence (auditd, sysdig, kubelet/API audit logs).
+trigger:
+  families: [sysdig, syslog, csv, jsonl]
+  keywords: [container, docker, kubernetes, kubelet, pod, overlay2, image, containerd, namespace, registry]
+  techniques: [T1610, T1611, T1613, T1525, T1027]
+steps:
+  - name: container_inventory
+    query: "docker ps OR docker image ls OR docker info OR crictl"
+    look_for: >-
+      Enumerate from the host: `docker ps -a` (running/stopped), `docker image
+      ls` (unexpected/tagged-latest images), `docker info` (Storage/Logging
+      driver, Docker Root Dir, runc/containerd versions — a host running an
+      old runc is a container-escape candidate). For K8s use crictl/ctr.
+    pivot: Image
+    corroborate: a container image digest matches a pulled-from-unknown-registry image in host history
+  - name: overlay_layer_diff
+    query: "overlay2 OR upperdir OR diff OR lowerdir OR merged"
+    look_for: >-
+      A container's writes live in the overlay upperdir (diff/) under
+      Docker Root Dir/overlay2/<id>/diff — the container's writable layer. Read
+      it read-only to find dropped binaries, scripts, and config changes;
+      compare against the image's lower layers to isolate attacker changes.
+    pivot: FileName
+    corroborate: the same file hash appears in the image layer history or a network download
+  - name: container_logs
+    query: "json-file OR docker logs OR stdout OR stderr OR journallog"
+    look_for: >-
+      Container logs (Logging Driver json-file → /var/lib/docker/containers/
+      <id>/<id>-json.log) capture stdout/stderr: web access, exploit attempts,
+      and post-exploitation commands run inside the container. Correlate with
+      the host auditd/sysdig records for exec and network syscalls.
+    pivot: container_id
+  - name: exec_and_escape
+    query: "docker exec OR kubectl exec OR privileged OR hostPath OR CAP_SYS_ADMIN"
+    look_for: >-
+      Trace `docker exec`/`kubectl exec` (host or K8s audit log) and look for
+      escape indicators: --privileged, hostPath mounts, docker.sock mounted
+      into a pod, CAP_SYS_ADMIN, /proc/sys writes, and nsenter/mount tricks.
+      A container that spawned a host process or touched host namespaces has
+      escaped the workload boundary.
+    pivot: CommandLine
+    corroborate: host auditd shows the process running outside the container cgroup
+  - name: k8s_api_audit
+    query: "kubelet OR audit.log OR serviceaccount OR secrets OR pod create"
+    look_for: >-
+      Kubernetes audit logs (kube-apiserver audit.log) show who did what:
+      service-account token use, secret reads, pod creation with privileged
+      securityContext, cluster-admin ClusterRoleBinding creation, and exec
+      into pods. Map the actor (user/serviceaccount/IP) and the RBAC change.
+    pivot: user.username
+    corroborate: the service account token was used from an unexpected source IP
+negative: >-
+  No unexpected images, no privileged/hostPath workload, clean overlay diff,
+  and no auditd/audit-log escape events → the container boundary held for the
+  captured window. Containers are ephemeral — a removed container leaves only
+  the host-side runtime records; absence there is a real gap to state.
+confidence_rules:
+  high: privileged/hostPath workload or container escape event + overlay-dropped payload confirmed on host
+  medium: suspicious image or exec activity without confirmed escape or host impact
+  low: an unsigned image or unusual but sanctioned workload (platform team deployments are common)
+mitre: [T1610, T1611, T1613, T1525]
+caveats:
+  - "Containers are ephemeral — `docker rm` destroys the writable layer; recovery depends on the host overlay2 data surviving, so capture it before any prune."
+  - "Kubernetes audit logging must be enabled and retained; many clusters log only metadata by default — missing request bodies is a coverage gap, not innocence."
+  - "Platform/CI systems pull and run many images legitimately — verify the registry, digest, and service account before flagging (FD-004)."
+  - "Host runtime telemetry (auditd/sysdig) is required to see inside containers; without it, container behaviour is only visible through stdout logs."

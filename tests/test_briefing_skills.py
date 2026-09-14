@@ -179,7 +179,7 @@ def test_every_skill_step_query_parses():
                 parse_query(q)
             except Exception as exc:  # pragma: no cover - report all
                 failures.append(f"{s.get('skill')}::{st.get('name')}: {exc}")
-    assert not failures, f"unparseable skill queries:\n" + "\n".join(failures)
+    assert not failures, "unparseable skill queries:\n" + "\n".join(failures)
     assert step_count >= 150  # guard against accidental mass-drops
 
 

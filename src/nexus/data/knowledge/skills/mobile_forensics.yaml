@@ -1,0 +1,80 @@
+# kb: d_641ebbbd7339:c0124 (SANS FOR585 — Android file-system structures,
+#      logical vs file-system acquisition; what each method captures)
+# kb: d_2987c0399e6c:c0098 (SANS FOR585 — Google cloud extractions; a logical
+#      acquisition does not capture deleted data in unallocated areas)
+# kb: d_f841fdaaa378:c0043 (SANS FOR518/FOR585 — iOS backup decryption;
+#      Manifest.plist IsEncrypted, backup tooling)
+# kb: d_493c2342db56:c0041 (SANS FOR518 — Manifest.plist fields: IsEncrypted,
+#      Date, WasPasscodeSet; backup metadata)
+skill: mobile_forensics
+title: Mobile device investigation — Android/iOS acquisition and app artifacts
+description: >-
+  Investigate a mobile device (Android or iOS): choose and validate the
+  acquisition method (logical vs file-system), decrypt and parse iOS backups,
+  enumerate app databases for communications/location/accounts, and recover
+  deleted records within retention limits — always with hash-verified,
+  tool-documented acquisition.
+trigger:
+  families: [csv, jsonl, sqlite, syslog]
+  keywords: [android, ios, mobile, adb, apk, backup, imei, sqlite, imessage, whatsapp, handset]
+  techniques: [T1533, T1636, T1430, T1005, T1552]
+steps:
+  - name: acquisition_and_integrity
+    query: "adb OR backup OR AFU OR logical OR filesystem OR full file system"
+    look_for: >-
+      Document the acquisition tier: manual, logical (ADB/iTunes backup — no
+      deleted data), file-system (AFU/checkm8/rooted — app data + some deleted),
+      or full file-system/physical (unallocated + deleted). The tier bounds what
+      conclusions are possible. Hash the extraction and record tool + version.
+    pivot: device
+    corroborate: acquisition tier is sufficient for the specific question being asked
+  - name: ios_backup_parse
+    query: "Manifest.plist OR Manifest.db OR IsEncrypted OR Info.plist"
+    look_for: >-
+      iOS backup: Manifest.plist records IsEncrypted, Date, WasPasscodeSet;
+      Manifest.db maps domain → relative path → file hashes (including
+      deleted-file entries). An encrypted backup must be decrypted before
+      parsing; the Manifest.db hash list can reveal files deleted from the
+      device but still present in the backup.
+    pivot: relativePath
+    corroborate: a Manifest.db entry with no on-device file = deleted data
+  - name: app_databases
+    query: "sqlite3 OR sms.db OR CallHistory OR WhatsApp OR location OR cookies"
+    look_for: >-
+      App SQLite databases are the evidence: SMS/MMS (sms.db), call history,
+      WhatsApp/Telegram/Signal, contacts, calendar, browser history, and
+      location (cache_encrypted / locationd). Query each for the investigation
+      window; deleted rows may survive in SQLite free pages/WAL.
+    pivot: ZPHONE or value
+    corroborate: a message/contact also appears in a second app or the cloud backup
+  - name: androidx_and_artifacts
+    query: "ANDROID_MEDIA OR /data/data OR shared_prefs OR apk OR package"
+    look_for: >-
+      Android: /data/data/<package>/ holds app databases and shared_prefs;
+      /data/system/ holds accounts, packages, and usage stats; media and
+      downloads hold payloads. Installed-app inventory dates installs, and
+      third-party APKs (sideloaded) are high-signal.
+    pivot: package_name
+  - name: deleted_and_cloud
+    query: "deleted OR free pages OR WAL OR cloud backup OR iCloud OR Drive"
+    look_for: >-
+      Recover deleted records from SQLite free pages/WAL (mobile forensic
+      tools) and check cloud sync/beta: iCloud backup, Google Drive/Photos,
+      and app-level cloud (WhatsApp backup) can hold data deleted on the
+      handset. Document retention so absence is not overstated.
+    pivot: record
+negative: >-
+  No relevant app data, no deleted records recovered, and no cloud sync for
+  the window → the device shows no evidence for the question. This is
+  bounded by the acquisition tier and app retention — a logical/backup
+  acquisition cannot see deleted data, so state the tier before concluding.
+confidence_rules:
+  high: extracted message/record tied to the incident + corroborated by a second app or cloud artifact + hash-verified acquisition
+  medium: relevant app artifact present but not corroborated or within a non-full acquisition
+  low: an app artifact consistent with the question from a backup-tier acquisition (limited completeness)
+mitre: [T1533, T1636, T1430, T1005]
+caveats:
+  - "Acquisition method caps the evidence: a logical/iTunes/ADB backup does not capture deleted data or unallocated space — never present it as complete (FD-004)."
+  - "Encrypted iOS backups and some Android app data require decryption keys/passcodes — a locked or un-decrypted backup is a documented gap."
+  - "Cloud copies may diverge from the handset (deleted locally, still in cloud, or vice versa) — reconcile both and state which, and when, each was captured."
+  - "Mobile OS and app updates change database schemas and retention — record OS/app versions with the artifact or a later analyst cannot reproduce it."

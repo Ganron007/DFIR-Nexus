@@ -1,0 +1,76 @@
+# kb: d_29a06b6cb1aa:c0052 (SANS ICS515 Book 1 — turning raw collection into
+#      information; a network tap collects pcaps, an analyst reviewing Modbus
+#      TCP extracts process information; asset/zone model)
+# kb: SANS/SANS 515 v2022 Books 1-5 + Workbook (ICS/OT IR lifecycle, Purdue
+#      model, control-system protocols, PLC/HMI/historian evidence)
+skill: ics_ot_forensics
+title: ICS/OT investigation — Modbus/DNP3 traffic, PLC/HMI/historian evidence
+description: >-
+  Investigate an industrial control system incident: establish the zone/conduit
+  model and asset inventory, analyse control-protocol traffic (Modbus/DNP3/
+  S7/OPC) for unauthorized writes, and collect evidence from PLCs, HMIs,
+  engineering workstations, and historians — where availability and safety
+  outrank forensic completeness.
+trigger:
+  families: [wireshark, zeek, suricata, syslog, firewall]
+  keywords: [modbus, dnp3, plc, hmi, scada, ics, ot, opc, historian, purdue, laddder]
+  techniques: [T0816, T0836, T0855, T0882, T0803, T0828]
+steps:
+  - name: asset_and_zone_inventory
+    query: "Modbus OR DNP3 OR SCADA OR PLC OR historian OR Purdue"
+    look_for: >-
+      Build the asset/zone model before touching devices: which hosts are PLCs
+      (Level 1), HMIs/supervisory (Level 2), historians/site ops (Level 3), and
+      IT (Level 4-5). Identify normal conversations per zone — control traffic
+      crossing zone boundaries (IT→PLC) is the anomaly to hunt.
+    pivot: DestinationIp
+    corroborate: a new IT-side host talks directly to a PLC on the control port
+  - name: control_protocol_analysis
+    query: "Modbus OR function code OR write coil OR DNP3 OR S7comm"
+    look_for: >-
+      In the pcap, decode control protocols and look for WRITE operations:
+      Modbus function codes (5 write coil, 6/16 write registers — setpoint
+      changes), DNP3 control operations (operate/direct-operate), S7comm
+      download (program modification). Unauthorized writes to coils/registers
+      are the ICS equivalent of lateral movement.
+    pivot: function_code
+    corroborate: the write coincides with a physical process anomaly or operator alarm
+  - name: engineering_workstation
+    query: "engineering workstation OR project file OR plc program OR download"
+    look_for: >-
+      The engineering workstation is the crown jewel: project files, PLC program
+      logic, and the download path to controllers. Check for unauthorized
+      program downloads, new/tampered project files, USB use, and remote access
+      (VPN/RDP) into the OT network.
+    pivot: FileName
+  - name: plc_hmi_evidence
+    query: "PLC log OR HMI event OR alarm OR controller OR firmware"
+    look_for: >-
+      Collect from devices where possible: PLC program/hash and diagnostic
+      buffer, HMI alarm and operator-action logs, firmware version vs baseline,
+      and configuration backups. Note that some PLCs retain limited history —
+      capture quickly and document what is not recoverable.
+    pivot: device
+  - name: historian_and_reports
+    query: "historian OR process data OR trend OR setpoint OR alarm history"
+    look_for: >-
+      The historian holds process data (setpoints, valve states, alarms) that
+      timestamps a process manipulation independent of the IT logs. Compare
+      historian trends against the protocol writes and physical reports.
+    pivot: tag
+negative: >-
+  No unauthorized control writes, no new assets across zones, PLC program
+  hashes match baseline, and historian shows no manipulated setpoints → no
+  control-system manipulation in the captured window. Passive capture misses
+  encrypted/segmented traffic, so state the monitoring coverage and any
+  unmonitored conduits.
+confidence_rules:
+  high: unauthorized Modbus/DNP3 write to operational tags + PLC program hash mismatch + historian process change
+  medium: cross-zone control traffic or anomalous writes without confirmed physical effect
+  low: an unusual but sanctioned engineering maintenance session (verify change tickets, FD-004)
+mitre: [T0816, T0836, T0855, T0882, T0803]
+caveats:
+  - "Safety and availability outrank evidence — never actively query/mount a PLC in a running process; passive capture and offline analysis only."
+  - "ICS protocols are often unauthenticated (Modbus/DNP3) — any host on the conduit can write; authoritative validation is program/firmware hash vs baseline."
+  - "Device clocks drift and may lack NTP — normalise timestamps across IT/OT zones before building a sequence."
+  - "Legitimate engineering/maintenance windows produce writes — verify against the change-management record before flagging (FD-004)."

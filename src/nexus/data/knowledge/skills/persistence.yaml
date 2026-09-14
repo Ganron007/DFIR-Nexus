@@ -1,5 +1,8 @@
 # kb: d_3edf38e74d31:c0082 (FOR508.2 — DLL hijack classes; SUNSPOT scheduled-
 #      task persistence from the SolarWinds investigation; Autoruns)
+# kb: d_0d8eeaa8ab62:c0396-0398 (SANS SEC699 — WMI persistence: EventFilter +
+#      CommandLineEventConsumer bound via __FilterToConsumerBinding; Sysmon
+#      WMI events 19/20/21 as the detection surface)
 # kb: CCD M5 (registry/service/task artifact procedures), EIR persistence
 skill: persistence
 title: Persistence — registry run keys, services, scheduled tasks, WMI
@@ -31,8 +34,16 @@ steps:
     pivot: TaskName
   - name: wmi_subscription
     query: "EventFilter CommandLineEventConsumer wmi"
-    look_for: WMI permanent event subscriptions (__EventFilter → Consumer binding).
+    look_for: >-
+      WMI permanent event subscriptions: a __EventFilter + a consumer class
+      bound by __FilterToConsumerBinding. The consumer is the payload —
+      CommandLineEventConsumer runs a command, ActiveScriptEventConsumer runs
+      script, and both fire on the filter's trigger (often a timer or logon).
+      Sysmon Events 19/20/21 (WmiEventFilter/WmiEventConsumer/
+      WmiEventConsumerToFilter) and the case's WMI-subscription artifacts
+      capture the chain; Autoruns' WMI tab shows it in one view.
     pivot: CommandLine
+    corroborate: the consumer's command/script path also appears in prefetch/MFT or Sysmon process-create
   - name: image_file_execution_options
     query: "Image File Execution Options OR IFEO OR SilentProcessExit"
     look_for: Debugger hijacks on common binaries (sethc, utilman, osk).

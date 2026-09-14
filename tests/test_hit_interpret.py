@@ -143,18 +143,22 @@ def test_interpret_hit_learn_unknown_family():
     """No skill/technique → still a shaped (non-crashing) learn block."""
     from nexus.langgraph.interpret import interpret_hit
 
-    out = interpret_hit(None, {"family": "zeek", "terms": "x", "text": "conn row"})
+    out = interpret_hit(None, {"family": "zzz_unmapped", "terms": "x", "text": "row"})
     learn = out.get("learn") or {}
     assert "headline" in learn and "why_matters" in learn
 
 
 def test_interpret_hit_unknown_family_no_crash():
-    """A family with no skills still returns a shaped payload."""
+    """A family with no skills still returns a shaped payload.
+
+    Uses a fabricated family — real ones (e.g. ``zeek``) are now covered by
+    the KB-distilled skills (WP 4j.7 added ``network_session_analysis``).
+    """
     from nexus.langgraph.interpret import interpret_hit
 
-    out = interpret_hit(None, {"family": "zeek", "terms": "x", "text": "conn log row"})
+    out = interpret_hit(None, {"family": "zzz_unmapped", "terms": "x", "text": "row"})
     assert out["skills"] == []
-    assert "zeek" in out["meaning"]
+    assert "zzz_unmapped" in out["meaning"]
 
 
 def test_interpret_hit_empty_hit():
