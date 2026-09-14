@@ -2659,6 +2659,21 @@ async def api_workbench_add_many(request):
     return JSONResponse(r)
 
 
+def _case_key(case_dir: Path | None) -> str:
+    """Stable per-case key for in-memory state (run lock, briefing cache).
+
+    Uses the resolved path, not the basename: two case stores can hold a case
+    with the same id (e.g. separate roots / pytest tmp dirs), and a basename
+    key would wrongly share locks and cached payloads between them.
+    """
+    if case_dir is None:
+        return ""
+    try:
+        return str(Path(case_dir).resolve())
+    except OSError:
+        return str(case_dir)
+
+
 _MODE1_RUN_FILE = "mode1_full_run.json"
 _mode1_run_threads: dict[str, threading.Thread] = {}
 _mode1_run_starting: set[str] = set()
@@ -2675,7 +2690,7 @@ _BRIEFING_TTL = 45.0  # seconds
 
 def _cached_briefing(case_dir: Path) -> dict:
     from nexus.langgraph.briefing import case_briefing
-    key = case_dir.name
+    key = _case_key(case_dir)
     with _briefing_lock:
         hit = _briefing_cache.get(key)
         if hit and time.time() - hit[0] < _BRIEFING_TTL:
@@ -2706,7 +2721,7 @@ def _mode1_run_record(case_dir: Path) -> dict | None:
         return None
     if rec.get("status") == "running":
         with _mode1_run_lock:
-            alive = _mode1_run_threads.get(case_dir.name)
+            alive = _mode1_run_threads.get(_case_key(case_dir))
             alive = bool(alive and alive.is_alive())
         rec["thread_alive"] = alive
         if not alive:
@@ -3010,8 +3025,8 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
         _persist()
     finally:
         with _mode1_run_lock:
-            _mode1_run_threads.pop(case_dir.name, None)
-        _invalidate_briefing(case_dir.name)  # run changed drafts/bookmarks
+            _mode1_run_threads.pop(_case_key(case_dir), None)
+        _invalidate_briefing(_case_key(case_dir))  # run changed drafts/bookmarks
 
 
 async def api_mode1_full_run(request):
@@ -3049,11 +3064,11 @@ async def api_mode1_full_run(request):
     # Concurrency guard — one live run per case. The record file survives
     # navigation/reload; "interrupted" records (thread dead) don't block.
     with _mode1_run_lock:
-        live_thread = _mode1_run_threads.get(case_dir.name)
-        live = (case_dir.name in _mode1_run_starting
+        live_thread = _mode1_run_threads.get(_case_key(case_dir))
+        live = (_case_key(case_dir) in _mode1_run_starting
                 or bool(live_thread and live_thread.is_alive()))
         if not live:
-            _mode1_run_starting.add(case_dir.name)
+            _mode1_run_starting.add(_case_key(case_dir))
     if live:
         existing_run = _mode1_run_record(case_dir)
         payload = dict(existing_run) if isinstance(existing_run, dict) else {"status": "running"}
@@ -3103,13 +3118,13 @@ async def api_mode1_full_run(request):
             daemon=True,
         )
         with _mode1_run_lock:
-            _mode1_run_threads[case_dir.name] = worker
+            _mode1_run_threads[_case_key(case_dir)] = worker
             worker.start()
-            _mode1_run_starting.discard(case_dir.name)
+            _mode1_run_starting.discard(_case_key(case_dir))
         return JSONResponse(record, status_code=202)
     finally:
         with _mode1_run_lock:
-            _mode1_run_starting.discard(case_dir.name)
+            _mode1_run_starting.discard(_case_key(case_dir))
 
 
 async def api_mode1_full_run_status(request):
@@ -4516,7 +4531,7 @@ async def api_pipeline_run(request):
             _transition_case_status(case_id, "intake", allowed_from={"processing"})
         finally:
             _persist_pipeline_run(case_dir, record)
-            _invalidate_briefing(case_id)
+            _invalidate_briefing(_case_key(case_dir))
 
     thread = threading.Thread(target=_run_in_thread, daemon=True)
     thread.start()

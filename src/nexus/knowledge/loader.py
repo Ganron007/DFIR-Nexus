@@ -410,6 +410,7 @@ def get_skills() -> list[dict]:
         mitre: [T1003.001]
         confidence_rules: {high: ..., medium: ..., low: ...}
         caveats: [...]
+        source: [{chunk_id, rel_path, lines}]   # WP 9.1 citations (optional)
     """
     return _load_all_in_dir("skills")
 
@@ -442,7 +443,44 @@ def validate_skill(skill: dict) -> list[str]:
         for i, st in enumerate(steps):
             if not isinstance(st, dict) or not str(st.get("query") or "").strip():
                 problems.append(f"step {i} missing 'query'")
+    source = skill.get("source")
+    if source is not None:
+        if not isinstance(source, list):
+            problems.append("'source' must be a list of citations")
+        else:
+            for i, s in enumerate(source):
+                if isinstance(s, str):
+                    if not s.strip():
+                        problems.append(f"source {i} is an empty string")
+                    continue
+                if not isinstance(s, dict) or not str(s.get("chunk_id") or "").strip():
+                    problems.append(f"source {i} needs 'chunk_id' (or a citation string)")
     return problems
+
+
+def skill_sources(skill: dict) -> list[dict]:
+    """Normalised citation list for a skill (WP 9.1).
+
+    Accepts both machine-readable ``source: [{chunk_id, rel_path, lines}]``
+    entries and plain citation strings, returning dicts with at least
+    ``citation`` and, when available, ``chunk_id``.
+    """
+    out: list[dict] = []
+    for s in (skill.get("source") or []):
+        if isinstance(s, str):
+            text = s.strip()
+            if text:
+                out.append({"citation": text, "chunk_id": text.split(" ")[0].strip()})
+        elif isinstance(s, dict):
+            cid = str(s.get("chunk_id") or "").strip()
+            if cid:
+                out.append({
+                    "chunk_id": cid,
+                    "rel_path": str(s.get("rel_path") or ""),
+                    "lines": str(s.get("lines") or ""),
+                    "citation": str(s.get("citation") or cid),
+                })
+    return out
 
 
 def list_skills() -> list[str]:
