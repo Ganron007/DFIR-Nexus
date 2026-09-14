@@ -45,17 +45,17 @@ def main() -> int:
             force=args.force,
         )
     except Exception as exc:  # noqa: BLE001
-        print("distill failed: %s" % exc, file=sys.stderr)
+        print(f"distill failed: {exc}", file=sys.stderr)
         return 2
 
     print(json.dumps(report, indent=2))
     if report["gate"]:
         print("\nGATE FAILURES (draft written for review, not installed):", file=sys.stderr)
         for p in report["gate"]:
-            print("  - %s" % p, file=sys.stderr)
+            print(f"  - {p}", file=sys.stderr)
         return 1
-    print("\ngates passed — %d steps, %d citations, refined_by=%s"
-          % (report["steps"], report["citations"], report["refined_by"]))
+    print(f"\ngates passed — {report['steps']} steps, {report['citations']} citations, "
+          f"refined_by={report['refined_by']}")
     return 0
 
 
