@@ -57,6 +57,7 @@ export default function Overview() {
   const [banner, setBanner] = useState("");
   const [seeding, setSeeding] = useState(false);
   const [entering, setEntering] = useState("");
+  const [reopening, setReopening] = useState("");
   // Environment preflight — fix missing deps without leaving the portal.
   const [editing, setEditing] = useState<"" | "es" | "llm">("");
   const [envForm, setEnvForm] = useState({ es_url: "", llm_model: "", llm_base: "", llm_key: "" });
@@ -94,6 +95,30 @@ export default function Overview() {
       setBanner(`Failed to open ${caseId}: ${(e as Error).message}`);
     } finally {
       setEntering("");
+    }
+  };
+
+  const isClosedStatus = (status?: string) =>
+    status === "sealed" || status === "closed" || status === "archived";
+
+  const reopenCase = async (caseId: string) => {
+    setReopening(caseId);
+    setBanner("");
+    try {
+      const r = await api.reopenCase(caseId);
+      if (r.error) {
+        setBanner(`Reopen failed for ${caseId}: ${r.error}`);
+      } else {
+        setBanner(`${caseId} reopened (${r.status || "active"}${r.reopened_from ? ` — was ${r.reopened_from}` : ""}).`);
+      }
+      await refreshCases();
+      if (caseId === previewCase) {
+        api.caseDetails(caseId).then(setPreviewDetails).catch(() => {});
+      }
+    } catch (e) {
+      setBanner(`Reopen failed for ${caseId}: ${(e as Error).message}`);
+    } finally {
+      setReopening("");
     }
   };
 
@@ -335,6 +360,16 @@ export default function Overview() {
             >
               {entering === previewCase ? "Opening…" : "Enter Investigation →"}
             </button>
+            {isClosedStatus(previewDetails.status) && (
+              <button
+                className="btn btn-sm"
+                onClick={() => reopenCase(previewCase)}
+                disabled={reopening === previewCase}
+                title="Return the case to ACTIVE — the reopen is audit-chained"
+              >
+                {reopening === previewCase ? "Reopening…" : "Reopen case"}
+              </button>
+            )}
           </div>
           {previewDetails.synthetic && (
             <p style={{ padding: "0 16px 8px", fontSize: 12, color: "var(--warning)" }}>
@@ -419,16 +454,31 @@ export default function Overview() {
                     <td>{d?.findings_count ?? "—"}</td>
                     <td>{d?.pipeline_complete ? "✓ Done" : "—"}</td>
                     <td>
-                      <button
-                        className="btn btn-primary btn-sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          enterCase(c);
-                        }}
-                        disabled={entering === c}
-                      >
-                        {entering === c ? "Opening…" : isActive ? "Continue" : "Enter"}
-                      </button>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button
+                          className="btn btn-primary btn-sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            enterCase(c);
+                          }}
+                          disabled={entering === c}
+                        >
+                          {entering === c ? "Opening…" : isActive ? "Continue" : "Enter"}
+                        </button>
+                        {isClosedStatus(d?.status) && (
+                          <button
+                            className="btn btn-sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              reopenCase(c);
+                            }}
+                            disabled={reopening === c}
+                            title="Return the case to ACTIVE — the reopen is audit-chained"
+                          >
+                            {reopening === c ? "…" : "Reopen"}
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );

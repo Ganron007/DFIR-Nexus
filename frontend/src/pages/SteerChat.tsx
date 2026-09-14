@@ -338,7 +338,7 @@ export default function SteerChat() {
     setLoading(true);
     setError("");
     try {
-      const r = await api.mode3Seal({
+      const r = await api.sealCase({
         challenge_id: sealChallenge.challenge_id,
         response: sealResponse,
         examiner: sealExaminer || undefined,

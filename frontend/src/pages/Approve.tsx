@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api, type Finding } from "../api/client";
 import { computeApprovalResponse } from "../lib/crypto";
 import { useCase } from "../context/CaseContext";
 
 export default function Approve() {
   const { activeCase, refreshStages } = useCase();
+  const navigate = useNavigate();
   const [findings, setFindings] = useState<Finding[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [password, setPassword] = useState("");
@@ -165,8 +167,18 @@ export default function Approve() {
 
       {error && <div className="error-banner">{error}</div>}
       {result && (
-        <div style={{ background: "rgba(63,185,80,0.1)", border: "1px solid var(--success)", borderRadius: 6, padding: 10, marginBottom: 16, color: "var(--success)" }}>
-          {result}
+        <div style={{ background: "rgba(63,185,80,0.1)", border: "1px solid var(--success)", borderRadius: 6, padding: 10, marginBottom: 16, color: "var(--success)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+          <span>{result}</span>
+          {result.startsWith("✓") && (
+            <button
+              className="btn btn-sm"
+              onClick={() => navigate("/timeline")}
+              title="N7 — review the unified case timeline before generating the report"
+              style={{ whiteSpace: "nowrap" }}
+            >
+              Next: Review Timeline →
+            </button>
+          )}
         </div>
       )}
 

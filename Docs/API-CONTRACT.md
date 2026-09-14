@@ -1343,8 +1343,8 @@ needles is one event.
 
 ---
 
-### POST /portal/api/mode3/seal
-**Description:** Case-file HMAC seal via challenge-response. Reuses the same challenge-response flow as per-finding approval (get a challenge from `GET /portal/api/commit/challenge` first). Computes an HMAC signature over `REPORT.md` content and writes it to the verification ledger. Requires a generated report first.
+### POST /portal/api/case/seal
+**Description:** Case-file HMAC seal via challenge-response — the canonical case-lifecycle close action, usable from any mode (Mode 1 surfaces it on the Report page). Reuses the same challenge-response flow as per-finding approval (get a challenge from `GET /portal/api/commit/challenge` first). Computes an HMAC signature over `REPORT.md` content and writes it to the verification ledger. Requires a generated report first. `POST /portal/api/mode3/seal` remains as an alias for compatibility.
 
 **Request:**
 ```json
@@ -1369,6 +1369,8 @@ needles is one event.
 - `401` — No examiner identity, invalid/expired challenge, challenge/examiner mismatch, or challenge response mismatch.
 - `403` — No password configured for examiner.
 - `404` — No active case.
+
+`POST /portal/api/mode3/seal` — identical request/response; kept as a compatibility alias.
 
 ---
 

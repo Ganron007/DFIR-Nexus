@@ -3867,12 +3867,13 @@ async def api_mode3_draft_finding(request):
     return JSONResponse(result)
 
 
-async def api_mode3_seal(request):
-    """POST /portal/api/mode3/seal — case-file HMAC via challenge-response.
+async def api_case_seal(request):
+    """POST /portal/api/case/seal — case-file HMAC via challenge-response.
 
     Body: {challenge_id, response, examiner?}
     Reuses the same challenge-response flow as per-finding approval —
-    the password never travels in plaintext.
+    the password never travels in plaintext. This is the general case-close
+    action for every mode (registered at /mode3/seal as a back-compat alias).
     """
     case_dir = _get_case_dir(request)
     if not case_dir:
@@ -5578,7 +5579,8 @@ def create_dashboard():
         # Mode 3 (agentic)
         Route("/portal/api/mode3/plan", api_mode3_plan, methods=["POST"]),
         Route("/portal/api/mode3/execute", api_mode3_execute, methods=["POST"]),
-        Route("/portal/api/mode3/seal", api_mode3_seal, methods=["POST"]),
+        Route("/portal/api/case/seal", api_case_seal, methods=["POST"]),
+        Route("/portal/api/mode3/seal", api_case_seal, methods=["POST"]),
         # RAG preflight (WP 3.13)
         Route("/portal/api/rag/status", api_rag_status, methods=["GET"]),
         # Mode 3 orchestrator (WP 3.10)

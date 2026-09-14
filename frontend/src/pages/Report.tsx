@@ -2,10 +2,11 @@ import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { api, type Finding } from "../api/client";
+import { computeApprovalResponse } from "../lib/crypto";
 import { useCase } from "../context/CaseContext";
 
 export default function Report() {
-  const { activeCase, refreshStages } = useCase();
+  const { activeCase, caseSummaries, refreshStages, refreshCases } = useCase();
   const [findings, setFindings] = useState<Finding[]>([]);
   const [summary, setSummary] = useState<{
     total: number;
@@ -33,6 +34,13 @@ export default function Report() {
     snapshot_path?: string;
     previous_report_sha256?: string;
   }>>([]);
+
+  // Case lifecycle — seal & close (N8 is the natural end of the spine).
+  const [sealOpen, setSealOpen] = useState(false);
+  const [sealPassword, setSealPassword] = useState("");
+  const [sealing, setSealing] = useState(false);
+  const caseStatus = activeCase ? caseSummaries[activeCase]?.status || "" : "";
+  const isSealed = caseStatus === "sealed" || caseStatus === "closed" || caseStatus === "archived";
 
   const loadData = async () => {
     setLoading(true);
@@ -90,6 +98,39 @@ export default function Report() {
       setError((err as Error).message || "Error steering report");
     } finally {
       setSteering(false);
+    }
+  };
+
+  const handleSeal = async () => {
+    if (!sealPassword) {
+      setError("Approval password required — sealing signs the case file with your examiner identity.");
+      return;
+    }
+    setSealing(true);
+    setError("");
+    setSuccess("");
+    try {
+      const ch = await api.getChallenge();
+      const responseHmac = await computeApprovalResponse(
+        sealPassword,
+        ch.salt,
+        ch.iterations,
+        ch.nonce
+      );
+      const r = await api.sealCase({
+        challenge_id: ch.challenge_id,
+        response: responseHmac,
+      });
+      if (r.error) throw new Error(r.error);
+      setSealPassword("");
+      setSealOpen(false);
+      setSuccess(`Case sealed as ${r.status} — signed by ${r.examiner}. All actions are locked until you reopen the case from the dashboard or the banner above.`);
+      await refreshCases();
+      if (activeCase) refreshStages(activeCase);
+    } catch (err: unknown) {
+      setError((err as Error).message || "Seal failed");
+    } finally {
+      setSealing(false);
     }
   };
 
@@ -370,6 +411,64 @@ export default function Report() {
           )}
         </div>
       )}
+
+      {/* Case lifecycle — sealing is the completion gate for every mode */}
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="card-header">
+          <span className="card-title">Close the investigation</span>
+        </div>
+        <div style={{ padding: 16 }}>
+          {isSealed ? (
+            <p style={{ margin: 0, fontSize: 13, color: "var(--text-secondary)" }}>
+              This case is <strong>{STATUS_LABEL_SEALED[caseStatus] || caseStatus}</strong> — all
+              investigation actions are locked. Reopen it from the banner above or the case
+              dashboard to continue working.
+            </p>
+          ) : !sealOpen ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <p style={{ margin: 0, fontSize: 13, color: "var(--text-secondary)", flex: 1 }}>
+                Sealing HMAC-signs the case file under your examiner identity and locks all
+                mutations (409) — findings, workbench, timeline, reports. You can reopen the
+                case later; the seal and every reopen are audit-chained.
+              </p>
+              <button className="btn btn-sm" onClick={() => setSealOpen(true)}>
+                Seal &amp; close case…
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <input
+                type="password"
+                placeholder="Examiner approval password"
+                value={sealPassword}
+                onChange={(e) => setSealPassword(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSeal()}
+                disabled={sealing}
+                style={{ width: 260 }}
+              />
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={handleSeal}
+                disabled={sealing || !sealPassword}
+              >
+                {sealing ? "Signing…" : "Seal case"}
+              </button>
+              <button className="btn btn-sm" onClick={() => { setSealOpen(false); setSealPassword(""); }} disabled={sealing}>
+                Cancel
+              </button>
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                Same HMAC challenge-response as approval — the password never leaves this browser.
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
+
+const STATUS_LABEL_SEALED: Record<string, string> = {
+  sealed: "sealed (completed)",
+  closed: "closed",
+  archived: "archived",
+};

@@ -294,10 +294,12 @@ def test_full_loop_design_flow(flow_env, monkeypatch):
     assert view.get("ok") is True
     assert "Flow E2E" in view.get("markdown", "")
 
-    # 9. Case-file seal via the same challenge-response (lifecycle -> SEALED)
+    # 9. Case-file seal via the same challenge-response (lifecycle -> SEALED).
+    # /portal/api/case/seal is the canonical lifecycle endpoint (the
+    # /portal/api/mode3/seal alias remains for compatibility).
     challenge_id, response = _respond(client, headers, stored_hash)
     r = client.post(
-        "/portal/api/mode3/seal",
+        "/portal/api/case/seal",
         headers=headers,
         json={"challenge_id": challenge_id, "response": response},
     )

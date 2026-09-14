@@ -475,8 +475,8 @@ export interface Mode3ExecuteResponse {
   error?: string;
 }
 
-/** POST /mode3/seal → {status: "SEALED", case_id, examiner} or {error} */
-export interface Mode3SealResponse {
+/** POST /case/seal → {status: "SEALED", case_id, examiner} or {error} */
+export interface CaseSealResponse {
   status: string;
   case_id?: string;
   examiner?: string;
@@ -729,9 +729,10 @@ export const api = {
     post<ActivateCaseResponse>("/case/activate", { case_id: caseId }),
   deactivateCase: () => post<{ ok: boolean; active: string }>("/case/deactivate"),
   reopenCase: (caseId?: string) =>
-    post<{ ok: boolean; status?: string; note?: string; error?: string }>("/case/reopen", {
-      case_id: caseId,
-    }),
+    post<{ ok: boolean; status?: string; note?: string; reopened_from?: string; error?: string }>(
+      "/case/reopen",
+      { case_id: caseId },
+    ),
   caseCreate: (params: {
     name: string;
     description?: string;
@@ -863,11 +864,14 @@ export const api = {
     post<Mode3PlanResponse>("/mode3/plan", params || {}),
   mode3Execute: (params: { extras?: string[]; queries?: string[] }) =>
     post<Mode3ExecuteResponse>("/mode3/execute", params),
-  mode3Seal: (params: {
+  /** Seal & close the active case — HMAC challenge-response, same flow as
+   *  per-finding approval. Lifecycle action for every mode; the legacy
+   *  /mode3/seal route remains registered as an alias. */
+  sealCase: (params: {
     challenge_id: string;
     response: string;
     examiner?: string;
-  }) => post<Mode3SealResponse>("/mode3/seal", params),
+  }) => post<CaseSealResponse>("/case/seal", params),
 
   // Approval & Rejection
   getChallenge: () => request<ChallengeResponse>("/commit/challenge"),

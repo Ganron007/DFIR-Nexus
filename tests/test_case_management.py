@@ -259,6 +259,23 @@ def test_sealed_case_locks_actions_until_reopened(client, tmp_path):
     assert details["status"] == "active"
 
 
+def test_case_seal_route_is_canonical_lifecycle_endpoint(client):
+    """/case/seal is the general close action (mode-agnostic); /mode3/seal is
+    an alias. Both enforce the same challenge-response contract."""
+    case_id = _create(client, "Seal Route Case")["case_id"]
+    hdr = {"X-Nexus-Case": case_id}
+
+    for path in ("/portal/api/case/seal", "/portal/api/mode3/seal"):
+        # Missing challenge fields → 400 (not 404 — the route exists).
+        r = client.post(path, json={}, headers=hdr)
+        assert r.status_code == 400, (path, r.text)
+        # Bogus challenge → 401.
+        r = client.post(
+            path, json={"challenge_id": "nope", "response": "00"}, headers=hdr
+        )
+        assert r.status_code == 401, (path, r.text)
+
+
 def test_evidence_hash_parity_with_legacy_mcp(tmp_path):
     """The unified service and the legacy MCP hasher must agree on digests."""
     from nexus.case.evidence_service import hash_evidence_path as unified_hash
