@@ -24,6 +24,28 @@ from nexus.discipline import validate_finding
 logger = logging.getLogger(__name__)
 
 _AUDIT_ID_PATTERN = re.compile(r"^[a-z_]+-[a-z0-9](?:[a-z0-9-]*[a-z0-9])?-[0-9]{8}-[0-9]{3,}\Z")
+
+# IOC auto-extraction — domain candidates must end in a public-looking TLD;
+# internal suffixes and pure file extensions are not indicators.
+_IOC_DOMAIN_SKIP_TLDS = {
+    "local", "localdomain", "internal", "lan", "home", "corp", "intra",
+    "private", "test", "example", "invalid", "localhost",
+}
+_IOC_AMBIGUOUS_EXTS = {
+    "zip", "mov", "rar", "7z", "gz", "tar", "exe", "dll", "sys", "ocx",
+    "scr", "bat", "cmd", "ps1", "vbs", "jar", "dat", "evtx", "csv", "txt",
+    "log", "ini", "lnk", "msi", "doc", "docx", "xls", "xlsx", "ppt",
+    "pptx", "pdf", "png", "jpg", "jpeg", "gif", "bmp", "tmp", "bak", "js",
+}
+_IOC_KNOWN_TLDS = {
+    "com", "net", "org", "io", "co", "biz", "info", "xyz", "top", "ru",
+    "cn", "su", "cc", "me", "tv", "ws", "dev", "app", "cloud", "online",
+    "site", "club", "live", "pro", "vip", "cam", "shop", "store", "icu",
+    "buzz", "quest", "lol", "link", "click", "download", "email", "tech",
+    "support", "win", "bid", "stream", "date", "men", "one", "space",
+    "website", "today", "life", "world", "fyi", "run", "network", "systems",
+    "solutions", "services", "group", "security", "update",
+} | _IOC_AMBIGUOUS_EXTS
 _HASH_EXCLUDE_KEYS = {
     "status", "approved_at", "approved_by", "rejected_at", "rejected_by",
     "rejection_reason", "examiner_notes", "examiner_modifications",
@@ -203,6 +225,25 @@ class CaseManager:
                     )
             except yaml.YAMLError:
                 pass
+        return case_dir
+
+    def _target_case_dir(self, case_dir: Path | None) -> Path:
+        """Explicit ``case_dir`` (portal X-Nexus-Case flow) else the global
+        active-case pointer — same validation either way."""
+        if case_dir is None:
+            return self.require_active_case()
+        case_dir = Path(case_dir)
+        if not case_dir.is_dir() or not (case_dir / "CASE.yaml").is_file():
+            raise ValueError(f"Case directory invalid: {case_dir}")
+        try:
+            meta = yaml.safe_load((case_dir / "CASE.yaml").read_text()) or {}
+            if meta.get("status") == "closed":
+                raise ValueError(
+                    f"Case {case_dir.name} is closed. "
+                    "Run case_activate to work on a different case."
+                )
+        except (OSError, yaml.YAMLError):
+            pass
         return case_dir
 
     # ── Findings ──────────────────────────────────────────────────────
@@ -445,6 +486,11 @@ class CaseManager:
                 (r"\b[a-fA-F0-9]{40}\b", ("file:hash:sha1", "host")),
                 (r"\b[a-fA-F0-9]{32}\b", ("file:hash:md5", "host")),
                 (r"\b(?:\d{1,3}\.){3}\d{1,3}\b", ("ipv4-addr", "network")),
+                (r"https?://[^\s\"'<>\)\]},;]+", ("url", "network")),
+                (r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,24}\b",
+                 ("email-addr", "network")),
+                (r"\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+"
+                 r"[a-zA-Z]{2,24}\b", ("domain", "network")),
             ]:
                 for match in re.finditer(pattern, text):
                     val = match.group(0)
@@ -453,6 +499,23 @@ class CaseManager:
                         if not all(0 <= int(o) <= 255 for o in octets):
                             continue
                         if val.startswith("127.") or val.startswith("169.254."):
+                            continue
+                    elif iotype == "url":
+                        val = val.rstrip(".,;:")
+                        if val.startswith(("http://127.", "https://127.",
+                                          "http://169.254.", "https://169.254.",
+                                          "http://localhost", "https://localhost")):
+                            continue
+                    elif iotype == "domain":
+                        # Skip filenames (payload.zip) and internal suffixes —
+                        # a domain IOC must look public-routable.
+                        labels = val.lower().split(".")
+                        tld = labels[-1]
+                        if tld in _IOC_DOMAIN_SKIP_TLDS:
+                            continue
+                        if len(labels) == 2 and tld in _IOC_AMBIGUOUS_EXTS:
+                            continue
+                        if tld not in _IOC_KNOWN_TLDS:
                             continue
                     merged_iocs.append({
                         "value": val, "type": iotype, "category": cat,
@@ -797,8 +860,9 @@ class CaseManager:
     def add_todo(self, description: str, assignee: str = "",
                  priority: str = "medium",
                  related_findings: list[str] | None = None,
-                 examiner_override: str = "") -> dict:
-        case_dir = self.require_active_case()
+                 examiner_override: str = "",
+                 case_dir: Path | None = None) -> dict:
+        case_dir = self._target_case_dir(case_dir)
         exam = (examiner_override.strip().lower()
                 if examiner_override and examiner_override.strip()
                 else self.examiner)
@@ -836,8 +900,9 @@ class CaseManager:
 
     def update_todo(self, todo_id: str, status: str = "", note: str = "",
                     assignee: str = "", priority: str = "",
-                    examiner_override: str = "") -> dict:
-        case_dir = self.require_active_case()
+                    examiner_override: str = "",
+                    case_dir: Path | None = None) -> dict:
+        case_dir = self._target_case_dir(case_dir)
         todos = self._load_todos(case_dir)
         for todo in todos:
             if todo.get("id") == todo_id or todo.get("todo_id") == todo_id:
@@ -856,15 +921,47 @@ class CaseManager:
                 return {"status": "updated", "todo_id": todo_id}
         return {"status": "not_found", "todo_id": todo_id}
 
-    def complete_todo(self, todo_id: str, examiner_override: str = "") -> dict:
-        return self.update_todo(todo_id, status="completed", examiner_override=examiner_override)
+    def complete_todo(self, todo_id: str, examiner_override: str = "",
+                      case_dir: Path | None = None) -> dict:
+        return self.update_todo(todo_id, status="completed",
+                                examiner_override=examiner_override, case_dir=case_dir)
 
     # ── IOCs ──────────────────────────────────────────────────────────
 
     def _load_iocs(self, case_dir: Path) -> list[dict]:
+        """Load the case IOC store as a list of records.
+
+        Tolerates the legacy dict shape ``{"ip": [...], "host": [...],
+        "hash": [...]}`` written by the SQLite→flat mirror — each entry is
+        flattened into a record with a mapped ``type``.
+        """
         path = case_dir / "iocs.json"
         data = _load_json_file(path, [])
-        return data if isinstance(data, list) else data.get("iocs", [])
+        if isinstance(data, list):
+            return data
+        if isinstance(data, dict):
+            recs: list[dict] = []
+            for key, iotype, cat in (
+                ("ip", "ipv4-addr", "network"),
+                ("host", "hostname", "network"),
+                ("hash", "file:hash", "host"),
+            ):
+                for item in data.get(key) or []:
+                    if isinstance(item, dict):
+                        rec = dict(item)
+                        rec.setdefault("type", iotype)
+                        if rec["type"] == "file:hash":
+                            rec["type"] = {
+                                64: "file:hash:sha256", 40: "file:hash:sha1",
+                                32: "file:hash:md5",
+                            }.get(len(str(rec.get("value") or "")), "file:hash")
+                        rec.setdefault("category", cat)
+                        recs.append(rec)
+            extra = data.get("iocs")
+            if isinstance(extra, list):
+                recs.extend(i for i in extra if isinstance(i, dict))
+            return recs
+        return []
 
     def _save_iocs(self, case_dir: Path, iocs: list[dict]) -> None:
         path = case_dir / "iocs.json"

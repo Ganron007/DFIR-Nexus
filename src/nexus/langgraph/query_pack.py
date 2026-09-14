@@ -389,6 +389,7 @@ def _hits_from_file(
     start: datetime | None,
     end: datetime | None,
     query: Any | None = None,
+    match_all: bool = False,
 ) -> list[dict[str, str]]:
     """Keep strong-term rows even when noisier matches appear first in the file."""
     raw: list[tuple[int, int, list[str], str]] = []
@@ -411,7 +412,9 @@ def _hits_from_file(
             else:
                 matched = [t for t in needles if needle_in_text(low, t)]
                 if not matched:
-                    continue
+                    if not match_all:
+                        continue
+                    matched = ["*"]
             if not _row_in_window(line, start, end):
                 continue
             pri = _hit_rank(matched, strong)
@@ -514,12 +517,14 @@ def n4_hits(
     priority_terms: list[str] | None = None,
     backend: str | None = None,
     query: Any | None = None,
+    match_all: bool = False,
 ) -> tuple[list[dict[str, str]], str]:
     """One query API: Elasticsearch when reachable+indexed, else CSV pack.
 
     ``query`` is an optional parsed query_dsl.ParsedQuery adding boolean /
     field-filter / regex semantics. The ES backend translates it to a bool
-    query; the CSV backend evaluates it per row.
+    query; the CSV backend evaluates it per row. ``match_all`` returns all
+    in-window hits when there are no terms/query.
     """
     import os
 
@@ -529,14 +534,19 @@ def n4_hits(
             from nexus.langgraph.case_index import IndexMissing, es_available, query_index
 
             if choice != "auto" or es_available():
-                return query_index(case_dir, terms, window, priority_terms, query=query), "elasticsearch"
+                return query_index(
+                    case_dir, terms, window, priority_terms,
+                    query=query, match_all=match_all,
+                ), "elasticsearch"
         except IndexMissing:
             if choice != "auto":
                 raise
         except Exception:
             if choice not in {"auto", ""}:
                 raise
-    return scan_extractions(case_dir, terms, window, priority_terms, query=query), "csv"
+    return scan_extractions(
+        case_dir, terms, window, priority_terms, query=query, match_all=match_all
+    ), "csv"
 
 
 # ---------------------------------------------------------------------------
@@ -657,10 +667,13 @@ def n4_query(
     limit: int = 80,
     offset: int = 0,
     backend: str | None = None,
+    match_all: bool = False,
 ) -> dict[str, Any]:
     """DSL entry point: parse -> N4 -> hits + total count (pagination-ready).
 
     Returns {query, backend, count, offset, hits, empty} or {error}.
+    ``match_all`` makes an empty query scan every in-window row instead of
+    falling back to intake terms only.
     """
     from nexus.langgraph.query_dsl import QuerySyntaxError, parse_query
 
@@ -675,7 +688,8 @@ def n4_query(
         window = parse_intake_window(intake)
     pb_terms = collect_playbook_query_terms(intake)
     dsl_terms = parsed.all_needles()
-    terms = list(dict.fromkeys(dsl_terms + collect_query_terms(intake)))
+    do_match_all = bool(match_all) and parsed.is_empty()
+    terms = [] if do_match_all else list(dict.fromkeys(dsl_terms + collect_query_terms(intake)))
     all_hits, backend_used = n4_hits(
         case_dir,
         terms,
@@ -683,6 +697,7 @@ def n4_query(
         priority_terms=list(dict.fromkeys(pb_terms + dsl_terms)),
         backend=backend,
         query=parsed if not parsed.is_empty() else None,
+        match_all=do_match_all,
     )
     total = len(all_hits)
     page = all_hits[max(0, offset):max(0, offset) + max(1, min(int(limit or 80), _MAX_HITS_TOTAL))]
@@ -794,15 +809,17 @@ def scan_extractions(
     window: tuple[datetime | None, datetime | None],
     priority_terms: list[str] | None = None,
     query: Any | None = None,
+    match_all: bool = False,
 ) -> list[dict[str, str]]:
     """Scan parsed CSVs. ``query`` (query_dsl.ParsedQuery) adds boolean /
-    field-filter / regex semantics on top of the plain needle list."""
+    field-filter / regex semantics on top of the plain needle list.
+    ``match_all`` returns every in-window row when there are no terms/query."""
     case_dir = Path(case_dir)
     needles = [t.lower() for t in terms if t.strip()]
     strong = _strong_set(priority_terms if priority_terms is not None else terms)
     start, end = window
     hits: list[dict[str, str]] = []
-    if not needles and query is None:
+    if not needles and query is None and not match_all:
         return hits
 
     for path, root, fam in iter_extraction_files(
@@ -810,7 +827,10 @@ def scan_extractions(
     ):
         try:
             hits.extend(
-                _hits_from_file(path, root, fam, needles, strong, start, end, query=query)
+                _hits_from_file(
+                    path, root, fam, needles, strong, start, end,
+                    query=query, match_all=match_all,
+                )
             )
         except OSError:
             continue

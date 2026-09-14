@@ -118,8 +118,19 @@ def sync_sqlite_to_flat(
 
         evidence_out: list[dict[str, Any]] = []
         timeline_out: list[dict[str, Any]] = []
-        iocs: dict[str, list[dict[str, Any]]] = {"ip": [], "host": [], "hash": []}
-        seen_ioc: set[str] = set()
+        # Canonical IOC schema = list of records (same as _merge_iocs).
+        # Merge evidence-derived indicators with whatever the flat stack
+        # already recorded (finding IOCs must survive each sync).
+        # _load_iocs tolerates the legacy dict shape and refines hash
+        # subtypes, so it is the single normalization boundary.
+        from nexus.case_manager import CaseManager as FlatCaseManager
+
+        iocs: list[dict[str, Any]] = FlatCaseManager()._load_iocs(dest)
+        seen_ioc: set[str] = {
+            str(rec.get("value") or "").lower()
+            for rec in iocs
+            if rec.get("value")
+        }
 
         for i, ev in enumerate(mgr.list_evidence(case_id), start=1):
             meta = dict(ev.metadata or {})
@@ -155,16 +166,24 @@ def sync_sqlite_to_flat(
                 "created_at": ev.collected_at.isoformat() if ev.collected_at else "",
                 "staged": True,
             })
-            for key, ioc_type in (("dest_ip", "ip"), ("source_ip", "ip"), ("host", "host")):
+            for key, ioc_type in (
+                ("dest_ip", "ipv4-addr"), ("source_ip", "ipv4-addr"), ("host", "hostname"),
+            ):
                 val = meta.get(key)
-                if val and str(val) not in seen_ioc:
-                    seen_ioc.add(str(val))
-                    iocs[ioc_type].append({"value": str(val), "source_findings": [], "source": "evidence"})
+                if val and str(val).lower() not in seen_ioc:
+                    seen_ioc.add(str(val).lower())
+                    iocs.append({
+                        "value": str(val), "type": ioc_type, "category": "network",
+                        "source": "evidence", "source_findings": [],
+                    })
             if ev.file_hash_sha256:
                 hv = ev.file_hash_sha256
-                if hv not in seen_ioc:
-                    seen_ioc.add(hv)
-                    iocs["hash"].append({"value": hv, "source_findings": [], "source": "evidence"})
+                if hv.lower() not in seen_ioc:
+                    seen_ioc.add(hv.lower())
+                    iocs.append({
+                        "value": hv, "type": "file:hash:sha256", "category": "host",
+                        "source": "evidence", "source_findings": [],
+                    })
 
         _atomic_json(dest / "findings.json", findings_out)
         _atomic_json(dest / "evidence.json", evidence_out)

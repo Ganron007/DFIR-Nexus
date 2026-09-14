@@ -1172,14 +1172,47 @@ async def api_evidence(request):
 
 
 async def api_iocs(request):
-    """GET /portal/api/iocs"""
+    """GET /portal/api/iocs — unified case IOC store.
+
+    iocs.json is the canonical store: evidence-registered indicators (via
+    the SQLite→flat mirror) plus finding IOCs merged at stage time
+    (auto-extracted hashes/IPs/URLs/domains/emails + explicit entries).
+    Explicit finding-level IOCs not yet in the store are merged in here so
+    the page always shows the full picture.
+    """
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    from nexus.case_manager import CaseManager as FlatCaseManager
+
+    iocs = FlatCaseManager()._load_iocs(case_dir)
     findings = _load_json("findings.json", request)
-    iocs = []
+    findings_by_id = {f.get("id"): f for f in findings}
+
+    seen = {str(i.get("value") or "").lower() for i in iocs}
     for f in findings:
-        for ioc in f.get("iocs", []):
-            ioc["finding_title"] = f.get("title", "")
-            ioc["finding_status"] = f.get("status", "DRAFT")
-            iocs.append(ioc)
+        for ioc in f.get("iocs") or []:
+            if not isinstance(ioc, dict):
+                continue
+            val = str(ioc.get("value", ioc.get("indicator", ""))).lower()
+            if not val or val in seen:
+                continue
+            seen.add(val)
+            rec = dict(ioc)
+            rec["source_findings"] = list(
+                dict.fromkeys((rec.get("source_findings") or []) + [f.get("id")])
+            )
+            iocs.append(rec)
+
+    for ioc in iocs:
+        linked = [
+            findings_by_id[fid] for fid in (ioc.get("source_findings") or [])
+            if fid in findings_by_id
+        ]
+        ioc["finding_title"] = "; ".join(f.get("title", "") for f in linked)
+        ioc["finding_status"] = "; ".join(
+            sorted({f.get("status", "DRAFT") for f in linked})
+        )
     return JSONResponse({"iocs": iocs, "total": len(iocs)})
 
 
@@ -1190,6 +1223,92 @@ async def api_todos(request):
     if status:
         todos = [t for t in todos if t.get("status", "open") == status]
     return JSONResponse({"todos": todos, "total": len(todos)})
+
+
+async def api_todos_add(request):
+    """POST /portal/api/todos — {description, assignee?, priority?,
+    related_findings?}. Examiner follow-ups; not signed — same trust level
+    as workbench bookmarks."""
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+    desc = str(body.get("description") or "").strip()
+    if not desc:
+        return JSONResponse({"error": "Missing description"}, status_code=400)
+    related = body.get("related_findings")
+    if related is not None and not (
+        isinstance(related, list) and all(isinstance(r, str) for r in related)
+    ):
+        return JSONResponse(
+            {"error": "related_findings must be a list of finding IDs"},
+            status_code=400,
+        )
+    from nexus.case_manager import CaseManager as FlatCaseManager
+
+    try:
+        result = FlatCaseManager().add_todo(
+            desc,
+            assignee=str(body.get("assignee") or ""),
+            priority=str(body.get("priority") or "medium"),
+            related_findings=related,
+            examiner_override=_resolve_examiner(request),
+            case_dir=case_dir,
+        )
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    return JSONResponse(result)
+
+
+async def api_todos_update(request):
+    """POST /portal/api/todos/update — {todo_id, status?, note?, assignee?,
+    priority?}. Status 'completed' stamps completed_at; 'open' reopens."""
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+    todo_id = str(body.get("todo_id") or body.get("id") or "").strip()
+    if not todo_id:
+        return JSONResponse({"error": "Missing todo_id"}, status_code=400)
+    status = str(body.get("status") or "").strip().lower()
+    if status and status not in ("open", "in_progress", "completed"):
+        return JSONResponse(
+            {"error": "status must be open|in_progress|completed"},
+            status_code=400,
+        )
+    if not status and not str(body.get("note") or "").strip() \
+            and not str(body.get("assignee") or "").strip() \
+            and not str(body.get("priority") or "").strip():
+        return JSONResponse({"error": "Nothing to update"}, status_code=400)
+    from nexus.case_manager import CaseManager as FlatCaseManager
+
+    try:
+        result = FlatCaseManager().update_todo(
+            todo_id,
+            status=status,
+            note=str(body.get("note") or ""),
+            assignee=str(body.get("assignee") or ""),
+            priority=str(body.get("priority") or ""),
+            examiner_override=_resolve_examiner(request),
+            case_dir=case_dir,
+        )
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    if result.get("status") == "not_found":
+        return JSONResponse({"error": f"TODO not found: {todo_id}"}, status_code=404)
+    return JSONResponse(result)
 
 
 async def api_audit_for_finding(request):
@@ -3589,16 +3708,25 @@ async def api_timeline_rebuild(request):
 async def api_entities(request):
     """POST /portal/api/entities — extract entities from current N4 hits.
 
-    Body: {query?: "<DSL>", needles?} — same search as explore/search.
+    Body: {query?: "<DSL>", needles?: "a,b,c"} — needles merge into the DSL
+    like /explore/search. An empty request scans all in-window hits
+    (match-all) so the pivot page populates on arrival.
     """
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
     body = await request.json()
     from nexus.analysis.entities import extract_entities
-    from nexus.langgraph.query_pack import n4_query
+    from nexus.langgraph.query_pack import _parse_needles, n4_query
 
-    result = n4_query(case_dir, str(body.get("query") or ""), limit=400)
+    query_text = str(body.get("query") or "").strip()
+    needles = _parse_needles(str(body.get("needles") or ""))
+    if needles and query_text:
+        query_text = query_text + " " + " ".join(needles)
+    elif needles:
+        query_text = " OR ".join(needles)
+
+    result = n4_query(case_dir, query_text, limit=400, match_all=True)
     if result.get("error"):
         return JSONResponse({"error": result["error"]}, status_code=400)
     texts = [h.get("text", "") for h in result.get("hits", [])]
@@ -5537,6 +5665,8 @@ def create_dashboard():
         Route("/portal/api/evidence", api_register_evidence, methods=["POST"]),
         Route("/portal/api/iocs", api_iocs, methods=["GET"]),
         Route("/portal/api/todos", api_todos, methods=["GET"]),
+        Route("/portal/api/todos", api_todos_add, methods=["POST"]),
+        Route("/portal/api/todos/update", api_todos_update, methods=["POST"]),
         Route("/portal/api/audit/{finding_id}", api_audit_for_finding, methods=["GET"]),
         Route("/portal/api/summary", api_summary, methods=["GET"]),
         Route("/portal/api/transparency", api_transparency, methods=["GET"]),

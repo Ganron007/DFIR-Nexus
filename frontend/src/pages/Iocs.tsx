@@ -33,8 +33,8 @@ export default function Iocs() {
       {error && <div className="error-banner">{error}</div>}
       {iocs.length === 0 ? (
         <div className="empty-state">
-          <h3>No IOCs extracted</h3>
-          <p>IOCs are collected from finding evidence. Create findings with IOC entries to populate this page.</p>
+          <h3>No IOCs yet</h3>
+          <p>IOCs aggregate from registered evidence (hashes, IPs, hosts) and from findings — auto-extracted from finding text at stage time or attached explicitly.</p>
         </div>
       ) : (
         <div className="card">
@@ -43,6 +43,7 @@ export default function Iocs() {
               <tr>
                 <th>Type</th>
                 <th>Value</th>
+                <th>Source</th>
                 <th>Finding</th>
                 <th>Status</th>
               </tr>
@@ -52,8 +53,9 @@ export default function Iocs() {
                 <tr key={i}>
                   <td><span className="badge badge-medium">{String(ioc.type || "unknown")}</span></td>
                   <td style={{ fontFamily: "monospace", fontSize: 12 }}>{String(ioc.value || "")}</td>
-                  <td>{String(ioc.finding_title || "")}</td>
-                  <td>{String(ioc.finding_status || "")}</td>
+                  <td>{String(ioc.source || (ioc.finding_title ? "finding" : "—"))}</td>
+                  <td>{String(ioc.finding_title || "—")}</td>
+                  <td>{String(ioc.finding_status || ioc.status || "—")}</td>
                 </tr>
               ))}
             </tbody>

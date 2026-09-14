@@ -405,7 +405,7 @@ If the case is already open: `{"ok": true, "status": "created", "note": "already
 ---
 
 ### GET /portal/api/iocs
-**Description:** Returns all IOCs extracted from findings in the active case. Each IOC is annotated with its parent finding's title and status.
+**Description:** Returns the unified case IOC store (`iocs.json`). Sources: evidence registration (file hashes, src/dst IPs, hosts — via the SQLite→flat mirror), finding auto-extraction at stage time (hashes, IPv4, URLs, domains, emails from title/observation/interpretation), and explicit finding-level IOC entries. Each record is annotated with the linked findings' titles and statuses.
 
 **Request:** No body. No query params.
 
@@ -414,18 +414,26 @@ If the case is already open: `{"ok": true, "status": "created", "note": "already
 {
   "iocs": [
     {
-      "value": "string (or 'indicator')",
-      "type": "string",
-      "context": "string",
-      "finding_title": "string",
-      "finding_status": "string"
+      "value": "string",
+      "type": "file:hash:sha256 | file:hash:sha1 | file:hash:md5 | ipv4-addr | url | domain | email-addr | hostname | ...",
+      "category": "host | network",
+      "source": "evidence | finding | explicit (optional)",
+      "source_findings": ["F-..."],
+      "status": "DRAFT (finding-derived records)",
+      "finding_title": "string — '; '-joined linked finding titles",
+      "finding_status": "string — '; '-joined linked finding statuses",
+      "created_at": "string (optional)"
     }
   ],
   "total": 0
 }
 ```
 
-**Errors:** None (returns empty list if no case).
+**Errors:**
+- `404` — No active case.
+
+**Notes:**
+- The canonical `iocs.json` schema is a **list of records**. The legacy dict shape (`{"ip": [...], "host": [...], "hash": [...]}` written by older SQLite mirrors) is read tolerantly and flattened at load time.
 
 ---
 
@@ -433,7 +441,7 @@ If the case is already open: `{"ok": true, "status": "created", "note": "already
 **Description:** Returns TODO items from the active case, optionally filtered by status.
 
 **Request:** Query params:
-- `status` (string, optional — e.g. `open`, `completed`)
+- `status` (string, optional — `open`, `in_progress`, `completed`)
 
 **Response 200:**
 ```json
@@ -452,6 +460,57 @@ If the case is already open: `{"ok": true, "status": "created", "note": "already
 ```
 
 **Errors:** None (returns empty list if no case).
+
+---
+
+### POST /portal/api/todos
+**Description:** Adds an investigation follow-up to the case TODO list. Examiner action — not signed (same trust level as workbench bookmarks).
+
+**Request:**
+```json
+{
+  "description": "string (required, ≤2000 chars)",
+  "assignee": "string (optional)",
+  "priority": "high | medium | low (default medium)",
+  "related_findings": ["F-... (optional list of finding IDs)"]
+}
+```
+
+**Response 200:**
+```json
+{"status": "created", "todo_id": "TODO-<examiner>-NNN"}
+```
+
+**Errors:**
+- `400` — Invalid JSON, missing `description`, or bad `related_findings` shape.
+- `404` — No active case.
+- `409` — Case sealed.
+
+---
+
+### POST /portal/api/todos/update
+**Description:** Updates an existing TODO — complete, reopen, annotate, reassign.
+
+**Request:**
+```json
+{
+  "todo_id": "string (required — TODO-... or id)",
+  "status": "open | in_progress | completed (optional)",
+  "note": "string (optional — appended to the todo's notes)",
+  "assignee": "string (optional)",
+  "priority": "high | medium | low (optional)"
+}
+```
+
+**Response 200:**
+```json
+{"status": "updated", "todo_id": "TODO-..."}
+```
+
+**Errors:**
+- `400` — Invalid JSON, missing `todo_id`, invalid `status`, or nothing to update.
+- `404` — No active case, or TODO ID not found.
+- `409` — Case sealed.
 
 ---
 
@@ -1137,12 +1196,13 @@ needles is one event.
 ## 9. Entities
 
 ### POST /portal/api/entities
-**Description:** Extracts entities (IPs, users, processes, paths) from current N4 hit row text using regex patterns. Returns counts per entity, most frequent first. Feeds the Explore entity-pivot panel.
+**Description:** Extracts entities (IPs, users, processes, paths) from N4 hit row text using regex patterns. Returns counts per entity, most frequent first. Feeds the entity-pivot page. `needles` merges into the query exactly like `/explore/search`; an empty request is a **match-all** over in-window hits (bounded by the standard per-file/global hit caps), so the page populates on arrival.
 
 **Request:**
 ```json
 {
-  "query": "string (optional — DSL query text to select hits)"
+  "query": "string (optional — DSL query text to select hits)",
+  "needles": "string (optional — comma-separated plain needles)"
 }
 ```
 

@@ -276,6 +276,159 @@ def test_case_seal_route_is_canonical_lifecycle_endpoint(client):
         assert r.status_code == 401, (path, r.text)
 
 
+def _seed_extraction_csv(case_id, tmp_path, rows):
+    """Write a CSV under extractions/ so the N4 CSV backend has rows."""
+    from nexus.config import settings
+    ext = settings.cases_root / case_id / "extractions" / "hayabusa"
+    ext.mkdir(parents=True, exist_ok=True)
+    (ext / "timeline.csv").write_text(
+        "time,host,event\n" + rows, encoding="utf-8"
+    )
+
+
+def test_entities_empty_request_scans_all_and_needles_filter(client, tmp_path):
+    """4j.5n: the Entities page posts {needles} — it must reach the query,
+    and an empty request must match-all (WP 4b.9: page populates on mount)."""
+    case_id = _create(client, "Entities Case")["case_id"]
+    hdr = {"X-Nexus-Case": case_id}
+    _seed_extraction_csv(
+        case_id, tmp_path,
+        "2026-08-10T15:00:00Z,WS01,sdelete.exe ran\n"
+        "2026-08-10T15:01:00Z,WS01,beacon to https://evil-c2.example.com/x\n",
+    )
+
+    r = client.post("/portal/api/entities", json={}, headers=hdr)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["total"] >= 2, body
+    assert "sdelete.exe" in body["entities"]["processes"]
+
+    # needles= is a real filter, not a dead parameter.
+    r = client.post("/portal/api/entities", json={"needles": "evil-c2"}, headers=hdr)
+    assert r.status_code == 200, r.text
+    assert r.json()["total"] == 1
+
+
+def test_iocs_unified_store_and_extended_extraction(client, tmp_path):
+    """4j.5n: /iocs reads the unified store (iocs.json incl. legacy dict
+    shape) — finding auto-extract now covers URLs/domains/emails."""
+    import json as _json
+
+    from nexus.case_manager import CaseManager as FlatCM
+    from nexus.config import settings
+
+    case_id = _create(client, "IOC Case")["case_id"]
+    hdr = {"X-Nexus-Case": case_id}
+    case_dir = settings.cases_root / case_id
+
+    # Audit log so provenance passes (FD-001) — audit_ids must exist.
+    audit_dir = case_dir / "audit"
+    audit_dir.mkdir(exist_ok=True)
+    aid1, aid2 = "hayabusa-examiner-20260913-001", "evtxecmd-examiner-20260913-002"
+    (audit_dir / "tool.jsonl").write_text(
+        _json.dumps({"audit_id": aid1, "source": "mcp", "tool": "test"}) + "\n"
+        + _json.dumps({"audit_id": aid2, "source": "mcp", "tool": "test"}) + "\n"
+    )
+
+    # Legacy dict-shaped iocs.json (SQLite mirror schema) must still read.
+    (case_dir / "iocs.json").write_text(_json.dumps({
+        "ip": [], "host": [],
+        "hash": [{"value": "ab" * 32, "source_findings": [], "source": "evidence"}],
+    }))
+
+    result = FlatCM().record_finding(
+        {
+            "title": "C2 callback to hotelesms.com",
+            "observation": "mshta.exe fetched https://hotelesms.com/payload.hta "
+                           "from 45.9.1.10; dropped payload.zip locally",
+            "interpretation": "operator admin@evil-c2.net staged it",
+            "confidence": "LOW",
+            "confidence_justification": "test justification",
+            "evidence": [
+                {"audit_id": aid1, "source": "hayabusa/x", "path": "/x"},
+                {"audit_id": aid2, "source": "evtxecmd/y", "path": "/y"},
+            ],
+            "audit_ids": [aid1, aid2],
+        },
+        case_dir=case_dir,
+    )
+    assert result["status"] == "STAGED", result
+
+    r = client.get("/portal/api/iocs", headers=hdr)
+    assert r.status_code == 200, r.text
+    iocs = r.json()["iocs"]
+    values = {str(i.get("value", "")).lower() for i in iocs}
+    assert "hotelesms.com" in values            # domain — was never extracted before
+    assert any(v.startswith("https://hotelesms.com") for v in values)  # url
+    assert "45.9.1.10" in values                # ipv4
+    assert "admin@evil-c2.net" in values        # email
+    assert "ab" * 32 in values                  # legacy dict-shape evidence IOC
+    # payload.zip is a filename, not a domain indicator.
+    assert "payload.zip" not in values
+    # Finding linkage survives on auto-extracted IOCs.
+    c2 = next(i for i in iocs if i.get("value") == "hotelesms.com")
+    assert "C2 callback" in c2.get("finding_title", "")
+    assert c2.get("finding_status") == "DRAFT"
+
+
+def test_todos_portal_add_update_and_sealed_guard(client, tmp_path):
+    """4j.5n: TODOs are examiner follow-ups — add/complete via the portal,
+    sealed cases lock them like every other mutator."""
+    from nexus.case import CaseManager
+    from nexus.case.schemas import CaseStatus
+    from nexus.config import settings
+
+    case_id = _create(client, "TODO Case")["case_id"]
+    hdr = {"X-Nexus-Case": case_id}
+
+    r = client.post(
+        "/portal/api/todos",
+        json={"description": "verify lateral movement to HOST2", "priority": "high"},
+        headers=hdr,
+    )
+    assert r.status_code == 200, r.text
+    todo_id = r.json()["todo_id"]
+    assert todo_id.startswith("TODO-")
+
+    body = client.get("/portal/api/todos", headers=hdr).json()
+    assert body["total"] == 1
+    assert body["todos"][0]["status"] == "open"
+
+    r = client.post(
+        "/portal/api/todos/update",
+        json={"todo_id": todo_id, "status": "completed"},
+        headers=hdr,
+    )
+    assert r.status_code == 200, r.text
+    body = client.get("/portal/api/todos?status=completed", headers=hdr).json()
+    assert body["total"] == 1
+    assert body["todos"][0].get("completed_at")
+
+    # Unknown id -> 404; empty update -> 400.
+    assert client.post(
+        "/portal/api/todos/update", json={"todo_id": "TODO-x-999", "status": "open"},
+        headers=hdr,
+    ).status_code == 404
+    assert client.post(
+        "/portal/api/todos/update", json={"todo_id": todo_id}, headers=hdr,
+    ).status_code == 400
+
+    # Sealed case locks todo mutations (409) — same as every other mutator.
+    mgr = CaseManager(settings.cases_root / "cases.db")
+    try:
+        mgr.update_status(case_id, CaseStatus.SEALED)
+    finally:
+        mgr.close()
+    assert client.post(
+        "/portal/api/todos", json={"description": "x"}, headers=hdr,
+    ).status_code == 409
+    assert client.post(
+        "/portal/api/todos/update",
+        json={"todo_id": todo_id, "status": "open"},
+        headers=hdr,
+    ).status_code == 409
+
+
 def test_evidence_hash_parity_with_legacy_mcp(tmp_path):
     """The unified service and the legacy MCP hasher must agree on digests."""
     from nexus.case.evidence_service import hash_evidence_path as unified_hash

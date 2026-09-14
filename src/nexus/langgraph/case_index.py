@@ -375,11 +375,12 @@ def query_index(
     window: tuple[datetime | None, datetime | None],
     priority_terms: list[str] | None = None,
     query: Any | None = None,
+    match_all: bool = False,
 ) -> list[dict[str, str]]:
     case_dir = Path(case_dir)
     name = index_name(case_dir.name)
     needles = [t.lower() for t in terms if t.strip()]
-    if not needles and query is None:
+    if not needles and query is None and not match_all:
         return []
     from nexus.langgraph.query_pack import _CLOUD_TERMS, _WEAK_TERMS, _strong_set
 
@@ -420,7 +421,7 @@ def query_index(
         return should
 
     def _search(client, subset: list[str], size: int) -> list[dict[str, Any]]:
-        if not subset and query is None:
+        if not subset and query is None and not match_all:
             return []
         body = {
             "size": size,
@@ -448,8 +449,9 @@ def query_index(
         for t in cloud:
             hits_raw.extend(_search(client, [t], 80))
         hits_raw.extend(_search(client, rest, 400))
-        if not hits_raw and query is not None:
-            # DSL-only query (fields/regex, no terms): scan the index once.
+        if not hits_raw and (query is not None or match_all):
+            # DSL-only query (fields/regex, no terms) or explicit match-all:
+            # scan the index once.
             hits_raw.extend(_search(client, [], 400))
 
     hits: list[dict[str, str]] = []
@@ -472,7 +474,9 @@ def query_index(
         else:
             matched = [t for t in needles if needle_in_text(low, t)]
             if not matched:
-                continue
+                if not match_all:
+                    continue
+                matched = ["*"]
         key = (str(src.get("file") or ""), str(src.get("line") or 0))
         if key in seen:
             continue

@@ -178,7 +178,14 @@ class TestSyncSqliteToFlat:
         timeline = json.loads((dest / "timeline.json").read_text(encoding="utf-8"))
         assert timeline[0]["status"] == "APPROVED"
         iocs = json.loads((dest / "iocs.json").read_text(encoding="utf-8"))
-        assert any(x["value"] == "192.168.77.50" for x in iocs["ip"])
+        assert any(
+            x["value"] == "192.168.77.50" and x["type"] == "ipv4-addr"
+            for x in iocs
+        )
+        assert any(
+            x["value"] == "ab" * 32 and x["type"] == "file:hash:sha256"
+            for x in iocs
+        )
         mgr.close()
 
     def test_sync_preserves_observation_and_interpretation(self, tmp_path: Path) -> None:

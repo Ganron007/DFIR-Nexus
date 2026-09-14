@@ -762,6 +762,19 @@ export const api = {
   iocs: () => request<IocsResponse>("/iocs"),
   todos: (status?: string) =>
     request<TodosResponse>(`/todos${status ? `?status=${status}` : ""}`),
+  addTodo: (params: {
+    description: string;
+    assignee?: string;
+    priority?: string;
+    related_findings?: string[];
+  }) => post<{ status: string; todo_id?: string; error?: string }>("/todos", params),
+  updateTodo: (params: {
+    todo_id: string;
+    status?: string;
+    note?: string;
+    assignee?: string;
+    priority?: string;
+  }) => post<{ status: string; todo_id?: string; error?: string }>("/todos/update", params),
   summary: () => request<SummaryResponse>("/summary"),
   transparency: () => request<TransparencyResponse>("/transparency"),
   auditForFinding: (findingId: string) =>
