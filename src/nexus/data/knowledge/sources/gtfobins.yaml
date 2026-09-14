@@ -1,0 +1,3298 @@
+version: 1
+kind: synced_source
+source: GTFOBins
+url: https://gtfobins.github.io/
+fetched: '2026-09-14'
+count: 458
+entries:
+- binary: 7z
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - unprivileged
+- binary: R
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: aa-exec
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: ab
+  functions:
+  - download
+  - upload
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: acr
+  functions:
+  - command
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: agetty
+  functions:
+  - shell
+  contexts:
+  - suid
+- binary: alpine
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: ansible-playbook
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: ansible-test
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: aoss
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: apache2
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: apache2ctl
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - unprivileged
+- binary: apport-cli
+  functions:
+  - inherit
+  contexts:
+  - unprivileged
+- binary: apt-get
+  functions:
+  - inherit
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: aptitude
+  functions:
+  - inherit
+  contexts:
+  - sudo
+  - unprivileged
+- binary: ar
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: arch-nspawn
+  functions:
+  - shell
+  contexts:
+  - sudo
+- binary: aria2c
+  functions:
+  - command
+  - download
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: arj
+  functions:
+  - file-read
+  - file-write
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: arp
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: as
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: ascii-xfr
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: ascii85
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - unprivileged
+- binary: ash
+  functions:
+  - file-write
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: aspell
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: asterisk
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: at
+  functions:
+  - command
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: atobm
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: autoconf
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: autoheader
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: autoreconf
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: aws
+  functions:
+  - file-read
+  - inherit
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: base32
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: base58
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - unprivileged
+- binary: base64
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: basenc
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: basez
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: bash
+  functions:
+  - download
+  - file-read
+  - file-write
+  - library-load
+  - reverse-shell
+  - shell
+  - upload
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: bashbug
+  functions:
+  - inherit
+  contexts:
+  - sudo
+  - unprivileged
+- binary: batcat
+  functions:
+  - inherit
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: bbot
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - unprivileged
+- binary: bc
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: bconsole
+  functions:
+  - file-read
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: bee
+  functions:
+  - inherit
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: borg
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: bpftrace
+  functions:
+  - shell
+  contexts:
+  - sudo
+- binary: bridge
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: bundle
+  functions:
+  - inherit
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: busctl
+  functions:
+  - inherit
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: busybox
+  functions:
+  - inherit
+  - reverse-shell
+  - upload
+  contexts:
+  - sudo
+  - unprivileged
+- binary: byebug
+  functions:
+  - inherit
+  contexts:
+  - sudo
+  - unprivileged
+- binary: bzip2
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: cabal
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: cancel
+  functions:
+  - upload
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: capsh
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: cargo
+  functions:
+  - inherit
+  contexts:
+  - sudo
+  - unprivileged
+- binary: cat
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: cdist
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: certbot
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: chattr
+  functions:
+  - privilege-escalation
+  contexts:
+  - sudo
+  - suid
+- binary: check_by_ssh
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: check_cups
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - unprivileged
+- binary: check_log
+  functions:
+  - file-read
+  - file-write
+  contexts:
+  - sudo
+  - unprivileged
+- binary: check_memory
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - unprivileged
+- binary: check_raid
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - unprivileged
+- binary: check_ssl_cert
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: check_statusfile
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - unprivileged
+- binary: chmod
+  functions:
+  - privilege-escalation
+  contexts:
+  - sudo
+  - suid
+- binary: choom
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: chown
+  functions:
+  - privilege-escalation
+  contexts:
+  - sudo
+  - suid
+- binary: chroot
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+- binary: chrt
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: clamscan
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: clisp
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: cmake
+  functions:
+  - file-read
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: cmp
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: cobc
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: code
+  functions:
+  - download
+  - reverse-shell
+  - upload
+  contexts:
+  - sudo
+  - unprivileged
+- binary: codex
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: column
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: comm
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: composer
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: cowsay
+  functions:
+  - inherit
+  contexts:
+  - sudo
+  - unprivileged
+- binary: cowthink
+  functions:
+  - inherit
+  contexts:
+  - sudo
+  - unprivileged
+- binary: cp
+  functions:
+  - file-read
+  - file-write
+  - privilege-escalation
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: cpan
+  functions:
+  - inherit
+  contexts:
+  - sudo
+  - unprivileged
+- binary: cpio
+  functions:
+  - file-read
+  - file-write
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: cpulimit
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: crash
+  functions:
+  - command
+  - inherit
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: crontab
+  functions:
+  - command
+  - inherit
+  contexts:
+  - sudo
+  - unprivileged
+- binary: csh
+  functions:
+  - file-write
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: csplit
+  functions:
+  - file-read
+  - file-write
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: csvtool
+  functions:
+  - file-read
+  - file-write
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: ctr
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+- binary: cupsfilter
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: curl
+  functions:
+  - download
+  - file-read
+  - file-write
+  - library-load
+  - upload
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: cut
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: dash
+  functions:
+  - file-write
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: date
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: dc
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: dd
+  functions:
+  - file-read
+  - file-write
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: debugfs
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: dhclient
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: dialog
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: diff
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: dig
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: distcc
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: dmesg
+  functions:
+  - file-read
+  - inherit
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: dmidecode
+  functions:
+  - file-write
+  contexts:
+  - unprivileged
+- binary: dmsetup
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: dnf
+  functions:
+  - command
+  contexts:
+  - sudo
+- binary: dnsmasq
+  functions:
+  - command
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: doas
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: docker
+  functions:
+  - file-read
+  - file-write
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: dos2unix
+  functions:
+  - file-read
+  - file-write
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: dosbox
+  functions:
+  - file-read
+  - file-write
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: dotnet
+  functions:
+  - file-read
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: dpkg
+  functions:
+  - inherit
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: dstat
+  functions:
+  - inherit
+  contexts:
+  - sudo
+  - unprivileged
+- binary: dvips
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: easy_install
+  functions:
+  - inherit
+  contexts:
+  - sudo
+  - unprivileged
+- binary: easyrsa
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: eb
+  functions:
+  - inherit
+  contexts:
+  - sudo
+  - unprivileged
+- binary: ed
+  functions:
+  - file-read
+  - file-write
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: efax
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+- binary: egrep
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: elvish
+  functions:
+  - file-read
+  - file-write
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: emacs
+  functions:
+  - file-read
+  - file-write
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: enscript
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: env
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: eqn
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: espeak
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: ex
+  functions:
+  - inherit
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: exiftool
+  functions:
+  - file-read
+  - file-write
+  - inherit
+  contexts:
+  - sudo
+  - unprivileged
+- binary: expand
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: expect
+  functions:
+  - file-read
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: facter
+  functions:
+  - inherit
+  contexts:
+  - sudo
+  - unprivileged
+- binary: fail2ban-client
+  functions:
+  - command
+  contexts:
+  - sudo
+- binary: fastfetch
+  functions:
+  - command
+  - file-read
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: ffmpeg
+  functions:
+  - library-load
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: fgrep
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: file
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: find
+  functions:
+  - file-read
+  - file-write
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: finger
+  functions:
+  - download
+  - upload
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: firejail
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: fish
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: flock
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: fmt
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: fold
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: forge
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: fping
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: ftp
+  functions:
+  - download
+  - shell
+  - upload
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: fzf
+  functions:
+  - command
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: gawk
+  functions:
+  - bind-shell
+  - file-read
+  - file-write
+  - reverse-shell
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: gcc
+  functions:
+  - file-read
+  - file-write
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: gcloud
+  functions:
+  - inherit
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: gcore
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: gdb
+  functions:
+  - file-write
+  - inherit
+  - shell
+  contexts:
+  - capabilities
+  - sudo
+  - suid
+  - unprivileged
+- binary: gem
+  functions:
+  - inherit
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: genie
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: genisoimage
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: getent
+  functions:
+  - privilege-escalation
+  contexts:
+  - sudo
+  - suid
+- binary: ghc
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: ghci
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: gimp
+  functions:
+  - inherit
+  contexts:
+  - sudo
+  - unprivileged
+- binary: ginsh
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: git
+  functions:
+  - file-read
+  - file-write
+  - inherit
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: gnuplot
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: go
+  functions:
+  - bind-shell
+  - file-read
+  - file-write
+  - reverse-shell
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: grc
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: grep
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: gtester
+  functions:
+  - file-write
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: guile
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: gzip
+  functions:
+  - file-read
+  contexts:
+  - capabilities
+  - sudo
+  - suid
+  - unprivileged
+- binary: hashcat
+  functions:
+  - file-write
+  contexts:
+  - sudo
+  - unprivileged
+- binary: head
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: hexdump
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: hg
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: highlight
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: hping3
+  functions:
+  - shell
+  - upload
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: iconv
+  functions:
+  - file-read
+  - file-write
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: iftop
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: install
+  functions:
+  - privilege-escalation
+  contexts:
+  - sudo
+  - suid
+- binary: ionice
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: ip
+  functions:
+  - file-read
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: iptables-save
+  functions:
+  - file-write
+  contexts:
+  - sudo
+- binary: irb
+  functions:
+  - inherit
+  contexts:
+  - sudo
+  - unprivileged
+- binary: ispell
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: java
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: jjs
+  functions:
+  - download
+  - file-read
+  - file-write
+  - reverse-shell
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: joe
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: join
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: journalctl
+  functions:
+  - inherit
+  contexts:
+  - sudo
+  - unprivileged
+- binary: jq
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: jrunscript
+  functions:
+  - download
+  - file-read
+  - file-write
+  - reverse-shell
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: jshell
+  functions:
+  - file-read
+  - file-write
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: jtag
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: julia
+  functions:
+  - download
+  - file-read
+  - file-write
+  - reverse-shell
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: knife
+  functions:
+  - inherit
+  contexts:
+  - sudo
+  - unprivileged
+- binary: ksshell
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: ksu
+  functions:
+  - shell
+  contexts:
+  - sudo
+- binary: kubectl
+  functions:
+  - shell
+  - upload
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: last
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: latex
+  functions:
+  - file-read
+  - file-write
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: latexmk
+  functions:
+  - file-read
+  - inherit
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: ld.so
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: ldconfig
+  functions:
+  - library-load
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: less
+  functions:
+  - command
+  - file-read
+  - file-write
+  - inherit
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: lftp
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: links
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: ln
+  functions:
+  - privilege-escalation
+  contexts:
+  - sudo
+- binary: loginctl
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: logrotate
+  functions:
+  - file-read
+  - file-write
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: logsave
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: look
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: lp
+  functions:
+  - upload
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: ltrace
+  functions:
+  - file-read
+  - file-write
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: lua
+  functions:
+  - bind-shell
+  - download
+  - file-read
+  - file-write
+  - reverse-shell
+  - shell
+  - upload
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: lualatex
+  functions:
+  - inherit
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: luatex
+  functions:
+  - inherit
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: lwp-download
+  functions:
+  - download
+  - file-read
+  - file-write
+  contexts:
+  - sudo
+  - unprivileged
+- binary: lwp-request
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - unprivileged
+- binary: lxd
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+- binary: m4
+  functions:
+  - command
+  - file-read
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: mail
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: make
+  functions:
+  - file-read
+  - file-write
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: man
+  functions:
+  - file-read
+  - inherit
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: mawk
+  functions:
+  - file-read
+  - file-write
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: minicom
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: more
+  functions:
+  - file-read
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: mosh-server
+  functions:
+  - shell
+  contexts:
+  - sudo
+- binary: mosquitto
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: mount
+  functions:
+  - privilege-escalation
+  contexts:
+  - sudo
+- binary: msfconsole
+  functions:
+  - inherit
+  contexts:
+  - sudo
+  - unprivileged
+- binary: msgattrib
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: msgcat
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: msgconv
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: msgfilter
+  functions:
+  - file-read
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: msgmerge
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: msguniq
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: mtr
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - unprivileged
+- binary: multitime
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: mutt
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - unprivileged
+- binary: mv
+  functions:
+  - file-write
+  - privilege-escalation
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: mypy
+  functions:
+  - file-read
+  - file-write
+  contexts:
+  - sudo
+  - unprivileged
+- binary: mysql
+  functions:
+  - library-load
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: nano
+  functions:
+  - file-read
+  - file-write
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: nasm
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: nc
+  functions:
+  - bind-shell
+  - download
+  - reverse-shell
+  - upload
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: ncdu
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: ncftp
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: needrestart
+  functions:
+  - inherit
+  contexts:
+  - sudo
+  - unprivileged
+- binary: neofetch
+  functions:
+  - file-read
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: nft
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - unprivileged
+- binary: nginx
+  functions:
+  - download
+  - library-load
+  - upload
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: nice
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: nl
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: nm
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: nmap
+  functions:
+  - file-read
+  - file-write
+  - inherit
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: node
+  functions:
+  - bind-shell
+  - download
+  - file-read
+  - file-write
+  - reverse-shell
+  - shell
+  - upload
+  contexts:
+  - capabilities
+  - sudo
+  - suid
+  - unprivileged
+- binary: nohup
+  functions:
+  - command
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: npm
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: nroff
+  functions:
+  - file-read
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: nsenter
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: ntpdate
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: octave
+  functions:
+  - file-read
+  - file-write
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: od
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: opencode
+  functions:
+  - command
+  - inherit
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: openssl
+  functions:
+  - download
+  - file-read
+  - file-write
+  - library-load
+  - reverse-shell
+  - upload
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: openvpn
+  functions:
+  - file-read
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: openvt
+  functions:
+  - command
+  contexts:
+  - sudo
+- binary: opkg
+  functions:
+  - shell
+  contexts:
+  - sudo
+- binary: pandoc
+  functions:
+  - file-read
+  - file-write
+  - inherit
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: passwd
+  functions:
+  - privilege-escalation
+  contexts:
+  - sudo
+- binary: paste
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: pax
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: pdb
+  functions:
+  - inherit
+  contexts:
+  - sudo
+  - unprivileged
+- binary: pdflatex
+  functions:
+  - file-read
+  - file-write
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: pdftex
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: perf
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: perl
+  functions:
+  - download
+  - file-read
+  - reverse-shell
+  - shell
+  - upload
+  contexts:
+  - capabilities
+  - sudo
+  - suid
+  - unprivileged
+- binary: perlbug
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: pexec
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: pg
+  functions:
+  - file-read
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: php
+  functions:
+  - command
+  - download
+  - file-read
+  - file-write
+  - reverse-shell
+  - shell
+  - upload
+  contexts:
+  - capabilities
+  - sudo
+  - suid
+  - unprivileged
+- binary: pic
+  functions:
+  - file-read
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: pidstat
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: pip
+  functions:
+  - inherit
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: pipx
+  functions:
+  - inherit
+  contexts:
+  - sudo
+  - unprivileged
+- binary: pkexec
+  functions:
+  - shell
+  contexts:
+  - sudo
+- binary: pkg
+  functions:
+  - command
+  contexts:
+  - sudo
+- binary: plymouth
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: podman
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: poetry
+  functions:
+  - inherit
+  contexts:
+  - sudo
+  - unprivileged
+- binary: posh
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: pr
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: procmail
+  functions:
+  - command
+  contexts:
+  - sudo
+  - unprivileged
+- binary: pry
+  functions:
+  - inherit
+  contexts:
+  - sudo
+  - unprivileged
+- binary: psftp
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: psql
+  functions:
+  - inherit
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: ptx
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: puppet
+  functions:
+  - file-read
+  - file-write
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: pwsh
+  functions:
+  - file-write
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: pygmentize
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - unprivileged
+- binary: pyright
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - unprivileged
+- binary: python
+  functions:
+  - download
+  - file-read
+  - file-write
+  - library-load
+  - reverse-shell
+  - shell
+  - upload
+  contexts:
+  - capabilities
+  - sudo
+  - suid
+  - unprivileged
+- binary: qpdf
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: rake
+  functions:
+  - file-read
+  - inherit
+  contexts:
+  - sudo
+  - unprivileged
+- binary: ranger
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: rc
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: readelf
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: redcarpet
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - unprivileged
+- binary: redis
+  functions:
+  - file-write
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: restic
+  functions:
+  - command
+  - shell
+  - upload
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: rev
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: rlogin
+  functions:
+  - upload
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: rlwrap
+  functions:
+  - file-write
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: rpm
+  functions:
+  - command
+  - inherit
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: rpmdb
+  functions:
+  - inherit
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: rpmquery
+  functions:
+  - inherit
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: rpmverify
+  functions:
+  - inherit
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: rsync
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: rsyslogd
+  functions:
+  - command
+  contexts:
+  - sudo
+- binary: rtorrent
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: ruby
+  functions:
+  - download
+  - file-read
+  - file-write
+  - library-load
+  - reverse-shell
+  - shell
+  - upload
+  contexts:
+  - capabilities
+  - sudo
+  - unprivileged
+- binary: run-mailcap
+  functions:
+  - inherit
+  contexts:
+  - sudo
+  - unprivileged
+- binary: run-parts
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: runscript
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: rustc
+  functions:
+  - file-read
+  - file-write
+  - inherit
+  contexts:
+  - sudo
+  - unprivileged
+- binary: rustdoc
+  functions:
+  - file-read
+  - file-write
+  contexts:
+  - sudo
+  - unprivileged
+- binary: rustfmt
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - unprivileged
+- binary: rustup
+  functions:
+  - command
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: sash
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: scanmem
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: scp
+  functions:
+  - download
+  - shell
+  - upload
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: screen
+  functions:
+  - file-write
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: script
+  functions:
+  - file-write
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: scrot
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: sed
+  functions:
+  - file-read
+  - file-write
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: service
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: setarch
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: setcap
+  functions:
+  - privilege-escalation
+  contexts:
+  - sudo
+  - suid
+- binary: setfacl
+  functions:
+  - privilege-escalation
+  contexts:
+  - sudo
+  - suid
+- binary: setlock
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: sftp
+  functions:
+  - download
+  - shell
+  - upload
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: sg
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: shred
+  functions:
+  - file-write
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: shuf
+  functions:
+  - file-read
+  - file-write
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: slsh
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: smbclient
+  functions:
+  - download
+  - shell
+  - upload
+  contexts:
+  - sudo
+  - unprivileged
+- binary: snap
+  functions:
+  - command
+  contexts:
+  - sudo
+- binary: socat
+  functions:
+  - bind-shell
+  - download
+  - file-read
+  - file-write
+  - reverse-shell
+  - shell
+  - upload
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: socket
+  functions:
+  - bind-shell
+  - reverse-shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: soelim
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: softlimit
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: sort
+  functions:
+  - file-read
+  - file-write
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: split
+  functions:
+  - file-read
+  - file-write
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: sqlite3
+  functions:
+  - file-read
+  - file-write
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: sqlmap
+  functions:
+  - inherit
+  contexts:
+  - sudo
+  - unprivileged
+- binary: ss
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: ssh
+  functions:
+  - download
+  - file-read
+  - shell
+  - upload
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: ssh-agent
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: ssh-copy-id
+  functions:
+  - file-read
+  - file-write
+  contexts:
+  - sudo
+  - unprivileged
+- binary: ssh-keygen
+  functions:
+  - library-load
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: ssh-keyscan
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: sshfs
+  functions:
+  - command
+  - download
+  - shell
+  - upload
+  contexts:
+  - sudo
+  - unprivileged
+- binary: sshpass
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: sshuttle
+  functions:
+  - shell
+  contexts:
+  - sudo
+- binary: start-stop-daemon
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: stdbuf
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: strace
+  functions:
+  - file-write
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: strings
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: su
+  functions:
+  - shell
+  contexts:
+  - sudo
+- binary: sudo
+  functions:
+  - shell
+  contexts:
+  - sudo
+- binary: sysctl
+  functions:
+  - command
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: systemctl
+  functions:
+  - inherit
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: systemd-resolve
+  functions:
+  - inherit
+  contexts:
+  - sudo
+- binary: systemd-run
+  functions:
+  - command
+  - shell
+  contexts:
+  - sudo
+- binary: tac
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: tail
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: tailscale
+  functions:
+  - upload
+  contexts:
+  - sudo
+- binary: tar
+  functions:
+  - download
+  - file-read
+  - file-write
+  - shell
+  - upload
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: task
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: taskset
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: tasksh
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: tbl
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: tclsh
+  functions:
+  - library-load
+  - reverse-shell
+  - shell
+  contexts:
+  - capabilities
+  - sudo
+  - suid
+  - unprivileged
+- binary: tcpdump
+  functions:
+  - command
+  - file-write
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: tcsh
+  functions:
+  - file-write
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: tdbtool
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: tee
+  functions:
+  - file-write
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: telnet
+  functions:
+  - reverse-shell
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: terraform
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: tex
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: tftp
+  functions:
+  - download
+  - upload
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: tic
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: time
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: timedatectl
+  functions:
+  - inherit
+  contexts:
+  - sudo
+  - unprivileged
+- binary: timeout
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: tmate
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: tmux
+  functions:
+  - file-read
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: top
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: torify
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: torsocks
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: troff
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: tsc
+  functions:
+  - file-read
+  - file-write
+  contexts:
+  - sudo
+  - unprivileged
+- binary: tshark
+  functions:
+  - inherit
+  contexts:
+  - sudo
+  - unprivileged
+- binary: ul
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: unexpand
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: uniq
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: unshare
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: unsquashfs
+  functions:
+  - privilege-escalation
+  contexts:
+  - sudo
+  - suid
+- binary: unzip
+  functions:
+  - privilege-escalation
+  contexts:
+  - sudo
+  - suid
+- binary: update-alternatives
+  functions:
+  - file-write
+  contexts:
+  - sudo
+  - suid
+- binary: urlget
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: uuencode
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: uv
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: vagrant
+  functions:
+  - inherit
+  contexts:
+  - sudo
+  - unprivileged
+- binary: valgrind
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: varnishncsa
+  functions:
+  - file-write
+  contexts:
+  - sudo
+  - suid
+- binary: vi
+  functions:
+  - file-read
+  - file-write
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: vigr
+  functions:
+  - inherit
+  contexts:
+  - sudo
+  - suid
+- binary: vim
+  functions:
+  - file-read
+  - inherit
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: vipw
+  functions:
+  - inherit
+  contexts:
+  - sudo
+  - suid
+- binary: virsh
+  functions:
+  - command
+  - file-write
+  contexts:
+  - sudo
+  - unprivileged
+- binary: volatility
+  functions:
+  - inherit
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: w3m
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: wall
+  functions:
+  - file-read
+  contexts:
+  - sudo
+- binary: watch
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: wc
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: wg-quick
+  functions:
+  - shell
+  contexts:
+  - sudo
+- binary: wget
+  functions:
+  - download
+  - file-read
+  - file-write
+  - shell
+  - upload
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: whiptail
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: whois
+  functions:
+  - download
+  - upload
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: wireshark
+  functions:
+  - file-write
+  - inherit
+  contexts:
+  - sudo
+  - unprivileged
+- binary: wish
+  functions:
+  - inherit
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: xargs
+  functions:
+  - file-read
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: xdg-user-dir
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: xdotool
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: xmodmap
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: xmore
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: xpad
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: xxd
+  functions:
+  - file-read
+  - file-write
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: xz
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: yarn
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: yash
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: yelp
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - unprivileged
+- binary: yt-dlp
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: yum
+  functions:
+  - command
+  - download
+  - inherit
+  contexts:
+  - sudo
+- binary: zathura
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged
+- binary: zcat
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - unprivileged
+- binary: zgrep
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - unprivileged
+- binary: zic
+  functions:
+  - command
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: zip
+  functions:
+  - file-read
+  - shell
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: zless
+  functions:
+  - inherit
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: zsh
+  functions:
+  - download
+  - file-read
+  - file-write
+  - inherit
+  - reverse-shell
+  - shell
+  - upload
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: zsoelim
+  functions:
+  - file-read
+  contexts:
+  - sudo
+  - suid
+  - unprivileged
+- binary: zypper
+  functions:
+  - shell
+  contexts:
+  - sudo
+  - unprivileged

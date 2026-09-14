@@ -490,6 +490,50 @@ def dsl_prompt_block(cap: int = 12) -> str:
     return "\n".join(lines)
 
 
+def get_synced_source(name: str) -> dict:
+    """Machine-synced upstream feed (WP 9.4). File: ``sources/<name>.yaml``."""
+    data = _load_yaml(f"sources/{name}.yaml")
+    return data if isinstance(data, dict) else {}
+
+
+def get_synced_entries(name: str) -> list[dict]:
+    """``entries`` list from a synced feed (empty when absent)."""
+    entries = get_synced_source(name).get("entries")
+    return [e for e in entries if isinstance(e, dict)] if isinstance(entries, list) else []
+
+
+def get_attack_techniques() -> list[dict]:
+    """MITRE ATT&CK techniques across matrices (id/name/tactics/platforms).
+
+    Synced from attack-stix-data (WP 9.4). Used for coverage reporting and to
+    validate skill `mitre` ids.
+    """
+    return get_synced_entries("attack_techniques")
+
+
+def synced_source_manifest() -> list[dict]:
+    """Provenance for every synced feed: source/url/fetched/count."""
+    data_dir = _find_data_dir() / "sources"
+    if not data_dir.is_dir():
+        return []
+    out: list[dict] = []
+    for f in sorted(data_dir.glob("*.yaml")):
+        try:
+            d = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
+        except Exception:  # noqa: BLE001
+            continue
+        if not isinstance(d, dict):
+            continue
+        out.append({
+            "name": f.stem,
+            "source": d.get("source"),
+            "url": d.get("url"),
+            "fetched": d.get("fetched"),
+            "count": d.get("count"),
+        })
+    return out
+
+
 def get_skills() -> list[dict]:
     """Agent investigation skills — structured procedures distilled from
     the DFIR knowledge base (13Cubed, Volexity, SANS FOR508) plus
