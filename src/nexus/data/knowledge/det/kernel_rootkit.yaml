@@ -1,0 +1,82 @@
+version: 1
+kind: det
+platform: windows_kernel
+description: >-
+  Kernel/rootkit + OS-internals detection dictionary (WP 9.7) — kernel-level
+  techniques and the Volatility/WinDbg evidence that reveals them, feeding
+  `look_for` + `caveats`. Sources: SANS FOR508.3/526, 13Cubed Windows Memory,
+  CodeMachine Kernel Rootkits, HackSys WKEF, TrainSec Windows Internals.
+source: "SANS FOR508.3/FOR526 + 13Cubed WM + CodeMachine/HackSys"
+entries:
+  - id: ssdt_idt_hooks
+    name: SSDT/IDT/IRP hooking
+    families: [vol, volatility, memprocfs, memory]
+    keywords: [ssdt, idt, irp, hook, driverobject, dispatch]
+    techniques: [T1014, T1562.001]
+    needles: ["windows.ssdt", "windows.callbacks", "IRP hook", "dispatch routine", "IDT hook", "inline hook"]
+    look_for: >-
+      Kernel hooking: SSDT entries pointing outside ntoskrnl/win32k, IDT entries
+      in an unexpected module, or a driver's MajorFunction (IRP) dispatch
+      routines redirected to a non-driver module. Volatility `windows.ssdt` /
+      `callbacks` / `driverirp` surface this.
+    caveats: >-
+      Legitimate security/EDR drivers hook too — verify the signer and module
+      before calling it a rootkit; base the finding on a signer/path mismatch.
+  - id: dkom_process_hiding
+    name: DKOM process/object hiding
+    families: [vol, volatility, memprocfs, memory]
+    keywords: [dkom, unlinked, psscan, eprocess, psxview, hidden]
+    techniques: [T1014, T1564]
+    needles: ["psscan", "psxview", "unlinked process", "EPROCESS", "activeprocesslinks", "PspCidTable"]
+    look_for: >-
+      Direct Kernel Object Manipulation: a process in psscan/PspCidTable but
+      absent from the EPROCESS ActiveProcessLinks list (pslist/psxview gap), or
+      thread/handle objects unlinked from their lists.
+    caveats: >-
+      DCOM/task-spawned processes can legitimately escape the linked list —
+      require a cross-view mismatch across two enumeration methods before
+      flagging hiding.
+  - id: driver_loading
+    name: Malicious/vulnerable driver load
+    families: [vol, volatility, memory, evtx, sysmon, registry]
+    keywords: [driver, service, byovd, kernel, .sys, load]
+    techniques: [T1543.003, T1014, T1068]
+    needles: ["sc create type= kernel", ".sys service", "ImagePath\\System32\\drivers", "BYOVD", "unsigned driver", "driver load"]
+    look_for: >-
+      A newly registered kernel driver/service (ImagePath under a writable path
+      or a known-vulnerable driver name) or an unsigned/revoked-signer driver
+      load — the standard BYOVD path to kernel code execution.
+    caveats: "Third-party hardware/AV drivers are common — check signer validity and whether the driver is expected on this host."
+  - id: callback_and_notify_removal
+    name: Kernel callback removal (EDR blinding)
+    families: [vol, volatility, memprocfs, memory]
+    keywords: [callback, obregistercallbacks, notify, etw, edr, blind]
+    techniques: [T1562.001, T1014]
+    needles: ["windows.callbacks", "ObRegisterCallbacks", "PsSetCreateProcessNotifyRoutine", "PsRemoveCreateThreadNotifyRoutine", "CmRegisterCallback"]
+    look_for: >-
+      Process/thread/image/registry callbacks missing or unregistered —
+      attackers unlink EDR/AV notify routines to blind the host. Compare the
+      callback list against an expected baseline.
+    caveats: "Callbacks unregister on legitimate driver unload — corroborate with a driver unload event and the resulting detection gap."
+  - id: patchguard_bypass
+    name: Kernel patch / PatchGuard bypass
+    families: [vol, volatility, memory]
+    keywords: [patchguard, kpp, kernel_patch, bcdedit, testmode]
+    techniques: [T1562.001, T1014]
+    needles: ["nointegritychecks", "testsigning", "PatchGuard", "KPP bypass", "kernel patch", "LVH"]
+    look_for: >-
+      Attempts to disable kernel protections: bcdedit nointegritychecks/
+      testsigning, driver-signature-enforcement-off, or known PatchGuard bypass
+      artifacts — enabling unsigned kernel code or hooking.
+    caveats: "Test/dev machines legitimately run test-signing mode — confirm the host's role before treating it as evasion."
+  - id: hidden_kernel_module
+    name: Hidden/unlinked kernel module
+    families: [vol, volatility, memprocfs, memory]
+    keywords: [driver, module, hidden, modscan, drivermodule, unlinked]
+    techniques: [T1014, T1215]
+    needles: ["windows.modules", "modscan", "drivermodule", "unlinked module", "lsmod"]
+    look_for: >-
+      A kernel module in one enumeration (modscan/drivermodule) but missing from
+      the loaded-module list (windows.modules) — a hidden driver, the hallmark
+      of a kernel rootkit.
+    caveats: "Enumeration differences can be benign on some builds — verify across two methods and check the module's signer."

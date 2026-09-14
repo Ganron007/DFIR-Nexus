@@ -1,0 +1,79 @@
+version: 1
+kind: det
+platform: ics_ot
+description: >-
+  ICS/OT detection dictionary (WP 9.7) — protocol operations and control-system
+  technique indicators that feed `look_for` + `caveats` on hits. Source: SANS
+  ICS515 (Books 1–5 + workbook, `G:\doc_extract\SANS\SANS 515 v2022`).
+source: "SANS ICS515 v2022"
+entries:
+  - id: modbus_write
+    name: Modbus write operation
+    families: [wireshark, zeek, suricata, syslog]
+    keywords: [modbus, function_code, write_coil, write_register, unit_id, "502"]
+    techniques: [T0836, T0855]
+    needles: ["function code 5", "function code 6", "function code 15", "function code 16", "write single coil", "write multiple registers"]
+    look_for: >-
+      Modbus function codes that change state: 5 (write single coil), 6 (write
+      single register), 15 (write multiple coils), 16 (write multiple
+      registers). A write from an IT-zone IP or a host that normally only reads
+      is the anomaly. Record unit id, register address, and value.
+    caveats: >-
+      Legitimate SCADA/engineering masters write setpoints constantly — verify
+      against the change-management log and the source host's role before
+      flagging.
+  - id: modbus_recon
+    name: Modbus register/coil enumeration
+    families: [wireshark, zeek, suricata]
+    keywords: [modbus, function_code, read_coil, read_register]
+    techniques: [T0846, T0888]
+    needles: ["function code 1", "function code 2", "function code 3", "function code 4", "read holding registers", "read coils"]
+    look_for: >-
+      Broad read enumeration (function codes 1–4) sweeping address ranges from a
+      single source — reconnaissance of PLC/RTU state before a write, or
+      exfiltration of process values.
+    caveats: "HMI/SCADA polling is normally broad and periodic; look for a new source or an abnormal sweep pattern."
+  - id: dnp3_control
+    name: DNP3 control/restart operations
+    families: [wireshark, zeek, suricata]
+    keywords: [dnp3, operate, direct_operate, cold_restart, warm_restart]
+    techniques: [T0855, T0816]
+    needles: ["operate", "direct operate", "select before operate", "cold restart", "warm restart", "disable unsolicited"]
+    look_for: >-
+      DNP3 control operations (operate / direct-operate on control points) and
+      restart commands (cold/warm) — direct device manipulation. Unsolicited
+      response disabling can mask later changes.
+    caveats: "Utilities poll and control constantly; scope control-point writes to the incident window and the initiating master."
+  - id: s7comm_program_download
+    name: S7comm program download / CPU stop
+    families: [wireshark, zeek]
+    keywords: [s7comm, download, plc_stop, program]
+    techniques: [T0843, T0816, T0865]
+    needles: ["s7comm download", "program download", "cpu stop", "plc stop", "block download"]
+    look_for: >-
+      S7comm block/program download to a Siemens controller, or a stop-CPU
+      command — program modification or denial of the process. Compare the PLC
+      program hash against baseline.
+    caveats: "Engineering maintenance legitimately downloads programs — check the maintenance window and the engineering workstation identity."
+  - id: plc_firmware_or_logic_change
+    name: PLC firmware/logic integrity change
+    families: [csv, jsonl]
+    keywords: [firmware, plc_program, hash, baseline, logic]
+    techniques: [T0839, T0843]
+    needles: ["firmware version", "program hash", "logic change", "configuration backup"]
+    look_for: >-
+      A PLC firmware version, program hash, or configuration that differs from
+      baseline — the authoritative confirmation of an ICS logic/firmware
+      modification independent of network logs.
+    caveats: "Baseline must be a known-good capture; firmware updates are also routine — verify with the operations team."
+  - id: historian_setpoint_manipulation
+    name: Historian setpoint / process anomaly
+    families: [csv, jsonl, syslog]
+    keywords: [historian, setpoint, trend, alarm, tag]
+    techniques: [T0836, T0855]
+    needles: ["setpoint change", "process trend", "alarm history", "tag value"]
+    look_for: >-
+      Historian trend changes (setpoint, valve state, alarm suppression) that
+      align with a protocol write but with no operator action — corroborates a
+      control manipulation from process data.
+    caveats: "Process data reflects both cyber and physical causes — rule out legitimate process transitions and manual operator action."

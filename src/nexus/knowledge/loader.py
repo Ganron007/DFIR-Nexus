@@ -203,6 +203,64 @@ def get_attack_needles() -> list[dict]:
     return []
 
 
+def get_det() -> list[dict]:
+    """Detection dictionaries (DET) — platform/topic knowledge that feeds
+    ``look_for`` + ``caveats`` on hits (WP 9.7).
+
+    Files: ``det/*.yaml`` — each carries an ``entries:`` list of
+    ``{id, name, platform, families, keywords, techniques, needles, look_for,
+    caveats, source}``.
+    """
+    out: list[dict] = []
+    for doc in _load_all_in_dir("det"):
+        if not isinstance(doc, dict):
+            continue
+        entries = doc.get("entries")
+        if not isinstance(entries, list):
+            continue
+        file_platform = str(doc.get("platform") or "")
+        file_source = str(doc.get("source") or "")
+        for e in entries:
+            if not isinstance(e, dict):
+                continue
+            entry = dict(e)
+            if file_platform and not entry.get("platform"):
+                entry["platform"] = file_platform
+            if file_source and not entry.get("source"):
+                entry["source"] = file_source
+            out.append(entry)
+    return out
+
+
+def det_for(
+    families: set[str] | list[str] | None = None,
+    keywords: set[str] | list[str] | None = None,
+    techniques: set[str] | list[str] | None = None,
+    limit: int = 3,
+) -> list[dict]:
+    """DET entries matching a hit's families/keywords/techniques.
+
+    Ranking: technique match +3, keyword +2, family +1. No match → not
+    returned (a DET entry only annotates a relevant hit).
+    """
+    fams = {str(f).lower() for f in (families or []) if str(f).strip()}
+    kws = {str(k).lower() for k in (keywords or []) if str(k).strip()}
+    techs = {str(t).upper() for t in (techniques or []) if str(t).strip()}
+    scored: list[tuple[int, dict]] = []
+    for e in get_det():
+        score = 0
+        if techs:
+            score += 3 * len(techs & {str(t).upper() for t in (e.get("techniques") or [])})
+        if kws:
+            score += 2 * len(kws & {str(k).lower() for k in (e.get("keywords") or [])})
+        if fams:
+            score += len(fams & {str(f).lower() for f in (e.get("families") or [])})
+        if score > 0:
+            scored.append((score, e))
+    scored.sort(key=lambda t: -t[0])
+    return [e for _score, e in scored[: max(1, limit)]]
+
+
 def get_sigma_needles() -> list[dict]:
     """SigmaHQ-derived needle packs.
 

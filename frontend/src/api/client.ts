@@ -221,6 +221,8 @@ export interface HitInterpretation {
   negative: string[];
   caveats: string[];
   confidence_rules: Record<string, string>;
+  /** WP 9.7 — detection-dictionary annotations (ICS/cloud/kernel/maldev). */
+  det?: { id: string; name: string; platform: string; techniques: string[] }[];
   methodology?: string;
   sources: string[];
   error?: string;

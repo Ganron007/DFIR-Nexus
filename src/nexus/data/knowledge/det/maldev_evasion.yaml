@@ -1,0 +1,90 @@
+version: 1
+kind: det
+platform: windows_maldev
+description: >-
+  Malware-dev/evasion detection dictionary (WP 9.7) — modern evasion techniques
+  and the artifacts/telemetry that reveal them, feeding `look_for` + `caveats`.
+  Sources: Maldev Academy, Sektor7, Dark Vortex, SilentBreakSecurity, Evasive
+  Malware, Windows APT Warfare, Practical Malware Analysis (KB corpus).
+source: "Maldev Academy/Sektor7/Dark Vortex + Evasive Malware/Windows APT Warfare"
+entries:
+  - id: direct_syscall_evasion
+    name: Direct/indirect syscalls + ntdll unhooking
+    families: [vol, volatility, memory, sysmon, evtx]
+    keywords: [syscall, syswhispers, hellsgate, ntdll, unhook, stubs]
+    techniques: [T1106, T1620, T1027]
+    needles: ["syscall stub", "SysWhispers", "Hell's Gate", "ntdll unhook", "direct syscall", "indirect syscall", "fresh ntdll"]
+    look_for: >-
+      EDR userland hooks bypassed: a process issuing syscalls directly (stub in
+      the malware image, not ntdll), a re-mapped/fresh ntdll copy, or a
+      suspended thread resumed on a syscall instruction. Detect via memory
+      (malfind/PEB) or by the hook being overwritten.
+    caveats: "Some protectors/DRM also remap ntdll — verify the module backing the executable page and the process context."
+  - id: api_hashing
+    name: API hashing / dynamic resolution
+    families: [vol, volatility, memory]
+    keywords: [api_hash, dynamic_resolve, imports, resolve, hash]
+    techniques: [T1027.007, T1027]
+    needles: ["API hashing", "hash-based resolution", "PDB walk", "export directory", "LoadLibrary GetProcAddress", "resolve imports"]
+    look_for: >-
+      Imports that are minimal/tiny for the binary's behaviour, with runtime
+      resolution (LoadLibrary/GetProcAddress loops, PEB walk, hash-comparison
+      constants) — the static import table hides the real capability.
+    caveats: "Legitimate protected/packed software also resolves dynamically — treat as a lead, corroborate with behaviour."
+  - id: amsi_etw_bypass
+    name: AMSI/ETW bypass
+    families: [sysmon, evtx, powershell, memory, vol]
+    keywords: [amsi, etw, amsiscanbuffer, patch, bypass, dotnet]
+    techniques: [T1562.001, T1562.006, T1059.001]
+    needles: ["AmsiScanBuffer", "amsi.dll", "ETW patch", "EtwEventWrite", "amsiInitFailed", "AMSI bypass"]
+    look_for: >-
+      AMSI or ETW disabled: patched AmsiScanBuffer/amsiInitFailed memory,
+      EtwEventWrite patched, or PowerShell reflection manipulations. Correlate
+      with a drop in script-block logging for the same host/time.
+    caveats: "A detection gap (no script-block logs) is not proof of a bypass — the telemetry may simply be off; state which."
+  - id: injection_variants
+    name: Injection variants (EarlyBird/APC/hollowing/doppelganging)
+    families: [vol, volatility, memory, sysmon, evtx]
+    keywords: [injection, earlybird, apc, hollowing, doppelganging, stomping, mapview]
+    techniques: [T1055.002, T1055.004, T1055.012, T1055.013]
+    needles: ["CreateRemoteThread", "QueueUserAPC", "NtMapViewOfSection", "Section handle", "hollowed image", "module stomping", "Doppelgänging"]
+    look_for: >-
+      Cross-process code execution: remote thread creation, APC queued to a
+      target, section mapping of a suspended process, or a legitimate module's
+      memory containing foreign code (module stomping). Memory (malfind/VAD)
+      plus Sysmon 8/10/25 are the surfaces.
+    caveats: "Debuggers/injection frameworks and some security products inject legitimately — verify the source signer and target."
+  - id: sleep_obfuscation
+    name: Sleep obfuscation / call-stack spoofing
+    families: [vol, volatility, memprocfs, memory]
+    keywords: [ekko, foliage, sleep, encrypt, spoof, beacon]
+    techniques: [T1027, T1497.001, T1620]
+    needles: ["Ekko", "Foliage", "timer queue", "RtlCreateTimer", "encrypted beacon", "call stack spoof", "sleep mask"]
+    look_for: >-
+      In-memory payloads encrypted while idle and decrypted only to run
+      (timer/callback-driven, Ekko/Foliage-style), or spoofed call stacks that
+      hide the caller — memory scans may find nothing while dormant; look for
+      RW→RX transitions and abnormal callbacks.
+    caveats: "Dormant encrypted beacons are invisible between wakes — a clean memory scan of an infected host is expected; corroborate with network/beacon timing."
+  - id: packers_and_loaders
+    name: Custom packers / reflective loaders
+    families: [prefetch, amcache, mft, vol, memory]
+    keywords: [packer, reflective, srdf, donut, loader, unpack]
+    techniques: [T1027.002, T1620, T1140]
+    needles: ["reflective DLL", "sRDI", "Donut", "tail jump", "OEP", "decrypt stub", "high entropy .text"]
+    look_for: >-
+      High-entropy sections, a decrypt-and-execute stub, or in-memory-only
+      loaders (reflective DLL/sRDI/Donut) with no file on disk. Requires
+      unpacking before meaningful strings/imports; memory carries the payload.
+    caveats: "Commercial protectors/installers pack legitimately — packed is not malicious; require behaviour or signer/path evidence."
+  - id: signature_and_timestamp_evasion
+    name: Code-signing / timestamp abuse
+    families: [mft, mftecmd, registry, evtx]
+    keywords: [signature, signer, timestamp, timestomp, revoked, cat]
+    techniques: [T1553.002, T1070.006, T1553.006]
+    needles: ["invalid signature", "revoked certificate", "unsigned driver", "timestomp", "$SI $FN mismatch", "expired signer"]
+    look_for: >-
+      Invalid/revoked/expired signers, a signature that does not match the
+      claimed publisher, or timestamps inconsistent with the certificate —
+      abused signing (stolen/leaked certs) and timestomping to defeat sorting.
+    caveats: "Expired-but-validly-signed-at-build-time binaries are normal — verify the signing time and revocation, not just expiry."

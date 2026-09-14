@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from nexus.knowledge.attack_needles import extract_techniques
+from nexus.knowledge.loader import det_for
 from nexus.knowledge.skills import skills_for
 
 _TOKEN_RE = re.compile(r"[A-Za-z0-9_.\\-]{3,}")
@@ -380,6 +381,26 @@ def interpret_hit(
         if s not in look_for:
             look_for.append(s)
 
+    # WP 9.7: DET dictionaries — platform/topic knowledge (ICS/cloud/kernel/
+    # maldev) that annotates the hit with extra look_for + caveats.
+    det_entries = det_for(
+        families={family} if family else None, keywords=keywords, techniques=techniques
+    )
+    det_out: list[dict[str, Any]] = []
+    for e in det_entries:
+        lf = str(e.get("look_for") or "").strip()
+        if lf and lf not in look_for:
+            look_for.append(lf)
+        cav = str(e.get("caveats") or "").strip()
+        if cav and cav not in caveats:
+            caveats.append(cav)
+        det_out.append({
+            "id": str(e.get("id") or ""),
+            "name": str(e.get("name") or ""),
+            "platform": str(e.get("platform") or ""),
+            "techniques": [str(t) for t in (e.get("techniques") or [])],
+        })
+
     meaning = ""
     if skills_out:
         top = matched[0]
@@ -402,10 +423,12 @@ def interpret_hit(
         "negative": negative[:3],
         "caveats": caveats[:_MAX_CAVEATS],
         "confidence_rules": confidence_rules,
+        "det": det_out,
         "sources": [
             s for s, have in (
                 ("skills", bool(skills_out)),
                 ("playbooks", bool(pb_caveats or pb_identify)),
+                ("det", bool(det_out)),
             ) if have
         ],
     }

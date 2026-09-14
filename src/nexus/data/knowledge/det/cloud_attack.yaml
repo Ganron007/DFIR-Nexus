@@ -1,0 +1,97 @@
+version: 1
+kind: det
+platform: cloud
+description: >-
+  Cloud identity/attack detection dictionary (WP 9.7) — provider API operations
+  and identity techniques that feed `look_for` + `caveats` on hits. Sources:
+  SANS SEC541, SANS SEC699, FOR500.4 (M365), PwnedLabs ACRTP, CrowdStrike/
+  Elastic cloud research in the KB corpus.
+source: "SANS SEC541/SEC699 + FOR500.4 + PwnedLabs ACRTP"
+entries:
+  - id: aws_iam_persistence
+    name: AWS IAM persistence
+    families: [cloudtrail, elastic, splunk, syslog]
+    keywords: [iam, accesskey, createuser, createaccesskey, attachuserpolicy, createloginprofile]
+    techniques: [T1136.003, T1098.001]
+    needles: ["CreateAccessKey", "CreateUser", "AttachUserPolicy", "CreateLoginProfile", "AddUserToGroup", "UpdateAssumeRolePolicy"]
+    look_for: >-
+      New IAM principals or credentials: CreateUser, CreateAccessKey,
+      CreateLoginProfile, AttachUserPolicy, UpdateAssumeRolePolicy. These
+      outlive password resets — find them before declaring containment.
+    caveats: "CI/CD and IaC pipelines create principals routinely — verify the calling identity and change ticket (FD-004)."
+  - id: aws_defense_evasion
+    name: AWS logging/defense evasion
+    families: [cloudtrail, elastic, splunk]
+    keywords: [stoptrail, deletetrail, updatetrail, logging, guardduty]
+    techniques: [T1562.008, T1070.004]
+    needles: ["StopLogging", "DeleteTrail", "UpdateTrail", "PutEventSelectors", "DeleteDetector", "DisableKey"]
+    look_for: >-
+      Logging or detection disabled: CloudTrail StopLogging/DeleteTrail/
+      UpdateTrail, GuardDuty detector deletion, KMS key disable/schedule
+      deletion — the attacker degrading evidence before/after action.
+    caveats: "A logged StopLogging is itself the finding; a failed attempt still appears. Infrastructure changes by platform teams can look similar."
+  - id: aws_storage_exfil
+    name: AWS storage access/exfiltration
+    families: [cloudtrail, elastic, splunk]
+    keywords: [s3, getobject, listbuckets, putbucketacl, putbucketpolicy, snapshot]
+    techniques: [T1530, T1567.002]
+    needles: ["GetObject", "ListBuckets", "ListObjects", "PutBucketAcl", "PutBucketPolicy", "ModifySnapshotAttribute", "CreateSnapshot"]
+    look_for: >-
+      S3 object reads/downloads, public-access or ACL/policy changes,
+      snapshot sharing — data access or staging for exfiltration. Volume and
+      destination distinguish recon from theft.
+    caveats: "Backup tools and data pipelines read buckets at scale — baseline the normal reader identities and IP ranges first."
+  - id: aws_sts_abuse
+    name: AWS STS/assume-role abuse
+    families: [cloudtrail, elastic, splunk]
+    keywords: [sts, assumerole, getcalleridentity, getsessiontoken, federated]
+    techniques: [T1078.004, T1550.001]
+    needles: ["AssumeRole", "AssumeRoleWithSAML", "AssumeRoleWithWebIdentity", "GetCallerIdentity", "GetSessionToken", "GetFederationToken"]
+    look_for: >-
+      Role assumption/chaining from an unexpected source, or GetCallerIdentity
+      enumeration before action. A role chain crossing into admin scope is the
+      privilege-escalation signal.
+    caveats: "Cross-account assume-role is normal in multi-account orgs — compare to the account's known trust and caller patterns."
+  - id: azure_consent_and_apps
+    name: Azure/Entra consent + app persistence
+    families: [azure, m365, elastic, splunk]
+    keywords: [consent, serviceprincipal, applicationpassword, addapprole, oauth, grant]
+    techniques: [T1528, T1098.003, T1556.006]
+    needles: ["Add service principal", "Consent to application", "Add app role assignment", "addPassword", "AddOwner", "Add member to role"]
+    look_for: >-
+      Illicit OAuth consent grants, new service principals/app registrations,
+      added app credentials (addPassword), or role assignments — cloud
+      persistence that survives password resets and MFA.
+    caveats: "Legitimate admin and SaaS onboarding create the same objects — verify the actor, admin-consent grant, and business justification."
+  - id: azure_signin_anomaly
+    name: Azure/Entra sign-in anomaly
+    families: [azure, m365, splunk, elastic]
+    keywords: [signin, impossible_travel, legacy_auth, mfa, conditional_access]
+    techniques: [T1078.004, T1110.003]
+    needles: ["impossible travel", "legacy authentication", "MFA denied", "unfamiliar sign-in properties", "password spray", "successful after failures"]
+    look_for: >-
+      Risky sign-ins: impossible travel, legacy-auth (no MFA) sessions, MFA
+      prompt bombing then success, or failures-then-success from one IP. The
+      subsequent privileged API call is the pivot, not the sign-in alone.
+    caveats: "VPN/travel/MFA enrollment produce benign risky events — corroborate with device/user-agent and the following action (FD-004)."
+  - id: m365_mail_and_access
+    name: M365 mailbox access/exfil and rules
+    families: [m365, azure, elastic, splunk]
+    keywords: [mailitemsaccessed, inboxrule, forward, compliance, eDiscovery]
+    techniques: [T1114.003, T1114.002, T1567.002]
+    needles: ["New-InboxRule", "Set-Mailbox forwarding", "mailItemsAccessed", "New-ComplianceSearch", "Add-MailboxPermission", "SendAs"]
+    look_for: >-
+      Mailbox rule creation/forwarding to external addresses, mailItemsAccessed
+      volume, added mailbox permissions (FullAccess/SendAs), or content searches
+      — BEC-style access and exfiltration.
+    caveats: "Delegates and assistants legitimately hold mailbox permissions — verify the grantor, target, and external destinations."
+  - id: gcp_iam
+    name: GCP IAM / service-account abuse
+    families: [elastic, splunk, syslog]
+    keywords: [gcp, setiampolicy, serviceaccount, key, cloudaudit]
+    techniques: [T1098, T1078.004]
+    needles: ["SetIamPolicy", "CreateServiceAccountKey", "CreateServiceAccount", "ActAs", "ImpersonateServiceAccount"]
+    look_for: >-
+      GCP IAM policy changes, service-account key creation, or impersonation
+      (ActAs) — identity persistence/privilege escalation in a GCP estate.
+    caveats: "Platform automation creates service accounts/keys — map the caller to a known workload identity first."

@@ -866,6 +866,16 @@ export default function Explore() {
                     ))}
                   </div>
                 )}
+                {interp.det && interp.det.length > 0 && (
+                  <div style={{ marginBottom: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
+                    {interp.det.map((d) => (
+                      <span key={d.id} className="badge" style={{ fontSize: 9 }}
+                            title={`DET · ${d.platform} · ${(d.techniques || []).join(", ")}`}>
+                        {d.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 {interp.look_for.length > 0 && (
                   <div style={{ fontSize: 11, marginBottom: 4 }}>
                     <strong style={{ color: "var(--text-secondary)" }}>Check next:</strong>
