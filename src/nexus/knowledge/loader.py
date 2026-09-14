@@ -511,6 +511,21 @@ def get_attack_techniques() -> list[dict]:
     return get_synced_entries("attack_techniques")
 
 
+def get_sigma_rules() -> list[dict]:
+    """SigmaHQ detection-rule index (id/title/level/logsource/attack)."""
+    return get_synced_entries("sigma_rules")
+
+
+def get_sysmon_events() -> list[dict]:
+    """Microsoft Sysmon event-ID reference (event_id/name/description)."""
+    return get_synced_entries("sysmon_events")
+
+
+def get_velociraptor_artifacts() -> list[dict]:
+    """Velociraptor artifact metadata (name/description/type/parameters)."""
+    return get_synced_entries("velociraptor_artifacts")
+
+
 def synced_source_manifest() -> list[dict]:
     """Provenance for every synced feed: source/url/fetched/count."""
     data_dir = _find_data_dir() / "sources"

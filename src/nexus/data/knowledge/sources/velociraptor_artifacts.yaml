@@ -1,0 +1,3613 @@
+version: 1
+kind: synced_source
+source: Velociraptor Artifact Exchange
+url: https://github.com/Velocidex/velociraptor
+fetched: '2026-09-14'
+count: 600
+entries:
+- name: accessors.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/accessors.in.yaml
+- name: accessors.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/accessors.out.yaml
+- name: Admin.Client.Remove
+  description: Purges inactive clients based on a configurable age threshold. This artifact can be used to remove clients that have not checked in for a while. All data for these clients will be removed. The artifact enumerates all the files that are remo
+  author: ''
+  type: SERVER
+  parameters: 2
+  path: artifacts/definitions/Admin/Client/Remove.yaml
+- name: Admin.Client.Uninstall
+  description: Executes uninstall commands via msiexec, dpkg, or rpm to remove the client from the endpoint. Typically the client will be hard terminated during the uninstall process, so on the server it will appear that the collection is not completed. T
+  author: ''
+  type: ''
+  parameters: 2
+  path: artifacts/definitions/Admin/Client/Uninstall.yaml
+- name: Admin.Client.UpdateClientConfig
+  description: Replaces client configuration and optionally rekeys the client ID. Sometimes we wish to move a client from one org ID to another. This requires updating the config on the client and rekeying the client. This artifact will replace the client
+  author: ''
+  type: ''
+  parameters: 4
+  path: artifacts/definitions/Admin/Client/UpdateClientConfig.yaml
+- name: Admin.Client.Upgrade.Debian
+  description: 'Upgrades Velociraptor clients on Debian hosts by installing a new Debian package. NOTE: This artifact requires that you supply a client Debian package by using the tools interface. Click on the tool button in the GUI and upload a package.'
+  author: ''
+  type: ''
+  parameters: 2
+  path: artifacts/definitions/Admin/Client/Upgrade/Debian.yaml
+- name: Admin.Client.Upgrade.RedHat
+  description: 'Upgrades Velociraptor clients on Red Hat hosts by installing a new RPM package NOTE: This artifact requires that you supply a client Red Hat package by using the tools interface. Click on the tool button in the GUI and upload a package.'
+  author: ''
+  type: ''
+  parameters: 2
+  path: artifacts/definitions/Admin/Client/Upgrade/RedHat.yaml
+- name: Admin.Client.Upgrade.Windows
+  description: 'Upgrades Velociraptor clients on Windows hosts by running msiexec with the provided MSI. NOTE: This artifact requires that you supply a _repacked_ client MSI by using the tools interface. Click on the tool button in the GUI and upload a rep'
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Admin/Client/Upgrade/Windows.yaml
+- name: ADX.Flows.Upload
+  description: This server-side event monitoring artifact waits for new artifacts to be collected from endpoints and automatically uploads those to an Azure Data Explorer (ADX) cluster. The artifact uploads data to a raw ingestion table with both structur
+  author: ''
+  type: SERVER_EVENT
+  parameters: 12
+  path: artifacts/definitions/ADX/Flows/Upload.yaml
+- name: alert.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/alert.in.yaml
+- name: alert.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/alert.out.yaml
+- name: amcache.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/amcache.in.yaml
+- name: amcache.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/amcache.out.yaml
+- name: appcompatcache.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/appcompatcache.in.yaml
+- name: appcompatcache.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/appcompatcache.out.yaml
+- name: application.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/application.in.yaml
+- name: application.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/application.out.yaml
+- name: array.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/array.in.yaml
+- name: atexit.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/atexit.in.yaml
+- name: atexit.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/atexit.out.yaml
+- name: Azure.Monitor.Upload
+  description: This server-side event monitoring artifact waits for new artifacts to be collected from endpoints and automatically uploads those to an Azure Log Analytics workspace using the **Azure Monitor Logs Ingestion API** (the modern Data Collection
+  author: ''
+  type: SERVER_EVENT
+  parameters: 18
+  path: artifacts/definitions/Azure/Monitor/Upload.yaml
+- name: b0x
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/b0x.yaml
+- name: binary_blobs.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/binary_blobs.in.yaml
+- name: binary_blobs.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/binary_blobs.out.yaml
+- name: binary_parsers.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/binary_parsers.in.yaml
+- name: binary_parsers.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/binary_parsers.out.yaml
+- name: BrokenQuery
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/files/artifacts/invalid2.yaml
+- name: BrokenYaml
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/files/artifacts/invalid1.yaml
+- name: cache.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/cache.in.yaml
+- name: cache.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/cache.out.yaml
+- name: Caller
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/files/artifacts/caller.yaml
+- name: chrome.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/chrome.in.yaml
+- name: chrome.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/chrome.out.yaml
+- name: clients.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/clients.in.yaml
+- name: clients.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/clients.out.yaml
+- name: cobalt.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/cobalt.in.yaml
+- name: cobalt.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/cobalt.out.yaml
+- name: collections.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/collections.in.yaml
+- name: columns.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/columns.in.yaml
+- name: columns.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/columns.out.yaml
+- name: common.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/common.in.yaml
+- name: common.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/common.out.yaml
+- name: crypto.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/crypto.in.yaml
+- name: crypto.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/crypto.out.yaml
+- name: csv.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/csv.in.yaml
+- name: Custom.Test.Artifact.Deps
+  description: Tests that parameters are passed to dependent artifacts with the correct types.
+  author: ''
+  type: CLIENT
+  parameters: 0
+  path: artifacts/testdata/manual/Custom.Test.Artifact.Deps.yaml
+- name: Custom.Test.Artifact.Types
+  description: A test artifact with different types of parameters. The artifact compiler should be able to automatically decode the parameter types as set by the GUI so that when the artifact references the parameter it will be of the correct type.
+  author: ''
+  type: ''
+  parameters: 7
+  path: artifacts/testdata/manual/Custom.Test.Artifact.Types.yaml
+- name: DeadDiskRemapping.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/DeadDiskRemapping.in.yaml
+- name: debian.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/debian.in.yaml
+- name: delay.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/delay.in.yaml
+- name: delay.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/delay.out.yaml
+- name: Demo.Plugins.Fifo
+  description: Demonstrates using the fifo() plugin to detect event sequences, using failed logon attempts preceding a successful logon as a concrete example. The Fifo plugin collects and caches rows from its inner query. Every subsequent execution of the
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 0
+  path: artifacts/definitions/Demo/Plugins/Fifo.yaml
+- name: Demo.Plugins.GUI
+  description: Provides test cases for GUI elements, parameter validation, and notebook rendering.
+  author: ''
+  type: ''
+  parameters: 19
+  path: artifacts/definitions/Demo/Plugins/GUI.yaml
+- name: detection.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/detection.in.yaml
+- name: detection.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/detection.out.yaml
+- name: dicts.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/dicts.in.yaml
+- name: dicts.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/dicts.out.yaml
+- name: doc.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/doc.in.yaml
+- name: doc.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/doc.out.yaml
+- name: downloads.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/downloads.in.yaml
+- name: downloads.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/downloads.out.yaml
+- name: efi.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/efi.in.yaml
+- name: efi.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/efi.out.yaml
+- name: Elastic.EventLogs.Sysmon
+  description: Converts Windows Sysmon event logs to ECS schema-compliant output for Elasticsearch ingestion. The Elastic Common Schema (ECS) is an open source specification, developed with support from the Elastic user community. ECS defines a common set
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Elastic/EventLogs/Sysmon.yaml
+- name: Elastic.Events.Upload
+  description: 'Forwards real-time monitoring events from selected artifacts to an Elasticsearch index. This server monitoring artifact will watch a selection of client or server monitoring artifacts for new events and push those to an Elastic index. NOTE:'
+  author: ''
+  type: SERVER_EVENT
+  parameters: 11
+  path: artifacts/definitions/Elastic/Events/Upload.yaml
+- name: Elastic.Flows.Upload
+  description: 'Uploads collected artifact results to an Elasticsearch server. This server-side event monitoring artifact waits for new artifacts to be collected from endpoints and automatically uploads those to an Elastic server. We use the artifact name '
+  author: ''
+  type: SERVER_EVENT
+  parameters: 10
+  path: artifacts/definitions/Elastic/Flows/Upload.yaml
+- name: eval.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/eval.in.yaml
+- name: evtx.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/evtx.in.yaml
+- name: ewf.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/ewf.in.yaml
+- name: execve.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/execve.in.yaml
+- name: export.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/export.in.yaml
+- name: export.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/export.out.yaml
+- name: ext4.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/ext4.in.yaml
+- name: fat.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/fat.in.yaml
+- name: fifo.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/fifo.in.yaml
+- name: fifo.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/fifo.out.yaml
+- name: file_finder.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/file_finder.in.yaml
+- name: filestore.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/filestore.in.yaml
+- name: filestore.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/filestore.out.yaml
+- name: functions.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/functions.in.yaml
+- name: functions.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/functions.out.yaml
+- name: generator.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/generator.in.yaml
+- name: generator.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/generator.out.yaml
+- name: Generic.Applications.Chrome.SessionStorage
+  description: Extracts key-value session storage entries from Chrome, Brave, and Edge browsers. Session storage allows a web site to store permanent data in the user's browser. This artifact parses this data from the browser cache. For each website the b
+  author: ''
+  type: ''
+  parameters: 3
+  path: artifacts/definitions/Generic/Applications/Chrome/SessionStorage.yaml
+- name: Generic.Applications.Office.Keywords
+  description: 'Scans Microsoft Office and LibraOffice/OpenDocument files for keyword matches using YARA rules via the `zip` accessor. Microsoft Office documents amongst other document format (such as LibraOffice) are actually stored in zip files. The zip '
+  author: ''
+  type: ''
+  parameters: 3
+  path: artifacts/definitions/Generic/Applications/Office/Keywords.yaml
+- name: Generic.Client.CleanupTemp
+  description: Removes old temporary files from the Velociraptor client's temp directory.
+  author: ''
+  type: ''
+  parameters: 3
+  path: artifacts/definitions/Generic/Client/CleanupTemp.yaml
+- name: Generic.Client.DiskSpace
+  description: 'Reports disk usage and free disk space on Linux, macOS, and Windows using platform-specific commands. It is designed to work equally on all architectures: 1. On Linux and MacOS we call `df -h`. 2. On Windows we use WMI'
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/definitions/Generic/Client/DiskSpace.yaml
+- name: Generic.Client.DiskUsage
+  description: Computes disk usage per directory recursively, similar to the `du` command. Unlike the `du` command, this artifact can filter targets using glob patterns. If you change the `TopLevelDirectory` to the drive letter (e.g. `C:\\`) it may take a
+  author: ''
+  type: ''
+  parameters: 3
+  path: artifacts/definitions/Generic/Client/DiskUsage.yaml
+- name: Generic.Client.Info
+  description: Collects basic system details including hostname, OS version, interfaces, and platform info This artifact is collected when any new client is enrolled into the system. The Velociraptor server watches for completions of this artifact and pop
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/definitions/Generic/Client/Info.yaml
+- name: Generic.Client.Info
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/files/artifacts/info.yaml
+- name: Generic.Client.LocalLogs
+  description: Writes client logs to an encrypted local container file with configurable row limit (with flush) and size limit. To retrieve and decrypt the container, use `Generic.Client.LocalLogsRetrieve`
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 6
+  path: artifacts/definitions/Generic/Client/LocalLogs.yaml
+- name: Generic.Client.LocalLogsRetrieve
+  description: Fetches encrypted local log files from endpoints via the upload function. It is possible to tell the client to log to an encrypted local storage file (see `Generic.Client.LocalLogs` for an example). This artifact allows us to collect the fi
+  author: ''
+  type: CLIENT
+  parameters: 1
+  path: artifacts/definitions/Generic/Client/LocalLogsRetrieve.yaml
+- name: Generic.Client.Profile
+  description: 'Collects runtime profiling data including goroutines, memory, CPU, and metrics from the client. This is useful when you notice a high CPU load in the client and want to understand why that''s happening. The following options are most useful:'
+  author: ''
+  type: ''
+  parameters: 12
+  path: artifacts/definitions/Generic/Client/Profile.yaml
+- name: Generic.Client.Rekey
+  description: Forces the client to regenerate its client ID and restart itself. This is normally not needed! You will only need to use this artifact in very specific situations, such as when the Velociraptor client was accidentally incorporated into a VM
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Generic/Client/Rekey.yaml
+- name: Generic.Client.Stats
+  description: Records CPU and memory statistics for the Velociraptor client process. To learn about managing endpoint performance with Velociraptor see this [blog post](https://docs.velociraptor.app/blog/html/2019/02/10/velociraptor_performance/).
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 1
+  path: artifacts/definitions/Generic/Client/Stats.yaml
+- name: Generic.Client.Trace
+  description: 'Captures runtime trace information from the client at a specified interval The artifact is automatically added when a non-zero Trace frequency is selected for a collection in the GUI. NOTE: You can also add the artifact directly, but then y'
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Generic/Client/Trace.yaml
+- name: Generic.Client.VQL
+  description: Runs an arbitrary VQL query on the endpoint.
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Generic/Client/VQL.yaml
+- name: Generic.Collectors.File
+  description: Searches a filesystem using a set of glob patterns and uploads matching files to the server. All globs must be on the same device. The globs will be searched in one pass - so you can provide many globs at the same time.
+  author: ''
+  type: ''
+  parameters: 6
+  path: artifacts/definitions/Generic/Collectors/File.yaml
+- name: Generic.Detection.HashHunter
+  description: Searches the filesystem for a list of hashes, with path file size and date filtering. The artifact takes a glob targeting input, then generates a hash for each file in scope to compare to several types of hash lists provided by the user. No
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 9
+  path: artifacts/definitions/Generic/Detection/HashHunter.yaml
+- name: Generic.Detection.Logs
+  description: Searches text-based log files for strings matching a regex pattern across common web server and system log paths. This artifact enables grep-like searching of logs to hunt for strings of interest. Default target globs include `/var/log/`, A
+  author: Matt Green - @mgreen27, Apache groks thanks to Harsh Jaroli and Krishna Patel
+  type: ''
+  parameters: 3
+  path: artifacts/definitions/Generic/Detection/Logs.yaml
+- name: Generic.Detection.Yara.Glob
+  description: 'Runs YARA rules against files discovered via glob search with configurable filters and optional upload of hit context. There are 2 kinds of YARA rules that can be deployed: 1. Url link to a YARA rule. 2. or a Standard YARA rule attached as '
+  author: Matt Green - @mgreen27
+  type: CLIENT
+  parameters: 10
+  path: artifacts/definitions/Generic/Detection/Yara/Glob.yaml
+- name: Generic.Detection.Yara.Zip
+  description: Searches for YARA matches inside nested compressed archives up to a configurable recursion depth. * searches for compressed zip files (PK header) * then applies YARA on files inside. * files matching ZipFilenameRegex are recursively searche
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 7
+  path: artifacts/definitions/Generic/Detection/Yara/Zip.yaml
+- name: Generic.Forensic.Carving.URLs
+  description: Extracts URLs from files in common user-related locations using regex carving. Note that it does not parse any files - it simply extracts anything that looks like a URL.
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Generic/Forensic/Carving/URLs.yaml
+- name: Generic.Forensic.HashLookup
+  description: Collects file hashes from various sources into a central event stream for external lookups. It is possible to follow this artifact (e.g. with an external program via the Velociraptor API) to lookup the hashes with an external service. You c
+  author: ''
+  type: SERVER_EVENT
+  parameters: 0
+  path: artifacts/definitions/Generic/Forensic/HashLookup.yaml
+- name: Generic.Forensic.LocalHashes.Glob
+  description: Calculates hashes for files matching a glob pattern and stores them in a SQLite database on the client. This artifact maintains a local (client side) database of file hashes which can then be queried by the `Generic.Forensic.LocalHashes.Que
+  author: ''
+  type: ''
+  parameters: 3
+  path: artifacts/definitions/Generic/Forensic/LocalHashes/Glob.yaml
+- name: Generic.Forensic.LocalHashes.Init
+  description: Sets up a client-side SQLite database for storing file paths, MD5 hashes, and timestamps generated by `Generic.Forensic.LocalHashes.Glob` or similar artifacts.
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Generic/Forensic/LocalHashes/Init.yaml
+- name: Generic.Forensic.LocalHashes.Query
+  description: Searches the local SQLite hash database for files matching a user-supplied hash list. The artifact `Generic.Forensic.LocalHashes.Glob` maintains a local (client side) database of file hashes. It is then possible to query this database using
+  author: ''
+  type: ''
+  parameters: 3
+  path: artifacts/definitions/Generic/Forensic/LocalHashes/Query.yaml
+- name: Generic.Forensic.Timeline
+  description: Creates a bodyfile-format timeline of files matching a glob pattern. We currently do not calculate the MD5 hash because that is a relatively resource-expensive operation.
+  author: ''
+  type: ''
+  parameters: 2
+  path: artifacts/definitions/Generic/Forensic/Timeline.yaml
+- name: Generic.Network.InterfaceAddresses
+  description: Collects interface addresses and metadata such as MAC, MTU, and IP masks across operating systems. This artifact works on all supported OSes.
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/definitions/Generic/Network/InterfaceAddresses.yaml
+- name: Generic.System.EfiSignatures
+  description: Collects UEFI Secure Boot signature variables including PK, db, and dbx from the client.
+  author: ''
+  type: CLIENT
+  parameters: 0
+  path: artifacts/definitions/Generic/System/EfiSignatures.yaml
+- name: Generic.System.HostsFile
+  description: Parses the system hosts file to extract hostname-to-IP mappings. The system hosts file maps hostnames to IP addresses. In some cases, entries in this file take precedence and override the results from the system DNS service. The file is a s
+  author: ''
+  type: ''
+  parameters: 3
+  path: artifacts/definitions/Generic/System/HostsFile.yaml
+- name: Generic.System.ProcessSiblings
+  description: Lists sibling processes from the process tracker to reveal related process activity. This artifact queries the process tracker to display all known sibling processes of the target process (i.e. all other processes from the same parent). Thi
+  author: ''
+  type: ''
+  parameters: 3
+  path: artifacts/definitions/Generic/System/ProcessSiblings.yaml
+- name: Generic.System.Pstree
+  description: Shows process lineage by following parent PIDs to establish call chains. It is useful for establishing where a process came from - for example, if a PowerShell process is spawned from Winword (event via several intermediary processes) it co
+  author: ''
+  type: ''
+  parameters: 5
+  path: artifacts/definitions/Generic/System/Pstree.yaml
+- name: Generic.Utils.Crypto
+  description: A utility artifact that provides HMAC-SHA256 and other custom hash functions. To use, import this artifact and call the functions in your queries.
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/definitions/Generic/Utils/Crypto.yaml
+- name: Generic.Utils.DeadDiskRemapping
+  description: 'Inspects a disk image and produces an appropriate YAML remapping config for transparent filesystem access. The artifact uses some heuristics to calculate a suitable remapping configuration for a dead disk image: The following cases are hand'
+  author: ''
+  type: SERVER
+  parameters: 5
+  path: artifacts/definitions/Generic/Utils/DeadDiskRemapping.yaml
+- name: Generic.Utils.FetchBinary
+  description: A utility artifact which fetches a binary (or data file) from a URL and caches it on disk. It verifies the hash of the binary on disk, and if it does not match fetches it again from the source URL. This artifact is designed to be called fro
+  author: ''
+  type: ''
+  parameters: 6
+  path: artifacts/definitions/Generic/Utils/FetchBinary.yaml
+- name: Generic.Utils.SendEmail
+  description: A Utility artifact for sending emails. This artifact handles the challenges of MIME, encodings and other pitfalls of sending anything but simple plain-text emails. It will, among other things, - Let you provide both HTML and plain-text emai
+  author: Andreas Misje – @misje
+  type: SERVER
+  parameters: 10
+  path: artifacts/definitions/Generic/Utils/SendEmail.yaml
+- name: Good
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/files/artifacts/good.yaml
+- name: grok.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/grok.in.yaml
+- name: grok.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/grok.out.yaml
+- name: hash.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/hash.in.yaml
+- name: hash.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/hash.out.yaml
+- name: hash_utils.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/hash_utils.in.yaml
+- name: hash_utils.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/hash_utils.out.yaml
+- name: hostsfile.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/hostsfile.in.yaml
+- name: hostsfile.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/hostsfile.out.yaml
+- name: http_client.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/http_client.in.yaml
+- name: hunts.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/hunts.in.yaml
+- name: import_artifacts.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/import_artifacts.in.yaml
+- name: import_artifacts.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/import_artifacts.out.yaml
+- name: import_collection.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/import_collection.in.yaml
+- name: import_collection.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/import_collection.out.yaml
+- name: index.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/index.in.yaml
+- name: ip.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/ip.in.yaml
+- name: ip.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/ip.out.yaml
+- name: journal_fields.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/journal_fields.in.yaml
+- name: journal_fields.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/journal_fields.out.yaml
+- name: json.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/json.in.yaml
+- name: json.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/json.out.yaml
+- name: kapefiles_extract.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/kapefiles_extract.in.yaml
+- name: kapefiles_remap.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/kapefiles_remap.in.yaml
+- name: kerberoasting.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/kerberoasting.in.yaml
+- name: kerberoasting.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/kerberoasting.out.yaml
+- name: labels.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/labels.in.yaml
+- name: link_to.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/link_to.in.yaml
+- name: Linux.Applications.Chrome.Extensions
+  description: Enumerates installed Chrome extensions by locating and parsing `manifest.json` files for all users. Chrome extensions are installed into the user's home directory. This artifact searches for manifest.json files in a known path within each s
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Linux/Applications/Chrome/Extensions.yaml
+- name: Linux.Applications.Chrome.Extensions.Upload
+  description: Uploads the Chrome extension files from each user's home directory. Note that this does not parse any of the files - it just grabs all the extension files in each user's home directory.
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Linux/Applications/Chrome/Extensions/Upload.yaml
+- name: Linux.Applications.Docker.Info
+  description: Connects to the Docker socket and retrieves daemon information including containers, images, and driver settings.
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Linux/Applications/Docker/Info.yaml
+- name: Linux.Applications.Docker.Version
+  description: Connects to the Docker socket and retrieves daemon version details including API and kernel versions.
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Linux/Applications/Docker/Version.yaml
+- name: Linux.Debian.AptSources
+  description: 'Extracts package repository configuration from Debian-based systems by parsing apt sources. This Artifact searches for all apt sources files and parses all fields in both one–line `*.list` files and `*.sources` files (deb822-style format). '
+  author: ''
+  type: ''
+  parameters: 2
+  path: artifacts/definitions/Linux/Debian/AptSources.yaml
+- name: Linux.Debian.Packages
+  description: Queries `dpkg` and `snapd` to list installed deb and snap packages. The installed deb package information is fetched from the DPKG status file, while the snap package list is fetched from the snap daemon through a UNIX socket HTTP call (sin
+  author: Andreas Misje – @Misje
+  type: ''
+  parameters: 2
+  path: artifacts/definitions/Linux/Debian/Packages.yaml
+- name: Linux.Detection.AnomalousFiles
+  description: 'Detects anomalous files in a Linux filesystem. An anomalous file is considered one that matches at least one criteria: - Hidden (prefixed with a dot); - Large, with a size over a specified limit; or - With SUID bit set.'
+  author: George-Andrei Iosif (@iosifache)
+  type: CLIENT
+  parameters: 2
+  path: artifacts/definitions/Linux/Detection/AnomalousFiles.yaml
+- name: Linux.Detection.Yara.Process
+  description: 'Scans process memory with YARA rules, supporting URL-based or inline rule deployment. There are 2 kinds of YARA rules that can be deployed: 1. URL link to a YARA rule. 2. A Standard YARA rule attached as a parameter. Only one method of YARA'
+  author: Matt Green - @mgreen27
+  type: CLIENT
+  parameters: 8
+  path: artifacts/definitions/Linux/Detection/Yara/Process.yaml
+- name: Linux.Events.DNS
+  description: 'Monitors DNS requests in real time using eBPF, with filtering by process and destination. NOTE: This event is generated from network traffic - it is unable to view DoH traffic.'
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 5
+  path: artifacts/definitions/Linux/Events/DNS.yaml
+- name: Linux.Events.EBPF
+  description: Forwards selected EBPF events generated on the endpoint.
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 1
+  path: artifacts/definitions/Linux/Events/EBPF.yaml
+- name: Linux.Events.HTTPConnections
+  description: 'Monitors HTTP traffic on Linux systems using eBPF network tracing. NOTES: - This event is generated from network traffic - it is unable to view TLS encrypted data. - If the process tracker is enabled we also show more information about the '
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 5
+  path: artifacts/definitions/Linux/Events/HTTPConnections.yaml
+- name: Linux.Events.Journal
+  description: Forwards events from the Systemd binary journal logs.
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 1
+  path: artifacts/definitions/Linux/Events/Journal.yaml
+- name: Linux.Events.ProcessExecutions
+  description: 'Collects process execution logs from the Linux kernel. This artifact relies on the presence of `auditctl` usually included in the `auditd` package. On Ubuntu you can install it using: ``` apt-get install auditd ```'
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 1
+  path: artifacts/definitions/Linux/Events/ProcessExecutions.yaml
+- name: Linux.Events.SSHBruteforce
+  description: 'Monitors SSH authentication logs to detect successful logins following multiple failed attempts within a 1-hour time window. This is particularly important in the case of SSH brute force attacks. If one of the brute force password attempts '
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 3
+  path: artifacts/definitions/Linux/Events/SSHBruteforce.yaml
+- name: Linux.Events.SSHLogin
+  description: Watches the `auth.log` file for new successful SSH login events and forwards them to the server.
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 2
+  path: artifacts/definitions/Linux/Events/SSHLogin.yaml
+- name: Linux.Events.TrackProcesses
+  description: 'Subscribes to eBPF process events to track new processes and their parent relationships. Uses eBPF and pslist to keep track of running processes via the Velociraptor process tracker. The process tracker keeps track of exited processes, and '
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 2
+  path: artifacts/definitions/Linux/Events/TrackProcesses.yaml
+- name: Linux.Forensics.ImmutableFiles
+  description: 'Locates immutable files on Linux by checking ext4 filesystem flags. Attackers sometimes enable immutable files in Linux. This prevents files from being modified. However this is sometimes a strong signal. NOTE: Uses the `ext4` accessor to p'
+  author: ''
+  type: ''
+  parameters: 3
+  path: artifacts/definitions/Linux/Forensics/ImmutableFiles.yaml
+- name: Linux.Forensics.Journal
+  description: Extracts records from systemd journal files for forensic analysis. Systemd uses a binary log format to store logs. This parses the binary journal logs.
+  author: ''
+  type: ''
+  parameters: 6
+  path: artifacts/definitions/Linux/Forensics/Journal.yaml
+- name: Linux.Forensics.Journal.Fields
+  description: 'Lists the fields and field values recorded in the systemd journal. This is the enriched equivalent of `journalctl -N` and `journalctl -F `: - `-N` lists the journal''s indexed field names - `-F ` lists the distinct values of one field Rather'
+  author: Andreas Misje – @misje
+  type: ''
+  parameters: 6
+  path: artifacts/definitions/Linux/Forensics/Journal/Fields.yaml
+- name: Linux.Mounts
+  description: Lists mounted filesystems by reading `/proc/mounts`.
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Linux/Mounts.yaml
+- name: Linux.Network.Netstat
+  description: Reads Linux `/proc/net` files to display socket connection states and processes. Also extracts corresponding process information.
+  author: ''
+  type: CLIENT
+  parameters: 1
+  path: artifacts/definitions/Linux/Network/Netstat.yaml
+- name: Linux.Network.NetstatEnriched
+  description: Reports network connections and enriches with process information.
+  author: ''
+  type: CLIENT
+  parameters: 8
+  path: artifacts/definitions/Linux/Network/NetstatEnriched.yaml
+- name: Linux.Network.PacketCapture
+  description: Runs tcpdump to capture network packets and upload the PCAP file. The `Duration` parameter is used to define how long (in seconds) the capture should be. Specific interfaces can be defined by using the `Interface` parameter, otherwise the a
+  author: Wes Lambert, @therealwlambert
+  type: ''
+  parameters: 3
+  path: artifacts/definitions/Linux/Network/PacketCapture.yaml
+- name: Linux.OSQuery.Generic
+  description: 'Deploys the osquery binary and runs a user-specified SQL query, returning parsed JSON results. OSQuery is an excellent tool for querying system state across the three supported Velociraptor platform (Windows/Linux/MacOS). You can read more '
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Linux/OSQuery/Generic.yaml
+- name: Linux.Proc.Arp
+  description: Parses the ARP table from /proc/net/arp.
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Linux/Proc/Arp.yaml
+- name: Linux.Proc.Modules
+  description: Parses `/proc/modules` to enumerate loaded kernel modules with their details.
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Linux/Proc/Modules.yaml
+- name: Linux.Remediation.Quarantine
+  description: Applies network quarantine to a Linux system using nftables. It expects the target system to have nftables installed, and uses the associated `nft` CLI tool. The artifact will create a table, with the default name `vrr_quarantine_table`, wh
+  author: ''
+  type: CLIENT
+  parameters: 5
+  path: artifacts/definitions/Linux/Remediation/Quarantine.yaml
+- name: Linux.RHEL.Packages
+  description: Parses packages installed from `dnf` or `yum`.
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/definitions/Linux/RHEL/Packages.yaml
+- name: Linux.Search.FileFinder
+  description: 'Searches for files by path glob, inspects file content via YARA, and provides file hash and upload options.. This artifact is useful in the following scenarios: * We need to locate all the places on our network where customer data has been '
+  author: ''
+  type: ''
+  parameters: 14
+  path: artifacts/definitions/Linux/Search/FileFinder.yaml
+- name: Linux.Ssh.AuthorizedKeys
+  description: 'Finds and parses SSH authorized keys files. From `man authorized_keys`: > `AUTHORIZED_KEYS FILE FORMAT`: Each line of the file contains one > key (empty lines and lines starting with a ‘#’ are ignored as > comments). Public keys consist of '
+  author: ''
+  type: ''
+  parameters: 3
+  path: artifacts/definitions/Linux/Ssh/AuthorizedKeys.yaml
+- name: Linux.Ssh.KnownHosts
+  description: Finds and parses SSH known hosts files.
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Linux/Ssh/KnownHosts.yaml
+- name: Linux.Ssh.PrivateKeys
+  description: 'Searches filesystem for SSH private keys and detects encryption status. SSH Private keys can be either encrypted or unencrypted. Unencrypted private keys are more risky because an attacker can use them without needing to unlock them with a '
+  author: ''
+  type: ''
+  parameters: 3
+  path: artifacts/definitions/Linux/Ssh/PrivateKeys.yaml
+- name: Linux.SuSE.Packages
+  description: Queries `zypper` to retrieve installed packages with version and repository details.
+  author: Hilko Bengen <bengen@hilluzination.de>
+  type: ''
+  parameters: 0
+  path: artifacts/definitions/Linux/SuSE/Packages.yaml
+- name: Linux.Sys.ACPITables
+  description: Lists ACPI firmware tables with their sizes and cryptographic hashes.
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Linux/Sys/ACPITables.yaml
+- name: Linux.Sys.BashHistory
+  description: 'Provides grep-like searching of Bash and alternate shell history log files. It can also be used to target other files located in user profile directories such as: - `*_profile` and `*rc` files. - shell history: `/{root,home/*}/.*_history` -'
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 3
+  path: artifacts/definitions/Linux/Sys/BashHistory.yaml
+- name: Linux.Sys.BashShell
+  description: This artifact allows running arbitrary commands through the system shell. Since Velociraptor typically runs as root, the commands will also run as root. This is a very powerful artifact since it allows for arbitrary command execution on the
+  author: ''
+  type: ''
+  parameters: 4
+  path: artifacts/definitions/Linux/Sys/BashShell.yaml
+- name: Linux.Sys.CPUTime
+  description: Displays information from the `/proc/stat` file about the time the CPU cores spent in different parts of the system.
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Linux/Sys/CPUTime.yaml
+- name: Linux.Sys.Crontab
+  description: Displays parsed information from crontab.
+  author: ''
+  type: ''
+  parameters: 3
+  path: artifacts/definitions/Linux/Sys/Crontab.yaml
+- name: Linux.Sys.Groups
+  description: Lists system group IDs, names and memberships from `/etc/group`.
+  author: Andreas Misje – @misje
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Linux/Sys/Groups.yaml
+- name: Linux.Sys.LastUserLogin
+  description: Parses system WTMP files. These indicate when users last logged in.
+  author: ''
+  type: ''
+  parameters: 5
+  path: artifacts/definitions/Linux/Sys/LastUserLogin.yaml
+- name: Linux.Sys.LogGrep
+  description: Provides zgrep-like search capabilities across log files, including gzipped log files, matching a glob for lines matching a regex.
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 3
+  path: artifacts/definitions/Linux/Sys/LogGrep.yaml
+- name: Linux.Sys.LogHunter
+  description: Provides grep-like search capabilities for Linux, MacOS and Windows logs. Parameters include `SearchRegex` and `WhitelistRegex` as regex terms. Also included is a Path exclusion regex (`ExcludePathRegex`) to refine results and automatically
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 5
+  path: artifacts/definitions/Linux/Sys/LogHunter.yaml
+- name: Linux.Sys.Maps
+  description: Extracts mapped library and file information from `/proc/ /maps` for running processes. A running binary may link other binaries into its address space. These shared objects contain exported functions which may be used by the binary.
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Linux/Sys/Maps.yaml
+- name: Linux.Sys.Pslist
+  description: Lists processes and their associated binaries.
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Linux/Sys/Pslist.yaml
+- name: Linux.Sys.Services
+  description: Parses services output from `systemctl`.
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/definitions/Linux/Sys/Services.yaml
+- name: Linux.Sys.SUID
+  description: Searches for applications that have the `setuid` or `setgid` bits set. When the `setuid` or `setgid` bits are set on Linux or macOS for an application, this means that the application will run with the privileges of the owning user or group
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Linux/Sys/SUID.yaml
+- name: Linux.Sys.Users
+  description: Gets user-specific information like homedir, group, etc. from `/etc/passwd`.
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Linux/Sys/Users.yaml
+- name: Linux.Syslog.SSHLogin
+  description: Parses the auth logs to identify all SSH login attempts.
+  author: ''
+  type: CLIENT
+  parameters: 2
+  path: artifacts/definitions/Linux/Syslog/SSHLogin.yaml
+- name: Linux.Triage.ProcessMemory
+  description: Dumps process memory from a selected process and uploads it to the server.
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Linux/Triage/ProcessMemory.yaml
+- name: Linux.Users.InteractiveUsers
+  description: Gets the interactive users from a Linux host.
+  author: George-Andrei Iosif (@iosifache)
+  type: CLIENT
+  parameters: 1
+  path: artifacts/definitions/Linux/Users/InteractiveUsers.yaml
+- name: Linux.Users.RootUsers
+  description: Detects users added in the `sudo` group.
+  author: George-Andrei Iosif (@iosifache)
+  type: CLIENT
+  parameters: 0
+  path: artifacts/definitions/Linux/Users/RootUsers.yaml
+- name: Linux.Utils.InstallDeb
+  description: Installs .deb packages on Debian-based systems with optional debconf answers configuration. The package may either be specified by name, as an uploaded file or as a "tool". If the package already exists, it may be optionally reconfigured wi
+  author: Andreas Misje – @misje
+  type: CLIENT
+  parameters: 10
+  path: artifacts/definitions/Linux/Utils/InstallDeb.yaml
+- name: linux_last_login.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/linux_last_login.in.yaml
+- name: linux_last_login.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/linux_last_login.out.yaml
+- name: linux_passwd.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/linux_passwd.in.yaml
+- name: linux_passwd.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/linux_passwd.out.yaml
+- name: linux_ssh_authorized_keys.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/linux_ssh_authorized_keys.in.yaml
+- name: linux_systemd.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/linux_systemd.in.yaml
+- name: linux_systemd.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/linux_systemd.out.yaml
+- name: localhashes.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/localhashes.in.yaml
+- name: localhashes.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/localhashes.out.yaml
+- name: logging.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/logging.in.yaml
+- name: loghunter.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/loghunter.in.yaml
+- name: loghunter.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/loghunter.out.yaml
+- name: LogScale.Events.Clients
+  description: 'Forwards selected client monitoring events to a LogScale ingestion endpoint. NOTE: You must ensure you are collecting the target client event artifacts from the clients by adding them to the "Client Events" GUI.'
+  author: ''
+  type: SERVER_EVENT
+  parameters: 10
+  path: artifacts/definitions/LogScale/Events/Clients.yaml
+- name: LogScale.Flows.Upload
+  description: Forwards completed flow results to LogScale with configurable batching and artifact filtering.
+  author: ''
+  type: SERVER_EVENT
+  parameters: 10
+  path: artifacts/definitions/LogScale/Flows/Upload.yaml
+- name: lru.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/lru.in.yaml
+- name: lru.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/lru.out.yaml
+- name: MacOS.Applications.Chrome.History
+  description: Enumerates visited URLs, titles, and visit timestamps from Chrome history databases on macOS. **NOTES:** This artifact is deprecated in favor of Generic.Forensic.SQLiteHunter and will be removed in future
+  author: ''
+  type: ''
+  parameters: 3
+  path: artifacts/definitions/MacOS/Applications/Chrome/History.yaml
+- name: MacOS.Applications.MRU
+  description: Parses Finder's `FXRecentFolders` plist entries to extract recently accessed items.
+  author: ''
+  type: CLIENT
+  parameters: 1
+  path: artifacts/definitions/MacOS/Applications/MRU.yaml
+- name: MacOS.Detection.Autoruns
+  description: Gathers evidence of macOS autoruns by searching common persistence locations and uploading found files. This code is based on https://github.com/CrowdStrike/automactc/blob/master/modules/mod_autoruns_v102.py
+  author: ''
+  type: ''
+  parameters: 7
+  path: artifacts/definitions/MacOS/Detection/Autoruns.yaml
+- name: MacOS.Detection.InstallHistory
+  description: Collects entries from the InstallHistory .plist file
+  author: Wes Lambert - @therealwlambert
+  type: CLIENT
+  parameters: 1
+  path: artifacts/definitions/MacOS/Detection/InstallHistory.yaml
+- name: MacOS.Forensics.AppleDoubleZip
+  description: Searches for zip files containing download URLs inadvertently included in the zip contents. MacOS filesystem can represent extended attributes. Similarly to Windows's ZoneIdentifier, when a file is downloaded on MacOS it also receives an ex
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/MacOS/Forensics/AppleDoubleZip.yaml
+- name: MacOS.Forensics.FSEvents
+  description: 'Reads macOS FSEvents logs to enumerate file creation, deletion, rename, and modification events. OPtionally filter on Path, Flags or use time box on source file. An interesting hunt may filter for Entries of plist files modified or created '
+  author: 'Mike Cohen, Matt Green - @mgreen27, Yogesh Khatri (@swiftforensics), CyberCX
+
+    '
+  type: CLIENT
+  parameters: 7
+  path: artifacts/definitions/MacOS/Forensics/FSEvents.yaml
+- name: macos.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/macos.in.yaml
+- name: MacOS.Network.Netstat
+  description: Reports network connections enriched with process information.
+  author: ''
+  type: CLIENT
+  parameters: 9
+  path: artifacts/definitions/MacOS/Network/Netstat.yaml
+- name: MacOS.Network.PacketCapture
+  description: Captures network packets using tcpdump and uploads the resulting pcap file. The `Duration` parameter is used to define how long (in seconds) the capture should be. Specific interfaces can be defined by using the `Interface` parameter, other
+  author: Wes Lambert, @therealwlambert
+  type: ''
+  parameters: 3
+  path: artifacts/definitions/MacOS/Network/PacketCapture.yaml
+- name: MacOS.OSQuery.Generic
+  description: 'Deploys the osquery binary and runs a user-specified SQL query, returning parsed JSON results. OSQuery is an excellent tool for querying system state across the three supported Velociraptor platform (Windows/Linux/MacOS). You can read more '
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/MacOS/OSQuery/Generic.yaml
+- name: macos.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/macos.out.yaml
+- name: MacOS.Remediation.Quarantine
+  description: Applies network quarantine to a macOS system using Packet Filter (PF). The artifact loads an isolated ruleset into the `com.apple/velociraptor.quarantine` PF anchor. It permits loopback, DNS, DHCP, configured Velociraptor frontend endpoints
+  author: Matt Green - @mgreen27
+  type: CLIENT
+  parameters: 11
+  path: artifacts/definitions/MacOS/Remediation/Quarantine.yaml
+- name: MacOS.Search.FileFinder
+  description: 'Searches for files by path glob, inspects file content via YARA, and provides file hash and upload options. This artifact is useful in the following scenarios: * We need to locate all the places on our network where customer data has been c'
+  author: ''
+  type: ''
+  parameters: 10
+  path: artifacts/definitions/MacOS/Search/FileFinder.yaml
+- name: MacOS.System.Dock
+  description: Lists docked applications and their metadata from each user's Dock plist. The property list entry for each application represented within the dock can be modified to point to a malicious application. By comparing the application name, CFURL
+  author: Wes Lambert - @therealwlambert
+  type: CLIENT
+  parameters: 1
+  path: artifacts/definitions/MacOS/System/Dock.yaml
+- name: MacOS.System.Packages
+  description: Parses `system_profiler` output to enumerate installed macOS applications with metadata.
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/MacOS/System/Packages.yaml
+- name: MacOS.System.Plist
+  description: Parses and optionally uploads macOS `.plist` files. While simple, this artifact allows users to specify a `.plist` glob and have those plist files returned for quick review. If more advanced parsing is desired, the artifact can be copied an
+  author: Wes Lambert - @therealwlambert
+  type: CLIENT
+  parameters: 2
+  path: artifacts/definitions/MacOS/System/Plist.yaml
+- name: MacOS.System.QuarantineEvents
+  description: Parses the QuarantineEventsV2 database, which provides information on when a file was downloaded from the internet.
+  author: Wes Lambert - @therealwlambert
+  type: CLIENT
+  parameters: 1
+  path: artifacts/definitions/MacOS/System/QuarantineEvents.yaml
+- name: MacOS.System.TCC
+  description: Queries the TCC (Transparency, Consent, and Control) database, which can help reveal when access to system services has been added or modified for an application. Note that this artifact has only been tested on macOS Big Sur, and that the `
+  author: Wes Lambert - @therealwlambert
+  type: CLIENT
+  parameters: 1
+  path: artifacts/definitions/MacOS/System/TCC.yaml
+- name: MacOS.System.TimeMachine
+  description: Collects Time Machine backup settings including volume, auto-backup status, and destinations.
+  author: Wes Lambert - @therealwlambert
+  type: CLIENT
+  parameters: 1
+  path: artifacts/definitions/MacOS/System/TimeMachine.yaml
+- name: MacOS.System.Users
+  description: Collects information about the local users on the system. On macOS this information is stored in plist files.
+  author: ''
+  type: ''
+  parameters: 2
+  path: artifacts/definitions/MacOS/System/Users.yaml
+- name: MacOS.System.Wifi
+  description: Parses the macOS airport preferences to enumerate previously joined WiFi networks. This can be useful in determining where a machine has been, or if a user has joined an illegitimate or unauthorized wireless network.
+  author: Wes Lambert - @therealwlambert
+  type: CLIENT
+  parameters: 1
+  path: artifacts/definitions/MacOS/System/Wifi.yaml
+- name: macos_quarantine.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/macos_quarantine.in.yaml
+- name: magic.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/magic.in.yaml
+- name: magic.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/magic.out.yaml
+- name: materialize.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/materialize.in.yaml
+- name: materialize.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/materialize.out.yaml
+- name: memoize.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/memoize.in.yaml
+- name: memoize.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/memoize.out.yaml
+- name: mft.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/mft.in.yaml
+- name: mft.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/mft.out.yaml
+- name: mock.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/mock.in.yaml
+- name: mock.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/mock.out.yaml
+- name: monitoring.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/monitoring.in.yaml
+- name: monitoring.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/monitoring.out.yaml
+- name: mru.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/mru.in.yaml
+- name: mru.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/mru.out.yaml
+- name: netstat.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/netstat.in.yaml
+- name: Network.ExternalIpAddress
+  description: Identifies the external IP address of the endpoint using an external web service.
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Network/ExternalIpAddress.yaml
+- name: notebook.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/notebook.in.yaml
+- name: notebook.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/notebook.out.yaml
+- name: Notebooks.Default
+  description: Creates a new notebook with a welcome message and placeholder VQL cell.
+  author: ''
+  type: NOTEBOOK
+  parameters: 0
+  path: artifacts/definitions/Notebooks/Default.yaml
+- name: Notebooks.Demo
+  description: Demonstrates notebook functionality with sample VQL and tool references.
+  author: ''
+  type: NOTEBOOK
+  parameters: 2
+  path: artifacts/definitions/Notebooks/Demo.yaml
+- name: Notebooks.Sigma.Studio
+  description: Sets up a Sigma rule development workspace with live testing against sample events.
+  author: ''
+  type: NOTEBOOK
+  parameters: 3
+  path: artifacts/definitions/Notebooks/Sigma/Studio.yaml
+- name: Notebooks.Timelines
+  description: Provides a notebook template for building consolidated timelines from time series data across collections. Timelines are used to visualize time series data from other collections in the same place. This notebook template creates a "super ti
+  author: ''
+  type: NOTEBOOK
+  parameters: 1
+  path: artifacts/definitions/Notebooks/Timelines.yaml
+- name: Notebooks.VQLx2
+  description: A notebook initialized with 2 VQL cells containing simple queries and also demonstrating initial output.
+  author: ''
+  type: NOTEBOOK
+  parameters: 0
+  path: artifacts/definitions/Notebooks/VQLx2.yaml
+- name: notepad.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/notepad.in.yaml
+- name: ntfs.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/ntfs.in.yaml
+- name: ntfs.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/ntfs.out.yaml
+- name: ntfs_ea.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/ntfs_ea.in.yaml
+- name: ole.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/ole.in.yaml
+- name: ole.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/ole.out.yaml
+- name: orgs.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/orgs.in.yaml
+- name: paths.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/paths.in.yaml
+- name: pe.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/pe.in.yaml
+- name: pe.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/pe.out.yaml
+- name: pe_dump.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/pe_dump.in.yaml
+- name: pe_dump.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/pe_dump.out.yaml
+- name: pe_hunter.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/pe_hunter.in.yaml
+- name: pe_hunter.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/pe_hunter.out.yaml
+- name: pipe.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/pipe.in.yaml
+- name: pipe.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/pipe.out.yaml
+- name: pk.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/pk.in.yaml
+- name: pk.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/pk.out.yaml
+- name: plist.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/plist.in.yaml
+- name: plist.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/plist.out.yaml
+- name: prefetch.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/prefetch.in.yaml
+- name: prefetch.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/prefetch.out.yaml
+- name: proc_creation_win_whoami_as_syste
+  description: Detects a whoami.exe executed by LOCAL SYSTEM. This may be a sign of a successful local privilege escalation.
+  author: Teymur Kheirkhabarov, Florian Roth
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/files/evtx/proc_creation_win_whoami_as_system.yml
+- name: process_tracker.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/process_tracker.in.yaml
+- name: profile.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/profile.in.yaml
+- name: profile.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/profile.out.yaml
+- name: protocols.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/protocols.in.yaml
+- name: protocols.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/protocols.out.yaml
+- name: pst.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/pst.in.yaml
+- name: pst.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/pst.out.yaml
+- name: quarantine.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/quarantine.in.yaml
+- name: query.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/query.in.yaml
+- name: raw_registry.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/raw_registry.in.yaml
+- name: raw_registry.out
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/raw_registry.out.yaml
+- name: reformat.in
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/server/testcases/reformat.in.yaml
+- name: Reporting.Default
+  description: 'Provides the default HTML template for exporting notebook and report content. This template will be used to host HTML exports such as the notebook and the reporting templates. Velociraptor will evaluate this template on the following dict: '
+  author: ''
+  type: SERVER
+  parameters: 0
+  path: artifacts/definitions/Reporting/Default.yaml
+- name: Reporting.Hunts.Details
+  description: Reports hunt execution details including client participation, duration, and completion status.
+  author: ''
+  type: SERVER
+  parameters: 2
+  path: artifacts/definitions/Reporting/Hunts/Details.yaml
+- name: Server.Alerts.Notification
+  description: Sends alert notifications from the `Server.Internal.Alerts` queue to a webhook-compatible chat service such as Slack/Teams/Discord.
+  author: Jos Clephas - @DfirJos
+  type: SERVER_EVENT
+  parameters: 1
+  path: artifacts/definitions/Server/Alerts/Notification.yaml
+- name: Server.Alerts.ProcessCreation
+  description: 'Forwards process creation detections to Slack, Teams, or Discord via webhook. This artifact alerts when a process was detected with the artifact `Windows.Detection.ProcessCreation` (which is a client_event artifact that needs to be enabled '
+  author: Jos Clephas - @DfirJos
+  type: SERVER_EVENT
+  parameters: 1
+  path: artifacts/definitions/Server/Alerts/ProcessCreation.yaml
+- name: Server.Alerts.PsExec
+  description: Sends an email alert when PsExec service execution is detected on a monitored client. Note this requires that the `Windows.Event.ProcessCreation` monitoring artifact is being collected from clients.
+  author: ''
+  type: SERVER_EVENT
+  parameters: 3
+  path: artifacts/definitions/Server/Alerts/PsExec.yaml
+- name: Server.Alerts.TheHive.Alert
+  description: Creates TheHive alerts when monitored artifact collections complete with results. The artifact uses Server Metadata to store credentials, instead of storing these directly within the artifact.
+  author: Wes Lambert - @therealwlambert
+  type: SERVER_EVENT
+  parameters: 5
+  path: artifacts/definitions/Server/Alerts/TheHive/Alert.yaml
+- name: Server.Alerts.TheHive.Case
+  description: Generates TheHive cases from completed artifact flows using ClientId, FlowId, and FQDN as tags. Also adds FQDN as an observable. Note that this artifact uses Server Metadata to store credentials, instead of storing these directly within the
+  author: Wes Lambert - @therealwlambert
+  type: SERVER_EVENT
+  parameters: 4
+  path: artifacts/definitions/Server/Alerts/TheHive/Case.yaml
+- name: Server.Alerts.Trackaccount
+  description: Forwards account tracking events from `Windows.Events.Trackaccount` as an alert to a Slack/Teams/Discord webhook. Note that it requires that the client event artifact `Windows.Events.Trackaccount` is being collected on clients.
+  author: Jos Clephas - @DfirJos
+  type: SERVER_EVENT
+  parameters: 1
+  path: artifacts/definitions/Server/Alerts/Trackaccount.yaml
+- name: Server.Alerts.WinPmem
+  description: Sends an alert via email when the pmem service installation is detected by `Windows.Events.ServiceCreation`. Note that this artifact requires that the `Windows.Event.ServiceCreation` monitoring artifact is being collected from clients.
+  author: ''
+  type: SERVER_EVENT
+  parameters: 2
+  path: artifacts/definitions/Server/Alerts/WinPmem.yaml
+- name: Server.Audit.Logs
+  description: Collects server audit events for significant user actions such as starting a new collection, creating a new hunt, updating an artifact definition etc.
+  author: ''
+  type: SERVER_EVENT
+  parameters: 0
+  path: artifacts/definitions/Server/Audit/Logs.yaml
+- name: Server.Enrichment.CortexAnalyzer
+  description: A utility artifact that runs Cortex analyzer jobs on observables and retrieves the results from all applicable analyzers. This artifact is expected to be called from within another artifact (such as one looking for files) to enrich the data
+  author: Wes Lambert - @therealwlambert
+  type: SERVER
+  parameters: 8
+  path: artifacts/definitions/Server/Enrichment/CortexAnalyzer.yaml
+- name: Server.Enrichment.GeoIP
+  description: A utility artifact that enriches an IP address with country, state, and city information from a MaxMind GeoIP database. You will need to provide a valid licensed GeoIP database. You can obtain a free to use (gratis but not libre) database f
+  author: ''
+  type: SERVER
+  parameters: 1
+  path: artifacts/definitions/Server/Enrichment/GeoIP.yaml
+- name: Server.Enrichment.GeoIPISP
+  description: A utility artifact that enriches an IP address with ISP, organization, and ASN information from a MaxMind GeoIP ISP database. You can obtain a free-to-use (gratis but not libre) database from https://www.maxmind.com/ or you can pay for a mo
+  author: ''
+  type: SERVER
+  parameters: 1
+  path: artifacts/definitions/Server/Enrichment/GeoIPISP.yaml
+- name: Server.Enrichment.GreyNoise
+  description: Enriches an IP address with GreyNoise threat intelligence including classification and noise status. This is a utility artifact that can be called from within another artifact (such as one looking for network connections) to enrich the data
+  author: Wes Lambert -- @therealwlambert
+  type: SERVER
+  parameters: 5
+  path: artifacts/definitions/Server/Enrichment/GreyNoise.yaml
+- name: Server.Enrichment.HybridAnalysis
+  description: 'Submits a file hash to the Hybrid Analysis threat intelligence service for a verdict. This artifact can be called from within another artifact (such as one looking for files) to enrich the data made available by that artifact. Default free '
+  author: Wes Lambert -- @therealwlambert
+  type: SERVER
+  parameters: 3
+  path: artifacts/definitions/Server/Enrichment/HybridAnalysis.yaml
+- name: Server.Enrichment.Virustotal
+  description: Enriches a file hash or IP address with VirusTotal threat intelligence results. Note that the default public API rate limit is 4 requests/min, as the time of writing. This artifact can be called from within another artifact (such as one loo
+  author: Wes Lambert -- @therealwlambert, Whitney Champion -- @shortxstack
+  type: SERVER
+  parameters: 4
+  path: artifacts/definitions/Server/Enrichment/Virustotal.yaml
+- name: Server.Hunts.AddFlow
+  description: Links an existing flow to a hunt so it appears in the hunt's results. This helps in the case where the original flow in the hunt timed out. The user then can re-run the hunt manually possibly increasing timeout. Then they can simply click t
+  author: ''
+  type: SERVER
+  parameters: 3
+  path: artifacts/definitions/Server/Hunts/AddFlow.yaml
+- name: Server.Hunts.CancelAndDelete
+  description: Cancels all in-flight flows in a hunt, deletes the hunt, and optionally removes collected data. Velociraptor Hunts are a way of running the same flow on many endpoints at once. Hunts issue very quickly and wait until each endpoint returns r
+  author: ''
+  type: SERVER
+  parameters: 3
+  path: artifacts/definitions/Server/Hunts/CancelAndDelete.yaml
+- name: Server.Hunts.List
+  description: Enumerates scheduled hunts showing hunt IDs, artifacts, and status.
+  author: ''
+  type: SERVER
+  parameters: 0
+  path: artifacts/definitions/Server/Hunts/List.yaml
+- name: Server.Hunts.Results
+  description: Returns the collected data rows for a specified artifact within a hunt.
+  author: ''
+  type: SERVER
+  parameters: 2
+  path: artifacts/definitions/Server/Hunts/Results.yaml
+- name: Server.Import.ArtifactBundle
+  description: 'Imports a zipped package containing Velociraptor artifacts from a remote web server. By default this artifact will automatically import the latest artifact exchange bundle into the server''s artifact repository. #### Security of community-co'
+  author: ''
+  type: SERVER
+  parameters: 3
+  path: artifacts/definitions/Server/Import/ArtifactBundle.yaml
+- name: Server.Import.Extras
+  description: Downloads and imports artifact bundles from predefined external repositories. Many additional artifacts are maintained in their own project outside the Velociraptor tree. * [The Velociraptor Sigma Project](https://sigma.velocidex.com/) * [T
+  author: ''
+  type: SERVER
+  parameters: 1
+  path: artifacts/definitions/Server/Import/Extras.yaml
+- name: Server.Import.PreviousReleases
+  description: Downloads and installs legacy artifact bundles from a specified older Velociraptor release. When upgrading the Velociraptor server, the built-in artifacts may change and use newer VQL features that are not present in older clients. If you h
+  author: ''
+  type: SERVER
+  parameters: 1
+  path: artifacts/definitions/Server/Import/PreviousReleases.yaml
+- name: Server.Information.Users
+  description: Lists user names and SIDs from collected `Windows.Sys.Users` results across all clients. This artifact uses the previously collected data from `Windows.Sys.Users`. If it was never collected for any endpoints then this artifact will not prod
+  author: ''
+  type: SERVER
+  parameters: 1
+  path: artifacts/definitions/Server/Information/Users.yaml
+- name: Server.Internal.Alerts
+  description: Provides an internal event stream for high-value alerts generated by client or server artifacts. Alerts are expected to be low frequency and high value. You can monitor this queue using the `watch_monitoring()` plugin. This can be used as a
+  author: ''
+  type: SERVER_EVENT
+  parameters: 0
+  path: artifacts/definitions/Server/Internal/Alerts.yaml
+- name: Server.Internal.ArtifactDescription
+  description: Renders a formatted view of any artifact's metadata, parameters, sources, exports, etc.
+  author: ''
+  type: INTERNAL
+  parameters: 0
+  path: artifacts/definitions/Server/Internal/ArtifactDescription.yaml
+- name: Server.Internal.ArtifactModification
+  description: Provides an internal event stream for artifact modification notifications. Interested parties can watch for new artifact modification events and use this as a trigger to rebuild caches etc.
+  author: ''
+  type: SERVER_EVENT
+  parameters: 0
+  path: artifacts/definitions/Server/Internal/ArtifactModification.yaml
+- name: Server.Internal.ClientConflict
+  description: 'Emits events when the server detects a client ID conflict between duplicate clients. When two clients attempt to connect to the server with the same client id, the server rejects one of these with a 409 Conflict HTTP message. The client id '
+  author: ''
+  type: INTERNAL
+  parameters: 0
+  path: artifacts/definitions/Server/Internal/ClientConflict.yaml
+- name: Server.Internal.ClientDelete
+  description: Provides an internal event stream for client deletion notifications.
+  author: ''
+  type: SERVER_EVENT
+  parameters: 0
+  path: artifacts/definitions/Server/Internal/ClientDelete.yaml
+- name: Server.Internal.ClientInfo
+  description: Automatically collects and updates client info indexes from heartbeat messages. Clients send this automatically at startup and then every day. You do not need to enable this in the client monitoring table - it is client initiated.
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 0
+  path: artifacts/definitions/Server/Internal/ClientInfo.yaml
+- name: Server.Internal.ClientInfoSnapshot
+  description: Notifies minion nodes to refresh their client info cache when the master writes a new snapshot. Minions use this to trigger a refresh of their client info snapshots.
+  author: ''
+  type: INTERNAL
+  parameters: 0
+  path: artifacts/definitions/Server/Internal/ClientInfoSnapshot.yaml
+- name: Server.Internal.ClientPing
+  description: Provides an internal event channel for client ping notifications
+  author: ''
+  type: INTERNAL
+  parameters: 0
+  path: artifacts/definitions/Server/Internal/ClientPing.yaml
+- name: Server.Internal.ClientScheduled
+  description: Fires an event when new flows are scheduled for a client to process.
+  author: ''
+  type: INTERNAL
+  parameters: 0
+  path: artifacts/definitions/Server/Internal/ClientScheduled.yaml
+- name: Server.Internal.ClientTasks
+  description: Fires an event when the server schedules new tasks for a client.
+  author: ''
+  type: INTERNAL
+  parameters: 0
+  path: artifacts/definitions/Server/Internal/ClientTasks.yaml
+- name: Server.Internal.HuntModification
+  description: Provides an internal event queue for hunt modification notifications including stop and start events. The hunt dispatcher from all nodes sends this mutation to the hunt manager which applies it. Users can also watch this queue to be notifie
+  author: ''
+  type: INTERNAL
+  parameters: 0
+  path: artifacts/definitions/Server/Internal/HuntModification.yaml
+- name: Server.Internal.HuntUpdate
+  description: Notifies hunt dispatchers across all minions when a hunt's status or configuration changes, and should be updated from the internal cache. Users can also watch this queue to be notified when hunts are modified (e.g. stopped, started etc).
+  author: ''
+  type: INTERNAL
+  parameters: 0
+  path: artifacts/definitions/Server/Internal/HuntUpdate.yaml
+- name: Server.Internal.Interrogate
+  description: Captures client interrogation results (OS, hostname, architecture) when clients complete the client info collection.
+  author: ''
+  type: SERVER_EVENT
+  parameters: 0
+  path: artifacts/definitions/Server/Internal/Interrogate.yaml
+- name: Server.Internal.Interrogation
+  description: Emits an event when the interrogation service completes processing a client's info update. This event artifact defines an internal event stream over which client interrogations are sent. When the interrogation service finishes updating a cl
+  author: ''
+  type: INTERNAL
+  parameters: 0
+  path: artifacts/definitions/Server/Internal/Interrogation.yaml
+- name: Server.Internal.Inventory
+  description: Fires an event when the server's tool inventory is updated or modified.
+  author: ''
+  type: INTERNAL
+  parameters: 0
+  path: artifacts/definitions/Server/Internal/Inventory.yaml
+- name: Server.Internal.MasterRegistrations
+  description: Advertises event subscriptions from the master node to all minions in a multi-frontend deployment. The master will advertise to the minions the events it is interested in.
+  author: ''
+  type: INTERNAL
+  parameters: 0
+  path: artifacts/definitions/Server/Internal/MasterRegistrations.yaml
+- name: Server.Internal.MetadataModifications
+  description: Emits an event when server metadata (such as client labels or host info) is modified.
+  author: ''
+  type: SERVER_EVENT
+  parameters: 0
+  path: artifacts/definitions/Server/Internal/MetadataModifications.yaml
+- name: Server.Internal.ResumedUploads
+  description: Displays the status and details of all resumable upload operations on the server.
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/definitions/Server/Internal/ResumedUploads.yaml
+- name: Server.Internal.ToolDependencies
+  description: 'An internal artifact that defines some tool dependencies. Velociraptor releases for offline collector NOTE: Do not modify - this artifact is generated during build in magefile.go'
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/definitions/Server/Internal/ToolDependencies.yaml
+- name: Server.Internal.UserManager
+  description: Fires an event when Velociraptor user accounts are created, modified, or deleted.
+  author: ''
+  type: INTERNAL
+  parameters: 0
+  path: artifacts/definitions/Server/Internal/UserManager.yaml
+- name: Server.Internal.Welcome
+  description: 'Renders the server Home page / Welcome page showing navigation links to common tasks and dashboards. You can customize this screen by editing this artifact, perhaps to add important information to your specific deployment. When editing the '
+  author: ''
+  type: SERVER
+  parameters: 0
+  path: artifacts/definitions/Server/Internal/Welcome.yaml
+- name: Server.Monitor.ClientConflict
+  description: Detects client ID conflicts on the server and forces affected clients to rekey with a new identity. Sometimes the Velociraptor client is installed into a VM template image with an existing writeback file. In this case each cloned instance w
+  author: ''
+  type: SERVER_EVENT
+  parameters: 0
+  path: artifacts/definitions/Server/Monitor/ClientConflict.yaml
+- name: Server.Monitor.Health
+  description: Provides the server overview dashboard showing performance metrics, disk space, and user permissions. You may edit this artifact to customize your server dashboard. Alternatively, customize the Welcome screen by editing the `Server.Internal
+  author: ''
+  type: SERVER_EVENT
+  parameters: 0
+  path: artifacts/definitions/Server/Monitor/Health.yaml
+- name: Server.Monitor.Profile
+  description: Collects server profiling data including goroutine traces, memory heap, CPU profiles, and metrics. This is useful when you notice a high CPU load in the server and want to understand why it's happening. The following options are most useful
+  author: ''
+  type: SERVER
+  parameters: 12
+  path: artifacts/definitions/Server/Monitor/Profile.yaml
+- name: Server.Monitor.Shell
+  description: Captures stdout, stderr, and command details from shell command executions across all clients for auditing purposes. Velociraptor can issue shell commands on the endpoint by using the various wrapper artifacts. To use them, the user must be
+  author: ''
+  type: SERVER_EVENT
+  parameters: 0
+  path: artifacts/definitions/Server/Monitor/Shell.yaml
+- name: Server.Monitor.VeloMetrics
+  description: Collects Velociraptor server performance metrics from the Prometheus endpoint with CPU and memory stats.
+  author: ''
+  type: SERVER
+  parameters: 1
+  path: artifacts/definitions/Server/Monitor/VeloMetrics.yaml
+- name: Server.Monitoring.ClientCount
+  description: Emails deployment statistics, including the connected client count, on a configurable schedule. By default, this artifact sends an email every hour summarizing the current state of the deployment.
+  author: ''
+  type: SERVER_EVENT
+  parameters: 5
+  path: artifacts/definitions/Server/Monitoring/ClientCount.yaml
+- name: Server.Monitoring.RSSFeeds
+  description: Polls RSS feeds at a configurable interval and alerts users about new items. By default this artifact will monitor the Velociraptor RSS feeds to inform users of critical CVEs or blog posts.
+  author: ''
+  type: SERVER_EVENT
+  parameters: 4
+  path: artifacts/definitions/Server/Monitoring/RSSFeeds.yaml
+- name: Server.Monitoring.ScheduleHunt
+  description: 'Runs client interrogation periodically. This is an example server event artifact that shows how to schedule a hunt periodically. You can change it to do the same for other artifacts. NOTE: Hunting for client info is not needed in the curren'
+  author: ''
+  type: SERVER_EVENT
+  parameters: 3
+  path: artifacts/definitions/Server/Monitoring/ScheduleHunt.yaml
+- name: Server.Monitoring.TimesketchUpload
+  description: Watches for creation of new Velociraptor timelines and automatically uploads matching ones to Timesketch.
+  author: ''
+  type: SERVER_EVENT
+  parameters: 3
+  path: artifacts/definitions/Server/Monitoring/TimesketchUpload.yaml
+- name: Server.Orgs.ListOrgs
+  description: 'Lists all configured organizations on the Velociraptor server with optional downloadable client config for each org. NOTE: This artifact is only available to users with the `ORG_ADMIN` permission, which is normally only granted to users wit'
+  author: ''
+  type: SERVER
+  parameters: 1
+  path: artifacts/definitions/Server/Orgs/ListOrgs.yaml
+- name: Server.Orgs.NewOrg
+  description: 'Creates a new Velociraptor organization and assigns the current user as the org administrator. NOTE: This artifact is only available to users with the `ORG_ADMIN` permission, which is normally only granted to users with the `administrator` '
+  author: ''
+  type: SERVER
+  parameters: 2
+  path: artifacts/definitions/Server/Orgs/NewOrg.yaml
+- name: Server.Powershell.EncodedCommand
+  description: Intercepts PowerShell `-EncodedCommand` scripts in events that are collected via client monitoring and decodes them. It is possible to pass PowerShell an encoded script which then gets stored in the Windows event log in encoded form. This a
+  author: ''
+  type: SERVER_EVENT
+  parameters: 0
+  path: artifacts/definitions/Server/Powershell/EncodedCommand.yaml
+- name: Server.Slack.Clients.Online
+  description: 'Sends a Slack notification when clients with a target label appear online. By default, this artifact searches for all clients that carry the label "Slack", and if they have appeared online in the last 5 minutes, it sends a message to Slack '
+  author: ''
+  type: SERVER_EVENT
+  parameters: 2
+  path: artifacts/definitions/Server/Slack/Clients/Online.yaml
+- name: Server.Utils.AddTimeline
+  description: Adds a new timeline entry to a notebook super-timeline with results from a provided VQL query.
+  author: ''
+  type: SERVER
+  parameters: 8
+  path: artifacts/definitions/Server/Utils/AddTimeline.yaml
+- name: Server.Utils.AddUser
+  description: 'Creates a new Velociraptor GUI user with a specified role and a randomly generated password. The new randomly-generated password is stored in the server metadata object, to ensure it cannot be seen in the output of the artifact itself. The '
+  author: ''
+  type: SERVER
+  parameters: 3
+  path: artifacts/definitions/Server/Utils/AddUser.yaml
+- name: Server.Utils.ArtifactVerifier
+  description: 'Validates artifact YAML definitions from a file glob and reports errors and warnings in a structured format. You can run this on the command line like: ``` velociraptor -r Server.Utils.ArtifactVerifier --SearchGlob ''/path/to/*.yaml'' ```'
+  author: ''
+  type: SERVER
+  parameters: 2
+  path: artifacts/definitions/Server/Utils/ArtifactVerifier.yaml
+- name: Server.Utils.BackupDirectory
+  description: Automatically exports and backs up completed flow results to a specified directory on the server.
+  author: ''
+  type: SERVER_EVENT
+  parameters: 3
+  path: artifacts/definitions/Server/Utils/BackupDirectory.yaml
+- name: Server.Utils.BackupGCS
+  description: Automatically zips and uploads collected flow results to a Google Cloud Storage bucket. You will need to provide credentials to upload to the bucket. The credentials can be provided as parameters or they will be taken from the server metada
+  author: ''
+  type: SERVER_EVENT
+  parameters: 5
+  path: artifacts/definitions/Server/Utils/BackupGCS.yaml
+- name: Server.Utils.BackupS3
+  description: Automatically zips and uploads collected flow results to an S3-compatible bucket. You will need to provide credentials to upload to the bucket. The credentials can be provided as parameters or they will be taken from the server metadata (as
+  author: ''
+  type: SERVER_EVENT
+  parameters: 9
+  path: artifacts/definitions/Server/Utils/BackupS3.yaml
+- name: Server.Utils.CancelHunt
+  description: Cancels all in-progress flows for one or more specified hunts. Sometimes a hunt has been scheduled but is no longer useful. While stopping the hunt from the GUI prevents new clients from receiving the hunt, it does not actively cancel colle
+  author: ''
+  type: SERVER
+  parameters: 2
+  path: artifacts/definitions/Server/Utils/CancelHunt.yaml
+- name: Server.Utils.Clients
+  description: Provides an interactive notebook for searching and inspecting client details. This notebook template will create an interactive notebook that allows more refined inspection of client information than the GUI search page provides.
+  author: ''
+  type: NOTEBOOK
+  parameters: 1
+  path: artifacts/definitions/Notebooks/Clients.yaml
+- name: Server.Utils.CollectClient
+  description: 'Automates the full collection workflow of a specified artifact: schedule, wait, and retrieve results from a single client. This artifact simplifies collecting from a specific client by performing all steps automatically: 1. The collection w'
+  author: ''
+  type: SERVER
+  parameters: 3
+  path: artifacts/definitions/Server/Utils/CollectClient.yaml
+- name: Server.Utils.CreateCollector
+  description: A utility artifact to create a standalone Velociraptor offline collector binary with specified artifacts and output target. This artifact is invoked via the GUI's offline collector builder wizard and that is the recommended way to launch it
+  author: ''
+  type: SERVER
+  parameters: 33
+  path: artifacts/definitions/Server/Utils/CreateCollector.yaml
+- name: Server.Utils.CreateLinuxPackages
+  description: 'Builds Debian (.deb) and RPM packages with embedded client config for the current organization. This artifact depends on the following tools: * Clients * Server You can replace this with suitable Velociraptor Linux build, or else the curren'
+  author: ''
+  type: SERVER
+  parameters: 7
+  path: artifacts/definitions/Server/Utils/CreateLinuxPackages.yaml
+- name: Server.Utils.CreateMSI
+  description: 'Builds a Windows MSI deployment package using the current org''s client configuration. This artifact depends on the following tools: * * You can replace those with suitable MSI builds.'
+  author: ''
+  type: SERVER
+  parameters: 2
+  path: artifacts/definitions/Server/Utils/CreateMSI.yaml
+- name: Server.Utils.DeadDiskClient
+  description: 'Automates the preparatory steps for dead disk analysis by inspecting the disk image, building an appropriate remapping config, and then launching a virtual Velociraptor client which uses that remapping config. Velociraptor can analyze dead '
+  author: ''
+  type: SERVER
+  parameters: 3
+  path: artifacts/definitions/Server/Utils/DeadDiskClient.yaml
+- name: Server.Utils.DeleteClient
+  description: 'Removes one or more clients by ID from the server, deleting all associated collection data permanently. Be careful with this one: there is no way to recover old data. However, if the client itself still exists, it will just automatically re'
+  author: ''
+  type: SERVER
+  parameters: 2
+  path: artifacts/definitions/Server/Utils/DeleteClient.yaml
+- name: Server.Utils.DeleteEvents
+  description: 'Permanently deletes client event or monitoring event data within a specified time range. NOTE: This action cannot be undone! The event files are deleted permanently. Since this is a sensitive operation, only users with the administrator rol'
+  author: ''
+  type: SERVER
+  parameters: 5
+  path: artifacts/definitions/Server/Utils/DeleteEvents.yaml
+- name: Server.Utils.DeleteFavoriteFlow
+  description: Removes a specific named favorite collection spec from the current user's saved templates. It allows the user to delete a previously saved favorite. It will only affect the current user.
+  author: ''
+  type: ''
+  parameters: 2
+  path: artifacts/definitions/Server/Utils/DeleteFavoriteFlow.yaml
+- name: Server.Utils.DeleteFlow
+  description: 'Permanently deletes a flow, plus all its associated metadata and uploaded files, from the server. NOTE: This action cannot be undone! The collection is deleted permanently. Since this is a sensitive operation, only users with the administra'
+  author: ''
+  type: SERVER
+  parameters: 5
+  path: artifacts/definitions/Server/Utils/DeleteFlow.yaml
+- name: Server.Utils.DeleteManyFlows
+  description: Removes old or unwanted flows from the server based on configurable filters with a dry-run mode. Sometimes the Velociraptor server accumulates a lot of data that is no longer needed. This artifact will enumerate all flows from all clients a
+  author: ''
+  type: SERVER
+  parameters: 5
+  path: artifacts/definitions/Server/Utils/DeleteManyFlows.yaml
+- name: Server.Utils.DeleteMonitoringData
+  description: Purges historical monitoring logs from the server filestore with dry-run and confirmation safety. Velociraptor collects monitoring data from endpoints all the time. Sometimes this data is no longer needed and we might want to free up disk s
+  author: ''
+  type: SERVER
+  parameters: 5
+  path: artifacts/definitions/Server/Utils/DeleteMonitoringData.yaml
+- name: Server.Utils.DeleteNotebook
+  description: Completely removes a notebook from the server including all its cells, attachments etc.
+  author: ''
+  type: SERVER
+  parameters: 2
+  path: artifacts/definitions/Server/Utils/DeleteNotebook.yaml
+- name: Server.Utils.ExportHunt
+  description: Exports an entire hunt's results to a downloadable zip archive with configurable data formatting options. Sometimes exporting a hunt through the GUI takes longer than the 10 minute default time limit. If your hunt exports need more time, yo
+  author: ''
+  type: SERVER
+  parameters: 4
+  path: artifacts/definitions/Server/Utils/ExportHunt.yaml
+- name: Server.Utils.ImportCollection
+  description: Imports offline collector results (in zipped collection containers) into the server so they appear alongside regular client collections. The Velociraptor offline collector is an automated, preconfigured collection tool. Users can use the co
+  author: ''
+  type: SERVER
+  parameters: 3
+  path: artifacts/definitions/Server/Utils/ImportCollection.yaml
+- name: Server.Utils.KillClient
+  description: Aggressively terminates a Velociraptor client process by sending a kill signal to the specified client ID. If the client is installed as a service, it should be automatically restarted by the service manager after the process is killed. NOT
+  author: ''
+  type: SERVER
+  parameters: 1
+  path: artifacts/definitions/Server/Utils/KillClient.yaml
+- name: Server.Utils.ListUsers
+  description: 'Enumerates all users across orgs along with their roles and permissions. NOTE: When collected in an org context, only users belonging to the current org are visible. When collected in the context of the root org, all users in all orgs are v'
+  author: ''
+  type: SERVER
+  parameters: 0
+  path: artifacts/definitions/Server/Utils/ListUsers.yaml
+- name: Server.Utils.Policy
+  description: Automates the configuration of Velociraptor server security policies including IP-based GUI access control, plugin restrictions, secrets enforcement, and lockdown mode.
+  author: ''
+  type: SERVER
+  parameters: 8
+  path: artifacts/definitions/Server/Utils/Policy.yaml
+- name: Server.Utils.RemoveTimeline
+  description: Deletes a child timeline from a specified super-timeline in a notebook.
+  author: ''
+  type: SERVER
+  parameters: 3
+  path: artifacts/definitions/Server/Utils/RemoveTimeline.yaml
+- name: Server.Utils.SaveFavoriteFlow
+  description: Saves a collection configuration spec as a named favorite template for reuse across client or server collections. Users may collect various artifacts from hosts. Sometimes it might take a bit of effort to set up and configure just the right
+  author: ''
+  type: SERVER
+  parameters: 5
+  path: artifacts/definitions/Server/Utils/SaveFavoriteFlow.yaml
+- name: Server.Utils.StartHuntExample
+  description: A template artifact, providing an example of how to grant controlled high-privilege operations to users with limited permissions. It shows how to create a utility artifact that provides low privileged users with a controlled ability to perf
+  author: ''
+  type: SERVER
+  parameters: 0
+  path: artifacts/definitions/Server/Utils/StartHuntExample.yaml
+- name: Server.Utils.TimesketchUpload
+  description: Uploads Velociraptor timelines to Timesketch using the Timesketch client library. [Timesketch](https://timesketch.org/) is an interactive collaborative timeline analysis tool. This artifact assumes the client library is installed and config
+  author: ''
+  type: SERVER
+  parameters: 5
+  path: artifacts/definitions/Server/Utils/TimesketchUpload.yaml
+- name: Server.Utils.UploadTools
+  description: Generates a download script for tool binaries and then uploads them from a local directory to the server inventory (in separate runs of this artifact). Velociraptor can use external tools to deploy binaries on the endpoint for some artifact
+  author: ''
+  type: SERVER
+  parameters: 1
+  path: artifacts/definitions/Server/Utils/UploadTools.yaml
+- name: Splunk.Flows.Upload
+  description: 'Sends Velociraptor collected data to Splunk for indexing and analysis. To configure the event collector properly a couple steps need to be completed prior to setting up this event: 1. Configure an index to ingest the data. * Go to Settings '
+  author: ''
+  type: SERVER_EVENT
+  parameters: 8
+  path: artifacts/definitions/Splunk/Flows/Upload.yaml
+- name: System.Flow.Archive
+  description: Emits an event when a flow is archived, enabling post-archival processing workflows.
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 0
+  path: artifacts/definitions/System/Flow/Archive.yaml
+- name: System.Flow.Completion
+  description: Emits an event for every completed flow, including imported offline collections, enabling post-processing automation. You can monitor this queue using the `watch_monitoring()` plugin. This can be used as a building block in implementing mor
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 0
+  path: artifacts/definitions/System/Flow/Completion.yaml
+- name: System.Hunt.Archive
+  description: 'Fires when a hunt is archived, thus enabling post-archive automation, for example cleanup or notification workflows. You can write a server event artifact to do something about the hunts (like remove flows, generate zip file etc) once they '
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 0
+  path: artifacts/definitions/System/Hunt/Archive.yaml
+- name: System.Hunt.Creation
+  description: Fires an event whenever a new hunt is created on the Velociraptor server.
+  author: ''
+  type: SERVER_EVENT
+  parameters: 0
+  path: artifacts/definitions/System/Hunt/Creation.yaml
+- name: System.Upload.Completion
+  description: Emits an event for every uploaded file, including offline collection imports, enabling post-upload automation. You can monitor this queue using the `watch_monitoring()` plugin. This can be used as a building block in implementing more compl
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 0
+  path: artifacts/definitions/System/Upload/Completion.yaml
+- name: System.VFS.DownloadFile
+  description: Uploads a single file or recursively uploads directory contents from a client to populate information in the VFS screen. You may run it manually if you like, but typically it is launched by the GUI when the user clicks the "Collect from cli
+  author: ''
+  type: ''
+  parameters: 5
+  path: artifacts/definitions/System/VFS/DownloadFile.yaml
+- name: System.VFS.Export
+  description: Exports files from the VFS (Virtual Filesystem) by globbing under a specified path in the server-side VFS cache.
+  author: ''
+  type: SERVER
+  parameters: 4
+  path: artifacts/definitions/System/VFS/Export.yaml
+- name: System.VFS.ListDirectory
+  description: Lists directory contents and populates the server-side VFS cache to enable VFS browsing. You may run it manually if you like, but typically it is launched by the GUI when a user clicks the "Refresh this directory" button in the VFS screen.
+  author: ''
+  type: ''
+  parameters: 4
+  path: artifacts/definitions/System/VFS/ListDirectory.yaml
+- name: Test.Crash
+  description: Kill the client and test that a crash message is sent when the client resumes.
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/manual/Test.Crash.yaml
+- name: Test.Error
+  description: Test errors are flagged by the server artifact runner. Should raise an error and fail collection.
+  author: ''
+  type: SERVER
+  parameters: 0
+  path: artifacts/testdata/manual/Error.yaml
+- name: Test.MultiColumnsTest
+  description: Test that the GUI can handle tables with different columns in each row. Also test JSON exports.
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/manual/MultiColumns.yaml
+- name: Test.Server.Sleep
+  description: Used to test cancellation and artifact timeout on server artifact collector.
+  author: ''
+  type: SERVER
+  parameters: 0
+  path: artifacts/testdata/manual/Server.Sleep.yaml
+- name: Test.Sleep
+  description: Used to test cancellation and artifact timeout on client collections. Change to SERVER to test server cancellation.
+  author: ''
+  type: CLIENT
+  parameters: 0
+  path: artifacts/testdata/manual/Sleep.yaml
+- name: Test.Sparse
+  description: Test that sparse uploads are properly stored and processed.
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/manual/Test.Sparse.yaml
+- name: Test.TestLog
+  description: Stream logs slowly - test that GUI updates logs
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/manual/TestLog.yaml
+- name: Test.Upload.Limits
+  description: Used to test upload limits cancel the collection once they are exceeded.
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/manual/Upload.Limits.yaml
+- name: Test.Work
+  description: Used to test CPU rate limiting works.
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/manual/Work.yaml
+- name: Triage.Collection.Upload
+  description: A generic uploader used by triaging artifacts.
+  author: ''
+  type: ''
+  parameters: 3
+  path: artifacts/definitions/Triage/Collection/Upload.yaml
+- name: Triage.Collection.UploadTable
+  description: A generic uploader used by triaging artifacts. This is similar to `Triage.Collection.Upload` but uses a CSV table to drive it.
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Triage/Collection/UploadTable.yaml
+- name: WarnningExecve
+  description: ''
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/testdata/files/artifacts/invalid3.yaml
+- name: Windows.ActiveDirectory.SharpHound
+  description: Deploys the SharpHound tool to collect Active Directory relationship data for BloodHound. BloodHound is a popular Active Directory Assessment tool that uses graph theory to reveal the hidden and often unintended relationships. It can also b
+  author: Matt Green - @mgreen27
+  type: CLIENT
+  parameters: 0
+  path: artifacts/definitions/Windows/ActiveDirectory/SharpHound.yaml
+- name: Windows.Analysis.EvidenceOfDownload
+  description: Finds downloaded files by searching for `Zone.Identifier` alternate data streams across user directories. Use the artifact to find evidence of user download activity. Based on the Zone.Identifier alternate data stream that is created alongs
+  author: M.Soheem @msoheem | Antonio Blescia (TheThMando)
+  type: CLIENT
+  parameters: 2
+  path: artifacts/definitions/Windows/Analysis/EvidenceOfDownload.yaml
+- name: Windows.Applications.ChocolateyPackages
+  description: Lists Chocolatey packages installed on a Windows system by parsing .nuspec files.
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Windows/Applications/ChocolateyPackages.yaml
+- name: Windows.Applications.Chrome.Cookies
+  description: 'Enumerates Chrome browser cookies including host key, name, timestamps, and encrypted values. The cookies are typically encrypted by the DPAPI using the user''s credentials. Since Velociraptor is typically not running in the user context we '
+  author: ''
+  type: ''
+  parameters: 3
+  path: artifacts/definitions/Windows/Applications/Chrome/Cookies.yaml
+- name: Windows.Applications.Chrome.Extensions
+  description: Parses Chrome extension manifest files to identify installed extensions and their permissions. Chrome extensions are installed into the user's home directory. This artifact searches for `manifest.json` files in a known path within each user
+  author: ''
+  type: ''
+  parameters: 2
+  path: artifacts/definitions/Windows/Applications/Chrome/Extensions.yaml
+- name: Windows.Applications.Chrome.History
+  description: Enumerates visited URLs, titles, and visit timestamps from Chrome/Edge/Brave/Vivaldi/Opera history databases. Based on Hindsight and code review of https://source.chromium.org/chromium/chromium/src/+/master:components/history/core/browser/h
+  author: Angry-Bender @angry-bender
+  type: ''
+  parameters: 4
+  path: artifacts/definitions/Windows/Applications/Chrome/History.yaml
+- name: Windows.Applications.Edge.Favicons
+  description: 'Enumerates Edge browser favicons including page URLs, favicon URLs, and last updated timestamps. Also tested against Chrome: replace `Microsoft Edge` with `Google Chrome` in the `faviconsGlob` parameter. Chrome Favicons are stored in the ''F'
+  author: Phill Moore, @phillmoore
+  type: ''
+  parameters: 3
+  path: artifacts/definitions/Windows/Applications/Edge/Favicons.yaml
+- name: Windows.Applications.Edge.History
+  description: Enumerates Edge browsing history (URLs, visit times, titles) from user profiles.
+  author: ''
+  type: ''
+  parameters: 3
+  path: artifacts/definitions/Windows/Applications/Edge/History.yaml
+- name: Windows.Applications.Firefox.Downloads
+  description: Enumerates Firefox download records (file names, URLs, timestamps) from the `places.sqlite` database. **NOTES** This artifact is deprecated in favor of `Generic.Forensic.SQLiteHunter` and will be removed in future
+  author: 'Angry-Bender @angry-bender, based on
+
+    Custom.Windows.Application.Firefox.History by Zach Stanford @svch0st
+
+    '
+  type: ''
+  parameters: 4
+  path: artifacts/definitions/Windows/Applications/Firefox/Downloads.yaml
+- name: Windows.Applications.Firefox.History
+  description: Queries Firefox `places.sqlite` files to extract browsing history. **NOTES** This artifact is deprecated in favor of Generic.Forensic.SQLiteHunter and will be removed in future
+  author: Zach Stanford @svch0st, Modified by @angry-bender
+  type: ''
+  parameters: 4
+  path: artifacts/definitions/Windows/Applications/Firefox/History.yaml
+- name: Windows.Applications.IISLogs
+  description: Provides grep-like search of IIS log files in specified directories with optional whitelist filtering. Parameters include SearchRegex and WhitelistRegex as regex terms and MoreRecentThan as timestamp. **Usage tips** - Make sure to get the r
+  author: Matt Green - @mgreen27, Updated by Stephan Mikiss
+  type: ''
+  parameters: 4
+  path: artifacts/definitions/Windows/Applications/IISLogs.yaml
+- name: Windows.Applications.MegaSync
+  description: Parses MEGASync logs and allows using regular expressions to search for entries of interest. With `UploadLogs` selected a copy of the logs are uploaded to the server. `SearchVSS` enables searching over VSS with automatic deduplication.
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 5
+  path: artifacts/definitions/Windows/Applications/MegaSync.yaml
+- name: Windows.Applications.NirsoftBrowserViewer
+  description: 'Wraps the Nirsoft BrowsingHistoryView tool to parse browsing history from Chrome, Firefox, IE, and Safari. More information about the tool can be found here https://www.nirsoft.net/utils/browsing_history_view.html NOTE: This binary is treat'
+  author: ''
+  type: ''
+  parameters: 6
+  path: artifacts/definitions/Windows/Applications/NirsoftBrowserViewer.yaml
+- name: Windows.Applications.OfficeMacros
+  description: Scans directories for Office documents (xls, xlsm, doc, docx, ppt, pptm) and extracts embedded VBA macros via OLE parsing. Office macros are a prominent initial infection vector. Many users click through the warning dialogs, thus leading to
+  author: ''
+  type: ''
+  parameters: 2
+  path: artifacts/definitions/Windows/Applications/OfficeMacros.yaml
+- name: Windows.Applications.SBECmd
+  description: 'Executes Eric Zimmerman''s SBECmd tool to parse Shellbags and capture the results. Objective: - Find which folders were accessed on the local machine, the network, and/or removable devices. Evidence of previously existing folders after delet'
+  author: Eduardo Mattos - @eduardfir
+  type: CLIENT
+  parameters: 3
+  path: artifacts/definitions/Windows/Applications/SBECmd.yaml
+- name: Windows.Applications.TeamViewer.Incoming
+  description: Parses TeamViewer incoming connection logs to identify remote access events. When inbound logging is enabled, this file will show all inbound TeamViewer connections.
+  author: Matt Green - @mgreen27
+  type: CLIENT
+  parameters: 7
+  path: artifacts/definitions/Windows/Applications/TeamViewer/Incoming.yaml
+- name: Windows.Attack.ParentProcess
+  description: 'Flags processes whose parent process does not match the expected parent per the ATT&CK framework mapping. NOTE: This artifact uses the process tracker. If you also enable the Windows.Events.TrackProcesses or Windows.Events.TrackProcessesBas'
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Windows/Attack/ParentProcess.yaml
+- name: Windows.Attack.Prefetch
+  description: Enumerates Windows Prefetch directory entries and correlates them with known ATT&CK techniques. This pack was generated from https://github.com/teoseller/osquery-attck
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/definitions/Windows/Attack/Prefetch.yaml
+- name: Windows.Attack.UnexpectedImagePath
+  description: Detects well-known system processes running from unexpected file paths. Some malware hides in plain sight by masquerading a legitimate executable name.
+  author: Amged Wageh
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Windows/Attack/UnexpectedImagePath.yaml
+- name: Windows.Carving.CobaltStrike
+  description: Extracts Cobalt Strike beacon configuration from byte streams, process memory, or files on disk such as a process dump. Best used as a triage step against a detection of a Cobalt Strike beacon via a YARA process scan. The User can define by
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 10
+  path: artifacts/definitions/Windows/Carving/CobaltStrike.yaml
+- name: Windows.Carving.USN
+  description: Recovers USN journal entries from raw disk by carving NTFS update sequence number records. The USN journal is a very important source of information about when and how files were manipulated on the filesystem. However, typically the journal
+  author: ''
+  type: ''
+  parameters: 7
+  path: artifacts/definitions/Windows/Carving/USN.yaml
+- name: Windows.Collectors.Remapping
+  description: Creates filesystem and registry remappings for offline analysis of Velociraptor collection containers. The remapping allows Velociraptor to treat the collection container as a dead disk image in a similar way to `Generic.Utils.DeadDiskRemap
+  author: ''
+  type: SERVER
+  parameters: 7
+  path: artifacts/definitions/Windows/Collectors/Remapping.yaml
+- name: Windows.Detection.Amcache
+  description: Collects AMCache entries with a SHA1 hash to enable threat detection. AmCache is an artifact which stores metadata related to PE execution and program installation on Windows 7 and Server 2008 R2 and above. This artifact includes EntryName,
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 6
+  path: artifacts/definitions/Windows/Detection/Amcache.yaml
+- name: Windows.Detection.BinaryHunter
+  description: This artifact enables hunting for binary attributes. The artifact takes a glob targeting input, then checks each file in scope for an MZ header. The artifact also queries Authenticode details and parses out PE attributes. Both PE and Authen
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 17
+  path: artifacts/definitions/Windows/Detection/BinaryHunter.yaml
+- name: Windows.Detection.BinaryRename
+  description: Detects renamed binaries commonly abused by adversaries. Binary renaming is a defense evasion technique used to bypass brittle process name and path based detections. Observed in use across all stages of the attack lifecycle, it is a techni
+  author: Matt Green - @mgreen27
+  type: CLIENT
+  parameters: 2
+  path: artifacts/definitions/Windows/Detection/BinaryRename.yaml
+- name: Windows.Detection.EnvironmentVariables
+  description: Find processes which have the specified environment variables.
+  author: ''
+  type: ''
+  parameters: 5
+  path: artifacts/definitions/Windows/Detection/EnvironmentVariables.yaml
+- name: Windows.Detection.ForwardedImports
+  description: Scans DLLs for self-referencing forwarded imports that could indicate DLL hijacking. In Windows a common DLL hooking technique is to replace a dll with a forwarder dll - i.e. one that forwards all imports to the real dll. If the forwarder D
+  author: ''
+  type: ''
+  parameters: 3
+  path: artifacts/definitions/Windows/Detection/ForwardedImports.yaml
+- name: Windows.Detection.Impersonation
+  description: 'Enumerates threads with impersonation tokens that differ from their parent process. An access token is an object that describes the security context of a process or thread. The information in a token includes the identity and privileges of '
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/definitions/Windows/Detection/Impersonation.yaml
+- name: Windows.Detection.Mutants
+  description: Searches for named Mutant objects used by selected processes for malware persistence detection. Mutants are often used by malware to prevent re-infection.
+  author: ''
+  type: ''
+  parameters: 3
+  path: artifacts/definitions/Windows/Detection/Mutants.yaml
+- name: Windows.Detection.ProcessCreation
+  description: Deploys Sysmon and watches the Sysmon ETW provider for specific process creation events, which are then forwarded to the server.
+  author: Jos Clephas - @DfirJos
+  type: CLIENT_EVENT
+  parameters: 14
+  path: artifacts/definitions/Windows/Detection/ProcessCreation.yaml
+- name: Windows.Detection.PsexecService
+  description: Detects PsExec execution by scanning newly created service binaries for PsExec strings. PsExec works by installing a new service in the system. The service can be renamed by using the `-r` flag and therefore it is not enough to just watch f
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 1
+  path: artifacts/definitions/Windows/Detection/PsexecService.yaml
+- name: Windows.Detection.PsexecService.Kill
+  description: 'Kills all child processes of a detected PsExec service using taskkill. Psexec can launch a service remotely. This artifact implements a client side response plan whereby all the child processes of the service are killed. NOTE: There is an i'
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 1
+  path: artifacts/definitions/Windows/Detection/PsexecService/Kill.yaml
+- name: Windows.Detection.Registry
+  description: Monitors selected registry keys for changes and raises alerts on modifications.
+  author: Jos Clephas - @DfirJos
+  type: CLIENT_EVENT
+  parameters: 11
+  path: artifacts/definitions/Windows/Detection/Registry.yaml
+- name: Windows.Detection.Service.Upload
+  description: Uploads the service binary to the server when a new service is installed.
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 0
+  path: artifacts/definitions/Windows/Detection/Service/Upload.yaml
+- name: Windows.Detection.TemplateInjection
+  description: Detects injected templates in Office and RTF documents. Template injection is a form of defense evasion. For office documents a malicious macro is loaded into an OOXML document via a resource file masquerading as an office template. The OOX
+  author: Matt Green - @mgreen27
+  type: CLIENT
+  parameters: 5
+  path: artifacts/definitions/Windows/Detection/TemplateInjection.yaml
+- name: Windows.Detection.Thumbdrives.List
+  description: Watches for removable drive insertion and enumerates all new files on them. Users inserting Thumb drives or other Removable drive pose a constant security risk. The external drive may contain malware or other undesirable content. Additional
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 1
+  path: artifacts/definitions/Windows/Detection/Thumbdrives/List.yaml
+- name: Windows.Detection.Thumbdrives.OfficeKeywords
+  description: Detects potentially-sensitive content exfiltration by keyword-scanning Office documents on USB drives. Users inserting Thumb drives or other Removable drive pose a constant security risk. The external drive may contain malware or other unde
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 2
+  path: artifacts/definitions/Windows/Detection/Thumbdrives/OfficeKeywords.yaml
+- name: Windows.Detection.Thumbdrives.OfficeMacros
+  description: Watches for removable drives and extracts VBA macros from newly added Office files. Users inserting Thumb drives or other Removable drive pose a constant security risk. The external drive may contain malware or other undesirable content. Ad
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 1
+  path: artifacts/definitions/Windows/Detection/Thumbdrives/OfficeMacros.yaml
+- name: Windows.Detection.Usn
+  description: Detects file creation and modification by polling the NTFS USN journal. NTFS is a journal filesystem. This means that it maintains a journal file where intended filesystem changes are written first, then the filesystem is changed. This jour
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 4
+  path: artifacts/definitions/Windows/Detection/Usn.yaml
+- name: Windows.Detection.WMIProcessCreation
+  description: Captures WMI calls to the Win32_Process.Create method as a lateral movement indicator. WMI Process creation is a common lateral movement technique. The attacker simply uses WMI to call the Create() method on the Win32_Process WMI object. Th
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 0
+  path: artifacts/definitions/Windows/Detection/WMIProcessCreation.yaml
+- name: Windows.Detection.Yara.Device
+  description: 'Scans physical disk sectors with YARA rules at configurable offsets and uploads hit context. There are 2 kinds of YARA rules that can be deployed: 1. Url link to a YARA rule. 2. or a Standard YARA rule attached as a parameter. Only one meth'
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 7
+  path: artifacts/definitions/Windows/Detection/Yara/Device.yaml
+- name: Windows.Detection.Yara.NTFS
+  description: 'Searches the MFT, returns a list of target files, and then runs YARA over the target list. There are 3 kinds of YARA rules that can be deployed: 1. URL link to a YARA rule. 2. Shorthand YARA in the format `wide nocase ascii:string1,string2,'
+  author: Matt Green - @mgreen27
+  type: CLIENT
+  parameters: 15
+  path: artifacts/definitions/Windows/Detection/Yara/NTFS.yaml
+- name: Windows.Detection.Yara.PhysicalMemory
+  description: 'Scans physical memory for YARA matches using the WinPmem driver. There are 2 kinds of YARA rules that can be deployed: 1. URL link to a YARA rule. 2. A standard YARA rule attached as a parameter. Only one method of YARA will be applied and '
+  author: ''
+  type: CLIENT
+  parameters: 6
+  path: artifacts/definitions/Windows/Detection/Yara/PhysicalMemory.yaml
+- name: Windows.Detection.Yara.Process
+  description: 'Runs YARA over processes in memory and optionally uploads process dumps. There are 2 kinds of YARA rules that can be deployed: 1. URL link to a YARA rule. 3. or a Standard YARA rule attached as a parameter. Only one method of YARA will be a'
+  author: Matt Green - @mgreen27
+  type: CLIENT
+  parameters: 8
+  path: artifacts/definitions/Windows/Detection/Yara/Process.yaml
+- name: Windows.Detection.Yara.UEFI
+  description: Scans EFI System Partition files with YARA rules for rootkit detection.
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 12
+  path: artifacts/definitions/Windows/Detection/Yara/UEFI.yaml
+- name: Windows.Detection.YaraX.Glob
+  description: 'Deploys YARA-X and scans files matching a glob pattern. Supports URL-based or inline rule deployment. There are 2 kinds of YARA rules that can be deployed: 1. URL link to a YARA rule. 2. or a Standard YARA rule attached as a parameter. Only'
+  author: Matt Green - @mgreen27
+  type: CLIENT
+  parameters: 10
+  path: artifacts/definitions/Windows/Detection/YaraX/Glob.yaml
+- name: Windows.ETW.DNS
+  description: Watches real-time DNS queries via ETW and reports query names, types, and answers. There are several filters available to filter out and/or target using regular expressions. By default duplicate DNSCache requests are filtered out.
+  author: Matt Green - @mgreen27
+  type: CLIENT_EVENT
+  parameters: 5
+  path: artifacts/definitions/Windows/ETW/DNS.yaml
+- name: Windows.ETW.DNSQueriesServer
+  description: Captures DNS server query events from the `Microsoft-Windows-DNSServer` ETW provider. This is useful for identifying the true source system that is initiating malicious DNS requests that you may have observed. Note that this can be resource
+  author: Jos Clephas - jos-ir
+  type: CLIENT_EVENT
+  parameters: 2
+  path: artifacts/definitions/Windows/ETW/DNSQueriesServer.yaml
+- name: Windows.ETW.DotNetRundown
+  description: 'Queries the Microsoft-Windows-DotNETRuntimeRundown provider to collect a list of DotNet modules loaded into a process. This can be useful when responding to reflectively loaded DotNet malware. NOTE: System.Timestamp represents when the arti'
+  author: '@bmcder02'
+  type: CLIENT
+  parameters: 5
+  path: artifacts/definitions/Windows/ETW/DotNetRundown.yaml
+- name: Windows.ETW.EdgeURLs
+  description: 'Captures URLs accessed by the Edge browser via the Microsoft-Windows-URLMon ETW provider. It also serves as an example of an ETW artifact, in this case using the provider: `Microsoft-Windows-URLMon {245F975D-909D-49ED-B8F9-9A75691D6B6B}` NO'
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 1
+  path: artifacts/definitions/Windows/ETW/EdgeURLs.yaml
+- name: Windows.ETW.ETWSessions
+  description: Watches kernel event tracing ETW events to detect creation and removal of ETW sessions. Windows Event Tracing exposes a lot of low level system information and events. It is normally employed by security tools to gather telemetry, however m
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 0
+  path: artifacts/definitions/Windows/ETW/ETWSessions.yaml
+- name: Windows.ETW.KernelFile
+  description: 'Monitors file create, delete, open, and rename events via the Kernel-File ETW provider. This artifact follows the Microsoft-Windows-Kernel-File provider. NOTE: We can only attach to this provider when running as NT_USER/SYSTEM.'
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 3
+  path: artifacts/definitions/Windows/ETW/KernelFile.yaml
+- name: Windows.ETW.KernelNetwork
+  description: 'Monitors network events (connections, data send/receive) via the Kernel-Network ETW provider. This artifact follows the `Microsoft-Windows-Kernel-Network` provider. NOTE: We can only attach to this provider when running as NT_USER/SYSTEM.'
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 7
+  path: artifacts/definitions/Windows/ETW/KernelNetwork.yaml
+- name: Windows.ETW.KernelProcess
+  description: 'Monitors process creation, termination, and image load events via the Kernel-Process ETW provider. This artifact follows the `Microsoft-Windows-Kernel-Process` provider. NOTE: We can only attach to this provider when running as NT_USER/SYST'
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 3
+  path: artifacts/definitions/Windows/ETW/KernelProcess.yaml
+- name: Windows.ETW.Registry
+  description: Monitors registry create, open, delete, and value modification events via the Kernel-Registry ETW provider. The Windows Registry access is a great source of visibility into system activity. There are many ways of gaining visibility into thi
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 2
+  path: artifacts/definitions/Windows/ETW/Registry.yaml
+- name: Windows.ETW.ViewSessions
+  description: Enumerates running ETW tracing sessions via logman and optionally kills dangling ones.
+  author: ''
+  type: ''
+  parameters: 2
+  path: artifacts/definitions/Windows/ETW/ViewSessions.yaml
+- name: Windows.ETW.WMIProcessCreate
+  description: 'Monitors process creation events triggered via WMI using the Microsoft-Windows-WMI-Activity ETW provider. This identifies a common attacker lateral movement technique. The technique works by calling the Create() method on the win32_process '
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 0
+  path: artifacts/definitions/Windows/ETW/WMIProcessCreate.yaml
+- name: Windows.EventLogs.AlternateLogon
+  description: 'Extracts alternate credential logon events (Event ID 4648) from the Security event log. Logon specifying alternate credentials - if NLA enabled on destination Current logged-on User Name Alternate User Name Destination Host Name/IP Process '
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Windows/EventLogs/AlternateLogon.yaml
+- name: Windows.EventLogs.Cleared
+  description: Detects event log clearing events from the Security (EID 1102) and System (EID 104) logs.
+  author: Matt Green - @mgreen27
+  type: CLIENT
+  parameters: 4
+  path: artifacts/definitions/Windows/EventLogs/Cleared.yaml
+- name: Windows.EventLogs.DHCP
+  description: 'Parses Windows DHCP client event logs (admin and operational) to extract IP address lease assignments and rejections. In some investigations it is important to be able to identify the machine which was assigned a particular IP address at a '
+  author: ''
+  type: ''
+  parameters: 4
+  path: artifacts/definitions/Windows/EventLogs/DHCP.yaml
+- name: Windows.EventLogs.Evtx
+  description: 'Parses and returns events from Windows evtx logs. Each event is returned in full, but results can be narrowed by using a glob pattern for evtx files, a timespan, and regexes to match the evtx path, event channel, and/or event ID: - EvtxGlob'
+  author: Chris Hendricks (chris@counteractive.net)
+  type: ''
+  parameters: 7
+  path: artifacts/definitions/Windows/EventLogs/Evtx.yaml
+- name: Windows.EventLogs.EvtxHunter
+  description: 'Searches all Windows EVTX files for events matching a regex IOC in message, EventData, or UserData fields. Searching EventLog files is helpful for triage and scoping an incident. The idea is a user can search for any IOC or other string of '
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 11
+  path: artifacts/definitions/Windows/EventLogs/EvtxHunter.yaml
+- name: Windows.EventLogs.ExplicitLogon
+  description: 'Searches the Windows Security event log for explicit logon events, that is Event ID 4648: "A logon was attempted using explicit credentials". If logging is enabled, these events are generated on the source machine whenever an authentication'
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 10
+  path: artifacts/definitions/Windows/EventLogs/ExplicitLogon.yaml
+- name: Windows.EventLogs.Kerberoasting
+  description: Detects Kerberoasting attempts by extracting Kerberos TGS requests (EID 4769) with RC4 encryption from the Security log. This Artifact will return all successful Kerberos TGS Ticket events for Service Accounts (SPN attribute) implemented wi
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 2
+  path: artifacts/definitions/Windows/EventLogs/Kerberoasting.yaml
+- name: Windows.EventLogs.Modifications
+  description: 'Checks registry keys for WINEVT channels and WMI autologger providers to detect event log tampering. It is possible to disable windows event logs on a per channel or per provider basis. Attackers may disable critical log sources to prevent '
+  author: ''
+  type: ''
+  parameters: 3
+  path: artifacts/definitions/Windows/EventLogs/Modifications.yaml
+- name: Windows.EventLogs.PowershellModule
+  description: Extracts PowerShell module logging events (EID 4103) from the PowerShell Operational log with context and payload filtering. PowerShell is commonly used by attackers across all stages of the attack lifecycle. Although quite noisy Module log
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 6
+  path: artifacts/definitions/Windows/EventLogs/PowershellModule.yaml
+- name: Windows.EventLogs.PowershellScriptblock
+  description: Parses PowerShell script block logging entries (Event ID 4104) to detect potentially malicious script content. PowerShell is commonly used by attackers across all stages of the attack lifecycle. A valuable hunt is to search Scriptblock logs
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 9
+  path: artifacts/definitions/Windows/EventLogs/PowershellScriptblock.yaml
+- name: Windows.EventLogs.RDPAuth
+  description: Extracts RDP authentication and session events from Security, System, and Terminal Services event logs. Security channel - EventID in 4624,4634 AND LogonType 3, 7, or 10. Security channel - EventID in 4778,4625,4779, or 4647. System channel
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 10
+  path: artifacts/definitions/Windows/EventLogs/RDPAuth.yaml
+- name: Windows.EventLogs.ScheduledTasks
+  description: Extracts and formats Windows scheduled task events from the TaskScheduler operational and Security logs. Adversaries may abuse tasks for execution, persistence, lateral movement or privilege escalation. This artifact collates all events fro
+  author: '@mgreen27 - Matt Green'
+  type: ''
+  parameters: 13
+  path: artifacts/definitions/Windows/EventLogs/ScheduledTasks.yaml
+- name: Windows.EventLogs.ServiceCreationComspec
+  description: Detects SCM lateral movement by searching System event log for service creation events (EID 7045) with "COMSPEC" or "cmd.exe" in the image path. This detects many hack tools that use SCM based lateral movement including `smbexec`. If `VSSAn
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 3
+  path: artifacts/definitions/Windows/EventLogs/ServiceCreationComspec.yaml
+- name: Windows.EventLogs.Symantec
+  description: Searches Symantec Endpoint Protection event logs for high-value detection events like infostealers, backdoors, and exploits. By default, the artifact will return EventId 51 and high value strings with the goal of bubbling up some events for
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 6
+  path: artifacts/definitions/Windows/EventLogs/Symantec.yaml
+- name: Windows.EventLogs.Telerik
+  description: Searches Windows Application Event Log for Telerik exploitation indicators (Event ID 1309). Telerik is a commonly exploited component of IIS web pages that has been actively targeted by actors via several CVEs. Several tools and attack capa
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 6
+  path: artifacts/definitions/Windows/EventLogs/Telerik.yaml
+- name: Windows.Events.EventLogModifications
+  description: Monitors the Windows event log registry channels to detect when logs are disabled. It is possible to disable windows event logs on a per channel or per-provider basis. Attackers may disable critical log sources to prevent detections. This a
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 1
+  path: artifacts/definitions/Windows/Events/EventLogModifications.yaml
+- name: Windows.Events.FailedLogBeforeSuccess
+  description: 'Detects successful logons preceded by multiple failed logon attempts within a configurable time window. Sometimes attackers will brute force an local user''s account''s password. If the account password is strong, brute force attacks are not '
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 3
+  path: artifacts/definitions/Windows/Events/FailedLogBeforeSuccess.yaml
+- name: Windows.Events.Kerberoasting
+  description: 'Monitors Kerberos TGS ticket requests (EventID 4769) with RC4 (weak) encryption as indicators of Kerberoasting attacks. These tickets are vulnerable to brute force attack and this event is an indicator of a Kerberoasting attack. **ATT&CK**:'
+  author: Matt Green - @mgreen27
+  type: CLIENT_EVENT
+  parameters: 1
+  path: artifacts/definitions/Windows/Events/Kerberoasting.yaml
+- name: Windows.Events.Mutants
+  description: Watches for new Mutants in the Windows object manager namespace and alerts on detections.
+  author: Jos Clephas - @DfirJos
+  type: CLIENT_EVENT
+  parameters: 6
+  path: artifacts/definitions/Windows/Events/Mutants.yaml
+- name: Windows.Events.ProcessCreation
+  description: Monitors for Windows process creation events using WMI Win32_ProcessStartTrace and enriches them with parent and call chain information. This method is not as good as the kernel mechanism used by Sysmon. It is more reliable to use Sysmon in
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 0
+  path: artifacts/definitions/Windows/Events/ProcessCreation.yaml
+- name: Windows.Events.ServiceCreation
+  description: Detects new Windows service installations by monitoring System event log for EventID 7045. New services are typically created by installing new software or kernel drivers. Attackers will sometimes install a new service to either insert a ma
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 1
+  path: artifacts/definitions/Windows/Events/ServiceCreation.yaml
+- name: Windows.Events.Trackaccount
+  description: Watches Windows security event logs for successful logon events (4624) which also match additional configurable criteria. If you want to receive Slack/Teams/Discord/etc alerts you can enable the server_event artifact named `Server.Alerts.Tr
+  author: Jos Clephas - @DfirJos
+  type: CLIENT_EVENT
+  parameters: 3
+  path: artifacts/definitions/Windows/Events/Trackaccount.yaml
+- name: Windows.Events.TrackProcesses
+  description: Tracks processes using Sysmon ETW events (process creation and termination) with pslist sync. Uses Sysmon and pslist to keep track of running processes by using the Velociraptor Process Tracker. The Process Tracker keeps track of exited pro
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 5
+  path: artifacts/definitions/Windows/Events/TrackProcesses.yaml
+- name: Windows.Events.TrackProcessesBasic
+  description: Tracks running and exited processes by polling pslist() at a configurable interval. This is a basic process tracker which uses a simple polled pslist(). It keeps track of exited processes, and resolves process call chains from its in-memory
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 2
+  path: artifacts/definitions/Windows/Events/TrackProcessesBasic.yaml
+- name: Windows.Events.TrackProcessesETW
+  description: Tracks process execution using ETW kernel events (CreateProcess, TerminateProcess, LoadImage). Uses ETW to track process execution using the Velociraptor Process Tracker. The Process Tracker keeps track of exited processes, and resolves pro
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 3
+  path: artifacts/definitions/Windows/Events/TrackProcessesETW.yaml
+- name: Windows.Forensics.Amcache
+  description: Parses the Amcache.hve registry hive to enumerate executed binaries, installed programs, and drivers. The Amcache.hve is a registry artifact that stores metadata used by the OS's application compatibility infrastructure to record metadata a
+  author: Matthieu Chatelan, Yann Malherbe
+  type: CLIENT
+  parameters: 12
+  path: artifacts/definitions/Windows/Forensics/Amcache.yaml
+- name: Windows.Forensics.Bam
+  description: Parses the BAM registry key from Windows 10+ to identify program execution times. The Background Activity Moderator (BAM) is a Windows service that Controls activity of background applications. This service exists in Windows 10 only after F
+  author: ''
+  type: ''
+  parameters: 2
+  path: artifacts/definitions/Windows/Forensics/Bam.yaml
+- name: Windows.Forensics.BulkExtractor
+  description: Deploys the bulk_extractor binary onto the endpoint and runs it against selected drives or directories for data carving. Executes bulk_extractor with record carving plugins from 4n6ist. Initially developed to carve EventLogs from physical d
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 6
+  path: artifacts/definitions/Windows/Forensics/BulkExtractor.yaml
+- name: Windows.Forensics.CertUtil
+  description: Extracts download metadata from the Windows Certutil CryptnetUrlCache to reveal LOLBin downloads. The Windows Certutil binary is capable of downloading arbitrary files. Attackers typically use it to fetch tools undetected when using "Living
+  author: ''
+  type: ''
+  parameters: 7
+  path: artifacts/definitions/Windows/Forensics/CertUtil.yaml
+- name: Windows.Forensics.FilenameSearch
+  description: Searches the NTFS `$MFT` using YARA rules to determine if specific filenames ever existed on the system. "Did a specific file exist on this machine in the past or does it still exist on this machine?" This common question comes up frequentl
+  author: ''
+  type: ''
+  parameters: 2
+  path: artifacts/definitions/Windows/Forensics/FilenameSearch.yaml
+- name: Windows.Forensics.JumpLists
+  description: Parses Windows AutomaticDestinations JumpList files to extract LNK entries with application IDs and target paths. The automaticdestinations jumplist is an OLE2 container containing LNK files as individual streams.
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Windows/Forensics/JumpLists.yaml
+- name: Windows.Forensics.Lnk
+  description: Parses Windows LNK shortcut files to extract target paths, arguments, timestamps, and metadata. A LNK file is a type of Shell Item that serves as a shortcut or reference to a specific file, folder, or application. It contains metadata and i
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 12
+  path: artifacts/definitions/Windows/Forensics/Lnk.yaml
+- name: Windows.Forensics.LocalHashes.Usn
+  description: Watches the NTFS USN journal for file modifications and records file hashes in a local database. This artifact maintains a local (client side) database of file hashes. It is then possible to query this database by using the `Generic.Forensi
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 5
+  path: artifacts/definitions/Windows/Forensics/LocalHashes/Usn.yaml
+- name: Windows.Forensics.NotepadParser
+  description: Parses Windows 11 Notepad TabState and WindowState files to recover edited file paths, timestamps, and content. Based on the research work published by ogmini. This artifact parses the TabState and WindowState files and also uploads them fo
+  author: ogmini https://ogmini.github.io/ and Mike Cohen
+  type: ''
+  parameters: 2
+  path: artifacts/definitions/Windows/Forensics/NotepadParser.yaml
+- name: Windows.Forensics.PartitionTable
+  description: 'Parses GPT and MBR partition tables from a raw disk image or physical drive. This artifact also applies a `magic()` check to indicate the type of partitions found. If a partition contains an NTFS filesystem, the artifact will also list the '
+  author: ''
+  type: ''
+  parameters: 5
+  path: artifacts/definitions/Windows/Forensics/PartitionTable.yaml
+- name: Windows.Forensics.Prefetch
+  description: Parses Windows prefetch (.pf) files to extract executable execution history and run counts. Windows keeps a cache of prefetch files. When an executable is run, the system records properties about the executable to make it faster to run next
+  author: ''
+  type: ''
+  parameters: 6
+  path: artifacts/definitions/Windows/Forensics/Prefetch.yaml
+- name: Windows.Forensics.Pst
+  description: Parses Outlook PST files to extract email messages, attachments, and metadata with regex-based targeting.
+  author: ''
+  type: ''
+  parameters: 9
+  path: artifacts/definitions/Windows/Forensics/Pst.yaml
+- name: Windows.Forensics.RDPCache
+  description: Parses RDP Bitmap Cache (.BIN) files to extract and reconstruct cached remote desktop screen images. By default the artifact will parse .BIN RDPcache files. Filters include `UserRegex` to target a user and `Accessor` to target VSS via ntfs_
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 8
+  path: artifacts/definitions/Windows/Forensics/RDPCache.yaml
+- name: Windows.Forensics.RecentApps
+  description: 'Enumerates program execution history from the Windows RecentApps registry key. GUI Program execution launched on the Win10 system is tracked in the RecentApps key. NOTE: This artifact is available up from Windows 10 1607 to 1709. After that'
+  author: ''
+  type: ''
+  parameters: 4
+  path: artifacts/definitions/Windows/Forensics/RecentApps.yaml
+- name: Windows.Forensics.RecycleBin
+  description: Parses Recycle Bin `$I` metadata files to recover deleted file names, original paths, and deletion timestamps. Supports Recycle Bin format found in Vista onwards. This will not parse INFO2 files found in the "Recycler" folder from XP and be
+  author: Zach Stanford - @svch0st
+  type: ''
+  parameters: 2
+  path: artifacts/definitions/Windows/Forensics/RecycleBin.yaml
+- name: Windows.Forensics.SAM
+  description: Parses the Windows SAM registry hive to extract user account details, RIDs, and password hashes. Based on Omer Yampel's parser, as well as reverse-engineering efforts from the GitHub projects fortra/impacket and libyal/winreg-kb. Although j
+  author: Mike Cohen & Andreas Misje – @misje
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Windows/Forensics/SAM.yaml
+- name: Windows.Forensics.SAM.Enriched
+  description: 'Extracts everything usefully derivable from the SAM registry hive Whereas `Windows.Forensics.SAM` only returns users, this artifact list groups, group memberships, machine SID and the systems'' account policy. Sources: - **Users**: every loc'
+  author: Andreas Misje – @misje
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Windows/Forensics/SAM.Enriched.yaml
+- name: Windows.Forensics.Shellbags
+  description: Extracts Shellbag data from NTUSER.DAT and UsrClass.dat to recover folder navigation history. Windows uses the Shellbag keys to store user preferences for GUI folder display within Windows Explorer. This artifact uses the raw registry parse
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Windows/Forensics/Shellbags.yaml
+- name: Windows.Forensics.SolarwindsSunburst
+  description: Searches for SolarWinds Sunburst backdoor (SolarWinds.Orion.Core.BusinessLayer.dll) across all NTFS drives using YARA. > "SolarWinds.Orion.Core.BusinessLayer.dll is a SolarWinds > digitally-signed component of the Orion software framework t
+  author: Wes Lambert - @therealwlambert
+  type: ''
+  parameters: 3
+  path: artifacts/definitions/Windows/Forensics/SolarwindsSunburst.yaml
+- name: Windows.Forensics.SRUM
+  description: 'Parses the Windows SRUM database (srudb.dat) to extract execution stats, resource usage, and network activity. Update 2026-07-11: Added optional SruDbIdMapTable to selection table. We have found this table useful searching for binary name s'
+  author: ''
+  type: client
+  parameters: 12
+  path: artifacts/definitions/Windows/Forensics/SRUM.yaml
+- name: Windows.Forensics.Timeline
+  description: 'Queries the Windows 10 Timeline ActivitiesCache.db SQLite database to extract recently used applications. Win10 records recently used applications and files in a "timeline" accessible via the "WIN+TAB" key. The data is recorded in a SQLite '
+  author: ''
+  type: ''
+  parameters: 3
+  path: artifacts/definitions/Windows/Forensics/Timeline.yaml
+- name: Windows.Forensics.UEFI
+  description: Analyzes the EFI System Partition (ESP) on a physical disk to enumerate and inspect EFI binaries. The artifact queries the specified physical disk, parses the partition table to targets the ESPs File Allocation Table (FAT). The default arti
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 4
+  path: artifacts/definitions/Windows/Forensics/UEFI.yaml
+- name: Windows.Forensics.UserAccessLogs
+  description: 'Parses the Windows User Access Logging (UAL) ESE database to enumerate client connections and server roles. UAL is a feature that can help server administrators quantify the number of unique client requests of roles and services on a local '
+  author: ''
+  type: ''
+  parameters: 2
+  path: artifacts/definitions/Windows/Forensics/UserAccessLogs.yaml
+- name: Windows.Forensics.Usn
+  description: Parses the NTFS USN journal ($J data stream) to enumerate recent file creation, modification, and deletion events. NTFS is a journaled filesystem. This means that it maintains a journal file where intended filesystem changes are written fir
+  author: ''
+  type: CLIENT
+  parameters: 12
+  path: artifacts/definitions/Windows/Forensics/Usn.yaml
+- name: Windows.KapeFiles.Extract
+  description: Extracts files collected by the `Windows.KapeFiles.Targets` or `Windows.Triage.Targets` artifacts, and restores the original timestamps on the extracted files. These artifacts collect files from the endpoint into a zip file. Zip files canno
+  author: ''
+  type: SERVER
+  parameters: 2
+  path: artifacts/definitions/Windows/KapeFiles/Extract.yaml
+- name: Windows.KapeFiles.Remapping
+  description: 'Automates the creation of remapping rules to enable post-processing file uploads collected by the `Windows.KapeFiles.Targets` or `Windows.Triage.Targets` artifacts. Use as follows in the flow notebook cell of a collection: ```vql LET _ <= S'
+  author: ''
+  type: CLIENT
+  parameters: 2
+  path: artifacts/definitions/Windows/KapeFiles/Remapping.yaml
+- name: Windows.Memory.Acquisition
+  description: 'Acquires a full memory image by using the built-in WinPmem driver. NOTE: This artifact usually transfers a lot of data. You should increase the default timeout to allow it to complete. Memory images are typically susceptible to a lot of sme'
+  author: ''
+  type: ''
+  parameters: 3
+  path: artifacts/definitions/Windows/Memory/Acquisition.yaml
+- name: Windows.Memory.Intezer
+  description: 'Runs the Intezer memory scanner to collect running code for malware analysis via Intezer Analyze. - Scan: The scanner collects running code from memory and sends it to Intezer Analyze. Scans take approximately five to ten minutes. The first'
+  author: Matt Green - @mgreen27
+  type: CLIENT
+  parameters: 1
+  path: artifacts/definitions/Windows/Memory/Intezer.yaml
+- name: Windows.Memory.PEDump
+  description: 'Extracts running executables from process memory using VAD region enumeration and PE dumping, and uploads the files to the server. NOTE: The output is not exactly the same as the original binary: 1. Relocations are not fixed. 2. Due to ASLR'
+  author: ''
+  type: ''
+  parameters: 3
+  path: artifacts/definitions/Windows/Memory/PEDump.yaml
+- name: Windows.Memory.ProcessDump
+  description: 'Captures process memory for selected processes via crash dump or Velociraptor-compatible sparse upload. NOTE: This artifact was previously named `Windows.Triage.ProcessMemory`'
+  author: ''
+  type: ''
+  parameters: 3
+  path: artifacts/definitions/Windows/Memory/ProcessDump.yaml
+- name: Windows.Memory.ProcessInfo
+  description: Extracts process information by parsing the Process Environment Block (PEB) directly for each running process. This artifact was previously named `Windows.Forensics.ProcessInfo`.
+  author: ''
+  type: ''
+  parameters: 4
+  path: artifacts/definitions/Windows/Memory/ProcessInfo.yaml
+- name: Windows.Network.ArpCache
+  description: Enumerates the Windows network neighbor cache (ARP/NDP) showing resolved IP and MAC address pairs.
+  author: ''
+  type: ''
+  parameters: 3
+  path: artifacts/definitions/Windows/Network/ArpCache.yaml
+- name: Windows.Network.ListeningPorts
+  description: Reports processes that have open listening ports with address, protocol, and PID details.
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/definitions/Windows/Network/ListeningPorts.yaml
+- name: Windows.Network.Netstat
+  description: Reports open network sockets on Windows including binding time, connection state, and owning process name.
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/definitions/Windows/Network/Netstat.yaml
+- name: Windows.Network.NetstatEnriched
+  description: 'NetstatEnriched adds data enrichment to the Netstat artifact and provides extensive filtering options. Examples include: Process name and path, Authenticode information or network connection details. WARNING: KillProcess - attempts to kill '
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 20
+  path: artifacts/definitions/Windows/Network/NetstatEnriched.yaml
+- name: Windows.Network.PacketCapture
+  description: 'Captures network packets on Windows using netsh trace and then converts these ETL traces to PCAP format. Run this artifact twice, the first time, set the StartTrace flag to True to start the PCAP collection, this will have the VQL return a '
+  author: Cybereason <omer.yampel@cybereason.com>
+  type: ''
+  parameters: 2
+  path: artifacts/definitions/Windows/Network/PacketCapture.yaml
+- name: Windows.NTFS.ADSHunter
+  description: Scans NTFS volumes for data hidden in Alternate Data Streams, using configurable filtering rules. Adversaries may use NTFS file attributes for covert storage to evade detection. Alternate Data Streams (ADS) are additional $DATA attributes f
+  author: Matt Green - @mgreen27
+  type: CLIENT
+  parameters: 8
+  path: artifacts/definitions/Windows/NTFS/ADSHunter.yaml
+- name: Windows.NTFS.ExtendedAttributes
+  description: Parses NTFS Extended Attributes ($EA) from the MFT to detect hidden data. Adversaries may use NTFS file attributes for defense evasion to hide malicious data. This artifact parses NTFS Extended attributes ($EA). The artifact firstly queries
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 11
+  path: artifacts/definitions/Windows/NTFS/ExtendedAttributes.yaml
+- name: Windows.NTFS.I30
+  description: Carves the $I30 index stream from NTFS directories to recover previously deleted file entries, and optionally upload the $I30 stream to the server This can reveal previously deleted files.
+  author: ''
+  type: ''
+  parameters: 3
+  path: artifacts/definitions/Windows/NTFS/I30.yaml
+- name: Windows.NTFS.MFT
+  description: 'Parses $MFT files and returns rows of each in-scope MFT record. This artifact can be used as the basis for other artifacts where the MFT needs to be queried or for deleted file recovery. For deleted file recovery: Take the MFT ID of a file '
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 12
+  path: artifacts/definitions/Windows/NTFS/MFT.yaml
+- name: Windows.NTFS.Recover
+  description: Uploads all data streams from a specified MFT ID on an NTFS volume for deleted file recovery purposes. If the MFT entry is not allocated there is a chance that the cluster that contains the actual data of the file will still be intact on th
+  author: ''
+  type: ''
+  parameters: 2
+  path: artifacts/definitions/Windows/NTFS/Recover.yaml
+- name: Windows.OSQuery.Generic
+  description: 'Deploys the osquery binary and runs a user-specified SQL query, returning parsed JSON results. OSQuery is an excellent tool for querying system state across the three main supported Velociraptor platforms: Windows/Linux/MacOS. You can read '
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Windows/OSQuery/Generic.yaml
+- name: Windows.Packs.LateralMovement
+  description: Queries multiple data sources (event logs, prefetch, shimcache, BAM) for signs of lateral movement.
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/definitions/Windows/Packs/LateralMovement.yaml
+- name: Windows.Packs.Persistence
+  description: Aggregates results from multiple persistence-related artifacts into a single artifact "pack".
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/definitions/Windows/Packs/Persistence.yaml
+- name: Windows.Persistence.Debug
+  description: 'Detects programs with a debugger configured in Image File Execution Options registry keys. Windows allows specific configuration of various executables via a registry key. Some keys allow defining a debugger to attach to a program as it is '
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Windows/Persistence/Debug.yaml
+- name: Windows.Persistence.PermanentWMIEvents
+  description: 'Enumerates permanent WMI event subscriptions including filters, consumers, and their bindings across namespaces. The artifact collects Binding information, then presents associated Filters and Consumers. NOTE: the artifact does not report o'
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 2
+  path: artifacts/definitions/Windows/Persistence/PermanentWMIEvents.yaml
+- name: Windows.Persistence.PowershellProfile
+  description: 'Searches for and parses PowerShell profile scripts across user and system directories for persistence detection. PowerShell supports several profiles depending on the user or host program. Adversaries may create or modify these profiles to '
+  author: Matt Green - @mgreen27
+  type: CLIENT
+  parameters: 4
+  path: artifacts/definitions/Windows/Persistence/PowershellProfile.yaml
+- name: Windows.Persistence.PowershellRegistry
+  description: Scans NTUSER.DAT registry hives with YARA rules for PowerShell-based persistence signatures. A common method of persistence is to install a hook into a user profile registry hive, using PowerShell. When the user logs in, the PowerShell scri
+  author: ''
+  type: ''
+  parameters: 2
+  path: artifacts/definitions/Windows/Persistence/PowershellRegistry.yaml
+- name: Windows.Persistence.Wow64cpu
+  description: Checks for wow64cpu.dll replacement Autorun in Windows 10. http://www.hexacorn.com/blog/2019/07/11/beyond-good-ol-run-key-part-108-2/
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Windows/Persistence/Wow64cpu.yaml
+- name: Windows.Registry.AppCompatCache
+  description: Parses the AppCompatCache (Shimcache) registry value to enumerate recently executed application paths. AppCompatCache, also known as Shimcache, is a component of the Application Compatibility Database, which was created by Microsoft and use
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Windows/Registry/AppCompatCache.yaml
+- name: Windows.Registry.BackupRestore
+  description: Enumerates Windows BackupRestore registry keys showing applications configured for backup and restore operations. Applications that request or perform backup and restore operations can use these keys to communicate with each other or with f
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Windows/Registry/BackupRestore.yaml
+- name: Windows.Registry.EnabledMacro
+  description: Scans Office Trust Records registry entries for documents with macro-enabled trust flags. That is `HKEY_USERS\*\Software\Microsoft\Office\*\Security\Trusted Documents\TrustRecords` reg keys with values ending in `FFFFFF7F`.
+  author: '@mgreen27'
+  type: ''
+  parameters: 2
+  path: artifacts/definitions/Windows/Registry/EnabledMacro.yaml
+- name: Windows.Registry.EnableUnsafeClientMailRules
+  description: 'Checks Outlook Security registry for EnableUnsafeClientMailRules set to 1 (enabled), indicating potential persistence. This registry key enables execution from Outlook inbox rules which can be used as a persistence mechanism. Microsoft has '
+  author: '@mgreen27'
+  type: ''
+  parameters: 2
+  path: artifacts/definitions/Windows/Registry/EnableUnsafeClientMailRules.yaml
+- name: Windows.Registry.MountPoints2
+  description: Extracts MountPoints2 registry entries with ADMIN$ share paths to identify lateral movement via mapped drives. This detection will collect any items in the MountPoints2 registry key. With a "$" in the share path. This key will store all rem
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 2
+  path: artifacts/definitions/Windows/Registry/MountPoints2.yaml
+- name: Windows.Registry.NTUser
+  description: Searches for registry keys and values across all users' NTUSER.DAT hives using raw NTFS parsing. When a user logs into a windows machine the system creates their own "profile" which consists of a registry hive mapped into the HKEY_USERS hiv
+  author: ''
+  type: ''
+  parameters: 2
+  path: artifacts/definitions/Windows/Registry/NTUser.yaml
+- name: Windows.Registry.NTUser.Upload
+  description: Uploads each user's NTUSER.DAT registry hive from disk by bypassing file locking with raw NTFS parsing. When a user logs into a windows machine the system creates their own "profile" which consists of a registry hive mapped into the HKEY_US
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Windows/Registry/NTUser/Upload.yaml
+- name: Windows.Registry.PortProxy
+  description: Enumerates Windows port proxy registry entries configured via netsh or attack tools for network redirection. This artifact will return any items in the Windows PortProxy service registry path. The most common configuration of this service i
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Windows/Registry/PortProxy.yaml
+- name: Windows.Registry.PuttyHostKeys
+  description: Extracts PuTTY SSH host keys stored in the Windows registry for each user. As a security measure PuTTY and its companion utilities PSCP, PSFTP, and Plink record the host key for each server connected to in the Windows Registry. - Output Key
+  author: Matt Green - @mgreen27
+  type: CLIENT
+  parameters: 4
+  path: artifacts/definitions/Windows/Registry/PuttyHostKeys.yaml
+- name: Windows.Registry.RDP
+  description: Extracts historical RDP connection server names and MRU entries from each user's NTUSER.DAT registry hive. 1. Servers - list of all RDP connections that have ever been established by this user. - UsernameHint shows the username used to conn
+  author: Matt Green - @mgreen27
+  type: CLIENT
+  parameters: 3
+  path: artifacts/definitions/Windows/Registry/RDP.yaml
+- name: Windows.Registry.RecentDocs
+  description: Extracts Recent Documents MRU entries from Windows NTUSER.DAT registry hives for each user. By default the artifact will target all users on the machine when run in live mode but can be targeted directly using the HiveGlob parameter. Output
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 8
+  path: artifacts/definitions/Windows/Registry/RecentDocs.yaml
+- name: Windows.Registry.Sysinternals.Eulacheck
+  description: Checks which Sysinternals tools have accepted EULAs by reading the `HKCU\Software\Sysinternals` registry keys. When a Sysinternals tool is first run on a system, the EULA must be accepted. This writes a value called `EulaAccepted` under tha
+  author: ''
+  type: ''
+  parameters: 2
+  path: artifacts/definitions/Windows/Registry/Sysinternals/Eulacheck.yaml
+- name: Windows.Registry.UserAssist
+  description: Decodes UserAssist registry keys from NTUSER.DAT to reveal program execution counts and last run times. Windows systems maintain a set of keys in the registry database (UserAssist keys) to keep track of programs that executed. The number of
+  author: ''
+  type: ''
+  parameters: 3
+  path: artifacts/definitions/Windows/Registry/UserAssist.yaml
+- name: Windows.Registry.WDigest
+  description: Scans HKLM\SYSTEM ControlSets for WDigest security provider registry keys that enable credential harvesting. The artifact will also use GROUP BY to limit all ControlSet output to a single row. To prevent a clear-text password from being pla
+  author: Eduardo Mattos - @eduardfir, Matt Green - @mgreen27
+  type: CLIENT
+  parameters: 2
+  path: artifacts/definitions/Windows/Registry/WDigest.yaml
+- name: Windows.Remediation.Quarantine
+  description: Configures Windows IPsec policy to block network traffic except for DNS, DHCP, and Velociraptor server access. - By default the current client configuration is applied as an exclusion using resolved IP address at time of application. - A co
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 5
+  path: artifacts/definitions/Windows/Remediation/Quarantine.yaml
+- name: Windows.Remediation.QuarantineMonitor
+  description: Periodically applies and maintains Windows IPsec quarantine policy on the endpoint via an event query that will ensure the client stays quarantined. Re-calculates the quarantine every 10 minutes, by default, to account for changes in DNS/co
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 4
+  path: artifacts/definitions/Windows/Remediation/QuarantineMonitor.yaml
+- name: Windows.Remediation.ScheduledTasks
+  description: 'Removes Windows scheduled tasks matching a command and argument regex pattern. WARNING: Removing scheduled tasks is potentially dangerous! You need to test this thoroughly before deploying this artifact widely to clients.'
+  author: ''
+  type: CLIENT
+  parameters: 6
+  path: artifacts/definitions/Windows/Remediation/ScheduledTasks.yaml
+- name: Windows.Remediation.Sinkhole
+  description: Configures DNS sinkholing by editing the Windows hosts file (with a provided backup and restore mechanism). Modifies the Windows hosts file via a configurable lookup table. On application, the original configuration is backed up. When reapp
+  author: Matt Green - @mgreen27
+  type: CLIENT
+  parameters: 5
+  path: artifacts/definitions/Windows/Remediation/Sinkhole.yaml
+- name: Windows.Search.FileFinder
+  description: 'Searches for files by path glob, inspects file content via YARA, and provides file hash and upload options. This artifact is useful in the following scenarios: * We need to locate all the places on our network where customer data has been c'
+  author: ''
+  type: ''
+  parameters: 10
+  path: artifacts/definitions/Windows/Search/FileFinder.yaml
+- name: Windows.Search.SMBFileFinder
+  description: 'Searches for files on remote SMB shares using glob patterns and inspects file content using Yara rules, with optional hash calculation and file upload. **Security Note** To access a remote share we require the credentials of a domain user. '
+  author: ''
+  type: ''
+  parameters: 10
+  path: artifacts/definitions/Windows/Search/SMBFileFinder.yaml
+- name: Windows.Search.VSS
+  description: 'Finds files in Volume Shadow Copies (VSS) using the `ntfs_vss` accessor. Typically used to output deduplicated paths for processing by other artifacts. NOTE: This used to be more complicated but now delegates to the `ntfs_vss` accessor to d'
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 2
+  path: artifacts/definitions/Windows/Search/VSS.yaml
+- name: Windows.Search.WSLFileFinder
+  description: Searches for files inside Windows Subsystem for Linux (WSL) VHDX disk images. Supports glob filtering, file content inspection using Yara, and provides optional file hash calculation and upload.
+  author: ''
+  type: ''
+  parameters: 10
+  path: artifacts/definitions/Windows/Search/WSLFileFinder.yaml
+- name: Windows.Search.Yara
+  description: Scans the NTFS filesystem for files matching a YARA rule by first parsing the MFT to enumerate files.
+  author: ''
+  type: ''
+  parameters: 4
+  path: artifacts/definitions/Windows/Search/Yara.yaml
+- name: Windows.Sigma.EventLogs
+  description: 'Evaluates Windows event log entries against inline or uploaded Sigma rules for threat detection. NOTE: This is a very simple artifact for demonstration purposes only. For more extensive Sigma rules use the `Server.Import.CuratedSigma` artif'
+  author: ''
+  type: ''
+  parameters: 4
+  path: artifacts/definitions/Windows/Sigma/EventLogs.yaml
+- name: Windows.Sys.AllUsers
+  description: Lists all user accounts on a Windows system including domain users with cached profiles. Combines data from three data sources - the output from the `NetUserEnum` API (termed `local` users), the list of SIDs in the registry (termed `remote`
+  author: ''
+  type: ''
+  parameters: 2
+  path: artifacts/definitions/Windows/Sys/AllUsers.yaml
+- name: Windows.Sys.AppcompatShims
+  description: 'Queries the Windows registry for Application Compatibility shim database entries and their associated executables. Application Compatibility shims are a way to persist malware. This artifact presents the AppCompat Shim information from the '
+  author: ''
+  type: ''
+  parameters: 2
+  path: artifacts/definitions/Windows/Sys/AppcompatShims.yaml
+- name: Windows.Sys.CertificateAuthorities
+  description: Enumerates certificate authorities from Windows certificate stores.
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/definitions/Windows/Sys/CertificateAuthorities.yaml
+- name: Windows.Sys.DiskInfo
+  description: Collects physical disk drive information including model, serial number, size, and interface type via WMI.
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/definitions/Windows/Sys/DiskInfo.yaml
+- name: Windows.Sys.Drivers
+  description: Enumerates running Windows device drivers with optional authenticode signature checking. This does not display installed-but-unused drivers.
+  author: ''
+  type: ''
+  parameters: 2
+  path: artifacts/definitions/Windows/Sys/Drivers.yaml
+- name: Windows.Sys.FirewallRules
+  description: Lists Windows firewall rules by parsing the registry FirewallRules key.
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Windows/Sys/FirewallRules.yaml
+- name: Windows.Sys.Interfaces
+  description: Report information about the system's network interfaces. This artifact simply parses the output from `ipconfig /all`.
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/definitions/Windows/Sys/Interfaces.yaml
+- name: Windows.Sys.PhysicalMemoryRanges
+  description: Parses the CM_RESOURCE_LIST from the registry to list physical memory range descriptors.
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Windows/Sys/PhysicalMemoryRanges.yaml
+- name: Windows.Sys.Programs
+  description: Enumerates installed Windows applications by reading registry uninstall keys. An application generally correlates to one installation package on Windows. Some fields may be blank as Windows installation details are left to the discretion of
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Windows/Sys/Programs.yaml
+- name: Windows.Sys.StartupItems
+  description: Enumerates startup applications from registry Run keys and Startup folder locations.
+  author: ''
+  type: ''
+  parameters: 4
+  path: artifacts/definitions/Windows/Sys/StartupItems.yaml
+- name: Windows.Sys.Users
+  description: Lists user accounts that have logged on locally by inspecting registry profile list keys for locally-created profiles. This method is a reliable way of identifying which users have physically logged into the system and thereby created local
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Windows/Sys/Users.yaml
+- name: Windows.Sysinternals.Autoruns
+  description: Installs and runs Sysinternals `autorunsc` to enumerate autostart persistence mechanisms.
+  author: ''
+  type: ''
+  parameters: 20
+  path: artifacts/definitions/Windows/Sysinternals/Autoruns.yaml
+- name: Windows.Sysinternals.SysmonInstall
+  description: Deploys Sysmon with a config file and ensures the Sysmon64 service is running. Sysmon is a kernel level system monitor written by Sysinternals. While we are not able to distribute Sysmon ourselves, Velociraptor can help you manage its deplo
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Windows/Sysinternals/SysmonInstall.yaml
+- name: Windows.Sysinternals.SysmonLogForward
+  description: Reads Sysmon operational events from ETW and forwards them to the server for analysis.
+  author: ''
+  type: CLIENT_EVENT
+  parameters: 1
+  path: artifacts/definitions/Windows/Sysinternals/SysmonLogForward.yaml
+- name: Windows.System.AuditPolicy
+  description: Collects Windows Audit Policy configuration data from Windows systems via auditpol. Use this artifact to determine which Windows event logs are audited and identify audit configuration discrepancies across the environment.
+  author: Zach Stanford - @svch0st
+  type: CLIENT
+  parameters: 0
+  path: artifacts/definitions/Windows/System/AuditPolicy.yaml
+- name: Windows.System.CatFiles
+  description: 'Parses Windows `.cat` catalog files and extracts certificate trust list hashes with signer information. Windows stores many hashes in `.cat` files. These catalog files contain a set of trusted hashes for drivers and other binaries, even if '
+  author: ''
+  type: ''
+  parameters: 3
+  path: artifacts/definitions/Windows/System/CatFiles.yaml
+- name: Windows.System.CmdShell
+  description: Runs shell commands through cmd.exe and captures or uploads stdout output. Since Velociraptor clients typically runs as SYSTEM, the commands will also run as SYSTEM. This is a very powerful artifact since it allows for arbitrary command exe
+  author: ''
+  type: ''
+  parameters: 4
+  path: artifacts/definitions/Windows/System/CmdShell.yaml
+- name: Windows.System.CriticalServices
+  description: Checks that important Windows services like antivirus and update services are currently running. The default list contains virus scanners. If the software is not installed at all, it will not be shown.
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Windows/System/CriticalServices.yaml
+- name: Windows.System.DLLs
+  description: Lists DLLs loaded by running processes with optional hash computation and certificate information.
+  author: ''
+  type: ''
+  parameters: 8
+  path: artifacts/definitions/Windows/System/DLLs.yaml
+- name: Windows.System.DNSCache
+  description: Queries the Windows DNS client cache via WMI and reports cached DNS records with types and status. Windows maintains DNS lookups for a short time in the DNS cache.
+  author: ''
+  type: ''
+  parameters: 3
+  path: artifacts/definitions/Windows/System/DNSCache.yaml
+- name: Windows.System.DomainRole
+  description: Extracts and categorizes the domain role of Windows systems based on `Win32_ComputerSystem` WMI data.
+  author: Matt Green - @mgreen27
+  type: CLIENT
+  parameters: 3
+  path: artifacts/definitions/Windows/System/DomainRole.yaml
+- name: Windows.System.Handles
+  description: Lists open handles (files, registry keys, etc.) for processes matching a regex pattern. Uncheck all the handle types below to fetch all handle types.
+  author: ''
+  type: ''
+  parameters: 4
+  path: artifacts/definitions/Windows/System/Handles.yaml
+- name: Windows.System.HostsFile
+  description: 'Reads and parses the Windows hosts file, reporting resolution entries, hostnames, and comments. Regex searching for Hostname and resolution is enabled over output. NOTE: For Hostname search is on the hostfile line and regex ^ or $ is not re'
+  author: Matt Green - @mgreen27
+  type: CLIENT
+  parameters: 3
+  path: artifacts/definitions/Windows/System/HostsFile.yaml
+- name: Windows.System.LocalAdmins
+  description: Retrieves local administrator accounts from a Windows system via PowerShell.
+  author: ''
+  type: CLIENT
+  parameters: 1
+  path: artifacts/definitions/Windows/System/LocalAdmins.yaml
+- name: Windows.System.PowerShell
+  description: Executes arbitrary commands through PowerShell with output capture and upload support. Since Velociraptor typically runs as SYSTEM, the commands will also run as SYSTEM. This is a very powerful artifact since it allows for arbitrary command
+  author: ''
+  type: ''
+  parameters: 5
+  path: artifacts/definitions/Windows/System/PowerShell.yaml
+- name: Windows.System.Powershell.ModuleAnalysisCache
+  description: Parses the PowerShell ModuleAnalysisCache file to enumerate loaded modules and their functions.
+  author: ''
+  type: ''
+  parameters: 4
+  path: artifacts/definitions/Windows/System/Powershell/ModuleAnalysisCache.yaml
+- name: Windows.System.Powershell.PSReadline
+  description: Extracts PowerShell command history from PSReadline `ConsoleHost_history.txt` files. PowerShell is commonly used by attackers across all stages of the attack lifecycle. The PSReadline module is responsible for command history and from Power
+  author: Matt Green - @mgreen27
+  type: CLIENT
+  parameters: 5
+  path: artifacts/definitions/Windows/System/Powershell/PSReadline.yaml
+- name: Windows.System.Pslist
+  description: Enumerates running processes along with their executable paths and associated details, with optional authenticode trust verification and binary hashing.
+  author: ''
+  type: ''
+  parameters: 8
+  path: artifacts/definitions/Windows/System/Pslist.yaml
+- name: Windows.System.RootCAStore
+  description: Enumerates root CA certificates from the Windows System Certificate store.
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Windows/System/RootCAStore.yaml
+- name: Windows.System.Services
+  description: Enumerates Windows services via WMI, with optional filtering criteria, and enriches with hashes and authenticode signatures.
+  author: ''
+  type: ''
+  parameters: 9
+  path: artifacts/definitions/Windows/System/Services.yaml
+- name: Windows.System.Shares
+  description: Enumerates Windows network shares via the Win32_Share WMI class with regex filtering.
+  author: Matt Green - @mgreen27
+  type: CLIENT
+  parameters: 2
+  path: artifacts/definitions/Windows/System/Shares.yaml
+- name: Windows.System.Signers
+  description: Scans executable files and groups them by their authenticode signer subject.
+  author: ''
+  type: ''
+  parameters: 3
+  path: artifacts/definitions/Windows/System/Signers.yaml
+- name: Windows.System.SVCHost
+  description: Lists `svchost.exe` processes whose parent is not services.exe, indicating suspicious activity. Typically a windows system will have many `svchost.exe` processes. Sometimes attackers name their processes `svchost.exe` to try to hide. Typica
+  author: ''
+  type: ''
+  parameters: 0
+  path: artifacts/definitions/Windows/System/SVCHost.yaml
+- name: Windows.System.TaskScheduler
+  description: Enumerates Windows scheduled tasks and parses their XML definitions to extract commands and user contexts. The Windows task scheduler is a common mechanism that malware uses for persistence. It can be used to run arbitrary programs at a lat
+  author: ''
+  type: ''
+  parameters: 4
+  path: artifacts/definitions/Windows/System/TaskScheduler.yaml
+- name: Windows.System.Threads
+  description: Lists threads for selected processes, matching by name or PID regex filters. This uses Velociraptor's threads plugin.
+  author: ''
+  type: ''
+  parameters: 2
+  path: artifacts/definitions/Windows/System/Threads.yaml
+- name: Windows.System.UntrustedBinaries
+  description: Checks that common Windows system binaries are signed using authenticode verification. Windows runs several services and binaries as part of the operating system. Sometimes malware pretends to run as those well known names to hide itself in
+  author: ''
+  type: ''
+  parameters: 2
+  path: artifacts/definitions/Windows/System/UntrustedBinaries.yaml
+- name: Windows.System.VAD
+  description: Enumerates process memory sections using Virtual Address Descriptor (VAD) information. The VAD is used by the Windows memory manager to describe allocated process memory ranges. Available filters include process, mapping path, memory permis
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 8
+  path: artifacts/definitions/Windows/System/VAD.yaml
+- name: Windows.System.VBScript
+  description: Runs VBScript code on Windows endpoints using the Windows Script Host (cscript.exe). This is a very powerful artifact since it allows for arbitrary command execution on the endpoints as SYSTEM. Therefore this artifact requires elevated perm
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Windows/System/VBScript.yaml
+- name: Windows.System.WMIQuery
+  description: 'Runs a configurable WMI query on Windows and outputs the result rows. Windows Management Instrumentation (WMI) is the Microsoft implementation of Web-Based Enterprise Management (WBEM), which is an industry initiative to develop a standard '
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 2
+  path: artifacts/definitions/Windows/System/WMIQuery.yaml
+- name: Windows.Timeline.MFT
+  description: 'Parses the MFT and outputs file metadata in timeline format with anomaly detection flags and advanced filters. Output is to Timeline field format to enable simple review across Timeline queries. The TimeOutput parameter enables configuring '
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 12
+  path: artifacts/definitions/Windows/Timeline/MFT.yaml
+- name: Windows.Timeline.Prefetch
+  description: Extracts execution timestamps from prefetch files and outputs them in timeline format. Windows keeps a cache of prefetch files. When an executable is run, the system records properties about the executable to make it faster to run next time
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 5
+  path: artifacts/definitions/Windows/Timeline/Prefetch.yaml
+- name: Windows.Timeline.Registry.RunMRU
+  description: 'Extracts RunMRU registry entries from user hives and outputs them in timeline format. RunMRU is updated when a user enters a command into the START > Run prompt. Entries will be logged in the user hive under: Software\Microsoft\Windows\Curr'
+  author: Matt Green - @mgreen27
+  type: ''
+  parameters: 6
+  path: artifacts/definitions/Windows/Timeline/Registry/RunMRU.yaml
+- name: Windows.Triage.SDS
+  description: Extracts the $Secure:$SDS NTFS stream from a specified drive volume using raw MFT parsing. The $Secure stream is both a directory (it has I30 stream) and a file (it has a $DATA stream) and therefore confuses the `Windows.KapeFiles.Target` a
+  author: ''
+  type: ''
+  parameters: 1
+  path: artifacts/definitions/Windows/Triage/SDS.yaml

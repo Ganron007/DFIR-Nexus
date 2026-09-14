@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import re
 import sys
 import tarfile
 import time
@@ -41,6 +42,9 @@ _ATTACK = {
     "ics": "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/master/ics-attack/ics-attack.json",
 }
 _KEV = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+_SIGMA_TAR = "https://codeload.github.com/SigmaHQ/sigma/tar.gz/refs/heads/master"
+_SYSMON_DOC = "https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon"
+_VELO_TAR = "https://codeload.github.com/Velocidex/velociraptor/tar.gz/refs/heads/master"
 
 
 def _get(url: str, timeout: int = 60) -> bytes:
@@ -218,12 +222,113 @@ def sync_cisa_kev() -> Path:
     })
 
 
+def _strip_tags(text: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", text or "")).strip()
+
+
+def sync_sigma() -> Path:
+    """SigmaHQ detection-rule index (id/title/level/logsource/ATT&CK tags)."""
+    blob = _get(_SIGMA_TAR, timeout=180)
+    entries = []
+    with tarfile.open(fileobj=io.BytesIO(blob), mode="r:gz") as tf:
+        for member in tf.getmembers():
+            if not member.isfile() or "/rules/" not in member.name:
+                continue
+            if not member.name.endswith((".yml", ".yaml")):
+                continue
+            raw = tf.extractfile(member)
+            if raw is None:
+                continue
+            try:
+                rule = yaml.safe_load(raw.read().decode("utf-8", "replace"))
+            except Exception:  # noqa: BLE001
+                continue
+            if not isinstance(rule, dict) or not rule.get("title"):
+                continue
+            tags = [str(t) for t in (rule.get("tags") or [])]
+            attack = [t.split(".", 1)[-1].upper() for t in tags if re.match(r"^attack\.t\d", t, re.I)]
+            entries.append({
+                "id": str(rule.get("id") or ""),
+                "title": str(rule.get("title"))[:200],
+                "level": str(rule.get("level") or ""),
+                "status": str(rule.get("status") or ""),
+                "logsource": rule.get("logsource") if isinstance(rule.get("logsource"), dict) else {},
+                "attack": attack[:8],
+                "path": member.name.split("/rules/", 1)[-1],
+            })
+    entries.sort(key=lambda e: (e["level"], e["title"].lower()))
+    return _write("sigma_rules", {
+        **_header("SigmaHQ", "https://github.com/SigmaHQ/sigma", len(entries)), "entries": entries})
+
+
+def sync_velociraptor(max_artifacts: int = 600) -> Path:
+    """Velociraptor artifact metadata (name/description/type/parameters).
+
+    Uses the repo tarball (not the GitHub contents API, which is rate-limited).
+    """
+    blob = _get(_VELO_TAR, timeout=300)
+    entries = []
+    with tarfile.open(fileobj=io.BytesIO(blob), mode="r:gz") as tf:
+        for member in tf.getmembers():
+            if not member.isfile() or "/artifacts/" not in member.name:
+                continue
+            if not member.name.endswith((".yaml", ".yml")):
+                continue
+            raw = tf.extractfile(member)
+            if raw is None:
+                continue
+            try:
+                art = yaml.safe_load(raw.read().decode("utf-8", "replace"))
+            except Exception:  # noqa: BLE001
+                continue
+            if not isinstance(art, dict):
+                continue
+            params = art.get("parameters")
+            entries.append({
+                "name": str(art.get("name") or member.name.rsplit("/", 1)[-1][:-5]),
+                "description": _strip_tags(str(art.get("description") or ""))[:240],
+                "author": str(art.get("author") or "")[:120],
+                "type": str(art.get("type") or ""),
+                "parameters": len(params) if isinstance(params, list) else 0,
+                "path": member.name.split("/", 1)[-1],
+            })
+            if len(entries) >= max_artifacts:
+                break
+    entries.sort(key=lambda e: e["name"].lower())
+    return _write("velociraptor_artifacts", {
+        **_header("Velociraptor Artifact Exchange",
+                 "https://github.com/Velocidex/velociraptor", len(entries)),
+        "entries": entries,
+    })
+
+
+def sync_sysmon() -> Path:
+    """Microsoft Sysmon event-ID reference (id -> name + description)."""
+    html = _get(_SYSMON_DOC, timeout=40).decode("utf-8", "replace")
+    entries = []
+    pattern = re.compile(
+        r'<h3 id="event-id-(\d+)[^"]*">\s*Event ID \d+:\s*([^<]+)</h3>(.*?)(?=<h3|<h2|$)',
+        re.S)
+    for m in pattern.finditer(html):
+        entries.append({
+            "event_id": int(m.group(1)),
+            "name": m.group(2).strip(),
+            "description": _strip_tags(m.group(3))[:300],
+        })
+    entries.sort(key=lambda e: e["event_id"])
+    return _write("sysmon_events", {
+        **_header("Microsoft Sysmon", _SYSMON_DOC, len(entries)), "entries": entries})
+
+
 SYNCERS = {
     "lolbas": sync_lolbas,
     "gtfobins": sync_gtfobins,
     "wadcoms": sync_wadcoms,
     "attack": sync_attack,
     "cisa_kev": sync_cisa_kev,
+    "sigma": sync_sigma,
+    "velociraptor": sync_velociraptor,
+    "sysmon": sync_sysmon,
 }
 
 

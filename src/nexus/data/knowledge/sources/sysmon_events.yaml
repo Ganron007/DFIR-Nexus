@@ -1,0 +1,97 @@
+version: 1
+kind: synced_source
+source: Microsoft Sysmon
+url: https://learn.microsoft.com/en-us/sysinternals/downloads/sysmon
+fetched: '2026-09-14'
+count: 30
+entries:
+- event_id: 1
+  name: Process creation
+  description: The process creation event provides extended information about a newly created process. The full command line provides context on the process execution. The ProcessGUID field is a unique value for this process across a domain to make event correlation easier. The hash is a full hash of the file with
+- event_id: 2
+  name: A process changed a file creation time
+  description: The change file creation time event is registered when a file creation time is explicitly modified by a process. This event helps tracking the real creation time of a file. Attackers may change the file creation time of a backdoor to make it look like it was installed with the operating system. Note
+- event_id: 3
+  name: Network connection
+  description: The network connection event logs TCP/UDP connections on the machine. It is disabled by default. Each connection is linked to a process through the ProcessId and ProcessGuid fields. The event also contains the source and destination host names IP addresses, port numbers and IPv6 status.
+- event_id: 4
+  name: Sysmon service state changed
+  description: The service state change event reports the state of the Sysmon service (started or stopped).
+- event_id: 5
+  name: Process terminated
+  description: The process terminate event reports when a process terminates. It provides the UtcTime , ProcessGuid and ProcessId of the process.
+- event_id: 6
+  name: Driver loaded
+  description: The driver loaded events provides information about a driver being loaded on the system. The configured hashes are provided as well as signature information. The signature is created asynchronously for performance reasons and indicates if the file was removed after loading.
+- event_id: 7
+  name: Image loaded
+  description: The image loaded event logs when a module is loaded in a specific process. This event is disabled by default and needs to be configured with the " –l " option. It indicates the process in which the module is loaded, hashes and signature information. The signature is created asynchronously for perfor
+- event_id: 8
+  name: CreateRemoteThread
+  description: 'The CreateRemoteThread event detects when a process creates a thread in another process. This technique is used by malware to inject code and hide in other processes. The event indicates the source and target process. It gives information on the code that will be run in the new thread: StartAddress '
+- event_id: 9
+  name: RawAccessRead
+  description: The RawAccessRead event detects when a process conducts reading operations from the drive using the \\.\ denotation. This technique is often used by malware for data exfiltration of files that are locked for reading, as well as to avoid file access auditing tools. The event indicates the source proc
+- event_id: 10
+  name: ProcessAccess
+  description: The process accessed event reports when a process opens another process, an operation that’s often followed by information queries or reading and writing the address space of the target process. This enables detection of hacking tools that read the memory contents of processes like Local Security Au
+- event_id: 11
+  name: FileCreate
+  description: File create operations are logged when a file is created or overwritten. This event is useful for monitoring autostart locations, like the Startup folder, as well as temporary and download directories, which are common places malware drops during initial infection.
+- event_id: 12
+  name: RegistryEvent (Object create and delete)
+  description: 'Registry key and value create and delete operations map to this event type, which can be useful for monitoring for changes to Registry autostart locations, or specific malware registry modifications. Sysmon uses abbreviated versions of Registry root key names, with the following mappings: Key name A'
+- event_id: 13
+  name: RegistryEvent (Value Set)
+  description: This Registry event type identifies Registry value modifications. The event records the value written for Registry values of type DWORD and QWORD .
+- event_id: 14
+  name: RegistryEvent (Key and Value Rename)
+  description: Registry key and value rename operations map to this event type, recording the new name of the key or value that was renamed.
+- event_id: 15
+  name: FileCreateStreamHash
+  description: This event logs when a named file stream is created, and it generates events that log the hash of the contents of the file to which the stream is assigned (the unnamed stream), as well as the contents of the named stream. There are malware variants that drop their executables or configuration settin
+- event_id: 16
+  name: ServiceConfigurationChange
+  description: This event logs changes in the Sysmon configuration - for example when the filtering rules are updated.
+- event_id: 17
+  name: PipeEvent (Pipe Created)
+  description: This event generates when a named pipe is created. Malware often uses named pipes for interprocess communication.
+- event_id: 18
+  name: PipeEvent (Pipe Connected)
+  description: This event logs when a named pipe connection is made between a client and a server.
+- event_id: 19
+  name: WmiEvent (WmiEventFilter activity detected)
+  description: When a WMI event filter is registered, which is a method used by malware to execute, this event logs the WMI namespace, filter name and filter expression.
+- event_id: 20
+  name: WmiEvent (WmiEventConsumer activity detected)
+  description: This event logs the registration of WMI consumers, recording the consumer name, log, and destination.
+- event_id: 21
+  name: WmiEvent (WmiEventConsumerToFilter activity detected)
+  description: When a consumer binds to a filter, this event logs the consumer name and filter path.
+- event_id: 22
+  name: DNSEvent (DNS query)
+  description: This event is generated when a process executes a DNS query, whether the result is successful or fails, cached or not. The telemetry for this event was added for Windows 8.1 so it is not available on Windows 7 and earlier.
+- event_id: 23
+  name: FileDelete (File Delete archived)
+  description: 'A file was deleted. Additionally to logging the event, the deleted file is also saved in the ArchiveDirectory (which is C:\Sysmon by default). Under normal operating conditions this directory might grow to an unreasonable size - see event ID 26: FileDeleteDetected for similar behavior but without sa'
+- event_id: 24
+  name: ClipboardChange (New content in the clipboard)
+  description: This event is generated when the system clipboard contents change.
+- event_id: 25
+  name: ProcessTampering (Process image change)
+  description: This event is generated when process hiding techniques such as "hollow" or "herpaderp" are being detected.
+- event_id: 26
+  name: FileDeleteDetected (File Delete logged)
+  description: A file was deleted.
+- event_id: 27
+  name: FileBlockExecutable
+  description: This event is generated when Sysmon detects and blocks the creation of executable files (PE format).
+- event_id: 28
+  name: FileBlockShredding
+  description: This event is generated when Sysmon detects and blocks file shredding from tools such as SDelete .
+- event_id: 29
+  name: FileExecutableDetected
+  description: This event is generated when Sysmon detects the creation of a new executable file (PE format).
+- event_id: 255
+  name: Error
+  description: This event is generated when an error occurred within Sysmon. They can happen if the system is under heavy load and certain tasks could not be performed or a bug exists in the Sysmon service, or even if certain security and integrity conditions are not met. You can report any bugs on the Sysinternal
