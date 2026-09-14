@@ -1,3 +1,6 @@
+# kb: EIR (Theft of Data lesson — staging/archive/transfer procedure chain)
+# kb: CCD M2 (network analysis — long-duration/large-byte flows, RITA),
+#      HTB DefSec (beacon vs bulk-transfer distinction)
 skill: exfiltration
 title: Exfiltration — staging archives, cloud uploads, DNS tunneling
 description: >-
@@ -32,6 +35,21 @@ steps:
     query: "ftp.exe OR sftp OR scp.exe OR pscp"
     look_for: FTP/SFTP command-line transfers to external IPs.
     pivot: CommandLine
+  - name: bitsadmin_transfer
+    query: "bitsadmin OR Start-BitsTransfer"
+    look_for: >-
+      BITS transfers to external URLs — living-off-the-land exfil that
+      bypasses many proxy controls and survives reboots.
+    pivot: CommandLine
+  - name: theft_sequence
+    query: "rar OR 7z OR zip OR copy"
+    look_for: >-
+      Answer "did the attacker steal data" as a SEQUENCE, not a single
+      event: collection (files copied to staging) → archive (rar/7z in
+      prefetch + new archive in MFT/USN) → transfer (large outbound flow,
+      browser upload, BITS). Missing one stage narrows the claim — archive
+      without transfer may mean interrupted exfil.
+    corroborate: archive creation timestamp vs outbound-flow window vs last file access times
 negative: >-
   No archive creation, staging dirs, or large outbound flows → exfiltration
   not evident; check for in-place destruction (ransomware) instead.

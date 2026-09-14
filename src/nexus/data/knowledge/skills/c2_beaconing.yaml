@@ -1,3 +1,7 @@
+# kb: d_db0d91434fd6:c0035 (HTB DefSec — beaconing interval classes: fixed,
+#      jittered, complex-schedule; carriers HTTP/HTTPS/DNS/ICMP; Cobalt
+#      Strike default profile detection)
+# kb: CCD M2 (RITA beacon scoring), EIR C2 methodology
 skill: c2_beaconing
 title: C2 beaconing — periodic callbacks, beacon intervals, DGA
 description: >-
@@ -12,8 +16,13 @@ steps:
     query: "netstat OR ESTABLISHED"
     look_for: >-
       Repeated connections to the same external IP/domain at regular
-      intervals — classic beacon signature.
+      intervals — classic beacon signature. Classify the interval:
+      FIXED (exact cadence), JITTERED (varied slightly around a base
+      period — common evasion), or COMPLEX-SCHEDULE (malware-defined
+      timing). Small uniform payloads at near-fixed intervals are the
+      strongest signal.
     pivot: RemoteAddress
+    corroborate: connection-size uniformity + interval variance analysis
   - name: cobalt_beacon
     query: "cobaltstrike OR beacon OR beacon.dll"
     look_for: Cobalt Strike artifacts — beacon.dll in process, known C2 IPs.
@@ -34,6 +43,14 @@ steps:
     query: "\\\\.\\pipe\\ OR named pipe"
     look_for: Named-pipe creation/connection for SMB-beacon implants.
     pivot: PipeName
+  - name: carrier_protocols
+    query: "dns TXT OR icmp OR http POST"
+    look_for: >-
+      Beacon carriers beyond HTTP/S: DNS TXT/NULL queries at intervals,
+      ICMP echo payloads, or HTTPS POSTs of uniform small size. Cobalt
+      Strike default profile uses HTTP GET metadata + POST tasking —
+      profile request-size asymmetry, not just destination.
+    pivot: QueryName
 negative: >-
   No periodic external connections or C2 artifacts → implant likely dormant,
   destroyed, or using encrypted/unobserved channels.

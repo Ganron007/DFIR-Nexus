@@ -1,0 +1,84 @@
+# kb: d_448f7674e355 (CCD M5 T5 $MFT) | d_cfd6f88504b6 (CCD M5 $UsnJrnl)
+# kb: d_b4d5d0834a53 (CCD M5 $LogFile) | d_0917a10ed05d (13C WE 25 MFT+USN parse)
+# kb: d_4a20e905aac2 (13C WE 26 $I30) | d_a1d3c2f01b9b:c0027-29 (FOR508.5 MFT attrs + clustering)
+skill: mft_file_activity
+title: NTFS file-system activity — $MFT, $UsnJrnl, $I30 slack, ADS, timestomp
+description: >-
+  Reconstruct file-system truth: the MFT's per-record timestamps and
+  attributes, the USN journal's change reasons, $I30 slack's deleted-file
+  residue, and SI-vs-FN timestamp comparison for timestomp detection. This
+  is the ground layer the timeline is built on.
+trigger:
+  families: [mftecmd, mft, usn, fls, log2timeline, plaso]
+  keywords: [mft, usn, journal, timestomp, $i30, ntfs, ads, zone.identifier, deleted]
+  techniques: [T1070.006, T1036, T1096, T1564.004]
+steps:
+  - name: mft_records
+    query: "file:mft"
+    look_for: >-
+      MFTEcmd rows carry Entry+Sequence numbers (the file reference), parent
+      path, and the SI/FN timestamp sets. Sequential MFT entries created in
+      close succession mark write bursts — e.g. a cluster of records around
+      prefetch .pf files acts as a backup creation timestamp (FOR508.5).
+    pivot: FileName
+  - name: usn_change_reasons
+    query: "file:usn"
+    look_for: >-
+      $UsnJrnl\$Extend\$J records per-change reasons — FileCreate, DataExtend,
+      RenameOldName/RenameNewName, Close, Delete — each with the file
+      reference number. This is the per-file event ledger for days of
+      activity on a busy volume.
+    pivot: FileName
+    corroborate: rename chains (OldName→NewName) expose extension-swap staging
+  - name: i30_slack_residue
+    query: "file:i30 OR $i30"
+    look_for: >-
+      $I30 index slack — B-tree rebalancing leaves entries for files that no
+      longer exist; each residue still carries filename, size, and a full
+      timestamp set. The primary proof a file once existed in a directory
+      after the MFT record itself was reused.
+    pivot: FileName
+    corroborate: residue timestamp + USN delete reason pins the deletion window
+  - name: alternate_data_streams
+    query: "zone.identifier OR file:ads OR \\:$"
+    look_for: >-
+      ADS on records — Zone.Identifier marks files downloaded from the
+      internet/email (MOTW); attacker tools hide payloads in :stream names.
+      ZoneId 3+ on an exe = internet-sourced code executed on the host.
+    pivot: ZoneId
+  - name: timestomp_si_fn
+    query: "file:mft .exe OR .dll OR .ps1"
+    look_for: >-
+      Timestomp detection: 0x10 $STANDARD_INFORMATION timestamps are
+      attacker-writable via API; 0x30 $FILE_NAME timestamps are not (they
+      change only on rename/move). $FN BornTime LATER than $SI BornTime, or
+      $SI predating sibling records in the same burst = backdated file.
+    pivot: FileName
+    corroborate: the stomped M-time is what ShimCache recorded — pair with appcompat rows
+  - name: logfile_detail
+    query: "file:logfile"
+    look_for: >-
+      $LogFile — lowest-level NTFS transaction log (hours to ~1 day). Fills
+      the gap between USN reasons and raw writes; NTFS Log Tracker parses
+      create/write/rename operations MFTEcmd does not.
+    pivot: FileName
+  - name: deleted_metafiles
+    query: "file:mft .pf OR .evtx OR .lnk"
+    look_for: >-
+      MFT records for metafiles (.pf, .evtx, .lnk, .pf) — their own
+      timestamps tell when an artifact was born/copied; a .pf record deleted
+      but still in MFT proves prefetch existed and was removed.
+negative: >-
+  Empty MFT/USN output means the metafiles were not parsed or not collected —
+  file-system-layer absence is almost always a collection gap, never proof
+  a file did not exist. Fall back to fls/TIMELINE bodyfiles and LNK residue.
+confidence_rules:
+  high: SI/FN anomaly or $I30 residue + matching USN delete reason for the same record
+  medium: rename/create journal chain without surviving content
+  low: single MFT row anomalies with plausible sync/AV explanation
+mitre: [T1070.006, T1036, T1564.004]
+caveats:
+  - "MFT record reuse destroys the old record — cite $I30 slack and $LogFile for what the MFT itself no longer shows."
+  - "USN journal rolls over by size, not time — short retention on busy volumes; note the covered window before claiming gaps."
+  - "FN timestamps update on rename/move — a moved-but-original file re-timestamps FN; compare against SI and siblings, not in isolation."
+  - "Zone.Identifier survives copy operations but not all write paths — absence of MOTW does not prove the file was local."

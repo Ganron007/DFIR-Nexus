@@ -1,3 +1,7 @@
+# kb: d_a1d3c2f01b9b:c0004 (FOR508.5 — anti-forensics limits: cannot fully
+#      destroy all references; single surviving artifact still proves
+#      compromise; response-time vs destruction-time race)
+# kb: CCD M5 T-EventLogs (1102/104 analysis, gap profiling)
 skill: log_clearing
 title: Event log clearing and audit tampering
 description: >-
@@ -33,6 +37,15 @@ steps:
   - name: usn_journal_delete
     query: "fsutil usn deletejournal OR usn delete"
     look_for: USN journal deletion (destroys file-change history).
+  - name: surviving_artifacts
+    query: "prefetch OR shimcache OR amcache OR $LogFile"
+    look_for: >-
+      Anti-forensics cannot fully destroy all references — after a log
+      clear, execution evidence survives in prefetch, ShimCache, AmCache,
+      BAM, $LogFile/$UsnJrnl residue, SRUM, and memory. A single surviving
+      artifact still proves the compromise happened.
+    corroborate: activity window visible in surviving artifacts but absent from cleared logs = targeted clearing
+    pivot: FileName
 negative: >-
   No 1102/104 events and no wevtutil/auditpol execution → logs were not
   cleared on this host; look for logging-gap explanations instead (service
@@ -45,3 +58,4 @@ mitre: [T1070.001, T1562.002]
 caveats:
   - "Some SOCs clear logs during maintenance — check SubjectUserName against admin accounts and change windows."
   - "A missing Sysmon sequence may mean the service was never running — check install state before claiming tamper."
+  - "Anti-forensics effectiveness is a race against response time — months-old intrusions may be fully covered; hours-old rarely are. Check residual artifact stores before concluding 'wiped clean'."

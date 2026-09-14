@@ -1,3 +1,8 @@
+# kb: d_ae743ea2444d:c0082 / d_40fd028860ee:c0360 (FOR528 — ransomware
+#      "backward analysis": start from ransomed/highest-activity hosts and
+#      work back to initial access; dominant IAB vectors = exposed RDP,
+#      border-device exploit, phishing, purchased access)
+# kb: SANS ransomware poster (detonation phases), CCD M5 (artifact evidence)
 skill: impact_ransomware
 title: Impact — ransomware, backup destruction, disk encryption
 description: >-
@@ -36,6 +41,16 @@ steps:
     query: "cipher /w OR diskcryptor OR vboxdrv"
     look_for: Disk-encryption tool execution or crypto-loop patterns.
     pivot: ProcessName
+  - name: backward_analysis
+    query: "rdp OR 4624 OR msiexec OR phish"
+    look_for: >-
+      Work BACKWARD from impact: ransomware investigations begin at the
+      ransomed/highest-activity hosts, then trace back to entry. Most
+      common IAB vectors to hunt: exposed internet-facing RDP (the most
+      common ransomware entry — hunt illegitimate external RDP), border-
+      device exploit, phishing, purchased credentials/access.
+    corroborate: first ransom-note write time → work backward through lateral movement → initial access on the earliest-affected host
+    pivot: IpAddress
 negative: >-
   No shadow deletion, recovery disable, or mass-encryption artifacts →
   impact phase not reached or aborted.

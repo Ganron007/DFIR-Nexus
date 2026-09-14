@@ -1,0 +1,80 @@
+# kb: d_b9e9fc66fd35 (Mandiant EIR Lesson 3 — Investigative Method, lead→timeline→IOC→scope loop)
+# kb: d_42d0d007ee2c (EIR attack vectors + ATT&CK framing) | HTB Incident Handling Process
+# kb: OSIR IR-200 (OffensiveSecurity) — second IR curriculum, cross-checked
+skill: ir_scoping_and_leads
+title: IR scoping & lead management — Mandiant investigative method
+description: >-
+  How a real examiner sequences an intrusion case: start from live-response
+  data and initial leads, analyze into a working timeline, develop IOCs from
+  findings, collect to scope similarly-compromised systems, and iterate.
+  Leads are tiered — compromised hosts, accessed hosts, lateral-movement
+  hosts — never assume a single patient zero.
+trigger:
+  families: [evtx, sysmon, hayabusa, mft, prefetch, registry]
+  keywords: [scope, scoping, lead, ioc, compromise, investigation, hypothesis, initial access, patient zero]
+  techniques: [T1566, T1190, T1078, T1021]
+steps:
+  - name: initial_lead
+    query: "alert OR detection OR anomaly"
+    look_for: >-
+      Every case starts from a lead: an alert, a suspicious file, a reported
+      behavior. State it precisely — what was observed, on which host, at
+      what time. The lead defines the first evidence window.
+    corroborate: restate the lead as a falsifiable hypothesis before scanning
+  - name: live_response_first
+    query: "netstat OR pslist OR autorun"
+    look_for: >-
+      Volatile/live data first — running processes, connections, logged-on
+      users, autoruns. Mandiant's method prioritizes live-response because
+      disk-image analysis is slow and volatile evidence dies on reboot.
+    pivot: ProcessName
+  - name: build_timeline_around_lead
+    query: "file:mft OR file:evtx"
+    look_for: >-
+      Anchor a timeline window around the lead's first-known activity, then
+      widen. The timeline converts isolated hits into the activity sequence
+      the attacker actually performed.
+    corroborate: N7 timeline events for the lead host ± window
+  - name: develop_iocs
+    query: "sha256 OR md5 OR domain OR ip:"
+    look_for: >-
+      Turn findings into indicators — file hashes, paths, mutexes, domains,
+      IPs, accounts. Each IOC lets you sweep for the SAME compromise on
+      other hosts, which is how scoping happens.
+    pivot: IndicatorValue
+  - name: scope_similarly_compromised
+    query: "family:evtx 4624 OR 4648"
+    look_for: >-
+      Use the IOCs + attacker TTPs to identify sibling hosts: same payload
+      hash, same C2, same source logon. Classify each host by evidence tier —
+      compromised (payload executed), accessed (auth only), lateral-movement
+      hop (used as a pivot).
+    pivot: IpAddress
+  - name: separate_noise
+    query: "family:hayabusa"
+    look_for: >-
+      Mandiant explicitly warns: unrelated non-targeted malware blurs the
+      investigation. Bucket hits into 'incident-related' vs 'background
+      noise' — commodity AV detections are not the intrusion unless the
+      timeline ties them to it.
+  - name: iterate_leads
+    query: "file:lnk OR file:prefetch"
+    look_for: >-
+      Each scoped host produces new leads — feed them back into step 1.
+      The method is a loop: leads → timeline → IOCs → scope → new leads,
+      until coverage of the intrusion is bounded.
+negative: >-
+  No leads beyond the initial alert may mean the lead itself was a false
+  positive, OR the evidence class that would carry it (memory, netflow,
+  email) was never collected — state which source is absent before
+  concluding the case is clean.
+confidence_rules:
+  high: lead confirmed by ≥2 artifact classes on the same host + IOC match on a second host
+  medium: single-host corroboration of the lead
+  low: lead unproven; only circumstantial timing
+mitre: [T1566, T1190, T1078]
+caveats:
+  - "Complex incidents rarely have a linear trail — multiple patient zeros and long dwell times are the norm in advanced threats (EIR L3)."
+  - "Do not anchor on the first patient-zero story: systems can be compromised through multiple vectors in the same campaign."
+  - "Scope by evidence, not by alert volume — an alarmed-but-clean host is 'accessed', not 'compromised'."
+  - "Document WHY a lead was dropped — negative findings in the audit trail prevent re-litigating the same hypothesis."

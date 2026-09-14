@@ -1,0 +1,112 @@
+# kb: d_5aeea6f2e856 (CCD M5 T9 Prefetch) | d_dbacad7baf4c (CCD M5 ShimCache)
+# kb: d_52edb94c2503 (CCD M5 AmCache) | d_bfa005ec18f7 (CCD M5 BAM/DAM)
+# kb: d_f5ad68c1b019 (CCD M5 UserAssist) | d_426d040d6cb8 (CCD M5 SRUM)
+# kb: d_ea8f1ff52359 (13C WE 12 Prefetch) | d_d1ae4e63463e (13C WE 13 ShimCache)
+# kb: d_9169ff3bbce2 (13C WE 14 AmCache) | d_47e7720ecbfd (13C WE 15 PCA)
+# kb: d_a8a00cbad358 (13C WE 18 SRUM) | d_346b1e448071 (13C Registry cheat sheet)
+skill: execution_artifact_analysis
+title: Evidence-of-execution stack — Prefetch → ShimCache → AmCache → BAM → UserAssist → SRUM → PCA
+description: >-
+  Establish whether a binary actually ran using the layered execution
+  artifacts. The examiner reads them in order of evidentiary strength:
+  Prefetch proves execution, ShimCache proves existence only, AmCache
+  records installed-program lineage, BAM/UserAssist/PCA/SRUM corroborate
+  per-user execution and network volume.
+trigger:
+  families: [pecmd, prefetch, amcache, appcompat, srum, srumecmd, recmd, wxtcmd, sysmon, security, evtx, powershell]
+  keywords: [executed, execution, ran, launch, prefetch, shimcache, amcache, userassist, srum, pca, muicache]
+  techniques: [T1204, T1059, T1036, T1106]
+steps:
+  - name: prefetch_all
+    query: "file:prefetch"
+    look_for: >-
+      A .pf file exists only because the binary ran at least once — the file
+      is created on first launch. Read run count and last-run times (up to 8
+      on Win10+). The .pf creation timestamp minus the ~10s prefetch-write
+      delta approximates first execution; its modified timestamp tracks the
+      most recent run. Convert to UTC before reporting.
+    pivot: ExecutableFileName
+    corroborate: referenced-file paths inside the .pf reveal staging dirs and loaded modules
+  - name: prefetch_lolbin
+    query: "file:prefetch rundll32 OR mshta OR powershell OR regsvr32 OR cmd.exe OR wmic OR bitsadmin OR certutil"
+    look_for: >-
+      Prefetch entries for living-off-the-land binaries with unusual parents
+      or user-profile/temp working paths — attackers repurpose trusted
+      binaries; the .pf proves they actually executed.
+    pivot: ExecutableFileName
+    corroborate: parent process from Sysmon EID 1 or Security 4688 in the same window
+  - name: shimcache_existence
+    query: "file:shimcache OR file:appcompat"
+    look_for: >-
+      ShimCache (SYSTEM\ControlSet001\Control\Session Manager\AppCompatCache)
+      proves the file EXISTED on the system — NOT that it executed. Its
+      timestamp is literally the file's $SI modification time (M of MACB),
+      never the execution time. Treat presence as "attacker-staged binary",
+      then prove execution elsewhere.
+    pivot: FilePath
+    corroborate: M-time anomaly vs MFT $FN timestamps exposes timestomped binaries
+  - name: amcache_lineage
+    query: "file:amcache"
+    look_for: >-
+      AmCache.hve (Windows\AppCompat\Programs) is populated by the Microsoft
+      Compatibility Appraiser scheduled task. InventoryApplication = installed
+      programs (name, version, publisher, path, uninstall string); file
+      entries carry SHA1 hash + timestamps — pivot the hash to reputation.
+    pivot: SHA1
+    corroborate: file-entry key last-write aligns with install/copy time, not necessarily first run
+  - name: bam_per_user
+    query: "file:bam OR bam\\State OR UserSettings"
+    look_for: >-
+      BAM (SYSTEM\Services\bam\State\UserSettings\<SID>, Win10 1709+) records
+      per-user last-execution time for background-active executables — key
+      differentiator for WHO ran it, because keys sit under the user's SID.
+    pivot: FullPath
+    corroborate: map the SID to a username via ProfileList/SAM to attribute execution
+  - name: userassist_gui
+    query: "userassist"
+    look_for: >-
+      NTUSER\Software\Microsoft\Windows\CurrentVersion\Explorer\UserAssist
+      tracks per-user GUI program launches — ROT13-encoded value names,
+      run-count and last-run time per GUID ({CEBFF5CD…} executables,
+      {F4E57C4B…} shortcuts). GUI-only — CLI invocations absent.
+    pivot: ValueName
+  - name: srum_usage
+    query: "file:srum"
+    look_for: >-
+      SRUM (30–60 days) — the two app-usage CSVs corroborate execution; the
+      two network CSVs give per-application bytes sent/received per day, which
+      also bounds possible exfil volume by process.
+    pivot: AppId
+    corroborate: network-table bytes confirm data-mover tools actually transferred
+  - name: pca_applaunch
+    query: "file:pca OR PCAAppLaunchDIC"
+    look_for: >-
+      Program Compatibility Assistant (Win11 22H2+) — PCAAppLaunchDIC.txt
+      under Windows\AppCompat\PCA records full path + last execution time in
+      UTC, pipe-delimited, for GUI-launched programs. New but reliable.
+    pivot: FilePath
+  - name: muicache_gui
+    query: "muicache"
+    look_for: >-
+      UsrClass MuiCache — per-user evidence of GUI execution; confirms the
+      binary ran but does NOT carry a timestamp. Use only as corroboration.
+  - name: windows_timeline
+    query: "file:activit OR file:wxtcmd"
+    look_for: >-
+      Windows Timeline (ActivitiesCache.db via WxTCmd) — per-user app usage
+      with focus duration; bridges execution to what the user was doing.
+negative: >-
+  No execution artifacts for a binary does not prove it never ran — Prefetch
+  is often disabled on servers, BAM/SRUM have retention windows, and CLI-only
+  execution leaves no UserAssist/PCA trace. Compensate with Security 4688 /
+  Sysmon EID 1 process-creation rows for the same window.
+confidence_rules:
+  high: two or more independent artifacts agree (e.g. prefetch .pf + SRUM/PCA row for same path)
+  medium: a single execution artifact (prefetch or BAM alone)
+  low: ShimCache-only presence — existence proven, execution not
+mitre: [T1204, T1059, T1036, T1106]
+caveats:
+  - "ShimCache timestamps are the file's $SI M-time — citing them as execution times is a classic report error (13Cubed WE 13)."
+  - "Prefetch is disabled by default on Windows Server and on some SSD-optimized installs — empty Prefetch is a coverage gap, not absence."
+  - "UserAssist/PCA/MuiCache only see GUI launches — a netcat or python CLI run is invisible to all three."
+  - "AmCache file-entry SHA1 is the exe hash at appraisal time — a replaced payload keeps the path but changes the hash."

@@ -1,0 +1,84 @@
+# kb: d_dc04906473f1 (13C WE 31 Web Browser Forensics)
+# kb: d_0f2967aed8af (13C Windows Browser Artifacts Cheat Sheet — exact profile paths)
+# kb: d_97bddd9d740f (13C WE 32 Thumbs.db/Thumbcache) | FOR500 Book 3 browser sections
+skill: browser_artifact_analysis
+title: Browser-artifact analysis — history, downloads, cache, sessions, searches
+description: >-
+  Browser artifacts corroborate initial access (what was downloaded, from
+  where, when) and user intent (searches, webmail, cloud drives). Work the
+  profile layout: History SQLite for visits, downloads table for file
+  lineage, cache for content, Sessions for open tabs, Preferences for config.
+trigger:
+  families: [browser, wxtcmd, lecmd, mftecmd, evtx, powershell]
+  keywords: [browser, history, download, chrome, edge, firefox, url, cache, cookies, session]
+  techniques: [T1566.001, T1105, T1071.001, T1602]
+steps:
+  - name: history_visits
+    query: "file:history"
+    look_for: >-
+      History SQLite (Chrome/Edge: User Data\Default\History; Firefox:
+      places.sqlite) — url, title, visit_count, visit time. Download URLs,
+      C2-looking domains, admin panels, and searches in the window.
+    pivot: URL
+  - name: download_lineage
+    query: "download"
+    look_for: >-
+      Downloads table — source URL + target path + received time per file.
+      The direct lineage: which URL delivered the payload, and where it
+      landed. Pairs with Zone.Identifier MOTW on the file.
+    pivot: TargetPath
+    corroborate: download time → MFT create time for the payload
+  - name: typed_searches
+    query: "search terms OR keyword_search_terms OR wordwheelquery"
+    look_for: >-
+      Typed queries into browsers/search engines and Explorer WordWheelQuery
+      — intent evidence: researching tooling, looking for files, checking
+      detection. Rarely attacker-produced by automation.
+    pivot: Term
+  - name: cookies_and_auth
+    query: "file:cookies"
+    look_for: >-
+      Network\Cookies SQLite — visited domains + session-cookie presence;
+      proves account usage on webmail/cloud consoles even without history.
+  - name: cache_content
+    query: "file:cache"
+    look_for: >-
+      Cache directories — recover page content/images/scripts the user
+      actually rendered; fetches the artifacts (phishing page, payload
+      script) after URLs alone are stale.
+  - name: sessions_open_tabs
+    query: "file:sessions"
+    look_for: >-
+      Sessions files — tabs open at capture: what the user/attacker was
+      mid-task on; frequently retains pages already cleared from history.
+  - name: webmail_cloud
+    query: "mail. OR outlook OR gmail OR drive.google OR dropbox OR mega.nz OR wetransfer"
+    look_for: >-
+      Webmail and file-sharing domains — exfil-by-upload and phish-delivery
+      vectors; match visits to the exfil/delivery window.
+    pivot: URL
+  - name: thumbs_media
+    query: "file:thumbcache OR thumbs.db"
+    look_for: >-
+      Thumbcache/thumbs.db — thumbnail residue proves image/media files
+      existed in browsed folders even after deletion.
+  - name: autoplay_browserless
+    query: "file:preferences"
+    look_for: >-
+      Preferences JSON — homepage/search-engine hijacks, extension install
+      state, and per-site permissions attackers alter for persistence.
+negative: >-
+  No browser rows usually means no interactive browsing or profiles not
+  collected — server-class hosts legitimately have none. A wiped history
+  with surviving cache/sessions is itself suspicious; state which layer
+  was examined.
+confidence_rules:
+  high: download URL + target path + file MFT/MOTW agreement (full delivery lineage)
+  medium: history/session hits for the domain without file linkage
+  low: generic browsing with no case-window correlation
+mitre: [T1566.001, T1105, T1071.001]
+caveats:
+  - "History databases only show what was retained — InPrivate/Incognito and history-clearing leave cache/cookies/session residue instead."
+  - "Chrome/Edge timestamps are WebKit microseconds since 1601; Firefox is Unix µs — normalize before timeline merge."
+  - "Sync'd profiles (signed-in Chrome/Edge) can import history from OTHER devices — attribute the device field, not just the URL."
+  - "Downloads table rows persist after the file is deleted — the download event is provable even when the payload is gone."

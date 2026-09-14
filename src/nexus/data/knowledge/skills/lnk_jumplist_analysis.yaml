@@ -1,0 +1,75 @@
+# kb: d_ce0f58efb073 (CCD M5 T6 LNK) | d_3c693ade50e1 (CCD M5 T6 JumpLists)
+# kb: d_260233cb3d09 (13C WE 29 LNK) | d_03a600f22bc9 (13C WE 30 Jump Lists)
+skill: lnk_jumplist_analysis
+title: LNK & JumpList analysis — file access trails and ghost targets
+description: >-
+  LNK files are created the moment a user first opens a file and modified
+  on each later access — and they persist after the target is deleted.
+  JumpLists extend this into per-application recently-used files. Together
+  they prove user-level file interaction and expose files that no longer
+  exist on disk.
+trigger:
+  families: [lecmd, jlecmd, lnk, jumplist, mftecmd, recent]
+  keywords: [lnk, shortcut, jumplist, automaticdestinations, customdestinations, recent, opened, accessed]
+  techniques: [T1204.002, T1547.001, T1078]
+steps:
+  - name: recent_lnk_inventory
+    query: "file:lnk OR .lnk"
+    look_for: >-
+      LNKs under Recent/Desktop — created on FIRST open of a file, modified
+      on each subsequent access. They persist after the target is deleted:
+      a .lnk is proof a file existed at a path and that a user opened it.
+    pivot: TargetPath
+    corroborate: LNK create-time ≈ first access; modify-time ≈ last access of the target
+  - name: lnk_source_attribution
+    query: "file:lnk"
+    look_for: >-
+      LNK internals carry the creating machine's identifiers — NetBIOS name,
+      volume serial, MAC address, drive type. A removable-drive volume
+      serial or a foreign machine name ties the file to a USB or another
+      host (the infection source).
+    pivot: MachineID
+    corroborate: volume serial matches a USB device in MountedDevices → delivery vector
+  - name: lnk_execution_payload
+    query: "file:lnk powershell OR cmd OR mshta OR rundll32 OR wscript"
+    look_for: >-
+      Malicious LNKs — target path pointing at interpreters (powershell,
+      cmd, mshta, rundll32) with embedded arguments instead of a document.
+      Campaign-H style Invoice.lnk = interpreter target + encoded payload.
+    pivot: Arguments
+  - name: automatic_destinations
+    query: "file:automaticdestinations OR file:jlecmd"
+    look_for: >-
+      AutomaticDestinations jump lists (OS-created, named by AppID hash) —
+      per-application recently-opened files. Each entry is an embedded LNK:
+      target path + access time; the list bounds what the user did inside
+      each application.
+    pivot: TargetPath
+  - name: custom_destinations
+    query: "file:customdestinations"
+    look_for: >-
+      CustomDestinations jump lists (application-created) — recent items the
+      app itself tracked; catches activity AutomaticDestinations misses
+      (scripts, remote files, uncommon apps).
+    pivot: TargetPath
+  - name: jumplist_persistence
+    query: "file:lnk startup OR file:lnk start menu\\programs\\startup"
+    look_for: >-
+      LNKs inside Startup folders — user-context persistence that survives
+      reboot; check creation time vs intrusion window and the target's
+      legitimacy.
+    pivot: TargetPath
+negative: >-
+  Empty Recent/jumplist output usually means a per-user artifact gap (the
+  profile wasn't collected or the user never opened files via Explorer) —
+  CLI-launched and service-run files leave no LNK trail at all.
+confidence_rules:
+  high: LNK + matching target MFT/$I30 residue or foreign machine-id linking to a known device
+  medium: LNK exists but target evidence is gone (existence still proven)
+  low: jumplist entries consistent with ordinary app use
+mitre: [T1204.002, T1547.001, T1078]
+caveats:
+  - "LNK creation is user-driven — files opened by services, tasks, or scripts leave no LNK; absence proves nothing about machine actions."
+  - "A LNK proves the file was OPENED at least once — not that it was created on this host nor that it still exists."
+  - "Jumplist AppID names are hash-derived — resolve the AppID to the application before attributing usage."
+  - "Deleting a file does NOT delete its LNKs — stale LNKs pointing at long-gone paths are normal; use timestamps."

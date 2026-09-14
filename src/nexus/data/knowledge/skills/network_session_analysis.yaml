@@ -1,0 +1,75 @@
+# kb: CCD M7 (network forensics — Wireshark packet analysis, filtering,
+#      stream following), Malicious Packet Analysis (session profiling)
+# kb: d_db0d91434fd6 (HTB — beacon interval analysis), SEC530 Zeek/conn.log
+# kb: EIR (network evidence in investigation flow)
+skill: network_session_analysis
+title: Network session analysis — flows, byte asymmetry, session profiling
+description: >-
+  Analyze network telemetry like an examiner: profile sessions by duration,
+  byte asymmetry, port/protocol congruence, and periodicity — separating
+  interactive attacker sessions from beacon callbacks and bulk transfers.
+trigger:
+  families: [netstat, zeek, conn, dns, pcap, firewall, proxy]
+  keywords: [connection, session, flow, conn.log, zeek, bytes, duration, port, tcp, udp]
+  techniques: [T1071, T1041, T1571, T1021]
+steps:
+  - name: session_inventory
+    query: "ESTABLISHED OR conn.log OR netstat"
+    look_for: >-
+      Build the session inventory first: external destinations, internal
+      lateral flows, listening services. Zeek conn.log fields that matter:
+      duration, orig_bytes/resp_bytes, conn_state, service label.
+    pivot: RemoteAddress
+  - name: byte_asymmetry
+    query: "bytes OR orig_bytes OR resp_bytes OR sent"
+    look_for: >-
+      Byte asymmetry classifies the session: big-send/small-recv =
+      exfil or upload; small-send/big-recv = download/staging; uniform
+      small-both-ways at intervals = beacon; balanced interactive sizes =
+      hands-on session.
+    pivot: RemoteAddress
+    corroborate: byte profile + destination + interval = session class
+  - name: long_duration_sessions
+    query: "duration OR long OR persistent"
+    look_for: >-
+      Long-lived sessions to external IPs — interactive C2/webshell/
+      tunnel sessions stay open; normal client traffic churns. Sort by
+      duration and filter to rare destinations.
+    pivot: RemoteAddress
+  - name: port_protocol_mismatch
+    query: "443 OR 80 OR 53 OR 3389"
+    look_for: >-
+      Protocol/port incongruence: HTTP-shaped traffic on 443 that's
+      really a tunnel, DNS on non-53, RDP on unusual ports, cleartext
+      creds on 80. Zeek service labels vs port reveal the lie.
+    pivot: RemotePort
+  - name: dns_tunnel_volume
+    query: "dns OR query OR TXT OR NULL"
+    look_for: >-
+      DNS tunneling profile: query VOLUME per host (tunnels need
+      thousands), long/encoded subdomains, TXT/NULL record types, rare
+      resolver use. Compare per-host query counts — tunnels are
+      statistical outliers.
+    pivot: QueryName
+  - name: lateral_flows
+    query: "445 OR 3389 OR 5985 OR 135 OR 22"
+    look_for: >-
+      Internal lateral flows: SMB 445, RDP 3389, WinRM 5985/5986,
+      RPC 135, SSH 22 between workstation-class hosts — workstations
+      rarely talk to workstations on admin ports.
+    pivot: DestIp
+    corroborate: matching 4624 type-3/10 on the destination host
+negative: >-
+  No anomalous sessions, asymmetric flows, or beacon patterns → network
+  C2/exfil not evident. Encrypted channels still hide content — volume
+  and timing analysis survives encryption, content inspection does not.
+confidence_rules:
+  high: beacon intervals OR asymmetric exfil flow + matching endpoint artifact
+  medium: anomalous sessions without endpoint corroboration
+  low: rare external connections (could be legitimate SaaS)
+mitre: [T1071, T1041, T1571]
+caveats:
+  - "Netflow/conn logs show metadata not content — a 'clean' flow record says nothing about what was inside it."
+  - "NAT and proxies collapse source attribution — resolve the true client via load-balancer/proxy logs before blaming a host."
+  - "Legitimate backup/sync/replication produces large asymmetric flows — check schedule and destination ownership first."
+  - "Jittered beacons defeat interval-only detection — use variance analysis and byte-size uniformity together."

@@ -1,0 +1,98 @@
+# kb: d_eba2fc23f79a (FOR500 Registry-Analysis-Guide USB, canonical 8-step)
+# kb: d_ac4a49434e52 + d_df4631451b98 + d_227d1d04a989 + d_2886bd1a9271 + d_fd8636981fd0
+#     (CCD M5 T7 full USB chain: USBSTOR → setupapi → event logs → wrap-up table)
+# kb: d_eaf7ce666436 (13C WE 9 USB Forensics) | EIR CBE usbstor hits
+skill: usb_device_intrusion
+title: USB device intrusion — serial → GUID → drive letter → user → files
+description: >-
+  The FOR500 eight-step device chain: identify the device in USBSTOR by
+  serial, resolve VID/PID for make/model, map the volume GUID and drive
+  letter in MountedDevices, find the label via WPDBUSENUM, get first-connect
+  from setupapi.dev.log and System.evtx 20001, then attribute the user via
+  MountPoints2 and correlate file copies to the drive letter.
+trigger:
+  families: [recmd, registry, setupapi, evtx, evtxecmd, mftecmd, mft, hayabusa]
+  keywords: [usb, usbstor, removable, thumbdrive, setupapi, mounteddevices, vid, pid, 20001]
+  techniques: [T1091, T1092, T1052.001, T1200]
+steps:
+  - name: usbstor_serials
+    query: "usbstor"
+    look_for: >-
+      SYSTEM\ControlSet001\Enum\USBSTOR\<Disk&Ven&Prod&Rev>\<serial> — the
+      iSerialNumber is the device's unique key that ties every other
+      artifact together. The serial subkey's own timestamps bound first
+      connect / last connect / removal.
+    pivot: iSerialNumber
+    corroborate: use SYSTEM\Select\Current to confirm which ControlSet was live
+  - name: vid_pid_device_class
+    query: "enum\\usb OR vid_ OR pid_"
+    look_for: >-
+      Enum\USB\<VID_xxxx&PID_xxxx> — vendor/product IDs resolve make/model
+      (lookup VID/PID) and device class; a "Kingston" mass-storage VID is a
+      different risk than a keyboard-emulating HID (BadUSB/Rubber Ducky).
+    pivot: FriendlyName
+  - name: mounteddevices_guid_letter
+    query: "mounteddevices"
+    look_for: >-
+      SYSTEM\MountedDevices — search each \??\Volume{GUID} and \DosDevices\
+      drive-letter value's binary data for the device serial. Yields the
+      volume GUID AND the assigned drive letter for the serial.
+    pivot: VolumeGUID
+  - name: volume_label
+    query: "wpdbusenum OR windows portable devices OR friendlyname"
+    look_for: >-
+      Enum\SWD\WPDBUSENUM and SOFTWARE\Microsoft\Windows Portable Devices\
+      Devices FriendlyName — the human label (e.g. 'CYBERDEFENDERS-USB'),
+      useful for tying the device to known media or a named toolkit.
+    pivot: FriendlyName
+  - name: setupapi_first_connect
+    query: "file:setupapi"
+    look_for: >-
+      C:\Windows\inf\setupapi.dev.log — search the serial number: the entry
+      timestamp is the FIRST time the device was ever connected (LOCAL time —
+      convert before timeline merge). Predates all other artifacts.
+    pivot: iSerialNumber
+  - name: device_install_events
+    query: "20001 OR 20003 OR 10000"
+    look_for: >-
+      System.evtx 20001 (device installed) — created ONCE per device at
+      first connect, carries the serial. Pair its timestamp with 4624/4634
+      to find which user session was active at insertion.
+    pivot: SerialNumber
+    corroborate: event 20001 time + Security 4624 session → attribution
+  - name: mountpoints2_user
+    query: "mountpoints2"
+    look_for: >-
+      NTUSER\Software\Microsoft\Windows\CurrentVersion\Explorer\MountPoints2
+      — a subkey named for the volume GUID proves THAT user had the device
+      mounted. This is the per-user link in the chain.
+    pivot: VolumeGUID
+  - name: emdmgmt_volserial
+    query: "emdmgmt"
+    look_for: >-
+      SOFTWARE\Microsoft\WindowsNT\CurrentVersion\EMDMgmt — the volume
+      serial number (decimal → convert to hex) ties the device to shell-item
+      evidence (LNK targets, shellbags referencing the drive letter).
+  - name: files_to_device
+    query: "file:mft .lnk OR file:usn"
+    look_for: >-
+      After the drive letter is known, query MFT/USN/LNK for the letter's
+      path (e.g. E:\) — file creates/copies to the device in the session
+      window are the actual exfil action this whole procedure exists to
+      prove.
+    pivot: TargetPath
+negative: >-
+  No USBSTOR entries in the window means no new mass-storage device was
+  attached — but a previously-installed device can still have been used;
+  check MountedDevices/EMDMgmt against the session window before closing.
+  setupapi and 20001 mark first-ever connect only, not repeat use.
+confidence_rules:
+  high: serial → GUID → drive-letter → user chain complete + file writes to the letter
+  medium: device install artifacts without per-user attribution
+  low: USBSTOR serial present, no session/file correlation
+mitre: [T1091, T1092, T1052.001]
+caveats:
+  - "setupapi.dev.log timestamps are LOCAL time — merge them into a UTC timeline or your insert-time will drift by the zone offset."
+  - "Event 20001 fires only on FIRST connect per device — a reused attacker's own USB won't re-log; rely on MountPoints2/USN for repeat use."
+  - "Phone/Media devices (MTP/WPD) use different keys than USBSTOR mass-storage — check WPDBUSENUM for non-drive devices."
+  - "Virtual machines report virtual USB/disk devices (VMware tools) — exclude VID 0e0f-style virtual hardware before flagging."

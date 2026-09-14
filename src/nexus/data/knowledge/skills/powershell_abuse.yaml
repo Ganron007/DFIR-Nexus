@@ -1,3 +1,6 @@
+# kb: SpecterOps (offensive PowerShell tradecraft → detection inversion),
+#      13C WE (PowerShell logging/transcription artifacts),
+#      EIR (PowerShell abuse in investigation scenarios)
 skill: powershell_abuse
 title: PowerShell abuse — encoded commands, download cradles, script blocks
 description: >-
@@ -35,6 +38,14 @@ steps:
   - name: suspicious_modules
     query: "Invoke-Mimikatz OR PowerSploit OR PowerView OR Invoke-Expression"
     look_for: Offensive framework/module names in script blocks or args.
+  - name: transcription_artifacts
+    query: "transcript OR Start-Transcript OR .ps1"
+    look_for: >-
+      PowerShell transcription/console-history artifacts — ConsoleHost_history.txt
+      per user records interactive commands even when script-block logging is off;
+      transcript output files in user dirs capture full sessions.
+    pivot: FileName
+    corroborate: history file content vs 4104 script blocks — gaps indicate disabled logging
 negative: >-
   No encoded commands, cradles, or suspicious script blocks → PowerShell
   abuse unlikely; check cmd/wscript/mshta/python instead.

@@ -1,3 +1,6 @@
+# kb: CCD M5 (execution-artifact stack — Prefetch/ShimCache/AmCache/BAM/
+#      UserAssist/SRUM cross-validation), 13C WE 5 (execution analysis),
+#      FOR508.5 (timestomp/anti-forensic distortion of exec artifacts)
 skill: execution_anomaly
 title: Execution anomalies — suspicious parentage, unsigned binaries, LOLBins
 description: >-
@@ -38,6 +41,16 @@ steps:
     query: "svchost OR smss OR csrss OR wininit"
     look_for: System process names executing from non-System32 paths.
     corroborate: prefetch/amcache entry in user-writable path
+  - name: artifact_cross_validation
+    query: "prefetch OR shimcache OR amcache OR bam OR userassist OR srum"
+    look_for: >-
+      No single artifact is proof — cross-validate execution claims across
+      the stack: Prefetch (first/last run + count), AmCache (full path +
+      SHA1 + first-seen), ShimCache (path + mod time, proves presence not
+      exec), BAM (per-user exec + timestamp), UserAssist (GUI exec + run
+      count, ROT13 values), SRUM (process runtime + network bytes). An exec
+      claim backed by 2+ artifacts is far stronger than one.
+    corroborate: same binary appearing in prefetch AND amcache AND bam = robust execution evidence
 negative: >-
   No unsigned binaries or suspicious parentage → execution was clean;
   the compromise may be living-off-the-land only or in memory.

@@ -1,0 +1,83 @@
+# kb: d_ccca31a521af:c0076 (FOR508.4 — log2timeline + MFTEcmd mactime merge + psort recipe)
+# kb: d_ccca31a521af:c0086 (FOR508.4 — scope → pivot points → process → filter → analyze)
+# kb: d_ccca31a521af:c0083 (FOR508.4 — Timeline Explorer grid semantics, tagging, LIKE filters)
+# kb: d_8a9f22e58850 (CCD M5 file/folder activity) | 13C Linux mod 8 (fls/mactime/plaso)
+skill: timeline_construction
+title: Timeline construction — scope → pivot → merge sources → filter → analyze
+description: >-
+  FOR508's timeline discipline: determine scope from the case questions,
+  narrow pivot points (time-based or artifact-based), pick the right
+  process (filesystem timeline vs super-timeline), merge all parseable
+  sources into one ordered stream, then filter for data reduction —
+  hundreds of thousands of rows become a handful of pivots.
+trigger:
+  families: [mftecmd, mft, fls, plaso, log2timeline, psort, evtx, evtxecmd, hayabusa]
+  keywords: [timeline, supertimeline, mactime, plaso, log2timeline, psort, chronology, pivot]
+  techniques: [T1070, T1005]
+steps:
+  - name: determine_scope
+    query: "file:mft"
+    look_for: >-
+      Scope first: what questions must the timeline answer, and roughly
+      between which dates? FOR508's rule — identify that activity occurred
+      between date A and date B before building anything. Unscoped timelines
+      drown the examiner.
+  - name: narrow_pivot_points
+    query: "family:evtx 4624 OR 4688 OR 1102"
+    look_for: >-
+      Pivot points come in two forms — time-based (the closest known moment
+      around the incident) and artifact-based (a key file, account, or
+      object used in the activity). Choose your first pivots from the lead,
+      not by browsing rows.
+    pivot: TimeCreated
+  - name: choose_process
+    query: "file:mft OR file:bodyfile OR file:fls"
+    look_for: >-
+      Filesystem timeline (fls/MFTECmd bodyfile — fast, triage) when you can
+      predict the data needed; super-timeline (log2timeline over ALL parsers)
+      when you cannot. Triage cases usually start filesystem and graduate.
+  - name: merge_mft_into_plaso
+    query: "file:mft OR file:plaso"
+    look_for: >-
+      The FOR508 merge: log2timeline's filestat parser only covers files it
+      parses — append the FULL MFT by running MFTEcmd to mactime bodyfile
+      and importing it via the 'mactime' parser into the same .plaso store.
+      Result: event logs + registry + browser + the entire file system in
+      one sorted stream.
+    corroborate: psort -o l2tcsv with a date filter produces the review CSV
+  - name: filter_reduction
+    query: "family:hayabusa"
+    look_for: >-
+      Data reduction is the skill — hundreds of thousands of rows are
+      normal. Filter by the pivot window first, then by source type (USB
+      events, file-opened, program-executed), then by tag. You analyze a
+      fraction, never the whole stream.
+  - name: context_of_evidence
+    query: "file:evtx OR file:browser"
+    look_for: >-
+      Analyze by evidence context — the SANS 'Evidence of…' categories:
+      program execution, file download/opening, browser usage, external
+      device. Read each hit in context of its neighbors in the same minute,
+      not alone.
+    corroborate: adjacent rows within ±minutes usually reveal the action chain
+  - name: tag_and_export
+    query: "file:timeline"
+    look_for: >-
+      Tag rows of interest as you go (Timeline Explorer CTRL-T; our N7
+      bookmarks). The tagged subset — not the whole timeline — is what
+      findings and reports should cite.
+    pivot: FileName
+negative: >-
+  An empty timeline window is a coverage statement, not a clean bill —
+  check which families actually contributed events (a timeline with only
+  evtx rows says nothing about files). Note the contributing sources.
+confidence_rules:
+  high: same action corroborated by ≥2 independent sources in the same minute
+  medium: single-source sequence consistent with the hypothesis
+  low: timing coincidence only — no artifact linkage
+mitre: [T1070]
+caveats:
+  - "Normalize EVERYTHING to UTC before merging — setupapi is local-time, browsers are µs-epochs, evtx is UTC; mixed zones silently corrupt sequence."
+  - "A timestamp is only as meaningful as its type — file-created vs file-modified vs entry-created mean different things; read the 'type'/'desc' columns, not just the time."
+  - "Filtering is reduction, not deletion — always record the filter applied so another examiner can reproduce the view."
+  - "Filesystem timeline ≠ super timeline — the bodyfile has no event-log/registry/browser content; don't claim 'the timeline shows no logons' from a filestat-only stream."

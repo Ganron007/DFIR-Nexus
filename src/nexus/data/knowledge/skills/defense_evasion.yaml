@@ -1,3 +1,7 @@
+# kb: d_a1d3c2f01b9b:c0047 (FOR508.5 — timestomp detection: $SI<$FN creation,
+#      all-zero fractional seconds, compile-vs-file times, ShimCache-vs-mod,
+#      MFT record-number proximity vs legitimate System32 neighbors)
+# kb: FOR508.5 (anti-forensics limits), SpecterOps (evasion TTPs)
 skill: defense_evasion
 title: Defense evasion — AV disable, timestomp, masquerading, process injection
 description: >-
@@ -16,8 +20,15 @@ steps:
     pivot: CommandLine
   - name: timestomp
     query: "timestomp OR -M \" OR Copy-Item -Destination"
-    look_for: Timestomp tool runs or timestamp manipulation in mft/usn.
+    look_for: >-
+      Timestomp tool runs or timestamp manipulation — detect via the
+      FOR508 4-check method on the suspect file: (1) $SI creation time
+      EARLIER than $FN creation time (copied timestamps only hit $SI);
+      (2) all-zero fractional seconds on $SI times (manual stamps lack
+      sub-second precision); (3) PE compile time AFTER file creation/mod
+      times; (4) ShimCache last-modified AFTER file mod time.
     pivot: FileName
+    corroborate: MFT record number far outside the range of legitimate same-dir files (masqueraded files get created later → distant record numbers — sort MFTECmd output by record number, not just time)
   - name: masquerading
     query: "svchost.exe OR smss.exe OR csrss.exe OR lsass.exe"
     look_for: >-

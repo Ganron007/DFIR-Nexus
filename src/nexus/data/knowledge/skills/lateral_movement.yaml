@@ -1,3 +1,7 @@
+# kb: d_25b6cf33456b (13Cubed WE 21 — SMB/RDP/WMI/PsExec/UAL lateral movement)
+# kb: d_2703d82b642c (EIR CH4-2 — interactive artifacts: user-profile creation
+#      proves interactive logon even without event-log evidence)
+# kb: d_a1d3c2f01b9b (FOR508.5 — anti-forensics; residual artifacts survive)
 skill: lateral_movement
 title: Lateral movement (SMB / WinRM / RDP / psexec)
 description: >-
@@ -30,8 +34,31 @@ steps:
     pivot: ParentImage
   - name: rdp_sessions
     query: "4778 OR 4779 OR TerminalServices"
-    look_for: RDP session connect/reconnect events with foreign source hosts.
+    look_for: >-
+      RDP session connect/reconnect events with foreign source hosts. The
+      TerminalServices-LocalSessionManager / RemoteConnectionManager /
+      RdpClientTS logs form per-scenario chains (successful logon, failed
+      logon, disconnect-with-close vs start-disconnect, reconnect, logoff) —
+      profile the whole chain, not one ID.
     pivot: IpAddress
+  - name: ual_client_access
+    query: "current.mdb OR user access logging OR sum.mdb"
+    look_for: >-
+      User Access Logging (Windows Server 2012+ default;
+      C:\Windows\System32\LogFiles\SUM\current.mdb + GUID-named ESE dbs) —
+      the TARGET-side ledger: which client IPs + authenticated identities
+      connected to which server roles, first/last seen. Profiles lateral
+      movement inbound to this server even when EVTX is thin.
+    pivot: ClientIP
+    corroborate: UAL identity ↔ 4624 TargetUserName from the same client IP
+  - name: interactive_artifacts
+    query: "user profile OR C:\\Users\\ OR ProfileImagePath"
+    look_for: >-
+      Interactive-access artifacts that outlive log events: a new user
+      profile directory / ProfileList entry proves an interactive logon
+      happened even if event evidence was cleared; LNK + RecycleBin +
+      registry MRU under that profile prove hands-on activity.
+    corroborate: profile-creation timestamp vs 4624/log-clearing window
   - name: remote_scheduled_task
     query: "schtasks /s OR 106 OR 140"
     look_for: Remote scheduled task registration (SchRpc 106) or schtasks /s.
@@ -47,3 +74,5 @@ mitre: [T1021, T1569.002, T1047]
 caveats:
   - "File-server and admin activity legitimately produces 4624 type-3 — corroborate with share/service/task artifacts."
   - "psexesvc can be renamed — look for unsigned/random service names, not just the literal string."
+  - "UAL is server-only (2012+) and role-granular — it names the role accessed, not the command run; absent UAL data is not absent movement."
+  - "Cleared Security.evtx does not erase interactive-access artifacts — check profile creation, LNKs, and registry MRU before calling 'no hands-on'."

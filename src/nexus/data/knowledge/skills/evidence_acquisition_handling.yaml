@@ -1,0 +1,75 @@
+# kb: d_c3895644afa2 (CCD M4 T1 Acquisition) | d_670ea514a8d5 (CCD M4 write-blocking)
+# kb: d_38a16f4d6b23 (CCD M4 T3 KAPE triage) | d_593853059137 (CCD M4 memory acq)
+# kb: d_22a1280d0b7d (CCD M4 Wrapping up — canonical acquisition order)
+# kb: BTL1 M5 (order of volatility, chain of custody, live acquisition)
+skill: evidence_acquisition_handling
+title: Evidence acquisition & handling — volatility order, imaging, hashing, custody
+description: >-
+  How evidence enters the case correctly: acquire in volatility order
+  (memory first, then triage, then disk), check encryption before pulling
+  power, use write-blockers for dead acquisition, hash the image
+  immediately, and maintain chain of custody from seizure to report.
+trigger:
+  families: [vol, kape, ingest]
+  keywords: [acquisition, image, triage, kape, write blocker, chain of custody, hash, sha256, memory, volatility]
+  techniques: [T1005]
+steps:
+  - name: order_of_volatility
+    query: "memory OR hiberfil OR pagefile OR crash"
+    look_for: >-
+      Acquire most-volatile first: RAM (running processes, connections,
+      encryption keys, fileless malware exists ONLY here), then
+      hiberfil/pagefile/crash dumps for powered-off machines, then disk.
+      A clean shutdown destroys volatile evidence — pull power, don't
+      shut down.
+    pivot: ImagePath
+  - name: encryption_check
+    query: "bitlocker OR encryption OR encrypted"
+    look_for: >-
+      Before pulling power, check for drive encryption — an encrypted disk
+      acquired dead is unreadable; an encrypted host acquired live (memory +
+      logical triage) preserves everything. Magnet Encrypted Disk Detector
+      or manage-bde status answers it.
+    corroborate: encrypted → live acquisition is mandatory, not optional
+  - name: triage_first
+    query: "file:kape OR triage"
+    look_for: >-
+      Triage image (KAPE targets) — the high-value artifact subset
+      (registry hives, $MFT, event logs, prefetch, browser profiles)
+      collected in minutes when a multi-terabyte disk image isn't feasible.
+      Triage ≠ lesser evidence — it's prioritized evidence.
+    pivot: TargetPath
+  - name: write_blocked_disk
+    query: "write block OR tableau OR e01 OR raw image"
+    look_for: >-
+      Dead-disk acquisition goes through a forensic write-blocker to E01/
+      raw — the acquisition log (tool, settings, start/finish times) is part
+      of the evidence record, not an afterthought.
+  - name: hash_on_acquire
+    query: "sha256 OR md5 OR hash"
+    look_for: >-
+      Hash the image immediately after acquisition (SHA-256 preferred) and
+      again at verification — acquisition hash vs verification hash proving
+      the copy is intact is what makes it a 'forensic copy'.
+    pivot: SHA256
+  - name: chain_of_custody
+    query: "custody OR seized OR collected"
+    look_for: >-
+      Chain of custody from seizure onward — who collected, when, where,
+      how stored, every transfer. Courts and clients both ask the same
+      question: can you prove this evidence is the same bits you took?
+    corroborate: custody gaps are attackable in court regardless of technical quality
+negative: >-
+  Missing acquisition records (no hash, no custody log, no tool version)
+  doesn't make analysis wrong — it makes it unverifiable. Flag provenance
+  gaps explicitly in the report rather than implying verification.
+confidence_rules:
+  high: hash-verified image + complete custody record + tool log
+  medium: hashed evidence with partial custody documentation
+  low: unverifiable copy — analysis valid, provenance weak
+mitre: [T1005]
+caveats:
+  - "Power state decides the procedure: powered-on encrypted → live-triage BEFORE shutdown; powered-off → hiberfil/pagefile may still hold memory."
+  - "Never acquire to or analyze on the source media — writes to the evidence disk contaminate unallocated space."
+  - "A triage image is not a disk image — say which one a finding came from; 'disk shows no X' is only valid for the scope actually acquired."
+  - "Record the tool AND version — parser behavior changes between releases; reproducibility requires the exact toolchain."

@@ -1,3 +1,7 @@
+# kb: d_ae743ea2444d:c0082 (FOR528 — dominant IAB vectors: exposed RDP,
+#      border-device exploit, phishing, purchased access/creds)
+# kb: EIR CH4-2 (LNK interactive artifacts), FOR500 (LNK/MOTW parsing),
+#      CCD M5 (execution-artifact corroboration chain)
 skill: initial_access
 title: Initial access — LNK / MSI / CHM / HTML smuggling / macro
 description: >-
@@ -40,6 +44,15 @@ steps:
     query: "explorer.exe cmd.exe OR explorer.exe powershell.exe OR explorer.exe mshta.exe"
     look_for: Script interpreters parented by explorer.exe near payload arrival.
     pivot: CommandLine
+  - name: iab_vector_check
+    query: "rdp OR 4625 OR edge OR vpn OR exchange"
+    look_for: >-
+      If no user-execution artifact explains entry, check the four dominant
+      IAB vectors: exposed internet-facing RDP (most common ransomware/
+      intrusion entry — external 4624 type-10), border-device/VPN exploit,
+      phishing delivery, and purchased credentials (valid-account logon
+      with no payload artifact at all).
+    corroborate: external-IP logon preceding first malicious activity by hours/days
 negative: >-
   No LNK/MSI/CHM artifacts and no office-spawn chains → initial access likely
   arrived through a different vector (exposed service, creds, drive-by).

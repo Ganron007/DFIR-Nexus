@@ -1,0 +1,80 @@
+# kb: d_8081577ff5db (SANS Linux IR poster — auth.log/secure/utmp/wtmp/btmp,
+#      $HISTFILE limits: live-system only, written on shell exit, order
+#      unreliable; /etc/passwd, resolv.conf checks)
+# kb: d_ff8a3b9b0042 (13C Linux 6 — systemd timer/service persistence:
+#      OnCalendar=hourly, one-shot ExecStart exfil service)
+# kb: 13C Linux Devices (pslist/MalFind on Linux memory, live response)
+skill: linux_compromise
+title: Linux compromise — auth logs, persistence, history, systemd
+description: >-
+  Investigate a Linux host: authentication logs (auth.log/secure, binary
+  utmp/wtmp/btmp), shell-history forensics with its documented limits,
+  systemd/cron persistence, unexpected accounts, and memory-resident
+  malware via Linux.MalFind.
+trigger:
+  families: [linux, syslog, authlog, journal, bash, memory]
+  keywords: [linux, ssh, auth.log, cron, systemd, bash_history, persistence, root, sudo, wtmp]
+  techniques: [T1053.003, T1543.002, T1078, T1059.004, T1070.002]
+steps:
+  - name: auth_log_analysis
+    query: "auth.log OR secure OR Failed password OR Accepted"
+    look_for: >-
+      Authentication logs first: auth.log/secure for failed→accepted
+      sequences (brute-force then success), logins at odd hours/from
+      foreign IPs, sudo usage. utmp/wtmp/btmp are BINARY — parse with
+      last/lastb, don't grep them.
+    pivot: user
+    corroborate: failed-login burst from IP X followed by accepted login = credential attack path
+  - name: shell_history
+    query: "history OR .bash_history OR $HISTFILE"
+    look_for: >-
+      Shell history shows intent — but know its documented limits:
+      $HISTFILE only exists on a live system, is written only on shell
+      EXIT (attackers' sessions may never flush), ordering is unreliable,
+      and attackers clear it. Absence of history ≠ absence of commands.
+    pivot: FileName
+    corroborate: history entries ↔ auth.log session ↔ file-timestamp corroboration
+  - name: persistence_mechanisms
+    query: "cron OR systemd OR .timer OR ExecStart"
+    look_for: >-
+      Linux persistence: crontab files (per-user spool + /etc/cron.*),
+      systemd services AND TIMERS (OnCalendar= — 13C example: a
+      'one-shot' ExecStart exfil service fired hourly by its .timer),
+      rc.local, bashrc/profile hooks, SSH authorized_keys additions.
+    pivot: FileName
+  - name: account_anomalies
+    query: "passwd OR /etc/passwd OR sudoers OR useradd"
+    look_for: >-
+      /etc/passwd for unexpected accounts (UID 0 backdoor users), sudoers
+      modifications, authorized_keys additions — account artifacts
+      persist after the attacker's session ends.
+    pivot: user
+  - name: process_memory_check
+    query: "pslist OR malfind OR /proc OR kmem"
+    look_for: >-
+      Linux memory analysis: Linux.PsList/Linux.MalFind for process
+      enumeration and injected/executable-anonymous memory — fileless
+      Linux malware lives in /dev/shm, memfd, or injected regions.
+    pivot: ProcessName
+  - name: log_integrity
+    query: "log cleared OR journald OR syslog OR auditd"
+    look_for: >-
+      Anti-forensics on Linux: truncated log files, journald vacuumed,
+      auditd rules removed, syslog forwarded-then-deleted. Check for
+      gaps in sequential log numbering and journal integrity.
+    corroborate: gap between last-clean and first-new log entries
+negative: >-
+  No auth anomalies, persistence artifacts, or history evidence → Linux
+  compromise not evident in collected telemetry. Note: minimal installs
+  and containers ship sparse logging — absence may be configuration, not
+  cleanliness.
+confidence_rules:
+  high: brute-force→success + persistence artifact + exec corroboration (history/persistence contents)
+  medium: suspicious auth + one persistence mechanism without exec proof
+  low: single odd login (legitimate remote admin plausible)
+mitre: [T1053.003, T1543.002, T1078, T1059.004]
+caveats:
+  - "Shell history is unreliable by design — flushed only on shell exit, easily cleared, ordering not guaranteed. Never claim 'no commands ran' from empty history."
+  - "utmp/wtmp/btmp are binary databases — strings/grep corrupts interpretation; use last/lastb/utmpdump."
+  - "systemd .timer + .service pairs must be checked TOGETHER — a benign-looking service gains schedule from its timer."
+  - "Containers/VMs may forward logs to syslog/journald remotely — check local AND forwarded stores before calling gaps."

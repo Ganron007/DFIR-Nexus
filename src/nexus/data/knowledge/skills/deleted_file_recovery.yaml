@@ -1,0 +1,86 @@
+# kb: d_b9688153219b (CCD M5 T5 Deleted Files) | d_49603464d6ed (13C WE 27 Recycle Bin)
+# kb: d_c00494133f2d (13C WE 28 Permanent Deletion) | d_4a20e905aac2 (13C WE 26 $I30)
+# kb: d_cfd6f88504b6 (CCD M5 $UsnJrnl) | d_260233cb3d09 (13C WE 29 LNK residue)
+skill: deleted_file_recovery
+title: Deleted-file recovery — Recycle Bin, $I30 slack, USN deletes, carving
+description: >-
+  Prove what was deleted, when, and by which path. Deletion is layered:
+  Recycle Bin preserves content+metadata, USN records the delete reason,
+  $I30 slack keeps the name+timestamps, freed MFT records/clusters persist
+  until reuse — and LNK files still point at targets that are gone.
+trigger:
+  families: [rbcmd, mftecmd, mft, usn, fls, recmd, registry]
+  keywords: [deleted, recycle, $i, $r, carving, unallocated, removed, wiped, sdelete]
+  techniques: [T1070.004, T1485, T1564]
+steps:
+  - name: recycle_bin_i_files
+    query: "file:rbcmd OR $i"
+    look_for: >-
+      $Recycle.Bin\<SID>\$I* files (RBCmd) — each $I metadata file records
+      the original full path and the deletion timestamp; the paired $R file
+      holds recoverable content. Vista+ format; XP-era INFO2 is legacy.
+    pivot: FileName
+    corroborate: owning SID identifies which user deleted it
+  - name: usn_delete_reasons
+    query: "file:usn delete"
+    look_for: >-
+      USN journal Delete/Close+Delete reasons with the file reference number
+      — proves WHEN the record was freed even after the $I file is gone.
+      Pair with the parent path to state what directory lost the file.
+    pivot: FileName
+  - name: i30_slack_names
+    query: "file:i30"
+    look_for: >-
+      $I30 slack residue — filename + size + full timestamp set for files
+      whose MFT records were already reused. The strongest evidence a file
+      once existed in that directory.
+    pivot: FileName
+  - name: freed_mft_records
+    query: "file:mft"
+    look_for: >-
+      MFT records flagged not-in-use — for non-resident files the data runs
+      still point at freed clusters whose content survives until reuse;
+      resident-file data (<~600-700 bytes) may sit inside the record itself.
+    pivot: FileName
+    corroborate: resident-data recovery yields small scripts/configs intact
+  - name: search_index_ghost
+    query: "windows.db OR windows.edb OR file:search"
+    look_for: >-
+      Windows Search index (Windows.edb) — records persist for deleted
+      files until the index rebuilds; proves existence AND content snippets
+      even when MFT/USN are exhausted.
+  - name: lnk_ghost_targets
+    query: "file:lnk OR .lnk"
+    look_for: >-
+      LNK files outlive their targets — a .lnk in Recent proves the target
+      path existed and was opened, even after the file is gone. Its
+      internal timestamps bound the last-access window.
+    pivot: TargetPath
+  - name: shadow_copies
+    query: "vss OR shadow OR System Volume Information"
+    look_for: >-
+      Volume Shadow Copies — pre-deletion snapshots may retain the file
+      intact; enumerate vssadmin/vssadmin list shadows age vs the delete
+      window before concluding content is unrecoverable.
+  - name: secure_delete_tools
+    query: "sdelete OR cipher /w OR bcwipe OR file_wipe"
+    look_for: >-
+      Execution of wiping tools (sdelete, cipher /w, BCWipe) — prefetch/
+      execution artifacts for the tool date-bound when recovery became
+      impossible and who made it so.
+    pivot: CommandLine
+negative: >-
+  No Recycle Bin entries and no $I30 residue in the target path means either
+  the file was deleted perma (Shift+Del/CLI del) — which still leaves USN
+  reasons — or the volume's artifacts were not collected. State which layer
+  was actually checked.
+confidence_rules:
+  high: $I file or $I30 residue + matching USN delete reason (what + when, two layers agree)
+  medium: USN delete reason alone, or LNK ghost target with access timestamp
+  low: inference from MFT gaps or missing-index entries
+mitre: [T1070.004, T1485, T1564]
+caveats:
+  - "Recycle Bin is per-user — a SYSTEM-context delete (task/service) may leave no $I file under any user SID; check USN first."
+  - "Shift+Delete and CLI del bypass the Recycle Bin entirely — absence of $I files is expected, not exonerating."
+  - "Carving window is time-dependent — freed clusters are reused by allocation pressure; state the collection lag."
+  - "Secure-delete tools overwrite content but still leave MFT/USN metadata — a wipe proves intent, not erasure of the filename record."

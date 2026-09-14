@@ -1,0 +1,97 @@
+# kb: d_4ea0cb762d91 (CCD M5 T1 Event Logs) | d_05d2b1a9b00c (13C Event Log cheat sheet)
+# kb: d_6e150c2cd3ed (HTB Windows Event Logs & Finding Evil — ETW/Get-WinEvent/Sysmon)
+# kb: 13Cubed WE mod 3 (Fundamentals/In-depth/Tools)
+skill: windows_event_log_analysis
+title: Windows event-log triage — Security/System/Sysmon by hypothesis
+description: >-
+  Systematic event-log examination: inventory the logs present, map the
+  hypothesis to the event IDs that prove it, then correlate across channels.
+  Security.evtx answers who/when; Sysmon answers what-ran-where; System and
+  Application answer install/driver/service context.
+trigger:
+  families: [evtx, evtxecmd, hayabusa, chainsaw, suzaku, security, sysmon]
+  keywords: [evtx, event log, eventid, logon, 4624, 4625, 4688, 1102, 7045, 5140, audit]
+  techniques: [T1070, T1078, T1021, T1059, T1562]
+steps:
+  - name: process_creation
+    query: "4688 OR event:1 family:evtx"
+    look_for: >-
+      Security 4688 (audited process creation) and Sysmon EID 1 — full
+      command line, parent process, user. The primary execution ledger when
+      prefetch is absent. NewProcessName + CommandLine + ParentProcessName.
+    pivot: CommandLine
+    corroborate: creator-process trees reveal the launch chain (who spawned the suspicious child)
+  - name: logon_sessions
+    query: "4624 OR 4625"
+    look_for: >-
+      4624 logons with LogonType: 2 interactive, 3 network, 7 unlock,
+      10 remote-interactive (RDP), 11 cached-interactive. 4625 failures in
+      bursts indicate brute force or password spray. Pair with 4634/4647
+      logoffs to bound session duration.
+    pivot: IpAddress
+    corroborate: type-3/type-10 logons from unexpected sources precede lateral movement
+  - name: explicit_credentials
+    query: "4648"
+    look_for: >-
+      4648 explicit-credential logons (RunAs, net use /user:, scheduled-task
+      principal) — attacker moving between accounts. Source process +
+      target account + source host identify the pivot direction.
+    pivot: AccountName
+  - name: kerberos_activity
+    query: "4768 OR 4769 OR 4771 OR 4776"
+    look_for: >-
+      Kerberos 4768 TGT requests, 4769 service tickets (RC4-encrypted service
+      tickets on user accounts = Kerberoasting shape), 4771 pre-auth failures,
+      4776 NTLM validation on the DC.
+    pivot: ServiceName
+  - name: share_access
+    query: "5140 OR 5145"
+    look_for: >-
+      5140/5145 network-share access — ADMIN$/C$/IPC$ reads followed by file
+      writes is the classic remote-copy + remote-exec staging pattern.
+      SourceAddress identifies the lateral origin.
+    pivot: ShareName
+  - name: task_and_service
+    query: "4698 OR 4702 OR 7045 OR 7036"
+    look_for: >-
+      4698/4702 scheduled-task create/update (System Security channel on the
+      host) and System 7045 service install + 7036 state changes — attacker
+      persistence or remote-exec scaffolding.
+    pivot: ServiceName
+  - name: audit_tampering
+    query: "1102 OR 104"
+    look_for: >-
+      Security 1102 (log cleared) and System 104 (event log cleared,
+      including non-Security logs) — anti-forensics; the clearing event
+      itself records the account that ran it.
+    pivot: Channel
+  - name: account_management
+    query: "4720 OR 4722 OR 4726 OR 4732 OR 4738"
+    look_for: >-
+      4720 account created, 4722 enabled, 4726 deleted, 4732 added to
+      privileged group, 4738 changed — attacker account scaffolding and
+      privilege escalation.
+    pivot: TargetUserName
+  - name: sysmon_core
+    query: "family:sysmon"
+    look_for: >-
+      Sysmon operational log — EID 1 process create, 3 network connect,
+      7 image load, 8 CreateRemoteThread, 10 ProcessAccess, 11 file create,
+      12/13/14 registry, 22 DNS query. Coverage depends on the deployed
+      config — check which IDs are actually present.
+    pivot: EventID
+negative: >-
+  Empty event-log windows mean either no activity or a logging/collection
+  gap — verify auditing was enabled (4688 is off by default on many builds)
+  and that collection captured Security.evtx, not just forwarded channels.
+  Hayabusa/Chainsaw silence is not proof of clean.
+confidence_rules:
+  high: corroborated across two channels (e.g. 4624 type-10 + RDP session in TerminalServices log)
+  medium: single-channel event with attacker-shaped attributes (count, parent, source)
+  low: event plausible in routine admin activity — needs host context
+mitre: [T1070, T1078, T1021, T1059, T1562]
+caveats:
+  - "Security 4688 and Sysmon are config-dependent — absence of process rows is a coverage gap before it is evidence of absence (FD-004 analogue)."
+  - "Event IDs mean different things by channel and version — a 4625 on the DC (4776 path) differs from a workstation lockout; always read LogonType/Status subcodes."
+  - "Forwarded/collected logs may have deduplication or time-skew — normalize to UTC before cross-host correlation."
+  - "wevtutil clear emits its own 1102 — the absence of a 1102 does not prove logs were not deleted at the file level."

@@ -1,0 +1,79 @@
+# kb: d_4ef76ae987e4:c0047 (FOR508.3 — Deep Panda/APT19 webshell case:
+#      w3wp.exe spawning net.exe→net1/ipconfig/arp/whoami/sc chain;
+#      webshell = HTTP-enabled backdoor, rogue ASP/PHP page)
+# kb: EIR webshell hunting, CCD M7 (web log analysis), HTB DefSec
+skill: webshell_investigation
+title: Webshell investigation — IIS/Apache exec chains, web log correlation
+description: >-
+  Hunt webshells: the web-server worker process spawning OS commands is
+  the canonical signature. Correlate access-log POSTs to rogue pages,
+  file-write artifacts in web roots, and the worker-process exec chain.
+trigger:
+  families: [iis, apache, weblogs, evtx, sysmon, mft, usn, memory]
+  keywords: [webshell, w3wp, iis, aspx, php, china chopper, backdoor, upload, webserver]
+  techniques: [T1505.003, T1106, T1059]
+steps:
+  - name: worker_process_exec
+    query: "w3wp.exe OR httpd OR nginx OR php-cgi"
+    look_for: >-
+      THE canonical webshell signal: web worker process spawning OS
+      commands — w3wp.exe → cmd/net/whoami/ipconfig/sc; httpd/nginx/
+      php-cgi → sh/bash. Web workers don't run OS commands in normal
+      operation; any child process is suspect.
+    pivot: ParentImage
+    corroborate: child commands match recon/lateral patterns (net, whoami, ipconfig, arp, sc)
+  - name: access_log_correlation
+    query: "POST OR .aspx OR .php OR 200 OR upload"
+    look_for: >-
+      IIS/Apache access logs: POSTs to a single page from one/few source
+      IPs, especially a page that was never requested before — webshell
+      pages get hit only by their operator. Check response sizes
+      (command output), user agents, and timing vs the exec chain.
+    pivot: URI
+    corroborate: POST time to page X ↔ w3wp child-process time ± seconds
+  - name: webroot_file_writes
+    query: "inetpub OR wwwroot OR .aspx OR .ashx OR .jsp"
+    look_for: >-
+      New/modified script files in web roots (inetpub\wwwroot, site dirs)
+      — MFT/USN shows the drop time. Webshells are tiny (China Chopper
+      = 1 line); look for recently-written .aspx/.ashx/.php/.jsp that
+      nobody deployed.
+    pivot: FileName
+    corroborate: file creation ↔ first POST in access log ↔ first exec event = deployment timeline
+  - name: upload_vector
+    query: "upload OR PUT OR MOVE OR filewrite"
+    look_for: >-
+      How did it get there? Exploited upload functionality, WebDAV PUT,
+      vulnerable plugin, or dropped via prior RCE. Check access logs for
+      PUT/upload endpoints and the app-vuln window before the file write.
+    pivot: URI
+  - name: in_memory_detection
+    query: "w3wp OR aspx OR webshell"
+    look_for: >-
+      Memory-side: malfind/VAD anomalies inside w3wp, injected handlers,
+      or the exec chain visible in process memory — catches
+      fileless/memory-resident webshells that leave no webroot artifact.
+    pivot: ProcessName
+  - name: post_exploit_chain
+    query: "net.exe OR whoami OR ipconfig OR sc.exe OR certutil"
+    look_for: >-
+      Post-webshell commands are noisy and predictable — net user/group,
+      whoami, ipconfig, arp, sc query, certutil downloads. The FOR508.3
+      Deep Panda chain (w3wp→net1/ipconfig/arp/whoami/sc) is the
+      textbook sequence.
+    pivot: CommandLine
+negative: >-
+  Clean worker-process trees + no rogue-page POSTs + no webroot writes →
+  webshell unlikely on this server. Caveat: memory-only webshells and
+  framework-integrated backdoors (evil IIS modules, ISAPI filters) leave
+  no page-file artifact — check module/config artifacts too.
+confidence_rules:
+  high: w3wp exec chain + matching POST-to-page + webroot write in the window
+  medium: exec chain without confirmed page (in-memory shell) or page without exec
+  low: single suspicious POST (scanner/probe noise)
+mitre: [T1505.003, T1106]
+caveats:
+  - "IIS logs can lag or be disabled — missing access-log evidence doesn't clear the exec chain evidence."
+  - "Some admin tools and health checks POST to endpoints — verify the page path isn't a legitimate handler."
+  - "A cleaned webroot doesn't mean no webshell — check USN journal + memory for the deleted file."
+  - "China Chopper-class shells are single-line eval stubs — size-based hunting misses them; behavioral (exec chain) hunting catches them."

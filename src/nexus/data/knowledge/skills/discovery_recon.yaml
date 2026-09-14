@@ -1,3 +1,8 @@
+# kb: d_c45cc28b4bdd:c0004 (EIR attack lifecycle — Internal Recon phase:
+#      critical-system identification, system enumeration, account/password
+#      enumeration) | d_f9d99a1b61b6:c0001 (EIR recon command set:
+#      net localgroup, net group /domain, net sessions, quser, net file)
+# kb: EIR M4 (discovery hunting), CCD M8 (threat-hunt enumeration patterns)
 skill: discovery_recon
 title: Discovery — recon commands and internal enumeration
 description: >-
@@ -29,6 +34,14 @@ steps:
   - name: domain_enum
     query: "nltest /dclist OR dsquery OR net group \"Domain Admins\""
     look_for: Domain-controller listing and privileged-group enumeration.
+    pivot: CommandLine
+  - name: session_file_enum
+    query: "net session OR net file OR quser OR qwinsta"
+    look_for: >-
+      Session/share enumeration — net session, net file, quser/qwinsta.
+      EIR's recon set: attackers enumerate who is logged on and what files
+      are open before moving — these commands map live sessions and open
+      handles, not just static config.
     pivot: CommandLine
   - name: tasklist_scan
     query: "tasklist OR tasklist /svc OR qprocess"

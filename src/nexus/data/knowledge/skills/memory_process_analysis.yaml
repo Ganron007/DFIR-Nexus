@@ -1,0 +1,86 @@
+# kb: d_cc664515f00d:c0002 (13C WM — MemProcFS/Volatility pstree traversal,
+#      circular doubly-linked EPROCESS list; DCOM-spawned processes escape
+#      the linked list — a pslist/pstree blind spot)
+# kb: d_13ccd9bc5c30 (13C WM — malfind: most important plugin for malware
+#      detection), d_577bf6a10f8a (process hollowing class)
+# kb: d_4ef76ae987e4:c0047 (FOR508.3 — w3wp.exe → net.exe/net1/ipconfig/
+#      arp/whoami/sc chain = webshell exec in memory, Deep Panda case)
+skill: memory_process_analysis
+title: Memory process analysis — enumeration, injection classes, hollowing
+description: >-
+  Work a memory image like an examiner: enumerate the process tree, check
+  parent/child sanity, hunt hidden/unlinked processes, then classify code
+  injection (classic inject, hollowing, APC, atom bombing) before dumping
+  suspicious processes for deeper analysis.
+trigger:
+  families: [vol, memprocfs, memory, evtx, sysmon]
+  keywords: [memory, volatility, memprocfs, pslist, pstree, malfind, injection, hollow, dump, ram]
+  techniques: [T1055, T1055.001, T1055.012, T1059]
+steps:
+  - name: process_enumeration
+    query: "pslist OR pstree OR svchost OR explorer.exe"
+    look_for: >-
+      Baseline the process tree: walk Windows.PSTree/pslist output —
+      every process under a sane parent (explorer for user apps,
+      services.exe for services, svchost under services, wininit/csrss/
+      smss at root). Sanity-check counts: lone svchosts, duplicate
+      lsass/csrss, user processes parented by services.exe.
+    pivot: ProcessName
+    corroborate: parent/child chain — process exists but parentage impossible = inject/DCOM
+  - name: hidden_process_check
+    query: "psxview OR psscan OR unlink"
+    look_for: >-
+      Cross-view detection: psxview/psscan compares multiple enumeration
+      methods — a process visible in psscan but missing from pslist/
+      pstree was UNLINKED (DKOM hiding). Also note: DCOM-spawned
+      processes legitimately escape the linked list, so absence from the
+      tree alone is not proof — corroborate with psscan.
+    pivot: ProcessName
+  - name: injection_classification
+    query: "malfind OR VAD OR PAGE_EXECUTE_READWRITE"
+    look_for: >-
+      malfind finds injected code via VAD anomalies — private
+      PAGE_EXECUTE_READWRITE regions with no file backing. Classify the
+      injection: classic VirtualAllocEx+WriteProcessMemory+CreateRemoteThread,
+      process hollowing (legit process spawned suspended, image replaced),
+      APC injection, or process doppelganging. Each leaves different
+      VAD/PEB residue.
+    pivot: ProcessName
+  - name: webshell_exec_chain
+    query: "w3wp.exe OR net.exe OR whoami.exe OR ipconfig.exe"
+    look_for: >-
+      On web servers: w3wp.exe (IIS worker) spawning net.exe, whoami.exe,
+      ipconfig.exe, sc.exe, cmd.exe = webshell command execution — the
+      worker process becomes an HTTP-enabled backdoor. (FOR508.3 Deep
+      Panda case: w3wp→net1/ipconfig/arp/whoami/sc chain.)
+    pivot: ParentImage
+    corroborate: IIS logs showing POSTs to the rogue page in the same window
+  - name: credential_material
+    query: "lsass.exe OR mimikatz OR wdigest OR sekurlsa"
+    look_for: >-
+      Credential material lives in memory: lsass.exe injected threads,
+      unexpected open handles, mimikatz/sekurlsa strings, wdigest
+      plaintext artifacts — memory proves theft disk artifacts miss.
+    pivot: ProcessName
+  - name: dump_for_analysis
+    query: "procdump OR memdump OR .dmp OR dlldump"
+    look_for: >-
+      Suspicious processes get dumped (procdump/memdump/dlldump) for
+      string/YARA/decompile analysis — the dump is evidence, record its
+      hash and the source PID/offset.
+    pivot: ProcessName
+negative: >-
+  Clean tree + no VAD anomalies + no cross-view gaps → memory shows no
+  active compromise at capture time. Dormant/dead-code implants and
+  fileless artifacts that already exited won't appear — check disk and
+  timeline for historical evidence.
+confidence_rules:
+  high: unlinked/hidden process OR malfind hit + anomalous parentage + dump confirms malicious code
+  medium: anomalous parentage or lone suspicious process without confirmed injection
+  low: unsigned/unknown process with sane parentage (may be legitimate tooling)
+mitre: [T1055, T1055.001, T1055.012]
+caveats:
+  - "Memory is a snapshot — processes that exited before capture leave no pslist trace; corroborate with prefetch/amcache for historical execution."
+  - "pslist/pstree follows the EPROCESS linked list — DCOM-spawned processes escape it legitimately; use psscan/psxview before claiming 'hidden'."
+  - "Smear and acquisition noise create false anomalies — verify suspicious structures across two enumeration methods before flagging."
+  - "malfind fires on JIT'd browsers and .NET legitimately — check process context, not just the VAD flag."

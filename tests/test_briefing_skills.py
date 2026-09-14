@@ -161,6 +161,28 @@ def test_skills_load_and_validate():
     assert "persistence" in ids
 
 
+def test_every_skill_step_query_parses():
+    """4j.7 regression — every steps[].query in every shipped skill must
+    parse through the real N4 DSL (orchestrator passes them verbatim)."""
+    from nexus.knowledge.loader import get_skills
+    from nexus.langgraph.query_dsl import parse_query
+
+    skills = get_skills()
+    assert len(skills) >= 20
+    failures = []
+    step_count = 0
+    for s in skills:
+        for st in s.get("steps") or []:
+            step_count += 1
+            q = str(st.get("query") or "")
+            try:
+                parse_query(q)
+            except Exception as exc:  # pragma: no cover - report all
+                failures.append(f"{s.get('skill')}::{st.get('name')}: {exc}")
+    assert not failures, f"unparseable skill queries:\n" + "\n".join(failures)
+    assert step_count >= 150  # guard against accidental mass-drops
+
+
 def test_skills_match_families_keywords():
     from nexus.knowledge.skills import skills_for
 
@@ -171,7 +193,7 @@ def test_skills_match_families_keywords():
     assert any(s["skill"] == "initial_access" for s in m2)
 
     # no match → empty
-    assert skills_for(families={"zeek"}, keywords={"nonexistentword"}) == []
+    assert skills_for(families={"nonexistent_family"}, keywords={"nonexistentword"}) == []
 
 
 def test_agent_executes_skill_steps(tmp_path):

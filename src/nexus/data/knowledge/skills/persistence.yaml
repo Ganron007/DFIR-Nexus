@@ -1,3 +1,6 @@
+# kb: d_3edf38e74d31:c0082 (FOR508.2 — DLL hijack classes; SUNSPOT scheduled-
+#      task persistence from the SolarWinds investigation; Autoruns)
+# kb: CCD M5 (registry/service/task artifact procedures), EIR persistence
 skill: persistence
 title: Persistence — registry run keys, services, scheduled tasks, WMI
 description: >-
@@ -38,6 +41,25 @@ steps:
     query: "Startup OR Start Menu\\Programs\\Startup .lnk"
     look_for: LNK files dropped into Startup folders (lnk family + mft/usn).
     pivot: FileName
+  - name: dll_hijack
+    query: "fxsst.dll OR ntshrui.dll OR side-loading OR WinSxS"
+    look_for: >-
+      DLL-hijack persistence classes: search-order hijack (malicious DLL
+      ahead in load order — classic ntshrui.dll beside explorer.exe);
+      phantom DLL (app loads a name that doesn't exist — e.g. Fax Service
+      fxsst.dll); side-loading via WinSxS (PlugX, NetTraveler, Sakula,
+      Poison Ivy); relative-path hijack (susceptible exe + bad dll copied
+      together to an attacker-chosen dir).
+    pivot: ImagePath
+    corroborate: unsigned DLL beside a signed exe, or exe+dll pair in a non-standard dir
+  - name: task_persistence_case
+    query: "schtasks OR at.exe OR TaskScheduler"
+    look_for: >-
+      Scheduled-task persistence stays dominant even in advanced intrusions —
+      SolarWinds SUNSPOT ran via a boot-time scheduled task. Autoruns-class
+      enumeration + TaskScheduler operational logs catch what registry-only
+      sweeps miss.
+    pivot: TaskName
 negative: >-
   No autostart writes, service installs, or task registrations → the attacker
   may rely on existing persistence or volatile-only presence.
