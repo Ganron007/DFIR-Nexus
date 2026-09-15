@@ -335,8 +335,13 @@ def _propose_with_model(
         '`family:evtx event:4625 AND 10.0.0.5`) — prefer field-scoped queries; '
         "prefer needles shown in the signal map that have hits but haven't "
         "been searched yet; use the RAG methodology and playbook caveats. "
-        'Return ONLY JSON: {"queries": [{"dsl": "...", "why": "..."}], '
-        '"rationale": "..."}'
+        "When the question is a counting question (how many distinct hosts? "
+        "which IPs?), propose an AGGREGATION instead: "
+        '{"aggregations": [{"dsl": "...", "field": "<parsed column or host>", '
+        '"why": "..."}]} — aggregations answer "how many/of what" with real '
+        "counts. Return ONLY JSON: {\"queries\": [{\"dsl\": \"...\", "
+        "\"why\": \"...\"}], \"aggregations\": [...], \"rationale\": \"...\"} "
+        "(aggregations optional)."
     )
     response = model.invoke([
         {"role": "system", "content": _PROPOSE_SYSTEM},
@@ -362,9 +367,32 @@ def _propose_with_model(
             raw.append(str(n).strip())
     validated = [_validate_dsl(q) for q in raw][:_MAX_NEEDLES_PER_PROPOSAL]
     needles = [v["query"] for v in validated]
+    # WP 4j.12: the LLM may request aggregations as tool calls alongside
+    # queries — validated here, executed through the audited backbone by the
+    # loop (context, never evidence).
+    aggregations: list[dict[str, Any]] = []
+    for a in (parsed.get("aggregations") or [])[:3]:
+        if not isinstance(a, dict):
+            continue
+        a_dsl = str(a.get("dsl") or "").strip()
+        a_field = str(a.get("field") or "").strip()
+        if not a_dsl or not a_field:
+            continue
+        wall = _validate_dsl(a_dsl)
+        if wall.get("fallback"):
+            # WP 4j.12: a degraded aggregation would mis-count — drop it
+            # (the query-level fallback still runs; counts must be exact).
+            continue
+        aggregations.append({
+            "dsl": wall["query"],
+            "field": a_field[:80],
+            "fallback": False,
+            "why": str(a.get("why") or "")[:200],
+        })
     return {
         "needles": needles,
         "dsl_queries": validated,
+        "aggregations": aggregations,
         "rationale": str(parsed.get("rationale") or "")[:300],
         "source": "llm",
         "rag_context": rag_context,
@@ -374,27 +402,11 @@ def _propose_with_model(
 
 
 def _validate_dsl(query: str) -> dict[str, Any]:
-    """WP 4j.10 validation wall — parse or degrade to bare terms."""
-    from nexus.langgraph.query_dsl import QuerySyntaxError, parse_query
+    """WP 4j.10 validation wall — shared implementation (WP 4j.11 moved it to
+    ``query_dsl.validate_or_degrade`` so both entry points enforce it)."""
+    from nexus.langgraph.query_dsl import validate_or_degrade
 
-    q = query.strip()
-    try:
-        parsed = parse_query(q)
-        if parsed.is_empty():
-            return {"query": q, "dsl": False, "fallback": True,
-                    "fallback_reason": "empty parse"}
-        return {"query": q, "dsl": bool(parsed.fields or parsed.regex or
-                                        parsed.and_terms or parsed.not_terms),
-                "fallback": False}
-    except QuerySyntaxError:
-        bare = [t for t in q.replace(":", " ").split()
-                if t.lower() not in ("and", "or", "not", "family:", "event:",
-                                     "host:", "user:", "file:", "regex:")]
-        seen: dict[str, None] = {}
-        for t in bare:
-            seen.setdefault(t, None)
-        return {"query": " ".join(list(seen)[:8]) or q, "dsl": False,
-                "fallback": True, "reason": _DSL_FALLBACK_NOTE}
+    return validate_or_degrade(query)
 
 
 def _propose_heuristic(hits: list[dict], already_run: list[str]) -> dict:
@@ -463,17 +475,27 @@ def run_iterative_loop(
     # Iteration 0: initial query from the question
     parsed0 = nl_to_needles(question, model=model)
     needles0 = parsed0.get("needles", [])
-    if not needles0:
+    if not needles0 and not parsed0.get("dsl_query"):
         return {"error": "No needles extracted from the question", "iterations": []}
-    r0 = n4_query(case_dir, " ".join(needles0), limit=limit)
+    # WP 4j.11: the entry point may emit a structured query — prefer it
+    # verbatim; degrade to bare terms when the wall rejected it.
+    dsl0 = str(parsed0.get("dsl_query") or "").strip()
+    q0 = dsl0 or " ".join(needles0)
+    r0 = n4_query(case_dir, q0, limit=limit)
     if r0.get("error"):
         return {"error": r0["error"], "iterations": []}
-    all_needles_run.extend(needles0)
+    if needles0:
+        all_needles_run.extend(needles0)
+    else:
+        all_needles_run.append(q0)
     hits = r0.get("hits", [])
     iterations.append({
         "iteration": 0,
         "action": "initial_query",
         "needles": needles0,
+        "query": q0,
+        "dsl": bool(parsed0.get("dsl_query")),
+        "fallback": (parsed0.get("dsl") or {}).get("fallback", False),
         "hits": r0.get("count", 0),
         "backend": r0.get("backend", ""),
     })
@@ -544,6 +566,32 @@ def run_iterative_loop(
             "hits": sum(q["hits"] for q in iteration_queries),
             "new_families": sorted(new_families - {str(h.get("family")) for h in hits}),
         })
+        # WP 4j.12: run the proposed aggregations through the backbone —
+        # grounded counts (context, never evidence) appended to the iteration.
+        aggregations: list[dict[str, Any]] = []
+        for aspec in (proposal.get("aggregations") or [])[:2]:
+            agg = backbone_call("n4_aggregate", audit=loop_audit,
+                                dsl=aspec.get("dsl", ""), field=aspec.get("field", "host"),
+                                top=15)
+            if agg.get("error"):
+                continue
+            aggregations.append({
+                "dsl": aspec.get("dsl", ""),
+                "field": aspec.get("field", "host"),
+                "why": aspec.get("why", ""),
+                "distinct": agg.get("distinct", 0),
+                "rows_scanned": agg.get("rows_scanned", 0),
+                "top": (agg.get("top") or [])[:10],
+                "audit_id": (agg.get("provenance") or {}).get("audit_id"),
+            })
+        if aggregations:
+            iterations[-1]["aggregations"] = aggregations
+            append_chat(
+                case_dir, "llm", "mode2_aggregation",
+                "Aggregations: " + "; ".join(
+                    f"{a['field']}({a['distinct']} distinct)" for a in aggregations),
+                {"aggregations": json.dumps(aggregations)[:2000]},
+            )
         append_chat(
             case_dir, "llm", "mode2_proposal",
             f"Iteration {it}: ran {len(iteration_queries)} query/queries -> "

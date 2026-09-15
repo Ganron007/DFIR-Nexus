@@ -52,6 +52,20 @@ Output: {"needles": ["sdelete","Sysinternals","delete","wipe","fileoverwrite"],"
 
 Question: "Any evidence of credential dumping via mimikatz or LSASS access?"
 Output: {"needles": ["mimikatz","lsass","sekurlsa","credential","dump","00000001.log"],"window": "","rationale": "Credential-dump artifacts"}
+
+WP 4j.11 — structured queries: when the question is field-scoped, also emit a
+complete N4 DSL query as "dsl_query" (executed verbatim by n4_query). Grammar:
+fields family:/host:/user:/event:/file: (AND/OR/NOT, quoted phrases, regex:).
+Examples:
+Question: "all failed logons from 10.0.0.5"
+Output: {"needles": ["4625","10.0.0.5"],"dsl_query": "family:evtx event:4625 AND 10.0.0.5","window": "","rationale": "Field-scoped failed logons"}
+
+Question: "rundll32 executions on WS01"
+Output: {"needles": ["rundll32"],"dsl_query": "family:prefetch rundll32 AND host:WS01","window": "","rationale": "Execution on named host"}
+
+Rules for dsl_query: ONLY when the question names a concrete field scope
+(event id, host, ip, family); validate family against the case's evidence
+families when provided; otherwise omit dsl_query entirely.
 """
 
 
@@ -339,14 +353,28 @@ def nl_to_needles(
             needles = _dedupe_needles(entity_needles + llm_needles, cap=10)
             needles = _dedupe_needles(needles + context_needles, cap=14)
             window = str(parsed.get("window") or "").strip()
+            # WP 4j.11: structured query — the validation wall applies here too:
+            # parse or degrade (never a silent wrong query at the entry point).
+            dsl_raw = str(parsed.get("dsl_query") or "").strip()
+            dsl_query = ""
+            dsl_meta: dict[str, Any] = {}
+            if dsl_raw:
+                from nexus.langgraph.query_dsl import validate_or_degrade
+
+                dsl_meta = validate_or_degrade(dsl_raw)
+                dsl_query = str(dsl_meta.get("query") or "")
             if needles:
-                return {
+                out = {
                     "needles": needles,
                     "window": window,
                     "source": "llm",
                     "rationale": str(parsed.get("rationale") or "")[:500],
                     "entities": entities,
                 }
+                if dsl_query:
+                    out["dsl_query"] = dsl_query
+                    out["dsl"] = dsl_meta
+                return out
         log.warning("LLM returned unparseable needles, falling back to heuristic")
     except Exception as exc:
         log.warning("LLM needles failed (%s), falling back to heuristic", exc)

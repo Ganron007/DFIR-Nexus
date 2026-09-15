@@ -1108,9 +1108,41 @@ def run_ad_hoc_query(
     persist: bool = False,
     backend: str | None = None,
     limit: int = 50,
+    query_override: str = "",
 ) -> dict[str, Any]:
-    """Examiner/agent N4 search over processed outputs (never invents rows)."""
+    """Examiner/agent N4 search over processed outputs (never invents rows).
+
+    ``query_override`` (WP 4j.11) runs one complete DSL query verbatim instead
+    of merging extra needles with intake vocabulary — a structured query from
+    the LLM (or examiner) takes precedence.
+    """
     case_dir = Path(case_dir)
+    query_override = (query_override or "").strip()
+    if query_override:
+        from nexus.langgraph.query_dsl import parse_query
+
+        parsed = parse_query(query_override)
+        if not parsed.is_empty():
+            intake = dict(load_case_intake(case_dir))
+            window = parse_intake_window(intake)
+            hits, used = n4_hits(
+                case_dir,
+                parsed.all_needles(),
+                window,
+                priority_terms=parsed.all_needles(),
+                query=parsed,
+                backend=backend,
+            )
+            cap = max(1, min(int(limit or 50), _MAX_HITS_TOTAL))
+            return {
+                "backend": used,
+                "terms": parsed.all_needles(),
+                "count": len(hits),
+                "hits": hits[:cap],
+                "persisted": False,
+                "empty": not hits,
+                "query": query_override,
+            }
     extras = [t for t in (extra_needles or []) if str(t).strip()]
     intake = dict(load_case_intake(case_dir))
     if extras:

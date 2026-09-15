@@ -202,3 +202,75 @@ def test_family_fields_profile(backbone):
     r = tools["family_fields"].fn(family="hayabusa")
     assert r["fields"], "expected hayabusa profile fields"
     assert any("RuleTitle" in f or "EventID" in f for f in r["fields"])
+
+
+# --- WP 4j.12 — aggregations as tool calls ---------------------------------
+
+
+def test_propose_prompt_teaches_aggregations(tmp_path):
+    from nexus.langgraph.mode2 import _propose_with_model
+
+    case = _mkcase(tmp_path)
+    hits = [{"family": "hayabusa", "file": "a.csv", "line": "1",
+             "text": "sdelete x", "terms": "sdelete"}]
+    fake = _FakeModel({"queries": [], "aggregations": [], "rationale": "r"})
+    _propose_with_model(case, hits, [], fake)
+    assert "aggregations" in fake.prompts[0][1]["content"]
+    assert "how many" in fake.prompts[0][1]["content"]
+
+
+def test_propose_validates_aggregations(tmp_path):
+    from nexus.langgraph.mode2 import _propose_with_model
+
+    case = _mkcase(tmp_path)
+    fake = _FakeModel({
+        "queries": [],
+        "aggregations": [
+            {"dsl": "family:hayabusa AND sdelete", "field": "host", "why": "scope"},
+            {"dsl": "regex:((((a+)+)+)*b", "field": "host", "why": "bad dsl"},
+            {"dsl": "", "field": "host", "why": "no dsl"},
+        ],
+        "rationale": "r",
+    })
+    out = _propose_with_model(case, [], [], fake)
+    aggs = out["aggregations"]
+    assert len(aggs) == 1, aggs
+    assert aggs[0]["field"] == "host"
+    assert aggs[0]["fallback"] is False
+
+
+def test_loop_runs_aggregations_through_backbone(backbone):
+    from nexus.langgraph.mode2 import run_iterative_loop
+
+    _tools, _cid, case_dir = backbone
+    fake = _FakeModel({
+        "needles": ["sdelete"],
+        "queries": [{"dsl": "family:hayabusa AND sdelete", "why": "q"}],
+        "aggregations": [{"dsl": "family:hayabusa AND sdelete", "field": "host",
+                          "why": "how many hosts"}],
+        "rationale": "r",
+    })
+    result = run_iterative_loop(case_dir, "sdelete destructive activity?",
+                                model=fake, max_iterations=1, limit=50)
+    ran = next(i for i in result["iterations"] if i.get("action") == "proposed_and_ran")
+    aggs = ran.get("aggregations") or []
+    assert aggs, "expected the proposed aggregation to run"
+    a = aggs[0]
+    assert a["field"] == "host"
+    assert a["rows_scanned"] >= 1
+    assert a["audit_id"], "aggregation must be audited (provenance)"
+
+
+def test_aggregation_absent_when_not_proposed(backbone):
+    from nexus.langgraph.mode2 import run_iterative_loop
+
+    _tools, _cid, case_dir = backbone
+    fake = _FakeModel({
+        "needles": ["sdelete"],
+        "queries": [{"dsl": "family:hayabusa AND sdelete", "why": "q"}],
+        "rationale": "r",
+    })
+    result = run_iterative_loop(case_dir, "sdelete destructive activity?",
+                                model=fake, max_iterations=1, limit=50)
+    ran = next(i for i in result["iterations"] if i.get("action") == "proposed_and_ran")
+    assert "aggregations" not in ran or not ran["aggregations"]

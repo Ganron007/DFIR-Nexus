@@ -137,6 +137,16 @@ function ProposalCard({ entry }: { entry: ChatEntry }) {
               </span>
             ))}
           </div>
+          {/* WP 4j.11 — show the structured query actually executed, so the
+              examiner can read/correct the LLM's translation */}
+          {meta.dsl_query && (
+            <div style={{ marginTop: 4, fontSize: 10, color: "var(--text-muted)" }}>
+              {meta.dsl ? "Structured query: " : "Query (degraded to terms): "}
+              <span style={{ fontFamily: "monospace", color: meta.dsl ? "var(--accent)" : "var(--warning)" }}>
+                {meta.dsl_query}
+              </span>
+            </div>
+          )}
         </div>
       )}
 

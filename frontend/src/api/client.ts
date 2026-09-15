@@ -232,6 +232,10 @@ export interface HitInterpretation {
 export interface AskResponse {
   needles: string[];
   window: string;
+  /** WP 4j.11 — the structured query the LLM emitted (verbatim, validated). */
+  query?: string;
+  dsl?: boolean;
+  dsl_fallback?: boolean;
   hits?: N4Hit[];
   count?: number;
   backend?: string;

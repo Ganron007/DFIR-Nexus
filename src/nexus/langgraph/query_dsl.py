@@ -27,6 +27,7 @@ ReDoS guard: regex length capped; nested-quantifier patterns rejected.
 from __future__ import annotations
 
 import re
+from typing import Any
 
 _FIELDS = frozenset({"family", "host", "user", "event", "file"})
 _MAX_OR = 24
@@ -187,3 +188,36 @@ def row_matches(
 
     matched = [t for t in q.all_needles() if needle_in_text(line_lower, t)]
     return True, matched
+
+
+def validate_or_degrade(query: str) -> dict[str, Any]:
+    """WP 4j.11 validation wall — parse an LLM-emitted query or degrade it.
+
+    Returns ``{"query", "dsl", "fallback", "reason"}``: a parseable query
+    passes through verbatim (``dsl`` flags whether it used fields/AND/NOT/
+    regex); a parse failure degrades to bare terms — never a silent wrong
+    query. Shared by both entry points (mode1 ``nl_to_needles`` and the
+    Mode 2 proposal wall).
+    """
+    q = (query or "").strip()
+    try:
+        parsed = parse_query(q)
+        if parsed.is_empty():
+            return {"query": q, "dsl": False, "fallback": True,
+                    "reason": "empty parse"}
+        structured = bool(parsed.fields or parsed.regex or
+                          parsed.and_terms or parsed.not_terms)
+        return {"query": q, "dsl": structured, "fallback": False}
+    except QuerySyntaxError:
+        bare = [t for t in q.replace(":", " ").split()
+                if t.lower() not in ("and", "or", "not", "family:", "event:",
+                                     "host:", "user:", "file:", "regex:")]
+        seen: dict[str, None] = {}
+        for t in bare:
+            seen.setdefault(t, None)
+        return {"query": " ".join(list(seen)[:8]) or q, "dsl": False,
+                "fallback": True, "reason": "query failed N4 parse — bare terms used"}
+
+
+def _validate_dsl(query: str) -> dict[str, Any]:  # noqa: F811 — moved alias
+    return validate_or_degrade(query)

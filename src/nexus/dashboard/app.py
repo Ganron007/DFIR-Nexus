@@ -1850,17 +1850,24 @@ async def api_ask(request):
     parsed = nl_to_needles(question, model=model, context=context)
     needles = parsed.get("needles", [])
     window = parsed.get("window", "")
-    if not needles:
+    dsl_query = str(parsed.get("dsl_query") or "").strip()
+    if not needles and not dsl_query:
         return JSONResponse({"needles": [], "window": window, "error": "No needles extracted"})
 
+    # WP 4j.11: prefer the structured query verbatim; degrade to terms.
+    query_text = dsl_query or " ".join(needles)
     n4_result = run_ad_hoc_query(
         case_dir,
         extra_needles=needles,
+        query_override=query_text,
         persist=True,
         limit=int(body.get("limit") or 80),
     )
     return JSONResponse({
         "needles": needles,
+        "query": query_text,
+        "dsl": bool(dsl_query),
+        "dsl_fallback": (parsed.get("dsl") or {}).get("fallback", False),
         "window": window,
         "hits": n4_result.get("hits", []),
         "count": n4_result.get("count", 0),
@@ -3410,24 +3417,30 @@ async def api_chat_post(request):
     parsed = nl_to_needles(message, model=model)
     needles = parsed.get("needles", [])
     window_str = parsed.get("window", "")
+    # WP 4j.11: prefer the structured query from the entry point
+    dsl_query = str(parsed.get("dsl_query") or "").strip()
+    query_text = dsl_query or " ".join(needles)
 
-    if not needles:
+    if not needles and not dsl_query:
         reply = "No needles extracted. Refine the question (name an artifact, tool, or event ID)."
         append_chat(case_dir, "llm", "needles_empty", reply, {"source": parsed.get("source", "")})
         return JSONResponse({"reply": reply, "needles": [], "count": 0})
 
     window = parse_intake_window(load_case_intake(case_dir))
-    result = n4_query(case_dir, " ".join(needles), window=window, limit=80)
+    result = n4_query(case_dir, query_text, window=window, limit=80)
     if result.get("error"):
         append_chat(case_dir, "llm", "error", result["error"])
         return JSONResponse({"reply": f"Query error: {result['error']}"}, status_code=400)
 
+    query_note = f"Query: {query_text} | " if dsl_query else ""
     reply = (
-        f"Needles: {', '.join(needles)} | hits: {result.get('count', 0)}"
+        f"{query_note}Needles: {', '.join(needles)} | hits: {result.get('count', 0)}"
         + (f" | {result.get('query')}" if result.get("query") else "")
     )
     append_chat(case_dir, "llm", "query_run", reply, {
         "needles": ",".join(needles),
+        "query": query_text,
+        "dsl": bool(dsl_query),
         "hits": result.get("count", 0),
         "backend": result.get("backend", ""),
         "window": window_str,
@@ -3532,19 +3545,23 @@ async def api_chat_stream(request):
         context = _mode1_ask_context(case_dir, message)
         parsed = nl_to_needles(message, model=model, context=context)
         needles = parsed.get("needles", [])
-        if not needles:
+        # WP 4j.11: prefer the structured query from the entry point
+        dsl_query = str(parsed.get("dsl_query") or "").strip()
+        query_text = dsl_query or " ".join(needles)
+        if not needles and not dsl_query:
             q.put(("done", {"reply": "No needles extracted. Refine the question (name an artifact, tool, or event ID).", "needles": [], "count": 0}))
             return "needles_empty", {}
         window = parse_intake_window(load_case_intake(case_dir))
-        q.put(("status", {"stage": "querying", "needles": needles}))
-        result = n4_query(case_dir, " ".join(needles), window=window, limit=80)
+        q.put(("status", {"stage": "querying", "needles": needles, "query": query_text}))
+        result = n4_query(case_dir, query_text, window=window, limit=80)
         if result.get("error"):
             q.put(("error", {"error": result["error"]}))
             return "error", {}
         hits = attach_hit_fields(case_dir, result.get("hits", []))
         rationale = str(parsed.get("rationale") or "").strip()
+        query_note = f"Query: {query_text} | " if dsl_query else ""
         reply = (
-            f"Needles: {', '.join(needles)} | hits: {result.get('count', 0)}"
+            f"{query_note}Needles: {', '.join(needles)} | hits: {result.get('count', 0)}"
             + (f" | {result.get('query')}" if result.get("query") else "")
             + (f" | why: {rationale}" if rationale else "")
         )
@@ -3815,11 +3832,29 @@ async def api_mode2_iterate(request):
         return JSONResponse({"error": result["error"]}, status_code=400)
     for it in result.get("iterations", []):
         action = it.get("action", "")
-        if action == "proposed_and_run":
+        if action == "initial_query":
+            # WP 4j.11 — surface the parsed query so the examiner sees what ran
+            append_chat(case_dir, "llm", "mode2_initial", (
+                f"Initial query: {it.get('query') or ', '.join(it.get('needles', []))} "
+                f"-> {it.get('hits', 0)} hits"
+            ), {
+                "needles": ",".join(it.get("needles", [])),
+                "dsl_query": it.get("query") or "",
+                "dsl": bool(it.get("dsl")),
+                "hits": it.get("hits", 0),
+            })
+        elif action == "proposed_and_ran":
+            qspecs = it.get("queries") or []
+            dsl_queries = "; ".join(q.get("query", "") for q in qspecs)
             append_chat(case_dir, "llm", "mode2_proposal", (
-                f"Iteration {it.get('iteration')}: proposed {', '.join(it.get('needles', []))} "
+                f"Iteration {it.get('iteration')}: ran {len(qspecs)} query/queries "
                 f"-> {it.get('hits', 0)} hits. {it.get('rationale', '')}"
-            ), {"needles": ",".join(it.get("needles", [])), "hits": it.get("hits", 0)})
+            ), {
+                "needles": ",".join(it.get("needles", [])),
+                "dsl_query": dsl_queries,
+                "dsl": any(not q.get("fallback") and q.get("dsl") for q in qspecs),
+                "hits": it.get("hits", 0),
+            })
         elif action == "no_new_proposals":
             append_chat(case_dir, "llm", "mode2_no_proposals", "No new needles to propose.", {"iteration": it.get("iteration")})
     append_chat(case_dir, "llm", "mode2_done", f"Iterative loop complete: {result.get('total_hits', 0)} total hits.", {
