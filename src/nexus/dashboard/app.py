@@ -3487,6 +3487,46 @@ def _hits_for_transcript(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
+async def api_mode2_chat(request):
+    """POST /portal/api/mode2/chat — the Mode 2 conversational evidence agent (WP 4j.13).
+
+    Body: {message, history?: [{role, text}]}
+    The agent: reads the evidence landscape → formulates N4 DSL queries →
+    executes through the case-gated backbone → reads results → iterates
+    (bounded) → returns a natural-language answer with the queries it ran.
+    """
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
+
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+    message = str(body.get("message") or "").strip()
+    history = body.get("history") or []
+    if not message:
+        return JSONResponse({"error": "message is required"}, status_code=400)
+
+    from nexus.langgraph.steer_agent import run_steer_agent
+
+    result = run_steer_agent(case_dir, message, history=history)
+
+    from nexus.case.chat import append_chat
+
+    append_chat(case_dir, "examiner", "steer_question", message[:2000])
+    append_chat(case_dir, "llm", "steer_answer", result.get("reply", "")[:3000], {
+        "queries": json.dumps(result.get("queries_executed", []))[:2000],
+        "total_hits": result.get("total_hits", 0),
+        "confidence": result.get("confidence", ""),
+    })
+
+    return JSONResponse(result)
+
+
 async def api_chat_stream(request):
     """POST /portal/api/chat/stream — live steer-chat (WP 4d.3).
 
@@ -5776,6 +5816,7 @@ def create_dashboard():
         Route("/portal/api/chat/clear", api_chat_clear, methods=["POST"]),
         # Live steer-chat stream (WP 4d.3)
         Route("/portal/api/chat/stream", api_chat_stream, methods=["POST"]),
+        Route("/portal/api/mode2/chat", api_mode2_chat, methods=["POST"]),
         # Timeline lanes
         Route("/portal/api/timeline/lanes", api_timeline_lanes, methods=["POST"]),
         Route("/portal/api/timeline/rebuild", api_timeline_rebuild, methods=["POST"]),
