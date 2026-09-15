@@ -59,6 +59,8 @@ confidence_rules:
   medium: LOLBin with unusual args or temp-path exec
   low: single unsigned exec in a developer/build context
 mitre: [T1218, T1059.005, T1106]
+source:
+  - "CCD M5 (execution-artifact stack — Prefetch/ShimCache/AmCache/BAM/ UserAssist/SRUM cross-validation), 13C WE 5 (execution analysis), FOR508.5 (timestomp/anti-forensic distortion of exec artifacts)"
 caveats:
   - "Developers and IT tools run unsigned binaries — check signer and path context before flagging."
   - "Prefetch only proves execution, not intent — corroborate with CommandLine or network evidence."

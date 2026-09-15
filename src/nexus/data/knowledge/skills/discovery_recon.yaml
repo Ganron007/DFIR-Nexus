@@ -55,6 +55,8 @@ confidence_rules:
   medium: single recon command by an unexpected parent
   low: admin tools run by admins during maintenance
 mitre: [T1033, T1082, T1087, T1018, T1069]
+source:
+  - "d_c45cc28b4bdd:c0004"
 caveats:
   - "Sysadmins run these commands daily — correlate with non-admin context and unusual parentage."
   - "Discovery may run inside a C2 implant (no shell commands) — check network artifacts instead."

@@ -68,6 +68,12 @@ confidence_rules:
   medium: hashed evidence with partial custody documentation
   low: unverifiable copy — analysis valid, provenance weak
 mitre: [T1005]
+source:
+  - "d_c3895644afa2"
+  - "d_670ea514a8d5"
+  - "d_38a16f4d6b23"
+  - "d_593853059137"
+  - "d_22a1280d0b7d"
 caveats:
   - "Power state decides the procedure: powered-on encrypted → live-triage BEFORE shutdown; powered-off → hiberfil/pagefile may still hold memory."
   - "Never acquire to or analyze on the source media — writes to the evidence disk contaminate unallocated space."

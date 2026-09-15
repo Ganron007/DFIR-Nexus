@@ -59,6 +59,8 @@ confidence_rules:
   medium: periodic DNS to suspicious domain without confirmed payload
   low: single external connection (normal traffic)
 mitre: [T1071, T1105]
+source:
+  - "d_db0d91434fd6:c0035"
 caveats:
   - "Some beacons use sleep/jitter to evade periodic detection — look at variance, not just regularity."
   - "Legitimate telemetry (Windows, AV, update services) creates periodic traffic — filter by destination."

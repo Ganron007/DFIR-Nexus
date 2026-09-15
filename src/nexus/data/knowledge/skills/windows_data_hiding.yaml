@@ -80,6 +80,11 @@ confidence_rules:
   medium: ADS or deleted-$I artifact consistent with the intrusion without the recovered payload
   low: a lone ADS (Zone.Identifier from normal downloads) or a benign deletion (FD-004)
 mitre: [T1070.004, T1070.006, T1564.004, T1485, T1490]
+source:
+  - "d_5313a9a6ca8d:c0363"
+  - "d_8beaf108808f:c0318"
+  - "d_dc3b13fade46:c0055"
+  - "d_03c2a24fc8ff:c0071"
 caveats:
   - "Shadow copies age out or are deleted (vssadmin delete shadows is a common ransom tactic) — their absence is a gap, and a deleted shadow store is itself suspicious."
   - "Zone.Identifier ADS is created by every browser download — benign ADSton; require a hidden payload, not the marker alone (FD-004)."

@@ -54,6 +54,8 @@ confidence_rules:
   medium: suspicious script block without matching network evidence
   low: admin script with bypass flags (may be legit tooling)
 mitre: [T1059.001, T1027]
+source:
+  - "SpecterOps (offensive PowerShell tradecraft → detection inversion), 13C WE (PowerShell logging/transcription artifacts), EIR (PowerShell abuse in investigation scenarios)"
 caveats:
   - "Legitimate admin scripts use -enc for credentials — decode before judging."
   - "4104 volume is huge — filter by HostName/Path of the script block, not just keyword."

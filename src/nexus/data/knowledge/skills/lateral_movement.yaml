@@ -71,6 +71,10 @@ confidence_rules:
   medium: remote logon + task creation without service install
   low: isolated 4624 type-3 events (may be normal admin/file share traffic)
 mitre: [T1021, T1569.002, T1047]
+source:
+  - "d_25b6cf33456b"
+  - "d_2703d82b642c"
+  - "d_a1d3c2f01b9b"
 caveats:
   - "File-server and admin activity legitimately produces 4624 type-3 — corroborate with share/service/task artifacts."
   - "psexesvc can be renamed — look for unsigned/random service names, not just the literal string."

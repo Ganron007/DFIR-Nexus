@@ -72,6 +72,9 @@ confidence_rules:
   medium: suspicious image or exec activity without confirmed escape or host impact
   low: an unsigned image or unusual but sanctioned workload (platform team deployments are common)
 mitre: [T1610, T1611, T1613, T1525]
+source:
+  - "d_6039bdfd5d72:c0400"
+  - "d_6039bdfd5d72:c0425"
 caveats:
   - "Containers are ephemeral — `docker rm` destroys the writable layer; recovery depends on the host overlay2 data surviving, so capture it before any prune."
   - "Kubernetes audit logging must be enabled and retained; many clusters log only metadata by default — missing request bodies is a coverage gap, not innocence."

@@ -71,6 +71,8 @@ confidence_rules:
   medium: authenticated-but-malicious link + click evidence without exec proof
   low: suspicious email with no delivery artifact (filtered/quarantined)
 mitre: [T1566.001, T1566.002, T1204]
+source:
+  - "d_ae743ea2444d"
 caveats:
   - "SPF/DKIM pass does NOT mean legitimate — attackers own domains and infrastructure; it means the mail came from where it claims."
   - "ISO/IMG/container attachments defeat MOTW — the outer file may lack Zone.Identifier while contents execute; check the mount/child artifacts."

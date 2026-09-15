@@ -79,6 +79,13 @@ confidence_rules:
   medium: USN delete reason alone, or LNK ghost target with access timestamp
   low: inference from MFT gaps or missing-index entries
 mitre: [T1070.004, T1485, T1564]
+source:
+  - "d_b9688153219b"
+  - "d_49603464d6ed"
+  - "d_c00494133f2d"
+  - "d_4a20e905aac2"
+  - "d_cfd6f88504b6"
+  - "d_260233cb3d09"
 caveats:
   - "Recycle Bin is per-user — a SYSTEM-context delete (task/service) may leave no $I file under any user SID; check USN first."
   - "Shift+Delete and CLI del bypass the Recycle Bin entirely — absence of $I files is expected, not exonerating."

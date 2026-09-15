@@ -61,6 +61,8 @@ confidence_rules:
   medium: payload exec artifact without clear delivery vector
   low: single unsigned exec — corroborate delivery + persistence
 mitre: [T1204, T1566.001, T1204.001, T1204.002]
+source:
+  - "d_ae743ea2444d:c0082"
 caveats:
   - "Users legitimately run MSIs and macros — the delivery chain (download → MOTW → exec) is what matters."
   - "LNK files are everywhere; focus on recent ones in download/desktop/temp paths."

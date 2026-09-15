@@ -91,6 +91,14 @@ confidence_rules:
   medium: device install artifacts without per-user attribution
   low: USBSTOR serial present, no session/file correlation
 mitre: [T1091, T1092, T1052.001]
+source:
+  - "d_eba2fc23f79a"
+  - "d_ac4a49434e52"
+  - "d_df4631451b98"
+  - "d_227d1d04a989"
+  - "d_2886bd1a9271"
+  - "d_fd8636981fd0"
+  - "d_eaf7ce666436"
 caveats:
   - "setupapi.dev.log timestamps are LOCAL time — merge them into a UTC timeline or your insert-time will drift by the zone offset."
   - "Event 20001 fires only on FIRST connect per device — a reused attacker's own USB won't re-log; rely on MountPoints2/USN for repeat use."

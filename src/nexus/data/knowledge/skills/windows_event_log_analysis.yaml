@@ -90,6 +90,10 @@ confidence_rules:
   medium: single-channel event with attacker-shaped attributes (count, parent, source)
   low: event plausible in routine admin activity — needs host context
 mitre: [T1070, T1078, T1021, T1059, T1562]
+source:
+  - "d_4ea0cb762d91"
+  - "d_05d2b1a9b00c"
+  - "d_6e150c2cd3ed"
 caveats:
   - "Security 4688 and Sysmon are config-dependent — absence of process rows is a coverage gap before it is evidence of absence (FD-004 analogue)."
   - "Event IDs mean different things by channel and version — a 4625 on the DC (4776 path) differs from a workstation lockout; always read LogonType/Status subcodes."

@@ -549,6 +549,17 @@ def synced_source_manifest() -> list[dict]:
     return out
 
 
+def get_volatility_plugins() -> dict:
+    """Volatility 3 plugin catalogue (WP 7.1 knowledge half).
+
+    File: ``plugins/volatility.yaml`` — tiers → plugins with purpose,
+    when_to_run, MITRE mapping and FD-004 caveats. The tool lane consumes this
+    as data (capability probe + dispatch).
+    """
+    data = _load_yaml("plugins/volatility.yaml")
+    return data if isinstance(data, dict) else {}
+
+
 def get_skills() -> list[dict]:
     """Agent investigation skills — structured procedures distilled from
     the DFIR knowledge base (13Cubed, Volexity, SANS FOR508) plus

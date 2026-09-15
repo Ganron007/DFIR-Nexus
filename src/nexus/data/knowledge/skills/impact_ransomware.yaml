@@ -59,6 +59,9 @@ confidence_rules:
   medium: shadow deletion + backup kill without confirmed encryption
   low: isolated vssadmin (admin maintenance possible)
 mitre: [T1490, T1486, T1489]
+source:
+  - "d_ae743ea2444d:c0082"
+  - "d_40fd028860ee:c0360"
 caveats:
   - "Backup software legitimately manages shadows — check the account and schedule context."
   - "Some ransomware skips vss delete if it can encrypt directly — check for mass file writes instead."

@@ -68,6 +68,8 @@ confidence_rules:
   medium: anomalous sessions without endpoint corroboration
   low: rare external connections (could be legitimate SaaS)
 mitre: [T1071, T1041, T1571]
+source:
+  - "d_db0d91434fd6"
 caveats:
   - "Netflow/conn logs show metadata not content — a 'clean' flow record says nothing about what was inside it."
   - "NAT and proxies collapse source attribution — resolve the true client via load-balancer/proxy logs before blaming a host."

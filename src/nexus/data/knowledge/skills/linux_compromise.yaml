@@ -73,6 +73,9 @@ confidence_rules:
   medium: suspicious auth + one persistence mechanism without exec proof
   low: single odd login (legitimate remote admin plausible)
 mitre: [T1053.003, T1543.002, T1078, T1059.004]
+source:
+  - "d_8081577ff5db"
+  - "d_ff8a3b9b0042"
 caveats:
   - "Shell history is unreliable by design — flushed only on shell exit, easily cleared, ordering not guaranteed. Never claim 'no commands ran' from empty history."
   - "utmp/wtmp/btmp are binary databases — strings/grep corrupts interpretation; use last/lastb/utmpdump."

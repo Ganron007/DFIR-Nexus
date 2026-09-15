@@ -1,0 +1,166 @@
+# kb: d_3edf38e74d31 (FOR508.3 — memory forensics; vol.py malfind, ssdt,
+#      callbacks, driverirp, modscan, psxview; PTE/VAD anomaly triage)
+# kb: 13Cubed Windows Memory (48 lessons — enum order pslist/pstree/psscan,
+#      dlllist, handles, envars, netscan, injection classes, dumping, YARA)
+# kb: SANS FOR526 (memory forensics); CCD M6 (KDBG, cross-view, connections,
+#      persistence, MFT-in-memory); Volexity Volatility lab guide (Oct 2023)
+version: 1
+kind: plugin_catalogue
+platform: windows_memory
+description: >-
+  Volatility 3 plugin catalogue (WP 7.1 knowledge half) — per plugin: purpose,
+  when-to-run, output family, MITRE mapping, and the FD-004 caveat that a
+  senior applies. The tool lane consumes this as data (capability probe +
+  dispatch), so adding a plugin is a YAML edit, not code.
+source: "13Cubed Windows Memory + Volexity Volatility training + SANS FOR508.3/FOR526 + CCD M6 (G:/doc_extract)"
+tiers:
+  - tier: triage
+    when: "Every memory case — always first"
+    plugins:
+      - plugin: windows.info
+        purpose: "Image identity — OS/build/arch, DTB, acquisition metadata"
+        when_to_run: first
+        mitre: []
+        caveat: "Confirms the image is a Windows build before trusting any other plugin's output."
+      - plugin: windows.pslist
+        purpose: "Live process list via the EPROCESS linked list"
+        when_to_run: baseline process enumeration
+        mitre: [T1055]
+        caveat: "Follows the linked list — DCOM-spawned processes legitimately escape it; corroborate with psscan."
+      - plugin: windows.pstree
+        purpose: "Parent/child process tree"
+        when_to_run: with pslist — parentage sanity is the first anomaly check
+        mitre: [T1055, T1055.001]
+      - plugin: windows.psscan
+        purpose: "Scan-based process discovery — finds unlinked/hidden (DKOM) processes"
+        when_to_run: always — the cross-view check against pslist/pstree
+        mitre: [T1055, T1564]
+        caveat: "psxview-style: a psscan-only process may be benign DCOM spawn — require a cross-view mismatch, not a single method."
+      - plugin: windows.cmdline
+        purpose: "Per-process command lines"
+        when_to_run: after triage — pivot on suspicious ImageName values
+        mitre: [T1059, T1059.001]
+      - plugin: windows.dlllist
+        purpose: "Loaded modules per process — unsigned/odd-path DLLs, hollowing context"
+        when_to_run: for every suspicious process before dumping
+        mitre: [T1055.002]
+      - plugin: windows.handles
+        purpose: "Handle table — lsass access, file/pipe/section handles held by a process"
+        when_to_run: credential-access and injection triage
+        mitre: [T1003.001]
+      - plugin: windows.envars
+        purpose: "Process environment variables — PATH hijack hints, attacker-set values"
+        when_to_run: persistence/defense-evasion triage
+        mitre: [T1574]
+  - tier: network
+    when: "Any C2/lateral/exfil hypothesis"
+    plugins:
+      - plugin: windows.netscan
+        purpose: "Network artifacts in memory — connections, listeners, remote addresses"
+        when_to_run: every case (network truth the host logs cannot provide)
+        mitre: [T1071, T1021]
+        caveat: "Scan noise exists — corroborate addresses against host/host-adjacent evidence before attributing."
+  - tier: registry
+    when: "Persistence enumeration"
+    plugins:
+      - plugin: windows.printkey
+        purpose: "Registry keys/values — Run/RunOnce, services, scheduled tasks"
+        when_to_run: persistence sweep (Run/RunOnce/services/RunOnceEx)
+        mitre: [T1547.001, T1543.003]
+      - plugin: windows.registry.hivelist
+        purpose: "Hive addresses for downstream registry plugins"
+        when_to_run: before printkey/registry scans
+        mitre: []
+  - tier: injection_malware
+    when: "Malware/injection hunting — the malfind-first workflow"
+    plugins:
+      - plugin: windows.malfind
+        purpose: "VAD anomalies — private PAGE_EXECUTE_READWRITE with no file backing"
+        when_to_run: every malware-hunting case (the most important detection plugin)
+        mitre: [T1055, T1055.012]
+        caveat: "Fires on JIT'd browsers and .NET legitimately — verify the process context, not just the flag."
+      - plugin: windows.ldrmodules
+        purpose: "Cross-view DLL enumeration — unlinked modules (hidden DLLs)"
+        when_to_run: with malfind — corroborates injection
+        mitre: [T1055, T1215]
+      - plugin: windows.ssdt
+        purpose: "System call table entries pointing outside win32k/ntoskrnl"
+        when_to_run: rootkit hypothesis — kernel hooking
+        mitre: [T1014, T1562.001]
+        caveat: "EDR/security drivers hook too — require a signer/path mismatch before calling it a rootkit."
+      - plugin: windows.callbacks
+        purpose: "Registered kernel callbacks — process/thread/image/registry notify"
+        when_to_run: EDR-blinding suspicion; baseline against expected callbacks
+        mitre: [T1562.001, T1014]
+      - plugin: windows.driverirp
+        purpose: "Driver object IRP dispatch — hooked MajorFunction routines"
+        when_to_run: rootkit hunting alongside ssdt
+        mitre: [T1014]
+      - plugin: windows.modscan / windows.drivermodule
+        purpose: "Hidden kernel modules/drivers (cross-view vs windows.modules)"
+        when_to_run: with ssdt — a module in modscan but not in modules is a hidden driver
+        mitre: [T1014]
+      - plugin: windows.psxview
+        purpose: "Cross-view process enumeration (multiple sources joined)"
+        when_to_run: when hiding is suspected — the strongest hiding check
+        mitre: [T1564, T1014]
+  - tier: dumping_artifacts
+    when: "Extract evidence for deeper analysis — every dump is recorded with hash + source offset"
+    plugins:
+      - plugin: windows.dumpfiles
+        purpose: "Extract files from memory (file objects, VAD sections)"
+        when_to_run: after triage marks a target (malware config, dropped payload)
+        mitre: [T1105]
+      - plugin: windows.procdump
+        purpose: "Dump a process image for static/YARA analysis"
+        when_to_run: confirmed-suspicious processes only (disk/bandwidth cost)
+        mitre: [T1055]
+      - plugin: windows.memmap --dump / windows.vaddump
+        purpose: "Dump full process memory / VAD regions"
+        when_to_run: code injection confirmation and offline strings
+        mitre: [T1055]
+      - plugin: windows.filescan
+        purpose: "Scan-based file-object discovery (pairs with dumpfiles)"
+        when_to_run: before dumpfiles
+        mitre: []
+  - tier: hunting_iocs
+    when: "IOC/YARA passes and timeline"
+    plugins:
+      - plugin: yarascan.yara / windows.yarascan
+        purpose: "YARA over process memory / kernel space with case IOCs + community rules"
+        when_to_run: with malfind hits and on dumped regions
+        mitre: [T1027]
+      - plugin: strings
+        purpose: "Extract strings from dumped regions (statically or via vol3 strings)"
+        when_to_run: after dumps — URLs, mutexes, build paths
+        mitre: []
+      - plugin: windows.timeliner
+        purpose: "Fold memory events (process create/exit, registry writes) into the case timeline"
+        when_to_run: at synthesis — memory events join N7 lanes (WP 7.6)
+        mitre: []
+  - tier: credential_memory
+    when: "Credential-theft confirmation (disk-side skills corroborate)"
+    plugins:
+      - plugin: windows.hashdump
+        purpose: "SAM LM/NTLM hashes (local accounts)"
+        when_to_run: cred-theft hypothesis with System+SAM offsets from hivelist
+        mitre: [T1003.002]
+      - plugin: windows.cachedump
+        purpose: "Cached domain logons (MSCACHE — Windows caches 10 by default)"
+        when_to_run: with hashdump — cached domain logon material
+        mitre: [T1003]
+        caveat: "Cached entries are stale domain creds — note the cache count limit when scoping exposure."
+negative: >-
+  Clean pslist/psscan cross-view, no VAD anomalies, no hooked SSDT/IRP/callback
+  gaps, and no network artifacts → no *active* compromise in the captured
+  memory. Dormant/encrypted implants (sleep obfuscation) and already-exited
+  processes can be invisible — corroborate with disk artifacts and timeline.
+confidence_rules:
+  high: unlinked process + malfind hit + anomalous parentage + dump confirms code
+  medium: cross-view mismatch or lone suspicious process without confirmed injection
+  low: unsigned/unknown process with sane parentage (may be legitimate tooling)
+caveats:
+  - "Volatility 3 symbols must match the imaged OS build — a wrong symbol table yields empty/silently-wrong output; validate windows.info first."
+  - "Scan-based plugins (psscan/netscan/filescan) trade precision for recall — treat their output as leads, not facts."
+  - "DCOM-spawned processes escape the EPROCESS linked list legitimately — never claim 'hidden' from a pslist gap alone."
+  - "Availability: probe plugin availability on the SIFT host before dispatch (WP 7.9); an unavailable plugin is a SKIP with a reason in the ledger, never a silent failure."

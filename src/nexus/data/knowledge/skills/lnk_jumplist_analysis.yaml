@@ -68,6 +68,11 @@ confidence_rules:
   medium: LNK exists but target evidence is gone (existence still proven)
   low: jumplist entries consistent with ordinary app use
 mitre: [T1204.002, T1547.001, T1078]
+source:
+  - "d_ce0f58efb073"
+  - "d_3c693ade50e1"
+  - "d_260233cb3d09"
+  - "d_03a600f22bc9"
 caveats:
   - "LNK creation is user-driven — files opened by services, tasks, or scripts leave no LNK; absence proves nothing about machine actions."
   - "A LNK proves the file was OPENED at least once — not that it was created on this host nor that it still exists."

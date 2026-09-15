@@ -77,6 +77,8 @@ confidence_rules:
   medium: rename/create journal chain without surviving content
   low: single MFT row anomalies with plausible sync/AV explanation
 mitre: [T1070.006, T1036, T1564.004]
+source:
+  - "d_a1d3c2f01b9b:c0027"
 caveats:
   - "MFT record reuse destroys the old record — cite $I30 slack and $LogFile for what the MFT itself no longer shows."
   - "USN journal rolls over by size, not time — short retention on busy volumes; note the covered window before claiming gaps."

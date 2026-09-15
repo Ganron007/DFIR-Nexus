@@ -76,6 +76,10 @@ confidence_rules:
   medium: single-source sequence consistent with the hypothesis
   low: timing coincidence only — no artifact linkage
 mitre: [T1070]
+source:
+  - "d_ccca31a521af:c0076"
+  - "d_ccca31a521af:c0086"
+  - "d_ccca31a521af:c0083"
 caveats:
   - "Normalize EVERYTHING to UTC before merging — setupapi is local-time, browsers are µs-epochs, evtx is UTC; mixed zones silently corrupt sequence."
   - "A timestamp is only as meaningful as its type — file-created vs file-modified vs entry-created mean different things; read the 'type'/'desc' columns, not just the time."

@@ -83,6 +83,14 @@ confidence_rules:
   medium: registry value exists but the on-disk target is gone (still probative of existence)
   low: autostart/uninstall entries matching known-good software
 mitre: [T1112, T1547.001, T1078]
+source:
+  - "d_183bb6de66c9"
+  - "d_e1fcbdf969e6"
+  - "d_254169eb2052"
+  - "d_346b1e448071"
+  - "d_ebe960efd5d4"
+  - "d_4a6fccf5183f"
+  - "d_770cab5a1915"
 caveats:
   - "Check ControlSet selection: use SYSTEM\\Select\\Current — LastKnownGood copies duplicate stale values across ControlSet00N trees (13Cubed WE 9)."
   - "Key last-write is the key's, not the value's — a new value inside an old key keeps the old timestamp."

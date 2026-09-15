@@ -79,6 +79,9 @@ confidence_rules:
   medium: anomalous parentage or lone suspicious process without confirmed injection
   low: unsigned/unknown process with sane parentage (may be legitimate tooling)
 mitre: [T1055, T1055.001, T1055.012]
+source:
+  - "d_cc664515f00d:c0002"
+  - "d_4ef76ae987e4:c0047"
 caveats:
   - "Memory is a snapshot — processes that exited before capture leave no pslist trace; corroborate with prefetch/amcache for historical execution."
   - "pslist/pstree follows the EPROCESS linked list — DCOM-spawned processes escape it legitimately; use psscan/psxview before claiming 'hidden'."

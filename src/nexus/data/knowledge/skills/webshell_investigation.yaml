@@ -72,6 +72,8 @@ confidence_rules:
   medium: exec chain without confirmed page (in-memory shell) or page without exec
   low: single suspicious POST (scanner/probe noise)
 mitre: [T1505.003, T1106]
+source:
+  - "d_4ef76ae987e4:c0047"
 caveats:
   - "IIS logs can lag or be disabled — missing access-log evidence doesn't clear the exec chain evidence."
   - "Some admin tools and health checks POST to endpoints — verify the page path isn't a legitimate handler."

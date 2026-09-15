@@ -58,6 +58,9 @@ confidence_rules:
   medium: archive + external connection without confirmed transfer
   low: single cloud-service browse (user activity plausible)
 mitre: [T1041, T1567, T1071.004, T1560.001]
+source:
+  - "EIR (Theft of Data lesson — staging/archive/transfer procedure chain)"
+  - "CCD M2 (network analysis — long-duration/large-byte flows, RITA), HTB DefSec (beacon vs bulk-transfer distinction)"
 caveats:
   - "Users legitimately upload to cloud storage — check account context and data volume."
   - "SRUM/network counters are cumulative — a single large number isn't a transfer timestamp."

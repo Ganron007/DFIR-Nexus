@@ -76,6 +76,9 @@ confidence_rules:
   medium: anomalous authentication or a lone suspicious API call without a full attacker chain
   low: a single unusual sign-in that also matches the user's known travel/VPN (FD-004)
 mitre: [T1078.004, T1098.001, T1098.003, T1530, T1567.002, T1556.006]
+source:
+  - "d_762a214e1f4a:c0041"
+  - "d_0d8eeaa8ab62:c0396"
 caveats:
   - "Cloud audit logs have retention limits and latency (M365/Azure events can lag 15-30+ min) — a quiet window may be a retention/latency gap, not absence of activity."
   - "A single ISP/VPN IP is shared by many users — corroborate with user-agent, device, and the subsequent action, never IP alone (FD-004)."

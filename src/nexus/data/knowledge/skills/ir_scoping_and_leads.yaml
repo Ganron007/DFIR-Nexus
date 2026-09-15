@@ -73,6 +73,9 @@ confidence_rules:
   medium: single-host corroboration of the lead
   low: lead unproven; only circumstantial timing
 mitre: [T1566, T1190, T1078]
+source:
+  - "d_b9e9fc66fd35"
+  - "d_42d0d007ee2c"
 caveats:
   - "Complex incidents rarely have a linear trail — multiple patient zeros and long dwell times are the norm in advanced threats (EIR L3)."
   - "Do not anchor on the first patient-zero story: systems can be compromised through multiple vectors in the same campaign."

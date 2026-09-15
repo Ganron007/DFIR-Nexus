@@ -125,6 +125,21 @@ def _environment_checks() -> list[tuple[str, bool, str]]:
     except Exception as exc:  # noqa: BLE001
         rows.append(("rag/embedder", False, str(exc)))
 
+    # Synced knowledge feeds (WP 9.4) — skills/DET/queries consume these.
+    try:
+        from nexus.knowledge.loader import synced_source_manifest
+
+        feeds = synced_source_manifest()
+        n = sum(int(f.get("count") or 0) for f in feeds)
+        missing = [f["name"] for f in feeds if int(f.get("count") or 0) <= 0]
+        rows.append((
+            "knowledge sources",
+            bool(feeds) and not missing,
+            f"{len(feeds)} feed(s), {n} entries" + (f" — EMPTY: {missing}" if missing else ""),
+        ))
+    except Exception as exc:  # noqa: BLE001
+        rows.append(("knowledge sources", False, str(exc)))
+
     # SIFT reachability (fast probe; kill-switch aware)
     try:
         from nexus.case.sift_sync import sift_reachable

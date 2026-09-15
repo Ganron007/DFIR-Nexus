@@ -43,6 +43,7 @@ def test_every_skill_has_provenance():
 
 def test_every_skill_validates_and_cites_a_chunk():
     """Schema-valid, and any chunk citation is well-formed."""
+    """Schema-valid, and any chunk citation is well-formed."""
     for f in _skill_files():
         data = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
         assert validate_skill(data) == [], f"{f.name}: {validate_skill(data)}"

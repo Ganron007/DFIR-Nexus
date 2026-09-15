@@ -73,6 +73,11 @@ confidence_rules:
   medium: relevant app artifact present but not corroborated or within a non-full acquisition
   low: an app artifact consistent with the question from a backup-tier acquisition (limited completeness)
 mitre: [T1533, T1636, T1430, T1005]
+source:
+  - "d_641ebbbd7339:c0124"
+  - "d_2987c0399e6c:c0098"
+  - "d_f841fdaaa378:c0043"
+  - "d_493c2342db56:c0041"
 caveats:
   - "Acquisition method caps the evidence: a logical/iTunes/ADB backup does not capture deleted data or unallocated space — never present it as complete (FD-004)."
   - "Encrypted iOS backups and some Android app data require decryption keys/passcodes — a locked or un-decrypted backup is a documented gap."

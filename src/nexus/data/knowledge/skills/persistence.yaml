@@ -79,6 +79,9 @@ confidence_rules:
   medium: autostart write without execution artifact (may be pre-trigger)
   low: legitimate installer service creations (signed, Program Files path)
 mitre: [T1547.001, T1543.003, T1053.005, T1546.003, T1053]
+source:
+  - "d_3edf38e74d31:c0082"
+  - "d_0d8eeaa8ab62:c0396"
 caveats:
   - "Installers constantly create services/tasks — filter by signer and path before flagging."
   - "Run-key writes by AV/management tools are normal — check the value target, not just the key."

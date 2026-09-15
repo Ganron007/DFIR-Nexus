@@ -105,6 +105,19 @@ confidence_rules:
   medium: a single execution artifact (prefetch or BAM alone)
   low: ShimCache-only presence — existence proven, execution not
 mitre: [T1204, T1059, T1036, T1106]
+source:
+  - "d_5aeea6f2e856"
+  - "d_dbacad7baf4c"
+  - "d_52edb94c2503"
+  - "d_bfa005ec18f7"
+  - "d_f5ad68c1b019"
+  - "d_426d040d6cb8"
+  - "d_ea8f1ff52359"
+  - "d_d1ae4e63463e"
+  - "d_9169ff3bbce2"
+  - "d_47e7720ecbfd"
+  - "d_a8a00cbad358"
+  - "d_346b1e448071"
 caveats:
   - "ShimCache timestamps are the file's $SI M-time — citing them as execution times is a classic report error (13Cubed WE 13)."
   - "Prefetch is disabled by default on Windows Server and on some SSD-optimized installs — empty Prefetch is a coverage gap, not absence."

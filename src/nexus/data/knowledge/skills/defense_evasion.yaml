@@ -55,6 +55,8 @@ confidence_rules:
   medium: masquerading binary in non-standard path
   low: single EDR service stop (may be maintenance)
 mitre: [T1562.001, T1036, T1055, T1070.006]
+source:
+  - "d_a1d3c2f01b9b:c0047"
 caveats:
   - "Windows updates legitimately restart Defender — check window and account context."
   - "Masquerading needs path+parentage analysis, not just the process name."
