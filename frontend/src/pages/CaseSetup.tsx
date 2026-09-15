@@ -191,7 +191,9 @@ export default function CaseSetup() {
     try {
       // Enter Cockpit = the explicit activation point.
       await setActiveCase(caseId);
-      navigate(mode === "1" ? "/briefing" : "/steer");
+      // WP 4j-C: ALL modes go through briefing first — the examiner must see
+      // what was found (and what the LLM did) before steering/exploring.
+      navigate("/briefing");
     } catch (e) {
       setError((e as Error).message);
       setBusy(false);

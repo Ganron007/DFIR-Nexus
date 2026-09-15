@@ -253,7 +253,9 @@ export default function SteerChat() {
     setLiveStatus("");
     setLiveIterations([]);
     const text = input;
-    setInput("");
+    // WP 4j.13 UX: DON'T clear the input while processing — the examiner
+    // should be able to type their follow-up while the LLM works.
+    // setInput("");
 
     try {
       if (mode === "mode1" || mode === "mode2") {
@@ -300,6 +302,9 @@ export default function SteerChat() {
       setLoading(false);
       setLiveStatus("");
       setLiveIterations([]);
+      // WP 4j.13 UX: clear the input AFTER the response lands (the examiner
+      // could type their next question while the previous one was processing).
+      setInput("");
     }
   };
 

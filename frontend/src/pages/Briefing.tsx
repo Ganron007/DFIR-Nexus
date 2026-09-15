@@ -128,15 +128,32 @@ export default function Briefing() {
     });
   };
 
+  // WP 4j.13 UX: briefing cache per case — revisiting doesn't rebuild from
+  // scratch. The cache is invalidated on case switch or explicit refresh.
+  const briefingCacheRef = useRef<Record<string, { data: BriefingResponse; ts: number }>>({});
+  const BRIEFING_CACHE_TTL = 60_000; // 60 s
+
   useEffect(() => {
     setLoading(true);
     setError("");
     setDirections(null);
     let stale = false;
+    const cacheKey = activeCase;
+    const cached = briefingCacheRef.current[cacheKey];
+    if (cached && (Date.now() - cached.ts) < BRIEFING_CACHE_TTL) {
+      setBrief(cached.data);
+      setLoading(false);
+      // still refresh directions lazily
+      api.caseBriefingDirections()
+        .then((d) => { if (!stale) setDirections(d.directions || []); })
+        .catch(() => { if (!stale) setDirections([]); });
+      return () => { stale = true; };
+    }
     api.caseBriefing()
       .then((b) => {
         if (stale) return;
         setBrief(b);
+        briefingCacheRef.current[cacheKey] = { data: b, ts: Date.now() };
         setLoading(false);
         // Lazy LLM layer — fire after the deterministic briefing renders.
         api.caseBriefingDirections()
