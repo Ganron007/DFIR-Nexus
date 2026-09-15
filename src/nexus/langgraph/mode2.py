@@ -518,6 +518,10 @@ def run_iterative_loop(
     from nexus.audit import AuditWriter
     from nexus.langgraph.backbone import backbone_call
 
+    # WP 4j.10c (cross-case guard): the loop's evidence access is bound to the
+    # case it was invoked for — never the pointer's case by accident.
+    case_id = case_dir.name
+
     loop_audit = AuditWriter("nexus")
     for it in range(1, max_iterations + 1):
         if not hits:
@@ -538,7 +542,7 @@ def run_iterative_loop(
         for qspec in dsl_queries:
             q = qspec["query"]
             all_needles_run.append(q)
-            ran = backbone_call("n4_query", audit=loop_audit, dsl=q, limit=limit)
+            ran = backbone_call("n4_query", audit=loop_audit, case_id=case_id, dsl=q, limit=limit)
             if ran.get("error"):
                 # gated/no-case — the loop cannot run; surface honestly
                 iterations.append({"iteration": it, "action": "query_error",
@@ -570,7 +574,7 @@ def run_iterative_loop(
         # grounded counts (context, never evidence) appended to the iteration.
         aggregations: list[dict[str, Any]] = []
         for aspec in (proposal.get("aggregations") or [])[:2]:
-            agg = backbone_call("n4_aggregate", audit=loop_audit,
+            agg = backbone_call("n4_aggregate", audit=loop_audit, case_id=case_id,
                                 dsl=aspec.get("dsl", ""), field=aspec.get("field", "host"),
                                 top=15)
             if agg.get("error"):

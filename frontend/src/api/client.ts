@@ -427,6 +427,13 @@ export interface Mode2Iteration {
   source?: string;
   hits?: number;
   new_families?: string[];
+  /** WP 4j.10 — per-query detail (the structured queries actually executed) */
+  query?: string;
+  dsl?: boolean;
+  fallback?: boolean;
+  queries?: { query: string; dsl?: boolean; fallback?: boolean; hits?: number; audit_id?: string }[];
+  /** WP 4j.12 — aggregations proposed + run through the backbone */
+  aggregations?: { dsl?: string; field?: string; why?: string; distinct?: number; rows_scanned?: number; top?: { value: string; count: number }[]; audit_id?: string }[];
 }
 export interface Mode2IterateResponse {
   question: string;

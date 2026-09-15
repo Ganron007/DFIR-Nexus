@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { api, chatStream, type ChatEntry, type Mode3PlanResponse, type N4Hit } from "../api/client";
+import { api, chatStream, type ChatEntry, type Mode2IterateResponse, type Mode3PlanResponse, type N4Hit } from "../api/client";
 import { useCase } from "../context/CaseContext";
 
 /**
@@ -428,9 +428,44 @@ export default function SteerChat() {
     entry.action === "mode2_proposal" ||
     entry.action === "mode2_no_proposals" ||
     entry.action === "mode2_done" ||
+    entry.action === "mode2_aggregation" ||
     entry.action === "mode3_plan" ||
     entry.action === "mode3_execute" ||
     entry.action === "mode3_seal";
+
+  // WP 4j.13 — Mode 2 iterative loop from the UI: the full examiner
+  // back-and-forth (queries + aggregations) in one tracked operation.
+  const [iterateResult, setIterateResult] = useState<Mode2IterateResponse | null>(null);
+  const runIterate = async () => {
+    if (!input.trim() || loading) return;
+    setLoading(true);
+    setError("");
+    const text = input;
+    setInput("");
+    try {
+      const r = await api.mode2Iterate({ question: text, max_iterations: mode2Iterations });
+      if (r.error) {
+        setError(r.error);
+      } else {
+        setIterateResult(r);
+        setMessages((prev) => [
+          ...prev,
+          {
+            ts: new Date().toISOString(),
+            role: "llm",
+            action: "mode2_iteration",
+            text: `Iterated: ${r.iterations.length} round(s), ${r.total_hits} total hits. `
+              + `Queries: ${(r.needles_run || []).slice(0, 6).join(", ")}`,
+            meta: { needles: (r.needles_run || []).join(","), hits: String(r.total_hits) },
+          },
+        ]);
+      }
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 120px)" }}>
@@ -542,31 +577,77 @@ export default function SteerChat() {
 
       {/* WP 4b.14: Propose Draft button — Mode 2 */}
       {mode === "mode2" && (
-        <div className="card" style={{ padding: "8px 12px", marginBottom: 8 }}>
-          {!showDraftForm ? (
-            <button className="btn btn-sm" onClick={() => setShowDraftForm(true)}>
-              ✎ Propose Draft Finding
-            </button>
-          ) : (
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <input
-                placeholder="Finding title..."
-                value={draftTitle}
-                onChange={(e) => setDraftTitle(e.target.value)}
-                style={{ flex: 1 }}
-              />
-              <button
-                className="btn btn-primary btn-sm"
-                onClick={proposeDraft}
-                disabled={loading || !draftTitle.trim()}
-              >
-                {loading ? "..." : "Stage DRAFT"}
-              </button>
-              <button className="btn btn-sm" onClick={() => { setShowDraftForm(false); setDraftTitle(""); }}>
-                Cancel
-              </button>
-            </div>
+        <div className="card" style={{ padding: "8px 12px", marginBottom: 8, display: "flex", gap: 8, alignItems: "center" }}>
+          <button className="btn btn-sm" onClick={() => setShowDraftForm(!showDraftForm)}>
+            ✎ Propose Draft Finding
+          </button>
+          {/* WP 4j.13 — run the full Mode 2 iterative loop */}
+          <button
+            className="btn btn-sm btn-primary"
+            onClick={runIterate}
+            disabled={loading || !input.trim()}
+            title="Run the multi-round investigation loop on this question (structured queries + aggregations)"
+          >
+            {loading ? "Investigating…" : "▶ Iterate (multi-round)"}
+          </button>
+          {mode2Iterations > 1 && (
+            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{mode2Iterations} rounds max</span>
           )}
+        </div>
+      )}
+      {mode === "mode2" && showDraftForm && (
+        <div className="card" style={{ padding: "8px 12px", marginBottom: 8 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input
+              placeholder="Finding title..."
+              value={draftTitle}
+              onChange={(e) => setDraftTitle(e.target.value)}
+              style={{ flex: 1 }}
+            />
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={proposeDraft}
+              disabled={loading || !draftTitle.trim()}
+            >
+              {loading ? "..." : "Stage DRAFT"}
+            </button>
+            <button className="btn btn-sm" onClick={() => { setShowDraftForm(false); setDraftTitle(""); }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* WP 4j.13 — iteration result card (queries + aggregations) */}
+      {mode === "mode2" && iterateResult && iterateResult.iterations.length > 0 && (
+        <div className="card" style={{ padding: "10px 14px", marginBottom: 8 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
+            Investigation loop — {iterateResult.iterations.length} round(s), {iterateResult.total_hits} hits
+          </div>
+          {iterateResult.iterations.map((it, i) => (
+            <div key={i} style={{ fontSize: 11, marginBottom: 8, paddingLeft: 8, borderLeft: "2px solid var(--border)" }}>
+              <div style={{ fontWeight: 600 }}>{it.action === "initial_query" ? "Round 0 (entry)" : `Round ${it.iteration}`}</div>
+              {(it.queries || []).map((q, qi: number) => (
+                <div key={qi} style={{ fontSize: 11, fontFamily: "monospace", marginTop: 2 }}>
+                  <span style={{ color: q.dsl && !q.fallback ? "var(--accent)" : "var(--warning)" }}>
+                    {q.query}
+                  </span>
+                  {" → "}
+                  <span>{q.hits} hit(s)</span>
+                </div>
+              ))}
+              {(it.aggregations || []).map((a, ai: number) => (
+                <div key={`a${ai}`} style={{ fontSize: 11, marginTop: 4 }}>
+                  <strong>Aggregation {a.field || "?"}</strong>: {a.distinct ?? 0} distinct
+                  {(a.top || []).length > 0 && (
+                    <span style={{ color: "var(--text-muted)" }}>
+                      {" "}— {a.top!.slice(0, 5).map((t: { value: string; count: number }) => `${t.value}(${t.count})`).join(", ")}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          ))}
         </div>
       )}
 
