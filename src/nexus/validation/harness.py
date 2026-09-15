@@ -16,6 +16,7 @@ ground truth.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -107,6 +108,36 @@ def _attack_packs() -> list[dict[str, Any]]:
     return [p for p in get_attack_needles() if isinstance(p, dict)]
 
 
+def _technique_needles(exp_techs: set[str], packs: list[dict[str, Any]]) -> dict[str, list[str]]:
+    """Needles per expected technique — curated ATT&CK pack first.
+
+    Techniques without a curated pack (ICS/cloud/mobile — the curated pack
+    file is Windows-oriented) fall back to the synced ATT&CK techniques
+    (WP 9.4): the technique id itself plus ≥4-char name tokens, so a
+    known-answer for any matrix is still scorable instead of guaranteed-miss.
+    """
+    needles_by_tech: dict[str, list[str]] = {}
+    for pack in packs:
+        tid = str(pack.get("technique") or "").upper()
+        ns = [str(n) for n in (pack.get("needles") or []) if str(n).strip()]
+        if tid and ns:
+            needles_by_tech[tid] = ns
+    missing = [t for t in exp_techs if not needles_by_tech.get(t)]
+    if missing:
+        from nexus.knowledge.loader import get_attack_techniques
+
+        meta = {str(t.get("technique") or "").upper(): t for t in get_attack_techniques()}
+        for tid in missing:
+            info = meta.get(tid)
+            derived: list[str] = [tid.lower()]
+            if info:
+                derived.extend(re.findall(r"[A-Za-z]{4,}", str(meta.get("name") or "")))
+            derived = [d for d in dict.fromkeys(derived) if len(d) >= 4][:12]
+            if len(derived) > 1:
+                needles_by_tech[tid] = derived
+    return needles_by_tech
+
+
 def gather_found(case_dir: Path, key: dict[str, Any]) -> dict[str, Any]:
     """Collect what the skill layer actually recovers from the case.
 
@@ -127,14 +158,14 @@ def gather_found(case_dir: Path, key: dict[str, Any]) -> dict[str, Any]:
 
     skills = retrieve_skills(families=exp_fams, techniques=exp_techs, limit=8)
     packs = _attack_packs()
+    tech_needles = _technique_needles(exp_techs, packs)
 
     needles: list[str] = []
     for s in skills:
         needles.extend(skill_queries(s))
     # Expected techniques' ATT&CK needles pull the supporting evidence in.
-    for pack in packs:
-        if str(pack.get("technique") or "").upper() in exp_techs:
-            needles.extend(str(n) for n in (pack.get("needles") or []))
+    for tid in sorted(exp_techs):
+        needles.extend(tech_needles.get(tid, []))
     needles.extend(sorted(exp_artifacts))
     needles.extend(sorted(exp_entities))
     needles = [n for n in dict.fromkeys(str(n).strip() for n in needles if str(n).strip())]
@@ -151,12 +182,16 @@ def gather_found(case_dir: Path, key: dict[str, Any]) -> dict[str, Any]:
             blob_parts.extend(str(v) for v in fields.values())
     blob = " ".join(blob_parts).lower()
 
-    # Techniques: any pack whose needles appear in the recovered hits.
+    # Techniques: any curated pack whose needles appear in the recovered hits
+    # (open world), plus every expected technique matched via its needles.
     found_techs: set[str] = set()
     for pack in packs:
         tid = str(pack.get("technique") or "").upper()
         pack_needles = [str(n).lower() for n in (pack.get("needles") or []) if str(n).strip()]
         if tid and any(nd in blob for nd in pack_needles):
+            found_techs.add(tid)
+    for tid in exp_techs:
+        if any(nd.lower() in blob for nd in tech_needles.get(tid, [])):
             found_techs.add(tid)
 
     found_artifacts = {a for a in exp_artifacts if a.lower() in blob}

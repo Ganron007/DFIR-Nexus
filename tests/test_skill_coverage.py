@@ -84,3 +84,19 @@ def test_deferred_items_are_documented():
     """Every deferred class must carry a reason."""
     assert DEFERRED, "deferred map should not be empty"
     assert all(reason.strip() for reason in DEFERRED.values())
+
+
+def test_skill_mitre_ids_exist_in_attack_matrix():
+    """WP 9.4 wiring — every skill's `mitre` id must exist in the synced
+    ATT&CK matrix data, so a typo can never ship into agent procedures."""
+    from nexus.knowledge.loader import get_attack_techniques
+
+    known = {str(t.get("technique") or "").upper() for t in get_attack_techniques()}
+    assert known, "synced attack_techniques missing — run scripts/sync_knowledge_sources.py"
+    unknown: list[str] = []
+    for s in get_skills():
+        for t in (s.get("mitre") or []):
+            tid = str(t).upper()
+            if tid and tid not in known:
+                unknown.append(f"{s.get('skill')}::{tid}")
+    assert not unknown, f"skills reference unknown ATT&CK ids: {unknown}"

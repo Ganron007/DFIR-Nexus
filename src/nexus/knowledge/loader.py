@@ -615,10 +615,16 @@ def skill_sources(skill: dict) -> list[dict]:
 
     Accepts both machine-readable ``source: [{chunk_id, rel_path, lines}]``
     entries and plain citation strings, returning dicts with at least
-    ``citation`` and, when available, ``chunk_id``.
+    ``citation`` and, when available, ``chunk_id``. Tolerates a single string
+    citation (``source: "d_xxx:c0001"``) instead of iterating its characters.
     """
     out: list[dict] = []
-    for s in (skill.get("source") or []):
+    source = skill.get("source")
+    if isinstance(source, str):
+        source = [source]
+    if not isinstance(source, list):
+        return out
+    for s in source:
         if isinstance(s, str):
             text = s.strip()
             if text:

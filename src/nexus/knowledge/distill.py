@@ -206,7 +206,7 @@ def distill(
     skill = load_draft(draft_path)
     slug = re.sub(r"[^a-z0-9_]+", "_", str(name or skill.get("skill") or "skill").lower()).strip("_")
 
-    refined_by = "kb-draft"
+    refined_by = "deterministic"
     if use_llm:
         from nexus.langgraph.report_analysis import resolve_model
 
@@ -214,11 +214,7 @@ def distill(
         if llm is not None:
             skill = llm
             refined_by = "llm"
-    if refined_by != "llm":
-        skill = refine_deterministic(skill)
-        refined_by = "deterministic"
-    else:
-        skill = refine_deterministic(skill)  # dedupe + DET even after LLM
+    skill = refine_deterministic(skill)  # dedupe + DET always (even after LLM)
 
     problems = gate(skill)
     installed = False

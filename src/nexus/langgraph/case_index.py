@@ -69,15 +69,39 @@ def _client():
     return httpx.Client(base_url=url, timeout=120.0)
 
 
+# Availability probe cache — an ES URL that is configured but unreachable
+# (black-holed SYN, VPN down) must not stall every query: probe with a short
+# connect timeout and cache the result briefly (WP-review 2026-09-14).
+_es_probe_cache: tuple[float, bool] | None = None
+_ES_PROBE_TTL = 30.0
+_ES_PROBE_TIMEOUT = 5.0
+_ES_PROBE_CONNECT = 3.0
+
+
 def es_available() -> bool:
+    global _es_probe_cache
     if not es_url():
         return False
+    import time
+
+    now = time.monotonic()
+    if _es_probe_cache is not None and now - _es_probe_cache[0] < _ES_PROBE_TTL:
+        return _es_probe_cache[1]
+    import httpx
+
+    available = False
     try:
-        with _client() as client:
+        parsed = urlparse(es_url())
+        if parsed.hostname in {"192.168.77.50", "elk"}:
+            raise RuntimeError("N3 must not point at the CADRE elk SIEM (.50)")
+        with httpx.Client(base_url=es_url(),
+                          timeout=httpx.Timeout(_ES_PROBE_TIMEOUT, connect=_ES_PROBE_CONNECT)) as client:
             r = client.get("/")
-            return r.status_code == 200 and "version" in r.json()
-    except Exception:
-        return False
+            available = bool(r.status_code == 200 and "version" in r.json())
+    except Exception:  # noqa: BLE001 — unreachable ES means "not available"
+        available = False
+    _es_probe_cache = (now, available)
+    return available
 
 
 def _ts_from_line(line: str) -> str | None:
