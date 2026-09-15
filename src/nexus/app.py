@@ -96,6 +96,12 @@ def create_server(host: str = "127.0.0.1") -> FastMCP:
     from nexus.tools import analysis
     analysis.register_tools(server, audit)
 
+    # ── Mode 2/3 backbone (WP 9.10/9.11) — evidence/index + KB under MCP ──
+    from nexus.tools import evidence_index
+    from nexus.tools import kb as kb_tools
+    evidence_index.register_tools(server, audit)
+    kb_tools.register_tools(server, audit)
+
     from nexus.tools import detection_tools, ti_tools, vr_tools
     ti_tools.register_tools(server, audit)
     detection_tools.register_tools(server, audit)

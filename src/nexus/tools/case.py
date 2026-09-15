@@ -23,9 +23,18 @@ manager = CaseManager()
 _MAX_NAME = 200
 _MAX_TEXT = 10_000
 
-_ACTIVE_CASE_FILE = Path(
-    os.environ.get("NEXUS_ACTIVE_CASE_FILE", str(Path.home() / ".nexus" / "active_case"))
-)
+
+def _active_case_file() -> Path:
+    """Active-case pointer path — read from env at CALL time.
+
+    Binding this at import time causes pointer drift when a second instance
+    (tests, portal+MCP in one process) starts with a different env: activate
+    would write one path while CaseManager reads another. CaseManager reads
+    env dynamically; this must match.
+    """
+    return Path(
+        os.environ.get("NEXUS_ACTIVE_CASE_FILE", str(Path.home() / ".nexus" / "active_case"))
+    )
 
 
 def _detect_capabilities() -> dict:
@@ -195,8 +204,8 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             logger.debug("SQLite case registration skipped", exc_info=True)
 
         try:
-            _ACTIVE_CASE_FILE.parent.mkdir(parents=True, exist_ok=True)
-            _ACTIVE_CASE_FILE.write_text(str(case_dir))
+            _active_case_file().parent.mkdir(parents=True, exist_ok=True)
+            _active_case_file().write_text(str(case_dir))
         except OSError:
             pass
 
@@ -238,8 +247,8 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             return {"error": f"Case not found: {case_id}"}
 
         try:
-            _ACTIVE_CASE_FILE.parent.mkdir(parents=True, exist_ok=True)
-            _ACTIVE_CASE_FILE.write_text(str(case_dir))
+            _active_case_file().parent.mkdir(parents=True, exist_ok=True)
+            _active_case_file().write_text(str(case_dir))
         except OSError as e:
             return {"error": f"Failed to write active case: {e}"}
 
