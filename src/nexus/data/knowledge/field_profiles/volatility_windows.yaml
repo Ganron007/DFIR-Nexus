@@ -1,0 +1,93 @@
+# kb: OSSEM event-field crosswalk (src/nexus/data/knowledge/needles/ossem_events.yaml —
+#      canonical field names per event type across vendor sources)
+# kb: SANS FOR500/13Cubed WE (per-artifact column sets — Prefetch/ShimCache/
+#      AmCache/BAM/UserAssist/SRUM); EZ tools CSV output columns as parsed by
+#      our own lane (attach_hit_fields recovers these from artifact headers)
+# kb: CCD M5 (per-artifact procedure: artifact -> fields -> meaning)
+version: 1
+kind: field_profiles
+description: >-
+  Per-parser-family field profiles (WP 4j.10) — the practical answer to
+  "forensics has no ECS": we do not map every parser imaginable. We map OUR
+  parser surface (finite): canonical core (ts/host/family/file/line) is always
+  present; each profile lists the salient columns that family's parsers emit
+  (as our lane actually parses them), so the LLM's N4 queries and `n4_aggregate`
+  field targets are grounded. Unknown parsers are covered by schema-on-read:
+  every hit carries its own parsed columns, and free-text/regex search needs
+  no column names.
+source: "Our parser lane outputs + OSSEM Common Schema + Eric Zimmerman tool docs (G:/doc_extract Tool-Docs)"
+profiles:
+  - family: hayabusa
+    fields: [Timestamp, Computer, Channel, EventID, Level, RuleTitle, Details, ExtraFieldInfo, MitreTags]
+    ossem: "EventID/Computer map to EventID/Host"
+    note: "Hayabusa fast-timeline CSV — one row per detection"
+  - family: evtxecmd
+    fields: [EventRecordID, EventRecordId, TimeCreated, EventId, Computer, Channel, Provider, MapDescription, EventData]
+    ossem: "TimeCreated→EventTime; EventId→EventID"
+  - family: chainsaw
+    fields: [timestamp, event_id, computer, channel, provider, event_title, rules]
+  - family: evtx
+    fields: [TimeCreated, EventID, Computer, TargetUserName, IpAddress, SubjectUserName]
+    ossem: "TargetUserName→TargetUsername; IpAddress→SourceIp"
+  - family: sysmon
+    fields: [EventID, UtcTime, Image, CommandLine, ParentImage, SourceImage, TargetImage, GrantedAccess, Hashes, DestinationIp]
+    ossem: "Image→ProcessName/ImagePath; ParentImage→ParentProcessName; DestinationIp→DestinationIp"
+  - family: pecmd
+    fields: [SourceFileName, SourceFileNb, RunCount, LastRun, ExecutableName, PrefetchFileName, VolumeSerial, VolumePath]
+    ossem: "LastRun→EventTime; SourceFileName→TargetFileName"
+  - family: prefetch
+    fields: [SourceFileName, ExecutableName, RunCount, LastRun, FirstRun]
+  - family: amcache
+    fields: [KeyPath, Path, FileKeyLastWriteTimestamp, Sha1, IsPeFile, ProductName, CompanyName]
+  - family: appcompat
+    fields: [ImagePath, FileDescription, FileVersion, LinkerTimeStamp, ExecutablePath, InstallDate]
+  - family: registry
+    fields: [KeyPath, ValueName, ValueType, ValueData, LastWriteTimestamp, Computer]
+    ossem: "LastWriteTimestamp→EventTime"
+  - family: recmd
+    fields: [KeyPath, ValueName, ValueData, LastWriteTimestamp]
+  - family: mftecmd
+    fields: [FileName, Extension, FNLastModified0x10, FNLastChange0x10, SICreated0x10, IsDirectory, ElementNumber, ParentElementNumber]
+    ossem: "FNLastModified0x10→FileModifyTime; SI vs FN mismatch = timestomp tell"
+  - family: usn
+    fields: [Filename, UpdateReason, Timestamp, FileReference, MFTRecordNumber, ParentMFTRecordNumber]
+  - family: lnk
+    fields: [SourceFile, LocalPath, TargetCreated, TargetModified, DriveType, MachineID, RelativePath]
+    ossem: "LocalPath→TargetFilename"
+  - family: jumplist
+    fields: [SourceFile, AppId, AppIdDescription, DestList, LnkTargets]
+  - family: srumecmd
+    fields: [AppName, UserId, NetworkType, BytesSent, BytesRecv, AppTimestamp]
+  - family: browser
+    fields: [Url, Title, VisitTime, VisitCount, DownloadPath, Referrer]
+    ossem: "VisitTime→EventTime"
+  - family: sbecmd
+    fields: [Shell item path, OriginatingProc, LastWriteTimestamp, NodeSlot]
+  - family: lecmd
+    fields: [SourceFile, LocalPath, TargetCreated, TargetModified, DriveType, MachineName, CommandLineArguments]
+  - family: memory
+    fields: [PID, PPID, ProcessName, ImageFileName, OffsetV, Threads, Handles, SessionId, CommandLine]
+    ossem: "PID→ProcessId; PPID→ParentProcessId"
+  - family: plaso
+    fields: [datetime, timestamp_desc, source, sourcetype, data_type, message, parser]
+  - family: zeek
+    fields: [id.orig_h, id.resp_h, id.orig_p, id.resp_p, proto, conn_state, history, orig_bytes, resp_bytes]
+    ossem: "id.orig_h→SourceIp; id.resp_h→DestinationIp"
+  - family: suricata
+    fields: [timestamp, src_ip, src_port, dest_ip, dest_port, alert_signature, signature_id, category]
+  - family: wireshark
+    fields: [frame.number, frame.time, ip.src, ip.dst, tcp.srcport, tcp.dstport, _ws.col.Protocol, _ws.col.Info]
+  - family: csv
+    fields: []
+    note: "Generic CSV — columns come from the artifact's own header (schema-on-read)"
+  - family: jsonl
+    fields: []
+    note: "Generic JSONL — keys vary by source; discovered per row"
+negative: >-
+  A family absent from this catalogue is not unqueryable — the N4 DSL always
+  supports free-text/regex search over the full row text, and every hit carries
+  its own parsed columns (schema-on-read). Profiles guide; they never gate.
+caveats:
+  - "Field names are the parser's own output columns — query them as n4_aggregate(field=...), not as ES mappings."
+  - "Parser versions add columns over time — treat profiles as the common denominator, and confirm against the hit's attached fields."
+  - "OSSEM crosswalk values are indicative (vendor naming varies by version); prefer the attached fields of the actual row."

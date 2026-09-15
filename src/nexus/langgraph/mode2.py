@@ -25,6 +25,8 @@ _MAX_ITERATIONS = 5
 _MAX_NEEDLES_PER_PROPOSAL = 6
 _MAX_HITS_SUMMARY = 12
 _MAX_HIT_TEXT = 160
+
+_DSL_FALLBACK_NOTE = "query failed N4 parse — bare terms used"
 # WP 2.6: enriched context uses a larger text cap for top hits per family
 _MAX_HIT_TEXT_ENRICHED = 500
 _MAX_TOP_HITS_PER_FAMILY = 3
@@ -306,6 +308,14 @@ def _propose_with_model(
     # WP 4i.9: case briefing signal map — which needles already hit
     briefing_ctx = _briefing_context(briefing)
 
+    # WP 4j.10: the LLM speaks the N4 DSL through the backbone tools — teach
+    # the grammar and bind the tool contracts (allowlist is enforced by the
+    # backbone, not the prompt).
+    from nexus.knowledge.loader import dsl_prompt_block
+    from nexus.langgraph.backbone import tool_contracts_block
+
+    grammar = dsl_prompt_block(cap=10)
+
     user = (
         f"Case question: {intake.get('question', '(none)')}\n"
         f"Artifact families with hits: {', '.join(families) or '(none)'}\n"
@@ -316,10 +326,17 @@ def _propose_with_model(
         f"Top hits per family:\n{top_hits}\n\n"
         f"RAG methodology:\n{rag_context[:1800] or '(none)'}\n\n"
         f"Playbook guidance:\n{playbook_context[:1200] or '(none)'}\n\n"
-        "Propose 2-6 NEW search needles to corroborate or expand this picture. "
-        "Prefer needles shown in the signal map that have hits but haven't "
+        "N4 query grammar (your queries are executed verbatim by the n4_query "
+        f"tool — validate every field against index_mappings/family_fields):\n"
+        f"{grammar or '(DSL grammar unavailable — propose plain terms)'}\n\n"
+        f"{tool_contracts_block()}\n\n"
+        "Propose 2-6 NEW search QUERIES in N4 DSL to corroborate or expand "
+        "this picture. Each query is one complete DSL expression (e.g. "
+        '`family:evtx event:4625 AND 10.0.0.5`) — prefer field-scoped queries; '
+        "prefer needles shown in the signal map that have hits but haven't "
         "been searched yet; use the RAG methodology and playbook caveats. "
-        'Return ONLY JSON: {"needles": [...], "rationale": "..."}'
+        'Return ONLY JSON: {"queries": [{"dsl": "...", "why": "..."}], '
+        '"rationale": "..."}'
     )
     response = model.invoke([
         {"role": "system", "content": _PROPOSE_SYSTEM},
@@ -330,17 +347,54 @@ def _propose_with_model(
     if start == -1 or end == -1:
         raise ValueError("model returned no JSON")
     parsed = json.loads(text[start:end + 1])
-    needles = [str(n).strip() for n in (parsed.get("needles") or []) if str(n).strip()][
-        :_MAX_NEEDLES_PER_PROPOSAL
-    ]
+    # WP 4j.10: proposals are DSL queries. New schema {"queries":[{"dsl","why"}]}
+    # with backward compat for {"needles":[...]}. The validation wall: every
+    # query must parse; a parse failure degrades that query to its bare terms
+    # (deterministic fallback — never a silent wrong query).
+    raw: list[str] = []
+    for q in (parsed.get("queries") or []):
+        if isinstance(q, dict) and str(q.get("dsl") or "").strip():
+            raw.append(str(q["dsl"]).strip())
+        elif isinstance(q, str) and q.strip():
+            raw.append(q.strip())
+    for n in (parsed.get("needles") or []):
+        if str(n).strip():
+            raw.append(str(n).strip())
+    validated = [_validate_dsl(q) for q in raw][:_MAX_NEEDLES_PER_PROPOSAL]
+    needles = [v["query"] for v in validated]
     return {
         "needles": needles,
+        "dsl_queries": validated,
         "rationale": str(parsed.get("rationale") or "")[:300],
         "source": "llm",
         "rag_context": rag_context,
         "rag_provenance": rag_provenance,
         "playbook_context": playbook_context,
     }
+
+
+def _validate_dsl(query: str) -> dict[str, Any]:
+    """WP 4j.10 validation wall — parse or degrade to bare terms."""
+    from nexus.langgraph.query_dsl import QuerySyntaxError, parse_query
+
+    q = query.strip()
+    try:
+        parsed = parse_query(q)
+        if parsed.is_empty():
+            return {"query": q, "dsl": False, "fallback": True,
+                    "fallback_reason": "empty parse"}
+        return {"query": q, "dsl": bool(parsed.fields or parsed.regex or
+                                        parsed.and_terms or parsed.not_terms),
+                "fallback": False}
+    except QuerySyntaxError:
+        bare = [t for t in q.replace(":", " ").split()
+                if t.lower() not in ("and", "or", "not", "family:", "event:",
+                                     "host:", "user:", "file:", "regex:")]
+        seen: dict[str, None] = {}
+        for t in bare:
+            seen.setdefault(t, None)
+        return {"query": " ".join(list(seen)[:8]) or q, "dsl": False,
+                "fallback": True, "reason": _DSL_FALLBACK_NOTE}
 
 
 def _propose_heuristic(hits: list[dict], already_run: list[str]) -> dict:
@@ -436,38 +490,68 @@ def run_iterative_loop(
     except Exception as exc:  # noqa: BLE001
         log.debug("Mode 2 briefing unavailable: %s", exc)
 
-    # Iterative proposals
+    # Iterative proposals — WP 4j.10: each proposal is ONE complete DSL query,
+    # executed separately through the backbone (audited, allowlist-enforced),
+    # never space-joined into term soup.
+    from nexus.audit import AuditWriter
+    from nexus.langgraph.backbone import backbone_call
+
+    loop_audit = AuditWriter("nexus")
     for it in range(1, max_iterations + 1):
         if not hits:
             break
         proposal = propose_next_needles(case_dir, question, hits, all_needles_run, model, briefing=briefing)
-        new_needles = [
-            n for n in proposal.get("needles", [])
-            if n.lower() not in {x.lower() for x in all_needles_run}
+        dsl_queries = [
+            q for q in (proposal.get("dsl_queries")
+                        or [{"query": n, "dsl": False, "fallback": False}
+                            for n in proposal.get("needles", [])])
+            if q.get("query") and q["query"].lower() not in {x.lower() for x in all_needles_run}
         ][:_MAX_NEEDLES_PER_PROPOSAL]
-        if not new_needles:
+        if not dsl_queries:
             iterations.append({"iteration": it, "action": "no_new_proposals", "rationale": proposal.get("rationale", "")})
             append_chat(case_dir, "llm", "mode2_stop", "No new needles to propose.", {"iteration": it})
             break
-        all_needles_run.extend(new_needles)
-        rq = n4_query(case_dir, " ".join(new_needles), limit=limit)
-        new_hits = rq.get("hits", [])
+        iteration_queries: list[dict[str, Any]] = []
+        new_families: set[Any] = set()
+        for qspec in dsl_queries:
+            q = qspec["query"]
+            all_needles_run.append(q)
+            ran = backbone_call("n4_query", audit=loop_audit, dsl=q, limit=limit)
+            if ran.get("error"):
+                # gated/no-case — the loop cannot run; surface honestly
+                iterations.append({"iteration": it, "action": "query_error",
+                                   "query": q, "error": ran["error"]})
+                append_chat(case_dir, "llm", "mode2_error", ran["error"], {"iteration": it})
+                break
+            new_hits = ran.get("hits", [])
+            new_families |= {str(h.get("family")) for h in new_hits}
+            iteration_queries.append({
+                "query": q,
+                "dsl": qspec.get("dsl", False),
+                "fallback": qspec.get("fallback", False),
+                "fallback_reason": qspec.get("reason", ""),
+                "hits": ran.get("count", 0),
+                "audit_id": (ran.get("provenance") or {}).get("audit_id"),
+            })
+            hits = hits + new_hits
         iterations.append({
             "iteration": it,
             "action": "proposed_and_ran",
-            "needles": new_needles,
+            "queries": iteration_queries,
+            "needles": [q["query"] for q in iteration_queries],
             "rationale": proposal.get("rationale", ""),
             "source": proposal.get("source", ""),
-            "hits": rq.get("count", 0),
-            "new_families": sorted({h.get("family") for h in new_hits} - {h.get("family") for h in hits}),
+            "hits": sum(q["hits"] for q in iteration_queries),
+            "new_families": sorted(new_families - {str(h.get("family")) for h in hits}),
         })
         append_chat(
             case_dir, "llm", "mode2_proposal",
-            f"Iteration {it}: proposed {', '.join(new_needles)} -> {rq.get('count', 0)} hits",
-            {"rationale": proposal.get("rationale", ""), "needles": ",".join(new_needles)},
+            f"Iteration {it}: ran {len(iteration_queries)} query/queries -> "
+            f"{sum(q['hits'] for q in iteration_queries)} hits",
+            {"rationale": proposal.get("rationale", ""),
+             "needles": ",".join(q["query"] for q in iteration_queries)},
         )
         _emit(on_event, iterations[-1])
-        hits = hits + new_hits
 
     return {
         "question": question,

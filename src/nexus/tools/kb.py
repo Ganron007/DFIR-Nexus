@@ -60,6 +60,96 @@ def _run_kb(*args: str) -> dict[str, Any]:
     return {"available": True, "text": res.stdout[:_MAX_TEXT]}
 
 
+def do_kb_search(query: str, folder: str = "", signal: str = "", limit: int = 5,
+                 audit: AuditWriter | None = None) -> dict[str, Any]:
+    """Search the KB (BM25/FTS5) — the core behind the MCP tool + binding."""
+    started = time.monotonic()
+    if not query.strip():
+        return {"error": "query is required"}
+    args = ["find", query.strip(), "--limit", str(max(1, min(int(limit), 20)))]
+    if folder.strip():
+        args += ["--folder", folder.strip()]
+    if signal.strip() in ("command", "cve", "attack", "tool", "path"):
+        args += ["--signal", signal.strip()]
+    out = _run_kb(*args, "--json")
+    out.setdefault("note", "KB content is methodology/context — never case evidence (FD-001)")
+    if audit:
+        audit.log(tool="kb_search", params={"query": query[:200], "folder": folder},
+                  result_summary={"hits": len(out.get("hits") or [])},
+                  elapsed_ms=round((time.monotonic() - started) * 1000, 1))
+    return out
+
+
+def do_kb_read(chunk_id: str, audit: AuditWriter | None = None) -> dict[str, Any]:
+    """Read the exact text of one chunk (bounded) with its citation."""
+    if not chunk_id.strip():
+        return {"error": "chunk_id is required"}
+    out = _run_kb("read", chunk_id.strip(), "--json")
+    text = str(out.get("text") or "")
+    if text and len(text) > _MAX_TEXT:
+        out["text"] = text[:_MAX_TEXT] + "\n…(truncated — use `around`/export for more)"
+    if audit:
+        audit.log(tool="kb_read", params={"chunk_id": chunk_id[:80]},
+                  result_summary={"chars": len(text)})
+    return out
+
+
+def do_kb_cite(chunk_id: str, audit: AuditWriter | None = None) -> dict[str, Any]:
+    """Resolve a citation to its document/lines/heading (provenance)."""
+    if not chunk_id.strip():
+        return {"error": "chunk_id is required"}
+    out = _run_kb("cite", chunk_id.strip())
+    if audit:
+        audit.log(tool="kb_cite", params={"chunk_id": chunk_id[:80]},
+                  result_summary={"resolved": bool(out.get("chunk_id"))})
+    return out
+
+
+def do_kb_verify_cites(skill: str, audit: AuditWriter | None = None) -> dict[str, Any]:
+    """Verify the KB citations of one installed skill resolve (provenance)."""
+    safe = "".join(c for c in skill.strip() if c.isalnum() or c in "._-").strip("._")
+    if not safe:
+        return {"error": "skill id is required"}
+    import nexus
+
+    path = Path(nexus.__file__).parent / "data" / "knowledge" / "skills" / f"{safe}.yaml"
+    if not path.is_file():
+        return {"error": f"unknown skill: {safe}", "available": kb_root() is not None}
+    out = _run_kb("verify-cites", str(path))
+    if audit:
+        audit.log(tool="kb_verify_cites", params={"skill": safe}, result_summary={})
+    return out
+
+
+def do_kb_topics(folder: str, limit: int = 40, audit: AuditWriter | None = None) -> dict[str, Any]:
+    """List candidate procedure topics (documents) for a KB folder."""
+    if not folder.strip():
+        return {"error": "folder is required"}
+    out = _run_kb("topics", folder.strip(), "--limit", str(max(1, min(int(limit), 200))))
+    if audit:
+        audit.log(tool="kb_topics", params={"folder": folder[:120]},
+                  result_summary={"docs": out.get("docs")})
+    return out
+
+
+def do_kb_coverage_map(audit: AuditWriter | None = None) -> dict[str, Any]:
+    """Scope × distilled matrix — which KB scopes feed which skills."""
+    out = _run_kb("coverage-map")
+    if audit:
+        audit.log(tool="kb_coverage_map", params={}, result_summary={})
+    return out
+
+
+def do_kb_list_packs(audit: AuditWriter | None = None) -> dict[str, Any]:
+    """List the prebuilt, citation-annotated agent packs (KB-4)."""
+    from nexus.knowledge.kb_bridge import list_packs
+
+    out = {"available": kb_root() is not None, "packs": list_packs()}
+    if audit:
+        audit.log(tool="kb_list_packs", params={}, result_summary={"packs": len(out["packs"])})
+    return out
+
+
 def register_tools(server: FastMCP, audit: AuditWriter):
     @server.tool()
     def kb_search(query: str, folder: str = "", signal: str = "", limit: int = 5) -> dict:
@@ -69,43 +159,17 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         (`chunk_id | rel_path:line_start-line_end`) — methodology grounding for
         the examiner/LLM, never case evidence.
         """
-        started = time.monotonic()
-        if not query.strip():
-            return {"error": "query is required"}
-        args = ["find", query.strip(), "--limit", str(max(1, min(int(limit), 20)))]
-        if folder.strip():
-            args += ["--folder", folder.strip()]
-        if signal.strip() in ("command", "cve", "attack", "tool", "path"):
-            args += ["--signal", signal.strip()]
-        out = _run_kb(*args, "--json")
-        out.setdefault("note", "KB content is methodology/context — never case evidence (FD-001)")
-        audit.log(tool="kb_search", params={"query": query[:200], "folder": folder},
-                  result_summary={"hits": len(out.get("hits") or [])},
-                  elapsed_ms=round((time.monotonic() - started) * 1000, 1))
-        return out
+        return do_kb_search(query=query, folder=folder, signal=signal, limit=limit, audit=audit)
 
     @server.tool()
     def kb_read(chunk_id: str) -> dict:
         """Read the exact text of one chunk (bounded) with its citation."""
-        if not chunk_id.strip():
-            return {"error": "chunk_id is required"}
-        out = _run_kb("read", chunk_id.strip(), "--json")
-        text = str(out.get("text") or "")
-        if text and len(text) > _MAX_TEXT:
-            out["text"] = text[:_MAX_TEXT] + "\n…(truncated — use `around`/export for more)"
-        audit.log(tool="kb_read", params={"chunk_id": chunk_id[:80]},
-                  result_summary={"chars": len(text)})
-        return out
+        return do_kb_read(chunk_id=chunk_id, audit=audit)
 
     @server.tool()
     def kb_cite(chunk_id: str) -> dict:
         """Resolve a citation to its document/lines/heading (provenance)."""
-        if not chunk_id.strip():
-            return {"error": "chunk_id is required"}
-        out = _run_kb("cite", chunk_id.strip())
-        audit.log(tool="kb_cite", params={"chunk_id": chunk_id[:80]},
-                  result_summary={"resolved": bool(out.get("chunk_id"))})
-        return out
+        return do_kb_cite(chunk_id=chunk_id, audit=audit)
 
     @server.tool()
     def kb_verify_cites(skill: str) -> dict:
@@ -115,41 +179,19 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         against the installed skills directory; arbitrary file paths are not
         accepted over MCP.
         """
-        safe = "".join(c for c in skill.strip() if c.isalnum() or c in "._-").strip("._")
-        if not safe:
-            return {"error": "skill id is required"}
-        import nexus
-
-        path = Path(nexus.__file__).parent / "data" / "knowledge" / "skills" / f"{safe}.yaml"
-        if not path.is_file():
-            return {"error": f"unknown skill: {safe}", "available": kb_root() is not None}
-        out = _run_kb("verify-cites", str(path))
-        audit.log(tool="kb_verify_cites", params={"skill": safe},
-                  result_summary={"exit": out.get("exit")})
-        return out
+        return do_kb_verify_cites(skill=skill, audit=audit)
 
     @server.tool()
     def kb_topics(folder: str, limit: int = 40) -> dict:
         """List candidate procedure topics (documents) for a KB folder."""
-        if not folder.strip():
-            return {"error": "folder is required"}
-        out = _run_kb("topics", folder.strip(), "--limit", str(max(1, min(int(limit), 200))))
-        audit.log(tool="kb_topics", params={"folder": folder[:120]},
-                  result_summary={"docs": out.get("docs")})
-        return out
+        return do_kb_topics(folder=folder, limit=limit, audit=audit)
 
     @server.tool()
     def kb_coverage_map() -> dict:
         """Scope × distilled matrix — which KB scopes feed which skills."""
-        out = _run_kb("coverage-map")
-        audit.log(tool="kb_coverage_map", params={}, result_summary={"ok": out.get("available") is not False})
-        return out
+        return do_kb_coverage_map(audit=audit)
 
     @server.tool()
     def kb_list_packs() -> dict:
         """List the prebuilt, citation-annotated agent packs (KB-4)."""
-        from nexus.knowledge.kb_bridge import list_packs
-
-        out = {"available": kb_root() is not None, "packs": list_packs()}
-        audit.log(tool="kb_list_packs", params={}, result_summary={"packs": len(out["packs"])})
-        return out
+        return do_kb_list_packs(audit=audit)

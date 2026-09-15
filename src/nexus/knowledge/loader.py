@@ -560,6 +560,27 @@ def get_volatility_plugins() -> dict:
     return data if isinstance(data, dict) else {}
 
 
+def get_field_profiles() -> dict:
+    """Per-parser-family field profiles (WP 4j.10).
+
+    File: ``field_profiles/*.yaml`` — family → salient columns our parsers
+    emit, with OSSEM crosswalk notes. Grounds the LLM's N4 queries and
+    ``n4_aggregate`` field targets; unknown families remain covered by
+    schema-on-read (attached per-hit fields + free-text search).
+    """
+    data = _load_yaml("field_profiles/volatility_windows.yaml")
+    return data if isinstance(data, dict) else {}
+
+
+def get_field_profile(family: str) -> dict:
+    """One family's field profile ({} when unknown)."""
+    low = (family or "").strip().lower()
+    for p in (get_field_profiles().get("profiles") or []):
+        if isinstance(p, dict) and str(p.get("family") or "").lower() == low:
+            return p
+    return {}
+
+
 def get_skills() -> list[dict]:
     """Agent investigation skills — structured procedures distilled from
     the DFIR knowledge base (13Cubed, Volexity, SANS FOR508) plus

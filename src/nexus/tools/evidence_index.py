@@ -128,6 +128,172 @@ def _time_buckets(hits: list[dict[str, Any]], granularity: str) -> dict[str, int
     return dict(sorted(buckets.items())[:_MAX_TOP])
 
 
+def do_n4_query(case_id: str = "", dsl: str = "", limit: int = 80,
+                audit: AuditWriter | None = None) -> dict:
+    """Core n4_query — the MCP tool and the Mode 2/3 binding layer share this."""
+    started = time.monotonic()
+    case_dir, err = _resolve_active_case(case_id)
+    if err or case_dir is None:
+        return {"error": err or "no active case"}
+    from nexus.langgraph.query_pack import attach_hit_fields
+    from nexus.langgraph.query_pack import n4_query as _n4_query
+
+    result = _n4_query(case_dir, dsl, limit=max(1, min(int(limit), 400)))
+    if result.get("error"):
+        return {**result, "case_id": Path(case_dir).name}
+    hits = [h for h in (result.get("hits") or []) if isinstance(h, dict)]
+    with contextlib.suppress(Exception):
+        hits = attach_hit_fields(case_dir, hits)  # fields are best-effort enrichment
+    trimmed = [_trim_hit(h) for h in hits[: max(1, min(int(limit), 400))]]
+    aid = audit.log(
+        tool="n4_query",
+        params={"case_id": Path(case_dir).name, "dsl": dsl[:200], "limit": limit},
+        result_summary={"count": result.get("count"), "backend": result.get("backend")},
+        elapsed_ms=round((time.monotonic() - started) * 1000, 1),
+    ) if audit else None
+    return {
+        "case_id": Path(case_dir).name,
+        "query": dsl,
+        "count": result.get("count"),
+        "backend": result.get("backend"),
+        "hits": trimmed,
+        "provenance": {"audit_id": aid, "case_id": Path(case_dir).name},
+    }
+
+
+def do_n4_aggregate(case_id: str = "", dsl: str = "", field: str = "host",
+                    top: int = 20, bucket: str = "",
+                    audit: AuditWriter | None = None) -> dict:
+    """Aggregate the active case's evidence rows (context — never evidence)."""
+    started = time.monotonic()
+    case_dir, err = _resolve_active_case(case_id)
+    if err or case_dir is None:
+        return {"error": err or "no active case"}
+    from nexus.langgraph.query_pack import attach_hit_fields
+    from nexus.langgraph.query_pack import n4_query as _n4_query
+
+    result = _n4_query(case_dir, dsl, limit=_MAX_AGG_HITS)
+    if result.get("error"):
+        return {**result, "case_id": Path(case_dir).name}
+    hits = [h for h in (result.get("hits") or []) if isinstance(h, dict)]
+    with contextlib.suppress(Exception):
+        hits = attach_hit_fields(case_dir, hits)
+    values = _field_values(hits, field)
+    counts: dict[str, int] = {}
+    for v in values:
+        counts[v] = counts.get(v, 0) + 1
+    ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[: max(1, min(int(top), 100))]
+    buckets = _time_buckets(hits, bucket) if bucket in ("day", "hour") else None
+    aid = audit.log(
+        tool="n4_aggregate",
+        params={"case_id": Path(case_dir).name, "dsl": dsl[:200], "field": field,
+                "bucket": bucket},
+        result_summary={"distinct": len(counts), "rows": len(hits)},
+        elapsed_ms=round((time.monotonic() - started) * 1000, 1),
+    ) if audit else None
+    return {
+        "case_id": Path(case_dir).name,
+        "field": field,
+        "rows_scanned": len(hits),
+        "values_seen": len(values),
+        "distinct": len(counts),
+        "top": [{"value": v, "count": c} for v, c in ranked],
+        "buckets": buckets,
+        "backend": result.get("backend"),
+        "note": "aggregations are investigation context — never evidence (FD-001)",
+        "provenance": {"audit_id": aid, "case_id": Path(case_dir).name},
+    }
+
+
+def _observed_family_fields(case_dir: Path, cap: int = 300) -> dict[str, list[str]]:
+    """Bounded live census: parsed columns actually present, grouped by family."""
+    from nexus.langgraph.query_pack import attach_hit_fields
+    from nexus.langgraph.query_pack import n4_query as _n4_query
+
+    observed: dict[str, dict[str, None]] = {}
+    with contextlib.suppress(Exception):
+        result = _n4_query(case_dir, "", limit=cap, match_all=True)
+        hits = [h for h in (result.get("hits") or []) if isinstance(h, dict)]
+        with contextlib.suppress(Exception):
+            hits = attach_hit_fields(case_dir, hits)
+        for h in hits:
+            fam = str(h.get("family") or "").lower()
+            fields = h.get("fields") or {}
+            if not isinstance(fields, dict):
+                continue
+            slot = observed.setdefault(fam, {})
+            for k in list(fields)[:_MAX_FIELDS]:
+                slot.setdefault(str(k), None)
+    return {fam: sorted(cols)[:_MAX_FIELDS] for fam, cols in observed.items() if cols}
+
+
+def do_index_mappings(case_id: str = "", audit: AuditWriter | None = None) -> dict:
+    """Describe the active case's index: backend, families, fields, census."""
+    started = time.monotonic()
+    case_dir, err = _resolve_active_case(case_id)
+    if err or case_dir is None:
+        return {"error": err or "no active case"}
+    from nexus.langgraph.briefing import _family_inventory
+    from nexus.langgraph.case_index import es_available, index_name
+
+    inventory = _family_inventory(case_dir)
+    es = es_available()
+    # Field knowledge: curated profiles (KB) + the live census (this case's
+    # own parsed columns) — the LLM's `field:` targets are grounded in both.
+    from nexus.knowledge.loader import get_field_profiles
+
+    profiles = {str(p.get("family") or "").lower():
+                [str(f) for f in (p.get("fields") or [])][: _MAX_FIELDS]
+                for p in (get_field_profiles().get("profiles") or [])
+                if isinstance(p, dict)}
+    live = _observed_family_fields(case_dir)
+    family_fields = {
+        fam: sorted(set(profiles.get(fam) or []) | set(live.get(fam) or []))[:_MAX_FIELDS]
+        for fam in sorted(inventory)
+    }
+    aid = audit.log(
+        tool="index_mappings",
+        params={"case_id": Path(case_dir).name},
+        result_summary={"families": len(inventory), "es": es},
+        elapsed_ms=round((time.monotonic() - started) * 1000, 1),
+    ) if audit else None
+    return {
+        "case_id": Path(case_dir).name,
+        "es_available": es,
+        "index_name": index_name(Path(case_dir).name),
+        "families": sorted(inventory),
+        "family_rows": {k: v.get("rows", 0) for k, v in sorted(inventory.items())},
+        "family_fields": family_fields,
+        "dsl_fields": ["family", "host", "user", "event", "file"],
+        "note": ("evidence index reachable" if es
+                 else "ES not reachable — deterministic CSV pack backend"),
+        "provenance": {"audit_id": aid, "case_id": Path(case_dir).name},
+    }
+
+
+def do_family_fields(family: str, audit: AuditWriter | None = None) -> dict:
+    """One family's field profile (KB) — what columns its parsers emit."""
+    from nexus.knowledge.loader import get_field_profile
+
+    profile = get_field_profile(family)
+    if not profile:
+        return {
+            "family": family,
+            "fields": [],
+            "note": ("no curated profile — schema-on-read applies: run n4_query and "
+                     "read the hit's attached fields, or use free-text/regex search"),
+        }
+    aid = audit.log(tool="family_fields", params={"family": family},
+                    result_summary={"fields": len(profile.get("fields") or [])}) if audit else None
+    return {
+        "family": str(profile.get("family") or family),
+        "fields": [str(f) for f in (profile.get("fields") or [])],
+        "ossem": str(profile.get("ossem") or ""),
+        "note": str(profile.get("note") or ""),
+        "provenance": {"audit_id": aid},
+    }
+
+
 def register_tools(server: FastMCP, audit: AuditWriter):
     @server.tool()
     def n4_query(case_id: str = "", dsl: str = "", limit: int = 80) -> dict:
@@ -139,34 +305,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         Evidence plane: ES when configured, deterministic CSV pack otherwise.
         Findings need these rows' audit_ids (FD-001).
         """
-        started = time.monotonic()
-        case_dir, err = _resolve_active_case(case_id)
-        if err or case_dir is None:
-            return {"error": err or "no active case"}
-        from nexus.langgraph.query_pack import attach_hit_fields
-        from nexus.langgraph.query_pack import n4_query as _n4_query
-
-        result = _n4_query(case_dir, dsl, limit=max(1, min(int(limit), 400)))
-        if result.get("error"):
-            return {**result, "case_id": Path(case_dir).name}
-        hits = [h for h in (result.get("hits") or []) if isinstance(h, dict)]
-        with contextlib.suppress(Exception):
-            hits = attach_hit_fields(case_dir, hits)  # fields are best-effort enrichment
-        trimmed = [_trim_hit(h) for h in hits[: max(1, min(int(limit), 400))]]
-        aid = audit.log(
-            tool="n4_query",
-            params={"case_id": Path(case_dir).name, "dsl": dsl[:200], "limit": limit},
-            result_summary={"count": result.get("count"), "backend": result.get("backend")},
-            elapsed_ms=round((time.monotonic() - started) * 1000, 1),
-        )
-        return {
-            "case_id": Path(case_dir).name,
-            "query": dsl,
-            "count": result.get("count"),
-            "backend": result.get("backend"),
-            "hits": trimmed,
-            "provenance": {"audit_id": aid, "case_id": Path(case_dir).name},
-        }
+        return do_n4_query(case_id=case_id, dsl=dsl, limit=limit, audit=audit)
 
     @server.tool()
     def n4_aggregate(
@@ -183,74 +322,25 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         timestamp. Grounded: counts come from the same N4 result stream the
         examiner sees (ES backend or CSV pack).
         """
-        started = time.monotonic()
-        case_dir, err = _resolve_active_case(case_id)
-        if err or case_dir is None:
-            return {"error": err or "no active case"}
-        from nexus.langgraph.query_pack import attach_hit_fields
-        from nexus.langgraph.query_pack import n4_query as _n4_query
-
-        result = _n4_query(case_dir, dsl, limit=_MAX_AGG_HITS)
-        if result.get("error"):
-            return {**result, "case_id": Path(case_dir).name}
-        hits = [h for h in (result.get("hits") or []) if isinstance(h, dict)]
-        with contextlib.suppress(Exception):
-            hits = attach_hit_fields(case_dir, hits)
-        values = _field_values(hits, field)
-        counts: dict[str, int] = {}
-        for v in values:
-            counts[v] = counts.get(v, 0) + 1
-        ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[: max(1, min(int(top), 100))]
-        buckets = _time_buckets(hits, bucket) if bucket in ("day", "hour") else None
-        aid = audit.log(
-            tool="n4_aggregate",
-            params={"case_id": Path(case_dir).name, "dsl": dsl[:200], "field": field,
-                    "bucket": bucket},
-            result_summary={"distinct": len(counts), "rows": len(hits)},
-            elapsed_ms=round((time.monotonic() - started) * 1000, 1),
-        )
-        return {
-            "case_id": Path(case_dir).name,
-            "field": field,
-            "rows_scanned": len(hits),
-            "values_seen": len(values),
-            "distinct": len(counts),
-            "top": [{"value": v, "count": c} for v, c in ranked],
-            "buckets": buckets,
-            "backend": result.get("backend"),
-            "note": "aggregations are investigation context — never evidence (FD-001)",
-            "provenance": {"audit_id": aid, "case_id": Path(case_dir).name},
-        }
+        return do_n4_aggregate(case_id=case_id, dsl=dsl, field=field, top=top,
+                               bucket=bucket, audit=audit)
 
     @server.tool()
     def index_mappings(case_id: str = "") -> dict:
         """Describe the active case's index: backend, families, N4 DSL fields.
 
         Grounds the LLM against hallucinated families/fields — the vocabulary
-        it may query is what this case actually holds.
+        it may query is what this case actually holds (curated field profiles
+        + a live census of the case's parsed columns per family).
         """
-        started = time.monotonic()
-        case_dir, err = _resolve_active_case(case_id)
-        if err or case_dir is None:
-            return {"error": err or "no active case"}
-        from nexus.langgraph.briefing import _family_inventory
-        from nexus.langgraph.case_index import es_available, index_name
+        return do_index_mappings(case_id=case_id, audit=audit)
 
-        inventory = _family_inventory(case_dir)
-        aid = audit.log(
-            tool="index_mappings",
-            params={"case_id": Path(case_dir).name},
-            result_summary={"families": len(inventory), "es": es_available()},
-            elapsed_ms=round((time.monotonic() - started) * 1000, 1),
-        )
-        return {
-            "case_id": Path(case_dir).name,
-            "es_available": es_available(),
-            "index_name": index_name(Path(case_dir).name),
-            "families": sorted(inventory),
-            "family_rows": {k: v.get("rows", 0) for k, v in sorted(inventory.items())},
-            "dsl_fields": ["family", "host", "user", "event", "file"],
-            "note": ("evidence index reachable" if es_available()
-                     else "ES not reachable — deterministic CSV pack backend"),
-            "provenance": {"audit_id": aid, "case_id": Path(case_dir).name},
-        }
+    @server.tool()
+    def family_fields(family: str) -> dict:
+        """Salient columns a parser family emits (curated profile + OSSEM).
+
+        Use before aggregating on a field: tells the LLM which column names
+        exist in that family's evidence. Unknown families fall back to
+        schema-on-read guidance.
+        """
+        return do_family_fields(family=family, audit=audit)
