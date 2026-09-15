@@ -258,7 +258,7 @@ export default function SteerChat() {
     // setInput("");
 
     try {
-      if (mode === "mode1" || mode === "mode2") {
+      if (mode === "mode1") {
         // WP 4d.3: streamed turn — live status + iteration events, then reload
         await chatStream(
           {
@@ -279,6 +279,33 @@ export default function SteerChat() {
           },
         );
         load();
+      } else if (mode === "mode2") {
+        // WP 4j.13 — the conversational evidence agent (NOT needle proposal)
+        const r = await api.mode2Chat({
+          message: text,
+          history: messages.slice(-6).map((m) => ({ role: m.role, text: m.text })),
+        });
+        setMessages((prev) => [
+          ...prev,
+          {
+            ts: new Date().toISOString(),
+            role: "examiner",
+            action: "steer_question",
+            text,
+            meta: {},
+          },
+          {
+            ts: new Date().toISOString(),
+            role: "llm",
+            action: "steer_answer",
+            text: r.reply || "(no answer)",
+            meta: {
+              queries: (r.queries_executed || []).map((q) => `${q.tool}(${q.dsl})`).join("; "),
+              total_hits: String(r.total_hits),
+              confidence: r.confidence,
+            },
+          },
+        ]);
       } else if (mode === "mode3") {
         if (mode3Step === "plan") {
           const plan = await api.mode3Plan({ question: text });
@@ -729,21 +756,22 @@ export default function SteerChat() {
         <input
           placeholder={
             mode === "mode1" ? "Ask a question..." :
-            mode === "mode2" ? "Ask + iterate..." :
+            mode === "mode2" ? "Ask about the evidence..." :
             mode3Step === "plan" ? "Set scope for agent..." :
             "Use action buttons above..."
           }
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && send()}
-          disabled={loading || (mode === "mode3" && mode3Step !== "plan")}
+          onKeyDown={(e) => e.key === "Enter" && !loading && send()}
+          placeholder-style={{ color: loading ? "var(--text-muted)" : undefined }}
+          disabled={mode === "mode3" && mode3Step !== "plan"}
         />
         <button
           className="btn btn-primary"
           onClick={send}
           disabled={loading || (mode === "mode3" && mode3Step !== "plan")}
         >
-          {loading ? "..." : "Send"}
+          {loading ? "Working…" : "Send"}
         </button>
       </div>
     </div>
