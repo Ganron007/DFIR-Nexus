@@ -1288,29 +1288,47 @@ def _n5_query_payload(case_dir, ledger: list, output_dir: Path | None = None) ->
     return "(query pack missing)"
 
 
+# Mode 2 interpret toolset — RAG + evidence (own ES queries) + KB + TI.
+# All read-only; the evidence/knowledge tools are the same case-gated MCP
+# tools the examiner sees (n4_* require the active case's case_id).
+INTERPRET_TOOL_NAMES = (
+    # RAG methodology (required)
+    "forensic_rag_search",
+    "forensic_rag_status",
+    # evidence index — the LLM pulls its own rows beyond the query pack
+    "n4_query",
+    "n4_aggregate",
+    "index_mappings",
+    "family_fields",
+    # examiner-curated KB (procedures/caveats/terminology)
+    "kb_search",
+    "kb_read",
+    "kb_cite",
+    # threat intel (keyed providers auto-included)
+    "ti_lookup",
+    "ti_fanout",
+    "ti_list_providers",
+    # triage validation + tooling hints
+    "ingest_auto",
+    "analyze_gaps",
+    "predict_techniques",
+    "check_file",
+    "check_hash",
+    "check_autorun",
+    "suggest_tools",
+    "suggest_windows_tools",
+)
+
+
 async def interpret(state: InvestigationState, tools: dict, model) -> dict:
-    """Coverage/interpret: LLM + RAG on N4 query-pack hits (not CSV heads)."""
+    """Coverage/interpret: LLM + RAG + KB + TI on N4 query-pack hits."""
     try:
         from langgraph.prebuilt import create_react_agent
     except ImportError:
         return {"error": "langgraph not installed — run: pip install dfir-nexus[pipeline]"}
 
     interpret_tools = []
-    for name in (
-        "forensic_rag_search",
-        "forensic_rag_status",
-        "ingest_auto",
-        "analyze_gaps",
-        "predict_techniques",
-        "check_file",
-        "check_hash",
-        "check_autorun",
-        "suggest_tools",
-        "suggest_windows_tools",
-        "ti_lookup",
-        "ti_fanout",
-        "ti_list_providers",
-    ):
+    for name in INTERPRET_TOOL_NAMES:
         t = tools.get(name)
         if t:
             interpret_tools.append(t)
@@ -1332,6 +1350,8 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
     case_id = state.get("case_id") or ""
     ti_block = ""
     inv_md = ""
+    kb_block = ""
+    playbook_block = ""
     if case_id:
         from nexus.config import settings
         analysis_dir = Path(state.get("run_dir") or "") / "analysis" if state.get("run_dir") else None
@@ -1348,6 +1368,7 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
             log.warning("TI context build failed: %s", exc)
         # Deterministic entity census — the interpret agent must address every
         # item (broad, extensive coverage; gaps are listed after staging).
+        inv: dict[str, Any] = {}
         try:
             from nexus.langgraph.entity_inventory import (
                 build_entity_inventory,
@@ -1360,6 +1381,36 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
             inv_md = render_inventory_markdown(inv)
         except Exception as exc:  # noqa: BLE001 — inventory is best-effort
             log.warning("entity inventory build failed: %s", exc)
+        # Examiner-curated KB context (question + families + top entities) and
+        # playbook caveats/identification steps for the case's families.
+        try:
+            from nexus.langgraph.briefing import _family_inventory
+            from nexus.langgraph.kb_context import (
+                build_kb_context,
+                render_kb_markdown,
+                write_kb_context,
+            )
+
+            families = sorted(_family_inventory(settings.cases_root / case_id))
+            top_entities = [
+                str(item.get("value") or "")
+                for item in (inv.get("processes") or [])[:4]
+            ]
+            kb_ctx = build_kb_context(
+                question=str((state.get("case_context") or {}).get("question") or ""),
+                families=families,
+                entities=top_entities,
+            )
+            write_kb_context(settings.cases_root / case_id, kb_ctx)
+            kb_block = render_kb_markdown(kb_ctx)
+            try:
+                from nexus.langgraph.mode2 import _playbook_context_for_families
+
+                playbook_block = _playbook_context_for_families(set(families))[:3000]
+            except Exception as exc:  # noqa: BLE001
+                log.debug("playbook context unavailable: %s", exc)
+        except Exception as exc:  # noqa: BLE001 — KB is optional (NEXUS_KB_DIR)
+            log.warning("KB context build failed: %s", exc)
 
     from nexus.langgraph.itm import itm_prompt_block
 
@@ -1376,6 +1427,11 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
             "FIRST call forensic_rag_status (must be ready). "
             "THEN forensic_rag_search once per QUERY PACK hit family "
             "(methodology for those artifacts only). "
+            "Use n4_query/n4_aggregate/index_mappings (pass the case_id) to "
+            "pull ADDITIONAL rows beyond the query pack when a claim needs "
+            "more evidence — the same case-gated index the examiner uses. "
+            "Use kb_search/kb_read for procedures, caveats and terminology "
+            "from the examiner's KB; cite the page titles you rely on. "
             "THEN emit findings JSON from QUERY PACK hits. "
             "Use ti_lookup/ti_fanout for every IOC in the THREAT INTEL block "
             "and for hashes/IPs/domains you see in QUERY PACK hits — say what "
@@ -1397,6 +1453,8 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
                         f"N4 QUERY PACK (ONLY source of host facts):\n{query_pack or '(none)'}\n\n"
                         f"ENTITY INVENTORY (deterministic census — address EVERY item):\n{inv_md or '(none)'}\n\n"
                         f"THREAT INTEL (context — never evidence):\n{ti_block or '(none)'}\n\n"
+                        f"PLAYBOOK GUIDANCE (caveats + identification steps — never evidence):\n{playbook_block or '(none)'}\n\n"
+                        f"EXAMINER KB NOTES (procedures/terminology — never evidence):\n{kb_block or '(none)'}\n\n"
                         f"Prior RAG notes:\n{rag_prior or '(none)'}\n\n"
                         f"OK/FAIL ledger (audit_ids only — not facts):\n```json\n{ledger_json}\n```\n\n"
                         "Emit a ```json array of findings. Each finding MUST have:\n"
