@@ -200,11 +200,13 @@ function ProposalCard({ entry }: { entry: ChatEntry }) {
 }
 
 export default function SteerChat() {
-  const { mode: caseMode, activeCase, setMode: setCaseMode } = useCase();
+  const { mode: caseMode, activeCase } = useCase();
   const [messages, setMessages] = useState<ChatEntry[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // WP 4j.33/4j.34 — per-turn stage timings from the steering agent
+  const [turnTimings, setTurnTimings] = useState("");
   // Phase 4f fix: depth is a case-level decision (single source = caseMode).
   // No private chat mode that can disagree with the case setting; changing it
   // persists to the case via setCaseMode.
@@ -295,6 +297,10 @@ export default function SteerChat() {
           message: text,
           history: messages.slice(-6).map((m) => ({ role: m.role, text: m.text })),
         });
+        const timingText = Object.entries(r.timings_ms || {})
+          .map(([k, v]) => `${k} ${(v / 1000).toFixed(1)}s`)
+          .join(" · ");
+        if (timingText) setTurnTimings(timingText);
         setMessages((prev) => [
           ...prev,
           {
@@ -305,6 +311,7 @@ export default function SteerChat() {
             meta: {
               total_hits: String(r.total_hits),
               confidence: r.confidence,
+              timings: timingText,
             },
             data: { queries: r.queries_executed || [] },
           },
@@ -504,27 +511,14 @@ export default function SteerChat() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
         <h2>Steer Chat</h2>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <select
-            aria-label="Investigation depth"
-            value={mode}
-            onChange={async (e) => {
-              const next = e.target.value as "mode1" | "mode2" | "mode3";
-              setMode3Step("plan");
-              setMode3Plan(null);
-              setSealChallenge(null);
-              setSealResponse("");
-              try {
-                await setCaseMode(next === "mode2" ? "2" : next === "mode3" ? "3" : "1");
-              } catch (err) {
-                setError((err as Error).message);
-              }
-            }}
-            style={{ width: "auto" }}
+          {/* Mode is fixed at case creation — no in-case switching (segregation). */}
+          <span
+            className={`mode-badge mode-${mode === "mode2" ? "2" : mode === "mode3" ? "3" : "1"}`}
+            title="Investigation mode was chosen when the case was created"
+            style={{ fontSize: 11 }}
           >
-            <option value="mode1">Mode 1 — Scribe</option>
-            <option value="mode2">Mode 2 — Iterative</option>
-            <option value="mode3">Mode 3 — Agentic</option>
-          </select>
+            {mode === "mode1" ? "Mode 1 — Scribe" : mode === "mode2" ? "Mode 2 — LLM steering" : "Mode 3 — Agentic"}
+          </span>
           {mode === "mode2" && (
             <input
               type="number"
@@ -545,9 +539,17 @@ export default function SteerChat() {
         </div>
       </div>
       <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: -4, marginBottom: 10 }}>
-        Depth is a case-level setting: it changes who proposes next (examiner → LLM → agent).
-        Evidence, parsed outputs, findings and the audit chain are shared — nothing is re-processed.
+        {mode === "mode1"
+          ? "Mode 1: you propose needles — the LLM scribes your findings. Evidence and the audit chain are shared."
+          : mode === "mode2"
+            ? "Mode 2: you ask in plain language — the LLM queries the case's evidence index, cites rows and stages DRAFT findings for your approval."
+            : "Mode 3: the agent plans, hunts and corroborates across the case; you steer and seal."}
       </div>
+      {mode === "mode2" && turnTimings && (
+        <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: -8, marginBottom: 8 }}>
+          last turn: {turnTimings}
+        </div>
+      )}
 
       {error && <div className="error-banner">{error}</div>}
 
@@ -747,6 +749,7 @@ export default function SteerChat() {
                   <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2, textAlign: m.role === "examiner" ? "right" : "left" }}>
                     {m.role} · {m.action}{m.ts ? ` · ${m.ts.slice(0, 19)}` : ""}
                     {m.meta?.total_hits ? ` · ${m.meta.total_hits} rows` : ""}
+                    {m.meta?.timings ? ` · ${m.meta.timings}` : ""}
                   </div>
                 </div>
               );

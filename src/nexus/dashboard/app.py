@@ -3511,16 +3511,45 @@ async def api_mode2_chat(request):
     if not message:
         return JSONResponse({"error": "message is required"}, status_code=400)
 
-    from nexus.langgraph.steer_agent import run_steer_agent
-
-    result = run_steer_agent(case_dir, message, history=history)
-
     from nexus.case.chat import append_chat
 
+    # Persist the examiner's message BEFORE the turn runs — a slow or failed
+    # turn must never make the question vanish from the transcript.
     append_chat(case_dir, "examiner", "steer_question", message[:2000])
+
+    # WP 4j.33: never block the event loop on the LLM turn — run the agent in
+    # a worker thread with a hard turn budget (the LLM client itself carries
+    # NEXUS_LLM_TIMEOUT; this is the backstop).
+    import asyncio
+
+    from nexus.langgraph.steer_agent import run_steer_agent
+
+    try:
+        turn_budget = float(os.environ.get("NEXUS_MODE2_TURN_TIMEOUT", "240"))
+    except ValueError:
+        turn_budget = 240.0
+    try:
+        result = await asyncio.wait_for(
+            asyncio.to_thread(run_steer_agent, case_dir, message, history=history),
+            timeout=turn_budget,
+        )
+    except TimeoutError:
+        result = {
+            "error": f"turn exceeded {turn_budget:.0f}s",
+            "reply": (
+                f"Steering turn exceeded {turn_budget:.0f}s and was stopped — "
+                "the model or a data provider stalled. Try again or narrow the "
+                "question."
+            ),
+            "queries_executed": [], "total_hits": 0, "confidence": "low",
+            "timings_ms": {}, "stages": [],
+        }
+
+    timings = result.get("timings_ms") or {}
     append_chat(case_dir, "llm", "steer_answer", result.get("reply", "")[:3000], {
         "total_hits": str(result.get("total_hits", 0)),
         "confidence": result.get("confidence", ""),
+        "timings": " ".join(f"{k}={round(v / 1000, 1)}s" for k, v in timings.items()),
     }, {
         "queries": result.get("queries_executed", [])[:8],
         "aggregations": result.get("aggregations", [])[:5],

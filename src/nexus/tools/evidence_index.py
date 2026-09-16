@@ -172,6 +172,30 @@ def do_n4_aggregate(case_id: str = "", dsl: str = "", field: str = "host",
     case_dir, err = _resolve_active_case(case_id)
     if err or case_dir is None:
         return {"error": err or "no active case"}
+    # WP 4j.32: ES-native aggregation first (schema-v2 index) — counts computed
+    # in ES, not by streaming rows. Legacy index / CSV backend falls through.
+    native: dict[str, Any] | None = None
+    with contextlib.suppress(Exception):
+        from nexus.langgraph.case_index import es_aggregate
+
+        native = es_aggregate(
+            case_dir, dsl, field=field, top=top, bucket=bucket, match_all=match_all,
+        )
+    if native is not None:
+        aid = audit.log(
+            tool="n4_aggregate",
+            params={"case_id": Path(case_dir).name, "dsl": dsl[:200], "field": field,
+                    "bucket": bucket, "match_all": match_all},
+            result_summary={"distinct": native.get("distinct"),
+                            "rows": native.get("rows_scanned"), "native": True},
+            elapsed_ms=round((time.monotonic() - started) * 1000, 1),
+        ) if audit else None
+        return {
+            "case_id": Path(case_dir).name,
+            "note": "aggregations are investigation context — never evidence (FD-001)",
+            "provenance": {"audit_id": aid, "case_id": Path(case_dir).name},
+            **native,
+        }
     from nexus.langgraph.query_pack import attach_hit_fields
     from nexus.langgraph.query_pack import n4_query as _n4_query
 
@@ -230,12 +254,24 @@ def _observed_family_fields(case_dir: Path, cap: int = 300) -> dict[str, list[st
     return {fam: sorted(cols)[:_MAX_FIELDS] for fam, cols in observed.items() if cols}
 
 
+_mappings_cache: dict[str, tuple[float, dict]] = {}
+_MAPPINGS_TTL = 60.0
+
+
 def do_index_mappings(case_id: str = "", audit: AuditWriter | None = None) -> dict:
     """Describe the active case's index: backend, families, fields, census."""
     started = time.monotonic()
     case_dir, err = _resolve_active_case(case_id)
     if err or case_dir is None:
         return {"error": err or "no active case"}
+    # WP 4j.34: cache the census per case (steering calls this every turn).
+    cache_key = Path(case_dir).name
+    now = time.monotonic()
+    cached = _mappings_cache.get(cache_key)
+    if cached and (now - cached[0]) < _MAPPINGS_TTL:
+        payload = dict(cached[1])
+        payload["cached"] = True
+        return payload
     from nexus.langgraph.briefing import _family_inventory
     from nexus.langgraph.case_index import es_available, index_name
 
@@ -260,7 +296,7 @@ def do_index_mappings(case_id: str = "", audit: AuditWriter | None = None) -> di
         result_summary={"families": len(inventory), "es": es},
         elapsed_ms=round((time.monotonic() - started) * 1000, 1),
     ) if audit else None
-    return {
+    payload = {
         "case_id": Path(case_dir).name,
         "es_available": es,
         "index_name": index_name(Path(case_dir).name),
@@ -272,6 +308,8 @@ def do_index_mappings(case_id: str = "", audit: AuditWriter | None = None) -> di
                  else "ES not reachable — deterministic CSV pack backend"),
         "provenance": {"audit_id": aid, "case_id": Path(case_dir).name},
     }
+    _mappings_cache[cache_key] = (now, payload)
+    return payload
 
 
 def do_family_fields(family: str, audit: AuditWriter | None = None) -> dict:

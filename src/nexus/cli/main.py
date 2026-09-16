@@ -59,6 +59,7 @@ from nexus.cli.config_cmd import app as config_app
 from nexus.cli.data_cmd import app as data_app
 from nexus.cli.evidence import app as evidence_app
 from nexus.cli.exec_cmd import app as exec_app
+from nexus.cli.index_cmd import app as index_app
 from nexus.cli.init_cmd import init as init_cmd
 from nexus.cli.report import app as report_app
 from nexus.cli.review import app as review_app
@@ -86,6 +87,7 @@ app.add_typer(exec_app, name="exec", help="Execute forensic command with audit t
 app.add_typer(audit_app, name="audit", help="View audit trail")
 app.add_typer(todo_app, name="todo", help="Manage TODO items")
 app.add_typer(data_app, name="data", help="Download RAG / triage / fixtures")
+app.add_typer(index_app, name="index", help="Rebuild the per-case ES index (schema v2)")
 app.add_typer(collect_app, name="collect", help="Stage 0 IR orchestrator — live collect with auth")
 # Registered as a direct command (not a sub-group) so the documented
 # `nexus init "Case" --evidence ...` form works.

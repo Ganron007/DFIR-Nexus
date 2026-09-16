@@ -16,7 +16,7 @@ from nexus.integration.evidence_table import evidence_rows_from_n4_hits
 
 _MAX_HITS_PER_FILE = 40
 _MAX_HITS_TOTAL = 400
-_MAX_LINE = 480
+_MAX_LINE = 1200
 _MAX_MD = 60000
 # Full-row index/scan of small CSVs. Hayabusa/USN live above this;
 # N4 still needle-scans them up to _MAX_FILTERED_SCAN_BYTES.
@@ -463,12 +463,12 @@ def render_ingest_row(d: dict[str, Any], max_len: int = _MAX_LINE) -> str:
     return " ".join(p for p in parts if p).strip()[:max_len]
 
 
-def iter_ingest_rows(case_dir: Path) -> list[tuple[int, str, str, str]]:
-    """(line_no, family(source), searchable text, ts) per imported artifact."""
+def iter_ingest_records(case_dir: Path) -> list[tuple[int, str, str, str, dict[str, Any]]]:
+    """(line_no, family(source), searchable text, ts, record) per artifact."""
     path = Path(case_dir) / "ingest" / "artifacts.jsonl"
     if not path.is_file():
         return []
-    rows: list[tuple[int, str, str, str]] = []
+    rows: list[tuple[int, str, str, str, dict[str, Any]]] = []
     try:
         with path.open(encoding="utf-8", errors="replace") as fh:
             for n, line in enumerate(fh, start=1):
@@ -482,10 +482,15 @@ def iter_ingest_rows(case_dir: Path) -> list[tuple[int, str, str, str]]:
                 if not isinstance(d, dict):
                     continue
                 fam = str(d.get("source") or "ingest").strip().lower() or "ingest"
-                rows.append((n, fam, render_ingest_row(d), str(d.get("timestamp") or "")))
+                rows.append((n, fam, render_ingest_row(d), str(d.get("timestamp") or ""), d))
     except OSError:
         return []
     return rows
+
+
+def iter_ingest_rows(case_dir: Path) -> list[tuple[int, str, str, str]]:
+    """(line_no, family(source), searchable text, ts) per imported artifact."""
+    return [(n, fam, text, ts) for n, fam, text, ts, _rec in iter_ingest_records(case_dir)]
 
 
 def _hits_from_ingest(

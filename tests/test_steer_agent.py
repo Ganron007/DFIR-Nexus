@@ -100,3 +100,21 @@ def test_steer_agent_provenance_travels(tmp_path):
     result = run_steer_agent(case, "sdelete execution")
     for q in result["queries_executed"]:
         assert q.get("audit_id"), f"query {q['dsl']} missing audit_id"
+
+
+def test_fast_plan_skips_llm_for_clear_intents():
+    """WP 4j.34 — deterministic planner for list/IOC questions (saves the
+    30-90 s LLM planning call on reasoning models)."""
+    from nexus.langgraph.steer_agent import _fast_plan
+
+    users = _fast_plan("List all users and machines involved")
+    assert users[:2] == ["AGG:match_all|field:user", "AGG:match_all|field:host"]
+    assert users[-1] == "match_all"  # row query accompanies aggregations
+
+    assert _fast_plan("List all exe involved in this case") == ["exe"]
+
+    hashed = _fast_plan("Is 534a7ea9c67bab3e8f2d41977bf43d41dfe951cf malicious?")
+    assert hashed == ["534a7ea9c67bab3e8f2d41977bf43d41dfe951cf"]
+
+    # Open-ended questions still use the LLM planner.
+    assert _fast_plan("Explain how the attacker moved laterally across the estate") is None

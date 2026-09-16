@@ -42,6 +42,14 @@ _MAX_DOCS_PER_FAMILY = 12_000
 _MAX_DOCS_PER_FILE = 80_000
 WILDCARD_IGNORE_ABOVE = 32766
 
+# Index schema version. v2 = structured docs (host/user/event_id + parsed
+# columns under fields.*) so DSL filters and aggregations push down to ES.
+# A version mismatch triggers a rebuild on the next index_case()/ensure_index.
+INDEX_SCHEMA_VERSION = 2
+
+_MAX_INDEX_FIELDS = 24
+_MAX_INDEX_FIELD_VALUE = 300
+
 
 class IndexMissing(RuntimeError):
     """Case index not created yet — CSV pack should be used."""
@@ -137,6 +145,51 @@ def _index_large_prio(path: Path) -> tuple:
     return (40, n)
 
 
+def _split_row(line: str) -> list[str]:
+    """CSV/TSV row split (quotes survive); whitespace fallback."""
+    import csv
+    import io
+
+    sep = "\t" if ("\t" in line and "," not in line) else ","
+    try:
+        return next(csv.reader(io.StringIO(line), delimiter=sep))
+    except (csv.Error, StopIteration):
+        return line.split(sep)
+
+
+def _row_fields(line: str, header: list[str] | None) -> dict[str, str]:
+    """Parsed columns for one row (schema v2: indexed under ``fields.*``)."""
+    if not header:
+        return {}
+    values = _split_row(line)
+    out: dict[str, str] = {}
+    for name, value in list(zip(header, values, strict=False))[:_MAX_INDEX_FIELDS]:
+        v = str(value).strip()[:_MAX_INDEX_FIELD_VALUE]
+        if v and not str(name).startswith("_"):
+            out[str(name)] = v
+    return out
+
+
+def _pick_field(fields: dict[str, str], keys: tuple[str, ...]) -> str:
+    """First non-empty field value whose column name matches (case-insensitive)."""
+    wanted = set(keys)
+    for name, value in fields.items():
+        if name.lower() in wanted and value:
+            return str(value)
+    return ""
+
+
+def _host_user_event(fields: dict[str, str]) -> tuple[str, str, str]:
+    host = _pick_field(fields, ("computer", "computername", "host", "hostname"))
+    user = _pick_field(
+        fields,
+        ("user", "username", "userid", "account", "accountname",
+         "targetuser", "sourceuser", "user_name"),
+    )
+    event = _pick_field(fields, ("eventid", "event_id", "eventcode"))
+    return host, user, event
+
+
 def iter_index_docs(
     case_dir: Path,
     extra_needles: list[str] | None = None,
@@ -147,7 +200,14 @@ def iter_index_docs(
     docs: list[dict[str, Any]] = []
     seen: set[str] = set()
 
-    def _add(path: Path, root: Path, fam: str, i: int, line: str) -> None:
+    def _add(
+        path: Path,
+        root: Path,
+        fam: str,
+        i: int,
+        line: str,
+        fields: dict[str, str] | None = None,
+    ) -> None:
         text = line.strip()[:_MAX_LINE]
         key = hashlib.sha1(f"{path}:{i}:{text[:80]}".encode("utf-8", "replace")).hexdigest()
         if key in seen:
@@ -161,10 +221,38 @@ def iter_index_docs(
             "line": i,
             "text": text,
         }
+        if fields:
+            host, user, event = _host_user_event(fields)
+            doc["fields"] = fields
+            if host:
+                doc["host"] = host.lower()[:120]
+            if user:
+                doc["user"] = user.lower()[:120]
+            if event:
+                doc["event_id"] = str(event)[:40]
         ts = _ts_from_line(line)
         if ts:
             doc["ts"] = ts
         docs.append(doc)
+
+    header_cache: dict[str, list[str] | None] = {}
+
+    def _header_for(path: Path) -> list[str] | None:
+        key = str(path)
+        if key not in header_cache:
+            first = ""
+            try:
+                with path.open(encoding="utf-8", errors="replace") as fh:
+                    first = fh.readline().strip()
+            except OSError:
+                first = ""
+            if first and ("," in first or "\t" in first):
+                header_cache[key] = [
+                    c.strip().lstrip("\ufeff").strip('"') for c in _split_row(first)
+                ]
+            else:
+                header_cache[key] = None
+        return header_cache[key]
 
     family_counts: dict[str, int] = {}
 
@@ -175,6 +263,7 @@ def iter_index_docs(
             break
         if family_counts.get(fam, 0) >= _MAX_DOCS_PER_FAMILY:
             continue
+        header = _header_for(path)
         try:
             with path.open(encoding="utf-8", errors="replace") as fh:
                 for i, line in enumerate(fh, start=1):
@@ -183,7 +272,7 @@ def iter_index_docs(
                     if family_counts.get(fam, 0) >= _MAX_DOCS_PER_FAMILY:
                         break
                     before = len(docs)
-                    _add(path, root, fam, i, line)
+                    _add(path, root, fam, i, line, _row_fields(line, header))
                     if len(docs) > before:
                         family_counts[fam] = family_counts.get(fam, 0) + 1
                     if i >= _MAX_DOCS_PER_FILE or len(docs) >= _MAX_DOCS_SMALL:
@@ -194,17 +283,26 @@ def iter_index_docs(
     # Imported non-host evidence (network/cloud/TI): clean searchable rows from
     # the case artifact store, family = source (suricata/zeek/...). The raw
     # store JSONL is never indexed — this projection is (CSV-scanner parity).
-    from nexus.langgraph.query_pack import iter_ingest_rows
+    from nexus.langgraph.query_pack import iter_ingest_records
 
     ingest_store = case_dir / "ingest" / "artifacts.jsonl"
     if ingest_store.is_file():
-        for n, fam, text, _ts in iter_ingest_rows(case_dir):
+        for n, fam, text, _ts, record in iter_ingest_records(case_dir):
             if len(docs) >= _MAX_DOCS:
                 break
             if family_counts.get(fam, 0) >= _MAX_DOCS_PER_FAMILY:
                 continue
+            art_fields: dict[str, str] = {}
+            for key_name in (
+                "source", "artifact_type", "severity", "timestamp", "host",
+                "user", "source_ip", "source_port", "dest_ip", "dest_port",
+                "protocol", "description",
+            ):
+                value = record.get(key_name)
+                if value not in (None, "", []):
+                    art_fields[key_name] = str(value)[:_MAX_INDEX_FIELD_VALUE]
             before = len(docs)
-            _add(ingest_store, case_dir, fam, n, text)
+            _add(ingest_store, case_dir, fam, n, text, art_fields or None)
             if len(docs) > before:
                 family_counts[fam] = family_counts.get(fam, 0) + 1
 
@@ -258,29 +356,110 @@ def _bulk_ndjson(index: str, docs: list[dict[str, Any]]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def ensure_index(case_id: str) -> str:
-    name = index_name(case_id)
-    mapping = {
+def _mapping_body() -> dict[str, Any]:
+    """Schema v2 — structured fields so DSL filters/aggregations push down."""
+    return {
         "settings": {"number_of_shards": 1, "number_of_replicas": 0},
         "mappings": {
+            "_meta": {"schema_version": INDEX_SCHEMA_VERSION},
+            "dynamic_templates": [
+                {
+                    "fields_strings": {
+                        "path_match": "fields.*",
+                        "match_mapping_type": "string",
+                        "mapping": {
+                            "type": "text",
+                            "fields": {"kw": {"type": "keyword", "ignore_above": 1024}},
+                        },
+                    }
+                }
+            ],
             "properties": {
                 "case_id": {"type": "keyword"},
                 "family": {"type": "keyword"},
                 "file": {"type": "keyword"},
                 "line": {"type": "integer"},
+                "host": {"type": "keyword"},
+                "user": {"type": "keyword"},
+                "event_id": {"type": "keyword"},
                 "text": {
                     "type": "text",
                     "fields": {"wc": {"type": "wildcard", "ignore_above": WILDCARD_IGNORE_ABOVE}},
                 },
                 "ts": {"type": "date", "format": "strict_date_optional_time||epoch_millis"},
-            }
+            },
         },
     }
+
+
+_schema_cache: dict[str, tuple[float, int]] = {}
+_fields_props_cache: dict[str, tuple[float, list[str]]] = {}
+_SCHEMA_CACHE_TTL = 60.0
+
+
+def index_schema_version(case_id: str) -> int:
+    """Current mapping's _meta.schema_version (0 = missing/unreadable)."""
+    name = index_name(case_id)
+    try:
+        with _client() as client:
+            r = client.get(f"/{name}/_mapping")
+            if r.status_code != 200:
+                return 0
+            mappings = (r.json().get(name) or {}).get("mappings") or {}
+            meta = mappings.get("_meta") or {}
+            return int(meta.get("schema_version") or 0)
+    except Exception:  # noqa: BLE001 — absent index/unreachable ES → legacy path
+        return 0
+
+
+def _schema_version_cached(case_id: str) -> int:
+    import time
+
+    now = time.monotonic()
+    cached = _schema_cache.get(case_id)
+    if cached and (now - cached[0]) < _SCHEMA_CACHE_TTL:
+        return cached[1]
+    version = index_schema_version(case_id)
+    _schema_cache[case_id] = (now, version)
+    return version
+
+
+def fields_property_names(case_id: str) -> list[str]:
+    """Parsed column names present in ``fields.*`` (cached 60 s)."""
+    import time
+
+    now = time.monotonic()
+    cached = _fields_props_cache.get(case_id)
+    if cached and (now - cached[0]) < _SCHEMA_CACHE_TTL:
+        return cached[1]
+    names: list[str] = []
+    name = index_name(case_id)
+    try:
+        with _client() as client:
+            r = client.get(f"/{name}/_mapping")
+            if r.status_code == 200:
+                props = ((r.json().get(name) or {}).get("mappings") or {}).get(
+                    "properties", {}
+                )
+                names = list((props.get("fields") or {}).get("properties", {}).keys())
+    except Exception:  # noqa: BLE001
+        names = []
+    _fields_props_cache[case_id] = (now, names)
+    return names
+
+
+def ensure_index(case_id: str) -> str:
+    name = index_name(case_id)
     with _client() as client:
         exists = client.head(f"/{name}")
         if exists.status_code == 200:
+            if _schema_version_cached(case_id) >= INDEX_SCHEMA_VERSION:
+                return name
+            # Schema upgrade — drop and recreate; index_case() repopulates.
             client.delete(f"/{name}")
-        r = client.put(f"/{name}", json=mapping)
+            _schema_cache.pop(case_id, None)
+            _fields_props_cache.pop(case_id, None)
+        r = client.put(f"/{name}", json=_mapping_body())
         if r.status_code >= 400:
             raise RuntimeError(f"create index failed: {r.status_code} {r.text[:300]}")
     return name
@@ -410,6 +589,202 @@ def iter_index_files(case_dir: Path) -> list[Path]:
     return out
 
 
+# ---------------------------------------------------------------------------
+# WP 4j.31/4j.32 — N4 AST → Elasticsearch push-down + native aggregations
+# ---------------------------------------------------------------------------
+
+def _term_clause(term: str) -> dict[str, Any]:
+    """One N4 term as ES: analyzed phrase + substring wildcard (parity)."""
+    t = str(term or "").strip()
+    if not t:
+        return {"match_none": {}}
+    return {
+        "bool": {
+            "should": [
+                {"match_phrase": {"text": t}},
+                {
+                    "wildcard": {
+                        "text.wc": {
+                            "value": f"*{t.lower()}*",
+                            "case_insensitive": True,
+                        }
+                    }
+                },
+            ],
+            "minimum_should_match": 1,
+        }
+    }
+
+
+def ast_to_es(query: Any | None, terms: list[str] | None = None,
+              match_all: bool = False) -> dict[str, Any]:
+    """Translate a parsed N4 query into ONE Elasticsearch query (schema v2).
+
+    Field filters push down to real fields: ``family:`` → term on keyword,
+    ``file:`` → wildcard on the file keyword, ``host:/user:/event:`` → term on
+    the structured keyword PLUS substring wildcard (CSV parity). A row-side
+    ``row_matches`` re-check after the fetch keeps both backends identical.
+    """
+    if query is None or (hasattr(query, "is_empty") and query.is_empty()):
+        if terms:
+            should = [_term_clause(t) for t in terms[:40] if str(t).strip()]
+            if should:
+                return {"bool": {"should": should, "minimum_should_match": 1}}
+        return {"match_all": {}}
+
+    must = [_term_clause(t) for t in getattr(query, "and_terms", [])]
+    should = [_term_clause(t) for t in getattr(query, "or_terms", [])]
+    must_not = [_term_clause(t) for t in getattr(query, "not_terms", [])]
+    filt: list[dict[str, Any]] = []
+    for fname, fvalue in (getattr(query, "fields", {}) or {}).items():
+        value = str(fvalue or "").strip()
+        if not value:
+            continue
+        if fname == "family":
+            filt.append({"term": {"family": value.lower()}})
+        elif fname == "file":
+            filt.append({
+                "wildcard": {"file": {"value": f"*{value.lower()}*", "case_insensitive": True}}
+            })
+        else:
+            key_field = {"host": "host", "user": "user", "event": "event_id"}.get(
+                fname, fname
+            )
+            filt.append({
+                "bool": {
+                    "should": [
+                        {"term": {key_field: value.lower()}},
+                        {
+                            "wildcard": {
+                                "text.wc": {
+                                    "value": f"*{value.lower()}*",
+                                    "case_insensitive": True,
+                                }
+                            }
+                        },
+                    ],
+                    "minimum_should_match": 1,
+                }
+            })
+    regex = getattr(query, "regex", None)
+    if regex is not None:
+        filt.append({
+            "regexp": {
+                "text.wc": {"value": regex.pattern, "case_insensitive": True}
+            }
+        })
+    body: dict[str, Any] = {}
+    if must:
+        body["must"] = must
+    if should:
+        body["should"] = should
+        body["minimum_should_match"] = 1
+    if must_not:
+        body["must_not"] = must_not
+    if filt:
+        body["filter"] = filt
+    return {"bool": body} if body else {"match_all": {}}
+
+
+_AGG_DIRECT = {
+    "family": "family", "file": "file",
+    "host": "host", "machine": "host", "computer": "host",
+    "user": "user", "account": "user",
+    "event": "event_id", "event_id": "event_id", "eventid": "event_id",
+}
+
+
+def _resolve_agg_field(case_id: str, field: str) -> str | None:
+    """Map an N4 aggregation field to a concrete ES keyword/date path."""
+    low = (field or "").strip().lower()
+    if low in _AGG_DIRECT:
+        return _AGG_DIRECT[low]
+    for name in fields_property_names(case_id):
+        if name.lower() == low:
+            return f"fields.{name}.kw"
+    return None
+
+
+def es_aggregate(
+    case_dir: Path,
+    dsl: str = "",
+    field: str = "host",
+    top: int = 20,
+    bucket: str = "",
+    match_all: bool = False,
+) -> dict[str, Any] | None:
+    """ES-native aggregation (terms / date_histogram) on a schema-v2 index.
+
+    Returns None when not applicable (legacy index, unknown field, ES error) —
+    the caller then uses the deterministic Python computation.
+    """
+    case_dir = Path(case_dir)
+    case_id = case_dir.name
+    if not es_available() or _schema_version_cached(case_id) < INDEX_SCHEMA_VERSION:
+        return None
+    from nexus.langgraph.query_dsl import QuerySyntaxError, parse_query
+
+    try:
+        parsed = parse_query(dsl)
+    except QuerySyntaxError:
+        return None
+    agg_field = _resolve_agg_field(case_id, field)
+    if agg_field is None:
+        return None
+
+    body: dict[str, Any] = {
+        "size": 0,
+        "track_total_hits": True,
+        "query": ast_to_es(parsed, match_all=match_all),
+    }
+    size = max(1, min(int(top or 20), 100))
+    if bucket in ("day", "hour"):
+        body["aggs"] = {
+            "v": {"date_histogram": {"field": "ts", "calendar_interval": bucket}}
+        }
+    else:
+        body["aggs"] = {"v": {"terms": {"field": agg_field, "size": size}}}
+
+    try:
+        with _client() as client:
+            r = client.post(f"/{index_name(case_id)}/_search", json=body)
+            if r.status_code >= 400:
+                return None
+            data = r.json()
+    except Exception:  # noqa: BLE001 — fall back to the Python path
+        return None
+
+    total = int(((data.get("hits") or {}).get("total") or {}).get("value") or 0)
+    buckets = ((data.get("aggregations") or {}).get("v") or {}).get("buckets") or []
+    if bucket in ("day", "hour"):
+        bucket_map = {
+            str(b.get("key_as_string") or "")[:13]: int(b.get("doc_count") or 0)
+            for b in buckets
+        }
+        return {
+            "field": field,
+            "rows_scanned": total,
+            "values_seen": len(buckets),
+            "distinct": len(buckets),
+            "top": [],
+            "buckets": bucket_map,
+            "backend": "elasticsearch",
+        }
+    ranked = [
+        {"value": str(b.get("key")), "count": int(b.get("doc_count") or 0)}
+        for b in buckets
+    ]
+    return {
+        "field": field,
+        "rows_scanned": total,
+        "values_seen": sum(b["count"] for b in ranked),
+        "distinct": len(ranked),
+        "top": ranked,
+        "buckets": None,
+        "backend": "elasticsearch",
+    }
+
+
 def query_index(
     case_dir: Path,
     terms: list[str],
@@ -483,17 +858,32 @@ def query_index(
         head = client.head(f"/{name}")
         if head.status_code != 200:
             raise IndexMissing(f"no index {name}")
-        # One search per strong term so SRUM USB/cloud volume cannot bury sdelete/PST.
-        hits_raw = []
-        for t in core:
-            hits_raw.extend(_search(client, [t], 200))
-        for t in cloud:
-            hits_raw.extend(_search(client, [t], 80))
-        hits_raw.extend(_search(client, rest, 400))
-        if not hits_raw and (query is not None or match_all):
-            # DSL-only query (fields/regex, no terms) or explicit match-all:
-            # scan the index once.
-            hits_raw.extend(_search(client, [], 400))
+        if _schema_version_cached(case_dir.name) >= INDEX_SCHEMA_VERSION:
+            # WP 4j.31: one pushed-down query — field filters on real fields,
+            # terms/phrases/regex in ES (no per-term search loop).
+            es_query = ast_to_es(query, terms=needles, match_all=match_all)
+            if filt:
+                if "bool" in es_query:
+                    es_query["bool"].setdefault("filter", []).extend(filt)
+                else:
+                    es_query = {"bool": {"must": [es_query], "filter": filt}}
+            body = {"size": 400, "query": es_query}
+            r = client.post(f"/{name}/_search", json=body)
+            if r.status_code >= 400:
+                raise RuntimeError(f"search failed: {r.status_code} {r.text[:300]}")
+            hits_raw = r.json().get("hits", {}).get("hits", [])
+        else:
+            hits_raw = []
+            # One search per strong term so SRUM USB/cloud volume cannot bury sdelete/PST.
+            for t in core:
+                hits_raw.extend(_search(client, [t], 200))
+            for t in cloud:
+                hits_raw.extend(_search(client, [t], 80))
+            hits_raw.extend(_search(client, rest, 400))
+            if not hits_raw and (query is not None or match_all):
+                # DSL-only query (fields/regex, no terms) or explicit match-all:
+                # scan the index once.
+                hits_raw.extend(_search(client, [], 400))
 
     hits: list[dict[str, str]] = []
     seen: set[tuple[str, str]] = set()

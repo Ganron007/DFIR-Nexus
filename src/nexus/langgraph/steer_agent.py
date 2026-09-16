@@ -352,6 +352,45 @@ def _formulate_answer(question: str, model: Any, hits: list[dict[str, Any]],
         return ""
 
 
+def _fast_plan(question: str) -> list[str] | None:
+    """Deterministic planner for clear intents (WP 4j.34).
+
+    Skips the LLM plan call (~30-90 s on reasoning models) when the question
+    unambiguously names entities, IOCs, or list/count intents. Returns None
+    when the question needs the LLM planner.
+    """
+    q = (question or "").lower()
+    queries: list[str] = []
+    from nexus.langgraph.ti_context import extract_iocs
+
+    iocs = extract_iocs([question], cap=3)
+    ioc_values = [
+        v for kind in ("sha256", "sha1", "md5", "ipv4", "domain", "url")
+        for v in (iocs.get(kind) or [])
+    ][:3]
+    for value in ioc_values:
+        queries.append(value)
+    if re.search(r"\b(user|users|account|accounts|username|usernames)\b", q):
+        queries.append("AGG:match_all|field:user")
+    if re.search(r"\b(machine|machines|host|hosts|computer|computers|endpoint|endpoints)\b", q):
+        queries.append("AGG:match_all|field:host")
+    if re.search(r"\b(exe|executable|executables|process|processes)\b", q):
+        queries.append("exe")
+    if re.search(r"\b(alert|alerts|detection|detections|rule|rules|signature)\b", q):
+        queries.append("alert")
+    # Only take the shortcut when the intent is unambiguous (no open question).
+    if not queries:
+        return None
+    if len(queries) == 1 and not ioc_values and not re.search(
+        r"\b(list|which|who|what|how many|count|name|show|all)\b", q
+    ):
+        return None
+    # A plain row query must accompany aggregations (answer step cites rows).
+    if all(x.upper().startswith("AGG:") for x in queries):
+        queries.append("match_all")
+    return queries[:_MAX_QUERIES]
+
+
 def _fallback_queries(question: str, families: list[str]) -> list[str]:
     """Deterministic planner used when the LLM is unavailable or fails."""
     words = re.findall(r"[a-zA-Z0-9_.]{3,}", question.lower())
@@ -379,22 +418,36 @@ def run_steer_agent(
 ) -> dict[str, Any]:
     """Conversational Mode 2 agent: NL → plan → execute → answer.
 
-    Returns {reply, queries_executed, total_hits, aggregations, hits} on success.
-    Returns {error, reply} when the active case has no accessible index.
+    Returns {reply, queries_executed, total_hits, aggregations, hits,
+    timings_ms, stages} on success. The timings/stages fields feed the UI's
+    progress line (4j.33) so an examiner sees where the turn spends time.
     """
+    import time as _time
+
     from nexus.langgraph.backbone import backbone_call
 
     case_dir = Path(case_dir)
     case_id = case_dir.name
     audit = AuditWriter("nexus")
+    stages: list[dict[str, Any]] = []
+
+    def _stage(name: str, started: float, detail: str = "") -> None:
+        stages.append({
+            "stage": name,
+            "ms": round((_time.monotonic() - started) * 1000),
+            "detail": detail[:200],
+        })
 
     # ── Evidence landscape (deterministic — no LLM needed) ──
+    t0 = _time.monotonic()
     mappings = backbone_call("index_mappings", audit=audit, case_id=case_id)
+    _stage("index_mappings", t0, str(mappings.get("error") or ""))
     if mappings.get("error"):
         return {"error": mappings["error"],
                 "reply": f"Cannot access evidence: {mappings['error']}",
                 "queries_executed": [], "total_hits": 0, "turns": 0,
-                "confidence": "low"}
+                "confidence": "low", "stages": stages,
+                "timings_ms": {"index_mappings": stages[-1]["ms"]}}
 
     families = mappings.get("families") or []
     family_rows = {str(k): int(v or 0) for k, v in (mappings.get("family_rows") or {}).items()}
@@ -409,21 +462,32 @@ def run_steer_agent(
     llm = get_model()
 
     # ── Step 1: plan queries ──
+    t0 = _time.monotonic()
     queries: list[str] = []
-    if llm is not None:
+    planned_by = "llm"
+    fast = _fast_plan(question)
+    if fast:
+        queries = fast
+        planned_by = "deterministic"
+    elif llm is not None:
         queries = _plan_queries(question, llm, families, family_rows, family_fields)
+        if not queries:
+            planned_by = "fallback"
     if not queries:
+        planned_by = "fallback"
         queries = _fallback_queries(question, families)
-    # Guarantee at least one evidence-row query: aggregations alone give the
-    # answer step no rows to cite or extract from (e.g. the .exe census).
     if queries and all(q.upper().startswith("AGG:") for q in queries):
         extra = [q for q in _fallback_queries(question, families)
                  if not q.upper().startswith("AGG:")]
         queries = list(queries) + extra
+    _stage("plan", t0, f"{planned_by}: " + "; ".join(queries[:4]))
 
     # ── Step 2: execute ──
+    t0 = _time.monotonic()
     all_hits, queries_executed, aggregations = _execute_queries(
         queries, case_id, audit)
+    _stage("execute", t0,
+           f"{len(queries_executed)} quer(ies), {len(all_hits)} hits")
 
     # ── Step 3: answer ──
     if not all_hits and not aggregations:
@@ -437,7 +501,8 @@ def run_steer_agent(
         return {
             "reply": reply, "queries_executed": queries_executed,
             "total_hits": 0, "aggregations": [], "turns": 2,
-            "confidence": "low",
+            "confidence": "low", "stages": stages,
+            "timings_ms": {s["stage"]: s["ms"] for s in stages},
         }
 
     reply = ""
@@ -445,9 +510,14 @@ def run_steer_agent(
     kb_block = ""
     ti_block = ""
     if llm is not None:
+        t0 = _time.monotonic()
         rag_block, kb_block, ti_block = _gather_helper_context(question, audit, case_dir)
+        _stage("helpers", t0,
+               f"rag={len(rag_block)} kb={len(kb_block)} ti={len(ti_block)} chars")
+        t0 = _time.monotonic()
         reply = _formulate_answer(question, llm, all_hits, aggregations,
                                   queries_executed, rag_block, kb_block, ti_block)
+        _stage("answer", t0, f"{len(reply)} chars")
     if not reply:
         # Deterministic fallback — format the evidence rows directly
         reply = (
@@ -471,4 +541,6 @@ def run_steer_agent(
         "hits": all_hits[:20],
         "turns": 2,
         "confidence": "medium",
+        "stages": stages,
+        "timings_ms": {s["stage"]: s["ms"] for s in stages},
     }

@@ -437,6 +437,12 @@ def get_model(model_name: str = ""):
     kwargs = {"model": model, "api_key": api_key or "not-needed"}
     if base_url:
         kwargs["base_url"] = base_url
+    # Explicit client timeout — a stalled provider must never hang a turn
+    # (the 4j.33 latency budget depends on this).
+    try:
+        kwargs["timeout"] = float(os.environ.get("NEXUS_LLM_TIMEOUT", "120"))
+    except ValueError:
+        kwargs["timeout"] = 120.0
     # reasoning_effort is an OpenAI-only param. Compatible hosts (e.g.
     # StepFun) reject it as "no active step plan subscription".
     if reasoning:

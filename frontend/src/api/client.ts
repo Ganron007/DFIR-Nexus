@@ -899,7 +899,16 @@ export const api = {
     post<Mode2IterateResponse>("/mode2/iterate", params),
   /** WP 4j.13 — POST /mode2/chat → the conversational evidence agent */
   mode2Chat: (params: { message: string; history?: { role: string; text: string }[] }) =>
-    post<{ reply: string; queries_executed: { tool: string; dsl: string; hits: number; audit_id?: string }[]; total_hits: number; confidence: string }>("/mode2/chat", params),
+    post<{
+      reply: string;
+      queries_executed: { tool: string; dsl: string; hits: number; audit_id?: string }[];
+      total_hits: number;
+      confidence: string;
+      /** WP 4j.33 — per-stage timings in ms (plan/execute/helpers/answer). */
+      timings_ms?: Record<string, number>;
+      stages?: { stage: string; ms: number; detail?: string }[];
+      error?: string;
+    }>("/mode2/chat", params),
   mode2Corroborate: (params: { finding_id?: string }) =>
     post<CorroborationResponse>("/mode2/corroborate", params),
   mode2ProposeDraft: (params: { title: string; hits?: N4Hit[]; query?: string }) =>
