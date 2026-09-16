@@ -151,6 +151,7 @@ _ALL_IMPORTERS: list[tuple[str, str]] = [
     ("nexus.ingest.linux.bash_history", "BashHistoryImporter"),
     ("nexus.ingest.linux.syslog", "SyslogImporter"),
     ("nexus.ingest.network.suricata", "SuricataImporter"),
+    ("nexus.ingest.network.pcap", "PcapImporter"),
     ("nexus.ingest.network.wireshark", "WiresharkImporter"),
     ("nexus.ingest.network.zeek", "ZeekImporter"),
     ("nexus.ingest.siem.elastic", "ElasticImporter"),

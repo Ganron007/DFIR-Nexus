@@ -78,11 +78,16 @@ def test_steer_agent_deterministic_fallback(tmp_path):
 
 
 def test_steer_agent_no_evidence_is_honest(tmp_path):
+    from unittest.mock import patch
+
     from nexus.langgraph.steer_agent import run_steer_agent
 
     case = _mkcase(tmp_path)
-    # Question with no matching terms
-    result = run_steer_agent(case, "completely unrelated quantum physics")
+    # Deterministic path (no LLM) — the question matches no evidence terms, so
+    # the honest no-results reply must come back. Using the real LLM here made
+    # the test planner-dependent and flaky.
+    with patch("nexus.langgraph.llm_pipeline.get_model", return_value=None):
+        result = run_steer_agent(case, "completely unrelated quantum physics")
     assert result["reply"], "expected an honest no-results reply"
     assert result["total_hits"] == 0 or "no evidence" in result["reply"].lower() or \
            "found 0" in result["reply"].lower()

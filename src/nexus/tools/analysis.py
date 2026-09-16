@@ -56,22 +56,12 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             max_packets: Optional packet limit (0 = all).
         """
         import re
-        import shutil
-        import subprocess
 
         from nexus.config import settings
 
         src = Path(pcap_path)
         if not src.is_file():
             return {"success": False, "error": f"File not found: {pcap_path}"}
-
-        tshark = shutil.which("tshark") or shutil.which("tshark.exe")
-        if not tshark:
-            return {
-                "success": False,
-                "error": "tshark not found on PATH. Install Wireshark "
-                         "(e.g. choco install wireshark) first.",
-            }
 
         out_dir = src.parent
         try:
@@ -87,12 +77,6 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         safe_stem = re.sub(r"[^a-zA-Z0-9._-]", "_", src.stem)
         out_path = out_dir / f"{safe_stem}.tshark.json"
 
-        cmd = [tshark, "-r", str(src), "-T", "json"]
-        if display_filter:
-            cmd += ["-Y", display_filter]
-        if max_packets and max_packets > 0:
-            cmd += ["-c", str(int(max_packets))]
-
         result: dict = {"pcap": str(src), "output_path": str(out_path)}
         if src.stat().st_size > 100 * 1024 * 1024 and not display_filter and not max_packets:
             result["warning"] = (
@@ -100,30 +84,21 @@ def register_tools(server: FastMCP, audit: AuditWriter):
                 "times the pcap size. Consider display_filter or max_packets."
             )
 
-        try:
-            with open(out_path, "wb") as out_f:
-                proc = subprocess.run(
-                    cmd,
-                    stdout=out_f,
-                    stderr=subprocess.PIPE,
-                    timeout=settings.command_timeout,
-                )
-        except subprocess.TimeoutExpired:
-            result.update({"success": False,
-                           "error": f"tshark timed out after {settings.command_timeout}s"})
-            result["audit_id"] = audit.log(
-                tool="convert_pcap", params={"pcap_path": str(src)},
-                result_summary={"success": False, "error": "timeout"})
-            return result
-        except OSError as e:
-            return {"success": False, "error": f"tshark execution failed: {e}"}
+        from nexus.ingest.base import ImporterError
+        from nexus.ingest.network.pcap import convert_pcap_to_json
 
-        if proc.returncode != 0:
-            stderr = proc.stderr.decode("utf-8", errors="replace")[:500]
-            result.update({"success": False, "error": stderr})
+        try:
+            convert_pcap_to_json(
+                src, out_path,
+                display_filter=display_filter,
+                max_packets=max_packets,
+                timeout=settings.command_timeout,
+            )
+        except (ImporterError, OSError) as exc:
+            result.update({"success": False, "error": str(exc)})
             result["audit_id"] = audit.log(
                 tool="convert_pcap", params={"pcap_path": str(src)},
-                result_summary={"success": False, "error": stderr[:200]})
+                result_summary={"success": False, "error": str(exc)[:200]})
             return result
 
         result.update({

@@ -49,6 +49,11 @@ def detect_format(path: Path) -> ArtifactSource | None:
         ".tar": ArtifactSource.GENERIC_JSONL,
         ".tgz": ArtifactSource.GENERIC_JSONL,
         ".gz": ArtifactSource.GENERIC_JSONL,
+        # Raw packet captures — WIRESHARK lane; registry.resolve() picks the
+        # PcapImporter (tshark conversion) vs the JSON importer via can_handle.
+        ".pcap": ArtifactSource.WIRESHARK,
+        ".pcapng": ArtifactSource.WIRESHARK,
+        ".cap": ArtifactSource.WIRESHARK,
     }
     if suffix in _EXT_HINTS:
         return _EXT_HINTS[suffix]
