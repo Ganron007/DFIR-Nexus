@@ -34,6 +34,12 @@ MODE2_TOOL_ALLOWLIST: dict[str, str] = {
     "kb_search": "knowledge",
     "kb_read": "knowledge",
     "kb_cite": "knowledge",
+    "ti_lookup": "intel",
+    "ti_fanout": "intel",
+    "ti_list_providers": "intel",
+    "web_search": "web",
+    "web_fetch": "web",
+    "web_status": "web",
 }
 
 # Mode 3 agents bind the same read-only set (4j-D) — defined here so there is
@@ -77,4 +83,34 @@ def backbone_call(name: str, audit: AuditWriter | None = None, **kwargs: Any) ->
         return kb_tools.do_kb_read(audit=audit, **kwargs)
     if name == "kb_cite":
         return kb_tools.do_kb_cite(audit=audit, **kwargs)
+    if name == "ti_lookup":
+        return _ti_call("lookup", **kwargs)
+    if name == "ti_fanout":
+        return _ti_call("fanout", **kwargs)
+    if name == "ti_list_providers":
+        return _ti_call("providers", **kwargs)
     raise PermissionError(f"tool {name!r} has no binding")
+
+
+def _ti_call(kind: str, **kwargs: Any) -> dict[str, Any]:
+    """TI router binding — mock/local by default, external only with keys."""
+    from nexus.ti import create_default_router
+    from nexus.ti.enrich import _run_async
+
+    router = create_default_router()
+    if kind == "providers":
+        providers = [
+            p.to_dict() if hasattr(p, "to_dict") else dict(getattr(p, "__dict__", {}))
+            for p in router.list_providers()
+        ]
+        return {"providers": providers, "mock": router.use_mock}
+    value = str(kwargs.get("value") or "").strip()
+    if not value:
+        return {"error": "value is required"}
+    ioc_type = str(kwargs.get("ioc_type") or "").strip() or None
+    if kind == "fanout":
+        return _run_async(router.fanout(value, ioc_type=ioc_type))
+    providers = kwargs.get("providers")
+    if isinstance(providers, str):
+        providers = [p.strip() for p in providers.split(",") if p.strip()] or None
+    return _run_async(router.lookup(value, ioc_type=ioc_type, providers=providers))

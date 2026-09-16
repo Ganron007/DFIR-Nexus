@@ -34,6 +34,8 @@ export default function CaseSetup() {
   // Step 1 state
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  // Mode 2/3 intake question — drives the LLM interpretation (N1 gate).
+  const [question, setQuestion] = useState("");
   const [examiner, setExaminer] = useState("");
   const [caseId, setCaseId] = useState("");
 
@@ -49,7 +51,9 @@ export default function CaseSetup() {
   const [pipelineRunId, setPipelineRunId] = useState("");
   const [pipelineStatus, setPipelineStatus] = useState("");
   const [pipelineProg, setPipelineProg] = useState<{ done: number; total: number; current?: string } | null>(null);
-  const [pipelineStages, setPipelineStages] = useState<{ tool?: string; host?: string; status?: string }[]>([]);
+  const [pipelineStages, setPipelineStages] = useState<
+    { stage?: string; tool?: string; host?: string; status?: string; detail?: string }[]
+  >([]);
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
 
   const createCase = async () => {
@@ -136,9 +140,14 @@ export default function CaseSetup() {
     setBusy(true);
     setError("");
     try {
-      // Map product mode to pipeline mode
+      // Map product mode to pipeline mode. Mode 2/3 carry the examiner's
+      // question as intake — without it the LLM interpret node never runs.
       const pipelineMode = mode === "1" ? "tools" : mode === "2" ? "coverage" : "design";
-      const r = await api.pipelineRun({ mode: pipelineMode, case_id: caseId });
+      const r = await api.pipelineRun({
+        mode: pipelineMode,
+        case_id: caseId,
+        question: mode === "1" ? undefined : question.trim() || undefined,
+      });
       setPipelineRunId(r.run_id);
       setPipelineStatus("running");
 
@@ -412,9 +421,27 @@ export default function CaseSetup() {
           <h3>Run N2 Processing Lane</h3>
           <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 12 }}>
             Case <strong>{caseId}</strong> ready. Mode <strong>{mode}</strong> selected.
-            Run the deterministic parser lane (N2) to process evidence. The lane
-            output decides whether you can enter the cockpit.
+            {mode === "1"
+              ? " Mode 1 runs the deterministic parser lane only — quick triage, no LLM."
+              : mode === "2"
+                ? " Mode 2 runs the parser lane and then the LLM interpretation (RAG + threat intel) — DRAFT findings await your approval."
+                : " Mode 3 runs the parser lane, then the agentic planning/hunt loop before interpretation."}
           </p>
+          {mode !== "1" && !pipelineRunId && (
+            <div style={{ marginBottom: 10 }}>
+              <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
+                Examiner question (drives the LLM interpretation — required for Mode 2/3 analysis)
+              </label>
+              <textarea
+                value={question}
+                onChange={(e) => setQuestion(e.target.value)}
+                placeholder="e.g. What did the suspicious process do, and is it known malicious?"
+                rows={2}
+                style={{ width: "100%", fontSize: 12 }}
+                disabled={busy}
+              />
+            </div>
+          )}
           {!pipelineRunId && (
             <button className="btn btn-primary" onClick={runPipeline} disabled={busy}>
               {busy ? "Starting..." : "Run N2 Pipeline →"}
@@ -462,16 +489,21 @@ export default function CaseSetup() {
                     />
                   </div>
                   {pipelineStages.length > 0 && (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, fontSize: 10 }}>
-                      {pipelineStages.map((st, i) => (
-                        <span
-                          key={i}
-                          className={`badge ${(st.status || "").toUpperCase() === "OK" ? "approved" : (st.status || "").toUpperCase() === "SKIP" ? "draft" : "rejected"}`}
-                          title={`${st.host || ""} — ${st.status || ""}`}
-                        >
-                          {st.tool}
-                        </span>
-                      ))}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: 11, fontFamily: "monospace" }}>
+                      {pipelineStages.slice(-14).map((st, i) => {
+                        const state = (st.status || "").toUpperCase();
+                        const color =
+                          state === "OK" || state === "DONE" ? "var(--success)"
+                          : state === "RUNNING" ? "var(--accent)"
+                          : state === "ERROR" || state === "FAIL" ? "var(--danger)"
+                          : "var(--text-muted)";
+                        return (
+                          <span key={i} style={{ color }} title={`${st.host || ""} ${st.detail || ""}`}>
+                            [{st.stage || st.tool || "?"}] {st.status || ""}
+                            {st.detail ? ` — ${st.detail}` : ""}
+                          </span>
+                        );
+                      })}
                     </div>
                   )}
                   {!pipelineProg && (

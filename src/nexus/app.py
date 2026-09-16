@@ -107,6 +107,9 @@ def create_server(host: str = "127.0.0.1") -> FastMCP:
     detection_tools.register_tools(server, audit)
     vr_tools.register_tools(server, audit)
 
+    from nexus.tools import web
+    web.register_tools(server, audit)
+
     # ── Platform-specific modules ──
 
     if _IS_LINUX:

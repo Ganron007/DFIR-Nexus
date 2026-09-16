@@ -219,13 +219,26 @@ class TIRouter:
         catalog = {p.name: p for p in self.list_providers()}
         if providers:
             names = providers
+            tier = "explicit"
         else:
-            # Default: core tier only (abuse.ch + MISP) — optional never auto-included.
-            names = [
+            # Auto path: every CONFIGURED provider that supports this IOC type —
+            # free tiers included (abuse.ch, OTX, Shodan, VirusTotal). Falls back
+            # to the core set (with env hints) when nothing is configured.
+            live = [
                 p.name
-                for p in self.list_providers()
-                if p.tier == "core" and it.value in p.ioc_types
+                for p in catalog.values()
+                if p.mode == ProviderMode.LIVE and it.value in p.ioc_types
             ]
+            if live:
+                names = live
+                tier = "configured"
+            else:
+                names = [
+                    p.name
+                    for p in catalog.values()
+                    if p.tier == "core" and it.value in p.ioc_types
+                ]
+                tier = "core"
         unknown = [n for n in names if n not in catalog]
         if unknown:
             return {"error": f"Unknown providers: {unknown}", "known": list(catalog.keys())}
@@ -234,7 +247,7 @@ class TIRouter:
         return {
             "ioc_type": it.value,
             "value": value,
-            "tier": "explicit" if providers else "core",
+            "tier": tier,
             "providers_queried": names,
             "malicious_count": malicious,
             "results": [r.to_dict() for r in results],

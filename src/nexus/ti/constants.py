@@ -22,11 +22,16 @@ ABUSE_CH_YARAIFY_URL = "https://yaraify.abuse.ch/api/v1/"
 OTX_API_BASE = "https://otx.alienvault.com/api/v1"
 CROWDSTRIKE_API_BASE = "https://api.crowdstrike.com"
 
-# Default fanout / ti_lookup (no explicit providers=) — abuse.ch + self-hosted MISP only.
+# Fanout = the abuse.ch set (explicit call). Default ti_lookup auto-includes
+# every CONFIGURED provider that supports the IOC type (free tiers included:
+# abuse.ch, OTX, Shodan, VirusTotal), falling back to the core set when none
+# are configured.
 FANOUT_PROVIDERS = ("threatfox", "malware_bazaar", "urlhaus", "yaraify")
 CORE_TI_PROVIDERS = FANOUT_PROVIDERS + ("misp",)
 
-# Optional: free-tier or commercial APIs — never in fanout or default lookup; require explicit tool/provider + env key.
+# Support slots: keyed APIs that participate automatically once configured.
+# Operator keyed set: virustotal / abuse.ch / otx / shodan; abuseipdb and
+# crowdstrike are supported-but-optional (the rest runs without their keys).
 OPTIONAL_TI_PROVIDERS = (
     "otx",
     "shodan",

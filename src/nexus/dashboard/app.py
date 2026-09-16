@@ -4642,6 +4642,11 @@ async def api_pipeline_run(request):
         "intake": bool(case_context.get("question") or case_context.get("window")),
     }
     _persist_pipeline_run(case_dir, _pipeline_runs[run_id])
+    # Fresh stage feed for this run (a re-run must not replay old stages)
+    with contextlib.suppress(OSError):
+        _pipeline_run_status_path(case_dir, run_id).with_suffix(
+            ".progress.jsonl"
+        ).unlink(missing_ok=True)
     _transition_case_status(
         case_id,
         "processing",
@@ -4655,12 +4660,16 @@ async def api_pipeline_run(request):
         try:
             from nexus.langgraph.llm_pipeline import run_pipeline
 
+            progress_path = _pipeline_run_status_path(case_dir, run_id).with_suffix(
+                ".progress.jsonl"
+            )
             asyncio.run(run_pipeline(
                 evidence_path=evidence_paths[0],
                 mode=pipeline_mode,
                 case_id=case_id,
                 evidence_paths=evidence_paths,
                 case_context=case_context,
+                progress_path=str(progress_path),
             ))
             record["status"] = "complete"
             record["completed_at"] = datetime.now(UTC).isoformat()
@@ -4769,6 +4778,30 @@ async def api_pipeline_status(request):
         except Exception:  # noqa: BLE001 — reconciliation is best-effort
             pass
 
+    # WP 4j.13: live pipeline stage feed — every graph node announces
+    # running/done/error to analysis/pipeline_runs/<run_id>.progress.jsonl.
+    if case_dir is not None:
+        stage_path = case_dir / "analysis" / "pipeline_runs" / f"{run_id}.progress.jsonl"
+        if stage_path.is_file():
+            try:
+                entries: list[dict[str, Any]] = []
+                for line in stage_path.read_text(encoding="utf-8").splitlines():
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if isinstance(entry, dict):
+                        entries.append(entry)
+                seen = int(record.get("_stages_loaded") or 0)
+                if len(entries) > seen:
+                    record["stages"] = (record.get("stages") or []) + entries[seen:]
+                    record["_stages_loaded"] = len(entries)
+            except OSError:
+                pass
+
     # WP 4j.5d: live per-tool progress — the tool lane writes
     # _tool_lane_progress.json after every job; surface it while running.
     # The file lives under runs/<run_id>/extractions/ (per-run dir), so
@@ -4801,7 +4834,11 @@ async def api_pipeline_status(request):
                     "total": prog.get("total", 0),
                     "current": prog.get("current", ""),
                 }
-                record["stages"] = prog.get("entries") or []
+                tool_entries = list(prog.get("entries") or [])
+                seen_tool = int(record.get("_tool_stages_loaded") or 0)
+                if len(tool_entries) > seen_tool:
+                    record["stages"] = (record.get("stages") or []) + tool_entries[seen_tool:]
+                    record["_tool_stages_loaded"] = len(tool_entries)
             break
 
     return JSONResponse(record)

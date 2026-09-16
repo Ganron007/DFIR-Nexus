@@ -563,8 +563,11 @@ export interface PipelineStatusResponse {
   started_at?: string;
   completed_at?: string;
   error?: string;
-  /** WP 4j.5d — per-tool entries while the lane runs (tool/host/status). */
-  stages?: { tool?: string; host?: string; status?: string }[];
+  /** True when the run got examiner intake (question/window) — N1 gate. */
+  intake?: boolean;
+  /** WP 4j.5d — live stage entries: pipeline nodes (stage/status/detail)
+   *  merged with per-tool entries (tool/host/status) while running. */
+  stages?: { stage?: string; tool?: string; host?: string; status?: string; detail?: string; ts?: string }[];
   /** WP 4j.5d — live counters from _tool_lane_progress.json. */
   progress?: { done: number; total: number; current?: string };
 }
@@ -662,6 +665,16 @@ export interface BriefingResponse {
   hits_examined: number;
   /** WP 4j.5 — true when the needle scan hit its cap; chip counts are lower bounds. */
   scan_truncated?: boolean;
+  /** Mode 2 — LLM interpretation markdown (verdict + findings + gaps + TI). */
+  mode_interpretation?: string;
+  /** Mode 2 — deterministic IOC sweep + provider verdicts (markdown). */
+  ti_context?: string;
+  /** Mode 2 — staged findings summary. */
+  findings_summary?: {
+    count: number;
+    drafts: number;
+    top: { id: string; title: string; severity: string; confidence: string }[];
+  };
   /** WP 4j.5c — persisted offline copies (absolute paths on the server host). */
   artifacts?: { briefing_md?: string; signal_map_csv?: string };
   error?: string;
@@ -933,7 +946,7 @@ export const api = {
     }>("/case/seed-demo", params || {}),
   caseDetails: (caseId?: string) =>
     request<CaseDetailsResponse>(`/case/details${caseId ? `?case_id=${caseId}` : ""}`),
-  pipelineRun: (params: { mode: string; case_id?: string }) =>
+  pipelineRun: (params: { mode: string; case_id?: string; question?: string; window?: string; host?: string; notes?: string }) =>
     post<PipelineRunResponse>("/pipeline/run", params),
   pipelineStatus: (runId: string) =>
     request<PipelineStatusResponse>(`/pipeline/status?run_id=${runId}`),

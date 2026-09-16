@@ -7,6 +7,7 @@ Run with:
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 from dataclasses import dataclass, field
 
@@ -110,9 +111,18 @@ check("collect_iocs gathers iocs + dest_ip", collect_iocs([artifact]) == ["evil-
 payload = enrich_artifacts([artifact], max_iocs=2)
 check("enrich_artifacts returns lookups", "lookups" in payload)
 check("enrich_artifacts malicious_count is int", isinstance(payload["malicious_count"], int))
-check("enrich_artifacts never includes optional", all(
-    "otx" not in lookup.get("providers_queried", [])
+# Auto-select semantics: configured providers participate; unconfigured ones
+# (in this process) never appear in the default lookup.
+_configured = {
+    "otx": bool(os.environ.get("NEXUS_TI_OTX_API_KEY")),
+    "virustotal": bool(os.environ.get("NEXUS_TI_VIRUSTOTAL_API_KEY")),
+    "shodan": bool(os.environ.get("NEXUS_TI_SHODAN_API_KEY")),
+}
+check("enrich_artifacts never queries unconfigured providers", all(
+    name not in lookup.get("providers_queried", [])
     for lookup in payload["lookups"]
+    for name, has_key in _configured.items()
+    if not has_key
 ))
 
 

@@ -512,6 +512,49 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
         families=families,
     )
 
+    # Mode 2 verdict surface: the LLM interpretation, TI context, and staged
+    # DRAFT findings land in the briefing when they exist (Mode 1 cases simply
+    # skip these — no fake "not run" noise).
+    mode_interpretation = ""
+    ti_context = ""
+    findings_summary: dict[str, Any] = {"count": 0, "drafts": 0, "top": []}
+    analysis_dir = case_dir / "analysis"
+    interp_path = analysis_dir / "interpretation.md"
+    if interp_path.is_file():
+        try:
+            mode_interpretation = interp_path.read_text(encoding="utf-8", errors="replace")[:8000]
+        except OSError:
+            mode_interpretation = ""
+    ti_path = analysis_dir / "ti_context.md"
+    if ti_path.is_file():
+        try:
+            ti_context = ti_path.read_text(encoding="utf-8", errors="replace")[:4000]
+        except OSError:
+            ti_context = ""
+    try:
+        findings_path = case_dir / "findings.json"
+        if findings_path.is_file():
+            loaded = json.loads(findings_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, list):
+                rows = [f for f in loaded if isinstance(f, dict)]
+                findings_summary = {
+                    "count": len(rows),
+                    "drafts": sum(
+                        1 for f in rows if str(f.get("status") or "").upper() == "DRAFT"
+                    ),
+                    "top": [
+                        {
+                            "id": str(f.get("id") or ""),
+                            "title": str(f.get("title") or "")[:200],
+                            "severity": str(f.get("severity") or ""),
+                            "confidence": str(f.get("confidence") or ""),
+                        }
+                        for f in rows[:12]
+                    ],
+                }
+    except (OSError, ValueError):
+        pass
+
     out: dict[str, Any] = {
         "inventory": inventory,
         "families": families,
@@ -530,6 +573,9 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
         "backend": backend,
         "hits_examined": len(hits),
         "scan_truncated": scan_truncated,
+        "mode_interpretation": mode_interpretation,
+        "ti_context": ti_context,
+        "findings_summary": findings_summary,
     }
 
     # WP 4j.5c: persist an offline copy — the briefing and signal map must be
@@ -587,6 +633,25 @@ def briefing_to_markdown(brief: dict[str, Any]) -> str:
     tr = brief.get("time_range") or {}
     if tr.get("start"):
         lines.append(f"Time range: {tr['start']} → {tr['end']}")
+    # Mode 2: the LLM interpretation (verdict + findings + gaps + TI) leads the
+    # briefing when present; otherwise show findings/TI sections directly.
+    interp = (brief.get("mode_interpretation") or "").strip()
+    if interp:
+        lines.append("")
+        lines.append(interp)
+    else:
+        fs = brief.get("findings_summary") or {}
+        if fs.get("count"):
+            lines.append(f"\n## Findings ({fs.get('count')} staged, {fs.get('drafts')} DRAFT)")
+            for f in fs.get("top") or []:
+                lines.append(
+                    f"- `{f.get('id')}` [{f.get('severity')}/{f.get('confidence')}] "
+                    f"{f.get('title')}"
+                )
+        ti = (brief.get("ti_context") or "").strip()
+        if ti:
+            lines.append("")
+            lines.append(ti)
     walk = brief.get("walkthrough") or []
     if walk:
         lines.append("\n## Guided first pass")

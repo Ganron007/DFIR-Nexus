@@ -1,0 +1,125 @@
+"""Mode 2 interpretation verdict — analysis/interpretation.md.
+
+Assembled after findings are staged: a deterministic skeleton (facts:
+findings, entity coverage, TI, gaps) plus an optional LLM executive
+verdict paragraph. The briefing endpoint merges this file so the examiner
+sees the Mode 2 verdict, not only the deterministic briefing.
+"""
+from __future__ import annotations
+
+import json
+import logging
+from pathlib import Path
+from typing import Any
+
+log = logging.getLogger(__name__)
+
+
+def _finding_line(f: dict[str, Any]) -> str:
+    fid = str(f.get("id") or "")
+    title = str(f.get("title") or "")
+    sev = str(f.get("severity") or "").strip() or "n/a"
+    conf = str(f.get("confidence") or "").strip() or "n/a"
+    return f"- `{fid}` [sev={sev} · confidence={conf}] {title}"
+
+
+def _load_findings(case_dir: Path) -> list[dict[str, Any]]:
+    path = Path(case_dir) / "findings.json"
+    if not path.is_file():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return [f for f in data if isinstance(f, dict)] if isinstance(data, list) else []
+    except (OSError, ValueError):
+        return []
+
+
+async def write_interpretation_summary(
+    case_dir: Path,
+    *,
+    findings: list[dict[str, Any]] | None = None,
+    gaps: list[dict[str, str]] | None = None,
+    model: Any = None,
+) -> Path | None:
+    """Write analysis/interpretation.md: verdict + coverage + gaps + TI."""
+    case_dir = Path(case_dir)
+    analysis = case_dir / "analysis"
+    analysis.mkdir(parents=True, exist_ok=True)
+    findings = findings if findings is not None else _load_findings(case_dir)
+    gaps = gaps or []
+
+    ti_path = analysis / "ti_context.md"
+    ti_md = ti_path.read_text(encoding="utf-8", errors="replace").strip() if ti_path.is_file() else ""
+    inv_path = analysis / "entity_inventory.json"
+    inv_count = 0
+    if inv_path.is_file():
+        try:
+            inv = json.loads(inv_path.read_text(encoding="utf-8"))
+            for key in ("processes", "paths", "users", "hosts", "commands"):
+                inv_count += len(inv.get(key) or [])
+            net = inv.get("network") or {}
+            inv_count += sum(len(net.get(k) or []) for k in ("ipv4", "domain", "url"))
+            hashes = inv.get("hashes") or {}
+            inv_count += sum(len(hashes.get(k) or []) for k in ("sha256", "sha1", "md5"))
+        except (OSError, ValueError):
+            inv_count = 0
+
+    lines = [
+        "# Mode 2 interpretation (LLM-assisted)",
+        "",
+        f"- Findings staged (DRAFT): **{len(findings)}**",
+        f"- Entity inventory items: **{inv_count}** — unaddressed by findings: **{len(gaps)}**",
+    ]
+    if findings:
+        lines.append("")
+        lines.append("## Findings")
+        lines.extend(_finding_line(f) for f in findings)
+    if gaps:
+        lines.append("")
+        lines.append("## Coverage gaps (not yet explained by any finding)")
+        for g in gaps[:25]:
+            lines.append(f"- {g.get('kind')}: `{g.get('value')}`")
+    if ti_md:
+        lines.append("")
+        lines.append(ti_md)
+
+    verdict = ""
+    if model is not None:
+        try:
+            summary_lines = "\n".join(
+                f"{f.get('title')} — {str(f.get('interpretation') or '')[:200]} "
+                f"(confidence {f.get('confidence')})"
+                for f in findings[:12]
+            )
+            gaps_line = ", ".join(f"{g['kind']}:{g['value']}" for g in gaps[:12]) or "(none)"
+            response = await model.ainvoke([
+                {"role": "system", "content": (
+                    "You are the lead DFIR analyst. Write a concise executive "
+                    "verdict (max 220 words) for the case briefing based ONLY "
+                    "on the staged findings, threat-intel context, and coverage "
+                    "gaps below. State: what happened (or that evidence is "
+                    "insufficient), the strongest signal, confidence, and the "
+                    "top next step. Plain text, no markdown headers."
+                )},
+                {"role": "user", "content": (
+                    f"Findings:\n{summary_lines or '(none staged)'}\n\n"
+                    f"Coverage gaps: {gaps_line}\n\n"
+                    f"Threat intel:\n{ti_md[:1500] or '(none)'}"
+                )},
+            ])
+            verdict = str(getattr(response, "content", str(response))).strip()[:2000]
+        except Exception as exc:  # noqa: BLE001 — verdict is best-effort
+            log.warning("Verdict LLM pass failed: %s", exc)
+
+    if verdict:
+        lines.insert(4, "")
+        lines.insert(5, "## Executive verdict")
+        lines.insert(6, verdict)
+
+    path = analysis / "interpretation.md"
+    try:
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return path
+    except OSError as exc:
+        log.warning("interpretation.md write failed: %s", exc)
+        return None

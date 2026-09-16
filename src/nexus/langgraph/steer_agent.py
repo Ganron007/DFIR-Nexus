@@ -214,15 +214,18 @@ def _execute_queries(queries: list[str], case_id: str, audit: AuditWriter) -> tu
     return all_hits, queries_executed, aggregations
 
 
-def _gather_helper_context(question: str, audit: AuditWriter) -> tuple[str, str]:
-    """RAG methodology + custom-KB context for the answer step (helpers, not evidence).
+def _gather_helper_context(question: str, audit: AuditWriter,
+                           case_dir: Path | None = None) -> tuple[str, str, str]:
+    """RAG methodology + custom-KB + TI context for the answer step.
 
-    Evidence comes from the ES index (n4_query/n4_aggregate); RAG gives
-    methodology (what to look for, caveats) and the KB gives examiner-curated
-    notes. Both are advisory context — never case evidence (FD-001).
+    Helpers only — evidence comes from the ES index (n4_query/n4_aggregate).
+    RAG gives methodology, the KB gives examiner-curated notes, TI gives
+    provider verdicts for IOCs mentioned in the question or already swept
+    into the case's analysis/ti_context.md. Never case evidence (FD-001).
     """
     rag_block = ""
     kb_block = ""
+    ti_block = ""
     try:
         from nexus.tools.rag import _get_index
 
@@ -250,13 +253,38 @@ def _gather_helper_context(question: str, audit: AuditWriter) -> tuple[str, str]
         kb_block = "\n".join(lines)
     except Exception as exc:  # noqa: BLE001 — KB is optional (NEXUS_KB_DIR)
         log.debug("KB helper unavailable: %s", exc)
-    return rag_block, kb_block
+    try:
+        from nexus.langgraph.backbone import backbone_call
+        from nexus.langgraph.ti_context import extract_iocs
+
+        lines = []
+        iocs = extract_iocs([question], cap=3)
+        values = [
+            v for kind in ("sha256", "sha1", "md5", "ipv4", "domain", "url")
+            for v in (iocs.get(kind) or [])
+        ][:3]
+        for value in values:
+            res = backbone_call("ti_lookup", audit=audit, value=value)
+            if isinstance(res, dict) and not res.get("error"):
+                lines.append(
+                    f"[TI {value}] status={res.get('status', 'n/a')} "
+                    f"malicious_count={res.get('malicious_count', 0)}"
+                )
+        if not lines and case_dir is not None:
+            ti_path = Path(case_dir) / "analysis" / "ti_context.md"
+            if ti_path.is_file():
+                lines.append(ti_path.read_text(encoding="utf-8", errors="replace")[:900])
+        ti_block = "\n".join(lines)
+    except Exception as exc:  # noqa: BLE001 — TI is optional context
+        log.debug("TI helper unavailable: %s", exc)
+    return rag_block, kb_block, ti_block
 
 
 def _formulate_answer(question: str, model: Any, hits: list[dict[str, Any]],
                       aggregations: list[dict[str, Any]],
                       queries_executed: list[dict[str, Any]],
-                      rag_block: str = "", kb_block: str = "") -> str:
+                      rag_block: str = "", kb_block: str = "",
+                      ti_block: str = "") -> str:
     """Step 3: LLM reads the actual evidence rows and answers the question."""
     hits_block = _format_hits_for_llm(hits, cap=_MAX_HITS_IN_CONTEXT)
     agg_block = ""
@@ -306,6 +334,8 @@ def _formulate_answer(question: str, model: Any, hits: list[dict[str, Any]],
         helper_block += f"\nMethodology context (RAG — helper, not evidence):\n{rag_block}\n"
     if kb_block:
         helper_block += f"\nExaminer-curated KB notes (helper, not evidence):\n{kb_block}\n"
+    if ti_block:
+        helper_block += f"\nThreat-intel context (helper, not evidence):\n{ti_block}\n"
     try:
         response = model.invoke([
             {"role": "system", "content": system},
@@ -413,10 +443,11 @@ def run_steer_agent(
     reply = ""
     rag_block = ""
     kb_block = ""
+    ti_block = ""
     if llm is not None:
-        rag_block, kb_block = _gather_helper_context(question, audit)
+        rag_block, kb_block, ti_block = _gather_helper_context(question, audit, case_dir)
         reply = _formulate_answer(question, llm, all_hits, aggregations,
-                                  queries_executed, rag_block, kb_block)
+                                  queries_executed, rag_block, kb_block, ti_block)
     if not reply:
         # Deterministic fallback — format the evidence rows directly
         reply = (

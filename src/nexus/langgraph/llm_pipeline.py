@@ -157,6 +157,8 @@ class InvestigationState(TypedDict):
     run_id: str
     run_dir: str
     parent_run_id: str
+    # Live stage feed (JSONL the dashboard reads while the run is in flight)
+    progress_path: str
 
 
 def make_initial_state(
@@ -165,6 +167,7 @@ def make_initial_state(
     pipeline_mode: str | None = None,
     case_id: str = "",
     evidence_paths: list[str] | None = None,
+    progress_path: str = "",
 ) -> InvestigationState:
     paths = [p for p in (evidence_paths or []) if str(p).strip()]
     if evidence_path and evidence_path not in paths:
@@ -190,7 +193,33 @@ def make_initial_state(
         "run_id": "",
         "run_dir": "",
         "parent_run_id": "",
+        "progress_path": str(progress_path or ""),
     }
+
+
+def emit_stage(state: InvestigationState | dict, stage: str, status: str,
+               detail: str = "") -> None:
+    """Append one stage event to the live progress JSONL (best-effort)."""
+    path_raw = ""
+    if isinstance(state, dict):
+        path_raw = str(state.get("progress_path") or "")
+    if not path_raw:
+        return
+    try:
+        from datetime import UTC, datetime
+
+        path = Path(path_raw)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        entry = {
+            "ts": datetime.now(UTC).isoformat(),
+            "stage": stage,
+            "status": status,
+            "detail": str(detail)[:300],
+        }
+        with path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(entry) + "\n")
+    except OSError:
+        pass
 
 
 def _is_placeholder_intake(text: str) -> bool:
@@ -1278,6 +1307,9 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
         "check_autorun",
         "suggest_tools",
         "suggest_windows_tools",
+        "ti_lookup",
+        "ti_fanout",
+        "ti_list_providers",
     ):
         t = tools.get(name)
         if t:
@@ -1298,10 +1330,36 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
 
     query_pack = ""
     case_id = state.get("case_id") or ""
+    ti_block = ""
+    inv_md = ""
     if case_id:
         from nexus.config import settings
         analysis_dir = Path(state.get("run_dir") or "") / "analysis" if state.get("run_dir") else None
         query_pack = _n5_query_payload(settings.cases_root / case_id, ledger, analysis_dir)
+        # Mode 2 deterministic lane: IOC sweep + TI enrichment. Context only —
+        # findings still cite evidence audit_ids (FD-001).
+        try:
+            from nexus.langgraph.ti_context import build_case_ti_context, write_ti_context
+
+            ti_ctx = build_case_ti_context(case_id, max_iocs=6)
+            write_ti_context(settings.cases_root / case_id, ti_ctx)
+            ti_block = str(ti_ctx.get("markdown") or "")
+        except Exception as exc:  # noqa: BLE001 — TI is best-effort context
+            log.warning("TI context build failed: %s", exc)
+        # Deterministic entity census — the interpret agent must address every
+        # item (broad, extensive coverage; gaps are listed after staging).
+        try:
+            from nexus.langgraph.entity_inventory import (
+                build_entity_inventory,
+                render_inventory_markdown,
+                write_entity_inventory,
+            )
+
+            inv = build_entity_inventory(case_id, cap=40)
+            write_entity_inventory(settings.cases_root / case_id, inv)
+            inv_md = render_inventory_markdown(inv)
+        except Exception as exc:  # noqa: BLE001 — inventory is best-effort
+            log.warning("entity inventory build failed: %s", exc)
 
     from nexus.langgraph.itm import itm_prompt_block
 
@@ -1319,6 +1377,12 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
             "THEN forensic_rag_search once per QUERY PACK hit family "
             "(methodology for those artifacts only). "
             "THEN emit findings JSON from QUERY PACK hits. "
+            "Use ti_lookup/ti_fanout for every IOC in the THREAT INTEL block "
+            "and for hashes/IPs/domains you see in QUERY PACK hits — say what "
+            "each verdict means for the case. "
+            "Cover EVERY item of interest: every family with hits, every "
+            "entity (hosts, users, processes, paths, IOCs) — for items with no "
+            "signal, state that explicitly instead of omitting them. "
             "Do NOT re-run host triage tools. Do NOT treat CSV heads as facts."
         ),
     )
@@ -1331,6 +1395,8 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
                     "content": (
                         f"Interpret coverage results for case {state['case_id']}.\n"
                         f"N4 QUERY PACK (ONLY source of host facts):\n{query_pack or '(none)'}\n\n"
+                        f"ENTITY INVENTORY (deterministic census — address EVERY item):\n{inv_md or '(none)'}\n\n"
+                        f"THREAT INTEL (context — never evidence):\n{ti_block or '(none)'}\n\n"
                         f"Prior RAG notes:\n{rag_prior or '(none)'}\n\n"
                         f"OK/FAIL ledger (audit_ids only — not facts):\n```json\n{ledger_json}\n```\n\n"
                         "Emit a ```json array of findings. Each finding MUST have:\n"
@@ -1574,7 +1640,7 @@ def _merge_n4_uncovered(llm: list[dict], n4: list[dict]) -> list[dict]:
     return list(llm) + extra
 
 
-async def stage_findings(state: InvestigationState, tools: dict) -> dict:
+async def stage_findings(state: InvestigationState, tools: dict, model=None) -> dict:
     """Stage findings as DRAFT from hunt agent output."""
     from nexus.langgraph.hunt_parser import parse_hunt_candidates
 
@@ -1683,6 +1749,32 @@ async def stage_findings(state: InvestigationState, tools: dict) -> dict:
             log_msg.append(f"Wrote {preview}")
     except Exception as exc:  # noqa: BLE001
         log_msg.append(f"Draft preview skipped: {exc}")
+
+    # Mode 2 verdict: coverage gaps vs the entity inventory + interpretation.md
+    # (deterministic skeleton + optional LLM executive verdict).
+    try:
+        from nexus.config import settings as _settings
+        from nexus.langgraph.entity_inventory import compute_coverage_gaps
+        from nexus.langgraph.interpretation import write_interpretation_summary
+
+        case_dir = _settings.cases_root / str(state.get("case_id") or "")
+        gaps: list[dict[str, str]] = []
+        inv_path = case_dir / "analysis" / "entity_inventory.json"
+        if inv_path.is_file():
+            inv = json.loads(inv_path.read_text(encoding="utf-8"))
+            staged: list[dict[str, Any]] = []
+            findings_path = case_dir / "findings.json"
+            if findings_path.is_file():
+                loaded = json.loads(findings_path.read_text(encoding="utf-8"))
+                if isinstance(loaded, list):
+                    staged = [f for f in loaded if isinstance(f, dict)]
+            gaps = compute_coverage_gaps(inv, staged)
+        out = await write_interpretation_summary(case_dir, gaps=gaps, model=model)
+        if out:
+            log_msg.append(f"Wrote {out.name} (gaps={len(gaps)})")
+    except Exception as exc:  # noqa: BLE001 — verdict is best-effort
+        log_msg.append(f"interpretation summary skipped: {exc}")
+
     return {
         "draft_finding_ids": draft_ids,
         "draft_timeline_ids": timeline_ids,
@@ -1920,7 +2012,7 @@ def build_graph(tools: dict, model, mode: str | None = None):
         return await interpret(state, tools, model)
 
     async def _stage_findings(state: InvestigationState) -> dict:
-        return await stage_findings(state, tools)
+        return await stage_findings(state, tools, model)
 
     async def _generate_report(state: InvestigationState) -> dict:
         return await generate_report(state, tools)
@@ -1930,11 +2022,39 @@ def build_graph(tools: dict, model, mode: str | None = None):
 
     workflow = StateGraph(InvestigationState)
 
+    # Live stage feed: every node announces running/done/error (with the last
+    # step_log line as detail) to the progress JSONL the dashboard polls.
+    def _trace(name: str, fn):
+        async def _inner(state: InvestigationState) -> dict:
+            emit_stage(state, name, "running")
+            try:
+                out = await fn(state)
+            except Exception as exc:  # noqa: BLE001 — feed the error, then re-raise
+                emit_stage(state, name, "error", str(exc)[:200])
+                raise
+            detail = ""
+            if isinstance(out, dict):
+                tail = out.get("step_log") or []
+                if isinstance(tail, list) and tail:
+                    detail = str(tail[-1])[:200]
+                elif out.get("error"):
+                    detail = str(out.get("error"))[:200]
+            emit_stage(state, name, "done", detail)
+            return out
+
+        return _inner
+
+    _add_node = workflow.add_node
+
+    def _add_traced(name: str, fn) -> None:
+        _add_node(name, _trace(name, fn))
+
+
     if mode == "tools":
-        workflow.add_node("register_evidence", _register_evidence)
-        workflow.add_node("scope", _scope_tools_only)
-        workflow.add_node("execute_tool_lane", _execute_tool_lane)
-        workflow.add_node("emit_tool_report", _emit_tool_report)
+        _add_traced("register_evidence", _register_evidence)
+        _add_traced("scope", _scope_tools_only)
+        _add_traced("execute_tool_lane", _execute_tool_lane)
+        _add_traced("emit_tool_report", _emit_tool_report)
         workflow.set_entry_point("register_evidence")
         workflow.add_edge("register_evidence", "scope")
         workflow.add_edge("scope", "execute_tool_lane")
@@ -1942,15 +2062,15 @@ def build_graph(tools: dict, model, mode: str | None = None):
         workflow.add_edge("emit_tool_report", END)
         return workflow
 
-    workflow.add_node("ensure_rag", _ensure_rag)
+    _add_traced("ensure_rag", _ensure_rag)
     workflow.set_entry_point("ensure_rag")
 
     if mode == "interpret":
-        workflow.add_node("load_existing", _load_existing)
-        workflow.add_node("interpret", _interpret)
-        workflow.add_node("stage_findings", _stage_findings)
-        workflow.add_node("await_approval", await_approval)
-        workflow.add_node("generate_report", _generate_report)
+        _add_traced("load_existing", _load_existing)
+        _add_traced("interpret", _interpret)
+        _add_traced("stage_findings", _stage_findings)
+        _add_traced("await_approval", await_approval)
+        _add_traced("generate_report", _generate_report)
         workflow.add_edge("ensure_rag", "load_existing")
         workflow.add_edge("load_existing", "interpret")
         workflow.add_edge("interpret", "stage_findings")
@@ -1959,12 +2079,12 @@ def build_graph(tools: dict, model, mode: str | None = None):
         workflow.add_edge("generate_report", END)
         return workflow
 
-    workflow.add_node("register_evidence", _register_evidence)
-    workflow.add_node("scope", _scope)
-    workflow.add_node("stage_findings", _stage_findings)
-    workflow.add_node("await_approval", await_approval)
-    workflow.add_node("generate_report", _generate_report)
-    workflow.add_node("emit_tool_report", _emit_tool_report)
+    _add_traced("register_evidence", _register_evidence)
+    _add_traced("scope", _scope)
+    _add_traced("stage_findings", _stage_findings)
+    _add_traced("await_approval", await_approval)
+    _add_traced("generate_report", _generate_report)
+    _add_traced("emit_tool_report", _emit_tool_report)
     workflow.add_edge("ensure_rag", "register_evidence")
     workflow.add_edge("register_evidence", "scope")
 
@@ -1977,8 +2097,8 @@ def build_graph(tools: dict, model, mode: str | None = None):
         return "interpret_path" if _has_intake(st) else "tools_only"
 
     if mode == "coverage":
-        workflow.add_node("execute_tool_lane", _execute_tool_lane)
-        workflow.add_node("interpret", _interpret)
+        _add_traced("execute_tool_lane", _execute_tool_lane)
+        _add_traced("interpret", _interpret)
         workflow.add_edge("scope", "execute_tool_lane")
         workflow.add_conditional_edges(
             "execute_tool_lane",
@@ -1987,9 +2107,9 @@ def build_graph(tools: dict, model, mode: str | None = None):
         )
         workflow.add_edge("interpret", "stage_findings")
     else:
-        workflow.add_node("execute_tool_lane", _execute_tool_lane)
-        workflow.add_node("hunt", _hunt)
-        workflow.add_node("interpret", _interpret)
+        _add_traced("execute_tool_lane", _execute_tool_lane)
+        _add_traced("hunt", _hunt)
+        _add_traced("interpret", _interpret)
         workflow.add_edge("scope", "execute_tool_lane")
         workflow.add_conditional_edges(
             "execute_tool_lane",
@@ -2058,6 +2178,7 @@ async def run_pipeline(
     mode: str | None = None,
     evidence_paths: list[str] | None = None,
     case_id: str = "",
+    progress_path: str = "",
 ):
     """Run the DFIR-Nexus LangGraph investigation pipeline."""
     from langgraph.checkpoint.memory import MemorySaver
@@ -2066,6 +2187,9 @@ async def run_pipeline(
     pipeline_mode = resolve_pipeline_mode(mode)
     from_case = (case_id or "").strip()
     log.info("Pipeline mode: %s", pipeline_mode)
+
+    _progress = {"progress_path": str(progress_path or "")}
+    emit_stage(_progress, "pipeline", "running", f"mode={pipeline_mode}")
 
     config = get_mcp_config()
     tools_by_name = await _load_mcp_tools(config)
@@ -2134,8 +2258,17 @@ async def run_pipeline(
         pipeline_mode=pipeline_mode,
         evidence_paths=evidence_paths,
         case_id=from_case,
+        progress_path=progress_path,
     )
-    result = await compiled.ainvoke(initial, config=cfg)
+    try:
+        result = await compiled.ainvoke(initial, config=cfg)
+    except Exception as exc:
+        emit_stage(initial, "pipeline", "error", str(exc)[:200])
+        raise
+    emit_stage(
+        initial, "pipeline", "done",
+        f"drafts={len(result.get('draft_finding_ids') or [])}" if isinstance(result, dict) else "",
+    )
 
     result_state = result if isinstance(result, dict) else {}
     log.info("Pipeline complete")

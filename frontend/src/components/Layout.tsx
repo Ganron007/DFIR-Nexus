@@ -234,7 +234,9 @@ export default function Layout({ children }: { children: ReactNode }) {
             </option>
             {cases.map((c) => (
               <option key={c} value={c}>
-                {c}
+                {caseSummaries[c]?.name && caseSummaries[c].name !== c
+                  ? `${caseSummaries[c].name} (${c})`
+                  : c}
               </option>
             ))}
           </select>
@@ -336,8 +338,12 @@ export default function Layout({ children }: { children: ReactNode }) {
                 ← Landing
               </a>
             )}
-            <span className="active-case-badge">
-              {activeCase || "no case"}
+            <span className="active-case-badge" title={activeCase || ""}>
+              {activeCase
+                ? caseSummaries[activeCase]?.name && caseSummaries[activeCase].name !== activeCase
+                  ? `${caseSummaries[activeCase].name} · ${activeCase}`
+                  : activeCase
+                : "no case"}
             </span>
           </div>
         </header>

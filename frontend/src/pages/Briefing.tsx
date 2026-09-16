@@ -12,11 +12,20 @@ import { api, type BriefingDirection, type BriefingResponse, type Mode1FullRunRe
 import { useCase } from "../context/CaseContext";
 
 export default function Briefing() {
-  const { activeCase, refreshStages } = useCase();
+  const { activeCase, refreshStages, mode } = useCase();
   const navigate = useNavigate();
   const [brief, setBrief] = useState<BriefingResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  // Mode 2/3 pipeline run (question-driven) + live stage feed
+  const [modeQuestion, setModeQuestion] = useState("");
+  const [modeRunId, setModeRunId] = useState("");
+  const [modeRunStatus, setModeRunStatus] = useState("");
+  const [modeStages, setModeStages] = useState<
+    { stage?: string; tool?: string; host?: string; status?: string; detail?: string }[]
+  >([]);
+  const [modeRunError, setModeRunError] = useState("");
+  const modeRunPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Lazy LLM layer — loaded after the deterministic briefing renders so a
   // slow local model never blocks the page (was an inline route call).
   const [directions, setDirections] = useState<BriefingDirection[] | null>(null);
@@ -116,6 +125,56 @@ export default function Briefing() {
     }
   }, [activeCase]);
 
+  // Mode 2/3: question-driven pipeline run with a live stage feed.
+  const stopModeRunPoll = () => {
+    if (modeRunPollRef.current) {
+      clearInterval(modeRunPollRef.current);
+      modeRunPollRef.current = null;
+    }
+  };
+
+  const pollModeRun = (runId: string) => {
+    stopModeRunPoll();
+    modeRunPollRef.current = setInterval(async () => {
+      try {
+        const s = await api.pipelineStatus(runId);
+        setModeRunStatus(s.status);
+        setModeStages(s.stages || []);
+        if (s.status === "complete" || s.status === "error") {
+          stopModeRunPoll();
+          if (s.error) setModeRunError(s.error);
+          // Pull the fresh briefing (interpretation/verdict may be written)
+          api.caseBriefing().then(setBrief).catch(() => undefined);
+          refreshStages(activeCase);
+        }
+      } catch (e) {
+        stopModeRunPoll();
+        setModeRunError((e as Error).message);
+      }
+    }, 3000);
+  };
+
+  useEffect(() => () => stopModeRunPoll(), []);
+
+  const runModePipeline = async () => {
+    if (!activeCase) return;
+    setModeRunError("");
+    setModeStages([]);
+    setModeRunStatus("running");
+    try {
+      const r = await api.pipelineRun({
+        mode: mode === "3" ? "design" : "coverage",
+        case_id: activeCase,
+        question: modeQuestion.trim(),
+      });
+      setModeRunId(r.run_id);
+      pollModeRun(r.run_id);
+    } catch (e) {
+      setModeRunStatus("error");
+      setModeRunError((e as Error).message);
+    }
+  };
+
   const toggleStep = (key: string) => {
     setDoneSteps((prev) => {
       const next = { ...prev, [key]: !prev[key] };
@@ -186,6 +245,7 @@ export default function Briefing() {
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4, flexWrap: "wrap" }}>
         <h2 style={{ marginBottom: 0 }}>Case Briefing</h2>
+        {mode === "1" && (
         <button
           className="btn btn-sm"
           style={{ marginLeft: "auto", fontWeight: 600 }}
@@ -201,7 +261,8 @@ export default function Briefing() {
         >
           {fullRunRunning ? "Mode 1 full run in progress…" : hasPriorRun ? "↻ Re-run full scan" : "▶ Mode 1 full run"}
         </button>
-        {hasPriorRun && !fullRunRunning && (
+        )}
+        {mode === "1" && hasPriorRun && !fullRunRunning && (
           <label style={{ fontSize: 12, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4 }}
             title="Supersede open DRAFT findings for hit needles and stage fresh ones. APPROVED findings stay signed — a fresh DRAFT revision is staged alongside them for comparison and approval.">
             <input type="checkbox" checked={reprocess} onChange={(e) => setReprocess(e.target.checked)} />
@@ -214,9 +275,97 @@ export default function Briefing() {
         already caught, and where to start digging.
       </p>
 
+      {/* Mode 2/3 — question-driven LLM run with the live stage feed */}
+      {mode !== "1" && (
+        <div className="card" style={{ borderLeft: "3px solid var(--purple)" }}>
+          <div className="card-title" style={{ marginBottom: 6 }}>
+            {mode === "2" ? "Mode 2 — LLM interpretation run" : "Mode 3 — agentic run"}
+          </div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>
+            {mode === "2"
+              ? "The deterministic lane parses and indexes, then the LLM interprets every entity against RAG methodology and threat intel, and stages DRAFT findings for your approval."
+              : "The deterministic lane runs, then the ReAct agent plans and adds hunts before interpretation."}
+          </div>
+          <textarea
+            value={modeQuestion}
+            onChange={(e) => setModeQuestion(e.target.value)}
+            placeholder="Examiner question for the interpretation (e.g. 'What did D:\\m.exe do and is it malicious?') — drives the LLM analysis"
+            rows={2}
+            style={{ width: "100%", marginBottom: 8, fontSize: 12 }}
+            disabled={modeRunStatus === "running"}
+          />
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={runModePipeline}
+              disabled={modeRunStatus === "running" || !activeCase}
+            >
+              {modeRunStatus === "running"
+                ? "Running…"
+                : mode === "2" ? "▶ Run Mode 2 interpretation" : "▶ Run Mode 3 agent plan"}
+            </button>
+            {modeRunStatus === "complete" && (
+              <span style={{ fontSize: 12, color: "var(--ok)" }}>
+                Complete — DRAFT findings staged (review in Approve)
+              </span>
+            )}
+            {modeRunError && <span style={{ fontSize: 12, color: "var(--danger)" }}>{modeRunError}</span>}
+          </div>
+          {modeStages.length > 0 && (
+            <div style={{ marginTop: 10, fontSize: 11, fontFamily: "monospace", color: "var(--text-muted)" }}>
+              {modeStages.slice(-14).map((s, i) => (
+                <div key={i}>
+                  <span style={{ color: s.status === "error" ? "var(--danger)" : s.status === "running" ? "var(--accent)" : "var(--text-secondary)" }}>
+                    [{s.stage || s.tool || "?"}]
+                  </span>{" "}
+                  {s.status || ""}{s.detail ? ` — ${s.detail}` : ""}
+                </div>
+              ))}
+            </div>
+          )}
+          {modeRunId && (
+            <div style={{ marginTop: 6, fontSize: 10, color: "var(--text-muted)" }}>
+              run {modeRunId}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Mode 2 — LLM interpretation verdict (from analysis/interpretation.md) */}
+      {mode !== "1" && brief.mode_interpretation && (
+        <div className="card" style={{ borderLeft: "3px solid var(--purple)" }}>
+          <div className="card-title" style={{ marginBottom: 6 }}>Mode 2 Interpretation (LLM)</div>
+          <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, margin: 0, fontFamily: "inherit" }}>
+            {brief.mode_interpretation}
+          </pre>
+        </div>
+      )}
+      {mode !== "1" && !brief.mode_interpretation && (brief.findings_summary?.count ?? 0) > 0 && (
+        <div className="card">
+          <div className="card-title" style={{ marginBottom: 6 }}>
+            Staged findings ({brief.findings_summary?.count} · {brief.findings_summary?.drafts} DRAFT)
+          </div>
+          <ul style={{ fontSize: 12, margin: "0 0 0 18px", padding: 0 }}>
+            {(brief.findings_summary?.top || []).map((f) => (
+              <li key={f.id}>
+                [{f.severity}/{f.confidence}] {f.title}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {mode !== "1" && !brief.mode_interpretation && brief.ti_context && (
+        <div className="card">
+          <div className="card-title" style={{ marginBottom: 6 }}>Threat intel (context)</div>
+          <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, margin: 0, fontFamily: "inherit" }}>
+            {brief.ti_context}
+          </pre>
+        </div>
+      )}
+
       {/* WP 4j.5d — tracked full run: live progress, then per-stage summary */}
-      {fullRunError && <div className="error-banner">{fullRunError}</div>}
-      {fullRunRunning && (
+      {mode === "1" && fullRunError && <div className="error-banner">{fullRunError}</div>}
+      {mode === "1" && fullRunRunning && (
         <div className="card" style={{ borderLeft: "3px solid var(--accent)" }}>
           <div className="card-title" style={{ marginBottom: 6 }}>
             Full run in progress — {fullRunResult?.stage || "starting"}
@@ -236,7 +385,7 @@ export default function Briefing() {
           </div>
         </div>
       )}
-      {fullRunResult && !fullRunRunning && (
+      {mode === "1" && fullRunResult && !fullRunRunning && (
         <div className="card" style={{ borderLeft: `3px solid ${fullRunResult.status === "complete" ? "var(--ok)" : "var(--danger)"}` }}>
           <div className="card-title" style={{ marginBottom: 6 }}>
             {fullRunResult.status === "complete"

@@ -71,7 +71,7 @@ async def enrich_iocs_async(
     iocs: list[str],
     router: TIRouter,
 ) -> list[dict[str, Any]]:
-    """Run core-tier ``ti_lookup`` for each IOC (never includes optional providers)."""
+    """Run ``ti_lookup`` for each IOC (configured providers auto-included)."""
     return [await router.lookup(ioc) for ioc in iocs]
 
 
