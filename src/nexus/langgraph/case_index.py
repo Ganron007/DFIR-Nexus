@@ -191,6 +191,23 @@ def iter_index_docs(
         except OSError:
             continue
 
+    # Imported non-host evidence (network/cloud/TI): clean searchable rows from
+    # the case artifact store, family = source (suricata/zeek/...). The raw
+    # store JSONL is never indexed — this projection is (CSV-scanner parity).
+    from nexus.langgraph.query_pack import iter_ingest_rows
+
+    ingest_store = case_dir / "ingest" / "artifacts.jsonl"
+    if ingest_store.is_file():
+        for n, fam, text, _ts in iter_ingest_rows(case_dir):
+            if len(docs) >= _MAX_DOCS:
+                break
+            if family_counts.get(fam, 0) >= _MAX_DOCS_PER_FAMILY:
+                continue
+            before = len(docs)
+            _add(ingest_store, case_dir, fam, n, text)
+            if len(docs) > before:
+                family_counts[fam] = family_counts.get(fam, 0) + 1
+
     # Hayabusa / MFT / EVTX above the small-file cap: index matching rows only.
     # Always reserved — small CSVs must not consume the whole 250k budget.
     from nexus.langgraph.pipeline_runs import resolve_tools_extractions

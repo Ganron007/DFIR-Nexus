@@ -153,20 +153,71 @@ def load_ingest_artifacts(case_dir: Path) -> list[Artifact]:
     return arts
 
 
+def _artifact_key(d: dict) -> str:
+    """Content key so re-ingesting the same evidence does not duplicate rows."""
+    parts = (
+        d.get("source"),
+        d.get("artifact_type"),
+        d.get("timestamp"),
+        d.get("src_ip") or d.get("source_ip"),
+        d.get("dest_ip"),
+        str(d.get("description") or d.get("details") or "")[:80],
+    )
+    return "|".join(str(p or "") for p in parts)
+
+
 def append_ingest_artifacts(case_dir: Path, artifacts: list[Artifact]) -> Path:
+    """Append artifacts to the case ingest store, deduped by content key.
+
+    Reprocessing the same network log must not double the store — keys are
+    compared against the existing ``artifacts.jsonl`` before appending.
+    """
     dest_dir = Path(case_dir) / "ingest"
     dest_dir.mkdir(parents=True, exist_ok=True)
     path = dest_dir / "artifacts.jsonl"
-    with path.open("a", encoding="utf-8") as fh:
-        for a in artifacts:
-            fh.write(json.dumps(a.to_dict(), default=str) + "\n")
+    existing: set[str] = set()
+    if path.is_file():
+        try:
+            with path.open("r", encoding="utf-8", errors="replace") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        existing.add(_artifact_key(json.loads(line)))
+                    except (json.JSONDecodeError, TypeError):
+                        continue
+        except OSError:
+            existing = set()
+    rows: list[str] = []
+    for a in artifacts:
+        d = a.to_dict()
+        key = _artifact_key(d)
+        if key in existing:
+            continue
+        existing.add(key)
+        rows.append(json.dumps(d, default=str))
+    if rows:
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write("\n".join(rows) + "\n")
     return path
+
+
+def _ingest_limit() -> int:
+    """Bound on artifacts stored per ingested file (env-configurable)."""
+    import os
+
+    try:
+        raw = int(os.environ.get("NEXUS_INGEST_MAX_ARTIFACTS", "20000"))
+    except ValueError:
+        raw = 20000
+    return max(1, raw)
 
 
 def ingest_into_case(
     path: Path,
     case_dir: Path,
-    limit: int = 400,
+    limit: int = 0,
     source: str | None = None,
 ) -> dict[str, Any]:
     """I1 ingest a file onto the case, then I3-ready artifact store."""
@@ -185,13 +236,17 @@ def ingest_into_case(
             "path": str(path),
         }
     result = get_registry().import_path(path, source=resolved)
-    arts = list(result.artifacts or [])[:limit]
+    total = len(result.artifacts or [])
+    cap = limit if limit > 0 else _ingest_limit()
+    arts = list(result.artifacts or [])[:cap]
     if arts:
         append_ingest_artifacts(case_dir, arts)
     return {
         "success": result.success,
         "source": result.source.value,
         "artifacts": len(arts),
+        "artifacts_total": total,
+        "artifacts_capped": total > len(arts),
         "errors": result.errors[:5],
         "path": str(path),
     }

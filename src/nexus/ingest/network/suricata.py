@@ -33,29 +33,43 @@ class SuricataImporter(Importer):
 
     @classmethod
     def can_handle(cls, path: Path) -> bool:
-        """Heuristic: file is named eve.json or eve.json.* or has a JSON object with `event_type`."""
+        """Heuristic: eve.json naming, or JSON lines with EVE event fields.
+
+        Tail captures and rotated logs may begin mid-object — malformed
+        leading lines are skipped (``parse()`` already skips them too).
+        """
         if not path.is_file():
             return False
         name = path.name.lower()
-        if name == "eve.json" or name.startswith("eve.json.") or name.startswith("eve."):
+        if (
+            name == "eve.json"
+            or name.startswith("eve.json.")
+            or name.startswith("eve.")
+            or name.startswith("eve-")
+            or name.startswith("eve_")
+            or name.endswith(".eve.json")
+        ):
             return True
-        # Sniff the first non-empty line
+        # Sniff the first lines that parse as JSON (skip truncated fragments)
+        import json
+
         try:
             with path.open("r", encoding="utf-8", errors="replace") as f:
-                for _ in range(5):
-                    line = f.readline()
-                    if not line:
-                        break
+                for line in f:
                     line = line.strip()
                     if not line:
                         continue
-                    import json
                     try:
                         obj = json.loads(line)
-                    except Exception:  # noqa: BLE001
-                        return False
-                    if isinstance(obj, dict) and "event_type" in obj:
-                        return "src_ip" in obj or "dest_ip" in obj or "alert" in obj
+                    except (json.JSONDecodeError, ValueError):
+                        continue  # truncated / non-JSON line — keep sniffing
+                    if not isinstance(obj, dict):
+                        continue
+                    if "event_type" in obj and (
+                        "src_ip" in obj or "dest_ip" in obj or "alert" in obj
+                        or "flow_id" in obj
+                    ):
+                        return True
         except OSError:
             return False
         return False

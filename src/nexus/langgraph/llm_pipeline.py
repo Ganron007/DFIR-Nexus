@@ -828,10 +828,19 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
                 steps.append(f"Extra Windows root registered (not re-parsed this pass): {p}")
                 continue
             info = ingest_into_case(Path(p), case_dir)
+            capped = " (capped)" if info.get("artifacts_capped") else ""
             steps.append(
                 f"I1 ingest extra path {p}: {info.get('source')} "
-                f"artifacts={info.get('artifacts')} ok={info.get('success')}"
+                f"artifacts={info.get('artifacts')}/{info.get('artifacts_total')}{capped} "
+                f"ok={info.get('success')}"
             )
+            if str(info.get("source") or "") in ("generic_csv", "generic_jsonl") and Path(
+                p
+            ).suffix.lower() in (".json", ".jsonl"):
+                steps.append(
+                    f"I1 warning: {Path(p).name} resolved as {info.get('source')} — "
+                    "structured JSON may be misrouted; check importer detection"
+                )
         try:
             rebuild_case_timeline(case_dir)
         except Exception as exc:  # noqa: BLE001

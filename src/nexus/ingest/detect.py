@@ -189,6 +189,15 @@ def detect_format(path: Path) -> ArtifactSource | None:
                         return detected
                 return ArtifactSource.GENERIC_JSONL
 
+        # Mid-stream NDJSON — `tail` captures begin inside a JSON object and
+        # logs sometimes carry a preamble. Route by the first line that
+        # parses as a JSON object instead of falling through to CSV.
+        if not (stripped.startswith("{") or stripped.startswith("[")):
+            sample = _first_json_line(head)
+            if sample is not None:
+                detected = _detect_json_format(sample, name_lower)
+                return detected or ArtifactSource.GENERIC_JSONL
+
         # tshark / Wireshark JSON export — pretty-printed, so the whole-head
         # parse above usually fails on truncation; sniff the shape directly.
         if '"_source"' in head and '"layers"' in head:
@@ -221,6 +230,23 @@ def detect_format(path: Path) -> ArtifactSource | None:
     if cls is not None:
         return cls.source_class()
 
+    return None
+
+
+def _first_json_line(text: str, max_lines: int = 60) -> dict | None:
+    """First line in ``text`` that parses as a JSON object (NDJSON sniff)."""
+    for line in text.splitlines()[:max_lines]:
+        line = line.strip()
+        if not line or line[0] not in "{[":
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict) and obj:
+            return obj
+        if isinstance(obj, list) and obj and isinstance(obj[0], dict):
+            return obj[0]
     return None
 
 
@@ -288,8 +314,11 @@ def _detect_json_format(sample: dict, name: str) -> ArtifactSource | None:
     ):
         return ArtifactSource.SECURITY_ONION
 
-    # Suricata: has event_type and alert
-    if "event_type" in keys and "alert" in keys:
+    # Suricata EVE: event_type + network fields (alert may be absent on
+    # http/dns/tls/flow events — a tail capture often starts on one).
+    if "event_type" in keys and (
+        "src_ip" in keys or "dest_ip" in keys or "flow_id" in keys or "alert" in keys
+    ):
         return ArtifactSource.SURICATA
 
     # Elastic: has _source wrapper

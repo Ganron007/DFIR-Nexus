@@ -6,6 +6,7 @@ Does not hardcode case plots: terms come from playbook YAML + intake tokens.
 
 from __future__ import annotations
 
+import json
 import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -440,6 +441,104 @@ def _hits_from_file(
     return hits
 
 
+def render_ingest_row(d: dict[str, Any], max_len: int = _MAX_LINE) -> str:
+    """Compact, N4-indexable text for one imported artifact.
+
+    Deliberately excludes ids/UUIDs and processing metadata — the raw store
+    line is noisy; this is the searchable projection (same text on ES + CSV).
+    """
+    parts = [
+        str(d.get("timestamp") or ""),
+        str(d.get("source") or ""),
+        str(d.get("artifact_type") or ""),
+        str(d.get("severity") or ""),
+        f"host={d.get('host')}" if d.get("host") else "",
+        f"user={d.get('user')}" if d.get("user") else "",
+        f"src={d.get('source_ip')}:{d.get('source_port')}" if d.get("source_ip") else "",
+        f"dst={d.get('dest_ip')}:{d.get('dest_port')}" if d.get("dest_ip") else "",
+        str(d.get("description") or d.get("details") or d.get("rule") or ""),
+        " ".join(str(t) for t in (d.get("technique_ids") or [])),
+        " ".join(str(i) for i in (d.get("iocs") or [])),
+    ]
+    return " ".join(p for p in parts if p).strip()[:max_len]
+
+
+def iter_ingest_rows(case_dir: Path) -> list[tuple[int, str, str, str]]:
+    """(line_no, family(source), searchable text, ts) per imported artifact."""
+    path = Path(case_dir) / "ingest" / "artifacts.jsonl"
+    if not path.is_file():
+        return []
+    rows: list[tuple[int, str, str, str]] = []
+    try:
+        with path.open(encoding="utf-8", errors="replace") as fh:
+            for n, line in enumerate(fh, start=1):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    d = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(d, dict):
+                    continue
+                fam = str(d.get("source") or "ingest").strip().lower() or "ingest"
+                rows.append((n, fam, render_ingest_row(d), str(d.get("timestamp") or "")))
+    except OSError:
+        return []
+    return rows
+
+
+def _hits_from_ingest(
+    case_dir: Path,
+    needles: list[str],
+    strong: set[str],
+    start: datetime | None,
+    end: datetime | None,
+    query: Any | None = None,
+    match_all: bool = False,
+) -> list[dict[str, str]]:
+    """Same matching semantics as ``_hits_from_file`` over the artifact store."""
+    hits: list[dict[str, str]] = []
+    strong_n = 0
+    weak_n = 0
+    for line_no, fam, text, _ts in iter_ingest_rows(case_dir):
+        low = text.lower()
+        if query is not None:
+            from nexus.langgraph.query_dsl import row_matches
+
+            ok, matched = row_matches(
+                query, line_lower=low, family=fam, file_rel="ingest/artifacts.jsonl"
+            )
+            if not ok:
+                continue
+            matched = matched[:6]
+        else:
+            matched = [t for t in needles if needle_in_text(low, t)]
+            if not matched:
+                if not match_all:
+                    continue
+                matched = ["*"]
+        if not _row_in_window(text, start, end):
+            continue
+        pri = _hit_rank(matched, strong)
+        if pri == 0:
+            if strong_n >= _MAX_COLLECT_PER_FILE:
+                continue
+            strong_n += 1
+        else:
+            if weak_n >= _MAX_COLLECT_PER_FILE:
+                continue
+            weak_n += 1
+        hits.append({
+            "family": fam,
+            "file": "ingest/artifacts.jsonl",
+            "line": str(line_no),
+            "terms": ",".join(matched[:6]),
+            "text": text,
+        })
+    return hits
+
+
 def iter_extraction_files(
     case_dir: Path,
     *,
@@ -634,7 +733,34 @@ def attach_hit_fields(case_dir: Path, hits: list[dict[str, Any]]) -> list[dict[s
         fields: dict[str, str] = {}
         file_rel = str(h.get("file") or "")
         p = root / file_rel if file_rel else None
-        if p is not None and p.is_file():
+        if file_rel.startswith("ingest/"):
+            # Imported-artifact row — project the store line into typed fields
+            # (network events get source_ip/dest_ip/proto/severity in the UI).
+            store = case_dir / file_rel
+            record: dict[str, Any] | None = None
+            try:
+                line_no = int(h.get("line") or 0)
+                with store.open(encoding="utf-8", errors="replace") as fh:
+                    for i, line in enumerate(fh, start=1):
+                        if i == line_no:
+                            record = json.loads(line)
+                            break
+            except (OSError, ValueError):
+                record = None
+            if isinstance(record, dict):
+                for key in (
+                    "source", "artifact_type", "severity", "timestamp", "host",
+                    "user", "source_ip", "source_port", "dest_ip", "dest_port",
+                    "protocol", "description", "rule",
+                ):
+                    value = record.get(key)
+                    if value not in (None, "", []):
+                        fields[key] = str(value)[:_MAX_FIELD_VALUE]
+                for list_key in ("technique_ids", "iocs"):
+                    values = record.get(list_key)
+                    if values:
+                        fields[list_key] = ",".join(str(v) for v in values)[:_MAX_FIELD_VALUE]
+        elif p is not None and p.is_file():
             if file_rel not in _header_cache:
                 try:
                     with p.open(encoding="utf-8", errors="replace") as fh:
@@ -650,7 +776,17 @@ def attach_hit_fields(case_dir: Path, hits: list[dict[str, Any]]) -> list[dict[s
                 v = str(val).strip()[:_MAX_FIELD_VALUE]
                 if v:
                     fields[name] = v
-        host = next((v for v in (fields.get(k, "") for k in ("Computer", "ComputerName", "Host", "Hostname")) if v), "")
+        host = next(
+            (
+                v
+                for v in (
+                    fields.get(k, "")
+                    for k in ("Computer", "ComputerName", "Host", "Hostname", "host")
+                )
+                if v
+            ),
+            "",
+        )
         if not host:
             m = _HOST_RE.search(h.get("text", "")) or _UNC_RE.search(h.get("text", ""))
             host = (m.group(1) if m else "").rstrip(".").lower()
@@ -834,6 +970,14 @@ def scan_extractions(
             )
         except OSError:
             continue
+    # Imported non-host evidence (network/cloud/TI) lives in the case artifact
+    # store — same searchable projection as the ES backend (parity).
+    hits.extend(
+        _hits_from_ingest(
+            case_dir, needles, strong, start, end,
+            query=query, match_all=match_all,
+        )
+    )
     return finalize_hits(hits, terms, priority_terms)
 
 

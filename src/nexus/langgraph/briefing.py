@@ -24,7 +24,11 @@ log = logging.getLogger(__name__)
 _BRIEFING_SCAN_TERMS_CAP = 300
 _ENTITY_TOP_N = 8
 _ALERT_LEVELS = {"critical", "high"}
-_ALERT_FAMILY_HINTS = ("hayabusa", "zircolite", "deepblue", "sigma")
+_ALERT_FAMILY_HINTS = (
+    "hayabusa", "zircolite", "deepblue", "sigma",
+    # imported network/agent detections (ingest artifact store)
+    "suricata", "zeek", "sysdig", "falco", "security_onion",
+)
 _ROW_COUNT_CAP = 5_000_000  # safety valve per file
 
 
@@ -36,8 +40,10 @@ def _family_inventory(case_dir: Path) -> dict[str, dict[str, Any]]:
     """Per-family file/row counts + hosts seen, from the tools extractions.
 
     Streams line counts (bounded) — fast on real cases, honest about caps.
+    Imported non-host evidence (network/cloud/TI) is counted per source from
+    the case artifact store so the briefing shows it as a family.
     """
-    from nexus.langgraph.query_pack import iter_extraction_files
+    from nexus.langgraph.query_pack import iter_extraction_files, iter_ingest_rows
 
     out: dict[str, dict[str, Any]] = {}
     for path, _root, fam in iter_extraction_files(case_dir, max_bytes=None):
@@ -55,6 +61,13 @@ def _family_inventory(case_dir: Path) -> dict[str, dict[str, Any]]:
             entry["rows"] += max(0, n - 1)
         except OSError:
             continue
+    ingest_sources: dict[str, int] = {}
+    for _n, fam, _text, _ts in iter_ingest_rows(case_dir):
+        ingest_sources[fam] = ingest_sources.get(fam, 0) + 1
+    for fam, rows in ingest_sources.items():
+        entry = out.setdefault(fam, {"files": 0, "rows": 0, "capped": False})
+        entry["files"] += 1
+        entry["rows"] += rows
     return out
 
 
@@ -419,7 +432,8 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
             continue
         fields = h.get("fields") or {}
         level = str(
-            fields.get("Level") or fields.get("level") or fields.get("Severity") or ""
+            fields.get("Level") or fields.get("level") or fields.get("Severity")
+            or fields.get("severity") or ""
         ).lower()
         if level not in _ALERT_LEVELS:
             continue
@@ -431,6 +445,8 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
                     fields.get("RuleTitle")
                     or fields.get("Title")
                     or fields.get("RuleName")
+                    or fields.get("description")
+                    or fields.get("rule")
                     or ""
                 )[:160],
                 "time": str(
