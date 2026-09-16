@@ -289,13 +289,21 @@ class RAGIndex:
         st_kwargs: dict[str, Any] = {}
         if source["local_files_only"]:
             st_kwargs["local_files_only"] = True
+        # Device override: NEXUS_RAG_DEVICE=cpu|cuda|cuda:0|mps (default: auto —
+        # SentenceTransformer picks CUDA when the installed torch has CUDA).
+        device = (os.environ.get("NEXUS_RAG_DEVICE") or "").strip().lower()
+        if device and device != "auto":
+            st_kwargs["device"] = device
         self.model = SentenceTransformer(source["load_path"], **st_kwargs)
         client = chromadb.PersistentClient(path=str(chroma_path))
         self.collection = client.get_collection("ir_knowledge")
         self._load_available_sources()
         self._load_mitre_lookup()
         count = self.collection.count()
-        logger.info(f"Ready: {count} records from {len(self.available_sources)} sources")
+        logger.info(
+            f"Ready: {count} records from {len(self.available_sources)} sources "
+            f"(device={self.model.device})"
+        )
         self._loaded = True
 
     def _load_available_sources(self) -> None:

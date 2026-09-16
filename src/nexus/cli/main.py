@@ -397,6 +397,20 @@ def serve(
             raise typer.Exit(1) from None
 
         starlette_app = build_http_app(server, host=host, port=port)
+        # In-process pipeline runs (portal "Run pipeline") talk to THIS server
+        # over HTTP MCP. Without this default they fall back to stdio and spawn
+        # a fresh `nexus serve` child per tool call — each child re-loads RAG +
+        # all tools (~20s per call, duplicate GPU loads). Explicit
+        # NEXUS_WINDOWS_MCP_URL / NEXUS_GATEWAY_URL always win.
+        if not os.environ.get("NEXUS_WINDOWS_MCP_URL", "").strip() and not os.environ.get(
+            "NEXUS_GATEWAY_URL", ""
+        ).strip():
+            dial_host = host if host not in ("0.0.0.0", "::", "") else "127.0.0.1"
+            os.environ["NEXUS_WINDOWS_MCP_URL"] = f"http://{dial_host}:{port}/mcp"
+            typer.echo(
+                f"  Pipeline MCP: {os.environ['NEXUS_WINDOWS_MCP_URL']} "
+                "(in-process runs use this server; no stdio child spawns)"
+            )
         typer.echo(f"Starting DFIR-Nexus HTTP server on {host}:{port}")
         typer.echo(f"  Portal: http://{host}:{port}/portal")
         allowed = build_allowed_hosts(host)

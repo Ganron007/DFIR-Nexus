@@ -129,6 +129,7 @@ def _time_buckets(hits: list[dict[str, Any]], granularity: str) -> dict[str, int
 
 
 def do_n4_query(case_id: str = "", dsl: str = "", limit: int = 80,
+                match_all: bool = False,
                 audit: AuditWriter | None = None) -> dict:
     """Core n4_query — the MCP tool and the Mode 2/3 binding layer share this."""
     started = time.monotonic()
@@ -138,7 +139,8 @@ def do_n4_query(case_id: str = "", dsl: str = "", limit: int = 80,
     from nexus.langgraph.query_pack import attach_hit_fields
     from nexus.langgraph.query_pack import n4_query as _n4_query
 
-    result = _n4_query(case_dir, dsl, limit=max(1, min(int(limit), 400)))
+    result = _n4_query(case_dir, dsl, limit=max(1, min(int(limit), 400)),
+                       match_all=match_all)
     if result.get("error"):
         return {**result, "case_id": Path(case_dir).name}
     hits = [h for h in (result.get("hits") or []) if isinstance(h, dict)]
@@ -147,7 +149,8 @@ def do_n4_query(case_id: str = "", dsl: str = "", limit: int = 80,
     trimmed = [_trim_hit(h) for h in hits[: max(1, min(int(limit), 400))]]
     aid = audit.log(
         tool="n4_query",
-        params={"case_id": Path(case_dir).name, "dsl": dsl[:200], "limit": limit},
+        params={"case_id": Path(case_dir).name, "dsl": dsl[:200], "limit": limit,
+                "match_all": match_all},
         result_summary={"count": result.get("count"), "backend": result.get("backend")},
         elapsed_ms=round((time.monotonic() - started) * 1000, 1),
     ) if audit else None
@@ -162,7 +165,7 @@ def do_n4_query(case_id: str = "", dsl: str = "", limit: int = 80,
 
 
 def do_n4_aggregate(case_id: str = "", dsl: str = "", field: str = "host",
-                    top: int = 20, bucket: str = "",
+                    top: int = 20, bucket: str = "", match_all: bool = False,
                     audit: AuditWriter | None = None) -> dict:
     """Aggregate the active case's evidence rows (context — never evidence)."""
     started = time.monotonic()
@@ -172,7 +175,7 @@ def do_n4_aggregate(case_id: str = "", dsl: str = "", field: str = "host",
     from nexus.langgraph.query_pack import attach_hit_fields
     from nexus.langgraph.query_pack import n4_query as _n4_query
 
-    result = _n4_query(case_dir, dsl, limit=_MAX_AGG_HITS)
+    result = _n4_query(case_dir, dsl, limit=_MAX_AGG_HITS, match_all=match_all)
     if result.get("error"):
         return {**result, "case_id": Path(case_dir).name}
     hits = [h for h in (result.get("hits") or []) if isinstance(h, dict)]
@@ -187,7 +190,7 @@ def do_n4_aggregate(case_id: str = "", dsl: str = "", field: str = "host",
     aid = audit.log(
         tool="n4_aggregate",
         params={"case_id": Path(case_dir).name, "dsl": dsl[:200], "field": field,
-                "bucket": bucket},
+                "bucket": bucket, "match_all": match_all},
         result_summary={"distinct": len(counts), "rows": len(hits)},
         elapsed_ms=round((time.monotonic() - started) * 1000, 1),
     ) if audit else None
@@ -296,16 +299,19 @@ def do_family_fields(family: str, audit: AuditWriter | None = None) -> dict:
 
 def register_tools(server: FastMCP, audit: AuditWriter):
     @server.tool()
-    def n4_query(case_id: str = "", dsl: str = "", limit: int = 80) -> dict:
+    def n4_query(case_id: str = "", dsl: str = "", limit: int = 80,
+                 match_all: bool = False) -> dict:
         """Run an N4 DSL query against the ACTIVE case's evidence index.
 
         The LLM is gated to the active case: an explicit case_id must match
         it. `dsl` uses the N4 grammar (fields family/host/user/event/file,
         AND/OR/NOT, quoted phrases, regex:) — see the DSL few-shot pack.
+        Set `match_all=true` with an empty dsl to scan every indexed row.
         Evidence plane: ES when configured, deterministic CSV pack otherwise.
         Findings need these rows' audit_ids (FD-001).
         """
-        return do_n4_query(case_id=case_id, dsl=dsl, limit=limit, audit=audit)
+        return do_n4_query(case_id=case_id, dsl=dsl, limit=limit,
+                           match_all=match_all, audit=audit)
 
     @server.tool()
     def n4_aggregate(
@@ -314,16 +320,18 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         field: str = "host",
         top: int = 20,
         bucket: str = "",
+        match_all: bool = False,
     ) -> dict:
         """Aggregate the active case's evidence rows (context — never evidence).
 
         Counts distinct values of `field` (a parsed column, or `host`) across
         the query's result set; optional `bucket` = "day"|"hour" groups by
-        timestamp. Grounded: counts come from the same N4 result stream the
-        examiner sees (ES backend or CSV pack).
+        timestamp. Set `match_all=true` with an empty dsl to aggregate across
+        every indexed row. Grounded: counts come from the same N4 result
+        stream the examiner sees (ES backend or CSV pack).
         """
         return do_n4_aggregate(case_id=case_id, dsl=dsl, field=field, top=top,
-                               bucket=bucket, audit=audit)
+                               bucket=bucket, match_all=match_all, audit=audit)
 
     @server.tool()
     def index_mappings(case_id: str = "") -> dict:

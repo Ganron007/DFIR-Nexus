@@ -197,6 +197,132 @@ def test_pipeline_status_not_found(client):
     assert r.status_code == 404
 
 
+def test_pipeline_status_does_not_trust_older_manifest(client):
+    """A previous run for the same mode must never mark a live run complete.
+
+    Live run starts 2026-09-16; active_runs.json still points at yesterday's
+    completed coverage run. The status endpoint must keep reporting "running".
+    """
+    import json
+
+    from nexus.config import settings
+
+    r = client.post("/portal/api/case/create", json={"name": "StaleManifest Case", "activate": True})
+    case_id = r.json()["case_id"]
+    case_dir = settings.cases_root / case_id
+
+    # Yesterday's run — completed, and still the active pointer for "coverage"
+    old_run = "RUN-20260915T000000000Z-coverage-old123"
+    old_dir = case_dir / "runs" / old_run
+    old_dir.mkdir(parents=True)
+    (old_dir / "manifest.json").write_text(json.dumps({
+        "run_id": old_run, "case_id": case_id, "mode": "coverage",
+        "status": "completed", "created_at": "2026-09-15T04:00:00+00:00",
+        "completed_at": "2026-09-15T04:05:00+00:00",
+    }))
+    (case_dir / "active_runs.json").write_text(json.dumps({"coverage": old_run}))
+
+    # Today's live run — record exists, run dir not created yet
+    live_run = "RUN-livetest-coverage-new456"
+    rec_dir = case_dir / "analysis" / "pipeline_runs"
+    rec_dir.mkdir(parents=True)
+    (rec_dir / f"{live_run}.json").write_text(json.dumps({
+        "run_id": live_run, "case_id": case_id, "mode": "coverage",
+        "status": "running", "started_at": "2026-09-16T04:30:00+00:00",
+    }))
+
+    s = client.get(f"/portal/api/pipeline/status?run_id={live_run}")
+    assert s.status_code == 200
+    assert s.json()["status"] == "running"
+
+
+def test_pipeline_status_reconciles_its_own_manifest(client):
+    """A genuinely orphaned run (manifest created after the record started)
+    still reconciles to complete — the guard only rejects OLDER manifests."""
+    import json
+
+    from nexus.config import settings
+
+    r = client.post("/portal/api/case/create", json={"name": "Reconcile Case", "activate": True})
+    case_id = r.json()["case_id"]
+    case_dir = settings.cases_root / case_id
+
+    run_id = "RUN-20260916T043000000Z-coverage-own789"
+    run_dir = case_dir / "runs" / run_id
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text(json.dumps({
+        "run_id": run_id, "case_id": case_id, "mode": "coverage",
+        "status": "completed", "created_at": "2026-09-16T04:30:05+00:00",
+        "completed_at": "2026-09-16T04:35:00+00:00",
+    }))
+    (case_dir / "active_runs.json").write_text(json.dumps({"coverage": run_id}))
+    rec_dir = case_dir / "analysis" / "pipeline_runs"
+    rec_dir.mkdir(parents=True)
+    (rec_dir / f"{run_id}.json").write_text(json.dumps({
+        "run_id": run_id, "case_id": case_id, "mode": "coverage",
+        "status": "running", "started_at": "2026-09-16T04:30:00+00:00",
+    }))
+
+    s = client.get(f"/portal/api/pipeline/status?run_id={run_id}")
+    assert s.status_code == 200
+    body = s.json()
+    assert body["status"] == "complete"
+    assert body["completed_at"] == "2026-09-16T04:35:00+00:00"
+
+
+def test_pipeline_run_accepts_examiner_intake(client, monkeypatch, tmp_path):
+    """The N1 intake (question/window) must reach the pipeline's case_context —
+    without it coverage/design degrade to TOOL-RUN only (no LLM interpret)."""
+    from nexus.case import CaseManager
+    from nexus.config import settings
+
+    r = client.post("/portal/api/case/create", json={
+        "name": "Intake Case", "description": "suspicious sdelete activity",
+        "activate": True,
+    })
+    case_id = r.json()["case_id"]
+    ev_path = tmp_path / "artifact.evtx"
+    ev_path.write_bytes(b"evtx")
+    mgr = CaseManager(settings.cases_root / "cases.db")
+    try:
+        mgr.add_evidence(
+            case_id=case_id,
+            name=ev_path.name,
+            description="test evidence",
+            file_path=str(ev_path),
+            file_hash_sha256="0" * 64,
+            collected_by="tester",
+        )
+    finally:
+        mgr.close()
+
+    captured: dict = {}
+
+    async def _fake_run_pipeline(**kwargs):
+        captured.update(kwargs)
+
+    import nexus.langgraph.llm_pipeline as lp
+
+    monkeypatch.setattr(lp, "run_pipeline", _fake_run_pipeline, raising=False)
+
+    r = client.post("/portal/api/pipeline/run", json={
+        "mode": "coverage", "case_id": case_id,
+        "question": "How did the exe land?",
+    })
+    assert r.status_code == 200, r.json()
+    run_id = r.json()["run_id"]
+
+    deadline = time.time() + 10
+    while time.time() < deadline and not captured:
+        time.sleep(0.1)
+
+    assert captured.get("case_context", {}).get("question") == "How did the exe land?"
+    assert captured.get("case_context", {}).get("name") == "Intake Case"
+
+    s = client.get(f"/portal/api/pipeline/status?run_id={run_id}")
+    assert s.json().get("intake") is True
+
+
 def test_pipeline_status_surfaces_tool_progress(client, tmp_path, monkeypatch):
     """WP 4j.5d: while a run is live, /pipeline/status must surface the
     per-tool counters the tool lane writes to

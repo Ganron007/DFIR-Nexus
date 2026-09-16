@@ -372,7 +372,11 @@ export interface ChatEntry {
   action: string;
   text: string;
   meta?: Record<string, string>;
-  data?: { hits?: N4Hit[] };
+  data?: {
+    hits?: N4Hit[];
+    queries?: { tool: string; dsl: string; hits: number; audit_id?: string }[];
+    aggregations?: { field: string; distinct: number; top?: { value: string; count: number }[] }[];
+  };
 }
 
 /** GET /chat → {messages: ChatEntry[], total} */
@@ -880,6 +884,9 @@ export const api = {
   // Mode 2
   mode2Iterate: (params: { question: string; max_iterations?: number }) =>
     post<Mode2IterateResponse>("/mode2/iterate", params),
+  /** WP 4j.13 — POST /mode2/chat → the conversational evidence agent */
+  mode2Chat: (params: { message: string; history?: { role: string; text: string }[] }) =>
+    post<{ reply: string; queries_executed: { tool: string; dsl: string; hits: number; audit_id?: string }[]; total_hits: number; confidence: string }>("/mode2/chat", params),
   mode2Corroborate: (params: { finding_id?: string }) =>
     post<CorroborationResponse>("/mode2/corroborate", params),
   mode2ProposeDraft: (params: { title: string; hits?: N4Hit[]; query?: string }) =>

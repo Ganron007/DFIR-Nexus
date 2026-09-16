@@ -3519,9 +3519,11 @@ async def api_mode2_chat(request):
 
     append_chat(case_dir, "examiner", "steer_question", message[:2000])
     append_chat(case_dir, "llm", "steer_answer", result.get("reply", "")[:3000], {
-        "queries": json.dumps(result.get("queries_executed", []))[:2000],
-        "total_hits": result.get("total_hits", 0),
+        "total_hits": str(result.get("total_hits", 0)),
         "confidence": result.get("confidence", ""),
+    }, {
+        "queries": result.get("queries_executed", [])[:8],
+        "aggregations": result.get("aggregations", [])[:5],
     })
 
     return JSONResponse(result)
@@ -4511,10 +4513,16 @@ async def api_case_details(request):
 async def api_pipeline_run(request):
     """POST /portal/api/pipeline/run — trigger the N2 processing lane.
 
-    Body: {mode: "tools"|"interpret"|"coverage"|"design", case_id?}
+    Body: {mode: "tools"|"interpret"|"coverage"|"design", case_id?,
+           question?, window?, host?, notes?}
     Runs the pipeline asynchronously and returns a run_id.
     The pipeline runs in a background thread; status is polled via
     GET /portal/api/pipeline/status.
+
+    Examiner intake (question / incident window) flows into the pipeline's
+    ``case_context`` — without it the N1 gate degrades coverage/design to
+    TOOL-RUN only and the LLM interpret node never runs. When the request
+    carries no intake, the case's own description is used as the question.
     """
     try:
         body = await request.json()
@@ -4589,6 +4597,33 @@ async def api_pipeline_run(request):
             "error": "No registered evidence for this case — register evidence first (wizard step 2)"
         }, status_code=400)
 
+    # ── Examiner intake → pipeline case_context (N1 gate) ──
+    # Coverage/design only reach the LLM interpret node when a real question
+    # or incident window is present (llm_pipeline._route_after_tool_lane).
+    case_context: dict[str, str] = {}
+    for key in ("question", "window", "host", "notes", "hypothesis", "subjects"):
+        value = str(body.get(key) or "").strip()
+        if value:
+            case_context[key] = value
+    meta: dict = {}
+    if case_yaml.is_file():
+        try:
+            loaded = yaml.safe_load(case_yaml.read_text(encoding="utf-8")) or {}
+            if isinstance(loaded, dict):
+                meta = loaded
+        except Exception:
+            meta = {}
+    if "question" not in case_context:
+        # Fall back to the case's own narrative so existing cases get the
+        # LLM interpretation instead of a silent TOOL-RUN-only degrade.
+        description = str(meta.get("description") or "").strip()
+        if description:
+            case_context["question"] = f"{description} — triage this case"
+    if str(meta.get("name") or "").strip():
+        case_context.setdefault("name", str(meta["name"]).strip())
+    if str(meta.get("created_by") or "").strip():
+        case_context.setdefault("examiner", str(meta["created_by"]).strip())
+
     import threading
     import uuid
 
@@ -4604,6 +4639,7 @@ async def api_pipeline_run(request):
         "completed_at": "",
         "error": "",
         "stages": [],
+        "intake": bool(case_context.get("question") or case_context.get("window")),
     }
     _persist_pipeline_run(case_dir, _pipeline_runs[run_id])
     _transition_case_status(
@@ -4624,6 +4660,7 @@ async def api_pipeline_run(request):
                 mode=pipeline_mode,
                 case_id=case_id,
                 evidence_paths=evidence_paths,
+                case_context=case_context,
             ))
             record["status"] = "complete"
             record["completed_at"] = datetime.now(UTC).isoformat()
@@ -4649,6 +4686,14 @@ async def api_pipeline_run(request):
 
 
 _pipeline_runs: dict[str, dict[str, Any]] = {}
+
+
+def _parse_iso_ts(value: object):
+    """Parse an ISO timestamp to an aware datetime; None when unparseable."""
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
 
 
 async def api_pipeline_status(request):
@@ -4698,20 +4743,29 @@ async def api_pipeline_status(request):
 
     # Reconcile a stale "running" record against the pipeline's own manifest
     # (server restart mid-run: the thread is gone, the run dir is not).
+    # Guard: only a manifest created at/after THIS record's start time may
+    # speak for it — a previous run for the same mode must never mark a
+    # live run complete (the "status lies complete" bug).
     if record.get("status") == "running" and case_dir is not None:
         try:
             from nexus.langgraph.pipeline_runs import resolve_run
 
             run = resolve_run(case_dir, str(record.get("mode") or "tools"))
             manifest = json.loads((run.path / "manifest.json").read_text(encoding="utf-8"))
-            manifest_status = str(manifest.get("status") or "")
-            if manifest_status == "completed":
-                record["status"] = "complete"
-                record["completed_at"] = str(manifest.get("completed_at") or "")
-            elif manifest_status == "failed":
-                record["status"] = "error"
-                record["error"] = str(manifest.get("error") or "pipeline failed")
-                record["completed_at"] = str(manifest.get("completed_at") or "")
+            manifest_started = _parse_iso_ts(manifest.get("created_at"))
+            record_started = _parse_iso_ts(record.get("started_at"))
+            stale_manifest = bool(
+                manifest_started and record_started and manifest_started < record_started
+            )
+            if not stale_manifest:
+                manifest_status = str(manifest.get("status") or "")
+                if manifest_status == "completed":
+                    record["status"] = "complete"
+                    record["completed_at"] = str(manifest.get("completed_at") or "")
+                elif manifest_status == "failed":
+                    record["status"] = "error"
+                    record["error"] = str(manifest.get("error") or "pipeline failed")
+                    record["completed_at"] = str(manifest.get("completed_at") or "")
         except Exception:  # noqa: BLE001 — reconciliation is best-effort
             pass
 
@@ -5204,12 +5258,14 @@ async def api_system_health(request):
             health["es"] = {"configured": True, "reachable": False, "url": es_url}
 
     # RAG index presence (cheap — no model load; deep check via /rag/status)
+    rag_entry: dict[str, Any] = {"configured": False}
     try:
         from nexus.tools.rag import _get_index_dir
         chroma_dir = _get_index_dir() / "chroma"
-        health["rag"] = {"configured": chroma_dir.is_dir()}
+        rag_entry = {"configured": chroma_dir.is_dir(), "path": str(_get_index_dir())}
     except Exception:
-        health["rag"] = {"configured": False}
+        pass
+    health["rag"] = rag_entry
 
     # LLM configuration (not reachability — that needs a live call)
     llm_model = (os.environ.get("NEXUS_LLM_MODEL") or "").strip()
@@ -5231,13 +5287,8 @@ async def api_system_health(request):
         "llm": "POST /portal/api/setup/env {NEXUS_LLM_*} or `nexus config env ...`",
         "parser": "fix the import error shown in parser_error (usually a missing extra)",
     }
-    try:
-        from nexus.tools.rag import _get_index_dir as _gid
-        health["rag"]["path"] = str(_gid())
-    except Exception:
-        pass
     if llm_base:
-        health["llm"]["base_url"] = llm_base
+        health["llm"] = {**health["llm"], "base_url": llm_base}
     return JSONResponse(health)
 
 

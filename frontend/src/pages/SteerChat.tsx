@@ -248,14 +248,24 @@ export default function SteerChat() {
 
   const send = async () => {
     if (!input.trim() || loading) return;
+    const text = input;
+    // Standard chatbox: the examiner's message posts immediately, the input
+    // clears, and the field stays editable while the agent works.
+    setInput("");
     setLoading(true);
     setError("");
     setLiveStatus("");
     setLiveIterations([]);
-    const text = input;
-    // WP 4j.13 UX: DON'T clear the input while processing — the examiner
-    // should be able to type their follow-up while the LLM works.
-    // setInput("");
+    setMessages((prev) => [
+      ...prev,
+      {
+        ts: new Date().toISOString(),
+        role: "examiner",
+        action: "steer_question",
+        text,
+        meta: {},
+      },
+    ]);
 
     try {
       if (mode === "mode1") {
@@ -289,21 +299,14 @@ export default function SteerChat() {
           ...prev,
           {
             ts: new Date().toISOString(),
-            role: "examiner",
-            action: "steer_question",
-            text,
-            meta: {},
-          },
-          {
-            ts: new Date().toISOString(),
             role: "llm",
             action: "steer_answer",
             text: r.reply || "(no answer)",
             meta: {
-              queries: (r.queries_executed || []).map((q) => `${q.tool}(${q.dsl})`).join("; "),
               total_hits: String(r.total_hits),
               confidence: r.confidence,
             },
+            data: { queries: r.queries_executed || [] },
           },
         ]);
       } else if (mode === "mode3") {
@@ -329,9 +332,6 @@ export default function SteerChat() {
       setLoading(false);
       setLiveStatus("");
       setLiveIterations([]);
-      // WP 4j.13 UX: clear the input AFTER the response lands (the examiner
-      // could type their next question while the previous one was processing).
-      setInput("");
     }
   };
 
@@ -705,7 +705,7 @@ export default function SteerChat() {
                   key={i}
                   style={{
                     alignSelf: m.role === "examiner" ? "flex-end" : "flex-start",
-                    maxWidth: "80%",
+                    maxWidth: "85%",
                   }}
                 >
                   <div
@@ -715,12 +715,38 @@ export default function SteerChat() {
                       padding: "8px 12px",
                       borderRadius: 8,
                       fontSize: 13,
+                      whiteSpace: "pre-wrap",
                     }}
                   >
                     {m.text}
                   </div>
+                  {/* WP 4j.13 — the queries the agent actually ran (structured,
+                      not a raw JSON blob) */}
+                  {m.role !== "examiner" && (m.data?.queries?.length ?? 0) > 0 && (
+                    <div
+                      style={{
+                        marginTop: 4,
+                        fontSize: 11,
+                        fontFamily: "monospace",
+                        color: "var(--text-muted)",
+                        paddingLeft: 8,
+                        borderLeft: "2px solid var(--border)",
+                      }}
+                    >
+                      {m.data!.queries!.map((q, qi) => (
+                        <div key={qi}>
+                          <span style={{ color: q.hits > 0 ? "var(--accent)" : "var(--warning)" }}>
+                            {q.dsl}
+                          </span>
+                          {" → "}
+                          <span>{q.hits} hit(s)</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2, textAlign: m.role === "examiner" ? "right" : "left" }}>
                     {m.role} · {m.action}{m.ts ? ` · ${m.ts.slice(0, 19)}` : ""}
+                    {m.meta?.total_hits ? ` · ${m.meta.total_hits} rows` : ""}
                   </div>
                 </div>
               );
