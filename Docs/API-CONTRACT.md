@@ -1227,6 +1227,28 @@ needles is one event.
 
 ## 10. Mode 2
 
+### POST /portal/api/mode2/chat
+**Description:** The Mode 2 conversational evidence agent — the primary steering surface. The LLM plans N4 queries from the examiner's question, the server executes them against the active case's ES index (field push-down + ES-native aggregations; CSV fallback identical), and the LLM answers from the actual rows. Clear list/IOC questions use a deterministic fast path (no LLM planning call). The turn runs **off the event loop** (`asyncio.to_thread`) with a hard budget, and the examiner's message is persisted **before** the turn runs.
+
+**Request:**
+```json
+{ "message": "List all users and machines involved", "history": [{"role": "examiner", "text": "…"}] }
+```
+
+**Response 200:**
+```json
+{
+  "reply": "Based on the evidence retrieved …",
+  "queries_executed": [{"tool": "n4_aggregate", "dsl": "match_all field=host", "hits": 105, "audit_id": "nexus-…"}],
+  "total_hits": 105,
+  "confidence": "medium",
+  "timings_ms": {"index_mappings": 862, "plan": 2, "execute": 785, "helpers": 1023, "answer": 8337},
+  "stages": [{"stage": "plan", "ms": 2, "detail": "deterministic: AGG:match_all|field:user; …"}]
+}
+```
+- Bounds: `NEXUS_LLM_TIMEOUT` (per LLM call, default 120 s) and `NEXUS_MODE2_TURN_TIMEOUT` (turn budget, default 240 s → graceful timeout reply instead of a hang).
+- The transcript is appended to `<case>/chat.jsonl` (`steer_question` before the turn, `steer_answer` with `timings` after).
+
 ### POST /portal/api/mode2/iterate
 **Description:** Mode 2 iterative loop: query → analyze → propose new needles → re-query. Every iteration is logged to the case chat transcript. Hard cap on iterations (1-4, default 2). The loop NEVER writes findings — it returns the iteration log for examiner review.
 
@@ -1548,20 +1570,26 @@ needles is one event.
 **Request:**
 ```json
 {
-  "mode": "tools",
-  "case_id": "CASE-XXXX-XXXX"
+  "mode": "coverage",
+  "case_id": "CASE-XXXX-XXXX",
+  "question": "What did the suspicious process do?",
+  "window": "2026-08-01..2026-08-02",
+  "host": "WS01",
+  "notes": "subject reported a popup"
 }
 ```
 - `mode`: one of `tools`, `interpret`, `coverage`, `design`
 - `case_id`: optional; defaults to active case
+- `question` / `window` / `host` / `notes`: examiner intake → pipeline `case_context`. **Coverage/design only reach the LLM interpret node when a real question or window is present (N1 gate)**; when omitted, the case description is used as the question. The run record reports `intake` honestly.
 
 **Response 200:**
 ```json
 {
   "run_id": "abc12345",
   "case_id": "CASE-XXXX-XXXX",
-  "mode": "tools",
-  "status": "running"
+  "mode": "coverage",
+  "status": "running",
+  "intake": true
 }
 ```
 
@@ -1577,7 +1605,7 @@ run on the CSV pack.
 ---
 
 ### GET /portal/api/pipeline/status
-**Description:** Poll the status of a pipeline run. State is held in memory and written through to `<case>/analysis/pipeline_runs/<run_id>.json`, so it survives page reload and server restart; a stale `running` record is reconciled against the immutable run manifest.
+**Description:** Poll the status of a pipeline run. State is held in memory and written through to `<case>/analysis/pipeline_runs/<run_id>.json`, so it survives page reload and server restart. Reconciliation only trusts a run manifest created **at/after the record's start time** — a previous run for the same mode can never mark a live run complete.
 
 **Query params:** `run_id` (required)
 
@@ -1586,14 +1614,21 @@ run on the CSV pack.
 {
   "run_id": "abc12345",
   "case_id": "CASE-XXXX-XXXX",
-  "mode": "tools",
-  "status": "complete",
-  "started_at": "2026-09-10T...",
-  "completed_at": "2026-09-10T...",
+  "mode": "coverage",
+  "status": "running",
+  "started_at": "2026-09-16T...",
+  "completed_at": "",
   "error": "",
-  "stages": []
+  "intake": true,
+  "stages": [
+    {"ts": "...", "stage": "ensure_rag", "status": "done", "detail": "RAG embedder ready (…, 22268 records)"},
+    {"ts": "...", "stage": "interpret", "status": "running", "detail": ""}
+  ],
+  "progress": {"done": 3, "total": 4, "current": "evtxecmd"}
 }
 ```
+- `stages`: per-node pipeline events (`stage`/`status`/`detail`/`ts`) written by `run_pipeline`, merged with tool-lane entries (`tool`/`host`/`status`) while the lane runs — dedupe-safe across polls.
+- `progress`: tool-lane counters from `_tool_lane_progress.json` while running.
 
 **Response 404:** `{"error": "run_id not found"}`
 

@@ -286,7 +286,7 @@ N8 report from APPROVED only
 - Does not approve
 - Does not write findings inside the steering loop
 
-### Mode 3 — Agentic (implemented, dual-audited; operator review pending)
+### Mode 3 — Agentic (plan/execute/seal implemented; autonomous loop pending)
 
 **The agent chooses MCP tools, runs extras, proposes findings, and the examiner
 steers at the end.**
@@ -295,10 +295,14 @@ Mode 3 is the old plan done right. A ReAct agent can run the mandatory N2 lane,
 then choose additional MCP tools, iterate on queries, and propose DRAFTs. The
 examiner reviews the whole case file and signs off.
 
-> **Status (2026-09-08):** Mode 3 is implemented and dual-audited (commits
-> `8fc0543`, `b52ff50`). Planning, execution, mandatory-lane guard,
-> challenge-response case-file HMAC sealing, and agent run ledger are wired.
-> Portal endpoints: `/portal/api/mode3/plan`, `/execute`, `/seal`.
+> **Status (2026-09-16):** Mode 2 is complete (incl. ES retrieval v2); Mode 3's
+> **plan / execute / seal** stages are implemented and dual-audited (commits
+> `8fc0543`, `b52ff50`) — mandatory-lane guard, challenge-response case-file
+> HMAC sealing, and the agent run ledger are wired; Portal endpoints
+> `/portal/api/mode3/plan`, `/execute`, `/seal`. **Pending (WPs 4j.14–4j.19):**
+> orchestrator loop controller, mid-run examiner steering, findings-feedback
+> loop, real cross-family corroboration, loop-until-satisfied, acceptance test
+> — plus 8.1 SSE streaming and the agent-run view in the UI.
 > **Gate 3 (operator review on a real case) remains pending.**
 
 ```

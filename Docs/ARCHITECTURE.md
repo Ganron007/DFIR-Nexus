@@ -69,7 +69,7 @@ flowchart TB
 | **`nexus collect`** | Live IR. Stays **CLI** — handy, headless, no browser. No parsers. No empty parser dirs on the target. |
 | **Register** | SHA-256 pack into a case. Import-only cases skip collect. |
 | **N2** | All direct host logs (Win/Linux/Mac): binary parsers (Hayabusa/Suzaku/Chainsaw/Zimmerman) + pre-collected host output (VR hunts, KAPE, Kansa, UAC, journalctl) → CSVs under the case with audit_id. Given a directory (pack or mounted VMDK) and recursively parses all host evidence. |
-| **N3** | SQLite (default) or ES (optional) index of this case's N2 output. Not the lab SIEM. |
+| **N3** | SQLite (default; deterministic CSV fallback) or Elasticsearch (required for Mode 2/3). Per-case index, schema v2: `family/file/line/ts` + structured `host/user/event_id` + parsed columns under `fields.*`; N4 DSL pushes down to one ES query and aggregations are ES-native (`terms`/`date_histogram`). Not the lab SIEM. |
 | **3 modes** | How you drive the same N1–N8 spine (examiner / thick / agents) — not extra stages. |
 | **Ingest** | Network/SIEM/cloud/EDR/PCAP onto that case (after N8). PCAP parsed via tshark. Direct host logs stay in N2. |
 | **Detection** | Optional drafts after an APPROVED story. Not N5. |
@@ -126,7 +126,7 @@ flowchart TD
     end
 
     subgraph LEDGER [" Case Storage & Verification Ledger "]
-        INGEST["📥 Ingest Engine<br/><i>(36 registered importers)</i>"]:::storageStyle
+        INGEST["📥 Ingest Engine<br/><i>(44 registered importers)</i>"]:::storageStyle
         DB[("💾 Case Store<br/><i>(SQLite cases.db & Dual-Write)</i>")]:::storageStyle
         TRANSPARENCY["🔗 Transparency Log<br/><i>(transparency.jsonl HMAC chain)</i>"]:::storageStyle
         REPORTS["📄 Verified Reports<br/><i>(MD, HTML, STIX 2.0/2.1, DOCX, ZIP)</i>"]:::storageStyle

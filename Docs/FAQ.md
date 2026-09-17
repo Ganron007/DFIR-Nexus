@@ -6,7 +6,10 @@
 A: A unified DFIR investigation platform that wraps your existing forensic tools behind MCP servers, enforces a cryptographic audit chain, and requires human approval before findings become final.
 
 **Q: Do I need an LLM?**
-A: No. Live IR (`nexus collect`), Register, N2 parsers (`nexus pipeline --mode tools`), the CLI, and the Examiner Portal work without any LLM. An LLM is optional at interpret: it narrates retrieved hits. It cannot approve findings. Fully agentic tool-selection is a later mode, not the current ship path.
+A: No. Live IR (`nexus collect`), Register, N2 parsers (`nexus pipeline --mode tools`), the CLI, and the Examiner Portal work without any LLM. An LLM is optional at interpret: it narrates retrieved hits. It cannot approve findings. The autonomous agent loop is the next build (Mode 3 plan/execute/seal are already wired).
+
+**Q: How does Mode 2 query my evidence?**
+A: The LLM plans an **N4 query**; the server executes it against the case's Elasticsearch index — field filters push down to structured keyword fields (`host`/`user`/`event_id` + parsed columns under `fields.*`) and counting questions use **ES-native aggregations** (the deterministic CSV backend returns identical results). The LLM then answers from the actual rows with citations. Simple list/IOC questions take a deterministic fast path (~2 ms planning). Every query is audit-logged, runs against the active case only, and the steering loop never writes or approves findings.
 
 **Q: What OS does it run on?**
 A: Windows, Linux, macOS. The `nexus serve` server runs on any. MCP tools (SIFT, Windows, Velociraptor) are available based on what you have installed on each host.
