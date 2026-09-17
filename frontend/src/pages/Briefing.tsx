@@ -483,7 +483,7 @@ export default function Briefing() {
                       {st.actions.map((a, ai) => (
                         <button
                           key={ai}
-                          className="btn btn-sm"
+                          className="btn btn-sm clickable-tint"
                           style={{ fontFamily: "monospace", fontSize: 10 }}
                           title={a.label}
                           onClick={() => searchNeedle(a.needle, a.family || undefined)}
@@ -534,7 +534,7 @@ export default function Briefing() {
                 {(d.needles || []).map((n) => (
                   <button
                     key={n}
-                    className="btn btn-sm"
+                    className="btn btn-sm clickable-tint"
                     style={{ fontFamily: "monospace", fontSize: 10 }}
                     onClick={() => searchNeedle(n, d.family || undefined)}
                   >
@@ -652,7 +652,7 @@ export default function Briefing() {
                                           <span style={{ color: "var(--success, #2f9e44)" }}>confirm:</span>{" "}
                                           {c.look_for || c.corroborate}
                                           {c.query && (
-                                            <button className="btn btn-sm"
+                                            <button className="btn btn-sm clickable-tint"
                                                     style={{ fontFamily: "monospace", fontSize: 9, marginLeft: 4, padding: "0 4px" }}
                                                     onClick={(e) => { e.stopPropagation(); searchNeedle(c.query, a.family); }}>
                                               {c.query.length > 32 ? c.query.slice(0, 32) + "…" : c.query}
@@ -682,10 +682,10 @@ export default function Briefing() {
                                 <div style={{ marginBottom: 4 }}>
                                   <strong style={{ color: "var(--text-secondary)" }}>Run:</strong>{" "}
                                   {it.next_queries.slice(0, 4).map((q) => (
-                                    <button key={q} className="btn btn-sm"
+                                    <button key={q} className="btn btn-sm clickable-tint"
                                             style={{ fontFamily: "monospace", fontSize: 10, marginRight: 4 }}
                                             onClick={(e) => { e.stopPropagation(); searchNeedle(q, a.family); }}>
-                                      {q.length > 40 ? q.slice(0, 40) + "…" : q}
+                                      {q.length > 40 ? q.slice(0, 40) + "." : q}
                                     </button>
                                   ))}
                                 </div>
@@ -696,9 +696,9 @@ export default function Briefing() {
                                 </div>
                               )}
                               {!it && (
-                                <button className="btn btn-sm" style={{ fontSize: 10 }}
+                                <button className="btn btn-sm clickable-tint" style={{ fontSize: 10 }}
                                         onClick={(e) => { e.stopPropagation(); searchNeedle(a.title || a.family, a.family); }}>
-                                  Search this alert in Explore →
+                                  Search this alert in Explore 
                                 </button>
                               )}
                             </div>
@@ -727,7 +727,7 @@ export default function Briefing() {
                   {scan.slice(0, 60).map((s) => (
                     <button
                       key={s.needle}
-                      className="btn btn-sm"
+                      className="btn btn-sm clickable-tint"
                       style={{ fontFamily: "monospace", fontSize: 11 }}
                       title={`${s.hits}${brief.scan_truncated ? "+" : ""} hits — ${s.source} — click to open in Explore`}
                       onClick={() => searchNeedle(s.needle)}
@@ -753,7 +753,7 @@ export default function Briefing() {
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <tbody>
                 {Object.entries(inv).sort((a, b) => b[1].rows - a[1].rows).map(([fam, e]) => (
-                  <tr key={fam} style={{ borderBottom: "1px solid var(--border)", cursor: "pointer" }}
+                  <tr key={fam} className="vt-clickable-row" style={{ borderBottom: "1px solid var(--border)", cursor: "pointer" }}
                       onClick={() => navigate(`/explore?family=${fam}`)}>
                     <td style={{ padding: "4px 6px", fontFamily: "monospace", fontSize: 11 }}>{fam}</td>
                     <td style={{ padding: "4px 6px", fontSize: 11, textAlign: "right" }}>
@@ -807,7 +807,7 @@ export default function Briefing() {
                     {list.slice(0, 6).map((e) => (
                       <button
                         key={e.value}
-                        className="btn btn-sm"
+                        className="btn btn-sm clickable-tint"
                         style={{ fontFamily: "monospace", fontSize: 10, padding: "1px 6px" }}
                         title={`${e.hits} hits across ${(e.families || []).join(", ")}`}
                         onClick={() => searchNeedle(e.value)}

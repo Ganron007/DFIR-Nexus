@@ -364,6 +364,23 @@ table {
   font-size: 12px;
 }
 
+/* Clickable hits / navigable rows and chips: a slight bright tint BY DEFAULT
+   so the examiner can see what is interactive without hovering first. */
+.vt-clickable-row {
+  background: rgba(47, 129, 247, 0.07);
+}
+.vt-clickable-row:hover {
+  background: rgba(47, 129, 247, 0.18);
+}
+.clickable-tint {
+  background: rgba(47, 129, 247, 0.09) !important;
+  border-color: rgba(47, 129, 247, 0.45) !important;
+  cursor: pointer;
+}
+.clickable-tint:hover {
+  background: rgba(47, 129, 247, 0.2) !important;
+}
+
 th {
   text-align: left;
   padding: 8px 10px;

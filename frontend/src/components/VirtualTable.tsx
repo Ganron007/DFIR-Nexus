@@ -129,6 +129,7 @@ export default function VirtualTable<T>({
             return (
               <tr
                 key={rowKey(row, index)}
+                className={onRowClick ? "vt-clickable-row" : undefined}
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
                 style={{ height: ROW_HEIGHT, ...(onRowClick ? { cursor: "pointer" } : {}) }}
               >
