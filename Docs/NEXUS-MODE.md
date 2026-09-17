@@ -231,55 +231,60 @@ N8 report from APPROVED only
 
 ### Mode 2 — LLM-Guided Analysis (implemented, dual-audited)
 
-**The LLM proposes the next query and correlations; the examiner validates and
-steers in the chat.**
+**The examiner asks in plain language; the LLM queries the case's evidence
+index, cites rows, and stages DRAFT findings for approval — then steers
+conversationally with live evidence retrieval.**
 
-Mode 2 is the **product differentiator**. The LLM becomes an investigative
-partner that reads hits, proposes new needles, re-queries, and suggests
-correlations. But the examiner still decides what to include.
+Mode 2 is the **product differentiator**. Initial processing runs the same
+deterministic lane as Mode 1, then the **interpret** stage builds context from
+RAG methodology, playbook caveats, the examiner KB, a threat-intel sweep and a
+deterministic entity inventory — and the interpret agent can pull its own ES
+rows (`n4_query`/`n4_aggregate`) before staging DRAFT findings, an executive
+verdict, and an explicit **coverage-gap list**.
+
+Steering is **not** a needle-proposal gate: the examiner asks a question and
+the LLM answers it from the actual evidence, with citations.
 
 ```
-Examiner asks question in Steer Chat
+Examiner asks a question in Steer Chat (or runs the Mode 2 pipeline)
     |
     v
-LLM translates -> initial needles + window
+PLAN: deterministic fast path for list/IOC intents (plan ~2 ms) or the
+      LLM plans N4 DSL from the case's real families + fields
     |
     v
-N4 query -> initial hits
+EXECUTE: ONE pushed-down ES query per DSL — field filters on real keyword
+         fields, phrases/regex in ES; ES-native aggregations for counts
+         (hits carry audit_ids; row-side re-check keeps CSV parity)
     |
     v
-LLM analyzes hits -> proposes NEW needles in chat  (thick: chooses next question)
+ANSWER: the LLM reads the actual rows (+ RAG/KB/TI helpers) and answers,
+        citing evidence; the queries and per-stage timings are shown
     |
     v
-Examiner accepts/rejects/redirects each proposal
+Back-and-forth: follow-up questions, drills, corrections — the examiner
+steers; the steering loop never writes findings
     |
     v
-N4 re-queries with accepted needles  (ITERATION — not one-shot)
-    |
-    v
-LLM corroborates across hit families and proposes DRAFT  (LLM is the writer here)
-    |
-    v
-Examiner reviews DRAFT -> keep / reject / edit
-    |
-    v
-HMAC on DRAFTs (examiner still gates)
+Initial processing (coverage mode): the interpret agent stages DRAFT
+findings from the query pack + entity inventory; examiner reviews in
+Approve (HMAC-gated)
     |
     v
 N8 report from APPROVED only
 ```
 
 **What the LLM does in Mode 2 (plus Mode 1):**
-- Proposes the next question and new needles
-- Re-queries in a loop until the examiner stops it
-- Corroborates across hit families
-- Suggests DRAFT findings; examiner edits or rejects
+- Answers examiner questions from the actual evidence rows, with citations
+- Plans and runs its own ES queries (case-gated; FD-001 audit_ids)
+- Corroborates across hit families; computes counts via aggregations
+- Suggests DRAFT findings during interpretation; examiner edits or rejects
 - Applies FD-006 (single-source stays LOW)
 
 **What the LLM does NOT do in Mode 2:**
-- Does not choose tools or parsers
+- Does not choose tools or parsers (the deterministic lane decides)
 - Does not approve
-- Does not act on rejected proposals
+- Does not write findings inside the steering loop
 
 ### Mode 3 — Agentic (implemented, dual-audited; operator review pending)
 
