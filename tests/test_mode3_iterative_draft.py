@@ -58,18 +58,17 @@ class TestIterativeQueryInMode3:
         from nexus.langgraph.mode3 import _run_iterative_for_queries
 
         case_dir = _make_case(tmp_path)
-        with patch("nexus.langgraph.query_pack.n4_query") as mock_n4, \
+        with patch("nexus.langgraph.backbone.backbone_call") as mock_n4, \
              patch("nexus.langgraph.mode1.nl_to_needles") as mock_nl, \
              patch("nexus.langgraph.mode2.propose_next_needles") as mock_propose:
             mock_nl.return_value = {"needles": ["mimikatz"], "window": "", "source": "heuristic"}
-            mock_n4.side_effect = [
-                {"hits": [{"family": "hayabusa", "file": "t.csv", "line": "1",
+            # Iteration 0 + every proposal round now share the backbone mock —
+            # a single stable return value avoids exhausting a side-effect list.
+            mock_n4.return_value = {
+                "hits": [{"family": "prefetch", "file": "p.csv", "line": "1",
                           "text": "mimikatz.exe", "terms": "mimikatz"}],
-                 "count": 1, "backend": "csv", "error": None},
-                {"hits": [{"family": "prefetch", "file": "p.csv", "line": "1",
-                          "text": "mimikatz.exe", "terms": "mimikatz"}],
-                 "count": 1, "backend": "csv", "error": None},
-            ]
+                "count": 1, "backend": "csv", "error": None,
+            }
             mock_propose.return_value = {
                 "needles": ["lsass", "credential"],
                 "rationale": "expand",
@@ -86,7 +85,7 @@ class TestIterativeQueryInMode3:
         from nexus.langgraph.mode3 import _run_iterative_for_queries
 
         case_dir = _make_case(tmp_path)
-        with patch("nexus.langgraph.query_pack.n4_query") as mock_n4, \
+        with patch("nexus.langgraph.backbone.backbone_call") as mock_n4, \
              patch("nexus.langgraph.mode1.nl_to_needles") as mock_nl, \
              patch("nexus.langgraph.mode2.propose_next_needles") as mock_propose:
             mock_nl.return_value = {"needles": ["test"], "source": "heuristic"}
@@ -95,9 +94,13 @@ class TestIterativeQueryInMode3:
                          "text": "hit", "terms": "test"}],
                 "count": 1, "backend": "csv", "error": None,
             }
-            mock_propose.return_value = {
-                "needles": ["new1"], "rationale": "expand", "source": "heuristic",
-            }
+            # Distinct proposals per round — an identical proposal is an honest
+            # early stop ("no new needles"), not "capped".
+            mock_propose.side_effect = [
+                {"needles": ["new1"], "rationale": "expand", "source": "heuristic"},
+                {"needles": ["new2"], "rationale": "expand", "source": "heuristic"},
+                {"needles": ["new3"], "rationale": "expand", "source": "heuristic"},
+            ]
             result = _run_iterative_for_queries(case_dir, "test", model=None, max_iterations=3)
 
         assert result["capped"] is True
@@ -108,7 +111,7 @@ class TestIterativeQueryInMode3:
         from nexus.langgraph.mode3 import _run_iterative_for_queries
 
         case_dir = _make_case(tmp_path)
-        with patch("nexus.langgraph.query_pack.n4_query") as mock_n4, \
+        with patch("nexus.langgraph.backbone.backbone_call") as mock_n4, \
              patch("nexus.langgraph.mode1.nl_to_needles") as mock_nl:
             mock_nl.return_value = {"needles": ["nothing"], "source": "heuristic"}
             mock_n4.return_value = {"hits": [], "count": 0, "backend": "csv", "error": None}

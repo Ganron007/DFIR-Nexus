@@ -48,7 +48,9 @@ def detect_format(path: Path) -> ArtifactSource | None:
         ".zip": ArtifactSource.GENERIC_JSONL,  # ArchiveImporter.source_class()
         ".tar": ArtifactSource.GENERIC_JSONL,
         ".tgz": ArtifactSource.GENERIC_JSONL,
-        ".gz": ArtifactSource.GENERIC_JSONL,
+        # Note: bare ".gz" is handled below by name — most importers cannot
+        # decompress, and a silent generic fallback used to "succeed" with 0
+        # artifacts. Zeek rotated logs are gzip and ARE supported.
         # Raw packet captures — WIRESHARK lane; registry.resolve() picks the
         # PcapImporter (tshark conversion) vs the JSON importer via can_handle.
         ".pcap": ArtifactSource.WIRESHARK,
@@ -57,6 +59,10 @@ def detect_format(path: Path) -> ArtifactSource | None:
     }
     if suffix in _EXT_HINTS:
         return _EXT_HINTS[suffix]
+    if suffix == ".gz":
+        if name_lower.endswith(".log.gz"):
+            return ArtifactSource.ZEEK
+        return None  # no importer reads gzip JSON — say so instead of failing silently
     if name_lower.endswith(".tshark.json"):
         return ArtifactSource.WIRESHARK
     # Volatility 3 plugin dumps: windows.psscan.json / windows.pslist.txt
@@ -169,6 +175,12 @@ def detect_format(path: Path) -> ArtifactSource | None:
     is_binary = b"\x00" in head_bytes[:4096]
 
     if not is_binary:
+        # tshark / Wireshark JSON export — must be recognised BEFORE the
+        # generic JSON branches (any `_source` object otherwise routes to
+        # ELASTIC; a pretty-printed array short-circuits before the later
+        # layers check).
+        if '"_source"' in head and '"layers"' in head:
+            return ArtifactSource.WIRESHARK
         # JSON-based formats (check most-specific first). For NDJSON the
         # whole head is not valid JSON — sniff the first non-empty line.
         stripped = head.lstrip()
@@ -327,6 +339,12 @@ def _detect_json_format(sample: dict, name: str) -> ArtifactSource | None:
         "src_ip" in keys or "dest_ip" in keys or "flow_id" in keys or "alert" in keys
     ):
         return ArtifactSource.SURICATA
+
+    # Wireshark/tshark packet export (checked before the Elastic `_source`
+    # wrapper — tshark also uses `_source`).
+    source_obj = sample.get("_source")
+    if isinstance(source_obj, dict) and "layers" in source_obj:
+        return ArtifactSource.WIRESHARK
 
     # Elastic: has _source wrapper
     if "_source" in keys:

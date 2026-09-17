@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { api, chatStream, type ChatEntry, type Mode2IterateResponse, type Mode3PlanResponse, type N4Hit } from "../api/client";
+import { computeApprovalResponse } from "../lib/crypto";
 import { useCase } from "../context/CaseContext";
 
 /**
@@ -10,19 +11,20 @@ import { useCase } from "../context/CaseContext";
  */
 
 function HitCard({ hit: h }: { hit: N4Hit }) {
-  const [bookmarked, setBookmarked] = useState(false);
+  // The server assigns the bookmark id (B-###) — removing by our own loc key
+  // silently no-ops (the star would clear while the Workbench keeps the row).
+  const [bookmarkId, setBookmarkId] = useState<string>("");
   const [busy, setBusy] = useState(false);
-  const key = `${h.family}:${h.file}:${h.line}`;
 
   const toggle = async () => {
     setBusy(true);
     try {
-      if (bookmarked) {
-        await api.workbenchRemove(key);
-        setBookmarked(false);
+      if (bookmarkId) {
+        await api.workbenchRemove(bookmarkId);
+        setBookmarkId("");
       } else {
-        await api.workbenchAdd(h);
-        setBookmarked(true);
+        const r = await api.workbenchAdd(h);
+        setBookmarkId(r.bookmark_id || "");
       }
     } catch {
       // card-level failure is non-fatal; the star just stays as-is
@@ -32,6 +34,7 @@ function HitCard({ hit: h }: { hit: N4Hit }) {
   };
 
   const preview = Object.entries(h.fields || {}).slice(0, 4);
+  const bookmarked = Boolean(bookmarkId);
 
   return (
     <div
@@ -78,9 +81,10 @@ function HitCard({ hit: h }: { hit: N4Hit }) {
   );
 }
 
-function ProposalCard({ entry }: { entry: ChatEntry }) {
+function ProposalCard({ entry, caseMode }: { entry: ChatEntry; caseMode: string }) {
   const meta = (entry.meta || {}) as Record<string, string>;
   const isMode3 = entry.action === "mode3_plan" || entry.action === "mode3_execute";
+  const badge = isMode3 ? "Mode 3 Agent" : (caseMode === "1" || caseMode === "" ? "Query hits" : "Mode 2 Proposal");
   const hits = entry.data?.hits || [];
 
   return (
@@ -106,7 +110,7 @@ function ProposalCard({ entry }: { entry: ChatEntry }) {
             color: isMode3 ? "var(--purple)" : "var(--orange)",
           }}
         >
-          {isMode3 ? "Mode 3 Agent" : "Mode 2 Proposal"}
+          {badge}
         </span>
         <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{entry.action}</span>
       </div>
@@ -207,17 +211,20 @@ export default function SteerChat() {
   const [error, setError] = useState("");
   // WP 4j.33/4j.34 — per-turn stage timings from the steering agent
   const [turnTimings, setTurnTimings] = useState("");
+  // Last executed steering query — the server drafts a finding from hits and
+  // needs a query (or hits) to draft from.
+  const [lastQuery, setLastQuery] = useState("");
   // Phase 4f fix: depth is a case-level decision (single source = caseMode).
   // No private chat mode that can disagree with the case setting; changing it
   // persists to the case via setCaseMode.
+  const modeKnown = caseMode === "1" || caseMode === "2" || caseMode === "3";
   const mode: "mode1" | "mode2" | "mode3" =
     caseMode === "2" ? "mode2" : caseMode === "3" ? "mode3" : "mode1";
   const [mode2Iterations, setMode2Iterations] = useState(3);
   const [mode3Step, setMode3Step] = useState<"plan" | "execute" | "seal">("plan");
   const [mode3Plan, setMode3Plan] = useState<Mode3PlanResponse | null>(null);
-  const [sealChallenge, setSealChallenge] = useState<{ challenge_id: string; nonce: string; salt: string } | null>(null);
-  const [sealResponse, setSealResponse] = useState("");
-  const [sealExaminer, setSealExaminer] = useState("");
+  const [sealChallenge, setSealChallenge] = useState<{ challenge_id: string; nonce: string; salt: string; iterations: number } | null>(null);
+  const [sealPassword, setSealPassword] = useState("");
   // WP 4d.3: live progress while a streamed turn is running
   const [liveStatus, setLiveStatus] = useState("");
   const [liveIterations, setLiveIterations] = useState<Record<string, unknown>[]>([]);
@@ -301,6 +308,8 @@ export default function SteerChat() {
           .map(([k, v]) => `${k} ${(v / 1000).toFixed(1)}s`)
           .join(" · ");
         if (timingText) setTurnTimings(timingText);
+        const firstQuery = (r.queries_executed || []).find((q) => q.hits > 0);
+        if (firstQuery?.dsl) setLastQuery(firstQuery.dsl);
         setMessages((prev) => [
           ...prev,
           {
@@ -374,7 +383,12 @@ export default function SteerChat() {
     setError("");
     try {
       const ch = await api.getChallenge();
-      setSealChallenge({ challenge_id: ch.challenge_id, nonce: ch.nonce, salt: ch.salt });
+      setSealChallenge({
+        challenge_id: ch.challenge_id,
+        nonce: ch.nonce,
+        salt: ch.salt,
+        iterations: ch.iterations,
+      });
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -383,15 +397,24 @@ export default function SteerChat() {
   };
 
   const sealCase = async () => {
-    if (!sealChallenge || !sealResponse.trim()) return;
+    if (!sealChallenge || !sealPassword) {
+      setError("Approval password required — sealing signs the case file with your examiner identity.");
+      return;
+    }
     setLoading(true);
     setError("");
     try {
+      const response = await computeApprovalResponse(
+        sealPassword,
+        sealChallenge.salt,
+        sealChallenge.iterations,
+        sealChallenge.nonce,
+      );
       const r = await api.sealCase({
         challenge_id: sealChallenge.challenge_id,
-        response: sealResponse,
-        examiner: sealExaminer || undefined,
+        response,
       });
+      setSealPassword("");
       if (r.error) {
         setError(r.error);
       } else {
@@ -406,7 +429,7 @@ export default function SteerChat() {
           },
         ]);
         setSealChallenge(null);
-        setSealResponse("");
+        setSealPassword("");
         setMode3Step("plan");
         setMode3Plan(null);
       }
@@ -428,7 +451,7 @@ export default function SteerChat() {
     setMode3Plan(null);
     setMode3Step("plan");
     setSealChallenge(null);
-    setSealResponse("");
+    setSealPassword("");
   };
 
   // WP 4b.14: Propose-draft UI — trigger LLM-drafted findings from the UI
@@ -439,7 +462,11 @@ export default function SteerChat() {
     setLoading(true);
     setError("");
     try {
-      const r = await api.mode2ProposeDraft({ title: draftTitle });
+      if (!lastQuery) {
+        setError("Ask a question first — the DRAFT is drafted from the last query's hits.");
+        return;
+      }
+      const r = await api.mode2ProposeDraft({ title: draftTitle, query: lastQuery });
       if (r.error) {
         setError(Array.isArray(r.error) ? r.error.join("; ") : r.error);
       } else {
@@ -481,6 +508,10 @@ export default function SteerChat() {
     setError("");
     const text = input;
     setInput("");
+    setMessages((prev) => [
+      ...prev,
+      { ts: new Date().toISOString(), role: "examiner", action: "mode2_iterate_question", text, meta: {} },
+    ]);
     try {
       const r = await api.mode2Iterate({ question: text, max_iterations: mode2Iterations });
       if (r.error) {
@@ -505,6 +536,20 @@ export default function SteerChat() {
       setLoading(false);
     }
   };
+
+  if (!modeKnown) {
+    // Never guess the mode — sending a Mode 1 stream turn for a Mode 2 case
+    // would silently run the wrong pipeline.
+    return (
+      <div className="card">
+        <h2>Steer Chat</h2>
+        <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
+          Reading the case mode… If this persists, the case's mode could not be
+          loaded — reopen the case from the dashboard.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 120px)" }}>
@@ -586,21 +631,17 @@ export default function SteerChat() {
                 Nonce: {sealChallenge.nonce.slice(0, 32)}...
               </span>
               <input
-                placeholder="Examiner name"
-                value={sealExaminer}
-                onChange={(e) => setSealExaminer(e.target.value)}
-                style={{ width: 120 }}
-              />
-              <input
-                placeholder="HMAC response (hex)"
-                value={sealResponse}
-                onChange={(e) => setSealResponse(e.target.value)}
-                style={{ width: 300, fontFamily: "monospace", fontSize: 11 }}
+                type="password"
+                placeholder="Approval password"
+                value={sealPassword}
+                onChange={(e) => setSealPassword(e.target.value)}
+                style={{ width: 220 }}
+                title="Your examiner approval password — the HMAC is computed in your browser; the password never leaves it."
               />
               <button
                 className="btn btn-primary btn-sm"
                 onClick={sealCase}
-                disabled={loading || !sealResponse.trim()}
+                disabled={loading || !sealPassword}
               >
                 Seal Case
               </button>
@@ -700,7 +741,7 @@ export default function SteerChat() {
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {messages.map((m, i) => {
               if (isProposal(m) || (m.data?.hits && m.data.hits.length > 0)) {
-                return <ProposalCard key={i} entry={m} />;
+                return <ProposalCard key={i} entry={m} caseMode={caseMode} />;
               }
               return (
                 <div

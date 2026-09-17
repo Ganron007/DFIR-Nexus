@@ -74,9 +74,11 @@ def do_kb_search(query: str, folder: str = "", signal: str = "", limit: int = 5,
     out = _run_kb(*args, "--json")
     out.setdefault("note", "KB content is methodology/context — never case evidence (FD-001)")
     if audit:
-        audit.log(tool="kb_search", params={"query": query[:200], "folder": folder},
-                  result_summary={"hits": len(out.get("hits") or [])},
-                  elapsed_ms=round((time.monotonic() - started) * 1000, 1))
+        aid = audit.log(tool="kb_search", params={"query": query[:200], "folder": folder},
+                        result_summary={"hits": len(out.get("hits") or [])},
+                        elapsed_ms=round((time.monotonic() - started) * 1000, 1))
+        if aid:
+            out["provenance"] = {"audit_id": aid}
     return out
 
 
@@ -89,8 +91,10 @@ def do_kb_read(chunk_id: str, audit: AuditWriter | None = None) -> dict[str, Any
     if text and len(text) > _MAX_TEXT:
         out["text"] = text[:_MAX_TEXT] + "\n…(truncated — use `around`/export for more)"
     if audit:
-        audit.log(tool="kb_read", params={"chunk_id": chunk_id[:80]},
-                  result_summary={"chars": len(text)})
+        aid = audit.log(tool="kb_read", params={"chunk_id": chunk_id[:80]},
+                        result_summary={"chars": len(text)})
+        if aid:
+            out["provenance"] = {"audit_id": aid}
     return out
 
 
@@ -100,8 +104,10 @@ def do_kb_cite(chunk_id: str, audit: AuditWriter | None = None) -> dict[str, Any
         return {"error": "chunk_id is required"}
     out = _run_kb("cite", chunk_id.strip())
     if audit:
-        audit.log(tool="kb_cite", params={"chunk_id": chunk_id[:80]},
-                  result_summary={"resolved": bool(out.get("chunk_id"))})
+        aid = audit.log(tool="kb_cite", params={"chunk_id": chunk_id[:80]},
+                        result_summary={"resolved": bool(out.get("chunk_id"))})
+        if aid:
+            out["provenance"] = {"audit_id": aid}
     return out
 
 

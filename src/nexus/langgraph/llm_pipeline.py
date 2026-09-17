@@ -821,7 +821,30 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
     all_paths = [
         p for p in (state.get("evidence_paths") or [state.get("evidence_path")]) if p
     ]
-    ingest_paths = [p for p in all_paths if not is_host_evidence(p)]
+    # Directories are routed PER FILE: a mixed tree (one EVTX + pcaps/zeek
+    # logs) used to send the WHOLE tree to the host lane, silently skipping
+    # every non-host file. Bounded so a disk image tree cannot flood ingest.
+    _MAX_IMPORTED_FILES = 200
+    ingest_paths: list[str] = []
+    for p in all_paths:
+        p_path = Path(p)
+        if p_path.is_dir():
+            try:
+                import os as _os
+
+                for root_dir, _dirs, files in _os.walk(p_path, followlinks=False):
+                    for fname in files:
+                        if len(ingest_paths) >= _MAX_IMPORTED_FILES:
+                            break
+                        fp = str(Path(root_dir) / fname)
+                        if not is_host_evidence(fp):
+                            ingest_paths.append(fp)
+                    if len(ingest_paths) >= _MAX_IMPORTED_FILES:
+                        break
+            except OSError:
+                continue
+        elif not is_host_evidence(p):
+            ingest_paths.append(p)
     if ingest_paths:
         from nexus.config import settings as _settings
         from nexus.langgraph.timeline_merge import ingest_into_case, rebuild_case_timeline
@@ -835,10 +858,16 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
                 continue
             info = ingest_into_case(Path(p), case_dir)
             capped = " (capped)" if info.get("artifacts_capped") else ""
+            err_note = ""
+            problems = list(info.get("errors") or [])
+            if info.get("error"):
+                problems.insert(0, str(info["error"]))
+            if problems:
+                err_note = " errors=" + " | ".join(str(e)[:120] for e in problems[:2])
             steps.append(
                 f"I1 ingest extra path {p}: {info.get('source')} "
                 f"artifacts={info.get('artifacts')}/{info.get('artifacts_total')}{capped} "
-                f"ok={info.get('success')}"
+                f"ok={info.get('success')}{err_note}"
             )
             if str(info.get("source") or "") in ("generic_csv", "generic_jsonl") and Path(
                 p
@@ -1180,7 +1209,17 @@ def _autoindex_case(case_dir: Path) -> list[str]:
     try:
         from nexus.langgraph.case_index import index_case
 
-        meta = index_case(case_dir)
+        # Pass the case's own query vocabulary so large files (hayabusa/MFT)
+        # keep the rows the case actually asks about — not just the hardcoded
+        # needle list.
+        extra_needles: list[str] = []
+        try:
+            from nexus.langgraph.query_pack import collect_query_terms, load_case_intake
+
+            extra_needles = collect_query_terms(load_case_intake(case_dir))
+        except Exception:  # noqa: BLE001 — vocabulary is best-effort
+            extra_needles = []
+        meta = index_case(case_dir, extra_needles=extra_needles)
         return [f"N3 auto-index: {meta.get('docs')} docs -> {meta.get('index')}"]
     except Exception as exc:  # noqa: BLE001
         if case_mode in ("2", "3"):

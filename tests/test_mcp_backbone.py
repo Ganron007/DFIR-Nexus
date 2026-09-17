@@ -152,3 +152,30 @@ def test_kb_verify_cites_on_installed_skill(backbone):
     tools, _cid = backbone
     r = tools["kb_verify_cites"].fn(skill="memory_process_analysis")
     assert "error" not in r, r
+
+
+def test_every_allowlisted_tool_has_a_binding(backbone):
+    """Structural guard: a name in MODE2_TOOL_ALLOWLIST without a binding
+    raises PermissionError('no binding') — web_search/web_fetch were
+    allowlisted but unbound and only surfaced when first called."""
+    from nexus.langgraph.backbone import MODE2_TOOL_ALLOWLIST, backbone_call
+
+    _tools, cid = backbone
+    minimal = {
+        "n4_query": {"case_id": cid, "dsl": "sdelete", "limit": 3},
+        "n4_aggregate": {"case_id": cid, "dsl": "", "field": "host", "match_all": True},
+        "index_mappings": {"case_id": cid},
+        "family_fields": {"family": "hayabusa"},
+        "kb_search": {"query": "sdelete"},
+        "kb_read": {"chunk_id": "x"},
+        "kb_cite": {"chunk_id": "x"},
+        "ti_lookup": {"value": "127.0.0.1"},
+        "ti_fanout": {"value": "127.0.0.1"},
+        "ti_list_providers": {},
+        "web_status": {},
+        "web_search": {"query": "test"},
+        "web_fetch": {"url": "https://example.com"},
+    }
+    for name in MODE2_TOOL_ALLOWLIST:
+        result = backbone_call(name, audit=None, **minimal.get(name, {}))
+        assert isinstance(result, dict), f"{name} must return a dict"

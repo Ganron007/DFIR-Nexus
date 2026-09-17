@@ -210,7 +210,9 @@ def iter_index_docs(
         fields: dict[str, str] | None = None,
     ) -> None:
         text = line.strip()[:_MAX_LINE]
-        key = hashlib.sha1(f"{path}:{i}:{text[:80]}".encode("utf-8", "replace")).hexdigest()
+        key = hashlib.sha1(
+            f"{fam}:{path}:{i}:{text[:80]}".encode("utf-8", "replace")
+        ).hexdigest()
         if key in seen:
             return
         seen.add(key)
@@ -350,7 +352,8 @@ def _bulk_ndjson(index: str, docs: list[dict[str, Any]]) -> str:
 
     for doc in docs:
         _id = hashlib.sha1(
-            f"{doc.get('file')}:{doc.get('line')}:{doc.get('text', '')[:80]}".encode()
+            f"{doc.get('family')}:{doc.get('file')}:{doc.get('line')}:"
+            f"{doc.get('text', '')[:80]}".encode()
         ).hexdigest()
         lines.append(json.dumps({"index": {"_index": index, "_id": _id}}))
         lines.append(json.dumps(doc, default=str))
@@ -508,6 +511,8 @@ def index_case(case_dir: Path, extra_needles: list[str] | None = None) -> dict[s
     out.mkdir(parents=True, exist_ok=True)
     (out / "es_index.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     write_index_state(case_dir, meta)
+    _schema_cache.pop(case_dir.name, None)
+    _fields_props_cache.pop(case_dir.name, None)
     with contextlib.suppress(Exception):
         from nexus.tools.evidence_index import invalidate_mappings_cache
 
@@ -516,13 +521,14 @@ def index_case(case_dir: Path, extra_needles: list[str] | None = None) -> dict[s
 
 
 def _newest_extraction_mtime(case_dir: Path) -> float:
-    """Newest mtime across this case's processed outputs (0 when none)."""
-    from nexus.langgraph.query_pack import iter_extraction_files
+    """Newest mtime across this case's processed outputs (0 when none).
 
+    Uses ``iter_index_files`` so the ingest artifact store and files beyond
+    the small-scan cap still count — anything the indexer reads can make the
+    index stale.
+    """
     newest = 0.0
-    paths = [path for path, _root, _fam in iter_extraction_files(case_dir)]
-    paths.append(Path(case_dir) / "ingest" / "artifacts.jsonl")
-    for path in paths:
+    for path in iter_index_files(case_dir):
         try:
             newest = max(newest, path.stat().st_mtime)
         except OSError:
@@ -609,26 +615,26 @@ def iter_index_files(case_dir: Path) -> list[Path]:
 # ---------------------------------------------------------------------------
 
 def _term_clause(term: str) -> dict[str, Any]:
-    """One N4 term as ES: analyzed phrase + substring wildcard (parity)."""
+    """One N4 term as ES: analyzed phrase + substring wildcard (parity).
+
+    Wildcard metacharacters are escaped like the legacy path, and **numeric
+    terms keep only the phrase clause** — ``*1102*`` matches inside hashes and
+    file sizes (the CSV backend's ``needle_in_text`` has a hex-boundary guard
+    this query cannot express), which both invents false rows and starves
+    genuine hits out of the fetch cap.
+    """
     t = str(term or "").strip()
     if not t:
         return {"match_none": {}}
-    return {
-        "bool": {
-            "should": [
-                {"match_phrase": {"text": t}},
-                {
-                    "wildcard": {
-                        "text.wc": {
-                            "value": f"*{t.lower()}*",
-                            "case_insensitive": True,
-                        }
-                    }
-                },
-            ],
-            "minimum_should_match": 1,
-        }
-    }
+    should: list[dict[str, Any]] = [{"match_phrase": {"text": t}}]
+    if not t.isdigit():
+        safe = t.lower().replace("\\", "\\\\").replace("*", "\\*").replace("?", "\\?")
+        should.append({
+            "wildcard": {
+                "text.wc": {"value": f"*{safe}*", "case_insensitive": True}
+            }
+        })
+    return {"bool": {"should": should, "minimum_should_match": 1}}
 
 
 def ast_to_es(query: Any | None, terms: list[str] | None = None,
@@ -727,15 +733,20 @@ def es_aggregate(
     top: int = 20,
     bucket: str = "",
     match_all: bool = False,
+    window: tuple[Any, Any] | None = None,
 ) -> dict[str, Any] | None:
     """ES-native aggregation (terms / date_histogram) on a schema-v2 index.
 
-    Returns None when not applicable (legacy index, unknown field, ES error) —
-    the caller then uses the deterministic Python computation.
+    Returns None when not applicable (legacy index, unknown field, ES error,
+    empty DSL without match_all) — the caller then uses the deterministic
+    Python computation, which keeps the intake-term semantics for empty DSLs.
     """
     case_dir = Path(case_dir)
     case_id = case_dir.name
     if not es_available() or _schema_version_cached(case_id) < INDEX_SCHEMA_VERSION:
+        return None
+    if not str(dsl or "").strip() and not match_all:
+        # The Python path treats an empty DSL as "intake terms", not match-all.
         return None
     from nexus.langgraph.query_dsl import QuerySyntaxError, parse_query
 
@@ -747,10 +758,29 @@ def es_aggregate(
     if agg_field is None:
         return None
 
+    es_query = ast_to_es(parsed, match_all=match_all)
+    # The intake window applies here exactly as it does in query_index — an
+    # aggregation must never count out-of-window rows.
+    start, end = (window or (None, None))
+    if start is not None and end is not None:
+        window_filter = {
+            "bool": {
+                "should": [
+                    {"range": {"ts": {"gte": start.isoformat(), "lte": end.isoformat()}}},
+                    {"bool": {"must_not": {"exists": {"field": "ts"}}}},
+                ],
+                "minimum_should_match": 1,
+            }
+        }
+        if "bool" in es_query:
+            es_query["bool"].setdefault("filter", []).append(window_filter)
+        else:
+            es_query = {"bool": {"must": [es_query], "filter": [window_filter]}}
+
     body: dict[str, Any] = {
         "size": 0,
         "track_total_hits": True,
-        "query": ast_to_es(parsed, match_all=match_all),
+        "query": es_query,
     }
     size = max(1, min(int(top or 20), 100))
     if bucket in ("day", "hour"):
@@ -777,10 +807,13 @@ def es_aggregate(
     total = int(((data.get("hits") or {}).get("total") or {}).get("value") or 0)
     buckets = ((data.get("aggregations") or {}).get("v") or {}).get("buckets") or []
     if bucket in ("day", "hour"):
-        bucket_map = {
-            str(b.get("key_as_string") or "")[:13]: int(b.get("doc_count") or 0)
-            for b in buckets
-        }
+        bucket_map: dict[str, int] = {}
+        for b in buckets:
+            raw = str(b.get("key_as_string") or "")
+            # "2026-01-01T10:00" / "2026-01-01" — matches _time_buckets keys.
+            key = raw[:13] + ":00" if bucket == "hour" and len(raw) >= 13 else raw[:10]
+            if key:
+                bucket_map[key] = int(b.get("doc_count") or 0)
         return {
             "field": field,
             "rows_scanned": total,
@@ -885,13 +918,11 @@ def query_index(
             raise IndexMissing(f"no index {name}")
         if _schema_version_cached(case_dir.name) >= INDEX_SCHEMA_VERSION:
             # WP 4j.31: one pushed-down query — field filters on real fields,
-            # terms/phrases/regex in ES (no per-term search loop).
+            # terms/phrases/regex in ES (no per-term search loop). The intake
+            # window is NOT pre-filtered here: a row may carry several dates
+            # and the row-side `_row_in_window` check owns windowing, which
+            # keeps ES and CSV results identical.
             es_query = ast_to_es(query, terms=needles, match_all=match_all)
-            if filt:
-                if "bool" in es_query:
-                    es_query["bool"].setdefault("filter", []).extend(filt)
-                else:
-                    es_query = {"bool": {"must": [es_query], "filter": filt}}
             body = {"size": 400, "query": es_query}
             r = client.post(f"/{name}/_search", json=body)
             if r.status_code >= 400:

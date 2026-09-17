@@ -177,9 +177,11 @@ def do_n4_aggregate(case_id: str = "", dsl: str = "", field: str = "host",
     native: dict[str, Any] | None = None
     with contextlib.suppress(Exception):
         from nexus.langgraph.case_index import es_aggregate
+        from nexus.langgraph.query_pack import load_case_intake, parse_intake_window
 
         native = es_aggregate(
             case_dir, dsl, field=field, top=top, bucket=bucket, match_all=match_all,
+            window=parse_intake_window(load_case_intake(case_dir)),
         )
     if native is not None:
         aid = audit.log(
@@ -196,7 +198,10 @@ def do_n4_aggregate(case_id: str = "", dsl: str = "", field: str = "host",
             "provenance": {"audit_id": aid, "case_id": Path(case_dir).name},
             **native,
         }
-    from nexus.langgraph.query_pack import attach_hit_fields
+    from nexus.langgraph.query_pack import (
+        _MAX_HITS_PER_FILE,
+        attach_hit_fields,
+    )
     from nexus.langgraph.query_pack import n4_query as _n4_query
 
     result = _n4_query(case_dir, dsl, limit=_MAX_AGG_HITS, match_all=match_all)
@@ -211,11 +216,15 @@ def do_n4_aggregate(case_id: str = "", dsl: str = "", field: str = "host",
         counts[v] = counts.get(v, 0) + 1
     ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[: max(1, min(int(top), 100))]
     buckets = _time_buckets(hits, bucket) if bucket in ("day", "hour") else None
+    # The deterministic scan is bounded (per-file and total hit caps) — never
+    # present a capped count as exact.
+    scanned = int(result.get("count") or len(hits))
+    capped = scanned > len(hits) or len(hits) >= _MAX_HITS_PER_FILE
     aid = audit.log(
         tool="n4_aggregate",
         params={"case_id": Path(case_dir).name, "dsl": dsl[:200], "field": field,
                 "bucket": bucket, "match_all": match_all},
-        result_summary={"distinct": len(counts), "rows": len(hits)},
+        result_summary={"distinct": len(counts), "rows": len(hits), "capped": capped},
         elapsed_ms=round((time.monotonic() - started) * 1000, 1),
     ) if audit else None
     return {
@@ -224,7 +233,7 @@ def do_n4_aggregate(case_id: str = "", dsl: str = "", field: str = "host",
         "rows_scanned": len(hits),
         "values_seen": len(values),
         "distinct": len(counts),
-        "distinct_approximate": False,
+        "distinct_approximate": capped,
         "top": [{"value": v, "count": c} for v, c in ranked],
         "buckets": buckets,
         "backend": result.get("backend"),

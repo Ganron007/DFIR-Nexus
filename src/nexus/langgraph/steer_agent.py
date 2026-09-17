@@ -390,12 +390,15 @@ def _formulate_answer(question: str, model: Any, hits: list[dict[str, Any]],
 def _fast_plan(question: str) -> list[str] | None:
     """Deterministic planner for clear intents (WP 4j.34).
 
-    Skips the LLM plan call (~30-90 s on reasoning models) when the question
-    unambiguously names entities, IOCs, or list/count intents. Returns None
-    when the question needs the LLM planner.
+    Skips the LLM plan call (~30-90 s on reasoning models) only when the
+    question is a generic list/count ask or contains exact IOCs. ANY specific
+    entity (a named executable, a named user, a quoted phrase) means the
+    question needs the LLM planner — the fast path must never silently drop
+    the examiner's pivot filter.
     """
-    q = (question or "").lower()
-    queries: list[str] = []
+    q = (question or "").lower().strip()
+    if not q:
+        return None
     from nexus.langgraph.ti_context import extract_iocs
 
     iocs = extract_iocs([question], cap=3)
@@ -403,8 +406,28 @@ def _fast_plan(question: str) -> list[str] | None:
         v for kind in ("sha256", "sha1", "md5", "ipv4", "domain", "url")
         for v in (iocs.get(kind) or [])
     ][:3]
-    for value in ioc_values:
-        queries.append(value)
+
+    # Specific entity markers → LLM planner (filters must be expressible).
+    if re.search(
+        r"\b[a-z0-9_.-]+\.(exe|dll|sys|ps1|bat|cmd|vbs|js|docx?|xlsx?|pdf|zip|rar|7z)\b", q
+    ):
+        return None
+    if re.search(
+        r"\busers?\s+(?!(?:and|or|the|involved|on|from|with|in|who|that)\b)"
+        r"[a-z0-9_.\\$-]{2,}",
+        q,
+    ) or '"' in q:
+        return None
+
+    if ioc_values:
+        return ioc_values[:_MAX_QUERIES]
+
+    if not re.search(
+        r"\b(list|all|which|who|what|how many|count|name|show|involved|fired|seen)\b", q
+    ):
+        return None
+
+    queries: list[str] = []
     if re.search(r"\b(user|users|account|accounts|username|usernames)\b", q):
         queries.append("AGG:match_all|field:user")
     if re.search(r"\b(machine|machines|host|hosts|computer|computers|endpoint|endpoints)\b", q):
@@ -413,12 +436,7 @@ def _fast_plan(question: str) -> list[str] | None:
         queries.append("exe")
     if re.search(r"\b(alert|alerts|detection|detections|rule|rules|signature)\b", q):
         queries.append("alert")
-    # Only take the shortcut when the intent is unambiguous (no open question).
     if not queries:
-        return None
-    if len(queries) == 1 and not ioc_values and not re.search(
-        r"\b(list|which|who|what|how many|count|name|show|all)\b", q
-    ):
         return None
     # A plain row query must accompany aggregations (answer step cites rows).
     if all(x.upper().startswith("AGG:") for x in queries):
@@ -491,10 +509,17 @@ def run_steer_agent(
         for k, v in (mappings.get("family_fields") or {}).items()
     }
 
-    # ── Resolve the LLM ──
+    # ── Resolve the LLM (absent/broken config must not kill the turn) ──
     from nexus.langgraph.llm_pipeline import get_model
 
-    llm = model if model is not None else get_model()
+    if model is not None:
+        llm = model
+    else:
+        try:
+            llm = get_model()
+        except Exception as exc:  # noqa: BLE001 — no LLM is a supported mode
+            log.warning("steering: LLM unavailable (%s) — deterministic path", exc)
+            llm = None
     history_context = _history_block(history)
 
     # ── Step 1: plan queries ──
@@ -576,7 +601,10 @@ def run_steer_agent(
     return {
         "reply": reply,
         "queries_executed": queries_executed,
-        "total_hits": len(all_hits) or agg_rows,
+        # Distinct rows returned (deduped); aggregation scans are reported
+        # separately so the two units are never conflated.
+        "total_hits": len(all_hits),
+        "rows_scanned": agg_rows,
         "aggregations": aggregations,
         "hits": all_hits[:20],
         "turns": 2,

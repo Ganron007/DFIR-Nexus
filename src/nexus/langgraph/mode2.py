@@ -463,16 +463,29 @@ def run_iterative_loop(
     """
     from nexus.case.chat import append_chat
     from nexus.langgraph.mode1 import nl_to_needles
-    from nexus.langgraph.query_pack import load_case_intake, n4_query
+    from nexus.langgraph.query_pack import load_case_intake
 
     case_dir = Path(case_dir)
+    # One cap, enforced here regardless of the caller (API/CLI/agent).
+    max_iterations = max(1, min(int(max_iterations or 2), 4))
+    limit = max(1, min(int(limit or 80), 400))
     iterations: list[dict[str, Any]] = []
     all_needles_run: list[str] = []
 
     intake = load_case_intake(case_dir)
     _ = intake  # window comes from n4_query's internal intake handling
 
-    # Iteration 0: initial query from the question
+    from nexus.audit import AuditWriter
+    from nexus.langgraph.backbone import backbone_call
+
+    # WP 4j.10c (cross-case guard): the loop's evidence access is bound to the
+    # case it was invoked for — never the pointer's case by accident.
+    case_id = case_dir.name
+    loop_audit = AuditWriter("nexus")
+
+    # Iteration 0: initial query from the question — through the audited
+    # backbone so the initial hit set carries an audit_id like every other
+    # iteration (it is citation material).
     parsed0 = nl_to_needles(question, model=model)
     needles0 = parsed0.get("needles", [])
     if not needles0 and not parsed0.get("dsl_query"):
@@ -481,7 +494,9 @@ def run_iterative_loop(
     # verbatim; degrade to bare terms when the wall rejected it.
     dsl0 = str(parsed0.get("dsl_query") or "").strip()
     q0 = dsl0 or " ".join(needles0)
-    r0 = n4_query(case_dir, q0, limit=limit)
+    r0 = backbone_call(
+        "n4_query", audit=loop_audit, case_id=case_id, dsl=q0, limit=limit,
+    )
     if r0.get("error"):
         return {"error": r0["error"], "iterations": []}
     if needles0:
@@ -498,6 +513,7 @@ def run_iterative_loop(
         "fallback": (parsed0.get("dsl") or {}).get("fallback", False),
         "hits": r0.get("count", 0),
         "backend": r0.get("backend", ""),
+        "audit_id": (r0.get("provenance") or {}).get("audit_id"),
     })
     _emit(on_event, iterations[-1])
     append_chat(case_dir, "llm", "mode2_iter0", f"Initial query: {', '.join(needles0)} -> {r0.get('count', 0)} hits")
@@ -515,14 +531,6 @@ def run_iterative_loop(
     # Iterative proposals — WP 4j.10: each proposal is ONE complete DSL query,
     # executed separately through the backbone (audited, allowlist-enforced),
     # never space-joined into term soup.
-    from nexus.audit import AuditWriter
-    from nexus.langgraph.backbone import backbone_call
-
-    # WP 4j.10c (cross-case guard): the loop's evidence access is bound to the
-    # case it was invoked for — never the pointer's case by accident.
-    case_id = case_dir.name
-
-    loop_audit = AuditWriter("nexus")
     for it in range(1, max_iterations + 1):
         if not hits:
             break
@@ -607,12 +615,17 @@ def run_iterative_loop(
         )
         _emit(on_event, iterations[-1])
 
+    ran_proposals = sum(
+        1 for i in iterations if i.get("action") == "proposed_and_ran"
+    )
     return {
         "question": question,
         "iterations": iterations,
         "total_hits": len(hits),
         "needles_run": all_needles_run,
-        "capped": len(iterations) >= max_iterations,
+        # Only true when the loop actually exhausted its proposal budget —
+        # iteration 0 is not a proposal and early stops are not "capped".
+        "capped": ran_proposals >= max_iterations,
         "hits": hits,
     }
 

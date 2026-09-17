@@ -55,7 +55,7 @@ class TestCorroboration:
 
 
 class TestIterativeLoop:
-    @patch("nexus.langgraph.query_pack.n4_query")
+    @patch("nexus.langgraph.backbone.backbone_call")
     @patch("nexus.langgraph.mode1.nl_to_needles")
     def test_loop_runs_and_logs(self, mock_nl, mock_n4, tmp_path):
         from nexus.case.chat import load_chat

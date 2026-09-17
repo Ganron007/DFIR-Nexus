@@ -26,11 +26,40 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             path: Path to the forensic artifact file.
             source: Optional ArtifactSource override (e.g. zeek, evtx).
         """
-        from nexus.ingest.detect import ingest_auto as _ingest
-        result = _ingest(Path(path), source=source or None)
+        from pathlib import Path as _Path
+
+        from nexus.config import settings
+
+        target = _Path(path)
+        result: dict
+        # When a case is active, PERSIST the artifacts (case store + timeline)
+        # like the CLI does — parsing into nothing made agent-side ingests
+        # unretrievable afterward.
+        persisted = False
+        case_dir = None
+        try:
+            from nexus.case_manager import CaseManager
+
+            active = CaseManager().require_active_case()
+            case_dir = _Path(active) if active else None
+        except Exception:
+            case_dir = None
+        if case_dir is not None and _Path(case_dir).is_dir():
+            from nexus.langgraph.timeline_merge import ingest_into_case
+
+            result = ingest_into_case(target, _Path(case_dir), source=source or None)
+            persisted = bool(result.get("artifacts"))
+            result["persisted"] = persisted
+        else:
+            from nexus.ingest.detect import ingest_auto as _ingest
+
+            result = _ingest(target, source=source or None)
+            result["persisted"] = False
+        if isinstance(result, dict):
+            result.setdefault("case_root", str(settings.cases_root) if persisted else "")
         aid = audit.log(
             "ingest_auto",
-            params={"path": path, "source": source},
+            params={"path": path, "source": source, "persisted": persisted},
             result_summary=result,
             input_files=[path],
         )

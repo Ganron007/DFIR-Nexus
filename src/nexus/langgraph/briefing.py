@@ -450,7 +450,8 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
                     or ""
                 )[:160],
                 "time": str(
-                    fields.get("TimeCreated") or fields.get("Timestamp") or ""
+                    fields.get("TimeCreated") or fields.get("Timestamp")
+                    or fields.get("timestamp") or fields.get("ts") or ""
                 )[:40],
                 "host": str(h.get("host") or fields.get("Computer") or "")[:60],
                 "file": str(h.get("file") or ""),

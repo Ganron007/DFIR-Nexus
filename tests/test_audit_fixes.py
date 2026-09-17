@@ -1,172 +1,247 @@
-"""Tests for audit-fix gaps: playbook first-phase matching, corroboration from caveats, orchestrator playbook context."""
+"""Regression tests for the full-suite audit fixes (2026-09-17).
 
+Each test pins a bug that was found by the four-agent audit:
+duplicate audit ids, fast-plan intent loss, ES aggregation window/empty-DSL
+drift, artifact-store dedupe data loss, .gz silent failure, tshark JSON
+misroute, legacy stage-flag paths, and ImportResult.success honesty.
+"""
 from __future__ import annotations
 
-import os
-import sys
-from unittest.mock import MagicMock
+import json
+import threading
+from pathlib import Path
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+# ── audit ids ──────────────────────────────────────────────────────────────
 
+def test_audit_ids_unique_across_concurrent_writers(tmp_path):
+    from nexus.audit import AuditWriter
 
-class TestPlaybookFirstPhaseMatching:
-    """GAP 1 fix: _playbook_context_for_families must extract first-phase steps, not just 'Identify'."""
+    ids: list[str] = []
+    lock = threading.Lock()
 
-    def test_browser_forensics_gets_locate_artifacts_steps(self):
-        """browser_forensics has 'Locate Artifacts' as first phase, not 'Identify'."""
-        from nexus.langgraph.mode2 import _playbook_context_for_families
+    def worker() -> None:
+        writer = AuditWriter("nexus", audit_dir=tmp_path)
+        for _ in range(3):
+            aid = writer.log(tool="t")
+            with lock:
+                ids.append(str(aid))
 
-        # browser_forensics has query_terms including 'chrome'
-        context = _playbook_context_for_families({"chrome"})
-        assert context, "Expected playbook context for chrome family"
-        # Should contain "Locate Artifacts" steps, not empty
-        assert "Locate Artifacts" in context or "steps" in context
-
-    def test_memory_forensics_gets_acquire_steps(self):
-        """memory_forensics has 'Acquire' as first phase, not 'Identify'."""
-        from nexus.langgraph.mode2 import _playbook_context_for_families
-
-        context = _playbook_context_for_families({"volatility"})
-        if context:
-            # Should contain first-phase steps (Acquire)
-            assert "Acquire" in context or "steps" in context
-
-    def test_credential_access_still_gets_identify_steps(self):
-        """credential_access has 'Identify' as first phase — should still work."""
-        from nexus.langgraph.mode2 import _playbook_context_for_families
-
-        context = _playbook_context_for_families({"mimikatz"})
-        if context:
-            assert "Identify" in context or "steps" in context
-
-    def test_all_playbooks_get_first_phase_steps(self):
-        """Every playbook that matches a family should have its first-phase steps extracted."""
-        from nexus.knowledge.loader import get_playbook, list_playbook_slugs
-        from nexus.langgraph.mode2 import _playbook_context_for_families
-
-        slugs = list_playbook_slugs()
-        for slug in slugs:
-            pb = get_playbook(slug)
-            if not pb:
-                continue
-            terms = pb.get("query_terms") or []
-            if not terms:
-                continue
-            # Use the first query_term as the "family"
-            family = str(terms[0]).lower()
-            context = _playbook_context_for_families({family})
-            if context:
-                # Should contain some steps (not just caveats)
-                assert "steps" in context.lower(), f"Playbook {slug} context missing steps for family {family}"
+    threads = [threading.Thread(target=worker) for _ in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert len(ids) == 12
+    assert len(set(ids)) == 12, "concurrent writers minted duplicate audit ids"
 
 
-class TestCorroborationFromPlaybook:
-    """GAP 2 fix: corroboration_suggestions should use playbook caveats, not just hard-coded dict."""
+# ── fast-path planner ──────────────────────────────────────────────────────
 
-    def test_corroboration_uses_playbook_caveats(self):
-        """When a playbook has caveats mentioning other artifact families, those should be suggested."""
-        from nexus.langgraph.mode2 import _corroborate_for
+def test_fast_plan_keeps_specific_intent_for_the_llm():
+    from nexus.langgraph.steer_agent import _fast_plan
 
-        # credential_access playbook has caveats mentioning prefetch, amcache, etc.
-        result = _corroborate_for("mimikatz")
-        # Should return something (from playbook caveats or fallback)
-        assert isinstance(result, list)
-
-    def test_corroboration_falls_back_to_hardcoded(self):
-        """When no playbook matches, the hard-coded mapping should still work."""
-        from nexus.langgraph.mode2 import _corroborate_for
-
-        # "srum" is in the hard-coded mapping
-        result = _corroborate_for("srum")
-        assert isinstance(result, list)
-        # Should include netstat from the hard-coded mapping
-        if result:
-            assert "netstat" in result or len(result) > 0
+    # Named executables / named users / quoted phrases → LLM planner.
+    assert _fast_plan("Which hosts ran powershell.exe and when?") is None
+    assert _fast_plan("Did user bob access the exe?") is None
+    assert _fast_plan('Find "faulting application" events') is None
+    # Generic list asks still take the shortcut.
+    assert _fast_plan("List all exe involved in this case") == ["exe"]
+    users = _fast_plan("List all users and machines involved")
+    assert users is not None and users[0] == "AGG:match_all|field:user"
+    # IOCs are specific but safely expressible.
+    assert _fast_plan("Is the file 534a7ea9c67bab3e8f2d41977bf43d41dfe951cf malicious?") == [
+        "534a7ea9c67bab3e8f2d41977bf43d41dfe951cf"
+    ]
 
 
-class TestOrchestratorPlaybookContext:
-    """GAP 3 fix: orchestrator should inject playbook context alongside RAG."""
+# ── ES aggregation semantics ───────────────────────────────────────────────
 
-    def test_orchestrator_agent_has_playbook_context(self, tmp_path):
-        """Each agent run should have playbook_context field."""
-        from nexus.langgraph.orchestrator import run_orchestrator
+def test_es_aggregate_refuses_empty_dsl_without_match_all(monkeypatch):
+    from nexus.langgraph import case_index
 
-        case_dir = tmp_path / "CASE-AUDIT"
-        case_dir.mkdir()
-        (case_dir / "CASE.yaml").write_text("name: audit\nintake:\n  question: test?\n")
-        ext = case_dir / "extractions" / "hayabusa"
-        ext.mkdir(parents=True)
-        (ext / "timeline.csv").write_text("time,host,event\n2026-08-10T15:00:00Z,WS01,mimikatz.exe\n")
-
-        hits = [
-            {"family": "hayabusa", "file": "t.csv", "line": "1",
-             "text": "mimikatz.exe", "terms": "mimikatz"},
-        ]
-
-        result = run_orchestrator(case_dir, hits, model=None)
-        for run in result["agent_runs"]:
-            assert "playbook_context" in run
-
-    def test_orchestrator_log_includes_playbook_used(self, tmp_path):
-        """Agent run log should include playbook_used flag."""
-        import json
-
-        from nexus.langgraph.orchestrator import run_orchestrator
-
-        case_dir = tmp_path / "CASE-AUDIT2"
-        case_dir.mkdir()
-        (case_dir / "CASE.yaml").write_text("name: audit2\nintake:\n  question: test?\n")
-        ext = case_dir / "extractions" / "hayabusa"
-        ext.mkdir(parents=True)
-        (ext / "timeline.csv").write_text("time,host,event\n2026-08-10T15:00:00Z,WS01,mimikatz.exe\n")
-
-        hits = [
-            {"family": "prefetch", "file": "p.csv", "line": "1",
-             "text": "mimikatz.exe", "terms": "mimikatz"},
-        ]
-
-        run_orchestrator(case_dir, hits, model=None)
-        log_file = case_dir / "agent_runs.jsonl"
-        assert log_file.is_file()
-        entries = [json.loads(ln) for ln in log_file.read_text().strip().splitlines() if ln.strip()]
-        assert any("playbook_used" in e for e in entries)
-
-    def test_orchestrator_llm_gets_playbook_context(self, tmp_path):
-        """When LLM is available, the prompt should include playbook context."""
-        from nexus.langgraph.orchestrator import run_orchestrator
-
-        case_dir = tmp_path / "CASE-AUDIT3"
-        case_dir.mkdir()
-        (case_dir / "CASE.yaml").write_text("name: audit3\nintake:\n  question: test?\n")
-        ext = case_dir / "extractions" / "hayabusa"
-        ext.mkdir(parents=True)
-        (ext / "timeline.csv").write_text("time,host,event\n2026-08-10T15:00:00Z,WS01,mimikatz.exe\n")
-
-        hits = [
-            {"family": "prefetch", "file": "p.csv", "line": "1",
-             "text": "mimikatz.exe", "terms": "mimikatz"},
-        ]
-
-        model = MagicMock()
-        model.invoke.return_value = MagicMock(
-            content='{"needles": ["lsass"], "rationale": "test"}'
-        )
-
-        run_orchestrator(case_dir, hits, model=model)
-        # The model should have been called
-        assert model.invoke.called
-        # Check that the prompt included playbook guidance
-        call_args = model.invoke.call_args
-        prompt_text = str(call_args)
-        assert "Playbook" in prompt_text or "playbook" in prompt_text
+    monkeypatch.setattr(case_index, "es_available", lambda: True)
+    monkeypatch.setattr(case_index, "_schema_version_cached", lambda _cid: 2)
+    result = case_index.es_aggregate(
+        Path("CASE-X"), dsl="", field="host", match_all=False
+    )
+    assert result is None, "empty DSL must keep the intake-term (Python) semantics"
 
 
-class TestDeadCodeRemoved:
-    """GAP 4 fix: _refine_rationale should be removed from mode3.py."""
+def test_es_aggregate_applies_intake_window(monkeypatch):
+    from datetime import UTC, datetime
 
-    def test_refine_rationale_removed(self):
-        """_refine_rationale should no longer exist in mode3.py."""
-        from nexus.langgraph import mode3
+    from nexus.langgraph import case_index
 
-        assert not hasattr(mode3, "_refine_rationale"), \
-            "_refine_rationale is dead code and should be removed"
+    captured: dict = {}
+
+    class Client:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_a):
+            return None
+
+        def post(self, path, json):
+            captured["body"] = json
+
+            class R:
+                status_code = 200
+
+                @staticmethod
+                def json():
+                    return {"hits": {"total": {"value": 0}}, "aggregations": {"v": {"buckets": []}}}
+
+            return R()
+
+    monkeypatch.setattr(case_index, "es_available", lambda: True)
+    monkeypatch.setattr(case_index, "_schema_version_cached", lambda _cid: 2)
+    monkeypatch.setattr(case_index, "_resolve_agg_field", lambda _cid, _f: "host")
+    monkeypatch.setattr(case_index, "_client", lambda: Client())
+
+    start = datetime(2026, 1, 1, tzinfo=UTC)
+    end = datetime(2026, 1, 2, tzinfo=UTC)
+    case_index.es_aggregate(
+        Path("CASE-X"), dsl="alert", field="host", match_all=False,
+        window=(start, end),
+    )
+    body_text = json.dumps(captured["body"])
+    assert "range" in body_text and "2026-01-01" in body_text, (
+        "aggregation must be scoped to the intake window like the row query"
+    )
+
+
+def test_es_aggregate_bucket_keys_match_csv_format(monkeypatch):
+    from nexus.langgraph import case_index
+
+    class Client:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_a):
+            return None
+
+        def post(self, path, json):
+            class R:
+                status_code = 200
+
+                @staticmethod
+                def json():
+                    return {
+                        "hits": {"total": {"value": 2}},
+                        "aggregations": {"v": {"buckets": [
+                            {"key_as_string": "2026-01-01T10:00:00.000Z", "doc_count": 2},
+                        ]}},
+                    }
+
+            return R()
+
+    monkeypatch.setattr(case_index, "es_available", lambda: True)
+    monkeypatch.setattr(case_index, "_schema_version_cached", lambda _cid: 2)
+    monkeypatch.setattr(case_index, "_resolve_agg_field", lambda _cid, _f: "host")
+    monkeypatch.setattr(case_index, "_client", lambda: Client())
+
+    result = case_index.es_aggregate(
+        Path("CASE-X"), dsl="alert", field="host", bucket="hour",
+    )
+    assert result and "2026-01-01T10:00" in result["buckets"]
+
+
+# ── ingest artifact dedupe ─────────────────────────────────────────────────
+
+def test_artifact_key_keeps_distinct_events_and_stable_for_synthesized_ts(tmp_path):
+    from nexus.ingest.schemas import Artifact
+    from nexus.langgraph.timeline_merge import append_ingest_artifacts
+
+    case = tmp_path / "CASE-ART"
+    case.mkdir()
+    base = {
+        "source": "suricata", "artifact_type": "http", "severity": "informational",
+        "timestamp": "2026-08-11T23:10:37+00:00", "source_ip": "10.0.0.5",
+        "dest_ip": "10.0.0.6", "source_port": 5000, "dest_port": 80,
+        "protocol": "tcp",
+    }
+    a1 = Artifact.from_dict({**base, "id": "1", "description": "GET /a"})
+    a2 = Artifact.from_dict({**base, "id": "2", "description": "GET /b"})
+    append_ingest_artifacts(case, [a1, a2])
+    lines = (case / "ingest" / "artifacts.jsonl").read_text(encoding="utf-8").strip().splitlines()
+    assert len(lines) == 2, "two different events collapsed into one store row"
+
+    # Same events re-ingested → no duplicates.
+    append_ingest_artifacts(case, [a1, a2])
+    lines = (case / "ingest" / "artifacts.jsonl").read_text(encoding="utf-8").strip().splitlines()
+    assert len(lines) == 2
+
+
+def test_artifact_key_stable_when_timestamp_synthesized(tmp_path):
+    from nexus.ingest.schemas import Artifact
+    from nexus.langgraph.timeline_merge import append_ingest_artifacts
+
+    case = tmp_path / "CASE-ART2"
+    case.mkdir()
+
+    def make() -> Artifact:
+        from datetime import UTC, datetime
+
+        return Artifact.from_dict({
+            "id": "x", "source": "generic_jsonl", "artifact_type": "unknown",
+            "severity": "informational",
+            "timestamp": datetime.now(UTC).isoformat(),
+            "description": "alpha", "raw": {"message": "alpha"},
+        })
+
+    append_ingest_artifacts(case, [make()])
+    append_ingest_artifacts(case, [make()])
+    lines = (case / "ingest" / "artifacts.jsonl").read_text(encoding="utf-8").strip().splitlines()
+    assert len(lines) == 1, "synthesized timestamps duplicated a re-ingested record"
+
+
+# ── detection routing ──────────────────────────────────────────────────────
+
+def test_tshark_json_routes_to_wireshark_not_elastic(tmp_path):
+    from nexus.ingest.detect import detect_format
+    from nexus.ingest.schemas import ArtifactSource
+
+    path = tmp_path / "export.json"
+    path.write_text(json.dumps([{
+        "_index": "packets",
+        "_source": {"layers": {"frame": {"frame.time_epoch": "1"}, "ip": {"ip.src": "1.1.1.1"}}},
+    }]), encoding="utf-8")
+    assert detect_format(path) == ArtifactSource.WIRESHARK
+
+
+def test_unsupported_gz_is_honest_not_silent(tmp_path):
+    from nexus.ingest.detect import detect_format
+    from nexus.ingest.registry import get_registry
+    from nexus.ingest.schemas import ArtifactSource
+
+    path = tmp_path / "eve.json.gz"
+    path.write_bytes(b"\x1f\x8b\x08\x00" + b"\x00" * 32)
+    assert detect_format(path) is None, "gzip JSON has no importer — say so"
+    resolved = get_registry().resolve(ArtifactSource.GENERIC_JSONL, path)
+    assert resolved is None, "shared-lane fallback must not claim an unsupported file"
+
+
+def test_import_result_success_is_false_with_errors():
+    from nexus.ingest.base import ImportResult
+    from nexus.ingest.schemas import ArtifactSource
+
+    result = ImportResult(source=ArtifactSource.SURICATA)
+    result.errors.append("mid-parse failure")
+    assert result.success is False
+
+
+# ── cockpit stage flags ────────────────────────────────────────────────────
+
+def test_case_artifact_flags_match_real_writer_paths(tmp_path):
+    from nexus.dashboard.app import _case_artifact_flags
+
+    case = tmp_path / "CASE-FLAGS"
+    run = case / "runs" / "RUN-1"
+    (run / "reports").mkdir(parents=True)
+    (run / "reports" / "TOOL-RUN.md").write_text("x", encoding="utf-8")
+    (case / "reports").mkdir(parents=True)
+    (case / "reports" / "REPORT.md").write_text("x", encoding="utf-8")
+
+    flags = _case_artifact_flags(case)
+    assert flags["pipeline_complete"] is True
+    assert flags["report_exists"] is True

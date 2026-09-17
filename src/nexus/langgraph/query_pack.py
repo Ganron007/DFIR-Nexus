@@ -16,7 +16,7 @@ from nexus.integration.evidence_table import evidence_rows_from_n4_hits
 
 _MAX_HITS_PER_FILE = 40
 _MAX_HITS_TOTAL = 400
-_MAX_LINE = 1200
+_MAX_LINE = 4000
 _MAX_MD = 60000
 # Full-row index/scan of small CSVs. Hayabusa/USN live above this;
 # N4 still needle-scans them up to _MAX_FILTERED_SCAN_BYTES.
@@ -433,7 +433,7 @@ def _hits_from_file(
     for _pri, i, matched, text in raw[:_MAX_HITS_PER_FILE]:
         hits.append({
             "family": fam,
-            "file": str(path.relative_to(root)),
+            "file": str(path.relative_to(root)).replace("\\", "/"),
             "line": str(i),
             "terms": ",".join(matched[:6]),
             "text": text,
@@ -731,13 +731,22 @@ def attach_hit_fields(case_dir: Path, hits: list[dict[str, Any]]) -> list[dict[s
         return hits
     from nexus.langgraph.pipeline_runs import resolve_tools_extractions
 
-    root = resolve_tools_extractions(case_dir)
+    tools_root = resolve_tools_extractions(case_dir)
+    # Hits can come from the tools run, the SIFT mirror, or the ingest store —
+    # resolve the source file against every candidate root.
+    candidate_roots = [tools_root, tools_root.parent / "sift" / "extractions", case_dir]
     out: list[dict[str, Any]] = []
     for h in hits:
         row = dict(h)
         fields: dict[str, str] = {}
         file_rel = str(h.get("file") or "")
-        p = root / file_rel if file_rel else None
+        p = None
+        if file_rel:
+            for candidate_root in candidate_roots:
+                candidate = candidate_root / file_rel
+                if candidate.is_file():
+                    p = candidate
+                    break
         if file_rel.startswith("ingest/"):
             # Imported-artifact row — project the store line into typed fields
             # (network events get source_ip/dest_ip/proto/severity in the UI).
@@ -765,17 +774,23 @@ def attach_hit_fields(case_dir: Path, hits: list[dict[str, Any]]) -> list[dict[s
                     values = record.get(list_key)
                     if values:
                         fields[list_key] = ",".join(str(v) for v in values)[:_MAX_FIELD_VALUE]
-        elif p is not None and p.is_file():
-            if file_rel not in _header_cache:
+        elif p is not None:
+            # Header cache is keyed by the resolved path + mtime — a relative
+            # name alone lets one case's header leak into another.
+            try:
+                cache_key = f"{p}:{p.stat().st_mtime_ns}"
+            except OSError:
+                cache_key = str(p)
+            if cache_key not in _header_cache:
                 try:
                     with p.open(encoding="utf-8", errors="replace") as fh:
                         first = fh.readline().strip()
-                    _header_cache[file_rel] = (
+                    _header_cache[cache_key] = (
                         [c.strip().lstrip("\ufeff").strip('"') for c in _split_csv_row(first)] if first else []
                     )
                 except OSError:
-                    _header_cache[file_rel] = []
-            header = _header_cache[file_rel]
+                    _header_cache[cache_key] = []
+            header = _header_cache[cache_key]
             values = _split_csv_row(h.get("text", ""))
             for name, val in list(zip(header, values, strict=False))[:_MAX_FIELDS]:
                 v = str(val).strip()[:_MAX_FIELD_VALUE]

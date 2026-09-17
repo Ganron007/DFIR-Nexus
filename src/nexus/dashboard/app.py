@@ -1034,9 +1034,37 @@ def _case_summary(case_id: str, mgr) -> dict[str, Any]:
     summary["evidence_count"] = evidence_count
     summary["findings_count"] = findings_count
     summary["approved_count"] = approved_count
-    summary["pipeline_complete"] = (case_dir / "analysis" / "TOOL-RUN.md").is_file()
-    summary["report_exists"] = (case_dir / "REPORT.md").is_file()
+    summary.update(_case_artifact_flags(case_dir))
     return summary
+
+
+def _case_artifact_flags(case_dir: Path) -> dict[str, bool]:
+    """N2/N8 presence flags that match where the writers actually write.
+
+    Reports land in ``reports/REPORT.md`` (the legacy ``REPORT.md`` is only
+    a demo-seed artifact) and TOOL-RUN.md lives in the active run directory —
+    checking the legacy paths made the cockpit stepper disagree with a
+    completed pipeline/report on every real case.
+    """
+    report = (case_dir / "reports" / "REPORT.md").is_file() or (
+        case_dir / "REPORT.md"
+    ).is_file()
+    pipeline = (case_dir / "analysis" / "TOOL-RUN.md").is_file()
+    if not pipeline:
+        runs_dir = case_dir / "runs"
+        try:
+            if runs_dir.is_dir():
+                for run_dir in runs_dir.iterdir():
+                    if not run_dir.is_dir():
+                        continue
+                    if (run_dir / "reports" / "TOOL-RUN.md").is_file() or (
+                        run_dir / "manifest.json"
+                    ).is_file():
+                        pipeline = True
+                        break
+        except OSError:
+            pass
+    return {"pipeline_complete": pipeline, "report_exists": report}
 
 
 async def api_cases(request):
@@ -3053,7 +3081,12 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
         _persist()
     finally:
         with _mode1_run_lock:
-            _mode1_run_threads.pop(_case_key(case_dir), None)
+            # A re-run may already have replaced this entry — only the thread
+            # that OWNS the mapping may remove it (popping unconditionally
+            # marked the fresh live run as interrupted).
+            key = _case_key(case_dir)
+            if _mode1_run_threads.get(key) is threading.current_thread():
+                _mode1_run_threads.pop(key, None)
         _invalidate_briefing(_case_key(case_dir))  # run changed drafts/bookmarks
 
 
@@ -3498,6 +3531,12 @@ def _mode2_turn_budget() -> float:
     return max(1.0, min(value, 1800.0))
 
 
+# One Mode 2 turn per case at a time — a retry must never overlap an orphaned
+# (timed-out but still running) turn. Released by the worker, not the handler.
+_mode2_turn_active: set[str] = set()
+_mode2_turn_lock = threading.Lock()
+
+
 async def api_mode2_chat(request):
     """POST /portal/api/mode2/chat — the Mode 2 conversational evidence agent (WP 4j.13).
 
@@ -3523,6 +3562,24 @@ async def api_mode2_chat(request):
         return JSONResponse({"error": "message is required"}, status_code=400)
 
     from nexus.case.chat import append_chat
+    from nexus.langgraph.steer_agent import run_steer_agent
+
+    case_key = case_dir.name
+    with _mode2_turn_lock:
+        if case_key in _mode2_turn_active:
+            return JSONResponse(
+                {
+                    "error": "a steering turn is already running for this case",
+                    "reply": (
+                        "A steering turn is already running for this case — wait "
+                        "for it to finish before asking again."
+                    ),
+                    "queries_executed": [], "total_hits": 0, "confidence": "low",
+                    "timings_ms": {}, "stages": [],
+                },
+                status_code=409,
+            )
+        _mode2_turn_active.add(case_key)
 
     # Persist the examiner's message BEFORE the turn runs — a slow or failed
     # turn must never make the question vanish from the transcript.
@@ -3533,12 +3590,19 @@ async def api_mode2_chat(request):
     # NEXUS_LLM_TIMEOUT; this is the backstop).
     import asyncio
 
-    from nexus.langgraph.steer_agent import run_steer_agent
+    def _run_turn() -> dict:
+        try:
+            return run_steer_agent(case_dir, message, history=history)
+        finally:
+            # Released when the WORK finishes, so a retry cannot overlap an
+            # orphaned (timed-out) turn still writing to the case.
+            with _mode2_turn_lock:
+                _mode2_turn_active.discard(case_key)
 
     turn_budget = _mode2_turn_budget()
     try:
         result = await asyncio.wait_for(
-            asyncio.to_thread(run_steer_agent, case_dir, message, history=history),
+            asyncio.to_thread(_run_turn),
             timeout=turn_budget,
         )
     except TimeoutError:
@@ -3904,6 +3968,10 @@ async def api_mode2_iterate(request):
         max_iterations = max(1, min(int(body.get("max_iterations") or 2), 4))
     except (TypeError, ValueError):
         return JSONResponse({"error": "max_iterations must be an integer"}, status_code=400)
+    try:
+        limit = max(1, min(int(body.get("limit") or 80), 400))
+    except (TypeError, ValueError):
+        return JSONResponse({"error": "limit must be an integer"}, status_code=400)
 
     from nexus.case.chat import append_chat
     from nexus.langgraph.llm_pipeline import get_model
@@ -3914,14 +3982,32 @@ async def api_mode2_iterate(request):
     except Exception:
         model = None
 
+    case_key = case_dir.name
+    with _mode2_turn_lock:
+        if case_key in _mode2_turn_active:
+            return JSONResponse(
+                {"error": "a Mode 2 turn is already running for this case"},
+                status_code=409,
+            )
+        _mode2_turn_active.add(case_key)
+
+    def _run_iterative() -> dict:
+        try:
+            return run_iterative_loop(
+                case_dir, question,
+                model=model, max_iterations=max_iterations, limit=limit,
+            )
+        finally:
+            # Release when the WORK finishes — a timed-out handler must not
+            # unlock while the orphaned thread is still running.
+            with _mode2_turn_lock:
+                _mode2_turn_active.discard(case_key)
+
     append_chat(case_dir, "examiner", "mode2_start", question, {"max_iterations": max_iterations})
     turn_budget = _mode2_turn_budget()
     try:
         result = await asyncio.wait_for(
-            asyncio.to_thread(
-                run_iterative_loop, case_dir, question,
-                model=model, max_iterations=max_iterations,
-            ),
+            asyncio.to_thread(_run_iterative),
             timeout=turn_budget,
         )
     except TimeoutError:
@@ -3936,33 +4022,8 @@ async def api_mode2_iterate(request):
     if result.get("error"):
         append_chat(case_dir, "llm", "mode2_error", result["error"])
         return JSONResponse({"error": result["error"]}, status_code=400)
-    for it in result.get("iterations", []):
-        action = it.get("action", "")
-        if action == "initial_query":
-            # WP 4j.11 — surface the parsed query so the examiner sees what ran
-            append_chat(case_dir, "llm", "mode2_initial", (
-                f"Initial query: {it.get('query') or ', '.join(it.get('needles', []))} "
-                f"-> {it.get('hits', 0)} hits"
-            ), {
-                "needles": ",".join(it.get("needles", [])),
-                "dsl_query": it.get("query") or "",
-                "dsl": bool(it.get("dsl")),
-                "hits": it.get("hits", 0),
-            })
-        elif action == "proposed_and_ran":
-            qspecs = it.get("queries") or []
-            dsl_queries = "; ".join(q.get("query", "") for q in qspecs)
-            append_chat(case_dir, "llm", "mode2_proposal", (
-                f"Iteration {it.get('iteration')}: ran {len(qspecs)} query/queries "
-                f"-> {it.get('hits', 0)} hits. {it.get('rationale', '')}"
-            ), {
-                "needles": ",".join(it.get("needles", [])),
-                "dsl_query": dsl_queries,
-                "dsl": any(not q.get("fallback") and q.get("dsl") for q in qspecs),
-                "hits": it.get("hits", 0),
-            })
-        elif action == "no_new_proposals":
-            append_chat(case_dir, "llm", "mode2_no_proposals", "No new needles to propose.", {"iteration": it.get("iteration")})
+    # Per-iteration transcript entries are written by run_iterative_loop itself
+    # (single writer) — only the summary is added here.
     append_chat(case_dir, "llm", "mode2_done", f"Iterative loop complete: {result.get('total_hits', 0)} total hits.", {
         "iterations": len(result.get("iterations", [])),
         "capped": result.get("capped", False),
@@ -4013,50 +4074,54 @@ async def api_mode2_propose_draft(request):
     title = str(body.get("title") or "").strip()
     if not title:
         return JSONResponse({"error": "Missing title"}, status_code=400)
-    hits = body.get("hits")
-    if not hits and body.get("query") is not None:
-        from nexus.langgraph.query_pack import n4_query
-
-        result = n4_query(case_dir, str(body.get("query")), limit=12)
-        hits = result.get("hits", [])
-    if not hits:
-        return JSONResponse({"error": "No hits to draft from"}, status_code=400)
 
     from nexus.case.chat import append_chat
     from nexus.langgraph.llm_pipeline import get_model
     from nexus.langgraph.mode2 import propose_draft_finding
+    from nexus.langgraph.query_pack import n4_query
 
-    try:
-        model = get_model()
-    except Exception:
-        model = None
+    # WP 4j.33: sync ES query + LLM scribe must not block the event loop.
+    def _draft() -> dict:
+        hits = body.get("hits")
+        if not hits and body.get("query") is not None:
+            hits = n4_query(case_dir, str(body.get("query")), limit=12).get("hits", [])
+        if not hits:
+            return {"error": "No hits to draft from", "http": 400}
+        try:
+            model = get_model()
+        except Exception:
+            model = None
+        outcome = propose_draft_finding(case_dir, hits, title, model=model)
+        if outcome.get("error"):
+            return {"error": outcome["error"], "http": 400}
+        draft = outcome["draft"]
+        from nexus.langgraph.mode1 import save_draft_finding
 
-    outcome = propose_draft_finding(case_dir, hits, title, model=model)
-    if outcome.get("error"):
-        return JSONResponse({"error": outcome["error"]}, status_code=400)
-    draft = outcome["draft"]
-    from nexus.langgraph.mode1 import save_draft_finding
+        saved = save_draft_finding(case_dir, draft)
+        if saved.get("status") == "STAGED":
+            append_chat(case_dir, "llm", "mode2_draft", f"Proposed DRAFT '{title}' from {len(hits)} hits (examiner approval required)", {
+                "finding_id": saved.get("finding_id", ""),
+                "confidence": draft.get("confidence", ""),
+            })
+            resp: dict = {
+                "finding_id": saved.get("finding_id"),
+                "status": "DRAFT",
+                "corroboration": outcome.get("corroboration", {}),
+            }
+            if saved.get("confidence_adjusted"):
+                resp["confidence_adjusted"] = saved["confidence_adjusted"]
+            return resp
+        detail: list = list(saved.get("errors") or [])
+        if saved.get("error"):
+            detail.append(str(saved["error"]))
+        if not detail:
+            detail = [str(saved.get("status", "failed"))]
+        return {"error": detail, "http": 400}
 
-    saved = save_draft_finding(case_dir, draft)
-    if saved.get("status") == "STAGED":
-        append_chat(case_dir, "llm", "mode2_draft", f"Proposed DRAFT '{title}' from {len(hits)} hits (examiner approval required)", {
-            "finding_id": saved.get("finding_id", ""),
-            "confidence": draft.get("confidence", ""),
-        })
-        resp: dict = {
-            "finding_id": saved.get("finding_id"),
-            "status": "DRAFT",
-            "corroboration": outcome.get("corroboration", {}),
-        }
-        if saved.get("confidence_adjusted"):
-            resp["confidence_adjusted"] = saved["confidence_adjusted"]
-        return JSONResponse(resp)
-    detail: list = list(saved.get("errors") or [])
-    if saved.get("error"):
-        detail.append(str(saved["error"]))
-    if not detail:
-        detail = [str(saved.get("status", "failed"))]
-    return JSONResponse({"error": detail})
+    result = await asyncio.to_thread(_draft)
+    if result.get("error"):
+        return JSONResponse({"error": result["error"]}, status_code=int(result.get("http") or 400))
+    return JSONResponse(result)
 
 
 async def api_rag_status(request):
@@ -4564,12 +4629,8 @@ async def api_case_details(request):
         except Exception:
             pass
 
-    # N8 report presence
-    details["report_exists"] = (case_dir / "REPORT.md").is_file()
-
-    # Pipeline status
-    tool_run = case_dir / "analysis" / "TOOL-RUN.md"
-    details["pipeline_complete"] = tool_run.is_file()
+    # N8/N2 presence — matches the real writer paths (runs/…/reports, reports/)
+    details.update(_case_artifact_flags(case_dir))
 
     return JSONResponse(details)
 
@@ -4626,6 +4687,22 @@ async def api_pipeline_run(request):
                 case_mode = str(_meta.get("investigation_mode") or "")
         except Exception:
             case_mode = ""
+    # Case-mode gate: the pipeline stage must belong to the case's chosen
+    # investigation mode — a Mode 1 case must never run design/coverage.
+    _allowed_by_case_mode = {
+        "1": {"tools", "interpret"},
+        "2": {"tools", "coverage", "interpret"},
+        "3": {"tools", "design", "interpret"},
+    }
+    if case_mode and pipeline_mode not in _allowed_by_case_mode.get(case_mode, set()):
+        return JSONResponse(
+            {"error": (
+                f"pipeline mode {pipeline_mode!r} does not belong to Mode {case_mode} "
+                "— create a new case in that mode from the same evidence."
+            )},
+            status_code=409,
+        )
+
     if case_mode in ("2", "3"):
         from nexus.langgraph.case_index import es_available
 
@@ -5300,6 +5377,30 @@ async def api_case_mode(request):
     sealed = _sealed_case_error(case_dir.name)
     if sealed:
         return sealed
+
+    # Segregation: once the case has been PROCESSED (a run exists) or has
+    # findings, its mode is FIXED. Evidence registration alone still allows
+    # the wizard's register-then-choose-mode order. Changing the mode later
+    # would flip the Briefing surface, the pipeline gate and the steering
+    # semantics mid-investigation — new mode = new case (same evidence).
+    has_work = False
+    runs_dir = case_dir / "runs"
+    if runs_dir.is_dir():
+        has_work = any(runs_dir.iterdir())
+    if not has_work:
+        try:
+            findings_file = case_dir / "findings.json"
+            if findings_file.is_file():
+                has_work = bool(json.loads(findings_file.read_text(encoding="utf-8")))
+        except Exception:
+            has_work = False
+    if has_work:
+        return JSONResponse(
+            {"error": "The investigation mode is fixed once the case has been "
+                      "processed — create a new case from the same evidence to "
+                      "run another mode."},
+            status_code=409,
+        )
 
     import yaml
     case_yaml = case_dir / "CASE.yaml"

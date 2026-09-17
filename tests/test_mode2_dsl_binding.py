@@ -292,3 +292,18 @@ def test_aggregation_absent_when_not_proposed(backbone):
                                 model=fake, max_iterations=1, limit=50)
     ran = next(i for i in result["iterations"] if i.get("action") == "proposed_and_ran")
     assert "aggregations" not in ran or not ran["aggregations"]
+
+def test_iteration_zero_carries_an_audit_id(backbone):
+    """The initial hit set is citation material — it must be audited like
+    every other iteration (previously queried through query_pack directly)."""
+    from nexus.langgraph.mode2 import run_iterative_loop
+
+    _tools, _cid, case_dir = backbone
+    fake = _FakeModel({"queries": [], "rationale": "stop"})
+    result = run_iterative_loop(
+        case_dir, "sdelete destructive activity?", model=fake,
+        max_iterations=1, limit=20,
+    )
+    first = result["iterations"][0]
+    assert first["action"] == "initial_query"
+    assert first.get("audit_id"), "iteration 0 must carry provenance"

@@ -82,21 +82,37 @@ def hits_to_events(hits: list[dict[str, str]], source: str = "n4") -> list[dict[
     return events
 
 
-def artifacts_to_events(artifacts: list[Artifact], source: str = "i1") -> list[dict[str, Any]]:
+def artifacts_to_events(
+    artifacts: list[Artifact],
+    source: str = "i1",
+    store_lines: list[int] | None = None,
+) -> list[dict[str, Any]]:
+    """Imported artifacts as timeline events.
+
+    ``store_lines`` (parallel to ``artifacts``) stamps the ingest-store loc so
+    the same row arriving both here and as an N4 hit merges into ONE event
+    instead of appearing twice.
+    """
     events: list[dict[str, Any]] = []
-    for a in artifacts:
+    for idx, a in enumerate(artifacts):
         if a.source == ArtifactSource.GENERIC_JSONL:
             continue
         ts = a.timestamp.isoformat() if a.timestamp else ""
         desc = a.description or a.process_name or a.file_path or a.artifact_type.value
+        if store_lines is not None and idx < len(store_lines):
+            loc_file = "ingest/artifacts.jsonl"
+            loc_line: Any = store_lines[idx]
+        else:
+            loc_file = a.file_path or ""
+            loc_line = ""
         events.append({
             "timestamp": ts,
             "host": a.host or "",
             "description": str(desc)[:240],
             "source": f"{source}:{a.source.value}",
             "family": a.artifact_type.value,
-            "file": a.file_path or "",
-            "line": "",
+            "file": loc_file,
+            "line": str(loc_line) if loc_line != "" else "",
             "terms": ",".join(a.technique_ids[:4]),
             "source_ip": a.source_ip or "",
             "dest_ip": a.dest_ip or "",
@@ -139,29 +155,59 @@ def merge_events(*groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def load_ingest_artifacts(case_dir: Path) -> list[Artifact]:
+    return [a for _n, a in load_ingest_artifacts_with_lines(case_dir)]
+
+
+def load_ingest_artifacts_with_lines(case_dir: Path) -> list[tuple[int, Artifact]]:
+    """(store line number, artifact) pairs — loc for timeline dedupe."""
     path = Path(case_dir) / "ingest" / "artifacts.jsonl"
     if not path.is_file():
         return []
-    arts: list[Artifact] = []
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+    arts: list[tuple[int, Artifact]] = []
+    for n, line in enumerate(
+        path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1
+    ):
         if not line.strip():
             continue
         try:
-            arts.append(Artifact.from_dict(json.loads(line)))
+            arts.append((n, Artifact.from_dict(json.loads(line))))
         except Exception:
             continue
     return arts
 
 
 def _artifact_key(d: dict) -> str:
-    """Content key so re-ingesting the same evidence does not duplicate rows."""
+    """Content key so re-ingesting the same evidence does not duplicate rows.
+
+    Includes ports/protocol/user/file_path AND a hash of the raw record: two
+    genuinely different events (same ts/IP pair, different URL/uid) must not
+    collapse, and events whose timestamp was synthesized at parse time must
+    still key stably across runs.
+    """
+    import hashlib
+
+    raw = d.get("raw")
+    raw_hash = ""
+    if raw not in (None, "", {}):
+        raw_hash = hashlib.sha1(
+            str(raw).encode("utf-8", "replace")
+        ).hexdigest()[:16]
     parts = (
         d.get("source"),
         d.get("artifact_type"),
-        d.get("timestamp"),
+        # With a raw record the hash IS the identity — parse-time synthesized
+        # timestamps must not make the same row look new on every re-ingest.
+        None if raw_hash else d.get("timestamp"),
         d.get("src_ip") or d.get("source_ip"),
+        d.get("source_port"),
         d.get("dest_ip"),
-        str(d.get("description") or d.get("details") or "")[:80],
+        d.get("dest_port"),
+        d.get("protocol"),
+        d.get("user"),
+        d.get("file_path"),
+        d.get("process_name"),
+        str(d.get("description") or d.get("details") or "")[:160],
+        raw_hash,
     )
     return "|".join(str(p or "") for p in parts)
 
@@ -204,14 +250,20 @@ def append_ingest_artifacts(case_dir: Path, artifacts: list[Artifact]) -> Path:
 
 
 def _ingest_limit() -> int:
-    """Bound on artifacts stored per ingested file (env-configurable)."""
+    """Bound on artifacts stored per ingested file (env-configurable).
+
+    ``NEXUS_INGEST_MAX_ARTIFACTS=0`` means unlimited (a bare ``0`` used to be
+    clamped to 1 — silently storing a single row).
+    """
     import os
 
     try:
         raw = int(os.environ.get("NEXUS_INGEST_MAX_ARTIFACTS", "20000"))
     except ValueError:
         raw = 20000
-    return max(1, raw)
+    if raw <= 0:
+        return 2**31 - 1
+    return raw
 
 
 def ingest_into_case(
@@ -235,18 +287,18 @@ def ingest_into_case(
             "artifacts": 0,
             "path": str(path),
         }
-    result = get_registry().import_path(path, source=resolved)
-    total = len(result.artifacts or [])
     cap = limit if limit > 0 else _ingest_limit()
-    arts = list(result.artifacts or [])[:cap]
+    result = get_registry().import_path(path, source=resolved, limit=cap)
+    arts = list(result.artifacts or [])
     if arts:
         append_ingest_artifacts(case_dir, arts)
+    capped = len(arts) >= cap
     return {
         "success": result.success,
         "source": result.source.value,
         "artifacts": len(arts),
-        "artifacts_total": total,
-        "artifacts_capped": total > len(arts),
+        "artifacts_total": len(arts),
+        "artifacts_capped": capped,
         "errors": result.errors[:5],
         "path": str(path),
     }
@@ -393,7 +445,11 @@ def rebuild_case_timeline(
         except (OSError, json.JSONDecodeError):
             pass
     host_events = hits_to_events(hits or [])
-    ingest_events = artifacts_to_events(load_ingest_artifacts(case_dir))
+    ingest_pairs = load_ingest_artifacts_with_lines(case_dir)
+    ingest_events = artifacts_to_events(
+        [a for _n, a in ingest_pairs],
+        store_lines=[n for n, _a in ingest_pairs],
+    )
     merged = merge_events(
         ledger_events,
         _finding_evidence_events(case_dir),

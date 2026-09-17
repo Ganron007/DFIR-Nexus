@@ -66,11 +66,14 @@ class ImporterRegistry:
         """All importer classes registered for a source (registration order)."""
         return list(self._candidates.get(source, []))
 
-    def resolve(self, source: ArtifactSource, path: Path) -> type[Importer]:
+    def resolve(self, source: ArtifactSource, path: Path) -> type[Importer] | None:
         """Pick the best importer for a source + concrete path.
 
-        Prefers the first candidate whose ``can_handle(path)`` is True;
-        falls back to the primary (first registered) importer.
+        Prefers the first candidate whose ``can_handle(path)`` is True. When
+        NO candidate claims the file we return None (honest "no importer")
+        instead of silently falling back to a sibling that cannot parse it —
+        e.g. a bare ``.gz`` used to route to JSONLImporter and "succeed" with
+        zero artifacts.
         """
         cands = self._candidates.get(source, [])
         if not cands:
@@ -83,7 +86,7 @@ class ImporterRegistry:
                     return cls
             except Exception:  # noqa: BLE001
                 continue
-        return cands[0]
+        return None
 
     def all_sources(self) -> list[ArtifactSource]:
         """Return all registered source types."""
@@ -100,9 +103,12 @@ class ImporterRegistry:
         return None
 
     def import_path(
-        self, path: Path, source: ArtifactSource | None = None
+        self, path: Path, source: ArtifactSource | None = None, limit: int = 0
     ) -> ImportResult:
-        """Import a path using the specified or auto-detected importer."""
+        """Import a path using the specified or auto-detected importer.
+
+        ``limit`` (0 = unlimited) caps artifacts during parsing.
+        """
         path = Path(path)
         if not path.exists():
             result = ImportResult(source=source or ArtifactSource.UNKNOWN)
@@ -123,7 +129,7 @@ class ImporterRegistry:
             return result
 
         importer = importer_cls()
-        result = importer.ingest(path)
+        result = importer.ingest(path, limit=limit)
         return result
 
 

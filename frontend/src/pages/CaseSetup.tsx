@@ -348,7 +348,7 @@ export default function CaseSetup() {
           <h3>Choose Investigation Mode</h3>
           <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 16 }}>
             The mode determines who initiates the next action and which UI surface is primary.
-            It can be changed later.
+            It is fixed once evidence is registered — create a new case (same evidence) to run another mode.
           </p>
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <div

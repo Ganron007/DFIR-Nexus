@@ -442,3 +442,44 @@ def test_pipeline_run_mode3_requires_es(client, monkeypatch):
     client.post("/portal/api/case/mode", json={"mode": "3", "case_id": case_id})
     r = client.post("/portal/api/pipeline/run", json={"mode": "tools", "case_id": case_id})
     assert r.status_code == 409
+
+def test_case_mode_is_fixed_after_processing(client, tmp_path):
+    """Segregation: a processed case cannot switch mode (registration alone
+    keeps the wizard's register-then-choose order working)."""
+    from nexus.config import settings
+
+    r = client.post("/portal/api/case/create", json={
+        "name": "Mode Fixed", "description": "d", "mode": "1", "activate": True,
+    })
+    case_id = r.json()["case_id"]
+    case_dir = settings.cases_root / case_id
+    (case_dir / "runs" / "RUN-1").mkdir(parents=True)
+
+    r = client.post("/portal/api/case/mode", json={"mode": "3", "case_id": case_id})
+    assert r.status_code == 409
+    assert "fixed" in r.json()["error"].lower()
+
+
+def test_pipeline_mode_must_match_case_mode(client, tmp_path, monkeypatch):
+    """A Mode 1 case must not run the Mode 2/3 pipeline stages."""
+    from nexus.case import CaseManager
+    from nexus.config import settings
+
+    r = client.post("/portal/api/case/create", json={
+        "name": "Mode Gate", "description": "d", "mode": "1", "activate": True,
+    })
+    case_id = r.json()["case_id"]
+    ev = tmp_path / "artifact.evtx"
+    ev.write_bytes(b"evtx")
+    mgr = CaseManager(settings.cases_root / "cases.db")
+    try:
+        mgr.add_evidence(
+            case_id=case_id, name=ev.name, description="t",
+            file_path=str(ev), file_hash_sha256="0" * 64, collected_by="tester",
+        )
+    finally:
+        mgr.close()
+
+    r = client.post("/portal/api/pipeline/run", json={"mode": "coverage", "case_id": case_id})
+    assert r.status_code == 409
+    assert "does not belong" in r.json()["error"]

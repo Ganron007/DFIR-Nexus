@@ -276,7 +276,7 @@ export default function Briefing() {
       </p>
 
       {/* Mode 2/3 — question-driven LLM run with the live stage feed */}
-      {mode !== "1" && (
+      {(mode === "2" || mode === "3") && (
         <div className="card" style={{ borderLeft: "3px solid var(--purple)" }}>
           <div className="card-title" style={{ marginBottom: 6 }}>
             {mode === "2" ? "Mode 2 — LLM interpretation run" : "Mode 3 — agentic run"}
@@ -332,7 +332,7 @@ export default function Briefing() {
       )}
 
       {/* Mode 2 — LLM interpretation verdict (from analysis/interpretation.md) */}
-      {mode !== "1" && brief.mode_interpretation && (
+      {(mode === "2" || mode === "3") && brief.mode_interpretation && (
         <div className="card" style={{ borderLeft: "3px solid var(--purple)" }}>
           <div className="card-title" style={{ marginBottom: 6 }}>Mode 2 Interpretation (LLM)</div>
           <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, margin: 0, fontFamily: "inherit" }}>
@@ -340,7 +340,7 @@ export default function Briefing() {
           </pre>
         </div>
       )}
-      {mode !== "1" && !brief.mode_interpretation && (brief.findings_summary?.count ?? 0) > 0 && (
+      {(mode === "2" || mode === "3") && !brief.mode_interpretation && (brief.findings_summary?.count ?? 0) > 0 && (
         <div className="card">
           <div className="card-title" style={{ marginBottom: 6 }}>
             Staged findings ({brief.findings_summary?.count} · {brief.findings_summary?.drafts} DRAFT)
@@ -354,7 +354,7 @@ export default function Briefing() {
           </ul>
         </div>
       )}
-      {mode !== "1" && !brief.mode_interpretation && brief.ti_context && (
+      {(mode === "2" || mode === "3") && !brief.mode_interpretation && brief.ti_context && (
         <div className="card">
           <div className="card-title" style={{ marginBottom: 6 }}>Threat intel (context)</div>
           <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, margin: 0, fontFamily: "inherit" }}>

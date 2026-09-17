@@ -35,7 +35,7 @@ _MAX_AND = 12
 _MAX_NOT = 12
 _MAX_REGEX = 120
 
-_TOKEN_RE = re.compile(r'"[^"]*"|\S+')
+_TOKEN_RE = re.compile(r'[A-Za-z_][A-Za-z0-9_]*:"[^"]*"|"[^"]*"|\S+')
 # Reject nested quantifiers like (a+)+ or (ab*){2,} — classic ReDoS shapes.
 _DANGEROUS_RE = re.compile(r"\([^()]*[+*][^()]*\)\s*[+*{]")
 
@@ -98,7 +98,7 @@ def parse_query(text: str) -> ParsedQuery:
             pending = low if low in ("and", "not") else None
             continue
         if not tok.startswith('"') and low.startswith("regex:"):
-            _set_regex(q, tok[6:].strip())
+            _set_regex(q, tok[6:].strip().strip('"'))
             continue
         _add_term(q, tok, pending)
 
@@ -135,8 +135,9 @@ def _add_term(q: ParsedQuery, tok: str, pending: str | None) -> None:
         return
     if not term.startswith('"') and ":" in term:
         field, _, value = term.partition(":")
-        if field.lower() in _FIELDS and value.strip():
-            q.fields[field.lower()] = value.strip().lower()
+        value = value.strip().strip('"').strip()
+        if field.lower() in _FIELDS and value:
+            q.fields[field.lower()] = value.lower()
             return
     bucket = (
         q.and_terms if pending == "and"

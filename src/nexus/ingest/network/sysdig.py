@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, ClassVar
 
-from nexus.ingest.base import Importer
+from nexus.ingest.base import Importer, ImporterError
 from nexus.ingest.schemas import (
     Artifact,
     ArtifactSource,
@@ -64,14 +64,19 @@ class SysdigImporter(Importer):
         return '"rule"' in head and '"priority"' in head and '"output"' in head
 
     def parse(self, path: Path) -> Iterator[Artifact]:
-        """Yield one Artifact per Falco/Sysdig alert event."""
+        """Yield one Artifact per Falco/Sysdig alert event.
+
+        Parse failures raise (recorded by Importer.ingest) — a silent swallow
+        made a broken file indistinguishable from an empty one.
+        """
         try:
             if path.suffix.lower() == ".jsonl":
                 yield from self._parse_jsonl(path)
             else:
                 yield from self._parse_json(path)
-        except Exception:
+        except Exception as exc:  # noqa: BLE001
             log.warning("Failed to parse Sysdig/Falco file %s", path, exc_info=True)
+            raise ImporterError(f"Sysdig/Falco parse failed: {exc}") from exc
 
     def _parse_json(self, path: Path) -> Iterator[Artifact]:
         """Parse a single JSON file (object or array)."""

@@ -7,6 +7,7 @@ helpers (timestamp parsing, MITRE extraction, severity normalization).
 
 from __future__ import annotations
 
+import itertools
 import json
 import logging
 from abc import ABC, abstractmethod
@@ -43,10 +44,9 @@ class ImportResult:
 
     @property
     def success(self) -> bool:
-        """True if at least one artifact was parsed and no fatal errors."""
-        return len(self.artifacts) > 0 and not any(
-            "fatal" in e.lower() for e in self.errors
-        )
+        """True only when artifacts parsed AND nothing failed — a partial
+        parse is reported as failure with errors, never as clean success."""
+        return len(self.artifacts) > 0 and not self.errors
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to a JSON-serializable dict."""
@@ -93,8 +93,12 @@ class Importer(ABC):
         raise NotImplementedError
         yield  # pragma: no cover  (makes this a generator for type-checkers)
 
-    def ingest(self, path: Path) -> ImportResult:
-        """Top-level import: parse all input, return ImportResult."""
+    def ingest(self, path: Path, limit: int = 0) -> ImportResult:
+        """Top-level import: parse all input, return ImportResult.
+
+        ``limit`` (0 = unlimited) caps artifacts WHILE parsing — a multi-GB
+        capture must not be materialized entirely before the cap is applied.
+        """
         result = ImportResult(source=self.source_class())
         path = Path(path)
         if not path.exists():
@@ -106,8 +110,14 @@ class Importer(ABC):
         result.source_files = [str(f) for f in files]
 
         for file in files:
+            if limit and len(result.artifacts) >= limit:
+                break
             try:
-                for _line_num, artifact in enumerate(self.parse(file), start=1):
+                stream = self.parse(file)
+                if limit:
+                    remaining = max(0, limit - len(result.artifacts))
+                    stream = itertools.islice(stream, remaining)
+                for _line_num, artifact in enumerate(stream, start=1):
                     result.parsed_lines += 1
                     result.artifacts.append(artifact)
             except Exception as e:  # noqa: BLE001

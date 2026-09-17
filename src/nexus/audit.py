@@ -48,9 +48,12 @@ def resolve_examiner() -> str:
     return slug
 
 
+_GLOBAL_SEQ: dict[str, int] = {}
+_GLOBAL_SEQ_LOCK = threading.Lock()
+
+
 class AuditWriter:
     """Append-only audit trail writer.
-
     Writes JSONL entries to {audit_dir}/{mcp_name}.jsonl with:
     - ts: ISO 8601 timestamp
     - mcp: server name
@@ -166,13 +169,18 @@ class AuditWriter:
 
     def _next_audit_id(self, examiner: str) -> str:
         date_str = datetime.now(UTC).strftime("%Y%m%d")
-        with self._seq_lock:
-            key = f"{date_str}"
-            seq = self._seq_cache.get(key, 0)
+        # Process-global sequence per (mcp_name, audit dir, day): concurrent
+        # AuditWriter instances (steering turns, pipeline threads, the server
+        # singleton) must never mint the same id — duplicate provenance keys
+        # make FD-001 citations ambiguous.
+        audit_dir = self._audit_dir_override or self._get_audit_dir()
+        key = f"{self.mcp_name}|{audit_dir}|{date_str}"
+        with _GLOBAL_SEQ_LOCK:
+            seq = _GLOBAL_SEQ.get(key, 0)
             if seq == 0:
                 seq = self._resume_sequence(date_str)
             seq += 1
-            self._seq_cache[key] = seq
+            _GLOBAL_SEQ[key] = seq
         prefix = self.mcp_name.replace("-", "_")
         return f"{prefix}-{examiner}-{date_str}-{seq:03d}"
 

@@ -39,7 +39,15 @@ def rebuild(
         typer.echo(f"Case not found: {case_dir}", err=True)
         raise typer.Exit(1)
 
-    meta = index_case(case_dir)
+    try:
+        meta = index_case(case_dir)
+    except Exception as exc:  # noqa: BLE001 — actionable message, no traceback
+        typer.echo(
+            f"Index rebuild failed — Elasticsearch unreachable or rejected the "
+            f"request at {es_url()}: {exc}",
+            err=True,
+        )
+        raise typer.Exit(1) from None
     typer.echo(
         f"Index rebuilt: {meta.get('index')} "
         f"docs={meta.get('docs')} errors={meta.get('errors')}"

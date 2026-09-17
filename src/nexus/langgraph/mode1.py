@@ -775,7 +775,7 @@ def promote_hits_to_draft(
         "audit_ids": audit_ids,
         "evidence": evidence_rows[:12],
         "host": "",
-        "event_timestamp": hits[0].get("time", "") if hits else "",
+        "event_timestamp": hit_time if hits else "",
         "status": "DRAFT",
         "examiner_selected": examiner_selected,
     }
