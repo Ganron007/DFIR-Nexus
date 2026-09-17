@@ -66,6 +66,20 @@ def test_unknown_ndjson_is_not_csv(tmp_path):
     assert detect_format(path) == ArtifactSource.GENERIC_JSONL
 
 
+def test_detection_sniffs_only_a_bounded_binary_prefix(tmp_path, monkeypatch):
+    from nexus.ingest.detect import detect_format
+    from nexus.ingest.schemas import ArtifactSource
+
+    path = tmp_path / "bounded.json"
+    path.write_text('{"foo": 1, "bar": "x"}\n', encoding="utf-8")
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("detect_format must not read the whole file")
+
+    monkeypatch.setattr(Path, "read_text", forbidden)
+    assert detect_format(path) == ArtifactSource.GENERIC_JSONL
+
+
 def test_plain_csv_still_generic_csv(tmp_path):
     from nexus.ingest.detect import detect_format
     from nexus.ingest.schemas import ArtifactSource

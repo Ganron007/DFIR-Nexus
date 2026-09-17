@@ -58,6 +58,21 @@ def test_index_state_fresh_then_stale(tmp_path):
     assert info2["reason"] == "extractions newer than index"
 
 
+def test_ingest_artifact_store_marks_index_stale(tmp_path):
+    from nexus.langgraph.case_index import index_stale, write_index_state
+
+    case_dir = tmp_path / "CASE-INGEST-STALE"
+    case_dir.mkdir()
+    write_index_state(case_dir, {"docs": 0, "index": "nexus-case-ingest-stale"})
+    ingest = case_dir / "ingest"
+    ingest.mkdir()
+    (ingest / "artifacts.jsonl").write_text('{"source":"suricata"}\n', encoding="utf-8")
+
+    stale, info = index_stale(case_dir)
+    assert stale is True
+    assert info["reason"] == "extractions newer than index"
+
+
 def test_autoindex_env_gating(tmp_path, monkeypatch):
     import nexus.langgraph.llm_pipeline as lp
 

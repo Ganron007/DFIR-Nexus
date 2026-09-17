@@ -12,6 +12,7 @@ import html
 import ipaddress
 import logging
 import re
+import socket
 import urllib.parse
 from typing import Any
 
@@ -43,6 +44,35 @@ def web_allowed() -> bool:
     return os.environ.get("NEXUS_WEB_ALLOW", "").strip().lower() in ("1", "true", "yes")
 
 
+def _audit_result(
+    result: dict[str, Any], audit: AuditWriter | None, tool: str, params: dict[str, Any]
+) -> dict[str, Any]:
+    if audit is None:
+        return result
+    audit_id = audit.log(tool=tool, params=params, result_summary={
+        "error": str(result.get("error") or "")[:200],
+        "hits": len(result.get("hits") or []),
+        "chars": len(str(result.get("text") or "")),
+    })
+    # Always carry the provenance key when an audit writer was supplied (the
+    # id may be None if the case audit dir is unavailable) — matches the other
+    # tool cores, so callers can rely on the shape.
+    return {**result, "provenance": {"audit_id": audit_id}}
+
+
+def do_web_status(audit: AuditWriter | None = None) -> dict[str, Any]:
+    allowed = web_allowed()
+    result = {
+        "allowed": allowed,
+        "note": (
+            "enabled by NEXUS_WEB_ALLOW=1 — external context only, never evidence"
+            if allowed
+            else "disabled — set NEXUS_WEB_ALLOW=1 to enable (OPSEC opt-in)"
+        ),
+    }
+    return _audit_result(result, audit, "web_status", {})
+
+
 def _strip_tags(fragment: str) -> str:
     return html.unescape(_TAG_RE.sub(" ", fragment or "")).strip()
 
@@ -60,6 +90,46 @@ def _clean_ddg_url(url: str) -> str:
     return url
 
 
+def _resolved_ips(host: str) -> list[str]:
+    return sorted({
+        str(item[4][0]).split("%", 1)[0]
+        for item in socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
+        if item[4]
+    })
+
+
+def _is_blocked_host(host: str) -> bool:
+    if not host:
+        return True
+    low = host.lower().strip(".")
+    if low in ("localhost", "localhost.localdomain") or low.endswith(".local"):
+        return True
+    try:
+        addresses = [low] if ipaddress.ip_address(low) else []
+    except ValueError:
+        try:
+            addresses = _resolved_ips(low)
+        except OSError:
+            return True
+    if not addresses:
+        return True
+    try:
+        return any(not ipaddress.ip_address(value).is_global for value in addresses)
+    except ValueError:
+        return True
+
+
+def _public_url_error(url: str) -> str:
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        return "only http(s) URLs are allowed"
+    if parsed.username is not None or parsed.password is not None:
+        return "URLs containing credentials are not allowed"
+    if _is_blocked_host(parsed.hostname or ""):
+        return "loopback/private/reserved addresses are blocked"
+    return ""
+
+
 def _http_get(url: str, *, params: dict[str, Any] | None = None) -> str:
     headers = {
         "User-Agent": (
@@ -67,27 +137,45 @@ def _http_get(url: str, *, params: dict[str, Any] | None = None) -> str:
             "(examiner-opt-in research)"
         )
     }
-    with httpx.Client(timeout=_TIMEOUT, follow_redirects=True, headers=headers) as client:
-        resp = client.get(url, params=params)
-        resp.raise_for_status()
-        return resp.text
+    current = url
+    with httpx.Client(timeout=_TIMEOUT, follow_redirects=False, headers=headers) as client:
+        for redirect in range(6):
+            problem = _public_url_error(current)
+            if problem:
+                raise ValueError(problem)
+            resp = client.get(current, params=params if redirect == 0 else None)
+            if resp.is_redirect:
+                location = resp.headers.get("location")
+                if not location or redirect >= 5:
+                    raise ValueError("too many or invalid redirects")
+                current = urllib.parse.urljoin(current, location)
+                continue
+            resp.raise_for_status()
+            return resp.text
+    raise ValueError("too many redirects")
 
 
-def do_web_search(query: str, max_results: int = 5) -> dict[str, Any]:
+def do_web_search(
+    query: str, max_results: int = 5, audit: AuditWriter | None = None
+) -> dict[str, Any]:
     """DuckDuckGo lite search — returns [{title, url, snippet}]."""
     query = (query or "").strip()
+    params = {"query": query[:200]}
     if not query:
-        return {"error": "query is required"}
+        return _audit_result({"error": "query is required"}, audit, "web_search", params)
     if not web_allowed():
-        return {
+        return _audit_result({
             "error": "web access disabled — set NEXUS_WEB_ALLOW=1 to enable "
                      "(examiner opt-in; OPSEC)",
             "hits": [],
-        }
+        }, audit, "web_search", params)
     try:
         body = _http_get("https://html.duckduckgo.com/html/", params={"q": query})
     except Exception as exc:  # noqa: BLE001
-        return {"error": f"web search failed: {exc}", "hits": []}
+        return _audit_result(
+            {"error": f"web search failed: {exc}", "hits": []},
+            audit, "web_search", params,
+        )
     limit = max(1, min(int(max_results or 5), 10))
     hits: list[dict[str, str]] = []
     snippets = [_strip_tags(s) for s in _DDG_SNIPPET_RE.findall(body)]
@@ -111,64 +199,49 @@ def do_web_search(query: str, max_results: int = 5) -> dict[str, Any]:
             if "duckduckgo.com" in url:
                 continue
             hits.append({"title": _strip_tags(title)[:200], "url": url[:300], "snippet": ""})
-    return {"query": query, "hits": hits, "note": "external context — never evidence (FD-001)"}
+    result = {"query": query, "hits": hits, "note": "external context — never evidence (FD-001)"}
+    return _audit_result(result, audit, "web_search", params)
 
 
-def _is_blocked_host(host: str) -> bool:
-    if not host:
-        return True
-    low = host.lower().strip(".")
-    if low in ("localhost", "localhost.localdomain") or low.endswith(".local"):
-        return True
-    try:
-        ip = ipaddress.ip_address(low)
-    except ValueError:
-        return False  # hostname — allow (DNS rebinding out of scope here)
-    return not ip.is_global
-
-
-def do_web_fetch(url: str, max_chars: int = 4000) -> dict[str, Any]:
+def do_web_fetch(
+    url: str, max_chars: int = 4000, audit: AuditWriter | None = None
+) -> dict[str, Any]:
     """Fetch a URL and return readable text (loopback/private blocked)."""
     raw = (url or "").strip()
+    params = {"url": raw[:200]}
     if not raw:
-        return {"error": "url is required"}
+        return _audit_result({"error": "url is required"}, audit, "web_fetch", params)
     if not web_allowed():
-        return {
+        return _audit_result({
             "error": "web access disabled — set NEXUS_WEB_ALLOW=1 to enable "
                      "(examiner opt-in; OPSEC)",
-        }
-    parsed = urllib.parse.urlparse(raw)
-    if parsed.scheme not in ("http", "https"):
-        return {"error": "only http(s) URLs are allowed"}
-    if _is_blocked_host(parsed.hostname or ""):
-        return {"error": "loopback/private addresses are blocked"}
+        }, audit, "web_fetch", params)
+    problem = _public_url_error(raw)
+    if problem:
+        return _audit_result({"error": problem}, audit, "web_fetch", params)
     try:
         body = _http_get(raw)
     except Exception as exc:  # noqa: BLE001
-        return {"error": f"fetch failed: {exc}"}
+        return _audit_result(
+            {"error": f"fetch failed: {exc}"}, audit, "web_fetch", params,
+        )
     text = _strip_tags(body)
     text = re.sub(r"\s+", " ", text).strip()
     limit = max(500, min(int(max_chars or 4000), _MAX_FETCH_CHARS))
-    return {
+    result = {
         "url": raw,
         "text": text[:limit],
         "truncated": len(text) > limit,
         "note": "external context — never evidence (FD-001)",
     }
+    return _audit_result(result, audit, "web_fetch", params)
 
 
 def register_tools(server: FastMCP, audit: AuditWriter) -> None:
     @server.tool()
     def web_status() -> dict:
         """Whether examiner-opt-in web access is enabled (NEXUS_WEB_ALLOW)."""
-        return {
-            "allowed": web_allowed(),
-            "note": (
-                "enabled by NEXUS_WEB_ALLOW=1 — external context only, never evidence"
-                if web_allowed()
-                else "disabled — set NEXUS_WEB_ALLOW=1 to enable (OPSEC opt-in)"
-            ),
-        }
+        return do_web_status(audit=audit)
 
     @server.tool()
     def web_search(query: str, max_results: int = 5) -> dict:
@@ -178,15 +251,9 @@ def register_tools(server: FastMCP, audit: AuditWriter) -> None:
         research the examiner explicitly asked about; results are context,
         never case evidence.
         """
-        result = do_web_search(query, max_results=max_results)
-        audit.log(tool="web_search", params={"query": query[:200]},
-                  result_summary={"hits": len(result.get("hits") or [])})
-        return result
+        return do_web_search(query, max_results=max_results, audit=audit)
 
     @server.tool()
     def web_fetch(url: str, max_chars: int = 4000) -> dict:
         """Fetch a URL as text — opt-in only (NEXUS_WEB_ALLOW=1)."""
-        result = do_web_fetch(url, max_chars=max_chars)
-        audit.log(tool="web_fetch", params={"url": url[:200]},
-                  result_summary={"chars": len(str(result.get("text") or ""))})
-        return result
+        return do_web_fetch(url, max_chars=max_chars, audit=audit)

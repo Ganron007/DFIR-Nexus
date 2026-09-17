@@ -154,9 +154,11 @@ def detect_format(path: Path) -> ArtifactSource | None:
 
     # --- Content signature matching ---
     try:
-        head = path.read_text(encoding="utf-8", errors="replace")[:_SNIFF_BYTES]
+        with path.open("rb") as fh:
+            head_bytes = fh.read(_SNIFF_BYTES)
     except OSError:
         return None
+    head = head_bytes.decode("utf-8", errors="replace")
 
     if not head.strip():
         return None
@@ -164,7 +166,7 @@ def detect_format(path: Path) -> ArtifactSource | None:
     # Binary content: skip all text-format branches and fall straight to
     # registry autodetect (prevents CSV/JSON importers from chewing on
     # PCAPs and other binary blobs).
-    is_binary = "\x00" in head[:4096]
+    is_binary = b"\x00" in head_bytes[:4096]
 
     if not is_binary:
         # JSON-based formats (check most-specific first). For NDJSON the

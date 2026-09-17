@@ -68,6 +68,52 @@ def test_resolve_agg_field_direct_and_parsed(monkeypatch):
     assert case_index._resolve_agg_field("CASE-X", "nope") is None
 
 
+def test_es_aggregate_uses_cardinality_for_distinct(monkeypatch, tmp_path):
+    from nexus.langgraph import case_index
+
+    captured = {}
+
+    class Response:
+        status_code = 200
+        text = ""
+
+        def json(self):
+            return {
+                "hits": {"total": {"value": 500}},
+                "aggregations": {
+                    "v": {"buckets": [
+                        {"key": "host-a", "doc_count": 20},
+                        {"key": "host-b", "doc_count": 10},
+                    ]},
+                    "distinct": {"value": 257},
+                },
+            }
+
+    class Client:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def post(self, path, json):
+            captured["path"] = path
+            captured["body"] = json
+            return Response()
+
+    monkeypatch.setattr(case_index, "es_available", lambda: True)
+    monkeypatch.setattr(case_index, "_schema_version_cached", lambda _case_id: 2)
+    monkeypatch.setattr(case_index, "_resolve_agg_field", lambda _case_id, _field: "host")
+    monkeypatch.setattr(case_index, "_client", lambda: Client())
+
+    result = case_index.es_aggregate(tmp_path / "CASE-X", field="host", top=2, match_all=True)
+    assert result is not None
+    assert result["distinct"] == 257
+    assert result["distinct_approximate"] is True
+    assert len(result["top"]) == 2
+    assert "cardinality" in captured["body"]["aggs"]["distinct"]
+
+
 def test_doc_shape_includes_structured_fields(tmp_path):
     """A CSV extraction doc carries host/user/event_id/fields (schema v2)."""
     from nexus.langgraph.case_index import iter_index_docs

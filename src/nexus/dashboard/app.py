@@ -13,6 +13,7 @@ import hmac as hmac_mod
 import html
 import json
 import logging
+import math
 import os
 import re
 import secrets
@@ -3487,6 +3488,16 @@ def _hits_for_transcript(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
+def _mode2_turn_budget() -> float:
+    try:
+        value = float(os.environ.get("NEXUS_MODE2_TURN_TIMEOUT", "240"))
+    except ValueError:
+        return 240.0
+    if not math.isfinite(value):
+        return 240.0
+    return max(1.0, min(value, 1800.0))
+
+
 async def api_mode2_chat(request):
     """POST /portal/api/mode2/chat — the Mode 2 conversational evidence agent (WP 4j.13).
 
@@ -3524,10 +3535,7 @@ async def api_mode2_chat(request):
 
     from nexus.langgraph.steer_agent import run_steer_agent
 
-    try:
-        turn_budget = float(os.environ.get("NEXUS_MODE2_TURN_TIMEOUT", "240"))
-    except ValueError:
-        turn_budget = 240.0
+    turn_budget = _mode2_turn_budget()
     try:
         result = await asyncio.wait_for(
             asyncio.to_thread(run_steer_agent, case_dir, message, history=history),
@@ -3537,9 +3545,19 @@ async def api_mode2_chat(request):
         result = {
             "error": f"turn exceeded {turn_budget:.0f}s",
             "reply": (
-                f"Steering turn exceeded {turn_budget:.0f}s and was stopped — "
-                "the model or a data provider stalled. Try again or narrow the "
-                "question."
+                f"Steering turn timed out after {turn_budget:.0f}s — the model "
+                "or a data provider stalled. Try again or narrow the question."
+            ),
+            "queries_executed": [], "total_hits": 0, "confidence": "low",
+            "timings_ms": {}, "stages": [],
+        }
+    except Exception:  # noqa: BLE001
+        logger.exception("Mode 2 steering turn failed")
+        result = {
+            "error": "steering turn failed",
+            "reply": (
+                "The steering turn failed before an answer was produced. "
+                "The examiner question remains in the transcript; retry or narrow it."
             ),
             "queries_executed": [], "total_hits": 0, "confidence": "low",
             "timings_ms": {}, "stages": [],
@@ -3868,7 +3886,7 @@ async def api_entities(request):
 async def api_mode2_iterate(request):
     """POST /portal/api/mode2/iterate - Mode 2 iterative loop (logged).
 
-    Body: {question, max_iterations? (default 2, hard cap 5), limit?}
+    Body: {question, max_iterations? (default 2, hard cap 4), limit?}
     Every iteration is logged to chat.jsonl. Returns the iteration log;
     the examiner reviews proposals - nothing is auto-staged.
     """
@@ -3897,7 +3915,24 @@ async def api_mode2_iterate(request):
         model = None
 
     append_chat(case_dir, "examiner", "mode2_start", question, {"max_iterations": max_iterations})
-    result = run_iterative_loop(case_dir, question, model=model, max_iterations=max_iterations)
+    turn_budget = _mode2_turn_budget()
+    try:
+        result = await asyncio.wait_for(
+            asyncio.to_thread(
+                run_iterative_loop, case_dir, question,
+                model=model, max_iterations=max_iterations,
+            ),
+            timeout=turn_budget,
+        )
+    except TimeoutError:
+        message = f"iterative loop timed out after {turn_budget:.0f}s"
+        append_chat(case_dir, "llm", "mode2_error", message)
+        return JSONResponse({"error": message}, status_code=504)
+    except Exception:  # noqa: BLE001
+        logger.exception("Mode 2 iterative loop failed")
+        message = "iterative loop failed"
+        append_chat(case_dir, "llm", "mode2_error", message)
+        return JSONResponse({"error": message}, status_code=500)
     if result.get("error"):
         append_chat(case_dir, "llm", "mode2_error", result["error"])
         return JSONResponse({"error": result["error"]}, status_code=400)

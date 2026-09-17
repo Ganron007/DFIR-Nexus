@@ -523,11 +523,11 @@ export default function SteerChat() {
             <input
               type="number"
               min={1}
-              max={5}
+              max={4}
               value={mode2Iterations}
-              onChange={(e) => setMode2Iterations(Math.max(1, Math.min(5, Number(e.target.value) || 2)))}
+              onChange={(e) => setMode2Iterations(Math.max(1, Math.min(4, Number(e.target.value) || 2)))}
               style={{ width: 60 }}
-              title="Max iterations (1-5)"
+              title="Maximum rounds for Iterate (1-4)"
             />
           )}
           {mode === "mode3" && (
@@ -542,7 +542,7 @@ export default function SteerChat() {
         {mode === "mode1"
           ? "Mode 1: you propose needles — the LLM scribes your findings. Evidence and the audit chain are shared."
           : mode === "mode2"
-            ? "Mode 2: you ask in plain language — the LLM queries the case's evidence index, cites rows and stages DRAFT findings for your approval."
+            ? "Mode 2: you ask in plain language — the LLM queries the case's evidence index and cites rows. Staging a DRAFT is a separate examiner-triggered action."
             : "Mode 3: the agent plans, hunts and corroborates across the case; you steer and seal."}
       </div>
       {mode === "mode2" && turnTimings && (

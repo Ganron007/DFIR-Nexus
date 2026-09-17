@@ -91,25 +91,14 @@ def parse_query(text: str) -> ParsedQuery:
     if not raw:
         return q
 
-    if raw.lower().startswith("regex:"):
-        pattern = raw[6:].strip()
-        if not pattern:
-            raise QuerySyntaxError("regex: requires a pattern")
-        if len(pattern) > _MAX_REGEX:
-            raise QuerySyntaxError(f"regex longer than {_MAX_REGEX} chars")
-        if _DANGEROUS_RE.search(pattern):
-            raise QuerySyntaxError("regex rejected: nested quantifier (ReDoS guard)")
-        try:
-            q.regex = re.compile(pattern, re.IGNORECASE)
-        except re.error as exc:
-            raise QuerySyntaxError(f"invalid regex: {exc}") from None
-        return q
-
     pending: str | None = None
     for tok in _TOKEN_RE.findall(raw):
         low = tok.lower()
         if not tok.startswith('"') and low in ("and", "or", "not"):
             pending = low if low in ("and", "not") else None
+            continue
+        if not tok.startswith('"') and low.startswith("regex:"):
+            _set_regex(q, tok[6:].strip())
             continue
         _add_term(q, tok, pending)
 
@@ -120,6 +109,21 @@ def parse_query(text: str) -> ParsedQuery:
     if len(q.not_terms) > _MAX_NOT:
         raise QuerySyntaxError(f"too many NOT terms (max {_MAX_NOT})")
     return q
+
+
+def _set_regex(q: ParsedQuery, pattern: str) -> None:
+    if q.regex is not None:
+        raise QuerySyntaxError("only one regex: term is allowed")
+    if not pattern:
+        raise QuerySyntaxError("regex: requires a pattern")
+    if len(pattern) > _MAX_REGEX:
+        raise QuerySyntaxError(f"regex longer than {_MAX_REGEX} chars")
+    if _DANGEROUS_RE.search(pattern):
+        raise QuerySyntaxError("regex rejected: nested quantifier (ReDoS guard)")
+    try:
+        q.regex = re.compile(pattern, re.IGNORECASE)
+    except re.error as exc:
+        raise QuerySyntaxError(f"invalid regex: {exc}") from None
 
 
 def _add_term(q: ParsedQuery, tok: str, pending: str | None) -> None:
@@ -209,13 +213,20 @@ def validate_or_degrade(query: str) -> dict[str, Any]:
                           parsed.and_terms or parsed.not_terms)
         return {"query": q, "dsl": structured, "fallback": False}
     except QuerySyntaxError:
-        bare = [t for t in q.replace(":", " ").split()
-                if t.lower() not in ("and", "or", "not", "family:", "event:",
-                                     "host:", "user:", "file:", "regex:")]
+        bare: list[str] = []
+        for token in _TOKEN_RE.findall(q):
+            low = token.lower()
+            if low in ("and", "or", "not"):
+                continue
+            if ":" in token:
+                name, _, value = token.partition(":")
+                if name.lower() in _FIELDS or name.lower() == "regex":
+                    token = value
+            bare.extend(re.findall(r"[A-Za-z0-9_.\\-]{2,}", token))
         seen: dict[str, None] = {}
-        for t in bare:
-            seen.setdefault(t, None)
-        return {"query": " ".join(list(seen)[:8]) or q, "dsl": False,
+        for token in bare:
+            seen.setdefault(token, None)
+        return {"query": " ".join(list(seen)[:8]), "dsl": False,
                 "fallback": True, "reason": "query failed N4 parse — bare terms used"}
 
 

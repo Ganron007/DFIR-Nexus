@@ -93,6 +93,30 @@ def test_bulk_ndjson_roundtrip():
     assert "sdelete" in json.loads(lines[1])["text"]
 
 
+def test_empty_rebuild_clears_stale_index_documents(tmp_path: Path):
+    from nexus.langgraph import case_index
+
+    case = tmp_path / "CASE-EMPTY"
+    case.mkdir()
+    response = MagicMock(status_code=200, text="")
+    response.json.return_value = {}
+    client = MagicMock()
+    client.__enter__.return_value = client
+    client.__exit__.return_value = False
+    client.post.return_value = response
+
+    with patch.object(case_index, "iter_index_docs", return_value=[]), \
+         patch.object(case_index, "ensure_index", return_value="nexus-case-empty"), \
+         patch.object(case_index, "_client", return_value=client):
+        result = case_index.index_case(case)
+
+    assert result["docs"] == 0 and result["errors"] == 0
+    assert client.post.call_args_list[0].args[0] == "/nexus-case-empty/_delete_by_query"
+    assert client.post.call_args_list[0].kwargs["json"] == {"query": {"match_all": {}}}
+    assert not any(call.args and call.args[0] == "/_bulk" for call in client.post.call_args_list)
+    assert (case / "analysis" / "index_state.json").is_file()
+
+
 def test_scan_and_docs_same_sdelete_file(tmp_path: Path):
     case = _case(tmp_path)
     start, end = parse_window("")

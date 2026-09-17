@@ -13,6 +13,7 @@ from nexus.langgraph.query_dsl import (  # noqa: E402
     QuerySyntaxError,
     parse_query,
     row_matches,
+    validate_or_degrade,
 )
 
 
@@ -46,6 +47,15 @@ class TestParse:
         with pytest.raises(QuerySyntaxError):
             parse_query("regex:(a+)+b")
 
+    def test_regex_combines_with_fields(self):
+        q = parse_query(r"family:evtx AND regex:sdelete.*\.exe")
+        assert q.fields == {"family": "evtx"}
+        assert q.regex is not None and q.regex.pattern == r"sdelete.*\.exe"
+
+    def test_duplicate_regex_rejected(self):
+        with pytest.raises(QuerySyntaxError):
+            parse_query("regex:sdelete regex:rundll32")
+
     def test_regex_too_long(self):
         with pytest.raises(QuerySyntaxError):
             parse_query("regex:" + "a" * 200)
@@ -71,6 +81,10 @@ class TestParse:
     def test_all_needles_dedupe(self):
         q = parse_query("sdelete AND sdelete")
         assert q.all_needles() == ["sdelete"]
+
+    def test_invalid_regex_degrades_without_control_words(self):
+        assert validate_or_degrade("regex:(a+)+")["query"] == ""
+        assert validate_or_degrade("family:evtx AND regex:(a+)+")["query"] == "evtx"
 
 
 class TestRowMatch:
@@ -113,6 +127,15 @@ class TestRowMatch:
     def test_empty_matches_all(self):
         m, terms = row_matches(parse_query(""), line_lower="anything", family="x", file_rel="y")
         assert m and terms == []
+
+    def test_combined_regex_and_field(self):
+        q = parse_query(r"family:evtx AND regex:sdelete.*\.exe")
+        assert row_matches(
+            q, line_lower="ran sdelete42.exe", family="evtx", file_rel="x"
+        )[0]
+        assert not row_matches(
+            q, line_lower="ran sdelete42.exe", family="prefetch", file_rel="x"
+        )[0]
 
     def test_combined(self):
         q = parse_query("error OR fail AND family:evtx NOT defender")

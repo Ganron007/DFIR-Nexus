@@ -224,6 +224,7 @@ def do_n4_aggregate(case_id: str = "", dsl: str = "", field: str = "host",
         "rows_scanned": len(hits),
         "values_seen": len(values),
         "distinct": len(counts),
+        "distinct_approximate": False,
         "top": [{"value": v, "count": c} for v, c in ranked],
         "buckets": buckets,
         "backend": result.get("backend"),
@@ -258,6 +259,13 @@ _mappings_cache: dict[str, tuple[float, dict]] = {}
 _MAPPINGS_TTL = 60.0
 
 
+def invalidate_mappings_cache(case_id: str) -> None:
+    target = str(case_id)
+    for key in list(_mappings_cache):
+        if key == target or Path(key).name == target:
+            _mappings_cache.pop(key, None)
+
+
 def do_index_mappings(case_id: str = "", audit: AuditWriter | None = None) -> dict:
     """Describe the active case's index: backend, families, fields, census."""
     started = time.monotonic()
@@ -265,12 +273,21 @@ def do_index_mappings(case_id: str = "", audit: AuditWriter | None = None) -> di
     if err or case_dir is None:
         return {"error": err or "no active case"}
     # WP 4j.34: cache the census per case (steering calls this every turn).
-    cache_key = Path(case_dir).name
+    case_name = Path(case_dir).name
+    cache_key = str(Path(case_dir).resolve())
     now = time.monotonic()
     cached = _mappings_cache.get(cache_key)
     if cached and (now - cached[0]) < _MAPPINGS_TTL:
         payload = dict(cached[1])
         payload["cached"] = True
+        if audit is not None:
+            audit_id = audit.log(
+                tool="index_mappings", params={"case_id": case_name, "cached": True},
+                result_summary={"families": len(payload.get("families") or []),
+                                "es": payload.get("es_available")},
+                elapsed_ms=round((time.monotonic() - started) * 1000, 1),
+            )
+            payload["provenance"] = {"audit_id": audit_id, "case_id": case_name}
         return payload
     from nexus.langgraph.briefing import _family_inventory
     from nexus.langgraph.case_index import es_available, index_name
@@ -308,7 +325,9 @@ def do_index_mappings(case_id: str = "", audit: AuditWriter | None = None) -> di
                  else "ES not reachable — deterministic CSV pack backend"),
         "provenance": {"audit_id": aid, "case_id": Path(case_dir).name},
     }
-    _mappings_cache[cache_key] = (now, payload)
+    _mappings_cache[cache_key] = (
+        now, {key: value for key, value in payload.items() if key != "provenance"}
+    )
     return payload
 
 
@@ -318,11 +337,16 @@ def do_family_fields(family: str, audit: AuditWriter | None = None) -> dict:
 
     profile = get_field_profile(family)
     if not profile:
+        aid = audit.log(
+            tool="family_fields", params={"family": family},
+            result_summary={"fields": 0},
+        ) if audit else None
         return {
             "family": family,
             "fields": [],
             "note": ("no curated profile — schema-on-read applies: run n4_query and "
                      "read the hit's attached fields, or use free-text/regex search"),
+            "provenance": {"audit_id": aid},
         }
     aid = audit.log(tool="family_fields", params={"family": family},
                     result_summary={"fields": len(profile.get("fields") or [])}) if audit else None

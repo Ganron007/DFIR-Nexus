@@ -66,6 +66,12 @@ def backbone(tmp_path, monkeypatch):
         "2026-08-10 15:05:00,WS01,Sec,4688,high,Suspicious Rundll32 Execution,rundll32.exe\n",
         encoding="utf-8",
     )
+    prefetch = Path(r["case_dir"]) / "extractions" / "prefetch"
+    prefetch.mkdir(parents=True, exist_ok=True)
+    (prefetch / "run.csv").write_text(
+        "Executable,RunTime\nprefetch-only.exe,2026-08-10 15:06:00\n",
+        encoding="utf-8",
+    )
     # expose the active case dir for loop tests
     return tools, cid, Path(r["case_dir"])
 
@@ -104,8 +110,7 @@ def test_validation_wall_degrades_bad_dsl_to_bare_terms():
 
     bad = _validate_dsl("regex:((((a+)+)+)*b)")
     assert bad["fallback"] is True
-    assert bad["query"], "bare terms survive the fallback"
-    assert "((((a+)+)+)*b" not in bad["query"] or " " in bad["query"], bad
+    assert bad["query"] == ""
 
 
 def test_propose_backward_compat_needles_schema(tmp_path):
@@ -146,6 +151,22 @@ def test_loop_runs_dsl_queries_through_backbone(backbone):
     assert queries[0]["audit_id"], "backbone execution must be audited"
 
 
+def test_loop_reports_newly_discovered_families(backbone):
+    from nexus.langgraph.mode2 import run_iterative_loop
+
+    _tools, _cid, case_dir = backbone
+    fake = _FakeModel({
+        "queries": [{"dsl": "family:prefetch AND prefetch-only.exe", "why": "pivot"}],
+        "rationale": "r",
+    })
+    result = run_iterative_loop(
+        case_dir, "sdelete destructive activity?", model=fake,
+        max_iterations=1, limit=20,
+    )
+    ran = next(i for i in result["iterations"] if i.get("action") == "proposed_and_ran")
+    assert ran["new_families"] == ["prefetch"]
+
+
 def test_loop_falls_back_on_bad_dsl(backbone):
     from nexus.langgraph.mode2 import run_iterative_loop
 
@@ -157,11 +178,8 @@ def test_loop_falls_back_on_bad_dsl(backbone):
     })
     result = run_iterative_loop(case_dir, "sdelete destructive activity?",
                                 model=fake, max_iterations=1, limit=20)
-    it1 = next(i for i in result["iterations"] if i.get("action") == "proposed_and_ran")
-    q = it1["queries"][0]
-    assert q["fallback"] is True
-    assert q["fallback_reason"]
-    assert q["hits"] >= 0  # bare terms still executed
+    assert any(i.get("action") == "no_new_proposals" for i in result["iterations"])
+    assert not any(i.get("action") == "proposed_and_ran" for i in result["iterations"])
 
 
 # --- binding layer: allowlist is structural -------------------------------

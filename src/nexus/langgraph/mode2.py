@@ -538,6 +538,7 @@ def run_iterative_loop(
             append_chat(case_dir, "llm", "mode2_stop", "No new needles to propose.", {"iteration": it})
             break
         iteration_queries: list[dict[str, Any]] = []
+        prior_families = {str(h.get("family")) for h in hits}
         new_families: set[Any] = set()
         for qspec in dsl_queries:
             q = qspec["query"]
@@ -568,7 +569,7 @@ def run_iterative_loop(
             "rationale": proposal.get("rationale", ""),
             "source": proposal.get("source", ""),
             "hits": sum(q["hits"] for q in iteration_queries),
-            "new_families": sorted(new_families - {str(h.get("family")) for h in hits}),
+            "new_families": sorted(new_families - prior_families),
         })
         # WP 4j.12: run the proposed aggregations through the backbone —
         # grounded counts (context, never evidence) appended to the iteration.
@@ -584,6 +585,7 @@ def run_iterative_loop(
                 "field": aspec.get("field", "host"),
                 "why": aspec.get("why", ""),
                 "distinct": agg.get("distinct", 0),
+                "distinct_approximate": agg.get("distinct_approximate", False),
                 "rows_scanned": agg.get("rows_scanned", 0),
                 "top": (agg.get("top") or [])[:10],
                 "audit_id": (agg.get("provenance") or {}).get("audit_id"),

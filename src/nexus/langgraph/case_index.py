@@ -6,6 +6,7 @@ Never walks Evidence-files/. Offline fallback remains the CSV query pack.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import os
 import re
@@ -469,13 +470,20 @@ def index_case(case_dir: Path, extra_needles: list[str] | None = None) -> dict[s
     case_dir = Path(case_dir)
     docs = iter_index_docs(case_dir, extra_needles)
     name = ensure_index(case_dir.name)
-    if not docs:
-        return {"index": name, "docs": 0, "case_id": case_dir.name}
     import json
 
     chunk = 2000
     errors = 0
     with _client() as client:
+        cleared = client.post(
+            f"/{name}/_delete_by_query",
+            params={"refresh": "true", "conflicts": "proceed"},
+            json={"query": {"match_all": {}}},
+        )
+        if cleared.status_code >= 400:
+            raise RuntimeError(
+                f"index clear failed: {cleared.status_code} {cleared.text[:300]}"
+            )
         for i in range(0, len(docs), chunk):
             body = _bulk_ndjson(name, docs[i:i + chunk])
             r = client.post("/_bulk", content=body, headers={"Content-Type": "application/x-ndjson"})
@@ -484,7 +492,11 @@ def index_case(case_dir: Path, extra_needles: list[str] | None = None) -> dict[s
             payload = r.json()
             if payload.get("errors"):
                 errors += sum(1 for item in payload.get("items") or [] if item.get("index", {}).get("error"))
-        client.post(f"/{name}/_refresh")
+        refreshed = client.post(f"/{name}/_refresh")
+        if refreshed.status_code >= 400:
+            raise RuntimeError(
+                f"index refresh failed: {refreshed.status_code} {refreshed.text[:300]}"
+            )
     meta = {
         "index": name,
         "docs": len(docs),
@@ -496,6 +508,10 @@ def index_case(case_dir: Path, extra_needles: list[str] | None = None) -> dict[s
     out.mkdir(parents=True, exist_ok=True)
     (out / "es_index.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     write_index_state(case_dir, meta)
+    with contextlib.suppress(Exception):
+        from nexus.tools.evidence_index import invalidate_mappings_cache
+
+        invalidate_mappings_cache(case_dir.name)
     return meta
 
 
@@ -504,7 +520,9 @@ def _newest_extraction_mtime(case_dir: Path) -> float:
     from nexus.langgraph.query_pack import iter_extraction_files
 
     newest = 0.0
-    for path, _root, _fam in iter_extraction_files(case_dir):
+    paths = [path for path, _root, _fam in iter_extraction_files(case_dir)]
+    paths.append(Path(case_dir) / "ingest" / "artifacts.jsonl")
+    for path in paths:
         try:
             newest = max(newest, path.stat().st_mtime)
         except OSError:
@@ -564,9 +582,8 @@ def state_file_exists(path: Path) -> bool:
 def iter_index_files(case_dir: Path) -> list[Path]:
     """Files the indexer walks (for mtime staleness checks).
 
-    Applies the same skip rules as iter_extraction_files (ledger/meta
-    suffixes, ingest artifacts.jsonl) so staleness is not triggered by
-    files the indexer never reads.
+    Applies the same ledger/meta skip rules as iter_extraction_files and
+    includes ingest/artifacts.jsonl because the indexer projects its rows.
     """
     case_dir = Path(case_dir)
     from nexus.langgraph.pipeline_runs import resolve_tools_extractions
@@ -582,8 +599,6 @@ def iter_index_files(case_dir: Path) -> list[Path]:
         for pat in pats:
             for p in root.rglob(pat):
                 if p.name.startswith("_") or p.name.endswith(_SKIP_SUFFIXES):
-                    continue
-                if root.name == "ingest" and p.name == "artifacts.jsonl":
                     continue
                 out.append(p)
     return out
@@ -743,7 +758,12 @@ def es_aggregate(
             "v": {"date_histogram": {"field": "ts", "calendar_interval": bucket}}
         }
     else:
-        body["aggs"] = {"v": {"terms": {"field": agg_field, "size": size}}}
+        body["aggs"] = {
+            "v": {"terms": {"field": agg_field, "size": size}},
+            "distinct": {
+                "cardinality": {"field": agg_field, "precision_threshold": 40000}
+            },
+        }
 
     try:
         with _client() as client:
@@ -766,6 +786,7 @@ def es_aggregate(
             "rows_scanned": total,
             "values_seen": len(buckets),
             "distinct": len(buckets),
+            "distinct_approximate": False,
             "top": [],
             "buckets": bucket_map,
             "backend": "elasticsearch",
@@ -774,11 +795,15 @@ def es_aggregate(
         {"value": str(b.get("key")), "count": int(b.get("doc_count") or 0)}
         for b in buckets
     ]
+    distinct = int(
+        ((data.get("aggregations") or {}).get("distinct") or {}).get("value") or 0
+    )
     return {
         "field": field,
         "rows_scanned": total,
         "values_seen": sum(b["count"] for b in ranked),
-        "distinct": len(ranked),
+        "distinct": distinct,
+        "distinct_approximate": True,
         "top": ranked,
         "buckets": None,
         "backend": "elasticsearch",

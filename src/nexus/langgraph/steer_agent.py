@@ -49,6 +49,34 @@ _FIELD_HINTS = {
 }
 
 
+def _history_block(history: list[dict[str, str]] | None) -> str:
+    if not isinstance(history, list):
+        return ""
+    lines: list[str] = []
+    size = 0
+    for entry in history[-6:]:
+        if not isinstance(entry, dict):
+            continue
+        role = str(entry.get("role") or "").strip().lower()
+        if role not in ("examiner", "llm"):
+            continue
+        text = re.sub(r"\s+", " ", str(entry.get("text") or "")).strip()[:500]
+        if not text:
+            continue
+        line = f"{role}: {text}"
+        if size + len(line) > 2500:
+            line = line[:max(0, 2500 - size)]
+        if not line:
+            break
+        lines.append(line)
+        size += len(line)
+        if size >= 2500:
+            break
+    if not lines:
+        return ""
+    return "Prior conversation context (context only; current question controls):\n" + "\n".join(lines)
+
+
 def _format_hits_for_llm(hits: list[dict[str, Any]], cap: int = _MAX_HITS_IN_CONTEXT) -> str:
     """Compact hit table for the LLM to read — parsed columns, not raw CSV."""
     lines: list[str] = []
@@ -85,7 +113,8 @@ def _extract_tokens(hits: list[dict[str, Any]], pattern: re.Pattern[str], cap: i
 
 def _plan_queries(question: str, model: Any, families: list[str],
                   family_rows: dict[str, int],
-                  family_fields: dict[str, list[str]]) -> list[str]:
+                  family_fields: dict[str, list[str]],
+                  history_block: str = "") -> list[str]:
     """Step 1: LLM translates the NL question into N4 DSL queries."""
     from nexus.knowledge.loader import dsl_prompt_block
 
@@ -129,9 +158,12 @@ def _plan_queries(question: str, model: Any, families: list[str],
         "- Do NOT return methodology or explanations — ONLY the JSON."
     )
     try:
+        user = f"Question: {question}"
+        if history_block:
+            user = f"{history_block}\n\n{user}"
         response = model.invoke([
             {"role": "system", "content": system},
-            {"role": "user", "content": f"Question: {question}"},
+            {"role": "user", "content": user},
         ])
         text = getattr(response, "content", str(response))
         start, end = text.find("{"), text.rfind("}")
@@ -179,6 +211,7 @@ def _execute_queries(queries: list[str], case_id: str, audit: AuditWriter) -> tu
                 "dsl": dsl_part or "match_all",
                 "field": agg_field,
                 "distinct": result.get("distinct", 0),
+                "distinct_approximate": result.get("distinct_approximate", False),
                 "rows_scanned": result.get("rows_scanned", 0),
                 "top": (result.get("top") or [])[:10],
                 "audit_id": (result.get("provenance") or {}).get("audit_id"),
@@ -284,13 +317,14 @@ def _formulate_answer(question: str, model: Any, hits: list[dict[str, Any]],
                       aggregations: list[dict[str, Any]],
                       queries_executed: list[dict[str, Any]],
                       rag_block: str = "", kb_block: str = "",
-                      ti_block: str = "") -> str:
+                      ti_block: str = "", history_block: str = "") -> str:
     """Step 3: LLM reads the actual evidence rows and answers the question."""
     hits_block = _format_hits_for_llm(hits, cap=_MAX_HITS_IN_CONTEXT)
     agg_block = ""
     if aggregations:
-        agg_block = "\nAggregations (exact counts over ALL matched rows):\n" + "\n".join(
-            f"  {a['field']}: {a['distinct']} distinct — top: "
+        agg_block = "\nAggregations (grounded over ALL matched rows):\n" + "\n".join(
+            f"  {a['field']}: {a['distinct']} distinct"
+            f"{' (approximate)' if a.get('distinct_approximate') else ''} — top: "
             + ", ".join(f"{t['value']}({t['count']})" for t in (a.get("top") or [])[:10])
             for a in aggregations
         )
@@ -337,10 +371,11 @@ def _formulate_answer(question: str, model: Any, hits: list[dict[str, Any]],
     if ti_block:
         helper_block += f"\nThreat-intel context (helper, not evidence):\n{ti_block}\n"
     try:
+        conversation = f"{history_block}\n\n" if history_block else ""
         response = model.invoke([
             {"role": "system", "content": system},
             {"role": "user", "content": (
-                f"Question: {question}\n\n"
+                f"{conversation}Question: {question}\n\n"
                 f"Evidence rows found ({len(hits)} total):\n{hits_block}\n"
                 f"{agg_block}{exe_block}{user_block}{helper_block}\n"
                 "Answer the question based on this evidence."
@@ -459,7 +494,8 @@ def run_steer_agent(
     # ── Resolve the LLM ──
     from nexus.langgraph.llm_pipeline import get_model
 
-    llm = get_model()
+    llm = model if model is not None else get_model()
+    history_context = _history_block(history)
 
     # ── Step 1: plan queries ──
     t0 = _time.monotonic()
@@ -470,7 +506,9 @@ def run_steer_agent(
         queries = fast
         planned_by = "deterministic"
     elif llm is not None:
-        queries = _plan_queries(question, llm, families, family_rows, family_fields)
+        queries = _plan_queries(
+            question, llm, families, family_rows, family_fields, history_context
+        )
         if not queries:
             planned_by = "fallback"
     if not queries:
@@ -515,8 +553,10 @@ def run_steer_agent(
         _stage("helpers", t0,
                f"rag={len(rag_block)} kb={len(kb_block)} ti={len(ti_block)} chars")
         t0 = _time.monotonic()
-        reply = _formulate_answer(question, llm, all_hits, aggregations,
-                                  queries_executed, rag_block, kb_block, ti_block)
+        reply = _formulate_answer(
+            question, llm, all_hits, aggregations, queries_executed,
+            rag_block, kb_block, ti_block, history_context,
+        )
         _stage("answer", t0, f"{len(reply)} chars")
     if not reply:
         # Deterministic fallback — format the evidence rows directly

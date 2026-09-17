@@ -108,6 +108,22 @@ def test_index_mappings_grounded(backbone):
     assert r["provenance"]["case_id"] == cid
 
 
+def test_cached_index_mappings_get_fresh_audit_provenance(backbone):
+    from nexus.audit import AuditWriter
+    from nexus.langgraph.backbone import backbone_call
+    from nexus.tools.evidence_index import invalidate_mappings_cache
+
+    _tools, cid = backbone
+    invalidate_mappings_cache(cid)
+    audit = AuditWriter("nexus")
+    first = backbone_call("index_mappings", audit=audit, case_id=cid)
+    second = backbone_call("index_mappings", audit=audit, case_id=cid)
+    assert second["cached"] is True
+    assert first["provenance"]["audit_id"]
+    assert second["provenance"]["audit_id"]
+    assert first["provenance"]["audit_id"] != second["provenance"]["audit_id"]
+
+
 def test_kb_tools_inert_without_kb(backbone, monkeypatch):
     from nexus.knowledge import kb_bridge
 
