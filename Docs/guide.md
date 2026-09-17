@@ -602,7 +602,7 @@ python tests/test_integration.py
 python tests/test_portal.py
 python tests/test_hunt_parser.py
 ```
-**Total:** 652 checks. All tests must report `PASS` / Exit Code `0`.
+**Total:** 922 pytest checks plus the script suites and the functional audit. All tests must report `PASS` / Exit Code `0`.
 
 ---
 

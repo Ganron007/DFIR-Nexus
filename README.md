@@ -10,8 +10,8 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/Tests-641%20Checks-success.svg" alt="Tests: 652 checks">
-  <img src="https://img.shields.io/badge/MCP%20Tools-115%20Win%20%7C%20112%20Linux-blue.svg" alt="MCP Tools: 115 Win | 112 Linux">
+  <img src="https://img.shields.io/badge/Tests-922%2B%20Checks-success.svg" alt="Tests: 922+ checks">
+  <img src="https://img.shields.io/badge/MCP%20Tools-129%20Win%20%7C%20125%20Linux-blue.svg" alt="MCP Tools: 129 Win | 125 Linux">
   <img src="https://img.shields.io/badge/Status-v2%20in%20development-yellow.svg" alt="Status: v2 in development">
 </p>
 
@@ -183,13 +183,13 @@ Detailed guidelines are grouped in the `Docs/` directory:
 
 ## Verification & Testing
 
-DFIR-Nexus includes a rigorous testing suite covering unit, script, functional wiring, and blocker regression tests (**734 total checks**).
+DFIR-Nexus includes a rigorous testing suite covering unit, script, functional wiring, and blocker regression tests (**922+ checks**: pytest + script suites + the E2E functional audit).
 
 ```bash
-# 1. Run the pytest suite (462 tests, including Mode 1/2/3 + audit regression tests)
+# 1. Run the pytest suite (922 tests, including Mode 1/2/3 + audit regression tests)
 pytest
 
-# 2. Run Individual Script-Based Tests (215 checks)
+# 2. Run the individual script-based test suites
 python tests/test_knowledge.py
 python tests/test_detection.py
 python tests/test_ti.py
@@ -198,7 +198,7 @@ python tests/test_integration.py
 python tests/test_portal.py
 python tests/test_hunt_parser.py
 
-# 3. Run the E2E Functional Audit (63 checks)
+# 3. Run the E2E functional audit
 python tests/functional_audit.py
 ```
 

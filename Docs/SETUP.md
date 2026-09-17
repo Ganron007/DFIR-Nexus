@@ -107,6 +107,24 @@ NEXUS_LLM_REASONING=high                 # optional reasoning passthrough
 (OpenAI, StepFun, LiteLLM, vLLM, Ollama `/v1`, ...). Legacy
 `NEXUS_MODEL="provider/model"` routing still works.
 
+**Retrieval, latency and ingestion tuning (all optional):**
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `NEXUS_KB_DIR` | unset | Path to your local KB (the folder containing `kb/kb.py`, e.g. `G:\doc_extract`). Enables `kb_search`/`kb_read` and the Mode 2 KB context block. |
+| `NEXUS_RAG_DEVICE` | `auto` | Embedding device: `cpu` \| `cuda` \| `cuda:0` — `auto` picks CUDA when the installed torch build has it (the log line reports the device). |
+| `NEXUS_LLM_TIMEOUT` | `120` | Seconds per LLM request; a stalled provider can never hang a turn. |
+| `NEXUS_MODE2_TURN_TIMEOUT` | `240` | Steering-turn budget (seconds) before the request returns a graceful timeout. |
+| `NEXUS_WEB_ALLOW` | unset (off) | `1` enables the opt-in `web_search`/`web_fetch` tools (loopback/private blocked). |
+| `NEXUS_INGEST_MAX_ARTIFACTS` | `20000` | Per-file cap for imported artifacts (network/cloud/…) with honest `N/N (capped)` reporting. |
+| `NEXUS_PCAP_TIMEOUT` | command timeout | tshark conversion timeout for raw PCAP ingestion. |
+| `NEXUS_PCAP_MAX_PACKETS` | `0` (all) | Optional packet cap for PCAP conversion. |
+
+The per-case Elasticsearch index is **schema-versioned** (v2: structured
+`host`/`user`/`event_id` + parsed `fields.*`, DSL push-down, ES-native
+aggregations). Old indexes rebuild automatically on the next processing run;
+force it with `nexus index rebuild`.
+
 ### 2e. RAG index and triage baselines
 
 Both knowledge stores are looked for locally first (`~/.nexus/data/rag`,

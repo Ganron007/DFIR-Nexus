@@ -19,7 +19,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         """Auto-detect file format and ingest forensic artifacts.
 
         Sniffs the file content to determine the correct importer
-        (33 formats supported). One entry point for any file type.
+        (44 formats supported). One entry point for any file type.
         Pass source to skip sniffing (same values as CLI --source).
 
         Args:

@@ -107,7 +107,7 @@ flowchart TD
     subgraph CORE [" FastMCP Single-Process Engine (app.py) "]
         MCP["⚡ FastMCP Server Process<br/><i>(Stdio & Uvicorn HTTP :4508)</i>"]:::serverStyle
         
-        subgraph MODULES [" Integrated Tool Engine (115 Win / 112 Linux Endpoints) "]
+        subgraph MODULES [" Integrated Tool Engine (129 Win / 125 Linux Endpoints) "]
             direction LR
             CORE_TOOLS["<b>Forensics & Case Ops</b><br/>• forensic.py (23 tools)<br/>• case.py (13 tools)<br/>• report.py (6 tools)"]:::toolStyle
             INTEL_TOOLS["<b>RAG & Threat Intel</b><br/>• rag.py (ChromaDB 22k records)<br/>• triage/ (2.6M baselines)<br/>• ti/ (10 TI Providers)"]:::toolStyle
