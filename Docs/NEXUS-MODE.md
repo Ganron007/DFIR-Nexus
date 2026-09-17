@@ -157,9 +157,9 @@ scripting and headless work, but the UI must expose every N1–N8 action:
 
 | Pane | What the examiner does | What the LLM/agent can do |
 |------|------------------------|----------------------------|
-| **Explore** | Faceted search over parsed evidence (family, host, date, user, needle, regex). Bookmark hits. | Mode 1: scribe only. Mode 2: propose next queries/filters. Mode 3: agent runs filters and proposes. |
+| **Explore** | Faceted search over parsed evidence (family, host, date, user, needle, regex). Bookmark hits. | Mode 1: scribe only. Mode 2: the LLM answers questions by querying the same index (citations + aggregations). Mode 3: agent runs filters and proposes. |
 | **Timeline** | Time scrubber, histogram, event lanes, brush-to-zoom. | Mode 1: none. Mode 2: mark pivot points. Mode 3: add events from new tools. |
-| **Steer Chat** | Ask English questions, accept/reject LLM proposals, say "corroborate this" or "drill into WS01". | Always the co-pilot. In Mode 1 it only translates/scribe. In Mode 2 it proposes. In Mode 3 it executes. |
+| **Steer Chat** | Ask English questions, drill ("corroborate this", "drill into WS01"), and read cited answers. | Always the co-pilot. Mode 1: translate/scribe only. Mode 2: live evidence retrieval — plans N4 queries, runs them over the case index, answers with citations + per-stage timings. Mode 3: plans/hunts and executes. |
 | **Finding Workbench** | Bookmarked hits -> DRAFT builder + evidence list + scribe + validation. | Format DRAFTs (Mode 1). Propose DRAFTs (Mode 2/3). Never self-approve. |
 | **Approval Desk** | HMAC sign-off on DRAFT findings. | Nothing. Approval is always human. |
 | **Report** | Trigger N8 from APPROVED. Steer the narrative per round (whole report or one finding). | Mode 1: shapes an evidence-constrained narrative from APPROVED findings under examiner steering — adds no evidence or facts, never approves. Mode 2/3: same boundary over agent-gathered evidence. |
