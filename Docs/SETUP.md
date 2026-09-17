@@ -115,6 +115,10 @@ NEXUS_LLM_REASONING=high                 # optional reasoning passthrough
 | `NEXUS_RAG_DEVICE` | `auto` | Embedding device: `cpu` \| `cuda` \| `cuda:0` — `auto` picks CUDA when the installed torch build has it (the log line reports the device). |
 | `NEXUS_LLM_TIMEOUT` | `120` | Seconds per LLM request; a stalled provider can never hang a turn. |
 | `NEXUS_MODE2_TURN_TIMEOUT` | `240` | Steering-turn budget (seconds) before the request returns a graceful timeout. |
+| `NEXUS_LLM_CONTEXT_WINDOW` | `1000000` | Your model's max context window (tokens). The Mode 2 context allocator packs `window × fill` and never applies smaller artificial caps. Also settable per run in the Briefing run panel (stored in `analysis/mode2_run_options.json`). |
+| `NEXUS_CONTEXT_FILL_RATIO` | `0.7` | Share of the window packed into prompts. Every packed context is persisted to `analysis/llm_context/` for audit; usage is logged, never capped. |
+| `NEXUS_CONTEXT_RETRY_RATIO` | `0.5` | Downgrade ratio for the one retry when a provider rejects an over-long prompt. |
+| `NEXUS_INTERPRET_ROUNDS` | `3` | Default interpretation rounds for the Mode 2 loop (1–5). Also settable per run before processing. |
 | `NEXUS_WEB_ALLOW` | unset (off) | `1` enables the opt-in `web_search`/`web_fetch` tools (loopback/private blocked). |
 | `NEXUS_INGEST_MAX_ARTIFACTS` | `20000` | Per-file cap for imported artifacts (network/cloud/…) with honest `N/N (capped)` reporting. |
 | `NEXUS_PCAP_TIMEOUT` | command timeout | tshark conversion timeout for raw PCAP ingestion. |

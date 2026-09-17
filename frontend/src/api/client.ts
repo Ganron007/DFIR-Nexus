@@ -677,6 +677,33 @@ export interface BriefingResponse {
   };
   /** WP 4j.5c — persisted offline copies (absolute paths on the server host). */
   artifacts?: { briefing_md?: string; signal_map_csv?: string };
+  /** GATE-A — deterministic Case Digest exists (Mode 2/3). */
+  digest_exists?: boolean;
+  error?: string;
+}
+
+/** GET /case/digest → deterministic Case Digest (Mode 2/3). */
+export interface CaseDigestResponse {
+  digest: {
+    case_id: string;
+    generated_at: string;
+    scope: {
+      families_present: Record<string, string[]>;
+      evidence_classes_present: string[];
+      explicitly_absent: string[];
+    };
+    inventory: Record<string, { files: number; rows: number; capped?: boolean }>;
+    ledger: { ok: number; skip: number; fail: number; entries: unknown[] };
+    hosts: string[];
+    time_range: { start?: string; end?: string };
+    signal_map: { scanned: number; with_hits: { needle: string; hits: number }[]; zero_hit: string[] };
+    alerts: { level: string; family: string; title: string; host: string; time: string }[];
+    entities: Record<string, { value: string; hits: number }[]>;
+    entity_spans: Record<string, { value: string; count: number; first_seen?: string; last_seen?: string }[]>;
+    timeline: { buckets_per_day: Record<string, number>; source: string };
+    backend: string;
+  };
+  markdown: string;
   error?: string;
 }
 
@@ -955,7 +982,7 @@ export const api = {
     }>("/case/seed-demo", params || {}),
   caseDetails: (caseId?: string) =>
     request<CaseDetailsResponse>(`/case/details${caseId ? `?case_id=${caseId}` : ""}`),
-  pipelineRun: (params: { mode: string; case_id?: string; question?: string; window?: string; host?: string; notes?: string }) =>
+  pipelineRun: (params: { mode: string; case_id?: string; question?: string; window?: string; host?: string; notes?: string; interpret_rounds?: number; context_window?: number }) =>
     post<PipelineRunResponse>("/pipeline/run", params),
   pipelineStatus: (runId: string) =>
     request<PipelineStatusResponse>(`/pipeline/status?run_id=${runId}`),
@@ -967,6 +994,8 @@ export const api = {
   /** Lazy LLM layer — fetched after the deterministic briefing renders. */
   caseBriefingDirections: () =>
     request<{ directions: BriefingDirection[] }>("/case/briefing/directions"),
+  /** GATE-A — deterministic Case Digest (Mode 2/3). */
+  caseDigest: () => request<CaseDigestResponse>("/case/digest"),
   fsList: (path?: string) =>
     request<FsListResponse>(`/fs/list${path ? `?path=${encodeURIComponent(path)}` : ""}`),
   playbookNeedles: (families?: string) =>

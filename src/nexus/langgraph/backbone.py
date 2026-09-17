@@ -4,7 +4,7 @@ The LLM never gets raw endpoints or raw ES access: it binds a fixed
 **read-only allowlist** of the backbone tools and nothing else. Binding is
 the enforcement point — the allowlist is structural, not advisory:
 
-  evidence : n4_query, n4_aggregate, index_mappings, family_fields
+  evidence : n4_query, n4_sample, n4_aggregate, index_mappings, family_fields
   knowledge: kb_search, kb_read, kb_cite
 
 Mutating tools (approve, case_delete, evidence_register, ...) are NOT in
@@ -29,6 +29,7 @@ log = logging.getLogger(__name__)
 # is outside every allowlist (WP 4j.10c).
 MODE2_TOOL_ALLOWLIST: dict[str, str] = {
     "n4_query": "evidence",
+    "n4_sample": "evidence",
     "n4_aggregate": "evidence",
     "index_mappings": "evidence",
     "family_fields": "evidence",
@@ -54,6 +55,7 @@ def tool_contracts_block(mode: int = 2) -> str:
     lines = [
         "You investigate through these TOOLS only (read-only; you cannot mutate case state):",
         "- n4_query(case_id, dsl) — search evidence with the N4 grammar above.",
+        "- n4_sample(case_id, family, field, value, n) — N representative raw rows (spread over time) for a family/field value.",
         "- n4_aggregate(case_id, dsl, field, top, bucket) — counts/top values for a field; context, never evidence.",
         "- index_mappings(case_id) — the case's families, their fields, and the DSL vocabulary.",
         "- family_fields(family) — the columns a parser family emits (query these, not guesses).",
@@ -74,6 +76,8 @@ def backbone_call(name: str, audit: AuditWriter | None = None, **kwargs: Any) ->
             f"tool {name!r} is not in the agent allowlist — the LLM cannot call it")
     if name == "n4_query":
         return evidence_index.do_n4_query(audit=audit, **kwargs)
+    if name == "n4_sample":
+        return evidence_index.do_n4_sample(audit=audit, **kwargs)
     if name == "n4_aggregate":
         return evidence_index.do_n4_aggregate(audit=audit, **kwargs)
     if name == "index_mappings":

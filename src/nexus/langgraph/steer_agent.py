@@ -25,8 +25,11 @@ from nexus.audit import AuditWriter
 log = logging.getLogger(__name__)
 
 _MAX_QUERIES = 4
-_MAX_HITS_IN_CONTEXT = 40
-_MAX_ROW_CHARS = 280
+# Row WINDOW sent to the answer LLM: no small artificial cap — the
+# prompt_budget allocator (window × fill) decides how much fits. Row chars
+# remain a per-row rendering choice so one giant CSV line cannot dominate.
+_MAX_HITS_IN_CONTEXT = 400
+_MAX_ROW_CHARS = 400
 _MAX_HITS_TOTAL = 500
 
 _EXE_RE = re.compile(r"[A-Za-z0-9_\-.]+\.exe\b", re.IGNORECASE)
@@ -50,28 +53,20 @@ _FIELD_HINTS = {
 
 
 def _history_block(history: list[dict[str, str]] | None) -> str:
+    """Prior turns as context. Size is the allocator's business (no small cap)."""
     if not isinstance(history, list):
         return ""
     lines: list[str] = []
-    size = 0
-    for entry in history[-6:]:
+    for entry in history[-20:]:
         if not isinstance(entry, dict):
             continue
         role = str(entry.get("role") or "").strip().lower()
         if role not in ("examiner", "llm"):
             continue
-        text = re.sub(r"\s+", " ", str(entry.get("text") or "")).strip()[:500]
+        text = re.sub(r"\s+", " ", str(entry.get("text") or "")).strip()[:2000]
         if not text:
             continue
-        line = f"{role}: {text}"
-        if size + len(line) > 2500:
-            line = line[:max(0, 2500 - size)]
-        if not line:
-            break
-        lines.append(line)
-        size += len(line)
-        if size >= 2500:
-            break
+        lines.append(f"{role}: {text}")
     if not lines:
         return ""
     return "Prior conversation context (context only; current question controls):\n" + "\n".join(lines)
@@ -265,10 +260,10 @@ def _gather_helper_context(question: str, audit: AuditWriter,
         idx = _get_index()
         if not idx.is_loaded:
             idx.load()
-        res = idx.search(query=question[:300], top_k=2)
+        res = idx.search(query=question[:300], top_k=4)
         lines = []
-        for d in (res.get("results") or [])[:2]:
-            text = re.sub(r"\s+", " ", str(d.get("text") or ""))[:350]
+        for d in (res.get("results") or [])[:4]:
+            text = re.sub(r"\s+", " ", str(d.get("text") or ""))[:800]
             src = str(d.get("source") or "unknown")
             lines.append(f"[RAG {src}] {text}")
         rag_block = "\n".join(lines)
@@ -277,11 +272,11 @@ def _gather_helper_context(question: str, audit: AuditWriter,
     try:
         from nexus.langgraph.backbone import backbone_call
 
-        kb = backbone_call("kb_search", audit=audit, query=question[:200], limit=3)
+        kb = backbone_call("kb_search", audit=audit, query=question[:200], limit=5)
         lines = []
-        for h in (kb.get("hits") or [])[:3]:
+        for h in (kb.get("hits") or [])[:5]:
             title = h.get("title") or h.get("path") or h.get("id") or "kb"
-            snippet = re.sub(r"\s+", " ", str(h.get("snippet") or h.get("text") or ""))[:280]
+            snippet = re.sub(r"\s+", " ", str(h.get("snippet") or h.get("text") or ""))[:500]
             lines.append(f"[KB {title}] {snippet}")
         kb_block = "\n".join(lines)
     except Exception as exc:  # noqa: BLE001 — KB is optional (NEXUS_KB_DIR)
@@ -317,8 +312,14 @@ def _formulate_answer(question: str, model: Any, hits: list[dict[str, Any]],
                       aggregations: list[dict[str, Any]],
                       queries_executed: list[dict[str, Any]],
                       rag_block: str = "", kb_block: str = "",
-                      ti_block: str = "", history_block: str = "") -> str:
-    """Step 3: LLM reads the actual evidence rows and answers the question."""
+                      ti_block: str = "", history_block: str = "",
+                      case_dir: Path | None = None) -> str:
+    """Step 3: LLM reads the actual evidence rows and answers the question.
+
+    Context is packed by the project-wide budget (window × fill, default
+    1M × 0.7) — evidence rows outrank helper context, and every pack is
+    persisted to analysis/llm_context/ for audit.
+    """
     hits_block = _format_hits_for_llm(hits, cap=_MAX_HITS_IN_CONTEXT)
     agg_block = ""
     if aggregations:
@@ -370,18 +371,46 @@ def _formulate_answer(question: str, model: Any, hits: list[dict[str, Any]],
         helper_block += f"\nExaminer-curated KB notes (helper, not evidence):\n{kb_block}\n"
     if ti_block:
         helper_block += f"\nThreat-intel context (helper, not evidence):\n{ti_block}\n"
+
+    # Budget pack: evidence first, then deterministic extractions, then
+    # helpers/history. No small caps — the window decides.
     try:
-        conversation = f"{history_block}\n\n" if history_block else ""
+        from nexus.langgraph.prompt_budget import log_usage, pack_sections, persist_context
+
+        sections = [
+            (0, "evidence_rows", hits_block),
+            (1, "deterministic_extractions",
+             f"{agg_block}{exe_block}{user_block}".strip()),
+            (2, "threat_intel", ti_block),
+            (3, "methodology_rag", rag_block),
+            (4, "examiner_kb", kb_block),
+            (5, "conversation_history", history_block),
+        ]
+        packed, report = pack_sections(sections)
+        if case_dir is not None:
+            persist_context(
+                Path(case_dir), "mode2-steer-answer", packed, report,
+                meta={"question": question[:160]},
+            )
+        log_usage("mode2-steer-answer", report)
+        evidence_block = packed
+    except Exception as exc:  # noqa: BLE001 — packing must never break a turn
+        log.warning("steer context pack failed (%s) — unbudgeted content", exc)
+        evidence_block = (
+            f"Evidence rows found ({len(hits)} total):\n{hits_block}\n"
+            f"{agg_block}{exe_block}{user_block}{helper_block}"
+        )
+
+    try:
         response = model.invoke([
             {"role": "system", "content": system},
             {"role": "user", "content": (
-                f"{conversation}Question: {question}\n\n"
-                f"Evidence rows found ({len(hits)} total):\n{hits_block}\n"
-                f"{agg_block}{exe_block}{user_block}{helper_block}\n"
+                f"Question: {question}\n\n"
+                f"Evidence rows found ({len(hits)} total):\n{evidence_block}\n\n"
                 "Answer the question based on this evidence."
             )},
         ])
-        return str(getattr(response, "content", str(response)))[:3000]
+        return str(getattr(response, "content", str(response)))[:8000]
     except Exception as exc:
         log.warning("Answer formulation failed: %s", exc)
         return ""
@@ -580,7 +609,7 @@ def run_steer_agent(
         t0 = _time.monotonic()
         reply = _formulate_answer(
             question, llm, all_hits, aggregations, queries_executed,
-            rag_block, kb_block, ti_block, history_context,
+            rag_block, kb_block, ti_block, history_context, case_dir,
         )
         _stage("answer", t0, f"{len(reply)} chars")
     if not reply:
@@ -588,7 +617,7 @@ def run_steer_agent(
         reply = (
             f"Found {len(all_hits)} evidence row(s) from "
             f"{len(queries_executed)} query/queries.\n\n"
-            + _format_hits_for_llm(all_hits, cap=10)
+            + _format_hits_for_llm(all_hits, cap=40)
         )
         if aggregations:
             reply += "\n\n" + "\n".join(

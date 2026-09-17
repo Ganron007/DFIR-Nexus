@@ -39,14 +39,21 @@ async def write_interpretation_summary(
     *,
     findings: list[dict[str, Any]] | None = None,
     gaps: list[dict[str, str]] | None = None,
+    reconciliation: dict[str, Any] | None = None,
     model: Any = None,
 ) -> Path | None:
-    """Write analysis/interpretation.md: verdict + coverage + gaps + TI."""
+    """Write analysis/interpretation.md: verdict + coverage + gaps + TI.
+
+    ``reconciliation`` (deterministic) lists digest items no finding mentions —
+    the verdict MUST address them; they are also written into the file so the
+    examiner can see exactly what the LLM had to answer for.
+    """
     case_dir = Path(case_dir)
     analysis = case_dir / "analysis"
     analysis.mkdir(parents=True, exist_ok=True)
     findings = findings if findings is not None else _load_findings(case_dir)
     gaps = gaps or []
+    reconciliation = reconciliation or {}
 
     ti_path = analysis / "ti_context.md"
     ti_md = ti_path.read_text(encoding="utf-8", errors="replace").strip() if ti_path.is_file() else ""
@@ -70,10 +77,23 @@ async def write_interpretation_summary(
         f"- Findings staged (DRAFT): **{len(findings)}**",
         f"- Entity inventory items: **{inv_count}** — unaddressed by findings: **{len(gaps)}**",
     ]
+    unaddressed = list(reconciliation.get("unaddressed") or [])
+    if reconciliation:
+        lines.append(
+            f"- Digest reconciliation: **{len(reconciliation.get('addressed') or [])} "
+            f"addressed / {len(unaddressed)} unaddressed** "
+            f"(alerts {reconciliation.get('alerts_total', 0)}, "
+            f"needles with hits {reconciliation.get('needles_with_hits', 0)})"
+        )
     if findings:
         lines.append("")
         lines.append("## Findings")
         lines.extend(_finding_line(f) for f in findings)
+    if unaddressed:
+        lines.append("")
+        lines.append("## Reconciliation — digest items no finding mentions (must be addressed)")
+        for item in unaddressed[:30]:
+            lines.append(f"- [{item.get('kind')}] {item.get('value')}")
     if gaps:
         lines.append("")
         lines.append("## Coverage gaps (not yet explained by any finding)")
@@ -92,18 +112,39 @@ async def write_interpretation_summary(
                 for f in findings[:12]
             )
             gaps_line = ", ".join(f"{g['kind']}:{g['value']}" for g in gaps[:12]) or "(none)"
+            # Keep the verdict prompt inside the model's window too.
+            try:
+                from nexus.langgraph.prompt_budget import budget_chars
+
+                reconcile_cap = max(8_000, budget_chars() // 20)
+            except Exception:  # noqa: BLE001
+                reconcile_cap = 40_000
+            reconcile_lines = "\n".join(
+                f"- [{i.get('kind')}] {i.get('value')}" for i in unaddressed[:40]
+            )[:reconcile_cap]
             response = await model.ainvoke([
                 {"role": "system", "content": (
                     "You are the lead DFIR analyst. Write a concise executive "
-                    "verdict (max 220 words) for the case briefing based ONLY "
-                    "on the staged findings, threat-intel context, and coverage "
-                    "gaps below. State: what happened (or that evidence is "
-                    "insufficient), the strongest signal, confidence, and the "
-                    "top next step. Plain text, no markdown headers."
+                    "verdict (max 260 words) for the case briefing based ONLY "
+                    "on the staged findings, threat-intel context, coverage "
+                    "gaps, and the DIGEST RECONCILIATION list below. State: "
+                    "what happened (or what the evidence supports), the "
+                    "strongest signal, confidence, and the top next step.\n"
+                    "HARD RULES:\n"
+                    "- Address the reconciliation list item by item in one "
+                    "clause each: state whether it is covered by a finding, "
+                    "assessed benign (with the reason), or an open gap. "
+                    "Never omit it.\n"
+                    "- Absence of an evidence class (e.g. no memory, no "
+                    "network, no disk) is SCOPE — never phrase it as 'no "
+                    "compromise'.\n"
+                    "- Plain text, no markdown headers."
                 )},
                 {"role": "user", "content": (
                     f"Findings:\n{summary_lines or '(none staged)'}\n\n"
                     f"Coverage gaps: {gaps_line}\n\n"
+                    f"Digest reconciliation (unaddressed items):\n"
+                    f"{reconcile_lines or '(none — all digest items are covered)'}\n\n"
                     f"Threat intel:\n{ti_md[:1500] or '(none)'}"
                 )},
             ])

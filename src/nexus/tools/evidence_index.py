@@ -164,6 +164,51 @@ def do_n4_query(case_id: str = "", dsl: str = "", limit: int = 80,
     }
 
 
+def do_n4_sample(case_id: str = "", family: str = "", field: str = "",
+                 value: str = "", n: int = 12,
+                 audit: AuditWriter | None = None) -> dict:
+    """Representative raw rows for a family/field value (context, not evidence).
+
+    The digest aggregates; this is the raw texture an interpretation needs.
+    Rows are evenly spread over the matched timeline so one burst cannot
+    dominate the sample.
+    """
+    started = time.monotonic()
+    case_dir, err = _resolve_active_case(case_id)
+    if err or case_dir is None:
+        return {"error": err or "no active case"}
+    from nexus.langgraph.query_pack import attach_hit_fields
+    from nexus.langgraph.query_pack import n4_sample as _n4_sample
+
+    result = _n4_sample(case_dir, family=family, field=field, value=value, n=n)
+    if result.get("error"):
+        return {**result, "case_id": Path(case_dir).name}
+    hits = [h for h in (result.get("hits") or []) if isinstance(h, dict)]
+    if not all(h.get("fields") for h in hits):
+        with contextlib.suppress(Exception):
+            hits = attach_hit_fields(case_dir, hits)
+    aid = audit.log(
+        tool="n4_sample",
+        params={"case_id": Path(case_dir).name, "family": family, "field": field,
+                "value": value[:120], "n": n},
+        result_summary={"matched": result.get("matched"),
+                        "sampled": result.get("sampled")},
+        elapsed_ms=round((time.monotonic() - started) * 1000, 1),
+    ) if audit else None
+    return {
+        "case_id": Path(case_dir).name,
+        "family": result.get("family"),
+        "field": result.get("field"),
+        "value": result.get("value"),
+        "backend": result.get("backend"),
+        "matched": result.get("matched"),
+        "sampled": result.get("sampled"),
+        "hits": [_trim_hit(h) for h in hits],
+        "note": "sample rows are context — findings still cite the audit trail (FD-001)",
+        "provenance": {"audit_id": aid, "case_id": Path(case_dir).name},
+    }
+
+
 def do_n4_aggregate(case_id: str = "", dsl: str = "", field: str = "host",
                     top: int = 20, bucket: str = "", match_all: bool = False,
                     audit: AuditWriter | None = None) -> dict:
@@ -383,6 +428,20 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         """
         return do_n4_query(case_id=case_id, dsl=dsl, limit=limit,
                            match_all=match_all, audit=audit)
+
+    @server.tool()
+    def n4_sample(case_id: str = "", family: str = "", field: str = "",
+                  value: str = "", n: int = 12) -> dict:
+        """Representative raw rows for a family/field value (context, not evidence).
+
+        The digest gives aggregates; this pulls the raw texture: N rows of
+        `family` (optionally where `field == value`), evenly spread over the
+        matched timeline so one burst cannot dominate. Use it before staking
+        an interpretation on a pattern — the rows are grounding, and findings
+        still cite the audit trail (FD-001).
+        """
+        return do_n4_sample(case_id=case_id, family=family, field=field,
+                            value=value, n=n, audit=audit)
 
     @server.tool()
     def n4_aggregate(

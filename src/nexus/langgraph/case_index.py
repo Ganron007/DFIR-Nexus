@@ -734,6 +734,7 @@ def es_aggregate(
     bucket: str = "",
     match_all: bool = False,
     window: tuple[Any, Any] | None = None,
+    with_spans: bool = False,
 ) -> dict[str, Any] | None:
     """ES-native aggregation (terms / date_histogram) on a schema-v2 index.
 
@@ -788,12 +789,21 @@ def es_aggregate(
             "v": {"date_histogram": {"field": "ts", "calendar_interval": bucket}}
         }
     else:
+        terms: dict[str, Any] = {"field": agg_field, "size": size}
+        if with_spans:
+            # first/last-seen per value — the digest's entity timeline.
+            terms["order"] = {"_count": "desc"}
         body["aggs"] = {
-            "v": {"terms": {"field": agg_field, "size": size}},
+            "v": {"terms": terms},
             "distinct": {
                 "cardinality": {"field": agg_field, "precision_threshold": 40000}
             },
         }
+        if with_spans:
+            body["aggs"]["v"]["aggs"] = {
+                "first": {"min": {"field": "ts"}},
+                "last": {"max": {"field": "ts"}},
+            }
 
     try:
         with _client() as client:
@@ -824,10 +834,19 @@ def es_aggregate(
             "buckets": bucket_map,
             "backend": "elasticsearch",
         }
-    ranked = [
-        {"value": str(b.get("key")), "count": int(b.get("doc_count") or 0)}
-        for b in buckets
-    ]
+    ranked = []
+    for b in buckets:
+        item: dict[str, Any] = {
+            "value": str(b.get("key")), "count": int(b.get("doc_count") or 0)
+        }
+        if with_spans:
+            first = (b.get("first") or {}).get("value_as_string") or ""
+            last = (b.get("last") or {}).get("value_as_string") or ""
+            if first:
+                item["first_seen"] = first[:19]
+            if last:
+                item["last_seen"] = last[:19]
+        ranked.append(item)
     distinct = int(
         ((data.get("aggregations") or {}).get("distinct") or {}).get("value") or 0
     )

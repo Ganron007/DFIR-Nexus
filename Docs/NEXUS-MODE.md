@@ -207,6 +207,8 @@ N8 report from APPROVED only
 - Translates English questions into N4 search terms
 - Calls `forensic_rag_search` for methodology context
 - Formats the examiner's selected hits into structured DRAFT findings
+- Ranks the deterministic numbers into **Suggested Directions** (brief,
+  grounded investigation starting points — the Mode 1 head start)
 - Shapes the N8 report narrative from APPROVED findings under examiner
   steering (`/report/steer` rounds, whole-report or per-finding) — every
   claim stays constrained to the evidence rows shown
@@ -217,6 +219,12 @@ N8 report from APPROVED only
 - Does not choose tools or parsers
 - Does not approve
 - Does not invent facts or evidence beyond N4 hits and approved findings
+
+**UI note:** Mode 1 shows the guided walkthrough + Suggested Directions;
+Mode 2/3 show the Case Digest card instead (the digest is what their
+interpretation consumes). The deterministic base (inventory, ledger, alerts,
+signal map, entities, intake) is shared by all modes. Directions give Mode 2
+its starting point — Mode 2 never feeds directions back.
 
 **Mode 1 is complete when the Portal has:**
 - ~~Explore pane with faceted search + histogram~~ — **implemented** (Phase 1.3)
@@ -229,46 +237,56 @@ N8 report from APPROVED only
 > (commit `7cc7ec0`), with the Phase 4/4e SPA cockpit on top. Operator review
 > on a real case remains the gate before Mode 1 is declared *proven*.
 
-### Mode 2 — LLM-Guided Analysis (implemented, dual-audited)
+### Mode 2 — LLM-Guided Analysis (implemented; GATE-A full-context interpretation built 2026-09-17)
 
 **The examiner asks in plain language; the LLM queries the case's evidence
 index, cites rows, and stages DRAFT findings for approval — then steers
 conversationally with live evidence retrieval.**
 
-Mode 2 is the **product differentiator**. Initial processing runs the same
-deterministic lane as Mode 1, then the **interpret** stage builds context from
-RAG methodology, playbook caveats, the examiner KB, a threat-intel sweep and a
-deterministic entity inventory — and the interpret agent can pull its own ES
-rows (`n4_query`/`n4_aggregate`) before staging DRAFT findings, an executive
-verdict, and an explicit **coverage-gap list**.
+Mode 2 is the **product differentiator**, and it has two halves:
 
-Steering is **not** a needle-proposal gate: the examiner asks a question and
-the LLM answers it from the actual evidence, with citations.
+1. **Interpretation at processing time.** After the deterministic lane, the
+   LLM receives the **Case Digest** — one deterministic artifact holding
+   everything the case knows: scope (what IS and explicitly is **NOT** in
+   evidence), inventory + parser ledger, the signal map **including 0-hit
+   needles as negative evidence**, the alert surface, entities with
+   first/last-seen spans, the per-day timeline, and threat intel. It can pull
+   raw detail on demand (`n4_sample`/`n4_query`/`n4_aggregate`) and must
+   **reconcile every digest item** — covered by a finding, assessed benign
+   with a reason, or recorded as a gap. The context budget is the model's own
+   window (`NEXUS_LLM_CONTEXT_WINDOW × NEXUS_CONTEXT_FILL_RATIO`, default
+   1M × 0.7): as much of the case as the model can hold, never a small
+   hand-picked cap. Every packed prompt is persisted to
+   `analysis/llm_context/` so the examiner can audit exactly what the LLM was
+   given.
+
+2. **Live steering.** The examiner asks a question and the LLM answers it
+   from the actual evidence, with citations, queries and per-stage timings.
+
+Mode 2 run options (rounds 1–5, default 3; context window) are set **before**
+the run in the Briefing run panel.
 
 ```
-Examiner asks a question in Steer Chat (or runs the Mode 2 pipeline)
+Examiner sets rounds + context window, then runs the Mode 2 pipeline
     |
     v
-PLAN: deterministic fast path for list/IOC intents (plan ~2 ms) or the
-      LLM plans N4 DSL from the case's real families + fields
+Deterministic lane parses, indexes (ES), builds the Case Digest +
+entity inventory + TI sweep  (analysis/case_digest.{json,md})
     |
     v
-EXECUTE: ONE pushed-down ES query per DSL — field filters on real keyword
-         fields, phrases/regex in ES; ES-native aggregations for counts
-         (hits carry audit_ids; row-side re-check keeps CSV parity)
+INTERPRET: the LLM reconciles the digest against the N4 query pack and its
+          own n4_sample/n4_query pulls — every alert, entity, needle with
+          hits and 0-hit needle gets a disposition; scope is stated as
+          scope, never as "no compromise"
     |
     v
-ANSWER: the LLM reads the actual rows (+ RAG/KB/TI helpers) and answers,
-        citing evidence; the queries and per-stage timings are shown
+Staging: DRAFT findings + interpretation.md (verdict + reconciliation of
+        unaddressed items + coverage gaps) -> examiner reviews in Approve
     |
     v
-Back-and-forth: follow-up questions, drills, corrections — the examiner
-steers; the steering loop never writes findings
-    |
-    v
-Initial processing (coverage mode): the interpret agent stages DRAFT
-findings from the query pack + entity inventory; examiner reviews in
-Approve (HMAC-gated)
+Steer Chat: PLAN (fast path ~2 ms or LLM) -> EXECUTE (one pushed-down ES
+query per DSL; ES-native aggregations) -> ANSWER (rows + RAG/KB/TI helpers,
+citations, per-stage timings); follow-ups drill into the same index
     |
     v
 N8 report from APPROVED only
@@ -277,7 +295,8 @@ N8 report from APPROVED only
 **What the LLM does in Mode 2 (plus Mode 1):**
 - Answers examiner questions from the actual evidence rows, with citations
 - Plans and runs its own ES queries (case-gated; FD-001 audit_ids)
-- Corroborates across hit families; computes counts via aggregations
+- Reconciles the full deterministic digest (incl. negative evidence) during
+  interpretation; pulls samples for texture
 - Suggests DRAFT findings during interpretation; examiner edits or rejects
 - Applies FD-006 (single-source stays LOW)
 
@@ -285,6 +304,7 @@ N8 report from APPROVED only
 - Does not choose tools or parsers (the deterministic lane decides)
 - Does not approve
 - Does not write findings inside the steering loop
+- Treats absent evidence classes as scope — never as a verdict
 
 ### Mode 3 — Agentic (plan/execute/seal implemented; autonomous loop pending)
 

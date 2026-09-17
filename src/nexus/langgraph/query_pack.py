@@ -6,6 +6,7 @@ Does not hardcode case plots: terms come from playbook YAML + intake tokens.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 from datetime import UTC, datetime, timedelta
@@ -864,6 +865,79 @@ def n4_query(
         "offset": max(0, offset),
         "hits": page,
         "empty": not all_hits,
+    }
+
+
+def n4_sample(
+    case_dir: Path,
+    family: str = "",
+    field: str = "",
+    value: str = "",
+    n: int = 12,
+    window: tuple[datetime | None, datetime | None] | None = None,
+) -> dict[str, Any]:
+    """Representative raw rows for a family/field value, spread across time.
+
+    The digest gives aggregates; this pulls the raw texture (Mode 2/3): the
+    LLM asks for N rows of a family (optionally where ``field == value``) and
+    gets them evenly spaced over the matched timeline instead of the first N
+    (which would bias to one burst). Read-only; rows are context, findings
+    still cite the audit trail.
+    """
+    case_dir = Path(case_dir)
+    count = max(1, min(int(n or 12), 60))
+    intake = load_case_intake(case_dir)
+    if window is None:
+        window = parse_intake_window(intake)
+    needle = str(value or "").strip()
+    terms = [needle] if needle else list(collect_query_terms(intake))
+    all_hits, backend_used = n4_hits(
+        case_dir,
+        terms,
+        window,
+        priority_terms=[needle] if needle else [],
+    )
+
+    def _envelope_match(hit: dict[str, Any]) -> bool:
+        if family and str(hit.get("family") or "") != family:
+            return False
+        if not field:
+            return True
+        raw = hit.get(field)
+        if raw is None:
+            return not needle  # field presence filter only applies to envelope
+        return str(raw).lower() == needle.lower() if needle else bool(str(raw))
+
+    candidates = [h for h in all_hits if isinstance(h, dict) and _envelope_match(h)]
+    matched = len(candidates)
+
+    # If the field filter needs parsed columns, attach fields to a bounded
+    # candidate window (attach is per-file header cached, so this is cheap).
+    if field and needle and not candidates:
+        window_hits: list[dict[str, Any]] = [
+            h for h in all_hits[:600]
+            if isinstance(h, dict) and (not family or str(h.get("family") or "") == family)
+        ]
+        with contextlib.suppress(Exception):
+            window_hits = attach_hit_fields(case_dir, window_hits)
+        candidates = [
+            h for h in window_hits
+            if str((h.get("fields") or {}).get(field) or "").lower() == needle.lower()
+        ]
+        matched = len(candidates)
+
+    step = max(1, matched // count)
+    picked = candidates[::step][:count] if candidates else []
+    return {
+        "family": family,
+        "field": field,
+        "value": needle,
+        "backend": backend_used,
+        "matched": matched,
+        "sampled": len(picked),
+        "spread_every": step,
+        "hits": picked,
+        "empty": not picked,
     }
 
 

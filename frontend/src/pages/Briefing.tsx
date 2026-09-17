@@ -8,7 +8,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { api, type BriefingDirection, type BriefingResponse, type Mode1FullRunResponse } from "../api/client";
+import { api, type BriefingDirection, type BriefingResponse, type CaseDigestResponse, type Mode1FullRunResponse } from "../api/client";
 import { useCase } from "../context/CaseContext";
 
 export default function Briefing() {
@@ -29,6 +29,13 @@ export default function Briefing() {
   // Lazy LLM layer — loaded after the deterministic briefing renders so a
   // slow local model never blocks the page (was an inline route call).
   const [directions, setDirections] = useState<BriefingDirection[] | null>(null);
+
+  // GATE-A — deterministic Case Digest (fetched for Mode 2/3 only).
+  const [digest, setDigest] = useState<CaseDigestResponse | null>(null);
+  const [digestError, setDigestError] = useState("");
+  // Mode 2 run options — decided BEFORE the run.
+  const [interpretRounds, setInterpretRounds] = useState(3);
+  const [contextWindow, setContextWindow] = useState(1_000_000);
   // WP 4j.1: alert rows expand to show interpretation (meaning + what to check)
   const [openAlert, setOpenAlert] = useState<number | null>(null);
   // WP 4j.3: guided first-pass step completion (per-case, local)
@@ -156,6 +163,22 @@ export default function Briefing() {
 
   useEffect(() => () => stopModeRunPoll(), []);
 
+  // GATE-A — digest loads for Mode 2/3 (Mode 1 has directions instead).
+  useEffect(() => {
+    setDigest(null);
+    setDigestError("");
+    if (!activeCase || (mode !== "2" && mode !== "3")) return;
+    let stale = false;
+    api.caseDigest()
+      .then((d) => {
+        if (stale) return;
+        if (d.error) setDigestError(d.error);
+        else setDigest(d);
+      })
+      .catch((e) => { if (!stale) setDigestError((e as Error).message); });
+    return () => { stale = true; };
+  }, [activeCase, mode]);
+
   const runModePipeline = async () => {
     if (!activeCase) return;
     setModeRunError("");
@@ -166,6 +189,8 @@ export default function Briefing() {
         mode: mode === "3" ? "design" : "coverage",
         case_id: activeCase,
         question: modeQuestion.trim(),
+        interpret_rounds: interpretRounds,
+        context_window: contextWindow,
       });
       setModeRunId(r.run_id);
       pollModeRun(r.run_id);
@@ -202,10 +227,12 @@ export default function Briefing() {
     if (cached && (Date.now() - cached.ts) < BRIEFING_CACHE_TTL) {
       setBrief(cached.data);
       setLoading(false);
-      // still refresh directions lazily
-      api.caseBriefingDirections()
-        .then((d) => { if (!stale) setDirections(d.directions || []); })
-        .catch(() => { if (!stale) setDirections([]); });
+      // Directions are a Mode 1 layer only (Mode 2/3 have the digest + LLM run).
+      if (mode === "1") {
+        api.caseBriefingDirections()
+          .then((d) => { if (!stale) setDirections(d.directions || []); })
+          .catch(() => { if (!stale) setDirections([]); });
+      }
       return () => { stale = true; };
     }
     api.caseBriefing()
@@ -214,14 +241,16 @@ export default function Briefing() {
         setBrief(b);
         briefingCacheRef.current[cacheKey] = { data: b, ts: Date.now() };
         setLoading(false);
-        // Lazy LLM layer — fire after the deterministic briefing renders.
-        api.caseBriefingDirections()
-          .then((d) => { if (!stale) setDirections(d.directions || []); })
-          .catch(() => { if (!stale) setDirections([]); });
+        // Lazy LLM layer — Mode 1 only.
+        if (mode === "1") {
+          api.caseBriefingDirections()
+            .then((d) => { if (!stale) setDirections(d.directions || []); })
+            .catch(() => { if (!stale) setDirections([]); });
+        }
       })
       .catch((e) => { if (!stale) { setError((e as Error).message); setLoading(false); } });
     return () => { stale = true; };
-  }, [activeCase]);
+  }, [activeCase, mode]);
 
   const searchNeedle = (needle: string, family?: string) => {
     const params = new URLSearchParams({ needles: needle });
@@ -294,6 +323,29 @@ export default function Briefing() {
             style={{ width: "100%", marginBottom: 8, fontSize: 12 }}
             disabled={modeRunStatus === "running"}
           />
+          <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}>
+            <label style={{ fontSize: 11, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4 }}
+              title="Interpretation rounds: how many orient → verify → reconcile passes the LLM loop runs (1–5).">
+              rounds
+              <input
+                type="number" min={1} max={5} value={interpretRounds}
+                onChange={(e) => setInterpretRounds(Math.max(1, Math.min(5, Number(e.target.value) || 3)))}
+                disabled={modeRunStatus === "running"}
+                style={{ width: 52, fontSize: 11 }}
+              />
+            </label>
+            <label style={{ fontSize: 11, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4 }}
+              title="Your model's max context window (tokens). The context allocator packs window × 0.7 so interpretation sees as much of the case as the model can hold.">
+              context window
+              <input
+                type="number" min={8000} step={100000} value={contextWindow}
+                onChange={(e) => setContextWindow(Math.max(8000, Number(e.target.value) || 1_000_000))}
+                disabled={modeRunStatus === "running"}
+                style={{ width: 110, fontSize: 11 }}
+              />
+              tokens
+            </label>
+          </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <button
               className="btn btn-primary btn-sm"
@@ -328,6 +380,58 @@ export default function Briefing() {
               run {modeRunId}
             </div>
           )}
+        </div>
+      )}
+
+      {/* GATE-A — deterministic Case Digest (Mode 2/3): every fact the LLM must reconcile */}
+      {(mode === "2" || mode === "3") && (
+        <div className="card" style={{ borderLeft: "3px solid var(--purple)" }}>
+          <div className="card-title" style={{ marginBottom: 6 }}>
+            Case Digest{" "}
+            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
+              (deterministic — everything the interpretation must reconcile)
+            </span>
+          </div>
+          {digestError && <div style={{ fontSize: 12, color: "var(--danger)" }}>{digestError}</div>}
+          {!digest && !digestError && (
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Building digest…</span>
+          )}
+          {digest && (() => {
+            const d = digest.digest;
+            const withHits = d.signal_map?.with_hits?.length ?? 0;
+            const zeroHits = d.signal_map?.zero_hit?.length ?? 0;
+            return (
+              <>
+                <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 6 }}>
+                  {d.signal_map?.scanned ?? 0} needles scanned · {withHits} with hits ·{" "}
+                  {zeroHits} checked-absent (negative evidence) · {(d.alerts || []).length} high/critical alert(s) ·{" "}
+                  {d.hosts?.length ?? 0} host(s) · {Object.keys(d.inventory || {}).length} famil{Object.keys(d.inventory || {}).length === 1 ? "y" : "ies"} ·{" "}
+                  timeline: {d.timeline?.source || "n/a"}
+                </div>
+                {(d.scope?.explicitly_absent?.length ?? 0) > 0 && (
+                  <div style={{ fontSize: 11, color: "var(--warning)", marginBottom: 6 }}>
+                    Scope — NOT in evidence (stated as scope, never as “no compromise”):{" "}
+                    {d.scope.explicitly_absent.join("; ")}
+                  </div>
+                )}
+                {(d.scope?.evidence_classes_present?.length ?? 0) > 0 && (
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6 }}>
+                    In evidence: {d.scope.evidence_classes_present.join(", ")}
+                  </div>
+                )}
+                {digest.markdown && (
+                  <details>
+                    <summary style={{ fontSize: 11, cursor: "pointer", color: "var(--accent)" }}>
+                      Full digest (what the LLM was given)
+                    </summary>
+                    <pre style={{ whiteSpace: "pre-wrap", fontSize: 11, marginTop: 8, fontFamily: "inherit", maxHeight: 420, overflow: "auto" }}>
+                      {digest.markdown}
+                    </pre>
+                  </details>
+                )}
+              </>
+            );
+          })()}
         </div>
       )}
 
@@ -430,8 +534,8 @@ export default function Briefing() {
         </div>
       )}
 
-      {/* WP 4j.3 — guided first pass: the walkthrough an examiner follows */}
-      {walkthrough.length > 0 && (
+      {/* WP 4j.3 — guided first pass: the walkthrough an examiner follows (Mode 1) */}
+      {mode === "1" && walkthrough.length > 0 && (
         <div className="card" style={{ borderLeft: "3px solid var(--accent)" }}>
           <div className="card-title" style={{ marginBottom: 4 }}>
             Guided First Pass
@@ -515,13 +619,13 @@ export default function Briefing() {
         </div>
       )}
 
-      {/* WP 4i.5 — LLM investigation directions grounded in the deterministic numbers */}
-      {directions === null && (
+      {/* WP 4i.5 — LLM investigation directions grounded in the deterministic numbers (Mode 1) */}
+      {mode === "1" && directions === null && (
         <div className="card" style={{ borderLeft: "3px solid var(--warning)", padding: "8px 12px" }}>
           <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Generating LLM directions…</span>
         </div>
       )}
-      {directions !== null && directions.length > 0 && (
+      {mode === "1" && directions !== null && directions.length > 0 && (
         <div className="card" style={{ borderLeft: "3px solid var(--warning)" }}>
           <div className="card-title" style={{ marginBottom: 8 }}>
             Suggested Directions <span style={{ fontSize: 10, color: "var(--text-muted)" }}>(LLM — grounded in the numbers below)</span>

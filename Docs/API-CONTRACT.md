@@ -1575,12 +1575,15 @@ needles is one event.
   "question": "What did the suspicious process do?",
   "window": "2026-08-01..2026-08-02",
   "host": "WS01",
-  "notes": "subject reported a popup"
+  "notes": "subject reported a popup",
+  "interpret_rounds": 3,
+  "context_window": 1000000
 }
 ```
 - `mode`: one of `tools`, `interpret`, `coverage`, `design`
 - `case_id`: optional; defaults to active case
 - `question` / `window` / `host` / `notes`: examiner intake → pipeline `case_context`. **Coverage/design only reach the LLM interpret node when a real question or window is present (N1 gate)**; when omitted, the case description is used as the question. The run record reports `intake` honestly.
+- `interpret_rounds` (optional, 1–5, default `NEXUS_INTERPRET_ROUNDS` or 3) and `context_window` (optional tokens, default `NEXUS_LLM_CONTEXT_WINDOW` or 1000000): Mode 2 run options decided **before** the run. Persisted to `<case>/analysis/mode2_run_options.json`, echoed in the run record (`options`) and response. The context window drives the prompt budget allocator (`window × NEXUS_CONTEXT_FILL_RATIO`); when provided it also sets the process-wide `NEXUS_LLM_CONTEXT_WINDOW` for that run.
 
 **Response 200:**
 ```json
@@ -1589,7 +1592,7 @@ needles is one event.
   "case_id": "CASE-XXXX-XXXX",
   "mode": "coverage",
   "status": "running",
-  "intake": true
+  "options": { "interpret_rounds": 3, "context_window": 1000000 }
 }
 ```
 
@@ -1870,7 +1873,26 @@ configured. The frontend fetches this lazily after the briefing renders.
 also resolves it).
 
 **Response 200:** `{directions: [{title, why, needles[], family}]}` — empty
-list when no LLM is configured or generation fails.
+list when no LLM is configured or generation fails. **Rendered in Mode 1
+only** (Mode 2/3 use the Case Digest + LLM run instead).
+
+### GET /portal/api/case/digest
+**Description:** GATE-A deterministic Case Digest (Mode 2/3) — everything the
+interpretation consumes, in one artifact: scope statement (evidence classes
+present AND explicitly absent — absence is scope, never a verdict), inventory
++ parser ledger, signal map **including 0-hit needles as negative evidence**,
+alert surface, entities with first/last-seen spans, per-day timeline, TI
+context. Built on demand if `analysis/case_digest.json` is missing.
+
+**Query params:** `case_id` (optional — explicit case; `X-Nexus-Case` header
+also resolves it).
+
+**Response 200:** `{digest: {case_id, generated_at, scope{families_present,
+evidence_classes_present, explicitly_absent}, inventory, ledger, hosts,
+time_range, signal_map{scanned, with_hits[], zero_hit[]}, alerts, entities,
+entity_spans, timeline{buckets_per_day, source}, backend}, markdown}` —
+`markdown` is the exact rendered digest the LLM receives as prompt section #0.
+Every packed LLM context is persisted under `<case>/analysis/llm_context/`.
 
 ### POST /portal/api/hit/interpret
 **Description:** WP 4j.1 hit interpretation layer — what a hit/alert row

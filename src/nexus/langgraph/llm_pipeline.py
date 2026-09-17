@@ -1338,7 +1338,9 @@ def _n5_query_payload(case_dir, ledger: list, output_dir: Path | None = None) ->
     except Exception as exc:  # noqa: BLE001
         return f"(query pack build failed: {exc})"
     if qp.is_file():
-        return qp.read_text(encoding="utf-8", errors="replace")[:60000]
+        # No artificial cap here — the prompt_budget allocator decides how much
+        # of this the model receives (operator rule: budget = window × fill).
+        return qp.read_text(encoding="utf-8", errors="replace")
     return "(query pack missing)"
 
 
@@ -1351,6 +1353,7 @@ INTERPRET_TOOL_NAMES = (
     "forensic_rag_status",
     # evidence index — the LLM pulls its own rows beyond the query pack
     "n4_query",
+    "n4_sample",
     "n4_aggregate",
     "index_mappings",
     "family_fields",
@@ -1406,10 +1409,26 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
     inv_md = ""
     kb_block = ""
     playbook_block = ""
+    digest_md = ""
     if case_id:
         from nexus.config import settings
         analysis_dir = Path(state.get("run_dir") or "") / "analysis" if state.get("run_dir") else None
         query_pack = _n5_query_payload(settings.cases_root / case_id, ledger, analysis_dir)
+        # Case Digest — deterministic "everything" (signal map incl. 0-hit
+        # needles, alerts, entities + spans, ledger, timeline, scope rules,
+        # TI). The LLM reconciles EVERY item; raw detail via n4_sample.
+        try:
+            from nexus.langgraph.case_digest import (
+                build_case_digest,
+                render_digest_markdown,
+                write_case_digest,
+            )
+
+            digest = build_case_digest(settings.cases_root / case_id)
+            write_case_digest(settings.cases_root / case_id, digest)
+            digest_md = render_digest_markdown(digest)
+        except Exception as exc:  # noqa: BLE001 — digest is best-effort context
+            log.warning("case digest build failed: %s", exc)
         # Mode 2 deterministic lane: IOC sweep + TI enrichment. Context only —
         # findings still cite evidence audit_ids (FD-001).
         try:
@@ -1481,55 +1500,113 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
             "FIRST call forensic_rag_status (must be ready). "
             "THEN forensic_rag_search once per QUERY PACK hit family "
             "(methodology for those artifacts only). "
-            "Use n4_query/n4_aggregate/index_mappings (pass the case_id) to "
-            "pull ADDITIONAL rows beyond the query pack when a claim needs "
-            "more evidence — the same case-gated index the examiner uses. "
+            "Use n4_query/n4_aggregate/n4_sample/index_mappings (pass the "
+            "case_id) to pull rows beyond the digest when a claim needs "
+            "evidence — the same case-gated index the examiner uses. "
             "Use kb_search/kb_read for procedures, caveats and terminology "
             "from the examiner's KB; cite the page titles you rely on. "
-            "THEN emit findings JSON from QUERY PACK hits. "
+            "THEN emit findings JSON, reconciling EVERY digest item. "
             "Use ti_lookup/ti_fanout for every IOC in the THREAT INTEL block "
             "and for hashes/IPs/domains you see in QUERY PACK hits — say what "
             "each verdict means for the case. "
             "Cover EVERY item of interest: every family with hits, every "
             "entity (hosts, users, processes, paths, IOCs) — for items with no "
             "signal, state that explicitly instead of omitting them. "
+            "Never phrase an absent evidence class as 'no compromise'. "
             "Do NOT re-run host triage tools. Do NOT treat CSV heads as facts."
         ),
     )
 
-    try:
-        result = await agent.ainvoke(
-            {
-                "messages": [{
-                    "role": "human",
-                    "content": (
-                        f"Interpret coverage results for case {state['case_id']}.\n"
-                        f"N4 QUERY PACK (ONLY source of host facts):\n{query_pack or '(none)'}\n\n"
-                        f"ENTITY INVENTORY (deterministic census — address EVERY item):\n{inv_md or '(none)'}\n\n"
-                        f"THREAT INTEL (context — never evidence):\n{ti_block or '(none)'}\n\n"
-                        f"PLAYBOOK GUIDANCE (caveats + identification steps — never evidence):\n{playbook_block or '(none)'}\n\n"
-                        f"EXAMINER KB NOTES (procedures/terminology — never evidence):\n{kb_block or '(none)'}\n\n"
-                        f"Prior RAG notes:\n{rag_prior or '(none)'}\n\n"
-                        f"OK/FAIL ledger (audit_ids only — not facts):\n```json\n{ledger_json}\n```\n\n"
-                        "Emit a ```json array of findings. Each finding MUST have:\n"
-                        "- title naming the analytic claim (not 'Successful Tool')\n"
-                        "- evidence: array of {time, source, artifact, detail} "
-                        "(one row per timestamped hit; never a prose dump)\n"
-                        "- observation: one-sentence summary only (the table is evidence)\n"
-                        "- interpretation (non-empty) under the examiner hypothesis "
-                        "(insider-misuse AND/OR external compromise — evidence chooses)\n"
-                        "- itm_stage + itm_objects only when insider-misuse is justified; "
-                        "otherwise leave them empty\n"
-                        "- attack_ids (MITRE) only when intrusion facts justify them\n"
-                        "- confidence + confidence_justification\n"
-                        "- audit_ids from the OK ledger rows that support the claim\n"
-                        "Cover families that appear in QUERY PACK hits. "
-                        "Do not invent a coverage gap when the ledger is OK.\n"
-                    ),
-                }],
-            },
-            config={"recursion_limit": 40},
+    # Operator context rule: budget = window × fill (default 1M × 0.7), no
+    # artificial small caps. Packed from the digest outward; every pack is
+    # persisted to analysis/llm_context/ so the examiner can audit it.
+    from nexus.langgraph.prompt_budget import (
+        log_usage,
+        pack_sections,
+        persist_context,
+        retry_budget_chars,
+    )
+
+    ledger_block = f"OK/FAIL ledger (audit_ids only — not facts):\n```json\n{ledger_json}\n```"
+    sections = [
+        (0, "case_digest", digest_md),
+        (1, "n4_query_pack", query_pack),
+        (2, "entity_inventory", inv_md),
+        (3, "threat_intel_context", ti_block),
+        (4, "playbook_guidance", playbook_block),
+        (5, "examiner_kb_notes", kb_block),
+        (6, "run_ledger", ledger_block),
+        (7, "prior_rag_notes", rag_prior),
+    ]
+    packed, pack_report = pack_sections(sections)
+    pack_excerpt = (
+        f"Interpret coverage results for case {state['case_id']}.\n"
+        "PACKED CASE CONTEXT follows (sections in priority order). The CASE "
+        "DIGEST is the deterministic coverage of this case — reconcile EVERY "
+        "item in it against the QUERY PACK and your own queries, and emit one "
+        "finding or explicit disposition per item:\n\n" + packed + "\n\n"
+        "Emit a ```json array of findings. Each finding MUST have:\n"
+        "- title naming the analytic claim (not 'Successful Tool')\n"
+        "- evidence: array of {time, source, artifact, detail} "
+        "(one row per timestamped hit; never a prose dump)\n"
+        "- observation: one-sentence summary only (the table is evidence)\n"
+        "- interpretation (non-empty) under the examiner hypothesis "
+        "(insider-misuse AND/OR external compromise — evidence chooses)\n"
+        "- itm_stage + itm_objects only when insider-misuse is justified; "
+        "otherwise leave them empty\n"
+        "- attack_ids (MITRE) only when intrusion facts justify them\n"
+        "- confidence + confidence_justification\n"
+        "- audit_ids from the OK ledger rows that support the claim\n"
+        "RECONCILIATION (hard rule): every ALERT SURFACE entry, every signal-"
+        "map needle with hits, and every high-count entity must be covered by "
+        "a finding, or explicitly assessed benign with a reason, or recorded "
+        "as a coverage gap — silence is a failure. Items checked with 0 hits "
+        "are negative evidence: cite them as checked-and-absent, never omit.\n"
+        "SCOPE (hard rule): artifact classes listed as NOT in evidence are "
+        "out of scope — never phrase their absence as 'no compromise'.\n"
+        "Raw detail: use n4_sample(family, field/value, n) to pull "
+        "representative rows, or n4_query/n4_aggregate for exact pulls.\n"
+        "Cover families that appear in QUERY PACK hits. "
+        "Do not invent a coverage gap when the ledger is OK.\n"
+    )
+
+    case_dir_for_ctx: Path | None = None
+    if case_id:
+        from nexus.config import settings
+
+        case_dir_for_ctx = settings.cases_root / case_id
+    if case_dir_for_ctx is not None:
+        persist_context(
+            case_dir_for_ctx, "mode2-interpret", packed, pack_report,
+            meta={"case_id": case_id, "run_id": state.get("run_id", "")},
         )
+    log_usage("mode2-interpret", pack_report)
+
+    try:
+        try:
+            result = await agent.ainvoke(
+                {"messages": [{"role": "human", "content": pack_excerpt}]},
+                config={"recursion_limit": 40},  # type: ignore[arg-type]
+            )
+        except Exception as exc:  # noqa: BLE001 — one downgrade retry on context overflow
+            msg = str(exc).lower()
+            if not any(k in msg for k in ("context", "token", "length", "too long")):
+                raise
+            log.warning("Interpret context rejected (%s) — retrying at 0.5× budget", exc)
+            packed2, report2 = pack_sections(
+                sections, chars=retry_budget_chars(pack_report["budget_chars"])
+            )
+            if case_dir_for_ctx is not None:
+                persist_context(
+                    case_dir_for_ctx, "mode2-interpret-retry", packed2, report2,
+                    meta={"case_id": case_id, "run_id": state.get("run_id", "")},
+                )
+            log_usage("mode2-interpret-retry", report2)
+            content2 = pack_excerpt.replace(packed, packed2)
+            result = await agent.ainvoke(
+                {"messages": [{"role": "human", "content": content2}]},
+                config={"recursion_limit": 40},  # type: ignore[arg-type]
+            )
         msg_count = len(result.get("messages", []))
         log.info("Interpret agent completed: %d messages", msg_count)
     except Exception as e:
@@ -1862,8 +1939,9 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
     except Exception as exc:  # noqa: BLE001
         log_msg.append(f"Draft preview skipped: {exc}")
 
-    # Mode 2 verdict: coverage gaps vs the entity inventory + interpretation.md
-    # (deterministic skeleton + optional LLM executive verdict).
+    # Mode 2 verdict: coverage gaps vs the entity inventory + digest
+    # reconciliation + interpretation.md (deterministic skeleton + optional
+    # LLM executive verdict).
     try:
         from nexus.config import settings as _settings
         from nexus.langgraph.entity_inventory import compute_coverage_gaps
@@ -1871,19 +1949,32 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
 
         case_dir = _settings.cases_root / str(state.get("case_id") or "")
         gaps: list[dict[str, str]] = []
+        staged: list[dict[str, Any]] = []
+        findings_path = case_dir / "findings.json"
+        if findings_path.is_file():
+            loaded = json.loads(findings_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, list):
+                staged = [f for f in loaded if isinstance(f, dict)]
         inv_path = case_dir / "analysis" / "entity_inventory.json"
         if inv_path.is_file():
             inv = json.loads(inv_path.read_text(encoding="utf-8"))
-            staged: list[dict[str, Any]] = []
-            findings_path = case_dir / "findings.json"
-            if findings_path.is_file():
-                loaded = json.loads(findings_path.read_text(encoding="utf-8"))
-                if isinstance(loaded, list):
-                    staged = [f for f in loaded if isinstance(f, dict)]
             gaps = compute_coverage_gaps(inv, staged)
-        out = await write_interpretation_summary(case_dir, gaps=gaps, model=model)
+        reconciliation: dict[str, Any] = {}
+        digest_path = case_dir / "analysis" / "case_digest.json"
+        if digest_path.is_file():
+            from nexus.langgraph.case_digest import reconciliation_checklist
+
+            reconciliation = reconciliation_checklist(
+                json.loads(digest_path.read_text(encoding="utf-8")), staged
+            )
+        out = await write_interpretation_summary(
+            case_dir, gaps=gaps, reconciliation=reconciliation, model=model
+        )
         if out:
-            log_msg.append(f"Wrote {out.name} (gaps={len(gaps)})")
+            log_msg.append(
+                f"Wrote {out.name} (gaps={len(gaps)}, "
+                f"reconciliation_unaddressed={len(reconciliation.get('unaddressed') or [])})"
+            )
     except Exception as exc:  # noqa: BLE001 — verdict is best-effort
         log_msg.append(f"interpretation summary skipped: {exc}")
 

@@ -1064,7 +1064,11 @@ def _case_artifact_flags(case_dir: Path) -> dict[str, bool]:
                         break
         except OSError:
             pass
-    return {"pipeline_complete": pipeline, "report_exists": report}
+    return {
+        "pipeline_complete": pipeline,
+        "report_exists": report,
+        "digest_exists": (case_dir / "analysis" / "case_digest.json").is_file(),
+    }
 
 
 async def api_cases(request):
@@ -4765,6 +4769,43 @@ async def api_pipeline_run(request):
     if str(meta.get("created_by") or "").strip():
         case_context.setdefault("examiner", str(meta["created_by"]).strip())
 
+    # ── Mode 2 run options (operator decides BEFORE the run) ──
+    # interpret_rounds: how many interpretation rounds the loop runs (1–5,
+    # default 3). context_window: the model's max context window — the budget
+    # allocator packs window × fill (NEXUS_CONTEXT_FILL_RATIO, default 0.7).
+    try:
+        rounds = int(body.get("interpret_rounds") or 0)
+    except (TypeError, ValueError):
+        rounds = 0
+    if not rounds:
+        try:
+            rounds = int(os.environ.get("NEXUS_INTERPRET_ROUNDS") or 3)
+        except ValueError:
+            rounds = 3
+    rounds = max(1, min(rounds, 5))
+    try:
+        window = int(body.get("context_window") or 0)
+    except (TypeError, ValueError):
+        window = 0
+    from nexus.langgraph.prompt_budget import context_window as _ctx_window
+
+    if not window:
+        window = _ctx_window()
+    window = max(8_000, window)
+    case_context["interpret_rounds"] = str(rounds)
+    case_context["context_window"] = str(window)
+    run_options = {"interpret_rounds": rounds, "context_window": window}
+    if body.get("context_window") or body.get("interpret_rounds"):
+        # Process-wide default for the budget allocator. Fine for the live
+        # single-active-case workflow; the run also carries the values in
+        # case_context and analysis/mode2_run_options.json.
+        os.environ["NEXUS_LLM_CONTEXT_WINDOW"] = str(window)
+    with contextlib.suppress(OSError):
+        (case_dir / "analysis").mkdir(parents=True, exist_ok=True)
+        (case_dir / "analysis" / "mode2_run_options.json").write_text(
+            json.dumps(run_options, indent=2), encoding="utf-8"
+        )
+
     import threading
     import uuid
 
@@ -4781,6 +4822,7 @@ async def api_pipeline_run(request):
         "error": "",
         "stages": [],
         "intake": bool(case_context.get("question") or case_context.get("window")),
+        "options": run_options,
     }
     _persist_pipeline_run(case_dir, _pipeline_runs[run_id])
     # Fresh stage feed for this run (a re-run must not replay old stages)
@@ -4832,6 +4874,7 @@ async def api_pipeline_run(request):
         "case_id": case_id,
         "mode": pipeline_mode,
         "status": "running",
+        "options": run_options,
     })
 
 
@@ -5083,6 +5126,37 @@ async def api_case_briefing_directions(request):
         logger.exception("briefing directions failed")
         return JSONResponse({"error": f"directions failed: {exc}"}, status_code=500)
     return JSONResponse({"directions": directions})
+
+
+async def api_case_digest(request):
+    """GET /portal/api/case/digest — deterministic Case Digest (Mode 2/3).
+
+    Everything the interpretation loop consumes: scope (what IS and is NOT in
+    evidence), inventory + ledger, signal map incl. 0-hit needles, alerts,
+    entities with first/last seen, timeline shape, TI context. Built fresh if
+    the persisted digest is missing.
+    """
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    digest_path = case_dir / "analysis" / "case_digest.json"
+    try:
+        if digest_path.is_file():
+            payload = json.loads(digest_path.read_text(encoding="utf-8"))
+        else:
+            from nexus.langgraph.case_digest import build_case_digest, write_case_digest
+
+            payload = build_case_digest(case_dir)
+            write_case_digest(case_dir, payload)
+        md_path = case_dir / "analysis" / "case_digest.md"
+        return JSONResponse({
+            "digest": payload,
+            "markdown": md_path.read_text(encoding="utf-8", errors="replace")
+            if md_path.is_file() else "",
+        })
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("case digest failed")
+        return JSONResponse({"error": f"digest failed: {exc}"}, status_code=500)
 
 
 async def api_hit_interpret(request):
@@ -6102,6 +6176,7 @@ def create_dashboard():
         Route("/portal/api/pipeline/status", api_pipeline_status, methods=["GET"]),
         Route("/portal/api/pipeline/ledger", api_pipeline_ledger, methods=["GET"]),
         Route("/portal/api/case/briefing", api_case_briefing, methods=["GET"]),
+        Route("/portal/api/case/digest", api_case_digest, methods=["GET"]),
         Route("/portal/api/case/briefing/directions", api_case_briefing_directions, methods=["GET"]),
         Route("/portal/api/hit/interpret", api_hit_interpret, methods=["POST"]),
         Route("/portal/api/needles/feedback", api_needle_feedback, methods=["POST"]),
