@@ -812,7 +812,9 @@ def attach_hit_fields(case_dir: Path, hits: list[dict[str, Any]]) -> list[dict[s
             m = _HOST_RE.search(h.get("text", "")) or _UNC_RE.search(h.get("text", ""))
             host = (m.group(1) if m else "").rstrip(".").lower()
         row["fields"] = fields
-        row["host"] = host
+        # Never clobber an envelope host the backend already resolved
+        # (ES schema-v2 hits carry `host`; CSV rows often don't).
+        row["host"] = host or str(h.get("host") or "")
         out.append(row)
     return out
 
@@ -898,33 +900,46 @@ def n4_sample(
         priority_terms=[needle] if needle else [],
     )
 
-    def _envelope_match(hit: dict[str, Any]) -> bool:
-        if family and str(hit.get("family") or "") != family:
-            return False
-        if not field:
-            return True
-        raw = hit.get(field)
-        if raw is None:
-            return not needle  # field presence filter only applies to envelope
-        return str(raw).lower() == needle.lower() if needle else bool(str(raw))
+    _ENVELOPE_ALIASES = {
+        "event": "event_id", "eventid": "event_id",
+        "timestamp": "ts", "time": "ts",
+    }
 
-    candidates = [h for h in all_hits if isinstance(h, dict) and _envelope_match(h)]
-    matched = len(candidates)
+    def _value_for(hit: dict[str, Any], fname: str) -> str:
+        key = _ENVELOPE_ALIASES.get(fname.lower(), fname)
+        raw = hit.get(key)
+        if raw not in (None, ""):
+            return str(raw)
+        fields = hit.get("fields") or {}
+        if isinstance(fields, dict):
+            for fk, fv in fields.items():
+                if str(fk).lower() in (fname.lower(), key.lower()) and fv not in (None, ""):
+                    return str(fv)
+        return ""
 
-    # If the field filter needs parsed columns, attach fields to a bounded
-    # candidate window (attach is per-file header cached, so this is cheap).
-    if field and needle and not candidates:
-        window_hits: list[dict[str, Any]] = [
-            h for h in all_hits[:600]
-            if isinstance(h, dict) and (not family or str(h.get("family") or "") == family)
-        ]
+    family_hits = [
+        h for h in all_hits
+        if isinstance(h, dict) and (not family or str(h.get("family") or "") == family)
+    ]
+    if field:
+        # Parsed columns are attached per-file (header cached) so the field
+        # filter behaves identically on the ES and CSV backends — envelope
+        # keys (host/user/event_id/ts) match directly, parsed columns via
+        # attach; `event` aliases `event_id`.
         with contextlib.suppress(Exception):
-            window_hits = attach_hit_fields(case_dir, window_hits)
-        candidates = [
-            h for h in window_hits
-            if str((h.get("fields") or {}).get(field) or "").lower() == needle.lower()
-        ]
-        matched = len(candidates)
+            family_hits = attach_hit_fields(case_dir, family_hits)
+        low_needle = needle.lower()
+        candidates = []
+        for h in family_hits:
+            value = _value_for(h, field)
+            if needle:
+                if value.lower() == low_needle:
+                    candidates.append(h)
+            elif value:
+                candidates.append(h)
+    else:
+        candidates = family_hits
+    matched = len(candidates)
 
     step = max(1, matched // count)
     picked = candidates[::step][:count] if candidates else []

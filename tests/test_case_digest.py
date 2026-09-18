@@ -190,6 +190,69 @@ def test_reconciliation_flags_unmentioned_items():
     assert not any("Mimikatz" in u for u in unaddressed)
 
 
+def test_reconciliation_ignores_structural_keys():
+    """A finding with evidence rows must not accidentally 'mention' a needle
+    named like a dict key (source/detail/time/artifact)."""
+    digest = {
+        "alerts": [{"level": "high", "title": "source", "host": "ws01"}],
+        "signal_map": {"with_hits": [{"needle": "detail", "hits": 5}]},
+    }
+    findings = [{
+        "title": "Unrelated finding",
+        "observation": "something else",
+        "interpretation": "unrelated",
+        "evidence": [{"time": "2024-01-01", "source": "hayabusa",
+                      "artifact": "evtx", "detail": "unrelated row"}],
+    }]
+    result = reconciliation_checklist(digest, findings)
+    kinds = {i["kind"] for i in result["unaddressed"]}
+    assert "alert" in kinds and "needle" in kinds
+    assert len(result["unaddressed"]) == 2
+
+
+def test_pack_sections_duplicate_names_not_double_counted():
+    """Two sections with the same name must not be silently emitted twice
+    (that would double content AND the budget accounting)."""
+    from nexus.langgraph.prompt_budget import pack_sections
+
+    packed, report = pack_sections([
+        (0, "case_digest", "DIGEST-CONTENT"),
+        (0, "case_digest", "DIGEST-CONTENT"),
+    ], chars=10_000)
+    assert packed.count("DIGEST-CONTENT") == 2  # both kept, namespaced
+    assert set(report["sections"]) == {"case_digest", "case_digest#2"}
+
+
+def test_case_window_reads_run_options(tmp_path, monkeypatch):
+    from nexus.langgraph.prompt_budget import case_window, context_window
+
+    monkeypatch.setenv("NEXUS_LLM_CONTEXT_WINDOW", "500000")
+    assert case_window(tmp_path) == 500_000  # no options file → env default
+    (tmp_path / "analysis").mkdir(parents=True)
+    (tmp_path / "analysis" / "mode2_run_options.json").write_text(
+        json.dumps({"context_window": 128000}), encoding="utf-8"
+    )
+    assert case_window(tmp_path) == 128_000  # case's own window wins
+    assert context_window() == 500_000       # env untouched
+
+
+def test_build_digest_accepts_cached_brief(tmp_path, monkeypatch):
+    """The portal passes its cached briefing — the digest must not re-scan."""
+    called = {"n": 0}
+
+    def _boom(case_dir):
+        called["n"] += 1
+        return _fake_brief()
+
+    monkeypatch.setattr("nexus.langgraph.briefing.case_briefing", _boom)
+    monkeypatch.setattr(
+        "nexus.langgraph.case_index.es_aggregate", lambda *a, **k: None
+    )
+    digest = build_case_digest(tmp_path, brief=_fake_brief())
+    assert called["n"] == 0
+    assert digest["case_id"] == tmp_path.name
+
+
 # ── n4_sample ────────────────────────────────────────────────────────────
 
 def test_n4_sample_spreads_over_timeline(monkeypatch, tmp_path):
@@ -226,6 +289,32 @@ def test_n4_sample_family_filter(monkeypatch, tmp_path):
     result = query_pack.n4_sample(tmp_path, family="zeek", n=5)
     assert result["matched"] == 2
     assert all(h["family"] == "zeek" for h in result["hits"])
+
+
+def test_n4_sample_envelope_fields_and_event_alias(monkeypatch, tmp_path):
+    """CSV-shaped hits (no attached fields) must match on envelope keys, and
+    `event` must alias `event_id` — the planner is told to request both."""
+    from nexus.langgraph import query_pack
+
+    hits = [
+        {"family": "hayabusa", "text": "row1", "host": "WS01", "event_id": "4624",
+         "user": "alice"},
+        {"family": "hayabusa", "text": "row2", "host": "WS02", "event_id": "4688"},
+    ]
+    monkeypatch.setattr(query_pack, "n4_hits", lambda *a, **k: (hits, "csv"))
+    monkeypatch.setattr(query_pack, "load_case_intake", lambda d: {})
+    monkeypatch.setattr(query_pack, "collect_query_terms", lambda intake: ["x"])
+
+    by_host = query_pack.n4_sample(tmp_path, family="hayabusa", field="host",
+                                   value="WS01")
+    assert by_host["matched"] == 1
+
+    by_event = query_pack.n4_sample(tmp_path, family="hayabusa", field="event",
+                                    value="4688")
+    assert by_event["matched"] == 1
+
+    by_user = query_pack.n4_sample(tmp_path, family="hayabusa", field="user")
+    assert by_user["matched"] == 1  # presence filter
 
 
 def test_backbone_allowlist_has_n4_sample():

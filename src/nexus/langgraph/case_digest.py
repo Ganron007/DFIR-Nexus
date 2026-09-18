@@ -120,12 +120,17 @@ def _entity_spans(case_dir: Path) -> dict[str, Any]:
         return {}
 
 
-def build_case_digest(case_dir: Path) -> dict[str, Any]:
-    """Assemble the deterministic digest for one case (no LLM involved)."""
-    case_dir = Path(case_dir)
-    from nexus.langgraph.briefing import case_briefing
+def build_case_digest(case_dir: Path, brief: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Assemble the deterministic digest for one case (no LLM involved).
 
-    brief = case_briefing(case_dir)
+    ``brief`` lets the caller hand in an already-cached briefing (the portal
+    does) so the digest never re-runs the full extraction scan.
+    """
+    case_dir = Path(case_dir)
+    if brief is None:
+        from nexus.langgraph.briefing import case_briefing
+
+        brief = case_briefing(case_dir)
     families = list(brief.get("families") or [])
     classes = _classify(families)
     scope = {
@@ -303,11 +308,21 @@ def reconciliation_checklist(digest: dict[str, Any],
     least one staged finding; anything not mentioned is an explicit gap the
     verdict must address (never silently omitted).
     """
-    blob = " ".join(
-        " ".join(str(f.get(k) or "") for k in ("title", "observation", "interpretation", "evidence"))
-        for f in findings or []
-        if isinstance(f, dict)
-    ).lower()
+    parts: list[str] = []
+    for f in findings or []:
+        if not isinstance(f, dict):
+            continue
+        parts.extend(
+            str(f.get(k) or "") for k in ("title", "observation", "interpretation")
+        )
+        # Evidence VALUES only — never the dict structure, or every finding
+        # with an evidence row would "mention" needles like source/detail.
+        for ev in (f.get("evidence") or []):
+            if isinstance(ev, dict):
+                parts.append(str(ev.get("detail") or ""))
+            elif isinstance(ev, str):
+                parts.append(ev)
+    blob = " ".join(parts).lower()
 
     unaddressed: list[dict[str, str]] = []
     addressed: list[dict[str, str]] = []

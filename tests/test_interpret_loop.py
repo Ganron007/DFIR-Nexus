@@ -111,6 +111,63 @@ def test_parse_json_blob_tolerant():
     assert _parse_json_blob("no json here") is None
 
 
+def test_normalize_plan_accepts_dict_shapes_and_bad_n():
+    """Id-keyed objects instead of arrays and 'n': '8 rows' must not crash the
+    loop — the model was already paid for; parse or ignore, never raise."""
+    from nexus.langgraph.interpret_loop import _normalize_plan, _notes_from
+
+    plan = _normalize_plan({
+        "hypotheses": {"H1": {"statement": "dumped creds", "why": "lsass"}},
+        "queries": ["sdelete"],
+        "samples": [{"family": "hayabusa", "n": "8 rows"}],
+        "aggregations": [{"field": "host"}],
+    })
+    assert plan["hypotheses"][0]["statement"] == "dumped creds"
+    assert plan["items"][0] == {"kind": "query", "why": "", "dsl": "sdelete"}
+    sample = next(i for i in plan["items"] if i["kind"] == "sample")
+    assert sample["n"] == 8  # unparsable n falls back to default
+    assert any(i["kind"] == "aggregate" and i["field"] == "host"
+               for i in plan["items"])
+
+    notes = _notes_from({"notes": {"N1": "confirmed via hayabusa"}})
+    assert notes and notes[0]["evidence"] == "confirmed via hayabusa"
+
+    assert _normalize_plan(None)["items"] == []
+    assert _notes_from("garbage") == []
+
+
+def test_loop_does_not_pack_digest_twice(tmp_path):
+    """The caller's sections already start with the digest in production; the
+    loop must not prepend a second copy (double content + budget)."""
+    from nexus.langgraph.prompt_budget import persist_context as real_persist
+
+    seen_packs: list[str] = []
+
+    def _capture(case_dir, name, packed, report, **kwargs):
+        seen_packs.append(packed)
+        return real_persist(case_dir, name, packed, report, **kwargs)
+
+    model = ScriptedModel([_orientation(), _verify_settled(), _findings_all_addressed()])
+    import nexus.langgraph.prompt_budget as pb
+
+    orig = pb.persist_context
+    pb.persist_context = _capture
+    try:
+        asyncio.run(run_interpret_loop(
+            case_dir=tmp_path, case_id="CASE-TEST", model=model,
+            state={"case_context": {"interpret_rounds": "1"}},
+            digest=_digest(), digest_md="# Digest\nTEXT-MARKER",
+            sections=[(0, "case_digest", "# Digest\nTEXT-MARKER"),
+                      (1, "query_pack", "qp")],
+            execute=FakeExecutor(),
+        ))
+    finally:
+        pb.persist_context = orig
+    assert seen_packs, "expected persisted packs"
+    for packed in seen_packs:
+        assert packed.count("# Digest\nTEXT-MARKER") == 1
+
+
 def test_loop_early_stop_and_artifacts(tmp_path):
     model = ScriptedModel([_orientation(), _verify_settled(), _findings_all_addressed()])
     execute = FakeExecutor()

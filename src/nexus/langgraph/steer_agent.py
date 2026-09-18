@@ -481,7 +481,12 @@ def _formulate_answer(question: str, model: Any, hits: list[dict[str, Any]],
     # Budget pack: evidence first, then deterministic extractions, then
     # helpers/history. No small caps — the window decides.
     try:
-        from nexus.langgraph.prompt_budget import log_usage, pack_sections, persist_context
+        from nexus.langgraph.prompt_budget import (
+            case_window,
+            log_usage,
+            pack_sections,
+            persist_context,
+        )
 
         sections = [
             (0, "evidence_rows", hits_block),
@@ -492,7 +497,8 @@ def _formulate_answer(question: str, model: Any, hits: list[dict[str, Any]],
             (4, "examiner_kb", kb_block),
             (5, "conversation_history", history_block),
         ]
-        packed, report = pack_sections(sections)
+        window = case_window(case_dir) if case_dir is not None else None
+        packed, report = pack_sections(sections, window=window)
         if case_dir is not None:
             persist_context(
                 Path(case_dir), "mode2-steer-answer", packed, report,
@@ -738,7 +744,7 @@ def run_steer_agent(
             for q in _fallback_queries(question, families)
             if not q.upper().startswith("AGG:")
         ]
-        queries = queries + extra
+        queries = (queries + extra)[:_MAX_QUERIES]
     _stage("plan", t0, f"{planned_by}: " + "; ".join(q["dsl"] for q in queries[:4]))
 
     # ── Step 2: execute ──

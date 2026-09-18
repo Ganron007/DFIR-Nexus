@@ -72,7 +72,7 @@ def _trim_hit(hit: dict[str, Any]) -> dict[str, Any]:
     if isinstance(fields, dict):
         for k in list(fields)[:_MAX_FIELDS]:
             fields_out[str(k)] = str(fields.get(k) or "")[:_MAX_FIELD_VALUE]
-    return {
+    out: dict[str, Any] = {
         "family": str(hit.get("family") or ""),
         "file": str(hit.get("file") or ""),
         "line": str(hit.get("line") or ""),
@@ -81,6 +81,13 @@ def _trim_hit(hit: dict[str, Any]) -> dict[str, Any]:
         "text": str(hit.get("text") or "")[:_MAX_TEXT],
         "fields": fields_out,
     }
+    # Structured envelope fields must survive for MCP consumers (timeline
+    # rendering, field filters like field="ts"/"user"/"event_id").
+    for key in ("user", "event_id", "ts"):
+        value = hit.get(key)
+        if value not in (None, ""):
+            out[key] = str(value)[:200]
+    return out
 
 
 def _field_values(hits: list[dict[str, Any]], field: str) -> list[str]:

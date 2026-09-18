@@ -96,12 +96,22 @@ def _parse_json_blob(text: str) -> Any:
         return None
 
 
+def _as_list(value: Any) -> list[Any]:
+    """LLM JSON often returns an id-keyed object where a list was asked for —
+    accept both, never raise."""
+    if isinstance(value, list):
+        return value
+    if isinstance(value, dict):
+        return list(value.values())
+    return []
+
+
 def _normalize_plan(data: Any) -> dict[str, list[dict[str, Any]]]:
     """Coerce an orient/verify JSON payload into bounded plan items."""
     plan: dict[str, list[dict[str, Any]]] = {"hypotheses": [], "items": []}
     if not isinstance(data, dict):
         return plan
-    for h in (data.get("hypotheses") or [])[:6]:
+    for h in _as_list(data.get("hypotheses"))[:6]:
         if isinstance(h, dict) and h.get("statement"):
             plan["hypotheses"].append({
                 "id": str(h.get("id") or f"H{len(plan['hypotheses']) + 1}")[:12],
@@ -141,12 +151,16 @@ def _normalize_plan(data: Any) -> dict[str, list[dict[str, Any]]]:
             family = str(entry.get("family") or "").strip()
             value = str(entry.get("value") or "").strip()
             if family or value:
+                try:
+                    sample_n = int(entry.get("n") or 8)
+                except (TypeError, ValueError):
+                    sample_n = 8
                 plan["items"].append({
                     "kind": "sample",
                     "family": family,
                     "field": str(entry.get("field") or "").strip(),
                     "value": value,
-                    "n": max(1, min(int(entry.get("n") or 8), 20)),
+                    "n": max(1, min(sample_n, 20)),
                     "why": str(entry.get("why") or "")[:200],
                 })
 
@@ -155,10 +169,8 @@ def _normalize_plan(data: Any) -> dict[str, list[dict[str, Any]]]:
             "queries": "query", "aggregations": "aggregate",
             "aggregates": "aggregate", "samples": "sample",
         }[kind]
-        entries = data.get(kind)
-        if isinstance(entries, list):
-            for entry in entries:
-                _add(key_kind, entry)
+        for entry in _as_list(data.get(kind)):
+            _add(key_kind, entry)
         if len(plan["items"]) >= _MAX_PLAN_ITEMS:
             break
     return plan
@@ -168,7 +180,7 @@ def _notes_from(data: Any) -> list[dict[str, str]]:
     notes: list[dict[str, str]] = []
     if not isinstance(data, dict):
         return notes
-    for n in (data.get("notes") or [])[:8]:
+    for n in _as_list(data.get("notes"))[:8]:
         if isinstance(n, dict):
             notes.append({
                 "hypothesis": str(n.get("hypothesis") or "")[:40],
@@ -255,6 +267,7 @@ async def run_interpret_loop(
     audit_id the findings can cite (FD-001).
     """
     from nexus.langgraph.prompt_budget import (
+        case_window,
         log_usage,
         pack_sections,
         persist_context,
@@ -262,15 +275,19 @@ async def run_interpret_loop(
 
     case_dir = Path(case_dir)
     rounds_total = _resolve_rounds(state, case_dir, rounds)
+    ctx_window = case_window(case_dir)
     intake = state.get("case_context") or {}
     intake_block = "\n".join(
         f"- {key}: {value}" for key, value in intake.items() if value
     ) or "(no examiner intake)"
 
     def _packed(tag: str, extra: list[tuple[int, str, str]]) -> str:
-        packed, report = pack_sections(
-            [(0, "case_digest", digest_md), *extra, *sections]
-        )
+        base = [*extra, *sections]
+        # `sections` from the caller may already start with the digest; never
+        # pack it twice (double content + double budget accounting).
+        if not any(name == "case_digest" for _pri, name, _text in base):
+            base = [(0, "case_digest", digest_md), *base]
+        packed, report = pack_sections(base, window=ctx_window)
         persist_context(case_dir, tag, packed, report,
                         meta={"case_id": case_id, "run_id": state.get("run_id", "")})
         log_usage(tag, report)
@@ -395,15 +412,24 @@ async def run_interpret_loop(
         data = _parse_json_blob(raw)
         notes = _notes_from(data)
         notes_all.extend(notes)
-        next_plan = {"hypotheses": [], "items": []}
-        if isinstance(data, dict) and data.get("next"):
-            next_plan = _normalize_plan({"queries": data.get("next")})
-            # next items may also be aggregates/samples passed as objects
-            if not next_plan["items"]:
-                next_plan = _normalize_plan({
-                    "aggregations": data.get("next"),
-                    "samples": [n for n in (data.get("next") or []) if isinstance(n, dict) and n.get("family")],
-                })
+        next_list = _as_list(data.get("next")) if isinstance(data, dict) else []
+        next_plan = _normalize_plan({
+            "queries": [
+                i for i in next_list
+                if isinstance(i, str)
+                or (isinstance(i, dict) and (i.get("dsl") or i.get("query")))
+            ],
+            # One item goes to exactly ONE bucket: sample (by family) wins,
+            # otherwise aggregate (by field) — never both (double execution).
+            "aggregations": [
+                i for i in next_list
+                if isinstance(i, dict) and i.get("field") and not i.get("family")
+            ],
+            "samples": [
+                i for i in next_list
+                if isinstance(i, dict) and i.get("family")
+            ],
+        })
         _persist_round(case_dir, f"round-{round_no}-notes", {
             "round": round_no, "kind": "notes", "notes": notes,
             "next": next_plan["items"],
@@ -472,7 +498,8 @@ async def run_interpret_loop(
         )
         extra_sections = reconcile_extra + [(0, "unaddressed_items", items_block)]
         packed_extra, report_extra = pack_sections(
-            [(0, "case_digest", digest_md), *extra_sections]
+            [(0, "case_digest", digest_md), *extra_sections],
+            window=ctx_window,
         )
         try:
             persist_context(case_dir, "interpret-reconcile-extra", packed_extra,

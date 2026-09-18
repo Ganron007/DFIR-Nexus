@@ -12,6 +12,7 @@ what the LLM was given. Usage telemetry is logged — it never caps content.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -34,6 +35,23 @@ def context_window() -> int:
     except ValueError:
         value = DEFAULT_CONTEXT_WINDOW
     return max(8_000, value)
+
+
+def case_window(case_dir: Path) -> int:
+    """The CASE's own window (analysis/mode2_run_options.json, set before the
+    run) — falls back to the process default. This is what keeps two cases
+    with different windows from racing over a process-wide env var."""
+    try:
+        opts = json.loads(
+            (Path(case_dir) / "analysis" / "mode2_run_options.json")
+            .read_text(encoding="utf-8")
+        )
+        value = int(opts.get("context_window") or 0)
+        if value >= 8_000:
+            return value
+    except (OSError, ValueError, TypeError):
+        pass
+    return context_window()
 
 
 def fill_ratio() -> float:
@@ -70,6 +88,7 @@ def pack_sections(
     sections: list[tuple[int, str, str]],
     *,
     chars: int | None = None,
+    window: int | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """Pack ``(priority, name, text)`` sections into one context, lowest
     priority number first, until the budget is exhausted.
@@ -78,10 +97,17 @@ def pack_sections(
     estimated tokens and truncation, plus the totals. Every section is given
     a fair first share (equal split of the budget), then remaining space is
     handed out in priority order until it runs out — so no section is starved
-    by a giant earlier one.
+    by a giant earlier one. Duplicate section names are de-duplicated (a
+    repeated name would otherwise be emitted twice and double-counted);
+    ``window`` overrides the process default with the case's own window.
     """
-    limit = chars if chars is not None else budget_chars()
-    ordered = sorted(sections, key=lambda s: s[0])
+    limit = chars if chars is not None else budget_chars(window=window)
+    seen_names: dict[str, int] = {}
+    ordered: list[tuple[int, str, str]] = []
+    for pri, name, text in sorted(sections, key=lambda s: s[0]):
+        seen_n = seen_names.get(name, 0)
+        seen_names[name] = seen_n + 1
+        ordered.append((pri, name if seen_n == 0 else f"{name}#{seen_n + 1}", text))
     total_sections = max(1, len(ordered))
     fair = max(2_000, limit // total_sections)
 

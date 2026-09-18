@@ -1896,8 +1896,10 @@ also resolves it).
 evidence_classes_present, explicitly_absent}, inventory, ledger, hosts,
 time_range, signal_map{scanned, with_hits[], zero_hit[]}, alerts, entities,
 entity_spans, timeline{buckets_per_day, source}, backend}, markdown}` —
-`markdown` is the exact rendered digest the LLM receives as prompt section #0.
+`markdown` is the exact rendered digest the LLM receives as prompt section #0
+(it includes the TI context block; the `digest` JSON mirrors everything else).
 Every packed LLM context is persisted under `<case>/analysis/llm_context/`.
+Build runs off the event loop and reuses the portal's cached briefing.
 
 ### GET /portal/api/case/rounds
 **Description:** GATE-B interpret round log. Returns the loop summary

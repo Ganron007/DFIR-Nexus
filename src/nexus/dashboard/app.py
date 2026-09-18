@@ -1071,6 +1071,23 @@ def _case_artifact_flags(case_dir: Path) -> dict[str, bool]:
     }
 
 
+def _slim_chat_hits(hits: list) -> list[dict]:
+    """Compact hits for the persisted transcript — the chat file must not grow
+    by ~40 KB per turn (full rows stay available via Explore/ES)."""
+    out: list[dict] = []
+    for h in hits or []:
+        if not isinstance(h, dict):
+            continue
+        item: dict = {}
+        for key in ("family", "file", "line", "host", "user", "event_id", "ts", "terms"):
+            value = h.get(key)
+            if value not in (None, ""):
+                item[key] = str(value)[:200]
+        item["text"] = str(h.get("text") or "")[:400]
+        out.append(item)
+    return out
+
+
 async def api_cases(request):
     cases = _list_case_ids()
     active = _active_case_id()
@@ -3640,8 +3657,9 @@ async def api_mode2_chat(request):
         "queries": result.get("queries_executed", [])[:8],
         "aggregations": result.get("aggregations", [])[:5],
         # Cited rows + drill-down chips persist so the transcript stays
-        # bookmarkable/explorable after reload.
-        "hits": result.get("hits", [])[:10],
+        # bookmarkable/explorable after reload (hits slimmed — Explore owns
+        # the full rows).
+        "hits": _slim_chat_hits(result.get("hits", [])[:10]),
         "followups": result.get("followups", []),
     })
 
@@ -4799,11 +4817,9 @@ async def api_pipeline_run(request):
     case_context["interpret_rounds"] = str(rounds)
     case_context["context_window"] = str(window)
     run_options = {"interpret_rounds": rounds, "context_window": window}
-    if body.get("context_window") or body.get("interpret_rounds"):
-        # Process-wide default for the budget allocator. Fine for the live
-        # single-active-case workflow; the run also carries the values in
-        # case_context and analysis/mode2_run_options.json.
-        os.environ["NEXUS_LLM_CONTEXT_WINDOW"] = str(window)
+    # NOTE: deliberately NOT written to os.environ — the allocator reads the
+    # per-case options file (prompt_budget.case_window), so two cases with
+    # different windows can never race over a process-wide value.
     with contextlib.suppress(OSError):
         (case_dir / "analysis").mkdir(parents=True, exist_ok=True)
         (case_dir / "analysis" / "mode2_run_options.json").write_text(
@@ -5144,14 +5160,23 @@ async def api_case_digest(request):
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
     digest_path = case_dir / "analysis" / "case_digest.json"
-    try:
-        if digest_path.is_file():
-            payload = json.loads(digest_path.read_text(encoding="utf-8"))
-        else:
-            from nexus.langgraph.case_digest import build_case_digest, write_case_digest
 
-            payload = build_case_digest(case_dir)
-            write_case_digest(case_dir, payload)
+    def _load_digest() -> dict:
+        if digest_path.is_file():
+            return json.loads(digest_path.read_text(encoding="utf-8"))
+        from nexus.langgraph.case_digest import build_case_digest, write_case_digest
+
+        brief = None
+        with contextlib.suppress(Exception):
+            brief = _cached_briefing(case_dir)  # 45 s cache — no full re-scan
+        payload = build_case_digest(case_dir, brief=brief)
+        write_case_digest(case_dir, payload)
+        return payload
+
+    try:
+        # Building the digest can run a full extraction scan — never on the
+        # event loop (a big Mode 2 case would stall every request).
+        payload = await asyncio.to_thread(_load_digest)
         md_path = case_dir / "analysis" / "case_digest.md"
         return JSONResponse({
             "digest": payload,

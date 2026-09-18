@@ -176,3 +176,21 @@ def test_doc_shape_includes_structured_fields(tmp_path):
     assert doc.get("user") == "corp\\bob"
     assert doc.get("event_id") == "4688"
     assert doc.get("fields", {}).get("RuleTitle") == "Suspicious Sdelete"
+
+def test_trim_hit_preserves_structured_envelope():
+    """MCP consumers (timeline rendering, field filters) need ts/user/event_id
+    through the trim — they were silently dropped before."""
+    from nexus.tools.evidence_index import _trim_hit
+
+    hit = _trim_hit({
+        "family": "hayabusa", "file": "f.csv", "line": 2,
+        "text": "2026-01-01 10:00:00,4688,WS01,CORP\\\\bob,powershell",
+        "host": "WS01", "user": "CORP\\\\bob", "event_id": "4688",
+        "ts": "2026-01-01T10:00:00", "terms": "powershell",
+        "fields": {"RuleTitle": "Suspicious Sdelete"},
+    })
+    assert hit["host"] == "WS01"
+    assert hit["user"] == "CORP\\\\bob"
+    assert hit["event_id"] == "4688"
+    assert hit["ts"] == "2026-01-01T10:00:00"
+    assert hit["fields"]["RuleTitle"] == "Suspicious Sdelete"
