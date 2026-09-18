@@ -8,7 +8,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { api, type BriefingDirection, type BriefingResponse, type CaseDigestResponse, type Mode1FullRunResponse } from "../api/client";
+import { api, type BriefingDirection, type BriefingResponse, type CaseDigestResponse, type InterpretRoundsResponse, type Mode1FullRunResponse } from "../api/client";
 import { useCase } from "../context/CaseContext";
 
 export default function Briefing() {
@@ -33,6 +33,8 @@ export default function Briefing() {
   // GATE-A — deterministic Case Digest (fetched for Mode 2/3 only).
   const [digest, setDigest] = useState<CaseDigestResponse | null>(null);
   const [digestError, setDigestError] = useState("");
+  // GATE-B — interpret round log (Mode 2/3 only).
+  const [rounds, setRounds] = useState<InterpretRoundsResponse | null>(null);
   // Mode 2 run options — decided BEFORE the run.
   const [interpretRounds, setInterpretRounds] = useState(3);
   const [contextWindow, setContextWindow] = useState(1_000_000);
@@ -152,6 +154,8 @@ export default function Briefing() {
           if (s.error) setModeRunError(s.error);
           // Pull the fresh briefing (interpretation/verdict may be written)
           api.caseBriefing().then(setBrief).catch(() => undefined);
+          api.caseDigest().then((d) => { if (!d.error) setDigest(d); }).catch(() => undefined);
+          api.caseRounds().then((r) => { if (r.summary) setRounds(r); }).catch(() => undefined);
           refreshStages(activeCase);
         }
       } catch (e) {
@@ -164,9 +168,11 @@ export default function Briefing() {
   useEffect(() => () => stopModeRunPoll(), []);
 
   // GATE-A — digest loads for Mode 2/3 (Mode 1 has directions instead).
+  // GATE-B — rounds load alongside it after a run.
   useEffect(() => {
     setDigest(null);
     setDigestError("");
+    setRounds(null);
     if (!activeCase || (mode !== "2" && mode !== "3")) return;
     let stale = false;
     api.caseDigest()
@@ -176,6 +182,9 @@ export default function Briefing() {
         else setDigest(d);
       })
       .catch((e) => { if (!stale) setDigestError((e as Error).message); });
+    api.caseRounds()
+      .then((r) => { if (!stale && r.summary) setRounds(r); })
+      .catch(() => undefined);
     return () => { stale = true; };
   }, [activeCase, mode]);
 
@@ -432,6 +441,80 @@ export default function Briefing() {
               </>
             );
           })()}
+        </div>
+      )}
+
+      {/* GATE-B — interpret round log (Mode 2/3): Orient → Verify → Reconcile */}
+      {(mode === "2" || mode === "3") && rounds?.summary && (
+        <div className="card" style={{ borderLeft: "3px solid var(--purple)" }}>
+          <div className="card-title" style={{ marginBottom: 6 }}>
+            Interpretation rounds{" "}
+            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
+              (Orient → Verify → Reconcile — replay of how the LLM got there)
+            </span>
+          </div>
+          <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 6 }}>
+            {rounds.summary.rounds_run}/{rounds.summary.rounds_requested} verify round(s)
+            {" · stop: "}{rounds.summary.stop_reason}
+            {" · "}{rounds.summary.hypotheses.length} hypothesis/es
+            {" · "}{rounds.summary.notes.length} verification note(s)
+            {" · "}{rounds.summary.findings_emitted} finding(s) emitted
+            {" · reconciliation "}{rounds.summary.reconciliation.addressed} addressed
+            {rounds.summary.reconciliation.unaddressed.length > 0 &&
+              ` / ${rounds.summary.reconciliation.unaddressed.length} unaddressed`}
+          </div>
+          {rounds.summary.hypotheses.length > 0 && (
+            <ul style={{ fontSize: 12, margin: "0 0 8px 18px", padding: 0 }}>
+              {rounds.summary.hypotheses.map((h) => (
+                <li key={h.id}>
+                  <b>{h.id}</b>: {h.statement}
+                  {h.why ? <span style={{ color: "var(--text-muted)" }}> — {h.why}</span> : null}
+                </li>
+              ))}
+            </ul>
+          )}
+          {rounds.summary.reconciliation.unaddressed.length > 0 && (
+            <div style={{ fontSize: 11, color: "var(--warning)", marginBottom: 8 }}>
+              Still unaddressed (verdict must state these as open):{" "}
+              {rounds.summary.reconciliation.unaddressed.map((u) => `[${u.kind}] ${u.value}`).join("; ")}
+            </div>
+          )}
+          <details>
+            <summary style={{ fontSize: 11, cursor: "pointer", color: "var(--accent)" }}>
+              Round detail ({rounds.rounds.length} artifact(s))
+            </summary>
+            <div style={{ marginTop: 8 }}>
+              {rounds.rounds.map((r) => (
+                <div key={`${r.round}-${r.kind}`} style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600 }}>
+                    Round {r.round} — {r.kind}
+                  </div>
+                  {r.entries && r.entries.length > 0 && (
+                    <ul style={{ fontSize: 11, margin: "4px 0 0 18px", padding: 0 }}>
+                      {r.entries.map((e, i) => (
+                        <li key={i}>
+                          <span style={{ fontFamily: "monospace" }}>{e.kind}</span>:{" "}
+                          {String((e.params?.dsl as string) || e.params?.value || "")}
+                          {e.error ? ` — ERROR: ${e.error}` : ` — ${e.count ?? 0} row(s)`}
+                          {e.why ? <span style={{ color: "var(--text-muted)" }}> ({e.why})</span> : null}
+                          {e.audit_id ? <span style={{ color: "var(--text-muted)" }}> [{e.audit_id}]</span> : null}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {r.notes && r.notes.length > 0 && (
+                    <ul style={{ fontSize: 11, margin: "4px 0 0 18px", padding: 0 }}>
+                      {r.notes.map((n, i) => (
+                        <li key={i}>
+                          {n.hypothesis} → <b>{n.status}</b>: {n.evidence}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ))}
+            </div>
+          </details>
         </div>
       )}
 

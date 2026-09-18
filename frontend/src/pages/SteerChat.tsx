@@ -255,12 +255,17 @@ export default function SteerChat() {
     };
   }, [activeCase]);
 
-  const send = async () => {
+  const send = () => {
     if (!input.trim() || loading) return;
     const text = input;
     // Standard chatbox: the examiner's message posts immediately, the input
     // clears, and the field stays editable while the agent works.
     setInput("");
+    void sendText(text);
+  };
+
+  const sendText = async (text: string) => {
+    if (!text.trim() || loading) return;
     setLoading(true);
     setError("");
     setLiveStatus("");
@@ -322,7 +327,7 @@ export default function SteerChat() {
               confidence: r.confidence,
               timings: timingText,
             },
-            data: { queries: r.queries_executed || [] },
+            data: { queries: r.queries_executed || [], followups: r.followups || [] },
           },
         ]);
       } else if (mode === "mode3") {
@@ -764,7 +769,7 @@ export default function SteerChat() {
                     {m.text}
                   </div>
                   {/* WP 4j.13 — the queries the agent actually ran (structured,
-                      not a raw JSON blob) */}
+                      not a raw JSON blob), with the plan rationale */}
                   {m.role !== "examiner" && (m.data?.queries?.length ?? 0) > 0 && (
                     <div
                       style={{
@@ -783,7 +788,25 @@ export default function SteerChat() {
                           </span>
                           {" → "}
                           <span>{q.hits} hit(s)</span>
+                          {q.why ? <span> · {q.why}</span> : null}
                         </div>
+                      ))}
+                    </div>
+                  )}
+                  {/* 4j-H.8 — deterministic drill-down chips for the next turn */}
+                  {m.role !== "examiner" && (m.data?.followups?.length ?? 0) > 0 && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+                      {m.data!.followups!.map((f, fi) => (
+                        <button
+                          key={fi}
+                          className="btn btn-sm clickable-tint"
+                          style={{ fontSize: 11 }}
+                          disabled={loading}
+                          title={f.question}
+                          onClick={() => void sendText(f.question)}
+                        >
+                          {f.label}
+                        </button>
                       ))}
                     </div>
                   )}

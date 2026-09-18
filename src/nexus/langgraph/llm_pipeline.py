@@ -1410,6 +1410,7 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
     kb_block = ""
     playbook_block = ""
     digest_md = ""
+    digest: dict[str, Any] = {}
     if case_id:
         from nexus.config import settings
         analysis_dir = Path(state.get("run_dir") or "") / "analysis" if state.get("run_dir") else None
@@ -1487,6 +1488,76 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
 
     from nexus.langgraph.itm import itm_prompt_block
 
+    # Operator context rule: budget = window × fill (default 1M × 0.7), no
+    # artificial small caps. Packed from the digest outward; every pack is
+    # persisted to analysis/llm_context/ so the examiner can audit it.
+    from nexus.langgraph.prompt_budget import (
+        log_usage,
+        pack_sections,
+        persist_context,
+        retry_budget_chars,
+    )
+
+    ledger_block = f"OK/FAIL ledger (audit_ids only — not facts):\n```json\n{ledger_json}\n```"
+    sections = [
+        (0, "case_digest", digest_md),
+        (1, "n4_query_pack", query_pack),
+        (2, "entity_inventory", inv_md),
+        (3, "threat_intel_context", ti_block),
+        (4, "playbook_guidance", playbook_block),
+        (5, "examiner_kb_notes", kb_block),
+        (6, "run_ledger", ledger_block),
+        (7, "prior_rag_notes", rag_prior),
+    ]
+
+    case_dir_for_ctx: Path | None = None
+    if case_id:
+        from nexus.config import settings
+
+        case_dir_for_ctx = settings.cases_root / case_id
+
+    # ── GATE-B primary path: the bounded interpret round loop ───────────
+    # Orient → Verify ×N → Reconcile, with artifacts under
+    # analysis/interpret_rounds/. The ReAct single pass below stays as the
+    # degraded/fallback path.
+    if case_dir_for_ctx is not None and digest:
+        async def _execute_tool(name: str, payload: dict) -> dict:
+            tool = tools.get(name)
+            if tool is None:
+                return {"error": f"tool {name} not available"}
+            return _parse_tool_result(await tool.ainvoke(payload))
+
+        try:
+            from nexus.langgraph.interpret_loop import run_interpret_loop
+
+            loop_result = await run_interpret_loop(
+                case_dir=case_dir_for_ctx,
+                case_id=case_id,
+                model=model,
+                state=state,
+                digest=digest,
+                digest_md=digest_md,
+                sections=sections,
+                execute=_execute_tool,
+            )
+            log.info(
+                "Interpret loop: %d/%d rounds (%s), %d findings, %d unaddressed",
+                loop_result.get("rounds_run"), loop_result.get("rounds_requested"),
+                loop_result.get("stop_reason"), loop_result.get("findings_emitted"),
+                len(loop_result.get("unaddressed") or []),
+            )
+            if loop_result.get("findings_emitted"):
+                return {
+                    "step_log": [
+                        f"interpret loop: {loop_result.get('rounds_run')} round(s), "
+                        f"{loop_result.get('findings_emitted')} finding candidate(s)"
+                    ],
+                    "messages": loop_result.get("messages") or [],
+                }
+            log.warning("Interpret loop emitted no findings — single-pass fallback")
+        except Exception as exc:  # noqa: BLE001 — fallback keeps the lane alive
+            log.warning("Interpret loop failed (%s) — single-pass fallback", exc)
+
     agent = create_react_agent(
         model,
         interpret_tools,
@@ -1520,12 +1591,6 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
     # Operator context rule: budget = window × fill (default 1M × 0.7), no
     # artificial small caps. Packed from the digest outward; every pack is
     # persisted to analysis/llm_context/ so the examiner can audit it.
-    from nexus.langgraph.prompt_budget import (
-        log_usage,
-        pack_sections,
-        persist_context,
-        retry_budget_chars,
-    )
 
     ledger_block = f"OK/FAIL ledger (audit_ids only — not facts):\n```json\n{ledger_json}\n```"
     sections = [

@@ -237,7 +237,7 @@ its starting point — Mode 2 never feeds directions back.
 > (commit `7cc7ec0`), with the Phase 4/4e SPA cockpit on top. Operator review
 > on a real case remains the gate before Mode 1 is declared *proven*.
 
-### Mode 2 — LLM-Guided Analysis (implemented; GATE-A full-context interpretation built 2026-09-17)
+### Mode 2 — LLM-Guided Analysis (implemented; 4j-H GATE-A + GATE-B built 2026-09-17/18)
 
 **The examiner asks in plain language; the LLM queries the case's evidence
 index, cites rows, and stages DRAFT findings for approval — then steers
@@ -245,8 +245,9 @@ conversationally with live evidence retrieval.**
 
 Mode 2 is the **product differentiator**, and it has two halves:
 
-1. **Interpretation at processing time.** After the deterministic lane, the
-   LLM receives the **Case Digest** — one deterministic artifact holding
+1. **Interpretation at processing time — a bounded loop.** After the
+   deterministic lane, the LLM runs Orient → Verify ×N → Reconcile (round
+   artifacts in `analysis/interpret_rounds/`): it receives the **Case Digest** — one deterministic artifact holding
    everything the case knows: scope (what IS and explicitly is **NOT** in
    evidence), inventory + parser ledger, the signal map **including 0-hit
    needles as negative evidence**, the alert surface, entities with
@@ -274,19 +275,26 @@ Deterministic lane parses, indexes (ES), builds the Case Digest +
 entity inventory + TI sweep  (analysis/case_digest.{json,md})
     |
     v
-INTERPRET: the LLM reconciles the digest against the N4 query pack and its
-          own n4_sample/n4_query pulls — every alert, entity, needle with
-          hits and 0-hit needle gets a disposition; scope is stated as
-          scope, never as "no compromise"
+INTERPRET LOOP (bounded, audited; analysis/interpret_rounds/*.json):
+  Round 0 ORIENT   — digest + query pack -> hypotheses + evidence plan
+                     (queries/aggregations/samples, each with a why)
+  Rounds 1..N      — code executes the plan through the same audited MCP
+     VERIFY          tools; the LLM reads the REAL rows and marks each
+                     hypothesis confirmed/refuted/unknown (+ next round);
+                     early stop when settled
+  Final RECONCILE  — findings JSON; the deterministic checklist ensures every
+                     alert, high-count needle, entity and gap is dispositioned
+                     (one bounded extra pass for anything unmentioned)
     |
     v
 Staging: DRAFT findings + interpretation.md (verdict + reconciliation of
         unaddressed items + coverage gaps) -> examiner reviews in Approve
     |
     v
-Steer Chat: PLAN (fast path ~2 ms or LLM) -> EXECUTE (one pushed-down ES
-query per DSL; ES-native aggregations) -> ANSWER (rows + RAG/KB/TI helpers,
-citations, per-stage timings); follow-ups drill into the same index
+Steer Chat: PLAN (fast path ~2 ms or LLM, each query with a why) -> EXECUTE
+(one pushed-down ES query per DSL; ES-native aggregations) -> ANSWER (rows +
+RAG/KB/TI helpers, citations, per-stage timings) + deterministic follow-up
+chips (top host/exe/user, list users/hosts) — click to drill
     |
     v
 N8 report from APPROVED only

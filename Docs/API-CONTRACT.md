@@ -1894,6 +1894,17 @@ entity_spans, timeline{buckets_per_day, source}, backend}, markdown}` —
 `markdown` is the exact rendered digest the LLM receives as prompt section #0.
 Every packed LLM context is persisted under `<case>/analysis/llm_context/`.
 
+### GET /portal/api/case/rounds
+**Description:** GATE-B interpret round log. Returns the loop summary
+(hypotheses, verification notes, findings emitted, reconciliation state) plus
+every persisted round artifact under `analysis/interpret_rounds/` so the
+examiner can replay how the interpretation reached its conclusions.
+
+**Response 200:** `{summary: {rounds_requested, rounds_run, stop_reason,
+hypotheses[], notes[], findings_emitted, reconciliation{addressed,
+unaddressed[]}}, rounds: [{round, kind, hypotheses?, items?, entries?, notes?,
+next?}]}` — `{summary: null, rounds: []}` when no loop has run yet.
+
 ### POST /portal/api/hit/interpret
 **Description:** WP 4j.1 hit interpretation layer — what a hit/alert row
 means and what to check next. Deterministic: matches the hit against skill

@@ -147,3 +147,51 @@ def test_fast_plan_skips_llm_for_clear_intents():
 
     # Open-ended questions still use the LLM planner.
     assert _fast_plan("Explain how the attacker moved laterally across the estate") is None
+
+
+def test_steer_turn_returns_followups_and_rationale(tmp_path):
+    """4j-H.8 — drill-down chips + per-query why for transparency."""
+    from nexus.langgraph.steer_agent import run_steer_agent
+
+    case = _mkcase(tmp_path)
+    result = run_steer_agent(case, "sdelete execution")
+    followups = result.get("followups") or []
+    assert followups, "expected deterministic drill-down chips"
+    assert all(f.get("label") and f.get("question") for f in followups)
+    assert any(f["label"].startswith("Drill into") for f in followups)
+    assert any(q.get("why") for q in result["queries_executed"]), \
+        "queries_executed must carry the plan rationale"
+
+
+def test_suggest_followups_deterministic():
+    from nexus.langgraph.steer_agent import _suggest_followups
+
+    chips = _suggest_followups(
+        "what happened?",
+        ["hayabusa"],
+        [
+            {"family": "hayabusa", "host": "WS01", "text": "sdelete.exe ran"},
+            {"family": "hayabusa", "host": "WS01", "text": "rundll32.exe"},
+        ],
+        [{"field": "user", "top": [{"value": "alice", "count": 3}]}],
+    )
+    labels = [c["label"] for c in chips]
+    assert "Drill into WS01" in labels
+    assert any(".exe" in label for label in labels)
+    assert any("alice" in label for label in labels)
+    assert len(chips) <= 4
+
+    # The question itself is never offered back as a chip.
+    again = _suggest_followups("Drill into WS01", ["hayabusa"],
+                               [{"family": "hayabusa", "host": "WS01", "text": "x"}], [])
+    assert not any(c["label"] == "Drill into WS01" for c in again)
+
+
+def test_norm_query_items_tolerates_strings_and_dicts():
+    from nexus.langgraph.steer_agent import _norm_query_items
+
+    items = _norm_query_items(["sdelete", {"dsl": "psexec", "why": "lateral movement"},
+                               {"query": "wevtutil"}, "", 42])
+    assert [i["dsl"] for i in items] == ["sdelete", "psexec", "wevtutil"]
+    assert items[1]["why"] == "lateral movement"
+    assert _norm_query_items("not-a-list") == []

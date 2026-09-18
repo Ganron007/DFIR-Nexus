@@ -109,8 +109,12 @@ def _extract_tokens(hits: list[dict[str, Any]], pattern: re.Pattern[str], cap: i
 def _plan_queries(question: str, model: Any, families: list[str],
                   family_rows: dict[str, int],
                   family_fields: dict[str, list[str]],
-                  history_block: str = "") -> list[str]:
-    """Step 1: LLM translates the NL question into N4 DSL queries."""
+                  history_block: str = "") -> list[dict[str, str]]:
+    """Step 1: LLM translates the NL question into N4 DSL queries.
+
+    Returns ``[{"dsl", "why"}]`` — the why powers the UI's "what was queried
+    and why" transparency line. Tolerates bare-string query lists.
+    """
     from nexus.knowledge.loader import dsl_prompt_block
 
     grammar = dsl_prompt_block(cap=8)
@@ -139,7 +143,8 @@ def _plan_queries(question: str, model: Any, families: list[str],
         f"{empty_line}"
         f"\nN4 grammar:\n{grammar}\n\n"
         "RULES:\n"
-        "- Return ONLY JSON: {\"queries\": [\"<dsl 1>\", \"<dsl 2>\"]}\n"
+        '- Return ONLY JSON: {"queries": [{"dsl": "<dsl 1>", "why": "<one '
+        'clause: what this verifies>"}, ...]}\n'
         "- Each query is ONE complete DSL expression, e.g. family:hayabusa AND sdelete\n"
         "- A bare term (e.g. `exe`, `powershell`, `rundll32`) searches ALL families — "
         "prefer this when unsure which family holds the data.\n"
@@ -165,21 +170,42 @@ def _plan_queries(question: str, model: Any, families: list[str],
         if start == -1 or end == -1:
             return []
         parsed = json.loads(text[start:end + 1])
-        queries = [str(q).strip() for q in (parsed.get("queries") or []) if str(q).strip()]
-        return queries[:_MAX_QUERIES]
+        return _norm_query_items(parsed.get("queries"))
     except Exception as exc:
         log.warning("Query planning failed: %s", exc)
         return []
+
+
+def _norm_query_items(items: Any, default_why: str = "") -> list[dict[str, str]]:
+    """Normalize a mixed string/dict query list into ``[{dsl, why}]``."""
+    out: list[dict[str, str]] = []
+    if not isinstance(items, list):
+        return out
+    for item in items:
+        if isinstance(item, str) and item.strip():
+            out.append({"dsl": item.strip(), "why": default_why})
+        elif isinstance(item, dict):
+            dsl = str(item.get("dsl") or item.get("query") or "").strip()
+            if dsl:
+                out.append({
+                    "dsl": dsl,
+                    "why": str(item.get("why") or default_why)[:200],
+                })
+    return out[:_MAX_QUERIES]
 
 
 def _looks_like_match_all(dsl: str) -> bool:
     return dsl.strip().lower() in ("", "match_all", "*", "all", "everything")
 
 
-def _execute_queries(queries: list[str], case_id: str, audit: AuditWriter) -> tuple[
+def _execute_queries(queries: list[dict[str, str]], case_id: str, audit: AuditWriter) -> tuple[
     list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]],
 ]:
-    """Step 2: execute the planned queries through the case-gated backbone."""
+    """Step 2: execute the planned queries through the case-gated backbone.
+
+    ``queries`` items are ``{"dsl", "why"}``; the why is carried into
+    ``queries_executed`` so the UI can show what was queried *and why*.
+    """
     from nexus.langgraph.backbone import backbone_call
 
     all_hits: list[dict[str, Any]] = []
@@ -187,8 +213,11 @@ def _execute_queries(queries: list[str], case_id: str, audit: AuditWriter) -> tu
     aggregations: list[dict[str, Any]] = []
     seen_rows: set[str] = set()
 
-    for q in queries:
-        q = q.strip()
+    for item in queries:
+        q = str(item.get("dsl") or "").strip()
+        why = str(item.get("why") or "")
+        if not q:
+            continue
         if q.upper().startswith("AGG:"):
             body = q[4:].strip()
             hit_field = re.search(r"field\s*[:=]\s*([A-Za-z0-9_]+)", body, re.IGNORECASE)
@@ -214,6 +243,7 @@ def _execute_queries(queries: list[str], case_id: str, audit: AuditWriter) -> tu
             queries_executed.append({
                 "tool": "n4_aggregate",
                 "dsl": f"{dsl_part or 'match_all'} field={agg_field}",
+                "why": why,
                 "hits": result.get("rows_scanned", 0),
                 "audit_id": (result.get("provenance") or {}).get("audit_id"),
             })
@@ -234,6 +264,7 @@ def _execute_queries(queries: list[str], case_id: str, audit: AuditWriter) -> tu
             queries_executed.append({
                 "tool": "n4_query",
                 "dsl": q,
+                "why": why,
                 "hits": result.get("count", 0),
                 "audit_id": (result.get("provenance") or {}).get("audit_id"),
             })
@@ -491,6 +522,61 @@ def _fallback_queries(question: str, families: list[str]) -> list[str]:
     return queries[:_MAX_QUERIES]
 
 
+def _suggest_followups(question: str, families: list[str],
+                       all_hits: list[dict[str, Any]],
+                       aggregations: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """Deterministic drill-down chips for the next steer turn (4j-H.8).
+
+    Built from what the turn actually surfaced (top host/user/executables),
+    never from guesswork — clicking a chip simply asks that question.
+    """
+    q_low = (question or "").lower().strip()
+    chips: list[dict[str, str]] = []
+
+    def add(label: str, text: str) -> None:
+        if len(chips) >= 4 or not text.strip():
+            return
+        if text.lower().strip() == q_low:
+            return
+        if any(c["label"] == label for c in chips):
+            return
+        chips.append({"label": label, "question": text})
+
+    hosts: dict[str, int] = {}
+    users: dict[str, int] = {}
+    for h in all_hits:
+        host = str(h.get("host") or "").strip()
+        if host:
+            hosts[host] = hosts.get(host, 0) + 1
+    for a in aggregations:
+        target = hosts if a.get("field") == "host" else users if a.get("field") == "user" else None
+        if target is None:
+            continue
+        for t in a.get("top") or []:
+            value = str(t.get("value") or "").strip()
+            if value:
+                target[value] = target.get(value, 0) + int(t.get("count") or 0)
+
+    if hosts:
+        top_host = max(hosts, key=lambda k: hosts[k])
+        if top_host.lower() not in q_low:
+            add(f"Drill into {top_host}", f"What else happened on host {top_host}?")
+    exes = _extract_tokens(all_hits, _EXE_RE, cap=5)
+    if exes:
+        name = exes[0][0]
+        if name.lower() not in q_low:
+            add(f"Trace {name}", f"What else did {name} do across the case?")
+    if users:
+        top_user = max(users, key=lambda k: users[k])
+        if top_user.lower() not in q_low:
+            add(f"Trace user {top_user}", f"What did user {top_user} do in this case?")
+    if "list all users" not in q_low:
+        add("List all users", "List all users seen in this case")
+    if "list all hosts" not in q_low:
+        add("List all hosts", "List all machines and hosts in this case")
+    return chips[:4]
+
+
 def run_steer_agent(
     case_dir: Path,
     question: str,
@@ -553,11 +639,11 @@ def run_steer_agent(
 
     # ── Step 1: plan queries ──
     t0 = _time.monotonic()
-    queries: list[str] = []
+    queries: list[dict[str, str]] = []
     planned_by = "llm"
     fast = _fast_plan(question)
     if fast:
-        queries = fast
+        queries = _norm_query_items(fast, "deterministic fast-path intent")
         planned_by = "deterministic"
     elif llm is not None:
         queries = _plan_queries(
@@ -567,12 +653,17 @@ def run_steer_agent(
             planned_by = "fallback"
     if not queries:
         planned_by = "fallback"
-        queries = _fallback_queries(question, families)
-    if queries and all(q.upper().startswith("AGG:") for q in queries):
-        extra = [q for q in _fallback_queries(question, families)
-                 if not q.upper().startswith("AGG:")]
-        queries = list(queries) + extra
-    _stage("plan", t0, f"{planned_by}: " + "; ".join(queries[:4]))
+        queries = _norm_query_items(
+            _fallback_queries(question, families), "deterministic keyword fallback"
+        )
+    if queries and all(q["dsl"].upper().startswith("AGG:") for q in queries):
+        extra = [
+            {"dsl": q, "why": "row evidence to accompany the aggregation"}
+            for q in _fallback_queries(question, families)
+            if not q.upper().startswith("AGG:")
+        ]
+        queries = queries + extra
+    _stage("plan", t0, f"{planned_by}: " + "; ".join(q["dsl"] for q in queries[:4]))
 
     # ── Step 2: execute ──
     t0 = _time.monotonic()
@@ -582,6 +673,7 @@ def run_steer_agent(
            f"{len(queries_executed)} quer(ies), {len(all_hits)} hits")
 
     # ── Step 3: answer ──
+    followups = _suggest_followups(question, families, all_hits, aggregations)
     if not all_hits and not aggregations:
         searched = ", ".join(f for f in families if family_rows.get(f, 0) > 0) or "none"
         reply = (
@@ -593,7 +685,7 @@ def run_steer_agent(
         return {
             "reply": reply, "queries_executed": queries_executed,
             "total_hits": 0, "aggregations": [], "turns": 2,
-            "confidence": "low", "stages": stages,
+            "confidence": "low", "stages": stages, "followups": followups,
             "timings_ms": {s["stage"]: s["ms"] for s in stages},
         }
 
@@ -639,5 +731,6 @@ def run_steer_agent(
         "turns": 2,
         "confidence": "medium",
         "stages": stages,
+        "followups": followups,
         "timings_ms": {s["stage"]: s["ms"] for s in stages},
     }

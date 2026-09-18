@@ -374,8 +374,9 @@ export interface ChatEntry {
   meta?: Record<string, string>;
   data?: {
     hits?: N4Hit[];
-    queries?: { tool: string; dsl: string; hits: number; audit_id?: string }[];
+    queries?: { tool: string; dsl: string; why?: string; hits: number; audit_id?: string }[];
     aggregations?: { field: string; distinct: number; top?: { value: string; count: number }[] }[];
+    followups?: { label: string; question: string }[];
   };
 }
 
@@ -682,6 +683,40 @@ export interface BriefingResponse {
   error?: string;
 }
 
+/** GET /case/rounds → GATE-B interpret round log. */
+export interface InterpretRound {
+  round: number;
+  kind: "orient" | "verify" | "notes";
+  hypotheses?: { id: string; statement: string; why?: string }[];
+  items?: Record<string, unknown>[];
+  entries?: {
+    kind: string;
+    why?: string;
+    params?: Record<string, unknown>;
+    audit_id?: string;
+    error?: string;
+    count?: number;
+    field?: string;
+    distinct?: number;
+    hits?: Record<string, unknown>[];
+  }[];
+  notes?: { hypothesis?: string; status?: string; evidence?: string; family?: string }[];
+  next?: Record<string, unknown>[];
+}
+export interface InterpretRoundsResponse {
+  summary: {
+    rounds_requested: number;
+    rounds_run: number;
+    stop_reason: string;
+    hypotheses: { id: string; statement: string; why?: string }[];
+    notes: { hypothesis?: string; status?: string; evidence?: string }[];
+    findings_emitted: number;
+    reconciliation: { addressed: number; unaddressed: { kind: string; value: string }[] };
+  } | null;
+  rounds: InterpretRound[];
+  error?: string;
+}
+
 /** GET /case/digest → deterministic Case Digest (Mode 2/3). */
 export interface CaseDigestResponse {
   digest: {
@@ -928,12 +963,14 @@ export const api = {
   mode2Chat: (params: { message: string; history?: { role: string; text: string }[] }) =>
     post<{
       reply: string;
-      queries_executed: { tool: string; dsl: string; hits: number; audit_id?: string }[];
+      queries_executed: { tool: string; dsl: string; why?: string; hits: number; audit_id?: string }[];
       total_hits: number;
       confidence: string;
       /** WP 4j.33 — per-stage timings in ms (plan/execute/helpers/answer). */
       timings_ms?: Record<string, number>;
       stages?: { stage: string; ms: number; detail?: string }[];
+      /** 4j-H.8 — deterministic drill-down chips for the next turn. */
+      followups?: { label: string; question: string }[];
       error?: string;
     }>("/mode2/chat", params),
   mode2Corroborate: (params: { finding_id?: string }) =>
@@ -996,6 +1033,8 @@ export const api = {
     request<{ directions: BriefingDirection[] }>("/case/briefing/directions"),
   /** GATE-A — deterministic Case Digest (Mode 2/3). */
   caseDigest: () => request<CaseDigestResponse>("/case/digest"),
+  /** GATE-B — interpret round log (Orient → Verify → Reconcile). */
+  caseRounds: () => request<InterpretRoundsResponse>("/case/rounds"),
   fsList: (path?: string) =>
     request<FsListResponse>(`/fs/list${path ? `?path=${encodeURIComponent(path)}` : ""}`),
   playbookNeedles: (families?: string) =>

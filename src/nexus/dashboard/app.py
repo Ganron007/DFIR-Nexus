@@ -5159,6 +5159,36 @@ async def api_case_digest(request):
         return JSONResponse({"error": f"digest failed: {exc}"}, status_code=500)
 
 
+async def api_case_rounds(request):
+    """GET /portal/api/case/rounds — GATE-B interpret round log.
+
+    Returns the loop summary + every persisted round artifact
+    (``analysis/interpret_rounds/*.json``) so the examiner can replay how the
+    interpretation reached its conclusions.
+    """
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    rounds_dir = case_dir / "analysis" / "interpret_rounds"
+    if not rounds_dir.is_dir():
+        return JSONResponse({"summary": None, "rounds": []})
+    summary: dict | None = None
+    rounds: list[dict] = []
+    try:
+        for path in sorted(rounds_dir.glob("*.json")):
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if path.name == "summary.json":
+                summary = payload
+            else:
+                rounds.append(payload)
+    except OSError as exc:
+        return JSONResponse({"error": f"rounds unavailable: {exc}"}, status_code=500)
+    return JSONResponse({"summary": summary, "rounds": rounds})
+
+
 async def api_hit_interpret(request):
     """POST /portal/api/hit/interpret — WP 4j.1 hit interpretation layer.
 
@@ -6177,6 +6207,7 @@ def create_dashboard():
         Route("/portal/api/pipeline/ledger", api_pipeline_ledger, methods=["GET"]),
         Route("/portal/api/case/briefing", api_case_briefing, methods=["GET"]),
         Route("/portal/api/case/digest", api_case_digest, methods=["GET"]),
+        Route("/portal/api/case/rounds", api_case_rounds, methods=["GET"]),
         Route("/portal/api/case/briefing/directions", api_case_briefing_directions, methods=["GET"]),
         Route("/portal/api/hit/interpret", api_hit_interpret, methods=["POST"]),
         Route("/portal/api/needles/feedback", api_needle_feedback, methods=["POST"]),
