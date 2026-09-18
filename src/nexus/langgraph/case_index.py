@@ -614,7 +614,7 @@ def iter_index_files(case_dir: Path) -> list[Path]:
 # WP 4j.31/4j.32 — N4 AST → Elasticsearch push-down + native aggregations
 # ---------------------------------------------------------------------------
 
-def _term_clause(term: str) -> dict[str, Any]:
+def _term_clause(term: str, search_fields: bool = False) -> dict[str, Any]:
     """One N4 term as ES: analyzed phrase + substring wildcard (parity).
 
     Wildcard metacharacters are escaped like the legacy path, and **numeric
@@ -622,11 +622,20 @@ def _term_clause(term: str) -> dict[str, Any]:
     file sizes (the CSV backend's ``needle_in_text`` has a hex-boundary guard
     this query cannot express), which both invents false rows and starves
     genuine hits out of the fetch cap.
+
+    ``search_fields`` adds the schema-v2 parsed columns (``fields.*``) so a
+    term that lives in a structured column matches even when the raw line is
+    compact (imported evidence). The row-side re-check receives the same
+    parsed values, so ES and CSV stay identical.
     """
     t = str(term or "").strip()
     if not t:
         return {"match_none": {}}
     should: list[dict[str, Any]] = [{"match_phrase": {"text": t}}]
+    if search_fields:
+        should.append({
+            "multi_match": {"query": t, "fields": ["fields.*"], "type": "phrase"}
+        })
     if not t.isdigit():
         safe = t.lower().replace("\\", "\\\\").replace("*", "\\*").replace("?", "\\?")
         should.append({
@@ -638,24 +647,26 @@ def _term_clause(term: str) -> dict[str, Any]:
 
 
 def ast_to_es(query: Any | None, terms: list[str] | None = None,
-              match_all: bool = False) -> dict[str, Any]:
+              match_all: bool = False, search_fields: bool = False) -> dict[str, Any]:
     """Translate a parsed N4 query into ONE Elasticsearch query (schema v2).
 
     Field filters push down to real fields: ``family:`` → term on keyword,
     ``file:`` → wildcard on the file keyword, ``host:/user:/event:`` → term on
-    the structured keyword PLUS substring wildcard (CSV parity). A row-side
-    ``row_matches`` re-check after the fetch keeps both backends identical.
+    the structured keyword PLUS substring wildcard (CSV parity). Terms search
+    the row text and — when ``search_fields`` (schema v2) — the parsed
+    ``fields.*`` columns too. A row-side ``row_matches`` re-check after the
+    fetch keeps both backends identical.
     """
     if query is None or (hasattr(query, "is_empty") and query.is_empty()):
         if terms:
-            should = [_term_clause(t) for t in terms[:40] if str(t).strip()]
+            should = [_term_clause(t, search_fields) for t in terms[:40] if str(t).strip()]
             if should:
                 return {"bool": {"should": should, "minimum_should_match": 1}}
         return {"match_all": {}}
 
-    must = [_term_clause(t) for t in getattr(query, "and_terms", [])]
-    should = [_term_clause(t) for t in getattr(query, "or_terms", [])]
-    must_not = [_term_clause(t) for t in getattr(query, "not_terms", [])]
+    must = [_term_clause(t, search_fields) for t in getattr(query, "and_terms", [])]
+    should = [_term_clause(t, search_fields) for t in getattr(query, "or_terms", [])]
+    must_not = [_term_clause(t, search_fields) for t in getattr(query, "not_terms", [])]
     filt: list[dict[str, Any]] = []
     for fname, fvalue in (getattr(query, "fields", {}) or {}).items():
         value = str(fvalue or "").strip()
@@ -935,13 +946,19 @@ def query_index(
         head = client.head(f"/{name}")
         if head.status_code != 200:
             raise IndexMissing(f"no index {name}")
+        search_fields = False
         if _schema_version_cached(case_dir.name) >= INDEX_SCHEMA_VERSION:
             # WP 4j.31: one pushed-down query — field filters on real fields,
             # terms/phrases/regex in ES (no per-term search loop). The intake
             # window is NOT pre-filtered here: a row may carry several dates
             # and the row-side `_row_in_window` check owns windowing, which
             # keeps ES and CSV results identical.
-            es_query = ast_to_es(query, terms=needles, match_all=match_all)
+            try:
+                search_fields = bool(fields_property_names(case_dir.name))
+            except Exception:  # noqa: BLE001 — fall back to text-only search
+                search_fields = False
+            es_query = ast_to_es(query, terms=needles, match_all=match_all,
+                                 search_fields=search_fields)
             body = {"size": 400, "query": es_query}
             r = client.post(f"/{name}/_search", json=body)
             if r.status_code >= 400:
@@ -970,15 +987,27 @@ def query_index(
         low = text.lower()
         fam = str(src.get("family") or "other")
         file_rel = str(src.get("file") or "")
+        # Schema-v2 parsed columns ride along for the row-side re-check so a
+        # term that only lives in fields.* still passes ES→CSV parity.
+        fields_map = src.get("fields") or {}
+        fields_low = ""
+        if search_fields and isinstance(fields_map, dict) and fields_map:
+            fields_low = " ".join(
+                str(v) for v in fields_map.values() if v is not None
+            )
         if query is not None:
             from nexus.langgraph.query_dsl import row_matches
 
-            ok, matched = row_matches(query, line_lower=low, family=fam, file_rel=file_rel)
+            ok, matched = row_matches(
+                query, line_lower=low, family=fam, file_rel=file_rel,
+                extra_text=fields_low,
+            )
             if not ok:
                 continue
             matched = matched[:6]
         else:
-            matched = [t for t in needles if needle_in_text(low, t)]
+            matched = [t for t in needles
+                       if needle_in_text(low, t) or (fields_low and needle_in_text(fields_low.lower(), t))]
             if not matched:
                 if not match_all:
                     continue
@@ -987,12 +1016,17 @@ def query_index(
         if key in seen:
             continue
         seen.add(key)
-        hits.append({
+        hit: dict[str, Any] = {
             "family": fam,
             "file": key[0],
             "line": key[1],
             "terms": ",".join(matched[:6]),
             "text": text[:_MAX_LINE],
-        })
+        }
+        for key_name in ("host", "user", "event_id", "ts"):
+            value = src.get(key_name)
+            if value not in (None, ""):
+                hit[key_name] = value
+        hits.append(hit)
     return finalize_hits(hits, terms, priority_terms)
 

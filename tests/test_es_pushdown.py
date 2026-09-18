@@ -55,6 +55,47 @@ def test_ast_to_es_regex_and_terms_only():
     assert ast_to_es(None, terms=[], match_all=True) == {"match_all": {}}
 
 
+def test_term_clause_searches_parsed_fields_when_enabled():
+    """Schema-v2 parsed columns are searchable: a term that only lives in
+    fields.* must match (imported evidence with compact lines)."""
+    from nexus.langgraph.case_index import _term_clause, ast_to_es
+
+    plain = str(_term_clause("alice"))
+    assert "multi_match" not in plain
+    assert "match_phrase" in plain and "text.wc" in plain
+
+    with_fields = str(_term_clause("alice", search_fields=True))
+    assert "multi_match" in with_fields
+    assert "fields.*" in with_fields
+
+    es = ast_to_es(None, terms=["alice"], search_fields=True)
+    assert "fields.*" in str(es)
+    es_off = ast_to_es(None, terms=["alice"])
+    assert "fields.*" not in str(es_off)
+
+
+def test_row_matches_extra_text_parity():
+    """ES matches fields.*; the row-side re-check must accept the same values
+    or every fields-only hit would be silently dropped (parity guard)."""
+    from nexus.langgraph.query_dsl import parse_query, row_matches
+
+    q = parse_query("host:WS01 AND alice")
+    line = "ts,computer,4624,logon"  # raw line does NOT contain alice
+    ok, _ = row_matches(q, line_lower=line.lower(), family="hayabusa",
+                        file_rel="f.csv", extra_text="User=alice Computer=WS01")
+    assert ok is True
+
+    ok2, _ = row_matches(q, line_lower=line.lower(), family="hayabusa",
+                         file_rel="f.csv")
+    assert ok2 is False  # without the parsed values the term is absent
+
+    # Numeric terms keep the hex-boundary guard over extra text too.
+    qn = parse_query("4688")
+    ok3, _ = row_matches(qn, line_lower="deadbeef4688deadbeef".lower(),
+                         extra_text="")
+    assert ok3 is False
+
+
 def test_resolve_agg_field_direct_and_parsed(monkeypatch):
     from nexus.langgraph import case_index
 

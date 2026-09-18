@@ -15,12 +15,11 @@ from typing import Any
 log = logging.getLogger(__name__)
 
 
-def _finding_line(f: dict[str, Any]) -> str:
-    fid = str(f.get("id") or "")
-    title = str(f.get("title") or "")
-    sev = str(f.get("severity") or "").strip() or "n/a"
-    conf = str(f.get("confidence") or "").strip() or "n/a"
-    return f"- `{fid}` [sev={sev} · confidence={conf}] {title}"
+def _md_cell(value: Any, limit: int = 120) -> str:
+    """One markdown-table cell: pipes/newlines flattened, length bounded."""
+    text = " ".join(str(value or "").split())
+    text = text.replace("|", "\\|")
+    return text[:limit]
 
 
 def _load_findings(case_dir: Path) -> list[dict[str, Any]]:
@@ -88,17 +87,35 @@ async def write_interpretation_summary(
     if findings:
         lines.append("")
         lines.append("## Findings")
-        lines.extend(_finding_line(f) for f in findings)
+        lines.append("")
+        lines.append("| # | Severity | Confidence | Title |")
+        lines.append("|---|----------|------------|-------|")
+        for idx, f in enumerate(findings, start=1):
+            lines.append(
+                f"| {idx} | {_md_cell(f.get('severity') or 'n/a', 16)} "
+                f"| {_md_cell(f.get('confidence') or 'n/a', 16)} "
+                f"| {_md_cell(f.get('title'), 160)} |"
+            )
     if unaddressed:
         lines.append("")
         lines.append("## Reconciliation — digest items no finding mentions (must be addressed)")
+        lines.append("")
+        lines.append("| Kind | Item |")
+        lines.append("|------|------|")
         for item in unaddressed[:30]:
-            lines.append(f"- [{item.get('kind')}] {item.get('value')}")
+            lines.append(
+                f"| {_md_cell(item.get('kind'), 20)} | {_md_cell(item.get('value'))} |"
+            )
     if gaps:
         lines.append("")
         lines.append("## Coverage gaps (not yet explained by any finding)")
+        lines.append("")
+        lines.append("| Entity type | Value |")
+        lines.append("|-------------|-------|")
         for g in gaps[:25]:
-            lines.append(f"- {g.get('kind')}: `{g.get('value')}`")
+            lines.append(
+                f"| {_md_cell(g.get('kind'), 24)} | {_md_cell(g.get('value'))} |"
+            )
     if ti_md:
         lines.append("")
         lines.append(ti_md)
@@ -124,21 +141,24 @@ async def write_interpretation_summary(
             )[:reconcile_cap]
             response = await model.ainvoke([
                 {"role": "system", "content": (
-                    "You are the lead DFIR analyst. Write a concise executive "
-                    "verdict (max 260 words) for the case briefing based ONLY "
-                    "on the staged findings, threat-intel context, coverage "
-                    "gaps, and the DIGEST RECONCILIATION list below. State: "
-                    "what happened (or what the evidence supports), the "
-                    "strongest signal, confidence, and the top next step.\n"
+                    "You are the lead DFIR analyst. Write the case verdict as "
+                    "COMPACT MARKDOWN (this renders in the examiner's briefing "
+                    "— never a wall of text):\n"
+                    "1) One short paragraph: what the evidence supports (or "
+                    "that it is insufficient), the strongest signal, confidence.\n"
+                    "2) A markdown disposition table with exactly these "
+                    "columns: | Item | Disposition | Basis | — one row per "
+                    "digest reconciliation item below (disposition = covered / "
+                    "benign / gap).\n"
+                    "3) A short `Next steps` bullet list (max 5).\n"
                     "HARD RULES:\n"
-                    "- Address the reconciliation list item by item in one "
-                    "clause each: state whether it is covered by a finding, "
-                    "assessed benign (with the reason), or an open gap. "
-                    "Never omit it.\n"
+                    "- Address the reconciliation list item by item. Never "
+                    "omit an item.\n"
                     "- Absence of an evidence class (e.g. no memory, no "
                     "network, no disk) is SCOPE — never phrase it as 'no "
                     "compromise'.\n"
-                    "- Plain text, no markdown headers."
+                    "- Base every claim on the staged findings and evidence "
+                    "below; no invented facts."
                 )},
                 {"role": "user", "content": (
                     f"Findings:\n{summary_lines or '(none staged)'}\n\n"

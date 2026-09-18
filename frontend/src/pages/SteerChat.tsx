@@ -1,4 +1,7 @@
 import { useEffect, useState, useRef } from "react";
+import { useNavigate } from "react-router-dom";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { api, chatStream, type ChatEntry, type Mode2IterateResponse, type Mode3PlanResponse, type N4Hit } from "../api/client";
 import { computeApprovalResponse } from "../lib/crypto";
 import { useCase } from "../context/CaseContext";
@@ -9,6 +12,33 @@ import { useCase } from "../context/CaseContext";
  * in the transcript. Hit cards carry one-click bookmarking so interesting
  * items flow into the Workbench without leaving the conversation.
  */
+
+/** Build an Explore URL from an N4 DSL query (family → facet, rest → needles). */
+function dslToExplore(dsl: string): string {
+  const familyMatch = dsl.match(/\bfamily\s*:\s*([A-Za-z0-9_-]+)/i);
+  const family = familyMatch ? familyMatch[1] : "";
+  const terms = dsl
+    .replace(/\bfamily\s*:\s*[A-Za-z0-9_-]+/gi, " ")
+    .replace(/\b(host|user|event|file|regex)\s*:\s*/gi, " ")
+    .replace(/\b(AND|OR|NOT)\b/gi, " ")
+    .replace(/["'()]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const params = new URLSearchParams();
+  if (terms) params.set("needles", terms);
+  if (family) params.set("family", family);
+  const query = params.toString();
+  return query ? `/explore?${query}` : "/explore";
+}
+
+/** First meaningful line of an answer, stripped of markdown — DRAFT title. */
+function answerTitle(text: string): string {
+  const line = (text || "")
+    .split("\n")
+    .map((l) => l.trim())
+    .find((l) => l && !l.startsWith("|") && !l.startsWith("#"));
+  return (line || "Mode 2 answer").replace(/[*_`>#]/g, "").slice(0, 120);
+}
 
 function HitCard({ hit: h }: { hit: N4Hit }) {
   // The server assigns the bookmark id (B-###) — removing by our own loc key
@@ -81,11 +111,46 @@ function HitCard({ hit: h }: { hit: N4Hit }) {
   );
 }
 
-function ProposalCard({ entry, caseMode }: { entry: ChatEntry; caseMode: string }) {
+function ProposalCard({ entry, caseMode, onAsk, busy }: {
+  entry: ChatEntry;
+  caseMode: string;
+  onAsk?: (question: string) => void;
+  busy?: boolean;
+}) {
   const meta = (entry.meta || {}) as Record<string, string>;
+  const navigate = useNavigate();
   const isMode3 = entry.action === "mode3_plan" || entry.action === "mode3_execute";
-  const badge = isMode3 ? "Mode 3 Agent" : (caseMode === "1" || caseMode === "" ? "Query hits" : "Mode 2 Proposal");
+  const isSteer = entry.action === "steer_answer";
+  const badge = isMode3 ? "Mode 3 Agent"
+    : isSteer ? "Mode 2 Answer"
+    : (caseMode === "1" || caseMode === "" ? "Query hits" : "Mode 2 Proposal");
   const hits = entry.data?.hits || [];
+  const queries = entry.data?.queries || [];
+  const followups = entry.data?.followups || [];
+  const firstHitQuery = queries.find((q) => q.hits > 0);
+  const [draft, setDraft] = useState("");
+
+  const stageDraft = async () => {
+    if (draft) return;
+    setDraft("staging…");
+    try {
+      const title = firstHitQuery
+        ? `${answerTitle(entry.text)} — ${firstHitQuery.dsl}`.slice(0, 160)
+        : answerTitle(entry.text);
+      const r = await api.mode2ProposeDraft({
+        title,
+        query: firstHitQuery?.dsl,
+        hits: hits.length > 0 ? hits : undefined,
+      });
+      if (r.error) {
+        setDraft(typeof r.error === "string" ? r.error : r.error.join("; "));
+        return;
+      }
+      setDraft(`DRAFT staged${r.finding_id ? ` (${r.finding_id})` : ""} — review in Approve`);
+    } catch (e) {
+      setDraft((e as Error).message);
+    }
+  };
 
   return (
     <div
@@ -113,12 +178,21 @@ function ProposalCard({ entry, caseMode }: { entry: ChatEntry; caseMode: string 
           {badge}
         </span>
         <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{entry.action}</span>
+        {meta.total_hits ? (
+          <span style={{ fontSize: 10, color: "var(--text-muted)" }}>· {meta.total_hits} rows</span>
+        ) : null}
       </div>
 
       {entry.text && (
-        <p style={{ fontSize: 13, color: "var(--text-primary)", marginBottom: 8 }}>
-          {entry.text}
-        </p>
+        isSteer ? (
+          <article className="report-markdown chat-markdown" style={{ marginBottom: 8 }}>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{entry.text}</ReactMarkdown>
+          </article>
+        ) : (
+          <p style={{ fontSize: 13, color: "var(--text-primary)", marginBottom: 8 }}>
+            {entry.text}
+          </p>
+        )
       )}
 
       {meta.needles && (
@@ -182,15 +256,91 @@ function ProposalCard({ entry, caseMode }: { entry: ChatEntry; caseMode: string 
         </div>
       )}
 
+      {/* Steering transparency — every query with its why, each explorable */}
+      {isSteer && queries.length > 0 && (
+        <div
+          style={{
+            marginTop: 4,
+            fontSize: 11,
+            fontFamily: "monospace",
+            color: "var(--text-muted)",
+            paddingLeft: 8,
+            borderLeft: "2px solid var(--border)",
+          }}
+        >
+          {queries.map((q, qi) => (
+            <div key={qi} style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "baseline" }}>
+              <span style={{ color: q.hits > 0 ? "var(--accent)" : "var(--warning)" }}>
+                {q.dsl}
+              </span>
+              <span>→ {q.hits} hit(s)</span>
+              {q.why ? <span>· {q.why}</span> : null}
+              <button
+                className="btn btn-sm clickable-tint"
+                style={{ fontSize: 10, padding: "0 5px" }}
+                title="Open these rows in Explore"
+                onClick={() => navigate(dslToExplore(q.dsl))}
+              >
+                Explore
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* WP 4d.3: hit cards persisted in the transcript */}
       {hits.length > 0 && (
         <div style={{ marginTop: 8 }}>
           <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 4 }}>
-            Top hits ({hits.length})
+            Cited rows ({hits.length}) — star to bookmark to the Workbench
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {hits.map((h, i) => <HitCard key={i} hit={h} />)}
           </div>
+        </div>
+      )}
+
+      {/* Answer actions — continue the investigation or stage it for the report */}
+      {isSteer && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8, alignItems: "center" }}>
+          <button
+            className="btn btn-sm"
+            onClick={() => navigate(firstHitQuery ? dslToExplore(firstHitQuery.dsl) : "/explore")}
+            title="Open the underlying rows in Explore"
+          >
+            Open in Explore
+          </button>
+          <button
+            className="btn btn-sm"
+            onClick={() => void stageDraft()}
+            disabled={!draft || draft.startsWith("staging")}
+            title="Stage a DRAFT finding from this answer + its cited rows (examiner approval required)"
+          >
+            Stage DRAFT
+          </button>
+          {draft && (
+            <span style={{ fontSize: 11, color: draft.startsWith("DRAFT") ? "var(--ok)" : "var(--warning)" }}>
+              {draft}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* 4j-H.8 — deterministic drill-down chips for the next turn */}
+      {isSteer && followups.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
+          {followups.map((f, fi) => (
+            <button
+              key={fi}
+              className="btn btn-sm clickable-tint"
+              style={{ fontSize: 11 }}
+              disabled={busy}
+              title={f.question}
+              onClick={() => onAsk?.(f.question)}
+            >
+              {f.label}
+            </button>
+          ))}
         </div>
       )}
 
@@ -327,7 +477,11 @@ export default function SteerChat() {
               confidence: r.confidence,
               timings: timingText,
             },
-            data: { queries: r.queries_executed || [], followups: r.followups || [] },
+            data: {
+              queries: r.queries_executed || [],
+              followups: r.followups || [],
+              hits: r.hits || [],
+            },
           },
         ]);
       } else if (mode === "mode3") {
@@ -746,7 +900,15 @@ export default function SteerChat() {
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {messages.map((m, i) => {
               if (isProposal(m) || (m.data?.hits && m.data.hits.length > 0)) {
-                return <ProposalCard key={i} entry={m} caseMode={caseMode} />;
+                return (
+                  <ProposalCard
+                    key={i}
+                    entry={m}
+                    caseMode={caseMode}
+                    busy={loading}
+                    onAsk={(q) => void sendText(q)}
+                  />
+                );
               }
               return (
                 <div
@@ -763,10 +925,16 @@ export default function SteerChat() {
                       padding: "8px 12px",
                       borderRadius: 8,
                       fontSize: 13,
-                      whiteSpace: "pre-wrap",
+                      whiteSpace: m.role === "examiner" ? "pre-wrap" : "normal",
                     }}
                   >
-                    {m.text}
+                    {m.role === "examiner" ? (
+                      m.text
+                    ) : (
+                      <article className="report-markdown chat-markdown">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>
+                      </article>
+                    )}
                   </div>
                   {/* WP 4j.13 — the queries the agent actually ran (structured,
                       not a raw JSON blob), with the plan rationale */}

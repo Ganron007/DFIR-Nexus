@@ -1238,16 +1238,21 @@ needles is one event.
 **Response 200:**
 ```json
 {
-  "reply": "Based on the evidence retrieved …",
-  "queries_executed": [{"tool": "n4_aggregate", "dsl": "match_all field=host", "hits": 105, "audit_id": "nexus-…"}],
+  "reply": "| Time | Host | Family | Detail |\n|---|---|---|---| … (markdown tables for row lists)",
+  "queries_executed": [{"tool": "n4_aggregate", "dsl": "match_all field=host", "why": "enumerate hosts", "hits": 105, "audit_id": "nexus-…"}],
   "total_hits": 105,
   "confidence": "medium",
+  "hits": [{"family": "hayabusa", "file": "…", "line": 12, "host": "WS01", "text": "…"}],
+  "followups": [{"label": "Drill into WS01", "question": "What else happened on host WS01?"}],
   "timings_ms": {"index_mappings": 862, "plan": 2, "execute": 785, "helpers": 1023, "answer": 8337},
   "stages": [{"stage": "plan", "ms": 2, "detail": "deterministic: AGG:match_all|field:user; …"}]
 }
 ```
+- `queries_executed[].why`: the planner rationale per query (the UI shows what was queried **and why**).
+- `hits`: top cited rows for the transcript — hit cards carry one-click bookmarking and an Explore link, so every claim can be traced back to the logs.
+- `followups`: deterministic drill-down chips (top host/executable/user, list users/hosts) — the UI renders them click-to-ask.
 - Bounds: `NEXUS_LLM_TIMEOUT` (per LLM call, default 120 s) and `NEXUS_MODE2_TURN_TIMEOUT` (turn budget, default 240 s → graceful timeout reply instead of a hang).
-- The transcript is appended to `<case>/chat.jsonl` (`steer_question` before the turn, `steer_answer` with `timings` after).
+- The transcript is appended to `<case>/chat.jsonl` (`steer_question` before the turn, `steer_answer` with `timings`, `queries`, `hits` and `followups` after — reloads stay bookmarkable/explorable).
 
 ### POST /portal/api/mode2/iterate
 **Description:** Mode 2 iterative loop: query → analyze → propose new needles → re-query. Every iteration is logged to the case chat transcript. Hard cap on iterations (1-4, default 2). The loop NEVER writes findings — it returns the iteration log for examiner review.

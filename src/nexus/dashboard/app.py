@@ -3639,6 +3639,10 @@ async def api_mode2_chat(request):
     }, {
         "queries": result.get("queries_executed", [])[:8],
         "aggregations": result.get("aggregations", [])[:5],
+        # Cited rows + drill-down chips persist so the transcript stays
+        # bookmarkable/explorable after reload.
+        "hits": result.get("hits", [])[:10],
+        "followups": result.get("followups", []),
     })
 
     return JSONResponse(result)

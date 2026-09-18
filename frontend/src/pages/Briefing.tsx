@@ -7,7 +7,9 @@
  * LLM required. Clicking a needle drops into Explore with that needle set.
  */
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { api, type BriefingDirection, type BriefingResponse, type CaseDigestResponse, type InterpretRoundsResponse, type Mode1FullRunResponse } from "../api/client";
 import { useCase } from "../context/CaseContext";
 
@@ -433,9 +435,11 @@ export default function Briefing() {
                     <summary style={{ fontSize: 11, cursor: "pointer", color: "var(--accent)" }}>
                       Full digest (what the LLM was given)
                     </summary>
-                    <pre style={{ whiteSpace: "pre-wrap", fontSize: 11, marginTop: 8, fontFamily: "inherit", maxHeight: 420, overflow: "auto" }}>
-                      {digest.markdown}
-                    </pre>
+                    <div style={{ marginTop: 8, maxHeight: 420, overflow: "auto" }}>
+                      <article className="report-markdown">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{digest.markdown}</ReactMarkdown>
+                      </article>
+                    </div>
                   </details>
                 )}
               </>
@@ -522,9 +526,9 @@ export default function Briefing() {
       {(mode === "2" || mode === "3") && brief.mode_interpretation && (
         <div className="card" style={{ borderLeft: "3px solid var(--purple)" }}>
           <div className="card-title" style={{ marginBottom: 6 }}>Mode 2 Interpretation (LLM)</div>
-          <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, margin: 0, fontFamily: "inherit" }}>
-            {brief.mode_interpretation}
-          </pre>
+          <article className="report-markdown">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{brief.mode_interpretation}</ReactMarkdown>
+          </article>
         </div>
       )}
       {(mode === "2" || mode === "3") && !brief.mode_interpretation && (brief.findings_summary?.count ?? 0) > 0 && (
@@ -544,9 +548,9 @@ export default function Briefing() {
       {(mode === "2" || mode === "3") && !brief.mode_interpretation && brief.ti_context && (
         <div className="card">
           <div className="card-title" style={{ marginBottom: 6 }}>Threat intel (context)</div>
-          <pre style={{ whiteSpace: "pre-wrap", fontSize: 12, margin: 0, fontFamily: "inherit" }}>
-            {brief.ti_context}
-          </pre>
+          <article className="report-markdown">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{brief.ti_context}</ReactMarkdown>
+          </article>
         </div>
       )}
 

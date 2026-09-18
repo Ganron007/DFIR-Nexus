@@ -808,3 +808,32 @@ tr:hover td {
   border-top: 1px solid var(--border);
   margin: 16px 0;
 }
+
+/* Chat answers / interpretation cards — report typography, chat scale */
+.chat-markdown {
+  max-width: 100%;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.chat-markdown h1,
+.chat-markdown h2,
+.chat-markdown h3,
+.chat-markdown h4 {
+  margin: 10px 0 6px;
+  font-size: 13px;
+}
+
+.chat-markdown p {
+  margin: 6px 0;
+}
+
+.chat-markdown table {
+  font-size: 11px;
+  margin: 8px 0;
+}
+
+.chat-markdown th,
+.chat-markdown td {
+  padding: 3px 6px;
+}

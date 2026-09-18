@@ -106,10 +106,58 @@ def _extract_tokens(hits: list[dict[str, Any]], pattern: re.Pattern[str], cap: i
     return ranked[:cap]
 
 
+def _case_entity_vocabulary(case_dir: Path) -> dict[str, list[str]]:
+    """Known host/user/executable values for planner grounding.
+
+    Reads the deterministic artifacts already on disk (digest → inventory) —
+    cheap, and it stops the planner from inventing entity values that exist
+    nowhere in the evidence.
+    """
+    vocab: dict[str, list[str]] = {"hosts": [], "users": [], "executables": []}
+    case_dir = Path(case_dir)
+    digest_path = case_dir / "analysis" / "case_digest.json"
+    if digest_path.is_file():
+        try:
+            digest = json.loads(digest_path.read_text(encoding="utf-8"))
+            spans = digest.get("entity_spans") or {}
+            vocab["hosts"] = [
+                str(i.get("value")) for i in (spans.get("host") or []) if i.get("value")
+            ][:8]
+            vocab["users"] = [
+                str(i.get("value")) for i in (spans.get("user") or []) if i.get("value")
+            ][:8]
+            procs = (digest.get("entities") or {}).get("processes") or []
+            vocab["executables"] = [
+                str(p.get("value")) for p in procs if p.get("value")
+            ][:8]
+            if not vocab["hosts"]:
+                vocab["hosts"] = [str(h) for h in (digest.get("hosts") or [])][:8]
+        except (OSError, ValueError, TypeError):
+            pass
+    if not any(vocab.values()):
+        inv_path = case_dir / "analysis" / "entity_inventory.json"
+        if inv_path.is_file():
+            try:
+                inv = json.loads(inv_path.read_text(encoding="utf-8"))
+                vocab["hosts"] = [
+                    str(h.get("value")) for h in (inv.get("hosts") or []) if h.get("value")
+                ][:8]
+                vocab["users"] = [
+                    str(u.get("value")) for u in (inv.get("users") or []) if u.get("value")
+                ][:8]
+                vocab["executables"] = [
+                    str(p.get("value")) for p in (inv.get("processes") or []) if p.get("value")
+                ][:8]
+            except (OSError, ValueError, TypeError):
+                pass
+    return vocab
+
+
 def _plan_queries(question: str, model: Any, families: list[str],
                   family_rows: dict[str, int],
                   family_fields: dict[str, list[str]],
-                  history_block: str = "") -> list[dict[str, str]]:
+                  history_block: str = "",
+                  vocabulary: dict[str, list[str]] | None = None) -> list[dict[str, str]]:
     """Step 1: LLM translates the NL question into N4 DSL queries.
 
     Returns ``[{"dsl", "why"}]`` — the why powers the UI's "what was queried
@@ -133,6 +181,23 @@ def _plan_queries(question: str, model: Any, families: list[str],
         f"\nFamilies with NO indexed rows — NEVER query these: {', '.join(empty)}\n"
         if empty else ""
     )
+    vocab = vocabulary or {}
+    vocab_lines = [
+        f"  {label}: {', '.join(values)}"
+        for label, values in (
+            ("hosts", vocab.get("hosts") or []),
+            ("users", vocab.get("users") or []),
+            ("executables", vocab.get("executables") or []),
+        )
+        if values
+    ]
+    vocab_block = ""
+    if vocab_lines:
+        vocab_block = (
+            "\nKNOWN ENTITY VALUES IN THIS CASE (exact, from the processed "
+            "evidence — use these values in field filters, NEVER invent "
+            "entity values):\n" + "\n".join(vocab_lines) + "\n"
+        )
 
     system = (
         "You translate the examiner's natural-language question into N4 DSL "
@@ -141,6 +206,7 @@ def _plan_queries(question: str, model: Any, families: list[str],
         f"that exist. NEVER invent family names (no 'evtx', 'sysmon', "
         f"'prefetch', 'security' — only the list below):\n{fam_block}\n"
         f"{empty_line}"
+        f"{vocab_block}"
         f"\nN4 grammar:\n{grammar}\n\n"
         "RULES:\n"
         '- Return ONLY JSON: {"queries": [{"dsl": "<dsl 1>", "why": "<one '
@@ -148,6 +214,9 @@ def _plan_queries(question: str, model: Any, families: list[str],
         "- Each query is ONE complete DSL expression, e.g. family:hayabusa AND sdelete\n"
         "- A bare term (e.g. `exe`, `powershell`, `rundll32`) searches ALL families — "
         "prefer this when unsure which family holds the data.\n"
+        "- When the question names a host/user/process, use the EXACT value from "
+        "the known-values list with field syntax (`host:WS01 AND mimikatz`) — "
+        "this is what makes a lookup hit the right rows.\n"
         "- For 'list all X' questions use the tool n4_aggregate via the AGG "
         "prefix: AGG:match_all|field:host (or field:user) to enumerate distinct "
         "hosts/users across every indexed row.\n"
@@ -384,16 +453,22 @@ def _formulate_answer(question: str, model: Any, hits: list[dict[str, Any]],
         "RULES:\n"
         "- Read the evidence below, then answer the examiner's question in "
         "clear natural language.\n"
+        "- FORMAT (important): compact markdown, never a wall of text. For any "
+        "list of 3+ rows use a **markdown table** with columns taken from the "
+        "row fields (e.g. | Time | Host | Family | Key fields | Detail |). "
+        "Use short bold bullets for conclusions and a one-line intro. Only use "
+        "plain prose for a short single-fact answer.\n"
         "- When an authoritative extraction or aggregation is provided, USE it "
         "and enumerate its values (e.g. list every executable).\n"
         "- Cite specifics: family, timestamp, hostname, key fields.\n"
         "- Methodology context (RAG) and examiner notes (KB) are provided as "
         "HELPERS — use them for interpretation and caveats, never as evidence. "
         "If you lean on them, name the source (e.g. 'per RAG: <source>').\n"
+        "- End with a one-line `Sources:` note naming the families/files the "
+        "answer is based on.\n"
         "- If there are NO results, say so honestly.\n"
         "- Do NOT invent facts. Do NOT describe your methodology or the JSON "
-        "you produced. Do NOT echo raw data structures.\n"
-        "- Be concise and structured (short intro + list/table when listing)."
+        "you produced. Do NOT echo raw data structures."
     )
     helper_block = ""
     if rag_block:
@@ -647,7 +722,8 @@ def run_steer_agent(
         planned_by = "deterministic"
     elif llm is not None:
         queries = _plan_queries(
-            question, llm, families, family_rows, family_fields, history_context
+            question, llm, families, family_rows, family_fields, history_context,
+            vocabulary=_case_entity_vocabulary(case_dir),
         )
         if not queries:
             planned_by = "fallback"

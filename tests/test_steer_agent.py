@@ -195,3 +195,42 @@ def test_norm_query_items_tolerates_strings_and_dicts():
     assert [i["dsl"] for i in items] == ["sdelete", "psexec", "wevtutil"]
     assert items[1]["why"] == "lateral movement"
     assert _norm_query_items("not-a-list") == []
+
+
+def test_case_entity_vocabulary_from_digest(tmp_path):
+    from nexus.langgraph.steer_agent import _case_entity_vocabulary
+
+    analysis = tmp_path / "analysis"
+    analysis.mkdir(parents=True)
+    (analysis / "case_digest.json").write_text(json.dumps({
+        "hosts": ["WS01"],
+        "entity_spans": {
+            "host": [{"value": "WS01", "count": 12}, {"value": "DC01", "count": 3}],
+            "user": [{"value": "alice", "count": 5}],
+        },
+        "entities": {"processes": [{"value": "m.exe", "hits": 4}]},
+    }), encoding="utf-8")
+    vocab = _case_entity_vocabulary(tmp_path)
+    assert vocab["hosts"] == ["WS01", "DC01"]
+    assert vocab["users"] == ["alice"]
+    assert vocab["executables"] == ["m.exe"]
+
+
+def test_plan_queries_prompt_includes_entity_vocabulary(tmp_path):
+    """The planner must see the case's real entity values — that is what makes
+    a lookup hit the right rows instead of inventing names."""
+    from nexus.langgraph.steer_agent import _plan_queries
+
+    fake = _FakeModel([{"queries": [{"dsl": "host:WS01 AND mimikatz", "why": "check WS01"}]}])
+    queries = _plan_queries(
+        "what did alice do on WS01?", fake,
+        families=["hayabusa"], family_rows={"hayabusa": 10},
+        family_fields={"hayabusa": ["Computer", "User", "RuleTitle"]},
+        vocabulary={"hosts": ["WS01"], "users": ["alice"], "executables": ["m.exe"]},
+    )
+    assert queries[0]["dsl"] == "host:WS01 AND mimikatz"
+    assert queries[0]["why"] == "check WS01"
+    system = fake.prompts[0][0]["content"]
+    assert "KNOWN ENTITY VALUES" in system
+    assert "host:WS01" in system or "WS01" in system
+    assert "alice" in system

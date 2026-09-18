@@ -971,6 +971,8 @@ export const api = {
       stages?: { stage: string; ms: number; detail?: string }[];
       /** 4j-H.8 — deterministic drill-down chips for the next turn. */
       followups?: { label: string; question: string }[];
+      /** Cited rows for bookmarking/explore (top N). */
+      hits?: N4Hit[];
       error?: string;
     }>("/mode2/chat", params),
   mode2Corroborate: (params: { finding_id?: string }) =>

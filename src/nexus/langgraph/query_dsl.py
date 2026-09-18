@@ -162,36 +162,39 @@ def row_matches(
     line_lower: str,
     family: str = "",
     file_rel: str = "",
+    extra_text: str = "",
 ) -> tuple[bool, list[str]]:
     """Evaluate a parsed query against one row.
 
-    ``line_lower`` must already be lowercased. Returns
-    ``(matched, matched_or_terms)``. An empty query matches everything.
-    Numeric terms use the same hex-boundary guard as plain N4 needles so
-    event IDs never match inside hashes or UUIDs.
+    ``line_lower`` must already be lowercased. ``extra_text`` is optional
+    additional searchable text (schema-v2 parsed ``fields.*`` values) so terms
+    that live in structured columns match even when the raw line is compact.
+    Returns ``(matched, matched_or_terms)``. An empty query matches
+    everything. Numeric terms use the same hex-boundary guard as plain N4
+    needles so event IDs never match inside hashes or UUIDs.
     """
     from nexus.langgraph.query_pack import needle_in_text
 
-    if q.regex is not None and not q.regex.search(line_lower):
+    hay = line_lower if not extra_text else f"{line_lower}\n{extra_text.lower()}"
+    if q.regex is not None and not q.regex.search(hay):
         return False, []
-    if q.or_terms and not any(needle_in_text(line_lower, t) for t in q.or_terms):
+    if q.or_terms and not any(needle_in_text(hay, t) for t in q.or_terms):
         return False, []
     for t in q.and_terms:
-        if not needle_in_text(line_lower, t):
+        if not needle_in_text(hay, t):
             return False, []
     for t in q.not_terms:
-        if needle_in_text(line_lower, t):
+        if needle_in_text(hay, t):
             return False, []
     for fname, fvalue in q.fields.items():
         if fname == "family" and family.lower() != fvalue:
             return False, []
         if fname == "file" and fvalue not in file_rel.lower():
             return False, []
-        if fname in ("host", "user", "event") and fvalue not in line_lower:
+        if fname in ("host", "user", "event") and fvalue not in hay:
             return False, []
-    from nexus.langgraph.query_pack import needle_in_text
 
-    matched = [t for t in q.all_needles() if needle_in_text(line_lower, t)]
+    matched = [t for t in q.all_needles() if needle_in_text(hay, t)]
     return True, matched
 
 
