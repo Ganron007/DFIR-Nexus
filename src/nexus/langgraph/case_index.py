@@ -982,8 +982,26 @@ def query_index(
     for row in hits_raw:
         src = row.get("_source") or {}
         text = str(src.get("text") or "")
-        if start is not None and end is not None and not _row_in_window(text, start, end):
-            continue
+        if start is not None and end is not None:
+            # The structured ts is authoritative when present: imported rows
+            # often carry no date inside `text`, and treating "no date in
+            # text" as in-window would leak out-of-window imported rows.
+            window_ok = False
+            ts_raw = src.get("ts")
+            if ts_raw:
+                try:
+                    from datetime import UTC as _UTC
+
+                    dt = datetime.fromisoformat(str(ts_raw).replace("Z", "+00:00"))
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=_UTC)
+                    if not (start <= dt <= end):
+                        continue
+                    window_ok = True
+                except ValueError:
+                    window_ok = False
+            if not window_ok and not _row_in_window(text, start, end):
+                continue
         low = text.lower()
         fam = str(src.get("family") or "other")
         file_rel = str(src.get("file") or "")
