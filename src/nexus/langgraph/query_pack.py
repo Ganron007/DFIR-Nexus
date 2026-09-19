@@ -665,12 +665,12 @@ def iter_extraction_files(
         if not root.is_dir():
             continue
         files: list[Path] = []
+        # 4k.4: `.log` covers Zeek/Suricata/app logs pulled from SIFT too —
+        # indexing everything means these must not be silently skipped.
         pats = (
-            "*.csv", "*.txt", "*.json", "*.jsonl",
-            "*.csv.gz", "*.txt.gz", "*.json.gz", "*.jsonl.gz",
+            "*.csv", "*.txt", "*.json", "*.jsonl", "*.log",
+            "*.csv.gz", "*.txt.gz", "*.json.gz", "*.jsonl.gz", "*.log.gz",
         )
-        if root.name == "ingest":
-            pats = pats + ("*.log", "*.log.gz")
         for pat in pats:
             files.extend(root.rglob(pat))
         for path in sorted(set(files), key=_scan_prio):

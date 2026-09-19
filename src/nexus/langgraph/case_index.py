@@ -13,7 +13,7 @@ import logging
 import os
 import re
 from collections.abc import Iterator
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -31,6 +31,7 @@ from nexus.langgraph.query_pack import (
     iter_extraction_files,
     needle_in_text,
 )
+from nexus.langgraph.timestamps import extract_event_ts
 
 _LARGE_NEEDLES = (
     "sdelete", ".pst", ".ost", "drivefs", "googledrive", "my drive",
@@ -66,7 +67,7 @@ WILDCARD_IGNORE_ABOVE = 32766
 # Index schema version. v2 = structured docs (host/user/event_id + parsed
 # columns under fields.*) so DSL filters and aggregations push down to ES.
 # A version mismatch triggers a rebuild on the next index_case()/ensure_index.
-INDEX_SCHEMA_VERSION = 2
+INDEX_SCHEMA_VERSION = 3
 
 _MAX_INDEX_FIELDS = 24
 _MAX_INDEX_FIELD_VALUE = 300
@@ -139,6 +140,17 @@ def es_available() -> bool:
         available = False
     _es_probe_cache = (now, available)
     return available
+
+
+def _case_year_hint(case_dir: Path) -> int | None:
+    """Syslog year hint from the case window (never a blind local guess)."""
+    try:
+        from nexus.langgraph.query_pack import load_case_intake, parse_intake_window
+
+        start, _end = parse_intake_window(load_case_intake(case_dir))
+        return start.year if start else None
+    except Exception:  # noqa: BLE001 — hint is optional
+        return None
 
 
 def _ts_from_line(line: str) -> str | None:
@@ -274,6 +286,14 @@ def iter_index_doc_batches(
     out: list[dict[str, Any]] = []
     total = 0
     stop = False
+    year_hint = _case_year_hint(case_dir)
+    ts_cov: dict[str, dict[str, int]] = {}
+
+    def _cov(fam: str) -> dict[str, int]:
+        return ts_cov.setdefault(fam, {
+            "present": 0, "missing": 0, "synthesized": 0,
+            "tz_assumed": 0, "year_assumed": 0,
+        })
 
     def _add(path: Path, root: Path, fam: str, i: int, line: str,
              fields: dict[str, str] | None = None) -> bool:
@@ -302,9 +322,31 @@ def iter_index_doc_batches(
                 doc["user"] = user.lower()[:120]
             if event:
                 doc["event_id"] = str(event)[:40]
-        ts = _ts_from_line(line)
-        if ts:
-            doc["ts"] = ts
+        # 4k.4: parsed time columns first (TimeCreated/ts/…), then row text;
+        # offsets honored, naive == UTC (flagged), syslog year flagged.
+        ts_info = extract_event_ts(text, fields, year_hint=year_hint)
+        cov = _cov(fam)
+        if ts_info:
+            doc["ts"] = ts_info["dt"].astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+            doc["ts_raw"] = str(ts_info["raw"])[:64]
+            synth = bool(fields) and str(fields.get("ts_synthesized") or "").lower() in {
+                "true", "1", "yes",
+            }
+            doc["ts_src"] = "synthesized" if synth else "event"
+            doc["ts_precision"] = ts_info["precision"]
+            if ts_info["tz_assumed"]:
+                doc["ts_tz_assumed"] = True
+            if ts_info["year_assumed"]:
+                doc["ts_year_assumed"] = True
+            cov["present"] += 1
+            if synth:
+                cov["synthesized"] += 1
+            if ts_info["tz_assumed"]:
+                cov["tz_assumed"] += 1
+            if ts_info["year_assumed"]:
+                cov["year_assumed"] += 1
+        else:
+            cov["missing"] += 1
         out.append(doc)
         total += 1
         return True
@@ -370,6 +412,7 @@ def iter_index_doc_batches(
             if len(out) >= batch:
                 yield out
                 out = []
+    caps["ts_coverage"] = ts_cov
     if stats is not None:
         stats.update(caps)
     if out:
@@ -441,6 +484,13 @@ def _mapping_body() -> dict[str, Any]:
                     "fields": {"wc": {"type": "wildcard", "ignore_above": WILDCARD_IGNORE_ABOVE}},
                 },
                 "ts": {"type": "date", "format": "strict_date_optional_time||epoch_millis"},
+                # Phase 4k.4 — timestamp authority: raw text, origin,
+                # precision and the "we had to assume" flags.
+                "ts_raw": {"type": "keyword", "ignore_above": 64},
+                "ts_src": {"type": "keyword"},
+                "ts_precision": {"type": "keyword"},
+                "ts_tz_assumed": {"type": "boolean"},
+                "ts_year_assumed": {"type": "boolean"},
             },
         },
     }
@@ -702,6 +752,7 @@ def index_case(
             "case_id": case_dir.name,
             "url": es_url(),
             "incremental": False,
+            "ts_coverage": cap_stats.get("ts_coverage") or {},
             "caps": cap_stats,
             "capped": bool(
                 cap_stats.get("docs_capped")
@@ -915,6 +966,15 @@ def ast_to_es(query: Any | None, terms: list[str] | None = None,
                     "minimum_should_match": 1,
                 }
             })
+    ts_start = getattr(query, "ts_start", None)
+    ts_end = getattr(query, "ts_end", None)
+    if ts_start is not None or ts_end is not None:
+        rng: dict[str, str] = {}
+        if ts_start is not None:
+            rng["gte"] = ts_start.isoformat()
+        if ts_end is not None:
+            rng["lte"] = ts_end.isoformat()
+        filt.append({"range": {"ts": rng}})
     regex = getattr(query, "regex", None)
     if regex is not None:
         filt.append({
@@ -1431,7 +1491,7 @@ def _shape_es_hit(
 
         ok, matched = row_matches(
             query, line_lower=low, family=fam, file_rel=file_rel,
-            extra_text=fields_low,
+            extra_text=fields_low, row_ts=str(src.get("ts") or ""),
         )
         if not ok:
             return None

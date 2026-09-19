@@ -174,6 +174,7 @@ def build_case_digest(case_dir: Path, brief: dict[str, Any] | None = None) -> di
         "case_id": case_dir.name,
         "generated_at": datetime.now(UTC).isoformat(),
         "scope": scope,
+        "ts_coverage": _ts_coverage(case_dir),
         "inventory": brief.get("inventory") or {},
         "ledger": brief.get("ledger") or {},
         "hosts": brief.get("hosts") or [],
@@ -190,6 +191,25 @@ def build_case_digest(case_dir: Path, brief: dict[str, Any] | None = None) -> di
         "scan_truncated": brief.get("scan_truncated", False),
         "backend": brief.get("backend", ""),
     }
+
+
+def _ts_coverage(case_dir) -> dict[str, dict[str, int]]:
+    """Per-family ts coverage recorded by the indexer (4k.4).
+
+    Read from ``analysis/es_index.json``; empty when the case was never
+    indexed (CSV-only) — callers label that instead of assuming zero.
+    """
+    import json
+
+    path = case_dir / "analysis" / "es_index.json"
+    if not path.is_file():
+        return {}
+    try:
+        meta = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    cov = meta.get("ts_coverage")
+    return cov if isinstance(cov, dict) else {}
 
 
 def render_digest_markdown(digest: dict[str, Any]) -> str:
@@ -210,6 +230,33 @@ def render_digest_markdown(digest: dict[str, Any]) -> str:
             "- **NOT in evidence** (state this as scope, never as 'no compromise'): "
             + "; ".join(absent)
         )
+    ts_cov = digest.get("ts_coverage") or {}
+    if ts_cov:
+        lines.append("")
+        lines.append("## Timestamp coverage (per family)")
+        for fam, cov in sorted(ts_cov.items()):
+            present = int(cov.get("present") or 0)
+            missing = int(cov.get("missing") or 0)
+            synth = int(cov.get("synthesized") or 0)
+            tz_a = int(cov.get("tz_assumed") or 0)
+            yr_a = int(cov.get("year_assumed") or 0)
+            if present + missing + synth == 0:
+                continue
+            notes = []
+            if synth:
+                notes.append(f"{synth} synthesized")
+            if tz_a:
+                notes.append(f"{tz_a} UTC-assumed")
+            if yr_a:
+                notes.append(f"{yr_a} year-assumed")
+            suffix = f" ({'; '.join(notes)})" if notes else ""
+            if present == 0:
+                lines.append(
+                    f"- {fam}: **no parsed event timestamps** — "
+                    f"{missing} row(s) undated; do not read absence as timeline evidence{suffix}"
+                )
+            else:
+                lines.append(f"- {fam}: {present} timestamped / {missing} undated{suffix}")
     inv = digest.get("inventory") or {}
     if inv:
         lines.append("")

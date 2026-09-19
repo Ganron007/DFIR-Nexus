@@ -126,7 +126,7 @@ def test_es_scan_reports_fetch_cap(monkeypatch, tmp_path):
             return _Resp(200, {"hits": {"hits": hits}})
 
     monkeypatch.setattr(case_index, "_client", lambda: _FullPageClient())
-    monkeypatch.setattr(case_index, "_schema_version_cached", lambda _cid: 2)
+    monkeypatch.setattr(case_index, "_schema_version_cached", lambda _cid: case_index.INDEX_SCHEMA_VERSION)
     monkeypatch.setattr(case_index, "fields_property_names", lambda _cid: [])
 
     stats: dict = {}

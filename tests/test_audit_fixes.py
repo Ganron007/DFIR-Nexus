@@ -60,7 +60,7 @@ def test_es_aggregate_refuses_empty_dsl_without_match_all(monkeypatch):
     from nexus.langgraph import case_index
 
     monkeypatch.setattr(case_index, "es_available", lambda: True)
-    monkeypatch.setattr(case_index, "_schema_version_cached", lambda _cid: 2)
+    monkeypatch.setattr(case_index, "_schema_version_cached", lambda _cid: case_index.INDEX_SCHEMA_VERSION)
     result = case_index.es_aggregate(
         Path("CASE-X"), dsl="", field="host", match_all=False
     )
@@ -94,7 +94,7 @@ def test_es_aggregate_applies_intake_window(monkeypatch):
             return R()
 
     monkeypatch.setattr(case_index, "es_available", lambda: True)
-    monkeypatch.setattr(case_index, "_schema_version_cached", lambda _cid: 2)
+    monkeypatch.setattr(case_index, "_schema_version_cached", lambda _cid: case_index.INDEX_SCHEMA_VERSION)
     monkeypatch.setattr(case_index, "_resolve_agg_field", lambda _cid, _f: "host")
     monkeypatch.setattr(case_index, "_client", lambda: Client())
 
@@ -136,7 +136,7 @@ def test_es_aggregate_bucket_keys_match_csv_format(monkeypatch):
             return R()
 
     monkeypatch.setattr(case_index, "es_available", lambda: True)
-    monkeypatch.setattr(case_index, "_schema_version_cached", lambda _cid: 2)
+    monkeypatch.setattr(case_index, "_schema_version_cached", lambda _cid: case_index.INDEX_SCHEMA_VERSION)
     monkeypatch.setattr(case_index, "_resolve_agg_field", lambda _cid, _f: "host")
     monkeypatch.setattr(case_index, "_client", lambda: Client())
 

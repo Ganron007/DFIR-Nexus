@@ -48,7 +48,7 @@ def test_es_hits_carry_terms_list_and_merged_cap(monkeypatch, tmp_path):
 
     fake = _FakeSearch(per_query=150)
     monkeypatch.setattr(case_index, "_client", lambda: fake)
-    monkeypatch.setattr(case_index, "_schema_version_cached", lambda _c: 2)
+    monkeypatch.setattr(case_index, "_schema_version_cached", lambda _c: case_index.INDEX_SCHEMA_VERSION)
     monkeypatch.setattr(case_index, "fields_property_names", lambda _c: [])
     stats: dict = {}
     # 121 terms → 4 ES chunks × 150 = 600 merged → trimmed to the 400 total cap

@@ -145,7 +145,7 @@ def _patch_v2(monkeypatch, client, case_dir):
     from nexus.langgraph import case_index
 
     monkeypatch.setattr(case_index, "_client", lambda: client)
-    monkeypatch.setattr(case_index, "_schema_version_cached", lambda _cid: 2)
+    monkeypatch.setattr(case_index, "_schema_version_cached", lambda _cid: case_index.INDEX_SCHEMA_VERSION)
     monkeypatch.setattr(case_index, "fields_property_names", lambda _cid: [])
 
 
@@ -295,7 +295,7 @@ def test_es_aggregate_uses_cardinality_for_distinct(monkeypatch, tmp_path):
             return Response()
 
     monkeypatch.setattr(case_index, "es_available", lambda: True)
-    monkeypatch.setattr(case_index, "_schema_version_cached", lambda _case_id: 2)
+    monkeypatch.setattr(case_index, "_schema_version_cached", lambda _case_id: case_index.INDEX_SCHEMA_VERSION)
     monkeypatch.setattr(case_index, "_resolve_agg_field", lambda _case_id, _field: "host")
     monkeypatch.setattr(case_index, "_client", lambda: Client())
 

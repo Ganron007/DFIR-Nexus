@@ -27,9 +27,11 @@ ReDoS guard: regex length capped; nested-quantifier patterns rejected.
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from typing import Any
 
 _FIELDS = frozenset({"family", "host", "user", "event", "file"})
+_TS_FIELDS = frozenset({"ts", "time", "timestamp", "date", "after", "before"})
 _MAX_OR = 24
 _MAX_AND = 12
 _MAX_NOT = 12
@@ -47,7 +49,10 @@ class QuerySyntaxError(ValueError):
 class ParsedQuery:
     """Structured N4 query: any-of / must / must-not terms + field filters."""
 
-    __slots__ = ("or_terms", "and_terms", "not_terms", "fields", "regex")
+    __slots__ = (
+        "or_terms", "and_terms", "not_terms", "fields", "regex",
+        "ts_start", "ts_end",
+    )
 
     def __init__(self) -> None:
         self.or_terms: list[str] = []
@@ -55,11 +60,13 @@ class ParsedQuery:
         self.not_terms: list[str] = []
         self.fields: dict[str, str] = {}
         self.regex: re.Pattern[str] | None = None
+        self.ts_start: datetime | None = None
+        self.ts_end: datetime | None = None
 
     def is_empty(self) -> bool:
         return not (
             self.or_terms or self.and_terms or self.not_terms
-            or self.fields or self.regex
+            or self.fields or self.regex or self.ts_start or self.ts_end
         )
 
     def all_needles(self) -> list[str]:
@@ -79,6 +86,10 @@ class ParsedQuery:
             parts.append("not(" + ",".join(self.not_terms) + ")")
         for k in sorted(self.fields):
             parts.append(f"{k}:{self.fields[k]}")
+        if self.ts_start or self.ts_end:
+            lo = self.ts_start.isoformat() if self.ts_start else ""
+            hi = self.ts_end.isoformat() if self.ts_end else ""
+            parts.append(f"ts:{lo}..{hi}")
         if self.regex:
             parts.append(f"regex({self.regex.pattern})")
         return " ".join(parts) if parts else "(match all)"
@@ -126,6 +137,56 @@ def _set_regex(q: ParsedQuery, pattern: str) -> None:
         raise QuerySyntaxError(f"invalid regex: {exc}") from None
 
 
+def _set_ts_range(q: ParsedQuery, field: str, value: str) -> None:
+    """Typed time filter: ts:>=X, ts:<=X, ts:A..B, ts:DATE, after:X, before:X."""
+    from nexus.langgraph.timestamps import parse_time_value
+
+    raw = value.strip()
+    op = ""
+    for candidate in (">=", "<=", ">", "<"):
+        if raw.startswith(candidate):
+            op = candidate
+            raw = raw[len(candidate):].strip()
+            break
+    low = raw.lower()
+    if low in ("", "*", "any"):
+        return
+
+    def _parsed(text: str) -> dict:
+        got = parse_time_value(text)
+        if got is None:
+            raise QuerySyntaxError(f"unparseable timestamp in ts filter: {text!r}")
+        return got
+
+    if op or field in ("after", "before"):
+        got = _parsed(raw)
+        dt = got["dt"]
+        if field == "before" or op == "<":
+            q.ts_end = dt
+        elif field == "after" or op == ">" or op == ">=":
+            q.ts_start = dt
+        else:  # op == "<="
+            q.ts_end = dt
+        return
+    if ".." in raw:
+        lo_raw, _, hi_raw = raw.partition("..")
+        if lo_raw.strip():
+            q.ts_start = _parsed(lo_raw.strip())["dt"]
+        if hi_raw.strip():
+            q.ts_end = _parsed(hi_raw.strip())["dt"]
+        return
+    got = _parsed(raw)
+    dt = got["dt"]
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw):
+        from datetime import timedelta
+
+        q.ts_start = dt
+        q.ts_end = dt + timedelta(days=1) - timedelta(seconds=1)
+    else:
+        q.ts_start = dt
+        q.ts_end = dt
+
+
 def _add_term(q: ParsedQuery, tok: str, pending: str | None) -> None:
     term = tok.strip()
     # Quoted phrases lose their literal quotes so matching works on row text.
@@ -136,6 +197,9 @@ def _add_term(q: ParsedQuery, tok: str, pending: str | None) -> None:
     if not term.startswith('"') and ":" in term:
         field, _, value = term.partition(":")
         value = value.strip().strip('"').strip()
+        if field.lower() in _TS_FIELDS and value:
+            _set_ts_range(q, field.lower(), value)
+            return
         if field.lower() in _FIELDS and value:
             q.fields[field.lower()] = value.lower()
             return
@@ -156,6 +220,15 @@ def _term_in(term: str, line_lower: str) -> bool:
     return needle_in_text(line_lower, term)
 
 
+def _row_dt(row_ts: str, line_lower: str) -> datetime | None:
+    from nexus.langgraph.timestamps import parse_time_value
+
+    got = parse_time_value(row_ts or "") if row_ts else None
+    if got is None:
+        got = parse_time_value(line_lower or "")
+    return got["dt"] if got else None
+
+
 def row_matches(
     q: ParsedQuery,
     *,
@@ -163,6 +236,7 @@ def row_matches(
     family: str = "",
     file_rel: str = "",
     extra_text: str = "",
+    row_ts: str = "",
 ) -> tuple[bool, list[str]]:
     """Evaluate a parsed query against one row.
 
@@ -176,6 +250,16 @@ def row_matches(
     from nexus.langgraph.query_pack import needle_in_text
 
     hay = line_lower if not extra_text else f"{line_lower}\n{extra_text.lower()}"
+    if q.ts_start is not None or q.ts_end is not None:
+        # Explicit time filter: a row with no parseable time cannot match —
+        # excluding it silently would be a lie; callers count these separately.
+        dt = _row_dt(row_ts, line_lower)
+        if dt is None:
+            return False, []
+        if q.ts_start is not None and dt < q.ts_start:
+            return False, []
+        if q.ts_end is not None and dt > q.ts_end:
+            return False, []
     if q.regex is not None and not q.regex.search(hay):
         return False, []
     if q.or_terms and not any(needle_in_text(hay, t) for t in q.or_terms):
