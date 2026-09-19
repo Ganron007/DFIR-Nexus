@@ -127,6 +127,43 @@ async def test_stage_findings_skips_after_hard_error(tmp_path):
     assert "error" not in out
 
 
+@pytest.mark.asyncio
+async def test_coverage_tool_lane_indexes_before_interpret(tmp_path, monkeypatch):
+    """Mode 2/3 graph goes execute_tool_lane → interpret with no other indexer.
+
+    Regression for the fresh-case "ES required: index missing" failure: the
+    lane must build the N3 index itself before interpret's EH-13 gate runs.
+    """
+    import nexus.langgraph.llm_pipeline as pipe
+    import nexus.langgraph.tool_lane as lane_mod
+
+    indexed: list[Path] = []
+
+    async def fake_run_tool_lane(**kwargs):
+        return {"step_log": ["lane ran"]}
+
+    monkeypatch.setattr(lane_mod, "run_tool_lane", fake_run_tool_lane)
+    monkeypatch.setattr(
+        pipe, "_autoindex_case", lambda case_dir: indexed.append(case_dir) or ["indexed"]
+    )
+
+    state = {
+        "case_id": "CASE-T",
+        "run_id": "run-1",
+        "pipeline_mode": "coverage",
+        "evidence_path": "",
+    }
+    out = await pipe.execute_tool_lane(state, {})
+    assert indexed, "coverage mode must auto-index before interpret"
+    assert indexed[0].name == "CASE-T"
+    assert any("indexed" in s for s in out.get("step_log") or [])
+
+    indexed.clear()
+    state["pipeline_mode"] = "tools"
+    await pipe.execute_tool_lane(state, {})
+    assert not indexed, "tools mode indexes in emit_tool_report, not the lane"
+
+
 # ── EH-14a: PCAP streams as NDJSON (no whole-file json.load) ───────────
 
 def _ek_line(n: int, src_port: int) -> str:

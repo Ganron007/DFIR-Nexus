@@ -947,6 +947,18 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
             result["case_context"] = ctx
     except Exception:
         pass
+    # Mode 2/3 promise ES-backed evidence: coverage/design go straight to
+    # interpret, so the index MUST exist before that node. Tools mode indexes
+    # in emit_tool_report; here (fresh case → no index yet) we index now.
+    if mode in ("coverage", "design"):
+        steps = list(result.get("step_log") or [])
+        try:
+            from nexus.config import settings as _idx_settings
+
+            steps.extend(_autoindex_case(_idx_settings.cases_root / case_id))
+        except Exception as exc:  # noqa: BLE001 — interpret's EH-13 gate reports
+            steps.append(f"N3 auto-index failed: {exc}")
+        result["step_log"] = steps
     return result
 
 
