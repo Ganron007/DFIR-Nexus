@@ -419,7 +419,7 @@ def ask_case(
     # Persist needles + window to intake
     if persist:
         from nexus.langgraph.case_intake import persist_case_intake
-        ctx: dict[str, str] = {"query_extra": ",".join(needles)}
+        ctx: dict[str, str] = {"query_extra": "\n".join(needles)}
         if window:
             ctx["window"] = window
         persist_case_intake(case_dir, ctx)

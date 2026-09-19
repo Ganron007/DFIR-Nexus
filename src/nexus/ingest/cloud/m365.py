@@ -125,7 +125,7 @@ class M365Importer(Importer):
     def _record_to_artifact(self, record: dict[str, Any]) -> Artifact:
         """Map an M365/Entra record to an Artifact."""
         audit = self._extract_audit_data(record)
-        ts = self._extract_timestamp(record, audit)
+        ts, ts_synthesized = self._extract_timestamp(record, audit)
         severity = self._extract_severity(record, audit)
         artifact_type = self._extract_type(record, audit)
         user = self._extract_user(record, audit)
@@ -137,6 +137,7 @@ class M365Importer(Importer):
             artifact_type=artifact_type,
             source=ArtifactSource.AZURE,
             timestamp=ts,
+            ts_synthesized=ts_synthesized,
             severity=severity,
             host=str(audit.get("WorkstationName") or audit.get("ClientIP") or "") or None,
             user=user,
@@ -162,7 +163,7 @@ class M365Importer(Importer):
 
     def _extract_timestamp(
         self, record: dict[str, Any], audit: dict[str, Any]
-    ) -> datetime:
+    ) -> tuple[datetime, bool]:
         for key in (
             "CreationDate",
             "Timestamp",
@@ -181,8 +182,8 @@ class M365Importer(Importer):
         ):
             ts = self.normalize_timestamp(audit.get(key))
             if ts:
-                return ts
-        return datetime.now(UTC)
+                return ts, False
+        return datetime.now(UTC), True
 
     def _extract_severity(
         self, record: dict[str, Any], audit: dict[str, Any]

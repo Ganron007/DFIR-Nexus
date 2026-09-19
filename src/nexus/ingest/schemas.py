@@ -240,6 +240,9 @@ class Artifact:
     # time was substituted — downstream must never present it as event time
     # without saying so.
     ts_synthesized: bool = False
+    # RFC 3164 syslog carries no year; the current year is assumed. The event
+    # time exists, but the year is a guess and must be visible as such.
+    ts_year_assumed: bool = False
 
     @staticmethod
     def new_id() -> str:

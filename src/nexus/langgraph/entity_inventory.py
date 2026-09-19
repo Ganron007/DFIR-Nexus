@@ -58,12 +58,25 @@ def _top(counts: dict[str, int], cap: int = _CAP) -> list[dict[str, Any]]:
     return [{"value": v, "count": c} for v, c in ranked[:cap]]
 
 
-def build_entity_inventory(case_id: str, *, cap: int = _CAP) -> dict[str, Any]:
-    """Census entities from the case's indexed evidence rows (no LLM)."""
-    from nexus.tools.evidence_index import do_n4_query
+def build_entity_inventory(
+    case_id: str,
+    *,
+    cap: int = _CAP,
+    hits: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Census entities from the case's indexed evidence rows (no LLM).
 
-    result = do_n4_query(case_id=case_id, dsl="", limit=400, match_all=True)
-    hits = [h for h in (result.get("hits") or []) if isinstance(h, dict)]
+    ``hits`` accepts an already-fetched wide scan so the interpret node pays
+    for ONE match-all read and shares it with the TI sweep (B5).
+    """
+    fetch_error = ""
+    if hits is None:
+        from nexus.tools.evidence_index import do_n4_query
+
+        result = do_n4_query(case_id=case_id, dsl="", limit=400, match_all=True)
+        hits = result.get("hits") or []
+        fetch_error = str(result.get("error") or "")
+    hits = [h for h in hits if isinstance(h, dict)]
 
     procs: dict[str, int] = {}
     paths: dict[str, int] = {}
@@ -101,7 +114,7 @@ def build_entity_inventory(case_id: str, *, cap: int = _CAP) -> dict[str, Any]:
 
     inventory = {
         "hits_scanned": len(hits),
-        "error": result.get("error"),
+        "error": fetch_error,
         "processes": _top(procs, cap),
         "paths": _top(paths, cap),
         "users": _top(users, cap),

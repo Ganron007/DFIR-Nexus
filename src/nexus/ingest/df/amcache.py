@@ -133,6 +133,7 @@ class AmCacheImporter(Importer):
         # Timestamps
         ts_str = get("FileKeyLastWriteTimestamp", "LastWriteTime", "KeyTimestamp", "Created")
         ts = self.normalize_timestamp(ts_str) if ts_str else None
+        ts_synthesized = ts is None
         if ts is None:
             try:
                 ts = datetime.fromtimestamp(Path(source_path).stat().st_mtime, tz=UTC)
@@ -162,6 +163,7 @@ class AmCacheImporter(Importer):
             artifact_type=ArtifactType.MALWARE,
             source=ArtifactSource.UNKNOWN,
             timestamp=ts,
+            ts_synthesized=ts_synthesized,
             severity=severity,
             file_path=full_path or None,
             process_name=name or None,

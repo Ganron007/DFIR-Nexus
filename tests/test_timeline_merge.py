@@ -153,7 +153,7 @@ def test_merge_dedupes_same_row_across_needles(tmp_path: Path):
         hits_to_events([{**row, "terms": "rundll32"}]),
     )
     assert len(evs) == 1
-    assert set(evs[0]["terms"].split(",")) == {"mshta", "rundll32"}
+    assert {x.strip() for x in evs[0]["terms"].split(",")} == {"mshta", "rundll32"}
 
 
 def test_rebuild_includes_finding_evidence(tmp_path: Path):
@@ -204,3 +204,27 @@ def test_artifact_key_is_tuple_and_pipe_safe():
     assert key_a != key_b
     # identical rows still dedupe
     assert _artifact_key(dict(a)) == key_a
+
+def test_merge_events_unions_structured_terms_with_commas():
+    """EH-8: a needle containing a comma must union intact, not split into
+    phantom terms, when the same row is matched by several queries."""
+    from nexus.langgraph.timeline_merge import merge_events
+
+    shared = {"file": "a.csv", "line": "2", "timestamp": "2024-01-01T00:00:00"}
+    ev1 = {**shared, "terms": "sc.exe, net.exe", "terms_list": ["sc.exe, net.exe"]}
+    ev2 = {**shared, "terms": "rundll32", "terms_list": ["rundll32"]}
+    merged = merge_events([ev1], [ev2])
+    assert len(merged) == 1
+    assert merged[0]["terms_list"] == ["rundll32", "sc.exe, net.exe"]
+    assert "sc.exe, net.exe" in merged[0]["terms"]
+
+
+def test_hits_to_events_carries_terms_list():
+    from nexus.langgraph.timeline_merge import hits_to_events
+
+    events = hits_to_events([{
+        "family": "hayabusa", "file": "a.csv", "line": "3",
+        "text": "2024-01-01T00:00:00Z row", "terms": "sc.exe, net.exe",
+        "terms_list": ["sc.exe, net.exe"],
+    }])
+    assert events and events[0]["terms_list"] == ["sc.exe, net.exe"]

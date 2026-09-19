@@ -76,6 +76,9 @@ def hits_to_events(hits: list[dict[str, str]], source: str = "n4") -> list[dict[
             "file": h.get("file") or "",
             "line": h.get("line") or "",
             "terms": terms,
+            # Structured matched needles: a term containing a comma cannot be
+            # split into phantom terms by the event merge (EH-8).
+            "terms_list": list(h.get("terms_list") or []),
             "artifact": art[:160] if art else "",
             "severity": sev,
         })
@@ -113,12 +116,14 @@ def artifacts_to_events(
             "family": a.artifact_type.value,
             "file": loc_file,
             "line": str(loc_line) if loc_line != "" else "",
-            "terms": ",".join(a.technique_ids[:4]),
+            "terms": ", ".join(a.technique_ids[:4]),
+            "terms_list": list(a.technique_ids[:4]),
             "source_ip": a.source_ip or "",
             "dest_ip": a.dest_ip or "",
             # EH-7: provenance — this timestamp is the INGEST time, not the
             # event's own (the source timestamp was unparseable).
             "ts_synthesized": bool(getattr(a, "ts_synthesized", False)),
+            "ts_year_assumed": bool(getattr(a, "ts_year_assumed", False)),
         })
     return events
 
@@ -147,12 +152,23 @@ def merge_events(*groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
             )
             if key in seen:
                 prev = out[seen[key]]
-                # Union matched needles + fill any fields the first event lacked.
-                prev_terms = {t.strip() for t in str(prev.get("terms") or "").split(",") if t.strip()}
-                new_terms = {t.strip() for t in str(ev.get("terms") or "").split(",") if t.strip()}
-                union = prev_terms | new_terms
+                # Union matched needles + fill any fields the first event
+                # lacked. Structured lists are unioned first so a term with a
+                # comma never splits (EH-8); the display string follows.
+                def _terms_of(event: dict[str, Any]) -> set[str]:
+                    listed = event.get("terms_list")
+                    if isinstance(listed, list) and listed:
+                        return {str(t).strip() for t in listed if str(t).strip()}
+                    return {
+                        t.strip()
+                        for t in str(event.get("terms") or "").split(",")
+                        if t.strip()
+                    }
+
+                union = _terms_of(prev) | _terms_of(ev)
                 if union:
-                    prev["terms"] = ",".join(sorted(union))
+                    prev["terms_list"] = sorted(union)
+                    prev["terms"] = ", ".join(sorted(union))
                 for k in ("severity", "host", "timestamp", "artifact", "note"):
                     if not prev.get(k) and ev.get(k):
                         prev[k] = ev[k]

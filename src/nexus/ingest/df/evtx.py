@@ -229,6 +229,7 @@ class EVTXImporter(Importer):
                     ts = Importer.normalize_timestamp(xml_str[start:end])
                     if ts:
                         break
+        ts_synthesized = ts is None
         if ts is None:
             ts = datetime.now(UTC)
 
@@ -301,6 +302,7 @@ class EVTXImporter(Importer):
             artifact_type=artifact_type,
             source=ArtifactSource.EVTX,
             timestamp=ts,
+            ts_synthesized=ts_synthesized,
             severity=severity,
             host=host,
             user=None,  # Will be filled below if EventData present

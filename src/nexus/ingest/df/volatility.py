@@ -90,6 +90,7 @@ def _row_to_artifact(row: dict[str, Any], plugin: str, path: Path) -> Artifact:
         artifact_type=ArtifactType.NETWORK if src_ip and dst_ip else ArtifactType.PROCESS,
         source=ArtifactSource.VOLATILITY,
         timestamp=datetime.now(UTC),
+        ts_synthesized=True,
         severity=sev,
         host=None,
         process_name=proc or None,

@@ -59,7 +59,10 @@ class PlasoImporter(Importer):
 
     def _row_to_artifact(self, row: dict[str, str]) -> Artifact | None:
         ts_str = row.get("datetime") or row.get("timestamp") or row.get("time", "")
-        ts = self.normalize_timestamp(ts_str) or datetime.now(UTC)
+        ts = self.normalize_timestamp(ts_str)
+        ts_synthesized = ts is None
+        if ts is None:
+            ts = datetime.now(UTC)
 
         message = row.get("message") or row.get("display_name") or row.get("source_long", "")
         if not message.strip():
@@ -80,6 +83,7 @@ class PlasoImporter(Importer):
         return Artifact(
             id=Artifact.new_id(),
             timestamp=ts,
+            ts_synthesized=ts_synthesized,
             source=ArtifactSource.PLASO,
             artifact_type=ArtifactType.UNKNOWN,
             severity=severity,

@@ -75,6 +75,7 @@ class JSONLImporter(Importer):
                 ts = self.normalize_timestamp(record[field])
                 if ts:
                     break
+        ts_synthesized = ts is None
         if ts is None:
             ts = datetime.now(UTC)
 
@@ -104,6 +105,7 @@ class JSONLImporter(Importer):
             artifact_type=ArtifactType.UNKNOWN,
             source=ArtifactSource.GENERIC_JSONL,
             timestamp=ts,
+            ts_synthesized=ts_synthesized,
             severity=severity,
             host=host,
             user=user,

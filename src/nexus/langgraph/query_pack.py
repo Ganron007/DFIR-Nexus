@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from nexus.integration.evidence_table import evidence_rows_from_n4_hits
+from nexus.langgraph.audit_linkage import _FAMILY_TO_TOOL, linked_audit_ids
 
 _MAX_HITS_PER_FILE = 40
 _MAX_HITS_TOTAL = 400
@@ -231,8 +232,16 @@ def _dedupe(terms: list[str]) -> list[str]:
 
 
 def _parse_needles(raw: str) -> list[str]:
-    """Comma/semicolon examiner or agent needles (not free-prose)."""
-    return [t.strip() for t in (raw or "").replace(";", ",").split(",") if t.strip()]
+    """Examiner or agent needles (not free-prose).
+
+    Newline-separated values are the current format and preserve commas
+    inside a needle (e.g. a quoted phrase); legacy comma/semicolon values
+    persisted before EH-8 still parse.
+    """
+    text = raw or ""
+    if "\n" in text:
+        return [t.strip() for t in text.splitlines() if t.strip()]
+    return [t.strip() for t in text.replace(";", ",").split(",") if t.strip()]
 
 
 def collect_playbook_query_terms(intake: dict[str, str] | None) -> list[str]:
@@ -475,6 +484,7 @@ def render_ingest_row(d: dict[str, Any], max_len: int = _MAX_LINE) -> str:
         # EH-7: searchable/visible marker so nobody reads ingest time as
         # event time in the evidence rows themselves.
         "ts_synthesized=true" if d.get("ts_synthesized") else "",
+        "ts_year_assumed=true" if d.get("ts_year_assumed") else "",
     ]
     return " ".join(p for p in parts if p).strip()[:max_len]
 
@@ -1268,26 +1278,8 @@ def build_query_pack_markdown(
     return md
 
 
-_FAMILY_TO_TOOL = {
-    "pecmd": "pecmd",
-    "prefetch": "pecmd",
-    "amcache": "amcacheparser",
-    "appcompat": "appcompatcacheparser",
-    "recmd": "recmd",
-    "rbcmd": "rbcmd",
-    "jlecmd": "jlecmd",
-    "lecmd": "lecmd",
-    "srum": "srumecmd",
-    "srumecmd": "srumecmd",
-    "sbecmd": "sbecmd",
-    "wxtcmd": "wxtcmd",
-    "hayabusa": "hayabusa",
-    "evtx": "evtxecmd",
-    "mftecmd": "mftecmd",
-    "bits": "bitsparser",
-    "vol": "vol",
-    "setupapi": "setupapi",
-}
+# family -> producing tool: single source of truth lives in audit_linkage
+# (EH-9), imported at the top of this module.
 
 # One finding per claim (first match wins for overlapping cloud/recycle keys).
 _N4_CLAIMS: tuple[tuple[str, str], ...] = (
@@ -1315,6 +1307,13 @@ _N4_CLAIMS: tuple[tuple[str, str], ...] = (
 
 
 def _audits_for_families(ledger: list[dict[str, Any]], families: set[str]) -> list[str]:
+    """Ledger-only strict linkage (legacy helper).
+
+    EH-9: exact tool match against the family's producing tool — and NO
+    "first OK audit id of any tool" fallback. Callers with a case_dir should
+    prefer ``audit_linkage.linked_audit_ids`` (which also reads the audit log
+    and output-file tokens).
+    """
     want = {_FAMILY_TO_TOOL.get(f, f).lower() for f in families}
     want |= {f.lower() for f in families}
     out: list[str] = []
@@ -1322,18 +1321,13 @@ def _audits_for_families(ledger: list[dict[str, Any]], families: set[str]) -> li
         if row.get("status") != "OK" or not row.get("audit_id"):
             continue
         tool = str(row.get("tool") or "").lower()
-        if any(w in tool or tool in w for w in want):
+        if tool in want or any(
+            tool.startswith(w) and len(w) >= 4 for w in want
+        ):
             aid = str(row["audit_id"])
             if aid not in out:
                 out.append(aid)
         if len(out) >= 8:
-            break
-    if out:
-        return out
-    for row in ledger or []:
-        if row.get("status") == "OK" and row.get("audit_id"):
-            out.append(str(row["audit_id"]))
-        if len(out) >= 3:
             break
     return out
 
@@ -1396,7 +1390,12 @@ def n4_finding_candidates(
         for h in clustered[:5]:
             loc = f"{h.get('file')}:{h.get('line')}"
             quotes.append(f"{loc} terms={h.get('terms')}: {h.get('text', '')[:280]}")
-        aids = _audits_for_families(ledger or [], families)
+        aids = linked_audit_ids(
+            case_dir,
+            families,
+            files=[h.get("file") for h in clustered if h.get("file")],
+            ledger=ledger,
+        )
         fam_s = ", ".join(sorted(families))
         if needle == "sdelete":
             attack_ids = ["T1485"]
@@ -1513,10 +1512,10 @@ def run_ad_hoc_query(
         if persist:
             from nexus.langgraph.case_intake import persist_case_intake
 
-            persist_case_intake(case_dir, {"query_extra": ",".join(merged)})
+            persist_case_intake(case_dir, {"query_extra": "\n".join(merged)})
             intake = load_case_intake(case_dir)
         else:
-            intake["query_extra"] = ",".join(merged)
+            intake["query_extra"] = "\n".join(merged)
     terms = collect_query_terms(intake)
     pb_terms = collect_playbook_query_terms(intake)
     window = parse_intake_window(intake)

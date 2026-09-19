@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 
 from nexus.ingest.base import Importer
@@ -63,12 +63,13 @@ class AuthLogImporter(Importer):
             proc = m.group("proc")
             pid = m.group("pid")
             msg = m.group("msg")
-            ts = self.normalize_timestamp(ts_str) or datetime.now(UTC)
-            yield self._build_artifact(ts, host, proc, pid, msg)
+            ts, ts_synthesized = self.resolve_timestamp(ts_str)
+            yield self._build_artifact(ts, host, proc, pid, msg, ts_synthesized)
 
     @staticmethod
     def _build_artifact(
-        ts: datetime, host: str, proc: str, pid: str | None, msg: str
+        ts: datetime, host: str, proc: str, pid: str | None, msg: str,
+        ts_synthesized: bool = False,
     ) -> Artifact:
         """Map a parsed auth.log line to an Artifact."""
         # Severity
@@ -115,6 +116,7 @@ class AuthLogImporter(Importer):
             artifact_type=ArtifactType.AUTH,
             source=ArtifactSource.AUTHLOG,
             timestamp=ts,
+            ts_synthesized=ts_synthesized,
             severity=severity,
             host=host,
             user=user,

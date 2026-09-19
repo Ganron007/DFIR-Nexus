@@ -159,7 +159,11 @@ class LNKFileImporter(Importer):
         drive_serial = fields["drive_serial"]
         host = fields["host"]
         ts = fields["timestamp"]
+        ts_synthesized = False
         if ts is None:
+            # Neither the file's own recorded time nor a parseable embedded
+            # timestamp exists — file mtime/now are substitutes, not event time.
+            ts_synthesized = True
             try:
                 ts = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
             except OSError:
@@ -211,6 +215,7 @@ class LNKFileImporter(Importer):
             artifact_type=ArtifactType.FILE,
             source=ArtifactSource.LNK,
             timestamp=ts,
+            ts_synthesized=ts_synthesized,
             severity=severity,
             host=host,
             file_path=str(path),

@@ -101,12 +101,26 @@ def _ordered_iocs(iocs: dict[str, list[str]], cap: int) -> list[str]:
     return ordered
 
 
-def sweep_case_iocs(case_id: str = "", *, cap: int = 12) -> dict[str, Any]:
-    """Extract IOCs from the case's indexed evidence rows (deterministic, no LLM)."""
-    from nexus.tools.evidence_index import do_n4_query
+def sweep_case_iocs(
+    case_id: str = "",
+    *,
+    cap: int = 12,
+    hits: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Extract IOCs from the case's indexed evidence rows (deterministic, no LLM).
 
-    result = do_n4_query(case_id=case_id, dsl="", limit=400, match_all=True)
-    hits = result.get("hits") or []
+    ``hits`` lets a caller hand in an already-fetched wide scan (the interpret
+    node fetches ONE match-all scan and shares it with the entity inventory —
+    B5) instead of each builder re-reading the whole case.
+    """
+    error = ""
+    if hits is None:
+        from nexus.tools.evidence_index import do_n4_query
+
+        result = do_n4_query(case_id=case_id, dsl="", limit=400, match_all=True)
+        hits = result.get("hits") or []
+        error = str(result.get("error") or "")
+    hits = [h for h in hits if isinstance(h, dict)]
     texts: list[str] = []
     for h in hits:
         if not isinstance(h, dict):
@@ -116,7 +130,7 @@ def sweep_case_iocs(case_id: str = "", *, cap: int = 12) -> dict[str, Any]:
         if isinstance(fields, dict):
             texts.extend(str(v) for v in fields.values() if v)
     iocs = extract_iocs(texts, cap=cap)
-    return {"hits_scanned": len(hits), "iocs": iocs, "error": result.get("error")}
+    return {"hits_scanned": len(hits), "iocs": iocs, "error": error}
 
 
 def enrich_iocs(iocs: list[str], *, max_iocs: int = 6) -> list[dict[str, Any]]:
@@ -195,9 +209,14 @@ def render_ti_markdown(sweep: dict[str, Any], results: list[dict[str, Any]]) -> 
     return "\n".join(lines) + "\n"
 
 
-def build_case_ti_context(case_id: str, *, max_iocs: int = 6) -> dict[str, Any]:
+def build_case_ti_context(
+    case_id: str,
+    *,
+    max_iocs: int = 6,
+    hits: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     """Sweep the case's evidence for IOCs and enrich the top ones."""
-    sweep = sweep_case_iocs(case_id)
+    sweep = sweep_case_iocs(case_id, hits=hits)
     ordered = _ordered_iocs(sweep.get("iocs") or {}, max_iocs)
     results = enrich_iocs(ordered, max_iocs=max_iocs)
     return {

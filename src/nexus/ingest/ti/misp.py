@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -108,14 +108,15 @@ class MISPImporter(Importer):
                     if "mitre" in tag_name.lower():
                         techniques.extend(self.extract_techniques([tag_name]))
 
-        ts = self.normalize_timestamp(event_date) or datetime.now(UTC)
+        ts, ts_synthesized = self.resolve_timestamp(event_date)
 
         attributes = event.get("Attribute", []) or []
         for attr in attributes:
             if not isinstance(attr, dict):
                 continue
             yield self._attribute_to_artifact(
-                attr, event_info, event_id, ts, threat_severity, techniques
+                attr, event_info, event_id, ts, threat_severity, techniques,
+                ts_synthesized,
             )
 
     def _attribute_to_artifact(
@@ -126,6 +127,7 @@ class MISPImporter(Importer):
         ts: datetime,
         severity: Severity,
         techniques: list[str],
+        ts_synthesized: bool = False,
     ) -> Artifact:
         """Map a MISP attribute to an Artifact."""
         attr_type = str(attr.get("type", "")).lower()
@@ -178,6 +180,7 @@ class MISPImporter(Importer):
             artifact_type=artifact_type,
             source=ArtifactSource.MISP,
             timestamp=ts,
+            ts_synthesized=ts_synthesized,
             severity=severity,
             file_path=attr_value if attr_type in ("filename",) else None,
             file_hash_md5=file_md5,

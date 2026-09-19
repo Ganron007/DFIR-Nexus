@@ -1547,6 +1547,20 @@ def sift_jobs_for_lane(
     )
 
 
+def _lane_concurrency() -> int:
+    """Tool-lane parallelism from NEXUS_TOOL_LANE_CONCURRENCY (1..4, default 1).
+
+    Sequential is the forensic default: deterministic ordering, no CPU
+    contention on busy examiner hosts. 2-4 lets a capable host overlap
+    independent parsers; each job writes its own outputs and the ledger
+    appends are atomic, so results stay attributable either way.
+    """
+    try:
+        return max(1, min(int(os.environ.get("NEXUS_TOOL_LANE_CONCURRENCY") or 1), 4))
+    except (TypeError, ValueError):
+        return 1
+
+
 async def run_tool_lane(
     *,
     tools: dict[str, Any],
@@ -1775,8 +1789,28 @@ async def run_tool_lane(
     sift_jobs = [j for j in jobs if j.host != "windows"]
     win_total[0] = len(win_jobs) + len(sift_jobs)
     _write_progress()
-    for job in win_jobs:
-        await _run_one(job)
+
+    # B7: parser jobs are sequential by DEFAULT (deterministic, no CPU
+    # contention). Operators on capable hosts can opt in to bounded
+    # parallelism with NEXUS_TOOL_LANE_CONCURRENCY=2..4; outputs are per-tool
+    # and the ledger appends are atomic, so results stay attributable.
+    import asyncio as _asyncio
+
+    async def _run_bounded(job_list: list[ToolJob]) -> None:
+        conc = _lane_concurrency()
+        if conc <= 1 or len(job_list) <= 1:
+            for job in job_list:
+                await _run_one(job)
+            return
+        sem = _asyncio.Semaphore(conc)
+
+        async def _one(job: ToolJob) -> None:
+            async with sem:
+                await _run_one(job)
+
+        await _asyncio.gather(*(_one(j) for j in job_list))
+
+    await _run_bounded(win_jobs)
 
     bodyfiles = sorted(extractions.rglob("*.body"))
     if bodyfiles and sift_tool:
@@ -1806,8 +1840,7 @@ async def run_tool_lane(
             log.warning("NEXUS_SIFT_MACTIME=1 but bodyfile push failed; not FAIL")
 
     win_total[0] = len(win_jobs) + len(sift_jobs)
-    for job in sift_jobs:
-        await _run_one(job)
+    await _run_bounded(sift_jobs)
 
     ok = sum(1 for j in ledger if j.get("status") == "OK")
     fail = sum(1 for j in ledger if j.get("status") == "FAIL")

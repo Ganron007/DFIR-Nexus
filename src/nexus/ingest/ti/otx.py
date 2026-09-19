@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -100,14 +100,15 @@ class OTXImporter(Importer):
         severity = severity_map.get(tlp, Severity.INFORMATIONAL)
 
         # Created timestamp
-        ts = self.normalize_timestamp(pulse.get("created")) or datetime.now(UTC)
+        ts, ts_synthesized = self.resolve_timestamp(pulse.get("created"))
 
         indicators = pulse.get("indicators", []) or []
         for ind in indicators:
             if not isinstance(ind, dict):
                 continue
             yield self._indicator_to_artifact(
-                ind, name, pulse_id, description, ts, severity, techniques, tags
+                ind, name, pulse_id, description, ts, severity, techniques, tags,
+                ts_synthesized,
             )
 
     def _indicator_to_artifact(
@@ -120,6 +121,7 @@ class OTXImporter(Importer):
         severity: Severity,
         techniques: list[str],
         tags: list[str],
+        ts_synthesized: bool = False,
     ) -> Artifact:
         """Map an OTX indicator to an Artifact."""
         ind_type = str(ind.get("type", "")).lower()
@@ -130,6 +132,7 @@ class OTXImporter(Importer):
                 artifact_type=ArtifactType.IOC,
                 source=ArtifactSource.OTX,
                 timestamp=ts,
+                ts_synthesized=ts_synthesized,
                 severity=severity,
                 description=f"OTX {name} - empty indicator",
                 raw=ind,
@@ -166,6 +169,7 @@ class OTXImporter(Importer):
             artifact_type=artifact_type,
             source=ArtifactSource.OTX,
             timestamp=ts,
+            ts_synthesized=ts_synthesized,
             severity=severity,
             file_path=ind_value if ind_type == "filename" else None,
             file_hash_md5=file_md5,

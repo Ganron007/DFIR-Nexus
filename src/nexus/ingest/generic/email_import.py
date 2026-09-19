@@ -13,7 +13,6 @@ import email
 import email.policy
 import logging
 from collections.abc import Iterator
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -119,9 +118,7 @@ class EmailImporter(Importer):
                 elif line.startswith("Date:"):
                     headers["Date"] = line[5:].strip()
 
-            ts = self.normalize_timestamp(headers.get("Date"))
-            if ts is None:
-                ts = datetime.now(UTC)
+            ts, ts_synthesized = self.resolve_timestamp(headers.get("Date"))
 
             from_addr = headers.get("From", "")
             to_addr = headers.get("To", "")
@@ -132,6 +129,7 @@ class EmailImporter(Importer):
                 artifact_type=ArtifactType.SMTP,
                 source=ArtifactSource.GENERIC_JSONL,
                 timestamp=ts,
+            ts_synthesized=ts_synthesized,
                 severity=Severity.INFORMATIONAL,
                 user=from_addr or None,
                 description=f"Email: {subject} (from {from_addr} to {to_addr})",
@@ -152,9 +150,7 @@ class EmailImporter(Importer):
             date_str = str(msg.get("Date", ""))
             message_id = str(msg.get("Message-ID", ""))
 
-            ts = self.normalize_timestamp(date_str)
-            if ts is None:
-                ts = datetime.now(UTC)
+            ts, ts_synthesized = self.resolve_timestamp(date_str)
 
             # Extract body text
             body = ""
@@ -197,6 +193,7 @@ class EmailImporter(Importer):
                 artifact_type=ArtifactType.SMTP,
                 source=ArtifactSource.GENERIC_JSONL,
                 timestamp=ts,
+            ts_synthesized=ts_synthesized,
                 severity=Severity.INFORMATIONAL,
                 user=from_addr or None,
                 description=description,

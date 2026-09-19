@@ -464,3 +464,13 @@ def test_single_needle_count_matches_per_term_scan(tmp_path: Path):
     result = n4_query(tmp_path, " OR ".join(needles))
     assert briefing_count == 2
     assert result["count"] == briefing_count
+
+def test_parse_needles_newline_preserves_comma_terms():
+    """EH-8: newline-separated needles survive a comma inside the term;
+    legacy comma/semicolon values still parse."""
+    from nexus.langgraph.query_pack import _parse_needles
+
+    assert _parse_needles("sc.exe, net.exe\nrundll32") == ["sc.exe, net.exe", "rundll32"]
+    assert _parse_needles("a,b;c") == ["a", "b", "c"]
+    assert _parse_needles("") == []
+    assert _parse_needles("single") == ["single"]

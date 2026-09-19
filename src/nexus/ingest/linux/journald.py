@@ -148,6 +148,7 @@ class JournaldImporter(Importer):
                 ts = self.normalize_timestamp(
                     entry.get("_SOURCE_REALTIME_TIMESTAMP") or entry.get("__MONOTONIC_TIMESTAMP")
                 )
+            ts_synthesized = ts is None
             if ts is None:
                 ts = datetime.now(UTC)
 
@@ -177,6 +178,7 @@ class JournaldImporter(Importer):
                 artifact_type=ArtifactType.UNKNOWN,
                 source=ArtifactSource.SYSLOG,
                 timestamp=ts,
+            ts_synthesized=ts_synthesized,
                 severity=severity,
                 host=hostname,
                 process_name=proc_name,

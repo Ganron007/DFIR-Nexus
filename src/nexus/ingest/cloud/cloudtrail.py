@@ -10,7 +10,6 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Iterator
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -100,9 +99,7 @@ class CloudTrailImporter(Importer):
 
     def _record_to_artifact(self, record: dict[str, Any], file: Path) -> Artifact:
         """Map a CloudTrail record to an Artifact."""
-        ts = self.normalize_timestamp(record.get("eventTime"))
-        if ts is None:
-            ts = datetime.now(UTC)
+        ts, ts_synthesized = self.resolve_timestamp(record.get("eventTime"))
 
         event_name = str(record.get("eventName", ""))
         event_source = str(record.get("eventSource", ""))
@@ -139,6 +136,7 @@ class CloudTrailImporter(Importer):
             artifact_type=ArtifactType.NETWORK,  # CloudTrail events are service calls
             source=ArtifactSource.CLOUDTRAIL,
             timestamp=ts,
+            ts_synthesized=ts_synthesized,
             severity=severity,
             user=user_name,
             source_ip=source_ip,

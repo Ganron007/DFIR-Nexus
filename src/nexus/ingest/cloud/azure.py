@@ -10,7 +10,6 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Iterator
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -79,9 +78,9 @@ class AzureImporter(Importer):
 
     def _record_to_artifact(self, record: dict[str, Any], file: Path) -> Artifact:
         """Map an Azure activity log record to an Artifact."""
-        ts = self.normalize_timestamp(record.get("eventTimestamp") or record.get("time"))
-        if ts is None:
-            ts = datetime.now(UTC)
+        ts, ts_synthesized = self.resolve_timestamp(
+            record.get("eventTimestamp") or record.get("time")
+        )
 
         operation = str(record.get("operationName", {}).get("value", "")) if isinstance(record.get("operationName"), dict) else str(record.get("operationName", ""))
         caller = str(record.get("caller", ""))
@@ -111,6 +110,7 @@ class AzureImporter(Importer):
             artifact_type=ArtifactType.NETWORK,
             source=ArtifactSource.AZURE,
             timestamp=ts,
+            ts_synthesized=ts_synthesized,
             severity=severity,
             user=user,
             description=f"Azure {operation} ({status or 'Succeeded'})",

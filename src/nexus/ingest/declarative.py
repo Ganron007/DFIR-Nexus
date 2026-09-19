@@ -45,7 +45,6 @@ import json
 import logging
 import re
 from collections.abc import Iterator
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -228,12 +227,8 @@ class DeclarativeImporter(Importer):
         """Convert a single record to an Artifact using the field map."""
         ts = None
         ts_field = self._field_map.get("timestamp", "")
-        if ts_field:
-            ts_val = self._map_field(record, "timestamp", ts_field)
-            if ts_val:
-                ts = self.normalize_timestamp(ts_val)
-        if ts is None:
-            ts = datetime.now(UTC)
+        ts_val = self._map_field(record, "timestamp", ts_field) if ts_field else None
+        ts, ts_synthesized = self.resolve_timestamp(ts_val)
 
         severity = Severity.INFORMATIONAL
         sev_field = self._field_map.get("severity", "")
@@ -268,6 +263,7 @@ class DeclarativeImporter(Importer):
             "artifact_type": ArtifactType.UNKNOWN,
             "source": ArtifactSource.UNKNOWN,
             "timestamp": ts,
+            "ts_synthesized": ts_synthesized,
             "severity": severity,
             "description": description,
             "technique_ids": technique_ids,

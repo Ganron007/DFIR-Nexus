@@ -590,6 +590,20 @@ class CaseManager:
                     "ids": provenance["none"],
                     "action": "Re-run the tool and update artifacts with valid audit_ids",
                 })
+            if provenance.get("unlinked"):
+                result["provenance_gaps"].append({
+                    "type": "unlinked_audit_ids",
+                    "ids": provenance["unlinked"][:10],
+                    "action": (
+                        "These audit IDs exist but do not reference this "
+                        "finding's evidence families/files — cite the parser/"
+                        "ingest runs that produced the rows instead."
+                    ),
+                })
+                warnings.append(
+                    f"FD-001/9: {len(provenance['unlinked'])} audit ID(s) are not "
+                    "linked to this finding's evidence"
+                )
             if result["warnings"]:
                 for w in result["warnings"]:
                     result["provenance_gaps"].append({
@@ -774,8 +788,51 @@ class CaseManager:
             else:
                 none_ids.append(aid)
 
+        # EH-9: linkage — existence is not enough. The cited calls must
+        # reference this finding's evidence families/files, or the finding is
+        # citing existent-but-unrelated provenance. Findings without any
+        # structured evidence rows cannot be scoped (linkage unknown) and are
+        # not downgraded here.
+        families: set[str] = set()
+        files: list[str] = []
+        for row in finding.get("evidence") or []:
+            if not isinstance(row, dict):
+                continue
+            src = str(row.get("source") or "").strip()
+            if "/" in src:
+                fam, _, fname = src.partition("/")
+                if fam.strip():
+                    families.add(fam.strip().lower())
+                if fname.strip():
+                    files.append(fname.strip())
+            elif src:
+                families.add(src.lower())
+            for key in ("artifact", "file"):
+                value = str(row.get(key) or "").strip()
+                if value:
+                    files.append(value)
+            loc = str(row.get("loc") or "").strip()
+            if ":" in loc:
+                files.append(loc.rsplit(":", 1)[0])
+
+        linked_ids: list[str] = []
+        unlinked_ids: list[str] = []
+        if (families or files) and found_ids:
+            try:
+                from nexus.langgraph.audit_linkage import is_linked
+
+                for aid in sorted(found_ids):
+                    if is_linked(case_dir, aid, families, files):
+                        linked_ids.append(aid)
+                    else:
+                        unlinked_ids.append(aid)
+            except Exception:  # noqa: BLE001 — linkage best-effort
+                linked_ids = sorted(found_ids)
+        else:
+            linked_ids = sorted(found_ids)
+
         found = len(found_ids)
-        if len(none_ids) == 0 and found > 0:
+        if len(none_ids) == 0 and found > 0 and len(linked_ids) == found:
             summary = "MIXED" if hook_ids or shell_ids else "MCP"
             grade = "FULL"
         elif found > 0:
@@ -785,10 +842,19 @@ class CaseManager:
             summary = "NONE"
             grade = "NONE"
 
+        detail = f"{found}/{len(audit_ids)} audit IDs verified"
+        if unlinked_ids:
+            detail += (
+                f"; {len(unlinked_ids)} do not reference this finding's "
+                "evidence families/files"
+            )
+
         return {
             "summary": summary,
-            "detail": f"{found}/{len(audit_ids)} audit IDs verified",
+            "detail": detail,
             "mcp": mcp_ids, "hook": hook_ids, "shell": shell_ids, "none": none_ids,
+            "linked": linked_ids,
+            "unlinked": unlinked_ids,
             "grade": grade,
         }
 

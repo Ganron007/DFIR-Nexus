@@ -1219,7 +1219,9 @@ def _autoindex_case(case_dir: Path) -> list[str]:
             extra_needles = collect_query_terms(load_case_intake(case_dir))
         except Exception:  # noqa: BLE001 — vocabulary is best-effort
             extra_needles = []
-        meta = index_case(case_dir, extra_needles=extra_needles)
+        # B6: incremental by default — only files whose mtime advanced since
+        # the last build are re-indexed (full rebuild on fresh/absent state).
+        meta = index_case(case_dir, extra_needles=extra_needles, incremental=True)
         return [f"N3 auto-index: {meta.get('docs')} docs -> {meta.get('index')}"]
     except Exception as exc:  # noqa: BLE001
         if case_mode in ("2", "3"):
@@ -1430,12 +1432,24 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
             digest_md = render_digest_markdown(digest)
         except Exception as exc:  # noqa: BLE001 — digest is best-effort context
             log.warning("case digest build failed: %s", exc)
+        # B5: ONE wide case scan, shared by the TI sweep and the entity
+        # census (each used to run its own match-all fetch back-to-back).
+        wide_hits: list[dict[str, Any]] = []
+        try:
+            from nexus.tools.evidence_index import do_n4_query as _wide_query
+
+            _wide = _wide_query(case_id=case_id, dsl="", limit=400, match_all=True)
+            wide_hits = [h for h in (_wide.get("hits") or []) if isinstance(h, dict)]
+        except Exception as exc:  # noqa: BLE001 — builders fall back to their own fetch
+            log.debug("wide case scan unavailable: %s", exc)
+        share_hits = wide_hits or None
+
         # Mode 2 deterministic lane: IOC sweep + TI enrichment. Context only —
         # findings still cite evidence audit_ids (FD-001).
         try:
             from nexus.langgraph.ti_context import build_case_ti_context, write_ti_context
 
-            ti_ctx = build_case_ti_context(case_id, max_iocs=6)
+            ti_ctx = build_case_ti_context(case_id, max_iocs=6, hits=share_hits)
             write_ti_context(settings.cases_root / case_id, ti_ctx)
             ti_block = str(ti_ctx.get("markdown") or "")
         except Exception as exc:  # noqa: BLE001 — TI is best-effort context
@@ -1450,7 +1464,7 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
                 write_entity_inventory,
             )
 
-            inv = build_entity_inventory(case_id, cap=40)
+            inv = build_entity_inventory(case_id, cap=40, hits=share_hits)
             write_entity_inventory(settings.cases_root / case_id, inv)
             inv_md = render_inventory_markdown(inv)
         except Exception as exc:  # noqa: BLE001 — inventory is best-effort
@@ -1465,7 +1479,11 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
                 write_kb_context,
             )
 
-            families = sorted(_family_inventory(settings.cases_root / case_id))
+            # Reuse the digest's inventory (already computed above) instead of
+            # walking the extraction tree again for family names.
+            families = sorted((digest.get("inventory") or {}).keys())
+            if not families:
+                families = sorted(_family_inventory(settings.cases_root / case_id))
             top_entities = [
                 str(item.get("value") or "")
                 for item in (inv.get("processes") or [])[:4]
@@ -1743,14 +1761,21 @@ def _is_tool_audit_id(aid: str) -> bool:
     return bool(aid and _AUDIT_ID_RE.fullmatch(aid))
 
 
-def _finding_tool_payload(candidate: dict, trail: list[str]) -> dict:
+def _finding_tool_payload(
+    candidate: dict, trail: list[str], linked_ids: set[str] | None = None
+) -> dict:
     """Map a hunt/interpret candidate to ``record_finding`` MCP kwargs.
 
     Avoids passing raw ``type`` / unknown keys that FastMCP may reject silently.
-    Prefer candidate audit_ids; only pad from trail IDs that look like tool audits.
+    Candidate audit_ids are kept verbatim; the trail may only PAD with
+    ``linked_ids`` — audit ids whose calls actually reference this finding's
+    evidence (EH-9). Without that link the padding would let a finding cite
+    existent-but-unrelated audits and pass FD-001 mechanically.
     """
     aids = [str(a) for a in (candidate.get("audit_ids") or []) if a]
     for aid in trail:
+        if linked_ids is not None and aid not in linked_ids:
+            continue
         if aid not in aids:
             aids.append(aid)
         if len(aids) >= 10:
@@ -1934,9 +1959,56 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
     n4 = _fallback_candidates_from_state(state, trail, host_default)
     candidates = n4 if not candidates else _merge_n4_uncovered(candidates, n4)
 
+    # EH-9: linkage scope — pad candidate audit_ids only with calls that
+    # reference this finding's evidence families/files.
+    stage_case_id = str(state.get("case_id") or "")
+    stage_case_dir: Path | None = None
+    if stage_case_id:
+        from nexus.config import settings as _stage_settings
+
+        stage_case_dir = _stage_settings.cases_root / stage_case_id
+
+    def _scope_for(candidate: dict) -> tuple[set[str], list[str]]:
+        families: set[str] = set()
+        files: list[str] = []
+        for row in candidate.get("evidence") or []:
+            if not isinstance(row, dict):
+                continue
+            src = str(row.get("source") or "").strip()
+            if "/" in src:
+                fam, _, fname = src.partition("/")
+                if fam.strip():
+                    families.add(fam.strip().lower())
+                if fname.strip():
+                    files.append(fname.strip())
+            elif src:
+                families.add(src.lower())
+            for key in ("artifact", "file"):
+                value = str(row.get(key) or "").strip()
+                if value:
+                    files.append(value)
+            loc = str(row.get("loc") or "").strip()
+            if ":" in loc:
+                files.append(loc.rsplit(":", 1)[0])
+        return families, files
+
     async def _stage_one(candidate: dict) -> None:
         nonlocal draft_ids
-        payload = _finding_tool_payload(candidate, trail)
+        linked: set[str] | None = None
+        if stage_case_dir is not None:
+            families, files = _scope_for(candidate)
+            if families or files:
+                try:
+                    from nexus.langgraph.audit_linkage import linked_audit_ids
+
+                    linked = set(linked_audit_ids(stage_case_dir, families, files, limit=12))
+                except Exception as exc:  # noqa: BLE001 — linkage best-effort
+                    log.debug("audit linkage unavailable: %s", exc)
+                    linked = set()
+            else:
+                # no scope to link against → never pad blindly
+                linked = set()
+        payload = _finding_tool_payload(candidate, trail, linked_ids=linked)
         try:
             result = _parse_tool_result(await finding_tool.ainvoke(payload))
         except Exception as e:

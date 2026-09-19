@@ -105,6 +105,7 @@ class VelociraptorImporter(Importer):
                 ts = self.normalize_timestamp(record[key])
                 if ts:
                     break
+        ts_synthesized = ts is None
         if ts is None:
             ts = datetime.now(UTC)
 
@@ -148,6 +149,7 @@ class VelociraptorImporter(Importer):
             artifact_type=artifact_type,
             source=ArtifactSource.VELOCIRAPTOR,
             timestamp=ts,
+            ts_synthesized=ts_synthesized,
             severity=Severity.INFORMATIONAL,
             host=host,
             user=user,

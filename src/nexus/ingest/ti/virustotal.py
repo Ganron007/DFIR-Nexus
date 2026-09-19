@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Iterator
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -122,15 +121,18 @@ class VirusTotalImporter(Importer):
         description = attrs.get("meaningful_name") or attrs.get("popular_threat_classification", {}).get("suggested_threat_label") or indicator
 
         # Timestamps
-        ts = self.normalize_timestamp(attrs.get("last_analysis_date") or attrs.get("creation_date") or attrs.get("first_submission_date"))
-        if ts is None:
-            ts = datetime.now(UTC)
+        ts, ts_synthesized = self.resolve_timestamp(
+            attrs.get("last_analysis_date")
+            or attrs.get("creation_date")
+            or attrs.get("first_submission_date")
+        )
 
         return Artifact(
             id=Artifact.new_id(),
             artifact_type=artifact_type,
             source=ArtifactSource.VIRUSTOTAL,
             timestamp=ts,
+            ts_synthesized=ts_synthesized,
             severity=severity,
             file_hash_md5=file_hash_md5,
             file_hash_sha1=file_hash_sha1,

@@ -12,7 +12,6 @@ import contextlib
 import json
 import logging
 from collections.abc import Iterator
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -118,11 +117,9 @@ class SysdigImporter(Importer):
             output = str(event.get("output", ""))
             output_fields: dict[str, Any] = event.get("output_fields", {}) or {}
 
-            ts = self.normalize_timestamp(
+            ts, ts_synthesized = self.resolve_timestamp(
                 event.get("time") or event.get("timestamp") or event.get("evt.time")
             )
-            if ts is None:
-                ts = datetime.now(UTC)
 
             host = (
                 str(output_fields.get("host.name"))
@@ -153,6 +150,7 @@ class SysdigImporter(Importer):
                 artifact_type=ArtifactType.ALERT,
                 source=ArtifactSource.SURICATA,
                 timestamp=ts,
+            ts_synthesized=ts_synthesized,
                 severity=severity,
                 host=host,
                 process_name=proc_name,

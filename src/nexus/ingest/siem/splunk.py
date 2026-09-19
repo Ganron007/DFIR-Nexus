@@ -10,7 +10,6 @@ from __future__ import annotations
 import csv
 import logging
 from collections.abc import Iterator
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -69,9 +68,7 @@ class SplunkImporter(Importer):
     def _row_to_artifact(self, row: dict[str, Any]) -> Artifact:
         """Map a Splunk row to an Artifact."""
         # Splunk's _time is epoch seconds (or with fractions)
-        ts = self.normalize_timestamp(row.get("_time"))
-        if ts is None:
-            ts = datetime.now(UTC)
+        ts, ts_synthesized = self.resolve_timestamp(row.get("_time"))
 
         # Splunk severity: 1=informational, 5=critical
         severity = Severity.INFORMATIONAL
@@ -103,6 +100,7 @@ class SplunkImporter(Importer):
             artifact_type=artifact_type,
             source=ArtifactSource.SPLUNK,
             timestamp=ts,
+            ts_synthesized=ts_synthesized,
             severity=severity,
             host=str(row.get("host")) if row.get("host") else None,
             user=str(row.get("user")) if row.get("user") else None,

@@ -10,7 +10,6 @@ from __future__ import annotations
 import csv
 import logging
 from collections.abc import Iterator
-from datetime import UTC, datetime
 from pathlib import Path
 
 from nexus.ingest.base import Importer
@@ -96,13 +95,14 @@ class ThreatFoxImporter(Importer):
         if confidence >= 90:
             severity = Severity.CRITICAL
 
-        ts = self.normalize_timestamp(first_seen) or datetime.now(UTC)
+        ts, ts_synthesized = self.resolve_timestamp(first_seen)
 
         return Artifact(
             id=Artifact.new_id(),
             artifact_type=artifact_type,
             source=ArtifactSource.THREATFOX,
             timestamp=ts,
+            ts_synthesized=ts_synthesized,
             severity=severity,
             file_hash_md5=file_hash_md5,
             file_hash_sha1=file_hash_sha1,

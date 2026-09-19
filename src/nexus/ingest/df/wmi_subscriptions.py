@@ -146,6 +146,7 @@ class WMISubscriptionsImporter(Importer):
         # Timestamp
         ts_str = get("Timestamp", "Created", "CreationTime")
         ts = self.normalize_timestamp(ts_str) if ts_str else None
+        ts_synthesized = ts is None
         if ts is None:
             try:
                 ts = datetime.fromtimestamp(Path(source_path).stat().st_mtime, tz=UTC)
@@ -157,6 +158,7 @@ class WMISubscriptionsImporter(Importer):
             artifact_type=artifact_type,
             source=ArtifactSource.UNKNOWN,
             timestamp=ts,
+            ts_synthesized=ts_synthesized,
             severity=severity,
             description=desc,
             command_line=command_line or None,

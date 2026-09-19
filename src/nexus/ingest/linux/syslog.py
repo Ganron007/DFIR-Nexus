@@ -9,7 +9,6 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Iterator
-from datetime import UTC, datetime
 from pathlib import Path
 
 from nexus.ingest.base import Importer
@@ -97,10 +96,7 @@ class SyslogImporter(Importer):
         msg: str,
     ) -> Artifact:
         """Build an Artifact from parsed syslog fields."""
-        ts = self.normalize_timestamp(ts_str)
-        ts_synthesized = ts is None
-        if ts is None:
-            ts = datetime.now(UTC)
+        ts, ts_synthesized, ts_year_assumed = self.resolve_timestamp_ex(ts_str)
         # Guess type from proc name
         proc_lower = proc.lower()
         artifact_type = ArtifactType.UNKNOWN
@@ -126,6 +122,7 @@ class SyslogImporter(Importer):
             source=ArtifactSource.SYSLOG,
             timestamp=ts,
             ts_synthesized=ts_synthesized,
+            ts_year_assumed=ts_year_assumed,
             severity=severity,
             host=host,
             process_name=proc,

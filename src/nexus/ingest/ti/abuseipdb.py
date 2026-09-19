@@ -10,7 +10,6 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Iterator
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -97,13 +96,14 @@ class AbuseIPDBImporter(Importer):
         if score >= 90:
             severity = Severity.CRITICAL
 
-        ts = self.normalize_timestamp(last_reported) or datetime.now(UTC)
+        ts, ts_synthesized = self.resolve_timestamp(last_reported)
 
         return Artifact(
             id=Artifact.new_id(),
             artifact_type=ArtifactType.NETWORK,
             source=ArtifactSource.ABUSEIPDB,
             timestamp=ts,
+            ts_synthesized=ts_synthesized,
             severity=severity,
             source_ip=ip,
             dest_ip=ip,

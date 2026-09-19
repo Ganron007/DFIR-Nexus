@@ -98,7 +98,7 @@ class KAPEImporter(Importer):
         """Map a KAPE-collected file to an Artifact describing it."""
         name = file.name.upper()
         ext = file.suffix.lower()
-        ts = self._safe_mtime(file)
+        ts, ts_synthesized = self._safe_mtime(file)
         artifact_type = ArtifactType.FILE
         tags = ["kape"]
         description = ""
@@ -129,6 +129,7 @@ class KAPEImporter(Importer):
             artifact_type=artifact_type,
             source=ArtifactSource.KAPE,
             timestamp=ts,
+            ts_synthesized=ts_synthesized,
             severity=Severity.INFORMATIONAL,
             host=host_name,
             file_path=str(file),
@@ -157,8 +158,10 @@ class KAPEImporter(Importer):
         return None
 
     @staticmethod
-    def _safe_mtime(path: Path) -> datetime:
+    def _safe_mtime(path: Path) -> tuple[datetime, bool]:
+        """(mtime, synthesized) — mtime is evidence-derived but NOT the
+        artifact's event time, so it is flagged (EH-7)."""
         try:
-            return datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
+            return datetime.fromtimestamp(path.stat().st_mtime, tz=UTC), True
         except OSError:
-            return datetime.now(UTC)
+            return datetime.now(UTC), True

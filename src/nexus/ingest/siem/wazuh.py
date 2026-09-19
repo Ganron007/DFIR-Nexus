@@ -10,7 +10,6 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Iterator
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -133,11 +132,9 @@ class WazuhImporter(Importer):
             if not isinstance(groups, list):
                 groups = []
 
-            ts = self.normalize_timestamp(
+            ts, ts_synthesized = self.resolve_timestamp(
                 alert.get("timestamp") or alert.get("@timestamp")
             )
-            if ts is None:
-                ts = datetime.now(UTC)
 
             host = str(agent.get("name")) or None
             source_ip = str(agent_ip) or str(alert.get("data", {}).get("srcip")) if isinstance(alert.get("data"), dict) else None
@@ -162,6 +159,7 @@ class WazuhImporter(Importer):
                 artifact_type=ArtifactType.ALERT,
                 source=ArtifactSource.ELASTIC,
                 timestamp=ts,
+            ts_synthesized=ts_synthesized,
                 severity=severity,
                 host=host,
                 source_ip=source_ip,

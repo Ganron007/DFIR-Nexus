@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -86,7 +86,7 @@ class SecurityOnionImporter(Importer):
 
     def _record_to_artifact(self, record: dict[str, Any]) -> Artifact:
         """Map an ECS alert record to an Artifact."""
-        ts = self._extract_timestamp(record)
+        ts, ts_synthesized = self._extract_timestamp(record)
         severity = self._extract_severity(record)
         artifact_type = self._extract_type(record)
         host_name, user_name = self._extract_host_user(record)
@@ -99,6 +99,7 @@ class SecurityOnionImporter(Importer):
             artifact_type=artifact_type,
             source=ArtifactSource.SENTINEL,
             timestamp=ts,
+            ts_synthesized=ts_synthesized,
             severity=severity,
             host=host_name,
             user=user_name,
@@ -112,9 +113,8 @@ class SecurityOnionImporter(Importer):
             tags=self._build_tags(record),
         )
 
-    def _extract_timestamp(self, record: dict[str, Any]) -> datetime:
-        ts = self.normalize_timestamp(record.get("@timestamp") or record.get("timestamp"))
-        return ts if ts else datetime.now(UTC)
+    def _extract_timestamp(self, record: dict[str, Any]) -> tuple[datetime, bool]:
+        return self.resolve_timestamp(record.get("@timestamp") or record.get("timestamp"))
 
     def _extract_severity(self, record: dict[str, Any]) -> Severity:
         event_obj = record.get("event", {})

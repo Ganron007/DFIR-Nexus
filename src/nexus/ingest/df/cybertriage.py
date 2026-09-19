@@ -131,7 +131,7 @@ class CyberTriageImporter(Importer):
 
     def _row_to_artifact(self, row: dict[str, Any]) -> Artifact:
         """Map a Cyber Triage row to an Artifact."""
-        ts = self._extract_timestamp(row)
+        ts, ts_synthesized = self._extract_timestamp(row)
         severity = self._extract_severity(row)
         artifact_type = self._extract_type(row)
         host_name, user_name = self._extract_host_user(row)
@@ -143,6 +143,7 @@ class CyberTriageImporter(Importer):
             artifact_type=artifact_type,
             source=ArtifactSource.CYBERTRIAGE,
             timestamp=ts,
+            ts_synthesized=ts_synthesized,
             severity=severity,
             host=host_name,
             user=user_name,
@@ -159,12 +160,12 @@ class CyberTriageImporter(Importer):
             tags=self._build_tags(row),
         )
 
-    def _extract_timestamp(self, row: dict[str, Any]) -> datetime:
+    def _extract_timestamp(self, row: dict[str, Any]) -> tuple[datetime, bool]:
         for key in ("Timestamp", "timestamp", "EventTime", "event_time", "time", "@timestamp"):
             ts = self.normalize_timestamp(row.get(key))
             if ts:
-                return ts
-        return datetime.now(UTC)
+                return ts, False
+        return datetime.now(UTC), True
 
     def _extract_severity(self, row: dict[str, Any]) -> Severity:
         score = row.get("Score") or row.get("score") or row.get("Category") or row.get("category")

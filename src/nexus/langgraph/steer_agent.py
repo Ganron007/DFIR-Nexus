@@ -280,7 +280,7 @@ def _execute_queries(queries: list[dict[str, str]], case_id: str, audit: AuditWr
     all_hits: list[dict[str, Any]] = []
     queries_executed: list[dict[str, Any]] = []
     aggregations: list[dict[str, Any]] = []
-    seen_rows: set[str] = set()
+    seen_rows: set[tuple[str, str, str]] = set()
 
     for item in queries:
         q = str(item.get("dsl") or "").strip()
@@ -326,7 +326,13 @@ def _execute_queries(queries: list[dict[str, str]], case_id: str, audit: AuditWr
                 continue
             hits = result.get("hits") or []
             for h in hits:
-                loc = f"{h.get('family', '')}:{h.get('file', '')}:{h.get('line', '')}"
+                # Tuple identity: ':' inside a path/family must not make two
+                # distinct rows look the same (EH-8).
+                loc = (
+                    str(h.get("family") or ""),
+                    str(h.get("file") or "").replace("\\", "/"),
+                    str(h.get("line") or ""),
+                )
                 if loc not in seen_rows:
                     seen_rows.add(loc)
                     all_hits.append(h)

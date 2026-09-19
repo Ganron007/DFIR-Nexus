@@ -136,8 +136,11 @@ class BrowserHistoryImporter(Importer):
             url_id, url, title, visit_count, typed_count, last_visit_us, hidden = row
             if hidden:
                 continue  # skip hidden entries (probably chrome:// internal)
-            ts = self._chrome_time_to_datetime(last_visit_us)
-            yield self._make_artifact(url, title, visit_count or 0, ts, path, browser="Chrome/Edge")
+            ts, ts_synthesized = self._chrome_time_to_datetime(last_visit_us)
+            yield self._make_artifact(
+                url, title, visit_count or 0, ts, path,
+                browser="Chrome/Edge", ts_synthesized=ts_synthesized,
+            )
 
     def _parse_firefox(self, conn: sqlite3.Connection, path: Path) -> Iterator[Artifact]:
         """Parse a Firefox places.sqlite."""
@@ -155,27 +158,30 @@ class BrowserHistoryImporter(Importer):
             return
         for row in cur.fetchall():
             place_id, url, title, visit_count, last_visit_us = row
-            ts = self._firefox_time_to_datetime(last_visit_us)
-            yield self._make_artifact(url, title, visit_count or 0, ts, path, browser="Firefox")
+            ts, ts_synthesized = self._firefox_time_to_datetime(last_visit_us)
+            yield self._make_artifact(
+                url, title, visit_count or 0, ts, path,
+                browser="Firefox", ts_synthesized=ts_synthesized,
+            )
 
-    def _chrome_time_to_datetime(self, microseconds: int | None) -> datetime:
-        """Convert Chrome epoch (microseconds since 1601) to UTC datetime."""
+    def _chrome_time_to_datetime(self, microseconds: int | None) -> tuple[datetime, bool]:
+        """(datetime, synthesized) — Chrome epoch (microseconds since 1601)."""
         if microseconds is None or microseconds == 0:
-            return datetime.fromtimestamp(0, tz=UTC)
+            return datetime.fromtimestamp(0, tz=UTC), True
         try:
             seconds = (microseconds - self.CHROME_EPOCH_OFFSET_US) / 1_000_000
-            return datetime.fromtimestamp(seconds, tz=UTC)
+            return datetime.fromtimestamp(seconds, tz=UTC), False
         except (ValueError, OSError, OverflowError):
-            return datetime.now(UTC)
+            return datetime.now(UTC), True
 
-    def _firefox_time_to_datetime(self, microseconds: int | None) -> datetime:
-        """Convert Firefox epoch (microseconds since Unix) to UTC datetime."""
+    def _firefox_time_to_datetime(self, microseconds: int | None) -> tuple[datetime, bool]:
+        """(datetime, synthesized) — Firefox epoch (microseconds since Unix)."""
         if microseconds is None or microseconds == 0:
-            return datetime.fromtimestamp(0, tz=UTC)
+            return datetime.fromtimestamp(0, tz=UTC), True
         try:
-            return datetime.fromtimestamp(microseconds / 1_000_000, tz=UTC)
+            return datetime.fromtimestamp(microseconds / 1_000_000, tz=UTC), False
         except (ValueError, OSError, OverflowError):
-            return datetime.now(UTC)
+            return datetime.now(UTC), True
 
     def _make_artifact(
         self,
@@ -185,6 +191,7 @@ class BrowserHistoryImporter(Importer):
         ts: datetime,
         path: Path,
         browser: str,
+        ts_synthesized: bool = False,
     ) -> Artifact:
         """Map a URL visit to an Artifact."""
         url_lower = url.lower()
@@ -211,6 +218,7 @@ class BrowserHistoryImporter(Importer):
             artifact_type=ArtifactType.NETWORK,
             source=ArtifactSource.BROWSER_HISTORY,
             timestamp=ts,
+            ts_synthesized=ts_synthesized,
             severity=severity,
             host=path.stem,
             description=f"{browser}: {url}" + (f" ({title})" if title else ""),

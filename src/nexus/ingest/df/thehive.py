@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -96,7 +96,9 @@ class TheHiveImporter(Importer):
         severity = self.SEVERITY_MAP.get(severity_int, Severity.LOW)
         tlp = str(case.get("tlp", ""))
         case_id = case.get("id") or case.get("caseId", "")
-        ts = self.normalize_timestamp(case.get("startDate") or case.get("createdAt")) or datetime.now(UTC)
+        ts, ts_synthesized = self.resolve_timestamp(
+            case.get("startDate") or case.get("createdAt")
+        )
 
         # Yield a summary artifact for the case itself
         yield Artifact(
@@ -104,6 +106,7 @@ class TheHiveImporter(Importer):
             artifact_type=ArtifactType.ALERT,
             source=ArtifactSource.THEHIVE,
             timestamp=ts,
+            ts_synthesized=ts_synthesized,
             severity=severity,
             description=f"TheHive case: {title} (TLP:{tlp}, severity:{severity_int})",
             raw=case,
@@ -114,7 +117,9 @@ class TheHiveImporter(Importer):
         observables = case.get("observables", []) or []
         for obs in observables:
             if isinstance(obs, dict):
-                yield self._observable_to_artifact(obs, title, case_id, ts, tlp)
+                yield self._observable_to_artifact(
+                    obs, title, case_id, ts, tlp, ts_synthesized
+                )
 
     def _observable_to_artifact(
         self,
@@ -123,6 +128,7 @@ class TheHiveImporter(Importer):
         case_id: str,
         ts: datetime,
         tlp: str,
+        ts_synthesized: bool = False,
     ) -> Artifact:
         """Map a TheHive observable to an Artifact."""
         data_type = str(obs.get("dataType", ""))
@@ -175,6 +181,7 @@ class TheHiveImporter(Importer):
             artifact_type=artifact_type,
             source=ArtifactSource.THEHIVE,
             timestamp=ts,
+            ts_synthesized=ts_synthesized,
             severity=severity,
             file_hash_md5=file_md5,
             file_hash_sha1=file_sha1,

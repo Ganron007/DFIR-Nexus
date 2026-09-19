@@ -87,10 +87,11 @@ class AuditdImporter(Importer):
     def _line_to_artifact(self, line: str) -> Artifact:
         """Map a single auditd line to an Artifact."""
         # Extract timestamp from "msg=audit(1705320896.123:456)"
-        ts = datetime.now(UTC)
         m = re.search(r"msg=audit\((\d+\.\d+):", line)
-        if m:
-            ts = self.normalize_timestamp(m.group(1)) or ts
+        ts = self.normalize_timestamp(m.group(1)) if m else None
+        ts_synthesized = ts is None
+        if ts is None:
+            ts = datetime.now(UTC)
 
         # Extract msg type
         m = re.match(r"type=(\w+)", line)
@@ -118,6 +119,7 @@ class AuditdImporter(Importer):
             artifact_type=artifact_type,
             source=ArtifactSource.AUDITD,
             timestamp=ts,
+            ts_synthesized=ts_synthesized,
             severity=severity,
             user=auid or uid,
             process_name=exe,

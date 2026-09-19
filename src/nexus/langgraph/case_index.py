@@ -205,10 +205,21 @@ def _host_user_event(fields: dict[str, str]) -> tuple[str, str, str]:
 def iter_index_docs(
     case_dir: Path,
     extra_needles: list[str] | None = None,
+    only_files: set[str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Documents for this case only. Large files (>80MB) keep matching rows."""
+    """Documents for this case only. Large files (>80MB) keep matching rows.
+
+    ``only_files`` restricts the walk to specific doc ``file`` values (posix
+    rel paths) so the incremental reindex touches changed files only (B6).
+    """
     case_dir = Path(case_dir)
     extra = [t.lower() for t in (extra_needles or []) if t.strip()]
+
+    def _rel(path: Path, root: Path) -> str:
+        return str(path.relative_to(root)).replace("\\", "/")
+
+    def _wanted(path: Path, root: Path) -> bool:
+        return only_files is None or _rel(path, root) in only_files
     docs: list[dict[str, Any]] = []
     seen: set[str] = set()
 
@@ -279,6 +290,8 @@ def iter_index_docs(
             break
         if family_counts.get(fam, 0) >= _MAX_DOCS_PER_FAMILY:
             continue
+        if not _wanted(path, root):
+            continue
         header = _header_for(path)
         try:
             with path.open(encoding="utf-8", errors="replace") as fh:
@@ -302,7 +315,8 @@ def iter_index_docs(
     from nexus.langgraph.query_pack import iter_ingest_records
 
     ingest_store = case_dir / "ingest" / "artifacts.jsonl"
-    if ingest_store.is_file():
+    ingest_wanted = only_files is None or "ingest/artifacts.jsonl" in only_files
+    if ingest_store.is_file() and ingest_wanted:
         for n, fam, text, _ts, record in iter_ingest_records(case_dir):
             if len(docs) >= _MAX_DOCS:
                 break
@@ -335,6 +349,8 @@ def iter_index_docs(
             files.extend(root.rglob(pat))
         for path in sorted(set(files), key=_index_large_prio):
             if path.name.startswith("_") or path.name.endswith(_SKIP_SUFFIXES):
+                continue
+            if not _wanted(path, root):
                 continue
             try:
                 size = path.stat().st_size
@@ -484,48 +500,161 @@ def ensure_index(case_id: str) -> str:
     return name
 
 
-def index_case(case_dir: Path, extra_needles: list[str] | None = None) -> dict[str, Any]:
+def _chunks(items: list[str], size: int) -> list[list[str]]:
+    return [items[i:i + size] for i in range(0, len(items), size)]
+
+
+def _index_file_mtimes(case_dir: Path) -> dict[str, float]:
+    """Doc ``file`` value -> mtime_ns for every indexable file (B6)."""
+    from nexus.langgraph.pipeline_runs import resolve_tools_extractions
+
+    extractions = resolve_tools_extractions(case_dir)
+    roots = [extractions, extractions.parent / "sift" / "extractions", case_dir / "ingest"]
+    out: dict[str, float] = {}
+    for path in iter_index_files(case_dir):
+        for root in roots:
+            try:
+                rel = str(path.relative_to(root)).replace("\\", "/")
+            except ValueError:
+                continue
+            with contextlib.suppress(OSError):
+                out[rel] = float(path.stat().st_mtime_ns)
+            break
+    return out
+
+
+def _bulk_insert(client, name: str, docs: list[dict[str, Any]], chunk: int = 2000) -> int:
+    """Bulk-index docs; returns the number of item-level errors."""
+    errors = 0
+    for i in range(0, len(docs), chunk):
+        body = _bulk_ndjson(name, docs[i:i + chunk])
+        r = client.post("/_bulk", content=body, headers={"Content-Type": "application/x-ndjson"})
+        if r.status_code >= 400:
+            raise RuntimeError(f"bulk failed: {r.status_code} {r.text[:300]}")
+        payload = r.json()
+        if payload.get("errors"):
+            errors += sum(
+                1 for item in payload.get("items") or []
+                if item.get("index", {}).get("error")
+            )
+    return errors
+
+
+def index_case(
+    case_dir: Path,
+    extra_needles: list[str] | None = None,
+    *,
+    incremental: bool = False,
+) -> dict[str, Any]:
+    """Build (or incrementally refresh) the case's N3 index.
+
+    ``incremental=True`` only re-indexes files whose mtime advanced since the
+    last build and purges docs for files that disappeared — the autoindex path
+    used to delete and rebuild the entire case on every run (B6). Falls back to
+    a full rebuild when there is no usable prior state, the index is empty
+    (fresh schema), or a file set is empty.
+    """
     case_dir = Path(case_dir)
-    docs = iter_index_docs(case_dir, extra_needles)
     name = ensure_index(case_dir.name)
     import json
 
-    chunk = 2000
-    errors = 0
-    with _client() as client:
-        cleared = client.post(
-            f"/{name}/_delete_by_query",
-            params={"refresh": "true", "conflicts": "proceed"},
-            json={"query": {"match_all": {}}},
-        )
-        if cleared.status_code >= 400:
-            raise RuntimeError(
-                f"index clear failed: {cleared.status_code} {cleared.text[:300]}"
-            )
-        for i in range(0, len(docs), chunk):
-            body = _bulk_ndjson(name, docs[i:i + chunk])
-            r = client.post("/_bulk", content=body, headers={"Content-Type": "application/x-ndjson"})
-            if r.status_code >= 400:
-                raise RuntimeError(f"bulk failed: {r.status_code} {r.text[:300]}")
-            payload = r.json()
-            if payload.get("errors"):
-                errors += sum(1 for item in payload.get("items") or [] if item.get("index", {}).get("error"))
-        refreshed = client.post(f"/{name}/_refresh")
-        if refreshed.status_code >= 400:
-            raise RuntimeError(
-                f"index refresh failed: {refreshed.status_code} {refreshed.text[:300]}"
-            )
-    meta = {
-        "index": name,
-        "docs": len(docs),
-        "errors": errors,
-        "case_id": case_dir.name,
-        "url": es_url(),
-    }
     out = case_dir / "analysis"
     out.mkdir(parents=True, exist_ok=True)
+    state_file = out / "index_state.json"
+    prior: dict[str, Any] = {}
+    if state_file.is_file():
+        try:
+            loaded = json.loads(state_file.read_text(encoding="utf-8"))
+            prior = loaded if isinstance(loaded, dict) else {}
+        except (OSError, ValueError):
+            prior = {}
+    prior_mtimes = prior.get("file_mtimes") or {}
+    current_mtimes = _index_file_mtimes(case_dir) if incremental else {}
+
+    use_incremental = bool(incremental and prior_mtimes and current_mtimes)
+    if use_incremental:
+        with _client() as client:
+            head = client.head(f"/{name}")
+            count_resp = client.post(f"/{name}/_count")
+            if head.status_code != 200 or count_resp.status_code >= 400:
+                use_incremental = False
+            else:
+                try:
+                    indexed_docs = int(count_resp.json().get("count") or 0)
+                except ValueError:
+                    indexed_docs = 0
+                if indexed_docs <= 0:
+                    use_incremental = False
+
+    if use_incremental:
+        changed = {
+            rel for rel, mtime in current_mtimes.items()
+            if mtime > float(prior_mtimes.get(rel, -1))
+        }
+        removed = set(prior_mtimes) - set(current_mtimes)
+        errors = 0
+        with _client() as client:
+            for batch in _chunks(sorted(removed | changed), 100):
+                cleared = client.post(
+                    f"/{name}/_delete_by_query",
+                    params={"refresh": "true", "conflicts": "proceed"},
+                    json={"query": {"terms": {"file": batch}}},
+                )
+                if cleared.status_code >= 400:
+                    raise RuntimeError(
+                        f"incremental delete failed: {cleared.status_code} {cleared.text[:300]}"
+                    )
+            docs = iter_index_docs(case_dir, extra_needles, only_files=changed)
+            errors = _bulk_insert(client, name, docs)
+            refreshed = client.post(f"/{name}/_refresh")
+            if refreshed.status_code >= 400:
+                raise RuntimeError(
+                    f"index refresh failed: {refreshed.status_code} {refreshed.text[:300]}"
+                )
+            count_resp = client.post(f"/{name}/_count")
+            try:
+                docs_total = int(count_resp.json().get("count") or 0)
+            except ValueError:
+                docs_total = prior.get("docs", 0)
+        meta = {
+            "index": name,
+            "docs": docs_total,
+            "errors": errors,
+            "case_id": case_dir.name,
+            "url": es_url(),
+            "incremental": True,
+            "files_reindexed": sorted(changed),
+            "files_removed": sorted(removed),
+        }
+    else:
+        docs = iter_index_docs(case_dir, extra_needles)
+        with _client() as client:
+            cleared = client.post(
+                f"/{name}/_delete_by_query",
+                params={"refresh": "true", "conflicts": "proceed"},
+                json={"query": {"match_all": {}}},
+            )
+            if cleared.status_code >= 400:
+                raise RuntimeError(
+                    f"index clear failed: {cleared.status_code} {cleared.text[:300]}"
+                )
+            errors = _bulk_insert(client, name, docs)
+            refreshed = client.post(f"/{name}/_refresh")
+            if refreshed.status_code >= 400:
+                raise RuntimeError(
+                    f"index refresh failed: {refreshed.status_code} {refreshed.text[:300]}"
+                )
+        meta = {
+            "index": name,
+            "docs": len(docs),
+            "errors": errors,
+            "case_id": case_dir.name,
+            "url": es_url(),
+            "incremental": False,
+        }
+
     (out / "es_index.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
-    write_index_state(case_dir, meta)
+    write_index_state(case_dir, meta, file_mtimes=current_mtimes or _index_file_mtimes(case_dir))
     _schema_cache.pop(case_dir.name, None)
     _fields_props_cache.pop(case_dir.name, None)
     with contextlib.suppress(Exception):
@@ -551,8 +680,13 @@ def _newest_extraction_mtime(case_dir: Path) -> float:
     return newest
 
 
-def write_index_state(case_dir: Path, meta: dict[str, Any]) -> None:
-    """Persist index freshness state for staleness detection."""
+def write_index_state(
+    case_dir: Path,
+    meta: dict[str, Any],
+    *,
+    file_mtimes: dict[str, float] | None = None,
+) -> None:
+    """Persist index freshness state for staleness detection + incremental B6."""
     import json
     from datetime import UTC, datetime
 
@@ -564,6 +698,7 @@ def write_index_state(case_dir: Path, meta: dict[str, Any]) -> None:
         "docs": meta.get("docs", 0),
         "index": meta.get("index", ""),
         "url": es_url(),
+        "file_mtimes": file_mtimes if file_mtimes is not None else _index_file_mtimes(case_dir),
     }
     out = case_dir / "analysis"
     out.mkdir(parents=True, exist_ok=True)

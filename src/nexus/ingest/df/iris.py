@@ -12,7 +12,7 @@ import contextlib
 import json
 import logging
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -113,11 +113,9 @@ class IRISImporter(Importer):
         case_id = case.get("case_id") or case.get("id", "")
         severity_int = int(case.get("severity_id") or case.get("severity") or 1)
         severity = self.SEVERITY_MAP.get(severity_int, Severity.LOW)
-        ts = self.normalize_timestamp(
+        ts, ts_synthesized = self.resolve_timestamp(
             case.get("open_date") or case.get("created_at") or case.get("opened_at")
         )
-        if ts is None:
-            ts = datetime.now(UTC)
 
         # Case summary artifact
         yield Artifact(
@@ -125,6 +123,7 @@ class IRISImporter(Importer):
             artifact_type=ArtifactType.ALERT,
             source=ArtifactSource.THEHIVE,
             timestamp=ts,
+            ts_synthesized=ts_synthesized,
             severity=severity,
             description=f"DFIR-IRIS case: {case_name}",
             raw=case,
@@ -135,13 +134,17 @@ class IRISImporter(Importer):
         assets = case.get("assets", []) or []
         for asset in assets:
             if isinstance(asset, dict):
-                yield self._asset_to_artifact(asset, case_name, case_id, ts, severity)
+                yield self._asset_to_artifact(
+                    asset, case_name, case_id, ts, severity, ts_synthesized
+                )
 
         # IOCs
         iocs = case.get("iocs", []) or []
         for ioc in iocs:
             if isinstance(ioc, dict):
-                yield self._ioc_to_artifact(ioc, case_name, case_id, ts)
+                yield self._ioc_to_artifact(
+                    ioc, case_name, case_id, ts, ts_synthesized
+                )
 
         # Timeline entries
         timeline = case.get("timeline", []) or []
@@ -158,6 +161,7 @@ class IRISImporter(Importer):
         case_id: Any,
         ts: datetime,
         severity: Severity,
+        ts_synthesized: bool = False,
     ) -> Artifact:
         """Map an IRIS asset to an Artifact."""
         asset_name = str(asset.get("name") or asset.get("asset_name") or "")
@@ -180,6 +184,7 @@ class IRISImporter(Importer):
             artifact_type=artifact_type,
             source=ArtifactSource.THEHIVE,
             timestamp=self.normalize_timestamp(asset.get("date_added") or asset.get("created_at")) or ts,
+            ts_synthesized=ts_synthesized,
             severity=severity,
             host=asset_name or None,
             source_ip=ip,
@@ -195,6 +200,7 @@ class IRISImporter(Importer):
         case_name: str,
         case_id: Any,
         ts: datetime,
+        ts_synthesized: bool = False,
     ) -> Artifact:
         """Map an IRIS IOC to an Artifact."""
         ioc_value = str(ioc.get("ioc_value") or ioc.get("value") or "")
@@ -221,6 +227,7 @@ class IRISImporter(Importer):
             artifact_type=artifact_type,
             source=ArtifactSource.THEHIVE,
             timestamp=self.normalize_timestamp(ioc.get("date_added") or ioc.get("created_at")) or ts,
+            ts_synthesized=ts_synthesized,
             severity=Severity.HIGH,
             source_ip=ioc_value if artifact_type == ArtifactType.NETWORK else None,
             dest_ip=ioc_value if artifact_type == ArtifactType.NETWORK else None,
@@ -241,11 +248,9 @@ class IRISImporter(Importer):
     ) -> Artifact | None:
         """Map an IRIS timeline entry to an Artifact."""
         try:
-            ts = self.normalize_timestamp(
+            ts, ts_synthesized = self.resolve_timestamp(
                 entry.get("event_date") or entry.get("timestamp")
             )
-            if ts is None:
-                ts = datetime.now(UTC)
 
             event_title = str(entry.get("event_title") or entry.get("title") or "")
             event_cat = str(entry.get("category") or entry.get("event_category") or "")
@@ -264,6 +269,7 @@ class IRISImporter(Importer):
                 artifact_type=ArtifactType.ALERT,
                 source=ArtifactSource.THEHIVE,
                 timestamp=ts,
+                ts_synthesized=ts_synthesized,
                 severity=severity,
                 description=f"IRIS timeline [{case_name}]: {event_title}",
                 raw=entry,

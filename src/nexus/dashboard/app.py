@@ -1171,7 +1171,9 @@ async def api_register_evidence(request):
     from nexus.case import evidence_service
 
     try:
-        result = evidence_service.register_evidence(
+        # B10: full-tree SHA-256 hashing is blocking IO — off the event loop.
+        result = await asyncio.to_thread(
+            evidence_service.register_evidence,
             case_dir,
             path,
             description=str(body.get("description") or "portal register"),
@@ -1972,7 +1974,7 @@ async def api_select(request):
     if body.get("family") or body.get("start") or body.get("end") or explore_needles:
         if explore_needles:
             merged = _parse_needles(intake.get("query_extra", "")) + explore_needles
-            intake["query_extra"] = ",".join(merged)
+            intake["query_extra"] = "\n".join(merged)
         start = str(body.get("start") or "").strip()
         end = str(body.get("end") or "").strip()
         if start or end:
@@ -2160,7 +2162,7 @@ def _explore_query_from_body(case_dir, body):
     intake = load_case_intake(case_dir)
     if needles:
         merged = _parse_needles(intake.get('query_extra', '')) + needles
-        intake['query_extra'] = ','.join(merged)
+        intake['query_extra'] = '\n'.join(merged)
     window = parse_intake_window(intake)
     if start or end:
         parts = [p for p in (start, end) if p]
@@ -2315,7 +2317,7 @@ async def api_explore_histogram(request):
     intake = load_case_intake(case_dir)
     if needles:
         merged = _parse_needles(intake.get('query_extra', '')) + needles
-        intake['query_extra'] = ','.join(merged)
+        intake['query_extra'] = '\n'.join(merged)
     if start or end:
         parts = []
         if start:
@@ -6003,9 +6005,13 @@ async def api_report_generate(request):
     try:
         # N8 analysis layer on by default; {"llm": false} forces the
         # deterministic render (fast regen, offline, tests).
-        return JSONResponse(_write_case_report(
-            case_dir, llm=bool(body.get("llm", True)),
-            steer=_report_steer_context(_load_report_rounds(case_dir))))
+        # B4: report analysis runs sequential LLM calls — never on the loop.
+        return JSONResponse(await asyncio.to_thread(
+            _write_case_report,
+            case_dir,
+            llm=bool(body.get("llm", True)),
+            steer=_report_steer_context(_load_report_rounds(case_dir)),
+        ))
     except Exception as exc:
         logger.exception("Report generation failed: %s", exc)
         return JSONResponse({"error": str(exc)}, status_code=500)
@@ -6097,8 +6103,11 @@ async def api_report_steer(request):
     steer = _report_steer_context(rounds + [rnd])
 
     try:
-        result = _write_case_report(
-            case_dir, llm=bool(body.get("llm", True)), steer=steer)
+        # B4: same as generate — off the event loop.
+        result = await asyncio.to_thread(
+            _write_case_report, case_dir,
+            llm=bool(body.get("llm", True)), steer=steer,
+        )
     except Exception as exc:
         logger.exception("Steered report generation failed: %s", exc)
         return JSONResponse({"error": str(exc)}, status_code=500)
@@ -6171,29 +6180,33 @@ async def api_evidence_verify(request):
     evidence_list = mgr.list_evidence(case_dir.name)
     mgr.close()
 
-    results = []
-    for ev in evidence_list:
-        fpath = Path(ev.file_path) if ev.file_path else None
-        if not fpath or not fpath.exists():
-            results.append({"name": ev.name, "file_path": ev.file_path or "", "valid": False, "error": "File not found on disk"})
-            continue
-        try:
-            sha256 = hashlib.sha256()
-            with open(fpath, "rb") as f:
-                for chunk in iter(lambda: f.read(65536), b""):
-                    sha256.update(chunk)
-            digest = sha256.hexdigest()
-            valid = digest == ev.file_hash_sha256
-            results.append({
-                "name": ev.name,
-                "file_path": str(fpath),
-                "valid": valid,
-                "expected_hash": ev.file_hash_sha256,
-                "actual_hash": digest,
-            })
-        except Exception as exc:
-            results.append({"name": ev.name, "file_path": str(fpath), "valid": False, "error": str(exc)})
+    def _verify_all() -> list[dict]:
+        out: list[dict] = []
+        for ev in evidence_list:
+            fpath = Path(ev.file_path) if ev.file_path else None
+            if not fpath or not fpath.exists():
+                out.append({"name": ev.name, "file_path": ev.file_path or "", "valid": False, "error": "File not found on disk"})
+                continue
+            try:
+                sha256 = hashlib.sha256()
+                with open(fpath, "rb") as f:
+                    for chunk in iter(lambda: f.read(65536), b""):
+                        sha256.update(chunk)
+                digest = sha256.hexdigest()
+                valid = digest == ev.file_hash_sha256
+                out.append({
+                    "name": ev.name,
+                    "file_path": str(fpath),
+                    "valid": valid,
+                    "expected_hash": ev.file_hash_sha256,
+                    "actual_hash": digest,
+                })
+            except Exception as exc:
+                out.append({"name": ev.name, "file_path": str(fpath), "valid": False, "error": str(exc)})
+        return out
 
+    # B10: re-hashing the whole evidence set is blocking IO — off the loop.
+    results = await asyncio.to_thread(_verify_all)
     return JSONResponse({"ok": True, "results": results})
 
 

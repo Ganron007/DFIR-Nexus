@@ -10,7 +10,6 @@ from __future__ import annotations
 import csv
 import logging
 from collections.abc import Iterator
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import ClassVar
 
@@ -73,9 +72,7 @@ class HayabusaImporter(Importer):
         """Map a Hayabusa CSV row to an Artifact."""
         # Timestamp: ISO 8601 or "2024-01-01 12:34:56.789 +09:00"
         ts_str = row.get("Timestamp", "")
-        ts = self.normalize_timestamp(ts_str)
-        if ts is None:
-            ts = datetime.now(UTC)
+        ts, ts_synthesized = self.resolve_timestamp(ts_str)
 
         # Severity from Level
         level = row.get("Level", "").strip().lower()
@@ -109,6 +106,7 @@ class HayabusaImporter(Importer):
             artifact_type=artifact_type,
             source=ArtifactSource.HAYABUSA,
             timestamp=ts,
+            ts_synthesized=ts_synthesized,
             severity=severity,
             host=row.get("Computer") or None,
             user=row.get("User") or None,

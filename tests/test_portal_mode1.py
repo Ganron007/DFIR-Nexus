@@ -241,17 +241,28 @@ def test_api_workbench_add_many(mock_n4q, mock_get_dir, tmp_path):
     assert resp2.json()["skipped"] == 3
 
 
-def _wait_full_run(client, timeout=15):
-    """Poll the status endpoint until the tracked run reaches a terminal state."""
+def _wait_full_run(client, timeout=60):
+    """Poll the status endpoint until the tracked run reaches a terminal state.
+
+    The worker is a background thread; under a full-suite load its start can
+    legitimately exceed a few seconds, so the budget is generous and the
+    failure reports the last record instead of a bare timeout.
+    """
     import time as _t
 
     deadline = _t.time() + timeout
+    last: dict = {}
     while _t.time() < deadline:
         d = client.get("/portal/api/mode1/full-run/status").json()
+        last = d
         if d.get("status") not in ("running",):
             return d
-        _t.sleep(0.05)
-    raise AssertionError("Mode 1 full run did not reach a terminal state")
+        _t.sleep(0.1)
+    raise AssertionError(
+        f"Mode 1 full run did not reach a terminal state within {timeout}s; "
+        f"last record: status={last.get('status')!r} stage={last.get('stage')!r} "
+        f"error={last.get('error')!r}"
+    )
 
 
 @patch("nexus.dashboard.app._get_case_dir")

@@ -140,45 +140,60 @@ class Importer(ABC):
 
     @staticmethod
     def resolve_timestamp(value: Any) -> tuple[datetime, bool]:
-        """Return ``(timestamp, synthesized)``.
+        """Return ``(timestamp, synthesized)`` — see ``resolve_timestamp_ex``."""
+        ts, synthesized, _year_assumed = Importer.resolve_timestamp_ex(value)
+        return ts, synthesized
+
+    @staticmethod
+    def resolve_timestamp_ex(value: Any) -> tuple[datetime, bool, bool]:
+        """Return ``(timestamp, synthesized, year_assumed)``.
 
         ``synthesized`` is True when the input could not be parsed and the
-        ingest time was substituted (EH-7) — provenance must record that a
-        timestamp is not the event's own.
+        ingest time was substituted (EH-7). ``year_assumed`` is True for the
+        RFC 3164 syslog form, which has no year (the current year is used).
         """
         import datetime as _dt
 
-        ts = Importer.normalize_timestamp(value)
+        ts, flags = Importer.normalize_timestamp_ex(value)
         if ts is None:
-            return _dt.datetime.now(_dt.UTC), True
-        return ts, False
+            return _dt.datetime.now(_dt.UTC), True, False
+        return ts, False, bool(flags.get("year_assumed"))
 
     @staticmethod
     def normalize_timestamp(value: Any) -> datetime | None:
-        """Convert arbitrary timestamp formats to a UTC datetime.
+        """Convert arbitrary timestamp formats to a UTC datetime."""
+        ts, _flags = Importer.normalize_timestamp_ex(value)
+        return ts
+
+    @staticmethod
+    def normalize_timestamp_ex(value: Any) -> tuple[datetime | None, dict[str, bool]]:
+        """Convert arbitrary timestamps to ``(UTC datetime | None, flags)``.
 
         Handles:
         - ISO 8601 strings
+        - forensic exports with a SPACE before the offset
+          (``2024-11-23 04:06:23.634 +05:30`` — Hayabusa/FOR508 CSVs)
         - Unix epoch seconds or milliseconds
+        - RFC 3164 syslog (no year → ``year_assumed`` flag)
         - datetime objects (returned as-is)
         - None
         """
         if value is None:
-            return None
+            return None, {}
         if isinstance(value, datetime):
-            return value if value.tzinfo else value.replace(tzinfo=UTC)
+            return (value if value.tzinfo else value.replace(tzinfo=UTC)), {}
         if isinstance(value, (int, float)):
             ts = float(value)
             if ts > 1e12:  # milliseconds
                 ts = ts / 1000.0
             try:
-                return datetime.fromtimestamp(ts, tz=UTC)
+                return datetime.fromtimestamp(ts, tz=UTC), {}
             except (OverflowError, OSError, ValueError):
-                return None
+                return None, {}
         if isinstance(value, str):
             s = value.strip()
             if not s:
-                return None
+                return None, {}
             _RFC3164_MONTHS = {
                 "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
                 "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
@@ -196,24 +211,47 @@ class Importer(ABC):
                             year, mon, int(_rfc3164.group(2)),
                             int(_rfc3164.group(3)), int(_rfc3164.group(4)),
                             int(_rfc3164.group(5)), tzinfo=UTC,
-                        )
+                        ), {"year_assumed": True}
                     except ValueError:
                         pass
+            # Space before the offset is not ISO-8601 but is ubiquitous in
+            # forensic exports (Hayabusa, FOR508 CSVs): normalize then parse.
+            _spaced = _re.match(
+                r"^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2}(?:\.\d+)?)\s*"
+                r"([+-]\d{2}:?\d{2}|Z)?$",
+                s,
+            )
+            if _spaced:
+                iso = f"{_spaced.group(1)}T{_spaced.group(2)}"
+                offset = _spaced.group(3) or ""
+                if offset == "Z":
+                    iso += "+00:00"
+                elif offset:
+                    if ":" not in offset:
+                        offset = f"{offset[:3]}:{offset[3:]}"
+                    iso += offset
+                try:
+                    dt = datetime.fromisoformat(iso)
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=UTC)
+                    return dt, {}
+                except ValueError:
+                    pass
             try:
                 dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
                 if dt.tzinfo is None:
                     dt = dt.replace(tzinfo=UTC)
-                return dt
+                return dt, {}
             except ValueError:
                 pass
             try:
                 ts = float(s)
                 if ts > 1e12:
                     ts = ts / 1000.0
-                return datetime.fromtimestamp(ts, tz=UTC)
+                return datetime.fromtimestamp(ts, tz=UTC), {}
             except (ValueError, OverflowError, OSError):
                 pass
-        return None
+        return None, {}
 
     @staticmethod
     def extract_techniques(tags: list[str] | dict[str, Any]) -> list[str]:

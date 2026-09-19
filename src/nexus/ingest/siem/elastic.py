@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterator
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -95,11 +94,9 @@ class ElasticImporter(Importer):
         self, outer: dict[str, Any], inner: dict[str, Any]
     ) -> Artifact:
         """Map an Elastic event/alert to an Artifact."""
-        ts = self.normalize_timestamp(
+        ts, ts_synthesized = self.resolve_timestamp(
             inner.get("@timestamp") or outer.get("@timestamp")
         )
-        if ts is None:
-            ts = datetime.now(UTC)
 
         # Determine artifact type
         event_kind = inner.get("event", {})
@@ -181,6 +178,7 @@ class ElasticImporter(Importer):
             artifact_type=artifact_type,
             source=ArtifactSource.ELASTIC,
             timestamp=ts,
+            ts_synthesized=ts_synthesized,
             severity=severity,
             host=host_name,
             user=user_name,

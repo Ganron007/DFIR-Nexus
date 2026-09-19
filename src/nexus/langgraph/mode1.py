@@ -749,23 +749,26 @@ def promote_hits_to_draft(
             }
         evidence_rows.append(row)
 
-    # Resolve audit_ids from the ledger by matching hit families to tool names
+    # EH-9: resolve audit_ids by LINKAGE — only calls whose ledger/audit-log
+    # tokens reference these hit families/files. No unrelated fallback: a draft
+    # with no linked audit id will (correctly) fail FD-001 at staging.
     audit_ids: list[str] = []
     try:
-        import json as _json
+        from nexus.langgraph.audit_linkage import linked_audit_ids
 
-        from nexus.langgraph.pipeline_runs import resolve_tools_extractions
-        extractions = resolve_tools_extractions(case_dir)
-        ledger_path = extractions / "_tool_lane_ledger.json"
-        if not ledger_path.is_file():
-            ledger_path = extractions.parent / "ledger" / "_tool_lane_ledger.json"
-        if ledger_path.is_file():
-            ledger = _json.loads(ledger_path.read_text(encoding="utf-8"))
-            from nexus.langgraph.query_pack import _audits_for_families
-            families = {h.get("family", "") for h in hits if h.get("family")}
-            audit_ids = _audits_for_families(ledger, families)
+        families = {h.get("family", "") for h in hits if h.get("family")}
+        audit_ids = linked_audit_ids(
+            case_dir,
+            families,
+            files=[h.get("file") for h in hits if h.get("file")],
+        )
+        if not audit_ids:
+            log.warning(
+                "No linked audit_id found for %s — draft will be rejected by FD-001",
+                sorted(families) or "(no family)",
+            )
     except Exception as exc:
-        log.warning("Could not resolve audit_ids from ledger: %s", exc)
+        log.warning("Could not resolve linked audit_ids: %s", exc)
 
     draft = {
         "title": title,
