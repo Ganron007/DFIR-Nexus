@@ -114,12 +114,14 @@ def sweep_case_iocs(
     B5) instead of each builder re-reading the whole case.
     """
     error = ""
+    capped = False
     if hits is None:
         from nexus.tools.evidence_index import do_n4_query
 
         result = do_n4_query(case_id=case_id, dsl="", limit=400, match_all=True)
         hits = result.get("hits") or []
         error = str(result.get("error") or "")
+        capped = bool(result.get("count_lower_bound"))
     hits = [h for h in hits if isinstance(h, dict)]
     texts: list[str] = []
     for h in hits:
@@ -130,7 +132,12 @@ def sweep_case_iocs(
         if isinstance(fields, dict):
             texts.extend(str(v) for v in fields.values() if v)
     iocs = extract_iocs(texts, cap=cap)
-    return {"hits_scanned": len(hits), "iocs": iocs, "error": error}
+    return {
+        "hits_scanned": len(hits),
+        "hits_capped": capped,
+        "iocs": iocs,
+        "error": error,
+    }
 
 
 def enrich_iocs(iocs: list[str], *, max_iocs: int = 6) -> list[dict[str, Any]]:
@@ -192,7 +199,12 @@ def render_ti_markdown(sweep: dict[str, Any], results: list[dict[str, Any]]) -> 
     lines = [
         "# Threat-intel context (context, never evidence — FD-001)",
         "",
-        f"Scanned {sweep.get('hits_scanned', 0)} indexed evidence row(s).",
+        f"Scanned {sweep.get('hits_scanned', 0)} indexed evidence row(s)."
+        + (
+            " WARNING: capped sample — this is a LOWER BOUND, not a complete census."
+            if sweep.get("hits_capped")
+            else ""
+        ),
     ]
     census = ", ".join(
         f"{kind}={len(iocs.get(kind) or [])}" for kind in

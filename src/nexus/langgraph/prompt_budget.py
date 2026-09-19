@@ -145,7 +145,9 @@ def pack_sections(
 
     report["used_chars"] = used
     report["used_tokens"] = estimate_tokens("\n".join(texts.values()))
-    report["ceiling_tokens"] = context_window()
+    # The window ACTUALLY used (case override when provided) — the audit
+    # header used to report the process default even when the case set its own.
+    report["ceiling_tokens"] = int(window) if window is not None else context_window()
 
     packed = "\n\n".join(texts[name] for _pri, name, _t in ordered if texts.get(name))
     return packed, report

@@ -119,6 +119,7 @@ class ScheduledTasksImporter(Importer):
         severity = self._compute_severity(info)
         # Last run time
         last_run = None
+        ts_synthesized = True  # task-file mtime / now are substitutes (EH-7)
         # Try to get mtime as last run proxy
         try:
             last_run = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
@@ -152,6 +153,7 @@ class ScheduledTasksImporter(Importer):
             artifact_type=ArtifactType.PROCESS,
             source=ArtifactSource.UNKNOWN,
             timestamp=last_run,
+            ts_synthesized=ts_synthesized,
             severity=severity,
             host=path.parent.parent.name if path.parent.parent else None,
             file_path=str(path),

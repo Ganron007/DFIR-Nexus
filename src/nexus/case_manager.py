@@ -814,10 +814,28 @@ class CaseManager:
             loc = str(row.get("loc") or "").strip()
             if ":" in loc:
                 files.append(loc.rsplit(":", 1)[0])
+        # record_finding's validated artifacts can also scope the finding
+        # (direct MCP callers may pass artifacts without structured evidence).
+        for art in finding.get("artifacts") or []:
+            if not isinstance(art, dict):
+                continue
+            for key in ("source", "family", "path", "file"):
+                value = str(art.get(key) or "").strip()
+                if not value:
+                    continue
+                if "/" in value:
+                    fam, _, fname = value.partition("/")
+                    if fam.strip() and key in ("source", "family"):
+                        families.add(fam.strip().lower())
+                    if fname.strip():
+                        files.append(fname.strip())
+                else:
+                    files.append(value)
 
         linked_ids: list[str] = []
         unlinked_ids: list[str] = []
-        if (families or files) and found_ids:
+        scope_known = bool(families or files)
+        if scope_known and found_ids:
             try:
                 from nexus.langgraph.audit_linkage import is_linked
 
@@ -828,6 +846,10 @@ class CaseManager:
                         unlinked_ids.append(aid)
             except Exception:  # noqa: BLE001 — linkage best-effort
                 linked_ids = sorted(found_ids)
+        elif not scope_known:
+            # No scope to verify against: existence is not linkage. Never
+            # grant FULL on unverifiable provenance (EH-9 re-audit).
+            unlinked_ids = sorted(found_ids)
         else:
             linked_ids = sorted(found_ids)
 
@@ -843,7 +865,12 @@ class CaseManager:
             grade = "NONE"
 
         detail = f"{found}/{len(audit_ids)} audit IDs verified"
-        if unlinked_ids:
+        if not scope_known and found > 0:
+            detail += (
+                "; no structured evidence scope — linkage unverifiable, "
+                "grade capped at PARTIAL"
+            )
+        elif unlinked_ids:
             detail += (
                 f"; {len(unlinked_ids)} do not reference this finding's "
                 "evidence families/files"

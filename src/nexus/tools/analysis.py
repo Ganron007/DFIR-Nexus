@@ -47,7 +47,9 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         if case_dir is not None and _Path(case_dir).is_dir():
             from nexus.langgraph.timeline_merge import ingest_into_case
 
-            result = ingest_into_case(target, _Path(case_dir), source=source or None)
+            result = ingest_into_case(
+                target, _Path(case_dir), source=source or None, audit=False
+            )  # the MCP wrapper audits ingest_auto itself below
             persisted = bool(result.get("artifacts"))
             result["persisted"] = persisted
         else:

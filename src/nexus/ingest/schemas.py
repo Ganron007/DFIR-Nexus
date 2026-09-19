@@ -276,6 +276,6 @@ class Artifact:
         for key in ("timestamp", "ingested_at"):
             if isinstance(d.get(key), str):
                 d[key] = datetime.fromisoformat(d[key])
-        d.pop("ingested_at", None)
-        d.setdefault("ingested_at", datetime.now(UTC))
+        # Preserve the ORIGINAL ingest time: pop+setdefault always overwrote it.
+        d["ingested_at"] = d.get("ingested_at") or datetime.now(UTC)
         return cls(**d)

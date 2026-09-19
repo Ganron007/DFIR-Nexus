@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 from datetime import datetime
@@ -37,6 +38,15 @@ def _in_window(ts: str | None, start: datetime | None, end: datetime | None) -> 
         from datetime import UTC
         d = d.replace(tzinfo=UTC)
     return start <= d <= end
+
+
+def _hit_flag(hit: dict[str, Any], flag: str, text: str) -> bool:
+    fields = hit.get("fields")
+    if isinstance(fields, dict) and str(fields.get(flag) or "").lower() in (
+        "true", "1", "yes",
+    ):
+        return True
+    return f"{flag}=true" in str(text or "")
 
 
 def hits_to_events(hits: list[dict[str, str]], source: str = "n4") -> list[dict[str, Any]]:
@@ -81,6 +91,9 @@ def hits_to_events(hits: list[dict[str, str]], source: str = "n4") -> list[dict[
             "terms_list": list(h.get("terms_list") or []),
             "artifact": art[:160] if art else "",
             "severity": sev,
+            # EH-7 flags come from the enriched fields/text of the hit.
+            "ts_synthesized": _hit_flag(h, "ts_synthesized", text),
+            "ts_year_assumed": _hit_flag(h, "ts_year_assumed", text),
         })
     return events
 
@@ -169,6 +182,12 @@ def merge_events(*groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 if union:
                     prev["terms_list"] = sorted(union)
                     prev["terms"] = ", ".join(sorted(union))
+                # Merge honesty flags — the ingest-projection event may arrive
+                # after the hit event for the same row (first-wins preserved
+                # everything else, and the flags were lost).
+                for flag in ("ts_synthesized", "ts_year_assumed"):
+                    if ev.get(flag) and not prev.get(flag):
+                        prev[flag] = True
                 for k in ("severity", "host", "timestamp", "artifact", "note"):
                     if not prev.get(k) and ev.get(k):
                         prev[k] = ev[k]
@@ -246,7 +265,7 @@ def append_ingest_artifacts(case_dir: Path, artifacts: list[Artifact]) -> Path:
     dest_dir = Path(case_dir) / "ingest"
     dest_dir.mkdir(parents=True, exist_ok=True)
     path = dest_dir / "artifacts.jsonl"
-    existing: set[str] = set()
+    existing: set[tuple] = set()
     if path.is_file():
         try:
             with path.open("r", encoding="utf-8", errors="replace") as fh:
@@ -296,8 +315,15 @@ def ingest_into_case(
     case_dir: Path,
     limit: int = 0,
     source: str | None = None,
+    audit: bool = True,
 ) -> dict[str, Any]:
-    """I1 ingest a file onto the case, then I3-ready artifact store."""
+    """I1 ingest a file onto the case, then I3-ready artifact store.
+
+    ``audit=True`` writes a case-scoped ``ingest_auto`` audit entry so the
+    imported family is LINKABLE by findings (EH-9). Callers that already
+    audit the run (CLI, MCP ingest_auto) pass ``audit=False`` to avoid a
+    duplicate entry.
+    """
     from nexus.ingest.detect import resolve_ingest_source
     from nexus.ingest.registry import get_registry
 
@@ -318,6 +344,22 @@ def ingest_into_case(
     if arts:
         append_ingest_artifacts(case_dir, arts)
     capped = len(arts) >= cap
+    if audit:
+        with contextlib.suppress(Exception):
+            from nexus.audit import AuditWriter
+
+            AuditWriter("nexus", audit_dir=Path(case_dir) / "audit").log(
+                tool="ingest_auto",
+                params={"path": str(path), "source": source or ""},
+                result_summary={
+                    "success": result.success,
+                    "artifacts": len(arts),
+                    "source": result.source.value,
+                    "persisted": bool(arts),
+                },
+                source="pipeline",
+                input_files=[str(path)],
+            )
     return {
         "success": result.success,
         "source": result.source.value,

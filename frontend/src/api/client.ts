@@ -175,9 +175,14 @@ export interface N4Hit {
   file: string;
   line: string | number;
   terms: string;
+  /** Structured matched needles — a comma needle must not re-split (EH-8). */
+  terms_list?: string[];
   text: string;
   fields?: Record<string, string>;
   host?: string;
+  /** EH-7 provenance (present on imported/derived rows). */
+  ts_synthesized?: boolean;
+  ts_year_assumed?: boolean;
 }
 
 /** WP 4j.1 — POST /hit/interpret → what a hit means + what to check next. */
@@ -248,6 +253,9 @@ export interface AskResponse {
 export interface SearchResponse {
   hits: N4Hit[];
   count: number;
+  /** True when a cap was hit — ``count`` is a LOWER BOUND (EH-1). */
+  count_lower_bound?: boolean;
+  capped_reasons?: string[];
   total_before_family_filter: number;
   backend: string;
   families: string[];
@@ -680,6 +688,17 @@ export interface BriefingResponse {
   artifacts?: { briefing_md?: string; signal_map_csv?: string };
   /** GATE-A — deterministic Case Digest exists (Mode 2/3). */
   digest_exists?: boolean;
+  /** EH-1 — scan coverage accounting (lower-bound reasons when truncated). */
+  scan_stats?: {
+    terms_requested?: number;
+    terms_queried?: number;
+    files_total?: number;
+    files_scanned?: number;
+    truncated?: boolean;
+    truncated_reasons?: string[];
+    terms_failed?: string[];
+    needles_dropped_cap?: string[];
+  };
   error?: string;
 }
 
@@ -737,6 +756,10 @@ export interface CaseDigestResponse {
     entity_spans: Record<string, { value: string; count: number; first_seen?: string; last_seen?: string }[]>;
     timeline: { buckets_per_day: Record<string, number>; source: string };
     backend: string;
+    scan_stats?: {
+      truncated?: boolean;
+      truncated_reasons?: string[];
+    };
   };
   markdown: string;
   error?: string;

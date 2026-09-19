@@ -108,22 +108,27 @@ def _tokens_from_value(value: Any, out: set[str]) -> None:
     if not text:
         return
     out.add(text)
-    # paths: basename + parent directory are the family-ish tokens
+    # Paths: only the basename (+ its dotted prefix) and the immediate parent
+    # are useful linkage tokens. Drive letters and shared root segments
+    # ("d", "evidence", "cases") used to false-link every audit under the
+    # same evidence root to every finding (EH-9 re-audit).
     if "/" in text:
         parts = [p for p in text.split("/") if p]
         if parts:
-            out.add(parts[-1])
+            base = parts[-1]
+            out.add(base)
+            if "." in base:
+                out.add(base.split(".")[0])
             if len(parts) > 1:
-                out.add(parts[-2].split(".")[0])
-        for part in parts[:3]:
-            out.add(part)
-    # source strings like "hayabusa/evtx-timeline.csv"
-    for part in re.split(r"[/]", text):
-        part = part.strip()
-        if part:
-            out.add(part)
-            if "." in part:
-                out.add(part.split(".")[0])
+                parent = parts[-2]
+                out.add(parent)
+                if parent in _TOOL_FAMILIES or parent in _FAMILY_TO_TOOL:
+                    for fam_token in family_tokens(parent):
+                        out.add(fam_token)
+    else:
+        # dotted prefixes for bare filenames ("eve.json" -> "eve")
+        if "." in text:
+            out.add(text.split(".")[0])
 
 
 # Tools that produce several families (the detector decides which). Linking
@@ -226,8 +231,10 @@ def linkage_map(
         if not audit_id:
             return
         bucket = linkage.setdefault(str(audit_id), set())
-        for token in tokens:
-            if token and len(bucket) < _MAX_TOKENS_PER_ID:
+        # sorted so the 64-token cap is deterministic (family/tool tokens
+        # sort early; set-iteration order used to drop them randomly).
+        for token in sorted(t for t in tokens if t):
+            if len(bucket) < _MAX_TOKENS_PER_ID:
                 bucket.add(token)
 
     # 1) tool-lane ledger (caller override wins)

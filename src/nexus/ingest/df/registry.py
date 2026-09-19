@@ -368,6 +368,7 @@ class WindowsRegistryImporter(Importer):
             id=Artifact.new_id(),
             artifact_type=ArtifactType.REGISTRY,
             source=ArtifactSource.UNKNOWN,
+            ts_synthesized=True,
             timestamp=datetime.fromtimestamp(
                 Path(source_path).stat().st_mtime if Path(source_path).exists() else 0,
                 tz=UTC,

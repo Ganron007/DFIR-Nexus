@@ -13,7 +13,7 @@ import contextlib
 import json
 import logging
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -89,9 +89,9 @@ class SandboxImporter(Importer):
         network: dict[str, Any] = data.get("network") or {}
         dropped: list[dict[str, Any]] = data.get("dropped") or []
 
-        ts = self.normalize_timestamp(info.get("started") or info.get("ended"))
-        if ts is None:
-            ts = datetime.now(UTC)
+        ts, ts_synthesized = self.resolve_timestamp(
+            info.get("started") or info.get("ended")
+        )
 
         score = info.get("score") or info.get("severity")
         severity = self.CAPE_SEVERITY_MAP.get(str(score).lower(), Severity.INFORMATIONAL)
@@ -105,6 +105,7 @@ class SandboxImporter(Importer):
             artifact_type=ArtifactType.MALWARE,
             source=ArtifactSource.CROWDSTRIKE,
             timestamp=ts,
+            ts_synthesized=ts_synthesized,
             severity=severity,
             host=str(machine.get("name") or machine.get("label")) or None,
             description=f"CAPEv2 sandbox: {category} score={score}",
@@ -222,11 +223,9 @@ class SandboxImporter(Importer):
         if not isinstance(sandbox, dict):
             sandbox = data
 
-        ts = self.normalize_timestamp(
+        ts, ts_synthesized = self.resolve_timestamp(
             sandbox.get("created_timestamp") or sandbox.get("timestamp")
         )
-        if ts is None:
-            ts = datetime.now(UTC)
 
         verdict = str(sandbox.get("verdict") or sandbox.get("severity") or "").lower()
         if verdict in ("malicious", "high"):
@@ -247,6 +246,7 @@ class SandboxImporter(Importer):
             artifact_type=ArtifactType.MALWARE,
             source=ArtifactSource.CROWDSTRIKE,
             timestamp=ts,
+            ts_synthesized=ts_synthesized,
             severity=severity,
             file_path=filename,
             file_hash_sha256=sha256,

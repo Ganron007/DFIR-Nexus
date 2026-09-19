@@ -531,7 +531,9 @@ export default function Timeline() {
                     title="Pivot to Explore with this event's terms"
                     onClick={() => {
                       const p = new URLSearchParams();
-                      if (selected.terms) p.set("needles", selected.terms.split(",")[0]);
+                      const pivot =
+                        selected.terms_list?.[0] || selected.terms?.split(",")[0];
+                      if (pivot) p.set("needles", pivot);
                       if (selected.family) p.set("family", selected.family);
                       navigate(`/explore?${p.toString()}`);
                     }}

@@ -1974,7 +1974,7 @@ async def api_select(request):
     if body.get("family") or body.get("start") or body.get("end") or explore_needles:
         if explore_needles:
             merged = _parse_needles(intake.get("query_extra", "")) + explore_needles
-            intake["query_extra"] = "\n".join(merged)
+            intake["query_extra"] = "\n".join(merged) + ("\n" if merged else "")
         start = str(body.get("start") or "").strip()
         end = str(body.get("end") or "").strip()
         if start or end:
@@ -2139,6 +2139,21 @@ def _case_default_needles(case_dir, cap: int = 120) -> list[str]:
         return []
 
 
+def _needle_dsl(needle: str) -> str:
+    """Render one needle for the N4 DSL.
+
+    A comma/space inside a needle ("sc.exe, net.exe") would re-tokenize as
+    several OR terms — quote it so Explore/workbench search exactly the term
+    the examiner or LLM supplied (EH-8).
+    """
+    term = str(needle or "").strip()
+    if not term:
+        return ""
+    if any(ch in term for ch in (",", " ", "\t")):
+        return '"' + term.replace('"', " ").strip() + '"'
+    return term
+
+
 def _explore_query_from_body(case_dir, body):
     """Shared needle→DSL construction for /explore/search and
     /workbench/add_many — both endpoints must see the identical result set.
@@ -2162,7 +2177,7 @@ def _explore_query_from_body(case_dir, body):
     intake = load_case_intake(case_dir)
     if needles:
         merged = _parse_needles(intake.get('query_extra', '')) + needles
-        intake['query_extra'] = '\n'.join(merged)
+        intake['query_extra'] = '\n'.join(merged) + ('\n' if merged else '')
     window = parse_intake_window(intake)
     if start or end:
         parts = [p for p in (start, end) if p]
@@ -2172,9 +2187,11 @@ def _explore_query_from_body(case_dir, body):
     # Merge plain needles into the DSL text so n4_query sees both
     # (it reloads CASE.yaml internally and would otherwise drop them).
     if needles and query_text:
-        query_text = query_text + ' ' + ' '.join(needles)
+        query_text = query_text + ' ' + ' '.join(
+            _needle_dsl(n) for n in needles if _needle_dsl(n)
+        )
     elif needles and not query_text:
-        query_text = ' OR '.join(needles)
+        query_text = ' OR '.join(_needle_dsl(n) for n in needles if _needle_dsl(n))
 
     # Push single-value family + host filters into the DSL so n4_query's
     # `count` is the TRUE filtered total — post-filtering a 400-row page
@@ -5207,15 +5224,21 @@ async def api_case_briefing_directions(request):
         return JSONResponse({"error": "No active case"}, status_code=404)
     from nexus.langgraph.briefing import llm_directions
 
+    def _resolve_model():
+        try:
+            from nexus.langgraph.llm_pipeline import get_model
+
+            return get_model()
+        except Exception:  # noqa: BLE001
+            return None
+
     try:
-        from nexus.langgraph.llm_pipeline import get_model
-        model = get_model()
-    except Exception:  # noqa: BLE001
-        model = None
-    if model is None:
-        return JSONResponse({"directions": []})
-    try:
-        directions = llm_directions(case_dir, _cached_briefing(case_dir), model)
+        # The briefing build AND the LLM call are blocking — never on the loop.
+        model = await asyncio.to_thread(_resolve_model)
+        if model is None:
+            return JSONResponse({"directions": []})
+        brief = await asyncio.to_thread(_cached_briefing, case_dir)
+        directions = await asyncio.to_thread(llm_directions, case_dir, brief, model)
     except Exception as exc:  # noqa: BLE001
         logger.exception("briefing directions failed")
         return JSONResponse({"error": f"directions failed: {exc}"}, status_code=500)

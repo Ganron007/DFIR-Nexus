@@ -206,6 +206,7 @@ def iter_index_docs(
     case_dir: Path,
     extra_needles: list[str] | None = None,
     only_files: set[str] | None = None,
+    stats: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Documents for this case only. Large files (>80MB) keep matching rows.
 
@@ -282,13 +283,22 @@ def iter_index_docs(
         return header_cache[key]
 
     family_counts: dict[str, int] = {}
+    caps: dict[str, Any] = {
+        "docs_capped": False,
+        "families_capped": [],
+        "files_capped": 0,
+        "large_files_skipped": 0,
+    }
 
     small_files = list(iter_extraction_files(case_dir))
     small_files.sort(key=lambda item: _index_small_prio(item[0]))
     for path, root, fam in small_files:
         if len(docs) >= _MAX_DOCS_SMALL:
+            caps["docs_capped"] = True
             break
         if family_counts.get(fam, 0) >= _MAX_DOCS_PER_FAMILY:
+            if fam not in caps["families_capped"]:
+                caps["families_capped"].append(fam)
             continue
         if not _wanted(path, root):
             continue
@@ -304,7 +314,11 @@ def iter_index_docs(
                     _add(path, root, fam, i, line, _row_fields(line, header))
                     if len(docs) > before:
                         family_counts[fam] = family_counts.get(fam, 0) + 1
-                    if i >= _MAX_DOCS_PER_FILE or len(docs) >= _MAX_DOCS_SMALL:
+                    if i >= _MAX_DOCS_PER_FILE:
+                        caps["files_capped"] += 1
+                        break
+                    if len(docs) >= _MAX_DOCS_SMALL:
+                        caps["docs_capped"] = True
                         break
         except OSError:
             continue
@@ -319,14 +333,18 @@ def iter_index_docs(
     if ingest_store.is_file() and ingest_wanted:
         for n, fam, text, _ts, record in iter_ingest_records(case_dir):
             if len(docs) >= _MAX_DOCS:
+                caps["docs_capped"] = True
                 break
             if family_counts.get(fam, 0) >= _MAX_DOCS_PER_FAMILY:
+                if fam not in caps["families_capped"]:
+                    caps["families_capped"].append(fam)
                 continue
             art_fields: dict[str, str] = {}
             for key_name in (
                 "source", "artifact_type", "severity", "timestamp", "host",
                 "user", "source_ip", "source_port", "dest_ip", "dest_port",
                 "protocol", "description",
+                "ts_synthesized", "ts_year_assumed",
             ):
                 value = record.get(key_name)
                 if value not in (None, "", []):
@@ -356,7 +374,10 @@ def iter_index_docs(
                 size = path.stat().st_size
             except OSError:
                 continue
-            if size <= _MAX_FULL_SCAN_BYTES or size > _MAX_LARGE:
+            if size > _MAX_LARGE:
+                caps["large_files_skipped"] += 1
+                continue
+            if size <= _MAX_FULL_SCAN_BYTES:
                 continue
             fam = _family(path, root)
             kept = 0
@@ -368,10 +389,16 @@ def iter_index_docs(
                             continue
                         _add(path, root, fam, i, line)
                         kept += 1
-                        if kept >= _MAX_DOCS_PER_FILE or len(docs) >= _MAX_DOCS:
+                        if kept >= _MAX_DOCS_PER_FILE:
+                            caps["files_capped"] += 1
+                            break
+                        if len(docs) >= _MAX_DOCS:
+                            caps["docs_capped"] = True
                             break
             except OSError:
                 continue
+    if stats is not None:
+        stats.update(caps)
     return docs[:_MAX_DOCS]
 
 
@@ -505,7 +532,13 @@ def _chunks(items: list[str], size: int) -> list[list[str]]:
 
 
 def _index_file_mtimes(case_dir: Path) -> dict[str, float]:
-    """Doc ``file`` value -> mtime_ns for every indexable file (B6)."""
+    """Doc ``file`` value -> mtime_ns for every indexable file (B6).
+
+    The ingest store is keyed as ``ingest/artifacts.jsonl`` to match the doc
+    ``file`` value (a bare ``artifacts.jsonl`` key made incremental indexing
+    blind to imported evidence). When the same rel path exists in several
+    roots, the MAX mtime wins so any copy's update still triggers a reindex.
+    """
     from nexus.langgraph.pipeline_runs import resolve_tools_extractions
 
     extractions = resolve_tools_extractions(case_dir)
@@ -517,8 +550,11 @@ def _index_file_mtimes(case_dir: Path) -> dict[str, float]:
                 rel = str(path.relative_to(root)).replace("\\", "/")
             except ValueError:
                 continue
+            if root == case_dir / "ingest":
+                rel = f"ingest/{rel}"
             with contextlib.suppress(OSError):
-                out[rel] = float(path.stat().st_mtime_ns)
+                mtime = float(path.stat().st_mtime_ns)
+                out[rel] = max(out.get(rel, 0.0), mtime)
             break
     return out
 
@@ -583,7 +619,10 @@ def index_case(
                     indexed_docs = int(count_resp.json().get("count") or 0)
                 except ValueError:
                     indexed_docs = 0
-                if indexed_docs <= 0:
+                if indexed_docs <= 0 or indexed_docs != int(prior.get("docs") or -1):
+                    # Fresh/empty index → full rebuild. A doc-count mismatch
+                    # also means a previous run failed mid-way — heal instead
+                    # of blessing the reduced index as current.
                     use_incremental = False
 
     if use_incremental:
@@ -604,7 +643,10 @@ def index_case(
                     raise RuntimeError(
                         f"incremental delete failed: {cleared.status_code} {cleared.text[:300]}"
                     )
-            docs = iter_index_docs(case_dir, extra_needles, only_files=changed)
+            cap_stats: dict[str, Any] = {}
+            docs = iter_index_docs(
+                case_dir, extra_needles, only_files=changed, stats=cap_stats
+            )
             errors = _bulk_insert(client, name, docs)
             refreshed = client.post(f"/{name}/_refresh")
             if refreshed.status_code >= 400:
@@ -625,9 +667,16 @@ def index_case(
             "incremental": True,
             "files_reindexed": sorted(changed),
             "files_removed": sorted(removed),
+            "caps": cap_stats,
+            "capped": bool(
+                cap_stats.get("docs_capped")
+                or cap_stats.get("families_capped")
+                or cap_stats.get("files_capped")
+            ),
         }
     else:
-        docs = iter_index_docs(case_dir, extra_needles)
+        cap_stats = {}
+        docs = iter_index_docs(case_dir, extra_needles, stats=cap_stats)
         with _client() as client:
             cleared = client.post(
                 f"/{name}/_delete_by_query",
@@ -651,6 +700,12 @@ def index_case(
             "case_id": case_dir.name,
             "url": es_url(),
             "incremental": False,
+            "caps": cap_stats,
+            "capped": bool(
+                cap_stats.get("docs_capped")
+                or cap_stats.get("families_capped")
+                or cap_stats.get("files_capped")
+            ),
         }
 
     (out / "es_index.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
@@ -699,6 +754,8 @@ def write_index_state(
         "index": meta.get("index", ""),
         "url": es_url(),
         "file_mtimes": file_mtimes if file_mtimes is not None else _index_file_mtimes(case_dir),
+        "capped": bool(meta.get("capped")),
+        "caps": meta.get("caps") or {},
     }
     out = case_dir / "analysis"
     out.mkdir(parents=True, exist_ok=True)
@@ -1273,6 +1330,9 @@ def query_index(
             "file": key[0],
             "line": key[1],
             "terms": ",".join(matched[:6]),
+            # Structured matched needles — the primary (ES) path used to omit
+            # this, so every downstream consumer comma-split it again (EH-8).
+            "terms_list": matched[:6],
             "text": text[:_MAX_LINE],
         }
         for key_name in ("host", "user", "event_id", "ts"):
@@ -1280,5 +1340,12 @@ def query_index(
             if value not in (None, ""):
                 hit[key_name] = value
         hits.append(hit)
+    if stats is not None:
+        from nexus.langgraph.query_pack import _MAX_HITS_TOTAL as _total_cap
+
+        stats["hits_returned"] = min(len(hits), _total_cap)
+        # merged chunks trimmed by finalize = counts are lower bounds
+        if len(hits) > _total_cap or stats.get("hits_capped"):
+            stats["hits_capped"] = True
     return finalize_hits(hits, terms, priority_terms)
 

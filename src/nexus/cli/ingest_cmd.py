@@ -51,7 +51,9 @@ def ingest(
         if case_dir is not None:
             from nexus.langgraph.timeline_merge import ingest_into_case
 
-            result = ingest_into_case(t, case_dir, source=src_override)
+            result = ingest_into_case(
+                t, case_dir, source=src_override, audit=False
+            )  # this CLI logs its own ingest_auto entry below
         else:
             result = ingest_auto(t, source=src_override)
         ok = bool(result.get("success"))

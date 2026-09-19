@@ -78,7 +78,7 @@ class SocRatesImporter(Importer):
 
     def _record_to_artifact(self, record: dict[str, Any]) -> Artifact:
         """Map a SO-CRATES detection record to an Artifact."""
-        ts = self._extract_timestamp(record)
+        ts, ts_synthesized = self._extract_timestamp(record)
         severity = self._extract_severity(record)
         artifact_type = self._extract_type(record)
         source_ip, dest_ip = self._extract_ips(record)
@@ -90,6 +90,7 @@ class SocRatesImporter(Importer):
             artifact_type=artifact_type,
             source=ArtifactSource.SURICATA,
             timestamp=ts,
+            ts_synthesized=ts_synthesized,
             severity=severity,
             host=str(record.get("host") or record.get("hostname") or "") or None,
             user=str(record.get("user") or record.get("username") or "") or None,

@@ -527,11 +527,17 @@ def _hits_from_ingest(
     end: datetime | None,
     query: Any | None = None,
     match_all: bool = False,
+    stats: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
-    """Same matching semantics as ``_hits_from_file`` over the artifact store."""
-    hits: list[dict[str, str]] = []
+    """Same matching semantics as ``_hits_from_file`` over the artifact store.
+
+    Carries ``terms_list`` (EH-8) and records the collect cap so a 20k-row
+    network log cannot lower-bound every count silently.
+    """
+    hits: list[dict[str, Any]] = []
     strong_n = 0
     weak_n = 0
+    skipped_cap = 0
     for line_no, fam, text, _ts in iter_ingest_rows(case_dir):
         low = text.lower()
         if query is not None:
@@ -554,10 +560,12 @@ def _hits_from_ingest(
         pri = _hit_rank(matched, strong)
         if pri == 0:
             if strong_n >= _MAX_COLLECT_PER_FILE:
+                skipped_cap += 1
                 continue
             strong_n += 1
         else:
             if weak_n >= _MAX_COLLECT_PER_FILE:
+                skipped_cap += 1
                 continue
             weak_n += 1
         hits.append({
@@ -565,8 +573,11 @@ def _hits_from_ingest(
             "file": "ingest/artifacts.jsonl",
             "line": str(line_no),
             "terms": ",".join(matched[:6]),
+            "terms_list": matched[:6],
             "text": text,
         })
+    if stats is not None:
+        stats["ingest_capped"] = bool(skipped_cap)
     return hits
 
 
@@ -873,6 +884,7 @@ def attach_hit_fields(case_dir: Path, hits: list[dict[str, Any]]) -> list[dict[s
                     "source", "artifact_type", "severity", "timestamp", "host",
                     "user", "source_ip", "source_port", "dest_ip", "dest_port",
                     "protocol", "description", "rule",
+                    "ts_synthesized", "ts_year_assumed",
                 ):
                     value = record.get(key)
                     if value not in (None, "", []):
@@ -925,6 +937,24 @@ def attach_hit_fields(case_dir: Path, hits: list[dict[str, Any]]) -> list[dict[s
     return out
 
 
+def _cap_reasons(stats: dict[str, Any]) -> list[str]:
+    """Human-readable lower-bound reasons from a coverage stats dict."""
+    reasons: list[str] = []
+    if stats.get("hits_capped"):
+        reasons.append("result cap")
+    if stats.get("files_capped"):
+        reasons.append(f"{stats['files_capped']} capped file(s)")
+    if stats.get("ingest_capped"):
+        reasons.append("imported-evidence collect cap")
+    if stats.get("files_skipped_size"):
+        reasons.append(f"{stats['files_skipped_size']} oversized file(s)")
+    if stats.get("files_skipped_family_cap"):
+        reasons.append(f"{stats['files_skipped_family_cap']} file(s) over the family cap")
+    if stats.get("terms_failed"):
+        reasons.append(f"{len(stats['terms_failed'])} unqueried needle(s)")
+    return reasons
+
+
 def n4_query(
     case_dir: Path,
     query_text: str,
@@ -955,6 +985,7 @@ def n4_query(
     dsl_terms = parsed.all_needles()
     do_match_all = bool(match_all) and parsed.is_empty()
     terms = [] if do_match_all else list(dict.fromkeys(dsl_terms + collect_query_terms(intake)))
+    stats: dict[str, Any] = {}
     all_hits, backend_used = n4_hits(
         case_dir,
         terms,
@@ -963,16 +994,21 @@ def n4_query(
         backend=backend,
         query=parsed if not parsed.is_empty() else None,
         match_all=do_match_all,
+        stats=stats,
     )
     total = len(all_hits)
     page = all_hits[max(0, offset):max(0, offset) + max(1, min(int(limit or 80), _MAX_HITS_TOTAL))]
+    cap_reasons = _cap_reasons(stats)
     return {
         "query": parsed.describe(),
         "backend": backend_used,
         "count": total,
+        "count_lower_bound": bool(cap_reasons),
         "offset": max(0, offset),
         "hits": page,
         "empty": not all_hits,
+        "stats": stats,
+        "capped_reasons": cap_reasons,
     }
 
 
@@ -1195,7 +1231,7 @@ def scan_extractions(
     hits.extend(
         _hits_from_ingest(
             case_dir, needles, strong, start, end,
-            query=query, match_all=match_all,
+            query=query, match_all=match_all, stats=stats,
         )
     )
     if stats is not None:
@@ -1220,7 +1256,10 @@ def build_query_pack_markdown(
     terms = collect_query_terms(intake)
     pb_terms = collect_playbook_query_terms(intake)
     window = parse_intake_window(intake)
-    hits, backend = n4_hits(case_dir, terms, window, priority_terms=pb_terms)
+    pack_stats: dict[str, Any] = {}
+    hits, backend = n4_hits(
+        case_dir, terms, window, priority_terms=pb_terms, stats=pack_stats
+    )
 
     if ledger is None:
         from nexus.langgraph.pipeline_runs import resolve_tools_extractions
@@ -1256,6 +1295,19 @@ def build_query_pack_markdown(
     parts.extend(["## N2 extras", ""])
     parts.extend(extras_gap_notes(case_dir, intake))
     parts.append("")
+    cap_reasons = _cap_reasons(pack_stats)
+    parts.append(
+        "Scan coverage: "
+        f"{pack_stats.get('terms_queried', len(terms))}/{pack_stats.get('terms_requested', len(terms))} terms; "
+        f"files {pack_stats.get('files_scanned', 0)}/{pack_stats.get('files_total', 0)}; "
+        f"backend `{backend}`\n"
+    )
+    if cap_reasons:
+        parts.append(
+            "\n> WARNING: hit counts below are LOWER BOUNDS — "
+            + "; ".join(cap_reasons)
+            + ". Do not treat them as exact.\n"
+        )
     parts.append(f"## Hits ({len(hits)}, cap {_MAX_HITS_TOTAL})\n")
     if not hits:
         parts.append(
@@ -1512,10 +1564,12 @@ def run_ad_hoc_query(
         if persist:
             from nexus.langgraph.case_intake import persist_case_intake
 
-            persist_case_intake(case_dir, {"query_extra": "\n".join(merged)})
+            persist_case_intake(
+                case_dir, {"query_extra": "\n".join(merged) + ("\n" if merged else "")}
+            )
             intake = load_case_intake(case_dir)
         else:
-            intake["query_extra"] = "\n".join(merged)
+            intake["query_extra"] = "\n".join(merged) + ("\n" if merged else "")
     terms = collect_query_terms(intake)
     pb_terms = collect_playbook_query_terms(intake)
     window = parse_intake_window(intake)

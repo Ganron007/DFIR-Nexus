@@ -77,12 +77,31 @@ async def write_interpretation_summary(
         f"- Entity inventory items: **{inv_count}** — unaddressed by findings: **{len(gaps)}**",
     ]
     unaddressed = list(reconciliation.get("unaddressed") or [])
+    # Scan-coverage honesty: reconciliation runs over capped/sliced digest
+    # lists — never claim complete coverage when the scan was truncated.
+    scan_truncated = False
+    scan_reasons: list[str] = []
+    try:
+        digest_path = analysis / "case_digest.json"
+        if digest_path.is_file():
+            digest = json.loads(digest_path.read_text(encoding="utf-8"))
+            scan_stats = digest.get("scan_stats") or {}
+            scan_truncated = bool(scan_stats.get("truncated"))
+            scan_reasons = list(scan_stats.get("truncated_reasons") or [])
+    except (OSError, ValueError):
+        scan_truncated = False
     if reconciliation:
         lines.append(
             f"- Digest reconciliation: **{len(reconciliation.get('addressed') or [])} "
             f"addressed / {len(unaddressed)} unaddressed** "
             f"(alerts {reconciliation.get('alerts_total', 0)}, "
             f"needles with hits {reconciliation.get('needles_with_hits', 0)})"
+        )
+    if scan_truncated:
+        lines.append(
+            "- **SCAN COVERAGE: TRUNCATED** ("
+            + "; ".join(scan_reasons or ["cap reached"])
+            + ") — counts and reconciliation are LOWER BOUNDS."
         )
     if findings:
         lines.append("")
@@ -165,7 +184,15 @@ async def write_interpretation_summary(
                     f"Coverage gaps: {gaps_line}\n\n"
                     f"Digest reconciliation (unaddressed items):\n"
                     f"{reconcile_lines or '(none — all digest items are covered)'}\n\n"
-                    f"Threat intel:\n{ti_md[:1500] or '(none)'}"
+                    + (
+                        "SCAN COVERAGE WARNING: the briefing scan was truncated ("
+                        + "; ".join(scan_reasons or ["cap reached"])
+                        + "). Counts are lower bounds and unreconciled items may "
+                        "be an artifact of the cap — say so in the verdict.\n\n"
+                        if scan_truncated
+                        else ""
+                    )
+                    + f"Threat intel:\n{ti_md[:1500] or '(none)'}"
                 )},
             ])
             verdict = str(getattr(response, "content", str(response))).strip()[:2000]

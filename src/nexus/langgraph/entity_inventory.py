@@ -70,12 +70,14 @@ def build_entity_inventory(
     for ONE match-all read and shares it with the TI sweep (B5).
     """
     fetch_error = ""
+    fetch_capped = False
     if hits is None:
         from nexus.tools.evidence_index import do_n4_query
 
         result = do_n4_query(case_id=case_id, dsl="", limit=400, match_all=True)
         hits = result.get("hits") or []
         fetch_error = str(result.get("error") or "")
+        fetch_capped = bool(result.get("count_lower_bound"))
     hits = [h for h in hits if isinstance(h, dict)]
 
     procs: dict[str, int] = {}
@@ -114,6 +116,7 @@ def build_entity_inventory(
 
     inventory = {
         "hits_scanned": len(hits),
+        "hits_capped": fetch_capped,
         "error": fetch_error,
         "processes": _top(procs, cap),
         "paths": _top(paths, cap),
@@ -139,7 +142,12 @@ def render_inventory_markdown(inv: dict[str, Any], *, per_kind: int = 20) -> str
     lines = [
         "# Entity inventory (deterministic census — address EVERY item)",
         "",
-        f"Scanned {inv.get('hits_scanned', 0)} indexed row(s).",
+        f"Scanned {inv.get('hits_scanned', 0)} indexed row(s)."
+        + (
+            " WARNING: capped sample — coverage may be incomplete."
+            if inv.get("hits_capped")
+            else ""
+        ),
     ]
 
     def _line(label: str, items: list[Any]) -> None:

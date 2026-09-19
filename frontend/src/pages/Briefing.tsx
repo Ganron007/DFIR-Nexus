@@ -273,6 +273,8 @@ export default function Briefing() {
   if (error) return <div className="error-banner">{error}</div>;
   if (!brief) return null;
 
+  const scanStats = brief.scan_stats || {};
+  const truncReasons = scanStats.truncated_reasons || [];
   const ledger = brief.ledger || { entries: [], ok: 0, skip: 0, fail: 0 };
   const inv = brief.inventory || {};
   const scan = brief.needle_scan || [];
@@ -409,6 +411,7 @@ export default function Briefing() {
           )}
           {digest && (() => {
             const d = digest.digest;
+            const digestTruncated = Boolean(d.scan_stats?.truncated);
             const withHits = d.signal_map?.with_hits?.length ?? 0;
             const zeroHits = d.signal_map?.zero_hit?.length ?? 0;
             return (
@@ -419,6 +422,13 @@ export default function Briefing() {
                   {d.hosts?.length ?? 0} host(s) · {Object.keys(d.inventory || {}).length} famil{Object.keys(d.inventory || {}).length === 1 ? "y" : "ies"} ·{" "}
                   timeline: {d.timeline?.source || "n/a"}
                 </div>
+                {digestTruncated && (
+                  <div style={{ fontSize: 11, color: "var(--warning)", marginBottom: 6 }}>
+                    LOWER BOUNDS — the briefing scan was truncated (
+                    {(d.scan_stats?.truncated_reasons || []).join("; ") || "cap reached"}).
+                    Counts below are minimums.
+                  </div>
+                )}
                 {(d.scope?.explicitly_absent?.length ?? 0) > 0 && (
                   <div style={{ fontSize: 11, color: "var(--warning)", marginBottom: 6 }}>
                     Scope — NOT in evidence (stated as scope, never as “no compromise”):{" "}
@@ -928,8 +938,11 @@ export default function Briefing() {
                   ))}
                 </div>
                 {brief.scan_truncated && (
-                  <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 6 }}>
-                    Counts are lower bounds — the scan stopped at the briefing window; Explore shows the true total.
+                  <div style={{ fontSize: 10, color: "var(--warning)", marginTop: 6 }}>
+                    Counts are LOWER BOUNDS
+                    {truncReasons.length > 0 && ` — ${truncReasons.join("; ")}`}
+                    {truncReasons.length === 0 && " — the scan stopped at the briefing window"}
+                    ; Explore shows the true total.
                   </div>
                 )}
               </>

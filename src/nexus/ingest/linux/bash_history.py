@@ -58,12 +58,18 @@ class BashHistoryImporter(Importer):
                 if len(parts) == 2:
                     ts = self.normalize_timestamp(parts[0])
                     cmd = parts[1]
+            ts_synthesized = False
             if ts is None:
+                # A propagated previous-line time or file mtime is NOT this
+                # command's recorded event time (EH-7).
+                ts_synthesized = True
                 ts = prev_ts or datetime.fromtimestamp(path.stat().st_mtime, tz=UTC)
             prev_ts = ts
-            yield self._build_artifact(ts, cmd, path)
+            yield self._build_artifact(ts, cmd, path, ts_synthesized)
 
-    def _build_artifact(self, ts: datetime, cmd: str, path: Path) -> Artifact:
+    def _build_artifact(
+        self, ts: datetime, cmd: str, path: Path, ts_synthesized: bool = False
+    ) -> Artifact:
         """Map a history command to an Artifact."""
         cmd_stripped = cmd.strip()
         # Severity from suspicious patterns
@@ -87,6 +93,7 @@ class BashHistoryImporter(Importer):
             artifact_type=ArtifactType.PROCESS,
             source=ArtifactSource.BASH_HISTORY,
             timestamp=ts,
+            ts_synthesized=ts_synthesized,
             severity=severity,
             host=host,
             process_name="bash",

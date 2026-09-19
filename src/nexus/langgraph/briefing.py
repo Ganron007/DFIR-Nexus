@@ -46,7 +46,10 @@ def _family_inventory(case_dir: Path) -> dict[str, dict[str, Any]]:
     from nexus.langgraph.query_pack import iter_extraction_files, iter_ingest_rows
 
     out: dict[str, dict[str, Any]] = {}
-    for path, _root, fam in iter_extraction_files(case_dir, max_bytes=None):
+    file_stats: dict[str, Any] = {}
+    for path, _root, fam in iter_extraction_files(
+        case_dir, max_bytes=None, stats=file_stats
+    ):
         entry = out.setdefault(fam, {"files": 0, "rows": 0, "capped": False})
         entry["files"] += 1
         try:
@@ -68,6 +71,15 @@ def _family_inventory(case_dir: Path) -> dict[str, dict[str, Any]]:
         entry = out.setdefault(fam, {"files": 0, "rows": 0, "capped": False})
         entry["files"] += 1
         entry["rows"] += rows
+    # File-level skips (size / per-family caps) under-count every family that
+    # may have had a skipped file — mark them capped instead of exact.
+    if file_stats.get("files_skipped_family_cap") or file_stats.get("files_skipped_size"):
+        for fam_capped in file_stats.get("families_capped") or []:
+            if fam_capped in out:
+                out[fam_capped]["capped"] = True
+        if file_stats.get("files_skipped_size"):
+            for entry in out.values():
+                entry["capped"] = True
     return out
 
 
@@ -123,8 +135,17 @@ def _parser_ledger(case_dir: Path) -> dict[str, Any]:
 # Needle sources for the auto-scan
 # ---------------------------------------------------------------------------
 
-def _scan_needles(case_dir: Path, families: list[str]) -> dict[str, str]:
-    """needle -> source label, for the families present in the case."""
+def _scan_needles(
+    case_dir: Path,
+    families: list[str],
+    dropped: list[str] | None = None,
+) -> dict[str, str]:
+    """needle -> source label, for the families present in the case.
+
+    ``dropped`` (out-param) receives needles discarded by the scan cap so the
+    briefing can report them as NOT scanned instead of silently shortening the
+    list (a dropped needle must never read as checked-absent).
+    """
     from nexus.knowledge.attack_needles import attack_needles_for
     from nexus.knowledge.sigma_needles import sigma_needles_for
     from nexus.langgraph.query_pack import (
@@ -152,7 +173,10 @@ def _scan_needles(case_dir: Path, families: list[str]) -> dict[str, str]:
     except Exception:  # noqa: BLE001
         pass
 
-    return dict(list(needles.items())[:_BRIEFING_SCAN_TERMS_CAP])
+    capped = dict(list(needles.items())[:_BRIEFING_SCAN_TERMS_CAP])
+    if dropped is not None:
+        dropped.extend(k for k in needles if k not in capped)
+    return capped
 
 
 # ---------------------------------------------------------------------------
@@ -433,7 +457,8 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
     inventory = _family_inventory(case_dir)
     families = sorted(inventory)
 
-    needle_map = _scan_needles(case_dir, families)
+    dropped_needles: list[str] = []
+    needle_map = _scan_needles(case_dir, families, dropped_needles)
     terms = list(needle_map)
     hits: list[dict[str, Any]] = []
     backend = ""
@@ -461,7 +486,10 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
     if scan_stats.get("terms_failed"):
         cap_reasons.append(f"{len(scan_stats['terms_failed'])} unqueried needle(s)")
     scan_truncated = len(hits) > limit or bool(cap_reasons)
-    scan_stats["truncated"] = scan_truncated
+    if dropped_needles:
+        scan_stats["needles_dropped_cap"] = dropped_needles[:200]
+        cap_reasons.append(f"{len(dropped_needles)} needle(s) over the scan cap")
+    scan_stats["truncated"] = scan_truncated or bool(dropped_needles)
     scan_stats["truncated_reasons"] = cap_reasons
     hits = attach_hit_fields(case_dir, hits)[:limit]
 
@@ -707,13 +735,20 @@ def _write_briefing_artifacts(
         failed_terms = {
             str(t).lower() for t in (brief.get("scan_stats") or {}).get("terms_failed") or []
         }
+        dropped_terms = {
+            str(t).lower()
+            for t in (brief.get("scan_stats") or {}).get("needles_dropped_cap") or []
+        }
         csv_path = analysis_dir / "signal_map.csv"
         with csv_path.open("w", newline="", encoding="utf-8") as fh:
             w = csv.writer(fh)
             w.writerow(["needle", "hits", "source", "scanned"])
             for needle, count in sorted(needle_counts.items(), key=lambda kv: -kv[1]):
-                scanned = "no" if str(needle).lower() in failed_terms else "yes"
+                low = str(needle).lower()
+                scanned = "no" if (low in failed_terms or low in dropped_terms) else "yes"
                 w.writerow([needle, count, needle_map.get(needle, ""), scanned])
+            for needle in (brief.get("scan_stats") or {}).get("needles_dropped_cap") or []:
+                w.writerow([needle, 0, needle_map.get(needle, "playbook"), "no"])
         return {"briefing_md": str(md_path), "signal_map_csv": str(csv_path)}
     except Exception:  # noqa: BLE001
         return {}

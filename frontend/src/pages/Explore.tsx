@@ -62,6 +62,8 @@ export default function Explore() {
   const [hostFilter, setHostFilter] = useState("");
   const [hits, setHits] = useState<N4Hit[]>([]);
   const [count, setCount] = useState(0);
+  const [countLowerBound, setCountLowerBound] = useState(false);
+  const [capReasons, setCapReasons] = useState<string[]>([]);
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -222,6 +224,8 @@ export default function Explore() {
       if (reqIdRef.current !== reqId) return;
       setHits(searchResult.hits);
       setCount(searchResult.count);
+      setCountLowerBound(Boolean(searchResult.count_lower_bound));
+      setCapReasons(searchResult.capped_reasons || []);
       setOffset(targetOffset);
       setHistogram(histResult.buckets || {});
       // WP 4i.3: default visible columns = first 6 fields (priority-ordered);
@@ -649,8 +653,18 @@ export default function Explore() {
       {/* Hits table */}
       <div className="card">
         <div className="card-header">
-          <span className="card-title">
-            Hits ({count.toLocaleString()}{count > PAGE_SIZE && ` — page ${currentPage}/${pages}`})
+          <span
+            className="card-title"
+            title={countLowerBound
+              ? `Counts are LOWER BOUNDS — ${capReasons.join("; ") || "a cap was reached"}`
+              : undefined}
+          >
+            Hits ({countLowerBound ? "≥" : ""}{count.toLocaleString()}{count > PAGE_SIZE && ` — page ${currentPage}/${pages}`})
+            {countLowerBound && (
+              <span style={{ fontSize: 10, color: "var(--warning)", marginLeft: 6 }}>
+                lower bound{capReasons.length > 0 ? ` — ${capReasons.join("; ")}` : ""}
+              </span>
+            )}
           </span>
           <div style={{ display: "flex", gap: 8 }}>
             {/* WP 4i.3: column picker — examiner chooses which parsed fields show */}
