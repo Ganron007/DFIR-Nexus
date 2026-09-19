@@ -373,6 +373,46 @@ def _guided_first_pass(
     return steps
 
 
+def _index_census(case_dir: Path) -> dict[str, Any]:
+    """Hosts/users/time range straight from the N3 index (ES aggregations).
+
+    Fallback for when the threat-needle scan found no rows: the briefing must
+    still show what the evidence contains. Never raises; returns {} when the
+    index/aggregation path is unavailable (CSV-only cases keep prior behavior).
+    """
+    try:
+        from nexus.langgraph.case_index import es_aggregate
+
+        census: dict[str, Any] = {"hosts": [], "entities": {}, "time_range": {}}
+        for field, etype in (("host", "hosts"), ("user", "users")):
+            result = es_aggregate(
+                case_dir, "", field=field, top=25, match_all=True, with_spans=True,
+            )
+            spans = (result or {}).get("top") or []
+            if not spans:
+                continue
+            census["entities"][etype] = [
+                {
+                    "value": str(s.get("value")),
+                    "hits": int(s.get("count") or 0),
+                    "families": [],
+                }
+                for s in spans if s.get("value")
+            ][:_ENTITY_TOP_N]
+            if field == "host":
+                census["hosts"] = [
+                    str(s.get("value")) for s in spans if s.get("value")
+                ]
+                starts = [s.get("first_seen") for s in spans if s.get("first_seen")]
+                ends = [s.get("last_seen") for s in spans if s.get("last_seen")]
+                if starts and ends:
+                    census["time_range"] = {"start": min(starts), "end": max(ends)}
+        return census
+    except Exception as exc:  # noqa: BLE001 — census is best-effort
+        log.debug("index census unavailable: %s", exc)
+        return {}
+
+
 def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
     """Deterministic case briefing.
 
@@ -397,9 +437,10 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
     terms = list(needle_map)
     hits: list[dict[str, Any]] = []
     backend = ""
+    scan_stats: dict[str, Any] = {}
     if terms and families:
         try:
-            hits, backend = n4_hits(case_dir, terms, (None, None))
+            hits, backend = n4_hits(case_dir, terms, (None, None), stats=scan_stats)
         except Exception as exc:  # noqa: BLE001
             log.debug("briefing scan failed: %s", exc)
             hits, backend = [], ""
@@ -506,6 +547,23 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
             times.append(ts)
     time_range = {"start": min(times) if times else "", "end": max(times) if times else ""}
 
+    # --- index census fallback ---
+    # Playbook needles are threat-specific: a case can hold real evidence yet
+    # have zero needle hits (e.g. benign RDP/RDS logs). Hosts/entities/time
+    # range must still reflect what the index holds — a false "0 hosts" reads
+    # as "nothing was processed" and hides the evidence entirely.
+    census_source = "needle_hits"
+    if families and (not hosts or not entities or not time_range.get("start")):
+        census = _index_census(case_dir)
+        if census:
+            census_source = "index"
+            if not hosts and census.get("hosts"):
+                hosts = census["hosts"]
+            if not entities and census.get("entities"):
+                entities = census["entities"]
+            if not time_range.get("start") and census.get("time_range", {}).get("start"):
+                time_range = census["time_range"]
+
     # --- intake echo ---
     intake: dict[str, str] = {}
     try:
@@ -590,6 +648,8 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
         "backend": backend,
         "hits_examined": len(hits),
         "scan_truncated": scan_truncated,
+        "scan_stats": scan_stats,
+        "census_source": census_source,
         "mode_interpretation": mode_interpretation,
         "ti_context": ti_context,
         "findings_summary": findings_summary,
@@ -612,7 +672,9 @@ def _write_briefing_artifacts(
 
     Best-effort — a read-only case dir or IO failure must never break the
     briefing itself. The CSV records EVERY scanned needle (0 hits included)
-    because "checked, absent" is negative evidence, not noise.
+    because "checked, absent" is negative evidence, not noise — and a needle
+    that could not actually be queried is marked ``scanned=no`` so it can
+    never masquerade as "checked, absent".
     """
     import csv
 
@@ -622,12 +684,16 @@ def _write_briefing_artifacts(
         md_path = analysis_dir / "briefing.md"
         md_path.write_text(briefing_to_markdown(brief), encoding="utf-8")
 
+        failed_terms = {
+            str(t).lower() for t in (brief.get("scan_stats") or {}).get("terms_failed") or []
+        }
         csv_path = analysis_dir / "signal_map.csv"
         with csv_path.open("w", newline="", encoding="utf-8") as fh:
             w = csv.writer(fh)
-            w.writerow(["needle", "hits", "source"])
+            w.writerow(["needle", "hits", "source", "scanned"])
             for needle, count in sorted(needle_counts.items(), key=lambda kv: -kv[1]):
-                w.writerow([needle, count, needle_map.get(needle, "")])
+                scanned = "no" if str(needle).lower() in failed_terms else "yes"
+                w.writerow([needle, count, needle_map.get(needle, ""), scanned])
         return {"briefing_md": str(md_path), "signal_map_csv": str(csv_path)}
     except Exception:  # noqa: BLE001
         return {}
@@ -698,6 +764,27 @@ def briefing_to_markdown(brief: dict[str, Any]) -> str:
         lines.append(f"\n## Signal map ({len(scan)} needles with hits)")
         for s in scan[:40]:
             lines.append(f"- `{s['needle']}` — {s['hits']} hits ({s['source']})")
+    scan_stats = brief.get("scan_stats") or {}
+    failed_terms = scan_stats.get("terms_failed") or []
+    if failed_terms:
+        lines.append(
+            f"\n> WARNING: {len(failed_terms)} needle(s) could NOT be queried "
+            f"({', '.join(failed_terms[:10])}) — their 0-hit rows in "
+            "`signal_map.csv` are marked `scanned=no` and are NOT evidence of absence."
+        )
+    elif scan_stats and scan_stats.get("terms_requested"):
+        lines.append(
+            f"\nScan coverage: {scan_stats.get('terms_queried', 0)}/"
+            f"{scan_stats.get('terms_requested', 0)} needles queried "
+            f"({scan_stats.get('chunk_queries', 0)} ES chunk queries)."
+        )
+    if brief.get("census_source") == "index" and not scan:
+        lines.append(
+            "\n> No playbook needle hits in this evidence. The host/user/time "
+            "map below comes from the index census (deterministic), not from "
+            "the needle scan — the evidence is present even when no threat "
+            "needle matched."
+        )
     ent = brief.get("entities") or {}
     if ent:
         lines.append("\n## Top entities")

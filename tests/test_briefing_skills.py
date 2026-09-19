@@ -291,10 +291,12 @@ def test_briefing_writes_offline_artifacts(tmp_path):
     assert md.exists() and csv_path.exists()
     assert "# Case Briefing" in md.read_text(encoding="utf-8")
     rows = csv_path.read_text(encoding="utf-8").splitlines()
-    assert rows[0] == "needle,hits,source"
+    assert rows[0] == "needle,hits,source,scanned"
     # every scanned needle is recorded — including 0-hit ones (negative evidence)
     assert len(rows) - 1 == b["scanned_needles"]
     assert any(r.startswith("4624,2,") for r in rows)
+    # this scan covered all needles — nothing is marked unscanned
+    assert all(r.endswith(",yes") for r in rows[1:])
 
 
 def test_briefing_artifact_write_failure_is_nonfatal(tmp_path):
@@ -308,3 +310,100 @@ def test_briefing_artifact_write_failure_is_nonfatal(tmp_path):
         b = case_briefing(case)
     assert b["artifacts"] == {}
     assert b["alert_count"] == 2
+
+def test_briefing_index_census_fallback_when_no_needle_hits(tmp_path, monkeypatch):
+    """RDP-style logs with zero threat-needle hits must still show the
+    host/user/time census — a false "0 hosts" reads as "nothing was
+    processed" and hides the evidence entirely."""
+    from nexus.langgraph import briefing as bmod
+
+    case = tmp_path / "CASE-CENSUS"
+    ext = case / "extractions"
+    ext.mkdir(parents=True)
+    (ext / "evtxecmd_rdp.csv").write_text(
+        "TimeCreated,EventID,Computer,UserName,RemoteHost\n"
+        "2024-11-14 03:22:50,34,EC2AMAZ-JET8PQL,,219.100.37.234\n"
+        "2024-11-23 04:06:23,21,EC2AMAZ-3NFFVNI,Administrator,219.100.37.234\n",
+        encoding="utf-8",
+    )
+    (case / "CASE.yaml").write_text("question: rdp review\n", encoding="utf-8")
+
+    # No needle hits at all (threat needles vs benign RDP logs).
+    monkeypatch.setattr(
+        "nexus.langgraph.query_pack.n4_hits", lambda *a, **k: ([], "csv")
+    )
+
+    def fake_agg(case_dir, dsl="", field="host", top=20, bucket="",
+                 match_all=False, window=None, with_spans=False):
+        if field == "host":
+            return {"field": "host", "top": [
+                {"value": "EC2AMAZ-JET8PQL", "count": 1,
+                 "first_seen": "2024-11-14T03:22:50", "last_seen": "2024-11-14T03:22:50"},
+                {"value": "EC2AMAZ-3NFFVNI", "count": 1,
+                 "first_seen": "2024-11-23T04:06:23", "last_seen": "2024-11-23T04:06:23"},
+            ]}
+        if field == "user":
+            return {"field": "user", "top": [
+                {"value": "administrator", "count": 1,
+                 "first_seen": "2024-11-23T04:06:23", "last_seen": "2024-11-23T04:06:23"},
+            ]}
+        return None
+
+    monkeypatch.setattr("nexus.langgraph.case_index.es_aggregate", fake_agg)
+    brief = bmod.case_briefing(case)
+    assert brief["census_source"] == "index"
+    assert brief["hits_examined"] == 0          # honest: no needle hits
+    assert "EC2AMAZ-JET8PQL" in brief["hosts"]
+    assert brief["entities"]["hosts"][0]["value"] == "EC2AMAZ-JET8PQL"
+    assert brief["entities"]["users"][0]["value"] == "administrator"
+    assert brief["time_range"]["start"] == "2024-11-14T03:22:50"
+    md = bmod.briefing_to_markdown(brief)
+    assert "index census" in md
+
+def test_briefing_markdown_flags_unscanned_needles():
+    """When the retrieval layer could not query a needle, the briefing says so
+    — a 0-hit row must never pass as 'checked, absent'."""
+    from nexus.langgraph.briefing import briefing_to_markdown
+
+    brief = {
+        "inventory": {}, "families": [], "total_files": 0, "total_rows": 0,
+        "scan_stats": {
+            "mode": "terms", "terms_requested": 5, "terms_queried": 4,
+            "terms_failed": ["rdp"], "chunk_queries": 1, "chunks_split": 0,
+        },
+        "needle_scan": [],
+    }
+    md = briefing_to_markdown(brief)
+    assert "could NOT be queried" in md
+    assert "rdp" in md
+    assert "scanned=no" in md
+
+
+def test_briefing_records_scan_stats(tmp_path, monkeypatch):
+    """The briefing must report needle coverage (requested vs queried)."""
+    from nexus.langgraph import briefing as bmod
+
+    case = tmp_path / "CASE-STATS"
+    ext = case / "extractions"
+    ext.mkdir(parents=True)
+    (ext / "hayabusa_x.csv").write_text(
+        "TimeCreated,Computer,RuleTitle\n2024-01-01,WS01,RDP Logon\n",
+        encoding="utf-8",
+    )
+    (case / "CASE.yaml").write_text("question: review\n", encoding="utf-8")
+
+    def fake_hits(case_dir, terms, window, **kwargs):
+        stats = kwargs.get("stats")
+        if stats is not None:
+            stats.update({
+                "mode": "terms", "terms_requested": len(terms),
+                "terms_queried": len(terms), "terms_failed": [],
+                "chunk_queries": 1, "chunks_split": 0,
+            })
+        return [], "elasticsearch"
+
+    monkeypatch.setattr("nexus.langgraph.query_pack.n4_hits", fake_hits)
+    brief = bmod.case_briefing(case)
+    assert brief["scan_stats"]["terms_requested"] > 0
+    assert brief["scan_stats"]["terms_queried"] == brief["scan_stats"]["terms_requested"]
+    assert brief["scan_stats"]["terms_failed"] == []

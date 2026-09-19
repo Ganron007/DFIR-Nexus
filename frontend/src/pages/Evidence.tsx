@@ -10,7 +10,7 @@ import { useCase } from "../context/CaseContext";
 import EvidencePicker from "../components/EvidencePicker";
 
 export default function Evidence() {
-  const { activeCase, refreshStages } = useCase();
+  const { activeCase, refreshStages, mode: caseMode, setMode } = useCase();
   const [evidence, setEvidence] = useState<unknown[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -121,7 +121,11 @@ export default function Evidence() {
     setBusy(true);
     setError("");
     try {
-      const r = await api.pipelineRun({ mode: "tools", case_id: activeCase });
+      // Mode-aware: a Mode 2/3 case must go through coverage/design so the
+      // LLM interpretation (and digest/rounds) actually runs — the lane alone
+      // is only the parsing step.
+      const pipelineMode = caseMode === "2" ? "coverage" : caseMode === "3" ? "design" : "tools";
+      const r = await api.pipelineRun({ mode: pipelineMode, case_id: activeCase });
       setRunId(r.run_id);
       setRunStatus("running");
       const poll = setInterval(async () => {
@@ -162,6 +166,21 @@ export default function Evidence() {
             <span style={{ fontSize: 12, color: pipelineComplete ? "var(--success)" : "var(--text-muted)" }}>
               {pipelineComplete ? "✓ N2 lane complete" : "N2 lane not run"}
             </span>
+            <span
+              style={{ fontSize: 12, color: caseMode ? "var(--text-muted)" : "var(--warning)" }}
+              title={caseMode
+                ? `Investigation Mode ${caseMode} — processing runs the matching pipeline`
+                : "No investigation mode set for this case: analysis runs the parsing lane only. Set a mode before processing for Mode 2/3 interpretation."}
+            >
+              {caseMode ? `Mode ${caseMode}` : "No mode set"}
+            </span>
+            {!caseMode && (
+              <span style={{ display: "flex", gap: 4 }}>
+                <button className="btn btn-sm" onClick={() => void setMode("1")}>Set Mode 1</button>
+                <button className="btn btn-sm" onClick={() => void setMode("2")}>Set Mode 2</button>
+                <button className="btn btn-sm" onClick={() => void setMode("3")}>Set Mode 3</button>
+              </span>
+            )}
             <button
               className="btn btn-sm"
               onClick={verifyIntegrity}
@@ -177,8 +196,17 @@ export default function Evidence() {
               className="btn btn-primary btn-sm"
               onClick={runN2}
               disabled={busy || runStatus === "running"}
+              title={caseMode === "2"
+                ? "Run the deterministic lane, then the Mode 2 LLM interpretation (digest + rounds + DRAFT findings)"
+                : caseMode === "3"
+                  ? "Run the deterministic lane, then the Mode 3 agent plan"
+                  : "Run the parsing lane only — set a mode first for Mode 2/3 analysis"}
             >
-              {busy ? "Starting…" : "▶ Run N2 lane"}
+              {busy
+                ? "Starting…"
+                : caseMode === "2" ? "▶ Run Mode 2 analysis"
+                : caseMode === "3" ? "▶ Run Mode 3 analysis"
+                : "▶ Run N2 lane"}
             </button>
           </div>
         )}
