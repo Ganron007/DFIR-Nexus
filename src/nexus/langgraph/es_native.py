@@ -1,0 +1,424 @@
+"""Phase 4k.5 — ES-native query surface for Mode 2/3.
+
+The agent queries Elasticsearch directly (bounded + audited) instead of the
+typed DSL: full mapping introspection, allowlisted query/agg shapes, exact
+totals with labelled paging, and the standard row identity for staging.
+Read-only, case-index-pinned, ES-required (no CSV pretence).
+"""
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+log = logging.getLogger(__name__)
+
+DEFAULT_SIZE = 200
+MAX_SIZE = 1000
+MAX_AGGS = 40
+
+_QUERY_KEYS = {
+    "bool", "term", "terms", "range", "match", "match_phrase", "multi_match",
+    "wildcard", "exists", "prefix", "match_all", "match_none", "ids",
+}
+_BOOL_KEYS = {"must", "should", "must_not", "filter", "minimum_should_match"}
+_TERM_BODY_KEYS = {"value", "boost", "case_insensitive"}
+_RANGE_BODY_KEYS = {"gte", "gt", "lte", "lt", "format", "boost", "time_zone"}
+_AGG_TYPES = {
+    "terms", "date_histogram", "cardinality", "composite", "min", "max",
+    "avg", "sum", "value_count", "histogram", "range", "nested_aggs_terms",
+}
+_COMPOSITE_SOURCES = {"terms", "date_histogram", "histogram"}
+
+
+class ESQueryError(ValueError):
+    """Unsupported or unsafe ES query shape."""
+
+
+def _check_bool(body: dict, depth: int) -> None:
+    if depth > 6:
+        raise ESQueryError("query nesting too deep (max 6)")
+    for key, value in body.items():
+        if key not in _BOOL_KEYS:
+            raise ESQueryError(f"unsupported bool key: {key}")
+        if key == "minimum_should_match":
+            continue
+        clauses = value if isinstance(value, list) else [value]
+        for clause in clauses:
+            validate_query(clause, depth + 1)
+
+
+def validate_query(body: Any, depth: int = 0) -> None:
+    """Allowlist recursive ES query JSON (no scripts, no cross-index, no writes)."""
+    if not isinstance(body, dict) or not body:
+        raise ESQueryError("query must be a non-empty object")
+    if len(body) != 1:
+        allowed = ", ".join(sorted(_QUERY_KEYS))
+        raise ESQueryError(
+            f"query must contain exactly one clause ({allowed}) at each level"
+        )
+    (key, value), = body.items()
+    if key not in _QUERY_KEYS:
+        raise ESQueryError(f"unsupported query clause: {key}")
+    if key == "bool":
+        if not isinstance(value, dict):
+            raise ESQueryError("bool body must be an object")
+        _check_bool(value, depth)
+    elif key in ("term", "match", "match_phrase", "prefix", "wildcard"):
+        if not isinstance(value, dict) or len(value) != 1:
+            raise ESQueryError(f"{key} takes exactly one field")
+        (field, spec), = value.items()
+        if "." in field and "script" in str(spec).lower():
+            raise ESQueryError("field names cannot contain scripts")
+        if isinstance(spec, dict):
+            unknown = set(spec) - _TERM_BODY_KEYS
+            unknown |= {k for k in spec if k == "script"}
+            if unknown:
+                raise ESQueryError(f"unsupported {key} options: {sorted(unknown)}")
+    elif key == "terms":
+        if not isinstance(value, dict) or len(value) != 1:
+            raise ESQueryError("terms takes exactly one field")
+        (field, values), = value.items()
+        if not isinstance(values, list) or not values:
+            raise ESQueryError("terms values must be a non-empty list")
+        if len(values) > 5000:
+            raise ESQueryError("terms list too large (max 5000)")
+    elif key == "range":
+        if not isinstance(value, dict) or len(value) != 1:
+            raise ESQueryError("range takes exactly one field")
+        (field, spec), = value.items()
+        if not isinstance(spec, dict):
+            raise ESQueryError("range body must be an object")
+        unknown = set(spec) - _RANGE_BODY_KEYS
+        if unknown:
+            raise ESQueryError(f"unsupported range options: {sorted(unknown)}")
+        for bound in ("gte", "gt", "lte", "lt"):
+            if bound in spec and not isinstance(spec[bound], (str, int, float)):
+                raise ESQueryError(f"range {bound} must be a string or number")
+    elif key == "exists":
+        if not isinstance(value, dict) or not isinstance(value.get("field"), str):
+            raise ESQueryError("exists requires {field: name}")
+    elif key == "multi_match":
+        if not isinstance(value, dict) or not isinstance(value.get("query"), str):
+            raise ESQueryError("multi_match requires a query string")
+        fields = value.get("fields")
+        if fields is not None and (
+            not isinstance(fields, list) or not all(isinstance(f, str) for f in fields)
+        ):
+            raise ESQueryError("multi_match fields must be a list of names")
+        if any(f.startswith("_") for f in (fields or [])):
+            raise ESQueryError("multi_match cannot target metadata fields")
+    elif key == "ids":
+        values = value.get("values") if isinstance(value, dict) else None
+        if not isinstance(values, list) or len(values) > 1000:
+            raise ESQueryError("ids requires values (max 1000)")
+    elif key == "match_all" or key == "match_none":
+        if value not in ({}, None):
+            raise ESQueryError(f"{key} takes an empty object")
+
+
+def validate_aggs(aggs: Any, depth: int = 0) -> None:
+    """Allowlist aggregation trees (terms/date_histogram/composite/…)."""
+    if not isinstance(aggs, dict) or not aggs:
+        raise ESQueryError("aggs must be a non-empty object")
+    if len(aggs) > MAX_AGGS:
+        raise ESQueryError(f"too many aggregations (max {MAX_AGGS})")
+    for name, spec in aggs.items():
+        if not isinstance(spec, dict):
+            raise ESQueryError(f"agg {name!r} must be an object")
+        types = [k for k in spec if k in _AGG_TYPES]
+        if len(types) != 1:
+            raise ESQueryError(
+                f"agg {name!r} must have exactly one type from {sorted(_AGG_TYPES)}"
+            )
+        agg_type = types[0]
+        body = spec[agg_type]
+        if agg_type == "composite":
+            if not isinstance(body, dict):
+                raise ESQueryError("composite body must be an object")
+            sources = body.get("sources")
+            if not isinstance(sources, list) or not sources:
+                raise ESQueryError("composite requires sources")
+            for src in sources:
+                if not isinstance(src, dict) or len(src) != 1:
+                    raise ESQueryError("composite source must name one field")
+                for _fname, fspec in src.items():
+                    if not isinstance(fspec, dict) or not (
+                        set(fspec) & _COMPOSITE_SOURCES
+                    ):
+                        raise ESQueryError(
+                            "composite sources support terms/date_histogram/histogram"
+                        )
+            if "size" in body:
+                try:
+                    if not 1 <= int(body["size"]) <= 1000:
+                        raise ESQueryError("composite size must be 1..1000")
+                except (TypeError, ValueError):
+                    raise ESQueryError("composite size must be an integer") from None
+            after = body.get("after")
+            if after is not None and not isinstance(after, dict):
+                raise ESQueryError("composite after must be an object")
+        elif not isinstance(body, dict):
+            raise ESQueryError(f"{agg_type} body must be an object")
+        sub = spec.get("aggs")
+        if sub is not None:
+            validate_aggs(sub, depth + 1)
+
+
+def _shape_hit(src: dict[str, Any]) -> dict[str, Any]:
+    fields = src.get("fields") if isinstance(src.get("fields"), dict) else {}
+    hit: dict[str, Any] = {
+        "family": str(src.get("family") or ""),
+        "file": str(src.get("file") or ""),
+        "line": str(src.get("line") or ""),
+        "text": str(src.get("text") or ""),
+        "fields": fields,
+        "terms_list": [],
+    }
+    for key in ("host", "user", "event_id", "ts", "ts_src", "ts_precision"):
+        value = src.get(key)
+        if value not in (None, ""):
+            hit[key] = str(value)[:200]
+    for key in ("ts_tz_assumed", "ts_year_assumed"):
+        if src.get(key) is True:
+            hit[key] = True
+    return hit
+
+
+def _client_and_index(case_id: str):
+    from nexus.langgraph.case_index import _client, es_available, index_name
+
+    if not es_available():
+        raise ESQueryError(
+            "Elasticsearch unavailable — Mode 2/3 require ES (no CSV fallback "
+            "for the ES-native surface)"
+        )
+    return _client, index_name(case_id)
+
+
+def es_fields(case_id: str) -> dict[str, Any]:
+    """Full per-family field catalog + family counts (no curation caps)."""
+    if not case_id:
+        raise ESQueryError("case_id is required")
+    client, name = _client_and_index(case_id)
+    with client() as c:
+        head = c.head(f"/{name}")
+        if head.status_code != 200:
+            raise ESQueryError(f"index missing: {name} (run the pipeline / nexus index rebuild)")
+        mapping_resp = c.get(f"/{name}/_mapping")
+        if mapping_resp.status_code >= 400:
+            raise ESQueryError(f"mapping failed: {mapping_resp.status_code}")
+        props = (
+            (mapping_resp.json().get(name) or {}).get("mappings") or {}
+        ).get("properties") or {}
+        agg = c.post(
+            f"/{name}/_search",
+            json={
+                "size": 0,
+                "track_total_hits": True,
+                "aggs": {"families": {"terms": {"field": "family", "size": 1000}}},
+            },
+        )
+        families: dict[str, int] = {}
+        if agg.status_code < 400:
+            for bucket in (
+                ((agg.json().get("aggregations") or {}).get("families") or {}).get("buckets")
+                or []
+            ):
+                families[str(bucket.get("key"))] = int(bucket.get("doc_count") or 0)
+
+    def _type_of(spec: Any) -> str:
+        if not isinstance(spec, dict):
+            return "unknown"
+        base = str(spec.get("type") or "object")
+        subs = spec.get("fields") or {}
+        if isinstance(subs, dict) and "kw" in subs:
+            return f"{base}(kw)"
+        return base
+
+    core = sorted(
+        ({"field": key, "type": _type_of(spec)} for key, spec in props.items()
+         if key != "fields"),
+        key=lambda row: row["field"],
+    )
+    parsed = (
+        (props.get("fields") or {}).get("properties")
+        or {}
+    )
+    return {
+        "case_id": case_id,
+        "index": name,
+        "families": families,
+        "core_fields": core,
+        "parsed_columns": sorted(
+            ({"field": key, "type": _type_of(spec)} for key, spec in parsed.items()),
+            key=lambda row: row["field"],
+        ),
+        "ts_note": (
+            "ts is the canonical event time (ts_src=event|synthesized, "
+            "ts_tz_assumed/ts_year_assumed flags mark policy assumptions); "
+            "use es_search range on ts for time filters"
+        ),
+    }
+
+
+def es_search(
+    case_id: str,
+    query: dict[str, Any],
+    *,
+    size: int = DEFAULT_SIZE,
+    sort: list[Any] | None = None,
+    search_after: list[Any] | None = None,
+    source_fields: list[str] | None = None,
+) -> dict[str, Any]:
+    """One allowlisted ES search; exact totals and a labelled next cursor."""
+    if not case_id:
+        raise ESQueryError("case_id is required")
+    validate_query(query)
+    try:
+        size_i = int(size)
+    except (TypeError, ValueError):
+        raise ESQueryError("size must be an integer") from None
+    if not 1 <= size_i <= MAX_SIZE:
+        raise ESQueryError(f"size must be 1..{MAX_SIZE}")
+    if sort is not None:
+        if not isinstance(sort, list) or len(sort) > 4:
+            raise ESQueryError("sort must be a list of at most 4 entries")
+        for entry in sort:
+            if isinstance(entry, str):
+                continue
+            if not isinstance(entry, dict) or len(entry) != 1:
+                raise ESQueryError("sort entries must be 'field' or {field: {...}}")
+            for _f, spec in entry.items():
+                if isinstance(spec, dict) and set(spec) - {"order", "missing", "unmapped_type"}:
+                    raise ESQueryError("unsupported sort options")
+    body: dict[str, Any] = {
+        "size": size_i,
+        "query": query,
+        "track_total_hits": True,
+    }
+    if sort:
+        body["sort"] = sort
+    elif search_after:
+        body["sort"] = ["_doc"]
+    if search_after:
+        body["search_after"] = search_after
+
+    client, name = _client_and_index(case_id)
+    with client() as c:
+        head = c.head(f"/{name}")
+        if head.status_code != 200:
+            raise ESQueryError(f"index missing: {name} (run the pipeline / nexus index rebuild)")
+        r = c.post(f"/{name}/_search", json=body)
+        if r.status_code >= 400:
+            raise ESQueryError(f"ES search failed: {r.status_code} {r.text[:300]}")
+        data = r.json()
+    hits_raw = (data.get("hits") or {}).get("hits") or []
+    total = int(((data.get("hits") or {}).get("total") or {}).get("value") or 0)
+    hits = [_shape_hit(row.get("_source") or {}) for row in hits_raw]
+    next_cursor = hits_raw[-1].get("sort") if hits_raw else None
+    return {
+        "case_id": case_id,
+        "total": total,
+        "returned": len(hits),
+        "has_more": len(hits) < total,
+        "next_search_after": next_cursor if len(hits) < total else None,
+        "took_ms": data.get("took"),
+        "backend": "elasticsearch",
+        "hits": hits,
+    }
+
+
+def es_aggregate(case_id: str, aggs: dict[str, Any], query: dict[str, Any] | None = None,
+                 *, size: int = 0) -> dict[str, Any]:
+    """ES-native aggregation with composite paging support."""
+    if not case_id:
+        raise ESQueryError("case_id is required")
+    validate_aggs(aggs)
+    if query is not None:
+        validate_query(query)
+    body: dict[str, Any] = {
+        "size": max(0, min(int(size or 0), 10)),
+        "track_total_hits": True,
+        "aggs": aggs,
+        "query": query or {"match_all": {}},
+    }
+    client, name = _client_and_index(case_id)
+    with client() as c:
+        r = c.post(f"/{name}/_search", json=body)
+        if r.status_code >= 400:
+            raise ESQueryError(f"ES aggregation failed: {r.status_code} {r.text[:300]}")
+        data = r.json()
+    out = dict(data.get("aggregations") or {})
+    next_key = None
+    for spec in out.values():
+        if isinstance(spec, dict) and spec.get("after_key") is not None:
+            next_key = spec["after_key"]
+            break
+    return {
+        "case_id": case_id,
+        "backend": "elasticsearch",
+        "took_ms": data.get("took"),
+        "aggregations": out,
+        "next_after_key": next_key,
+    }
+
+
+def es_sample(
+    case_id: str,
+    family: str = "",
+    field: str = "",
+    value: str = "",
+    n: int = 12,
+) -> dict[str, Any]:
+    """Representative rows from ES (family/field filter), spread over time."""
+    if not case_id:
+        raise ESQueryError("case_id is required")
+    count = max(1, min(int(n or 12), 60))
+    filt: list[dict[str, Any]] = []
+    if family:
+        filt.append({"term": {"family": family.lower()}})
+    if field and value:
+        key = field.lower()
+        alias = {"event": "event_id"}.get(key, key)
+        should: list[dict[str, Any]] = [
+            {"term": {alias: value.lower()}},
+            {"match_phrase": {"text": value}},
+        ]
+        parsed_key = None
+        try:
+            from nexus.langgraph.case_index import fields_property_names
+
+            for name in fields_property_names(case_id):
+                if name.lower() == key:
+                    parsed_key = f"fields.{name}.kw"
+                    break
+        except Exception:  # noqa: BLE001
+            parsed_key = None
+        if parsed_key:
+            should.insert(1, {"term": {parsed_key: value}})
+        filt.append({"bool": {"should": should, "minimum_should_match": 1}})
+    query: dict[str, Any] = {"bool": {"filter": filt}} if filt else {"match_all": {}}
+
+    fetch = min(2000, max(400, count * 40))
+    result = es_search(
+        case_id, query, size=min(fetch, MAX_SIZE),
+        sort=[{"ts": {"order": "asc", "missing": "_last", "unmapped_type": "date"}}, {"_doc": "asc"}],
+    )
+    hits = result.get("hits") or []
+    step = max(1, len(hits) // count) if hits else 1
+    picked = hits[::step][:count] if hits else []
+    return {
+        "case_id": case_id,
+        "family": family,
+        "field": field,
+        "value": value,
+        "backend": "elasticsearch",
+        "matched": result.get("total", 0),
+        "sampled": len(picked),
+        "spread_every": step,
+        "hits": picked,
+        "note": (
+            "sample rows are context — findings still cite the audit trail "
+            "(FD-001); use es_search search_after for complete enumeration"
+        ),
+    }

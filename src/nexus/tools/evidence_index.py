@@ -492,3 +492,133 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         schema-on-read guidance.
         """
         return do_family_fields(family=family, audit=audit)
+
+    # ── Phase 4k.5 — ES-native surface (Mode 2/3; read-only, audited) ──
+    @server.tool()
+    def es_fields(case_id: str = "") -> dict:
+        """Full field catalog for the active case's ES index (all columns).
+
+        Returns every family with row counts, the typed core fields and every
+        parsed column (`fields.*`), so the agent queries real schema instead
+        of guessing. Call this once per case before querying. ES-only.
+        """
+        started = time.monotonic()
+        case_dir, err = _resolve_active_case(case_id)
+        if err or case_dir is None:
+            return {"error": err or "no active case"}
+        from nexus.langgraph.es_native import ESQueryError
+        from nexus.langgraph.es_native import es_fields as _es_fields
+
+        try:
+            result = _es_fields(Path(case_dir).name)
+        except ESQueryError as exc:
+            return {"error": str(exc), "case_id": Path(case_dir).name}
+        result["provenance"] = {
+            "audit_id": audit.log(
+                tool="es_fields",
+                params={"case_id": Path(case_dir).name},
+                result_summary={"families": len(result.get("families") or {})},
+                elapsed_ms=round((time.monotonic() - started) * 1000, 1),
+            ),
+            "case_id": Path(case_dir).name,
+        }
+        return result
+
+    @server.tool()
+    def es_search(case_id: str = "", query: dict = None, size: int = 200,
+                  sort: list = None, search_after: list = None) -> dict:
+        """Run ONE allowlisted Elasticsearch query on the active case index.
+
+        `query` is standard ES query JSON (`bool/term/terms/range/match/
+        match_phrase/multi_match/wildcard/exists/prefix/match_all`) — ranges on
+        `ts` are the time filters. Exact `total` is always returned; when
+        `has_more` is true continue with `next_search_after` (no silent caps).
+        No scripts, no writes, no cross-index. Elasticsearch required.
+        """
+        started = time.monotonic()
+        case_dir, err = _resolve_active_case(case_id)
+        if err or case_dir is None:
+            return {"error": err or "no active case"}
+        from nexus.langgraph.es_native import ESQueryError
+        from nexus.langgraph.es_native import es_search as _es_search
+
+        try:
+            result = _es_search(
+                Path(case_dir).name, query or {"match_all": {}},
+                size=size, sort=sort, search_after=search_after,
+            )
+        except ESQueryError as exc:
+            return {"error": str(exc), "case_id": Path(case_dir).name}
+        result["provenance"] = {
+            "audit_id": audit.log(
+                tool="es_search",
+                params={"case_id": Path(case_dir).name, "query": query, "size": size},
+                result_summary={"total": result.get("total"),
+                                "returned": result.get("returned")},
+                elapsed_ms=round((time.monotonic() - started) * 1000, 1),
+            ),
+            "case_id": Path(case_dir).name,
+        }
+        return result
+
+    @server.tool()
+    def es_aggregate(case_id: str = "", aggs: dict = None, query: dict = None) -> dict:
+        """Run allowlisted ES aggregations (terms/date_histogram/cardinality/
+        composite/min/max/avg). `composite` returns `next_after_key` so the
+        agent can enumerate EVERY bucket — the tail is never hidden. ES-only.
+        """
+        started = time.monotonic()
+        case_dir, err = _resolve_active_case(case_id)
+        if err or case_dir is None:
+            return {"error": err or "no active case"}
+        from nexus.langgraph.es_native import ESQueryError
+        from nexus.langgraph.es_native import es_aggregate as _es_aggregate
+
+        try:
+            result = _es_aggregate(Path(case_dir).name, aggs or {}, query)
+        except ESQueryError as exc:
+            return {"error": str(exc), "case_id": Path(case_dir).name}
+        result["provenance"] = {
+            "audit_id": audit.log(
+                tool="es_aggregate",
+                params={"case_id": Path(case_dir).name, "aggs": aggs, "query": query},
+                result_summary={"names": sorted((aggs or {}).keys())},
+                elapsed_ms=round((time.monotonic() - started) * 1000, 1),
+            ),
+            "case_id": Path(case_dir).name,
+        }
+        return result
+
+    @server.tool()
+    def es_sample(case_id: str = "", family: str = "", field: str = "",
+                  value: str = "", n: int = 12) -> dict:
+        """Representative ES rows for a family/field value, spread over time.
+
+        Same role as n4_sample but ES-native (Mode 2/3): grounding texture
+        before staking an interpretation; findings still cite audit_ids.
+        """
+        started = time.monotonic()
+        case_dir, err = _resolve_active_case(case_id)
+        if err or case_dir is None:
+            return {"error": err or "no active case"}
+        from nexus.langgraph.es_native import ESQueryError
+        from nexus.langgraph.es_native import es_sample as _es_sample
+
+        try:
+            result = _es_sample(
+                Path(case_dir).name, family=family, field=field, value=value, n=n,
+            )
+        except ESQueryError as exc:
+            return {"error": str(exc), "case_id": Path(case_dir).name}
+        result["provenance"] = {
+            "audit_id": audit.log(
+                tool="es_sample",
+                params={"case_id": Path(case_dir).name, "family": family,
+                        "field": field, "value": value[:120], "n": n},
+                result_summary={"matched": result.get("matched"),
+                                "sampled": result.get("sampled")},
+                elapsed_ms=round((time.monotonic() - started) * 1000, 1),
+            ),
+            "case_id": Path(case_dir).name,
+        }
+        return result

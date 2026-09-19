@@ -319,6 +319,7 @@ def build_http_app(server, host: str = "127.0.0.1", port: int = 4508):
 
     from nexus.dashboard.app import create_dashboard
     from nexus.portal import PortalRateLimitMiddleware, SecurityHeadersMiddleware
+    from nexus.portal.http_audit import HttpAuditMiddleware
 
     dashboard_security_headers = {
         "X-Frame-Options": "DENY",
@@ -346,6 +347,9 @@ def build_http_app(server, host: str = "127.0.0.1", port: int = 4508):
         routes=routes,
         lifespan=lifespan,
         middleware=[
+            # 4k.3: transport audit runs FIRST so even rate-limited/401
+            # requests are recorded with their real status.
+            Middleware(HttpAuditMiddleware),
             Middleware(
                 PortalRateLimitMiddleware,
                 path_prefix="/portal",
@@ -418,7 +422,20 @@ def serve(
         allowed = build_allowed_hosts(host)
         typer.echo(f"  MCP Host allowlist: {', '.join(allowed[:8])}{'…' if len(allowed) > 8 else ''}")
         typer.echo("  (extra hosts: NEXUS_MCP_ALLOWED_HOSTS=ip1,ip2)")
-        uvicorn.run(starlette_app, host=host, port=port)
+        log_config = None
+        try:
+            from nexus.portal.http_audit import http_log_config, http_logging_enabled
+
+            if http_logging_enabled():
+                cfg = http_log_config()
+                log_config = cfg
+                typer.echo(
+                    "  HTTP logs: "
+                    + str(Path(cfg["handlers"]["httpfile"]["filename"]))
+                )
+        except Exception as exc:  # noqa: BLE001 — logging setup must not block serve
+            typer.echo(f"  WARNING: HTTP file logging disabled: {exc}", err=True)
+        uvicorn.run(starlette_app, host=host, port=port, log_config=log_config)
     else:
         typer.echo("Starting DFIR-Nexus in stdio mode...", err=True)
         server.run()

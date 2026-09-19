@@ -1415,7 +1415,12 @@ INTERPRET_TOOL_NAMES = (
     # RAG methodology (required)
     "forensic_rag_search",
     "forensic_rag_status",
-    # evidence index — the LLM pulls its own rows beyond the query pack
+    # evidence index — Mode 2/3 use the ES-native surface (4k.5); the typed
+    # DSL tools stay for Mode 1 / deterministic paths.
+    "es_fields",
+    "es_search",
+    "es_aggregate",
+    "es_sample",
     "n4_query",
     "n4_sample",
     "n4_aggregate",
