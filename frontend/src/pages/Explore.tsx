@@ -63,6 +63,7 @@ export default function Explore() {
   const [hits, setHits] = useState<N4Hit[]>([]);
   const [count, setCount] = useState(0);
   const [countLowerBound, setCountLowerBound] = useState(false);
+  const [countExact, setCountExact] = useState(false);
   const [capReasons, setCapReasons] = useState<string[]>([]);
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -225,6 +226,7 @@ export default function Explore() {
       setHits(searchResult.hits);
       setCount(searchResult.count);
       setCountLowerBound(Boolean(searchResult.count_lower_bound));
+      setCountExact(Boolean(searchResult.count_exact));
       setCapReasons(searchResult.capped_reasons || []);
       setOffset(targetOffset);
       setHistogram(histResult.buckets || {});
@@ -665,12 +667,35 @@ export default function Explore() {
                 lower bound{capReasons.length > 0 ? ` — ${capReasons.join("; ")}` : ""}
               </span>
             )}
+            {countExact && count > PAGE_SIZE && (
+              <span style={{ fontSize: 10, color: "var(--text-muted)", marginLeft: 6 }}>
+                exact total — Export all for every row
+              </span>
+            )}
           </span>
           <div style={{ display: "flex", gap: 8 }}>
             {/* WP 4i.3: column picker — examiner chooses which parsed fields show */}
             {allFields.length > 0 && (
               <button className="btn btn-sm" onClick={() => setShowColPicker((v) => !v)}>
                 Columns ({visibleFields.length}/{allFields.length})
+              </button>
+            )}
+            {count > 0 && (
+              <button
+                className="btn btn-sm"
+                title="Download EVERY matching row as CSV — no result caps (exhaustive enumeration)"
+                onClick={() => {
+                  const p = new URLSearchParams();
+                  if (needles) p.set("needles", needles);
+                  if (family) p.set("family", family);
+                  if (hostFilter) p.set("host", hostFilter);
+                  if (timeRange.start) p.set("start", timeRange.start);
+                  if (timeRange.end) p.set("end", timeRange.end);
+                  p.set("format", "csv");
+                  window.open(`/portal/api/case/export?${p.toString()}`, "_blank");
+                }}
+              >
+                ⭳ Export all
               </button>
             )}
             {count > 0 && (

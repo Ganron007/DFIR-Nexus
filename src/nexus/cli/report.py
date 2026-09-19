@@ -196,6 +196,15 @@ def generate(
                 if not isinstance(timeline, list):
                     timeline = []
             ledger = load_case_ledger(candidate)
+            appendix_rows: list[dict] = []
+            try:
+                from nexus.integration.dfir_report import write_finding_appendices
+
+                appendix_rows = write_finding_appendices(candidate, findings)
+            except Exception:
+                appendix_rows = []
+            if appendix_rows:
+                typer.echo(f"Appendices: {len(appendix_rows)} finding CSV(s) in analysis/appendices/")
             if profile.lower() in ("dfir", "full", "narrative"):
                 report_text = build_dfir_markdown(
                     case_id=candidate.name,

@@ -11,6 +11,7 @@ import hashlib
 import logging
 import os
 import re
+from collections.abc import Iterator
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -21,10 +22,8 @@ log = logging.getLogger(__name__)
 from nexus.langgraph.query_pack import (
     _DATE_RE,
     _MAX_FILTERED_SCAN_BYTES,
-    _MAX_FULL_SCAN_BYTES,
     _MAX_LINE,
     _SKIP_SUFFIXES,
-    _family,
     _row_in_window,
     _scan_prio,
     finalize_hits,
@@ -39,11 +38,28 @@ _LARGE_NEEDLES = (
     "rundll32", "mshta", "lsass", "schtasks", "bitsadmin",
     "security.evtx",
 )
+def _env_index_int(name: str, default: int) -> int:
+    """Index-knob int; 0 means UNLIMITED (EH-11: no evidence loss by default).
+
+    Operators can reinstate guards with NEXUS_INDEX_MAX_DOCS /
+    NEXUS_INDEX_SMALL_DOCS / NEXUS_INDEX_PER_FAMILY_CAP /
+    NEXUS_INDEX_PER_FILE_CAP; when set, the caps are reported honestly in
+    ``es_index.json``/``index_state.json`` (``capped``/``caps``).
+    """
+    import os
+
+    try:
+        value = int(os.environ.get(name, "") or default)
+    except ValueError:
+        value = default
+    return max(0, value)
+
+
 _MAX_LARGE = _MAX_FILTERED_SCAN_BYTES
-_MAX_DOCS = 250_000
-_MAX_DOCS_SMALL = 150_000
-_MAX_DOCS_PER_FAMILY = 12_000
-_MAX_DOCS_PER_FILE = 80_000
+_MAX_DOCS = _env_index_int("NEXUS_INDEX_MAX_DOCS", 0)
+_MAX_DOCS_SMALL = _env_index_int("NEXUS_INDEX_SMALL_DOCS", 0)
+_MAX_DOCS_PER_FAMILY = _env_index_int("NEXUS_INDEX_PER_FAMILY_CAP", 0)
+_MAX_DOCS_PER_FILE = _env_index_int("NEXUS_INDEX_PER_FILE_CAP", 0)
 WILDCARD_IGNORE_ABOVE = 32766
 
 # Index schema version. v2 = structured docs (host/user/event_id + parsed
@@ -202,47 +218,74 @@ def _host_user_event(fields: dict[str, str]) -> tuple[str, str, str]:
     return host, user, event
 
 
-def iter_index_docs(
+def _index_rel(path: Path, root: Path) -> str:
+    return str(path.relative_to(root)).replace("\\", "/")
+
+
+def _open_text_auto(path: Path):
+    """Text open with transparent gzip decompression (EH-11)."""
+    if str(path).lower().endswith(".gz"):
+        import gzip
+
+        return gzip.open(path, "rt", encoding="utf-8", errors="replace")
+    return path.open(encoding="utf-8", errors="replace")
+
+
+def _index_header(path: Path) -> list[str] | None:
+    """Header columns when line 1 looks like CSV/TSV; else None."""
+    first = ""
+    try:
+        with _open_text_auto(path) as fh:
+            first = fh.readline().strip()
+    except OSError:
+        return None
+    if first and ("," in first or "\t" in first):
+        return [c.strip().lstrip("\ufeff").strip('"') for c in _split_row(first)]
+    return None
+
+
+def iter_index_doc_batches(
     case_dir: Path,
     extra_needles: list[str] | None = None,
     only_files: set[str] | None = None,
     stats: dict[str, Any] | None = None,
-) -> list[dict[str, Any]]:
-    """Documents for this case only. Large files (>80MB) keep matching rows.
+    batch_size: int | None = None,
+):
+    """Yield batches of index documents for EVERY row of EVERY indexable file.
 
-    ``only_files`` restricts the walk to specific doc ``file`` values (posix
-    rel paths) so the incremental reindex touches changed files only (B6).
+    EH-11: streaming (no full-list materialization), no per-file/family/total
+    caps unless the operator sets them (0 = unlimited), transparent .gz, and
+    no ">80MB matching-lines-only" reduction — every row is indexed.
     """
     case_dir = Path(case_dir)
-    extra = [t.lower() for t in (extra_needles or []) if t.strip()]
-
-    def _rel(path: Path, root: Path) -> str:
-        return str(path.relative_to(root)).replace("\\", "/")
-
-    def _wanted(path: Path, root: Path) -> bool:
-        return only_files is None or _rel(path, root) in only_files
-    docs: list[dict[str, Any]] = []
+    # ``extra_needles`` is accepted for API compatibility; EH-11 indexes all
+    # rows, so no matching-only filtering remains.
+    _ = extra_needles
+    batch = batch_size or _env_index_int("NEXUS_INDEX_BATCH", 4000) or 4000
+    caps: dict[str, Any] = {
+        "docs_capped": False,
+        "families_capped": [],
+        "files_capped": 0,
+        "large_files_skipped": 0,
+    }
     seen: set[str] = set()
+    family_counts: dict[str, int] = {}
+    out: list[dict[str, Any]] = []
+    total = 0
+    stop = False
 
-    def _add(
-        path: Path,
-        root: Path,
-        fam: str,
-        i: int,
-        line: str,
-        fields: dict[str, str] | None = None,
-    ) -> None:
+    def _add(path: Path, root: Path, fam: str, i: int, line: str,
+             fields: dict[str, str] | None = None) -> bool:
+        nonlocal total
         text = line.strip()[:_MAX_LINE]
-        # Full-text hash: a prefix would let two rows that differ only beyond
-        # char 80 collide and overwrite each other on re-index (EH-8).
         key = hashlib.sha1(
             f"{fam}\x00{path}\x00{i}\x00{text}".encode("utf-8", "replace")
         ).hexdigest()
         if key in seen:
-            return
+            return False
         seen.add(key)
-        rel = str(path.relative_to(root)).replace("\\", "/")
-        doc = {
+        rel = _index_rel(path, root)
+        doc: dict[str, Any] = {
             "case_id": case_dir.name,
             "family": fam,
             "file": rel,
@@ -261,81 +304,53 @@ def iter_index_docs(
         ts = _ts_from_line(line)
         if ts:
             doc["ts"] = ts
-        docs.append(doc)
+        out.append(doc)
+        total += 1
+        return True
 
-    header_cache: dict[str, list[str] | None] = {}
-
-    def _header_for(path: Path) -> list[str] | None:
-        key = str(path)
-        if key not in header_cache:
-            first = ""
-            try:
-                with path.open(encoding="utf-8", errors="replace") as fh:
-                    first = fh.readline().strip()
-            except OSError:
-                first = ""
-            if first and ("," in first or "\t" in first):
-                header_cache[key] = [
-                    c.strip().lstrip("\ufeff").strip('"') for c in _split_row(first)
-                ]
-            else:
-                header_cache[key] = None
-        return header_cache[key]
-
-    family_counts: dict[str, int] = {}
-    caps: dict[str, Any] = {
-        "docs_capped": False,
-        "families_capped": [],
-        "files_capped": 0,
-        "large_files_skipped": 0,
-    }
-
-    small_files = list(iter_extraction_files(case_dir))
-    small_files.sort(key=lambda item: _index_small_prio(item[0]))
-    for path, root, fam in small_files:
-        if len(docs) >= _MAX_DOCS_SMALL:
-            caps["docs_capped"] = True
-            break
-        if family_counts.get(fam, 0) >= _MAX_DOCS_PER_FAMILY:
+    file_stats: dict[str, Any] = {}
+    for path, root, fam in iter_extraction_files(case_dir, stats=file_stats):
+        if only_files is not None and _index_rel(path, root) not in only_files:
+            continue
+        if _MAX_DOCS_PER_FAMILY and family_counts.get(fam, 0) >= _MAX_DOCS_PER_FAMILY:
             if fam not in caps["families_capped"]:
                 caps["families_capped"].append(fam)
             continue
-        if not _wanted(path, root):
-            continue
-        header = _header_for(path)
+        header = _index_header(path)
         try:
-            with path.open(encoding="utf-8", errors="replace") as fh:
+            with _open_text_auto(path) as fh:
                 for i, line in enumerate(fh, start=1):
                     if i == 1 and ("," in line or "\t" in line):
                         continue
-                    if family_counts.get(fam, 0) >= _MAX_DOCS_PER_FAMILY:
+                    if _MAX_DOCS and total >= _MAX_DOCS:
+                        caps["docs_capped"] = True
+                        stop = True
                         break
-                    before = len(docs)
-                    _add(path, root, fam, i, line, _row_fields(line, header))
-                    if len(docs) > before:
-                        family_counts[fam] = family_counts.get(fam, 0) + 1
-                    if i >= _MAX_DOCS_PER_FILE:
+                    if _MAX_DOCS_PER_FILE and (i - 1) >= _MAX_DOCS_PER_FILE:
                         caps["files_capped"] += 1
                         break
-                    if len(docs) >= _MAX_DOCS_SMALL:
-                        caps["docs_capped"] = True
-                        break
+                    if _add(path, root, fam, i, line, _row_fields(line, header)):
+                        family_counts[fam] = family_counts.get(fam, 0) + 1
+                    if len(out) >= batch:
+                        yield out
+                        out = []
         except OSError:
             continue
-
+        if stop:
+            break
     # Imported non-host evidence (network/cloud/TI): clean searchable rows from
-    # the case artifact store, family = source (suricata/zeek/...). The raw
-    # store JSONL is never indexed — this projection is (CSV-scanner parity).
-    from nexus.langgraph.query_pack import iter_ingest_records
-
+    # the case artifact store, family = source. The raw store JSONL is never
+    # indexed — this projection is (CSV-scanner parity).
     ingest_store = case_dir / "ingest" / "artifacts.jsonl"
     ingest_wanted = only_files is None or "ingest/artifacts.jsonl" in only_files
-    if ingest_store.is_file() and ingest_wanted:
+    if ingest_store.is_file() and ingest_wanted and not stop:
+        from nexus.langgraph.query_pack import iter_ingest_records
+
         for n, fam, text, _ts, record in iter_ingest_records(case_dir):
-            if len(docs) >= _MAX_DOCS:
+            if _MAX_DOCS and total >= _MAX_DOCS:
                 caps["docs_capped"] = True
                 break
-            if family_counts.get(fam, 0) >= _MAX_DOCS_PER_FAMILY:
+            if _MAX_DOCS_PER_FAMILY and family_counts.get(fam, 0) >= _MAX_DOCS_PER_FAMILY:
                 if fam not in caps["families_capped"]:
                     caps["families_capped"].append(fam)
                 continue
@@ -349,57 +364,33 @@ def iter_index_docs(
                 value = record.get(key_name)
                 if value not in (None, "", []):
                     art_fields[key_name] = str(value)[:_MAX_INDEX_FIELD_VALUE]
-            before = len(docs)
-            _add(ingest_store, case_dir, fam, n, text, art_fields or None)
-            if len(docs) > before:
+            if _add(ingest_store, case_dir, fam, n, text, art_fields or None):
                 family_counts[fam] = family_counts.get(fam, 0) + 1
-
-    # Hayabusa / MFT / EVTX above the small-file cap: index matching rows only.
-    # Always reserved — small CSVs must not consume the whole 250k budget.
-    from nexus.langgraph.pipeline_runs import resolve_tools_extractions
-
-    extractions = resolve_tools_extractions(case_dir)
-    for root in (extractions, extractions.parent / "sift" / "extractions"):
-        if not root.is_dir() or len(docs) >= _MAX_DOCS:
-            break
-        files: list[Path] = []
-        for pat in ("*.csv", "*.txt"):
-            files.extend(root.rglob(pat))
-        for path in sorted(set(files), key=_index_large_prio):
-            if path.name.startswith("_") or path.name.endswith(_SKIP_SUFFIXES):
-                continue
-            if not _wanted(path, root):
-                continue
-            try:
-                size = path.stat().st_size
-            except OSError:
-                continue
-            if size > _MAX_LARGE:
-                caps["large_files_skipped"] += 1
-                continue
-            if size <= _MAX_FULL_SCAN_BYTES:
-                continue
-            fam = _family(path, root)
-            kept = 0
-            try:
-                with path.open(encoding="utf-8", errors="replace") as fh:
-                    for i, line in enumerate(fh, start=1):
-                        low = line.lower()
-                        if not _should_keep_large_line(low, extra):
-                            continue
-                        _add(path, root, fam, i, line)
-                        kept += 1
-                        if kept >= _MAX_DOCS_PER_FILE:
-                            caps["files_capped"] += 1
-                            break
-                        if len(docs) >= _MAX_DOCS:
-                            caps["docs_capped"] = True
-                            break
-            except OSError:
-                continue
+            if len(out) >= batch:
+                yield out
+                out = []
     if stats is not None:
         stats.update(caps)
-    return docs[:_MAX_DOCS]
+    if out:
+        yield out
+
+
+def iter_index_docs(
+    case_dir: Path,
+    extra_needles: list[str] | None = None,
+    only_files: set[str] | None = None,
+    stats: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Collecting wrapper over ``iter_index_doc_batches`` (tests/small callers).
+
+    Production paths stream batches — do not call this on very large cases.
+    """
+    docs: list[dict[str, Any]] = []
+    for batch in iter_index_doc_batches(
+        case_dir, extra_needles, only_files=only_files, stats=stats
+    ):
+        docs.extend(batch)
+    return docs
 
 
 def _bulk_ndjson(index: str, docs: list[dict[str, Any]]) -> str:
@@ -644,10 +635,13 @@ def index_case(
                         f"incremental delete failed: {cleared.status_code} {cleared.text[:300]}"
                     )
             cap_stats: dict[str, Any] = {}
-            docs = iter_index_docs(
-                case_dir, extra_needles, only_files=changed, stats=cap_stats
-            )
-            errors = _bulk_insert(client, name, docs)
+            docs = 0
+            errors = 0
+            for batch_docs in iter_index_doc_batches(
+                case_dir, only_files=changed, stats=cap_stats
+            ):
+                docs += len(batch_docs)
+                errors += _bulk_insert(client, name, batch_docs)
             refreshed = client.post(f"/{name}/_refresh")
             if refreshed.status_code >= 400:
                 raise RuntimeError(
@@ -676,7 +670,7 @@ def index_case(
         }
     else:
         cap_stats = {}
-        docs = iter_index_docs(case_dir, extra_needles, stats=cap_stats)
+        docs_total = 0
         with _client() as client:
             cleared = client.post(
                 f"/{name}/_delete_by_query",
@@ -687,7 +681,14 @@ def index_case(
                 raise RuntimeError(
                     f"index clear failed: {cleared.status_code} {cleared.text[:300]}"
                 )
-            errors = _bulk_insert(client, name, docs)
+            errors = 0
+            # EH-11: stream batches — a million-row case must not be
+            # materialized in memory before the first bulk request.
+            for batch_docs in iter_index_doc_batches(case_dir, stats=cap_stats):
+                docs_total += len(batch_docs)
+                errors += _bulk_insert(client, name, batch_docs)
+                if docs_total % 50_000 < len(batch_docs):
+                    log.info("indexed %d docs…", docs_total)
             refreshed = client.post(f"/{name}/_refresh")
             if refreshed.status_code >= 400:
                 raise RuntimeError(
@@ -695,7 +696,7 @@ def index_case(
                 )
         meta = {
             "index": name,
-            "docs": len(docs),
+            "docs": docs_total,
             "errors": errors,
             "case_id": case_dir.name,
             "url": es_url(),
@@ -1349,3 +1350,250 @@ def query_index(
             stats["hits_capped"] = True
     return finalize_hits(hits, terms, priority_terms)
 
+def _index_window_filter(window) -> list[dict[str, Any]]:
+    """Same intake-window filter as query_index (shared by count/iter)."""
+    start, end = window or (None, None)
+    if start is None or end is None:
+        return []
+    return [{
+        "bool": {
+            "should": [
+                {"range": {"ts": {"gte": start.isoformat(), "lte": end.isoformat()}}},
+                {"bool": {"must_not": {"exists": {"field": "ts"}}}},
+            ],
+            "minimum_should_match": 1,
+        }
+    }]
+
+
+def _index_search_fields(case_id: str) -> bool:
+    with contextlib.suppress(Exception):
+        return bool(fields_property_names(case_id))
+    return False
+
+
+def _shape_es_hit(
+    row: dict[str, Any],
+    start,
+    end,
+    needles: list[str],
+    strong: set[str],
+    query: Any | None,
+    match_all: bool,
+    search_fields: bool,
+    seen: set[tuple[str, str]],
+) -> dict[str, Any] | None:
+    """One ES source row -> N4 hit, replicating query_index semantics exactly."""
+    src = row.get("_source") or {}
+    text = str(src.get("text") or "")
+    if start is not None and end is not None:
+        if _DATE_RE.search(text):
+            if not _row_in_window(text, start, end):
+                return None
+        else:
+            ts_raw = src.get("ts")
+            if ts_raw not in (None, ""):
+                try:
+                    from datetime import UTC as _UTC
+
+                    dt = datetime.fromisoformat(str(ts_raw).replace("Z", "+00:00"))
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=_UTC)
+                    if not (start <= dt <= end):
+                        return None
+                except ValueError:
+                    pass
+    low = text.lower()
+    fam = str(src.get("family") or "other")
+    file_rel = str(src.get("file") or "")
+    fields_map = src.get("fields") or {}
+    fields_low = ""
+    if search_fields and isinstance(fields_map, dict) and fields_map:
+        fields_low = " ".join(str(v) for v in fields_map.values() if v is not None)
+    if query is not None:
+        from nexus.langgraph.query_dsl import row_matches
+
+        ok, matched = row_matches(
+            query, line_lower=low, family=fam, file_rel=file_rel,
+            extra_text=fields_low,
+        )
+        if not ok:
+            return None
+        matched = matched[:6]
+    else:
+        matched = [
+            t for t in needles
+            if needle_in_text(low, t) or (fields_low and needle_in_text(fields_low.lower(), t))
+        ]
+        if not matched:
+            if not match_all:
+                return None
+            matched = ["*"]
+    key = (file_rel, str(src.get("line") or 0))
+    if key in seen:
+        return None
+    seen.add(key)
+    hit: dict[str, Any] = {
+        "family": fam,
+        "file": key[0],
+        "line": key[1],
+        "terms": ",".join(matched[:6]),
+        "terms_list": matched[:6],
+        "text": text[:_MAX_LINE],
+    }
+    for key_name in ("host", "user", "event_id", "ts"):
+        value = src.get(key_name)
+        if value not in (None, ""):
+            hit[key_name] = value
+    return hit
+
+
+def _index_query_terms(
+    needles: list[str], strong: set[str], query: Any | None,
+    match_all: bool, search_fields: bool,
+) -> list[dict[str, Any]]:
+    """Query fragments for chunked term scans (one per chunk) or the DSL."""
+    if query is not None and not (hasattr(query, "is_empty") and query.is_empty()):
+        return [ast_to_es(query, search_fields=search_fields)]
+    if not needles:
+        return [{"match_all": {}}]
+    return [
+        ast_to_es(None, terms=needles[i:i + _MAX_ES_TERMS_PER_QUERY],
+                  search_fields=search_fields)
+        for i in range(0, len(needles), _MAX_ES_TERMS_PER_QUERY)
+    ]
+
+
+def iter_index_hits(
+    case_dir: Path,
+    terms: list[str],
+    window: tuple[datetime | None, datetime | None],
+    priority_terms: list[str] | None = None,
+    query: Any | None = None,
+    match_all: bool = False,
+    page: int = 1000,
+    stats: dict[str, Any] | None = None,
+) -> Iterator[dict[str, Any]]:
+    """Stream EVERY matching ES row (EH-12) — no 400-row search cap.
+
+    Pages with ``search_after`` over ``_doc`` so a 10M-hit case exports/
+    counts without materializing or truncating. Chunk failures raise in
+    explicit-ES mode; in auto mode the caller decides the fallback.
+    """
+    case_dir = Path(case_dir)
+    name = index_name(case_dir.name)
+    needles = [t.lower() for t in terms if t.strip()]
+    if not needles and query is None and not match_all:
+        return
+    from nexus.langgraph.query_pack import _strong_set
+
+    strong = _strong_set(priority_terms if priority_terms is not None else terms)
+    start, end = window or (None, None)
+    filt = _index_window_filter(window)
+    size = max(100, min(int(page or 1000), 5000))
+    with _client() as client:
+        head = client.head(f"/{name}")
+        if head.status_code != 200:
+            raise IndexMissing(f"no index {name}")
+        search_fields = _index_search_fields(case_dir.name)
+        seen: set[tuple[str, str]] = set()
+        chunks = _index_query_terms(needles, strong, query, match_all, search_fields)
+        for base in chunks:
+            q: dict[str, Any] = base
+            if filt:
+                q = {"bool": {"must": [base], "filter": filt}}
+            search_after: list[Any] | None = None
+            while True:
+                body: dict[str, Any] = {
+                    "size": size,
+                    "query": q,
+                    "sort": ["_doc"],
+                    "track_total_hits": False,
+                }
+                if search_after:
+                    body["search_after"] = search_after
+                r = client.post(f"/{name}/_search", json=body)
+                if r.status_code >= 400:
+                    # An export/appendix that silently drops a chunk is
+                    # worse than an error the operator can act on (EH-12).
+                    raise RuntimeError(
+                        f"exhaustive search failed: {r.status_code} {r.text[:200]}"
+                    )
+                rows = r.json().get("hits", {}).get("hits", [])
+                if not rows:
+                    break
+                for row in rows:
+                    hit = _shape_es_hit(
+                        row, start, end, needles, strong, query, match_all,
+                        search_fields, seen,
+                    )
+                    if hit is not None:
+                        yield hit
+                search_after = rows[-1].get("sort")
+                if len(rows) < size:
+                    break
+        if stats is not None:
+            stats["backend"] = "elasticsearch"
+            stats["exhaustive"] = True
+
+
+def count_index(
+    case_dir: Path,
+    terms: list[str],
+    window: tuple[datetime | None, datetime | None],
+    priority_terms: list[str] | None = None,
+    query: Any | None = None,
+    match_all: bool = False,
+    stats: dict[str, Any] | None = None,
+) -> tuple[int, bool]:
+    """Exact matched-row count via ES ``_count`` (EH-12). ``(count, exact)``.
+
+    Term mode counts per chunk (``_count`` has the same clause limits as
+    search); a still-failing chunk is recorded in ``stats['terms_failed']``
+    and makes the result a lower bound rather than a silently wrong number.
+    """
+    case_dir = Path(case_dir)
+    name = index_name(case_dir.name)
+    needles = [t.lower() for t in terms if t.strip()]
+    if not needles and query is None and not match_all:
+        return 0, True
+    from nexus.langgraph.query_pack import _strong_set
+
+    strong = _strong_set(priority_terms if priority_terms is not None else terms)
+    filt = _index_window_filter(window)
+    total = 0
+    exact = True
+    with _client() as client:
+        head = client.head(f"/{name}")
+        if head.status_code != 200:
+            raise IndexMissing(f"no index {name}")
+        search_fields = _index_search_fields(case_dir.name)
+        chunks = _index_query_terms(needles, strong, query, match_all, search_fields)
+        queue = list(chunks)
+        while queue:
+            base = queue.pop(0)
+            q: dict[str, Any] = base
+            if filt:
+                q = {"bool": {"must": [base], "filter": filt}}
+            r = client.post(f"/{name}/_count", json={"query": q})
+            if r.status_code >= 400:
+                needle_chunk = base.get("bool", {}).get("should") or []
+                if len(needle_chunk) > 8:
+                    # Split and retry — never drop clauses.
+                    mid = len(needle_chunk) // 2
+                    queue.insert(0, {"bool": {"should": needle_chunk[mid:],
+                                              "minimum_should_match": 1}})
+                    queue.insert(0, {"bool": {"should": needle_chunk[:mid],
+                                              "minimum_should_match": 1}})
+                    continue
+                exact = False
+                if stats is not None:
+                    stats.setdefault("terms_failed", []).append(
+                        r.text[:120] or str(r.status_code)
+                    )
+                continue
+            total += int(r.json().get("count") or 0)
+    if stats is not None:
+        stats["backend"] = "elasticsearch"
+        stats["count_exact"] = exact
+    return total, exact

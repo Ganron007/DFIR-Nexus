@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from nexus.ingest.base import Importer, ImporterError
+from nexus.ingest.base import Importer
 from nexus.ingest.schemas import (
     Artifact,
     ArtifactSource,
@@ -52,15 +52,42 @@ class WiresharkImporter(Importer):
         )
 
     def parse(self, path: Path) -> Iterator[Artifact]:
-        """Yield one Artifact per Wireshark packet."""
-        try:
-            with path.open("r", encoding="utf-8", errors="replace") as f:
-                data = json.load(f)
-        except json.JSONDecodeError as e:
-            raise ImporterError(f"Invalid JSON in {path.name}: {e}") from e
-        packets = self._extract_packets(data)
-        for packet in packets:
-            yield self._packet_to_artifact(packet)
+        """Yield one Artifact per Wireshark packet.
+
+        Accepts classic ``-T json`` (a JSON array / object) and tshark's
+        ``-T ek`` NDJSON export (EH-14: one object per line, stream-parsed so
+        a multi-GB capture does not need to fit in memory).
+        """
+        with path.open("r", encoding="utf-8", errors="replace") as f:
+            head = f.read(1)
+            f.seek(0)
+            if head.strip() in {"[", "{"}:
+                try:
+                    data = json.load(f)
+                except json.JSONDecodeError:
+                    f.seek(0)
+                else:
+                    packets = self._extract_packets(data)
+                    if packets:
+                        for packet in packets:
+                            yield self._packet_to_artifact(packet)
+                        return
+            skipped = 0
+            for line in f:
+                line = line.strip()
+                if not line or not line.startswith("{"):
+                    continue
+                try:
+                    packet = json.loads(line)
+                except json.JSONDecodeError:
+                    skipped += 1
+                    continue
+                if isinstance(packet, dict):
+                    yield self._packet_to_artifact(packet)
+            if skipped:
+                log.warning(
+                    "%s: skipped %d malformed NDJSON packet line(s)", path.name, skipped
+                )
 
     @staticmethod
     def _extract_packets(data: Any) -> list[dict[str, Any]]:

@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-
 # ── ES path: terms_list + merged-cap honesty ───────────────────────────
 
 class _Resp:
@@ -99,10 +98,13 @@ def test_n4_query_reports_lower_bound(tmp_path):
     )
     (case / "CASE.yaml").write_text("intake:\n  query_extra: rdp\n", encoding="utf-8")
     result = n4_query(case, "rdp", limit=400, backend="csv")
-    # one file × 450 matching rows → per-file cap keeps 40; the count is a
-    # LOWER BOUND and the reasons say why (was silent before EH-1 re-audit)
-    assert result["count"] == 40
-    assert result["count_lower_bound"] is True
+    # one file × 450 matching rows → per-file cap keeps 40 rendered rows, but
+    # EH-12 makes the TOTAL exact (a second streaming pass) instead of a
+    # silent lower bound; the cap reasons still explain the capped page.
+    assert len(result["hits"]) == 40
+    assert result["count"] == 450
+    assert result["count_exact"] is True
+    assert result["count_lower_bound"] is False
     assert result["capped_reasons"]
     assert result["stats"]["files_capped"] == 1
 
@@ -131,8 +133,9 @@ def test_timeline_merge_keeps_ts_flags():
 # ── from_dict preserves ingested_at ────────────────────────────────────
 
 def test_artifact_from_dict_preserves_ingested_at():
-    from nexus.ingest.schemas import Artifact, ArtifactSource, ArtifactType, Severity
     from datetime import UTC, datetime
+
+    from nexus.ingest.schemas import Artifact, ArtifactSource, ArtifactType, Severity
 
     art = Artifact(
         id="a", artifact_type=ArtifactType.NETWORK, source=ArtifactSource.ZEEK,

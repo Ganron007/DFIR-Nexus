@@ -255,6 +255,7 @@ export interface SearchResponse {
   count: number;
   /** True when a cap was hit — ``count`` is a LOWER BOUND (EH-1). */
   count_lower_bound?: boolean;
+  count_exact?: boolean;
   capped_reasons?: string[];
   total_before_family_filter: number;
   backend: string;

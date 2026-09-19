@@ -46,7 +46,13 @@ def convert_pcap_to_json(
     max_packets: int = 0,
     timeout: int | None = None,
 ) -> None:
-    """Run ``tshark -T json`` into ``out_path``; raise ImporterError on failure."""
+    """Run ``tshark -T ek`` into ``out_path`` (NDJSON); raise on failure.
+
+    EH-14: ``-T ek`` streams one JSON object per line, so a multi-GB capture
+    never has to fit in memory — the old ``-T json`` produced one giant array
+    that ``json.load`` blew up on. The streamed file is parsed line-by-line by
+    the Wireshark importer, which still accepts classic ``-T json`` exports.
+    """
     tshark = find_tshark()
     if not tshark:
         raise ImporterError(
@@ -55,7 +61,7 @@ def convert_pcap_to_json(
         )
     from nexus.config import settings
 
-    cmd = [tshark, "-r", str(src), "-T", "json"]
+    cmd = [tshark, "-r", str(src), "-T", "ek"]
     if display_filter:
         cmd += ["-Y", display_filter]
     if max_packets and max_packets > 0:
@@ -76,6 +82,11 @@ def convert_pcap_to_json(
     if proc.returncode != 0:
         stderr = proc.stderr.decode("utf-8", errors="replace")[:300]
         raise ImporterError(f"tshark failed: {stderr}")
+
+
+# EH-14: explicit name for new callers; the historic name stays as the
+# implementation (tests and tools monkeypatch/import it).
+convert_pcap_to_ek = convert_pcap_to_json
 
 
 class PcapImporter(Importer):
@@ -111,8 +122,8 @@ class PcapImporter(Importer):
         from nexus.ingest.network.wireshark import WiresharkImporter
 
         with tempfile.TemporaryDirectory(prefix="nexus-pcap-") as tmp:
-            converted = Path(tmp) / f"{path.stem}.tshark.json"
-            log.info("pcap: converting %s via tshark -> %s", path.name, converted.name)
+            converted = Path(tmp) / f"{path.stem}.tshark.jsonl"
+            log.info("pcap: streaming %s via tshark -T ek -> %s", path.name, converted.name)
             convert_pcap_to_json(
                 path, converted, max_packets=max_packets, timeout=timeout,
             )

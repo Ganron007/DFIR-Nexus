@@ -1538,6 +1538,28 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
     # Orient → Verify ×N → Reconcile, with artifacts under
     # analysis/interpret_rounds/. The ReAct single pass below stays as the
     # degraded/fallback path.
+    # EH-13: Mode 2/3 promise ES-backed evidence. If the backend fell back
+    # to the CSV pack (ES lost mid-run, index gone), STOP here — a silent CSV
+    # interpretation is a different analysis with different coverage.
+    if (
+        case_dir_for_ctx is not None
+        and str(state.get("pipeline_mode") or "") in {"coverage", "design"}
+        and digest
+        and str(digest.get("backend") or "") != "elasticsearch"
+    ):
+        fallback = str((digest.get("scan_stats") or {}).get("fallback_reason") or
+                       "Elasticsearch unavailable")
+        emit_stage(state, "interpret", "error", f"ES required: {fallback}")
+        log.error("Interpret refused: %s", fallback)
+        return {
+            "error": (
+                f"Mode 2/3 requires Elasticsearch — N4 backend fell back to the "
+                f"CSV pack ({fallback}). No analysis was staged; restore ES and "
+                "re-run (nexus index rebuild if the index is missing)."
+            ),
+            "step_log": [f"interpret refused (no ES): {fallback}"],
+        }
+
     if case_dir_for_ctx is not None and digest:
         async def _execute_tool(name: str, payload: dict) -> dict:
             tool = tools.get(name)
@@ -1922,6 +1944,11 @@ def _merge_n4_uncovered(llm: list[dict], n4: list[dict]) -> list[dict]:
 async def stage_findings(state: InvestigationState, tools: dict, model=None) -> dict:
     """Stage findings as DRAFT from hunt agent output."""
     from nexus.langgraph.hunt_parser import parse_hunt_candidates
+
+    # EH-13: an upstream hard error (e.g. interpret refused without ES) must
+    # not be silently salvaged into CSV-derived findings.
+    if state.get("error"):
+        return {"step_log": [f"stage_findings skipped: {state['error']}"]}
 
     finding_tool = tools.get("record_finding")
     timeline_tool = tools.get("record_timeline_event")

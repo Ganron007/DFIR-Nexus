@@ -609,6 +609,84 @@ def load_case_ledger(case_dir) -> list[dict[str, Any]]:
     return []
 
 
+def write_finding_appendices(case_dir: Path, findings: list[dict]) -> list[dict]:
+    """Write an exhaustive CSV appendix per APPROVED finding (EH-12).
+
+    The narrative shows sampled rows; the appendix is EVERY row matching the
+    finding's cited needles (per family), streamed from the same retrieval
+    backends with no result caps. "No direct evidence hits sidelined" is
+    enforced here, not by promising the sample was representative.
+    Returns [{finding_id, path, rows, needles}] for the report section.
+    """
+    import csv
+
+    from nexus.langgraph.query_pack import (
+        iter_all_hits,
+        load_case_intake,
+        parse_intake_window,
+    )
+
+    case_dir = Path(case_dir)
+    out_dir = case_dir / "analysis" / "appendices"
+    written: list[dict] = []
+    window = parse_intake_window(load_case_intake(case_dir))
+    for idx, finding in enumerate(findings or []):
+        status = str(
+            finding.get("status") or finding.get("approval_state") or ""
+        ).upper()
+        if status != "APPROVED":
+            continue
+        evidence = finding.get("evidence") or []
+        if not isinstance(evidence, list):
+            continue
+        needles: list[str] = []
+        families: set[str] = set()
+        for row in evidence:
+            if not isinstance(row, dict):
+                continue
+            fam = str(row.get("family") or "").strip().lower()
+            if fam:
+                families.add(fam)
+            terms = row.get("terms_list")
+            if not isinstance(terms, list):
+                terms = [p for p in str(row.get("terms") or "").split(",")]
+            for term in terms:
+                clean = str(term).strip().lower()
+                if clean and clean != "*" and clean not in needles:
+                    needles.append(clean)
+        if not needles:
+            continue
+        fid = str(finding.get("id") or f"finding-{idx + 1}")
+        safe = re.sub(r"[^A-Za-z0-9._-]+", "_", fid)[:80]
+        path = out_dir / f"{safe}-rows.csv"
+        rows_written = 0
+        try:
+            out_dir.mkdir(parents=True, exist_ok=True)
+            with path.open("w", encoding="utf-8", newline="") as fh:
+                writer = csv.writer(fh)
+                writer.writerow(["family", "file", "line", "terms", "text"])
+                for hit in iter_all_hits(
+                    case_dir, needles[:40], window, priority_terms=needles[:40],
+                ):
+                    if families and str(hit.get("family") or "").lower() not in families:
+                        continue
+                    writer.writerow([
+                        hit.get("family", ""), hit.get("file", ""),
+                        hit.get("line", ""), hit.get("terms", ""),
+                        hit.get("text", ""),
+                    ])
+                    rows_written += 1
+        except Exception:  # noqa: BLE001 — a report must still generate
+            continue
+        written.append({
+            "finding_id": fid,
+            "path": f"analysis/appendices/{path.name}",
+            "rows": rows_written,
+            "needles": needles[:40],
+        })
+    return written
+
+
 def build_dfir_markdown(
     *,
     case_id: str,
@@ -1193,6 +1271,26 @@ def build_dfir_markdown(
                 tids = d.get("technique_ids") or []
                 extra = f" ({', '.join(tids[:3])})" if tids else ""
                 lines.append(f"- {title}{extra}")
+        lines.append("")
+
+    app_dir = (Path(case_dir) / "analysis" / "appendices") if case_dir else None
+    appendix_files = sorted(app_dir.glob("*-rows.csv")) if app_dir and app_dir.is_dir() else []
+    if appendix_files:
+        lines.append("## Evidence Appendices")
+        lines.append("")
+        lines.append(
+            "Complete matched-row dumps per approved finding (no result caps — "
+            "the narrative shows samples, these are every matching row)."
+        )
+        lines.append("")
+        for ap in appendix_files:
+            rows_n = 0
+            try:
+                with ap.open(encoding="utf-8", errors="replace") as fh:
+                    rows_n = max(0, sum(1 for _ in fh) - 1)
+            except OSError:
+                pass
+            lines.append(f"- `analysis/appendices/{ap.name}` — {rows_n} rows")
         lines.append("")
 
     lines.append("## Evidence Registry")

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
 import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -16,15 +17,46 @@ from typing import Any
 from nexus.integration.evidence_table import evidence_rows_from_n4_hits
 from nexus.langgraph.audit_linkage import _FAMILY_TO_TOOL, linked_audit_ids
 
-_MAX_HITS_PER_FILE = 40
-_MAX_HITS_TOTAL = 400
 _MAX_LINE = 4000
 _MAX_MD = 60000
 # Full-row index/scan of small CSVs. Hayabusa/USN live above this;
 # N4 still needle-scans them up to _MAX_FILTERED_SCAN_BYTES.
-_MAX_FULL_SCAN_BYTES = 80 * 1024 * 1024
-_MAX_FILTERED_SCAN_BYTES = 400 * 1024 * 1024
-_MAX_FILES_PER_FAMILY = 120
+def _env_mb(name: str, default_mb: int) -> int:
+    """MB-valued env knob; 0 means UNLIMITED (EH-11: no silent evidence loss)."""
+    import os
+
+    try:
+        value = int(os.environ.get(name, "") or default_mb)
+    except ValueError:
+        value = default_mb
+    return max(0, value) * 1024 * 1024
+
+def _env_int(name: str, default: int) -> int:
+    """Count-valued env knob (result caps). EH-12: retunable, defaults kept."""
+    import os
+
+    try:
+        value = int(os.environ.get(name, "") or default)
+    except ValueError:
+        value = default
+    return max(0, value)
+
+log = logging.getLogger(__name__)
+
+# EH-12: every result cap is now operator-tunable; 0 = unlimited. The
+# defaults stay modest for interactive search — report/export paths
+# use the exhaustive `iter_all_hits`, never these caps, so no evidence
+# is sidelined. Caps that do trigger are reported by _cap_reasons.
+_MAX_HITS_PER_FILE = _env_int("NEXUS_N4_HITS_PER_FILE", 40)
+_MAX_HITS_TOTAL = _env_int("NEXUS_N4_MAX_HITS", 400)
+
+
+
+# 0 = index/scan everything. Operators who need a guard set NEXUS_SCAN_MAX_FILE_MB
+# / NEXUS_N4_MAX_FILE_MB; the old 80MB/400MB skips silently dropped evidence.
+_MAX_FULL_SCAN_BYTES = _env_mb("NEXUS_SCAN_MAX_FILE_MB", 0)
+_MAX_FILTERED_SCAN_BYTES = _env_mb("NEXUS_N4_MAX_FILE_MB", 0)
+_MAX_FILES_PER_FAMILY = _env_int("NEXUS_N4_FILES_PER_FAMILY", 120)
 _DATE_RE = re.compile(r"\b(20\d{2}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2}:\d{2}))?")
 _EXE_RE = re.compile(r"\b[\w.-]+\.exe\b", re.I)
 _TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._\\:-]{2,}")
@@ -62,7 +94,7 @@ _SCAN_FIRST = (
     "rbcmd", "srum", "jlecmd", "lecmd", "wxtcmd",
 )
 _SKIP_SUFFIXES = ("_stdout.txt", "_stderr.txt", "_meta.json")
-_MAX_COLLECT_PER_FILE = 200
+_MAX_COLLECT_PER_FILE = _env_int("NEXUS_N4_COLLECT_PER_FILE", 200)
 _USB_TERMS = frozenset({"usbstor", "mountpoints2"})
 _CLOUD_TERMS = frozenset({"googledrive", "drivefs", "my drive"})
 # High-volume in host CSVs; keep some hits but never ahead of wipe/PST/C2 terms.
@@ -110,6 +142,15 @@ _STRONG_RX: tuple[re.Pattern[str], ...] = (
 def _is_structurally_strong(term: str) -> bool:
     t = (term or "").strip().lower()
     return bool(t) and any(rx.search(t) for rx in _STRONG_RX)
+
+
+def _open_text(path: Path):
+    """Open a text file, transparently decompressing .gz (EH-11)."""
+    if str(path).lower().endswith(".gz"):
+        import gzip
+
+        return gzip.open(path, "rt", encoding="utf-8", errors="replace")
+    return path.open(encoding="utf-8", errors="replace")
 
 
 def needle_in_text(low: str, term: str) -> bool:
@@ -412,7 +453,7 @@ def _hits_from_file(
     strong_n = 0
     weak_n = 0
     skipped_cap = 0
-    with path.open(encoding="utf-8", errors="replace") as fh:
+    with _open_text(path) as fh:
         for i, line in enumerate(fh, start=1):
             if i == 1 and ("," in line or "\t" in line):
                 continue
@@ -489,12 +530,15 @@ def render_ingest_row(d: dict[str, Any], max_len: int = _MAX_LINE) -> str:
     return " ".join(p for p in parts if p).strip()[:max_len]
 
 
-def iter_ingest_records(case_dir: Path) -> list[tuple[int, str, str, str, dict[str, Any]]]:
-    """(line_no, family(source), searchable text, ts, record) per artifact."""
+def iter_ingest_records(case_dir: Path):
+    """Yield (line_no, family, searchable text, ts, record) per artifact.
+
+    Generator (EH-11): a million-row imported store must not be materialized
+    as a list just to scan it.
+    """
     path = Path(case_dir) / "ingest" / "artifacts.jsonl"
     if not path.is_file():
-        return []
-    rows: list[tuple[int, str, str, str, dict[str, Any]]] = []
+        return
     try:
         with path.open(encoding="utf-8", errors="replace") as fh:
             for n, line in enumerate(fh, start=1):
@@ -508,15 +552,15 @@ def iter_ingest_records(case_dir: Path) -> list[tuple[int, str, str, str, dict[s
                 if not isinstance(d, dict):
                     continue
                 fam = str(d.get("source") or "ingest").strip().lower() or "ingest"
-                rows.append((n, fam, render_ingest_row(d), str(d.get("timestamp") or ""), d))
+                yield (n, fam, render_ingest_row(d), str(d.get("timestamp") or ""), d)
     except OSError:
-        return []
-    return rows
+        return
 
 
-def iter_ingest_rows(case_dir: Path) -> list[tuple[int, str, str, str]]:
-    """(line_no, family(source), searchable text, ts) per imported artifact."""
-    return [(n, fam, text, ts) for n, fam, text, ts, _rec in iter_ingest_records(case_dir)]
+def iter_ingest_rows(case_dir: Path):
+    """Yield (line_no, family, searchable text, ts) per imported artifact."""
+    for n, fam, text, ts, _rec in iter_ingest_records(case_dir):
+        yield (n, fam, text, ts)
 
 
 def _hits_from_ingest(
@@ -595,7 +639,10 @@ def iter_extraction_files(
     a skipped file must never later read as "no hits".
     """
     case_dir = Path(case_dir)
+    # 0/None = UNLIMITED (EH-11): the old default silently skipped evidence.
     cap = _MAX_FULL_SCAN_BYTES if max_bytes is None else max_bytes
+    if cap is not None and cap <= 0:
+        cap = 0
     file_cap = _MAX_FILES_PER_FAMILY if max_files_per_family is None else max_files_per_family
     out: list[tuple[Path, Path, str]] = []
     fam_files: dict[str, int] = {}
@@ -618,9 +665,12 @@ def iter_extraction_files(
         if not root.is_dir():
             continue
         files: list[Path] = []
-        pats = ("*.csv", "*.txt", "*.json", "*.jsonl")
+        pats = (
+            "*.csv", "*.txt", "*.json", "*.jsonl",
+            "*.csv.gz", "*.txt.gz", "*.json.gz", "*.jsonl.gz",
+        )
         if root.name == "ingest":
-            pats = ("*.csv", "*.txt", "*.json", "*.jsonl", "*.log")
+            pats = pats + ("*.log", "*.log.gz")
         for pat in pats:
             files.extend(root.rglob(pat))
         for path in sorted(set(files), key=_scan_prio):
@@ -638,7 +688,7 @@ def iter_extraction_files(
                 size = path.stat().st_size
             except OSError:
                 continue
-            if size > cap:
+            if cap and size > cap:
                 if stats is not None:
                     stats["files_skipped_size"] += 1
                 continue
@@ -704,7 +754,7 @@ def n4_hits(
     """
     import os
 
-    def _csv_stats() -> None:
+    def _csv_stats(fallback_reason: str = "") -> None:
         if stats is None:
             return
         requested = len([t for t in terms if str(t).strip()])
@@ -716,25 +766,45 @@ def n4_hits(
             "terms_failed": [],
             "chunk_queries": 0,
             "chunks_split": 0,
+            "backend": "csv",
+            "fallback_reason": fallback_reason,
         })
 
     choice = (backend or os.environ.get("NEXUS_N4_BACKEND") or "auto").strip().lower()
+    fallback_reason = ""
     if choice in {"es", "elasticsearch", "auto"}:
         try:
             from nexus.langgraph.case_index import IndexMissing, es_available, query_index
 
             if choice != "auto" or es_available():
-                return query_index(
+                result = query_index(
                     case_dir, terms, window, priority_terms,
                     query=query, match_all=match_all, stats=stats,
-                ), "elasticsearch"
-        except IndexMissing:
+                )
+                if stats is not None:
+                    stats["backend"] = "elasticsearch"
+                    stats["fallback_reason"] = ""
+                return result, "elasticsearch"
+        except IndexMissing as exc:
             if choice != "auto":
                 raise
-        except Exception:
+            fallback_reason = f"index missing ({exc})"
+        except Exception as exc:  # noqa: BLE001 — auto mode degrades to CSV
             if choice not in {"auto", ""}:
                 raise
-    _csv_stats()
+            fallback_reason = f"{type(exc).__name__}: {exc}"
+            # EH-13: a silent backend switch is an evidence-integrity risk —
+            # make it loud and carry the reason into every consumer's stats.
+            log.warning("N4 ES query failed — CSV fallback: %s", fallback_reason)
+        if not fallback_reason:
+            fallback_reason = (
+                "NEXUS_ES_URL unset"
+                if not (os.environ.get("NEXUS_ES_URL") or "").strip()
+                else "Elasticsearch unreachable or index missing"
+            )
+    else:
+        fallback_reason = f"backend forced to {choice!r}"
+    _csv_stats(fallback_reason)
     return scan_extractions(
         case_dir, terms, window, priority_terms, query=query, match_all=match_all,
         stats=stats,
@@ -999,11 +1069,26 @@ def n4_query(
     total = len(all_hits)
     page = all_hits[max(0, offset):max(0, offset) + max(1, min(int(limit or 80), _MAX_HITS_TOTAL))]
     cap_reasons = _cap_reasons(stats)
+    exact_info: dict[str, Any] | None = None
+    if cap_reasons:
+        # EH-12: the rendered page may be capped, but the total shown to the
+        # examiner must be exact — one cheap `_count` / one CSV pass.
+        with contextlib.suppress(Exception):
+            info = count_hits(
+                case_dir, terms, window,
+                priority_terms=list(dict.fromkeys(pb_terms + dsl_terms)),
+                query=parsed if not parsed.is_empty() else None,
+                match_all=do_match_all,
+                backend=backend,
+            )
+            if info.get("exact"):
+                exact_info = info
     return {
         "query": parsed.describe(),
         "backend": backend_used,
-        "count": total,
-        "count_lower_bound": bool(cap_reasons),
+        "count": int(exact_info["count"]) if exact_info else total,
+        "count_exact": bool(exact_info),
+        "count_lower_bound": bool(cap_reasons) and exact_info is None,
         "offset": max(0, offset),
         "hits": page,
         "empty": not all_hits,
@@ -1244,6 +1329,224 @@ def scan_extractions(
             len(final) >= _MAX_HITS_TOTAL and len(hits) > _MAX_HITS_TOTAL
         )
     return final
+
+
+def _pick_backend(case_dir: Path, backend: str | None = None) -> str:
+    """Resolve 'elasticsearch' | 'csv' without querying (EH-12)."""
+    import os
+
+    choice = (backend or os.environ.get("NEXUS_N4_BACKEND") or "auto").strip().lower()
+    if choice in {"csv", "local", "offline"}:
+        return "csv"
+    if choice in {"es", "elasticsearch"}:
+        return "elasticsearch"
+    try:
+        from nexus.langgraph.case_index import _client, es_available, index_name
+
+        if not es_available():
+            return "csv"
+        with _client() as client:
+            if client.head(f"/{index_name(Path(case_dir).name)}").status_code == 200:
+                return "elasticsearch"
+    except Exception:  # noqa: BLE001 — auto mode degrades to CSV
+        pass
+    return "csv"
+
+
+def _iter_matching_rows(
+    path: Path,
+    root: Path,
+    fam: str,
+    needles: list[str],
+    start: datetime | None,
+    end: datetime | None,
+    query: Any | None = None,
+    match_all: bool = False,
+):
+    """Yield (line_no, matched_terms, text) for EVERY matching row (EH-12).
+
+    No caps — the exhaustive enumeration behind exports/appendices. Rows come
+    in file order; deterministic and streamable for arbitrarily large CSVs.
+    """
+    rel = str(path.relative_to(root)).replace("\\", "/")
+    with _open_text(path) as fh:
+        for i, line in enumerate(fh, start=1):
+            if i == 1 and ("," in line or "\t" in line):
+                continue
+            low = line.lower()
+            if query is not None:
+                from nexus.langgraph.query_dsl import row_matches
+
+                ok, matched = row_matches(query, line_lower=low, family=fam, file_rel=rel)
+                if not ok:
+                    continue
+                matched = matched[:6]
+            else:
+                matched = [t for t in needles if needle_in_text(low, t)]
+                if not matched:
+                    if not match_all:
+                        continue
+                    matched = ["*"]
+            if not _row_in_window(line, start, end):
+                continue
+            yield i, matched, line.strip()[:_MAX_LINE]
+
+
+def iter_extraction_hits(
+    case_dir: Path,
+    needles: list[str],
+    start: datetime | None,
+    end: datetime | None,
+    query: Any | None = None,
+    match_all: bool = False,
+    stats: dict[str, Any] | None = None,
+):
+    """Stream every matching parsed-CSV row (no caps) — EH-12 CSV path."""
+    case_dir = Path(case_dir)
+    file_stats: dict[str, Any] = {}
+    for path, root, fam in iter_extraction_files(
+        case_dir, max_bytes=_MAX_FILTERED_SCAN_BYTES, stats=file_stats,
+    ):
+        try:
+            rel = str(path.relative_to(root)).replace("\\", "/")
+            for i, matched, text in _iter_matching_rows(
+                path, root, fam, needles, start, end,
+                query=query, match_all=match_all,
+            ):
+                yield {
+                    "family": fam,
+                    "file": rel,
+                    "line": str(i),
+                    "terms": ",".join(matched[:6]),
+                    "terms_list": matched[:6],
+                    "text": text,
+                }
+        except OSError:
+            file_stats["files_unreadable"] = int(file_stats.get("files_unreadable", 0)) + 1
+    if stats is not None:
+        stats.update(file_stats)
+        stats["backend"] = "csv"
+        stats["exhaustive"] = True
+
+
+def iter_ingest_hits(
+    case_dir: Path,
+    needles: list[str],
+    start: datetime | None,
+    end: datetime | None,
+    query: Any | None = None,
+    match_all: bool = False,
+    stats: dict[str, Any] | None = None,
+):
+    """Stream every matching imported-evidence row (no caps) — EH-12."""
+    for line_no, fam, text, _ts in iter_ingest_rows(case_dir):
+        low = text.lower()
+        if query is not None:
+            from nexus.langgraph.query_dsl import row_matches
+
+            ok, matched = row_matches(
+                query, line_lower=low, family=fam, file_rel="ingest/artifacts.jsonl"
+            )
+            if not ok:
+                continue
+            matched = matched[:6]
+        else:
+            matched = [t for t in needles if needle_in_text(low, t)]
+            if not matched:
+                if not match_all:
+                    continue
+                matched = ["*"]
+        if not _row_in_window(text, start, end):
+            continue
+        yield {
+            "family": fam,
+            "file": "ingest/artifacts.jsonl",
+            "line": str(line_no),
+            "terms": ",".join(matched[:6]),
+            "terms_list": matched[:6],
+            "text": text,
+        }
+    if stats is not None:
+        stats["backend"] = "csv"
+        stats["exhaustive"] = True
+
+
+def iter_all_hits(
+    case_dir: Path,
+    terms: list[str],
+    window: tuple[datetime | None, datetime | None],
+    priority_terms: list[str] | None = None,
+    query: Any | None = None,
+    match_all: bool = False,
+    backend: str | None = None,
+):
+    """Stream EVERY matching hit across the chosen backend (EH-12).
+
+    This is the no-caps enumeration used by report appendices and the export
+    endpoint. It yields in backend order (ES `_doc` / CSV file order) and never
+    truncates. An ES error after streaming starts propagates — an export must
+    not silently switch backends mid-file (EH-13).
+    """
+    case_dir = Path(case_dir)
+    needles = [t.lower() for t in terms if t.strip()]
+    start, end = window or (None, None)
+    if not needles and query is None and not match_all:
+        return
+    if _pick_backend(case_dir, backend) == "elasticsearch":
+        from nexus.langgraph.case_index import iter_index_hits
+
+        yield from iter_index_hits(
+            case_dir, terms, window,
+            priority_terms=priority_terms, query=query, match_all=match_all,
+        )
+        return
+    yield from iter_extraction_hits(
+        case_dir, needles, start, end, query=query, match_all=match_all
+    )
+    yield from iter_ingest_hits(
+        case_dir, needles, start, end, query=query, match_all=match_all
+    )
+
+
+def count_hits(
+    case_dir: Path,
+    terms: list[str],
+    window: tuple[datetime | None, datetime | None],
+    priority_terms: list[str] | None = None,
+    query: Any | None = None,
+    match_all: bool = False,
+    backend: str | None = None,
+) -> dict[str, Any]:
+    """Exact matched-row count (EH-12). Returns {count, backend, exact}.
+
+    ES uses `_count` (cheap even at 10M docs); CSV streams one pass without
+    keeping rows. A failed ES count in auto mode degrades to the CSV count.
+    """
+    import os
+
+    case_dir = Path(case_dir)
+    explicit = (backend or os.environ.get("NEXUS_N4_BACKEND") or "auto").strip().lower()
+    if _pick_backend(case_dir, backend) == "elasticsearch":
+        try:
+            from nexus.langgraph.case_index import count_index
+
+            cstats: dict[str, Any] = {}
+            n, exact = count_index(
+                case_dir, terms, window,
+                priority_terms=priority_terms, query=query, match_all=match_all,
+                stats=cstats,
+            )
+            return {"count": n, "backend": "elasticsearch", "exact": exact}
+        except Exception as exc:  # noqa: BLE001
+            if explicit not in {"auto", ""}:
+                raise
+            log.warning("ES count failed — CSV count fallback: %s", exc)
+    n = sum(1 for _ in iter_all_hits(
+        case_dir, terms, window,
+        priority_terms=priority_terms, query=query, match_all=match_all,
+        backend="csv",
+    ))
+    return {"count": n, "backend": "csv", "exact": True}
 
 
 def build_query_pack_markdown(

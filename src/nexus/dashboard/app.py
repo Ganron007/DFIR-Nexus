@@ -5285,6 +5285,101 @@ async def api_case_digest(request):
         return JSONResponse({"error": f"digest failed: {exc}"}, status_code=500)
 
 
+async def api_case_export(request):
+    """GET /portal/api/case/export — stream EVERY matching row (EH-12).
+
+    Query params mirror the Explore search body (``query`` DSL, ``needles``,
+    ``family``, ``host``, ``start``, ``end``) plus ``format=csv|jsonl``.
+    Unlike /explore/search this endpoint has NO result caps — it streams the
+    exhaustive enumeration (ES ``search_after`` / CSV row stream) so "export
+    all" actually exports all. Evidence-complete by construction.
+    """
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+
+    from nexus.langgraph.query_pack import (
+        collect_playbook_query_terms,
+        collect_query_terms,
+        iter_all_hits,
+        load_case_intake,
+    )
+
+    params = {k: request.query_params.get(k, "") for k in
+              ("query", "needles", "family", "host", "start", "end")}
+    params["match_all"] = request.query_params.get("match_all", "")
+    query_text, window, family_filter, _host_filter = _explore_query_from_body(
+        case_dir, params
+    )
+    fmt = (request.query_params.get("format") or "csv").strip().lower()
+    if fmt not in {"csv", "jsonl"}:
+        return JSONResponse({"error": "format must be csv or jsonl"}, status_code=400)
+
+    from nexus.langgraph.query_dsl import QuerySyntaxError, parse_query
+
+    parsed = None
+    if query_text:
+        try:
+            parsed = parse_query(query_text)
+        except QuerySyntaxError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+    intake = load_case_intake(case_dir)
+    do_match_all = bool(params["match_all"]) and (parsed is None or parsed.is_empty())
+    dsl_terms = parsed.all_needles() if parsed else []
+    terms = [] if do_match_all else list(
+        dict.fromkeys(list(dsl_terms) + collect_query_terms(intake))
+    )
+    priority = list(dict.fromkeys(
+        collect_playbook_query_terms(intake) + list(dsl_terms)
+    ))
+    query_arg = parsed if (parsed is not None and not parsed.is_empty()) else None
+    want_families = {f.lower() for f in family_filter}
+
+    def _stream():
+        yielded = 0
+        header = ["family", "file", "line", "terms", "host", "user", "event_id", "ts", "text"]
+        if fmt == "csv":
+            import csv
+            import io
+
+            buf = io.StringIO()
+            writer = csv.writer(buf)
+            writer.writerow(header)
+            yield buf.getvalue()
+            buf.seek(0)
+            buf.truncate(0)
+            for hit in iter_all_hits(
+                case_dir, terms, window, priority_terms=priority,
+                query=query_arg, match_all=do_match_all,
+            ):
+                if want_families and str(hit.get("family") or "").lower() not in want_families:
+                    continue
+                writer.writerow([hit.get(k, "") for k in header])
+                yield buf.getvalue()
+                buf.seek(0)
+                buf.truncate(0)
+                yielded += 1
+        else:
+            import json
+
+            for hit in iter_all_hits(
+                case_dir, terms, window, priority_terms=priority,
+                query=query_arg, match_all=do_match_all,
+            ):
+                if want_families and str(hit.get("family") or "").lower() not in want_families:
+                    continue
+                yield json.dumps(hit, ensure_ascii=False) + "\n"
+                yielded += 1
+        logger.info("case export streamed %d rows", yielded)
+
+    filename = f"{case_dir.name}-export.{'csv' if fmt == 'csv' else 'jsonl'}"
+    return StreamingResponse(
+        _stream(),
+        media_type="text/csv" if fmt == "csv" else "application/x-ndjson",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 async def api_case_rounds(request):
     """GET /portal/api/case/rounds — GATE-B interpret round log.
 
@@ -6344,6 +6439,7 @@ def create_dashboard():
         Route("/portal/api/pipeline/ledger", api_pipeline_ledger, methods=["GET"]),
         Route("/portal/api/case/briefing", api_case_briefing, methods=["GET"]),
         Route("/portal/api/case/digest", api_case_digest, methods=["GET"]),
+        Route("/portal/api/case/export", api_case_export, methods=["GET"]),
         Route("/portal/api/case/rounds", api_case_rounds, methods=["GET"]),
         Route("/portal/api/case/briefing/directions", api_case_briefing_directions, methods=["GET"]),
         Route("/portal/api/hit/interpret", api_hit_interpret, methods=["POST"]),

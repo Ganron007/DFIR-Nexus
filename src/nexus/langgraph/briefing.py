@@ -820,6 +820,12 @@ def briefing_to_markdown(brief: dict[str, Any]) -> str:
         for s in scan[:40]:
             lines.append(f"- `{s['needle']}` — {s['hits']} hits ({s['source']})")
     scan_stats = brief.get("scan_stats") or {}
+    if str(brief.get("backend") or "").startswith("csv"):
+        reason = str(scan_stats.get("fallback_reason") or "NEXUS_ES_URL unset")
+        lines.append(
+            f"\n> Backend: **CSV pack** (Elasticsearch not used — {reason}). "
+            "Mode 2/3 analysis requires ES; restart ES and rebuild the index."
+        )
     failed_terms = scan_stats.get("terms_failed") or []
     if failed_terms:
         lines.append(

@@ -124,6 +124,24 @@ NEXUS_LLM_REASONING=high                 # optional reasoning passthrough
 | `NEXUS_PCAP_TIMEOUT` | command timeout | tshark conversion timeout for raw PCAP ingestion. |
 | `NEXUS_PCAP_MAX_PACKETS` | `0` (all) | Optional packet cap for PCAP conversion. |
 
+**Complete-data-stream knobs (Phase 4k.2 — defaults keep EVERY row):**
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `NEXUS_SCAN_MAX_FILE_MB` | `0` (unlimited) | Cap the full-row index/scan of a prepared CSV. `0` indexes every row; set a positive MB value only if you deliberately want a guard (the per-family cap and skipped files are reported, never silent). |
+| `NEXUS_N4_MAX_FILE_MB` | `0` (unlimited) | Same guard for N4 needle scans of parse outputs above the full-scan threshold. |
+| `NEXUS_INDEX_MAX_DOCS` | `0` (unlimited) | Total per-case ES docs. `0` = index everything. |
+| `NEXUS_INDEX_SMALL_DOCS` / `NEXUS_INDEX_PER_FAMILY_CAP` / `NEXUS_INDEX_PER_FILE_CAP` | `0` (unlimited) | Optional index guards; when set, `es_index.json` records `capped`/`caps`. |
+| `NEXUS_INDEX_BATCH` | `4000` | Docs per streaming bulk batch (memory stays flat on million-row cases). |
+| `NEXUS_N4_MAX_HITS` / `NEXUS_N4_HITS_PER_FILE` / `NEXUS_N4_COLLECT_PER_FILE` / `NEXUS_N4_FILES_PER_FAMILY` | `400` / `40` / `200` / `120` | Interactive result caps. They bound the rendered page only — totals are exact (`count_exact`) and `Export all` / report appendices enumerate every row uncapped. |
+| `NEXUS_TOOL_LANE_CONCURRENCY` | `1` | Tool-lane job parallelism (`1..4`). `1` keeps execution order deterministic for reproducibility; `2..4` cuts wall time on multi-core hosts (outputs are order-independent). |
+
+**Elasticsearch sizing for complete indexing:** budget ≈ `1 KB × docs`
+(heap + disk) for this schema; a 5M-row case is ~5 GB. Give ES ≥ 4 GB heap
+(`ES_JAVA_OPTS=-Xms4g -Xmx4g`) before large imports; the indexer streams in
+`NEXUS_INDEX_BATCH` chunks so client memory stays flat regardless of size.
+
+
 The per-case Elasticsearch index is **schema-versioned** (v2: structured
 `host`/`user`/`event_id` + parsed `fields.*`, DSL push-down, ES-native
 aggregations). Old indexes rebuild automatically on the next processing run;
