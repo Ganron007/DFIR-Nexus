@@ -1530,6 +1530,7 @@ def sift_jobs_for_lane(
     has_sift_mcp: bool,
     triage_root: str | None = None,
     memory_file: str | None = None,
+    network_inputs: dict[str, list[str]] | None = None,
 ) -> list[ToolJob]:
     """Schedule SIFT jobs only when a root is named or a SIFT MCP exists.
 
@@ -1540,11 +1541,24 @@ def sift_jobs_for_lane(
     root = (sift_root or "").strip()
     if not root and not has_sift_mcp:
         return []
-    return plan_sift_triage(
+    jobs = plan_sift_triage(
         root,
         triage_root=triage_root,
         memory_file=memory_file,
     )
+    # EH-14b: Zeek/Suricata/nfdump for captures visible under the SIFT root.
+    # Captures registered on Windows are planned with an honest SKIP row —
+    # the local flow projection (execute_tool_lane) still guarantees sessions.
+    if network_inputs and (network_inputs.get("pcap") or network_inputs.get("nfcapd")):
+        from nexus.langgraph.network_lane import plan_network_triage
+
+        jobs.extend(plan_network_triage(
+            network_inputs.get("pcap") or [],
+            network_inputs.get("nfcapd") or [],
+            root,
+            has_sift_mcp=has_sift_mcp,
+        ))
+    return jobs
 
 
 def _lane_concurrency() -> int:
@@ -1665,11 +1679,21 @@ async def run_tool_lane(
         str(ctx.get("sift_evidence_root") or "").strip()
         or os.environ.get("NEXUS_SIFT_EVIDENCE_ROOT", "").strip()
     )
+    try:
+        from nexus.langgraph.network_lane import discover_network_inputs
+
+        _net_inputs = discover_network_inputs([str(p) for p in plan_paths])
+        if not (_net_inputs.get("pcap") or _net_inputs.get("nfcapd")):
+            _net_inputs = None
+    except Exception as exc:  # noqa: BLE001 — planning must not block the lane
+        log.warning("network input discovery skipped: %s", exc)
+        _net_inputs = None
     jobs.extend(sift_jobs_for_lane(
         sift_root,
         has_sift_mcp=sift_tool is not None,
         triage_root=str(ctx.get("sift_triage_root") or "").strip() or None,
         memory_file=str(ctx.get("sift_memory_file") or "").strip() or None,
+        network_inputs=_net_inputs,
     ))
     audit_ids: list[str] = []
     ledger: list[dict[str, Any]] = []

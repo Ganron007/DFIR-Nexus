@@ -56,6 +56,9 @@ def detect_format(path: Path) -> ArtifactSource | None:
         ".pcap": ArtifactSource.WIRESHARK,
         ".pcapng": ArtifactSource.WIRESHARK,
         ".cap": ArtifactSource.WIRESHARK,
+        # NetFlow captures (nfdump/nfcapd) — NETFLOW lane (EH-14b)
+        ".nfcapd": ArtifactSource.NETFLOW,
+        ".nfdump": ArtifactSource.NETFLOW,
     }
     if suffix in _EXT_HINTS:
         return _EXT_HINTS[suffix]
@@ -424,6 +427,15 @@ def _detect_csv_format(head: str, name: str) -> ArtifactSource | None:
         return ArtifactSource.SPLUNK
     if "timestamp" in first_line and "source" in first_line and "host" in first_line:
         return ArtifactSource.PLASO
+    # nfdump -o csv NetFlow export (EH-14b): distinctive header even when the
+    # file is just called flows.csv — never let it fall into generic_csv.
+    try:
+        from nexus.ingest.network.nfdump import looks_like_nfdump_csv_header
+
+        if looks_like_nfdump_csv_header(first_line.split(",")):
+            return ArtifactSource.NETFLOW
+    except Exception:  # noqa: BLE001 — detection must not hard-fail
+        pass
 
     return ArtifactSource.GENERIC_CSV
 

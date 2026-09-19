@@ -63,6 +63,8 @@ _FAMILY_TO_TOOL: dict[str, str] = {
     "zeek": "ingest_auto",
     "wireshark": "ingest_auto",
     "pcap": "ingest_auto",
+    "netflow": "ingest_auto",
+    "nfdump": "ingest_auto",
     "syslog": "ingest_auto",
     "splunk": "ingest_auto",
     "elastic": "ingest_auto",

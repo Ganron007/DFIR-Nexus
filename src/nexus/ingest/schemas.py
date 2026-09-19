@@ -65,6 +65,7 @@ class ArtifactSource(StrEnum):
     GREYNOISE = "greynoise"
     THEHIVE = "thehive"
     WIRESHARK = "wireshark"
+    NETFLOW = "netflow"
     VOLATILITY = "volatility"
     CLOUDTRAIL = "cloudtrail"
     AZURE = "azure"

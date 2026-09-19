@@ -149,6 +149,25 @@ def _environment_checks() -> list[tuple[str, bool, str]]:
     except Exception as exc:  # noqa: BLE001
         rows.append(("sift ssh", False, str(exc)[:120]))
 
+    # Network lane tools (EH-14b) — optional, informational.
+    for tool, purpose in (
+        ("tshark", "PCAP ingest + flow projection (session guarantee)"),
+        ("zeek", "app-layer logs (conn/dns/http/ssl/files)"),
+        ("suricata", "EVE alerts/flows"),
+        ("nfdump", "nfcapd NetFlow import"),
+        ("tcpflow", "HTTP/FTP object reconstruction (optional)"),
+    ):
+        try:
+            from nexus.collect.paths import network_tool
+
+            hit = network_tool(tool)
+        except Exception:  # noqa: BLE001
+            hit = None
+        rows.append((
+            f"network tool: {tool}",
+            True,
+            str(hit) if hit else f"not found — {purpose} unavailable",
+        ))
     return rows
 
 

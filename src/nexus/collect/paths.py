@@ -310,6 +310,32 @@ def kansa_home() -> Path | None:
     return ps1.parent if ps1 else None
 
 
+def network_tool(name: str) -> Path | None:
+    """Locate a network-analysis binary: tshark/zeek/suricata/nfdump/tcpflow.
+
+    PATH first (SIFT installs them there), then NEXUS_TOOL_PATHS/repo Tools
+    dirs so Windows examiners can ship them in the repo without PATH edits.
+    """
+    import shutil as _shutil
+
+    exe = _shutil.which(name) or _shutil.which(f"{name}.exe")
+    if exe:
+        return Path(exe)
+    for root in extra_search_roots():
+        for cand in (
+            root / name / f"{name}.exe",
+            root / name / name,
+            root / f"{name}.exe",
+            root / name,
+        ):
+            if cand.is_file():
+                return cand
+        hit = _glob_exe(root / name, (name,))
+        if hit:
+            return hit
+    return None
+
+
 def tool_inventory() -> dict[str, object]:
     kh = kape_home()
     cs_sigma = chainsaw_sigma()
@@ -344,4 +370,9 @@ def tool_inventory() -> dict[str, object]:
         "pipelist": str(sysinternals_exe("pipelist") or ""),
         "persistencesniper": str(persistencesniper_psm1() or ""),
         "velociraptor_exe": str(velociraptor_exe() or ""),
+        "tshark": str(network_tool("tshark") or ""),
+        "zeek": str(network_tool("zeek") or ""),
+        "suricata": str(network_tool("suricata") or ""),
+        "nfdump": str(network_tool("nfdump") or ""),
+        "tcpflow": str(network_tool("tcpflow") or ""),
     }

@@ -136,6 +136,20 @@ NEXUS_LLM_REASONING=high                 # optional reasoning passthrough
 | `NEXUS_N4_MAX_HITS` / `NEXUS_N4_HITS_PER_FILE` / `NEXUS_N4_COLLECT_PER_FILE` / `NEXUS_N4_FILES_PER_FAMILY` | `400` / `40` / `200` / `120` | Interactive result caps. They bound the rendered page only — totals are exact (`count_exact`) and `Export all` / report appendices enumerate every row uncapped. |
 | `NEXUS_TOOL_LANE_CONCURRENCY` | `1` | Tool-lane job parallelism (`1..4`). `1` keeps execution order deterministic for reproducibility; `2..4` cuts wall time on multi-core hosts (outputs are order-independent). |
 
+**Network evidence (Phase 4k.2):**
+
+| Tool | Role | Notes |
+|------|------|-------|
+| `tshark` | PCAP ingest + flow projection (session guarantee) | Wireshark installs it; required on the analysis host for raw captures. |
+| `zeek` | conn/dns/http/ssl/files logs | Runs on the SIFT host when the capture lives under `NEXUS_SIFT_EVIDENCE_ROOT` / `case_context.sift_evidence_root`; also runs locally when installed. |
+| `suricata` | EVE alerts/flows (`eve.json`) | Same SIFT/local rule as zeek; imported by the existing Suricata importer. |
+| `nfdump` | nfcapd NetFlow import (`-o csv`) | Required for binary nfcapd files; CSV exports parse without it. `apt install nfdump` on SIFT. |
+| `tcpflow` | Optional HTTP/FTP object reconstruction | Opt-in; objects land as file evidence. |
+
+Paths outside the SIFT evidence root get an honest SKIP row for the remote
+lanes (the local flow projection still runs), so "no session data" is never
+mistaken for "no traffic".
+
 **Elasticsearch sizing for complete indexing:** budget ≈ `1 KB × docs`
 (heap + disk) for this schema; a 5M-row case is ~5 GB. Give ES ≥ 4 GB heap
 (`ES_JAVA_OPTS=-Xms4g -Xmx4g`) before large imports; the indexer streams in

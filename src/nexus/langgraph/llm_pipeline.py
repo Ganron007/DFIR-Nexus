@@ -846,17 +846,45 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
         elif not is_host_evidence(p):
             ingest_paths.append(p)
     if ingest_paths:
+        import asyncio as _asyncio
+        import threading as _threading
+
         from nexus.config import settings as _settings
+        from nexus.langgraph.network_lane import enrich_local_network
         from nexus.langgraph.timeline_merge import ingest_into_case, rebuild_case_timeline
-        from nexus.langgraph.tool_lane import find_windows_root
+        from nexus.langgraph.tool_lane import _lane_concurrency, find_windows_root
 
         case_dir = _settings.cases_root / case_id
         steps = list(result.get("step_log") or [])
-        for p in ingest_paths:
-            if find_windows_root(Path(p)) is not None:
-                steps.append(f"Extra Windows root registered (not re-parsed this pass): {p}")
-                continue
-            info = ingest_into_case(Path(p), case_dir)
+        # EH-15: store writes are serialized (artifacts.jsonl/audit append);
+        # parsing/enrichment may overlap up to NEXUS_TOOL_LANE_CONCURRENCY.
+        write_lock = _threading.Lock()
+
+        def _process(p: str) -> list[str]:
+            lines: list[str] = []
+            path = Path(p)
+            # EH-14b session guarantee: Zeek/Suricata when available locally +
+            # tshark flow projection always. Runs before import so the flows
+            # CSV is part of the same evidence pass.
+            if path.suffix.lower() in (".pcap", ".pcapng", ".cap"):
+                try:
+                    net = enrich_local_network(path, case_dir)
+                    lines.extend(str(s) for s in (net.get("steps") or []))
+                    for err in net.get("errors") or []:
+                        lines.append(f"I1 network warning: {err}")
+                except Exception as exc:  # noqa: BLE001
+                    lines.append(f"I1 network enrichment failed: {exc}")
+            if find_windows_root(path) is not None:
+                lines.append(
+                    f"Extra Windows root registered (not re-parsed this pass): {p}"
+                )
+                return lines
+            try:
+                with write_lock:
+                    info = ingest_into_case(path, case_dir)
+            except Exception as exc:  # noqa: BLE001 — one bad path must not sink the lane
+                lines.append(f"I1 ingest extra path {p} failed: {exc}")
+                return lines
             capped = " (capped)" if info.get("artifacts_capped") else ""
             err_note = ""
             problems = list(info.get("errors") or [])
@@ -864,18 +892,40 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
                 problems.insert(0, str(info["error"]))
             if problems:
                 err_note = " errors=" + " | ".join(str(e)[:120] for e in problems[:2])
-            steps.append(
+            lines.append(
                 f"I1 ingest extra path {p}: {info.get('source')} "
                 f"artifacts={info.get('artifacts')}/{info.get('artifacts_total')}{capped} "
                 f"ok={info.get('success')}{err_note}"
             )
-            if str(info.get("source") or "") in ("generic_csv", "generic_jsonl") and Path(
-                p
-            ).suffix.lower() in (".json", ".jsonl"):
-                steps.append(
-                    f"I1 warning: {Path(p).name} resolved as {info.get('source')} — "
+            if str(info.get("source") or "") in ("generic_csv", "generic_jsonl") and path.suffix.lower() in (
+                ".json", ".jsonl"
+            ):
+                lines.append(
+                    f"I1 warning: {path.name} resolved as {info.get('source')} — "
                     "structured JSON may be misrouted; check importer detection"
                 )
+            return lines
+
+        try:
+            conc = _lane_concurrency()
+            per_path: list[list[str]] = []
+            if conc <= 1 or len(ingest_paths) <= 1:
+                for p in ingest_paths:
+                    per_path.append(await _asyncio.to_thread(_process, p))
+            else:
+                sem = _asyncio.Semaphore(conc)
+
+                async def _one(p: str) -> list[str]:
+                    async with sem:
+                        return await _asyncio.to_thread(_process, p)
+
+                per_path = list(await _asyncio.gather(*(_one(p) for p in ingest_paths)))
+            # Input order preserved in the step log regardless of concurrency
+            # — the ledger reads identically at 1 and 4 workers.
+            for lines in per_path:
+                steps.extend(lines)
+        except Exception as exc:  # noqa: BLE001
+            steps.append(f"I1 ingest lane failed: {exc}")
         try:
             rebuild_case_timeline(case_dir)
         except Exception as exc:  # noqa: BLE001
