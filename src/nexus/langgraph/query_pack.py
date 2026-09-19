@@ -392,11 +392,17 @@ def _hits_from_file(
     end: datetime | None,
     query: Any | None = None,
     match_all: bool = False,
-) -> list[dict[str, str]]:
-    """Keep strong-term rows even when noisier matches appear first in the file."""
+) -> tuple[list[dict[str, Any]], bool]:
+    """Keep strong-term rows even when noisier matches appear first in the file.
+
+    Returns ``(hits, capped)`` — ``capped`` is True when this file had more
+    matching rows than the collect/per-file caps allowed through, so callers
+    can mark its counts as lower bounds instead of exact.
+    """
     raw: list[tuple[int, int, list[str], str]] = []
     strong_n = 0
     weak_n = 0
+    skipped_cap = 0
     with path.open(encoding="utf-8", errors="replace") as fh:
         for i, line in enumerate(fh, start=1):
             if i == 1 and ("," in line or "\t" in line):
@@ -422,24 +428,30 @@ def _hits_from_file(
             pri = _hit_rank(matched, strong)
             if pri == 0:
                 if strong_n >= _MAX_COLLECT_PER_FILE:
+                    skipped_cap += 1
                     continue
                 strong_n += 1
             else:
                 if weak_n >= _MAX_COLLECT_PER_FILE:
+                    skipped_cap += 1
                     continue
                 weak_n += 1
             raw.append((pri, i, matched, line.strip()[:_MAX_LINE]))
     raw.sort(key=lambda row: (row[0], row[1]))
-    hits: list[dict[str, str]] = []
-    for _pri, i, matched, text in raw[:_MAX_HITS_PER_FILE]:
-        hits.append({
+    kept = raw[:_MAX_HITS_PER_FILE]
+    capped = skipped_cap > 0 or len(raw) > _MAX_HITS_PER_FILE
+    hits: list[dict[str, Any]] = [
+        {
             "family": fam,
             "file": str(path.relative_to(root)).replace("\\", "/"),
             "line": str(i),
             "terms": ",".join(matched[:6]),
+            "terms_list": matched[:6],
             "text": text,
-        })
-    return hits
+        }
+        for _pri, i, matched, text in kept
+    ]
+    return hits, capped
 
 
 def render_ingest_row(d: dict[str, Any], max_len: int = _MAX_LINE) -> str:
@@ -550,13 +562,25 @@ def iter_extraction_files(
     *,
     max_bytes: int | None = None,
     max_files_per_family: int | None = None,
+    stats: dict[str, Any] | None = None,
 ) -> list[tuple[Path, Path, str]]:
-    """Registered-case processed outputs only (never Evidence-files/)."""
+    """Registered-case processed outputs only (never Evidence-files/).
+
+    ``stats`` (optional out-param) records coverage honesty: how many files
+    were eligible, scanned, or skipped because of the size / per-family caps —
+    a skipped file must never later read as "no hits".
+    """
     case_dir = Path(case_dir)
     cap = _MAX_FULL_SCAN_BYTES if max_bytes is None else max_bytes
     file_cap = _MAX_FILES_PER_FAMILY if max_files_per_family is None else max_files_per_family
     out: list[tuple[Path, Path, str]] = []
     fam_files: dict[str, int] = {}
+    if stats is not None:
+        stats.setdefault("files_total", 0)
+        stats.setdefault("files_scanned", 0)
+        stats.setdefault("files_skipped_size", 0)
+        stats.setdefault("files_skipped_family_cap", 0)
+        stats.setdefault("families_capped", [])
     from nexus.langgraph.pipeline_runs import resolve_tools_extractions
 
     extractions = resolve_tools_extractions(case_dir)
@@ -584,30 +608,48 @@ def iter_extraction_files(
             # via load_ingest_artifacts; scanning it as N4 text matches UUIDs.
             if path.name.lower() == "artifacts.jsonl":
                 continue
+            if stats is not None:
+                stats["files_total"] += 1
             try:
                 size = path.stat().st_size
             except OSError:
                 continue
             if size > cap:
+                if stats is not None:
+                    stats["files_skipped_size"] += 1
                 continue
             fam = _family(path, root)
             n = fam_files.get(fam, 0)
             if n >= file_cap:
+                if stats is not None:
+                    stats["files_skipped_family_cap"] += 1
+                    capped = stats["families_capped"]
+                    if fam not in capped:
+                        capped.append(fam)
                 continue
             fam_files[fam] = n + 1
             out.append((path, root, fam))
+            if stats is not None:
+                stats["files_scanned"] += 1
     return out
 
 
 def finalize_hits(
-    hits: list[dict[str, str]],
+    hits: list[dict[str, Any]],
     terms: list[str],
     priority_terms: list[str] | None = None,
-) -> list[dict[str, str]]:
+) -> list[dict[str, Any]]:
     """Same ranking/cap used by the CSV pack and the Elasticsearch backend."""
     strong = _strong_set(priority_terms if priority_terms is not None else terms)
+
+    def _rank(h: dict[str, Any]) -> int:
+        matched = h.get("terms_list")
+        if not isinstance(matched, list):
+            matched = [t.strip() for t in str(h.get("terms") or "").split(",")]
+        return _hit_rank([str(t).strip() for t in matched if str(t).strip()], strong)
+
     ranked = sorted(hits, key=lambda h: (
-        _hit_rank([t.strip() for t in h.get("terms", "").split(",") if t.strip()], strong),
+        _rank(h),
         h.get("family") or "",
         h.get("file") or "",
         int(h.get("line") or 0),
@@ -670,7 +712,8 @@ def n4_hits(
                 raise
     _csv_stats()
     return scan_extractions(
-        case_dir, terms, window, priority_terms, query=query, match_all=match_all
+        case_dir, terms, window, priority_terms, query=query, match_all=match_all,
+        stats=stats,
     ), "csv"
 
 
@@ -1075,6 +1118,7 @@ def scan_extractions(
     priority_terms: list[str] | None = None,
     query: Any | None = None,
     match_all: bool = False,
+    stats: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
     """Scan parsed CSVs. ``query`` (query_dsl.ParsedQuery) adds boolean /
     field-filter / regex semantics on top of the plain needle list.
@@ -1087,18 +1131,22 @@ def scan_extractions(
     if not needles and query is None and not match_all:
         return hits
 
+    files_capped = 0
     for path, root, fam in iter_extraction_files(
-        case_dir, max_bytes=_MAX_FILTERED_SCAN_BYTES,
+        case_dir, max_bytes=_MAX_FILTERED_SCAN_BYTES, stats=stats,
     ):
         try:
-            hits.extend(
-                _hits_from_file(
-                    path, root, fam, needles, strong, start, end,
-                    query=query, match_all=match_all,
-                )
+            file_hits, capped = _hits_from_file(
+                path, root, fam, needles, strong, start, end,
+                query=query, match_all=match_all,
             )
         except OSError:
+            if stats is not None:
+                stats["files_unreadable"] = int(stats.get("files_unreadable", 0)) + 1
             continue
+        if capped:
+            files_capped += 1
+        hits.extend(file_hits)
     # Imported non-host evidence (network/cloud/TI) lives in the case artifact
     # store — same searchable projection as the ES backend (parity).
     hits.extend(
@@ -1107,7 +1155,16 @@ def scan_extractions(
             query=query, match_all=match_all,
         )
     )
-    return finalize_hits(hits, terms, priority_terms)
+    if stats is not None:
+        stats["files_capped"] = files_capped
+        stats["hits_collected"] = len(hits)
+    final = finalize_hits(hits, terms, priority_terms)
+    if stats is not None:
+        stats["hits_returned"] = len(final)
+        stats["hits_capped"] = bool(
+            len(final) >= _MAX_HITS_TOTAL and len(hits) > _MAX_HITS_TOTAL
+        )
+    return final
 
 
 def build_query_pack_markdown(

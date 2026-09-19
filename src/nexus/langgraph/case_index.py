@@ -1000,6 +1000,9 @@ def query_index(
                 if r.status_code >= 400:
                     raise RuntimeError(f"search failed: {r.status_code} {r.text[:300]}")
                 hits_raw = r.json().get("hits", {}).get("hits", [])
+                if stats is not None:
+                    stats["hits_fetched"] = len(hits_raw)
+                    stats["hits_capped"] = len(hits_raw) >= 400
             elif not needles:
                 if stats is not None:
                     stats["mode"] = "match_all"
@@ -1007,8 +1010,12 @@ def query_index(
                 if r.status_code >= 400:
                     raise RuntimeError(f"search failed: {r.status_code} {r.text[:300]}")
                 hits_raw = r.json().get("hits", {}).get("hits", [])
+                if stats is not None:
+                    stats["hits_fetched"] = len(hits_raw)
+                    stats["hits_capped"] = len(hits_raw) >= 400
             else:
                 hits_raw = []
+                full_pages = 0
                 queue = [
                     needles[i:i + _MAX_ES_TERMS_PER_QUERY]
                     for i in range(0, len(needles), _MAX_ES_TERMS_PER_QUERY)
@@ -1041,9 +1048,15 @@ def query_index(
                         if stats is not None:
                             stats["terms_failed"].extend(chunk)
                         continue
-                    hits_raw.extend(r.json().get("hits", {}).get("hits", []))
+                    page = r.json().get("hits", {}).get("hits", [])
+                    if len(page) >= 400:
+                        full_pages += 1
+                    hits_raw.extend(page)
                     if stats is not None:
                         stats["terms_queried"] += len(chunk)
+                if stats is not None:
+                    stats["hits_fetched"] = len(hits_raw)
+                    stats["hits_capped"] = full_pages > 0
         else:
             hits_raw = []
             # One search per strong term so SRUM USB/cloud volume cannot bury sdelete/PST.

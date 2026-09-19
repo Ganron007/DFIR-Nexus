@@ -407,3 +407,31 @@ def test_briefing_records_scan_stats(tmp_path, monkeypatch):
     assert brief["scan_stats"]["terms_requested"] > 0
     assert brief["scan_stats"]["terms_queried"] == brief["scan_stats"]["terms_requested"]
     assert brief["scan_stats"]["terms_failed"] == []
+    assert brief["scan_truncated"] is False
+
+def test_briefing_scan_truncated_is_real(tmp_path, monkeypatch):
+    """The scan_truncated flag must react to real caps (result/file/family),
+    not the dead `len(hits) > 1200` comparison."""
+    from nexus.langgraph import briefing as bmod
+
+    case = _mkcase(tmp_path)
+
+    def fake_hits(case_dir, terms, window, **kwargs):
+        stats = kwargs.get("stats")
+        if stats is not None:
+            stats.update({
+                "mode": "terms", "terms_requested": len(terms),
+                "terms_queried": len(terms), "terms_failed": [],
+                "chunk_queries": 5, "chunks_split": 0,
+                "hits_capped": True, "files_capped": 1,
+                "files_total": 3, "files_scanned": 3,
+            })
+        return [], "elasticsearch"
+
+    monkeypatch.setattr("nexus.langgraph.query_pack.n4_hits", fake_hits)
+    brief = bmod.case_briefing(case)
+    assert brief["scan_truncated"] is True
+    assert brief["scan_stats"]["truncated"] is True
+    assert brief["scan_stats"]["truncated_reasons"]
+    md = bmod.briefing_to_markdown(brief)
+    assert "LOWER BOUNDS" in md

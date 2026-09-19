@@ -445,16 +445,36 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
             log.debug("briefing scan failed: %s", exc)
             hits, backend = [], ""
     # Per-needle counts below are computed inside this window — when the scan
-    # is truncated, "rundll32 (21)" means "at least 21", and Explore may find
-    # more. The flag lets the UI mark those chips honestly.
-    scan_truncated = len(hits) > limit
+    # is truncated (result cap, per-file cap, skipped files, failed terms),
+    # "rundll32 (21)" means "at least 21" and the UI marks those chips honestly.
+    cap_reasons: list[str] = []
+    if scan_stats.get("hits_capped"):
+        cap_reasons.append("result cap")
+    if scan_stats.get("files_capped"):
+        cap_reasons.append(f"{scan_stats['files_capped']} capped file(s)")
+    if scan_stats.get("files_skipped_size"):
+        cap_reasons.append(f"{scan_stats['files_skipped_size']} oversized file(s)")
+    if scan_stats.get("files_skipped_family_cap"):
+        cap_reasons.append(
+            f"{scan_stats['files_skipped_family_cap']} file(s) over the family cap"
+        )
+    if scan_stats.get("terms_failed"):
+        cap_reasons.append(f"{len(scan_stats['terms_failed'])} unqueried needle(s)")
+    scan_truncated = len(hits) > limit or bool(cap_reasons)
+    scan_stats["truncated"] = scan_truncated
+    scan_stats["truncated_reasons"] = cap_reasons
     hits = attach_hit_fields(case_dir, hits)[:limit]
 
     # --- needle -> hit count (from matched terms recorded per hit) ---
     counts: dict[str, int] = {t: 0 for t in needle_map}
     for h in hits:
-        for t in str(h.get("terms") or "").split(","):
-            t = t.strip().lower()
+        # terms_list is the structured copy; the comma string is display-only
+        # (a needle containing a comma must not split into phantom terms).
+        matched_terms = h.get("terms_list")
+        if not isinstance(matched_terms, list):
+            matched_terms = str(h.get("terms") or "").split(",")
+        for t in matched_terms:
+            t = str(t).strip().lower()
             if t in counts:
                 counts[t] += 1
     needle_scan = [
@@ -773,10 +793,23 @@ def briefing_to_markdown(brief: dict[str, Any]) -> str:
             "`signal_map.csv` are marked `scanned=no` and are NOT evidence of absence."
         )
     elif scan_stats and scan_stats.get("terms_requested"):
+        files_line = ""
+        if scan_stats.get("files_total"):
+            files_line = (
+                f" · files {scan_stats.get('files_scanned', 0)}/"
+                f"{scan_stats.get('files_total', 0)}"
+            )
         lines.append(
             f"\nScan coverage: {scan_stats.get('terms_queried', 0)}/"
-            f"{scan_stats.get('terms_requested', 0)} needles queried "
-            f"({scan_stats.get('chunk_queries', 0)} ES chunk queries)."
+            f"{scan_stats.get('terms_requested', 0)} needles queried"
+            f"{files_line}"
+            f" ({scan_stats.get('chunk_queries', 0)} ES chunk queries)."
+        )
+    trunc_reasons = scan_stats.get("truncated_reasons") or []
+    if trunc_reasons:
+        lines.append(
+            f"\n> WARNING: hit counts are LOWER BOUNDS — scan truncated by: "
+            f"{'; '.join(trunc_reasons)}. Explore may find more rows."
         )
     if brief.get("census_source") == "index" and not scan:
         lines.append(

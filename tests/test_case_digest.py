@@ -376,3 +376,13 @@ def test_interpretation_file_includes_reconciliation(tmp_path):
     text = Path(out).read_text(encoding="utf-8")
     assert "Reconciliation" in text
     assert "psexec (9 hits)" in text
+
+def test_digest_render_flags_truncated_scan():
+    """The digest must tell the LLM when hit counts are lower bounds."""
+    md = render_digest_markdown({
+        "case_id": "CASE-X",
+        "scan_stats": {"truncated": True, "truncated_reasons": ["result cap", "2 capped file(s)"]},
+        "signal_map": {}, "scope": {}, "inventory": {},
+    })
+    assert "LOWER BOUNDS" in md
+    assert "result cap" in md

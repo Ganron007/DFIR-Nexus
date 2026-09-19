@@ -180,6 +180,7 @@ def build_case_digest(case_dir: Path, brief: dict[str, Any] | None = None) -> di
         "time_range": brief.get("time_range") or {},
         "intake": brief.get("intake") or {},
         "signal_map": _signal_map(case_dir, brief),
+        "scan_stats": brief.get("scan_stats") or {},
         "alerts": brief.get("alerts") or [],
         "entities": brief.get("entities") or {},
         "entity_spans": _entity_spans(case_dir),
@@ -251,6 +252,14 @@ def render_digest_markdown(digest: dict[str, Any]) -> str:
             "their absence is NOT evidence of absence):"
         )
         lines.append(", ".join(unscanned[:120]))
+    stats = digest.get("scan_stats") or {}
+    if stats.get("truncated"):
+        lines.append("")
+        lines.append(
+            "> Hit counts below are LOWER BOUNDS — the scan was truncated by: "
+            + "; ".join(stats.get("truncated_reasons") or ["unknown cap"])
+            + ". Do not treat counts as exact."
+        )
     alerts = digest.get("alerts") or []
     if alerts:
         lines.append("")
