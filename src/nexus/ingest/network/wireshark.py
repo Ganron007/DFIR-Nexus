@@ -82,7 +82,10 @@ class WiresharkImporter(Importer):
         # Frame / timestamp
         frame = layers.get("frame", {})
         ts_str = frame.get("frame.time_epoch") or frame.get("frame.time_relative")
-        ts = self.normalize_timestamp(ts_str) or datetime.now(UTC)
+        ts = self.normalize_timestamp(ts_str)
+        ts_synthesized = ts is None
+        if ts is None:
+            ts = datetime.now(UTC)
 
         # IP layer
         ip = layers.get("ip", {}) or layers.get("ipv6", {})
@@ -134,6 +137,7 @@ class WiresharkImporter(Importer):
             artifact_type=artifact_type,
             source=ArtifactSource.WIRESHARK,
             timestamp=ts,
+            ts_synthesized=ts_synthesized,
             severity=severity,
             source_ip=src_ip,
             source_port=src_port,

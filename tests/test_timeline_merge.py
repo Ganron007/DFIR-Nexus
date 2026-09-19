@@ -175,3 +175,32 @@ def test_rebuild_includes_finding_evidence(tmp_path: Path):
     assert fe and fe[0]["source"] == "finding:F-x-001"
     assert fe[0]["status"] == "DRAFT"
     assert fe[0]["severity"] == "high"
+
+def test_merge_events_pipe_in_description_does_not_collide():
+    """EH-8: dedupe keys are tuples — a '|' or ':' inside a description or
+    filename must not merge two distinct events."""
+    from nexus.langgraph.timeline_merge import merge_events
+
+    events = [
+        {"timestamp": "2024-01-01T00:00:00", "source": "suricata",
+         "description": "alert | part one", "file": "", "line": ""},
+        {"timestamp": "2024-01-01T00:00:00", "source": "suricata",
+         "description": "alert | part two", "file": "", "line": ""},
+    ]
+    merged = merge_events(events)
+    assert len(merged) == 2
+
+
+def test_artifact_key_is_tuple_and_pipe_safe():
+    from nexus.langgraph.timeline_merge import _artifact_key
+
+    a = {"source": "suricata", "artifact_type": "network",
+         "description": "a|b", "user": "u", "file_path": "p"}
+    b = {"source": "suricata", "artifact_type": "network",
+         "description": "a", "user": "b|u", "file_path": "p"}
+    key_a = _artifact_key(a)
+    key_b = _artifact_key(b)
+    assert isinstance(key_a, tuple)
+    assert key_a != key_b
+    # identical rows still dedupe
+    assert _artifact_key(dict(a)) == key_a

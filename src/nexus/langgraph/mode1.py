@@ -736,7 +736,9 @@ def promote_hits_to_draft(
         fields = h.get("fields") or {}
         row = {
             "time": hit_time,
-            "source": f"{h.get('family', '')}/{h.get('file', '')}",
+            # family must be non-empty: consumers derive the FD-006 family
+            # with split("/")[0], and an empty family made that "" (EH-8).
+            "source": f"{h.get('family') or 'other'}/{h.get('file', '')}",
             "artifact": h.get("file", ""),
             "detail": _render_hit_detail(h),
             "loc": f"{h.get('file', '')}:{h.get('line', '')}",

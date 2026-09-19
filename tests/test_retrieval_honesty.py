@@ -136,3 +136,37 @@ def test_es_scan_reports_fetch_cap(monkeypatch, tmp_path):
     assert stats["hits_fetched"] == 400
     assert stats["hits_capped"] is True
     assert len(hits) == 400
+
+def test_attach_hit_fields_ingest_uses_cached_line_index(tmp_path):
+    """EH-10: N ingest hits must not re-scan artifacts.jsonl N times."""
+    import json as _json
+
+    from nexus.langgraph import query_pack
+    from nexus.langgraph.query_pack import attach_hit_fields
+
+    case = tmp_path / "CASE-INGEST"
+    store = case / "ingest"
+    store.mkdir(parents=True)
+    lines = [
+        _json.dumps({
+            "timestamp": "2024-01-01T00:00:00+00:00", "source": "suricata",
+            "artifact_type": "network", "description": f"flow {i}",
+        })
+        for i in range(60)
+    ]
+    (store / "artifacts.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    hits = [
+        {"family": "suricata", "file": "ingest/artifacts.jsonl", "line": str(i + 1),
+         "text": f"flow {i}", "terms": "rdp", "terms_list": ["rdp"]}
+        for i in range(0, 60, 5)
+    ]
+    query_pack._ingest_line_cache.clear()  # global cache — other tests may have filled it
+    out = attach_hit_fields(case, hits)
+    assert out and out[0]["fields"]["source"] == "suricata"
+    assert out[-1]["fields"]["description"] == "flow 55"
+    assert len(query_pack._ingest_line_cache) == 1
+    # second call reuses the cache (no second entry for the same store)
+    snapshot = dict(query_pack._ingest_line_cache)
+    attach_hit_fields(case, hits)
+    assert query_pack._ingest_line_cache == snapshot

@@ -116,26 +116,35 @@ def artifacts_to_events(
             "terms": ",".join(a.technique_ids[:4]),
             "source_ip": a.source_ip or "",
             "dest_ip": a.dest_ip or "",
+            # EH-7: provenance — this timestamp is the INGEST time, not the
+            # event's own (the source timestamp was unparseable).
+            "ts_synthesized": bool(getattr(a, "ts_synthesized", False)),
         })
     return events
 
 
 def merge_events(*groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    seen: dict[str, int] = {}
+    # Tuple keys: string separators can collide (a '|'/':' inside a filename or
+    # description used to merge two distinct events). EH-8.
+    seen: dict[tuple, int] = {}
     out: list[dict[str, Any]] = []
     for group in groups:
         for ev in group:
-            # file:line identifies the underlying artifact row — the same
+            # (file, line) identifies the underlying artifact row — the same
             # row matched by two needles is ONE event (union the terms),
             # not two. Fall back to the content key for rows without loc.
-            loc = "|".join([str(ev.get("file") or ""), str(ev.get("line") or "")])
             has_loc = bool(ev.get("file") and ev.get("line"))
-            key = f"loc:{loc}" if has_loc else "|".join([
-                str(ev.get("timestamp") or ""),
-                str(ev.get("description") or "")[:120],
-                str(ev.get("source") or ""),
-                str(ev.get("file") or ""),
-            ])
+            key: tuple = (
+                ("loc", str(ev.get("file") or ""), str(ev.get("line") or ""))
+                if has_loc
+                else (
+                    "content",
+                    str(ev.get("timestamp") or ""),
+                    str(ev.get("description") or "")[:120],
+                    str(ev.get("source") or ""),
+                    str(ev.get("file") or ""),
+                )
+            )
             if key in seen:
                 prev = out[seen[key]]
                 # Union matched needles + fill any fields the first event lacked.
@@ -176,7 +185,7 @@ def load_ingest_artifacts_with_lines(case_dir: Path) -> list[tuple[int, Artifact
     return arts
 
 
-def _artifact_key(d: dict) -> str:
+def _artifact_key(d: dict) -> tuple:
     """Content key so re-ingesting the same evidence does not duplicate rows.
 
     Includes ports/protocol/user/file_path AND a hash of the raw record: two
@@ -192,7 +201,7 @@ def _artifact_key(d: dict) -> str:
         raw_hash = hashlib.sha1(
             str(raw).encode("utf-8", "replace")
         ).hexdigest()[:16]
-    parts = (
+    parts: tuple = (
         d.get("source"),
         d.get("artifact_type"),
         # With a raw record the hash IS the identity — parse-time synthesized
@@ -209,7 +218,7 @@ def _artifact_key(d: dict) -> str:
         str(d.get("description") or d.get("details") or "")[:160],
         raw_hash,
     )
-    return "|".join(str(p or "") for p in parts)
+    return parts
 
 
 def append_ingest_artifacts(case_dir: Path, artifacts: list[Artifact]) -> Path:

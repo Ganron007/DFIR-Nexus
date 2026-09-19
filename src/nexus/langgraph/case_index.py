@@ -221,8 +221,10 @@ def iter_index_docs(
         fields: dict[str, str] | None = None,
     ) -> None:
         text = line.strip()[:_MAX_LINE]
+        # Full-text hash: a prefix would let two rows that differ only beyond
+        # char 80 collide and overwrite each other on re-index (EH-8).
         key = hashlib.sha1(
-            f"{fam}:{path}:{i}:{text[:80]}".encode("utf-8", "replace")
+            f"{fam}\x00{path}\x00{i}\x00{text}".encode("utf-8", "replace")
         ).hexdigest()
         if key in seen:
             return
@@ -362,9 +364,11 @@ def _bulk_ndjson(index: str, docs: list[dict[str, Any]]) -> str:
     import json
 
     for doc in docs:
+        # Full-text hash (EH-8): a prefix would let rows differing only after
+        # char 80 share an _id and overwrite each other.
         _id = hashlib.sha1(
-            f"{doc.get('family')}:{doc.get('file')}:{doc.get('line')}:"
-            f"{doc.get('text', '')[:80]}".encode()
+            f"{doc.get('family')}\x00{doc.get('file')}\x00{doc.get('line')}\x00"
+            f"{doc.get('text', '')}".encode()
         ).hexdigest()
         lines.append(json.dumps({"index": {"_index": index, "_id": _id}}))
         lines.append(json.dumps(doc, default=str))

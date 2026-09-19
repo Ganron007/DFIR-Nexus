@@ -236,6 +236,10 @@ class Artifact:
     iocs: list[str] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
     ingested_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    # EH-7: True when the source timestamp could not be parsed and the ingest
+    # time was substituted — downstream must never present it as event time
+    # without saying so.
+    ts_synthesized: bool = False
 
     @staticmethod
     def new_id() -> str:

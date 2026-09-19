@@ -97,7 +97,10 @@ class SyslogImporter(Importer):
         msg: str,
     ) -> Artifact:
         """Build an Artifact from parsed syslog fields."""
-        ts = self.normalize_timestamp(ts_str) or datetime.now(UTC)
+        ts = self.normalize_timestamp(ts_str)
+        ts_synthesized = ts is None
+        if ts is None:
+            ts = datetime.now(UTC)
         # Guess type from proc name
         proc_lower = proc.lower()
         artifact_type = ArtifactType.UNKNOWN
@@ -122,6 +125,7 @@ class SyslogImporter(Importer):
             artifact_type=artifact_type,
             source=ArtifactSource.SYSLOG,
             timestamp=ts,
+            ts_synthesized=ts_synthesized,
             severity=severity,
             host=host,
             process_name=proc,

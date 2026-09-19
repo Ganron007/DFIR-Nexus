@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterator
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -82,9 +81,7 @@ class SuricataImporter(Importer):
     def _record_to_artifact(self, record: dict[str, Any]) -> Artifact:
         """Map a single Suricata event record to an Artifact."""
         event_type = str(record.get("event_type", "")).lower()
-        ts = self.normalize_timestamp(record.get("timestamp"))
-        if ts is None:
-            ts = datetime.now(UTC)
+        ts, ts_synthesized = self.resolve_timestamp(record.get("timestamp"))
 
         # Map event_type to ArtifactType
         type_map = {
@@ -135,6 +132,7 @@ class SuricataImporter(Importer):
             artifact_type=artifact_type,
             source=ArtifactSource.SURICATA,
             timestamp=ts,
+            ts_synthesized=ts_synthesized,
             severity=severity,
             host=record.get("host"),
             source_ip=record.get("src_ip"),

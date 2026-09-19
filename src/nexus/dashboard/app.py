@@ -1481,7 +1481,7 @@ async def ask_page(request):
         for i, h in enumerate(hits, 1):
             rows += f"""
 <tr>
-  <td><input type="checkbox" class="hit-check" value="{i}"></td>
+  <td><input type="checkbox" class="hit-check" value="{i}" data-family="{_e(h.get('family', ''))}" data-file="{_e(h.get('file', ''))}" data-line="{_e(h.get('line', ''))}"></td>
   <td>{_e(h.get('family', ''))}</td>
   <td>{_e(h.get('file', ''))}:{_e(h.get('line', ''))}</td>
   <td>{_e(h.get('terms', ''))}</td>
@@ -1529,7 +1529,7 @@ async function promoteSelected() {{
   const r = await fetch('/portal/api/mode1/select', {{
     method: 'POST',
     headers: {{'Content-Type':'application/json'}},
-    body: JSON.stringify({{hits: hitIds, title: title, scribe: scribe}})
+    body: JSON.stringify({{rows: hitIds.map(function(i){{var cb=checkboxes[i-1];return {{family:cb.dataset.family, file:cb.dataset.file, line:cb.dataset.line}};}}), title: title, scribe: scribe}})
   }});
   const result = await r.json();
   if (result.finding_id) {{
@@ -1942,12 +1942,14 @@ async def api_select(request):
 
     body = await request.json()
     raw_indices = body.get("hits", [])
+    raw_rows = body.get("rows")
+    has_rows = isinstance(raw_rows, list) and bool(raw_rows)
     title = str(body.get("title") or "").strip()
     use_scribe = bool(body.get("scribe", True))
 
     if not title:
         return JSONResponse({"error": "Missing title"}, status_code=400)
-    if not raw_indices:
+    if not raw_indices and not has_rows:
         return JSONResponse({"error": "No hits selected"}, status_code=400)
 
     from nexus.langgraph.llm_pipeline import get_model
@@ -1996,16 +1998,44 @@ async def api_select(request):
     if not all_hits:
         return JSONResponse({"error": "No hits loaded. Run ask first."}, status_code=400)
 
-    try:
-        indices = sorted({int(i) - 1 for i in raw_indices if str(i).strip()})
-    except (ValueError, TypeError):
-        return JSONResponse({"error": "Invalid hit indices"}, status_code=400)
+    def _hit_key(h: dict) -> tuple[str, str, str]:
+        return (
+            str(h.get("family") or ""),
+            str(h.get("file") or "").replace("\\", "/"),
+            str(h.get("line") or ""),
+        )
 
-    bad = [i + 1 for i in indices if i < 0 or i >= len(all_hits)]
-    if bad:
-        return JSONResponse({"error": f"Hit indices out of range: {bad}"}, status_code=400)
+    if has_rows:
+        # EH-6: select by STABLE row identity. The displayed list came from the
+        # search path; index-based selection could attach a different row after
+        # any drift. Missing identities are reported (409), never substituted.
+        wanted = {
+            (
+                str(r.get("family") or ""),
+                str(r.get("file") or "").replace("\\", "/"),
+                str(r.get("line") or ""),
+            )
+            for r in raw_rows if isinstance(r, dict)
+        }
+        selected = [h for h in all_hits if _hit_key(h) in wanted]
+        found = {_hit_key(h) for h in selected}
+        missing = [f"{f}:{ln}" for _fam, f, ln in wanted - found]
+        if missing:
+            return JSONResponse({
+                "error": "selected rows are not in the current result — re-run the search",
+                "missing": sorted(missing)[:10],
+            }, status_code=409)
+    else:
+        try:
+            indices = sorted({int(i) - 1 for i in raw_indices if str(i).strip()})
+        except (ValueError, TypeError):
+            return JSONResponse({"error": "Invalid hit indices"}, status_code=400)
 
-    selected = [all_hits[i] for i in indices]
+        bad = [i + 1 for i in indices if i < 0 or i >= len(all_hits)]
+        if bad:
+            return JSONResponse({"error": f"Hit indices out of range: {bad}"}, status_code=400)
+
+        selected = [all_hits[i] for i in indices]
     from nexus.audit import resolve_examiner
     from nexus.langgraph.query_pack import attach_hit_fields
     selected = attach_hit_fields(case_dir, selected)  # re-parse fields for the report
@@ -2437,7 +2467,10 @@ function renderHits() {{
     return;
   }}
   tb.innerHTML = currentHits.map((h, i) => '<tr>' +
-    '<td><input type="checkbox" class="hit-check" value="' + (i+1) + '"></td>' +
+    '<td><input type="checkbox" class="hit-check" value="' + (i+1) + '"' +
+      ' data-family="' + escapeHtml(h.family || '') + '"' +
+      ' data-file="' + escapeHtml(h.file || '') + '"' +
+      ' data-line="' + escapeHtml(String(h.line || '')) + '"></td>' +
     '<td>' + escapeHtml(h.family) + '</td>' +
     '<td>' + escapeHtml(h.file) + ':' + escapeHtml(h.line) + '</td>' +
     '<td>' + escapeHtml(h.terms) + '</td>' +
@@ -2613,7 +2646,7 @@ async function promoteSelected() {{
     method: 'POST',
     headers: {{'Content-Type':'application/json'}},
     body: JSON.stringify({{
-      hits: hitIds,
+      rows: Array.from(checkboxes).map(cb => ({{family: cb.dataset.family, file: cb.dataset.file, line: cb.dataset.line}})),
       title: title,
       scribe: scribe,
       needles: document.getElementById('needles').value,
@@ -2892,7 +2925,7 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
     from nexus.langgraph.query_pack import (
         attach_hit_fields,
         load_case_intake,
-        n4_query,
+        n4_hits,
         parse_intake_window,
     )
 
@@ -2963,12 +2996,13 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
         record["stage"] = "scanning"
         _persist()
 
-        all_hits: list[dict] = []
-        for i, s in enumerate(scan):
+        # EH-6: ONE batched chunked scan per 25 needles (was one full-case
+        # query per needle — up to 120 sequential rescans). Per-needle rows
+        # are attributed from each hit's structured ``terms_list``, so no
+        # intake terms leak in and no needle needs its own re-query.
+        needles_ordered: list[str] = []
+        for s in scan:
             needle = str(s.get("needle") or "").strip()
-            record["needles_done"] = i
-            record["current"] = needle
-            _persist()
             if not needle:
                 continue
             # Low-signal guard: pure digits / single chars match everything and
@@ -2977,22 +3011,58 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
                 record["skipped"].append(
                     {"needle": needle, "reason": "low-signal needle (numeric/too short)"})
                 continue
-            # Re-query just this needle and keep only rows that actually
-            # matched it (n4_query can add intake terms otherwise).
-            result = n4_query(case_dir, needle, window=window, limit=500, offset=0)
-            if result.get("error"):
-                record["skipped"].append({"needle": needle, "reason": result["error"]})
+            needles_ordered.append(needle)
+        needle_keys = {n.lower() for n in needles_ordered}
+        hits_by_needle: dict[str, list[dict]] = {}
+        scan_batches = 0
+        scan_capped = False
+        scan_coverage = {"terms_requested": 0, "terms_queried": 0, "terms_failed": 0}
+        for start_at in range(0, len(needles_ordered), 25):
+            chunk = needles_ordered[start_at:start_at + 25]
+            chunk_stats: dict = {}
+            chunk_hits, _chunk_backend = n4_hits(
+                case_dir, chunk, window, priority_terms=chunk, stats=chunk_stats,
+            )
+            scan_batches += 1
+            if (chunk_stats.get("hits_capped") or chunk_stats.get("files_capped")
+                    or chunk_stats.get("files_skipped_family_cap")
+                    or chunk_stats.get("files_skipped_size")
+                    or chunk_stats.get("terms_failed")):
+                scan_capped = True
+            scan_coverage["terms_requested"] += int(chunk_stats.get("terms_requested") or 0)
+            scan_coverage["terms_queried"] += int(chunk_stats.get("terms_queried") or 0)
+            scan_coverage["terms_failed"] += len(chunk_stats.get("terms_failed") or [])
+            for h in attach_hit_fields(case_dir, list(chunk_hits)):
+                matched = h.get("terms_list")
+                if not isinstance(matched, list):
+                    matched = [t.strip() for t in str(h.get("terms") or "").split(",")]
+                for t in matched:
+                    key = str(t).strip().lower()
+                    if key in needle_keys:
+                        hits_by_needle.setdefault(key, []).append(h)
+        record["scan_batches"] = scan_batches
+        record["scan_coverage"] = scan_coverage
+        record["scan_truncated"] = bool(record.get("scan_truncated")) or scan_capped
+        _persist()
+
+        all_hits: list[dict] = []
+        seen_hit_keys: set[tuple[str, str, str]] = set()
+        for i, s in enumerate(scan):
+            needle = str(s.get("needle") or "").strip()
+            record["needles_done"] = i
+            record["current"] = needle
+            _persist()
+            if not needle or len(needle) < 3 or needle.isdigit():
                 continue
-            hits = [
-                h for h in attach_hit_fields(case_dir, list(result.get("hits") or []))
-                if needle.lower() in {
-                    t.strip().lower() for t in str(h.get("terms") or "").split(",")
-                }
-            ]
+            hits = hits_by_needle.get(needle.lower()) or []
             if not hits:
                 record["skipped"].append({"needle": needle, "reason": "no hits matched this needle"})
                 continue
-            all_hits.extend(hits)
+            for h in hits:
+                hit_key = (str(h.get("family") or ""), str(h.get("file") or ""), str(h.get("line") or ""))
+                if hit_key not in seen_hit_keys:
+                    seen_hit_keys.add(hit_key)
+                    all_hits.append(h)
             record["stage"] = "bookmarking"
             record["bookmarks_added"] += int(add_bookmarks(case_dir, hits).get("added") or 0)
 
@@ -3001,7 +3071,7 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
             # needle-matched row, and intake terms inflate result["count"].
             record["stage"] = "staging draft"
             families = sorted({str(h.get("family") or "?") for h in hits})
-            more = "+" if int(result.get("count") or 0) > len(hits) else ""
+            more = "+" if scan_capped else ""
             title = f"Signal: {needle} — {len(hits)}{more} hit(s) across {', '.join(families)}"
             needle_key = needle.lower()
             approved_ids = approved_by_needle.get(needle_key) or []
@@ -5115,7 +5185,9 @@ async def api_case_briefing(request):
         return JSONResponse({"error": "No active case"}, status_code=404)
 
     try:
-        return JSONResponse(_cached_briefing(case_dir))
+        # EH-10: the first (cache-miss) build scans every extraction file —
+        # never on the event loop, or a big case stalls every other request.
+        return JSONResponse(await asyncio.to_thread(_cached_briefing, case_dir))
     except Exception as exc:  # noqa: BLE001
         logger.exception("briefing failed")
         return JSONResponse({"error": f"briefing failed: {exc}"}, status_code=500)

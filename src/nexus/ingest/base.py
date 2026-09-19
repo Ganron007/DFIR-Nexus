@@ -139,6 +139,21 @@ class Importer(ABC):
         return []
 
     @staticmethod
+    def resolve_timestamp(value: Any) -> tuple[datetime, bool]:
+        """Return ``(timestamp, synthesized)``.
+
+        ``synthesized`` is True when the input could not be parsed and the
+        ingest time was substituted (EH-7) — provenance must record that a
+        timestamp is not the event's own.
+        """
+        import datetime as _dt
+
+        ts = Importer.normalize_timestamp(value)
+        if ts is None:
+            return _dt.datetime.now(_dt.UTC), True
+        return ts, False
+
+    @staticmethod
     def normalize_timestamp(value: Any) -> datetime | None:
         """Convert arbitrary timestamp formats to a UTC datetime.
 

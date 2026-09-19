@@ -472,6 +472,9 @@ def render_ingest_row(d: dict[str, Any], max_len: int = _MAX_LINE) -> str:
         str(d.get("description") or d.get("details") or d.get("rule") or ""),
         " ".join(str(t) for t in (d.get("technique_ids") or [])),
         " ".join(str(i) for i in (d.get("iocs") or [])),
+        # EH-7: searchable/visible marker so nobody reads ingest time as
+        # event time in the evidence rows themselves.
+        "ts_synthesized=true" if d.get("ts_synthesized") else "",
     ]
     return " ".join(p for p in parts if p).strip()[:max_len]
 
@@ -729,6 +732,40 @@ _UNC_RE = re.compile(r"\\\\([A-Za-z0-9][A-Za-z0-9.-]{1,30})\\")
 _MAX_FIELDS = 24
 _MAX_FIELD_VALUE = 160
 _header_cache: dict[str, list[str]] = {}
+# line_no -> parsed record per ingest store, keyed by path+mtime. The hit
+# enricher used to re-open and linearly scan artifacts.jsonl for EVERY hit
+# (O(hits × store)); one cached pass makes it O(store) (EH-10).
+_ingest_line_cache: dict[str, dict[int, dict[str, Any]]] = {}
+
+
+def _ingest_records_by_line(store: Path) -> dict[int, dict[str, Any]]:
+    """Parsed record per line for one ingest store (mtime-cached, bounded)."""
+    try:
+        key = f"{store}:{store.stat().st_mtime_ns}"
+    except OSError:
+        return {}
+    cached = _ingest_line_cache.get(key)
+    if cached is not None:
+        return cached
+    rows: dict[int, dict[str, Any]] = {}
+    try:
+        with store.open(encoding="utf-8", errors="replace") as fh:
+            for i, line in enumerate(fh, start=1):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    d = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(d, dict):
+                    rows[i] = d
+    except OSError:
+        rows = {}
+    _ingest_line_cache[key] = rows
+    if len(_ingest_line_cache) > 4:
+        _ingest_line_cache.pop(next(iter(_ingest_line_cache)))
+    return rows
 
 
 def _split_csv_row(text: str) -> list[str]:
@@ -818,11 +855,7 @@ def attach_hit_fields(case_dir: Path, hits: list[dict[str, Any]]) -> list[dict[s
             record: dict[str, Any] | None = None
             try:
                 line_no = int(h.get("line") or 0)
-                with store.open(encoding="utf-8", errors="replace") as fh:
-                    for i, line in enumerate(fh, start=1):
-                        if i == line_no:
-                            record = json.loads(line)
-                            break
+                record = _ingest_records_by_line(store).get(line_no)
             except (OSError, ValueError):
                 record = None
             if isinstance(record, dict):

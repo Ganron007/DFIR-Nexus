@@ -257,9 +257,9 @@ def _wait_full_run(client, timeout=15):
 @patch("nexus.dashboard.app._get_case_dir")
 @patch("nexus.langgraph.mode1.save_draft_finding")
 @patch("nexus.langgraph.query_pack.attach_hit_fields")
-@patch("nexus.langgraph.query_pack.n4_query")
+@patch("nexus.langgraph.query_pack.n4_hits")
 @patch("nexus.langgraph.briefing.case_briefing")
-def test_api_mode1_full_run(mock_brief, mock_n4q, mock_attach, mock_save, mock_get_dir, tmp_path):
+def test_api_mode1_full_run(mock_brief, mock_n4h, mock_attach, mock_save, mock_get_dir, tmp_path):
     """WP 4j.5d — POST /mode1/full-run starts a tracked run: 202 + live record,
     409 on concurrent start, terminal state persisted for reconnect."""
     import threading
@@ -282,20 +282,29 @@ def test_api_mode1_full_run(mock_brief, mock_n4q, mock_attach, mock_save, mock_g
     mock_attach.side_effect = lambda _cd, hits: hits
     gate = threading.Event()  # hold the worker mid-run to test the 409 guard
 
-    def _query(_cd, q, **_kw):
+    def _hits(_cd, terms, _window=None, **kw):
         gate.wait(timeout=10)
-        if "sdelete" in q:
-            return {"count": 2, "backend": "csv", "hits": [
-                {"family": "hayabusa", "file": "a.csv", "line": "1", "text": "sdelete x", "terms": "sdelete"},
-                {"family": "hayabusa", "file": "a.csv", "line": "2", "text": "sdelete y", "terms": "sdelete"},
-            ]}
-        if "rundll32" in q:
-            return {"count": 1, "backend": "csv", "hits": [
-                {"family": "evtx", "file": "b.csv", "line": "9", "text": "rundll32 z", "terms": "rundll32"},
-            ]}
-        return {"count": 0, "backend": "csv", "hits": []}
+        out = []
+        for t in terms:
+            if t == "sdelete":
+                out += [
+                    {"family": "hayabusa", "file": "a.csv", "line": "1",
+                     "text": "sdelete x", "terms": "sdelete", "terms_list": ["sdelete"]},
+                    {"family": "hayabusa", "file": "a.csv", "line": "2",
+                     "text": "sdelete y", "terms": "sdelete", "terms_list": ["sdelete"]},
+                ]
+            elif t == "rundll32":
+                out += [
+                    {"family": "evtx", "file": "b.csv", "line": "9",
+                     "text": "rundll32 z", "terms": "rundll32", "terms_list": ["rundll32"]},
+                ]
+        stats = kw.get("stats")
+        if stats is not None:
+            stats.update({"terms_requested": len(terms), "terms_queried": len(terms),
+                          "terms_failed": [], "chunk_queries": 1, "chunks_split": 0})
+        return out, "csv"
 
-    mock_n4q.side_effect = _query
+    mock_n4h.side_effect = _hits
     mock_save.side_effect = lambda _cd, draft: {"status": "STAGED", "finding_id": "F-test-001"}
 
     app = Starlette(routes=create_dashboard())
@@ -395,9 +404,9 @@ def test_api_mode1_full_run_concurrent_posts(mock_get_dir, tmp_path):
 @patch("nexus.dashboard.app._get_case_dir")
 @patch("nexus.langgraph.mode1.save_draft_finding")
 @patch("nexus.langgraph.query_pack.attach_hit_fields")
-@patch("nexus.langgraph.query_pack.n4_query")
+@patch("nexus.langgraph.query_pack.n4_hits")
 @patch("nexus.langgraph.briefing.case_briefing")
-def test_api_mode1_full_run_reprocess(mock_brief, mock_n4q, mock_attach, mock_save, mock_get_dir, tmp_path):
+def test_api_mode1_full_run_reprocess(mock_brief, mock_n4h, mock_attach, mock_save, mock_get_dir, tmp_path):
     """Reprocess mode supersedes DRAFTs and re-stages; APPROVED findings are
     never overwritten — a fresh DRAFT revision is staged alongside them."""
     import json as _json
@@ -417,11 +426,14 @@ def test_api_mode1_full_run_reprocess(mock_brief, mock_n4q, mock_attach, mock_sa
         ],
     }
     mock_attach.side_effect = lambda _cd, hits: hits
-    mock_n4q.side_effect = lambda _cd, q, **_kw: {
-        "count": 1, "backend": "csv",
-        "hits": [{"family": "hayabusa", "file": "a.csv", "line": "1",
-                  "text": f"{q} hit", "terms": q}],
-    }
+    def _hits(_cd, terms, _window=None, **_kw):
+        return [
+            {"family": "hayabusa", "file": "a.csv", "line": "1",
+             "text": f"{t} hit", "terms": t, "terms_list": [t]}
+            for t in terms
+        ], "csv"
+
+    mock_n4h.side_effect = _hits
     seq = iter(["F-new-1", "F-new-2"])
     mock_save.side_effect = lambda _cd, draft: {"status": "STAGED", "finding_id": next(seq)}
 
@@ -643,3 +655,54 @@ def test_api_report_generate_preserves_steering(mock_get_dir, tmp_path):
     steer = mock_write.call_args.kwargs["steer"]
     assert "(r1) dig into mshta [focus: F-1]" in steer
     assert "(r2) focus on persistence" in steer
+
+@patch("nexus.dashboard.app._get_case_dir")
+@patch("nexus.langgraph.mode1.save_draft_finding")
+@patch("nexus.langgraph.mode1.promote_hits_to_draft")
+def test_api_select_rows_identity_and_drift(mock_promote, mock_save, mock_get_dir, tmp_path):
+    """EH-6: selection by stable row identity — a row that is not in the
+    current result is reported (409), never substituted by index drift."""
+    from starlette.applications import Starlette
+    from starlette.testclient import TestClient
+
+    from nexus.dashboard.app import create_dashboard
+
+    case_dir = _make_case_dir(tmp_path)
+    _write_hits(case_dir)
+    mock_get_dir.return_value = case_dir
+
+    def _promote(_cd, hits, title, **_kw):
+        return {
+            "id": "F-draft", "title": title,
+            "evidence": [
+                {"source": f"{h.get('family')}/{h.get('file')}",
+                 "line": h.get("line"), "detail": h.get("text")}
+                for h in hits
+            ],
+            "audit_ids": ["a-1"], "confidence": "LOW",
+            "confidence_justification": "test",
+        }
+
+    mock_promote.side_effect = _promote
+    mock_save.side_effect = lambda _cd, draft: {"status": "STAGED", "finding_id": "F-test-001"}
+
+    app = Starlette(routes=create_dashboard())
+    client = TestClient(app)
+
+    drift = client.post("/portal/api/mode1/select", json={
+        "rows": [{"family": "hayabusa", "file": "hayabusa/timeline.csv", "line": "999"}],
+        "title": "Drift test", "scribe": False,
+    })
+    assert drift.status_code == 409
+    assert "999" in str(drift.json().get("missing"))
+    assert not mock_promote.called
+
+    ok = client.post("/portal/api/mode1/select", json={
+        "rows": [{"family": "hayabusa", "file": "hayabusa/timeline.csv", "line": "2"}],
+        "title": "Exact row", "scribe": False,
+    })
+    assert ok.status_code == 200
+    assert ok.json()["finding_id"] == "F-test-001"
+    selected = mock_promote.call_args.kwargs["hits"]
+    assert len(selected) == 1
+    assert str(selected[0].get("line")) == "2"

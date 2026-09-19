@@ -177,6 +177,7 @@ class ZeekImporter(Importer):
             except (ValueError, TypeError):
                 if hasattr(self, "skipped_lines"):
                     self.skipped_lines += 1
+        ts_synthesized = ts is None
         if ts is None:
             ts = datetime.now(UTC)
 
@@ -213,6 +214,7 @@ class ZeekImporter(Importer):
             artifact_type=artifact_type,
             source=ArtifactSource.ZEEK,
             timestamp=ts,
+            ts_synthesized=ts_synthesized,
             severity=severity,
             host=path.stem.split(".")[0] if "." in path.stem else None,
             source_ip=record.get("id.orig_h") or record.get("src_ip"),

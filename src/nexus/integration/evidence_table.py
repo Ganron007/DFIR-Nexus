@@ -35,7 +35,10 @@ _BETWEEN = re.compile(
     re.I,
 )
 _N4_LINE = re.compile(
-    r"^(?P<file>[^:\n]+):(?P<line>\d+)\s+terms=(?P<terms>[^:]+):\s+(?P<body>.*)$"
+    # greedy file: Windows paths contain ':' (C:\...\a.csv:12 terms=...:) —
+    # anchoring on the LAST ':line terms=' keeps them parseable. Terms may
+    # themselves contain ':' so they are matched non-greedily up to ': body'.
+    r"^(?P<file>.+):(?P<line>\d+)\s+terms=(?P<terms>.*?):\s+(?P<body>.*)$"
 )
 # Only undecodable bytes (U+FFFD) mark a row as garbage. This used to also
 # match CJK ranges, silently deleting legitimate APAC evidence rows from
