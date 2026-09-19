@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
+import json
 import logging
 import os
 import re
@@ -890,6 +891,10 @@ def ast_to_es(query: Any | None, terms: list[str] | None = None,
             filt.append({
                 "wildcard": {"file": {"value": f"*{value.lower()}*", "case_insensitive": True}}
             })
+        elif fname in {"ts", "time", "timestamp", "date", "eventtime"}:
+            # A non-date value on the date field is an ES parse 400 (and the
+            # whole search dies to CSV) — treat it as a text match instead.
+            filt.append(_term_clause(value, True))
         else:
             key_field = {"host": "host", "user": "user", "event": "event_id"}.get(
                 fname, fname
@@ -1161,7 +1166,10 @@ def query_index(
         }
         r = client.post(f"/{name}/_search", json=body)
         if r.status_code >= 400:
-            raise RuntimeError(f"search failed: {r.status_code} {r.text[:300]}")
+            raise RuntimeError(
+                f"search failed: {r.status_code} {r.text[:300]} "
+                f"| query={json.dumps(body)[:600]}"
+            )
         return r.json().get("hits", {}).get("hits", [])
 
     with _client() as client:
@@ -1182,7 +1190,16 @@ def query_index(
                 search_fields = False
 
             def _post_search(body: dict[str, Any]):
-                return client.post(f"/{name}/_search", json=body)
+                r = client.post(f"/{name}/_search", json=body)
+                if r.status_code >= 400:
+                    # ES 400s name the parse failure but not the offending
+                    # clause — carry a compact body so the next occurrence is
+                    # diagnosable from the log alone (EH-13 honesty).
+                    raise RuntimeError(
+                        f"search failed: {r.status_code} {r.text[:300]} "
+                        f"| query={json.dumps(body)[:600]}"
+                    )
+                return r
 
             if query is not None and not (
                 hasattr(query, "is_empty") and query.is_empty()
@@ -1194,8 +1211,6 @@ def query_index(
                     "size": 400,
                     "query": ast_to_es(query, search_fields=search_fields),
                 })
-                if r.status_code >= 400:
-                    raise RuntimeError(f"search failed: {r.status_code} {r.text[:300]}")
                 hits_raw = r.json().get("hits", {}).get("hits", [])
                 if stats is not None:
                     stats["hits_fetched"] = len(hits_raw)
@@ -1204,8 +1219,6 @@ def query_index(
                 if stats is not None:
                     stats["mode"] = "match_all"
                 r = _post_search({"size": 400, "query": {"match_all": {}}})
-                if r.status_code >= 400:
-                    raise RuntimeError(f"search failed: {r.status_code} {r.text[:300]}")
                 hits_raw = r.json().get("hits", {}).get("hits", [])
                 if stats is not None:
                     stats["hits_fetched"] = len(hits_raw)
@@ -1223,11 +1236,14 @@ def query_index(
                         continue
                     if stats is not None:
                         stats["chunk_queries"] += 1
-                    r = _post_search({
-                        "size": 400,
-                        "query": ast_to_es(None, terms=chunk,
-                                           search_fields=search_fields),
-                    })
+                    r = client.post(
+                        f"/{name}/_search",
+                        json={
+                            "size": 400,
+                            "query": ast_to_es(None, terms=chunk,
+                                               search_fields=search_fields),
+                        },
+                    )
                     if r.status_code >= 400 and len(chunk) > 1:
                         # Clause/rewrite limit hit — split and retry, never drop.
                         mid = len(chunk) // 2

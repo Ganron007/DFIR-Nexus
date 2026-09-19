@@ -1,6 +1,8 @@
 """WP 4j.30/4j.31/4j.32 — schema v2 doc fields, AST→ES translation, agg field map."""
 from __future__ import annotations
 
+import json
+
 
 def test_row_fields_parses_csv_and_caps():
     from nexus.langgraph.case_index import _row_fields
@@ -344,3 +346,20 @@ def test_trim_hit_preserves_structured_envelope():
     assert hit["event_id"] == "4688"
     assert hit["ts"] == "2026-01-01T10:00:00"
     assert hit["fields"]["RuleTitle"] == "Suspicious Sdelete"
+
+def test_stray_date_field_filter_degrades_to_text():
+    """A stray ts/timestamp field filter must degrade to text, not 400.
+
+    ES rejects {"term": {"ts": "Computer Startup"}} with a parse_exception and
+    the whole search falls back to CSV — the exact case reported by the
+    operator (2026-09-19).
+    """
+    from nexus.langgraph.case_index import ast_to_es
+    from nexus.langgraph.query_dsl import parse_query
+
+    q = parse_query("sdelete")
+    q.fields["ts"] = "Computer Startup"
+    es = ast_to_es(q, search_fields=True)
+    body = json.dumps(es)
+    assert '"ts"' not in body, f"date field must not be queried as a term: {body}"
+    assert "Computer Startup" in body
