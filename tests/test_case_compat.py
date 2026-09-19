@@ -227,3 +227,81 @@ class TestGetSqliteManager:
         assert mgr.get_case(case.id) is not None
         assert db.exists()
         mgr.close()
+
+    def test_sync_preserves_flat_tool_extraction_evidence(self, tmp_path: Path) -> None:
+        """EH-3: tool-output evidence lives only in the flat registry; a sync
+        must backfill it into SQLite, never erase it."""
+        db = tmp_path / "cases.db"
+        dest = tmp_path / "CASE-TOOL"
+        dest.mkdir()
+        (dest / "evidence.json").write_text(json.dumps([
+            {
+                "path": str(tmp_path / "hayabusa_stdout.txt"),
+                "sha256": "cd" * 32,
+                "description": "Tool output: hayabusa — EVTX timeline",
+                "examiner": "system",
+                "registered_at": "2026-09-18T12:00:00+00:00",
+                "status": "registered",
+                "kind": "tool_extraction",
+                "tool": "hayabusa",
+            },
+        ]), encoding="utf-8")
+        mgr = CaseManager(db, secret_key=b"test-key")
+        case = mgr.create_case(name="Tool", case_id="CASE-TOOL", created_by="analyst")
+        sync_sqlite_to_flat(case.id, mgr=mgr, case_dir=dest)
+        evidence = json.loads((dest / "evidence.json").read_text(encoding="utf-8"))
+        tools = [e for e in evidence if e.get("kind") == "tool_extraction"]
+        assert tools, "tool-extraction evidence was erased by the sync"
+        assert tools[0]["tool"] == "hayabusa"
+        assert tools[0]["sha256"] == "cd" * 32
+        # and it is now in the SQLite SSoT too
+        db_tools = [e for e in mgr.list_evidence(case.id)
+                    if (e.metadata or {}).get("kind") == "tool_extraction"]
+        assert db_tools, "tool-extraction evidence was not backfilled into SQLite"
+        # a second sync must not duplicate it
+        sync_sqlite_to_flat(case.id, mgr=mgr, case_dir=dest)
+        evidence2 = json.loads((dest / "evidence.json").read_text(encoding="utf-8"))
+        assert len([e for e in evidence2 if e.get("kind") == "tool_extraction"]) == 1
+        mgr.close()
+
+    def test_cross_case_finding_id_is_refused_and_scoped(self, tmp_path):
+        """EH-4: global findings PK — an id from another case must never be
+        overwritten, and lookups can be case-scoped."""
+        import dataclasses
+
+        db = tmp_path / "cases.db"
+        dest = tmp_path / "CASE-A"
+        dest.mkdir()
+        mgr = CaseManager(db, secret_key=b"test-key")
+        case_a = mgr.create_case(name="A", case_id="CASE-A", created_by="x")
+        case_b = mgr.create_case(name="B", case_id="CASE-B", created_by="x")
+        finding = mgr.add_finding(case_a.id, title="A finding", created_by="x")
+        assert finding is not None
+        stored = dataclasses.replace(finding, id="F-tester-001", case_id=case_a.id)
+        mgr.store.save_finding(stored)
+
+        # same id, different case → refused (no silent clobber)
+        clobber = dataclasses.replace(stored, case_id=case_b.id, title="B steal")
+        try:
+            mgr.store.save_finding(clobber)
+            raise AssertionError("cross-case finding overwrite was allowed")
+        except ValueError:
+            pass
+        # case-scoped lookup: id is invisible from the other case
+        assert mgr.store.get_finding("F-tester-001", case_id=case_b.id) is None
+        assert mgr.store.get_finding("F-tester-001", case_id=case_a.id) is not None
+        assert mgr.store.get_finding("F-tester-001", case_id=case_a.id).title == "A finding"
+
+        # id generation bumps past another case's id
+        import nexus.case.compat as compat
+        from nexus.case_manager import _global_unique_finding_id
+        original = compat.get_sqlite_manager
+        compat.get_sqlite_manager = lambda: mgr  # type: ignore[assignment]
+        try:
+            bumped = _global_unique_finding_id("F-tester-001", case_b.id)
+            assert bumped == "F-tester-002"
+            # same case keeps its id
+            assert _global_unique_finding_id("F-tester-001", case_a.id) == "F-tester-001"
+        finally:
+            compat.get_sqlite_manager = original
+        mgr.close()

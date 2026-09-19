@@ -113,6 +113,34 @@ def _next_seq(items: list[dict], id_field: str, prefix: str, examiner: str) -> i
     return max_num + 1
 
 
+def _global_unique_finding_id(candidate: str, case_id: str) -> str:
+    """Bump the sequence while the id is owned by ANOTHER case in SQLite.
+
+    SQLite finding ids are globally unique but generated per case
+    (`F-{examiner}-{seq}`); without this, the second case handled by the same
+    examiner collides and `INSERT OR REPLACE` would clobber the first (EH-4).
+    """
+    try:
+        from nexus.case.compat import get_sqlite_manager
+
+        mgr = get_sqlite_manager()
+        match = re.match(r"^(F-.+-)(\d{3,})$", candidate)
+        if not match:
+            return candidate
+        base = match.group(1)
+        seq = int(match.group(2))
+        for _ in range(1000):
+            existing = mgr.store.get_finding(candidate)
+            if existing is None or existing.case_id == case_id:
+                return candidate
+            seq += 1
+            candidate = f"{base}{seq:03d}"
+        return candidate
+    except Exception:  # noqa: BLE001 — uniqueness best-effort; store guard backstops
+        logger.debug("global finding-id check unavailable", exc_info=True)
+        return candidate
+
+
 def _load_json_file(path: Path, default: Any) -> Any:
     """Load JSON without silently overwriting corrupt case state."""
     if not path.exists():
@@ -339,7 +367,9 @@ class CaseManager:
 
         findings = self._load_findings(case_dir)
         seq = _next_seq(findings, "id", "F", exam)
-        finding_id = f"F-{exam}-{seq:03d}"
+        finding_id = _global_unique_finding_id(
+            f"F-{exam}-{seq:03d}", case_dir.name
+        )
         now = datetime.now(UTC).isoformat()
 
         sanitized = {k: v for k, v in finding.items()
@@ -615,6 +645,10 @@ class CaseManager:
             finding_dict["case_id"] = case_dir.name
             finding_obj = dict_to_finding(finding_dict)
             sql_mgr.store.save_finding(finding_obj)
+        except ValueError as exc:
+            # EH-4: a cross-case id collision — the store refused to clobber
+            # the other case's finding. The flat finding stays; log loudly.
+            logger.warning("finding dual-write refused: %s", exc)
         except Exception:
             pass  # dual-write is best-effort; never break the flat-JSON path
 

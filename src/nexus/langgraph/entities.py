@@ -23,11 +23,19 @@ _ENTITY_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("ipv4", re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")),
     ("url", re.compile(r"https?://[^\s\"'<>]+", re.IGNORECASE)),
     ("email", re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")),
-    ("domain", re.compile(r"\b(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,}\b")),
+    # process_name BEFORE domain: "powershell.exe" matches the domain shape
+    # (single-label + alpha TLD) and used to be classified as a domain, never
+    # as a process. Executable/script suffixes are also excluded from the
+    # domain pattern below so the two can never fight.
+    ("process_name", re.compile(r"\b[A-Za-z0-9_-]{3,64}\.exe\b", re.IGNORECASE)),
+    ("domain", re.compile(
+        r"\b(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+"
+        r"(?!(?:exe|dll|sys|ps1|bat|cmd|vbs|js|jar|msi|lnk|scr|hta)\b)"
+        r"[A-Za-z]{2,}\b"
+    )),
     ("windows_path", re.compile(r"(?:[A-Za-z]:\\|\\\\)[^\s\"'<>|]+")),
     ("posix_path", re.compile(r"/[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+){2,}")),
     ("domain_user", re.compile(r"\b[A-Za-z][A-Za-z0-9._-]{1,31}\\[A-Za-z0-9._$-]{1,64}\b")),
-    ("process_name", re.compile(r"\b[A-Za-z0-9_-]{3,64}\.exe\b", re.IGNORECASE)),
     ("service_name", re.compile(r"\b[A-Za-z][A-Za-z0-9_-]{2,63}\b(?=\s+(?:service|svc|daemon))", re.IGNORECASE)),
 ]
 

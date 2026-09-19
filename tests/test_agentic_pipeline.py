@@ -279,3 +279,23 @@ class TestFullPipeline:
         assert len(result["findings"]) > 0
         assert result["confidence"] > 0
         assert result["narrative"] != ""
+
+def test_executables_are_processes_not_domains():
+    """EH-2: `powershell.exe` matches the domain shape (name.tld); the
+    classifier must yield process_name, and executable suffixes must never
+    be classified as domains."""
+    from nexus.langgraph.entities import extract_entities
+
+    hits = [{
+        "family": "hayabusa",
+        "text": "powershell.exe ran from C:\\Windows\\cmd.exe then hit contoso.com",
+        "fields": {},
+        "file": "f.csv", "line": "1",
+    }]
+    ent = extract_entities(hits)
+    process_names = [e["value"] for e in ent.get("process_name", [])]
+    domains = [e["value"] for e in ent.get("domain", [])]
+    assert "powershell.exe" in process_names
+    assert "cmd.exe" in process_names
+    assert "contoso.com" in domains
+    assert not any(d.lower().endswith(".exe") for d in domains)

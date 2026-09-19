@@ -2851,7 +2851,7 @@ def _supersede_drafts(case_dir: Path, finding_ids: list[str], *,
         from nexus.config import settings
         mgr = CaseManager(settings.cases_root / "cases.db")
         for fid in done:
-            f_obj = mgr.store.get_finding(fid)
+            f_obj = mgr.store.get_finding(fid, case_id=case_dir.name)
             if f_obj and f_obj.approval_state == ApprovalState.DRAFT:
                 f_obj.approval_state = ApprovalState.REJECTED
                 f_obj.rejected_by = "mode1-full-run"
@@ -5787,7 +5787,7 @@ async def api_findings_reject(request):
             for fid in finding_ids:
                 if any(b["finding_id"] == fid for b in blocked):
                     continue
-                f_obj = mgr.store.get_finding(fid)
+                f_obj = mgr.store.get_finding(fid, case_id=case_dir.name)
                 if (f_obj is not None
                         and f_obj.approval_state != ApprovalState.DRAFT):
                     blocked.append({
@@ -5828,7 +5828,7 @@ async def api_findings_reject(request):
         from nexus.config import settings
         mgr = CaseManager(settings.cases_root / "cases.db")
         for fid in rejected:
-            f_obj = mgr.store.get_finding(fid)
+            f_obj = mgr.store.get_finding(fid, case_id=case_dir.name)
             if f_obj and f_obj.approval_state == ApprovalState.DRAFT:
                 f_obj.approval_state = ApprovalState.REJECTED
                 f_obj.rejected_by = examiner

@@ -37,7 +37,10 @@ _BETWEEN = re.compile(
 _N4_LINE = re.compile(
     r"^(?P<file>[^:\n]+):(?P<line>\d+)\s+terms=(?P<terms>[^:]+):\s+(?P<body>.*)$"
 )
-_GARBAGE = re.compile(r"[\ufffd\u4e00-\u9fff\u3400-\u4dbf]")
+# Only undecodable bytes (U+FFFD) mark a row as garbage. This used to also
+# match CJK ranges, silently deleting legitimate APAC evidence rows from
+# finding tables and reports (EH-5). Never filter by script.
+_GARBAGE = re.compile(r"[\ufffd]")
 _SOURCE_SPLIT = re.compile(
     r"(?=(?:\b(?:amcache|appcompat|pecmd|jlecmd/?\s*lecmd|jlecmd|"
     r"recmd|rbcmd|srumecmd|srum|wxtcmd|psreadline|hayabusa|sqlecmd|"

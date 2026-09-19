@@ -125,6 +125,55 @@ def sync_sqlite_to_flat(
         # subtypes, so it is the single normalization boundary.
         from nexus.case_manager import CaseManager as FlatCaseManager
 
+        # EH-3: tool-extraction evidence (case/outputs.py) is written to the
+        # FLAT registry only. Rebuilding evidence.json from SQLite used to
+        # erase it from the SSoT permanently. Backfill those entries into
+        # SQLite first, so list_evidence() below returns them and the flat
+        # file keeps them.
+        registry_path = dest / "evidence.json"
+        existing_flat: list[Any] = []
+        if registry_path.is_file():
+            try:
+                loaded = json.loads(registry_path.read_text(encoding="utf-8"))
+                if isinstance(loaded, list):
+                    existing_flat = loaded
+                elif isinstance(loaded, dict):
+                    existing_flat = list(loaded.get("files") or loaded.get("items") or [])
+            except (OSError, json.JSONDecodeError):
+                existing_flat = []
+        db_paths = {
+            str(ev.file_path or "").replace("\\", "/").lower()
+            for ev in mgr.list_evidence(case_id)
+        }
+        for entry in existing_flat:
+            if not isinstance(entry, dict) or entry.get("kind") != "tool_extraction":
+                continue
+            flat_path = str(entry.get("path") or "")
+            if not flat_path or flat_path.replace("\\", "/").lower() in db_paths:
+                continue
+            try:
+                collected_at = datetime.fromisoformat(str(entry.get("registered_at") or ""))
+            except ValueError:
+                collected_at = datetime.now(UTC)
+            # store-level insert (not mgr.add_evidence) — that helper calls
+            # _sync_flat and would re-enter this function.
+            mgr.store.save_evidence(EvidenceRecord(
+                id=EvidenceRecord.new_id(),
+                case_id=case_id,
+                artifact_id=None,
+                name=Path(flat_path).name,
+                description=str(entry.get("description") or "")[:500],
+                file_path=flat_path,
+                file_hash_md5=None,
+                file_hash_sha1=None,
+                file_hash_sha256=(str(entry.get("sha256")) if entry.get("sha256") else None),
+                collected_at=collected_at,
+                collected_by=str(entry.get("examiner") or "system"),
+                chain_of_custody=[],
+                metadata={"kind": "tool_extraction", "tool": str(entry.get("tool") or "")},
+            ))
+            db_paths.add(flat_path.replace("\\", "/").lower())
+
         iocs: list[dict[str, Any]] = FlatCaseManager()._load_iocs(dest)
         seen_ioc: set[str] = {
             str(rec.get("value") or "").lower()
@@ -149,6 +198,9 @@ def sync_sqlite_to_flat(
                 "dest_ip": meta.get("dest_ip") or "",
                 "process_name": meta.get("process_name") or "",
                 "technique_ids": meta.get("technique_ids") or [],
+                # flat-registry compatibility (tool extractions carry these)
+                "kind": str(meta.get("kind") or ""),
+                "tool": str(meta.get("tool") or ""),
             })
             ts = meta.get("timestamp") or (ev.collected_at.isoformat() if ev.collected_at else "")
             timeline_out.append({

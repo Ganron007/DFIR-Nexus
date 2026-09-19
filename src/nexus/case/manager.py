@@ -301,9 +301,9 @@ class CaseManager:
         """List all findings for a case."""
         return self.store.list_findings(case_id)
 
-    def get_finding(self, finding_id: str) -> Finding | None:
+    def get_finding(self, finding_id: str, case_id: str | None = None) -> Finding | None:
         """Get a finding by ID."""
-        return self.store.get_finding(finding_id)
+        return self.store.get_finding(finding_id, case_id=case_id)
 
     # =============================================================
     # DRAFT / HITL approval workflow

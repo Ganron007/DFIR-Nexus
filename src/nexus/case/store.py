@@ -215,6 +215,17 @@ class SQLiteStore:
     # ----- Findings -----
 
     def save_finding(self, finding: Finding) -> None:
+        # EH-4: finding ids are generated per case (`F-{examiner}-{seq}`), so
+        # two cases by the same examiner can propose the same id. The table PK
+        # is global — refuse to overwrite another case's finding.
+        row = self._conn.execute(
+            "SELECT case_id FROM findings WHERE id = ?", (finding.id,)
+        ).fetchone()
+        if row is not None and row["case_id"] != finding.case_id:
+            raise ValueError(
+                f"finding id {finding.id!r} already belongs to case "
+                f"{row['case_id']!r} — refusing to overwrite another case's finding"
+            )
         self._conn.execute(
             """
             INSERT OR REPLACE INTO findings (
@@ -254,10 +265,16 @@ class SQLiteStore:
         ).fetchall()
         return [self._row_to_finding(r) for r in rows]
 
-    def get_finding(self, finding_id: str) -> Finding | None:
-        row = self._conn.execute(
-            "SELECT * FROM findings WHERE id = ?", (finding_id,)
-        ).fetchone()
+    def get_finding(self, finding_id: str, case_id: str | None = None) -> Finding | None:
+        if case_id:
+            row = self._conn.execute(
+                "SELECT * FROM findings WHERE id = ? AND case_id = ?",
+                (finding_id, case_id),
+            ).fetchone()
+        else:
+            row = self._conn.execute(
+                "SELECT * FROM findings WHERE id = ?", (finding_id,)
+            ).fetchone()
         return self._row_to_finding(row) if row else None
 
     @staticmethod
