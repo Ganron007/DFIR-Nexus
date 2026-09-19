@@ -133,6 +133,27 @@ def test_signal_map_zero_hits_are_negative_evidence(tmp_path):
     assert [r["needle"] for r in smap["with_hits"]] == ["mimikatz"]
     assert smap["zero_hit"] == ["sdelete"]
     assert smap["scanned"] == 2
+    assert smap["unscanned"] == []
+
+
+def test_signal_map_unscanned_is_not_negative_evidence(tmp_path):
+    """scanned=no must never masquerade as 'checked, absent'."""
+    analysis = tmp_path / "analysis"
+    analysis.mkdir(parents=True)
+    (analysis / "signal_map.csv").write_text(
+        "needle,hits,source,scanned\n"
+        "mimikatz,4,playbook,yes\n"
+        "sdelete,0,playbook,yes\n"
+        "rdp,0,playbook,no\n",
+        encoding="utf-8",
+    )
+    smap = _signal_map(tmp_path, {})
+    assert smap["zero_hit"] == ["sdelete"]
+    assert smap["unscanned"] == ["rdp"]
+    md = render_digest_markdown({
+        "case_id": "CASE-X", "signal_map": smap, "scope": {}, "inventory": {},
+    })
+    assert "NOT scanned" in md and "rdp" in md
 
 
 def test_build_digest_scopes_absent_classes(tmp_path, monkeypatch):

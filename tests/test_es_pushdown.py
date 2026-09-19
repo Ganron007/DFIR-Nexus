@@ -74,6 +74,156 @@ def test_term_clause_searches_parsed_fields_when_enabled():
     assert "fields.*" not in str(es_off)
 
 
+def test_ast_to_es_terms_not_truncated():
+    """A 60+-needle scan must be representable — the retrieval layer chunks,
+    it never silently drops terms (that turned 'checked, absent' into a lie
+    when needle #41+ — e.g. rdp/mstsc — was never queried)."""
+    from nexus.langgraph.case_index import ast_to_es
+
+    terms = [f"needle{i:02d}" for i in range(61)]
+    es = ast_to_es(None, terms=terms)
+    assert len(es["bool"]["should"]) == 61
+    assert "needle60" in str(es)
+
+
+class _Resp:
+    def __init__(self, code: int, payload: dict):
+        import json as _json
+
+        self.status_code = code
+        self._payload = payload
+        self.text = _json.dumps(payload)
+
+    def json(self) -> dict:
+        return self._payload
+
+
+def _terms_from_body(body: dict) -> list[str]:
+    out: list[str] = []
+    for clause in body.get("query", {}).get("bool", {}).get("should", []):
+        try:
+            out.append(clause["bool"]["should"][0]["match_phrase"]["text"])
+        except (KeyError, IndexError, TypeError):
+            continue
+    return out
+
+
+class _FakeES:
+    """Fails any query whose chunk exceeds ``max_terms`` (like real ES)."""
+
+    def __init__(self, max_terms: int = 40):
+        self.max_terms = max_terms
+        self.queries: list[list[str]] = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    def head(self, path):
+        return _Resp(200, {})
+
+    def post(self, path, json=None, content=None, headers=None, params=None):
+        if path.endswith("/_search") or path == "_search":
+            terms = _terms_from_body(json or {})
+            self.queries.append(terms)
+            if len(terms) > self.max_terms:
+                return _Resp(400, {"error": {"reason": "Query rewrite failed: too many clauses"}})
+            hits = [
+                {"_source": {"text": f"{t} happened", "family": "hayabusa",
+                             "file": f"{t}.csv", "line": 1}}
+                for t in terms
+            ]
+            return _Resp(200, {"hits": {"hits": hits}})
+        return _Resp(200, {})
+
+
+def _patch_v2(monkeypatch, client, case_dir):
+    from nexus.langgraph import case_index
+
+    monkeypatch.setattr(case_index, "_client", lambda: client)
+    monkeypatch.setattr(case_index, "_schema_version_cached", lambda _cid: 2)
+    monkeypatch.setattr(case_index, "fields_property_names", lambda _cid: [])
+
+
+def test_query_index_chunks_large_term_scans(monkeypatch, tmp_path):
+    """165 needles => chunked ES queries, ALL terms covered, merged results."""
+    from nexus.langgraph.case_index import query_index
+
+    client = _FakeES(max_terms=40)
+    _patch_v2(monkeypatch, client, tmp_path)
+    terms = [f"n{i:03d}" for i in range(165)]
+    stats: dict = {}
+    hits = query_index(tmp_path / "CASE-CHUNK", terms, (None, None), stats=stats)
+
+    assert stats["terms_requested"] == 165
+    assert stats["terms_queried"] == 165          # nothing dropped
+    assert stats["terms_failed"] == []
+    assert stats["chunk_queries"] == 5            # ceil(165/40)
+    assert all(len(q) <= 40 for q in client.queries)
+    assert {t for q in client.queries for t in q} == set(terms)
+    assert len(hits) == 165
+    # sample doc passed the row-side re-check with its own needle
+    assert any(h["file"] == "n164.csv" for h in hits)
+
+
+def test_query_index_splits_on_clause_limit(monkeypatch, tmp_path):
+    """If a chunk still trips the ES clause limit it is split and retried —
+    the scan never gives up on terms while a smaller query can succeed."""
+    from nexus.langgraph.case_index import query_index
+
+    client = _FakeES(max_terms=10)
+    _patch_v2(monkeypatch, client, tmp_path)
+    terms = [f"t{i:02d}" for i in range(25)]
+    stats: dict = {}
+    hits = query_index(tmp_path / "CASE-SPLIT", terms, (None, None), stats=stats)
+
+    assert stats["terms_queried"] == 25
+    assert stats["terms_failed"] == []
+    assert stats["chunks_split"] >= 1
+    # every successful (<= limit) query together covers all 25 terms
+    assert sum(len(q) for q in client.queries if len(q) <= 10) == 25
+    assert len(hits) == 25
+
+
+def test_query_index_records_unqueryable_terms(monkeypatch, tmp_path):
+    """A term that cannot be queried at all is recorded — never reported as
+    'checked, 0 hits'."""
+    from nexus.langgraph.case_index import query_index
+
+    client = _FakeES(max_terms=0)  # every query fails, even single-term
+    _patch_v2(monkeypatch, client, tmp_path)
+    stats: dict = {}
+    hits = query_index(tmp_path / "CASE-FAIL", ["rdp", "mstsc"], (None, None), stats=stats)
+
+    assert hits == []
+    assert stats["terms_queried"] == 0
+    assert sorted(stats["terms_failed"]) == ["mstsc", "rdp"]
+
+
+def test_n4_hits_csv_stats_show_full_coverage(tmp_path):
+    """CSV backend scans every term; stats must say so (no false negatives)."""
+    from nexus.langgraph.query_pack import n4_hits
+
+    case = tmp_path / "CASE-CSVCON"
+    ext = case / "extractions"
+    ext.mkdir(parents=True)
+    (ext / "hayabusa_rdp.csv").write_text(
+        "TimeCreated,Computer,RuleTitle\n"
+        "2024-11-23 04:06:23,WS01,RDP Logon\n",
+        encoding="utf-8",
+    )
+    stats: dict = {}
+    hits, backend = n4_hits(case, ["rdp", "notpresent"], (None, None),
+                            backend="csv", stats=stats)
+    assert backend == "csv"
+    assert hits, "RDP needle must match the CSV row"
+    assert stats["terms_requested"] == 2
+    assert stats["terms_queried"] == 2
+    assert stats["terms_failed"] == []
+
+
 def test_row_matches_extra_text_parity():
     """ES matches fields.*; the row-side re-check must accept the same values
     or every fields-only hit would be silently dropped (parity guard)."""

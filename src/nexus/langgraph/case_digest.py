@@ -57,7 +57,12 @@ def _classify(families: list[str]) -> dict[str, list[str]]:
 
 
 def _signal_map(case_dir: Path, brief: dict[str, Any]) -> dict[str, Any]:
-    """Every scanned needle with its count — 0-hit needles are evidence too."""
+    """Every scanned needle with its count — 0-hit needles are evidence too.
+
+    A needle the scan could NOT query (``scanned=no``) is never presented as
+    "checked, absent": it goes into ``unscanned`` and is excluded from the
+    negative-evidence list.
+    """
     rows: list[dict[str, Any]] = []
     csv_path = case_dir / "analysis" / "signal_map.csv"
     if csv_path.is_file():
@@ -73,21 +78,29 @@ def _signal_map(case_dir: Path, brief: dict[str, Any]) -> dict[str, Any]:
                         "needle": needle,
                         "hits": int(row.get("hits") or 0),
                         "source": str(row.get("source") or ""),
+                        "scanned": str(row.get("scanned") or "yes").lower() != "no",
                     })
         except (OSError, ValueError):
             rows = []
     if not rows:
         rows = [
             {"needle": s["needle"], "hits": int(s.get("hits") or 0),
-             "source": str(s.get("source") or "")}
+             "source": str(s.get("source") or ""), "scanned": True}
             for s in (brief.get("needle_scan") or [])
         ]
     with_hits = sorted([r for r in rows if r["hits"] > 0], key=lambda r: -r["hits"])
-    zero_hit = sorted([r for r in rows if r["hits"] == 0], key=lambda r: r["needle"])
+    zero_hit = sorted(
+        [r for r in rows if r["hits"] == 0 and r.get("scanned", True)],
+        key=lambda r: r["needle"],
+    )
+    unscanned = sorted(
+        [r["needle"] for r in rows if not r.get("scanned", True)],
+    )
     return {
         "scanned": len(rows),
         "with_hits": with_hits[:150],
         "zero_hit": [r["needle"] for r in zero_hit][:400],
+        "unscanned": unscanned[:400],
     }
 
 
@@ -230,6 +243,14 @@ def render_digest_markdown(digest: dict[str, Any]) -> str:
             f"## Negative evidence — checked, 0 hits ({len(zero)} needles)"
         )
         lines.append(", ".join(zero[:120]))
+    unscanned = smap.get("unscanned") or []
+    if unscanned:
+        lines.append("")
+        lines.append(
+            f"## NOT scanned — never queried ({len(unscanned)} needles; "
+            "their absence is NOT evidence of absence):"
+        )
+        lines.append(", ".join(unscanned[:120]))
     alerts = digest.get("alerts") or []
     if alerts:
         lines.append("")

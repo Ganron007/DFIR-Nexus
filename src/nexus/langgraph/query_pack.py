@@ -623,6 +623,7 @@ def n4_hits(
     backend: str | None = None,
     query: Any | None = None,
     match_all: bool = False,
+    stats: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, str]], str]:
     """One query API: Elasticsearch when reachable+indexed, else CSV pack.
 
@@ -630,8 +631,26 @@ def n4_hits(
     field-filter / regex semantics. The ES backend translates it to a bool
     query; the CSV backend evaluates it per row. ``match_all`` returns all
     in-window hits when there are no terms/query.
+
+    ``stats`` (optional out-param) records term coverage — how many needle
+    terms were requested vs actually queried and any that could not be
+    queried. Retrieval must never present an unqueried needle as 0 hits.
     """
     import os
+
+    def _csv_stats() -> None:
+        if stats is None:
+            return
+        requested = len([t for t in terms if str(t).strip()])
+        stats.clear()
+        stats.update({
+            "mode": "csv",
+            "terms_requested": requested,
+            "terms_queried": requested,
+            "terms_failed": [],
+            "chunk_queries": 0,
+            "chunks_split": 0,
+        })
 
     choice = (backend or os.environ.get("NEXUS_N4_BACKEND") or "auto").strip().lower()
     if choice in {"es", "elasticsearch", "auto"}:
@@ -641,7 +660,7 @@ def n4_hits(
             if choice != "auto" or es_available():
                 return query_index(
                     case_dir, terms, window, priority_terms,
-                    query=query, match_all=match_all,
+                    query=query, match_all=match_all, stats=stats,
                 ), "elasticsearch"
         except IndexMissing:
             if choice != "auto":
@@ -649,6 +668,7 @@ def n4_hits(
         except Exception:
             if choice not in {"auto", ""}:
                 raise
+    _csv_stats()
     return scan_extractions(
         case_dir, terms, window, priority_terms, query=query, match_all=match_all
     ), "csv"

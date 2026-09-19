@@ -8,12 +8,15 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
+import logging
 import os
 import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
+
+log = logging.getLogger(__name__)
 
 from nexus.langgraph.query_pack import (
     _DATE_RE,
@@ -50,6 +53,14 @@ INDEX_SCHEMA_VERSION = 2
 
 _MAX_INDEX_FIELDS = 24
 _MAX_INDEX_FIELD_VALUE = 300
+
+# ES rejects monolithic term scans ("Query rewrite failed: too many clauses"):
+# every needle expands to 2-3 clauses (match_phrase + fields.* multi_match +
+# text.wc wildcard, and wildcard rewrite expands further). Whole-case scans
+# (100+ needles) are therefore CHUNKED: each chunk is a separate query and the
+# results merge. Never silently drop terms — if a chunk still fails it is split
+# and retried, and anything that cannot be queried is recorded in `stats`.
+_MAX_ES_TERMS_PER_QUERY = 40
 
 
 class IndexMissing(RuntimeError):
@@ -656,10 +667,14 @@ def ast_to_es(query: Any | None, terms: list[str] | None = None,
     the row text and — when ``search_fields`` (schema v2) — the parsed
     ``fields.*`` columns too. A row-side ``row_matches`` re-check after the
     fetch keeps both backends identical.
+
+    The term list is NOT truncated here: callers that scan many terms must
+    chunk (`query_index` does) — silently dropping terms turns "checked,
+    absent" into a lie.
     """
     if query is None or (hasattr(query, "is_empty") and query.is_empty()):
         if terms:
-            should = [_term_clause(t, search_fields) for t in terms[:40] if str(t).strip()]
+            should = [_term_clause(t, search_fields) for t in terms if str(t).strip()]
             if should:
                 return {"bool": {"should": should, "minimum_should_match": 1}}
         return {"match_all": {}}
@@ -880,12 +895,22 @@ def query_index(
     priority_terms: list[str] | None = None,
     query: Any | None = None,
     match_all: bool = False,
+    stats: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
     case_dir = Path(case_dir)
     name = index_name(case_dir.name)
     needles = [t.lower() for t in terms if t.strip()]
     if not needles and query is None and not match_all:
         return []
+    if stats is not None:
+        stats.update({
+            "mode": "terms",
+            "terms_requested": len(needles),
+            "terms_queried": 0,
+            "terms_failed": [],
+            "chunk_queries": 0,
+            "chunks_split": 0,
+        })
     from nexus.langgraph.query_pack import _CLOUD_TERMS, _WEAK_TERMS, _strong_set
 
     strong = _strong_set(priority_terms if priority_terms is not None else terms)
@@ -948,22 +973,77 @@ def query_index(
             raise IndexMissing(f"no index {name}")
         search_fields = False
         if _schema_version_cached(case_dir.name) >= INDEX_SCHEMA_VERSION:
-            # WP 4j.31: one pushed-down query — field filters on real fields,
-            # terms/phrases/regex in ES (no per-term search loop). The intake
-            # window is NOT pre-filtered here: a row may carry several dates
-            # and the row-side `_row_in_window` check owns windowing, which
-            # keeps ES and CSV results identical.
+            # WP 4j.31/4j-H.10: pushed-down search. A parsed query (fields/
+            # bool/regex) is one request; a raw term SCAN is chunked because a
+            # monolithic 100+-needle bool query is rejected by ES ("too many
+            # clauses"). Every chunk is queried, results merge, and any term
+            # that still cannot be queried is recorded in `stats` — the
+            # retrieval layer never reports an unqueried needle as 0 hits.
             try:
                 search_fields = bool(fields_property_names(case_dir.name))
             except Exception:  # noqa: BLE001 — fall back to text-only search
                 search_fields = False
-            es_query = ast_to_es(query, terms=needles, match_all=match_all,
-                                 search_fields=search_fields)
-            body = {"size": 400, "query": es_query}
-            r = client.post(f"/{name}/_search", json=body)
-            if r.status_code >= 400:
-                raise RuntimeError(f"search failed: {r.status_code} {r.text[:300]}")
-            hits_raw = r.json().get("hits", {}).get("hits", [])
+
+            def _post_search(body: dict[str, Any]):
+                return client.post(f"/{name}/_search", json=body)
+
+            if query is not None and not (
+                hasattr(query, "is_empty") and query.is_empty()
+            ):
+                if stats is not None:
+                    stats["mode"] = "dsl"
+                    stats["terms_queried"] = len(needles)
+                r = _post_search({
+                    "size": 400,
+                    "query": ast_to_es(query, search_fields=search_fields),
+                })
+                if r.status_code >= 400:
+                    raise RuntimeError(f"search failed: {r.status_code} {r.text[:300]}")
+                hits_raw = r.json().get("hits", {}).get("hits", [])
+            elif not needles:
+                if stats is not None:
+                    stats["mode"] = "match_all"
+                r = _post_search({"size": 400, "query": {"match_all": {}}})
+                if r.status_code >= 400:
+                    raise RuntimeError(f"search failed: {r.status_code} {r.text[:300]}")
+                hits_raw = r.json().get("hits", {}).get("hits", [])
+            else:
+                hits_raw = []
+                queue = [
+                    needles[i:i + _MAX_ES_TERMS_PER_QUERY]
+                    for i in range(0, len(needles), _MAX_ES_TERMS_PER_QUERY)
+                ]
+                while queue:
+                    chunk = queue.pop(0)
+                    if not chunk:
+                        continue
+                    if stats is not None:
+                        stats["chunk_queries"] += 1
+                    r = _post_search({
+                        "size": 400,
+                        "query": ast_to_es(None, terms=chunk,
+                                           search_fields=search_fields),
+                    })
+                    if r.status_code >= 400 and len(chunk) > 1:
+                        # Clause/rewrite limit hit — split and retry, never drop.
+                        mid = len(chunk) // 2
+                        queue.insert(0, chunk[mid:])
+                        queue.insert(0, chunk[:mid])
+                        if stats is not None:
+                            stats["chunks_split"] += 1
+                        continue
+                    if r.status_code >= 400:
+                        # Even a single term failed — record it honestly.
+                        log.warning(
+                            "ES term scan failed (%s) for %r: %s",
+                            r.status_code, chunk, r.text[:200],
+                        )
+                        if stats is not None:
+                            stats["terms_failed"].extend(chunk)
+                        continue
+                    hits_raw.extend(r.json().get("hits", {}).get("hits", []))
+                    if stats is not None:
+                        stats["terms_queried"] += len(chunk)
         else:
             hits_raw = []
             # One search per strong term so SRUM USB/cloud volume cannot bury sdelete/PST.
