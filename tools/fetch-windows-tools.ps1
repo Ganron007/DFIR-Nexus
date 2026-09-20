@@ -11,9 +11,31 @@ $Ext = Join-Path $Win "extra"
 New-Item -ItemType Directory -Force -Path $Zim, $Sys, $Hay, $Suz, $Ext | Out-Null
 
 $script:Versions = @()
+$script:Report = @()
+
+function Add-Report($name, $status, $detail) {
+    $script:Report += [pscustomobject]@{ Name = $name; Status = $status; Detail = "$detail" }
+}
 
 function Get-GitHubRelease($repo) {
     return Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/latest" -Headers @{ "User-Agent" = "dfir-nexus-fetch" }
+}
+
+function Expand-Any($archive, $dest) {
+    # .zip -> Expand-Archive; otherwise 7z (scoop/PATH) or bsdtar (libarchive reads 7z).
+    New-Item -ItemType Directory -Force -Path $dest | Out-Null
+    if ([IO.Path]::GetExtension($archive).ToLower() -eq ".zip") {
+        Expand-Archive -Path $archive -DestinationPath $dest -Force -ErrorAction Stop
+        return
+    }
+    $sevenZip = Get-Command 7z -ErrorAction SilentlyContinue
+    if ($sevenZip) {
+        & $sevenZip.Source x -y "-o$dest" $archive | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "7z extraction failed ($LASTEXITCODE) for $archive" }
+        return
+    }
+    & tar -xf $archive -C $dest
+    if ($LASTEXITCODE -ne 0) { throw "tar extraction failed ($LASTEXITCODE) for $archive" }
 }
 
 function Get-GitHubAsset($repo, $match) {
@@ -90,14 +112,18 @@ try {
     $script:Versions += "capa`t$($cp.Tag)`t$($cp.Asset.browser_download_url)"
 } catch { Write-Host "    capa skipped: $_" }
 
-Write-Host "==> Thumbcache Viewer CMD (GitHub latest)"
+Write-Host "==> Thumbcache Viewer CMD (official v1.0.2.1 release zip)"
 try {
-    $tv = Get-GitHubAsset "thumbcacheviewer/thumbcacheviewer" "ThumbcacheViewer|\.zip$"
-    $tvZip = Join-Path $env:TEMP $tv.Asset.name
-    Invoke-WebRequest -Uri $tv.Asset.browser_download_url -OutFile $tvZip
-    Expand-To $tvZip (Join-Path $Ext "thumbcache")
-    $script:Versions += "thumbcache_viewer`t$($tv.Tag)`t$($tv.Asset.browser_download_url)"
-} catch { Write-Host "    thumbcache_viewer skipped: $_" }
+    $tvZip = Join-Path $env:TEMP "thumbcache_viewer_cmd_64.zip"
+    Invoke-WebRequest -Uri "https://github.com/thumbcacheviewer/thumbcacheviewer/releases/download/v1.0.2.1/thumbcache_viewer_cmd_64.zip" -OutFile $tvZip
+    $tvDest = Join-Path $Ext "thumbcache_viewer"
+    if (Test-Path $tvDest) { Remove-Item $tvDest -Recurse -Force }
+    Expand-Any $tvZip $tvDest
+    $tvExe = Get-ChildItem $tvDest -Recurse -Filter "thumbcache_viewer_cmd.exe" | Select-Object -First 1
+    if (-not $tvExe) { throw "thumbcache_viewer_cmd.exe not found in archive" }
+    Add-Report "thumbcache_viewer" "FETCHED" "v1.0.2.1; $($tvExe.FullName)"
+    $script:Versions += "thumbcache_viewer`tv1.0.2.1`thttps://github.com/thumbcacheviewer/thumbcacheviewer/releases"
+} catch { Add-Report "thumbcache_viewer" "FAILED" "$_" }
 
 Write-Host "==> bmc-tools.py (ANSSI — standalone portable)"
 try {
@@ -145,14 +171,115 @@ try {
     $script:Versions += "kstrike`tmaster`thttps://github.com/brimorlabs/KStrike"
 } catch { Write-Host "    KStrike skipped: $_" }
 
-Write-Host "==> LogFileParser (jschicht, if a Windows zip is published)"
+Write-Host "==> LogFileParser (jschicht, GitHub latest release zip)"
 try {
-    $lf = Get-GitHubAsset "jschicht/LogFileParser" "\.zip$|\.7z$|LogFileParser"
+    $lf = Get-GitHubAsset "jschicht/LogFileParser" "\.zip$"
     $lfZip = Join-Path $env:TEMP $lf.Asset.name
     Invoke-WebRequest -Uri $lf.Asset.browser_download_url -OutFile $lfZip
-    Expand-To $lfZip (Join-Path $Ext "logfileparser")
+    $lfDest = Join-Path $Ext "logfileparser"
+    if (Test-Path $lfDest) { Remove-Item $lfDest -Recurse -Force }
+    Expand-Any $lfZip $lfDest
+    $lfExe = Get-ChildItem $lfDest -Recurse -Filter "LogFileParser64*.exe" | Select-Object -First 1
+    if (-not $lfExe) {
+        $lfExe = Get-ChildItem $lfDest -Recurse -Filter "LogFileParser*.exe" | Sort-Object Length -Descending | Select-Object -First 1
+    }
+    if (-not $lfExe) { throw "no LogFileParser exe in release zip" }
+    $lfTarget = Join-Path $lfDest "LogFileParser64.exe"
+    if ($lfExe.FullName -ne $lfTarget) { Copy-Item $lfExe.FullName $lfTarget -Force }
+    Add-Report "logfileparser" "FETCHED" "$($lf.Tag); $($lfExe.Name)"
     $script:Versions += "logfileparser`t$($lf.Tag)`t$($lf.Asset.browser_download_url)"
-} catch { Write-Host "    LogFileParser skipped: $_" }
+} catch { Add-Report "logfileparser" "FAILED" "$_" }
+
+Write-Host "==> Zircolite (GitHub latest windows-x64)"
+try {
+    $zr = Get-GitHubAsset "wagga40/Zircolite" "windows-x64\.zip$"
+    $zrZip = Join-Path $env:TEMP $zr.Asset.name
+    Invoke-WebRequest -Uri $zr.Asset.browser_download_url -OutFile $zrZip
+    $zrDest = Join-Path $Ext "zircolite"
+    if (Test-Path $zrDest) { Remove-Item $zrDest -Recurse -Force }
+    Expand-Any $zrZip $zrDest
+    $zrExe = Get-ChildItem $zrDest -Recurse -Filter "Zircolite.exe" | Select-Object -First 1
+    if (-not $zrExe) { throw "no Zircolite.exe in release zip" }
+    # Keep the PyInstaller layout intact (Zircolite.exe needs its _internal dir
+    # next to it) — do not copy the exe out of its folder.
+    Remove-Item (Join-Path $zrDest "zircolite.exe") -Force -ErrorAction SilentlyContinue
+    Add-Report "zircolite" "FETCHED" "$($zr.Tag); $($zrExe.FullName)"
+    $script:Versions += "zircolite`t$($zr.Tag)`t$($zr.Asset.browser_download_url)"
+} catch { Add-Report "zircolite" "FAILED" "$_" }
+
+Write-Host "==> USBDeview x64 (NirSoft official zip)"
+try {
+    $usbZip = Join-Path $env:TEMP "usbdeview-x64.zip"
+    Invoke-WebRequest -Uri "https://www.nirsoft.net/utils/usbdeview-x64.zip" -OutFile $usbZip
+    $usbDest = Join-Path $Ext "usbdeview"
+    if (Test-Path $usbDest) { Remove-Item $usbDest -Recurse -Force }
+    Expand-Any $usbZip $usbDest
+    Add-Report "usbdeview" "FETCHED" "nirsoft usbdeview-x64.zip"
+    $script:Versions += "usbdeview`tlive`thttps://www.nirsoft.net/utils/usbdeview-x64.zip"
+} catch { Add-Report "usbdeview" "FAILED" "$_" }
+
+Write-Host "==> DeepBlueCLI (sans-blue-team archive + run-deepblue.ps1 wrapper)"
+try {
+    $dbZip = Join-Path $env:TEMP "DeepBlueCLI-master.zip"
+    Invoke-WebRequest -Uri "https://github.com/sans-blue-team/DeepBlueCLI/archive/refs/heads/master.zip" -OutFile $dbZip
+    $dbDest = Join-Path $Ext "deepbluecli"
+    if (Test-Path $dbDest) { Remove-Item $dbDest -Recurse -Force }
+    Expand-Any $dbZip $dbDest
+    $dbScript = Get-ChildItem $dbDest -Recurse -Filter "DeepBlue.ps1" | Select-Object -First 1
+    if (-not $dbScript) { throw "DeepBlue.ps1 not found in archive" }
+    $wrapper = @'
+param(
+    [Parameter(Mandatory=$true)][string]$Evtx,
+    [Parameter(Mandatory=$true)][string]$Out
+)
+$ErrorActionPreference = "Continue"
+$script = (Get-ChildItem -Path $PSScriptRoot -Recurse -Filter "DeepBlue.ps1" | Select-Object -First 1).FullName
+# DeepBlueCLI reads regexes.txt / safelist.txt relative to the working directory.
+Push-Location (Split-Path $script)
+try {
+    $result = & $script $Evtx 2>&1 | ConvertTo-Json -Depth 6
+} finally {
+    Pop-Location
+}
+$result | Out-File -Encoding utf8 $Out
+$result
+'@
+    Set-Content -Path (Join-Path $dbDest "run-deepblue.ps1") -Value $wrapper -Encoding UTF8
+    Add-Report "deepbluecli" "FETCHED" "master archive + run-deepblue.ps1 wrapper"
+    $script:Versions += "deepbluecli`tmaster`thttps://github.com/sans-blue-team/DeepBlueCLI"
+} catch { Add-Report "deepbluecli" "FAILED" "$_" }
+
+Write-Host "==> Hindsight (pip pyhindsight + ccl_chromium_reader from GitHub + launcher)"
+try {
+    $py = Get-Command python -ErrorAction SilentlyContinue
+    if (-not $py) { throw "python not on PATH" }
+    & $py.Source -m pip install --upgrade --quiet pyhindsight
+    if ($LASTEXITCODE -ne 0) { throw "pip install pyhindsight failed ($LASTEXITCODE)" }
+    # ccl_chromium_reader is not on PyPI; upstream pyhindsight imports it without
+    # declaring it. Official GitHub repo (its own git dep ccl_simplesnappy pulls in).
+    & $py.Source -m pip install --upgrade --quiet "git+https://github.com/cclgroupltd/ccl_chromium_reader.git"
+    if ($LASTEXITCODE -ne 0) { throw "pip install ccl_chromium_reader failed ($LASTEXITCODE)" }
+    $hsDest = Join-Path $Ext "hindsight"
+    if (Test-Path $hsDest) { Remove-Item $hsDest -Recurse -Force }
+    New-Item -ItemType Directory -Force -Path $hsDest | Out-Null
+    $candidates = @(
+        (Join-Path (Split-Path $py.Source) "Scripts\hindsight.py"),
+        (Join-Path (Split-Path $py.Source) "hindsight.py")
+    )
+    if ($env:APPDATA) {
+        $candidates += @(Get-ChildItem (Join-Path $env:APPDATA "Python") -Recurse -Filter "hindsight.py" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName)
+    }
+    $launcher = $candidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+    if (-not $launcher) { throw "hindsight.py launcher not found (looked next to python and under %APPDATA%\Python)" }
+    Copy-Item $launcher (Join-Path $hsDest "Hindsight.py") -Force
+    Add-Report "hindsight" "FETCHED" "pip pyhindsight + ccl_chromium_reader; launcher $launcher"
+    $script:Versions += "hindsight`tpip-latest`tpypi:pyhindsight + github ccl_chromium_reader"
+} catch { Add-Report "hindsight" "FAILED" "$_" }
+
+# NTFSLogTracker: upstream (Google Code ntfs-log-tracker) is dead; only unofficial
+# fork mirrors exist. Pruned from the catalog — LogFileParser covers $LogFile and
+# MFTECmd covers $J (USN journal).
+Add-Report "ntfslogtracker" "REMOVED" "no official upstream; LogFileParser + MFTECmd cover the family"
 
 # KAPE is Kroll-licensed — no public direct URL. Do NOT copy old local installs.
 $kapeNote = "KAPE is not fetched (Kroll registration). Download current from https://www.kroll.com/en/services/cyber-risk/incident-response-litigation-support/kroll-artifact-parser-extractor and unpack to Tools/windows/kape/"
@@ -180,7 +307,18 @@ $verFile = Join-Path $Win "VERSIONS.txt"
     "DFIR-Nexus Tools/windows — fetched $(Get-Date -Format o)"
     "Source: official internet URLs only."
     ""
-) + $script:Versions | Set-Content -Path $verFile -Encoding UTF8
+) + $script:Versions + @("", "fetch report:") + @(
+    $script:Report | ForEach-Object { "report`t$($_.Name)`t$($_.Status)`t$($_.Detail)" }
+) | Set-Content -Path $verFile -Encoding UTF8
 Write-Host "Wrote $verFile"
+
+Write-Host ""
+Write-Host "==> fetch report"
+foreach ($row in $script:Report) {
+    Write-Host ("  [{0}] {1}: {2}" -f $row.Status, $row.Name, $row.Detail)
+}
+if (($script:Report | Where-Object { $_.Status -eq "FAILED" }).Count -gt 0) {
+    Write-Host "WARNING: some acquisitions FAILED — see report above."
+}
 Write-Host "Done. Binaries under $Win"
 Write-Host "Then: nexus doctor   (bmc-tools.py + BitsParser.py must be found)"

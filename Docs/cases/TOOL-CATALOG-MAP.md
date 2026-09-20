@@ -10,7 +10,7 @@ Companion: [TOOL-EVIDENCE-MAP.md](TOOL-EVIDENCE-MAP.md) (mode + lane contract).
 
 | Layer | What it is | Where |
 |-------|------------|--------|
-| **1. MCP catalog** | Binary is allowed through `run_windows_command` / `run_command` | Windows: `_WIN_CATALOG` in `src/nexus/tools/windows.py` (37). SIFT: `src/nexus/data/catalog/*.yaml` (68, excluding `security.yaml`) |
+| **1. MCP catalog** | Binary is allowed through `run_windows_command` / `run_command` | Windows: `_WIN_CATALOG` in `src/nexus/tools/windows.py` (**53**). SIFT: `src/nexus/data/catalog/*.yaml` (68, excluding `security.yaml`) |
 | **2. Knowledge YAML** | When/how: artifact `related_tools` + tool cards `artifacts_parsed` | `src/nexus/data/knowledge/artifacts/` and `.../tools/` |
 | **3. Mandatory lane** | Auto-scheduled if the artifact is **present on this evidence** | `src/nexus/langgraph/tool_lane.py` |
 
@@ -31,7 +31,7 @@ Catalog ⊃ knowledge cards ⊃ lane. Dumping grep/awk/winpmem/capa into the lan
 
 ---
 
-## Windows MCP catalog (37)
+## Windows MCP catalog (53)
 
 Every key in `_WIN_CATALOG` is executable via `run_windows_command` when the binary is installed.
 
@@ -43,6 +43,8 @@ Every key in `_WIN_CATALOG` is executable via `run_windows_command` when the bin
 | `hayabusa` | Hayabusa | `tools/timeline/hayabusa.yaml` | all `event_logs_*`, `hayabusa_alerts` | **mandatory** (same EVTX dir; Sigma timeline) |
 | `suzaku` | suzaku | `tools/timeline/suzaku.yaml` | all `event_logs_*` | **extra** — Hayabusa-family alternative, not a second EVTX parser |
 | `chainsaw` | chainsaw | `tools/timeline/chainsaw.yaml` | all `event_logs_*` | **extra** — same |
+| `zircolite` | Zircolite | `tools/analysis/zircolite.yaml` | all `event_logs_*` | **extra** — auto-scheduled when installed (merged-high JSON ruleset, `-f evtx`) |
+| `deepbluecli` | run-deepblue.ps1 | `tools/analysis/deepbluecli.yaml` | all `event_logs_*` | **extra** — auto-scheduled per `.evtx` when installed (JSON wrapper); upstream Get-WinEvent rejects dirty/archived EVTX |
 | `pecmd` | PECmd | `tools/zimmerman/pecmd.yaml` | `prefetch` | **mandatory** if Prefetch dir |
 | `lecmd` | LECmd | `tools/zimmerman/lecmd.yaml` | `lnk_files` | **mandatory** per-user `Recent` |
 | `jlecmd` | JLECmd | `tools/zimmerman/jlecmd.yaml` | `jump_lists` | **mandatory** per-user Automatic/CustomDestinations |
@@ -69,13 +71,17 @@ Every key in `_WIN_CATALOG` is executable via `run_windows_command` when the bin
 | `capa` | capa | `tools/malware/capa.yaml` | — | **on-demand** (named executable) |
 | `yara` | yara64 | `tools/malware/yara.yaml` | `wer`, `defender_quarantine` (with maldump) | **on-demand** |
 | `densityscout` | densityscout | `tools/malware/densityscout.yaml` | — | **on-demand** (intake `sample_files`) |
-| `thumbcache_viewer` | thumbcache_viewer_cmd | `tools/analysis/thumbcache_viewer.yaml` | `thumbcache` | **cataloged-not-scheduled** until CLI is verified on a fetched binary |
+| `thumbcache_viewer` | thumbcache_viewer_cmd | `tools/analysis/thumbcache_viewer.yaml` | `thumbcache` | **extra** — fetched v1.0.2.1 (official CMD release), CLI verified; not auto-run until a lane job is wired |
 | `bmc-tools` | bmc-tools.py | `tools/analysis/bmc_tools.yaml` | `rdp_bitmap_cache` | if Cache tiles present **and** installed; else one SKIP |
 | `bitsparser` | BitsParser.py | `tools/analysis/bitsparser.yaml` | `bits_jobs` | if `qmgr.db` / `qmgr*.dat` present **and** installed; else one SKIP |
 | `kstrike` | KStrike.py | `tools/analysis/kstrike.yaml` | `ual` | if SUM `*.mdb` present **and** installed (Server); else one SKIP. Silent on clients (no mdb) |
-| `logfileparser` | LogFileParser64 | `tools/analysis/logfileparser.yaml` | `ntfs_logfile` | **cataloged-not-scheduled** until CLI is verified on a fetched binary |
+| `logfileparser` | LogFileParser64 | `tools/analysis/logfileparser.yaml` | `ntfs_logfile` | **wired** on `$LogFile` (`/LogFileFile:` + `/OutputPath:`); fetched v2.0.0.53 |
+| `usbdeview` | USBDeview | `tools/analysis/usbdeview.yaml` | — (`SYSTEM` hive USBSTOR; no artifact YAML yet) | **mandatory** if `config\SYSTEM` hive (`/regfile` + `/scomma`) |
+| `hindsight` | Hindsight | `tools/browser/hindsight.yaml` | `browser_history` | **extra** — per Chrome profile when installed (`-i <profile> -o <file> -f jsonl`); SQLECmd stays the mandatory browser path |
 
-**Windows catalog → knowledge card:** all 37 keys have a card. Fetch the new parsers with `Tools/fetch-windows-tools.ps1` (operator machine, internet).
+**Windows catalog → knowledge card:** all 53 keys have a card. Fetch the parsers with `Tools/fetch-windows-tools.ps1` (operator machine, internet) — v2 prints a FETCHED/SKIPPED/FAILED report.
+
+**Catalog changes (2026-09-20, T2b/T2c):** fetched Zircolite v4.0.0, USBDeview x64, DeepBlueCLI, Hindsight, LogFileParser v2.0.0.53, Thumbcache Viewer CMD v1.0.2.1. Pruned `regripper` (`rip.exe` retired from Zimmerman net9; RECmd covers), `thumbcache` (GUI dup of the CLI), `browserparser` / `events_ripper` / `leveldb` (no official upstream), `ntfslogtracker` (dead Google Code project; LogFileParser + MFTECmd `$J` cover). 12 built-ins now resolve from `System32` via `_find_binary`. `nexus doctor` fails golden path on any required unresolvable key (53/53 on the reference workstation).
 
 ---
 
@@ -110,6 +116,8 @@ These are **catalog-on-demand**. No per-tool knowledge cards (they are not artif
 
 **SIFT gap closed this pass:** WxTCmd was on Windows + knowledge but missing from `catalog/zimmerman.yaml`. It is now cataloged on SIFT too.
 
+**SIFT parity probe (2026-09-20, read-only):** 21/22 catalog tools present (`log2timeline`/`psort` ship as `.py` — lane argv fixed accordingly). Pending SIFT installs (**mandatory next action — every SIFT tool and every SIFT output is a first-class evidence source**): `zeek` (official Zeek repo; no apt candidate), `suricata` (apt `1:7.0.3`), `hayabusa` (Yamato Linux x64), `pecmd` (Zimmerman via mono/.NET). No SIFT tool or output is optional.
+
 ---
 
 ## Knowledge cards that are not execute-catalog tools
@@ -118,7 +126,7 @@ These teach the examiner; they are **not** in `_WIN_CATALOG` or SIFT `catalog/*.
 
 | Card | Why it exists | Lane |
 |------|----------------|------|
-| Hindsight | Browser alternative; Windows path is SQLECmd | not-wired (alias → sqlecmd for completeness) |
+| Hindsight | Browser alternative; Windows path is SQLECmd | **wired** per Chrome profile (`-i <profile> -o <file> -f jsonl`); fetched via `Tools/fetch-windows-tools.ps1` (pip pyhindsight + ccl_chromium_reader) |
 | maldump | Defender quarantine | on-demand if binary added later; YAML lists it honestly |
 | Photorec, CyLR, LogParser, MemProcFS, AppCompat Processor, 1768_cobalt | Reference / predecessor coverage | not-wired |
 | MCP cards (`search`, `check_file`, …) | Nexus MCP, not host binaries | N/A |
@@ -145,13 +153,13 @@ Presence comes from `locations` globbed against the image root (`artifact_map.py
 | shellbags | SBECmd | mandatory per-user SBECmd |
 | activitiescache | WxTCmd, SQLECmd | mandatory WxTCmd |
 | browser_history | SQLECmd, Hindsight | mandatory SQLECmd |
-| userassist, bam, mountpoints2, user_activity_mru | RECmd (+ RegRipper on mountpoints2) | mandatory RECmd NTUSER |
+| userassist, bam, mountpoints2, user_activity_mru | RECmd | mandatory RECmd NTUSER (RegRipper pruned — `rip.exe` retired; RECmd covers) |
 | registry_run_keys, registry_services | RECmd, autorunsc | mandatory RECmd; autorunsc live-only |
-| event_logs_* (11 channels) | EvtxECmd, Hayabusa, Suzaku, Chainsaw | mandatory Hayabusa + EvtxECmd; Suzaku/Chainsaw extra |
+| event_logs_* (11 channels) | EvtxECmd, Hayabusa, Suzaku, Chainsaw, Zircolite, DeepBlueCLI | mandatory Hayabusa + EvtxECmd; Zircolite (merged-high ruleset) + DeepBlueCLI (per `.evtx`, `run-deepblue.ps1`) also scheduled; Suzaku/Chainsaw extra |
 | hayabusa_alerts | Hayabusa | covered by Hayabusa job |
 | scheduled_tasks | EvtxECmd, Hayabusa, RECmd | EVTX + SOFTWARE hive; XML under `Tasks\` is not a separate parser |
 | wmi_persistence | RECmd, autorunsc, EvtxECmd, Hayabusa | same |
-| ntfs_logfile | LogFileParser | cataloged; not auto-run until CLI verified |
+| ntfs_logfile | LogFileParser | **wired** on `$LogFile` (`/LogFileFile:` + `/OutputPath:`); SKIP when absent/too small or `NEXUS_TOOL_LANE_QUICK=1` |
 | ntfs_i30 | MFTECmd | MFTECmd `-f` on an **extracted** `$I30` file only |
 | setupapi, powershell_transcripts, psreadline | — (plain text) | **copy** into extractions; no parser |
 | wer | strings, YARA | on-demand via `sample_files` (minidumps are file-targeted) |
@@ -162,7 +170,7 @@ Presence comes from `locations` globbed against the image root (`artifact_map.py
 | volume_shadow_copies | vshadowinfo, vshadowmount, vssadmin | on-demand SIFT; vssadmin live |
 | volatility_memory | Volatility3, vol | SIFT vol if memory file present |
 | rdp_bitmap_cache | bmc-tools | bmc-tools if Cache tiles present **and** installed |
-| thumbcache | thumbcache_viewer_cmd | cataloged; not auto-run until CLI verified |
+| thumbcache | thumbcache_viewer_cmd | fetched + CLI verified; design-mode extra until a lane job is wired |
 
 Linux artifacts (`auth_log`, `syslog`, `bash_history`, …) map to grep/last/journalctl — SIFT utilities, not the Windows EVTX lane. `auth_log` must not list EvtxECmd/Hayabusa.
 
@@ -174,7 +182,7 @@ Cited from `Courses/sans-defense` (FOR500/FOR508). We still do **not** reimpleme
 
 ### 1. Thumbcache Viewer
 
-Explorer writes `thumbcache_*.db` under each user’s `AppData\Local\Microsoft\Windows\Explorer`. FOR500 uses these to show that a user *saw* a file in Explorer (a thumbnail), which is weaker than Prefetch (execution) but stronger than “the file existed somewhere.” The GUI Thumbcache Viewer is not automatable. **Address:** catalog + fetch `thumbcache_viewer_cmd`. We do **not** auto-run it until the CLI is verified on a fetched binary (`quick_start` in the knowledge card is still unconfirmed). Design-mode extra or examiner `run_windows_command` after fetch.
+Explorer writes `thumbcache_*.db` under each user’s `AppData\Local\Microsoft\Windows\Explorer`. FOR500 uses these to show that a user *saw* a file in Explorer (a thumbnail), which is weaker than Prefetch (execution) but stronger than “the file existed somewhere.” The GUI Thumbcache Viewer is not automatable. **Address:** catalog + fetch the **Thumbcache Viewer CMD v1.0.2.1** official release zip (`Tools/fetch-windows-tools.ps1`); CLI verified (`-t <db> [-o <dir>] -c -w -z -n`). Not auto-run yet (design-mode extra or examiner `run_windows_command`) until a lane job is wired.
 
 ### 2. bmc-tools (RDP bitmap cache)
 
@@ -194,7 +202,7 @@ Every NTFS directory has an `$I30` index. Slack in that index can retain deleted
 
 ### 6. NTFS Log Tracker / $LogFile
 
-`$LogFile` is a ~64MB circular NTFS transaction journal (metadata only, hours–days). NTFS Log Tracker is a GUI. MFTECmd does **not** replace it. **Address:** `LogFileParser` (jschicht) is in the Windows catalog and fetch script. We do **not** auto-run it — published argv varies by release. Examiner runs it after fetch once flags are confirmed. Live NTFS has no `$LogFile` file; stay silent.
+`$LogFile` is a ~64MB circular NTFS transaction journal (metadata only, hours–days). MFTECmd does **not** replace it. **Address:** `LogFileParser` (jschicht) is fetched (v2.0.0.53) and **wired** on `$LogFile` with `/LogFileFile:` + `/OutputPath:` (argv from the upstream readme, smoke-verified flag acceptance). NTFSLogTracker was pruned — its upstream (Google Code) is dead; `$J` is covered by MFTECmd `-f $J`. Live NTFS has no `$LogFile` file; stay silent.
 
 ### 7. log2timeline / psort (Plaso)
 

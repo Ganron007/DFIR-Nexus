@@ -251,30 +251,36 @@ def doctor(
         from nexus.tools.windows import _WIN_CATALOG, _find_binary
 
         found = 0
-        missing_core: list[str] = []
-        core = {
-            "evtxecmd", "pecmd", "recmd", "lecmd", "mftecmd",
-            "amcacheparser", "hayabusa", "suzaku",
-            "bmc-tools", "bitsparser",
+        missing_required: list[str] = []
+        optional_keys = {
+            "kape", "yara", "winpmem", "dumpit", "moneta",
+            "hollows_hunter", "densityscout", "get_injectedthreadex", "mactime",
+            "kstrike",
         }
         for key, info in sorted(_WIN_CATALOG.items()):
             hit = _find_binary(info["name"]) or _find_binary(key)
-            optional = key in {
-                "kape", "yara", "winpmem", "dumpit", "moneta",
-                "hollows_hunter", "densityscout", "get_injectedthreadex", "mactime",
-                "kstrike", "thumbcache_viewer", "logfileparser",
-            }
+            optional = key in optional_keys
             if hit:
                 found += 1
                 rows.append((f"tool.{info['name']}", True, hit))
             else:
                 rows.append((f"tool.{info['name']}", optional, "MISSING" + (" (optional)" if optional else "")))
-                if key in core:
-                    missing_core.append(info["name"])
-        rows.append(("windows catalog present", found > 0, f"{found}/{len(_WIN_CATALOG)}"))
-        if missing_core:
+                if not optional:
+                    missing_required.append(key)
+        # Coverage gate: any non-optional catalog key that cannot resolve is a
+        # silent family gap — fail golden path instead of printing a lone FAIL.
+        rows.append((
+            "windows catalog coverage",
+            not missing_required,
+            f"{found}/{len(_WIN_CATALOG)} resolvable",
+        ))
+        if missing_required:
             golden_fail = True
-            rows.append(("windows core tools", False, "missing: " + ", ".join(missing_core)))
+            rows.append((
+                "windows catalog missing (required)",
+                False,
+                ", ".join(sorted(missing_required)),
+            ))
     else:
         rows.append(("windows catalog", True, "OS-GATE — not Windows"))
         try:

@@ -196,3 +196,31 @@ def test_windows_catalog_has_knowledge_cards():
         if norm(key) not in names and norm(info["name"]) not in names:
             missing.append(key)
     assert missing == []
+
+
+def test_windows_builtin_catalog_keys_resolve():
+    import sys
+
+    if sys.platform != "win32":
+        return  # Windows-only resolver
+    from nexus.tools.windows import _WIN_CATALOG, _find_binary
+
+    builtins = [k for k, info in _WIN_CATALOG.items() if info.get("builtin")]
+    assert builtins, "catalog must mark Windows built-ins (System32 fallback)"
+    missing = [k for k in builtins if _find_binary(k) is None]
+    assert missing == []
+
+
+def test_windows_catalog_pruned_placeholder_keys_absent():
+    from nexus.tools.windows import _WIN_CATALOG
+
+    pruned = (
+        "regripper",       # rip.exe retired from Zimmerman net9; RECmd covers
+        "thumbcache",      # GUI duplicate of thumbcache_viewer CLI
+        "browserparser",   # no official upstream
+        "events_ripper",   # no official upstream
+        "leveldb",         # no official upstream
+        "ntfslogtracker",  # upstream dead; LogFileParser + MFTECmd cover
+    )
+    for key in pruned:
+        assert key not in _WIN_CATALOG

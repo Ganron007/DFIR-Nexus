@@ -100,49 +100,37 @@ _WIN_CATALOG = {
                 "description": "Parse Windows Server User Access Logging (UAL) ESE databases"},
     "logfileparser": {"name": "LogFileParser64", "category": "analysis",
                       "description": "Parse NTFS $LogFile transaction journal"},
-    "regripper": {"name": "rip.exe", "category": "registry",
-                  "description": "RegRipper per-hive registry parser"},
-    "ntfslogtracker": {"name": "NTFSLogTracker", "category": "analysis",
-                       "description": "Parse NTFS $LogFile and $J (USN journal)"},
     "hindsight": {"name": "Hindsight", "category": "analysis",
                   "description": "Parse Chrome/Chromium browser artifacts"},
-    "browserparser": {"name": "BrowserParser", "category": "analysis",
-                      "description": "Parse browser history, downloads, cookies, cache"},
     "usbdeview": {"name": "USBDeview", "category": "analysis",
                   "description": "Parse USB device history from registry"},
     "zircolite": {"name": "Zircolite", "category": "analysis",
                   "description": "Fast Sigma-based EVTX analysis"},
-    "deepbluecli": {"name": "DeepBlueCLI", "category": "analysis",
+    "deepbluecli": {"name": "run-deepblue.ps1", "category": "analysis",
                     "description": "EVTX analysis for RDP brute force, password spraying, PS attacks"},
-    "events_ripper": {"name": "Events-Ripper", "category": "analysis",
-                      "description": "Structured EVTX parsing and normalization"},
-    "leveldb": {"name": "LevelDBDumper", "category": "analysis",
-                "description": "Parse Chrome/Edge LevelDB artifacts"},
-    "schtasks": {"name": "schtasks", "category": "system",
+    "schtasks": {"name": "schtasks", "category": "system", "builtin": True,
                  "description": "Parse Windows scheduled tasks"},
-    "thumbcache": {"name": "ThumbCacheViewer", "category": "analysis",
-                   "description": "Parse Explorer thumbcache_*.db"},
-    "certutil": {"name": "certutil", "category": "system",
+    "certutil": {"name": "certutil", "category": "system", "builtin": True,
                  "description": "Parse certificate store"},
-    "netstat": {"name": "netstat", "category": "system",
+    "netstat": {"name": "netstat", "category": "system", "builtin": True,
                 "description": "Parse network connections"},
-    "ipconfig": {"name": "ipconfig", "category": "system",
+    "ipconfig": {"name": "ipconfig", "category": "system", "builtin": True,
                  "description": "Parse network adapter configuration"},
-    "route": {"name": "route", "category": "system",
+    "route": {"name": "route", "category": "system", "builtin": True,
               "description": "Parse routing table"},
-    "arp": {"name": "arp", "category": "system",
+    "arp": {"name": "arp", "category": "system", "builtin": True,
             "description": "Parse ARP cache"},
-    "dns": {"name": "ipconfig", "category": "system",
+    "dns": {"name": "ipconfig", "category": "system", "builtin": True,
             "description": "Parse DNS cache (ipconfig /displaydns)"},
-    "whoami": {"name": "whoami", "category": "system",
+    "whoami": {"name": "whoami", "category": "system", "builtin": True,
                "description": "Parse current user context"},
-    "systeminfo": {"name": "systeminfo", "category": "system",
+    "systeminfo": {"name": "systeminfo", "category": "system", "builtin": True,
                    "description": "Parse system information"},
-    "tasklist": {"name": "tasklist", "category": "system",
+    "tasklist": {"name": "tasklist", "category": "system", "builtin": True,
                  "description": "Parse running processes"},
-    "sc": {"name": "sc", "category": "system",
+    "sc": {"name": "sc", "category": "system", "builtin": True,
            "description": "Parse services"},
-    "net": {"name": "net", "category": "system",
+    "net": {"name": "net", "category": "system", "builtin": True,
             "description": "Parse users, groups, shares, sessions"},
 }
 
@@ -251,8 +239,31 @@ def _find_binary(name: str) -> str | None:
             for fn in filenames:
                 if any(_name_matches(fn, cand) for cand in seen):
                     hits.append(Path(dirpath) / fn)
-    chosen = _prefer_binary(hits)
-    return str(chosen) if chosen else None
+    if key:
+        # Prefer the catalog's declared binary name (e.g. LogFileParser64 over
+        # a same-family 32-bit LogFileParser that also matches the key).
+        pretty_stem = Path(_WIN_CATALOG[key]["name"]).stem.lower()
+        preferred = [h for h in hits if h.stem.lower() == pretty_stem]
+        chosen = _prefer_binary(preferred) or _prefer_binary(hits)
+    else:
+        chosen = _prefer_binary(hits)
+    if chosen:
+        return str(chosen)
+    # Windows built-ins (catalog-marked) resolve from System32 / PATH. This is
+    # a deterministic allowlist — never a broad PATH scan for third-party tools.
+    if key and _WIN_CATALOG.get(key, {}).get("builtin"):
+        names = [str(_WIN_CATALOG[key]["name"])]
+        if os.name == "nt" and not names[0].lower().endswith(".exe"):
+            names.append(f"{names[0]}.exe")
+        sys32 = Path(os.environ.get("SYSTEMROOT", r"C:\Windows")) / "System32"
+        for cand in names:
+            builtin_path = sys32 / cand
+            if builtin_path.is_file():
+                return str(builtin_path)
+        found = shutil.which(names[0]) or shutil.which(f"{names[0]}.exe")
+        if found:
+            return str(found)
+    return None
 
 
 def _parse_output(stdout: str | None, stderr: str | None) -> dict:
@@ -388,6 +399,11 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             "bitsparser": "pwsh -File tools/fetch-windows-tools.ps1  (GitHub fireeye/BitsParser; bits vendored in-tree)",
             "kstrike": "pwsh -File tools/fetch-windows-tools.ps1  (GitHub brimorlabs/KStrike + pip libesedb-python)",
             "logfileparser": "pwsh -File Tools/fetch-windows-tools.ps1  (GitHub jschicht/LogFileParser)",
+            "deepbluecli": "pwsh -File Tools/fetch-windows-tools.ps1  (GitHub sans-blue-team/DeepBlueCLI + run-deepblue.ps1 wrapper)",
+            "ntfslogtracker": "pwsh -File Tools/fetch-windows-tools.ps1  (GitHub jschicht NTFS Log Tracker)",
+            "hindsight": "pwsh -File Tools/fetch-windows-tools.ps1  (pip pyhindsight + copied launcher)",
+            "usbdeview": "pwsh -File Tools/fetch-windows-tools.ps1  (NirSoft USBDeview x64 zip)",
+            "zircolite": "pwsh -File Tools/fetch-windows-tools.ps1  (GitHub wagga40/Zircolite release)",
         }
         for key, info in sorted(_WIN_CATALOG.items()):
             if _find_binary(info["name"]) is None:
@@ -646,6 +662,10 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             parent = str(resolved_path.parent)
             existing = run_env.get("PYTHONPATH", "")
             run_env["PYTHONPATH"] = parent + (os.pathsep + existing if existing else "")
+            # UTF-8 mode: python tools (Hindsight etc.) otherwise crash on
+            # legacy cp1252 consoles when they emit non-cp1252 glyphs.
+            run_env.setdefault("PYTHONUTF8", "1")
+            run_env.setdefault("PYTHONIOENCODING", "utf-8")
 
         detected_inputs = list(input_files or [])
         if not detected_inputs:

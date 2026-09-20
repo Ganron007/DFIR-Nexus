@@ -803,15 +803,22 @@ def plan_windows_triage(
 
 def _windows_tool_available(key: str) -> bool:
     """True when the catalog binary is on this analysis host (Tools/windows or PATH)."""
+    return bool(_windows_tool_path(key))
+
+
+def _windows_tool_path(key: str) -> str:
+    """Resolved path for a catalog binary ('' when missing)."""
     try:
         from nexus.tools.windows import _WIN_CATALOG, _find_binary
     except Exception:
-        return False
+        return ""
     info = _WIN_CATALOG.get(key) or {}
     for cand in (key, str(info.get("name") or "")):
-        if cand and _find_binary(cand) is not None:
-            return True
-    return False
+        if cand:
+            hit = _find_binary(cand)
+            if hit is not None:
+                return str(hit)
+    return ""
 
 
 def _copy_text(extractions: Path, rel: str, src: Path) -> None:
@@ -1106,60 +1113,21 @@ def _plan_gap_parsers(
     # KAPE-better: additional parsers for coverage parity + correlation
     # -----------------------------------------------------------------------
 
-    # $LogFile — NTFS change journal (file system activity timeline)
+    # $LogFile — NTFS change journal (LogFileParser; NTFSLogTracker upstream is dead)
     logfile = root / "$LogFile"
     if logfile.is_file() and logfile.stat().st_size >= 4096 and not quick:
-        d = extractions / "ntfslogtracker"
+        d = extractions / "logfileparser"
         d.mkdir(parents=True, exist_ok=True)
         add(
-            "ntfslogtracker",
-            ["ntfslogtracker", "-f", str(logfile), "-o", str(d)],
-            "NTFS $LogFile (transaction journal)",
+            "logfileparser",
+            ["logfileparser", f"/LogFileFile:{logfile}", f"/OutputPath:{d}"],
+            "NTFS $LogFile (transaction journal, LogFileParser)",
             600,
         )
     elif logfile.is_file() and quick:
-        skip("ntfslogtracker", "skipped (NEXUS_TOOL_LANE_QUICK=1)")
+        skip("logfileparser", "skipped (NEXUS_TOOL_LANE_QUICK=1)")
     else:
-        skip("ntfslogtracker", f"missing or too small {logfile}")
-
-    # Per-hive RegRipper — registry persistence, user activity, SAM/SYSTEM
-    config_dir = root / "Windows/System32/config"
-    reg_hives = {
-        "NTUSER.DAT": "ntuser",
-        "SAM": "sam",
-        "SECURITY": "security",
-        "SOFTWARE": "software",
-        "SYSTEM": "system",
-    }
-    regripper_ok = _windows_tool_available("regripper")
-    for hive_name, slug in reg_hives.items():
-        hive_path = config_dir / hive_name
-        if not hive_path.is_file():
-            continue
-        if not regripper_ok:
-            skip("regripper", "regripper not installed — run tools/fetch-windows-tools.ps1 then nexus doctor")
-            break
-        d = extractions / "regripper" / slug
-        d.mkdir(parents=True, exist_ok=True)
-        add(
-            "regripper",
-            ["rip.exe", "-r", str(hive_path), "-f", slug, "-p", str(d)],
-            f"RegRipper {hive_name} ({slug})",
-            300,
-        )
-
-    # UsrClass.dat per user (shellbags + user activity)
-    for user in users:
-        usrclass = user / "AppData/Local/Microsoft/Windows/UsrClass.dat"
-        if usrclass.is_file() and regripper_ok:
-            d = extractions / "regripper" / f"usrclass-{user.name}"
-            d.mkdir(parents=True, exist_ok=True)
-            add(
-                "regripper",
-                ["rip.exe", "-r", str(usrclass), "-f", "usrclass", "-p", str(d)],
-                f"RegRipper UsrClass.dat ({user.name})",
-                300,
-            )
+        skip("logfileparser", f"missing or too small {logfile}")
 
     # Scheduled tasks — Windows scheduled task parsing
     tasks_dir = root / "Windows/System32/Tasks"
@@ -1208,7 +1176,7 @@ def _plan_gap_parsers(
                     if _windows_tool_available("hindsight"):
                         add(
                             "hindsight",
-                            ["hindsight", "-i", str(prof), "-o", str(d)],
+                            ["hindsight", "-i", str(prof), "-o", str(d / "hindsight"), "-f", "jsonl"],
                             f"Hindsight Chrome ({user.name}-{prof.name})",
                             300,
                         )
@@ -1223,74 +1191,55 @@ def _plan_gap_parsers(
         d.mkdir(parents=True, exist_ok=True)
         add(
             "usbdeview",
-            ["usbdeview", "/reg_file", str(usbstor), "/scomma", str(d / "usb.csv")],
+            ["usbdeview", "/regfile", str(usbstor), "/scomma", str(d / "usb.csv"),
+             "/AddExportHeaderLine", "1"],
             "USB device history (USBDeview)",
             300,
         )
     elif usbstor.is_file():
         skip("usbdeview", "usbdeview not installed — run tools/fetch-windows-tools.ps1 then nexus doctor")
 
-    # Zircolite — fast Sigma-based EVTX analysis
+    # Zircolite — fast Sigma-based EVTX analysis (bundled merged-high JSON ruleset)
     if _windows_tool_available("zircolite"):
-        evtx_out = extractions / "evtxecmd"
-        if evtx_out.is_dir():
+        zirc_bin = _windows_tool_path("zircolite")
+        zirc_rules = Path(zirc_bin).parent / "rules" / "rules_windows_merged_high.json"
+        if zirc_rules.is_file():
             d = extractions / "zircolite"
             d.mkdir(parents=True, exist_ok=True)
             add(
                 "zircolite",
-                ["zircolite", "-e", str(evtx_out), "-o", str(d / "zircolite.json")],
-                "Zircolite Sigma EVTX analysis",
+                ["zircolite", "-e", str(root), "-f", "evtx", "-r", str(zirc_rules),
+                 "-o", str(d / "zircolite.json")],
+                "Zircolite Sigma EVTX analysis (merged-high ruleset)",
                 600,
             )
+        else:
+            skip("zircolite", f"bundled ruleset missing at {zirc_rules}")
     else:
         skip("zircolite", "zircolite not installed — run tools/fetch-windows-tools.ps1 then nexus doctor")
 
-    # DeepblueCLI — EVTX attack pattern detection
+    # DeepBlueCLI — EVTX attack pattern detection (per .evtx file via run-deepblue.ps1)
     if _windows_tool_available("deepbluecli"):
-        evtx_out = extractions / "evtxecmd"
-        if evtx_out.is_dir():
+        evtx_files: list[Path] = []
+        if root.is_dir():
+            for _evtx in root.rglob("*.evtx"):
+                evtx_files.append(_evtx)
+                if len(evtx_files) >= 25:
+                    break
+        if evtx_files:
             d = extractions / "deepbluecli"
             d.mkdir(parents=True, exist_ok=True)
-            add(
-                "deepbluecli",
-                ["deepbluecli", "-e", str(evtx_out), "-o", str(d)],
-                "DeepBlueCLI attack pattern EVTX",
-                300,
-            )
-    else:
-        skip("deepbluecli", "deepbluecli not installed — run tools/fetch-windows-tools.ps1 then nexus doctor")
-
-    # Events-Ripper — structured EVTX parsing
-    if _windows_tool_available("events_ripper"):
-        evtx_out = extractions / "evtxecmd"
-        if evtx_out.is_dir():
-            d = extractions / "events_ripper"
-            d.mkdir(parents=True, exist_ok=True)
-            add(
-                "events_ripper",
-                ["events_ripper", "-d", str(evtx_out), "-o", str(d)],
-                "Events-Ripper structured EVTX",
-                300,
-            )
-    else:
-        skip("events_ripper", "events_ripper not installed — run tools/fetch-windows-tools.ps1 then nexus doctor")
-
-    # LevelDB — Chrome/Edge LevelDB parsing
-    for user in users:
-        leveldb_dirs = [
-            user / "AppData/Local/Google/Chrome/User Data/Default/Local Storage/leveldb",
-            user / "AppData/Local/Microsoft/Edge/User Data/Default/Local Storage/leveldb",
-        ]
-        for ldb in leveldb_dirs:
-            if ldb.is_dir() and _windows_tool_available("leveldb"):
-                d = extractions / "leveldb" / user.name
-                d.mkdir(parents=True, exist_ok=True)
+            for evtx in evtx_files:
                 add(
-                    "leveldb",
-                    ["leveldbdumper", "-d", str(ldb), "-o", str(d)],
-                    f"LevelDB ({user.name})",
+                    "deepbluecli",
+                    ["deepbluecli", str(evtx), str(d / f"{evtx.stem}.json")],
+                    f"DeepBlueCLI attack patterns ({evtx.name})",
                     300,
                 )
+        else:
+            skip("deepbluecli", "no .evtx files found for DeepBlueCLI")
+    else:
+        skip("deepbluecli", "deepbluecli not installed — run tools/fetch-windows-tools.ps1 then nexus doctor")
 
     samples = list(sample_files or [])
     env_samples = os.environ.get("NEXUS_SAMPLE_FILES", "").strip()
@@ -1498,14 +1447,14 @@ def plan_sift_triage(
         jobs.append(ToolJob(
             host="sift",
             tool="log2timeline",
-            argv=["log2timeline", "--storage-file", store, root],
+            argv=["log2timeline.py", "--storage-file", store, root],
             purpose="Plaso super-timeline (NEXUS_SIFT_PLASO=1 — large disk required)",
             timeout=7200,
         ))
         jobs.append(ToolJob(
             host="sift",
             tool="psort",
-            argv=["psort", "-o", "l2tcsv", "-w", f"{root}/plaso.csv", store],
+            argv=["psort.py", "-o", "l2tcsv", "-w", f"{root}/plaso.csv", store],
             purpose="psort Plaso store to CSV",
             timeout=3600,
         ))
