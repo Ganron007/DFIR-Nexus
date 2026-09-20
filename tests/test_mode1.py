@@ -238,3 +238,40 @@ class TestScribeFinding:
         hits = [{"family": "f", "file": "a.csv", "line": "1", "text": "hit", "terms": "x"}]
         result = scribe_finding(draft, hits, model=None)
         assert result["audit_ids"] == ["hayabusa-examiner-20260822-001"]
+
+def test_promote_without_tool_audits_stages_real_draft(tmp_path):
+    """Live-bug regression (manual promote journey): on a case whose rows were
+    not produced by audited tool-lane calls, promote_hits_to_draft must audit
+    the promotion itself, or FD-001 rejects every draft and Approve is empty
+    (same class as the Mode 1 full-run bug)."""
+    import json as _json
+
+    from nexus.langgraph.mode1 import (
+        _heuristic_scribe,
+        promote_hits_to_draft,
+        save_draft_finding,
+    )
+    from nexus.langgraph.query_pack import n4_hits
+
+    case = tmp_path / "CASE-PROMOTE"
+    ext = case / "extractions" / "hayabusa"
+    ext.mkdir(parents=True)
+    (ext / "alerts.csv").write_text(
+        "Timestamp,Computer,Channel,EventID,Level,RuleTitle,OtherDetails\n"
+        "2026-08-10 14:32:01,WS01,Sec,4688,critical,Suspicious SDelete,sdelete.exe -p 5\n",
+        encoding="utf-8",
+    )
+    (case / "CASE.yaml").write_text("intake:\n  question: sdelete\n", encoding="utf-8")
+
+    hits, _backend = n4_hits(case, ["sdelete"], (None, None), backend="csv")
+    assert hits, "fixture must produce a hit row"
+    draft = promote_hits_to_draft(case, hits=hits, title="Signal: sdelete",
+                                  examiner="tester")
+    assert draft.get("audit_ids"), "the promotion must carry an evidence trail"
+    # The portal runs the scribe before saving; mirror the real path.
+    draft = _heuristic_scribe(draft, hits, case_dir=case)
+    res = save_draft_finding(case, draft)
+    assert res.get("status") == "STAGED", res
+    rows = _json.loads((case / "findings.json").read_text(encoding="utf-8"))
+    drafts = [f for f in rows if str(f.get("status", "")).upper() == "DRAFT"]
+    assert drafts and drafts[0].get("audit_ids"), "Approve must see the DRAFT"

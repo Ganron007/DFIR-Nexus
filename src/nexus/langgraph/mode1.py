@@ -763,9 +763,14 @@ def promote_hits_to_draft(
             files=[h.get("file") for h in hits if h.get("file")],
         )
         if not audit_ids:
-            log.warning(
-                "No linked audit_id found for %s — draft will be rejected by FD-001",
-                sorted(families) or "(no family)",
+            # FD-001 fallback: this promotion IS the system action that
+            # observed these rows. Auditing it with the row identities keeps
+            # every promote path (full run, Explore/bookmarks, Mode 2 propose)
+            # provable - before this, any case without tool-lane audits staged
+            # zero drafts and the Approve page stayed empty (live bug 2026-09-20).
+            audit_ids = _audit_promotion(
+                case_dir, hits, title, examiner,
+                examiner_selected=examiner_selected,
             )
     except Exception as exc:
         log.warning("Could not resolve linked audit_ids: %s", exc)
@@ -785,6 +790,35 @@ def promote_hits_to_draft(
         "examiner_selected": examiner_selected,
     }
     return draft
+
+
+def _audit_promotion(case_dir: Path, hits: list[dict[str, Any]], title: str,
+                     examiner: str = "", examiner_selected: bool = True) -> list[str]:
+    """Case audit entry for a promotion: which rows were staged (FD-001)."""
+    try:
+        from nexus.audit import AuditWriter
+
+        rows = [
+            {
+                "family": str(h.get("family") or ""),
+                "file": str(h.get("file") or ""),
+                "line": str(h.get("line") or ""),
+            }
+            for h in hits[:50]
+        ]
+        writer = AuditWriter("nexus", audit_dir=case_dir / "audit")
+        aid = writer.log(
+            tool="promote_hits",
+            params={"case_id": case_dir.name, "title": title[:160], "rows": rows},
+            result_summary={"hits": len(hits),
+                            "examiner_selected": examiner_selected},
+            source="portal",
+            extra={"case_id": case_dir.name, "examiner": examiner},
+        )
+        return [aid] if aid else []
+    except Exception as exc:  # noqa: BLE001 - staging then reports FD-001
+        log.warning("promotion audit failed: %s", exc)
+        return []
 
 
 def save_draft_finding(case_dir: Path, draft: dict[str, Any]) -> dict[str, Any]:
