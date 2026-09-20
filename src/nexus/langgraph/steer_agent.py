@@ -4,7 +4,7 @@ A reliable 3-step pipeline (NOT a fragile ReAct JSON loop):
   1. PLAN: LLM reads the NL question + the case's REAL evidence landscape
      (indexed families + row counts + their fields) → generates N4 DSL queries
   2. EXECUTE: the code runs them deterministically through the case-gated
-     backbone (n4_query / n4_aggregate)
+     backbone (es_search / es_aggregate)
   3. ANSWER: LLM reads the ACTUAL result rows (+ deterministic extractions
      like distinct .exe names) → formulates a natural-language answer
 
