@@ -756,6 +756,10 @@ export interface CaseDigestResponse {
     entities: Record<string, { value: string; hits: number }[]>;
     entity_spans: Record<string, { value: string; count: number; first_seen?: string; last_seen?: string }[]>;
     timeline: { buckets_per_day: Record<string, number>; source: string };
+    ts_coverage?: Record<string, {
+      present?: number; missing?: number; synthesized?: number;
+      tz_assumed?: number; year_assumed?: number;
+    }>;
     backend: string;
     scan_stats?: {
       truncated?: boolean;

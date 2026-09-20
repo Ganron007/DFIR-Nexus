@@ -26,6 +26,10 @@ export default function Evidence() {
   const [verifying, setVerifying] = useState(false);
   const [verificationResults, setVerificationResults] = useState<Record<string, { valid: boolean; error?: string }>>({});
   const [verifyBanner, setVerifyBanner] = useState<{ total: number; valid: number; failed: number } | null>(null);
+  const [tsCoverage, setTsCoverage] = useState<Record<string, {
+    present?: number; missing?: number; synthesized?: number;
+    tz_assumed?: number; year_assumed?: number;
+  }>>({});
 
   // Poll cleanup ref — clears interval on unmount to prevent poll leak
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -76,10 +80,12 @@ export default function Evidence() {
       api.evidence(),
       api.caseDetails(activeCase).catch(() => null),
       api.pipelineLedger().catch(() => null),
+      api.caseDigest().catch(() => null),
     ])
-      .then(([ev, d, lg]) => {
+      .then(([ev, d, lg, dg]) => {
         setEvidence(ev.evidence);
         setPipelineComplete(d?.pipeline_complete || false);
+        setTsCoverage(dg?.digest?.ts_coverage || {});
         if (lg && !lg.error) {
           setLedger(lg.ledger || []);
           setLedgerRunId(lg.run_id || "");
@@ -310,6 +316,44 @@ export default function Evidence() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Timestamp coverage (4k.4.3) — which families actually carry event
+          times, and where policy assumptions were made. */}
+      {activeCase && Object.keys(tsCoverage).length > 0 && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div className="card-header">
+            <span className="card-title">
+              Timestamp coverage (per family)
+            </span>
+          </div>
+          <div style={{ padding: "8px 16px 12px", fontSize: 12 }}>
+            {Object.entries(tsCoverage)
+              .filter(([, c]) => ((c.present || 0) + (c.missing || 0) + (c.synthesized || 0)) > 0)
+              .sort((a, b) => (b[1].present || 0) - (a[1].present || 0))
+              .map(([fam, c]) => {
+                const notes: string[] = [];
+                if (c.synthesized) notes.push(`${c.synthesized} synthesized`);
+                if (c.tz_assumed) notes.push(`${c.tz_assumed} UTC-assumed`);
+                if (c.year_assumed) notes.push(`${c.year_assumed} year-assumed`);
+                const noTimes = (c.present || 0) === 0;
+                return (
+                  <div key={fam} style={{ marginBottom: 4 }}>
+                    <code>{fam}</code>: {noTimes ? (
+                      <span style={{ color: "var(--warning)" }}>
+                        no parsed event timestamps — {c.missing || 0} undated row(s); do not read absence as timeline evidence
+                      </span>
+                    ) : (
+                      <span>
+                        {c.present} timestamped / {c.missing || 0} undated
+                        {notes.length > 0 ? ` (${notes.join("; ")})` : ""}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
           </div>
         </div>
       )}
