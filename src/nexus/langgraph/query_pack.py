@@ -453,6 +453,9 @@ def _hits_from_file(
     strong_n = 0
     weak_n = 0
     skipped_cap = 0
+    header = None
+    if query is not None and getattr(query, "filters", None):
+        header = _header_for_file(root, str(path.relative_to(root)).replace("\\", "/"))
     with _open_text(path) as fh:
         for i, line in enumerate(fh, start=1):
             if i == 1 and ("," in line or "\t" in line):
@@ -461,8 +464,14 @@ def _hits_from_file(
             if query is not None:
                 from nexus.langgraph.query_dsl import row_matches
 
+                row_fields = None
+                if header:
+                    from nexus.langgraph.case_index import _row_fields
+
+                    row_fields = _row_fields(line, header)
                 ok, matched = row_matches(
-                    query, line_lower=low, family=fam, file_rel=str(path.relative_to(root))
+                    query, line_lower=low, family=fam, file_rel=str(path.relative_to(root)),
+                    row_fields=row_fields,
                 )
                 if not ok:
                     continue
@@ -582,13 +591,18 @@ def _hits_from_ingest(
     strong_n = 0
     weak_n = 0
     skipped_cap = 0
-    for line_no, fam, text, _ts in iter_ingest_rows(case_dir):
+    for line_no, fam, text, _ts, record in iter_ingest_records(case_dir):
         low = text.lower()
         if query is not None:
             from nexus.langgraph.query_dsl import row_matches
 
+            row_fields = {
+                str(k): str(v) for k, v in (record or {}).items()
+                if v not in (None, "", [], {})
+            }
             ok, matched = row_matches(
-                query, line_lower=low, family=fam, file_rel="ingest/artifacts.jsonl"
+                query, line_lower=low, family=fam, file_rel="ingest/artifacts.jsonl",
+                row_fields=row_fields,
             )
             if not ok:
                 continue
@@ -740,6 +754,7 @@ def n4_hits(
     query: Any | None = None,
     match_all: bool = False,
     stats: dict[str, Any] | None = None,
+    catalog: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, str]], str]:
     """One query API: Elasticsearch when reachable+indexed, else CSV pack.
 
@@ -780,6 +795,7 @@ def n4_hits(
                 result = query_index(
                     case_dir, terms, window, priority_terms,
                     query=query, match_all=match_all, stats=stats,
+                    catalog=catalog,
                 )
                 if stats is not None:
                     stats["backend"] = "elasticsearch"
@@ -807,7 +823,7 @@ def n4_hits(
     _csv_stats(fallback_reason)
     return scan_extractions(
         case_dir, terms, window, priority_terms, query=query, match_all=match_all,
-        stats=stats,
+        stats=stats, catalog=catalog,
     ), "csv"
 
 
@@ -1043,9 +1059,18 @@ def n4_query(
     from nexus.langgraph.query_dsl import QuerySyntaxError, parse_query
 
     try:
-        parsed = parse_query(query_text)
+        from nexus.langgraph.field_catalog import case_field_catalog
+
+        _catalog = case_field_catalog(case_dir)
+        parsed = parse_query(query_text, catalog=_catalog)
     except QuerySyntaxError as exc:
         return {"error": str(exc), "query": query_text}
+    except Exception:  # noqa: BLE001 — catalog failure must not block queries
+        _catalog = None
+        try:
+            parsed = parse_query(query_text)
+        except QuerySyntaxError as exc:
+            return {"error": str(exc), "query": query_text}
 
     case_dir = Path(case_dir)
     intake = load_case_intake(case_dir)
@@ -1065,6 +1090,7 @@ def n4_query(
         query=parsed if not parsed.is_empty() else None,
         match_all=do_match_all,
         stats=stats,
+        catalog=_catalog,
     )
     total = len(all_hits)
     page = all_hits[max(0, offset):max(0, offset) + max(1, min(int(limit or 80), _MAX_HITS_TOTAL))]
@@ -1080,6 +1106,7 @@ def n4_query(
                 query=parsed if not parsed.is_empty() else None,
                 match_all=do_match_all,
                 backend=backend,
+                catalog=_catalog,
             )
             if info.get("exact"):
                 exact_info = info
@@ -1283,6 +1310,7 @@ def scan_extractions(
     query: Any | None = None,
     match_all: bool = False,
     stats: dict[str, Any] | None = None,
+    catalog: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
     """Scan parsed CSVs. ``query`` (query_dsl.ParsedQuery) adds boolean /
     field-filter / regex semantics on top of the plain needle list.
@@ -1362,6 +1390,7 @@ def _iter_matching_rows(
     end: datetime | None,
     query: Any | None = None,
     match_all: bool = False,
+    header: list[str] | None = None,
 ):
     """Yield (line_no, matched_terms, text) for EVERY matching row (EH-12).
 
@@ -1377,7 +1406,15 @@ def _iter_matching_rows(
             if query is not None:
                 from nexus.langgraph.query_dsl import row_matches
 
-                ok, matched = row_matches(query, line_lower=low, family=fam, file_rel=rel)
+                row_fields = None
+                if header:
+                    from nexus.langgraph.case_index import _row_fields
+
+                    row_fields = _row_fields(line, header)
+                ok, matched = row_matches(
+                    query, line_lower=low, family=fam, file_rel=rel,
+                    row_fields=row_fields,
+                )
                 if not ok:
                     continue
                 matched = matched[:6]
@@ -1409,9 +1446,12 @@ def iter_extraction_hits(
     ):
         try:
             rel = str(path.relative_to(root)).replace("\\", "/")
+            header = None
+            if query is not None and getattr(query, "filters", None):
+                header = _header_for_file(root, rel)
             for i, matched, text in _iter_matching_rows(
                 path, root, fam, needles, start, end,
-                query=query, match_all=match_all,
+                query=query, match_all=match_all, header=header,
             ):
                 yield {
                     "family": fam,
@@ -1439,13 +1479,18 @@ def iter_ingest_hits(
     stats: dict[str, Any] | None = None,
 ):
     """Stream every matching imported-evidence row (no caps) — EH-12."""
-    for line_no, fam, text, _ts in iter_ingest_rows(case_dir):
+    for line_no, fam, text, _ts, record in iter_ingest_records(case_dir):
         low = text.lower()
         if query is not None:
             from nexus.langgraph.query_dsl import row_matches
 
+            row_fields = {
+                str(k): str(v) for k, v in (record or {}).items()
+                if v not in (None, "", [], {})
+            }
             ok, matched = row_matches(
-                query, line_lower=low, family=fam, file_rel="ingest/artifacts.jsonl"
+                query, line_lower=low, family=fam, file_rel="ingest/artifacts.jsonl",
+                row_fields=row_fields,
             )
             if not ok:
                 continue
@@ -1516,6 +1561,7 @@ def count_hits(
     query: Any | None = None,
     match_all: bool = False,
     backend: str | None = None,
+    catalog: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Exact matched-row count (EH-12). Returns {count, backend, exact}.
 
@@ -1534,7 +1580,7 @@ def count_hits(
             n, exact = count_index(
                 case_dir, terms, window,
                 priority_terms=priority_terms, query=query, match_all=match_all,
-                stats=cstats,
+                stats=cstats, catalog=catalog,
             )
             return {"count": n, "backend": "elasticsearch", "exact": exact}
         except Exception as exc:  # noqa: BLE001

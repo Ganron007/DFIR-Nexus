@@ -26,12 +26,22 @@ ReDoS guard: regex length capped; nested-quantifier patterns rejected.
 
 from __future__ import annotations
 
+import fnmatch
 import re
 from datetime import datetime
 from typing import Any
 
 _FIELDS = frozenset({"family", "host", "user", "event", "file"})
 _TS_FIELDS = frozenset({"ts", "time", "timestamp", "date", "after", "before"})
+# 4k.6: any other identifier becomes a TYPED catalog filter — never a text
+# term. URL schemes and single-letter drive tokens stay plain terms.
+_FILTER_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.\-]{1,63}$")
+_URL_SCHEMES = frozenset({"http", "https", "ftp", "ftps", "ws", "wss", "s3", "gs", "tcp", "udp"})
+_NUMERIC_TYPES = frozenset({
+    "long", "integer", "short", "byte", "double", "float", "half_float",
+    "scaled_float", "unsigned_long",
+})
+_DATE_TYPES = frozenset({"date", "date_nanos"})
 _MAX_OR = 24
 _MAX_AND = 12
 _MAX_NOT = 12
@@ -51,7 +61,7 @@ class ParsedQuery:
 
     __slots__ = (
         "or_terms", "and_terms", "not_terms", "fields", "regex",
-        "ts_start", "ts_end",
+        "ts_start", "ts_end", "filters",
     )
 
     def __init__(self) -> None:
@@ -62,11 +72,14 @@ class ParsedQuery:
         self.regex: re.Pattern[str] | None = None
         self.ts_start: datetime | None = None
         self.ts_end: datetime | None = None
+        # Typed catalog filters: {name, resolved, type, op, value|values|lo|hi}
+        self.filters: list[dict[str, Any]] = []
 
     def is_empty(self) -> bool:
         return not (
             self.or_terms or self.and_terms or self.not_terms
             or self.fields or self.regex or self.ts_start or self.ts_end
+            or self.filters
         )
 
     def all_needles(self) -> list[str]:
@@ -90,13 +103,31 @@ class ParsedQuery:
             lo = self.ts_start.isoformat() if self.ts_start else ""
             hi = self.ts_end.isoformat() if self.ts_end else ""
             parts.append(f"ts:{lo}..{hi}")
+        for f in self.filters:
+            op = f.get("op") or "contains"
+            if op == "exists":
+                parts.append(f"exists:{f.get('value')}")
+            elif op == "in":
+                parts.append(f"{f['name']}:in:({','.join(f.get('values') or [])})")
+            elif op == "range":
+                parts.append(f"{f['name']}:{f.get('lo') or ''}..{f.get('hi') or ''}")
+            elif op == "contains":
+                parts.append(f"{f['name']}:{f.get('value')}")
+            else:
+                parts.append(f"{f['name']}:{op}:{f.get('value')}")
         if self.regex:
             parts.append(f"regex({self.regex.pattern})")
         return " ".join(parts) if parts else "(match all)"
 
 
-def parse_query(text: str) -> ParsedQuery:
-    """Parse the N4 query DSL. Raises QuerySyntaxError on a bad regex."""
+def parse_query(text: str, catalog: dict[str, Any] | None = None) -> ParsedQuery:
+    """Parse the N4 query DSL.
+
+    ``catalog`` (``field_catalog.case_field_catalog``) enables hard errors:
+    an identifier-shaped ``name:value`` that is not a catalog column raises
+    ``QuerySyntaxError`` instead of silently becoming a text term. Without a
+    catalog the filter is accepted and the executor validates it.
+    """
     q = ParsedQuery()
     raw = (text or "").strip()
     if not raw:
@@ -111,7 +142,7 @@ def parse_query(text: str) -> ParsedQuery:
         if not tok.startswith('"') and low.startswith("regex:"):
             _set_regex(q, tok[6:].strip().strip('"'))
             continue
-        _add_term(q, tok, pending)
+        _add_term(q, tok, pending, catalog)
 
     if len(q.or_terms) > _MAX_OR:
         raise QuerySyntaxError(f"too many OR terms (max {_MAX_OR})")
@@ -187,7 +218,164 @@ def _set_ts_range(q: ParsedQuery, field: str, value: str) -> None:
         q.ts_end = dt
 
 
-def _add_term(q: ParsedQuery, tok: str, pending: str | None) -> None:
+_OPS = ("!=", ">=", "<=", "=", ">", "<")
+
+
+def _parse_filter_value(value: str) -> tuple[str, dict[str, Any]]:
+    """Operator + payload for a typed filter value."""
+    raw = str(value or "").strip()
+    for op in _OPS:
+        if raw.startswith(op):
+            inner = raw[len(op):].strip()
+            if op == "!=":
+                return "ne", {"value": inner}
+            if op == "=":
+                return "eq", {"value": inner}
+            if op == ">=":
+                return "gte", {"value": inner}
+            if op == "<=":
+                return "lte", {"value": inner}
+            if op == ">":
+                return "gt", {"value": inner}
+            return "lt", {"value": inner}
+    low = raw.lower()
+    if low.startswith("in:"):
+        inner = raw[3:].strip()
+        if inner.startswith("(") and inner.endswith(")"):
+            inner = inner[1:-1]
+        values = [v.strip().strip('"') for v in inner.split(",") if v.strip()]
+        return "in", {"values": values}
+    if ".." in raw:
+        lo, _, hi = raw.partition("..")
+        return "range", {"lo": lo.strip(), "hi": hi.strip()}
+    return "contains", {"value": raw}
+
+
+def _maybe_filter(q: ParsedQuery, name_raw: str, value: str,
+                  catalog: dict[str, Any] | None) -> bool:
+    """Identifier-shaped ``name:value`` → typed filter (or hard error)."""
+    name = str(name_raw or "").strip()
+    if not name or not value:
+        return False
+    low = name.lower()
+    if low in _URL_SCHEMES:  # http://host — a term, not a field
+        return False
+    if low == "exists":
+        target = value.strip()
+        if not target:
+            return False
+        if catalog is not None and target.lower() not in catalog:
+            from nexus.langgraph.field_catalog import suggest_field
+
+            hints = suggest_field(catalog, target)
+            raise QuerySyntaxError(
+                f"exists: unknown field {target!r}"
+                + (f" — did you mean {', '.join(hints)}?" if hints else "")
+            )
+        q.filters.append({"name": "exists", "resolved": target, "type": "",
+                          "op": "exists", "value": target})
+        return True
+    if len(name) < 2 or not _FILTER_NAME_RE.match(name):
+        return False
+    if value.startswith("//"):  # URL path
+        return False
+    entry = None
+    if catalog is not None:
+        from nexus.langgraph.field_catalog import resolve_field
+
+        entry = resolve_field(catalog, low)
+    op, payload = _parse_filter_value(value)
+    if catalog is not None and entry is None and op == "contains":
+        from nexus.langgraph.field_catalog import suggest_field
+
+        hints = suggest_field(catalog, low)
+        raise QuerySyntaxError(
+            f"unknown field {name!r}"
+            + (f" — did you mean {', '.join(hints)}?" if hints else "")
+        )
+    q.filters.append({
+        "name": low,
+        "resolved": (entry or {}).get("name", name),
+        "type": (entry or {}).get("type", ""),
+        "op": op,
+        **payload,
+    })
+    return True
+
+
+def _field_lookup(fields: dict[str, str], name: str) -> str | None:
+    low = str(name or "").lower()
+    for key, val in (fields or {}).items():
+        if str(key).lower() == low:
+            return str(val)
+    return None
+
+
+def _as_number(value: str) -> float | None:
+    try:
+        return float(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _filter_matches(f: dict[str, Any], row_fields: dict[str, str]) -> bool:
+    """CSV parity for one typed filter (missing column → clause false)."""
+    op = f.get("op") or "contains"
+    if op == "exists":
+        val = _field_lookup(row_fields, str(f.get("resolved") or f.get("value") or ""))
+        return val not in (None, "")
+    raw = _field_lookup(row_fields, str(f.get("resolved") or f.get("name") or ""))
+    if raw is None:
+        return False
+    low = raw.strip().lower()
+    if op == "contains":
+        needle = str(f.get("value") or "").lower()
+        if "*" in needle or "?" in needle:
+            return fnmatch.fnmatchcase(low, needle)
+        return needle in low
+    if op == "eq":
+        return low == str(f.get("value") or "").lower()
+    if op == "ne":
+        return low != str(f.get("value") or "").lower()
+    if op == "in":
+        want = {str(v).strip().lower() for v in (f.get("values") or [])}
+        return low in want
+    # numeric / date comparisons
+    def _cmp(left: Any, right: Any) -> tuple[Any, Any] | None:
+        ln, rn = _as_number(str(left)), _as_number(str(right))
+        if ln is None or rn is None:
+            from nexus.langgraph.timestamps import parse_time_value
+
+            g1, g2 = parse_time_value(str(left)), parse_time_value(str(right))
+            if g1 is None or g2 is None:
+                return None
+            ln, rn = g1["dt"], g2["dt"]
+        return ln, rn
+
+    if op in ("gt", "gte", "lt", "lte"):
+        pair = _cmp(raw, f.get("value"))
+        if pair is None:
+            return False
+        ln, rn = pair
+        return {
+            "gt": ln > rn, "gte": ln >= rn, "lt": ln < rn, "lte": ln <= rn,
+        }[op]
+    if op == "range":
+        lo, hi = f.get("lo"), f.get("hi")
+        if lo not in (None, ""):
+            pair = _cmp(raw, lo)
+            if pair is None or pair[0] < pair[1]:
+                return False
+        if hi not in (None, ""):
+            pair = _cmp(raw, hi)
+            if pair is None or pair[0] > pair[1]:
+                return False
+        return True
+    return False
+
+
+def _add_term(q: ParsedQuery, tok: str, pending: str | None,
+              catalog: dict[str, Any] | None = None) -> None:
     term = tok.strip()
     # Quoted phrases lose their literal quotes so matching works on row text.
     if len(term) >= 2 and term.startswith('"') and term.endswith('"'):
@@ -202,6 +390,8 @@ def _add_term(q: ParsedQuery, tok: str, pending: str | None) -> None:
             return
         if field.lower() in _FIELDS and value:
             q.fields[field.lower()] = value.lower()
+            return
+        if _maybe_filter(q, field, value, catalog):
             return
     bucket = (
         q.and_terms if pending == "and"
@@ -237,6 +427,7 @@ def row_matches(
     file_rel: str = "",
     extra_text: str = "",
     row_ts: str = "",
+    row_fields: dict[str, str] | None = None,
 ) -> tuple[bool, list[str]]:
     """Evaluate a parsed query against one row.
 
@@ -250,6 +441,14 @@ def row_matches(
     from nexus.langgraph.query_pack import needle_in_text
 
     hay = line_lower if not extra_text else f"{line_lower}\n{extra_text.lower()}"
+    if q.filters:
+        # Typed catalog filters need parsed columns; a row without them can
+        # only fail the clause (loud, never a silent pass).
+        if not row_fields:
+            return False, []
+        for f in q.filters:
+            if not _filter_matches(f, row_fields):
+                return False, []
     if q.ts_start is not None or q.ts_end is not None:
         # Explicit time filter: a row with no parseable time cannot match —
         # excluding it silently would be a lie; callers count these separately.

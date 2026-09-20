@@ -906,8 +906,96 @@ def _term_clause(term: str, search_fields: bool = False) -> dict[str, Any]:
     return {"bool": {"should": should, "minimum_should_match": 1}}
 
 
+_ES_NUMERIC = frozenset({
+    "long", "integer", "short", "byte", "double", "float", "half_float",
+    "scaled_float", "unsigned_long",
+})
+_ES_DATE = frozenset({"date", "date_nanos"})
+
+
+def _filter_to_es(f: dict[str, Any], catalog: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """One typed catalog filter → ES clauses (type-aware, hard errors)."""
+    from nexus.langgraph.query_dsl import QuerySyntaxError
+
+    name = str(f.get("name") or "")
+    op = str(f.get("op") or "contains")
+    entry = (catalog or {}).get(name)
+    if catalog is not None and entry is None:
+        from nexus.langgraph.field_catalog import suggest_field
+
+        hints = suggest_field(catalog, name)
+        raise QuerySyntaxError(
+            f"unknown field {name!r}"
+            + (f" — did you mean {', '.join(hints)}?" if hints else "")
+        )
+    resolved = str((entry or {}).get("name") or f.get("resolved") or name)
+    ftype = str((entry or {}).get("type") or f.get("type") or "text")
+    has_kw = bool((entry or {}).get("has_kw", True))
+    path = f"fields.{resolved}"
+    kw = f"{path}.kw" if has_kw else path
+
+    if op == "exists":
+        return [{"exists": {"field": kw}}]
+    if op == "in":
+        values = [str(v) for v in (f.get("values") or []) if str(v).strip()]
+        return [{"terms": {kw: values}}] if values else [{"match_none": {}}]
+    if op == "eq":
+        return [{"term": {kw: str(f.get("value") or "")}}]
+    if op == "ne":
+        return [{"bool": {"must_not": [{"term": {kw: str(f.get("value") or "")}}]}}]
+    if op == "contains":
+        needle = str(f.get("value") or "")
+        if "*" in needle or "?" in needle:
+            safe = needle.replace("\\", "\\\\").replace('"', '\\"')
+            return [{"wildcard": {kw: {"value": safe, "case_insensitive": True}}}]
+        return [{
+            "bool": {
+                "should": [
+                    {"term": {kw: needle}},
+                    {"match_phrase": {path: needle}},
+                ],
+                "minimum_should_match": 1,
+            }
+        }]
+    # comparisons need a numeric/date field
+    if ftype not in _ES_NUMERIC | _ES_DATE:
+        raise QuerySyntaxError(
+            f"operator {op!r} needs a numeric/date field — {resolved!r} is "
+            f"{ftype or 'text'}; use = / contains instead"
+        )
+
+    def _bound(value: Any) -> Any:
+        if value in (None, ""):
+            return None
+        if ftype in _ES_NUMERIC:
+            try:
+                number = float(value)
+            except (TypeError, ValueError):
+                raise QuerySyntaxError(
+                    f"{resolved!r} is numeric but {value!r} is not a number"
+                ) from None
+            return int(number) if number.is_integer() else number
+        return str(value)
+
+    if op == "range":
+        rng: dict[str, Any] = {}
+        lo, hi = _bound(f.get("lo")), _bound(f.get("hi"))
+        if lo is not None:
+            rng["gte"] = lo
+        if hi is not None:
+            rng["lte"] = hi
+        if not rng:
+            raise QuerySyntaxError("range needs at least one bound (a..b)")
+        return [{"range": {path: rng}}]
+    bound = _bound(f.get("value"))
+    if bound is None:
+        raise QuerySyntaxError(f"operator {op!r} needs a value")
+    return [{"range": {path: {op: bound}}}]
+
+
 def ast_to_es(query: Any | None, terms: list[str] | None = None,
-              match_all: bool = False, search_fields: bool = False) -> dict[str, Any]:
+              match_all: bool = False, search_fields: bool = False,
+              catalog: dict[str, Any] | None = None) -> dict[str, Any]:
     """Translate a parsed N4 query into ONE Elasticsearch query (schema v2).
 
     Field filters push down to real fields: ``family:`` → term on keyword,
@@ -975,6 +1063,8 @@ def ast_to_es(query: Any | None, terms: list[str] | None = None,
         if ts_end is not None:
             rng["lte"] = ts_end.isoformat()
         filt.append({"range": {"ts": rng}})
+    for tf in getattr(query, "filters", None) or []:
+        filt.extend(_filter_to_es(tf, catalog))
     regex = getattr(query, "regex", None)
     if regex is not None:
         filt.append({
@@ -1047,7 +1137,13 @@ def es_aggregate(
     if agg_field is None:
         return None
 
-    es_query = ast_to_es(parsed, match_all=match_all)
+    try:
+        from nexus.langgraph.field_catalog import case_field_catalog
+
+        _catalog = case_field_catalog(case_dir)
+    except Exception:  # noqa: BLE001 — catalog is best-effort here
+        _catalog = None
+    es_query = ast_to_es(parsed, match_all=match_all, catalog=_catalog)
     # The intake window applies here exactly as it does in query_index — an
     # aggregation must never count out-of-window rows.
     start, end = (window or (None, None))
@@ -1158,6 +1254,7 @@ def query_index(
     query: Any | None = None,
     match_all: bool = False,
     stats: dict[str, Any] | None = None,
+    catalog: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
     case_dir = Path(case_dir)
     name = index_name(case_dir.name)
@@ -1269,7 +1366,8 @@ def query_index(
                     stats["terms_queried"] = len(needles)
                 r = _post_search({
                     "size": 400,
-                    "query": ast_to_es(query, search_fields=search_fields),
+                    "query": ast_to_es(query, search_fields=search_fields,
+                                       catalog=catalog),
                 })
                 hits_raw = r.json().get("hits", {}).get("hits", [])
                 if stats is not None:
@@ -1492,6 +1590,7 @@ def _shape_es_hit(
         ok, matched = row_matches(
             query, line_lower=low, family=fam, file_rel=file_rel,
             extra_text=fields_low, row_ts=str(src.get("ts") or ""),
+            row_fields=fields_map if isinstance(fields_map, dict) else None,
         )
         if not ok:
             return None
@@ -1527,10 +1626,11 @@ def _shape_es_hit(
 def _index_query_terms(
     needles: list[str], strong: set[str], query: Any | None,
     match_all: bool, search_fields: bool,
+    catalog: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Query fragments for chunked term scans (one per chunk) or the DSL."""
     if query is not None and not (hasattr(query, "is_empty") and query.is_empty()):
-        return [ast_to_es(query, search_fields=search_fields)]
+        return [ast_to_es(query, search_fields=search_fields, catalog=catalog)]
     if not needles:
         return [{"match_all": {}}]
     return [
@@ -1549,6 +1649,7 @@ def iter_index_hits(
     match_all: bool = False,
     page: int = 1000,
     stats: dict[str, Any] | None = None,
+    catalog: dict[str, Any] | None = None,
 ) -> Iterator[dict[str, Any]]:
     """Stream EVERY matching ES row (EH-12) — no 400-row search cap.
 
@@ -1573,7 +1674,8 @@ def iter_index_hits(
             raise IndexMissing(f"no index {name}")
         search_fields = _index_search_fields(case_dir.name)
         seen: set[tuple[str, str]] = set()
-        chunks = _index_query_terms(needles, strong, query, match_all, search_fields)
+        chunks = _index_query_terms(needles, strong, query, match_all,
+                                    search_fields, catalog=catalog)
         for base in chunks:
             q: dict[str, Any] = base
             if filt:
@@ -1621,6 +1723,7 @@ def count_index(
     query: Any | None = None,
     match_all: bool = False,
     stats: dict[str, Any] | None = None,
+    catalog: dict[str, Any] | None = None,
 ) -> tuple[int, bool]:
     """Exact matched-row count via ES ``_count`` (EH-12). ``(count, exact)``.
 
@@ -1644,7 +1747,8 @@ def count_index(
         if head.status_code != 200:
             raise IndexMissing(f"no index {name}")
         search_fields = _index_search_fields(case_dir.name)
-        chunks = _index_query_terms(needles, strong, query, match_all, search_fields)
+        chunks = _index_query_terms(needles, strong, query, match_all,
+                                    search_fields, catalog=catalog)
         queue = list(chunks)
         while queue:
             base = queue.pop(0)
