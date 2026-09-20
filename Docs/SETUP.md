@@ -150,16 +150,37 @@ Paths outside the SIFT evidence root get an honest SKIP row for the remote
 lanes (the local flow projection still runs), so "no session data" is never
 mistaken for "no traffic".
 
+**HTTP audit trail (Phase 4k.3):**
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `NEXUS_HTTP_LOG` | on | `0` disables the rotating HTTP/app access log. |
+| `NEXUS_HTTP_LOG_DIR` | `logs/` | Where `nexus-http-YYYYMMDD.log` is written. |
+| `NEXUS_HTTP_LOG_MAX_MB` / `NEXUS_HTTP_LOG_BACKUPS` | `50` / `7` | Rotation size and kept files. |
+| `NEXUS_HTTP_AUDIT` | unset | `all` also records read (GET) portal requests; mutating requests are always recorded. |
+| `NEXUS_HTTP_AUDIT_GLOBAL` | unset | `1` writes a global chain when no case resolves (off by default so tests/dev never pollute `~/.nexus`). |
+
+Entries land in the hash-chained `case/audit/http.jsonl` (method, path with
+query redacted, status, duration, remote) and in the rotating log file.
+
 **Elasticsearch sizing for complete indexing:** budget ≈ `1 KB × docs`
 (heap + disk) for this schema; a 5M-row case is ~5 GB. Give ES ≥ 4 GB heap
 (`ES_JAVA_OPTS=-Xms4g -Xmx4g`) before large imports; the indexer streams in
 `NEXUS_INDEX_BATCH` chunks so client memory stays flat regardless of size.
 
 
-The per-case Elasticsearch index is **schema-versioned** (v2: structured
-`host`/`user`/`event_id` + parsed `fields.*`, DSL push-down, ES-native
-aggregations). Old indexes rebuild automatically on the next processing run;
-force it with `nexus index rebuild`.
+The per-case Elasticsearch index is **schema-versioned** (**v3**: structured
+`host`/`user`/`event_id` + parsed `fields.*` + timestamp authority
+`ts_raw/ts_src/ts_precision/ts_tz_assumed/ts_year_assumed`, with per-family
+coverage in the digest and Evidence page). Old indexes rebuild automatically on
+the next processing run; force it with `nexus index rebuild`.
+
+**Query model by mode:** Mode 1 uses the **typed DSL** (any catalog column:
+`=` exact, `!=`, `> >= < <=` on numeric/date, `a..b` ranges, `exists:`,
+`in:(…)`, `ts:>=…`/`after:`/`before:`; `field:value` = contains; unknown fields
+are rejected with suggestions). Mode 2/3 use **ES-native tools**
+(`es_fields`/`es_search`/`es_aggregate`/`es_sample`) — Elasticsearch is
+required, there is no CSV fallback for agent analysis.
 
 ### 2e. RAG index and triage baselines
 

@@ -159,7 +159,7 @@ scripting and headless work, but the UI must expose every N1–N8 action:
 |------|------------------------|----------------------------|
 | **Explore** | Faceted search over parsed evidence (family, host, date, user, needle, regex). Bookmark hits. | Mode 1: scribe only. Mode 2: the LLM answers questions by querying the same index (citations + aggregations). Mode 3: agent runs filters and proposes. |
 | **Timeline** | Time scrubber, histogram, event lanes, brush-to-zoom. | Mode 1: none. Mode 2: mark pivot points. Mode 3: add events from new tools. |
-| **Steer Chat** | Ask English questions, drill ("corroborate this", "drill into WS01"), and read cited answers. | Always the co-pilot. Mode 1: translate/scribe only. Mode 2: live evidence retrieval — plans N4 queries, runs them over the case index, answers with citations + per-stage timings. Mode 3: plans/hunts and executes. |
+| **Steer Chat** | Ask English questions, drill ("corroborate this", "drill into WS01"), and read cited answers. | Always the co-pilot. Mode 1: translate/scribe only. Mode 2: live evidence retrieval — plans **Elasticsearch query JSON**, runs `es_search`/`es_aggregate` over the case index, answers with citations + per-stage timings. Mode 3: plans/hunts and executes. |
 | **Finding Workbench** | Bookmarked hits -> DRAFT builder + evidence list + scribe + validation. | Format DRAFTs (Mode 1). Propose DRAFTs (Mode 2/3). Never self-approve. |
 | **Approval Desk** | HMAC sign-off on DRAFT findings. | Nothing. Approval is always human. |
 | **Report** | Trigger N8 from APPROVED. Steer the narrative per round (whole report or one finding). | Mode 1: shapes an evidence-constrained narrative from APPROVED findings under examiner steering — adds no evidence or facts, never approves. Mode 2/3: same boundary over agent-gathered evidence. |
@@ -252,7 +252,8 @@ Mode 2 is the **product differentiator**, and it has two halves:
    evidence), inventory + parser ledger, the signal map **including 0-hit
    needles as negative evidence**, the alert surface, entities with
    first/last-seen spans, the per-day timeline, and threat intel. It can pull
-   raw detail on demand (`n4_sample`/`n4_query`/`n4_aggregate`) and must
+   raw detail on demand (`es_sample`/`es_search`/`es_aggregate` — the
+   ES-native tools; typed `ts` ranges apply) and must
    **reconcile every digest item** — covered by a finding, assessed benign
    with a reason, or recorded as a gap. The context budget is the model's own
    window (`NEXUS_LLM_CONTEXT_WINDOW × NEXUS_CONTEXT_FILL_RATIO`, default
@@ -292,7 +293,8 @@ Staging: DRAFT findings + interpretation.md (verdict + reconciliation of
     |
     v
 Steer Chat: PLAN (fast path ~2 ms or LLM, each query with a why) -> EXECUTE
-(one pushed-down ES query per DSL; ES-native aggregations) -> ANSWER (rows +
+(Mode 2/3: allowlisted ES query JSON + ES-native aggregations/`composite`
+paging; Mode 1: typed DSL pushed down to one ES query) -> ANSWER (rows +
 RAG/KB/TI helpers, citations, per-stage timings) + deterministic follow-up
 chips (top host/exe/user, list users/hosts) — click to drill
     |

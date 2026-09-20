@@ -69,11 +69,12 @@ flowchart TB
 | **`nexus collect`** | Live IR. Stays **CLI** — handy, headless, no browser. No parsers. No empty parser dirs on the target. |
 | **Register** | SHA-256 pack into a case. Import-only cases skip collect. |
 | **N2** | All direct host logs (Win/Linux/Mac): binary parsers (Hayabusa/Suzaku/Chainsaw/Zimmerman) + pre-collected host output (VR hunts, KAPE, Kansa, UAC, journalctl) → CSVs under the case with audit_id. Given a directory (pack or mounted VMDK) and recursively parses all host evidence. |
-| **N3** | SQLite (default; deterministic CSV fallback) or Elasticsearch (required for Mode 2/3). Per-case index, schema v2: `family/file/line/ts` + structured `host/user/event_id` + parsed columns under `fields.*`; N4 DSL pushes down to one ES query and aggregations are ES-native (`terms`/`date_histogram`). Not the lab SIEM. |
+| **N3** | SQLite (default; deterministic CSV fallback) or Elasticsearch (required for Mode 2/3). Per-case index, **schema v3**: `family/file/line/ts` + timestamp authority (`ts_raw/ts_src/ts_precision` + assumed flags) + structured `host/user/event_id` + parsed columns under `fields.*`. Query model by mode: **Mode 1 = typed DSL** (every catalog column: `= != > >= < <=`, ranges, `exists:`, `in:(…)`, `ts` ranges; unknown fields are rejected) which pushes down to ES or evaluates on CSV; **Mode 2/3 = ES-native tools** (`es_fields`/`es_search`/`es_aggregate`/`es_sample`, allowlisted query JSON, exact totals, `search_after` paging, composite aggregations) — the DSL is not an agent surface there. Not the lab SIEM. |
 | **3 modes** | How you drive the same N1–N8 spine (examiner / thick / agents) — not extra stages. |
 | **Ingest** | Network/SIEM/cloud/EDR/PCAP onto that case (after N8). PCAP parsed via tshark. Direct host logs stay in N2. |
 | **Detection** | Optional drafts after an APPROVED story. Not N5. |
 | **Examiner Portal + MCP** | Investigation UI for Register, N1–N8, ingest, detection, HMAC. Collect does not move into the Portal. |
+| **HTTP audit (4k.3)** | Every `/portal/api/*` (mutating always; reads at `NEXUS_HTTP_AUDIT=all`) and every `/mcp` call is recorded twice: rotating `logs/nexus-http-YYYYMMDD.log` and a hash-chained case entry in `audit/http.jsonl` (method/path/redacted query/status/duration/case). Failed ES tool calls are audited with their error. |
 | **LLM** | Optional. Narrates **N4 hits** only. Cannot approve. Fully agentic tool-selection is a later mode. |
 
 ## Design Principle
