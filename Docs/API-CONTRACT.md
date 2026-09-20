@@ -1228,7 +1228,7 @@ needles is one event.
 ## 10. Mode 2
 
 ### POST /portal/api/mode2/chat
-**Description:** The Mode 2 conversational evidence agent — the primary steering surface. The LLM plans N4 queries from the examiner's question, the server executes them against the active case's ES index (field push-down + ES-native aggregations; CSV fallback identical), and the LLM answers from the actual rows. Clear list/IOC questions use a deterministic fast path (no LLM planning call). The turn runs **off the event loop** (`asyncio.to_thread`) with a hard budget, and the examiner's message is persisted **before** the turn runs.
+**Description:** The Mode 2 conversational evidence agent — the primary steering surface. The LLM plans Elasticsearch query JSON from the examiner's question, the server executes them against the active case's ES index (audited allowlisted es_search/es_aggregate; Elasticsearch required, no CSV fallback for analysis), and the LLM answers from the actual rows. Clear list/IOC questions use a deterministic fast path (no LLM planning call). The turn runs **off the event loop** (`asyncio.to_thread`) with a hard budget, and the examiner's message is persisted **before** the turn runs.
 
 **Request:**
 ```json
@@ -1239,13 +1239,13 @@ needles is one event.
 ```json
 {
   "reply": "| Time | Host | Family | Detail |\n|---|---|---|---| … (markdown tables for row lists)",
-  "queries_executed": [{"tool": "n4_aggregate", "dsl": "match_all field=host", "why": "enumerate hosts", "hits": 105, "audit_id": "nexus-…"}],
+  "queries_executed": [{"tool": "es_aggregate", "dsl": "es_aggregate hosts", "why": "enumerate hosts", "hits": 105, "audit_id": "nexus-…"}],
   "total_hits": 105,
   "confidence": "medium",
   "hits": [{"family": "hayabusa", "file": "…", "line": 12, "host": "WS01", "text": "…"}],
   "followups": [{"label": "Drill into WS01", "question": "What else happened on host WS01?"}],
   "timings_ms": {"index_mappings": 862, "plan": 2, "execute": 785, "helpers": 1023, "answer": 8337},
-  "stages": [{"stage": "plan", "ms": 2, "detail": "deterministic: AGG:match_all|field:user; …"}]
+  "stages": [{"stage": "plan", "ms": 2, "detail": "deterministic: aggregate user"}]
 }
 ```
 - `queries_executed[].why`: the planner rationale per query (the UI shows what was queried **and why**).
