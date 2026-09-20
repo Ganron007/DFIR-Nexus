@@ -134,11 +134,24 @@ def _normalize_plan(data: Any) -> dict[str, list[dict[str, Any]]]:
         if not isinstance(entry, dict):
             return
         if kind == "query":
-            dsl = str(entry.get("dsl") or entry.get("query") or "").strip()
+            es = entry.get("es")
+            if isinstance(es, dict) and es:
+                plan["items"].append({"kind": "es_query", "es": es,
+                                      "why": str(entry.get("why") or "")[:200]})
+                return
+            dsl = str(entry.get("dsl") or "").strip()
             if dsl:
                 plan["items"].append({"kind": "query", "dsl": dsl,
                                       "why": str(entry.get("why") or "")[:200]})
         elif kind == "aggregate":
+            aggs = entry.get("aggs")
+            if isinstance(aggs, dict) and aggs:
+                plan["items"].append({
+                    "kind": "es_aggregate", "aggs": aggs,
+                    "query": entry.get("query") if isinstance(entry.get("query"), dict) else None,
+                    "why": str(entry.get("why") or "")[:200],
+                })
+                return
             field = str(entry.get("field") or "").strip()
             if field:
                 plan["items"].append({
@@ -204,6 +217,17 @@ def _render_results(entries: list[dict[str, Any]]) -> str:
         lines.append(header)
         if entry.get("error"):
             lines.append(f"  ERROR: {entry['error']}")
+            continue
+        if kind == "es_aggregate":
+            import json as _json
+
+            try:
+                rendered = _json.dumps(entry.get("aggregations") or {}, default=str)
+            except (TypeError, ValueError):
+                rendered = str(entry.get("aggregations"))
+            lines.append(f"  aggregations: {rendered[:4000]}")
+            if entry.get("next_after_key") is not None:
+                lines.append(f"  next_after_key: {entry['next_after_key']}")
             continue
         if kind == "aggregate":
             lines.append(
@@ -306,12 +330,19 @@ async def run_interpret_loop(
         "is NOT in evidence) and the N4 QUERY PACK of indexed rows.\n"
         "Return ONLY JSON:\n"
         '{"hypotheses":[{"id":"H1","statement":"...","why":"..."}],'
-        '"queries":[{"dsl":"<N4 DSL>","why":"..."}],'
-        '"aggregates":[{"field":"host|user|<column>","dsl":"","why":"..."}],'
+        '"queries":[{"es":{"query":{"bool":{...}}},"why":"..."}],'
+        '"aggregates":[{"aggs":{"by_host":{"terms":{"field":"host"}}},"query":{},"why":"..."}],'
         '"samples":[{"family":"","field":"","value":"","n":8,"why":""}]}\n'
         "RULES:\n"
         "- Max 6 query/aggregate/sample items total; only families and fields "
         "that actually exist in the digest/query pack.\n"
+        "- ES query JSON only: bool/term/terms/range/match/match_phrase/"
+        "multi_match/wildcard/exists/prefix/match_all. Time filters are "
+        '{"range":{"ts":{"gte":...,"lte":...}}} (ts is canonical UTC; '
+        "ts_year_assumed/ts_tz_assumed mark policy assumptions). Parsed "
+        "columns live under fields.<Name> (keyword subfield "
+        "fields.<Name>.kw) — use es_fields data from the digest, never invent "
+        "columns.\n"
         "- Hypotheses must be falsifiable from the evidence; prefer the "
         "examiner's focus if one is given.\n"
         "- No prose outside the JSON."
@@ -333,16 +364,31 @@ async def run_interpret_loop(
 
     def _execute_payload(item: dict[str, Any]) -> tuple[str, dict[str, Any]]:
         kind = item["kind"]
+        if kind == "es_query":
+            es = item.get("es") or {}
+            query = es.get("query") if isinstance(es.get("query"), dict) else es
+            payload: dict[str, Any] = {
+                "case_id": case_id, "query": query or {"match_all": {}}, "size": 50,
+            }
+            if isinstance(es.get("sort"), list):
+                payload["sort"] = es["sort"]
+            return "es_search", payload
+        if kind == "es_aggregate":
+            payload = {"case_id": case_id, "aggs": item.get("aggs") or {}}
+            if item.get("query"):
+                payload["query"] = item["query"]
+            return "es_aggregate", payload
+        if kind == "sample":
+            return "es_sample", {
+                "case_id": case_id, "family": item.get("family") or "",
+                "field": item.get("field") or "", "value": item.get("value") or "",
+                "n": item.get("n") or 8,
+            }
+        # Legacy DSL items (older planned rounds) keep executing for replay.
         if kind == "aggregate":
             return "n4_aggregate", {
                 "case_id": case_id, "dsl": item.get("dsl") or "",
                 "field": item.get("field") or "host", "top": 20,
-            }
-        if kind == "sample":
-            return "n4_sample", {
-                "case_id": case_id, "family": item.get("family") or "",
-                "field": item.get("field") or "", "value": item.get("value") or "",
-                "n": item.get("n") or 8,
             }
         return "n4_query", {
             "case_id": case_id, "dsl": item.get("dsl") or "", "limit": 35,
@@ -370,11 +416,13 @@ async def run_interpret_loop(
                 "audit_id": ((result.get("provenance") or {}).get("audit_id")
                              or result.get("audit_id") or ""),
                 "error": result.get("error", ""),
-                "count": result.get("count", result.get("matched", 0)),
+                "count": result.get("total", result.get("count", result.get("matched", 0))),
                 "field": result.get("field", ""),
                 "distinct": result.get("distinct", 0),
                 "distinct_approximate": result.get("distinct_approximate", False),
                 "top": result.get("top") or result.get("ranked") or [],
+                "aggregations": result.get("aggregations") or {},
+                "next_after_key": result.get("next_after_key"),
                 "hits": (result.get("hits") or [])[:_MAX_PERSIST_ROWS],
             }
             entries.append(entry)
@@ -392,7 +440,7 @@ async def run_interpret_loop(
             "Return ONLY JSON:\n"
             '{"notes":[{"hypothesis":"H1","status":"confirmed|refuted|unknown|partial",'
             '"evidence":"one sentence naming the rows (family/host/ts/needle)","family":"..."}],'
-            '"next":[{"dsl":"...","why":"..."}]}\n'
+            '"next":[{"es":{"query":{...}},"why":"..."}]}\n'
             "RULES: one note per hypothesis. Plan `next` ONLY for unresolved "
             "hypotheses where new evidence could resolve them (max 4 items). "
             "If everything is settled, next = []. No prose outside the JSON."

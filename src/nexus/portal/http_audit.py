@@ -201,7 +201,20 @@ class HttpAuditMiddleware:
         started = time.perf_counter()
         status = [0]
         out_bytes = [0]
-        body = b""
+        body = bytearray()
+
+        async def recv():
+            # Pass-through capture: the tool name is parsed only if the MCP
+            # app itself consumes the request body. Never buffer/replay — the
+            # streamable-HTTP handshake must see untouched ASGI semantics.
+            message = await receive()
+            if (
+                message.get("type") == "http.request"
+                and path.startswith("/mcp")
+                and len(body) < 65536
+            ):
+                body.extend(message.get("body") or b"")
+            return message
 
         async def send_wrapper(message):
             if message.get("type") == "http.response.start":
@@ -211,28 +224,9 @@ class HttpAuditMiddleware:
             await send(message)
 
         try:
-            if path.startswith("/mcp"):
-                # MCP JSON-RPC bodies are small: buffer (capped) so the tool
-                # name can be recorded, then replay the request downstream.
-                buffered = bytearray()
-                while len(buffered) < 65536:
-                    message = await receive()
-                    if message.get("type") != "http.request":
-                        break
-                    buffered.extend(message.get("body") or b"")
-                    if not message.get("more_body"):
-                        break
-                body = bytes(buffered)
-                replay = [{"type": "http.request", "body": body, "more_body": False}]
-
-                async def receive_replay():
-                    return replay.pop(0) if replay else {"type": "http.disconnect"}
-
-                await self.app(scope, receive_replay, send_wrapper)
-            else:
-                await self.app(scope, receive, send_wrapper)
+            await self.app(scope, recv, send_wrapper)
         finally:
-            await self._record(scope, method, path, status[0], out_bytes[0], started, body)
+            await self._record(scope, method, path, status[0], out_bytes[0], started, bytes(body))
 
     async def _record(self, scope, method, path, status, out_bytes, started, body) -> None:
         try:

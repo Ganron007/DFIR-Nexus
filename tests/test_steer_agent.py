@@ -154,7 +154,13 @@ def test_steer_turn_returns_followups_and_rationale(tmp_path):
     from nexus.langgraph.steer_agent import run_steer_agent
 
     case = _mkcase(tmp_path)
-    result = run_steer_agent(case, "sdelete execution")
+    fake = _FakeModel([
+        {"queries": [{"dsl": "family:hayabusa AND sdelete",
+                      "why": "confirm sdelete execution"}]},
+        {"reply": "SDelete executed on WS01."},
+    ])
+    with patch("nexus.langgraph.llm_pipeline.get_model", return_value=fake):
+        result = run_steer_agent(case, "sdelete execution")
     followups = result.get("followups") or []
     assert followups, "expected deterministic drill-down chips"
     assert all(f.get("label") and f.get("question") for f in followups)

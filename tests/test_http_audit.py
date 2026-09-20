@@ -18,6 +18,9 @@ from nexus.portal.http_audit import (
 
 
 async def _ok(request):
+    # Real handlers (and MCP) read the body; do the same so the middleware's
+    # pass-through capture sees it.
+    await request.body()
     return JSONResponse({"ok": True})
 
 

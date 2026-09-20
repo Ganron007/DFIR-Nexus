@@ -200,30 +200,34 @@ def _plan_queries(question: str, model: Any, families: list[str],
         )
 
     system = (
-        "You translate the examiner's natural-language question into N4 DSL "
-        "search queries for forensic evidence.\n"
+        "You translate the examiner's natural-language question into "
+        "Elasticsearch queries for forensic evidence (Mode 2/3 query the ES "
+        "index directly).\n"
         "\nINDEXED FAMILIES IN THIS CASE — these are the ONLY family names "
         f"that exist. NEVER invent family names (no 'evtx', 'sysmon', "
         f"'prefetch', 'security' — only the list below):\n{fam_block}\n"
         f"{empty_line}"
         f"{vocab_block}"
-        f"\nN4 grammar:\n{grammar}\n\n"
+        f"\nEVIDENCE INDEX FIELDS:\n{grammar}\n\n"
         "RULES:\n"
-        '- Return ONLY JSON: {"queries": [{"dsl": "<dsl 1>", "why": "<one '
-        'clause: what this verifies>"}, ...]}\n'
-        "- Each query is ONE complete DSL expression, e.g. family:hayabusa AND sdelete\n"
-        "- A bare term (e.g. `exe`, `powershell`, `rundll32`) searches ALL families — "
-        "prefer this when unsure which family holds the data.\n"
-        "- When the question names a host/user/process, use the EXACT value from "
-        "the known-values list with field syntax (`host:WS01 AND mimikatz`) — "
-        "this is what makes a lookup hit the right rows.\n"
-        "- For 'list all X' questions use the tool n4_aggregate via the AGG "
-        "prefix: AGG:match_all|field:host (or field:user) to enumerate distinct "
-        "hosts/users across every indexed row.\n"
-        "- For executables/processes, search terms like `exe`, process names, or "
-        "`family:<fam> AND <term>`; do NOT use a field: filter unless the field "
-        "is listed above.\n"
-        "- Generate 1-4 queries that together answer the question.\n"
+        '- Return ONLY JSON: {"queries": [{"es": {"query": {<ES query>}}, '
+        '"why": "<one clause: what this verifies>"}, ...]}\n'
+        "- Query JSON uses allowlisted ES clauses: bool/term/terms/range/"
+        "match/match_phrase/multi_match/wildcard/exists/prefix/match_all.\n"
+        "- Family is a term: {\"term\": {\"family\": \"<fam>\"}}; combine "
+        "with bool must/filter. Bare search across text: {\"match_phrase\": "
+        "{\"text\": \"<needle>\"}}. Parsed CSV columns live under "
+        "fields.<Name> (e.g. {\"term\": {\"fields.Channel.kw\": "
+        "\"Security\"}}) — only use columns that exist in the case.\n"
+        "- Time filters: {\"range\": {\"ts\": {\"gte\": \"<ISO>\", "
+        "\"lte\": \"<ISO>\"}}} (ts is canonical UTC).\n"
+        "- When the question names a host/user/process, filter on the EXACT "
+        "value from the known-values list (host/user are term fields).\n"
+        "- For 'list all X' questions return an aggregation item instead: "
+        '{"aggregations": [{"aggs": {"v": {"terms": {"field": "host", '
+        '"size": 100}}}, "query": {<optional filter>}, "why": "..."}]}. '
+        "Use composite for exact full enumeration of high-cardinality fields.\n"
+        "- Generate 1-4 items that together answer the question.\n"
         "- Do NOT return methodology or explanations — ONLY the JSON."
     )
     try:
@@ -239,28 +243,53 @@ def _plan_queries(question: str, model: Any, families: list[str],
         if start == -1 or end == -1:
             return []
         parsed = json.loads(text[start:end + 1])
-        return _norm_query_items(parsed.get("queries"))
+        items = _norm_query_items(parsed.get("queries"))
+        items.extend(_norm_query_items(parsed.get("aggregations")))
+        return items[:_MAX_QUERIES]
     except Exception as exc:
         log.warning("Query planning failed: %s", exc)
         return []
 
 
-def _norm_query_items(items: Any, default_why: str = "") -> list[dict[str, str]]:
-    """Normalize a mixed string/dict query list into ``[{dsl, why}]``."""
-    out: list[dict[str, str]] = []
+def _norm_query_items(items: Any, default_why: str = "") -> list[dict[str, Any]]:
+    """Normalize plan items into ES items (``es``/``aggs``) or legacy DSL."""
+    out: list[dict[str, Any]] = []
     if not isinstance(items, list):
         return out
     for item in items:
         if isinstance(item, str) and item.strip():
+            # Legacy DSL string (older transcripts / replay).
             out.append({"dsl": item.strip(), "why": default_why})
         elif isinstance(item, dict):
-            dsl = str(item.get("dsl") or item.get("query") or "").strip()
-            if dsl:
+            why = str(item.get("why") or default_why)[:200]
+            aggs = item.get("aggs")
+            if isinstance(aggs, dict) and aggs:
                 out.append({
-                    "dsl": dsl,
-                    "why": str(item.get("why") or default_why)[:200],
+                    "aggs": aggs,
+                    "query": item.get("query") if isinstance(item.get("query"), dict) else None,
+                    "why": why,
                 })
+                continue
+            es = item.get("es")
+            if isinstance(es, dict) and es:
+                query = es.get("query") if isinstance(es.get("query"), dict) else es
+                out.append({"es": {"query": query}, "why": why})
+                continue
+            q = item.get("dsl") or item.get("query")
+            if isinstance(q, dict) and q:
+                out.append({"es": {"query": q}, "why": why})
+            elif isinstance(q, str) and q.strip():
+                out.append({"dsl": q.strip(), "why": why})
     return out[:_MAX_QUERIES]
+
+
+def _compact_query(query: Any) -> str:
+    import json as _json
+
+    try:
+        return _json.dumps(query, sort_keys=True, default=str)[:300]
+    except (TypeError, ValueError):
+        return str(query)[:300]
 
 
 def _looks_like_match_all(dsl: str) -> bool:
@@ -283,8 +312,60 @@ def _execute_queries(queries: list[dict[str, str]], case_id: str, audit: AuditWr
     seen_rows: set[tuple[str, str, str]] = set()
 
     for item in queries:
-        q = str(item.get("dsl") or "").strip()
         why = str(item.get("why") or "")
+        if isinstance(item.get("aggs"), dict) and item.get("aggs"):
+            result = backbone_call(
+                "es_aggregate", audit=audit, case_id=case_id,
+                aggs=item["aggs"], query=item.get("query"),
+            )
+            if result.get("error"):
+                log.warning("ES aggregation failed: %s", result["error"])
+                continue
+            aggregations.append({
+                "aggs": item["aggs"],
+                "query": item.get("query") or {},
+                "aggregations": result.get("aggregations") or {},
+                "next_after_key": result.get("next_after_key"),
+                "audit_id": (result.get("provenance") or {}).get("audit_id"),
+            })
+            queries_executed.append({
+                "tool": "es_aggregate",
+                "dsl": "es_aggregate " + ", ".join(sorted((item["aggs"] or {}).keys())),
+                "why": why,
+                "hits": 0,
+                "audit_id": (result.get("provenance") or {}).get("audit_id"),
+            })
+            continue
+        if isinstance(item.get("es"), dict) and item["es"]:
+            es = item["es"]
+            query = es.get("query") if isinstance(es.get("query"), dict) else es
+            result = backbone_call(
+                "es_search", audit=audit, case_id=case_id,
+                query=query or {"match_all": {}}, size=100,
+            )
+            if result.get("error"):
+                log.warning("ES query failed: %s", result["error"])
+                continue
+            for h in result.get("hits") or []:
+                loc = (
+                    str(h.get("family") or ""),
+                    str(h.get("file") or "").replace("\\", "/"),
+                    str(h.get("line") or ""),
+                )
+                if loc not in seen_rows:
+                    seen_rows.add(loc)
+                    all_hits.append(h)
+            queries_executed.append({
+                "tool": "es_search",
+                "dsl": "es_search " + _compact_query(query),
+                "why": why,
+                "hits": result.get("total", 0),
+                "audit_id": (result.get("provenance") or {}).get("audit_id"),
+            })
+            if len(all_hits) >= _MAX_HITS_TOTAL:
+                break
+            continue
+        q = str(item.get("dsl") or "").strip()
         if not q:
             continue
         if q.upper().startswith("AGG:"):
@@ -744,14 +825,23 @@ def run_steer_agent(
         queries = _norm_query_items(
             _fallback_queries(question, families), "deterministic keyword fallback"
         )
-    if queries and all(q["dsl"].upper().startswith("AGG:") for q in queries):
+    def _label(q: dict[str, Any]) -> str:
+        if q.get("aggs"):
+            return "es_aggregate " + ", ".join(sorted((q["aggs"] or {}).keys()))
+        if q.get("es"):
+            return "es_search " + _compact_query(
+                (q["es"] or {}).get("query") or q["es"]
+            )
+        return str(q.get("dsl") or "")
+
+    if queries and all(str(q.get("dsl") or "").upper().startswith("AGG:") for q in queries):
         extra = [
             {"dsl": q, "why": "row evidence to accompany the aggregation"}
             for q in _fallback_queries(question, families)
             if not q.upper().startswith("AGG:")
         ]
         queries = (queries + extra)[:_MAX_QUERIES]
-    _stage("plan", t0, f"{planned_by}: " + "; ".join(q["dsl"] for q in queries[:4]))
+    _stage("plan", t0, f"{planned_by}: " + "; ".join(_label(q) for q in queries[:4]))
 
     # ── Step 2: execute ──
     t0 = _time.monotonic()

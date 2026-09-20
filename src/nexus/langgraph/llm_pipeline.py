@@ -1415,15 +1415,13 @@ INTERPRET_TOOL_NAMES = (
     # RAG methodology (required)
     "forensic_rag_search",
     "forensic_rag_status",
-    # evidence index — Mode 2/3 use the ES-native surface (4k.5); the typed
-    # DSL tools stay for Mode 1 / deterministic paths.
+    # evidence index — Mode 2/3 use the ES-native surface ONLY (4k.5.5).
+    # The typed DSL tools remain registered for Mode 1 / deterministic paths
+    # but are not part of the Mode 2/3 agent allowlist.
     "es_fields",
     "es_search",
     "es_aggregate",
     "es_sample",
-    "n4_query",
-    "n4_sample",
-    "n4_aggregate",
     "index_mappings",
     "family_fields",
     # examiner-curated KB (procedures/caveats/terminology)

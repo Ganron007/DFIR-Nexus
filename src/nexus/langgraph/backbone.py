@@ -16,6 +16,7 @@ path and the MCP path cannot drift; every call is audit-logged.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 from nexus.audit import AuditWriter
@@ -28,6 +29,14 @@ log = logging.getLogger(__name__)
 # The LLM-visible backbone. Read-only by construction — every mutating tool
 # is outside every allowlist (WP 4j.10c).
 MODE2_TOOL_ALLOWLIST: dict[str, str] = {
+    # 4k.5.5: the Mode 2/3 agent surfaces (interpret loop, steering) query ES
+    # directly. The legacy n4_* entries remain ONLY for the early propose loop
+    # in mode2.py until its swap lands (tracked in 4k.5.5); Mode 1 uses the
+    # MCP tools, not this allowlist.
+    "es_fields": "evidence",
+    "es_search": "evidence",
+    "es_aggregate": "evidence",
+    "es_sample": "evidence",
     "n4_query": "evidence",
     "n4_sample": "evidence",
     "n4_aggregate": "evidence",
@@ -54,10 +63,11 @@ def tool_contracts_block(mode: int = 2) -> str:
     allow = MODE2_TOOL_ALLOWLIST if mode <= 2 else MODE3_TOOL_ALLOWLIST
     lines = [
         "You investigate through these TOOLS only (read-only; you cannot mutate case state):",
-        "- n4_query(case_id, dsl) — search evidence with the N4 grammar above.",
-        "- n4_sample(case_id, family, field, value, n) — N representative raw rows (spread over time) for a family/field value.",
-        "- n4_aggregate(case_id, dsl, field, top, bucket) — counts/top values for a field; context, never evidence.",
-        "- index_mappings(case_id) — the case's families, their fields, and the DSL vocabulary.",
+        "- es_fields(case_id) — full field catalog: families, typed core fields, every parsed column. Call once per case before querying.",
+        "- es_search(case_id, query, size, sort, search_after) — allowlisted Elasticsearch query JSON (bool/term/terms/range/match/match_phrase/multi_match/wildcard/exists/prefix/match_all); exact total + next_search_after for full enumeration; use a range clause on ts for time filters and fields.<Name> for parsed columns.",
+        "- es_aggregate(case_id, aggs, query) — terms/date_histogram/cardinality/composite/min/max/avg; composite returns `next_after_key` for complete bucket enumeration.",
+        "- es_sample(case_id, family, field, value, n) — representative raw rows spread over time; context, never evidence.",
+        "- index_mappings(case_id) — case families/fields overview.",
         "- family_fields(family) — the columns a parser family emits (query these, not guesses).",
         "- kb_search(query) / kb_read(chunk_id) / kb_cite(chunk_id) — KB procedures + citations.",
         "- ti_lookup(value) / ti_fanout(value) / ti_list_providers() — threat-intel context, never evidence.",
@@ -69,11 +79,45 @@ def tool_contracts_block(mode: int = 2) -> str:
     return "\n".join(lines)
 
 
+def _es_call(name: str, audit: AuditWriter | None = None, **kwargs: Any) -> dict[str, Any]:
+    """ES-native backbone call: active-case gated, audited, ES-required."""
+    import time as _time
+
+    from nexus.langgraph import es_native
+    from nexus.tools.evidence_index import _resolve_active_case
+
+    case_dir, err = _resolve_active_case(str(kwargs.pop("case_id", "") or ""))
+    if err or case_dir is None:
+        return {"error": err or "no active case"}
+    started = _time.monotonic()
+    fn = getattr(es_native, name)
+    try:
+        result = fn(str(Path(case_dir).name), **kwargs)
+    except es_native.ESQueryError as exc:
+        return {"error": str(exc), "case_id": Path(case_dir).name}
+    aid = None
+    if audit is not None:
+        aid = audit.log(
+            tool=name,
+            params={"case_id": Path(case_dir).name,
+                    **{k: v for k, v in kwargs.items() if k in ("query", "aggs", "size", "family", "field", "value")}},
+            result_summary={"total": result.get("total"),
+                            "returned": result.get("returned"),
+                            "families": len(result.get("families") or {})},
+            elapsed_ms=round((_time.monotonic() - started) * 1000, 1),
+        )
+    result.setdefault("provenance", {})
+    result["provenance"] = {"audit_id": aid, "case_id": Path(case_dir).name}
+    return result
+
+
 def backbone_call(name: str, audit: AuditWriter | None = None, **kwargs: Any) -> dict[str, Any]:
     """Execute one allowlisted backbone tool (in-process, same core as MCP)."""
     if name not in MODE2_TOOL_ALLOWLIST:
         raise PermissionError(
             f"tool {name!r} is not in the agent allowlist — the LLM cannot call it")
+    if name in ("es_fields", "es_search", "es_aggregate", "es_sample"):
+        return _es_call(name, audit=audit, **kwargs)
     if name == "n4_query":
         return evidence_index.do_n4_query(audit=audit, **kwargs)
     if name == "n4_sample":

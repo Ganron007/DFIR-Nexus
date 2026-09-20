@@ -15,7 +15,8 @@ def test_interpret_toolset_covers_all_sources():
         # RAG methodology
         "forensic_rag_search", "forensic_rag_status",
         # own evidence queries (ES via MCP core, case-gated)
-        "n4_query", "n4_aggregate", "index_mappings", "family_fields",
+        "es_fields", "es_search", "es_aggregate", "es_sample",
+        "index_mappings", "family_fields",
         # examiner KB
         "kb_search", "kb_read", "kb_cite",
         # threat intel
