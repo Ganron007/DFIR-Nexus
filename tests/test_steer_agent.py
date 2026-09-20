@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
+import pytest
+
 
 class _FakeModel:
     """Scripted: one response per invoke call."""
@@ -240,3 +242,75 @@ def test_plan_queries_prompt_includes_entity_vocabulary(tmp_path):
     assert "KNOWN ENTITY VALUES" in system
     assert "host:WS01" in system or "WS01" in system
     assert "alice" in system
+
+@pytest.fixture(autouse=True)
+def _csv_backbone_stub(monkeypatch):
+    """4k.5.5: the agent backbone is ES-only; unit tests run without a
+    cluster, so double it with a CSV-backed stub that keeps the audit and
+    hit-shape contract identical."""
+    import json as _json
+    import os
+    from pathlib import Path as _Path
+
+    import nexus.langgraph.backbone as _bb
+
+    _orig = _bb.backbone_call
+
+    def _active_case_dir():
+        ptr = (os.environ.get("NEXUS_ACTIVE_CASE_FILE") or "").strip()
+        try:
+            if ptr and _Path(ptr).is_file():
+                return _Path(_Path(ptr).read_text(encoding="utf-8").strip())
+        except OSError:
+            pass
+        return None
+
+    def _fake(name, audit=None, **kwargs):
+        case_dir = _active_case_dir()
+        if name in ("es_search", "n4_query"):
+            from nexus.langgraph.query_pack import n4_hits
+
+            if case_dir is None:
+                return {"error": "no active case", "total": 0, "hits": []}
+            hits, _backend = n4_hits(
+                case_dir,
+                ["sdelete", "rundll32", "mimikatz", "wevtutil",
+                 "prefetch-only.exe", "4625"],
+                (None, None),
+                backend="csv",
+            )
+            payload = _json.dumps(kwargs.get("query") or kwargs.get("dsl") or {}).lower()
+            known = [t for t in ("sdelete", "rundll32", "prefetch", "wevtutil",
+                                 "mimikatz", "4625", "psexec") if t in payload]
+            if known:
+                hits = [
+                    h for h in hits
+                    if any(t in str(h.get("text", "")).lower() for t in known)
+                ]
+            elif not kwargs.get("match_all"):
+                hits = []
+            import re as _re
+
+            from nexus.langgraph.query_pack import attach_hit_fields
+
+            fams = _re.findall(r'"family"\s*:\s*"([^"]+)"', payload)
+            if fams:
+                hits = [h for h in hits if str(h.get("family")) in fams]
+            with __import__("contextlib").suppress(Exception):
+                hits = attach_hit_fields(case_dir, hits) if case_dir else hits
+            aid = audit.log(tool=name, params={}, result_summary={}) if audit else None
+            return {"total": len(hits), "count": len(hits), "hits": hits,
+                    "backend": "elasticsearch",
+                    "provenance": {"audit_id": aid,
+                                   "case_id": case_dir.name if case_dir else ""}}
+        if name == "es_aggregate":
+            aid = audit.log(tool=name, params={}, result_summary={}) if audit else None
+            return {"aggregations": {"v": {"buckets": [
+                {"key": "WS01", "doc_count": 2}]}}, "next_after_key": None,
+                "provenance": {"audit_id": aid}}
+        if name == "es_sample":
+            aid = audit.log(tool=name, params={}, result_summary={}) if audit else None
+            return {"hits": [], "matched": 0, "provenance": {"audit_id": aid}}
+        return _orig(name, audit=audit, **kwargs)
+
+    monkeypatch.setattr(_bb, "backbone_call", _fake)

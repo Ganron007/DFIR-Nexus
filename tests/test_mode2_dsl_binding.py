@@ -72,8 +72,70 @@ def backbone(tmp_path, monkeypatch):
         "Executable,RunTime\nprefetch-only.exe,2026-08-10 15:06:00\n",
         encoding="utf-8",
     )
-    # expose the active case dir for loop tests
-    return tools, cid, Path(r["case_dir"])
+    # 4k.5.5: loop evidence access is ES-native; this fixture runs without a
+    # live cluster, so the backbone is doubled with a CSV-backed stub that
+    # keeps the audit + hit-shape contract identical.
+    case_dir = Path(r["case_dir"])
+
+    import nexus.langgraph.backbone as _bb
+
+    _orig_backbone = _bb.backbone_call
+
+    def _fake_backbone(name, audit=None, **kwargs):
+        import json as _json
+        import re as _re
+
+        from nexus.langgraph.query_pack import n4_hits
+
+        if name not in ("es_fields", "es_search", "es_aggregate", "es_sample",
+                        "n4_aggregate"):
+            return _orig_backbone(name, audit=audit, **kwargs)
+        aid = audit.log(tool=name, params={}, result_summary={}) if audit else None
+        if name == "es_search":
+            hits, _backend = n4_hits(
+                case_dir,
+                ["sdelete", "rundll32", "prefetch-only.exe", "4625"],
+                (None, None),
+                backend="csv",
+            )
+            # crude filter so "new family" tests behave like a real query
+            literals = [
+                tok for tok in _re.findall(
+                    r'"[a-z0-9_.-]{4,}"', _json.dumps(kwargs.get("query") or {})
+                )
+                if tok.strip('"') not in {
+                    "match_phrase", "match_all", "match", "term", "terms",
+                    "bool", "must", "should", "filter", "text", "query", "family",
+                    "hayabusa", "wildcard", "range",
+                }
+            ]
+            if literals:
+                filtered = [
+                    h for h in hits
+                    if any(tok.strip('"') in str(h.get("text", "")).lower()
+                           for tok in literals)
+                ]
+                if filtered:
+                    hits = filtered
+            return {"total": len(hits), "hits": hits, "backend": "elasticsearch",
+                    "provenance": {"audit_id": aid, "case_id": case_dir.name}}
+        if name == "es_aggregate":
+            return {
+                "aggregations": {"v": {"buckets": [
+                    {"key": "WS01", "doc_count": 2}, {"key": "WS02", "doc_count": 1},
+                ]}},
+                "next_after_key": None,
+                "provenance": {"audit_id": aid},
+            }
+        if name == "es_sample":
+            return {"hits": [], "matched": 0, "provenance": {"audit_id": aid}}
+        if name == "n4_aggregate":
+            return {"distinct": 2, "top": [{"value": "WS01", "count": 2}],
+                    "rows_scanned": 3, "provenance": {"audit_id": aid}}
+        return {"error": f"unexpected backbone tool {name}"}
+
+    monkeypatch.setattr("nexus.langgraph.backbone.backbone_call", _fake_backbone)
+    return tools, cid, case_dir
 
 
 # --- grammar + binding in the proposal prompt ------------------------------
@@ -93,11 +155,12 @@ def test_propose_prompt_teaches_grammar_and_binds_backbone(tmp_path):
                        "rationale": "r"})
     out = _propose_with_model(case, hits, [], fake)
     user_prompt = fake.prompts[0][1]["content"]
-    # grammar + tool contracts reached the prompt
-    assert "family:" in user_prompt
-    assert "n4_query" in user_prompt and "family_fields" in user_prompt
+    # 4k.5.5: the prompt teaches the ES surface (tool contracts + fields)
+    assert "es_search" in user_prompt and "es_aggregate" in user_prompt
     assert "kb_search" in user_prompt
+    assert "Elasticsearch" in user_prompt
     assert out["source"] == "llm"
+    # legacy DSL proposals still validate (backward compat path)
     assert out["needles"] == ["family:hayabusa AND sdelete"]
     assert out["dsl_queries"][0]["dsl"] is True
 
@@ -198,8 +261,8 @@ def test_backbone_allowlist_reads_evidence(backbone):
     from nexus.langgraph.backbone import MODE2_TOOL_ALLOWLIST, backbone_call
 
     _tools, cid, _case_dir = backbone
-    r = backbone_call("n4_query", dsl="sdelete OR rundll32", limit=10)
-    assert r["count"] >= 1
+    r = backbone_call("es_search", query={"match_all": {}}, size=10)
+    assert r["total"] >= 1
     assert r["provenance"]["case_id"] == cid
     assert set(MODE2_TOOL_ALLOWLIST).isdisjoint(
         {"case_delete", "approve", "evidence_register", "record_finding"})

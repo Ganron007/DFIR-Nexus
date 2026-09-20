@@ -29,17 +29,12 @@ log = logging.getLogger(__name__)
 # The LLM-visible backbone. Read-only by construction — every mutating tool
 # is outside every allowlist (WP 4j.10c).
 MODE2_TOOL_ALLOWLIST: dict[str, str] = {
-    # 4k.5.5: the Mode 2/3 agent surfaces (interpret loop, steering) query ES
-    # directly. The legacy n4_* entries remain ONLY for the early propose loop
-    # in mode2.py until its swap lands (tracked in 4k.5.5); Mode 1 uses the
-    # MCP tools, not this allowlist.
+    # 4k.5.5 COMPLETE: the Mode 2/3 agent surface is ES-only. The typed DSL
+    # lives in the MCP tools for Mode 1 / deterministic paths — never here.
     "es_fields": "evidence",
     "es_search": "evidence",
     "es_aggregate": "evidence",
     "es_sample": "evidence",
-    "n4_query": "evidence",
-    "n4_sample": "evidence",
-    "n4_aggregate": "evidence",
     "index_mappings": "evidence",
     "family_fields": "evidence",
     "kb_search": "knowledge",
@@ -118,12 +113,6 @@ def backbone_call(name: str, audit: AuditWriter | None = None, **kwargs: Any) ->
             f"tool {name!r} is not in the agent allowlist — the LLM cannot call it")
     if name in ("es_fields", "es_search", "es_aggregate", "es_sample"):
         return _es_call(name, audit=audit, **kwargs)
-    if name == "n4_query":
-        return evidence_index.do_n4_query(audit=audit, **kwargs)
-    if name == "n4_sample":
-        return evidence_index.do_n4_sample(audit=audit, **kwargs)
-    if name == "n4_aggregate":
-        return evidence_index.do_n4_aggregate(audit=audit, **kwargs)
     if name == "index_mappings":
         return evidence_index.do_index_mappings(audit=audit, **kwargs)
     if name == "family_fields":

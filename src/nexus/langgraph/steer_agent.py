@@ -283,6 +283,21 @@ def _norm_query_items(items: Any, default_why: str = "") -> list[dict[str, Any]]
     return out[:_MAX_QUERIES]
 
 
+def _es_from_expr(expr: str) -> dict[str, Any]:
+    """Deterministic DSL→ES for legacy strings (no agent in the loop)."""
+    from nexus.langgraph.case_index import ast_to_es
+    from nexus.langgraph.query_dsl import QuerySyntaxError, parse_query
+
+    text = str(expr or "").strip()
+    if not text:
+        return {"match_all": {}}
+    try:
+        parsed = parse_query(text)
+        return ast_to_es(parsed) if not parsed.is_empty() else {"match_all": {}}
+    except QuerySyntaxError:
+        return {"match_phrase": {"text": text[:200]}}
+
+
 def _compact_query(query: Any) -> str:
     import json as _json
 
@@ -375,33 +390,47 @@ def _execute_queries(queries: list[dict[str, str]], case_id: str, audit: AuditWr
             dsl_part = re.split(r"\|?\s*field\s*[:=]", body, flags=re.IGNORECASE)[0].strip()
             dsl_part = dsl_part.rstrip("|").strip()
             match_all = _looks_like_match_all(dsl_part)
-            result = backbone_call("n4_aggregate", audit=audit,
-                                   case_id=case_id, dsl="" if match_all else dsl_part,
-                                   field=agg_field, top=15, match_all=match_all)
+            result = backbone_call(
+                "es_aggregate", audit=audit, case_id=case_id,
+                aggs=({"v": {"terms": {"field": agg_field, "size": 15}}}
+                      if agg_field else {"v": {"terms": {"field": "host", "size": 15}}}),
+                query=None if match_all else _es_from_expr(dsl_part),
+            )
             if result.get("error"):
                 log.warning("Aggregation failed: %s → %s", q, result["error"])
                 continue
+            buckets = []
+            agg_payload = result.get("aggregations") or {}
+            for spec in agg_payload.values():
+                if isinstance(spec, dict):
+                    buckets = spec.get("buckets") or []
+                    break
             aggregations.append({
-                "dsl": dsl_part or "match_all",
+                "dsl": f"{dsl_part or 'match_all'} field={agg_field}",
                 "field": agg_field,
-                "distinct": result.get("distinct", 0),
-                "distinct_approximate": result.get("distinct_approximate", False),
-                "rows_scanned": result.get("rows_scanned", 0),
-                "top": (result.get("top") or [])[:10],
+                "distinct": len(buckets),
+                "distinct_approximate": False,
+                "rows_scanned": 0,
+                "top": [
+                    {"value": b.get("key"), "count": b.get("doc_count", 0)}
+                    for b in buckets[:10]
+                ],
                 "audit_id": (result.get("provenance") or {}).get("audit_id"),
             })
             queries_executed.append({
-                "tool": "n4_aggregate",
+                "tool": "es_aggregate",
                 "dsl": f"{dsl_part or 'match_all'} field={agg_field}",
                 "why": why,
-                "hits": result.get("rows_scanned", 0),
+                "hits": 0,
                 "audit_id": (result.get("provenance") or {}).get("audit_id"),
             })
         else:
             match_all = _looks_like_match_all(q)
-            result = backbone_call("n4_query", audit=audit, case_id=case_id,
-                                   dsl="" if match_all else q, limit=100,
-                                   match_all=match_all)
+            result = backbone_call(
+                "es_search", audit=audit, case_id=case_id,
+                query={"match_all": {}} if match_all else _es_from_expr(q),
+                size=100,
+            )
             if result.get("error"):
                 log.warning("Query failed: %s → %s", q, result["error"])
                 continue
@@ -418,10 +447,10 @@ def _execute_queries(queries: list[dict[str, str]], case_id: str, audit: AuditWr
                     seen_rows.add(loc)
                     all_hits.append(h)
             queries_executed.append({
-                "tool": "n4_query",
-                "dsl": q,
+                "tool": "es_search",
+                "dsl": q if not q.strip().startswith("{") else "es_search",
                 "why": why,
-                "hits": result.get("count", 0),
+                "hits": result.get("total", 0),
                 "audit_id": (result.get("provenance") or {}).get("audit_id"),
             })
             if len(all_hits) >= _MAX_HITS_TOTAL:

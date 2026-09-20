@@ -308,13 +308,12 @@ def _propose_with_model(
     # WP 4i.9: case briefing signal map — which needles already hit
     briefing_ctx = _briefing_context(briefing)
 
-    # WP 4j.10: the LLM speaks the N4 DSL through the backbone tools — teach
-    # the grammar and bind the tool contracts (allowlist is enforced by the
-    # backbone, not the prompt).
-    from nexus.knowledge.loader import dsl_prompt_block
+    # 4k.5.5: the LLM proposes Elasticsearch queries (Mode 2/3 query ES
+    # directly); the field catalog grounds it in columns the case holds.
     from nexus.langgraph.backbone import tool_contracts_block
+    from nexus.langgraph.field_catalog import field_catalog_block
 
-    grammar = dsl_prompt_block(cap=10)
+    grammar = field_catalog_block(case_dir)
 
     user = (
         f"Case question: {intake.get('question', '(none)')}\n"
@@ -326,22 +325,24 @@ def _propose_with_model(
         f"Top hits per family:\n{top_hits}\n\n"
         f"RAG methodology:\n{rag_context[:1800] or '(none)'}\n\n"
         f"Playbook guidance:\n{playbook_context[:1200] or '(none)'}\n\n"
-        "N4 query grammar (your queries are executed verbatim by the n4_query "
-        f"tool — validate every field against index_mappings/family_fields):\n"
-        f"{grammar or '(DSL grammar unavailable — propose plain terms)'}\n\n"
+        "Evidence index fields:\n"
+        f"{grammar or '(no parsed columns yet — use family/text terms)'}\n\n"
         f"{tool_contracts_block()}\n\n"
-        "Propose 2-6 NEW search QUERIES in N4 DSL to corroborate or expand "
-        "this picture. Each query is one complete DSL expression (e.g. "
-        '`family:evtx event:4625 AND 10.0.0.5`) — prefer field-scoped queries; '
-        "prefer needles shown in the signal map that have hits but haven't "
-        "been searched yet; use the RAG methodology and playbook caveats. "
-        "When the question is a counting question (how many distinct hosts? "
-        "which IPs?), propose an AGGREGATION instead: "
-        '{"aggregations": [{"dsl": "...", "field": "<parsed column or host>", '
-        '"why": "..."}]} — aggregations answer "how many/of what" with real '
-        "counts. Return ONLY JSON: {\"queries\": [{\"dsl\": \"...\", "
-        "\"why\": \"...\"}], \"aggregations\": [...], \"rationale\": \"...\"} "
-        "(aggregations optional)."
+        "Propose 2-6 NEW Elasticsearch queries to corroborate or expand this "
+        "picture. Each query is ES query JSON, e.g. "
+        '{"bool": {"must": [{"term": {"family": "hayabusa"}}, '
+        '{"match_phrase": {"text": "sdelete"}}]}} — time filters are '
+        '{"range": {"ts": {"gte": "...", "lte": "..."}}}; parsed columns are '
+        "fields.<Name> / fields.<Name>.kw. Prefer needles shown in the signal "
+        "map that have hits but haven't been searched yet; use the RAG "
+        "methodology and playbook caveats. When the question is a counting "
+        "question (how many distinct hosts? which IPs?), propose an "
+        "AGGREGATION instead: "
+        '{"aggregations": [{"aggs": {"v": {"terms": {"field": "host", '
+        '"size": 100}}}, "query": {}, "why": "..."}]} — aggregations answer '
+        '"how many/of what" with real counts. Return ONLY JSON: '
+        '{"queries": [{"es": {"query": {...}}, "why": "..."}], '
+        '"aggregations": [...], "rationale": "..."} (aggregations optional)."'
     )
     response = model.invoke([
         {"role": "system", "content": _PROPOSE_SYSTEM},
@@ -367,6 +368,29 @@ def _propose_with_model(
             raw.append(str(n).strip())
     validated = [_validate_dsl(q) for q in raw][:_MAX_NEEDLES_PER_PROPOSAL]
     needles = [v["query"] for v in validated]
+    # 4k.5.5: ES-native proposals (preferred); invalid JSON degrades to a
+    # text match on the first literal so the loop never runs a wrong query.
+    es_queries: list[dict[str, Any]] = []
+    for q in (parsed.get("queries") or [])[:_MAX_NEEDLES_PER_PROPOSAL]:
+        if not isinstance(q, dict):
+            continue
+        es = q.get("es")
+        if not isinstance(es, dict) or not es:
+            continue
+        query = es.get("query") if isinstance(es.get("query"), dict) else es
+        fallback = False
+        try:
+            from nexus.langgraph.es_native import validate_query
+
+            validate_query(query)
+        except Exception:  # noqa: BLE001 — degrade, never run a broken query
+            query = {"match_phrase": {"text": _first_literal(es) or "error"}}
+            fallback = True
+        es_queries.append({
+            "query": query,
+            "fallback": fallback,
+            "why": str(q.get("why") or "")[:200],
+        })
     # WP 4j.12: the LLM may request aggregations as tool calls alongside
     # queries — validated here, executed through the audited backbone by the
     # loop (context, never evidence).
@@ -389,9 +413,26 @@ def _propose_with_model(
             "fallback": False,
             "why": str(a.get("why") or "")[:200],
         })
+    es_aggregations: list[dict[str, Any]] = []
+    for a in (parsed.get("aggregations") or [])[:3]:
+        if not isinstance(a, dict) or not isinstance(a.get("aggs"), dict) or not a["aggs"]:
+            continue
+        try:
+            from nexus.langgraph.es_native import validate_aggs
+
+            validate_aggs(a["aggs"])
+        except Exception:  # noqa: BLE001 — an invalid agg is dropped (counts)
+            continue
+        es_aggregations.append({
+            "aggs": a["aggs"],
+            "query": a.get("query") if isinstance(a.get("query"), dict) else None,
+            "why": str(a.get("why") or "")[:200],
+        })
     return {
         "needles": needles,
         "dsl_queries": validated,
+        "es_queries": es_queries,
+        "es_aggregations": es_aggregations,
         "aggregations": aggregations,
         "rationale": str(parsed.get("rationale") or "")[:300],
         "source": "llm",
@@ -399,6 +440,38 @@ def _propose_with_model(
         "rag_provenance": rag_provenance,
         "playbook_context": playbook_context,
     }
+
+
+def _es_query_from_expr(expr: str) -> dict[str, Any]:
+    """Deterministic DSL→ES for the loop's seed/legacy strings (no agent)."""
+    from nexus.langgraph.case_index import ast_to_es
+    from nexus.langgraph.query_dsl import QuerySyntaxError, parse_query
+
+    text = str(expr or "").strip()
+    if not text:
+        return {"match_all": {}}
+    try:
+        parsed = parse_query(text)
+        return ast_to_es(parsed) if not parsed.is_empty() else {"match_all": {}}
+    except QuerySyntaxError:
+        return {"match_phrase": {"text": text[:200]}}
+
+
+def _first_literal(payload: Any) -> str:
+    """First non-empty string in a JSON blob (degrade target for bad queries)."""
+    if isinstance(payload, str):
+        return payload.strip()[:80]
+    if isinstance(payload, dict):
+        for value in payload.values():
+            got = _first_literal(value)
+            if got:
+                return got
+    if isinstance(payload, list):
+        for item in payload:
+            got = _first_literal(item)
+            if got:
+                return got
+    return ""
 
 
 def _validate_dsl(query: str) -> dict[str, Any]:
@@ -495,7 +568,8 @@ def run_iterative_loop(
     dsl0 = str(parsed0.get("dsl_query") or "").strip()
     q0 = dsl0 or " ".join(needles0)
     r0 = backbone_call(
-        "n4_query", audit=loop_audit, case_id=case_id, dsl=q0, limit=limit,
+        "es_search", audit=loop_audit, case_id=case_id,
+        query=_es_query_from_expr(q0), size=limit,
     )
     if r0.get("error"):
         return {"error": r0["error"], "iterations": []}
@@ -511,7 +585,7 @@ def run_iterative_loop(
         "query": q0,
         "dsl": bool(parsed0.get("dsl_query")),
         "fallback": (parsed0.get("dsl") or {}).get("fallback", False),
-        "hits": r0.get("count", 0),
+        "hits": r0.get("total", 0),
         "backend": r0.get("backend", ""),
         "audit_id": (r0.get("provenance") or {}).get("audit_id"),
     })
@@ -541,17 +615,42 @@ def run_iterative_loop(
                             for n in proposal.get("needles", [])])
             if q.get("query") and q["query"].lower() not in {x.lower() for x in all_needles_run}
         ][:_MAX_NEEDLES_PER_PROPOSAL]
-        if not dsl_queries:
+        es_specs = proposal.get("es_queries") or []
+        if not dsl_queries and not es_specs:
             iterations.append({"iteration": it, "action": "no_new_proposals", "rationale": proposal.get("rationale", "")})
             append_chat(case_dir, "llm", "mode2_stop", "No new needles to propose.", {"iteration": it})
             break
         iteration_queries: list[dict[str, Any]] = []
         prior_families = {str(h.get("family")) for h in hits}
         new_families: set[Any] = set()
+        for spec in es_specs:
+            query = spec.get("query") or {"match_all": {}}
+            label = "es_search " + json.dumps(query, sort_keys=True, default=str)[:200]
+            all_needles_run.append(label)
+            ran = backbone_call("es_search", audit=loop_audit, case_id=case_id,
+                                query=query, size=min(max(int(limit or 100), 1), 200))
+            if ran.get("error"):
+                iterations.append({"iteration": it, "action": "query_error",
+                                   "query": label, "error": ran["error"]})
+                append_chat(case_dir, "llm", "mode2_error", ran["error"], {"iteration": it})
+                break
+            new_hits = ran.get("hits") or []
+            new_families |= {str(h.get("family")) for h in new_hits}
+            iteration_queries.append({
+                "query": label,
+                "dsl": False,
+                "es": True,
+                "fallback": spec.get("fallback", False),
+                "fallback_reason": "invalid ES query — degraded to text" if spec.get("fallback") else "",
+                "hits": ran.get("total", 0),
+                "audit_id": (ran.get("provenance") or {}).get("audit_id"),
+            })
+            hits = hits + new_hits
         for qspec in dsl_queries:
             q = qspec["query"]
             all_needles_run.append(q)
-            ran = backbone_call("n4_query", audit=loop_audit, case_id=case_id, dsl=q, limit=limit)
+            ran = backbone_call("es_search", audit=loop_audit, case_id=case_id,
+                                query=_es_query_from_expr(q), size=limit)
             if ran.get("error"):
                 # gated/no-case — the loop cannot run; surface honestly
                 iterations.append({"iteration": it, "action": "query_error",
@@ -565,7 +664,7 @@ def run_iterative_loop(
                 "dsl": qspec.get("dsl", False),
                 "fallback": qspec.get("fallback", False),
                 "fallback_reason": qspec.get("reason", ""),
-                "hits": ran.get("count", 0),
+                "hits": ran.get("total", 0),
                 "audit_id": (ran.get("provenance") or {}).get("audit_id"),
             })
             hits = hits + new_hits
@@ -582,6 +681,19 @@ def run_iterative_loop(
         # WP 4j.12: run the proposed aggregations through the backbone —
         # grounded counts (context, never evidence) appended to the iteration.
         aggregations: list[dict[str, Any]] = []
+        for espec in (proposal.get("es_aggregations") or [])[:2]:
+            agg = backbone_call("es_aggregate", audit=loop_audit, case_id=case_id,
+                                aggs=espec.get("aggs") or {}, query=espec.get("query"))
+            if agg.get("error"):
+                continue
+            aggregations.append({
+                "aggs": espec.get("aggs") or {},
+                "query": espec.get("query") or {},
+                "why": espec.get("why", ""),
+                "aggregations": agg.get("aggregations") or {},
+                "next_after_key": agg.get("next_after_key"),
+                "audit_id": (agg.get("provenance") or {}).get("audit_id"),
+            })
         for aspec in (proposal.get("aggregations") or [])[:2]:
             agg = backbone_call("n4_aggregate", audit=loop_audit, case_id=case_id,
                                 dsl=aspec.get("dsl", ""), field=aspec.get("field", "host"),

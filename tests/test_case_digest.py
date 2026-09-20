@@ -352,7 +352,7 @@ def test_backbone_call_binding_exists():
     from nexus.langgraph import backbone
 
     src = inspect.getsource(backbone.backbone_call)
-    assert 'name == "n4_sample"' in src
+    assert 'name in ("es_fields", "es_search", "es_aggregate", "es_sample")' in src
 
 
 # ── interpretation reconciliation ────────────────────────────────────────

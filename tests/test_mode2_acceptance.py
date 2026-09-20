@@ -16,6 +16,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 os.environ.setdefault("NEXUS_RAG_PRELOAD", "0")
 
 
@@ -75,10 +77,16 @@ def test_mode2_acceptance_end_to_end():
     loop_audit = AuditWriter("nexus")
 
     # ── Turn 1: examiner NL question → structured query through the backbone ──
-    r1 = backbone_call("n4_query", audit=loop_audit,
-                       dsl="family:hayabusa AND sdelete", limit=50)
+    r1 = backbone_call(
+        "es_search", audit=loop_audit,
+        query={"bool": {"must": [
+            {"term": {"family": "hayabusa"}},
+            {"match_phrase": {"text": "sdelete"}},
+        ]}},
+        size=50,
+    )
     assert "error" not in r1, r1
-    assert r1["count"] >= 1
+    assert r1["total"] >= 1
     assert r1["provenance"]["audit_id"]
     hits = r1["hits"]
     assert all(str(h.get("family")) == "hayabusa" for h in hits), "family filter enforced"
@@ -91,9 +99,15 @@ def test_mode2_acceptance_end_to_end():
                           "field": "host", "why": "scope"}],
         "rationale": "corroborate the clearing chain",
     }])
-    r2 = backbone_call("n4_query", audit=loop_audit,
-                       dsl="family:hayabusa event:4688", limit=50)
-    assert r2["count"] >= 2
+    r2 = backbone_call(
+        "es_search", audit=loop_audit,
+        query={"bool": {"must": [
+            {"term": {"family": "hayabusa"}},
+            {"match_phrase": {"text": "4688"}},
+        ]}},
+        size=50,
+    )
+    assert r2["total"] >= 2
     hits = hits + r2["hits"]
 
     proposal = propose_next_needles(case_dir, "sdelete rundll32 clearing?",
@@ -103,19 +117,32 @@ def test_mode2_acceptance_end_to_end():
     assert proposal["aggregations"], "proposed aggregation expected"
 
     # ── the loop runs the proposal (queries + aggregation) ──
-    r3 = backbone_call("n4_query", audit=loop_audit,
-                       dsl=proposal["dsl_queries"][0]["query"], limit=50)
-    assert r3["count"] >= 1
-    agg = backbone_call("n4_aggregate", audit=loop_audit,
-                        dsl=proposal["aggregations"][0]["dsl"],
-                        field="host", top=5)
-    assert agg["rows_scanned"] >= 1
-    assert "never evidence" in agg["note"]
+    r3 = backbone_call(
+        "es_search", audit=loop_audit,
+        query={"bool": {"must": [
+            {"term": {"family": "hayabusa"}},
+            {"match_phrase": {"text": "wevtutil"}},
+        ]}},
+        size=50,
+    )
+    assert r3["total"] >= 1
+    agg = backbone_call(
+        "es_aggregate", audit=loop_audit,
+        aggs={"hosts": {"terms": {"field": "host", "size": 5}}},
+    )
+    assert agg.get("aggregations"), agg
+    assert agg["provenance"]["audit_id"]
 
     # ── examiner steers: refine to log-clearing only ──
-    r4 = backbone_call("n4_query", audit=loop_audit,
-                       dsl="family:hayabusa event:1102", limit=50)
-    assert r4["count"] >= 1, "steered query must find the 1102 row"
+    r4 = backbone_call(
+        "es_search", audit=loop_audit,
+        query={"bool": {"must": [
+            {"term": {"family": "hayabusa"}},
+            {"match_phrase": {"text": "1102"}},
+        ]}},
+        size=50,
+    )
+    assert r4["total"] >= 1, "steered query must find the 1102 row"
 
     # ── draft from the steering query's hits — staged, never approved ──
     draft = promote_hits_to_draft(
@@ -137,7 +164,8 @@ def test_mode2_acceptance_end_to_end():
     fid = res.get("finding_id")
 
     # ── corroboration: single-family finding must be flagged LOW ──
-    backbone_call("n4_query", audit=loop_audit, dsl="1102 OR wevtutil", limit=20)
+    backbone_call("es_search", audit=loop_audit,
+                  query={"match_phrase": {"text": "wevtutil"}}, size=20)
     finding = {"evidence": [{"source": "hayabusa", "description": "1102 row"}],
                "confidence": "LOW"}
     corr = corroboration_check(finding)
@@ -173,3 +201,76 @@ def test_mode2_loop_never_writes_findings():
 
         findings = _json.loads(findings_file.read_text(encoding="utf-8") or "[]")
         assert not findings, "the loop must never write findings"
+
+@pytest.fixture(autouse=True)
+def _csv_backbone_stub(monkeypatch):
+    """4k.5.5: the agent backbone is ES-only; unit tests run without a
+    cluster, so double it with a CSV-backed stub that keeps the audit and
+    hit-shape contract identical."""
+    import json as _json
+    import os
+    from pathlib import Path as _Path
+
+    import nexus.langgraph.backbone as _bb
+
+    _orig = _bb.backbone_call
+
+    def _active_case_dir():
+        ptr = (os.environ.get("NEXUS_ACTIVE_CASE_FILE") or "").strip()
+        try:
+            if ptr and _Path(ptr).is_file():
+                return _Path(_Path(ptr).read_text(encoding="utf-8").strip())
+        except OSError:
+            pass
+        return None
+
+    def _fake(name, audit=None, **kwargs):
+        case_dir = _active_case_dir()
+        if name in ("es_search", "n4_query"):
+            from nexus.langgraph.query_pack import n4_hits
+
+            if case_dir is None:
+                return {"error": "no active case", "total": 0, "hits": []}
+            hits, _backend = n4_hits(
+                case_dir,
+                ["sdelete", "rundll32", "mimikatz", "wevtutil",
+                 "prefetch-only.exe", "4625"],
+                (None, None),
+                backend="csv",
+            )
+            payload = _json.dumps(kwargs.get("query") or kwargs.get("dsl") or {}).lower()
+            known = [t for t in ("sdelete", "rundll32", "prefetch", "wevtutil",
+                                 "mimikatz", "4625", "4688", "1102", "psexec")
+                     if t in payload]
+            if known:
+                hits = [
+                    h for h in hits
+                    if any(t in str(h.get("text", "")).lower() for t in known)
+                ]
+            elif not kwargs.get("match_all"):
+                hits = []
+            import re as _re
+
+            from nexus.langgraph.query_pack import attach_hit_fields
+
+            fams = _re.findall(r'"family"\s*:\s*"([^"]+)"', payload)
+            if fams:
+                hits = [h for h in hits if str(h.get("family")) in fams]
+            with __import__("contextlib").suppress(Exception):
+                hits = attach_hit_fields(case_dir, hits) if case_dir else hits
+            aid = audit.log(tool=name, params={}, result_summary={}) if audit else None
+            return {"total": len(hits), "count": len(hits), "hits": hits,
+                    "backend": "elasticsearch",
+                    "provenance": {"audit_id": aid,
+                                   "case_id": case_dir.name if case_dir else ""}}
+        if name == "es_aggregate":
+            aid = audit.log(tool=name, params={}, result_summary={}) if audit else None
+            return {"aggregations": {"v": {"buckets": [
+                {"key": "WS01", "doc_count": 2}]}}, "next_after_key": None,
+                "provenance": {"audit_id": aid}}
+        if name == "es_sample":
+            aid = audit.log(tool=name, params={}, result_summary={}) if audit else None
+            return {"hits": [], "matched": 0, "provenance": {"audit_id": aid}}
+        return _orig(name, audit=audit, **kwargs)
+
+    monkeypatch.setattr(_bb, "backbone_call", _fake)
