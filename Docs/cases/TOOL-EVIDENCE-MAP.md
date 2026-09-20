@@ -4,7 +4,7 @@ This is the source of truth for **what runs** in `tools`, `coverage`, and `desig
 It is not a one-case patch. Presence is evaluated against **this evidence pack**,
 not the full catalog.
 
-**Complete catalog (Windows 37 + SIFT 68 + knowledge gaps):**
+**Complete catalog (Windows 53 + SIFT 68 + knowledge gaps):**
 [TOOL-CATALOG-MAP.md](TOOL-CATALOG-MAP.md). Catalog ≠ knowledge YAML ≠ mandatory lane.
 
 Knowledge YAML lives at `src/nexus/data/knowledge/artifacts/windows/*.yaml`
@@ -61,7 +61,7 @@ All **user profiles** (not the first `Users\*` directory). Default/Public skippe
 | Registry | `config\` + per-user `NTUSER.DAT` | RECmd batch (UserAssist, BAM, Run keys, MountPoints2, Explorer MRU) |
 | USN Journal | `$Extend\$J` / `$UsnJrnl:$J` if extracted | MFTECmd `-f` (skip if missing) |
 | SetupAPI / PS transcripts / PSReadLine | those files | **copy** into extractions (already text — no strings) |
-| Thumbcache / `$LogFile` | present | cataloged, **not auto-run** until CLI is verified |
+| Thumbcache / `$LogFile` | present | `$LogFile` → LogFileParser (`/LogFileFile:` + `/OutputPath:`, wired). Thumbcache CLI fetched + argv verified; no lane job yet. **Neither has a sample in this evidence pack** — see availability table |
 | RDP bitmap / BITS / UAL | cache tiles / qmgr.db / SUM `*.mdb` | **stage a local copy first** (mounted VHDX I/O is slow). bmc-tools on non-empty `.bmc`/`.bin` only (0-byte tiles SKIP, not FAIL); timeout scales with size. BitsParser on `qmgr.db` after the same esentutl copy+repair SRUM uses (dirty KAPE ESE hangs Impacket `getNextRow`). No `--carveall` on the tools lane. KStrike if `*.mdb` exists |
 | `$I30` file | extracted `$I30` only | MFTECmd `-f` |
 | Named samples | intake `sample_files` | capa / densityscout / yara only when named (and installed) |
@@ -86,6 +86,82 @@ If SIFT MCP is connected but no root is set, the ledger records one honest SKIP.
 - `fls` only if `NEXUS_SIFT_E01` is set
 - **No** full-tree `log2timeline` / plaso (disk cannot hold a multi-GB store)
 - `mactime` after MFTECmd bodyfile is pushed (`NEXUS_SIFT_MACTIME=1`)
+
+## Evidence availability — local pack (`Evidence-files/`, scanned 2026-09-20)
+
+Read-only file listing; **no tools were run**. This is what the T3 Tool × Evidence
+matrix can actually be validated against. `_fixtures` / `_staging` / `_e2e-out` /
+`_tools` are test scaffolding, not case evidence. Full detail:
+`Docs/internal/TOOLS-INVENTORY.md` (tool side) + this table (evidence side).
+
+### Available (sample on disk)
+
+| Family | Sample here | Windows tools | SIFT default tools |
+|---|---|---|---|
+| EVTX | `01-windows/evtx/` (500 / 504-win10 / h-triage / Yamato attack samples, 1 192 files), `rocba-fredr/evtx`, `showcase/rocba-500/host/evtx` | EvtxECmd, Hayabusa, Suzaku, Chainsaw, Zircolite, DeepBlueCLI | evtx_dump family, plaso (`log2timeline.py`) |
+| Registry hives | `01-windows/registry/{NTUSER.DAT,SAM,SECURITY,SOFTWARE,SYSTEM}`, `01-windows/504-win10-ws/SOFTWARE`, `rocba-fredr/registry`, showcase | RECmd (+ AppCompatCacheParser shimcache, AmcacheParser) | RECmd (dotnet), regripper (`misc.yaml`) |
+| Prefetch | `01-windows/prefetch/*.pf` (331) | PECmd | plaso (prefetch parser) |
+| Amcache | `01-windows/amcache/Amcache.hve`, `rocba-fredr/amcache` | AmcacheParser | AmcacheParser (dotnet) |
+| Shimcache | SYSTEM hive (above) | AppCompatCacheParser | AppCompatCacheParser (dotnet) |
+| SRUM | `01-windows/504-win10-ws/{srudb.dat,SRU.*}`, `rocba-fredr/srum/SRUDB.dat`, showcase | copy + esentutl + SrumECmd | (no SIFT lane job) |
+| MFT | `01-windows/kape-out/{MFT,mft.csv}`, `rocba-fredr/ntfs/$MFT`, `showcase/kape/MFT` | MFTECmd `--csv` + `--body`, `-f $J` for USN | mactime (bodyfile), fls (opt-in `NEXUS_SIFT_E01`) |
+| Recycle Bin | `rocba-fredr/recycle/$I*` (4), showcase | RBCmd | — |
+| LNK | `01-windows/lnk/**` (439) | LECmd | — |
+| Jump lists | `rocba-fredr/jumplists/**` (90), `500-precooked/*Destinations.csv` | JLECmd | — |
+| Shellbags | `rocba-fredr/shellbags/UsrClass.dat`, showcase | SBECmd | — |
+| Browser (Chrome + Edge) | `01-windows/browser/fredr/.../{Chrome,Edge}/User Data/*/History`, `showcase/.../browser` | SQLECmd (mandatory), Hindsight (extra, JSONL) | — |
+| WMI repository | `rocba-fredr/wmi/OBJECTS.DATA`, showcase | RECmd WMI batch, strings | — |
+| Scheduled tasks | `01-windows/tasks/system32-tasks/` (XML-content task files), Kansa Autorunsc CSVs | EVTX lane + SOFTWARE hive (XML files are copied, no dedicated parser) | — |
+| Kansa / KAPE pre-collected | `01-windows/{kansa,services,tasks}/**` CSVs, `kape-out/` | N2 pre-collected lane | — |
+| USN `$J` (parsed) | `02-memory/508-precooked/ntfs-anti-forensics/usnjrnl-rd01.csv` | MFTECmd `-f $J` needs the raw file | — |
+| WER minidump | `02-memory/dumps/minidump.dmp`, `rocba-508/minidump.dmp` | strings, YARA (on-demand) | — |
+| Defender quarantine | `02-memory/508-precooked/malware/quarantine.{csv,tar}` | maldump not-wired (CSV present) | — |
+| PowerShell transcript | `04-network/572/.../tshark_objects/...PowerShell_transcript*.txt` | copy into extractions (plain text) | grep / strings |
+| Linux logs | `03-linux/{auth.log,syslog,audit.log,bash_history,journal.json}`, `04-network/572/.../var/log/{secure,audit.log,wtmp,lastlog,btmp}` | — | grep, awk, plaso |
+| Linux collect / plaso store | `03-linux/528/{collect,plaso,psort,mft}.tar.gz` | — | plaso `log2timeline.py`, `psort.py` |
+| Linux disk image | `03-linux/608-sift/dmz-www/dmz-www-disk.7z` | — | fls/icat (opt-in), plaso |
+| Containers | `03-linux/608-sift/docker/prebuilt/*.tar.gz` | — | — |
+| macOS logs | `03-linux/608-sift/precooked/maclogs.7z`, `triagedata.7z` | — | plaso |
+| PCAP | `04-network/pcap/*` (29, ~1.3 GB) | tshark (local session guarantee), Suricata (local) | tshark, tcpflow |
+| Zeek logs | `04-network/zeek/**` (~6.9 GB: conn/dns/http/ssl/files/kerberos), 572 derived | — | (not a SIFT default; consume as log files) |
+| Suricata EVE | `04-network/suricata/eve.json` | ingest importer | — |
+| NetFlow | `04-network/572/lab-3.2/.../netflow/**` (402 nfcapd, ~2.9 GB) | nfdump importer | nfdump |
+| SIEM Elastic/ECS | `05-siem/elastic.ndjson`, `05-siem/cadre-elk/*.ndjson` (11) | ingest importers | — |
+| SIEM Splunk / Wazuh | `05-siem/splunk.csv`, `05-siem/wazuh.json` | ingest importers | — |
+| Cloud AWS/Azure/M365/GCP/K8s | `03-linux/608-sift/aws/cloudtrail/**` (47 k gz), `06-cloud/{cloudtrail-sample,azure-activity-sample,m365-ual}.json`, `06-cloud/500-cloud-logs/*.csv`, `06-cloud/509-section6/{gcp,k8slogs}.zip` | ingest importers | — |
+| Email | `09-email-archives/{sample.pst,fred.ost,phishing.eml}`, recycle `$I*.pst` | ingest email importers | — |
+| IR platforms | `08-ir-platforms/` (Velociraptor sample + server config, CyberTriage fixture, TheHive/IRIS JSON) | N2 VR IRTriage path / ingest | — |
+| TI samples | `07-ti/**` (abuseipdb, MB, MISP, OTX, URLhaus, VT) | `ti_lookup` / `ti_fanout` | — |
+| Sigma rules | `10-sigma/rules` (4 252) | detection indexer | Zircolite bundled ruleset |
+
+### Missing (no sample in this pack) — record before T3 validation
+
+| Family | Consuming tool | Note |
+|---|---|---|
+| `$LogFile` (raw) | LogFileParser (wired) | Rocba/KAPE sets do not contain it |
+| `$J` (raw) | MFTECmd `-f $J` | only a parsed CSV exists |
+| `$I30` (extracted) | MFTECmd `-f` | no validation sample |
+| thumbcache / iconcache `*.db` | thumbcache_viewer_cmd (fetched) | CLI verified, no data to validate output |
+| `ActivitiesCache.db` | WxTCmd | only precooked Activity CSVs (`500-precooked`) |
+| Firefox `places.sqlite` | SQLECmd | Chrome/Edge present only |
+| BITS `qmgr.db` / `qmgr*.dat` | BitsParser | none |
+| UAL SUM `*.mdb` | KStrike | none |
+| RDP bitmap cache tiles (`.bmc`) | bmc-tools | none |
+| `setupapi.dev.log` | copy (plain text) | none |
+| PSReadLine `ConsoleHost_history.txt` | copy | none |
+| `hiberfil.sys` / `pagefile.sys` | on-demand | none |
+| Windows full-disk image (E01/VHDX) | fls/icat (opt-in), MFTECmd via extraction | Rocba E01/VHDX referenced on `E:` only |
+| Full raw memory (Windows) | vol/vol3 | Rocba-Memory.raw on `E:` only; in-tree full-memory = rclone `mem.zip` (Linux scenario) + minidumps |
+| VSS snapshots | vshadowinfo/mount | none |
+| Sysdig/Falco runtime | sysdig lane | `04-network/sysdig/` empty; `_fixtures/falco-sysdig.json` only |
+| Security Onion / Socrates alerts | ingest | dirs empty; `_fixtures` samples only |
+| CyberTriage export | ingest | `08-ir-platforms/cybertriage/` empty; fixture only |
+| macOS full collection | plaso | only `maclogs.7z` |
+
+**T3 consequence:** W1 (evtxecmd / hayabusa / chainsaw) is fully covered by this pack;
+W2 can cover registry/prefetch/mft/lnk/jumplist/shellbags/browser/srum/pcap/zeek/
+netflow/plaso plus the ingest families — and the "missing" rows above stay
+`validated: false` (docs-derived) until a sample is staged.
 
 ## Interpret and report (what actually runs)
 
@@ -146,7 +222,7 @@ Nexus mode is honest on one evidence pack. See [NEXUS-MODE.md](../NEXUS-MODE.md)
 |---------|------------|
 | **Windows / SIFT / live-acq lanes** | Which parsers the mandatory lane may schedule (this file + TOOL-CATALOG-MAP) |
 | **CLI / MCP / Portal** | Three UIs on the same case brain (`nexus`, `nexus serve`, `/portal`) |
-| **Ingest** | 43 importer classes (`nexus ingest`) — logs in, not host-triage parsers |
+| **Ingest** | 45 importer classes (`nexus ingest`) — logs in, not host-triage parsers |
 | **Heuristic 6-agent graph** | Offline alert/cloud/network/endpoint/synthesis/timeline — **not** `nexus pipeline` |
 | **RAG / TI / Sigma / VR / triage** | Optional analysis MCP tools |
 | **Custody** | evidence hash, approve/reject, backup, export, audit verify |

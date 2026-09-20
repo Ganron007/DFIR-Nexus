@@ -83,6 +83,8 @@ Every key in `_WIN_CATALOG` is executable via `run_windows_command` when the bin
 
 **Catalog changes (2026-09-20, T2b/T2c):** fetched Zircolite v4.0.0, USBDeview x64, DeepBlueCLI, Hindsight, LogFileParser v2.0.0.53, Thumbcache Viewer CMD v1.0.2.1. Pruned `regripper` (`rip.exe` retired from Zimmerman net9; RECmd covers), `thumbcache` (GUI dup of the CLI), `browserparser` / `events_ripper` / `leveldb` (no official upstream), `ntfslogtracker` (dead Google Code project; LogFileParser + MFTECmd `$J` cover). 12 built-ins now resolve from `System32` via `_find_binary`. `nexus doctor` fails golden path on any required unresolvable key (53/53 on the reference workstation).
 
+**Evidence availability (2026-09-20):** which of these tools have local sample evidence to map against — available vs missing families — is in [TOOL-EVIDENCE-MAP.md](TOOL-EVIDENCE-MAP.md) § "Evidence availability — local pack".
+
 ---
 
 ## SIFT catalog (68)
