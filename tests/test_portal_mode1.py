@@ -717,3 +717,43 @@ def test_api_select_rows_identity_and_drift(mock_promote, mock_save, mock_get_di
     selected = mock_promote.call_args.kwargs["hits"]
     assert len(selected) == 1
     assert str(selected[0].get("line")) == "2"
+
+def test_full_run_real_staging_stages_drafts_for_approve(tmp_path):
+    """Live-bug regression: the in-process Mode 1 scan bypassed the audit
+    trail, so FD-001 rejected every draft and the Approve page stayed empty.
+    This runs the REAL worker + REAL save path (no save mock): the scan must
+    audit itself, drafts must stage, and findings.json must expose DRAFTs the
+    Approve page reads."""
+    import json as _json
+
+    from nexus.dashboard.app import _mode1_full_run_worker
+
+    case = tmp_path / "CASE-M1REAL"
+    ext = case / "extractions" / "hayabusa"
+    ext.mkdir(parents=True)
+    (ext / "alerts.csv").write_text(
+        "Timestamp,Computer,Channel,EventID,Level,RuleTitle,OtherDetails\n"
+        "2026-08-10 14:32:01,WS01,Sec,4688,critical,Suspicious SDelete,sdelete.exe -p 5\n"
+        "2026-08-10 14:33:02,WS01,Sec,1102,high,Log Cleared,wevtutil cl Security\n",
+        encoding="utf-8",
+    )
+    (case / "CASE.yaml").write_text(
+        "intake:\n  question: was sdelete used\n  query_extra: sdelete\nwevtutil\n",
+        encoding="utf-8",
+    )
+    rec_path = case / "analysis" / "mode1_full_run.json"
+    rec_path.parent.mkdir(parents=True, exist_ok=True)
+    record = {"run_id": "R-real", "status": "running", "drafts": [],
+              "skipped": [], "bookmarks_added": 0, "timeline_events": 0,
+              "needles_done": 0, "current": ""}
+
+    _mode1_full_run_worker(case, rec_path, record, max_needles=60,
+                           only=set(), reprocess=False)
+
+    assert record["status"] == "complete", record.get("error")
+    assert record["drafts_staged"] >= 1, record.get("skipped")
+    assert record.get("scan_audit_ids"), "the scan itself must be audited (FD-001)"
+    rows = _json.loads((case / "findings.json").read_text(encoding="utf-8"))
+    drafts = [f for f in rows if str(f.get("status", "")).upper() == "DRAFT"]
+    assert drafts, "api_findings(status=DRAFT) must see the staged drafts"
+    assert all(f.get("audit_ids") for f in drafts), "FD-001 trail on every draft"

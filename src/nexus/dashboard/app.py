@@ -2939,7 +2939,7 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
     decisions — reprocess instead stages a fresh DRAFT revision alongside them
     (recorded under revised_approved) for examiner comparison and approval.
     """
-    from nexus.audit import resolve_examiner
+    from nexus.audit import AuditWriter, resolve_examiner
     from nexus.case.workbench import add_bookmarks
     from nexus.langgraph.briefing import case_briefing
     from nexus.langgraph.mode1 import (
@@ -3039,6 +3039,13 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
             needles_ordered.append(needle)
         needle_keys = {n.lower() for n in needles_ordered}
         hits_by_needle: dict[str, list[dict]] = {}
+        # FD-001: the scan IS a tool call that produced these rows, but it runs
+        # in-process (n4_hits), so nothing audited it — every staged draft was
+        # rejected for a missing evidence trail and Approve stayed empty.
+        # Record one case audit entry per batch and let drafts cite it.
+        scan_audit = AuditWriter("nexus", audit_dir=case_dir / "audit")
+        scan_aid_by_needle: dict[str, str] = {}
+        scan_audit_ids: list[str] = []
         scan_batches = 0
         scan_capped = False
         scan_coverage = {"terms_requested": 0, "terms_queried": 0, "terms_failed": 0}
@@ -3048,6 +3055,18 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
             chunk_hits, _chunk_backend = n4_hits(
                 case_dir, chunk, window, priority_terms=chunk, stats=chunk_stats,
             )
+            chunk_aid = scan_audit.log(
+                tool="mode1_scan",
+                params={"case_id": case_dir.name, "needles": list(chunk),
+                        "batch": scan_batches},
+                result_summary={"hits": len(chunk_hits),
+                                "backend": str(_chunk_backend or "")},
+                extra={"case_id": case_dir.name},
+            )
+            if chunk_aid:
+                scan_audit_ids.append(chunk_aid)
+                for needle in chunk:
+                    scan_aid_by_needle[str(needle).strip().lower()] = chunk_aid
             scan_batches += 1
             if (chunk_stats.get("hits_capped") or chunk_stats.get("files_capped")
                     or chunk_stats.get("files_skipped_family_cap")
@@ -3067,6 +3086,7 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
                         hits_by_needle.setdefault(key, []).append(h)
         record["scan_batches"] = scan_batches
         record["scan_coverage"] = scan_coverage
+        record["scan_audit_ids"] = scan_audit_ids[:20]
         record["scan_truncated"] = bool(record.get("scan_truncated")) or scan_capped
         _persist()
 
@@ -3126,6 +3146,18 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
                     f"{len(hits)} row(s) — candidate signal pending examiner review."
                 ),
             )
+            # FD-001 provenance: linked tool-lane audits when they exist,
+            # otherwise the audited scan that produced these rows.
+            scan_aid = scan_aid_by_needle.get(needle_key)
+            if scan_aid:
+                existing_aids = [str(a) for a in (draft.get("audit_ids") or [])]
+                if scan_aid not in existing_aids:
+                    draft["audit_ids"] = [*existing_aids, scan_aid]
+                    arts = [a for a in (draft.get("artifacts") or [])
+                            if isinstance(a, dict)]
+                    if not any(a.get("audit_id") == scan_aid for a in arts):
+                        arts.append({"audit_id": scan_aid, "type": "scan"})
+                    draft["artifacts"] = arts
             draft = _heuristic_scribe(draft, hits, case_dir=case_dir)
             if approved_ids:
                 draft["related_findings"] = approved_ids
