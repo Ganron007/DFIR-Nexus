@@ -220,7 +220,7 @@ nexus ingest logs/ --recursive --limit 50
 nexus ingest conn.log --case INC-20260815 --source zeek   # I3 merge; prints audit_id
 nexus ingest capture.pcap                 # raw PCAP/PCAPNG — tshark-converted, then parsed
 
-nexus index rebuild                       # rebuild the active case's ES index (schema v2)
+nexus index rebuild                       # rebuild the active case's ES index (schema v3)
 nexus index rebuild --case CASE-XXXXXXXX  # …for a specific case
 
 nexus doctor                              # extras, catalog, indexes, optional keys
