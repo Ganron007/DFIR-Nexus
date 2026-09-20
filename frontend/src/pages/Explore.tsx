@@ -217,6 +217,7 @@ export default function Explore() {
           offset: targetOffset,
         }),
         api.histogram({
+          needles: needleValue || undefined,
           family: famValue || undefined,
           start: startValue || undefined,
           end: endValue || undefined,
@@ -686,6 +687,7 @@ export default function Explore() {
                 title="Download EVERY matching row as CSV — no result caps (exhaustive enumeration)"
                 onClick={() => {
                   const p = new URLSearchParams();
+                  if (activeCase) p.set("case_id", activeCase);
                   if (needles) p.set("needles", needles);
                   if (family) p.set("family", family);
                   if (hostFilter) p.set("host", hostFilter);

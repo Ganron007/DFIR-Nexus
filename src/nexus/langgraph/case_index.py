@@ -336,14 +336,20 @@ def iter_index_doc_batches(
             doc["ts_precision"] = ts_info["precision"]
             if ts_info["tz_assumed"]:
                 doc["ts_tz_assumed"] = True
-            if ts_info["year_assumed"]:
+            explicit_year = bool(fields) and str(
+                fields.get("ts_year_assumed") or ""
+            ).lower() in {"true", "1", "yes"}
+            if ts_info["year_assumed"] or explicit_year:
                 doc["ts_year_assumed"] = True
             cov["present"] += 1
             if synth:
                 cov["synthesized"] += 1
             if ts_info["tz_assumed"]:
                 cov["tz_assumed"] += 1
-            if ts_info["year_assumed"]:
+            explicit_year_flag = bool(fields) and str(
+                fields.get("ts_year_assumed") or ""
+            ).lower() in {"true", "1", "yes"}
+            if ts_info["year_assumed"] or explicit_year_flag:
                 cov["year_assumed"] += 1
         else:
             cov["missing"] += 1
@@ -361,15 +367,17 @@ def iter_index_doc_batches(
             continue
         header = _index_header(path)
         try:
+            data_rows = 0
             with _open_text_auto(path) as fh:
                 for i, line in enumerate(fh, start=1):
                     if i == 1 and ("," in line or "\t" in line):
                         continue
+                    data_rows += 1
                     if _MAX_DOCS and total >= _MAX_DOCS:
                         caps["docs_capped"] = True
                         stop = True
                         break
-                    if _MAX_DOCS_PER_FILE and (i - 1) >= _MAX_DOCS_PER_FILE:
+                    if _MAX_DOCS_PER_FILE and data_rows > _MAX_DOCS_PER_FILE:
                         caps["files_capped"] += 1
                         break
                     if _add(path, root, fam, i, line, _row_fields(line, header)):
@@ -703,6 +711,14 @@ def index_case(
                 docs_total = int(count_resp.json().get("count") or 0)
             except ValueError:
                 docs_total = prior.get("docs", 0)
+        prior_coverage = {}
+        try:
+            prior_meta = json.loads(
+                (out / "es_index.json").read_text(encoding="utf-8")
+            )
+            prior_coverage = prior_meta.get("ts_coverage") or {}
+        except (OSError, ValueError):
+            prior_coverage = {}
         meta = {
             "index": name,
             "docs": docs_total,
@@ -712,6 +728,10 @@ def index_case(
             "incremental": True,
             "files_reindexed": sorted(changed),
             "files_removed": sorted(removed),
+            # Coverage is only exact on full rebuilds; an incremental pass
+            # keeps the prior full picture rather than replacing it with a
+            # partial one (4k.4.3 review fix).
+            "ts_coverage": prior_coverage or cap_stats.get("ts_coverage") or {},
             "caps": cap_stats,
             "capped": bool(
                 cap_stats.get("docs_capped")
@@ -765,6 +785,10 @@ def index_case(
     write_index_state(case_dir, meta, file_mtimes=current_mtimes or _index_file_mtimes(case_dir))
     _schema_cache.pop(case_dir.name, None)
     _fields_props_cache.pop(case_dir.name, None)
+    with contextlib.suppress(Exception):
+        from nexus.langgraph.field_catalog import invalidate_catalog
+
+        invalidate_catalog(case_dir.name)
     with contextlib.suppress(Exception):
         from nexus.tools.evidence_index import invalidate_mappings_cache
 
@@ -913,6 +937,20 @@ _ES_NUMERIC = frozenset({
 _ES_DATE = frozenset({"date", "date_nanos"})
 
 
+def _row_match_fields(src: dict[str, Any]) -> dict[str, str]:
+    """Envelope + parsed columns as the row-side filter map (CSV parity)."""
+    out: dict[str, str] = {}
+    for key in ("family", "file", "line", "host", "user", "event_id", "ts"):
+        value = src.get(key)
+        if value not in (None, ""):
+            out[key] = str(value)
+    fields = src.get("fields")
+    if isinstance(fields, dict):
+        for name, value in fields.items():
+            out.setdefault(str(name), str(value))
+    return out
+
+
 def _filter_to_es(f: dict[str, Any], catalog: dict[str, Any] | None) -> list[dict[str, Any]]:
     """One typed catalog filter → ES clauses (type-aware, hard errors)."""
     from nexus.langgraph.query_dsl import QuerySyntaxError
@@ -920,7 +958,8 @@ def _filter_to_es(f: dict[str, Any], catalog: dict[str, Any] | None) -> list[dic
     name = str(f.get("name") or "")
     op = str(f.get("op") or "contains")
     entry = (catalog or {}).get(name)
-    if catalog is not None and entry is None:
+    core_path = bool(f.get("path")) and not str(f["path"]).startswith("fields.")
+    if catalog is not None and entry is None and not core_path:
         from nexus.langgraph.field_catalog import suggest_field
 
         hints = suggest_field(catalog, name)
@@ -930,33 +969,46 @@ def _filter_to_es(f: dict[str, Any], catalog: dict[str, Any] | None) -> list[dic
         )
     resolved = str((entry or {}).get("name") or f.get("resolved") or name)
     ftype = str((entry or {}).get("type") or f.get("type") or "text")
-    has_kw = bool((entry or {}).get("has_kw", True))
-    path = f"fields.{resolved}"
+    # Path comes from the catalog/filter (core columns are top-level; parsed
+    # columns live under fields.*). Never synthesise fields.<core>.
+    path = str(f.get("path") or (entry or {}).get("path") or f"fields.{resolved}")
+    has_kw = bool(f.get("has_kw", (entry or {}).get("has_kw", True)))
     kw = f"{path}.kw" if has_kw else path
+    is_text = path == "text"
 
     if op == "exists":
         return [{"exists": {"field": kw}}]
     if op == "in":
         values = [str(v) for v in (f.get("values") or []) if str(v).strip()]
-        return [{"terms": {kw: values}}] if values else [{"match_none": {}}]
-    if op == "eq":
-        return [{"term": {kw: str(f.get("value") or "")}}]
-    if op == "ne":
-        return [{"bool": {"must_not": [{"term": {kw: str(f.get("value") or "")}}]}}]
-    if op == "contains":
-        needle = str(f.get("value") or "")
-        if "*" in needle or "?" in needle:
-            safe = needle.replace("\\", "\\\\").replace('"', '\\"')
-            return [{"wildcard": {kw: {"value": safe, "case_insensitive": True}}}]
+        if not values:
+            return [{"match_none": {}}]
+        target = kw
         return [{
             "bool": {
                 "should": [
-                    {"term": {kw: needle}},
-                    {"match_phrase": {path: needle}},
+                    {"term": {target: {"value": v, "case_insensitive": True}}}
+                    for v in values
                 ],
                 "minimum_should_match": 1,
             }
         }]
+    if op == "eq":
+        if is_text:
+            return [{"match_phrase": {"text": str(f.get("value") or "")}}]
+        return [{"term": {kw: {"value": str(f.get("value") or ""),
+                               "case_insensitive": True}}}]
+    if op == "ne":
+        return [{"bool": {"must_not": [
+            {"term": {kw: {"value": str(f.get("value") or ""),
+                           "case_insensitive": True}}}
+        ]}}]
+    if op == "contains":
+        needle = str(f.get("value") or "")
+        target = "text.wc" if is_text else kw
+        if "*" not in needle and "?" not in needle:
+            needle = f"*{needle}*"
+        safe = needle.replace("\\", "\\\\").replace('"', '\\"')
+        return [{"wildcard": {target: {"value": safe, "case_insensitive": True}}}]
     # comparisons need a numeric/date field
     if ftype not in _ES_NUMERIC | _ES_DATE:
         raise QuerySyntaxError(
@@ -1130,7 +1182,13 @@ def es_aggregate(
     from nexus.langgraph.query_dsl import QuerySyntaxError, parse_query
 
     try:
-        parsed = parse_query(dsl)
+        from nexus.langgraph.field_catalog import case_field_catalog
+
+        _catalog = case_field_catalog(case_dir)
+    except Exception:  # noqa: BLE001 — catalog is best-effort here
+        _catalog = None
+    try:
+        parsed = parse_query(dsl, catalog=_catalog)
     except QuerySyntaxError:
         return None
     agg_field = _resolve_agg_field(case_id, field)
@@ -1138,12 +1196,9 @@ def es_aggregate(
         return None
 
     try:
-        from nexus.langgraph.field_catalog import case_field_catalog
-
-        _catalog = case_field_catalog(case_dir)
-    except Exception:  # noqa: BLE001 — catalog is best-effort here
-        _catalog = None
-    es_query = ast_to_es(parsed, match_all=match_all, catalog=_catalog)
+        es_query = ast_to_es(parsed, match_all=match_all, catalog=_catalog)
+    except QuerySyntaxError:
+        return None
     # The intake window applies here exactly as it does in query_index — an
     # aggregation must never count out-of-window rows.
     start, end = (window or (None, None))
@@ -1366,8 +1421,11 @@ def query_index(
                     stats["terms_queried"] = len(needles)
                 r = _post_search({
                     "size": 400,
-                    "query": ast_to_es(query, search_fields=search_fields,
-                                       catalog=catalog),
+                    "query": _with_filt(
+                        ast_to_es(query, search_fields=search_fields,
+                                  catalog=catalog),
+                        filt,
+                    ),
                 })
                 hits_raw = r.json().get("hits", {}).get("hits", [])
                 if stats is not None:
@@ -1376,7 +1434,8 @@ def query_index(
             elif not needles:
                 if stats is not None:
                     stats["mode"] = "match_all"
-                r = _post_search({"size": 400, "query": {"match_all": {}}})
+                r = _post_search({"size": 400,
+                                  "query": _with_filt({"match_all": {}}, filt)})
                 hits_raw = r.json().get("hits", {}).get("hits", [])
                 if stats is not None:
                     stats["hits_fetched"] = len(hits_raw)
@@ -1398,8 +1457,11 @@ def query_index(
                         f"/{name}/_search",
                         json={
                             "size": 400,
-                            "query": ast_to_es(None, terms=chunk,
-                                               search_fields=search_fields),
+                            "query": _with_filt(
+                                ast_to_es(None, terms=chunk,
+                                          search_fields=search_fields),
+                                filt,
+                            ),
                         },
                     )
                     if r.status_code >= 400 and len(chunk) > 1:
@@ -1484,7 +1546,8 @@ def query_index(
 
             ok, matched = row_matches(
                 query, line_lower=low, family=fam, file_rel=file_rel,
-                extra_text=fields_low,
+                extra_text=fields_low, row_ts=str(src.get("ts") or ""),
+                row_fields=_row_match_fields(src),
             )
             if not ok:
                 continue
@@ -1523,6 +1586,12 @@ def query_index(
         if len(hits) > _total_cap or stats.get("hits_capped"):
             stats["hits_capped"] = True
     return finalize_hits(hits, terms, priority_terms)
+
+def _with_filt(query: dict[str, Any], filt: list[dict[str, Any]]) -> dict[str, Any]:
+    if not filt:
+        return query
+    return {"bool": {"must": [query], "filter": filt}}
+
 
 def _index_window_filter(window) -> list[dict[str, Any]]:
     """Same intake-window filter as query_index (shared by count/iter)."""
@@ -1590,7 +1659,7 @@ def _shape_es_hit(
         ok, matched = row_matches(
             query, line_lower=low, family=fam, file_rel=file_rel,
             extra_text=fields_low, row_ts=str(src.get("ts") or ""),
-            row_fields=fields_map if isinstance(fields_map, dict) else None,
+            row_fields=_row_match_fields(src),
         )
         if not ok:
             return None
@@ -1757,8 +1826,10 @@ def count_index(
                 q = {"bool": {"must": [base], "filter": filt}}
             r = client.post(f"/{name}/_count", json={"query": q})
             if r.status_code >= 400:
-                needle_chunk = base.get("bool", {}).get("should") or []
-                if len(needle_chunk) > 8:
+                bool_body = base.get("bool") if isinstance(base.get("bool"), dict) else {}
+                needle_chunk = bool_body.get("should") or []
+                only_should = set(bool_body) <= {"should", "minimum_should_match"}
+                if only_should and len(needle_chunk) > 8:
                     # Split and retry — never drop clauses.
                     mid = len(needle_chunk) // 2
                     queue.insert(0, {"bool": {"should": needle_chunk[mid:],

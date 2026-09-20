@@ -175,6 +175,7 @@ def build_case_digest(case_dir: Path, brief: dict[str, Any] | None = None) -> di
         "generated_at": datetime.now(UTC).isoformat(),
         "scope": scope,
         "ts_coverage": _ts_coverage(case_dir),
+        "ts_coverage_capped": _ts_coverage_capped(case_dir),
         "inventory": brief.get("inventory") or {},
         "ledger": brief.get("ledger") or {},
         "hosts": brief.get("hosts") or [],
@@ -212,6 +213,20 @@ def _ts_coverage(case_dir) -> dict[str, dict[str, int]]:
     return cov if isinstance(cov, dict) else {}
 
 
+def _ts_coverage_capped(case_dir) -> bool:
+    """True when index caps were set, so ts coverage is partial."""
+    import json
+
+    path = case_dir / "analysis" / "es_index.json"
+    if not path.is_file():
+        return False
+    try:
+        meta = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return bool(meta.get("capped"))
+
+
 def render_digest_markdown(digest: dict[str, Any]) -> str:
     lines: list[str] = [
         f"# Case Digest — {digest.get('case_id', '')}",
@@ -234,6 +249,11 @@ def render_digest_markdown(digest: dict[str, Any]) -> str:
     if ts_cov:
         lines.append("")
         lines.append("## Timestamp coverage (per family)")
+        if digest.get("ts_coverage_capped"):
+            lines.append(
+                "_Partial: index caps were set (`NEXUS_INDEX_*`) — coverage "
+                "counts only the indexed rows._"
+            )
         for fam, cov in sorted(ts_cov.items()):
             present = int(cov.get("present") or 0)
             missing = int(cov.get("missing") or 0)

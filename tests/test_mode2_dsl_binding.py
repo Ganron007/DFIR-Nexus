@@ -338,7 +338,9 @@ def test_loop_runs_aggregations_through_backbone(backbone):
     assert aggs, "expected the proposed aggregation to run"
     a = aggs[0]
     assert a["field"] == "host"
-    assert a["rows_scanned"] >= 1
+    # 4k.5.5: legacy dsl/field aggregations execute through es_aggregate; the
+    # result carries ES bucket counts instead of a Python rows_scanned count.
+    assert a["distinct"] >= 1
     assert a["audit_id"], "aggregation must be audited (provenance)"
 
 

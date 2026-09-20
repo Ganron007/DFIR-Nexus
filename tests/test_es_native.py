@@ -125,11 +125,14 @@ def test_es_search_shapes_hits_and_reports_exact_total(fake_es):
             }, "sort": [17]},
         ]},
     }
-    out = es_native.es_search("CASE-X", {"match_all": {}}, size=200)
+    out = es_native.es_search("CASE-X", {"match_all": {}}, size=1)
     assert out["total"] == 5000
     assert out["returned"] == 1
-    assert out["has_more"] is True
+    assert out["has_more"] is True, "a FULL page means there may be more"
     assert out["next_search_after"] == [17]
+
+    short = es_native.es_search("CASE-X", {"match_all": {}}, size=200)
+    assert short["has_more"] is False and short["next_search_after"] is None
     hit = out["hits"][0]
     assert hit["family"] == "hayabusa"
     assert hit["fields"]["Channel"] == "Security"

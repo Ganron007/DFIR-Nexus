@@ -94,10 +94,122 @@ def test_ast_to_es_typed_filters():
 
     clauses = _filter_to_es({"name": "computer", "op": "in",
                              "values": ["WS01", "WS02"]}, _CATALOG)
-    assert clauses == [{"terms": {"fields.Computer.kw": ["WS01", "WS02"]}}]
+    assert clauses == [{
+        "bool": {
+            "should": [
+                {"term": {"fields.Computer.kw": {"value": "WS01",
+                                                "case_insensitive": True}}},
+                {"term": {"fields.Computer.kw": {"value": "WS02",
+                                                "case_insensitive": True}}},
+            ],
+            "minimum_should_match": 1,
+        }
+    }]
 
-    clauses = _filter_to_es({"name": "payloaddata1", "op": "exists"}, _CATALOG)
-    assert clauses == [{"exists": {"field": "fields.PayloadData1.kw"}}]
+    eq = _filter_to_es({"name": "channel", "op": "eq", "value": "Security"},
+                       _CATALOG)
+    assert eq == [{"term": {"fields.Channel.kw": {
+        "value": "Security", "case_insensitive": True}}}]
+
+    contains = _filter_to_es(
+        {"name": "provider", "op": "contains", "value": "PowerShell"}, _CATALOG,
+    )
+    assert contains == [{"wildcard": {"fields.Provider.kw": {
+        "value": "*PowerShell*", "case_insensitive": True}}}]
+
+    exists = _filter_to_es({"name": "payloaddata1", "op": "exists"}, _CATALOG)
+    assert exists == [{"exists": {"field": "fields.PayloadData1.kw"}}]
+
+
+def test_core_typed_filters_use_top_level_paths():
+    """Core envelope columns must never become fields.<core> (review F2)."""
+    from nexus.langgraph.case_index import _filter_to_es
+
+    q = parse_query("host:=WS01 event:=4688 line:>=100", catalog=_CATALOG)
+    paths = [f["path"] for f in q.filters]
+    assert paths == ["host", "event_id", "line"]
+    host = _filter_to_es(q.filters[0], _CATALOG)
+    assert host == [{"term": {"host": {"value": "WS01",
+                                       "case_insensitive": True}}}]
+    event = _filter_to_es(q.filters[1], _CATALOG)
+    assert event == [{"term": {"event_id": {"value": "4688",
+                                            "case_insensitive": True}}}]
+    line = _filter_to_es(q.filters[2], _CATALOG)
+    assert line == [{"range": {"line": {"gte": 100}}}]
+
+    # A numeric comparator on a keyword core field is a hard error at ES
+    # build time (event_id is keyword; EventID's numeric column is parsed).
+    numeric = parse_query("event:>=4688", catalog=_CATALOG)
+    with pytest.raises(QuerySyntaxError):
+        _filter_to_es(numeric.filters[0], _CATALOG)
+
+
+def test_minute_resolution_and_hour_offset():
+    from nexus.langgraph.timestamps import parse_time_value
+
+    minute = parse_time_value("2024-05-01 10:30")
+    assert minute is not None
+    assert minute["dt"].hour == 10 and minute["dt"].minute == 30
+    assert minute["precision"] == "m" and minute["tz_assumed"] is True
+    offset = parse_time_value("2024-05-01T10:30:45+05")
+    assert offset is not None and offset["tz_assumed"] is False
+    assert offset["dt"].isoformat() == "2024-05-01T05:30:45+00:00"
+
+
+def test_empty_range_and_spaced_in_list():
+    with pytest.raises(QuerySyntaxError):
+        parse_query("channel:..", catalog=_CATALOG)
+    with pytest.raises(QuerySyntaxError):
+        parse_query("channel:in:()", catalog=_CATALOG)
+    q = parse_query("computer:in:(WS01, WS02)", catalog=_CATALOG)
+    assert not q.or_terms, "spaced in-list must not leak a fragment as a term"
+    assert q.filters[0]["values"] == ["WS01", "WS02"]
+
+
+def test_query_index_applies_typed_filters_on_es(monkeypatch, tmp_path):
+    """Regression (review F1): the ES re-check must receive row_fields, or
+    every typed query silently returns zero rows on Elasticsearch."""
+    import json as _json
+
+    from nexus.langgraph import case_index
+
+    class _Resp:
+        def __init__(self, code, payload):
+            self.status_code = code
+            self._payload = payload
+            self.text = _json.dumps(payload)
+
+        def json(self):
+            return self._payload
+
+    class _Client:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def head(self, path):
+            return _Resp(200, {})
+
+        def post(self, path, json=None, **kw):
+            return _Resp(200, {"hits": {"hits": [
+                {"_source": {
+                    "family": "evtxecmd", "file": "Security.csv", "line": 2,
+                    "text": "4688 sdelete", "host": "ws01",
+                    "fields": {"Channel": "Security", "EventID": "4688"},
+                }},
+            ]}})
+
+    monkeypatch.setattr(case_index, "_client", lambda: _Client())
+    monkeypatch.setattr(case_index, "_schema_version_cached",
+                        lambda _c: case_index.INDEX_SCHEMA_VERSION)
+    monkeypatch.setattr(case_index, "fields_property_names",
+                        lambda _c: ["Channel", "EventID"])
+    q = parse_query("channel:Security eventid:>=4688", catalog=_CATALOG)
+    hits = case_index.query_index(tmp_path / "CASE-ES", [], (None, None),
+                                  query=q, catalog=_CATALOG)
+    assert len(hits) == 1 and "sdelete" in hits[0]["text"]
 
 
 def test_ast_to_es_type_mismatch_is_hard_error():

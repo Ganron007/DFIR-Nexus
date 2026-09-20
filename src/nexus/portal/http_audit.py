@@ -149,6 +149,17 @@ def _resolve_case_id(scope: dict[str, Any]) -> str:
                 break
     if not case_id:
         case_id = (os.environ.get("NEXUS_ACTIVE_CASE") or "").strip()
+    if not case_id:
+        # The active-case pointer is what production actually uses (the
+        # NEXUS_ACTIVE_CASE env var is a test/child-process convention).
+        try:
+            from nexus.case.outputs import resolve_active_case_dir
+
+            active = resolve_active_case_dir()
+            if active is not None:
+                case_id = active.name
+        except Exception:  # noqa: BLE001 — resolution is best-effort
+            case_id = ""
     return case_id
 
 
@@ -231,6 +242,18 @@ class HttpAuditMiddleware:
     async def _record(self, scope, method, path, status, out_bytes, started, body) -> None:
         try:
             case_id = _resolve_case_id(scope)
+            if not case_id and path.startswith("/mcp") and body:
+                # In-process pipeline MCP calls carry case_id in the JSON-RPC
+                # arguments, not in headers.
+                try:
+                    payload = json.loads(body.decode("utf-8", errors="replace"))
+                    if isinstance(payload, dict):
+                        params = payload.get("params")
+                        args = params.get("arguments") if isinstance(params, dict) else {}
+                        if isinstance(args, dict):
+                            case_id = str(args.get("case_id") or "").strip()
+                except (ValueError, UnicodeDecodeError):
+                    pass
             audit_dir = _audit_dir_for(case_id)
             if audit_dir is None:
                 return
@@ -247,6 +270,8 @@ class HttpAuditMiddleware:
             extra = {
                 "remote": str((scope.get("client") or ("", 0))[0]),
                 "http_audit": True,
+                # The request-resolved case wins over the writer's env stamp.
+                "case_id": case_id,
             }
             elapsed_ms = round((time.perf_counter() - started) * 1000, 1)
 

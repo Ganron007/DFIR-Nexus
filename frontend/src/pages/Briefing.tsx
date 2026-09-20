@@ -417,7 +417,8 @@ export default function Briefing() {
             return (
               <>
                 <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 6 }}>
-                  {d.signal_map?.scanned ?? 0} needles scanned · {withHits} with hits ·{" "}
+                  {Math.max(0, (d.signal_map?.scanned ?? 0) - (d.signal_map?.unscanned?.length ?? 0))} needles scanned
+                  {d.signal_map?.unscanned?.length ? ` (${d.signal_map.unscanned.length} NOT scanned)` : ""} · {withHits} with hits ·{" "}
                   {zeroHits} checked-absent (negative evidence) · {(d.alerts || []).length} high/critical alert(s) ·{" "}
                   {d.hosts?.length ?? 0} host(s) · {Object.keys(d.inventory || {}).length} famil{Object.keys(d.inventory || {}).length === 1 ? "y" : "ies"} ·{" "}
                   timeline: {d.timeline?.source || "n/a"}
@@ -596,7 +597,7 @@ export default function Briefing() {
                 : `Full run failed — ${fullRunResult.error || "unknown error"}`}
           </div>
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>
-            {fullRunResult.needles_scanned} needles scanned · {fullRunResult.needles_hit ?? fullRunResult.needles_total ?? 0} with hits
+            {fullRunResult.needles_scanned} needles scanned · {fullRunResult.needles_hit_total ?? fullRunResult.needles_total ?? 0} with hits
             {(fullRunResult.needles_capped ?? 0) > 0 && ` (${fullRunResult.needles_capped} more hit — raise max_needles to include)`}
             {fullRunResult.scan_truncated && " · counts are lower bounds (scan truncated)"}
             {" · "}{fullRunResult.bookmarks_added} bookmark(s) added to Workbench

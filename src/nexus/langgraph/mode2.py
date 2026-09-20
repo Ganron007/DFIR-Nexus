@@ -457,6 +457,19 @@ def _es_query_from_expr(expr: str) -> dict[str, Any]:
         return {"match_phrase": {"text": text[:200]}}
 
 
+def _agg_label(agg: dict[str, Any]) -> str:
+    """One-line label for legacy (top) and ES (aggregations) agg shapes."""
+    if agg.get("aggregations") and not agg.get("top"):
+        buckets = []
+        for spec in (agg.get("aggregations") or {}).values():
+            if isinstance(spec, dict):
+                buckets = spec.get("buckets") or []
+                break
+        names = ",".join(sorted((agg.get("aggs") or {}).keys())) or "es"
+        return f"{names}({len(buckets)} buckets)"
+    return f"{agg.get('field') or 'agg'}({agg.get('distinct', 0)} distinct)"
+
+
 def _first_literal(payload: Any) -> str:
     """First non-empty string in a JSON blob (degrade target for bad queries)."""
     if isinstance(payload, str):
@@ -546,7 +559,7 @@ def run_iterative_loop(
     all_needles_run: list[str] = []
 
     intake = load_case_intake(case_dir)
-    _ = intake  # window comes from n4_query's internal intake handling
+    _ = intake  # window comes from the tool's internal intake handling
 
     from nexus.audit import AuditWriter
     from nexus.langgraph.backbone import backbone_call
@@ -590,7 +603,7 @@ def run_iterative_loop(
         "audit_id": (r0.get("provenance") or {}).get("audit_id"),
     })
     _emit(on_event, iterations[-1])
-    append_chat(case_dir, "llm", "mode2_iter0", f"Initial query: {', '.join(needles0)} -> {r0.get('count', 0)} hits")
+    append_chat(case_dir, "llm", "mode2_iter0", f"Initial query: {', '.join(needles0)} -> {r0.get('total', r0.get('count', 0))} hits")
 
     # WP 4i.9: compute the case briefing once — proposals ground in the
     # signal map (which needles already hit) rather than generic vocabulary.
@@ -695,27 +708,39 @@ def run_iterative_loop(
                 "audit_id": (agg.get("provenance") or {}).get("audit_id"),
             })
         for aspec in (proposal.get("aggregations") or [])[:2]:
-            agg = backbone_call("n4_aggregate", audit=loop_audit, case_id=case_id,
-                                dsl=aspec.get("dsl", ""), field=aspec.get("field", "host"),
-                                top=15)
+            agg = backbone_call(
+                "es_aggregate", audit=loop_audit, case_id=case_id,
+                aggs={"v": {"terms": {
+                    "field": aspec.get("field", "host"), "size": 15,
+                }}},
+                query=(_es_query_from_expr(aspec.get("dsl", ""))
+                       if aspec.get("dsl") else None),
+            )
             if agg.get("error"):
                 continue
+            buckets = []
+            for spec in (agg.get("aggregations") or {}).values():
+                if isinstance(spec, dict):
+                    buckets = spec.get("buckets") or []
+                    break
             aggregations.append({
                 "dsl": aspec.get("dsl", ""),
                 "field": aspec.get("field", "host"),
                 "why": aspec.get("why", ""),
-                "distinct": agg.get("distinct", 0),
-                "distinct_approximate": agg.get("distinct_approximate", False),
-                "rows_scanned": agg.get("rows_scanned", 0),
-                "top": (agg.get("top") or [])[:10],
+                "distinct": len(buckets),
+                "distinct_approximate": False,
+                "rows_scanned": 0,
+                "top": [
+                    {"value": b.get("key"), "count": b.get("doc_count", 0)}
+                    for b in buckets[:10]
+                ],
                 "audit_id": (agg.get("provenance") or {}).get("audit_id"),
             })
         if aggregations:
             iterations[-1]["aggregations"] = aggregations
             append_chat(
                 case_dir, "llm", "mode2_aggregation",
-                "Aggregations: " + "; ".join(
-                    f"{a['field']}({a['distinct']} distinct)" for a in aggregations),
+                "Aggregations: " + "; ".join(_agg_label(a) for a in aggregations),
                 {"aggregations": json.dumps(aggregations)[:2000]},
             )
         append_chat(

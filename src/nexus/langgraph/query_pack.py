@@ -785,6 +785,8 @@ def n4_hits(
             "fallback_reason": fallback_reason,
         })
 
+    from nexus.langgraph.query_dsl import QuerySyntaxError
+
     choice = (backend or os.environ.get("NEXUS_N4_BACKEND") or "auto").strip().lower()
     fallback_reason = ""
     if choice in {"es", "elasticsearch", "auto"}:
@@ -805,6 +807,10 @@ def n4_hits(
             if choice != "auto":
                 raise
             fallback_reason = f"index missing ({exc})"
+        except QuerySyntaxError:
+            # A malformed/unknown-field query is a USER error, not backend
+            # unreachability — never silently rerun it on the CSV pack.
+            raise
         except Exception as exc:  # noqa: BLE001 — auto mode degrades to CSV
             if choice not in {"auto", ""}:
                 raise
@@ -905,14 +911,22 @@ def _host_from_fields(fields: dict[str, str]) -> str:
 
 
 def _header_for_file(root: Path, file_rel: str) -> list[str]:
-    """Read (and cache) the CSV header line of a source file."""
-    if file_rel in _header_cache:
-        return _header_cache[file_rel]
+    """CSV header line of a source file (path+mtime keyed, gz-aware).
+
+    Keying by mtime prevents one case's identical relative filename from
+    leaking its columns into another case in a long-running server.
+    """
     header: list[str] = []
     p = root / file_rel
     if file_rel and p.is_file():
         try:
-            with p.open(encoding="utf-8", errors="replace") as fh:
+            key = f"{p.resolve()}:{p.stat().st_mtime_ns}"
+        except OSError:
+            key = str(p)
+        if key in _header_cache:
+            return _header_cache[key]
+        try:
+            with _open_text(p) as fh:
                 first = fh.readline().strip()
             if first:
                 import csv as _csv
@@ -921,7 +935,8 @@ def _header_for_file(root: Path, file_rel: str) -> list[str]:
                 header = [h.strip().lstrip("\ufeff").strip('"') for h in header]
         except OSError:
             header = []
-    _header_cache[file_rel] = header
+        _header_cache[key] = header
+        return header
     return header
 
 
@@ -1081,17 +1096,20 @@ def n4_query(
     do_match_all = bool(match_all) and parsed.is_empty()
     terms = [] if do_match_all else list(dict.fromkeys(dsl_terms + collect_query_terms(intake)))
     stats: dict[str, Any] = {}
-    all_hits, backend_used = n4_hits(
-        case_dir,
-        terms,
-        window,
-        priority_terms=list(dict.fromkeys(pb_terms + dsl_terms)),
-        backend=backend,
-        query=parsed if not parsed.is_empty() else None,
-        match_all=do_match_all,
-        stats=stats,
-        catalog=_catalog,
-    )
+    try:
+        all_hits, backend_used = n4_hits(
+            case_dir,
+            terms,
+            window,
+            priority_terms=list(dict.fromkeys(pb_terms + dsl_terms)),
+            backend=backend,
+            query=parsed if not parsed.is_empty() else None,
+            match_all=do_match_all,
+            stats=stats,
+            catalog=_catalog,
+        )
+    except QuerySyntaxError as exc:
+        return {"error": str(exc), "query": parsed.describe()}
     total = len(all_hits)
     page = all_hits[max(0, offset):max(0, offset) + max(1, min(int(limit or 80), _MAX_HITS_TOTAL))]
     cap_reasons = _cap_reasons(stats)
@@ -1524,6 +1542,7 @@ def iter_all_hits(
     query: Any | None = None,
     match_all: bool = False,
     backend: str | None = None,
+    catalog: dict[str, Any] | None = None,
 ):
     """Stream EVERY matching hit across the chosen backend (EH-12).
 
@@ -1543,6 +1562,7 @@ def iter_all_hits(
         yield from iter_index_hits(
             case_dir, terms, window,
             priority_terms=priority_terms, query=query, match_all=match_all,
+            catalog=catalog,
         )
         return
     yield from iter_extraction_hits(
@@ -1884,7 +1904,14 @@ def run_ad_hoc_query(
     if query_override:
         from nexus.langgraph.query_dsl import parse_query
 
-        parsed = parse_query(query_override)
+        _catalog = None
+        try:
+            from nexus.langgraph.field_catalog import case_field_catalog
+
+            _catalog = case_field_catalog(case_dir)
+        except Exception:  # noqa: BLE001 — catalog is best-effort
+            _catalog = None
+        parsed = parse_query(query_override, catalog=_catalog)
         if not parsed.is_empty():
             intake = dict(load_case_intake(case_dir))
             window = parse_intake_window(intake)

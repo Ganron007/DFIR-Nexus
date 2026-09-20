@@ -30,6 +30,7 @@ export default function Evidence() {
     present?: number; missing?: number; synthesized?: number;
     tz_assumed?: number; year_assumed?: number;
   }>>({});
+  const [caseQuestion, setCaseQuestion] = useState("");
 
   // Poll cleanup ref — clears interval on unmount to prevent poll leak
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -80,12 +81,13 @@ export default function Evidence() {
       api.evidence(),
       api.caseDetails(activeCase).catch(() => null),
       api.pipelineLedger().catch(() => null),
-      api.caseDigest().catch(() => null),
     ])
-      .then(([ev, d, lg, dg]) => {
+      .then(([ev, d, lg]) => {
         setEvidence(ev.evidence);
         setPipelineComplete(d?.pipeline_complete || false);
-        setTsCoverage(dg?.digest?.ts_coverage || {});
+        const details = d as unknown as Record<string, unknown> | null;
+        const intake = (details?.intake || {}) as Record<string, unknown>;
+        setCaseQuestion(String(intake.question || details?.description || ""));
         if (lg && !lg.error) {
           setLedger(lg.ledger || []);
           setLedgerRunId(lg.run_id || "");
@@ -101,6 +103,18 @@ export default function Evidence() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeCase]);
+
+  // Timestamp coverage is a digest artifact: fetch it off the critical path
+  // (building the digest can scan) and refresh after each run.
+  useEffect(() => {
+    if (!activeCase) {
+      setTsCoverage({});
+      return;
+    }
+    api.caseDigest()
+      .then((dg) => setTsCoverage(dg?.digest?.ts_coverage || {}))
+      .catch(() => setTsCoverage({}));
+  }, [activeCase, runStatus]);
 
   const registerPaths = async (paths: string[]) => {
     setError("");
@@ -124,6 +138,13 @@ export default function Evidence() {
   };
 
   const runN2 = async () => {
+    if (caseMode !== "1" && !caseQuestion.trim()) {
+      setError(
+        "Mode 2/3 needs an examiner question — add it in Case Setup (N1) first; " +
+        "the interpretation reconciles evidence against that question.",
+      );
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -144,6 +165,7 @@ export default function Evidence() {
             setBusy(false);
             setPipelineComplete(true);
             refreshStages(activeCase);
+            load();
           } else if (s.status === "error") {
             clearInterval(poll);
             pollRef.current = null;
@@ -182,9 +204,9 @@ export default function Evidence() {
             </span>
             {!caseMode && (
               <span style={{ display: "flex", gap: 4 }}>
-                <button className="btn btn-sm" onClick={() => void setMode("1")}>Set Mode 1</button>
-                <button className="btn btn-sm" onClick={() => void setMode("2")}>Set Mode 2</button>
-                <button className="btn btn-sm" onClick={() => void setMode("3")}>Set Mode 3</button>
+                <button className="btn btn-sm" onClick={() => { setMode("1").catch((e) => setError((e as Error).message)); }}>Set Mode 1</button>
+                <button className="btn btn-sm" onClick={() => { setMode("2").catch((e) => setError((e as Error).message)); }}>Set Mode 2</button>
+                <button className="btn btn-sm" onClick={() => { setMode("3").catch((e) => setError((e as Error).message)); }}>Set Mode 3</button>
               </span>
             )}
             <button

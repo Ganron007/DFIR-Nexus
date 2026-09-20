@@ -325,6 +325,7 @@ def _execute_queries(queries: list[dict[str, str]], case_id: str, audit: AuditWr
     queries_executed: list[dict[str, Any]] = []
     aggregations: list[dict[str, Any]] = []
     seen_rows: set[tuple[str, str, str]] = set()
+    failures: list[str] = []
 
     for item in queries:
         why = str(item.get("why") or "")
@@ -336,11 +337,25 @@ def _execute_queries(queries: list[dict[str, str]], case_id: str, audit: AuditWr
             if result.get("error"):
                 log.warning("ES aggregation failed: %s", result["error"])
                 continue
+            buckets = []
+            for spec in (result.get("aggregations") or {}).values():
+                if isinstance(spec, dict):
+                    buckets = spec.get("buckets") or []
+                    break
             aggregations.append({
                 "aggs": item["aggs"],
                 "query": item.get("query") or {},
                 "aggregations": result.get("aggregations") or {},
                 "next_after_key": result.get("next_after_key"),
+                # Legacy-renderer-compatible mirror (no KeyError downstream).
+                "field": ", ".join(sorted((item["aggs"] or {}).keys())),
+                "distinct": len(buckets),
+                "distinct_approximate": False,
+                "rows_scanned": 0,
+                "top": [
+                    {"value": b.get("key"), "count": b.get("doc_count", 0)}
+                    for b in buckets[:10]
+                ],
                 "audit_id": (result.get("provenance") or {}).get("audit_id"),
             })
             queries_executed.append({
@@ -360,6 +375,7 @@ def _execute_queries(queries: list[dict[str, str]], case_id: str, audit: AuditWr
             )
             if result.get("error"):
                 log.warning("ES query failed: %s", result["error"])
+                failures.append(str(result["error"]))
                 continue
             for h in result.get("hits") or []:
                 loc = (
@@ -455,6 +471,13 @@ def _execute_queries(queries: list[dict[str, str]], case_id: str, audit: AuditWr
             })
             if len(all_hits) >= _MAX_HITS_TOTAL:
                 break
+    # Honesty: if every planned query failed on the backend, say so — never
+    # let an ES outage read as "no evidence".
+    if queries and not queries_executed and failures:
+        raise RuntimeError(
+            "Elasticsearch unavailable — Mode 2/3 require the ES index: "
+            + failures[0][:200]
+        )
     return all_hits, queries_executed, aggregations
 
 
@@ -462,7 +485,7 @@ def _gather_helper_context(question: str, audit: AuditWriter,
                            case_dir: Path | None = None) -> tuple[str, str, str]:
     """RAG methodology + custom-KB + TI context for the answer step.
 
-    Helpers only — evidence comes from the ES index (n4_query/n4_aggregate).
+    Helpers only — evidence comes from the ES index (es_search/es_aggregate).
     RAG gives methodology, the KB gives examiner-curated notes, TI gives
     provider verdicts for IOCs mentioned in the question or already swept
     into the case's analysis/ti_context.md. Never case evidence (FD-001).

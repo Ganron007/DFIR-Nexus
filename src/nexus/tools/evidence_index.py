@@ -384,7 +384,15 @@ def do_index_mappings(case_id: str = "", audit: AuditWriter | None = None) -> di
         "families": sorted(inventory),
         "family_rows": {k: v.get("rows", 0) for k, v in sorted(inventory.items())},
         "family_fields": family_fields,
-        "dsl_fields": ["family", "host", "user", "event", "file"],
+        "dsl_fields": [
+            "family", "file", "host", "user", "event_id", "line", "ts",
+            "+ every parsed column (types: keyword/text/long/date)",
+        ],
+        "dsl_operators": (
+            "field:value (contains), field:=value (exact), field:!=value, "
+            "field:>n/>=n/<n/<=n (numeric/date), field:a..b (range), "
+            "field:in:(a,b), exists:field; unknown fields are rejected"
+        ),
         "note": ("evidence index reachable" if es
                  else "ES not reachable — deterministic CSV pack backend"),
         "provenance": {"audit_id": aid, "case_id": Path(case_dir).name},
@@ -430,8 +438,10 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         """Run an N4 DSL query against the ACTIVE case's evidence index.
 
         The LLM is gated to the active case: an explicit case_id must match
-        it. `dsl` uses the N4 grammar (fields family/host/user/event/file,
-        AND/OR/NOT, quoted phrases, regex:) — see the DSL few-shot pack.
+        it. `dsl` is typed: any catalog column (including parsed fields.*)
+        with contains/exact/!=/comparators/ranges/exists/in; unknown fields
+        are rejected with suggestions. AND/OR/NOT, quoted phrases and regex:
+        are supported. Call index_mappings/family_fields for the case columns.
         Set `match_all=true` with an empty dsl to scan every indexed row.
         Evidence plane: ES when configured, deterministic CSV pack otherwise.
         Findings need these rows' audit_ids (FD-001).
@@ -512,6 +522,10 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         try:
             result = _es_fields(Path(case_dir).name)
         except ESQueryError as exc:
+            with contextlib.suppress(Exception):
+                audit.log(tool="es_fields",
+                          params={"case_id": Path(case_dir).name},
+                          result_summary={"error": str(exc)[:300]})
             return {"error": str(exc), "case_id": Path(case_dir).name}
         result["provenance"] = {
             "audit_id": audit.log(
@@ -548,6 +562,10 @@ def register_tools(server: FastMCP, audit: AuditWriter):
                 size=size, sort=sort, search_after=search_after,
             )
         except ESQueryError as exc:
+            with contextlib.suppress(Exception):
+                audit.log(tool="es_search",
+                          params={"case_id": Path(case_dir).name, "query": query},
+                          result_summary={"error": str(exc)[:300]})
             return {"error": str(exc), "case_id": Path(case_dir).name}
         result["provenance"] = {
             "audit_id": audit.log(
@@ -577,6 +595,10 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         try:
             result = _es_aggregate(Path(case_dir).name, aggs or {}, query)
         except ESQueryError as exc:
+            with contextlib.suppress(Exception):
+                audit.log(tool="es_aggregate",
+                          params={"case_id": Path(case_dir).name, "aggs": aggs},
+                          result_summary={"error": str(exc)[:300]})
             return {"error": str(exc), "case_id": Path(case_dir).name}
         result["provenance"] = {
             "audit_id": audit.log(
@@ -609,6 +631,10 @@ def register_tools(server: FastMCP, audit: AuditWriter):
                 Path(case_dir).name, family=family, field=field, value=value, n=n,
             )
         except ESQueryError as exc:
+            with contextlib.suppress(Exception):
+                audit.log(tool="es_sample",
+                          params={"case_id": Path(case_dir).name},
+                          result_summary={"error": str(exc)[:300]})
             return {"error": str(exc), "case_id": Path(case_dir).name}
         result["provenance"] = {
             "audit_id": audit.log(

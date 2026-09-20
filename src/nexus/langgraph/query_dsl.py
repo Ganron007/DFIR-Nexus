@@ -37,6 +37,19 @@ _TS_FIELDS = frozenset({"ts", "time", "timestamp", "date", "after", "before"})
 # term. URL schemes and single-letter drive tokens stay plain terms.
 _FILTER_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.\-]{1,63}$")
 _URL_SCHEMES = frozenset({"http", "https", "ftp", "ftps", "ws", "wss", "s3", "gs", "tcp", "udp"})
+# Core envelope columns are typed-filterable too (host:=WS01, eventid:>=4688).
+_CORE_TYPED: dict[str, tuple[str, str]] = {
+    "family": ("family", "keyword"),
+    "file": ("file", "keyword"),
+    "host": ("host", "keyword"),
+    "user": ("user", "keyword"),
+    "event": ("event_id", "keyword"),
+    "eventid": ("event_id", "keyword"),
+    "event_id": ("event_id", "keyword"),
+    "line": ("line", "long"),
+    "computer": ("host", "keyword"),
+    "machine": ("host", "keyword"),
+}
 _NUMERIC_TYPES = frozenset({
     "long", "integer", "short", "byte", "double", "float", "half_float",
     "scaled_float", "unsigned_long",
@@ -132,6 +145,14 @@ def parse_query(text: str, catalog: dict[str, Any] | None = None) -> ParsedQuery
     raw = (text or "").strip()
     if not raw:
         return q
+    # ``field:in:(a, b)`` — collapse spaces inside the list so the tokenizer
+    # keeps it as ONE token (a stray "b)" used to leak into or_terms).
+    raw = re.sub(
+        r":in:\s*\(([^)]*)\)",
+        lambda m: ":in:(" + ",".join(p for p in m.group(1).replace(" ", "").split(",") if p) + ")",
+        raw,
+        flags=re.IGNORECASE,
+    )
 
     pending: str | None = None
     for tok in _TOKEN_RE.findall(raw):
@@ -221,6 +242,16 @@ def _set_ts_range(q: ParsedQuery, field: str, value: str) -> None:
 _OPS = ("!=", ">=", "<=", "=", ">", "<")
 
 
+def _looks_typed_op(value: str) -> bool:
+    v = str(value or "")
+    return (
+        v[:2] in ("!=", ">=", "<=")
+        or v[:1] in ("=", ">", "<")
+        or v.lower().startswith("in:")
+        or ".." in v
+    )
+
+
 def _parse_filter_value(value: str) -> tuple[str, dict[str, Any]]:
     """Operator + payload for a typed filter value."""
     raw = str(value or "").strip()
@@ -244,10 +275,15 @@ def _parse_filter_value(value: str) -> tuple[str, dict[str, Any]]:
         if inner.startswith("(") and inner.endswith(")"):
             inner = inner[1:-1]
         values = [v.strip().strip('"') for v in inner.split(",") if v.strip()]
+        if not values:
+            raise QuerySyntaxError("in:(...) needs at least one value")
         return "in", {"values": values}
     if ".." in raw:
         lo, _, hi = raw.partition("..")
-        return "range", {"lo": lo.strip(), "hi": hi.strip()}
+        lo, hi = lo.strip(), hi.strip()
+        if not lo and not hi:
+            raise QuerySyntaxError("range needs at least one bound (a..b)")
+        return "range", {"lo": lo, "hi": hi}
     return "contains", {"value": raw}
 
 
@@ -264,7 +300,7 @@ def _maybe_filter(q: ParsedQuery, name_raw: str, value: str,
         target = value.strip()
         if not target:
             return False
-        if catalog is not None and target.lower() not in catalog:
+        if catalog and target.lower() not in catalog and target.lower() not in _CORE_TYPED:
             from nexus.langgraph.field_catalog import suggest_field
 
             hints = suggest_field(catalog, target)
@@ -280,12 +316,16 @@ def _maybe_filter(q: ParsedQuery, name_raw: str, value: str,
     if value.startswith("//"):  # URL path
         return False
     entry = None
-    if catalog is not None:
+    if catalog:
         from nexus.langgraph.field_catalog import resolve_field
 
         entry = resolve_field(catalog, low)
+    if entry is None and low in _CORE_TYPED:
+        target, core_type = _CORE_TYPED[low]
+        entry = {"name": target, "type": core_type, "has_kw": False,
+                 "path": target, "core": True}
     op, payload = _parse_filter_value(value)
-    if catalog is not None and entry is None and op == "contains":
+    if catalog and entry is None and op == "contains":
         from nexus.langgraph.field_catalog import suggest_field
 
         hints = suggest_field(catalog, low)
@@ -293,10 +333,13 @@ def _maybe_filter(q: ParsedQuery, name_raw: str, value: str,
             f"unknown field {name!r}"
             + (f" — did you mean {', '.join(hints)}?" if hints else "")
         )
+    resolved = (entry or {}).get("name", name)
     q.filters.append({
         "name": low,
-        "resolved": (entry or {}).get("name", name),
+        "resolved": resolved,
         "type": (entry or {}).get("type", ""),
+        "path": (entry or {}).get("path") or f"fields.{resolved}",
+        "has_kw": bool((entry or {}).get("has_kw", True)),
         "op": op,
         **payload,
     })
@@ -362,6 +405,8 @@ def _filter_matches(f: dict[str, Any], row_fields: dict[str, str]) -> bool:
         }[op]
     if op == "range":
         lo, hi = f.get("lo"), f.get("hi")
+        if lo in (None, "") and hi in (None, ""):
+            return False
         if lo not in (None, ""):
             pair = _cmp(raw, lo)
             if pair is None or pair[0] < pair[1]:
@@ -385,14 +430,23 @@ def _add_term(q: ParsedQuery, tok: str, pending: str | None,
     if not term.startswith('"') and ":" in term:
         field, _, value = term.partition(":")
         value = value.strip().strip('"').strip()
-        if field.lower() in _TS_FIELDS and value:
-            _set_ts_range(q, field.lower(), value)
-            return
-        if field.lower() in _FIELDS and value:
-            q.fields[field.lower()] = value.lower()
-            return
-        if _maybe_filter(q, field, value, catalog):
-            return
+        low_field = field.lower()
+        if low_field in _URL_SCHEMES or value.startswith("//"):
+            pass  # URL, not a field (http://, smb://)
+        else:
+            if low_field in _TS_FIELDS and value:
+                _set_ts_range(q, low_field, value)
+                return
+            if (
+                value and _looks_typed_op(value)
+                and _maybe_filter(q, field, value, catalog)
+            ):
+                return
+            if low_field in _FIELDS and value:
+                q.fields[low_field] = value.lower()
+                return
+            if _maybe_filter(q, field, value, catalog):
+                return
     bucket = (
         q.and_terms if pending == "and"
         else q.not_terms if pending == "not"
@@ -496,8 +550,8 @@ def validate_or_degrade(query: str) -> dict[str, Any]:
         if parsed.is_empty():
             return {"query": q, "dsl": False, "fallback": True,
                     "reason": "empty parse"}
-        structured = bool(parsed.fields or parsed.regex or
-                          parsed.and_terms or parsed.not_terms)
+        structured = bool(parsed.fields or parsed.regex or parsed.and_terms
+                          or parsed.not_terms or parsed.filters)
         return {"query": q, "dsl": structured, "fallback": False}
     except QuerySyntaxError:
         bare: list[str] = []

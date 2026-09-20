@@ -54,19 +54,24 @@ def _es_catalog(case_id: str) -> dict[str, dict[str, Any]]:
     for key, spec in props.items():
         if key == "fields" or not isinstance(spec, dict):
             continue
+        subs = spec.get("fields") or {}
         out[key.lower()] = {
             "name": key,
             "type": str(spec.get("type") or "text"),
-            "has_kw": "kw" in (spec.get("fields") or {}),
+            "has_kw": "kw" in subs,
+            # Core envelope columns are TOP-LEVEL: never query fields.<core>.
+            "path": key,
             "families": [],
         }
     for key, spec in ((props.get("fields") or {}).get("properties") or {}).items():
         if not isinstance(spec, dict):
             continue
+        subs = spec.get("fields") or {}
         out[key.lower()] = {
             "name": key,
             "type": str(spec.get("type") or "text"),
-            "has_kw": "kw" in (spec.get("fields") or {}),
+            "has_kw": "kw" in subs,
+            "path": f"fields.{key}",
             "families": [],
         }
     return out
@@ -94,19 +99,25 @@ def _csv_catalog(case_dir: Path) -> dict[str, dict[str, Any]]:
         from nexus.langgraph.query_pack import iter_extraction_files
     except Exception:  # noqa: BLE001
         return {}
+    import csv as _csv
+    import json as _json
+
+    from nexus.langgraph.query_pack import _open_text
+
     out: dict[str, dict[str, Any]] = {}
     for path, _root, fam in iter_extraction_files(case_dir):
         header = _index_header(path)
         if not header:
             continue
-        sample_line = ""
+        values: list[str] = []
         try:
-            with path.open(encoding="utf-8", errors="replace") as fh:
+            with _open_text(path) as fh:
                 fh.readline()
                 sample_line = fh.readline().strip()
+            if sample_line:
+                values = next(_csv.reader([sample_line]), [])
         except OSError:
-            sample_line = ""
-        values = sample_line.split(",") if sample_line else []
+            values = []
         for idx, col in enumerate(header):
             key = str(col).strip().lstrip("\ufeff")
             if not key or str(key).startswith("_"):
@@ -123,6 +134,37 @@ def _csv_catalog(case_dir: Path) -> dict[str, dict[str, Any]]:
                 if sampled != "text":
                     entry["type"] = sampled
                     entry["_typed"] = True
+    # Imported (non-host) evidence columns live only in the artifact store.
+    store = case_dir / "ingest" / "artifacts.jsonl"
+    if store.is_file():
+        try:
+            with store.open(encoding="utf-8", errors="replace") as fh:
+                for _ in range(20):
+                    line = fh.readline()
+                    if not line:
+                        break
+                    try:
+                        record = _json.loads(line)
+                    except ValueError:
+                        continue
+                    if not isinstance(record, dict):
+                        continue
+                    for key, value in record.items():
+                        if value in (None, "", [], {}):
+                            continue
+                        low = str(key).lower()
+                        entry = out.setdefault(low, {
+                            "name": str(key), "type": "text", "has_kw": True,
+                            "_typed": False,
+                        })
+                        if not entry.get("_typed"):
+                            sampled = _sample_type(str(value))
+                            if sampled != "text":
+                                entry["type"] = sampled
+                                entry["_typed"] = True
+                    break
+        except OSError:
+            pass
     return out
 
 

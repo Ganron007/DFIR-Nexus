@@ -313,7 +313,7 @@ function ProposalCard({ entry, caseMode, onAsk, busy }: {
           <button
             className="btn btn-sm"
             onClick={() => void stageDraft()}
-            disabled={!draft || draft.startsWith("staging")}
+            disabled={Boolean(draft)}
             title="Stage a DRAFT finding from this answer + its cited rows (examiner approval required)"
           >
             Stage DRAFT

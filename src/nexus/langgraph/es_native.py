@@ -18,16 +18,40 @@ MAX_AGGS = 40
 
 _QUERY_KEYS = {
     "bool", "term", "terms", "range", "match", "match_phrase", "multi_match",
-    "wildcard", "exists", "prefix", "match_all", "match_none", "ids",
+    "wildcard", "exists", "prefix", "match_all", "match_none", "ids", "regexp",
 }
 _BOOL_KEYS = {"must", "should", "must_not", "filter", "minimum_should_match"}
 _TERM_BODY_KEYS = {"value", "boost", "case_insensitive"}
 _RANGE_BODY_KEYS = {"gte", "gt", "lte", "lt", "format", "boost", "time_zone"}
 _AGG_TYPES = {
     "terms", "date_histogram", "cardinality", "composite", "min", "max",
-    "avg", "sum", "value_count", "histogram", "range", "nested_aggs_terms",
+    "avg", "sum", "value_count", "histogram", "range",
 }
 _COMPOSITE_SOURCES = {"terms", "date_histogram", "histogram"}
+# Strict per-type body allowlists: anything else (script!) is rejected.
+_AGG_BODY_KEYS = {
+    "terms": {"field", "size", "order", "missing", "min_doc_count",
+              "shard_size", "include", "exclude"},
+    "date_histogram": {"field", "calendar_interval", "fixed_interval",
+                       "time_zone", "format", "min_doc_count", "missing",
+                       "order", "offset"},
+    "histogram": {"field", "interval", "min_doc_count", "missing", "order",
+                  "offset"},
+    "range": {"field", "ranges", "keyed", "missing"},
+    "cardinality": {"field", "precision_threshold", "missing"},
+    "min": {"field", "missing", "format"},
+    "max": {"field", "missing", "format"},
+    "avg": {"field", "missing", "format"},
+    "sum": {"field", "missing", "format"},
+    "value_count": {"field", "missing"},
+    "composite": {"sources", "size", "after"},
+}
+_COMPOSITE_SOURCE_KEYS = {
+    "terms": {"field", "order", "missing", "size"},
+    "date_histogram": {"field", "calendar_interval", "fixed_interval",
+                       "time_zone", "format", "order", "offset"},
+    "histogram": {"field", "interval", "order", "missing", "offset"},
+}
 
 
 class ESQueryError(ValueError):
@@ -107,6 +131,22 @@ def validate_query(body: Any, depth: int = 0) -> None:
             raise ESQueryError("multi_match fields must be a list of names")
         if any(f.startswith("_") for f in (fields or [])):
             raise ESQueryError("multi_match cannot target metadata fields")
+    elif key == "regexp":
+        if not isinstance(value, dict) or len(value) != 1:
+            raise ESQueryError("regexp takes exactly one field")
+        (field, spec), = value.items()
+        if not isinstance(spec, dict) or "value" not in spec:
+            raise ESQueryError("regexp requires {field: {value: pattern}}")
+        unknown = set(spec) - {"value", "case_insensitive", "flags"}
+        if unknown:
+            raise ESQueryError(f"unsupported regexp options: {sorted(unknown)}")
+        pattern = str(spec.get("value") or "")
+        if len(pattern) > 200:
+            raise ESQueryError("regexp pattern too long (max 200)")
+        from nexus.langgraph.query_dsl import _DANGEROUS_RE
+
+        if _DANGEROUS_RE.search(pattern):
+            raise ESQueryError("regexp rejected: nested quantifier (ReDoS guard)")
     elif key == "ids":
         values = value.get("values") if isinstance(value, dict) else None
         if not isinstance(values, list) or len(values) > 1000:
@@ -132,9 +172,16 @@ def validate_aggs(aggs: Any, depth: int = 0) -> None:
             )
         agg_type = types[0]
         body = spec[agg_type]
+        if not isinstance(body, dict):
+            raise ESQueryError(f"{agg_type} body must be an object")
+        if "script" in body or "scripted_metric" in spec:
+            raise ESQueryError("aggregation scripts are not allowed")
+        unknown_body = set(body) - _AGG_BODY_KEYS[agg_type]
+        if unknown_body:
+            raise ESQueryError(
+                f"unsupported {agg_type} options: {sorted(unknown_body)}"
+            )
         if agg_type == "composite":
-            if not isinstance(body, dict):
-                raise ESQueryError("composite body must be an object")
             sources = body.get("sources")
             if not isinstance(sources, list) or not sources:
                 raise ESQueryError("composite requires sources")
@@ -142,11 +189,20 @@ def validate_aggs(aggs: Any, depth: int = 0) -> None:
                 if not isinstance(src, dict) or len(src) != 1:
                     raise ESQueryError("composite source must name one field")
                 for _fname, fspec in src.items():
-                    if not isinstance(fspec, dict) or not (
-                        set(fspec) & _COMPOSITE_SOURCES
-                    ):
+                    if not isinstance(fspec, dict):
+                        raise ESQueryError("composite source spec must be an object")
+                    source_types = [k for k in fspec if k in _COMPOSITE_SOURCES]
+                    if len(source_types) != 1:
                         raise ESQueryError(
                             "composite sources support terms/date_histogram/histogram"
+                        )
+                    inner = fspec[source_types[0]]
+                    if not isinstance(inner, dict) or "script" in inner:
+                        raise ESQueryError("composite source scripts are not allowed")
+                    unknown_inner = set(inner) - _COMPOSITE_SOURCE_KEYS[source_types[0]]
+                    if unknown_inner:
+                        raise ESQueryError(
+                            f"unsupported composite source options: {sorted(unknown_inner)}"
                         )
             if "size" in body:
                 try:
@@ -268,7 +324,6 @@ def es_search(
     size: int = DEFAULT_SIZE,
     sort: list[Any] | None = None,
     search_after: list[Any] | None = None,
-    source_fields: list[str] | None = None,
 ) -> dict[str, Any]:
     """One allowlisted ES search; exact totals and a labelled next cursor."""
     if not case_id:
@@ -298,7 +353,9 @@ def es_search(
     }
     if sort:
         body["sort"] = sort
-    elif search_after:
+    else:
+        # Always provide a deterministic cursor sort so paging works even
+        # when the caller did not specify one (review fix).
         body["sort"] = ["_doc"]
     if search_after:
         body["search_after"] = search_after
@@ -316,12 +373,15 @@ def es_search(
     total = int(((data.get("hits") or {}).get("total") or {}).get("value") or 0)
     hits = [_shape_hit(row.get("_source") or {}) for row in hits_raw]
     next_cursor = hits_raw[-1].get("sort") if hits_raw else None
+    # has_more is about THIS page being full, not the global total (the old
+    # len(hits) < total made the final page look paginated — review fix).
+    has_more = len(hits) == size_i
     return {
         "case_id": case_id,
         "total": total,
         "returned": len(hits),
-        "has_more": len(hits) < total,
-        "next_search_after": next_cursor if len(hits) < total else None,
+        "has_more": has_more,
+        "next_search_after": next_cursor if has_more else None,
         "took_ms": data.get("took"),
         "backend": "elasticsearch",
         "hits": hits,
@@ -405,6 +465,7 @@ def es_sample(
         sort=[{"ts": {"order": "asc", "missing": "_last", "unmapped_type": "date"}}, {"_doc": "asc"}],
     )
     hits = result.get("hits") or []
+    matched_total = int(result.get("total", 0) or 0)
     step = max(1, len(hits) // count) if hits else 1
     picked = hits[::step][:count] if hits else []
     return {
@@ -413,9 +474,13 @@ def es_sample(
         "field": field,
         "value": value,
         "backend": "elasticsearch",
-        "matched": result.get("total", 0),
+        "matched": matched_total,
         "sampled": len(picked),
         "spread_every": step,
+        # Honesty: for very large sets the spread is over the fetched window
+        # (ts-ascending), not the whole corpus.
+        "window_truncated": matched_total > len(hits),
+        "window_rows": len(hits),
         "hits": picked,
         "note": (
             "sample rows are context — findings still cite the audit trail "

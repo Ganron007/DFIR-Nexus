@@ -97,7 +97,9 @@ def test_index_mappings_grounded(backbone):
     r = tools["index_mappings"].fn()
     assert "error" not in r, r
     assert "hayabusa" in r["families"], r
-    assert r["dsl_fields"] == ["family", "host", "user", "event", "file"]
+    # 4k.6: the catalog surface is typed and complete, not the old 5 fields.
+    assert {"family", "host", "user", "event_id", "file"} <= set(r["dsl_fields"])
+    assert r.get("dsl_operators")
     # ES state is environment-dependent (operator ES may be up) — assert the
     # payload is self-consistent with whatever backend answered.
     assert isinstance(r["es_available"], bool)

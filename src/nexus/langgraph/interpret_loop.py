@@ -285,8 +285,8 @@ async def run_interpret_loop(
 ) -> dict[str, Any]:
     """Run the bounded interpretation loop; return messages + round log.
 
-    ``execute`` invokes one audited evidence tool (n4_query/n4_sample/
-    n4_aggregate) and returns the parsed tool dict — the caller wires it to
+    ``execute`` invokes one audited evidence tool (es_search/es_sample/
+    es_aggregate) and returns the parsed tool dict — the caller wires it to
     the same MCP tool bindings the examiner uses, so every row carries an
     audit_id the findings can cite (FD-001).
     """
@@ -465,13 +465,18 @@ async def run_interpret_loop(
             "queries": [
                 i for i in next_list
                 if isinstance(i, str)
-                or (isinstance(i, dict) and (i.get("dsl") or i.get("query")))
+                or (
+                    isinstance(i, dict)
+                    and (i.get("dsl") or i.get("query") or i.get("es")
+                         or i.get("aggs"))
+                )
             ],
             # One item goes to exactly ONE bucket: sample (by family) wins,
-            # otherwise aggregate (by field) — never both (double execution).
+            # otherwise aggregate (aggregation shape or field) — never both.
             "aggregations": [
                 i for i in next_list
-                if isinstance(i, dict) and i.get("field") and not i.get("family")
+                if isinstance(i, dict)
+                and (i.get("aggs") or i.get("field")) and not i.get("family")
             ],
             "samples": [
                 i for i in next_list

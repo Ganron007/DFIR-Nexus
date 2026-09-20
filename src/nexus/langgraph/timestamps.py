@@ -25,9 +25,9 @@ TIME_COLUMNS = (
 
 _ISO_RE = re.compile(
     r"(?P<y>\d{4})-(?P<m>\d{2})-(?P<d>\d{2})"
-    r"(?:[ T](?P<H>\d{2}):(?P<M>\d{2}):(?P<S>\d{2})"
+    r"(?:[ T](?P<H>\d{2}):(?P<M>\d{2})(?::(?P<S>\d{2}))?"
     r"(?:\.(?P<frac>\d{1,9}))?"
-    r"\s*(?P<tz>Z|[+-]\d{2}:?\d{2})?)?"
+    r"\s*(?P<tz>Z|[+-]\d{2}(?::?\d{2})?)?)?"
 )
 _US_RE = re.compile(
     r"\b(?P<m>\d{1,2})/(?P<d>\d{1,2})/(?P<y>\d{4})"
@@ -36,7 +36,8 @@ _US_RE = re.compile(
 )
 _SYSLOG_RE = re.compile(
     r"\b(?P<mon>Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+"
-    r"(?P<d>\d{1,2})\s+(?P<H>\d{2}):(?P<M>\d{2}):(?P<S>\d{2})\b"
+    r"(?P<d>\d{1,2})\s+(?P<H>\d{2}):(?P<M>\d{2}):(?P<S>\d{2})\b",
+    re.IGNORECASE,
 )
 _EPOCH_RE = re.compile(r"(?<![\d.])(\d{13}|\d{10})(?!\d)(?:\.\d+)?")
 _FILETIME_RE = re.compile(r"(?<!\d)(1\d{16,17})(?!\d)")
@@ -70,7 +71,7 @@ def _iso_from_match(m: re.Match[str]) -> tuple[datetime, str, bool] | None:
         else:
             dt = datetime(
                 int(m.group("y")), int(m.group("m")), int(m.group("d")),
-                int(m.group("H")), int(m.group("M")), int(m.group("S")),
+                int(m.group("H")), int(m.group("M")), int(m.group("S") or 0),
             )
     except ValueError:
         return None
@@ -80,17 +81,23 @@ def _iso_from_match(m: re.Match[str]) -> tuple[datetime, str, bool] | None:
         else:
             offset = tz.replace(":", "")
             sign = 1 if offset.startswith("+") else -1
-            dt = dt.replace(
-                tzinfo=UTC,
-            ) - timedelta(
-                hours=sign * int(offset[1:3]), minutes=sign * int(offset[3:5])
+            hours = int(offset[1:3])
+            minutes = int(offset[3:5]) if len(offset) > 3 else 0
+            dt = dt.replace(tzinfo=UTC) - timedelta(
+                hours=sign * hours, minutes=sign * minutes
             )
     else:
         # Policy: naive timestamps are UTC, flagged by the caller.
         dt = dt.replace(tzinfo=UTC)
     if not _plausible(dt):
         return None
-    return dt, _precision(frac), tz_assumed
+    if m.group("H") is None:
+        precision = "d"
+    elif m.group("S") is None:
+        precision = "m"
+    else:
+        precision = _precision(frac)
+    return dt, precision, tz_assumed
 
 
 def _parse_us(m: re.Match[str]) -> datetime | None:

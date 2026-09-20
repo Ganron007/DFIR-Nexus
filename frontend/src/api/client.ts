@@ -328,8 +328,8 @@ export interface Mode1FullRunResponse {
   needles_done?: number;
   needles_total?: number;
   needles_scanned: number;
-  needles_hit?: number;
   needles_hit_total?: number;
+  needles_hit?: number;
   needles_capped?: number;
   scan_truncated?: boolean;
   bookmarks_added: number;
@@ -751,7 +751,14 @@ export interface CaseDigestResponse {
     ledger: { ok: number; skip: number; fail: number; entries: unknown[] };
     hosts: string[];
     time_range: { start?: string; end?: string };
-    signal_map: { scanned: number; with_hits: { needle: string; hits: number }[]; zero_hit: string[] };
+    signal_map: {
+      scanned: number;
+      with_hits: { needle: string; hits: number }[];
+      zero_hit: string[];
+      /** Needles that were NOT scanned (dropped cap/truncation) — shown so
+       *  "scanned" can never be read as full coverage. */
+      unscanned?: string[];
+    };
     alerts: { level: string; family: string; title: string; host: string; time: string }[];
     entities: Record<string, { value: string; hits: number }[]>;
     entity_spans: Record<string, { value: string; count: number; first_seen?: string; last_seen?: string }[]>;

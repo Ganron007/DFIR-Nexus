@@ -2273,7 +2273,10 @@ async def api_explore_search(request):
 
     hits = _post_filter_hits(hits, family_filter, "")
     if family_filter:
-        total = len(hits)  # multi-family lists still post-filter (page-level)
+        # Multi-family lists are page-level post-filtered: the count is a
+        # lower bound, and the UI must say so (review fix).
+        total = len(hits)
+        result["count_lower_bound"] = True
 
     # WP 4d.1: parsed CSV fields + best-effort host per hit for type-aware UI.
     # The host re-check runs AFTER attach (raw hits may not carry `host`).
@@ -2283,6 +2286,9 @@ async def api_explore_search(request):
     return JSONResponse({
         'hits': hits[:limit],
         'count': total,
+        'count_exact': bool(result.get('count_exact')),
+        'count_lower_bound': bool(result.get('count_lower_bound')),
+        'capped_reasons': list(result.get('capped_reasons') or []),
         'total_before_family_filter': total,
         'backend': result.get('backend', ''),
         'families': _available_families(case_dir),
@@ -5320,7 +5326,13 @@ async def api_case_export(request):
     parsed = None
     if query_text:
         try:
-            parsed = parse_query(query_text)
+            from nexus.langgraph.field_catalog import case_field_catalog
+
+            _cat = case_field_catalog(case_dir)
+        except Exception:  # noqa: BLE001 — catalog is best-effort
+            _cat = None
+        try:
+            parsed = parse_query(query_text, catalog=_cat)
         except QuerySyntaxError as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
     intake = load_case_intake(case_dir)

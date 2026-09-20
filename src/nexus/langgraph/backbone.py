@@ -4,7 +4,8 @@ The LLM never gets raw endpoints or raw ES access: it binds a fixed
 **read-only allowlist** of the backbone tools and nothing else. Binding is
 the enforcement point — the allowlist is structural, not advisory:
 
-  evidence : n4_query, n4_sample, n4_aggregate, index_mappings, family_fields
+  evidence : es_fields, es_search, es_aggregate, es_sample, index_mappings,
+             family_fields
   knowledge: kb_search, kb_read, kb_cite
 
 Mutating tools (approve, case_delete, evidence_register, ...) are NOT in
@@ -15,6 +16,7 @@ path and the MCP path cannot drift; every call is audit-logged.
 """
 from __future__ import annotations
 
+import contextlib
 import logging
 from pathlib import Path
 from typing import Any
@@ -55,7 +57,6 @@ MODE3_TOOL_ALLOWLIST: dict[str, str] = dict(MODE2_TOOL_ALLOWLIST)
 
 def tool_contracts_block(mode: int = 2) -> str:
     """Prompt block: the backbone tools the LLM may call + their contracts."""
-    allow = MODE2_TOOL_ALLOWLIST if mode <= 2 else MODE3_TOOL_ALLOWLIST
     lines = [
         "You investigate through these TOOLS only (read-only; you cannot mutate case state):",
         "- es_fields(case_id) — full field catalog: families, typed core fields, every parsed column. Call once per case before querying.",
@@ -68,9 +69,6 @@ def tool_contracts_block(mode: int = 2) -> str:
         "- ti_lookup(value) / ti_fanout(value) / ti_list_providers() — threat-intel context, never evidence.",
         "- web_status() / web_search(query) / web_fetch(url) — examiner-opt-in external context, never evidence.",
     ]
-    extra = [t for t in allow if t not in MODE2_TOOL_ALLOWLIST]
-    for t in extra:
-        lines.append(f"- {t}")
     return "\n".join(lines)
 
 
@@ -89,6 +87,17 @@ def _es_call(name: str, audit: AuditWriter | None = None, **kwargs: Any) -> dict
     try:
         result = fn(str(Path(case_dir).name), **kwargs)
     except es_native.ESQueryError as exc:
+        if audit is not None:
+            with contextlib.suppress(Exception):
+                audit.log(
+                    tool=name,
+                    params={"case_id": Path(case_dir).name,
+                            **{k: v for k, v in kwargs.items()
+                               if k in ("query", "aggs", "size", "family",
+                                        "field", "value")}},
+                    result_summary={"error": str(exc)[:300]},
+                    elapsed_ms=round((_time.monotonic() - started) * 1000, 1),
+                )
         return {"error": str(exc), "case_id": Path(case_dir).name}
     aid = None
     if audit is not None:
