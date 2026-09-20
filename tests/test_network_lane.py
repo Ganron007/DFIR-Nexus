@@ -92,9 +92,11 @@ def test_discover_network_inputs(tmp_path):
     assert found["nfcapd"] == [str(nf)]
 
 
-def test_plan_network_triage_jobs_and_honest_skip(tmp_path):
+def test_plan_network_triage_default_toolset_and_honest_skip(tmp_path, monkeypatch):
     from nexus.langgraph.network_lane import plan_network_triage
 
+    monkeypatch.delenv("NEXUS_SIFT_ZEEK", raising=False)
+    monkeypatch.delenv("NEXUS_SIFT_SURICATA", raising=False)
     root = tmp_path / "sift-evidence"
     inside = root / "captures" / "cap.pcap"
     inside.parent.mkdir(parents=True)
@@ -105,19 +107,39 @@ def test_plan_network_triage_jobs_and_honest_skip(tmp_path):
     jobs = plan_network_triage(
         [str(inside), str(outside)], [], str(root), has_sift_mcp=True,
     )
-    tools = [j.tool for j in jobs]
-    assert "zeek" in tools and "suricata" in tools
-    skips = [j for j in jobs if j.status == "SKIP"]
-    assert len(skips) == 1 and "SIFT evidence root" in skips[0].reason
-
+    # SIFT default toolset: zeek/suricata are not installed there — SKIP, no FAIL.
     zeek = next(j for j in jobs if j.tool == "zeek")
-    assert zeek.argv[0] == "zeek" and zeek.argv[1] == "-Cr"
+    suricata = next(j for j in jobs if j.tool == "suricata")
+    assert zeek.status == "SKIP" and "default toolset" in zeek.reason
+    assert suricata.status == "SKIP" and "default toolset" in suricata.reason
+    skips = [j for j in jobs if j.status == "SKIP"]
+    assert len(skips) == 3  # outside-root + zeek + suricata
+    assert any("SIFT evidence root" in j.reason for j in skips)
+    assert not [j for j in jobs if j.status == "PENDING"]
+
+
+def test_plan_network_triage_app_tools_are_optin(tmp_path, monkeypatch):
+    from nexus.langgraph.network_lane import plan_network_triage
+
+    monkeypatch.setenv("NEXUS_SIFT_ZEEK", "1")
+    monkeypatch.setenv("NEXUS_SIFT_SURICATA", "1")
+    root = tmp_path / "sift-evidence"
+    inside = root / "captures" / "cap.pcap"
+    inside.parent.mkdir(parents=True)
+    inside.write_bytes(b"\xd4\xc3\xb2\xa1" + b"\x00" * 40)
+
+    jobs = plan_network_triage([str(inside)], [], str(root), has_sift_mcp=True)
+    zeek = next(j for j in jobs if j.tool == "zeek")
+    assert zeek.status == "PENDING" and zeek.argv[0] == "zeek" and zeek.argv[1] == "-Cr"
     assert any(a.startswith("Log::default_logdir=") for a in zeek.argv)
+    assert any(j.tool == "suricata" and j.status == "PENDING" for j in jobs)
+    assert not [j for j in jobs if j.status == "SKIP"]
 
 
-def test_sift_jobs_for_lane_includes_network(tmp_path):
+def test_sift_jobs_for_lane_includes_network(tmp_path, monkeypatch):
     from nexus.langgraph.tool_lane import sift_jobs_for_lane
 
+    monkeypatch.setenv("NEXUS_SIFT_SURICATA", "1")
     root = tmp_path / "sift-root"
     root.mkdir()
     pcap = root / "cap.pcap"
@@ -126,7 +148,7 @@ def test_sift_jobs_for_lane_includes_network(tmp_path):
         str(root), has_sift_mcp=True,
         network_inputs={"pcap": [str(pcap)], "nfcapd": []},
     )
-    assert any(j.tool == "suricata" for j in jobs)
+    assert any(j.tool == "suricata" and j.status == "PENDING" for j in jobs)
 
 
 def test_flow_projection_writes_sessions(tmp_path, monkeypatch):

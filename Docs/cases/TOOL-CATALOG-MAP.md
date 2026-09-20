@@ -94,13 +94,13 @@ Loaded by `src/nexus/tools/sift.py` from YAML. Every `name` is allowed through `
 | Catalog name | File | Knowledge card | Lane |
 |--------------|------|----------------|------|
 | AmcacheParser, PECmd, AppCompatCacheParser, RECmd, MFTECmd, EvtxECmd, JLECmd, LECmd, SBECmd, RBCmd, SrumECmd, SQLECmd, **WxTCmd**, bstrings | `catalog/zimmerman.yaml` (14) | matching `tools/zimmerman/*.yaml` | Same as Windows **mandatory** when the Windows share is the triage root. SIFT copies of EZ tools are an alternate host, not a second lane. |
-| hayabusa | `catalog/timeline.yaml` | `tools/timeline/hayabusa.yaml` | **mandatory** on Windows MCP for EVTX; SIFT hayabusa is extra if Windows already ran it |
+| hayabusa | `catalog/timeline.yaml` | `tools/timeline/hayabusa.yaml` | **mandatory** on Windows MCP for EVTX; **not shipped on SIFT** (default toolset — nothing is provisioned) |
 | mactime | `catalog/timeline.yaml` | `tools/timeline/mactime.yaml` | **mandatory** after MFTECmd bodyfile is pushed |
-| log2timeline, psort | `catalog/timeline.yaml` | `tools/timeline/plaso.yaml`, `psort.yaml` | **opt-in** `NEXUS_SIFT_PLASO=1` only (not scheduled otherwise — no SKIP row) |
+| log2timeline.py, psort.py | `catalog/timeline.yaml` | `tools/timeline/plaso.yaml`, `psort.yaml` | **opt-in** `NEXUS_SIFT_PLASO=1` only (not scheduled otherwise — no SKIP row; argv uses the SIFT `.py` names) |
 | vol3 (`binary: vol`) | `catalog/volatility.yaml` | `tools/volatility/volatility3.yaml` | **mandatory** if `NEXUS_SIFT_MEMORY_FILE` or `{root}/memory/*.raw` |
 | fls | `catalog/sleuthkit.yaml` | `tools/sleuthkit/fls.yaml` | **opt-in** `NEXUS_SIFT_E01` |
 | icat, mmls, blkls | `catalog/sleuthkit.yaml` | matching `tools/sleuthkit/*.yaml` | **on-demand** |
-| tshark, zeek | `catalog/network.yaml` | `tools/network/*.yaml` | **on-demand** (PCAP present) |
+| tshark, nfdump, tcpflow | `catalog/network.yaml` | `tools/network/*.yaml` | **on-demand** (PCAP/NetFlow present; SIFT defaults). Zeek/Suricata are **not** SIFT defaults → lane opt-in only (`NEXUS_SIFT_ZEEK`/`NEXUS_SIFT_SURICATA`), otherwise an honest SKIP row — never a guaranteed FAIL |
 | yara, strings, ssdeep, binwalk | `catalog/malware.yaml` | yara/strings/ssdeep cards; **binwalk has no card** (catalog-only) | **on-demand** |
 | bulk_extractor, **bmc-tools** | `catalog/file_analysis.yaml` | matching cards | bulk_extractor on-demand; bmc-tools also in the Windows lane |
 | exiftool, regripper, hashdeep, 7z | `catalog/misc.yaml` | matching knowledge cards | **on-demand** (RegRipper aliases to RECmd for Windows hive completeness) |
@@ -116,7 +116,7 @@ These are **catalog-on-demand**. No per-tool knowledge cards (they are not artif
 
 **SIFT gap closed this pass:** WxTCmd was on Windows + knowledge but missing from `catalog/zimmerman.yaml`. It is now cataloged on SIFT too.
 
-**SIFT parity probe (2026-09-20, read-only):** 21/22 catalog tools present (`log2timeline`/`psort` ship as `.py` — lane argv fixed accordingly). Pending SIFT installs (**mandatory next action — every SIFT tool and every SIFT output is a first-class evidence source**): `zeek` (official Zeek repo; no apt candidate), `suricata` (apt `1:7.0.3`), `hayabusa` (Yamato Linux x64), `pecmd` (Zimmerman via mono/.NET). No SIFT tool or output is optional.
+**SIFT parity probe (2026-09-20, read-only):** 21/22 catalog names present (`log2timeline`/`psort` ship as `.py` — lane argv fixed accordingly). **Policy: SIFT uses its default toolset — nothing is installed or copied onto the SIFT host** (a PECmd/SrumECmd copy attempt was reverted). `hayabusa`/`pecmd` are Windows-lane tools and are not shipped on SIFT; `zeek`/`suricata` are not SIFT defaults → lane opt-in only (`NEXUS_SIFT_ZEEK`/`NEXUS_SIFT_SURICATA`) with honest SKIP rows, never a guaranteed FAIL. Every SIFT default output is a first-class mapping source.
 
 ---
 

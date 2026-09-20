@@ -1,7 +1,9 @@
-"""EH-14b network lane — Zeek / Suricata / nfdump jobs + local session guarantee.
+"""EH-14b network lane — SIFT defaults / nfdump jobs + local session guarantee.
 
 Product rule: every PCAP must yield *something* iterable. The lane:
-1. runs the app-layer parsers when the host has them (``zeek``, ``suricata``),
+1. runs app-layer parsers **only when the host actually has them** — on SIFT that
+   means the default toolset (``nfdump``; Zeek/Suricata are opt-in and never
+   assumed, since nothing is installed or copied onto the SIFT workstation),
 2. always projects L3/L4 **flows** with tshark as the session guarantee
    (works on any host with Wireshark — including Windows examiners),
 3. schedules the same jobs on the SIFT host when the capture lives under the
@@ -13,6 +15,7 @@ Planning is pure (testable); execution happens through the existing tool lane
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 from pathlib import Path
 
@@ -51,8 +54,11 @@ def plan_network_triage(
 ) -> list:
     """SIFT-host jobs for captures visible under ``remote_root`` (EH-14b).
 
-    Order is app-layer first (Zeek → Suricata) then flows (nfdump); every
-    capture under the root gets a job or an honest SKIP row — never silence.
+    **SIFT default toolset only** — nothing is installed or copied onto the
+    SIFT host. ``nfdump`` ships with SIFT and runs for NetFlow; Zeek/Suricata do
+    not, so they are opt-in (``NEXUS_SIFT_ZEEK=1`` / ``NEXUS_SIFT_SURICATA=1``)
+    and otherwise produce one honest SKIP row (never a guaranteed FAIL).
+    Captures outside the SIFT root get a SKIP row. Never silence.
     """
     from nexus.langgraph.tool_lane import ToolJob
 
@@ -60,6 +66,9 @@ def plan_network_triage(
     root = (remote_root or "").strip().rstrip("/")
     if not has_sift_mcp:
         return jobs
+
+    zeek_on = os.environ.get("NEXUS_SIFT_ZEEK", "").strip().lower() in ("1", "true", "yes")
+    suricata_on = os.environ.get("NEXUS_SIFT_SURICATA", "").strip().lower() in ("1", "true", "yes")
 
     def _remote(p: str) -> str | None:
         if not root:
@@ -70,6 +79,7 @@ def plan_network_triage(
             return s
         return None
 
+    pcap_under_root = False
     for p in pcap_paths:
         rp = _remote(p)
         stem = Path(p).stem
@@ -85,19 +95,42 @@ def plan_network_triage(
                 ),
             ))
             continue
+        pcap_under_root = True
+        if zeek_on:
+            jobs.append(ToolJob(
+                host="sift", tool="zeek",
+                argv=["zeek", "-Cr", rp, "local",
+                      f"Log::default_logdir={out_dir}/zeek"],
+                purpose=f"Zeek conn/dns/http/ssl/files logs ({Path(p).name})",
+                timeout=1800,
+            ))
+        if suricata_on:
+            jobs.append(ToolJob(
+                host="sift", tool="suricata",
+                argv=["suricata", "-r", rp, "-l", f"{out_dir}/suricata",
+                      "--set", "outputs.1.eve-log.enabled=yes"],
+                purpose=f"Suricata eve.json alerts/flows ({Path(p).name})",
+                timeout=1800,
+            ))
+    if pcap_under_root and not zeek_on:
         jobs.append(ToolJob(
-            host="sift", tool="zeek",
-            argv=["zeek", "-Cr", rp, "local",
-                  f"Log::default_logdir={out_dir}/zeek"],
-            purpose=f"Zeek conn/dns/http/ssl/files logs ({Path(p).name})",
-            timeout=1800,
+            host="sift", tool="zeek", argv=[],
+            purpose="Zeek app-layer logs",
+            status="SKIP",
+            reason=(
+                "not in the SIFT default toolset (nothing is installed or copied "
+                "onto SIFT); set NEXUS_SIFT_ZEEK=1 only if one is maintained there"
+            ),
         ))
+    if pcap_under_root and not suricata_on:
         jobs.append(ToolJob(
-            host="sift", tool="suricata",
-            argv=["suricata", "-r", rp, "-l", f"{out_dir}/suricata",
-                  "--set", "outputs.1.eve-log.enabled=yes"],
-            purpose=f"Suricata eve.json alerts/flows ({Path(p).name})",
-            timeout=1800,
+            host="sift", tool="suricata", argv=[],
+            purpose="Suricata eve.json alerts/flows",
+            status="SKIP",
+            reason=(
+                "not in the SIFT default toolset (nothing is installed or copied "
+                "onto SIFT); set NEXUS_SIFT_SURICATA=1 only if one is maintained there"
+            ),
         ))
     for p in nfcapd_paths:
         rp = _remote(p)
