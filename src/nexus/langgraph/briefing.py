@@ -23,6 +23,10 @@ log = logging.getLogger(__name__)
 # but still capped — a briefing is a map, not the whole dataset.
 _BRIEFING_SCAN_TERMS_CAP = 300
 _ENTITY_TOP_N = 8
+# Host filesystem paths are CONTENT (paths inside the parsed artifacts), not
+# "top entities" and not evidence files — Mode 1 shows a labelled summary of
+# them instead of dumping system paths into the entity list.
+_ENTITY_CONTENT_PATH_TYPES = frozenset({"windows_path", "posix_path"})
 _ALERT_LEVELS = {"critical", "high"}
 _ALERT_FAMILY_HINTS = (
     "hayabusa", "zircolite", "deepblue", "sigma",
@@ -437,6 +441,15 @@ def _index_census(case_dir: Path) -> dict[str, Any]:
         return {}
 
 
+def _entity_source_file(ent: dict[str, Any]) -> str:
+    """Case-relative evidence file where the entity was first seen."""
+    for hit in ent.get("hits") or []:
+        rel = str(hit.get("file") or "").strip()
+        if rel:
+            return rel
+    return ""
+
+
 def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
     """Deterministic case briefing.
 
@@ -568,19 +581,35 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         log.debug("alert interpretation failed: %s", exc)
 
-    # --- entity top-N ---
+    # --- entity top-N (content host paths are summarized, not listed) ---
     raw_entities = extract_entities(hits)
     entities: dict[str, list[dict[str, Any]]] = {}
+    path_entities: list[dict[str, Any]] = []
     for etype, elist in raw_entities.items():
+        if etype in _ENTITY_CONTENT_PATH_TYPES:
+            path_entities.extend(elist)
+            continue
         ranked = sorted(elist, key=lambda e: (-len(e.get("families") or []), -len(e.get("hits") or [])))
         entities[etype] = [
             {
                 "value": e["value"],
                 "hits": len(e.get("hits") or []),
                 "families": e.get("families") or [],
+                # Provenance: the case-relative evidence file the entity was
+                # found in — an entity must stick to its evidence, not float.
+                "source_file": _entity_source_file(e),
+                "source_family": (e.get("families") or [""])[0],
             }
             for e in ranked[:_ENTITY_TOP_N]
         ]
+    paths_summary: dict[str, Any] = {"distinct": 0, "families": [], "examples": []}
+    if path_entities:
+        ranked_paths = sorted(path_entities, key=lambda e: -len(e.get("hits") or []))
+        paths_summary = {
+            "distinct": len(path_entities),
+            "families": sorted({f for e in path_entities for f in (e.get("families") or [])}),
+            "examples": [str(e.get("value") or "") for e in ranked_paths[:3]],
+        }
 
     # --- hosts + time range ---
     hosts = sorted({str(h.get("host") or "") for h in hits if h.get("host")})
@@ -691,6 +720,7 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
         "needle_scan": needle_scan[:80],
         "scanned_needles": len(terms),
         "entities": entities,
+        "paths_summary": paths_summary,
         "intake": intake,
         "walkthrough": walkthrough,
         "backend": backend,
@@ -863,8 +893,21 @@ def briefing_to_markdown(brief: dict[str, Any]) -> str:
     if ent:
         lines.append("\n## Top entities")
         for etype, elist in sorted(ent.items()):
-            vals = ", ".join(e["value"] for e in elist[:_ENTITY_TOP_N])
+            vals = ", ".join(
+                e["value"]
+                + (f" ({e['source_file']})" if e.get("source_file") else "")
+                for e in elist[:_ENTITY_TOP_N]
+            )
             lines.append(f"- **{etype}**: {vals}")
+    paths = brief.get("paths_summary") or {}
+    if paths.get("distinct"):
+        fams = ", ".join(paths.get("families") or []) or "the case"
+        examples = ", ".join(paths.get("examples") or [])
+        lines.append(
+            f"- **host filesystem paths** (content, NOT evidence files): "
+            f"{paths['distinct']} distinct across {fams}"
+            + (f" — e.g. {examples}" if examples else "")
+        )
     intake = brief.get("intake") or {}
     if intake:
         lines.append("\n## Intake")

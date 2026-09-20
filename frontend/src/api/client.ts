@@ -628,6 +628,9 @@ export interface BriefingEntity {
   value: string;
   hits: number;
   families?: string[];
+  /** Case-relative evidence file the entity was found in (provenance). */
+  source_file?: string;
+  source_family?: string;
 }
 export interface BriefingDirection {
   title: string;
@@ -668,6 +671,9 @@ export interface BriefingResponse {
   needle_scan: BriefingNeedle[];
   scanned_needles: number;
   entities: Record<string, BriefingEntity[]>;
+  /** Host filesystem paths inside evidence content (NOT evidence files) —
+   *  summarized instead of listed as top entities. */
+  paths_summary?: { distinct: number; families: string[]; examples: string[] };
   intake: Record<string, string>;
   directions?: BriefingDirection[];
   walkthrough?: BriefingWalkthroughStep[];

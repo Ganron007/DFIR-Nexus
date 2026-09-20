@@ -435,3 +435,30 @@ def test_briefing_scan_truncated_is_real(tmp_path, monkeypatch):
     assert brief["scan_stats"]["truncated_reasons"]
     md = bmod.briefing_to_markdown(brief)
     assert "LOWER BOUNDS" in md
+
+def test_top_entities_exclude_host_content_paths(tmp_path):
+    """windows_path/posix_path are paths INSIDE artifacts (host filesystem
+    content), not top entities and not evidence files — Mode 1 shows a
+    labelled summary instead, and real entities carry their evidence file."""
+    from nexus.langgraph.briefing import case_briefing
+
+    case = _mkcase(tmp_path)
+    ext = case / "extractions"
+    (ext / "mft.csv").write_text(
+        "TimeCreated,Path,Computer\n"
+        "2026-08-10 14:35:00,C:\\Windows\\System32\\lsass.exe,WS01\n",
+        encoding="utf-8",
+    )
+    b = case_briefing(case)
+    assert "windows_path" not in b["entities"], (
+        "host filesystem paths must not be listed as top entities"
+    )
+    assert "posix_path" not in b["entities"]
+    summary = b["paths_summary"]
+    assert summary["distinct"] >= 1
+    assert any("lsass" in ex.lower() for ex in summary["examples"])
+    assert summary["families"]
+    # Real entities carry provenance: the evidence file they came from.
+    proc = b["entities"].get("process_name") or []
+    assert proc, "lsass.exe must still be a process_name entity"
+    assert any(e.get("source_file") for e in proc)

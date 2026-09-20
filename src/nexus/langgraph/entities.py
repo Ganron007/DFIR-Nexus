@@ -48,9 +48,9 @@ _FIELD_ENTITY_MAP: dict[str, str] = {
     "process_name": "process_name",
     "processname": "process_name",
     "executable": "process_name",
-    "commandline": "windows_path",
-    "command_line": "windows_path",
-    "command": "windows_path",
+    # NOTE: commandline/command fields are NOT paths — they are command
+    # lines that may contain paths. The text patterns below extract genuine
+    # paths from them without mislabelling whole command lines as entities.
     "file_path": "windows_path",
     "filepath": "windows_path",
     "path": "windows_path",

@@ -1014,7 +1014,7 @@ export default function Briefing() {
                         key={e.value}
                         className="btn btn-sm clickable-tint"
                         style={{ fontFamily: "monospace", fontSize: 10, padding: "1px 6px" }}
-                        title={`${e.hits} hits across ${(e.families || []).join(", ")}`}
+                        title={`${e.hits} hits across ${(e.families || []).join(", ")}${e.source_file ? ` — e.g. ${e.source_file}` : ""}`}
                         onClick={() => searchNeedle(e.value)}
                       >
                         {e.value}
@@ -1023,6 +1023,19 @@ export default function Briefing() {
                   </div>
                 </div>
               ))}
+              {brief.paths_summary && brief.paths_summary.distinct > 0 && (
+                <div style={{ marginTop: 8, fontSize: 10, color: "var(--text-muted)" }}>
+                  Host filesystem paths inside evidence content:{" "}
+                  <strong>{brief.paths_summary.distinct}</strong> distinct
+                  {brief.paths_summary.families?.length
+                    ? ` (${brief.paths_summary.families.join(", ")})`
+                    : ""}{" "}
+                  — content paths, not evidence files.
+                  {brief.paths_summary.examples?.length
+                    ? ` e.g. ${brief.paths_summary.examples.join(", ")}`
+                    : ""}
+                </div>
+              )}
             </div>
           )}
         </div>
