@@ -162,7 +162,13 @@ def test_every_allowlisted_tool_has_a_binding(backbone):
 
     _tools, cid = backbone
     minimal = {
+        "es_fields": {"case_id": cid},
+        "es_search": {"case_id": cid, "query": {"match_all": {}}, "size": 2},
+        "es_aggregate": {"case_id": cid,
+                         "aggs": {"v": {"terms": {"field": "host"}}}},
+        "es_sample": {"case_id": cid, "family": "hayabusa", "n": 2},
         "n4_query": {"case_id": cid, "dsl": "sdelete", "limit": 3},
+        "n4_sample": {"case_id": cid, "n": 2},
         "n4_aggregate": {"case_id": cid, "dsl": "", "field": "host", "match_all": True},
         "index_mappings": {"case_id": cid},
         "family_fields": {"family": "hayabusa"},

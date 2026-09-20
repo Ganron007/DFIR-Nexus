@@ -338,11 +338,12 @@ def test_n4_sample_envelope_fields_and_event_alias(monkeypatch, tmp_path):
     assert by_user["matched"] == 1  # presence filter
 
 
-def test_backbone_allowlist_has_n4_sample():
+def test_backbone_allowlist_has_es_sample():
+    """4k.5.5: the Mode 2/3 sample tool is the ES-native one."""
     from nexus.langgraph.backbone import MODE2_TOOL_ALLOWLIST, tool_contracts_block
 
-    assert MODE2_TOOL_ALLOWLIST.get("n4_sample") == "evidence"
-    assert "n4_sample" in tool_contracts_block(2)
+    assert MODE2_TOOL_ALLOWLIST.get("es_sample") == "evidence"
+    assert "es_sample" in tool_contracts_block(2)
 
 
 def test_backbone_call_binding_exists():
