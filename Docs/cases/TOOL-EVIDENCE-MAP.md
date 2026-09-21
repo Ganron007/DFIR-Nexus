@@ -136,48 +136,49 @@ additionally mounted: `H:\` (KAPE triage volume) and `E:\Evidence_files\500`
 | TI samples | `07-ti/**` (abuseipdb, MB, MISP, OTX, URLhaus, VT) | `ti_lookup` / `ti_fanout` | — |
 | Sigma rules | `10-sigma/rules` (4 252) | detection indexer | Zircolite bundled ruleset |
 
-### 500 KAPE triage image (`H:\`) + case bundle (`E:\Evidence_files\500`) — closes most gaps
+### Case 500 evidence mounts (`H:\` + `E:\Evidence_files\500`) — what maps where
 
-Mounted read-only 2026-09-20 (listing only). `H:\` = KAPE triage volume
-(`Rocba_Triage`) → reconstructed drive under `H:\C`; `E:\Evidence_files\500` is
-the FOR500 source bundle.
+Read-only listings only (no tools run), 2026-09-20. `H:\` was mounted twice with
+different sources during the session — the family map below is per source.
 
-| Newly available family | Path |
-|---|---|
-| `$MFT`, `$LogFile`, `$Boot`, `$Secure_$SDS` | `H:\C\{$MFT,$LogFile,$Boot,$Secure_$SDS}` |
-| USN `$J` (raw) | `H:\C\$Extend\$J` |
-| `$I30` (7 extracted files) | `H:\C\Users\fredr\Google Drive\...\$I30` |
-| thumbcache `*.db` (15) | `H:\C\Users\fredr\AppData\Local\Microsoft\Windows\Explorer\` |
-| `ActivitiesCache.db` (3) | `H:\C\Users\fredr\AppData\Local\ConnectedDevicesPlatform\*\` |
-| Firefox `places.sqlite` | `H:\C\Users\fredr\AppData\Roaming\Mozilla\Firefox\Profiles\*\` |
-| RDP bitmap cache | `H:\C\Users\fredr\AppData\Local\Microsoft\Terminal Server Client\Cache\Cache000{0,1}.bin` |
-| `setupapi.dev.log` (2) | `H:\C\Windows\inf\` + `H:\C\Windows.old\Windows\inf\` |
-| PSReadLine history | `H:\C\Users\srl-h\...\PowerShell\PSReadline\ConsoleHost_history.txt` |
-| Windows full-disk image | `E:\Evidence_files\500\C-Drive\rocba-cdrive.e01` (22 GB) + `.diff` |
-| Full raw memory | `E:\Evidence_files\500\Rocba-Memory.raw` (17.7 GB) |
-| Raw host set (re-validation) | EVTX 339, prefetch 346, SRUM, Amcache, `UsrClass.dat` ×2, jump lists 50, `$Recycle` 19, registry tree, `Windows.old` |
-
-Profiles present: `Default`, `fredr`, `srl-h`, `Public`.
-
-### Still missing (no sample in this pack or the 500 image)
-
-| Family | Consuming tool | Note |
+| Mount | Source | Exposes |
 |---|---|---|
-| BITS `qmgr.db` / `qmgr*.dat` | BitsParser | KAPE triage does not include `ProgramData\Microsoft\Network\Downloader` |
-| UAL SUM `*.mdb` | KStrike | Server-only feature; not applicable to this Win10 client case (keep for Server packs) |
-| `iconcache_*.db` | thumbcache_viewer_cmd | thumbcache found; iconcache not |
-| `hiberfil.sys` / `pagefile.sys` | on-demand | KAPE triage skips them |
-| VSS snapshots | vshadowinfo/mount | `H:\System Volume Information` present but empty/inaccessible |
-| Sysdig/Falco runtime | sysdig lane | `04-network/sysdig/` empty; fixture only |
-| Security Onion alerts | ingest | dir empty; fixture only |
-| Socrates alerts | ingest | dir empty; fixture only |
-| CyberTriage export | ingest | dir empty; fixture only |
-| macOS full collection | plaso | only `maclogs.7z` |
+| `H:\` (triage volume) | `Rocba-Triage.vhdx` (KAPE output) → `H:\C` | `$MFT`, `$LogFile`, `$Boot`, `$Secure_$SDS`, `$Extend\$J`, `$I30` (7), thumbcache (15), `ActivitiesCache.db` (3), Firefox `places.sqlite`, RDP cache `Cache000{0,1}.bin`, `setupapi.dev.log` (2), PSReadLine history, raw host set (EVTX 339, prefetch 346, SRUM, Amcache, `UsrClass.dat` ×2, jump lists 50, `$Recycle` 19, registry, `Windows.old`) |
+| `H:\` (EnCase E01, current mount) | `E:\Evidence_files\500\C-Drive\rocba-cdrive.e01` (+ FTK `.diff`) | Full live C: — registry `config\`, WMI `OBJECTS.DATA`, Tasks, EVTX (213), `$MFT`, **hiberfil.sys / pagefile.sys / swapfile.sys / DumpStack.log.tmp**, `ProgramData` BITS/Defender/WER, `System Volume Information`, Users (fredr, srl-h, Public). **Original NTFS ACLs are enforced by the mount** — most user/System paths deny a non-elevated shell |
+| `E:\Evidence_files\500` | case bundle | `rocba-cdrive.e01` (22 GB) + `.diff`, `Rocba-Memory.raw` (17.7 GB), `Rocba-Triage.vhdx` (6.6 GB), Exercise outputs |
 
-**T3 consequence:** W1 + most of W2 can now be validated against raw parity data
-(`$LogFile`, `$J`, `$I30`, thumbcache, ActivitiesCache, Firefox, RDP cache,
-setupapi, PSReadLine) plus the full E01 / raw memory on `E:`; the remaining rows
-stay `validated: false` (docs-derived) until samples are staged.
+**E01-present but ACL-gated** (denied to the non-elevated shell — content exists):
+`ProgramData\Microsoft\Network\Downloader` (BITS), `Windows Defender\Quarantine`,
+`WER\ReportArchive`, `System Volume Information` (possible VSS),
+`Windows\Prefetch`, per-user `NTUSER.DAT`, `Recent`, RDP `Cache`,
+`ConnectedDevicesPlatform`, Firefox `Profiles`, PSReadLine, `Windows\Explorer`
+(iconcache/thumbcache). Read them via an elevated shell or SIFT `fls/icat`
+(`NEXUS_SIFT_E01`). `Windows\System32\LogFiles\SUM` does not exist (client OS).
+`$LogFile` / `$J` / `$Boot` are not exposed by the E01 mount — take them from the
+triage volume (or SIFT `fls/icat`).
+
+### Pending evidence (not accessible yet — mapped to a source/action)
+
+| Family | Consuming tool | Source | Action |
+|---|---|---|---|
+| BITS `qmgr*` | BitsParser | E01: `ProgramData\Microsoft\Network\Downloader` | elevated read, or SIFT `fls`/`icat` |
+| Defender quarantine | maldump / ingest | E01: `...\Windows Defender\Quarantine` | elevated read, or SIFT `fls`/`icat` |
+| WER reports | strings / YARA | E01: `...\WER\ReportArchive` | elevated read, or SIFT `fls`/`icat` |
+| VSS snapshots | vshadowinfo / mount | E01: `System Volume Information` | elevated read; confirm store exists |
+| `iconcache_*.db` | thumbcache_viewer_cmd | E01: `Windows\Explorer` | elevated read (thumbcache copies already on triage volume) |
+| `$LogFile` / `$J` / `$Boot` | LogFileParser / MFTECmd | **not on E01 mount** | remount triage VHDX, or SIFT `fls`/`icat` from E01 |
+| UAL SUM `*.mdb` | KStrike | — | Server-only; n/a for this Win10 client |
+| Sysdig/Falco runtime | sysdig lane | not present anywhere | needs a runtime capture |
+| Security Onion alerts | ingest | fixture only (`_fixtures`) | needs an SO export |
+| Socrates alerts | ingest | fixture only (`_fixtures`) | needs a Socrates export |
+| CyberTriage export | ingest | fixture only (`_fixtures`) | needs a CT export |
+| macOS full collection | plaso | `maclogs.7z` only | needs a full mac collection |
+
+**T3 consequence:** with the E01 mounted, every Windows host family the lane
+needs is either readable (hiberfil/pagefile/swapfile, registry, WMI, Tasks, EVTX,
+`$MFT`) or present-but-ACL-gated (BITS, Defender, WER, VSS, iconcache, per-user
+hives) pending an elevated read or the SIFT E01 path. The non-Windows ingest
+families above remain true collection gaps.
 
 ## Interpret and report (what actually runs)
 
