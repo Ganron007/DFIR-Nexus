@@ -149,11 +149,12 @@ once — do not mix them up:
 
 **E01-present but ACL-gated on `H:\`** (denied to the non-elevated shell — content
 exists): `ProgramData\Microsoft\Network\Downloader` (BITS),
-`Windows Defender\Quarantine`, `WER\ReportArchive`, `System Volume Information`
+`Windows Defender\Quarantine`, `System Volume Information`
 (possible VSS), `Windows\Prefetch`, per-user `NTUSER.DAT`, `Recent`, RDP `Cache`,
 `ConnectedDevicesPlatform`, Firefox `Profiles`, PSReadLine, `Windows\Explorer`
 (iconcache/thumbcache). Read them via an elevated shell or SIFT `fls/icat`
-(`NEXUS_SIFT_E01`). `Windows\System32\LogFiles\SUM` does not exist (client OS).
+(`NEXUS_SIFT_E01`). `WER\ReportArchive` **is readable** on `H:\` (8 crash/kernel reports — WER no longer pending).
+`Windows\System32\LogFiles\SUM` does not exist (client OS).
 `$LogFile` / `$J` / `$Boot` are **not** exposed by the E01 mount — use `I:\C\...`.
 
 ### Pending evidence (not accessible yet — mapped to a source/action)
@@ -162,9 +163,8 @@ exists): `ProgramData\Microsoft\Network\Downloader` (BITS),
 |---|---|---|---|
 | BITS `qmgr*` | BitsParser | `H:\` E01: `ProgramData\Microsoft\Network\Downloader` | elevated read, or SIFT `fls`/`icat` |
 | Defender quarantine | maldump / ingest | `H:\` E01: `...\Windows Defender\Quarantine` | elevated read, or SIFT `fls`/`icat` |
-| WER reports | strings / YARA | `H:\` E01: `...\WER\ReportArchive` | elevated read, or SIFT `fls`/`icat` |
 | VSS snapshots | vshadowinfo / mount | `H:\` E01: `System Volume Information` | elevated read; confirm store exists |
-| `iconcache_*.db` | thumbcache_viewer_cmd | `H:\` E01: `Windows\Explorer` | elevated read (thumbcache copies already on `I:\`) |
+| `iconcache_*.db` | thumbcache_viewer_cmd | `H:\` E01: `Windows\Explorer` (denied); `I:\` has thumbcache only | elevated read, or SIFT `fls`/`icat` |
 | UAL SUM `*.mdb` | KStrike | — | Server-only; n/a for this Win10 client |
 | Sysdig/Falco runtime | sysdig lane | not present anywhere | needs a runtime capture |
 | Security Onion alerts | ingest | fixture only (`_fixtures`) | needs an SO export |
@@ -174,9 +174,9 @@ exists): `ProgramData\Microsoft\Network\Downloader` (BITS),
 
 **T3 consequence:** Windows host families are now covered by the two mounts —
 readable on `I:\` (NTFS metadata, user artifacts, raw host set) or on `H:\`
-(registry, WMI, Tasks, EVTX, `$MFT`, page/hiber files); the remaining Windows
-gaps are five ACL-gated paths on the E01 that need an elevated read or the SIFT
-E01 path. Non-Windows ingest families remain true collection gaps.
+(registry, WMI, Tasks, EVTX, `$MFT`, page/hiber files); the remaining Windows gaps are four ACL-gated paths on the E01
+(BITS, Defender quarantine, VSS `System Volume Information`, iconcache) that need
+an elevated read or the SIFT E01 path. Non-Windows ingest families remain true collection gaps.
 
 ## Interpret and report (what actually runs)
 
