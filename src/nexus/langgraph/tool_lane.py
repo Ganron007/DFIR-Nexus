@@ -285,7 +285,7 @@ def schedule_evtx_parsers(
                     "chainsaw", "hunt", str(evtx_dir),
                     "-s", str(sigma),
                     "--mapping", str(mapping),
-                    "--csv", "--output", str(cs_dir / "hunt.csv"),
+                    "--csv", "--output", str(cs_dir),
                     "--skip-errors",
                 ],
                 f"Chainsaw hunt {label} ({n} logs)",
