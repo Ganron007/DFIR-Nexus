@@ -91,8 +91,10 @@ If SIFT MCP is connected but no root is set, the ledger records one honest SKIP.
 
 Read-only file listing; **no tools were run**. This is what the T3 Tool × Evidence
 matrix can actually be validated against. `_fixtures` / `_staging` / `_e2e-out` /
-`_tools` are test scaffolding, not case evidence. Full detail:
-`Docs/internal/TOOLS-INVENTORY.md` (tool side) + this table (evidence side).
+`_tools` are test scaffolding, not case evidence. Case-500 raw parity data is
+additionally mounted: `H:\` (KAPE triage volume) and `E:\Evidence_files\500`
+(E01 + raw memory) — see below. Full detail: `Docs/internal/TOOLS-INVENTORY.md`
+(tool side) + this table (evidence side).
 
 ### Available (sample on disk)
 
@@ -134,34 +136,48 @@ matrix can actually be validated against. `_fixtures` / `_staging` / `_e2e-out` 
 | TI samples | `07-ti/**` (abuseipdb, MB, MISP, OTX, URLhaus, VT) | `ti_lookup` / `ti_fanout` | — |
 | Sigma rules | `10-sigma/rules` (4 252) | detection indexer | Zircolite bundled ruleset |
 
-### Missing (no sample in this pack) — record before T3 validation
+### 500 KAPE triage image (`H:\`) + case bundle (`E:\Evidence_files\500`) — closes most gaps
+
+Mounted read-only 2026-09-20 (listing only). `H:\` = KAPE triage volume
+(`Rocba_Triage`) → reconstructed drive under `H:\C`; `E:\Evidence_files\500` is
+the FOR500 source bundle.
+
+| Newly available family | Path |
+|---|---|
+| `$MFT`, `$LogFile`, `$Boot`, `$Secure_$SDS` | `H:\C\{$MFT,$LogFile,$Boot,$Secure_$SDS}` |
+| USN `$J` (raw) | `H:\C\$Extend\$J` |
+| `$I30` (7 extracted files) | `H:\C\Users\fredr\Google Drive\...\$I30` |
+| thumbcache `*.db` (15) | `H:\C\Users\fredr\AppData\Local\Microsoft\Windows\Explorer\` |
+| `ActivitiesCache.db` (3) | `H:\C\Users\fredr\AppData\Local\ConnectedDevicesPlatform\*\` |
+| Firefox `places.sqlite` | `H:\C\Users\fredr\AppData\Roaming\Mozilla\Firefox\Profiles\*\` |
+| RDP bitmap cache | `H:\C\Users\fredr\AppData\Local\Microsoft\Terminal Server Client\Cache\Cache000{0,1}.bin` |
+| `setupapi.dev.log` (2) | `H:\C\Windows\inf\` + `H:\C\Windows.old\Windows\inf\` |
+| PSReadLine history | `H:\C\Users\srl-h\...\PowerShell\PSReadline\ConsoleHost_history.txt` |
+| Windows full-disk image | `E:\Evidence_files\500\C-Drive\rocba-cdrive.e01` (22 GB) + `.diff` |
+| Full raw memory | `E:\Evidence_files\500\Rocba-Memory.raw` (17.7 GB) |
+| Raw host set (re-validation) | EVTX 339, prefetch 346, SRUM, Amcache, `UsrClass.dat` ×2, jump lists 50, `$Recycle` 19, registry tree, `Windows.old` |
+
+Profiles present: `Default`, `fredr`, `srl-h`, `Public`.
+
+### Still missing (no sample in this pack or the 500 image)
 
 | Family | Consuming tool | Note |
 |---|---|---|
-| `$LogFile` (raw) | LogFileParser (wired) | Rocba/KAPE sets do not contain it |
-| `$J` (raw) | MFTECmd `-f $J` | only a parsed CSV exists |
-| `$I30` (extracted) | MFTECmd `-f` | no validation sample |
-| thumbcache / iconcache `*.db` | thumbcache_viewer_cmd (fetched) | CLI verified, no data to validate output |
-| `ActivitiesCache.db` | WxTCmd | only precooked Activity CSVs (`500-precooked`) |
-| Firefox `places.sqlite` | SQLECmd | Chrome/Edge present only |
-| BITS `qmgr.db` / `qmgr*.dat` | BitsParser | none |
-| UAL SUM `*.mdb` | KStrike | none |
-| RDP bitmap cache tiles (`.bmc`) | bmc-tools | none |
-| `setupapi.dev.log` | copy (plain text) | none |
-| PSReadLine `ConsoleHost_history.txt` | copy | none |
-| `hiberfil.sys` / `pagefile.sys` | on-demand | none |
-| Windows full-disk image (E01/VHDX) | fls/icat (opt-in), MFTECmd via extraction | Rocba E01/VHDX referenced on `E:` only |
-| Full raw memory (Windows) | vol/vol3 | Rocba-Memory.raw on `E:` only; in-tree full-memory = rclone `mem.zip` (Linux scenario) + minidumps |
-| VSS snapshots | vshadowinfo/mount | none |
-| Sysdig/Falco runtime | sysdig lane | `04-network/sysdig/` empty; `_fixtures/falco-sysdig.json` only |
-| Security Onion / Socrates alerts | ingest | dirs empty; `_fixtures` samples only |
-| CyberTriage export | ingest | `08-ir-platforms/cybertriage/` empty; fixture only |
+| BITS `qmgr.db` / `qmgr*.dat` | BitsParser | KAPE triage does not include `ProgramData\Microsoft\Network\Downloader` |
+| UAL SUM `*.mdb` | KStrike | Server-only feature; not applicable to this Win10 client case (keep for Server packs) |
+| `iconcache_*.db` | thumbcache_viewer_cmd | thumbcache found; iconcache not |
+| `hiberfil.sys` / `pagefile.sys` | on-demand | KAPE triage skips them |
+| VSS snapshots | vshadowinfo/mount | `H:\System Volume Information` present but empty/inaccessible |
+| Sysdig/Falco runtime | sysdig lane | `04-network/sysdig/` empty; fixture only |
+| Security Onion alerts | ingest | dir empty; fixture only |
+| Socrates alerts | ingest | dir empty; fixture only |
+| CyberTriage export | ingest | dir empty; fixture only |
 | macOS full collection | plaso | only `maclogs.7z` |
 
-**T3 consequence:** W1 (evtxecmd / hayabusa / chainsaw) is fully covered by this pack;
-W2 can cover registry/prefetch/mft/lnk/jumplist/shellbags/browser/srum/pcap/zeek/
-netflow/plaso plus the ingest families — and the "missing" rows above stay
-`validated: false` (docs-derived) until a sample is staged.
+**T3 consequence:** W1 + most of W2 can now be validated against raw parity data
+(`$LogFile`, `$J`, `$I30`, thumbcache, ActivitiesCache, Firefox, RDP cache,
+setupapi, PSReadLine) plus the full E01 / raw memory on `E:`; the remaining rows
+stay `validated: false` (docs-derived) until samples are staged.
 
 ## Interpret and report (what actually runs)
 
