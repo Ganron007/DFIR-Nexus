@@ -153,7 +153,7 @@ exists): `ProgramData\Microsoft\Network\Downloader` (BITS),
 (possible VSS), `Windows\Prefetch`, per-user `NTUSER.DAT`, `Recent`, RDP `Cache`,
 `ConnectedDevicesPlatform`, Firefox `Profiles`, PSReadLine, `Windows\Explorer`
 (iconcache/thumbcache). Read them via an elevated shell or SIFT `fls/icat`
-(`NEXUS_SIFT_E01`). `WER\ReportArchive` **is readable** on `H:\` (8 crash/kernel reports — WER no longer pending).
+(`NEXUS_SIFT_E01`). `WER\ReportArchive` directory names are listable on `H:\`, but the report contents are **ACL-denied** — WER is on the manual-retrieval list.
 `Windows\System32\LogFiles\SUM` does not exist (client OS).
 `$LogFile` / `$J` / `$Boot` are **not** exposed by the E01 mount — use `I:\C\...`.
 
@@ -164,6 +164,7 @@ exists): `ProgramData\Microsoft\Network\Downloader` (BITS),
 | BITS `qmgr*` | BitsParser | `H:\` E01: `ProgramData\Microsoft\Network\Downloader` | elevated read, or SIFT `fls`/`icat` |
 | Defender quarantine | maldump / ingest | `H:\` E01: `...\Windows Defender\Quarantine` | elevated read, or SIFT `fls`/`icat` |
 | VSS snapshots | vshadowinfo / mount | `H:\` E01: `System Volume Information` | elevated read; confirm store exists |
+| WER report contents | strings / YARA | `H:\` E01: `...\WER\ReportArchive\*` | ACL denied — operator copy |
 | `iconcache_*.db` | thumbcache_viewer_cmd | `H:\` E01: `Windows\Explorer` (denied); `I:\` has thumbcache only | elevated read, or SIFT `fls`/`icat` |
 | UAL SUM `*.mdb` | KStrike | — | Server-only; n/a for this Win10 client |
 | Sysdig/Falco runtime | sysdig lane | not present anywhere | needs a runtime capture |
@@ -174,9 +175,9 @@ exists): `ProgramData\Microsoft\Network\Downloader` (BITS),
 
 **T3 consequence:** Windows host families are now covered by the two mounts —
 readable on `I:\` (NTFS metadata, user artifacts, raw host set) or on `H:\`
-(registry, WMI, Tasks, EVTX, `$MFT`, page/hiber files); the remaining Windows gaps are four ACL-gated paths on the E01
-(BITS, Defender quarantine, VSS `System Volume Information`, iconcache) that need
-an elevated read or the SIFT E01 path. Non-Windows ingest families remain true collection gaps.
+(registry, WMI, Tasks, EVTX, `$MFT`, page/hiber files); the remaining Windows gaps are five ACL-gated paths on the E01
+(BITS, Defender quarantine, VSS `System Volume Information`, iconcache, WER) that
+need an elevated read or the SIFT E01 path. Non-Windows ingest families remain true collection gaps.
 
 ## Interpret and report (what actually runs)
 
