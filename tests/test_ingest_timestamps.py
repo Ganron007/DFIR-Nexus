@@ -54,7 +54,6 @@ def test_importer_sweep_flags_synthesized_timestamps():
 
     from nexus.ingest.cloud.cloudtrail import CloudTrailImporter
     from nexus.ingest.cloud.m365 import M365Importer
-    from nexus.ingest.df.browser_history import BrowserHistoryImporter
     from nexus.ingest.df.hayabusa import HayabusaImporter
     from nexus.ingest.linux.auditd import AuditdImporter
     from nexus.ingest.siem.splunk import SplunkImporter
@@ -95,14 +94,8 @@ def test_importer_sweep_flags_synthesized_timestamps():
     sp2 = SplunkImporter()._row_to_artifact({"_time": "1705320896"})
     assert sp2.ts_synthesized is False
 
-    # browser_history converters return (datetime, synthesized)
-    bh = BrowserHistoryImporter()
-    _, synth_none = bh._chrome_time_to_datetime(None)
-    assert synth_none is True
-    _, synth_ok = bh._chrome_time_to_datetime(
-        13344570000000000  # some valid Chrome epoch micros
-    )
-    assert synth_ok is False
+    # NOTE: browser-history raw parsing moved to the N-lane (SQLECmd/Hindsight);
+    # the ingest importer and its converter tests were removed with it.
 
     # m365 helper tuple
     m365 = M365Importer()

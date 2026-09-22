@@ -175,3 +175,6 @@ AGENTS.md
 # Re-allow specific dot-dirs that must be tracked (add negations here as needed)
 !.github/
 # !.devin/
+
+# Portable Strawberry Perl (fetched for the RegRipper rip.pl full-plugin path)
+tools/perl/

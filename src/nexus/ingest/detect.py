@@ -39,9 +39,9 @@ def detect_format(path: Path) -> ArtifactSource | None:
     # --- Extension-based hints (unambiguous formats first) ---
     suffix = path.suffix.lower()
     _EXT_HINTS: dict[str, ArtifactSource] = {
-        ".evtx": ArtifactSource.EVTX,
-        ".lnk": ArtifactSource.LNK,
-        ".hve": ArtifactSource.AMCACHE,
+        # NOTE: host-based raw artifacts (.evtx / .lnk / Amcache.hve / registry
+        # hives / browser SQLite) have no ingest importer — they are processed in
+        # the N-lane by EvtxECmd/Hayabusa, LECmd, AmcacheParser, RECmd, SQLECmd.
         # Shared lanes — registry.resolve() disambiguates via can_handle()
         ".eml": ArtifactSource.GENERIC_JSONL,
         ".msg": ArtifactSource.GENERIC_JSONL,
@@ -71,9 +71,6 @@ def detect_format(path: Path) -> ArtifactSource | None:
     # Volatility 3 plugin dumps: windows.psscan.json / windows.pslist.txt
     if name_lower.startswith("windows.") and suffix in {".json", ".jsonl", ".txt", ".log"}:
         return ArtifactSource.VOLATILITY
-    if name_lower in {"history", "places.sqlite", "chrome-history", "edge-history"} \
-            or (name_lower.endswith("-history") and suffix == ""):
-        return ArtifactSource.BROWSER_HISTORY
     if name_lower.endswith((".tar.gz", ".tar.xz", ".tar.bz2")):
         return ArtifactSource.GENERIC_JSONL
 
@@ -101,14 +98,6 @@ def detect_format(path: Path) -> ArtifactSource | None:
         "syslog": ArtifactSource.SYSLOG,
         "messages": ArtifactSource.SYSLOG,
         "journal.json": ArtifactSource.SYSLOG,
-        "sam": ArtifactSource.WINDOWS_REGISTRY,
-        "system": ArtifactSource.WINDOWS_REGISTRY,
-        "software": ArtifactSource.WINDOWS_REGISTRY,
-        "security": ArtifactSource.WINDOWS_REGISTRY,
-        "ntuser.dat": ArtifactSource.WINDOWS_REGISTRY,
-        "usrclass.dat": ArtifactSource.WINDOWS_REGISTRY,
-        "wmi_subscriptions.csv": ArtifactSource.WMI_SUBSCRIPTIONS,
-        "wmi_subscriptions.mof": ArtifactSource.WMI_SUBSCRIPTIONS,
         ".bash_history": ArtifactSource.BASH_HISTORY,
         "bash_history": ArtifactSource.BASH_HISTORY,
     }
@@ -413,16 +402,14 @@ def _detect_csv_format(head: str, name: str) -> ArtifactSource | None:
         return ArtifactSource.HAYABUSA
     if "rule_level" in first_line or "rule.title" in first_line:
         return ArtifactSource.HAYABUSA
-    if "eventid" in first_line or "event_id" in first_line:
-        return ArtifactSource.EVTX
+    # EvtxECmd/Kansa event CSVs have no ingest importer (host artifacts are
+    # N-lane: EvtxECmd/Hayabusa); they fall through to generic_csv.
     if "sourceip" in first_line or "source_ip" in first_line:
         return ArtifactSource.SURICATA
     if "service_name" in first_line and "binary_path" in first_line:
         return ArtifactSource.WINDOWS_SERVICES
     if "taskname" in first_line or "author" in first_line:
         return ArtifactSource.SCHEDULED_TASKS
-    if "consumer" in first_line and "filter" in first_line:
-        return ArtifactSource.WMI_SUBSCRIPTIONS
     if "_time" in first_line and "sourcetype" in first_line:
         return ArtifactSource.SPLUNK
     if "timestamp" in first_line and "source" in first_line and "host" in first_line:
@@ -452,6 +439,37 @@ def _detect_tsv_format(head: str, name: str) -> ArtifactSource | None:
         return ArtifactSource.ZEEK
 
     return ArtifactSource.GENERIC_CSV
+
+
+def lane_routing_hint(path: Path) -> str | None:
+    """Routing hint when a raw HOST artifact reaches the ingest lane.
+
+    Host-based raw artifacts are processed by the N-lane forensic tools; the
+    ingest lane consumes their CSV/JSON output. Returns a human hint or None.
+    """
+    try:
+        with path.open("rb") as fh:
+            head = fh.read(16)  # 16 bytes: SQLite magic is exactly 16
+    except OSError:
+        return None
+    if head.startswith(b"regf"):
+        if path.name.lower() in {"amcache.hve", "amcache"}:
+            return ("raw Amcache hive — process it in the N-lane (AmcacheParser) "
+                    "and ingest the CSV output")
+        return ("raw registry hive — process it in the N-lane (RECmd) and "
+                "ingest the CSV output")
+    if head.startswith(b"ElfFile\x00"):
+        return ("raw EVTX — process it in the N-lane (EvtxECmd / Hayabusa) and "
+                "ingest the CSV/JSON output")
+    if path.suffix.lower() == ".lnk" and head[:4] == b"\x4c\x00\x00\x00":
+        return ("raw LNK — process it in the N-lane (LECmd) and ingest the CSV output")
+    if head.startswith(b"SQLite format 3\x00"):
+        return ("raw SQLite (browser/OS) — process it in the N-lane "
+                "(SQLECmd / Hindsight) and ingest the output")
+    if path.name.lower().endswith("objects.data"):
+        return ("raw WMI repository — process it in the N-lane (RECmd) and "
+                "ingest the CSV output")
+    return None
 
 
 def resolve_ingest_source(
@@ -492,9 +510,11 @@ def ingest_auto(
         return {"success": False, "error": err, "path": str(path)}
 
     if resolved is None:
+        hint = lane_routing_hint(path)
         return {
             "success": False,
-            "error": f"Could not detect format for {path.name}",
+            "error": f"Could not detect format for {path.name}"
+                     + (f" — {hint}" if hint else ""),
             "path": str(path),
         }
 
@@ -509,8 +529,10 @@ def ingest_auto(
             "path": str(path),
         }
     except KeyError:
+        hint = lane_routing_hint(path)
         return {
             "success": False,
-            "error": f"No importer registered for source: {resolved.value}",
+            "error": f"No importer registered for source: {resolved.value}"
+                     + (f" — {hint}" if hint else ""),
             "path": str(path),
         }

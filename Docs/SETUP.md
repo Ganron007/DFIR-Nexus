@@ -75,7 +75,6 @@ The `[all]` extras bundle contains:
 - `[http]`: Starlette + Uvicorn (needed for the Examiner Portal web dashboard).
 - `[rag]`: ChromaDB + sentence-transformers (needed for forensic knowledge semantic search).
 - `[triage]`: orjson + zstandard (needed for matching Windows baselines).
-- `[dfir]`: Native artifact parsers — python-evtx (EVTX), regipy (registry hives), pylnk3 (LNK shortcuts).
 - `[opencti]`: OpenCTI threat intelligence client.
 - `[encrypt]`: Cryptography (for encrypted case exports).
 - `[detection]`: PySigma (for translating Sigma rules to KQL/Splunk/etc.).
@@ -229,7 +228,7 @@ A missing parser is a **setup failure**, not an acceptable SKIP in the tool ledg
 |------|------|------------------------|
 | 1 | Package + extras | `pip install -e ".[all]"` — includes LangGraph / LangChain (`[pipeline]`) |
 | 2 | Portable forensic binaries | Windows: `pwsh -File tools/fetch-windows-tools.ps1`. SIFT: `bash tools/fetch-linux-tools.sh`. Layout: [tools/README.md](../tools/README.md) |
-| 3 | Python deps for those parsers | Fetch vendors ANSSI `bits`+`construct` **inside** `Tools/.../BitsParser/` (do not `pip install bits_parser` into the Nexus interpreter — it pins `construct==2.8.12` and breaks `regipy`). KStrike needs `pip install libesedb-python` in the `nexus serve` interpreter |
+| 3 | Python deps for those parsers | Fetch vendors ANSSI `bits`+`construct` **inside** `Tools/.../BitsParser/` (do not `pip install bits_parser` into the Nexus interpreter - it pins `construct==2.8.12` and conflicts with the vendored parser deps). KStrike needs `pip install libesedb-python` in the `nexus serve` interpreter |
 | 4 | Core SIFT packages | `vol`, `fls`, `mactime` on PATH (SIFT VM / apt). Not optional for memory/disk jobs |
 | 5 | Doctor | `nexus doctor` → `golden-path: ok`. Core EZ/Hayabusa **and** `bmc-tools.py` / `BitsParser.py` must resolve |
 | 6 | MCP | `nexus serve --http` on each analysis host (`127.0.0.1:4508` Windows, SIFT on its lab IP) |

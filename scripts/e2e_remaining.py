@@ -152,12 +152,10 @@ from nexus.ingest.detect import ingest_auto
 for label, path in (
     ("HayabusaImporter", hay_csv),
     ("CyberTriageImporter", FX / "cybertriage-sample.jsonl"),
-    ("WMISubscriptionsImporter", FX / "wmi_subscriptions.csv"),
     ("VolatilityImporter", FX / "volatility-pslist.json"),
     ("SocRatesImporter", FX / "socrates-alerts.json"),
     ("SysdigImporter", FX / "falco-sysdig.json"),
     ("SecurityOnionImporter", FX / "security_onion-alert.json"),
-    ("BrowserHistoryImporter", hist),
     ("ArchiveImporter", zpath),
     ("Zeek JSON live conn", EV / "04-network/monitor-live/conn.log"),
     ("Zeek JSON kerberos rotated", EV / "04-network/monitor-live/kerberos-20260804.log"),

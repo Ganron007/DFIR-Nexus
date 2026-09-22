@@ -4,10 +4,17 @@ All importer classes are registered. Multiple importers may share one
 ``ArtifactSource`` (e.g. Suricata/SocRates/Sysdig all map to SURICATA);
 the first registered class for a source is the primary, and
 ``resolve()`` disambiguates at import time via ``can_handle()``.
-Importers that require optional binary dependencies (python-evtx,
-python-registry, regipy, lnkfile, etc.) gracefully degrade when their
-deps are missing — they log a warning and yield zero artifacts rather
-than crashing.
+
+Scope split (see Docs/cases/TOOL-EVIDENCE-MAP.md):
+
+* **Host-based raw artifacts** (registry hives, EVTX, LNK, browser SQLite,
+  Amcache hives, WMI repository) are processed in the **N-lane** by the
+  forensic tools — RECmd / EvtxECmd / Hayabusa / LECmd / SQLECmd /
+  Hindsight / AmcacheParser — and the ingest lane consumes their output.
+* Importers here cover **processed tool output** (Hayabusa CSV, Plaso,
+  RECmd/KAPE exports, vol3 JSON, ...) and **evidence families without a
+  lane tool** (non-host logs: syslog/auth.log/auditd, cloud, SIEM, TI,
+  PCAP/NetFlow — the latter shelling out to tshark/nfdump as needed).
 """
 
 from __future__ import annotations
@@ -121,10 +128,14 @@ class ImporterRegistry:
             importer_cls = self.autodetect(path)
 
         if importer_cls is None:
+            from nexus.ingest.detect import lane_routing_hint
+
+            hint = lane_routing_hint(path)
             result = ImportResult(source=source or ArtifactSource.UNKNOWN)
             result.errors.append(
-                f"Could not auto-detect importer for {path}. "
-                f"Known sources: {[s.value for s in self.all_sources()]}"
+                f"Could not auto-detect importer for {path}."
+                + (f" {hint}." if hint else "")
+                + f" Known sources: {[s.value for s in self.all_sources()]}"
             )
             return result
 
@@ -139,11 +150,8 @@ _ALL_IMPORTERS: list[tuple[str, str]] = [
     ("nexus.ingest.cloud.azure", "AzureImporter"),
     ("nexus.ingest.cloud.cloudtrail", "CloudTrailImporter"),
     ("nexus.ingest.df.amcache", "AmCacheImporter"),
-    ("nexus.ingest.df.browser_history", "BrowserHistoryImporter"),
-    ("nexus.ingest.df.evtx", "EVTXImporter"),
     ("nexus.ingest.df.hayabusa", "HayabusaImporter"),
     ("nexus.ingest.df.kape", "KAPEImporter"),
-    ("nexus.ingest.df.lnkfile", "LNKFileImporter"),
     ("nexus.ingest.df.plaso", "PlasoImporter"),
     ("nexus.ingest.df.registry", "WindowsRegistryImporter"),
     ("nexus.ingest.df.scheduled_tasks", "ScheduledTasksImporter"),
@@ -151,7 +159,6 @@ _ALL_IMPORTERS: list[tuple[str, str]] = [
     ("nexus.ingest.df.thehive", "TheHiveImporter"),
     ("nexus.ingest.df.velociraptor", "VelociraptorImporter"),
     ("nexus.ingest.df.volatility", "VolatilityImporter"),
-    ("nexus.ingest.df.wmi_subscriptions", "WMISubscriptionsImporter"),
     ("nexus.ingest.linux.auditd", "AuditdImporter"),
     ("nexus.ingest.linux.authlog", "AuthLogImporter"),
     ("nexus.ingest.linux.bash_history", "BashHistoryImporter"),

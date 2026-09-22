@@ -1,18 +1,22 @@
-"""Windows Registry hive importer.
+"""Windows registry **text export** importer (`reg export` / `reg query`).
 
-Parses Windows registry hive files (SYSTEM, SOFTWARE, SAM, etc.) to extract
-forensic indicators. Two modes:
+Raw binary hives (SYSTEM / SOFTWARE / SAM / SECURITY / NTUSER.DAT /
+UsrClass.dat / Amcache.hve) are **host artifacts processed in the N-lane** by
+the forensic tools — RECmd with the Kroll batch — and it is that typed CSV
+output the ingest lane consumes. This importer never parses raw hives.
 
-1. **Binary mode** (requires `python-registry` or `regipy`):
-   - Parses raw .hve / .dat files
-   - Most comprehensive
+Only the text formats the lane tools do not cover are handled here:
 
-2. **Text mode** (always works):
-   - Parses `reg export` / `reg query` text output
-   - Format: lines like `HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\...`
+1. ``reg export`` text (``.reg``, UTF-16 or UTF-8 with the
+   ``Windows Registry Editor Version 5.00`` header)
+2. ``reg query`` / ``reg export`` captures saved as ``.txt`` / ``.export``
 
-The text mode lets you feed in any reg-export output from a live Windows
-machine or a KAPE collection, which is what most DFIR analysts actually have.
+Extracted keys of forensic interest:
+- Run / RunOnce / RunServices autorun (T1547.001)
+- Winlogon Shell/Userinit/Notify (T1547.004)
+- Image File Execution Options Debugger (T1546.012)
+- AppInit_DLLs (T1546.010)
+- SAM local account names (T1087.001) when a SAM export is provided
 """
 
 from __future__ import annotations
@@ -36,18 +40,11 @@ log = logging.getLogger(__name__)
 
 
 class WindowsRegistryImporter(Importer):
-    """Parser for Windows registry hive files or reg export text.
+    """Parser for `reg export` / `reg query` text output (not raw hives).
 
-    Output: one Artifact per key/value pair of forensic interest. Keys tracked:
-    - Run/RunOnce autorun (T1547.001)
-    - Image File Execution Options (Debugger) (T1546.012)
-    - Winlogon shell/userinit (T1547.004)
-    - AppInit_DLLs (T1546.010)
-    - Services keys (when imported via the registry context)
-    - SAM user accounts (T1003.002 if domain cache)
+    Output: one Artifact per value of forensic interest under the keys above.
     """
 
-    # Registry keys of forensic interest (case-insensitive)
     INTERESTING_KEYS: ClassVar[dict[str, dict[str, Any]]] = {
         r"\Software\Microsoft\Windows\CurrentVersion\Run": {
             "technique": "T1547.001",
@@ -86,18 +83,7 @@ class WindowsRegistryImporter(Importer):
         },
     }
 
-    # Interesting SAM user attributes
-    SAM_INTERESTING: ClassVar[set[str]] = {"F", "V"}  # F=full name, V=comment
-
-    # Names that must be parsed as binary hives (not text)
-    BINARY_NAMES: ClassVar[set[str]] = {
-        "system", "software", "sam", "security", "default",
-        "ntuser.dat", "usrclass.dat", "amcache.hve", "amcache",
-    }
-
-    # Bounds for huge hives (SOFTWARE/SYSTEM): the walker must never run unbounded.
-    MAX_KEYS: ClassVar[int] = 250_000
-    MAX_ARTIFACTS: ClassVar[int] = 5_000
+    SAM_NAMES_SUFFIX: ClassVar[str] = r"\sam\domains\account\users\names"
 
     @classmethod
     def source_class(cls) -> ArtifactSource:
@@ -105,23 +91,12 @@ class WindowsRegistryImporter(Importer):
 
     @classmethod
     def can_handle(cls, path: Path) -> bool:
-        """Heuristic: text-based reg export or binary .hve/.dat file."""
+        """Text exports only — raw hives are the N-lane's (RECmd) job."""
         if not path.is_file():
             return False
         name_lower = path.name.lower()
-        # Binary-mode: hive files
-        if path.suffix.lower() in (".hve", ".dat"):
-            try:
-                with path.open("rb") as f:
-                    magic = f.read(4)
-                # regf = Windows registry hive magic bytes
-                return magic == b"regf"
-            except OSError:
-                return False
-        # Text-mode: .reg files always match (standard extension)
         if name_lower.endswith(".reg"):
             return True
-        # For .txt/.export, sniff content for registry signatures
         if name_lower.endswith((".txt", ".export")):
             try:
                 with path.open("r", encoding="utf-8", errors="replace") as f:
@@ -133,166 +108,11 @@ class WindowsRegistryImporter(Importer):
                 or "HKEY_" in head
                 or re.search(r"CurrentControlSet\\Services\\", head) is not None
             )
-        # Or files named SYSTEM, SOFTWARE, SAM, NTUSER, etc. (no extension)
-        return name_lower in {"system", "software", "sam", "security", "ntuser.dat", "usrclass.dat", "amcache.hve", "amcache"}
+        return False
 
     def parse(self, path: Path) -> Iterator[Artifact]:
-        """Yield Artifact objects from a registry file (bounded for huge hives)."""
-        self._keys_seen = 0
-        self._budget_hit = False
-        name_lower = path.name.lower()
-        # Try binary mode first
-        if path.suffix.lower() in (".hve", ".dat") or name_lower in self.BINARY_NAMES:
-            gen: Iterator[Artifact] = self._parse_binary(path)
-        else:
-            # Fallback: text mode
-            gen = self._parse_text(path)
-        count = 0
-        for art in gen:
-            yield art
-            count += 1
-            if count >= self.MAX_ARTIFACTS:
-                self._budget_hit = True
-                break
-        if self._budget_hit:
-            log.warning(
-                "registry walk budget hit on %s (keys=%d, artifacts=%d) — truncated",
-                path.name, self._keys_seen, count,
-            )
-
-    # ----- Binary mode (requires python-registry or regipy) -----
-
-    def _parse_binary(self, path: Path) -> Iterator[Artifact]:
-        """Parse a binary registry hive. Requires python-registry or regipy."""
-        py_reg = None
-        try:
-            from Registry.Registry import Registry as PyRegistry
-            py_reg = PyRegistry
-        except ImportError:
-            py_reg = None
-
-        arts: list[Artifact] = []
-        if py_reg is not None:
-            try:
-                arts = list(self._parse_binary_python_registry(path, py_reg))
-            except Exception as e:  # noqa: BLE001
-                log.warning("python-registry failed on %s: %s; trying regipy", path, e)
-                arts = []
-            if arts:
-                yield from arts
-                return
-
-        try:
-            from regipy.registry import RegistryHive as RegipyRegistry
-        except ImportError:
-            try:
-                from regipy.registry import Registry as RegipyRegistry  # older regipy
-            except ImportError:
-                if py_reg is None:
-                    log.error(
-                        "Cannot parse binary registry hive: install python-registry or regipy "
-                        "(pip install python-registry)"
-                    )
-                return
-        yield from self._parse_binary_regipy(path, RegipyRegistry)
-
-    def _parse_binary_python_registry(
-        self, path: Path, registry_cls: Any
-    ) -> Iterator[Artifact]:
-        """Parse using python-registry library."""
-        try:
-            reg = registry_cls(str(path))
-        except Exception as e:  # noqa: BLE001
-            log.warning("Failed to open hive %s: %s", path, e)
-            return
-        yield from self._walk_reg_python_registry(reg.root(), str(path))
-
-    def _walk_reg_python_registry(
-        self, key: Any, path: Path | str
-    ) -> Iterator[Artifact]:
-        """Walk a python-registry key tree and emit Artifacts for interesting keys."""
-        for subkey in key.subkeys():
-            self._keys_seen += 1
-            if self._keys_seen > self.MAX_KEYS:
-                self._budget_hit = True
-                return
-            sub_path = f"{key.path()}\\{subkey.name()}"
-            lower = sub_path.lower()
-            # SAM local accounts live under DOMAINS\Account\Users\Names\<user>
-            if "\\sam\\domains\\account\\users\\names\\" in lower and subkey.name():
-                yield self._sam_user_artifact(subkey.name(), path, sub_path)
-                continue
-            for pattern, info in self.INTERESTING_KEYS.items():
-                if pattern.lower() in lower:
-                    for value in subkey.values():
-                        yield self._make_registry_artifact(
-                            sub_path, value.name(), str(value.value()), info, str(path)
-                        )
-                    break
-            yield from self._walk_reg_python_registry(subkey, path)
-
-    def _parse_binary_regipy(
-        self, path: Path, registry_cls: Any
-    ) -> Iterator[Artifact]:
-        """Parse using regipy (RegistryHive.recurse_subkeys)."""
-        try:
-            reg = registry_cls(str(path))
-        except Exception as e:  # noqa: BLE001
-            log.warning("Failed to open hive %s: %s", path, e)
-            return
-        try:
-            recurse = getattr(reg, "recurse_subkeys", None)
-            if recurse is None:
-                root = getattr(reg, "root", None)
-                if root is not None:
-                    yield from self._walk_regipy(root, str(path))
-                return
-            for subkey in recurse():
-                self._keys_seen += 1
-                if self._keys_seen > self.MAX_KEYS:
-                    self._budget_hit = True
-                    return
-                sub_path = str(getattr(subkey, "path", "") or "")
-                lower = sub_path.lower()
-                if "\\sam\\domains\\account\\users\\names\\" in lower:
-                    uname = sub_path.rsplit("\\", 1)[-1]
-                    if uname:
-                        yield self._sam_user_artifact(uname, path, sub_path)
-                    continue
-                for pattern, info in self.INTERESTING_KEYS.items():
-                    if pattern.lower() in lower:
-                        for value in getattr(subkey, "values", None) or []:
-                            name = getattr(value, "name", "")
-                            val = getattr(value, "value", "")
-                            yield self._make_registry_artifact(
-                                sub_path, str(name), str(val), info, str(path)
-                            )
-                        break
-        except Exception as e:  # noqa: BLE001
-            log.warning("Failed to walk regipy hive %s: %s", path, e)
-
-    def _walk_regipy(self, key: Any, path: Path | str) -> Iterator[Artifact]:
-        """Walk a legacy regipy key tree (iter_subkeys)."""
-        for subkey in key.iter_subkeys():
-            self._keys_seen += 1
-            if self._keys_seen > self.MAX_KEYS:
-                self._budget_hit = True
-                return
-            sub_path = getattr(subkey, "path", None) or getattr(subkey, "name", "")
-            lower = str(sub_path).lower()
-            for pattern, info in self.INTERESTING_KEYS.items():
-                if pattern.lower() in lower:
-                    values = subkey.iter_values() if hasattr(subkey, "iter_values") else []
-                    for value in values:
-                        yield self._make_registry_artifact(
-                            str(sub_path),
-                            str(getattr(value, "name", "")),
-                            str(getattr(value, "value", "")),
-                            info,
-                            str(path),
-                        )
-                    break
-            yield from self._walk_regipy(subkey, path)
+        """Yield Artifact objects from a registry text export."""
+        yield from self._parse_text(path)
 
     # ----- Text mode (reg export / reg query output) -----
 
@@ -305,10 +125,6 @@ class WindowsRegistryImporter(Importer):
     TEXT_DEFAULT_RE = re.compile(
         r"^@=([^=].*)$"  # @="default value"
     )
-    TEXT_HIVE_NAMES: ClassVar[set[str]] = {
-        "HKEY_CLASSES_ROOT", "HKEY_CURRENT_USER", "HKEY_LOCAL_MACHINE",
-        "HKEY_USERS", "HKEY_CURRENT_CONFIG", "HKCR", "HKCU", "HKLM", "HKU",
-    }
 
     def _parse_text(self, path: Path) -> Iterator[Artifact]:
         r"""Parse a `reg export` or `reg query` text file.
@@ -344,7 +160,9 @@ class WindowsRegistryImporter(Importer):
             m = self.TEXT_KEY_RE.match(line)
             if m:
                 current_key = m.group(1).strip()
-                # Check if this key is interesting — values will be parsed below
+                sam_name = self._sam_name_from_key(current_key)
+                if sam_name:
+                    yield self._sam_user_artifact(sam_name, path, current_key)
                 continue
             # If we're inside an interesting key, parse values
             if current_key:
@@ -366,6 +184,18 @@ class WindowsRegistryImporter(Importer):
                     yield self._make_registry_artifact(
                         current_key, "(Default)", value, info, str(path)
                     )
+
+    @classmethod
+    def _sam_name_from_key(cls, key: str) -> str | None:
+        """Extract the account name from a SAM ...\\Users\\Names\\<user> key."""
+        lower = key.lower()
+        idx = lower.find(cls.SAM_NAMES_SUFFIX)
+        if idx < 0:
+            return None
+        rest = key[idx + len(cls.SAM_NAMES_SUFFIX):].strip("\\")
+        if not rest or "\\" in rest:
+            return None
+        return rest
 
     @staticmethod
     def _strip_reg_quotes(value: str) -> str:
@@ -433,7 +263,7 @@ class WindowsRegistryImporter(Importer):
             tags=["registry", f"key.{info['technique']}"],
         )
 
-    def _sam_user_artifact(self, name: str, hive: Path | str, key_path: str) -> Artifact:
+    def _sam_user_artifact(self, name: str, hive: Path, key_path: str) -> Artifact:
         """SAM local account entry (DOMAINS\\Account\\Users\\Names\\<user>)."""
         return Artifact(
             id=Artifact.new_id(),
@@ -448,7 +278,7 @@ class WindowsRegistryImporter(Importer):
             registry_key=key_path,
             registry_value=name,
             description=f"SAM local account: {name}",
-            raw={"key": key_path, "user": name, "hive": str(hive)},
+            raw={"key": key_path, "user": name, "source": str(hive)},
             technique_ids=["T1087.001"],
             tags=["registry", "sam", "user"],
         )

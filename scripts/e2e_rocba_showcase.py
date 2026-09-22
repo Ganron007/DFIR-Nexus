@@ -84,23 +84,14 @@ def main() -> int:
     manifest = PACK / "MANIFEST.md"
     rec(manifest.is_file(), "pack.manifest", str(manifest))
 
-    from nexus.ingest.df.amcache import AmCacheImporter
-    from nexus.ingest.df.browser_history import BrowserHistoryImporter
-    from nexus.ingest.df.evtx import EVTXImporter
     from nexus.ingest.df.hayabusa import HayabusaImporter
     from nexus.ingest.generic.csv import CSVImporter
 
     artifacts: list = []
 
     # --- Host EVTX (Rocba only) ---
-    artifacts += ingest("security.evtx", host / "evtx" / "Security.evtx", EVTXImporter, 200)
-    artifacts += ingest("system.evtx", host / "evtx" / "System.evtx", EVTXImporter, 80)
-    artifacts += ingest(
-        "powershell.evtx",
-        host / "evtx" / "Microsoft-Windows-PowerShell%4Operational.evtx",
-        EVTXImporter,
-        80,
-    )
+    # Raw .evtx is an N-lane artifact: the Hayabusa tool run below produces the
+    # CSV and the ingest lane consumes that (role 1).
 
     # Hayabusa on Rocba Security.evtx only — never fall back to other-lab CSVs
     hay_out = OUT / "hayabusa-security.csv"
@@ -139,9 +130,8 @@ def main() -> int:
     else:
         rec(True, "ingest:hayabusa-security", "no Rocba-local hayabusa CSV — EVTX still ingested", skip=True)
 
-    artifacts += ingest("chrome-history", host / "browser" / "Chrome-History", BrowserHistoryImporter, 80)
-    artifacts += ingest("edge-history", host / "browser" / "Edge-History", BrowserHistoryImporter, 40)
-    artifacts += ingest("amcache", host / "amcache" / "Amcache.hve", AmCacheImporter, 40)
+    # browser history + Amcache.hve are N-lane (SQLECmd/Hindsight, AmcacheParser);
+    # ingest consumes their CSV output — nothing to ingest from the raw files here.
 
     # Precooked CSVs (Rocba EZ outputs)
     for label, rel in [

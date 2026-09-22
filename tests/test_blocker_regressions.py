@@ -526,15 +526,10 @@ class TestBlockerBugFixes:
         assert artifact.timestamp is not None
 
     def test_b4_rdp_event_id_priority(self) -> None:
-        from nexus.ingest.df.evtx import EVTXImporter
         from nexus.ingest.df.hayabusa import HayabusaImporter
         from nexus.ingest.schemas import ArtifactType
-        
-        # In both, 4624 and 4778 should map to RDP, not AUTH
-        assert EVTXImporter._event_id_to_type("4624") == ArtifactType.RDP
-        assert EVTXImporter._event_id_to_type("4778") == ArtifactType.RDP
-        assert EVTXImporter._event_id_to_type("4625") == ArtifactType.AUTH
-        
+
+        # 4624 / 4778 map to RDP, not AUTH (Hayabusa importer; raw EVTX is N-lane)
         assert HayabusaImporter._event_id_to_type("4624", "Security") == ArtifactType.RDP
         assert HayabusaImporter._event_id_to_type("4778", "Security") == ArtifactType.RDP
         assert HayabusaImporter._event_id_to_type("4625", "Security") == ArtifactType.AUTH

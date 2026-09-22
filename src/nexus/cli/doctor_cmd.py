@@ -197,38 +197,18 @@ def doctor(
     rows.append(("python>=3.12", sys.version_info >= (3, 12), py))
 
     extras = [
-        ("extra.evtx (python-evtx)", "Evtx"),
-        ("extra.python-registry", "Registry"),
-        ("extra.regipy", "regipy"),
-        ("extra.pylnk3", "pylnk3"),
         ("extra.chromadb (rag)", "chromadb"),
         ("extra.pysigma (detection)", "sigma"),
     ]
-    # Golden-required parsers: EVTX and LNK are single-parser; registry hives
-    # are satisfied by python-registry OR regipy. chromadb (RAG) and pysigma
-    # (detection) are optional for the golden path.
-    golden_required = {"Evtx", "pylnk3"}
-    have: dict[str, bool] = {}
+    # chromadb (RAG) and pysigma (detection) are optional for the golden path.
+    # Host-artifact parsing (EVTX / registry / LNK / browser SQLite / Amcache)
+    # happens in the N-lane with the forensic tools — the ingest lane consumes
+    # their output — so no parser extras are required here.
     for label, mod in extras:
-        ok = _have(mod)
-        have[mod] = ok
-        if ok:
+        if _have(mod):
             rows.append((label, True, "installed"))
-        elif mod in golden_required:
-            rows.append((label, False, "missing extra"))
         else:
-            note = "missing (optional)"
-            if mod in {"Registry", "regipy"}:
-                note = "missing (need one of python-registry / regipy)"
-            rows.append((label, True, note))
-
-    if not have.get("Evtx"):
-        golden_fail = True
-    if not have.get("pylnk3"):
-        golden_fail = True
-    if not (have.get("Registry") or have.get("regipy")):
-        golden_fail = True
-        rows.append(("registry parser", False, "need python-registry OR regipy"))
+            rows.append((label, True, "missing (optional)"))
 
     rag = Path.home() / ".nexus" / "data" / "rag" / "chroma"
     triage = Path.home() / ".nexus" / "data" / "triage"

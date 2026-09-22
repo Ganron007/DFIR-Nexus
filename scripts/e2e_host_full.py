@@ -140,27 +140,12 @@ def _host_reg_export() -> Path | None:
 def evidence_map() -> dict[str, Path | None]:
     rocba = EV / "01-windows" / "rocba-fredr"
     emap: dict[str, Path | None] = {
-        "EVTXImporter": first(
-            "01-windows/sysmon/sysmon_10_lsass_mimikatz_sekurlsa_logonpasswords.evtx",
-            "01-windows/rocba-fredr/evtx/Security.evtx",
-        ) or smallest("01-windows/evtx/**/*.evtx"),
         "HayabusaImporter": first("_fixtures/hayabusa-timeline.csv") or smallest("01-windows/hayabusa/**/*.csv"),
         "KAPEImporter": first("01-windows/kape-out/mft.csv"),
-        "LNKFileImporter": smallest("01-windows/rocba-fredr/lnk/*.lnk") or smallest("01-windows/lnk/**/*.lnk"),
-        "AmCacheImporter": first("01-windows/rocba-fredr/amcache/Amcache.hve", "01-windows/amcache/Amcache.hve"),
-        "WindowsRegistryImporter": _host_reg_export() or first(
-            "01-windows/rocba-fredr/registry/SYSTEM",
-            "01-windows/rocba-fredr/registry/SOFTWARE",
-            "01-windows/rocba-fredr/registry/NTUSER.DAT",
-            "01-windows/registry/ntuser/Default/NTUSER.DAT",
-        ),
+        "AmCacheImporter": first("02-memory/508-precooked/execution/amcache_ProgramEntries.csv"),
+        "WindowsRegistryImporter": _host_reg_export() or first("_e2e-out/host-full/hkcu-run.reg"),
         "ScheduledTasksImporter": smallest("01-windows/tasks/**/*"),
         "WindowsServicesImporter": smallest("01-windows/services/**/*.csv"),
-        "WMISubscriptionsImporter": first("_fixtures/wmi_subscriptions.csv"),
-        "BrowserHistoryImporter": first(
-            "01-windows/rocba-fredr/browser/Chrome-History",
-            "_fixtures/History",
-        ),
         "PlasoImporter": first("02-memory/508-precooked/timeline/rd01-supertimeline.csv"),
         "VolatilityImporter": first(
             "02-memory/rocba-508/vol3-amadey/windows.psscan.json",

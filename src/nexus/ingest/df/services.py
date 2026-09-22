@@ -1,16 +1,14 @@
-"""Windows Services registry parser.
+"""Windows Services importer (exported services data).
 
-Parses the `SYSTEM\\CurrentControlSet\\Services` registry subtree to extract
-running and installed services. This is a critical artifact for malware
-analysis because malware often installs itself as a service for persistence.
+Consumes **already-exported** services data — not a live host and not a raw
+hive (the N-lane parses the SYSTEM hive with RECmd / AppCompatCacheParser):
 
-Input formats:
-1. `reg query` text output of SYSTEM hive (text mode)
-2. `services.txt` from KAPE / third-party tools
-3. `services.csv` export
+1. ``reg query`` / ``reg export`` text of the SYSTEM Services subtree
+2. ``services.txt`` from KAPE / third-party collectors
+3. ``services.csv`` / Kansa ``*SvcAll.csv`` exports
 
 Each service becomes one Artifact with the binary path, service type,
-start type, and other forensic context.
+start type, and other forensic context (T1543.003).
 """
 
 from __future__ import annotations
@@ -229,7 +227,7 @@ class WindowsServicesImporter(Importer):
         return Artifact(
             id=Artifact.new_id(),
             artifact_type=ArtifactType.PROCESS,
-            source=ArtifactSource.UNKNOWN,
+            source=ArtifactSource.WINDOWS_SERVICES,
             timestamp=mtime,
             ts_synthesized=True,
             severity=severity,

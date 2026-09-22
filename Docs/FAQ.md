@@ -31,9 +31,8 @@ A: `.\setup-windows.ps1` (Windows) or `./setup-linux.sh` (Linux) or `pip install
 A: `[all]` installs everything. Subsets let you skip what you don't need:
 - `[http]` — web server for Portal
 - `[rag]` — ChromaDB + sentence-transformers (~600 MB)
-- `[triage]` — orjson + zstandard (~2 GB baseline DBs)
-- `[dfir]` — native artifact parsers (EVTX, registry hives, LNK)
-- `[pipeline]` — LangGraph + LangChain for the LLM investigation pipeline
+- `[triage]` - orjson + zstandard (~2 GB baseline DBs)
+- `[pipeline]` - LangGraph + LangChain for the LLM investigation pipeline
 - `[opencti]` — OpenCTI client
 - `[encrypt]` — encryption for export bundles
 

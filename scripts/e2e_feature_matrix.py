@@ -44,21 +44,12 @@ def smallest(glob: str, root: Path | None = None) -> Path | None:
 def evidence_map() -> dict[str, Path | None]:
     """One real (or fixture) file per importer class — Evidence-files first."""
     emap = {
-        "EVTXImporter": first(
-            "01-windows/evtx/yamato-hayabusa-sample-evtx/DeepBlueCLI/password-spray.evtx",
-            "01-windows/evtx/yamato-hayabusa-sample-evtx/EVTX-ATTACK-SAMPLES/Credential Access/kerberos_pwd_spray_4771.evtx",
-        ) or smallest("01-windows/evtx/504-win10/*.evtx"),
         "HayabusaImporter": first("_fixtures/hayabusa-timeline.csv") or smallest("01-windows/hayabusa/**/*.csv"),
         "KAPEImporter": first("01-windows/kape-out/mft.csv"),
-        "LNKFileImporter": smallest("01-windows/lnk/**/*.lnk"),
-        "AmCacheImporter": first("01-windows/amcache/Amcache.hve"),
-        "WindowsRegistryImporter": first("01-windows/registry/ntuser/Default/NTUSER.DAT"),
+        "AmCacheImporter": first("02-memory/508-precooked/execution/amcache_ProgramEntries.csv") or first("01-windows/amcache/Amcache.hve"),
+        "WindowsRegistryImporter": first("_e2e-out/host-full/hkcu-run.reg"),
         "ScheduledTasksImporter": smallest("01-windows/tasks/**/*"),
         "WindowsServicesImporter": smallest("01-windows/services/**/*.csv"),
-        "WMISubscriptionsImporter": first("_fixtures/wmi_subscriptions.csv"),
-        "BrowserHistoryImporter": first("_fixtures/History") or first(
-            "01-windows/browser/fredr/AppData/Local/Google/Chrome/User Data/Profile 2/History"
-        ),
         "PlasoImporter": first("02-memory/508-precooked/timeline/rd01-supertimeline.csv"),
         "VolatilityImporter": first("_fixtures/volatility-pslist.json"),
         "CyberTriageImporter": first("_fixtures/cybertriage-sample.jsonl"),

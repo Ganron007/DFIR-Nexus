@@ -57,20 +57,16 @@ def lane_ingest() -> None:
         "CSVImporter": pick("05-siem/splunk.csv", "02-memory/508-precooked/execution/rd01-prefetch.csv"),
         "AzureImporter": pick("06-cloud/azure-activity-sample.json"),
         "CloudTrailImporter": pick("06-cloud/cloudtrail-sample.json"),
-        "AmCacheImporter": pick("01-windows/amcache/Amcache.hve", "02-memory/508-precooked/execution/amcache_ProgramEntries.csv"),
-        "BrowserHistoryImporter": smallest("01-windows/browser/**/*"),
-        "EVTXImporter": smallest("01-windows/evtx/504-win10/*.evtx") if False else None,
+        "AmCacheImporter": pick("02-memory/508-precooked/execution/amcache_ProgramEntries.csv", "01-windows/amcache/Amcache.hve"),
         "HayabusaImporter": smallest("01-windows/hayabusa/**/*"),
         "KAPEImporter": pick("01-windows/kape-out/mft.csv"),
-        "LNKFileImporter": smallest("01-windows/lnk/**/*.lnk"),
         "PlasoImporter": pick("02-memory/508-precooked/timeline/rd01-supertimeline.csv"),
-        "WindowsRegistryImporter": pick("01-windows/registry/ntuser/Default/NTUSER.DAT"),
+        "WindowsRegistryImporter": pick("_e2e-out/host-full/hkcu-run.reg"),
         "ScheduledTasksImporter": smallest("01-windows/tasks/**/*"),
         "WindowsServicesImporter": smallest("01-windows/services/**/*"),
         "TheHiveImporter": pick("08-ir-platforms/thehive-case.json"),
         "VelociraptorImporter": pick("08-ir-platforms/velociraptor/hunt-sample.jsonl"),
         "VolatilityImporter": smallest("02-memory/**/*vol*"),
-        "WMISubscriptionsImporter": smallest("01-windows/wmi/**/*"),
         "AuditdImporter": pick("03-linux/audit.log"),
         "AuthLogImporter": pick("03-linux/auth.log"),
         "BashHistoryImporter": pick("03-linux/bash_history"),
@@ -97,12 +93,6 @@ def lane_ingest() -> None:
         "SandboxImporter": pick("08-ir-platforms/sandbox-report.json"),
         "ArchiveImporter": smallest("**/*.{zip,7z,tar}"),
     }
-    # real EVTX with events
-    evtx = None
-    cands = [p for p in (EV / "01-windows/evtx").rglob("*.evtx") if 200_000 <= p.stat().st_size <= 1_500_000]
-    if cands:
-        evtx = sorted(cands, key=lambda p: p.stat().st_size)[0]
-        mapping["EVTXImporter"] = evtx
 
     registered = {name for _, name in _ALL_IMPORTERS}
     for cls_name in registered:

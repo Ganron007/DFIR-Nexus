@@ -118,7 +118,6 @@ def main() -> int:
     # ------------------------------------------------------------------
     # 1. Real evidence → Artifact objects (capped)
     # ------------------------------------------------------------------
-    from nexus.ingest.df.browser_history import BrowserHistoryImporter
     from nexus.ingest.df.hayabusa import HayabusaImporter
     from nexus.ingest.df.volatility import VolatilityImporter
     from nexus.ingest.linux.auditd import AuditdImporter
@@ -134,7 +133,6 @@ def main() -> int:
     if not any(a.source.value == "hayabusa" for a in artifacts):
         artifacts += ingest_file("hayabusa-fixture", EV / "_fixtures" / "hayabusa-timeline.csv", HayabusaImporter, 40)
     artifacts += ingest_file("vol3-psscan", EV / "02-memory" / "rocba-508" / "vol3-amadey" / "windows.psscan.json", VolatilityImporter, 80)
-    artifacts += ingest_file("chrome-history", EV / "01-windows" / "rocba-fredr" / "browser" / "Chrome-History", BrowserHistoryImporter, 40)
     artifacts += ingest_file("linux-audit", EV / "03-linux" / "audit.log", AuditdImporter, 30)
     artifacts += ingest_file("linux-auth", EV / "03-linux" / "auth.log", AuthLogImporter, 20)
     artifacts += ingest_file("linux-syslog", EV / "03-linux" / "syslog", SyslogImporter, 20)

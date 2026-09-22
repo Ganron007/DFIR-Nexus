@@ -11,11 +11,23 @@ from nexus.ingest.schemas import ArtifactSource
 
 
 class TestAutoDetect:
-    def test_evtx_by_filename(self) -> None:
+    def test_raw_host_artifacts_not_ingestible(self) -> None:
+        """Raw host artifacts are N-lane (EvtxECmd/RECmd/LECmd), never importers."""
+        from nexus.ingest.detect import lane_routing_hint
+
         with tempfile.NamedTemporaryFile(suffix=".evtx", delete=False) as f:
-            f.write(b"\x00" * 100)
-            p = Path(f.name)
-        assert detect_format(p) == ArtifactSource.EVTX
+            f.write(b"ElfFile\x00" + b"\x00" * 100)
+            evtx = Path(f.name)
+        assert detect_format(evtx) is None
+        assert "EvtxECmd" in (lane_routing_hint(evtx) or "")
+
+        hive = Path(tempfile.mkdtemp()) / "SYSTEM"
+        hive.write_bytes(b"regf\x00\x00\x00\x00" + b"\x00" * 100)
+        assert detect_format(hive) is None
+        assert "RECmd" in (lane_routing_hint(hive) or "")
+        result = ingest_auto(hive)
+        assert result["success"] is False
+        assert "RECmd" in result["error"]
 
     def test_syslog_by_content(self) -> None:
         content = "Jan 15 12:34:56 hostname sshd[1234]: Accepted password for user\n"

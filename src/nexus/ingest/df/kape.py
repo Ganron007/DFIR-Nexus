@@ -32,15 +32,14 @@ log = logging.getLogger(__name__)
 class KAPEImporter(Importer):
     """Parser for KAPE BasicCollection output directories.
 
-    Walks the directory, delegating to specialized importers for:
-    - .evtx files (via EVTXImporter)
-    - prefetch files (recognized by .pf extension)
-    - registry hives (SYSTEM, SOFTWARE, SAM, etc.)
-    - $MFT, $UsnJrnl
-    - LNK files
+    Reads the collection logs (``*CopyLog.csv`` / ``*SkipLog.csv``) when
+    present, else walks the tree, and records one 'KAPE collection' artifact
+    per file (path, size, mtime, host).
 
-    Files that don't match a known type are recorded as a 'KAPE collection'
-    artifact describing the file (path, size, mtime).
+    Raw host artifacts inside a KAPE tree (.evtx, hives, .lnk, $MFT, prefetch)
+    are **N-lane material** — process them with EvtxECmd / RECmd / LECmd /
+    MFTECmd and ingest their output; this importer only describes their
+    collection. KAPE *module* CSV/JSON outputs are the parsed layer.
     """
 
     # File extensions we know how to handle and what to record
@@ -131,7 +130,7 @@ class KAPEImporter(Importer):
             description = f"KAPE collected {kind}: {file.name}"
             tags.append(f"kape.{kind}")
             if ext == ".evtx":
-                artifact_type = ArtifactType.UNKNOWN  # delegated to EVTX importer
+                artifact_type = ArtifactType.UNKNOWN  # raw EVTX: N-lane (EvtxECmd) — descriptor only
             elif ext == ".pf":
                 artifact_type = ArtifactType.PROCESS
             elif ext == ".lnk":

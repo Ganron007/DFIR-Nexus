@@ -108,15 +108,23 @@ class TestDetectFilenameHints:
         )
         assert detect_format(p) == ArtifactSource.VELOCIRAPTOR
 
-    def test_security_evtx_still_evtx(self, tmp_path):
+    def test_security_evtx_routes_to_lane_hint(self, tmp_path):
+        """Raw EVTX is N-lane; ingest reports the routing hint instead of parsing."""
+        from nexus.ingest.detect import lane_routing_hint
+
         p = tmp_path / "Security-sample.evtx"
         p.write_bytes(b"ElfFile\x00" + b"\x00" * 64)
-        assert detect_format(p) == ArtifactSource.EVTX
+        assert detect_format(p) is None
+        assert "EvtxECmd" in (lane_routing_hint(p) or "")
 
-    def test_exact_sam_hive_still_registry(self, tmp_path):
+    def test_sam_hive_routes_to_lane_hint(self, tmp_path):
+        """Raw hives are N-lane (RECmd); ingest reports the routing hint."""
+        from nexus.ingest.detect import lane_routing_hint
+
         p = tmp_path / "sam"
-        p.write_bytes(b"\x00" * 16)
-        assert detect_format(p) == ArtifactSource.WINDOWS_REGISTRY
+        p.write_bytes(b"regf" + b"\x00" * 16)
+        assert detect_format(p) is None
+        assert "RECmd" in (lane_routing_hint(p) or "")
 
     def test_binary_pcap_not_routed_to_csv(self, tmp_path):
         p = tmp_path / "capture.pcap"
@@ -305,17 +313,17 @@ class TestRegistryUtf16RegExport:
                    for a in result.artifacts)
 
 
-class TestBrowserHistoryKapeNames:
-    def test_chrome_history_can_handle(self):
-        from nexus.ingest.df.browser_history import BrowserHistoryImporter
+class TestBrowserHistoryRemoved:
+    """Raw browser SQLite is N-lane (SQLECmd/Hindsight); the importer is gone."""
+
+    def test_history_sqlite_not_ingestible(self):
+        from nexus.ingest.detect import detect_format, lane_routing_hint
 
         p = Path(__file__).resolve().parents[1] / "Evidence-files" / "01-windows" / "rocba-fredr" / "browser" / "Chrome-History"
         if not p.is_file():
             pytest.skip("Chrome-History not staged")
-        assert BrowserHistoryImporter.can_handle(p)
-        result = BrowserHistoryImporter().ingest(p)
-        assert result.success
-        assert len(result.artifacts) > 0
+        assert detect_format(p) is None
+        assert "SQLECmd" in (lane_routing_hint(p) or "")
 
 
 def test_to_dict_handles_none_timestamp():
