@@ -101,7 +101,7 @@ additionally mounted: `H:\` (KAPE triage volume) and `E:\Evidence_files\500`
 | Family | Sample here | Windows tools | SIFT default tools |
 |---|---|---|---|
 | EVTX | `01-windows/evtx/` (500 / 504-win10 / h-triage / Yamato attack samples, 1 192 files), `rocba-fredr/evtx`, `showcase/rocba-500/host/evtx` | EvtxECmd, Hayabusa, Suzaku, Chainsaw, Zircolite, DeepBlueCLI | evtx_dump family, plaso (`log2timeline.py`) |
-| Registry hives | `01-windows/registry/{NTUSER.DAT,SAM,SECURITY,SOFTWARE,SYSTEM}`, `01-windows/504-win10-ws/SOFTWARE`, `rocba-fredr/registry`, showcase | RECmd (+ AppCompatCacheParser shimcache, AmcacheParser) | RECmd (dotnet), regripper (`misc.yaml`) |
+| Registry hives | `01-windows/registry/{NTUSER.DAT,SAM,SECURITY,SOFTWARE,SYSTEM}`, `01-windows/504-win10-ws/SOFTWARE`, `rocba-fredr/registry`, showcase | RECmd (+ AppCompatCacheParser shimcache, AmcacheParser), RegRipper 3.0 (text plugins) | RECmd (dotnet), regripper (`misc.yaml`) |
 | Prefetch | `01-windows/prefetch/*.pf` (331) | PECmd | plaso (prefetch parser) |
 | Amcache | `01-windows/amcache/Amcache.hve`, `rocba-fredr/amcache` | AmcacheParser | AmcacheParser (dotnet) |
 | Shimcache | SYSTEM hive (above) | AppCompatCacheParser | AppCompatCacheParser (dotnet) |

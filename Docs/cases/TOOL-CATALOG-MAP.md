@@ -81,7 +81,7 @@ Every key in `_WIN_CATALOG` is executable via `run_windows_command` when the bin
 
 **Windows catalog → knowledge card:** all 53 keys have a card. Fetch the parsers with `Tools/fetch-windows-tools.ps1` (operator machine, internet) — v2 prints a FETCHED/SKIPPED/FAILED report.
 
-**Catalog changes (2026-09-20, T2b/T2c):** fetched Zircolite v4.0.0, USBDeview x64, DeepBlueCLI, Hindsight, LogFileParser v2.0.0.53, Thumbcache Viewer CMD v1.0.2.1. Pruned `regripper` (`rip.exe` retired from Zimmerman net9; RECmd covers), `thumbcache` (GUI dup of the CLI), `browserparser` / `events_ripper` / `leveldb` (no official upstream), `ntfslogtracker` (dead Google Code project; LogFileParser + MFTECmd `$J` cover). 12 built-ins now resolve from `System32` via `_find_binary`. `nexus doctor` fails golden path on any required unresolvable key (53/53 on the reference workstation).
+**Catalog changes (2026-09-20, T2b/T2c; RegRipper reinstated 2026-09-22):** fetched Zircolite v4.0.0, USBDeview x64, DeepBlueCLI, Hindsight, LogFileParser v2.0.0.53, Thumbcache Viewer CMD v1.0.2.1; RegRipper 3.0 (`keydet89/RegRipper3.0` compiled `rip.exe`, 257 plugins — no Perl needed; text plugin output). Pruned `thumbcache` (GUI dup of the CLI), `browserparser` / `events_ripper` / `leveldb` (no official upstream), `ntfslogtracker` (dead Google Code project; LogFileParser + MFTECmd `$J` cover). 12 built-ins now resolve from `System32` via `_find_binary`. `nexus doctor` fails golden path on any required unresolvable key (54/54 on the reference workstation).
 
 **Evidence availability (2026-09-20):** which of these tools have local sample evidence to map against — available vs missing families — is in [TOOL-EVIDENCE-MAP.md](TOOL-EVIDENCE-MAP.md) § "Evidence availability — local pack".
 
@@ -105,7 +105,7 @@ Loaded by `src/nexus/tools/sift.py` from YAML. Every `name` is allowed through `
 | tshark, nfdump, tcpflow | `catalog/network.yaml` | `tools/network/*.yaml` | **on-demand** (PCAP/NetFlow present; SIFT defaults). Zeek/Suricata are **not** SIFT defaults → lane opt-in only (`NEXUS_SIFT_ZEEK`/`NEXUS_SIFT_SURICATA`), otherwise an honest SKIP row — never a guaranteed FAIL |
 | yara, strings, ssdeep, binwalk | `catalog/malware.yaml` | yara/strings/ssdeep cards; **binwalk has no card** (catalog-only) | **on-demand** |
 | bulk_extractor, **bmc-tools** | `catalog/file_analysis.yaml` | matching cards | bulk_extractor on-demand; bmc-tools also in the Windows lane |
-| exiftool, regripper, hashdeep, 7z | `catalog/misc.yaml` | matching knowledge cards | **on-demand** (RegRipper aliases to RECmd for Windows hive completeness) |
+| exiftool, regripper, hashdeep, 7z | `catalog/misc.yaml` | matching knowledge cards | **on-demand** (Windows lane now schedules RegRipper 3.0 `rip.exe` per hive — text plugin output, not field-mapped) |
 | dc3dd, ewfacquire, ewfmount, vshadowinfo, vshadowmount, **esedbexport** | `catalog/misc.yaml` | `tools/imaging/*.yaml`, `tools/file_analysis/esedbexport.yaml` | **on-demand** / VSS; esedbexport is the SIFT fallback for BITS/UAL ESE |
 
 ### Unix utilities (wired; never lane)
@@ -155,7 +155,7 @@ Presence comes from `locations` globbed against the image root (`artifact_map.py
 | shellbags | SBECmd | mandatory per-user SBECmd |
 | activitiescache | WxTCmd, SQLECmd | mandatory WxTCmd |
 | browser_history | SQLECmd, Hindsight | mandatory SQLECmd |
-| userassist, bam, mountpoints2, user_activity_mru | RECmd | mandatory RECmd NTUSER (RegRipper pruned — `rip.exe` retired; RECmd covers) |
+| userassist, bam, mountpoints2, user_activity_mru | RECmd | mandatory RECmd NTUSER; RegRipper 3.0 runs alongside per hive (text plugin coverage — not a substitute) |
 | registry_run_keys, registry_services | RECmd, autorunsc | mandatory RECmd; autorunsc live-only |
 | event_logs_* (11 channels) | EvtxECmd, Hayabusa, Suzaku, Chainsaw, Zircolite, DeepBlueCLI | mandatory Hayabusa + EvtxECmd; Zircolite (merged-high ruleset) + DeepBlueCLI (per `.evtx`, `run-deepblue.ps1`) also scheduled; Suzaku/Chainsaw extra |
 | hayabusa_alerts | Hayabusa | covered by Hayabusa job |
