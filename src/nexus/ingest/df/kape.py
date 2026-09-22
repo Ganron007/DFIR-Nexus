@@ -13,6 +13,7 @@ based on file type. It does NOT parse KAPE's own metadata files
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -75,20 +76,35 @@ class KAPEImporter(Importer):
 
     @classmethod
     def can_handle(cls, path: Path) -> bool:
-        """Heuristic: directory contains BasicInformation.txt (KAPE marker)."""
+        """Heuristic: KAPE markers, collection logs, or an .evtx tree."""
         if not path.is_dir():
             return False
         # Look for KAPE's signature file
         for marker in ("BasicInformation.txt", "KAPE_output.txt", "kape_output"):
             if (path / marker).exists():
                 return True
+        # KAPE collection logs written at the output root (TriageImage volumes)
+        if any(path.glob("*CopyLog.csv")) or any(path.glob("*SkipLog.csv")):
+            return True
         # Fallback: any directory containing .evtx files
         return any(path.rglob("*.evtx"))
 
     def parse(self, path: Path) -> Iterator[Artifact]:
-        """Walk the KAPE output directory and yield one Artifact per recognized file."""
-        # Pull host name from BasicInformation.txt if present
+        """Parse KAPE collection logs when present, else walk the output tree.
+
+        Collection logs (``*CopyLog.csv`` / ``*SkipLog.csv``) are authoritative:
+        one row per collected file with source path, size, SHA1 and source
+        timestamps — parsing them avoids re-walking the (huge) copied tree.
+        """
         host_name = self._extract_host(path)
+        copy_logs = sorted(path.glob("*CopyLog.csv"))
+        skip_logs = sorted(path.glob("*SkipLog.csv"))
+        if copy_logs or skip_logs:
+            for log_file in copy_logs:
+                yield from self._parse_copy_log(log_file, host_name)
+            for skip_log in skip_logs:
+                yield from self._parse_skip_log(skip_log, host_name)
+            return
         for file in sorted(path.rglob("*")):
             if not file.is_file():
                 continue
@@ -156,6 +172,120 @@ class KAPEImporter(Importer):
                 except OSError:
                     pass
         return None
+
+    _TS_FORMATS = ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S", "%m/%d/%Y %H:%M:%S")
+
+    @classmethod
+    def _parse_ts(cls, value: str | None) -> datetime | None:
+        v = (value or "").strip()
+        if not v:
+            return None
+        # .NET/KAPE timestamps can carry 7 fractional digits (100 ns).
+        m = re.match(r"^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:\.(\d+))?$", v)
+        if m:
+            frac = (m.group(3) or "000000")[:6].ljust(6, "0")
+            try:
+                return datetime.strptime(
+                    f"{m.group(1)} {m.group(2)}.{frac}", "%Y-%m-%d %H:%M:%S.%f"
+                ).replace(tzinfo=UTC)
+            except ValueError:
+                pass
+        for fmt in cls._TS_FORMATS:
+            try:
+                return datetime.strptime(v, fmt).replace(tzinfo=UTC)
+            except ValueError:
+                continue
+        return None
+
+    def _classify(self, name: str, ext: str) -> tuple[ArtifactType, str, list[str]]:
+        """(artifact_type, kind, tags) for a file name/extension."""
+        tags = ["kape"]
+        if name in self.KNOWN_NAMES:
+            kind = self.KNOWN_NAMES[name]
+            tags.append(f"kape.{kind}")
+            at = ArtifactType.REGISTRY if "registry_hive" in kind else ArtifactType.FILE
+            return at, kind, tags
+        if ext in self.KNOWN_EXTS:
+            kind = self.KNOWN_EXTS[ext]
+            tags.append(f"kape.{kind}")
+            if ext == ".evtx":
+                return ArtifactType.UNKNOWN, kind, tags
+            if ext == ".pf":
+                return ArtifactType.PROCESS, kind, tags
+            return ArtifactType.FILE, kind, tags
+        tags.append("kape.unknown")
+        return ArtifactType.FILE, "file", tags
+
+    def _parse_copy_log(self, log_file: Path, host_name: str | None) -> Iterator[Artifact]:
+        """One artifact per CopyLog row (source path, size, SHA1, timestamps)."""
+        import csv
+
+        with log_file.open("r", encoding="utf-8-sig", errors="replace", newline="") as f:
+            for row in csv.DictReader(f):
+                src = (row.get("SourceFile") or "").strip()
+                if not src:
+                    continue
+                ts = self._parse_ts(row.get("CopiedTimestamp"))
+                ts_synthesized = ts is None
+                if ts is None:
+                    ts = datetime.now(UTC)
+                norm = src.replace("\\", "/")
+                name = norm.rsplit("/", 1)[-1]
+                artifact_type, kind, tags = self._classify(name.upper(), Path(norm).suffix.lower())
+                sha1 = (row.get("SourceFileSha1") or "").strip()
+                size = (row.get("FileSize") or "").strip()
+                yield Artifact(
+                    id=Artifact.new_id(),
+                    artifact_type=artifact_type,
+                    source=ArtifactSource.KAPE,
+                    timestamp=ts,
+                    ts_synthesized=ts_synthesized,
+                    severity=Severity.INFORMATIONAL,
+                    host=host_name,
+                    file_path=src,
+                    file_hash_sha1=sha1,
+                    description=f"KAPE collected {kind}: {name} ({size} B)",
+                    raw={
+                        "source": "kape_copy_log",
+                        "destination": (row.get("DestinationFile") or "").strip(),
+                        "size": size,
+                        "sha1": sha1,
+                        "created_utc": (row.get("CreatedOnUtc") or "").strip(),
+                        "modified_utc": (row.get("ModifiedOnUtc") or "").strip(),
+                        "accessed_utc": (row.get("LastAccessedOnUtc") or "").strip(),
+                        "deferred": (row.get("DeferredCopy") or "").strip(),
+                        "copy_duration": (row.get("CopyDuration") or "").strip(),
+                        "log": log_file.name,
+                    },
+                    tags=tags,
+                )
+
+    def _parse_skip_log(self, log_file: Path, host_name: str | None) -> Iterator[Artifact]:
+        """One artifact per SkipLog row (skipped path + reason)."""
+        import csv
+
+        with log_file.open("r", encoding="utf-8-sig", errors="replace", newline="") as f:
+            for row in csv.DictReader(f):
+                src = (row.get("SourceFile") or "").strip()
+                if not src:
+                    continue
+                reason = (row.get("Reason") or "").strip()
+                norm = src.replace("\\", "/")
+                name = norm.rsplit("/", 1)[-1]
+                yield Artifact(
+                    id=Artifact.new_id(),
+                    artifact_type=ArtifactType.FILE,
+                    source=ArtifactSource.KAPE,
+                    timestamp=datetime.now(UTC),
+                    ts_synthesized=True,
+                    severity=Severity.INFORMATIONAL,
+                    host=host_name,
+                    file_path=src,
+                    file_hash_sha1=(row.get("SourceFileSha1") or "").strip(),
+                    description=f"KAPE skipped: {name} — {reason}" if reason else f"KAPE skipped: {name}",
+                    raw={"source": "kape_skip_log", "reason": reason, "log": log_file.name},
+                    tags=["kape", "kape.skipped"],
+                )
 
     @staticmethod
     def _safe_mtime(path: Path) -> tuple[datetime, bool]:
