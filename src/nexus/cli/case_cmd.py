@@ -123,7 +123,31 @@ def clean_cases(
     # Reset the active-case pointer
     with contextlib.suppress(OSError):
         _ACTIVE_CASE_FILE.write_text("")
-    typer.echo(f"Cleaned {len(case_dirs)} case folder(s); cases.db removed; active case cleared.")
+    # Best-effort: drop the ES indexes of the removed cases too, so test
+    # indexes never outlive their case (see SETUP.md -> Elasticsearch).
+    idx_note = _delete_case_indexes(sorted({d.name for d in case_dirs} - keep))
+    typer.echo(
+        f"Cleaned {len(case_dirs)} case folder(s); cases.db removed; "
+        f"active case cleared; {idx_note}."
+    )
+
+
+def _delete_case_indexes(case_ids: list[str]) -> str:
+    """Best-effort ES index removal for cleaned cases (never blocks cleanup)."""
+    if not case_ids:
+        return "no ES indexes to remove"
+    try:
+        from nexus.langgraph.case_index import delete_index, es_url
+
+        if not es_url():
+            return "ES indexes skipped (NEXUS_ES_URL unset)"
+        deleted = 0
+        for cid in case_ids:
+            if delete_index(cid).get("deleted"):
+                deleted += 1
+        return f"{deleted}/{len(case_ids)} ES index(es) removed"
+    except Exception as exc:  # noqa: BLE001 — cleanup must never block
+        return f"ES index cleanup skipped ({type(exc).__name__})"
 
 
 @app.command()

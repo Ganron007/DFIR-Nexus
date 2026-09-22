@@ -860,6 +860,41 @@ def index_case(
     return meta
 
 
+def delete_index(case_id: str) -> dict[str, Any]:
+    """Best-effort delete of a case's ES index (case cleanup path).
+
+    Never raises: ES may be down or the index may not exist. Callers report
+    ``deleted``/``reason`` honestly. ES data is rebuildable from the case's
+    extraction outputs, so cleanup is safe.
+    """
+    name = index_name(case_id)
+    if not es_url():
+        return {"index": name, "deleted": False, "reason": "NEXUS_ES_URL unset"}
+    try:
+        with _client() as client:
+            r = client.delete(f"/{name}")
+            if r.status_code == 404:
+                return {"index": name, "deleted": False, "reason": "index absent"}
+            if r.status_code >= 400:
+                return {
+                    "index": name, "deleted": False,
+                    "reason": f"{r.status_code} {r.text[:120]}",
+                }
+        _schema_cache.pop(case_id, None)
+        _fields_props_cache.pop(case_id, None)
+        with contextlib.suppress(Exception):
+            from nexus.langgraph.field_catalog import invalidate_catalog
+
+            invalidate_catalog(case_id)
+        with contextlib.suppress(Exception):
+            from nexus.tools.evidence_index import invalidate_mappings_cache
+
+            invalidate_mappings_cache(case_id)
+        return {"index": name, "deleted": True, "reason": ""}
+    except Exception as exc:  # noqa: BLE001 — cleanup must never block
+        return {"index": name, "deleted": False, "reason": f"{type(exc).__name__}: {exc}"}
+
+
 def _newest_extraction_mtime(case_dir: Path) -> float:
     """Newest mtime across this case's processed outputs (0 when none).
 

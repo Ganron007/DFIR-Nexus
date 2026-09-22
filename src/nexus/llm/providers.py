@@ -97,13 +97,19 @@ class LLMProvider(ABC):
     async def _get_client(self) -> httpx.AsyncClient:
         """Lazy-init async HTTP client."""
         if self._client is None:
+            # Slow providers (long-context interpret calls) need headroom; the
+            # 180 s default can be raised per deployment (e.g. NEXUS_LLM_TIMEOUT=600).
+            try:
+                timeout_s = float(os.environ.get("NEXUS_LLM_TIMEOUT", "180") or "180")
+            except ValueError:
+                timeout_s = 180.0
             self._client = httpx.AsyncClient(
                 base_url=self.base_url,
                 headers={
                     "Authorization": f"Bearer {self._get_api_key()}",
                     "Content-Type": "application/json",
                 },
-                timeout=httpx.Timeout(180.0, connect=10.0),
+                timeout=httpx.Timeout(max(10.0, timeout_s), connect=10.0),
             )
         return self._client
 

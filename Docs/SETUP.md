@@ -112,7 +112,7 @@ NEXUS_LLM_REASONING=high                 # optional reasoning passthrough
 |----------|---------|---------|
 | `NEXUS_KB_DIR` | unset | Path to your local KB (the folder containing `kb/kb.py`, e.g. `G:\doc_extract`). Enables `kb_search`/`kb_read` and the Mode 2 KB context block. |
 | `NEXUS_RAG_DEVICE` | `auto` | Embedding device: `cpu` \| `cuda` \| `cuda:0` — `auto` picks CUDA when the installed torch build has it (the log line reports the device). |
-| `NEXUS_LLM_TIMEOUT` | `120` | Seconds per LLM request; a stalled provider can never hang a turn. |
+| `NEXUS_LLM_TIMEOUT` | `180` | Seconds per LLM request; raise it (e.g. `600`) for slow long-context providers — a stalled provider can never hang a turn. |
 | `NEXUS_MODE2_TURN_TIMEOUT` | `240` | Steering-turn budget (seconds) before the request returns a graceful timeout. |
 | `NEXUS_LLM_CONTEXT_WINDOW` | `1000000` | Your model's max context window (tokens). The Mode 2 context allocator packs `window × fill` and never applies smaller artificial caps. Also settable per run in the Briefing run panel (stored in `analysis/mode2_run_options.json`). |
 | `NEXUS_CONTEXT_FILL_RATIO` | `0.7` | Share of the window packed into prompts. Every packed context is persisted to `analysis/llm_context/` for audit; usage is logged, never capped. |
@@ -203,6 +203,44 @@ SIFT does not load torch/Chroma. The pipeline (and any other client) calls
 
 `forensic_rag_status()` reports `model`, `model_load_path`, `model_source`
 (`hf_hub_cache` | `explicit_dir` | `huggingface_id`), and `local_files_only`.
+
+### 2f. Elasticsearch (N3 index — Mode 1/2/3 retrieval)
+
+Mode 1 typed queries and the Mode 2/3 agents read a **per-case Elasticsearch
+index** (`nexus-case-<case_id>`), not the raw CSVs. Point the config at it:
+
+```bash
+NEXUS_ES_URL=http://localhost:9200     # .env; empty = CSV-pack fallback (no agent analysis)
+```
+
+Run it with Docker (single node, security off for the lab):
+
+```bash
+docker run -d --name nexus-es -p 9200:9200 \
+  -e discovery.type=single-node -e xpack.security.enabled=false \
+  -e ES_JAVA_OPTS="-Xms1g -Xmx1g" \
+  -v nexus-es-data:/usr/share/elasticsearch/data \
+  docker.elastic.co/elasticsearch/elasticsearch:8.17.4
+```
+
+**Index lifecycle (what is managed today):**
+
+- **Create** — lazily: `nexus index rebuild [--case CASE-…]`, or automatically
+  during a pipeline run. The mapping comes from the shipped field registry
+  (`src/nexus/data/schema/field_registry.yaml`, schema v5): explicit typed
+  `fields.*`, `ignore_malformed`, date/numeric detection off; unmapped columns
+  still land as `text+kw`.
+- **Rebuild** — bumping `INDEX_SCHEMA_VERSION` drops and re-creates the index on
+  the next ensure; incremental runs re-index changed files and purge files that
+  disappeared. A guard **refuses a purge when the file resolution comes back
+  empty** (a resolver bug must never look like deleted evidence).
+- **Delete** — `nexus case clean` removes each cleaned case's index together
+  with its folder/db. There is **no TTL/ILM policy**: an index lives as long as
+  its case.
+- **Persistence** — the `nexus-es-data` volume keeps ES data across container
+  restarts/removals. Without the volume (plain `docker run`), indexes vanish
+  when the container is removed — they are rebuildable from the case's
+  extraction outputs, and case data itself is never touched.
 
 ### 2c. From source (contributors)
 ```bash
