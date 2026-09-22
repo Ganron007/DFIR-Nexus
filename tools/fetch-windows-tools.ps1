@@ -190,6 +190,19 @@ try {
     $script:Versions += "logfileparser`t$($lf.Tag)`t$($lf.Asset.browser_download_url)"
 } catch { Add-Report "logfileparser" "FAILED" "$_" }
 
+Write-Host "==> RegRipper 3.0 (keydet89; Perl required at run time)"
+try {
+    $rrZip = Join-Path $env:TEMP "RegRipper3.0-master.zip"
+    Invoke-WebRequest -Uri "https://github.com/keydet89/RegRipper3.0/archive/refs/heads/master.zip" -OutFile $rrZip
+    $rrDest = Join-Path $Ext "regripper"
+    if (Test-Path $rrDest) { Remove-Item $rrDest -Recurse -Force }
+    Expand-Any $rrZip $rrDest
+    $rip = Get-ChildItem $rrDest -Recurse -Filter "rip.pl" | Select-Object -First 1
+    if (-not $rip) { throw "rip.pl not found in archive" }
+    Add-Report "regripper" "FETCHED" "RegRipper3.0 (Perl; rip.pl needs perl on PATH) -> $($rip.FullName)"
+    $script:Versions += "regripper`tmaster`thttps://github.com/keydet89/RegRipper3.0"
+} catch { Add-Report "regripper" "FAILED" "$_" }
+
 Write-Host "==> Zircolite (GitHub latest windows-x64)"
 try {
     $zr = Get-GitHubAsset "wagga40/Zircolite" "windows-x64\.zip$"
