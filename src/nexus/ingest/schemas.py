@@ -192,7 +192,7 @@ class TimelineEntry:
     def to_dict(self) -> dict[str, Any]:
         """Convert to a JSON-serializable dict."""
         d = asdict(self)
-        d["timestamp"] = self.timestamp.isoformat()
+        d["timestamp"] = self.timestamp.isoformat() if self.timestamp else None
         d["artifact_type"] = self.artifact_type.value
         d["severity"] = self.severity.value
         return d
@@ -257,8 +257,8 @@ class Artifact:
         d["source"] = self.source.value
         d["severity"] = self.severity.value
         d["protocol"] = self.protocol.value if self.protocol else None
-        d["timestamp"] = self.timestamp.isoformat()
-        d["ingested_at"] = self.ingested_at.isoformat()
+        d["timestamp"] = self.timestamp.isoformat() if self.timestamp else None
+        d["ingested_at"] = self.ingested_at.isoformat() if self.ingested_at else None
         return d
 
     def to_json(self) -> str:

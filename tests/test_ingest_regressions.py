@@ -316,3 +316,33 @@ class TestBrowserHistoryKapeNames:
         result = BrowserHistoryImporter().ingest(p)
         assert result.success
         assert len(result.artifacts) > 0
+
+
+def test_to_dict_handles_none_timestamp():
+    """Kansa service rows without timestamps must not crash serialization."""
+    from nexus.ingest.schemas import (
+        Artifact,
+        ArtifactSource,
+        ArtifactType,
+        Severity,
+        TimelineEntry,
+    )
+
+    a = Artifact(
+        id="t1",
+        artifact_type=ArtifactType.PROCESS,
+        source=ArtifactSource.GENERIC_CSV,
+        timestamp=None,
+        severity=Severity.INFORMATIONAL,
+        description="svc row",
+    )
+    assert a.to_dict()["timestamp"] is None
+
+    t = TimelineEntry(
+        timestamp=None,
+        artifact_id="t1",
+        artifact_type=ArtifactType.PROCESS,
+        description="svc row",
+        severity=Severity.INFORMATIONAL,
+    )
+    assert t.to_dict()["timestamp"] is None
