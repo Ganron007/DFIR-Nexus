@@ -89,6 +89,16 @@ class WindowsRegistryImporter(Importer):
     # Interesting SAM user attributes
     SAM_INTERESTING: ClassVar[set[str]] = {"F", "V"}  # F=full name, V=comment
 
+    # Names that must be parsed as binary hives (not text)
+    BINARY_NAMES: ClassVar[set[str]] = {
+        "system", "software", "sam", "security", "default",
+        "ntuser.dat", "usrclass.dat", "amcache.hve", "amcache",
+    }
+
+    # Bounds for huge hives (SOFTWARE/SYSTEM): the walker must never run unbounded.
+    MAX_KEYS: ClassVar[int] = 250_000
+    MAX_ARTIFACTS: ClassVar[int] = 5_000
+
     @classmethod
     def source_class(cls) -> ArtifactSource:
         return ArtifactSource.WINDOWS_REGISTRY
@@ -127,14 +137,28 @@ class WindowsRegistryImporter(Importer):
         return name_lower in {"system", "software", "sam", "security", "ntuser.dat", "usrclass.dat", "amcache.hve", "amcache"}
 
     def parse(self, path: Path) -> Iterator[Artifact]:
-        """Yield Artifact objects from a registry file."""
+        """Yield Artifact objects from a registry file (bounded for huge hives)."""
+        self._keys_seen = 0
+        self._budget_hit = False
         name_lower = path.name.lower()
         # Try binary mode first
-        if path.suffix.lower() in (".hve", ".dat") or name_lower in {"system", "software", "sam", "amcache.hve"}:
-            yield from self._parse_binary(path)
-            return
-        # Fallback: text mode
-        yield from self._parse_text(path)
+        if path.suffix.lower() in (".hve", ".dat") or name_lower in self.BINARY_NAMES:
+            gen: Iterator[Artifact] = self._parse_binary(path)
+        else:
+            # Fallback: text mode
+            gen = self._parse_text(path)
+        count = 0
+        for art in gen:
+            yield art
+            count += 1
+            if count >= self.MAX_ARTIFACTS:
+                self._budget_hit = True
+                break
+        if self._budget_hit:
+            log.warning(
+                "registry walk budget hit on %s (keys=%d, artifacts=%d) — truncated",
+                path.name, self._keys_seen, count,
+            )
 
     # ----- Binary mode (requires python-registry or regipy) -----
 
@@ -188,8 +212,16 @@ class WindowsRegistryImporter(Importer):
     ) -> Iterator[Artifact]:
         """Walk a python-registry key tree and emit Artifacts for interesting keys."""
         for subkey in key.subkeys():
+            self._keys_seen += 1
+            if self._keys_seen > self.MAX_KEYS:
+                self._budget_hit = True
+                return
             sub_path = f"{key.path()}\\{subkey.name()}"
             lower = sub_path.lower()
+            # SAM local accounts live under DOMAINS\Account\Users\Names\<user>
+            if "\\sam\\domains\\account\\users\\names\\" in lower and subkey.name():
+                yield self._sam_user_artifact(subkey.name(), path, sub_path)
+                continue
             for pattern, info in self.INTERESTING_KEYS.items():
                 if pattern.lower() in lower:
                     for value in subkey.values():
@@ -216,8 +248,17 @@ class WindowsRegistryImporter(Importer):
                     yield from self._walk_regipy(root, str(path))
                 return
             for subkey in recurse():
+                self._keys_seen += 1
+                if self._keys_seen > self.MAX_KEYS:
+                    self._budget_hit = True
+                    return
                 sub_path = str(getattr(subkey, "path", "") or "")
                 lower = sub_path.lower()
+                if "\\sam\\domains\\account\\users\\names\\" in lower:
+                    uname = sub_path.rsplit("\\", 1)[-1]
+                    if uname:
+                        yield self._sam_user_artifact(uname, path, sub_path)
+                    continue
                 for pattern, info in self.INTERESTING_KEYS.items():
                     if pattern.lower() in lower:
                         for value in getattr(subkey, "values", None) or []:
@@ -233,6 +274,10 @@ class WindowsRegistryImporter(Importer):
     def _walk_regipy(self, key: Any, path: Path | str) -> Iterator[Artifact]:
         """Walk a legacy regipy key tree (iter_subkeys)."""
         for subkey in key.iter_subkeys():
+            self._keys_seen += 1
+            if self._keys_seen > self.MAX_KEYS:
+                self._budget_hit = True
+                return
             sub_path = getattr(subkey, "path", None) or getattr(subkey, "name", "")
             lower = str(sub_path).lower()
             for pattern, info in self.INTERESTING_KEYS.items():
@@ -367,7 +412,7 @@ class WindowsRegistryImporter(Importer):
         return Artifact(
             id=Artifact.new_id(),
             artifact_type=ArtifactType.REGISTRY,
-            source=ArtifactSource.UNKNOWN,
+            source=ArtifactSource.WINDOWS_REGISTRY,
             ts_synthesized=True,
             timestamp=datetime.fromtimestamp(
                 Path(source_path).stat().st_mtime if Path(source_path).exists() else 0,
@@ -386,4 +431,24 @@ class WindowsRegistryImporter(Importer):
             },
             technique_ids=[info["technique"]],
             tags=["registry", f"key.{info['technique']}"],
+        )
+
+    def _sam_user_artifact(self, name: str, hive: Path | str, key_path: str) -> Artifact:
+        """SAM local account entry (DOMAINS\\Account\\Users\\Names\\<user>)."""
+        return Artifact(
+            id=Artifact.new_id(),
+            artifact_type=ArtifactType.REGISTRY,
+            source=ArtifactSource.WINDOWS_REGISTRY,
+            ts_synthesized=True,
+            timestamp=datetime.fromtimestamp(
+                Path(hive).stat().st_mtime if Path(hive).exists() else 0, tz=UTC
+            ),
+            severity=Severity.INFORMATIONAL,
+            host=Path(hive).stem,
+            registry_key=key_path,
+            registry_value=name,
+            description=f"SAM local account: {name}",
+            raw={"key": key_path, "user": name, "hive": str(hive)},
+            technique_ids=["T1087.001"],
+            tags=["registry", "sam", "user"],
         )
