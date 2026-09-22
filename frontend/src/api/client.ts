@@ -386,6 +386,8 @@ export interface ChatEntry {
     queries?: { tool: string; dsl: string; why?: string; hits: number; audit_id?: string }[];
     aggregations?: { field: string; distinct: number; top?: { value: string; count: number }[] }[];
     followups?: { label: string; question: string }[];
+    /** Set on `answer_saved` entries: the assistant message they refer to. */
+    entry_ts?: string;
   };
 }
 
@@ -475,6 +477,24 @@ export interface ProposeDraftResponse {
   corroboration?: CorroborationResponse;
   /** FD-006/007 auto-cap note — set when confidence was lowered to LOW. */
   confidence_adjusted?: string[];
+  error?: string | string[];
+}
+
+/** POST /mode2/suggestions → suggested examiner questions for the chat */
+export interface Mode2SuggestionsResponse {
+  suggestions: { text: string; source: string }[];
+  generated_by: string;
+  cached?: boolean;
+}
+
+/** POST /mode2/save-answer → bookmark an answer's rows + record it for the report */
+export interface Mode2SaveAnswerResponse {
+  saved?: boolean;
+  entry_ts?: string;
+  bookmarked?: number;
+  existed?: number;
+  total?: number;
+  saved_answers?: number;
   error?: string | string[];
 }
 
@@ -1020,6 +1040,9 @@ export const api = {
     post<CorroborationResponse>("/mode2/corroborate", params),
   mode2ProposeDraft: (params: { title: string; hits?: N4Hit[]; query?: string }) =>
     post<ProposeDraftResponse>("/mode2/propose-draft", params),
+  mode2Suggestions: () => post<Mode2SuggestionsResponse>("/mode2/suggestions", {}),
+  mode2SaveAnswer: (params: { entry_ts: string; note?: string }) =>
+    post<Mode2SaveAnswerResponse>("/mode2/save-answer", params),
 
   // Mode 3
   mode3Plan: (params?: { question?: string }) =>

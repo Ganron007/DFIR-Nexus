@@ -111,11 +111,13 @@ function HitCard({ hit: h }: { hit: N4Hit }) {
   );
 }
 
-function ProposalCard({ entry, caseMode, onAsk, busy }: {
+function ProposalCard({ entry, caseMode, onAsk, busy, saved, onSave }: {
   entry: ChatEntry;
   caseMode: string;
   onAsk?: (question: string) => void;
   busy?: boolean;
+  saved?: boolean;
+  onSave?: () => Promise<void>;
 }) {
   const meta = (entry.meta || {}) as Record<string, string>;
   const navigate = useNavigate();
@@ -129,6 +131,18 @@ function ProposalCard({ entry, caseMode, onAsk, busy }: {
   const followups = entry.data?.followups || [];
   const firstHitQuery = queries.find((q) => q.hits > 0);
   const [draft, setDraft] = useState("");
+  const [saveState, setSaveState] = useState(saved ? "Saved for report" : "");
+
+  const saveAnswer = async () => {
+    if (!onSave || saveState.startsWith("Saved") || saveState === "saving…") return;
+    setSaveState("saving…");
+    try {
+      await onSave();
+      setSaveState("Saved for report");
+    } catch (e) {
+      setSaveState((e as Error).message || "save failed");
+    }
+  };
 
   const stageDraft = async () => {
     if (draft) return;
@@ -318,6 +332,21 @@ function ProposalCard({ entry, caseMode, onAsk, busy }: {
           >
             Stage DRAFT
           </button>
+          <button
+            className="btn btn-sm"
+            onClick={() => void saveAnswer()}
+            disabled={saveState === "saving…" || saveState.startsWith("Saved")}
+            title="Bookmark this answer's cited rows to the Workbench and record the answer for the report"
+          >
+            {saveState.startsWith("Saved")
+              ? "★ Saved for report"
+              : saveState === "saving…"
+                ? "saving…"
+                : "☆ Save for report"}
+          </button>
+          {saveState && !saveState.startsWith("Saved") && saveState !== "saving…" && (
+            <span style={{ fontSize: 11, color: "var(--warning)" }}>{saveState}</span>
+          )}
           {draft && (
             <span style={{ fontSize: 11, color: draft.startsWith("DRAFT") ? "var(--ok)" : "var(--warning)" }}>
               {draft}
@@ -378,6 +407,10 @@ export default function SteerChat() {
   // WP 4d.3: live progress while a streamed turn is running
   const [liveStatus, setLiveStatus] = useState("");
   const [liveIterations, setLiveIterations] = useState<Record<string, unknown>[]>([]);
+  // Mode 2 suggested questions (LLM-generated when available, server-cached)
+  const [suggestions, setSuggestions] = useState<{ text: string; source: string }[]>([]);
+  const [suggBy, setSuggBy] = useState("");
+  const [suggLoading, setSuggLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollTimerRef = useRef<number | null>(null);
 
@@ -398,12 +431,46 @@ export default function SteerChat() {
       });
   };
 
+  const savedTs = new Set(
+    messages
+      .filter((m) => m.action === "answer_saved")
+      .map((m) => String(m.data?.entry_ts || ""))
+      .filter(Boolean),
+  );
+
+  const saveAnswer = async (entryTs: string) => {
+    if (!entryTs) return;
+    const r = await api.mode2SaveAnswer({ entry_ts: entryTs });
+    if (r.error) {
+      throw new Error(Array.isArray(r.error) ? r.error.join("; ") : r.error);
+    }
+    load();
+  };
+
+  const refreshSuggestions = () => {
+    setSuggLoading(true);
+    api.mode2Suggestions()
+      .then((r) => {
+        setSuggestions(r.suggestions || []);
+        setSuggBy(r.generated_by || "");
+      })
+      .catch(() => { /* suggestions are optional — never block the chat */ })
+      .finally(() => setSuggLoading(false));
+  };
+
   useEffect(() => {
     load();
     return () => {
       if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
     };
   }, [activeCase]);
+
+  useEffect(() => {
+    if (mode !== "mode2") return;
+    refreshSuggestions();
+    // Suggestions are server-cached (120 s) — refreshing on case/mode change is cheap.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCase, mode]);
 
   const send = () => {
     if (!input.trim() || loading) return;
@@ -749,6 +816,44 @@ export default function SteerChat() {
             ? "Mode 2: you ask in plain language — the LLM queries the case's evidence index and cites rows. Staging a DRAFT is a separate examiner-triggered action."
             : "Mode 3: the agent plans, hunts and corroborates across the case; you steer and seal."}
       </div>
+      {mode === "mode2" && (suggestions.length > 0 || suggLoading) && (
+        <div
+          className="card"
+          style={{
+            padding: "6px 10px",
+            marginBottom: 8,
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            flexWrap: "wrap",
+          }}
+        >
+          <span style={{ fontSize: 10, textTransform: "uppercase", color: "var(--text-muted)" }}>
+            Suggested questions{suggBy ? ` · ${suggBy}` : ""}
+          </span>
+          {suggestions.map((s, i) => (
+            <button
+              key={i}
+              className="btn btn-sm clickable-tint"
+              style={{ fontSize: 11 }}
+              disabled={loading}
+              title={s.text}
+              onClick={() => void sendText(s.text)}
+            >
+              {s.text}
+            </button>
+          ))}
+          <button
+            className="btn btn-sm"
+            style={{ fontSize: 10 }}
+            onClick={refreshSuggestions}
+            disabled={suggLoading}
+            title="Refresh suggested questions (server-cached for 2 minutes)"
+          >
+            {suggLoading ? "…" : "↻"}
+          </button>
+        </div>
+      )}
       {mode === "mode2" && turnTimings && (
         <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: -8, marginBottom: 8 }}>
           last turn: {turnTimings}
@@ -907,6 +1012,8 @@ export default function SteerChat() {
                     caseMode={caseMode}
                     busy={loading}
                     onAsk={(q) => void sendText(q)}
+                    saved={savedTs.has(m.ts)}
+                    onSave={() => saveAnswer(m.ts)}
                   />
                 );
               }

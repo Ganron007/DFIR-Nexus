@@ -2981,13 +2981,13 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
         record["scan_truncated"] = bool(brief.get("scan_truncated"))
         _persist()
         if not scan:
-            record["status"] = "complete"
             record["stage"] = "nothing to promote"
             record["needles_hit"] = 0
             record["skipped"] = [{"reason": "no playbook needles matched any evidence"}]
             record["drafts_staged"] = 0
             record["completed_at"] = time.time()
-            record["next"] = "Nothing to promote — no needle hits in this case."
+            record["next"] = "Nothing to promote - no needle hits in this case."
+            record["status"] = "complete"  # publish LAST (pollers fire on status)
             _persist()
             return
         # Existing DRAFT/APPROVED needles — re-runs must not duplicate staged
@@ -3212,13 +3212,15 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
 
         record["needles_done"] = len(scan)
         record["current"] = ""
-        record["status"] = "complete"
         record["stage"] = "awaiting examiner approval"
         record["drafts_staged"] = len(record["drafts"])
         record["completed_at"] = time.time()
         record["next"] = (
             "Review DRAFT findings in Approve (manual HMAC), then generate the report (N8)."
         )
+        # Publish the terminal status LAST: pollers fire as soon as status is
+        # terminal, so every derived field must already be populated.
+        record["status"] = "complete"
         _persist()
     except Exception as exc:  # noqa: BLE001 — record must always reach terminal state
         logger.exception("Mode 1 full-run failed for %s", case_dir.name)
@@ -4098,6 +4100,285 @@ async def api_entities(request):
         return JSONResponse({"error": result["error"]}, status_code=400)
     texts = [h.get("text", "") for h in result.get("hits", [])]
     return JSONResponse({"entities": extract_entities(texts), "total": result.get("count", 0)})
+
+
+# Mode 2 suggested questions — LLM-generated (validated, grounded in the case)
+# with a deterministic fallback so the panel always populates. Cached per case
+# so the chat never pays for it twice and a slow model can't block the UI.
+_MODE2_SUGGEST_TTL = 120.0
+_mode2_suggest_cache: dict[str, tuple[float, dict]] = {}
+_mode2_suggest_lock = threading.Lock()
+
+
+def _mode2_chat_entries(case_dir: Path) -> list[dict]:
+    """Read chat.jsonl (append-only transcript) — best-effort, never raises."""
+    out: list[dict] = []
+    try:
+        lines = (Path(case_dir) / "chat.jsonl").read_text(
+            encoding="utf-8", errors="replace"
+        ).splitlines()
+    except OSError:
+        return out
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(entry, dict):
+            out.append(entry)
+    return out
+
+
+def _mode2_suggest_context(case_dir: Path) -> dict[str, Any]:
+    """Small, cheap case context for question suggestions (no needle scan)."""
+    ctx: dict[str, Any] = {
+        "families": [], "hosts": [], "users": [], "processes": [], "last_question": "",
+    }
+    try:
+        from nexus.tools.evidence_index import do_index_mappings
+
+        mappings = do_index_mappings(case_id=Path(case_dir).name)
+        ctx["families"] = [str(f) for f in (mappings.get("families") or [])][:12]
+    except Exception:  # noqa: BLE001 — suggestions are best-effort
+        pass
+    try:
+        inv = json.loads(
+            (Path(case_dir) / "analysis" / "entity_inventory.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        for key in ("hosts", "users", "processes"):
+            values = inv.get(key) or {}
+            if isinstance(values, dict):
+                ranked = sorted(values.items(), key=lambda kv: -int(kv[1] or 0))
+                ctx[key] = [str(k) for k, _v in ranked[:5]]
+    except Exception:  # noqa: BLE001
+        pass
+    for entry in reversed(_mode2_chat_entries(case_dir)):
+        if entry.get("role") == "examiner" and entry.get("text"):
+            ctx["last_question"] = str(entry["text"])[:200]
+            break
+    return ctx
+
+
+def _mode2_deterministic_suggestions(ctx: dict[str, Any]) -> list[dict[str, str]]:
+    """Question ideas from what the case actually holds (never guesswork)."""
+    out: list[dict[str, str]] = []
+
+    def add(text: str) -> None:
+        text = text.strip()
+        if text and all(text.lower() != s["text"].lower() for s in out):
+            out.append({"text": text, "source": "case"})
+
+    if ctx.get("hosts"):
+        add(f"What else happened on host {ctx['hosts'][0]}?")
+    if ctx.get("users"):
+        add(f"What did user {ctx['users'][0]} do in this case?")
+    if ctx.get("processes"):
+        add(f"Trace {ctx['processes'][0]} across the case")
+    if ctx.get("families"):
+        add(f"What are the top detections in {ctx['families'][0]} evidence?")
+    add("List all hosts seen in this case")
+    add("List all users seen in this case")
+    add("Show the highest-severity detections")
+    return out[:6]
+
+
+def _validate_mode2_suggestions(
+    raw: Any, ctx: dict[str, Any], last_q: str = ""
+) -> list[dict[str, str]]:
+    """Keep only grounded, sane questions (LLM output is untrusted input)."""
+    out: list[dict[str, str]] = []
+    tokens = {
+        str(t).lower()
+        for key in ("hosts", "users", "processes", "families")
+        for t in (ctx.get(key) or [])
+        if str(t).strip()
+    }
+    generic = re.compile(
+        r"\b(list|show|which|what|who|count|trace|summari[sz]e|find|seen|involved|happened)\b",
+        re.IGNORECASE,
+    )
+    for item in raw if isinstance(raw, list) else []:
+        text = str(item.get("text") if isinstance(item, dict) else item or "").strip().strip("-•*")
+        if not text or len(text) > 140:
+            continue
+        if last_q and text.lower() == last_q.lower():
+            continue
+        if any(text.lower() == s["text"].lower() for s in out):
+            continue
+        low = text.lower()
+        if not (any(tok in low for tok in tokens) or generic.search(text)):
+            continue
+        out.append({"text": text, "source": "llm"})
+        if len(out) >= 6:
+            break
+    return out
+
+
+async def api_mode2_suggestions(request):
+    """POST /portal/api/mode2/suggestions — examiner question ideas for the chat.
+
+    The LLM proposes questions grounded in the case's families/entities; every
+    suggestion is validated and the deterministic set fills any gap (or the
+    whole panel when no model is configured). Cached per case for 120 s.
+    """
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+
+    key = case_dir.name
+    now = time.time()
+    with _mode2_suggest_lock:
+        hit = _mode2_suggest_cache.get(key)
+        if hit and (now - hit[0]) < _MODE2_SUGGEST_TTL:
+            payload = dict(hit[1])
+            payload["cached"] = True
+            return JSONResponse(payload)
+
+    ctx = await asyncio.to_thread(_mode2_suggest_context, case_dir)
+    fallback = _mode2_deterministic_suggestions(ctx)
+    suggestions: list[dict[str, str]] = []
+    generated_by = "deterministic"
+    try:
+        from nexus.langgraph.llm_pipeline import get_model
+
+        model = get_model()
+        prompt = (
+            "You help a DFIR examiner interrogate a case index.\n"
+            f"Evidence families present: {', '.join(ctx['families']) or 'none'}.\n"
+            f"Top hosts: {', '.join(ctx['hosts']) or 'none'}. "
+            f"Top users: {', '.join(ctx['users']) or 'none'}. "
+            f"Top processes: {', '.join(ctx['processes']) or 'none'}.\n"
+            f"Last examiner question: {ctx['last_question'] or 'none'}\n\n"
+            "Propose 4 to 6 SHORT investigation questions (max 120 chars each) that "
+            "the examiner could ask this case next. Use only entities from the lists "
+            "above; prefer pivots (drill into a host/user/process, list hosts or users, "
+            "highest-severity detections, activity around a family). "
+            'Reply ONLY with JSON: {"questions": ["...", "..."]}'
+        )
+
+        def _ask() -> str:
+            response = model.invoke([{"role": "user", "content": prompt}])
+            return str(getattr(response, "content", response))
+
+        raw_text = await asyncio.wait_for(asyncio.to_thread(_ask), timeout=45.0)
+        match = re.search(r"\{.*\}", raw_text, re.DOTALL)
+        parsed = json.loads(match.group(0)) if match else {}
+        candidates = parsed.get("questions") if isinstance(parsed, dict) else parsed
+        suggestions = _validate_mode2_suggestions(
+            candidates, ctx, str(ctx["last_question"])
+        )
+        if len(suggestions) >= 3:
+            generated_by = "llm"
+            for extra in fallback:  # top up coverage without duplicates
+                if len(suggestions) >= 6:
+                    break
+                if all(extra["text"].lower() != s["text"].lower() for s in suggestions):
+                    suggestions.append(extra)
+        else:
+            suggestions = []
+    except Exception:  # noqa: BLE001 — deterministic panel is the fallback
+        suggestions = []
+
+    if not suggestions:
+        suggestions = fallback
+    payload = {"suggestions": suggestions, "generated_by": generated_by, "cached": False}
+    with _mode2_suggest_lock:
+        _mode2_suggest_cache[key] = (now, payload)
+    return JSONResponse(payload)
+
+
+async def api_mode2_save_answer(request):
+    """POST /portal/api/mode2/save-answer — bookmark a Mode 2 answer for the report.
+
+    Body: {entry_ts, note?}. Bookmarks the answer's cited rows to the Workbench,
+    appends an ``answer_saved`` transcript entry, and records the answer in
+    ``analysis/mode2_saved_answers.json`` (the report's Saved-answers section).
+    """
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+    entry_ts = str(body.get("entry_ts") or "").strip()
+    if not entry_ts:
+        return JSONResponse({"error": "entry_ts is required"}, status_code=400)
+
+    entries = _mode2_chat_entries(case_dir)
+    target = next(
+        (e for e in entries if str(e.get("ts") or "") == entry_ts and e.get("role") == "llm"),
+        None,
+    )
+    if target is None:
+        return JSONResponse({"error": "chat entry not found"}, status_code=404)
+    question = ""
+    for entry in entries:
+        if str(entry.get("ts") or "") == entry_ts:
+            break
+        if entry.get("role") == "examiner" and entry.get("text"):
+            question = str(entry["text"])[:500]
+
+    data = target.get("data") or {}
+    hits = [h for h in (data.get("hits") or []) if isinstance(h, dict)][:20]
+    note = str(body.get("note") or "").strip()[:200]
+    added = skipped = total = 0
+    if hits:
+        from nexus.case.workbench import add_bookmarks
+
+        bm = add_bookmarks(
+            case_dir, hits,
+            note=note or f"Mode 2 answer: {question[:120]}"[:300],
+        )
+        added = int(bm.get("added") or 0)
+        skipped = int(bm.get("skipped") or 0)
+        total = int(bm.get("total") or 0)
+
+    from datetime import UTC, datetime
+
+    saved_path = Path(case_dir) / "analysis" / "mode2_saved_answers.json"
+    existing: list[dict] = []
+    try:
+        loaded = json.loads(saved_path.read_text(encoding="utf-8"))
+        if isinstance(loaded, list):
+            existing = [e for e in loaded if isinstance(e, dict)]
+    except (OSError, ValueError):
+        existing = []
+    if all(str(e.get("ts") or "") != entry_ts for e in existing):
+        existing.append({
+            "ts": entry_ts,
+            "saved_at": datetime.now(UTC).isoformat(),
+            "question": question,
+            "reply": str(target.get("text") or "")[:2000],
+            "queries": [q for q in (data.get("queries") or []) if isinstance(q, dict)][:8],
+            "cited_rows": len(hits),
+        })
+        _atomic_write_json(saved_path, existing)
+
+    from nexus.case.chat import append_chat
+
+    append_chat(
+        case_dir, "system", "answer_saved",
+        f"Mode 2 answer saved for the report ({len(hits)} cited row(s) bookmarked)",
+        {"entry_ts": entry_ts},
+        {"entry_ts": entry_ts},
+    )
+    return JSONResponse({
+        "saved": True,
+        "entry_ts": entry_ts,
+        "bookmarked": added,
+        "existed": skipped,
+        "total": total,
+        "saved_answers": len(existing),
+    })
 
 
 async def api_mode2_iterate(request):
@@ -6456,6 +6737,9 @@ def create_dashboard():
         # Entity pivot
         Route("/portal/api/entities", api_entities, methods=["POST"]),
         # Mode 2 (LLM-guided)
+        Route("/portal/api/mode2/chat", api_mode2_chat, methods=["POST"]),
+        Route("/portal/api/mode2/suggestions", api_mode2_suggestions, methods=["POST"]),
+        Route("/portal/api/mode2/save-answer", api_mode2_save_answer, methods=["POST"]),
         Route("/portal/api/mode2/iterate", api_mode2_iterate, methods=["POST"]),
         Route("/portal/api/mode2/corroborate", api_mode2_corroborate, methods=["POST"]),
         Route("/portal/api/mode2/propose-draft", api_mode2_propose_draft, methods=["POST"]),
