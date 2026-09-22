@@ -156,6 +156,168 @@ def validate_query(body: Any, depth: int = 0) -> None:
             raise ESQueryError(f"{key} takes an empty object")
 
 
+# ----- P1 failed-term honesty: refs are validated against the live mapping -----
+
+_MAPPING_TYPES_TTL = 60.0
+_mapping_types_cache: dict[str, tuple[float, dict[str, str]]] = {}
+
+_CLAUSE_FIELD_KEYS = ("term", "match", "match_phrase", "prefix", "wildcard", "regexp", "range")
+_NUMERIC_ES = {
+    "long", "integer", "short", "byte", "double", "float", "half_float", "scaled_float",
+}
+_DATE_ES = {"date", "date_nanos"}
+_BOOL_ES = {"boolean"}
+
+
+def _mapping_field_types(case_id: str) -> dict[str, str]:
+    """field path -> ES type for this case index (cached 60 s)."""
+    import time
+
+    now = time.monotonic()
+    cached = _mapping_types_cache.get(case_id)
+    if cached and (now - cached[0]) < _MAPPING_TYPES_TTL:
+        return cached[1]
+    out: dict[str, str] = {}
+    try:
+        from nexus.langgraph.case_index import _client, index_name
+
+        name = index_name(case_id)
+        with _client() as c:
+            r = c.get(f"/{name}/_mapping")
+            if r.status_code == 200:
+                props = ((r.json().get(name) or {}).get("mappings") or {}).get("properties") or {}
+
+                def walk(prefix: str, spec: Any) -> None:
+                    if not isinstance(spec, dict):
+                        return
+                    kind = str(spec.get("type") or ("object" if "properties" in spec else "text"))
+                    if prefix:
+                        out[prefix] = kind
+                    for sub, sub_spec in (spec.get("fields") or {}).items():
+                        if isinstance(sub_spec, dict):
+                            out[f"{prefix}.{sub}"] = str(sub_spec.get("type") or "text")
+                    for child, child_spec in (spec.get("properties") or {}).items():
+                        walk(f"{prefix}.{child}" if prefix else str(child), child_spec)
+
+                for key, spec in props.items():
+                    walk(str(key), spec)
+    except Exception:  # noqa: BLE001 — validation is best-effort, never blocks search
+        out = {}
+    _mapping_types_cache[case_id] = (now, out)
+    return out
+
+
+def _coercible(kind: str, value: Any) -> bool:
+    if value is None:
+        return True
+    if kind in _NUMERIC_ES:
+        try:
+            float(value)
+            return True
+        except (TypeError, ValueError):
+            return False
+    if kind in _DATE_ES:
+        s = str(value)
+        return bool(s[:4].isdigit() and ("-" in s or s.isdigit()))
+    if kind in _BOOL_ES:
+        return str(value).lower() in {"true", "false", "0", "1"}
+    return True
+
+
+def _check_ref(
+    field: str, spec: Any, types: dict[str, str], context: str,
+    fatal: list[dict[str, str]], optional: list[dict[str, str]], seen: set[str],
+) -> None:
+    if "*" in field:
+        return  # wildcard patterns are checked by ES itself
+    head = field.split(".")[0]
+    kind = types.get(field) or types.get(field.split(".kw")[0]) or types.get(head)
+    if kind is None:
+        entry = {"field": field, "reason": "unknown_field", "context": context}
+    else:
+        values: list[Any] = []
+        if isinstance(spec, dict):
+            values = [v for k, v in spec.items() if k in {"value", "gte", "lte", "gt", "lt"}]
+        elif spec is not None and not isinstance(spec, dict):
+            values = [spec]
+        entry = {}
+        for v in values:
+            if not _coercible(kind, v):
+                entry = {"field": field, "reason": f"value {v!r} cannot be a {kind}", "context": context}
+                break
+        if not entry:
+            return
+    dedupe = f"{field}\x00{context}"
+    if dedupe in seen:
+        return
+    seen.add(dedupe)
+    (fatal if context == "required" else optional).append(entry)
+
+
+def _collect_failed(
+    node: Any, types: dict[str, str], context: str,
+    fatal: list[dict[str, str]], optional: list[dict[str, str]], seen: set[str],
+) -> None:
+    """Walk a query, classifying failed refs by boolean context.
+
+    ``must``/``filter`` (and top level) are REQUIRED: a failed ref there means
+    the query cannot match → degraded hard-signal. ``should``/``must_not``
+    refs are OPTIONAL: the query can still match truthfully, so they are
+    reported alongside a normal result instead of blocking it.
+    """
+    if isinstance(node, list):
+        for item in node:
+            _collect_failed(item, types, context, fatal, optional, seen)
+        return
+    if not isinstance(node, dict):
+        return
+    for key, value in node.items():
+        if key == "bool" and isinstance(value, dict):
+            for subkey, sub in value.items():
+                sub_ctx = {
+                    "must": "required", "filter": "required",
+                    "should": "optional", "must_not": "negated",
+                }.get(subkey, "optional")
+                _collect_failed(sub, types, sub_ctx, fatal, optional, seen)
+            continue
+        if key in _CLAUSE_FIELD_KEYS and isinstance(value, dict):
+            for field, spec in value.items():
+                _check_ref(str(field), spec, types, context, fatal, optional, seen)
+            continue
+        if key == "exists" and isinstance(value, dict) and value.get("field"):
+            _check_ref(str(value["field"]), None, types, context, fatal, optional, seen)
+            continue
+        if key == "multi_match" and isinstance(value, dict):
+            for field in value.get("fields") or []:
+                _check_ref(str(field), value.get("query"), types, context, fatal, optional, seen)
+            continue
+        if key == "field" and isinstance(value, str):
+            _check_ref(value, None, types, context, fatal, optional, seen)
+            continue
+        _collect_failed(value, types, context, fatal, optional, seen)
+
+
+def failed_field_refs_detail(case_id: str, query: Any) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    """(fatal, optional) failed refs; ([], []) when the mapping is unknown."""
+    types = _mapping_field_types(case_id)
+    if not types:
+        return [], []
+    fatal: list[dict[str, str]] = []
+    optional: list[dict[str, str]] = []
+    _collect_failed(query, types, "required", fatal, optional, set())
+    return fatal, optional
+
+
+def failed_field_refs(case_id: str, query: Any) -> list[dict[str, str]]:
+    """P1: required-context refs that CANNOT match (unknown field / bad value).
+
+    Returns [] when the mapping is unknown (ES down / no index) — validation
+    must never turn into a false failure. A non-empty list means "do not
+    present this as 0 hits"; callers surface it as a degraded hard-signal.
+    """
+    return failed_field_refs_detail(case_id, query)[0]
+
+
 def validate_aggs(aggs: Any, depth: int = 0) -> None:
     """Allowlist aggregation trees (terms/date_histogram/composite/…)."""
     if not isinstance(aggs, dict) or not aggs:
@@ -329,6 +491,23 @@ def es_search(
     if not case_id:
         raise ESQueryError("case_id is required")
     validate_query(query)
+    fatal, optional_failed = failed_field_refs_detail(case_id, query)
+    if fatal:
+        # P1: a query that cannot match must never read as "0 hits on real
+        # evidence" — return an explicit degraded hard-signal instead.
+        return {
+            "case_id": case_id,
+            "error": "query references fields that cannot match: "
+                     + ", ".join(f"{f['field']} ({f['reason']})" for f in fatal[:5]),
+            "degraded": True,
+            "failed_terms": fatal,
+            "total": 0,
+            "returned": 0,
+            "has_more": False,
+            "next_search_after": None,
+            "backend": "elasticsearch",
+            "hits": [],
+        }
     try:
         size_i = int(size)
     except (TypeError, ValueError):
@@ -376,7 +555,7 @@ def es_search(
     # has_more is about THIS page being full, not the global total (the old
     # len(hits) < total made the final page look paginated — review fix).
     has_more = len(hits) == size_i
-    return {
+    result = {
         "case_id": case_id,
         "total": total,
         "returned": len(hits),
@@ -386,6 +565,11 @@ def es_search(
         "backend": "elasticsearch",
         "hits": hits,
     }
+    if optional_failed:
+        # Honesty: the query matched truthfully, but these should/must_not refs
+        # can never match — surfaced instead of silently behaving as no-ops.
+        result["failed_terms_optional"] = optional_failed
+    return result
 
 
 def es_aggregate(case_id: str, aggs: dict[str, Any], query: dict[str, Any] | None = None,
@@ -396,6 +580,12 @@ def es_aggregate(case_id: str, aggs: dict[str, Any], query: dict[str, Any] | Non
     validate_aggs(aggs)
     if query is not None:
         validate_query(query)
+        failed = failed_field_refs(case_id, query)
+        if failed:
+            raise ESQueryError(
+                "aggregation query references fields that cannot match: "
+                + ", ".join(f"{f['field']} ({f['reason']})" for f in failed[:5])
+            )
     body: dict[str, Any] = {
         "size": max(0, min(int(size or 0), 10)),
         "track_total_hits": True,

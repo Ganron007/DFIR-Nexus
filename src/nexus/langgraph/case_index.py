@@ -67,7 +67,7 @@ WILDCARD_IGNORE_ABOVE = 32766
 # Index schema version. v2 = structured docs (host/user/event_id + parsed
 # columns under fields.*) so DSL filters and aggregations push down to ES.
 # A version mismatch triggers a rebuild on the next index_case()/ensure_index.
-INDEX_SCHEMA_VERSION = 3
+INDEX_SCHEMA_VERSION = 5
 
 _MAX_INDEX_FIELDS = 24
 _MAX_INDEX_FIELD_VALUE = 300
@@ -462,11 +462,33 @@ def _bulk_ndjson(index: str, docs: list[dict[str, Any]]) -> str:
 
 
 def _mapping_body() -> dict[str, Any]:
-    """Schema v2 — structured fields so DSL filters/aggregations push down."""
+    """Schema v5 — explicit typed ``fields.*`` from the shipped field registry.
+
+    T4: typed properties come from ``data/schema/field_registry.yaml`` (built
+    from the validated tool-run catalog); ES never guesses (date/numeric
+    detection off), malformed values are skipped per-field, and unmapped
+    columns still land through the dynamic template as ``text + kw``.
+    """
+    from nexus.langgraph.field_registry import field_properties
+
+    props = field_properties()
+    fields_spec: dict[str, Any] = (
+        {"type": "object", "properties": props} if props else {"type": "object"}
+    )
     return {
-        "settings": {"number_of_shards": 1, "number_of_replicas": 0},
+        "settings": {
+            "number_of_shards": 1,
+            "number_of_replicas": 0,
+            # "N/A" in a long/date column skips that field only; the doc and
+            # its _source stay complete (P1-adjacent honesty, not a dropped row).
+            "index.mapping.ignore_malformed": True,
+            # 694 registry columns + keyword subfields exceed the 1000 default.
+            "index.mapping.total_fields.limit": 10000,
+        },
         "mappings": {
             "_meta": {"schema_version": INDEX_SCHEMA_VERSION},
+            "date_detection": False,
+            "numeric_detection": False,
             "dynamic_templates": [
                 {
                     "fields_strings": {
@@ -499,6 +521,7 @@ def _mapping_body() -> dict[str, Any]:
                 "ts_precision": {"type": "keyword"},
                 "ts_tz_assumed": {"type": "boolean"},
                 "ts_year_assumed": {"type": "boolean"},
+                "fields": fields_spec,
             },
         },
     }

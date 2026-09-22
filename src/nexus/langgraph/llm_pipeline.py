@@ -1635,6 +1635,18 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
         try:
             from nexus.langgraph.interpret_loop import run_interpret_loop
 
+            # P2: scan coverage is part of the run record — files scanned vs
+            # eligible and needles queried vs requested (never silently dropped).
+            _stats = (digest.get("scan_stats") or {}) if isinstance(digest, dict) else {}
+            if _stats.get("files_total"):
+                _cov = (
+                    f"scan coverage: files {_stats.get('files_scanned', 0)}/{_stats.get('files_total', 0)}"
+                    f", needles {_stats.get('terms_queried', 0)}/{_stats.get('terms_requested', 0)}"
+                )
+                if _stats.get("fallback_reason"):
+                    _cov += f" — fallback: {_stats['fallback_reason']}"
+                emit_stage(state, "interpret", "coverage", _cov)
+
             loop_result = await run_interpret_loop(
                 case_dir=case_dir_for_ctx,
                 case_id=case_id,
