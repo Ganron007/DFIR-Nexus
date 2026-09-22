@@ -373,9 +373,17 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
         add("srumecmd", ["srumecmd", "-f", str(evidence), "--csv", str(d)],
             "SRUM database", 600)
     elif name in ("system", "software", "sam", "security", "ntuser.dat", "usrclass.dat"):
-        d = out_dir("recmd")
-        add("recmd", ["recmd", "-f", str(evidence), "--csv", str(d), "--csvf", "recmd.csv"],
-            f"Registry hive ({evidence.name})")
+        # RECmd needs a batch (--bn) or a search switch; single-hive runs without
+        # it fail with "One of the following switches is required" (W2 finding).
+        user_hive = name in ("ntuser.dat", "usrclass.dat")
+        batch = _find_recmd_user_batch() if user_hive else _find_recmd_batch()
+        if not batch:
+            skip("recmd", f"RECmd .reb batch not found for {evidence.name}")
+        else:
+            d = out_dir("recmd")
+            add("recmd", ["recmd", "-f", str(evidence), "--bn", str(batch),
+                         "--csv", str(d), "--csvf", "recmd.csv"],
+                f"Registry hive ({evidence.name})")
         if name == "system":
             ad = out_dir("appcompat")
             add("appcompatcacheparser",
@@ -695,10 +703,14 @@ def plan_windows_triage(
         if usrclass.is_file():
             d = extractions / "sbecmd"
             d.mkdir(parents=True, exist_ok=True)
+            # SBECmd takes -d <directory> (no -f); stage the hive in a per-user dir
+            # (W2 finding: -f is rejected by this build).
+            stage = d / f"stage-{uname}"
+            _copy_text(extractions, f"sbecmd/stage-{uname}/UsrClass.dat", usrclass)
             add(
                 "sbecmd",
                 [
-                    "sbecmd", "-f", str(usrclass),
+                    "sbecmd", "-d", str(stage),
                     "--csv", str(d), "--csvf", f"{uname}-shellbags.csv",
                 ],
                 f"Shellbags UsrClass.dat ({uname})",
