@@ -1616,6 +1616,17 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
                        "Elasticsearch unavailable")
         emit_stage(state, "interpret", "error", f"ES required: {fallback}")
         log.error("Interpret refused: %s", fallback)
+        # A refused interpret must not leave the run reading as 'running'
+        # forever — mark it failed with the real reason.
+        try:
+            from nexus.langgraph.pipeline_runs import finalize_run, resolve_run
+
+            _run = resolve_run(
+                case_dir_for_ctx, run_id=str(state.get("run_id") or "")
+            )
+            finalize_run(_run, "failed", f"interpret refused: {fallback}")
+        except Exception:  # noqa: BLE001 — status bookkeeping must not mask the refusal
+            pass
         return {
             "error": (
                 f"Mode 2/3 requires Elasticsearch — N4 backend fell back to the "

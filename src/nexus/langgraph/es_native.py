@@ -230,8 +230,9 @@ def _check_ref(
 ) -> None:
     if "*" in field:
         return  # wildcard patterns are checked by ES itself
-    head = field.split(".")[0]
-    kind = types.get(field) or types.get(field.split(".kw")[0]) or types.get(head)
+    kind = types.get(field)
+    if kind is None and field.endswith((".kw", ".wc")):
+        kind = types.get(field.rsplit(".", 1)[0])
     if kind is None:
         entry = {"field": field, "reason": "unknown_field", "context": context}
     else:
@@ -479,6 +480,28 @@ def es_fields(case_id: str) -> dict[str, Any]:
     }
 
 
+def _with_lenient(node: Any) -> Any:
+    """Return a copy of the query with ``lenient: true`` on every multi_match.
+
+    Schema v5 types numeric/date columns explicitly; without lenient a phrase
+    query spanning ``fields.*`` dies with a shard 400 on those columns. Lenient
+    only suppresses per-field parse errors — matching itself is unchanged.
+    """
+    if isinstance(node, list):
+        return [_with_lenient(item) for item in node]
+    if not isinstance(node, dict):
+        return node
+    out: dict[str, Any] = {}
+    for key, value in node.items():
+        if key == "multi_match" and isinstance(value, dict):
+            patched = dict(value)
+            patched.setdefault("lenient", True)
+            out[key] = patched
+        else:
+            out[key] = _with_lenient(value)
+    return out
+
+
 def es_search(
     case_id: str,
     query: dict[str, Any],
@@ -538,6 +561,7 @@ def es_search(
         body["sort"] = ["_doc"]
     if search_after:
         body["search_after"] = search_after
+    body["query"] = _with_lenient(body["query"])
 
     client, name = _client_and_index(case_id)
     with client() as c:
@@ -590,7 +614,7 @@ def es_aggregate(case_id: str, aggs: dict[str, Any], query: dict[str, Any] | Non
         "size": max(0, min(int(size or 0), 10)),
         "track_total_hits": True,
         "aggs": aggs,
-        "query": query or {"match_all": {}},
+        "query": _with_lenient(query) if query else {"match_all": {}},
     }
     client, name = _client_and_index(case_id)
     with client() as c:

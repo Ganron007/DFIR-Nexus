@@ -160,6 +160,50 @@ def test_should_clause_failure_is_optional_not_fatal(monkeypatch):
     assert fatal2 and fatal2[0]["field"] == "fields.Ghost"
 
 
+def test_term_clause_is_lenient_over_typed_fields():
+    from nexus.langgraph.case_index import _term_clause
+
+    clause = _term_clause("sdelete", search_fields=True)
+    mm = next(
+        c["multi_match"] for c in clause["bool"]["should"] if "multi_match" in c
+    )
+    assert mm["lenient"] is True
+    assert mm["fields"] == ["fields.*"]
+
+    # numeric terms keep the phrase clause only (no wildcard noise)
+    numeric = _term_clause("1102")
+    assert all("wildcard" not in c for c in numeric["bool"]["should"])
+
+
+def test_with_lenient_patches_multi_match_copies():
+    from nexus.langgraph.es_native import _with_lenient
+
+    query = {
+        "bool": {
+            "should": [
+                {"multi_match": {"query": "x", "fields": ["fields.*"]}},
+                {"term": {"family": "hayabusa"}},
+            ]
+        }
+    }
+    out = _with_lenient(query)
+    assert out["bool"]["should"][0]["multi_match"]["lenient"] is True
+    assert "lenient" not in out["bool"]["should"][1]["term"]
+    # the caller's query is not mutated
+    assert "lenient" not in query["bool"]["should"][0]["multi_match"]
+
+
+def test_registry_has_no_path_like_column_names():
+    from nexus.langgraph.field_registry import merged_columns
+
+    cols = list(merged_columns())
+    assert not [c for c in cols if "\\" in c]
+    assert not [
+        c for c in cols
+        if c.lower().endswith((".db", ".csv", ".json", ".exe", ".dll", ".evtx"))
+    ]
+
+
 def test_mode1_type_mismatch_is_hard_error():
     from nexus.langgraph.case_index import _filter_to_es
     from nexus.langgraph.query_dsl import QuerySyntaxError

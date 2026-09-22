@@ -111,8 +111,15 @@ def test_empty_rebuild_clears_stale_index_documents(tmp_path: Path):
         result = case_index.index_case(case)
 
     assert result["docs"] == 0 and result["errors"] == 0
-    assert client.post.call_args_list[0].args[0] == "/nexus-case-empty/_delete_by_query"
-    assert client.post.call_args_list[0].kwargs["json"] == {"query": {"match_all": {}}}
+    assert result["purge_refused"] is False
+    calls = [c.args[0] for c in client.post.call_args_list if c.args]
+    assert "/nexus-case-empty/_count" in calls
+    assert "/nexus-case-empty/_delete_by_query" in calls
+    delete_call = next(
+        c for c in client.post.call_args_list
+        if c.args and c.args[0] == "/nexus-case-empty/_delete_by_query"
+    )
+    assert delete_call.kwargs["json"] == {"query": {"match_all": {}}}
     assert not any(call.args and call.args[0] == "/_bulk" for call in client.post.call_args_list)
     assert (case / "analysis" / "index_state.json").is_file()
 

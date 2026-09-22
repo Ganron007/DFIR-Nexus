@@ -1,8 +1,9 @@
-"""Index maintenance — rebuild the per-case N3 Elasticsearch index (4j.30).
+"""Index maintenance - rebuild the per-case N3 Elasticsearch index (4j.30).
 
 The index schema is versioned; a rebuild drops and repopulates with the
-current schema (v2: structured host/user/event_id + parsed ``fields.*`` so
-DSL filters and aggregations push down to ES).
+current schema (v5: explicit typed ``fields.*`` from the shipped field
+registry + structured host/user/event_id/envelope so DSL filters, typed
+ranges and aggregations push down to ES).
 """
 
 from __future__ import annotations

@@ -47,6 +47,20 @@ TEMPORAL_SUFFIXES = (
 def _temporal_name(name: str) -> bool:
     low = name.lower().replace("_", "")
     return any(low.endswith(sfx) for sfx in TEMPORAL_SUFFIXES)
+
+
+_PATHY_RE = re.compile(
+    r"(^[A-Za-z]:[\\/])|\\\\|"
+    r"\.(?:db|csv|json|jsonl|txt|log|exe|dll|sys|pf|hve|dat|evtx|lnk|xml|sqlite)$",
+    re.I,
+)
+
+
+def _usable_name(name: str) -> bool:
+    """Reject output-path artefacts used as column names by sloppy catalogs."""
+    if not name or len(name) > 120 or "\\" in name:
+        return False
+    return _PATHY_RE.search(name) is None
 # index family hint list (query_pack._FAMILY_HINTS) wins; stems match it for tools
 
 
@@ -162,7 +176,7 @@ def load_rows() -> tuple[dict[str, dict[str, str]], list[str]]:
         cols: dict[str, str] = {}
         for entry in doc.get("fields") or []:
             name = str(entry.get("name") or "").strip()
-            if not name or name.startswith("_"):
+            if not name or name.startswith("_") or not _usable_name(name):
                 continue
             cols[name] = _norm_type(str(entry.get("es_type") or ""))
         if cols:

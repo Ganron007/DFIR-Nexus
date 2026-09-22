@@ -660,8 +660,9 @@ def index_case(
     ``incremental=True`` only re-indexes files whose mtime advanced since the
     last build and purges docs for files that disappeared — the autoindex path
     used to delete and rebuild the entire case on every run (B6). Falls back to
-    a full rebuild when there is no usable prior state, the index is empty
-    (fresh schema), or a file set is empty.
+    a full rebuild when there is no usable prior state or the index is empty.
+    An EMPTY resolution over a populated index is refused (``purge_refused``):
+    that is a resolver/run-pointer failure, not deleted evidence.
     """
     case_dir = Path(case_dir)
     name = ensure_index(case_dir.name)
@@ -705,35 +706,49 @@ def index_case(
         }
         removed = set(prior_mtimes) - set(current_mtimes)
         errors = 0
-        with _client() as client:
-            for batch in _chunks(sorted(removed | changed), 100):
-                cleared = client.post(
-                    f"/{name}/_delete_by_query",
-                    params={"refresh": "true", "conflicts": "proceed"},
-                    json={"query": {"terms": {"file": batch}}},
-                )
-                if cleared.status_code >= 400:
-                    raise RuntimeError(
-                        f"incremental delete failed: {cleared.status_code} {cleared.text[:300]}"
+        # A resolution of ZERO indexable files is never "the examiner deleted
+        # every artifact" — it is a resolver/run-pointer failure (e.g. a
+        # --from-case run that owns no extractions). Purging here would make
+        # the case read as empty evidence: refuse and keep the index.
+        purge_refused = not current_mtimes and bool(prior_mtimes)
+        purge_refused_reason = ""
+        if purge_refused:
+            purge_refused_reason = (
+                "zero indexable files resolved while "
+                f"{len(prior_mtimes)} are indexed — purge refused"
+            )
+            log.error("incremental reindex purge refused: %s", purge_refused_reason)
+            docs_total = int(prior.get("docs") or 0)
+        else:
+            with _client() as client:
+                for batch in _chunks(sorted(removed | changed), 100):
+                    cleared = client.post(
+                        f"/{name}/_delete_by_query",
+                        params={"refresh": "true", "conflicts": "proceed"},
+                        json={"query": {"terms": {"file": batch}}},
                     )
-            cap_stats: dict[str, Any] = {}
-            docs = 0
-            errors = 0
-            for batch_docs in iter_index_doc_batches(
-                case_dir, only_files=changed, stats=cap_stats
-            ):
-                docs += len(batch_docs)
-                errors += _bulk_insert(client, name, batch_docs)
-            refreshed = client.post(f"/{name}/_refresh")
-            if refreshed.status_code >= 400:
-                raise RuntimeError(
-                    f"index refresh failed: {refreshed.status_code} {refreshed.text[:300]}"
-                )
-            count_resp = client.post(f"/{name}/_count")
-            try:
-                docs_total = int(count_resp.json().get("count") or 0)
-            except ValueError:
-                docs_total = prior.get("docs", 0)
+                    if cleared.status_code >= 400:
+                        raise RuntimeError(
+                            f"incremental delete failed: {cleared.status_code} {cleared.text[:300]}"
+                        )
+                cap_stats: dict[str, Any] = {}
+                docs = 0
+                errors = 0
+                for batch_docs in iter_index_doc_batches(
+                    case_dir, only_files=changed, stats=cap_stats
+                ):
+                    docs += len(batch_docs)
+                    errors += _bulk_insert(client, name, batch_docs)
+                refreshed = client.post(f"/{name}/_refresh")
+                if refreshed.status_code >= 400:
+                    raise RuntimeError(
+                        f"index refresh failed: {refreshed.status_code} {refreshed.text[:300]}"
+                    )
+                count_resp = client.post(f"/{name}/_count")
+                try:
+                    docs_total = int(count_resp.json().get("count") or 0)
+                except ValueError:
+                    docs_total = prior.get("docs", 0)
         prior_coverage = {}
         try:
             prior_meta = json.loads(
@@ -751,6 +766,8 @@ def index_case(
             "incremental": True,
             "files_reindexed": sorted(changed),
             "files_removed": sorted(removed),
+            "purge_refused": purge_refused,
+            "purge_refused_reason": purge_refused_reason,
             # Coverage is only exact on full rebuilds; an incremental pass
             # keeps the prior full picture rather than replacing it with a
             # partial one (4k.4.3 review fix).
@@ -765,29 +782,51 @@ def index_case(
     else:
         cap_stats = {}
         docs_total = 0
+        errors = 0
+        purge_refused = False
+        purge_refused_reason = ""
+        # The full branch used to purge unconditionally. On an EMPTY resolution
+        # over a populated index that is not a rebuild — it is evidence loss
+        # from a resolver/run-pointer failure (seen live: a --from-case run
+        # that owns no extractions zeroed a 128k-doc index). Refuse and keep.
+        resolved_mtimes = _index_file_mtimes(case_dir)
         with _client() as client:
-            cleared = client.post(
-                f"/{name}/_delete_by_query",
-                params={"refresh": "true", "conflicts": "proceed"},
-                json={"query": {"match_all": {}}},
-            )
-            if cleared.status_code >= 400:
-                raise RuntimeError(
-                    f"index clear failed: {cleared.status_code} {cleared.text[:300]}"
+            count_resp = client.post(f"/{name}/_count")
+            try:
+                existing_docs = int(count_resp.json().get("count") or 0)
+            except ValueError:
+                existing_docs = 0
+            if not resolved_mtimes and existing_docs > 0 and prior_mtimes:
+                purge_refused = True
+                purge_refused_reason = (
+                    "zero indexable files resolved while "
+                    f"{existing_docs} docs are indexed — full-rebuild purge refused"
                 )
-            errors = 0
-            # EH-11: stream batches — a million-row case must not be
-            # materialized in memory before the first bulk request.
-            for batch_docs in iter_index_doc_batches(case_dir, stats=cap_stats):
-                docs_total += len(batch_docs)
-                errors += _bulk_insert(client, name, batch_docs)
-                if docs_total % 50_000 < len(batch_docs):
-                    log.info("indexed %d docs…", docs_total)
-            refreshed = client.post(f"/{name}/_refresh")
-            if refreshed.status_code >= 400:
-                raise RuntimeError(
-                    f"index refresh failed: {refreshed.status_code} {refreshed.text[:300]}"
+                log.error("index purge refused: %s", purge_refused_reason)
+                docs_total = existing_docs
+            else:
+                cleared = client.post(
+                    f"/{name}/_delete_by_query",
+                    params={"refresh": "true", "conflicts": "proceed"},
+                    json={"query": {"match_all": {}}},
                 )
+                if cleared.status_code >= 400:
+                    raise RuntimeError(
+                        f"index clear failed: {cleared.status_code} {cleared.text[:300]}"
+                    )
+                errors = 0
+                # EH-11: stream batches — a million-row case must not be
+                # materialized in memory before the first bulk request.
+                for batch_docs in iter_index_doc_batches(case_dir, stats=cap_stats):
+                    docs_total += len(batch_docs)
+                    errors += _bulk_insert(client, name, batch_docs)
+                    if docs_total % 50_000 < len(batch_docs):
+                        log.info("indexed %d docs…", docs_total)
+                refreshed = client.post(f"/{name}/_refresh")
+                if refreshed.status_code >= 400:
+                    raise RuntimeError(
+                        f"index refresh failed: {refreshed.status_code} {refreshed.text[:300]}"
+                    )
         meta = {
             "index": name,
             "docs": docs_total,
@@ -795,6 +834,8 @@ def index_case(
             "case_id": case_dir.name,
             "url": es_url(),
             "incremental": False,
+            "purge_refused": purge_refused,
+            "purge_refused_reason": purge_refused_reason,
             "ts_coverage": cap_stats.get("ts_coverage") or {},
             "caps": cap_stats,
             "capped": bool(
@@ -940,8 +981,13 @@ def _term_clause(term: str, search_fields: bool = False) -> dict[str, Any]:
         return {"match_none": {}}
     should: list[dict[str, Any]] = [{"match_phrase": {"text": t}}]
     if search_fields:
+        # lenient: schema v5 types numeric/date columns explicitly — a phrase
+        # query over `fields.*` must not 400 on them (lenient skips the fields
+        # that cannot parse the value) while matching every text column.
         should.append({
-            "multi_match": {"query": t, "fields": ["fields.*"], "type": "phrase"}
+            "multi_match": {
+                "query": t, "fields": ["fields.*"], "type": "phrase", "lenient": True,
+            }
         })
     if not t.isdigit():
         safe = t.lower().replace("\\", "\\\\").replace("*", "\\*").replace("?", "\\?")

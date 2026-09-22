@@ -93,6 +93,15 @@ def create_run(
             pointers = {}
     pointer_key = "tools" if mode in {"tools", "coverage", "design"} else mode
     previous_active = pointers.get(pointer_key, "")
+    # A coverage/design/interpret run built on an earlier run records it as the
+    # parent so reuse chains stay resolvable (resolve_tools_extractions).
+    if (
+        not parent_run_id
+        and mode in {"coverage", "design", "interpret"}
+        and previous_active
+        and _RUN_ID.fullmatch(previous_active)
+    ):
+        parent_run_id = previous_active
     now = datetime.now(UTC).isoformat()
     _atomic_json(run_dir / "manifest.json", {
         "run_id": rid,
@@ -153,15 +162,71 @@ def resolve_run(case_dir: Path, mode: str = "tools", run_id: str = "") -> Pipeli
         rid = str(pointers.get(mode) or "")
     if not rid or not _RUN_ID.fullmatch(rid):
         raise ValueError(f"No active {mode} run in case {case_dir.name}")
+    return _load_run(case_dir, rid, mode)
+
+
+def _load_run(case_dir: Path, rid: str, mode: str = "tools") -> PipelineRun:
+    if not rid or not _RUN_ID.fullmatch(rid):
+        raise ValueError(f"No active {mode} run in case {case_dir.name}")
     run_dir = case_dir / "runs" / rid
     if not run_dir.is_dir():
         raise ValueError(f"Run not found: {rid}")
     manifest = load_manifest(run_dir)
-    return PipelineRun(rid, str(manifest.get("mode") or mode), run_dir, str(manifest.get("parent_run_id") or ""))
+    return PipelineRun(
+        rid, str(manifest.get("mode") or mode), run_dir,
+        str(manifest.get("parent_run_id") or ""),
+    )
+
+
+_DATA_SUFFIXES = (".csv", ".json", ".jsonl", ".txt", ".log", ".gz", ".zip")
+
+
+def _extractions_have_data(extractions: Path) -> bool:
+    """True when a run's extractions dir holds parsed output (not just _meta)."""
+    if not extractions.is_dir():
+        return False
+    for path in extractions.rglob("*"):
+        if (
+            path.is_file()
+            and not path.name.startswith("_")
+            and path.name.lower().endswith(_DATA_SUFFIXES)
+        ):
+            return True
+    return False
 
 
 def resolve_tools_extractions(case_dir: Path, run_id: str = "") -> Path:
+    """Extractions of the active tools run, following reuse chains.
+
+    A ``coverage``/``design`` run created with ``--from-case`` reuses an earlier
+    tools run and owns no parsed files itself. Resolution must therefore skip
+    data-less runs (following ``parent_run_id`` → ``previous_active_run_id``,
+    then newest-run-with-data) instead of returning an empty directory that
+    would blind the briefing, the indexer and the entity census.
+    """
+    case_dir = Path(case_dir)
+    run: PipelineRun | None = None
     try:
-        return resolve_run(case_dir, "tools", run_id).extractions
+        run = resolve_run(case_dir, "tools", run_id)
     except ValueError:
-        return Path(case_dir) / "extractions"
+        run = None
+    seen: set[str] = set()
+    while run is not None and run.run_id not in seen:
+        seen.add(run.run_id)
+        if _extractions_have_data(run.extractions):
+            return run.extractions
+        manifest = load_manifest(run.path)
+        nxt = run.parent_run_id or str(manifest.get("previous_active_run_id") or "")
+        try:
+            run = _load_run(case_dir, nxt) if nxt else None
+        except ValueError:
+            run = None
+    runs_dir = case_dir / "runs"
+    if runs_dir.is_dir():
+        candidates = sorted(
+            runs_dir.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True,
+        )
+        for run_dir in candidates:
+            if _extractions_have_data(run_dir / "extractions"):
+                return run_dir / "extractions"
+    return case_dir / "extractions"
