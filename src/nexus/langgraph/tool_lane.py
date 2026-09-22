@@ -378,7 +378,12 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
         user_hive = name in ("ntuser.dat", "usrclass.dat")
         batch = _find_recmd_user_batch() if user_hive else _find_recmd_batch()
         if not batch:
-            skip("recmd", f"RECmd .reb batch not found for {evidence.name}")
+            jobs.append(ToolJob(
+                host="windows", tool="recmd", argv=[],
+                purpose=f"Registry hive ({evidence.name})",
+                status="SKIP",
+                reason=f"RECmd .reb batch not found for {evidence.name}",
+            ))
         else:
             d = out_dir("recmd")
             add("recmd", ["recmd", "-f", str(evidence), "--bn", str(batch),
