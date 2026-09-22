@@ -810,6 +810,40 @@ def plan_windows_triage(
     else:
         skip("recmd", f"missing software hive / config dir under {root}")
 
+    # RegRipper — per-hive text plugin output (rip.exe preferred; rip.pl needs perl)
+    regripper_ok = _windows_tool_available("regripper")
+    if regripper_ok and _windows_tool_path("regripper").lower().endswith(".pl") and not _perl_available():
+        regripper_ok = False
+        skip("regripper", "only rip.pl found and perl is not on PATH (fetch rip.exe or install Strawberry Perl)")
+    if regripper_ok:
+        profiles = {
+            "NTUSER.DAT": "ntuser", "SAM": "sam", "SECURITY": "security",
+            "SOFTWARE": "software", "SYSTEM": "system", "UsrClass.dat": "usrclass",
+        }
+        rr_hives: list[tuple[str, Path]] = []
+        if config_dir.is_dir():
+            for hive_name, _prof in profiles.items():
+                hp = config_dir / hive_name
+                if hp.is_file():
+                    rr_hives.append((hive_name, hp))
+        for user in users:
+            uc = user / "AppData/Local/Microsoft/Windows/UsrClass.dat"
+            if uc.is_file():
+                rr_hives.append((f"UsrClass-{user.name}", uc))
+        if rr_hives:
+            d = extractions / "regripper"
+            d.mkdir(parents=True, exist_ok=True)
+            for hive_name, hive in rr_hives[:8]:
+                prof = profiles.get(hive_name.split("-")[0], "all")
+                add(
+                    "regripper",
+                    ["regripper", "-r", str(hive), "-f", prof],
+                    f"RegRipper {hive_name} ({prof}, text plugins)",
+                    600,
+                )
+        else:
+            skip("regripper", "no hives found for RegRipper")
+
     _plan_gap_parsers(
         root, users, extractions, add, skip, quick,
         sample_files=sample_files,
@@ -821,6 +855,11 @@ def plan_windows_triage(
 def _windows_tool_available(key: str) -> bool:
     """True when the catalog binary is on this analysis host (Tools/windows or PATH)."""
     return bool(_windows_tool_path(key))
+
+
+def _perl_available() -> bool:
+    """True when a Perl interpreter is on PATH (required for rip.pl/mactime.pl)."""
+    return bool(shutil.which("perl") or shutil.which("perl.exe"))
 
 
 def _windows_tool_path(key: str) -> str:

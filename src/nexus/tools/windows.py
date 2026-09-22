@@ -100,6 +100,8 @@ _WIN_CATALOG = {
                 "description": "Parse Windows Server User Access Logging (UAL) ESE databases"},
     "logfileparser": {"name": "LogFileParser64", "category": "analysis",
                       "description": "Parse NTFS $LogFile transaction journal"},
+    "regripper": {"name": "rip.exe", "category": "registry",
+                  "description": "RegRipper per-hive registry parser (compiled rip.exe, 257 plugins; text output)"},
     "hindsight": {"name": "Hindsight", "category": "analysis",
                   "description": "Parse Chrome/Chromium browser artifacts"},
     "usbdeview": {"name": "USBDeview", "category": "analysis",
@@ -399,6 +401,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             "bitsparser": "pwsh -File tools/fetch-windows-tools.ps1  (GitHub fireeye/BitsParser; bits vendored in-tree)",
             "kstrike": "pwsh -File tools/fetch-windows-tools.ps1  (GitHub brimorlabs/KStrike + pip libesedb-python)",
             "logfileparser": "pwsh -File Tools/fetch-windows-tools.ps1  (GitHub jschicht/LogFileParser)",
+            "regripper": "pwsh -File Tools/fetch-windows-tools.ps1  (GitHub keydet89/RegRipper3.0; needs perl on PATH)",
             "deepbluecli": "pwsh -File Tools/fetch-windows-tools.ps1  (GitHub sans-blue-team/DeepBlueCLI + run-deepblue.ps1 wrapper)",
             "ntfslogtracker": "pwsh -File Tools/fetch-windows-tools.ps1  (GitHub jschicht NTFS Log Tracker)",
             "hindsight": "pwsh -File Tools/fetch-windows-tools.ps1  (pip pyhindsight + copied launcher)",
@@ -622,6 +625,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             parts = [str(ps), "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
                      "-File", str(resolved_path), *extra_args]
         elif resolved_path.suffix.lower() == ".pl":
+            run_cwd = str(resolved_path.parent)  # rip.pl finds ./plugins next to itself
             perl = shutil.which("perl") or shutil.which("perl.exe")
             if not perl:
                 audit_id = audit.log(

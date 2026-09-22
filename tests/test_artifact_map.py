@@ -215,12 +215,14 @@ def test_windows_catalog_pruned_placeholder_keys_absent():
     from nexus.tools.windows import _WIN_CATALOG
 
     pruned = (
-        "regripper",       # rip.exe retired from Zimmerman net9; RECmd covers
         "thumbcache",      # GUI duplicate of thumbcache_viewer CLI
         "browserparser",   # no official upstream
         "events_ripper",   # no official upstream
         "leveldb",         # no official upstream
         "ntfslogtracker",  # upstream dead; LogFileParser + MFTECmd cover
     )
+    # NOTE: `regripper` was pruned while the catalog entry pointed at the
+    # retired Zimmerman rip.exe; it is now reinstated with RegRipper 3.0's
+    # compiled rip.exe (text plugin output) - see windows.py catalog.
     for key in pruned:
         assert key not in _WIN_CATALOG
