@@ -73,14 +73,61 @@ def attack_needles_for(
     return out[:cap]
 
 
+def attack_detections_for(
+    techniques: set[str] | list[str] | None = None,
+    cap: int = 4,
+) -> list[dict[str, Any]]:
+    """ATT&CK detection-strategy guidance for technique ids (deep registry).
+
+    Returns ``[{technique, name, strategy, platform, text, log_sources}]`` -
+    the v19 replacement for the removed ``x_mitre_detection`` field. One
+    strategy/analytic per technique keeps prompts compact.
+    """
+    from nexus.knowledge.loader import get_attack_registry
+
+    wanted = {str(t).strip().upper() for t in (techniques or []) if str(t).strip()}
+    if not wanted:
+        return []
+    out: list[dict[str, Any]] = []
+    for tech in get_attack_registry().get("techniques") or []:
+        if tech.get("id") not in wanted:
+            continue
+        for strategy in (tech.get("detection") or [])[:1]:
+            analytics = strategy.get("analytics") or []
+            if not analytics:
+                continue
+            analytic = analytics[0]
+            out.append({
+                "technique": tech.get("id"),
+                "name": tech.get("name"),
+                "strategy": f"{strategy.get('id')} {strategy.get('name')}".strip(),
+                "platform": ", ".join(analytic.get("platforms") or []),
+                "text": analytic.get("description") or "",
+                "log_sources": analytic.get("log_sources") or [],
+            })
+        if len(out) >= cap:
+            break
+    return out[:cap]
+
+
 def attack_context_for(packs: list[dict[str, Any]], cap: int = 4) -> str:
-    """Compact prompt block: technique, terms, and the false-positive caveat."""
+    """Compact prompt block: technique, terms, detection guidance, caveat."""
     lines: list[str] = []
     for pack in packs[:cap]:
         technique = str(pack.get("technique") or "")
         name = str(pack.get("name") or "")
         terms = ", ".join(str(n) for n in (pack.get("needles") or [])[:12])
         lines.append(f"{technique} {name}: {terms}")
+        detection = attack_detections_for([technique], cap=1)
+        if detection:
+            found = detection[0]
+            text = str(found.get("text") or "")[:220]
+            if text:
+                line = f"  detection ({found.get('strategy')}): {text}"
+                logs = ", ".join(found.get("log_sources") or [])
+                if logs:
+                    line += f" | logs: {logs}"
+                lines.append(line)
         caveats = [str(c) for c in (pack.get("caveats") or [])[:1] if str(c).strip()]
         if caveats:
             lines.append(f"  caveat: {caveats[0][:200]}")

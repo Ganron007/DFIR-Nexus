@@ -19,6 +19,8 @@ _PATTERNS_PATH = Path(__file__).resolve().parent.parent / "data" / "knowledge" /
 # ITM chains (Insider Threat Matrix) - Preparation/Infringement/Anti-Forensics
 # sequences compiled from the Apache-2.0 ITM registry (see itm/itm_registry.yaml).
 _ITM_PATTERNS_PATH = Path(__file__).resolve().parent.parent / "data" / "knowledge" / "attack_patterns_itm.yaml"
+# External-threat chains (MITRE ATT&CK, value-anchored) - companion library.
+_EXTERNAL_PATTERNS_PATH = Path(__file__).resolve().parent.parent / "data" / "knowledge" / "attack_patterns_external.yaml"
 
 
 def _validated_patterns(patterns: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -94,7 +96,10 @@ class PatternAgent:
         # The ITM library rides along only for the default (shipped) library;
         # a custom path stays exactly what the caller handed in.
         if patterns_path is None:
-            self._extra_paths = [itm_patterns_path or _ITM_PATTERNS_PATH]
+            self._extra_paths = [
+                itm_patterns_path or _ITM_PATTERNS_PATH,
+                _EXTERNAL_PATTERNS_PATH,
+            ]
         else:
             self._extra_paths = [itm_patterns_path] if itm_patterns_path else []
         self._patterns: list[dict[str, Any]] = []

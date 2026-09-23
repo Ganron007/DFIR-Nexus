@@ -77,7 +77,8 @@ def test_every_shipped_mitre_id_resolves():
         add(f"playbook:{slug}", (get_playbook(slug) or {}).get("mitre"))
     for pack in get_attack_needles() or []:
         add(f"needle:{pack.get('technique')}", [pack.get("technique")])
-    for fname in ("attack_patterns.yaml", "attack_patterns_itm.yaml"):
+    for fname in ("attack_patterns.yaml", "attack_patterns_itm.yaml",
+                  "attack_patterns_external.yaml"):
         data = yaml.safe_load(
             (REPO_ROOT / "src" / "nexus" / "data" / "knowledge" / fname)
             .read_text(encoding="utf-8")

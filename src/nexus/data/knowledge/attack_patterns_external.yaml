@@ -1,0 +1,141 @@
+# External-threat (MITRE ATT&CK) value-anchored pattern chains (Mode 3).
+#
+# Companion to attack_patterns.yaml (entity-type patterns) and
+# attack_patterns_itm.yaml (insider chains). These patterns anchor on specific
+# adversary tooling/behaviors we can name, and cite ATT&CK technique ids that
+# are validated against attack/attack_registry.yaml at load (unknown ids are
+# dropped - no fabricated techniques).
+#
+# Schema: PatternAgent + required_values (case-insensitive containment on
+# entity values) + evidence (what to expect when this fires).
+
+patterns:
+  - name: ext_lateral_smb_psexec
+    mitre: ["T1021.002", "T1569.002"]
+    required_entities: ["process_name"]
+    required_values:
+      process_name: ["psexec.exe", "psexesvc.exe", "paexec.exe", "smbexec.exe"]
+    optional_entities: ["service_name", "windows_path", "domain_user"]
+    families: ["evtxecmd", "hayabusa", "prefetch", "recmd"]
+    temporal_window_seconds: 1800
+    min_entities: 2
+    confidence_base: 0.75
+    description: "PsExec-style SMB service execution - lateral movement to/from this host."
+    evidence: ["Security 5145/5140 share access, 4624 type 3", "service install (7045/4697) with a temp binary path", "prefetch/amcache for psexec-family tools"]
+
+  - name: ext_lateral_wmi_exec
+    mitre: ["T1047", "T1021.003"]
+    required_entities: ["process_name"]
+    required_values:
+      process_name: ["wmic.exe"]
+    optional_entities: ["domain_user", "ipv4"]
+    families: ["evtxecmd", "hayabusa", "prefetch"]
+    temporal_window_seconds: 1800
+    min_entities: 1
+    confidence_base: 0.55
+    description: "WMI execution (wmic process call create) - remote execution or local admin scripting."
+    evidence: ["WMI-Activity/Operational 5857/5861", "Security 4688 with wmic + /node:", "process creation under WmiPrvSE.exe"]
+
+  - name: ext_remote_management_tool
+    mitre: ["T1219", "T1219.002"]
+    required_entities: ["process_name"]
+    required_values:
+      process_name: ["teamviewer.exe", "anydesk.exe", "screenconnect.clientservice.exe", "connectwisecontrol.client.exe", "rustdesk.exe", "gotomypc.exe", "logmein.exe", "ngrok.exe"]
+    optional_entities: ["windows_path", "domain_user"]
+    families: ["prefetch", "amcache", "evtxecmd", "hayabusa"]
+    temporal_window_seconds: 3600
+    min_entities: 1
+    confidence_base: 0.7
+    description: "Remote-management/tunnel tooling present - attacker remote access via legitimate RMM tools."
+    evidence: ["service install for the RMM agent", "outbound connection events for the tool", "prefetch/amcache install timestamps"]
+
+  - name: ext_tunnel_tool
+    mitre: ["T1572", "T1090"]
+    required_entities: ["process_name"]
+    required_values:
+      process_name: ["plink.exe", "ngrok.exe", "chisel.exe", "frpc.exe", "socat.exe"]
+    optional_entities: ["domain_user", "ipv4"]
+    families: ["prefetch", "amcache", "evtxecmd", "hayabusa"]
+    temporal_window_seconds: 3600
+    min_entities: 1
+    confidence_base: 0.7
+    description: "Tunneling/port-forward tooling - protocol tunneling for C2 or access."
+    evidence: ["process command lines with -R/-L/proxy args", "sustained outbound connection", "prefetch entry for the tool"]
+
+  - name: ext_uac_bypass_autoelevate
+    mitre: ["T1548.002"]
+    required_entities: ["process_name"]
+    required_values:
+      process_name: ["fodhelper.exe", "computerdefaults.exe", "sdclt.exe", "eventvwr.exe", "slui.exe"]
+    optional_entities: ["domain_user", "windows_path"]
+    families: ["evtxecmd", "hayabusa", "recmd"]
+    temporal_window_seconds: 900
+    min_entities: 1
+    confidence_base: 0.6
+    description: "Auto-elevate UAC-bypass binaries launched by a non-standard parent - privilege elevation."
+    evidence: ["Security 4688 parent/child chain (e.g. cmd -> fodhelper)", "registry writes under HKCU ms-settings shell open", "no legit Settings context in the same window"]
+
+  - name: ext_lolbin_download
+    mitre: ["T1105", "T1197"]
+    required_entities: ["process_name"]
+    required_values:
+      process_name: ["bitsadmin.exe", "certutil.exe", "curl.exe", "wget.exe", "mshta.exe", "regsvr32.exe"]
+    optional_entities: ["url", "windows_path", "domain_user"]
+    families: ["evtxecmd", "hayabusa", "prefetch", "amcache"]
+    temporal_window_seconds: 1800
+    min_entities: 1
+    confidence_base: 0.55
+    description: "LOLBin download/decode activity - ingress tool transfer or payload staging (dual-use tooling)."
+    evidence: ["command lines with http(s) URLs or -urlcache/-decode", "file write under temp/appdata", "prefetch for the LOLBin"]
+
+  - name: ext_exec_from_temp
+    mitre: ["T1204.002", "T1059"]
+    required_entities: ["process_name"]
+    required_values:
+      windows_path: ["\\appdata\\local\\temp\\", "\\windows\\temp\\", "\\downloads\\"]
+    optional_entities: ["windows_path", "domain_user"]
+    families: ["evtxecmd", "hayabusa", "prefetch", "amcache"]
+    temporal_window_seconds: 3600
+    min_entities: 2
+    confidence_base: 0.5
+    description: "Execution near a user-writable download/temp path - commodity malware delivery."
+    evidence: ["process image path under temp/downloads", "prefetch/amcache first-run timestamp", "parent process (browser/mail client)"]
+
+  - name: ext_script_interpreter_encoded
+    mitre: ["T1059.001", "T1027"]
+    required_entities: ["process_name"]
+    required_values:
+      process_name: ["powershell.exe", "pwsh.exe", "wscript.exe", "cscript.exe", "mshta.exe"]
+    optional_entities: ["windows_path", "domain_user"]
+    families: ["evtxecmd", "hayabusa", "prefetch"]
+    temporal_window_seconds: 1800
+    min_entities: 1
+    confidence_base: 0.5
+    description: "Script interpreter present alongside other activity - require encoded/download-cradle context before escalation."
+    evidence: ["ScriptBlock 4104 with -enc/-nop/-w hidden", "4688 command line", "network connection from the interpreter"]
+
+  - name: ext_startup_folder_drop
+    mitre: ["T1547.001"]
+    required_entities: ["windows_path"]
+    required_values:
+      windows_path: ["\\startup\\", "\\programdata\\microsoft\\windows\\start menu\\programs\\startup"]
+    optional_entities: ["process_name", "domain_user"]
+    families: ["lnk", "jumplists", "mftecmd", "evtxecmd"]
+    temporal_window_seconds: 7200
+    min_entities: 2
+    confidence_base: 0.6
+    description: "File activity in a Startup folder - autostart persistence."
+    evidence: ["LNK/ShellBag references to the StartUp item", "MFT write into StartUp", "Run-key fallback writes"]
+
+  - name: ext_browser_credential_access
+    mitre: ["T1555.003"]
+    required_entities: ["domain_user"]
+    required_values:
+      windows_path: ["\\login data", "\\cookies", "logins.json", "key4.db", "key3.db"]
+    optional_entities: ["windows_path", "process_name"]
+    families: ["browser", "mftecmd", "lnk", "jumplists"]
+    temporal_window_seconds: 3600
+    min_entities: 2
+    confidence_base: 0.6
+    description: "Browser credential-store file references - credential harvesting from user profiles."
+    evidence: ["browser profile file reads by non-browser process", "copy of Login Data/Cookies to temp", "same-session archive creation"]
