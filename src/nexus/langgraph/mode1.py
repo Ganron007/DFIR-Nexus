@@ -381,7 +381,13 @@ def nl_to_needles(
         text = getattr(response, "content", str(response))
         parsed = _parse_json_response(text)
         if parsed and isinstance(parsed.get("needles"), list):
-            llm_needles = [str(n).strip() for n in parsed["needles"] if str(n).strip()]
+            # F6: model-authored needles are auto-generated vocabulary - event
+            # IDs / container file names never become keyword terms (the typed
+            # route for event IDs is the DSL below). Examiner-named entities and
+            # heuristic terms are untouched by design.
+            llm_needles = filter_scannable(
+                [str(n).strip() for n in parsed["needles"] if str(n).strip()]
+            )
             needles = _dedupe_needles(entity_needles + llm_needles, cap=10)
             needles = _dedupe_needles(needles + context_needles, cap=14)
             window = str(parsed.get("window") or "").strip()

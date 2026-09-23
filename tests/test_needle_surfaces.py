@@ -121,6 +121,31 @@ def test_explore_suggestions_gated(client):
     assert any(s.get("event_ids") for s in payload["suggestions"])
 
 
+def test_llm_proposed_needles_are_gated():
+    """The LLM branch of ``nl_to_needles`` obeys the gate too (live catch)."""
+    import json as _json
+
+    from nexus.langgraph.mode1 import nl_to_needles
+
+    class _Resp:
+        content = _json.dumps({
+            "needles": ["mimikatz", "4656", "4624", "security.evtx", "psexec"],
+            "window": "",
+            "rationale": "stub",
+        })
+
+    class _Model:
+        def invoke(self, _messages):
+            return _Resp()
+
+    result = nl_to_needles("what happened", model=_Model(), context={})
+    needles = [str(n) for n in result["needles"]]
+    assert result.get("source") == "llm"
+    assert "mimikatz" in needles and "psexec" in needles
+    assert "4656" not in needles and "4624" not in needles
+    assert "security.evtx" not in needles
+
+
 def test_attack_for_family_uses_real_technique_and_typed_hints():
     from nexus.langgraph.orchestrator import _attack_for_family
 
