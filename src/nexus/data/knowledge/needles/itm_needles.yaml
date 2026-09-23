@@ -1,0 +1,86 @@
+# Insider Threat Matrix - hard-artifact needle packs (Mode 1/2).
+#
+# Derived from the Apache-2.0 ITM registry (data/knowledge/itm/; Forscie
+# Limited - see itm/NOTICE.txt). QUALITY RULE: only standout artifacts - tool
+# names, exact command fragments, service domains. No bare numbers, no generic
+# words, no schema labels (numbers/IDs belong to typed field checks, not
+# keyword scanning). Each pack carries a caveat (FD-004: dual-use tooling).
+version: 1
+source: Insider Threat Matrix (insiderthreatmatrix.org, Apache-2.0)
+packs:
+  - itm: AR3/PR016
+    name: Data Staging (archive)
+    families: [prefetch, amcache, lnk, jumplists, mftecmd]
+    needles: ["7z.exe", "7za.exe", "rar.exe", "winrar.exe", "makecab.exe", "tar.exe", "zip.exe"]
+    strong: ["7z a", "rar a"]
+    caveat: "Archive tools are routine; require staging context (collected paths, volume, target)."
+
+  - itm: AR3/PR002
+    name: Device Mounting
+    families: [evtxecmd, hayabusa, lnk, jumplists, srumecmd]
+    needles: ["usbstor", "usb#vid", "diskpart.exe", "mountvol.exe"]
+    strong: ["usbstor"]
+    caveat: "USB device presence is common; require file access from the device before removal."
+
+  - itm: AR3/PR026
+    name: Remote Desktop (RDP)
+    families: [evtxecmd, hayabusa, chainsaw]
+    needles: ["mstsc.exe", "rdpclip.exe", "termsrv"]
+    strong: ["rdpclip"]
+    caveat: "RDP is legitimate admin tooling; distinguish approved remote support from new/off-hours use."
+
+  - itm: AR3/PR041
+    name: Credential Collection
+    families: [prefetch, amcache, evtxecmd, hayabusa]
+    needles: ["mimikatz.exe", "procdump.exe", "nanodump.exe", "lazagne.exe", "wce.exe", "pwdump.exe", "sharpdump.exe"]
+    strong: ["sekurlsa", "lsass.dmp"]
+    caveat: "procDump is a diagnostics tool; requiring LSASS targeting or dump-file creation."
+
+  - itm: AR3/PR044
+    name: Account Discovery
+    families: [evtxecmd, hayabusa, prefetch]
+    needles: ["nltest.exe", "dsquery.exe", "adfind.exe", "sharphound.exe"]
+    strong: ["net group", "net user /domain"]
+    caveat: "Admin scripts run these tools; corroborate with command targets and timing."
+
+  - itm: AR3/PR046
+    name: System Persistence
+    families: [evtxecmd, hayabusa, recmd]
+    needles: ["sc.exe", "schtasks.exe", "reg.exe"]
+    strong: ["sc create", "schtasks /create"]
+    caveat: "Installers create services/tasks; verify binary path, signer and change window."
+
+  - itm: AR3/PR037
+    name: Oversight Circumvention (security tampering)
+    families: [evtxecmd, hayabusa, prefetch]
+    needles: ["set-mppreference", "add-mppreference", "sc stop windefend", "netsh advfirewall set"]
+    strong: ["add-mppreference -exclusionpath"]
+    caveat: "Exclusion changes can be authorized; corroborate with change tickets and actor."
+
+  - itm: AR4/IF001
+    name: Exfiltration via Web Service
+    families: [browser, srumecmd, lnk, jumplists]
+    needles: ["mega.nz", "transfer.sh", "wetransfer.com", "dropbox.com", "drive.google.com", "box.com", "sendspace.com"]
+    strong: ["mega.nz", "transfer.sh"]
+    caveat: "Personal cloud use is common; require upload semantics (folder link, transfer, large POST)."
+
+  - itm: AR5/AF002
+    name: Log Deletion / Tampering
+    families: [evtxecmd, hayabusa, chainsaw]
+    needles: ["wevtutil.exe"]
+    strong: ["wevtutil cl", "clear-eventlog"]
+    caveat: "wevtutil is used for legitimate log export; require cl/clear semantics or 1102 corroboration."
+
+  - itm: AR5/AF020
+    name: Shadow Copy / Backup Deletion
+    families: [evtxecmd, hayabusa, prefetch]
+    needles: ["vssadmin.exe", "wbadmin.exe", "diskshadow.exe"]
+    strong: ["vssadmin delete shadows", "wbadmin delete catalog"]
+    caveat: "Backup operations are routine; require delete semantics and timing vs other activity."
+
+  - itm: AR5/AF003
+    name: Timestomping
+    families: [mftecmd, evtxecmd, prefetch]
+    needles: ["timestomp.exe", "setmace.exe"]
+    strong: ["setmace", "timestomp"]
+    caveat: "Only meaningful with MFT/USN timestamp-drift corroboration."

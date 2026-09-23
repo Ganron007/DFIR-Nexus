@@ -190,6 +190,17 @@ def get_playbook(name: str) -> dict | None:
     return _load_yaml(f"discipline/playbooks/{name_lower}.yaml")
 
 
+def get_itm_needles() -> dict:
+    """ITM hard-artifact needle packs (section -> families/needles/strong).
+
+    File: ``needles/itm_needles.yaml`` — derived from the Apache-2.0 ITM
+    registry (``itm/``); hard artifacts only (tool names, exact command
+    fragments, service domains — no numbers or generic words).
+    """
+    data = _load_yaml("needles/itm_needles.yaml")
+    return data if isinstance(data, dict) else {}
+
+
 def get_attack_needles() -> list[dict]:
     """MITRE ATT&CK needle packs (data-driven search vocabulary).
 

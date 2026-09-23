@@ -168,6 +168,17 @@ def _scan_needles(
     for t in sigma_needles_for(fams, limit=8, cap=60):
         needles.setdefault(t.lower(), "sigma")
 
+    # Insider Threat Matrix hard artifacts (section-grounded packs).
+    try:
+        from nexus.knowledge.itm_needles import itm_needles_for, itm_strong_for
+
+        for t in itm_strong_for(fams):
+            needles.setdefault(t.lower(), "itm-strong")
+        for t in itm_needles_for(fams):
+            needles.setdefault(t.lower(), "itm")
+    except Exception:  # noqa: BLE001 — KB is optional
+        pass
+
     # Intake extras + question terms the examiner already named
     try:
         from nexus.langgraph.query_pack import collect_query_terms, load_case_intake
