@@ -306,11 +306,16 @@ _NEEDLE_NOISE = frozenset({
 
 
 def is_needle_like(term: str) -> bool:
-    """Vocabulary hygiene for AUTO-generated needles (playbook/ATT&CK/Sigma/intake).
+    """Vocabulary hygiene for FREE-TEXT-derived scan needles (intake/question).
 
-    Rejects paths, entity-type labels, bare numbers and over-long strings.
-    Examiner-typed searches are NOT filtered by this — Explore keeps its
-    existing semantics; this only guards what the scan proposes on its own.
+    Rejects machine-local shapes (paths), schema labels, bare numbers and
+    over-long strings — the live leak of 2026-09-23 typed ``STUDY\\Github`` /
+    ``domain_user`` into a Mode 1 scan. Curated packs (playbook/ATT&CK/Sigma/
+    ITM/external) are hand-authored and content-gated at export
+    (``filter_scannable``: numbers/container names out); their command
+    fragments and registry paths (``cipher /w``, ``currentversion\\run``,
+    ``auditpol /clear``) ARE evidence strings and are deliberately NOT
+    rejected here. Examiner-typed Explore searches keep their own semantics.
     """
     t = str(term or "").strip()
     if len(t) < 3 or len(t) > 64:

@@ -30,6 +30,11 @@ def test_rag_bundle_metadata(tmp_path: Path):
     idx = tmp_path / "rag"
     (idx / "sources").mkdir(parents=True)
     (idx / "sources" / "itm.jsonl").write_text("{}\n", encoding="utf-8")
+    # Local delta sources live one level down and must be visible too.
+    (idx / "sources" / "local").mkdir()
+    (idx / "sources" / "local" / "attack_detections.jsonl").write_text(
+        "{}\n", encoding="utf-8"
+    )
     (idx / "metadata.json").write_text(
         json.dumps({
             "model": "BAAI/bge-base-en-v1.5",
@@ -45,6 +50,6 @@ def test_rag_bundle_metadata(tmp_path: Path):
     assert meta["bundle_tag"] == "rag-index-v2026.03.01"
     assert meta["install_method"] == "download"
     assert meta["record_count"] == 22268
-    assert meta["local_source_files"] == ["itm"]
+    assert meta["local_source_files"] == ["itm", "local/attack_detections"]
 
     assert _rag_bundle_metadata(tmp_path / "missing") == {}

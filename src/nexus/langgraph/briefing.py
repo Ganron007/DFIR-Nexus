@@ -204,11 +204,28 @@ def _scan_needles(
     except Exception:  # noqa: BLE001
         pass
 
+    from nexus.knowledge.needle_terms import is_scannable_term
     from nexus.langgraph.query_pack import is_needle_like
 
-    # Vocabulary hygiene: paths and entity-type labels never become needles
-    # (they are machine-local/schema strings, not evidence strings).
-    clean = {k: v for k, v in needles.items() if is_needle_like(k)}
+    # Vocabulary hygiene, two gates by provenance:
+    # - content gate (F6): bare numbers / container file names never become
+    #   needles, whoever authored them;
+    # - free-text tokens (intake/question/query_extra) additionally reject
+    #   machine paths and schema labels - the live leak of 2026-09-23
+    #   (STUDY\Github, domain_user).
+    # Curated packs are hand-authored: their command fragments and registry
+    # paths ARE evidence strings and stay scannable (cipher /w,
+    # currentversion\run, auditpol /clear; ubiquity demotion handles the
+    # generic ones). A blanket separator rule here silently ate 28 real
+    # needles, contradicting the packs and their F6 export tests.
+    clean: dict[str, str] = {}
+    for k, v in needles.items():
+        term = k.strip()
+        if len(term) < 3 or not is_scannable_term(term):
+            continue
+        if v == "intake" and not is_needle_like(term):
+            continue
+        clean[k] = v
     capped = dict(list(clean.items())[:_BRIEFING_SCAN_TERMS_CAP])
     if dropped is not None:
         dropped.extend(k for k in clean if k not in capped)

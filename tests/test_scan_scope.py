@@ -42,7 +42,7 @@ def test_scan_reads_only_case_evidence(tmp_path):
 
 
 def test_briefing_needles_are_evidence_vocabulary(tmp_path):
-    """Vocabulary must not contain machine paths — even when intake does."""
+    """Machine paths never become needles - even when intake contains them."""
     from nexus.langgraph import briefing
     from nexus.langgraph.case_intake import persist_case_intake
 
@@ -60,9 +60,17 @@ def test_briefing_needles_are_evidence_vocabulary(tmp_path):
     needles = briefing._scan_needles(case, ["hayabusa"], [])
 
     assert needles, "the scan still proposes real needles (e.g. playbook terms)"
-    assert all("\\" not in k and "/" not in k and ":" not in k for k in needles)
+    # Free-text tokens are machine-local strings: nothing path-shaped, no labels.
+    intake_terms = [k for k, v in needles.items() if v == "intake"]
+    assert all("\\" not in k and "/" not in k and ":" not in k for k in intake_terms)
     assert "domain_user" not in needles
-    assert CANARY not in " ".join(needles)
+    lowered = " ".join(needles).lower()
+    assert not any(
+        part in lowered for part in ("study", "github", "cadre", "nexus", "evidence-files")
+    )
+    assert CANARY not in lowered
+    # Curated pack fragments are evidence strings and stay scannable.
+    assert "cipher /w" in needles  # hayabusa-family sigma pack
 
 
 def test_persistable_needles_blocks_paths_and_labels():

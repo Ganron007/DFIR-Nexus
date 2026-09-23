@@ -159,8 +159,169 @@ def _rag_bundle_metadata(idx_dir: Path) -> dict[str, Any]:
         pass
     sources_dir = Path(idx_dir) / "sources"
     if sources_dir.is_dir():
-        out["local_source_files"] = sorted(p.stem for p in sources_dir.glob("*.jsonl"))
+        out["local_source_files"] = sorted(
+            p.relative_to(sources_dir).with_suffix("").as_posix()
+            for p in sources_dir.glob("**/*.jsonl")
+        )
     return out
+
+
+DELTA_COLLECTION = "ir_knowledge_extra"
+LOCAL_SOURCES_SUBDIR = Path("sources") / "local"
+RAG_BUILD_TAG = "nexus_rag_build"
+_REBUILD_BATCH = 256
+
+
+def _local_sources_dir(index_dir: Path) -> Path:
+    return Path(index_dir) / LOCAL_SOURCES_SUBDIR
+
+
+def _load_embedder() -> tuple[Any, str]:
+    """Load the RAG embedder without requiring an existing vendor collection."""
+    from sentence_transformers import SentenceTransformer
+
+    source = resolve_embedding_source()
+    st_kwargs: dict[str, Any] = {}
+    if source["local_files_only"]:
+        st_kwargs["local_files_only"] = True
+    device = (os.environ.get("NEXUS_RAG_DEVICE") or "").strip().lower()
+    if device and device != "auto":
+        st_kwargs["device"] = device
+    model = SentenceTransformer(source["load_path"], **st_kwargs)
+    return model, str(source["model_id"])
+
+
+def rebuild_local_index(
+    index_dir: Path | str,
+    data_dir: Path | str | None = None,
+    collection: str = DELTA_COLLECTION,
+    prune: bool = True,
+    encode: Any = None,
+) -> dict[str, Any]:
+    """Build/refresh a LOCAL delta collection from JSONL sources.
+
+    ``data_dir`` defaults to ``<index>/sources/local`` (our generated docs).
+    Vendor docs live in ``ir_knowledge`` and are never touched here; the delta
+    collection is queried *alongside* the vendor one, so the downloaded bundle
+    stays pristine and re-downloadable.
+
+    ``encode`` is an injectable callable ``(texts) -> list[list[float]]`` used
+    by tests; production loads the same model the query path uses (vectors and
+    queries must share the embedding space).
+    """
+    import time as _time
+    from datetime import UTC, datetime
+
+    import chromadb
+
+    index_dir = Path(index_dir)
+    src_dir = Path(data_dir) if data_dir else _local_sources_dir(index_dir)
+    if not src_dir.is_dir():
+        return {
+            "status": "empty",
+            "error": f"no local sources at {src_dir}",
+            "hint": "run scripts/build_rag_sources.py, then rebuild",
+        }
+    from nexus.rag.sources import load_directory
+
+    docs = load_directory(src_dir)
+    if not docs:
+        return {"status": "empty", "error": f"no documents in {src_dir}"}
+
+    t0 = _time.monotonic()
+    model_id = ""
+    if encode is None:
+        model, model_id = _load_embedder()
+        encode = lambda texts: model.encode(texts, batch_size=64).tolist()  # noqa: E731
+
+    chroma_path = index_dir / "chroma"
+    chroma_path.mkdir(parents=True, exist_ok=True)
+    client = chromadb.PersistentClient(path=str(chroma_path))
+    col = client.get_or_create_collection(collection)
+
+    now = datetime.now(UTC).isoformat()
+    sources: dict[str, int] = {}
+    upserted = 0
+    for start in range(0, len(docs), _REBUILD_BATCH):
+        batch = docs[start:start + _REBUILD_BATCH]
+        vectors = encode([d.text for d in batch])
+        ids, texts, metas = [], [], []
+        for doc, _vector in zip(batch, vectors, strict=True):
+            sources[doc.source] = sources.get(doc.source, 0) + 1
+            ids.append(doc.id)
+            texts.append(doc.text)
+            meta = {
+                "source": doc.source,
+                "title": doc.title,
+                "technique_id": doc.technique_id,
+                "platform": doc.platform,
+                "built_by": RAG_BUILD_TAG,
+                "built_at": now,
+            }
+            for key, value in (doc.metadata or {}).items():
+                if value in (None, "", [], {}):
+                    continue
+                meta[str(key)] = value if isinstance(value, (int, float, bool)) else str(value)[:400]
+            metas.append(meta)
+        col.upsert(ids=ids, documents=texts, embeddings=vectors, metadatas=metas)
+        upserted += len(batch)
+
+    pruned = 0
+    if prune:
+        keep = {doc.id for doc in docs}
+        existing = col.get(include=[]).get("ids") or []
+        stale = [i for i in existing if i not in keep]
+        for start in range(0, len(stale), _REBUILD_BATCH):
+            col.delete(ids=stale[start:start + _REBUILD_BATCH])
+        pruned = len(stale)
+
+    return {
+        "status": "ok",
+        "collection": collection,
+        "documents": len(docs),
+        "upserted": upserted,
+        "pruned": pruned,
+        "sources": dict(sorted(sources.items())),
+        "model": model_id or "(injected)",
+        "elapsed_ms": int((_time.monotonic() - t0) * 1000),
+    }
+
+
+def delta_stats(index_dir: Path | str, collection: str = DELTA_COLLECTION) -> dict[str, Any]:
+    """Record/source counts for the local delta collection (0 when absent)."""
+    import chromadb
+
+    chroma_path = Path(index_dir) / "chroma"
+    if not chroma_path.exists():
+        return {"count": 0, "sources": {}}
+    try:
+        client = chromadb.PersistentClient(path=str(chroma_path))
+        col = client.get_collection(collection)
+    except Exception:  # noqa: BLE001 — delta is optional
+        return {"count": 0, "sources": {}}
+    metas = col.get(include=["metadatas"]).get("metadatas") or []
+    sources: dict[str, int] = {}
+    for meta in metas:
+        name = str((meta or {}).get("source") or "?")
+        sources[name] = sources.get(name, 0) + 1
+    return {"count": col.count(), "sources": dict(sorted(sources.items()))}
+
+
+def merge_search_rows(
+    rows: list[dict[str, Any]],
+    top_k: int,
+) -> list[dict[str, Any]]:
+    """Dedupe by id and rank by score across vendor + delta collections."""
+    best: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        key = str(row.get("id") or f"{row.get('source')}:{row.get('title')}")
+        current = best.get(key)
+        if current is None or row.get("score", 0) > current.get("score", 0):
+            best[key] = row
+    ranked = sorted(best.values(), key=lambda r: r.get("score", 0), reverse=True)[:top_k]
+    for i, row in enumerate(ranked):
+        row["rank"] = i + 1
+    return ranked
 
 
 def _check_rag_available() -> tuple[bool, str]:
@@ -279,6 +440,7 @@ class RAGIndex:
         self.index_dir = index_dir or _get_index_dir()
         self.model: SentenceTransformer | None = None
         self.collection: Any = None
+        self.delta_collection: Any = None
         self.available_sources: list[str] = []
         self._mitre_lookup: dict[str, str] = {}
         self._loaded = False
@@ -318,6 +480,10 @@ class RAGIndex:
         self.model = SentenceTransformer(source["load_path"], **st_kwargs)
         client = chromadb.PersistentClient(path=str(chroma_path))
         self.collection = client.get_collection("ir_knowledge")
+        try:
+            self.delta_collection = client.get_collection(DELTA_COLLECTION)
+        except Exception:  # noqa: BLE001 — delta collection is optional
+            self.delta_collection = None
         self._load_available_sources()
         self._load_mitre_lookup()
         count = self.collection.count()
@@ -328,23 +494,26 @@ class RAGIndex:
         self._loaded = True
 
     def _load_available_sources(self) -> None:
+        sources: set[str] = set()
         metadata_file = self.index_dir / "metadata.json"
         if metadata_file.exists():
             try:
                 with open(metadata_file, encoding="utf-8") as f:
                     meta = json.load(f)
-                    self.available_sources = meta.get("sources", [])
-                    if self.available_sources:
-                        return
+                sources.update(str(s) for s in (meta.get("sources") or []))
             except (OSError, json.JSONDecodeError):
                 pass
-        if self.collection is None:
-            return
-        results = self.collection.get(include=["metadatas"])
-        sources: set[str] = set()
-        for m in results["metadatas"]:
-            if m and "source" in m:
-                sources.add(m["source"])
+        if not sources and self.collection is not None:
+            for m in self.collection.get(include=["metadatas"])["metadatas"]:
+                if m and m.get("source"):
+                    sources.add(str(m["source"]))
+        if self.delta_collection is not None:
+            try:
+                for m in self.delta_collection.get(include=["metadatas"])["metadatas"]:
+                    if m and m.get("source"):
+                        sources.add(str(m["source"]))
+            except Exception:  # noqa: BLE001 — delta is optional
+                pass
         self.available_sources = sorted(sources)
 
     def _load_mitre_lookup(self) -> None:
@@ -410,56 +579,62 @@ class RAGIndex:
         if source or source_ids or technique or platform:
             retrieve_k = min(MAX_RETRIEVE, top_k * 50)
 
-        query_emb = self.model.encode(augmented).tolist()
-        results = self.collection.query(
-            query_embeddings=[query_emb],
-            n_results=retrieve_k,
-            include=["documents", "metadatas", "distances"],
+        source_ids_set = set(source_ids) if source_ids else None
+        matched_sources = self._get_matching_sources(
+            source.lower() if source and not source_ids else None
         )
 
-        source_ids_set = set(source_ids) if source_ids else None
-        matched_sources = self._get_matching_sources(source.lower() if source and not source_ids else None)
+        query_emb = self.model.encode(augmented).tolist()
 
-        formatted = []
-        for i in range(len(results["ids"][0])):
-            doc = results["documents"][0][i]
-            meta = results["metadatas"][0][i]
-            distance = results["distances"][0][i]
-            score = 1 - distance
+        def _rows_from(collection: Any, collection_name: str) -> list[dict[str, Any]]:
+            results = collection.query(
+                query_embeddings=[query_emb],
+                n_results=retrieve_k,
+                include=["documents", "metadatas", "distances"],
+            )
+            rows: list[dict[str, Any]] = []
+            for i in range(len(results["ids"][0])):
+                doc = results["documents"][0][i]
+                meta = results["metadatas"][0][i] or {}
+                distance = results["distances"][0][i]
+                score = 1 - distance
 
-            result_source = meta.get("source", "")
-            if source_ids_set:
-                if result_source not in source_ids_set:
-                    continue
-            elif source:
-                sl = result_source.lower()
-                sf = source.lower()
-                if sf not in sl and sl not in sf:
-                    continue
+                result_source = meta.get("source", "")
+                if source_ids_set:
+                    if result_source not in source_ids_set:
+                        continue
+                elif source:
+                    sl = result_source.lower()
+                    sf = source.lower()
+                    if sf not in sl and sl not in sf:
+                        continue
 
-            if technique:
-                t_str = meta.get("mitre_techniques", "")
-                if technique.upper() not in t_str.upper():
-                    continue
-            if platform:
-                p_str = meta.get("platform", "")
-                if platform.lower() not in p_str.lower():
-                    continue
+                if technique:
+                    t_str = meta.get("mitre_techniques", "")
+                    if technique.upper() not in t_str.upper():
+                        continue
+                if platform:
+                    p_str = meta.get("platform", "")
+                    if platform.lower() not in p_str.lower():
+                        continue
 
-            formatted.append({
-                "rank": 0,
-                "score": round(score, 3),
-                "source": result_source or "unknown",
-                "mitre_techniques": meta.get("mitre_techniques", ""),
-                "platform": meta.get("platform", ""),
-                "title": meta.get("title", ""),
-                "text": doc[:MAX_TEXT_LENGTH],
-            })
+                rows.append({
+                    "id": str(results["ids"][0][i]),
+                    "collection": collection_name,
+                    "rank": 0,
+                    "score": round(score, 3),
+                    "source": result_source or "unknown",
+                    "mitre_techniques": meta.get("mitre_techniques", ""),
+                    "platform": meta.get("platform", ""),
+                    "title": meta.get("title", ""),
+                    "text": doc[:MAX_TEXT_LENGTH],
+                })
+            return rows
 
-        formatted.sort(key=lambda x: x["score"], reverse=True)
-        formatted = formatted[:top_k]
-        for i, r in enumerate(formatted):
-            r["rank"] = i + 1
+        rows = _rows_from(self.collection, "vendor")
+        if self.delta_collection is not None:
+            rows.extend(_rows_from(self.delta_collection, "local"))
+        formatted = merge_search_rows(rows, top_k)
 
         return {
             "results": formatted,
@@ -480,6 +655,7 @@ class RAGIndex:
             "model_load_path": src["load_path"],
             "model_source": src["source"],
             "local_files_only": src["local_files_only"],
+            "delta": delta_stats(self.index_dir),
         }
 
 
@@ -591,34 +767,53 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             return {"status": "error", "error": str(e)}
 
     @server.tool()
-    def forensic_rag_rebuild(data_dir: str = "") -> dict:
-        """Local source-to-index rebuild (deferred).
+    def forensic_rag_rebuild(
+        data_dir: str = "",
+        collection: str = "",
+        prune: bool = True,
+    ) -> dict:
+        """Build/refresh the LOCAL RAG delta from generated JSONL sources.
 
-        Building a fresh index from the 23 upstream sources requires a
-        dedicated ingest pipeline that is not yet part of the standalone
-        package. For now, use `forensic_rag_download()` to fetch the
-        pre-built index.
+        Reads ``~/.nexus/data/rag/sources/local/*.jsonl`` (generate them with
+        ``scripts/build_rag_sources.py``), embeds with the SAME model the query
+        path uses, and upserts into a separate collection
+        (``ir_knowledge_extra``). The downloaded vendor bundle is never
+        modified - search merges both and tags each hit with its collection.
+        Safe to re-run: deterministic ids update in place; docs removed from
+        the sources are pruned (scoped to the delta collection only).
 
         Args:
-            data_dir: Optional custom data directory for sources cache
+            data_dir: Optional folder/file of JSONL sources (default:
+                ``<index>/sources/local``)
+            collection: Delta collection name (default: ir_knowledge_extra)
+            prune: Drop delta docs whose ids are no longer in the sources
         """
         available, msg = _check_rag_available()
         if not available:
             return {"status": "failed", "error": msg}
 
-        audit.log(
+        idx_dir = _get_index_dir()
+        audit_id = audit.log(
             tool="forensic_rag_rebuild",
-            params={"data_dir": data_dir},
-            result_summary={"status": "deferred"},
+            params={"data_dir": data_dir, "collection": collection, "prune": prune},
+            result_summary={"status": "building"},
         )
-        return {
-            "status": "deferred",
-            "message": (
-                "Local source-to-index rebuild is not yet implemented in the "
-                "standalone package. Use forensic_rag_download() for the "
-                "pre-built index."
-            ),
-        }
+        try:
+            result = rebuild_local_index(
+                idx_dir,
+                data_dir=data_dir or None,
+                collection=collection or DELTA_COLLECTION,
+                prune=prune,
+            )
+        except Exception as exc:  # noqa: BLE001 — report, never crash the server
+            audit.log(
+                tool="forensic_rag_rebuild_error",
+                params={"data_dir": data_dir},
+                result_summary={"error": str(exc)[:200]},
+            )
+            return {"status": "failed", "error": str(exc)[:400]}
+        result["audit_id"] = audit_id or audit.last_audit_id or ""
+        return result
 
     @server.tool()
     def forensic_rag_download(tag: str = "latest") -> dict:
