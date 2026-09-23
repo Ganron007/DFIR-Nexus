@@ -184,3 +184,6 @@ src/nexus/data/knowledge/itm/insider-threat-matrix.json
 
 # ATT&CK raw STIX (CC BY 4.0, MITRE) - registry committed; rebuild via scripts/build_attack_registry.py
 src/nexus/data/knowledge/attack/*.json
+
+# ATLAS raw distribution (Apache-2.0, MITRE) - registry committed; rebuild via scripts/build_atlas_registry.py
+src/nexus/data/knowledge/atlas/ATLAS.yaml

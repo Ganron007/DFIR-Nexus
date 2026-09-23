@@ -513,6 +513,17 @@ def get_synced_entries(name: str) -> list[dict]:
     return [e for e in entries if isinstance(e, dict)] if isinstance(entries, list) else []
 
 
+def get_atlas_registry() -> dict:
+    """MITRE ATLAS registry (AI/ML adversarial TTPs + case studies).
+
+    File: ``atlas/atlas_registry.yaml`` — compiled from the Apache-2.0
+    atlas-data (C) 2021-2026 MITRE by ``scripts/build_atlas_registry.py``;
+    attribution in ``atlas/NOTICE.txt``.
+    """
+    data = _load_yaml("atlas/atlas_registry.yaml")
+    return data if isinstance(data, dict) else {}
+
+
 def get_attack_registry() -> dict:
     """Deep MITRE ATT&CK registry (techniques + detections + mitigations).
 
