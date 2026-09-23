@@ -37,9 +37,18 @@ def extract_entities(texts: list[str], top: int = 12) -> dict[str, dict[str, int
         for ip in _IP_RE.findall(text):
             if ip not in _NOISE_IPS:
                 ips[ip] += 1
-        for user in _USER_RE.findall(text):
-            if user.lower() not in _NOISE_USERS:
-                users[user] += 1
+        for m in _USER_RE.finditer(text):
+            user = m.group(0)
+            if user.lower() in _NOISE_USERS:
+                continue
+            # A DOMAIN\user inside a filesystem path is a directory, not an
+            # account: C:\STUDY\Github\... matched every path segment here.
+            s, e = m.span()
+            prev = text[s - 1] if s > 0 else ""
+            nxt = text[e] if e < len(text) else ""
+            if prev in {"\\", "/", ":"} or nxt in {"\\", "/"} or "/" in user:
+                continue
+            users[user] += 1
         for exe in _EXE_RE.findall(text):
             procs[exe.lower()] += 1
         for p in _PATH_RE.findall(text)[:2]:

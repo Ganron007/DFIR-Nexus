@@ -20,6 +20,10 @@ from urllib.parse import urlparse
 
 log = logging.getLogger(__name__)
 
+from nexus.langgraph.path_sanitize import (
+    sanitize_field_map,
+    sanitize_row_text,
+)
 from nexus.langgraph.query_pack import (
     _DATE_RE,
     _MAX_FILTERED_SCAN_BYTES,
@@ -67,7 +71,7 @@ WILDCARD_IGNORE_ABOVE = 32766
 # Index schema version. v2 = structured docs (host/user/event_id + parsed
 # columns under fields.*) so DSL filters and aggregations push down to ES.
 # A version mismatch triggers a rebuild on the next index_case()/ensure_index.
-INDEX_SCHEMA_VERSION = 5
+INDEX_SCHEMA_VERSION = 6
 
 _MAX_INDEX_FIELDS = 24
 _MAX_INDEX_FIELD_VALUE = 300
@@ -298,7 +302,13 @@ def iter_index_doc_batches(
     def _add(path: Path, root: Path, fam: str, i: int, line: str,
              fields: dict[str, str] | None = None) -> bool:
         nonlocal total
-        text = line.strip()[:_MAX_LINE]
+        # Source/provenance columns carry the machine path the parser read
+        # (EvtxECmd SourceFile, RECmd HivePath, ...) — that is routing
+        # metadata, never evidence text. Replace those values outright and
+        # normalize remaining machine prefixes (raw files untouched).
+        text = sanitize_row_text(
+            line.strip()[:_MAX_LINE], fields, case_dir, family=fam
+        )
         key = hashlib.sha1(
             f"{fam}\x00{path}\x00{i}\x00{text}".encode("utf-8", "replace")
         ).hexdigest()
@@ -314,6 +324,7 @@ def iter_index_doc_batches(
             "text": text,
         }
         if fields:
+            fields = sanitize_field_map(fields, case_dir, family=fam)
             host, user, event = _host_user_event(fields)
             doc["fields"] = fields
             if host:

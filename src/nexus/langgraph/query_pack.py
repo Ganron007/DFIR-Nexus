@@ -16,6 +16,10 @@ from typing import Any
 
 from nexus.integration.evidence_table import evidence_rows_from_n4_hits
 from nexus.langgraph.audit_linkage import _FAMILY_TO_TOOL, linked_audit_ids
+from nexus.langgraph.path_sanitize import (
+    sanitize_field_map,
+    sanitize_row_text,
+)
 
 _MAX_LINE = 4000
 _MAX_MD = 60000
@@ -272,6 +276,49 @@ def _dedupe(terms: list[str]) -> list[str]:
     return out
 
 
+# Entity/schema vocabulary that must never become a needle: type labels like
+# "domain_user" are how the extractor classifies rows, not strings the host
+# emits. Paths are machine-local (C:\STUDY\Github\...) and match every path in
+# every row — they belong in the file column, not in the signal map.
+_NEEDLE_NOISE = frozenset({
+    "domain_user", "windows_path", "posix_path", "process_name", "service_name",
+    "ipv4", "ipv6", "url", "domain", "hostname", "username", "account",
+    "sha256", "sha1", "md5", "imphash", "file_path", "path", "user", "host",
+})
+
+
+def is_needle_like(term: str) -> bool:
+    """Vocabulary hygiene for AUTO-generated needles (playbook/ATT&CK/Sigma/intake).
+
+    Rejects paths, entity-type labels, bare numbers and over-long strings.
+    Examiner-typed searches are NOT filtered by this — Explore keeps its
+    existing semantics; this only guards what the scan proposes on its own.
+    """
+    t = str(term or "").strip()
+    if len(t) < 3 or len(t) > 64:
+        return False
+    if "\\" in t or "/" in t or ":" in t:
+        return False
+    if t.lower() in _NEEDLE_NOISE:
+        return False
+    # Event IDs (4624/7045/1102) are first-class needles; stray short numbers
+    # ("21", "123") are row noise and stay out.
+    if t.isdigit():
+        return len(t) >= 4
+    return True
+
+
+def persistable_needles(terms: list[str]) -> list[str]:
+    """Needles allowed to become permanent ``CASE.yaml`` intake values.
+
+    The portal persists Explore/ask needles into ``intake.query_extra``; once
+    written they appear in every later scan. Paths and entity-type labels must
+    never become permanent needles (live report 2026-09-23: the case folder
+    path was persisted and surfaced as scan needles).
+    """
+    return _dedupe([t for t in terms if is_needle_like(t)])
+
+
 def _parse_needles(raw: str) -> list[str]:
     """Examiner or agent needles (not free-prose).
 
@@ -442,6 +489,7 @@ def _hits_from_file(
     end: datetime | None,
     query: Any | None = None,
     match_all: bool = False,
+    case_dir: Path | None = None,
 ) -> tuple[list[dict[str, Any]], bool]:
     """Keep strong-term rows even when noisier matches appear first in the file.
 
@@ -453,22 +501,25 @@ def _hits_from_file(
     strong_n = 0
     weak_n = 0
     skipped_cap = 0
-    header = None
-    if query is not None and getattr(query, "filters", None):
-        header = _header_for_file(root, str(path.relative_to(root)).replace("\\", "/"))
+    header = _header_for_file(root, str(path.relative_to(root)).replace("\\", "/"))
+    from nexus.langgraph.case_index import _row_fields
+
     with _open_text(path) as fh:
         for i, line in enumerate(fh, start=1):
             if i == 1 and ("," in line or "\t" in line):
                 continue
+            raw_fields = _row_fields(line, header) if header else None
+            # Source/provenance columns carry the machine path the parser read:
+            # replace them outright, then normalize remaining machine prefixes.
+            line = sanitize_row_text(line, raw_fields, case_dir, family=fam)
             low = line.lower()
             if query is not None:
                 from nexus.langgraph.query_dsl import row_matches
 
-                row_fields = None
-                if header:
-                    from nexus.langgraph.case_index import _row_fields
-
-                    row_fields = _row_fields(line, header)
+                row_fields = (
+                    sanitize_field_map(raw_fields, case_dir, family=fam)
+                    if raw_fields else None
+                )
                 ok, matched = row_matches(
                     query, line_lower=low, family=fam, file_rel=str(path.relative_to(root)),
                     row_fields=row_fields,
@@ -592,14 +643,19 @@ def _hits_from_ingest(
     weak_n = 0
     skipped_cap = 0
     for line_no, fam, text, _ts, record in iter_ingest_records(case_dir):
+        text = sanitize_row_text(text, record, case_dir, family=fam)
         low = text.lower()
         if query is not None:
             from nexus.langgraph.query_dsl import row_matches
 
-            row_fields = {
-                str(k): str(v) for k, v in (record or {}).items()
-                if v not in (None, "", [], {})
-            }
+            row_fields = sanitize_field_map(
+                {
+                    str(k): str(v) for k, v in (record or {}).items()
+                    if v not in (None, "", [], {})
+                },
+                case_dir,
+                family=fam,
+            )
             ok, matched = row_matches(
                 query, line_lower=low, family=fam, file_rel="ingest/artifacts.jsonl",
                 row_fields=row_fields,
@@ -1030,7 +1086,9 @@ def attach_hit_fields(case_dir: Path, hits: list[dict[str, Any]]) -> list[dict[s
         if not host:
             m = _HOST_RE.search(h.get("text", "")) or _UNC_RE.search(h.get("text", ""))
             host = (m.group(1) if m else "").rstrip(".").lower()
-        row["fields"] = fields
+        row["fields"] = sanitize_field_map(
+            fields, case_dir, family=str(h.get("family") or "")
+        )
         # Never clobber an envelope host the backend already resolved
         # (ES schema-v2 hits carry `host`; CSV rows often don't).
         row["host"] = host or str(h.get("host") or "")
@@ -1348,7 +1406,7 @@ def scan_extractions(
         try:
             file_hits, capped = _hits_from_file(
                 path, root, fam, needles, strong, start, end,
-                query=query, match_all=match_all,
+                query=query, match_all=match_all, case_dir=case_dir,
             )
         except OSError:
             if stats is not None:
@@ -1399,6 +1457,13 @@ def _pick_backend(case_dir: Path, backend: str | None = None) -> str:
     return "csv"
 
 
+def _case_dir_for_root(root: Path) -> Path:
+    """Case dir for an extraction root (…/extractions, …/sift/extractions, …/ingest)."""
+    if root.parent.name == "sift" and len(root.parents) > 1:
+        return root.parents[1]
+    return root.parent
+
+
 def _iter_matching_rows(
     path: Path,
     root: Path,
@@ -1416,19 +1481,25 @@ def _iter_matching_rows(
     in file order; deterministic and streamable for arbitrarily large CSVs.
     """
     rel = str(path.relative_to(root)).replace("\\", "/")
+    case_dir = _case_dir_for_root(root)
+    from nexus.langgraph.case_index import _row_fields
+
     with _open_text(path) as fh:
         for i, line in enumerate(fh, start=1):
             if i == 1 and ("," in line or "\t" in line):
                 continue
+            raw_fields = _row_fields(line, header) if header else None
+            # Source/provenance columns carry the machine path the parser read:
+            # replace them outright, then normalize remaining machine prefixes.
+            line = sanitize_row_text(line, raw_fields, case_dir, family=fam)
             low = line.lower()
             if query is not None:
                 from nexus.langgraph.query_dsl import row_matches
 
-                row_fields = None
-                if header:
-                    from nexus.langgraph.case_index import _row_fields
-
-                    row_fields = _row_fields(line, header)
+                row_fields = (
+                    sanitize_field_map(raw_fields, case_dir, family=fam)
+                    if raw_fields else None
+                )
                 ok, matched = row_matches(
                     query, line_lower=low, family=fam, file_rel=rel,
                     row_fields=row_fields,
@@ -1498,14 +1569,19 @@ def iter_ingest_hits(
 ):
     """Stream every matching imported-evidence row (no caps) — EH-12."""
     for line_no, fam, text, _ts, record in iter_ingest_records(case_dir):
+        text = sanitize_row_text(text, record, case_dir, family=fam)
         low = text.lower()
         if query is not None:
             from nexus.langgraph.query_dsl import row_matches
 
-            row_fields = {
-                str(k): str(v) for k, v in (record or {}).items()
-                if v not in (None, "", [], {})
-            }
+            row_fields = sanitize_field_map(
+                {
+                    str(k): str(v) for k, v in (record or {}).items()
+                    if v not in (None, "", [], {})
+                },
+                case_dir,
+                family=fam,
+            )
             ok, matched = row_matches(
                 query, line_lower=low, family=fam, file_rel="ingest/artifacts.jsonl",
                 row_fields=row_fields,

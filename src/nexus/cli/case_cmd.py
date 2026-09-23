@@ -381,7 +381,16 @@ def intake_case(
     if playbooks:
         ctx["playbooks"] = playbooks
     if query_extra:
-        ctx["query_extra"] = query_extra
+        from nexus.langgraph.query_pack import _parse_needles, persistable_needles
+
+        cleaned = persistable_needles(_parse_needles(query_extra))
+        if cleaned:
+            ctx["query_extra"] = "\n".join(cleaned)
+        elif query_extra.strip():
+            typer.echo(
+                "query_extra ignored: path-like / schema-label values are not "
+                "needles (they match every row and pollute the scan)."
+            )
     written = persist_case_intake(case_dir, ctx)
     typer.echo(f"Intake fields: {', '.join(written) or '(none)'}")
 

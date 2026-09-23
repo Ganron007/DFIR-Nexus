@@ -33,6 +33,20 @@ _CMD_HINTS = (
 _CAP = 40
 
 
+def _looks_like_path(value: str) -> bool:
+    """True when a value is a filesystem path (or a path fragment).
+
+    ``C:\\STUDY\\Github\\...`` and every ``dir\\leaf`` piece of it match the
+    generic DOMAIN\\user shape — reject path context, not accounts.
+    """
+    v = str(value or "").strip()
+    if not v:
+        return False
+    if v.startswith(("\\\\", "/")) or re.match(r"^[A-Za-z]:[\\/]", v):
+        return True
+    return v.count("\\") >= 2
+
+
 def _add(counts: dict[str, int], value: str) -> None:
     v = (value or "").strip().strip(".,;:()[]\"'")
     if not v or v.lower() in ("n/a", "na", "null", "none", "-", "unknown"):
@@ -98,7 +112,10 @@ def build_entity_inventory(
                 if key_low in ("computer", "host", "hostname"):
                     _add(hosts, str_value)
                 elif "user" in key_low or "account" in key_low:
-                    for u in _USER_RE.findall(str_value) or [str_value]:
+                    found = _USER_RE.findall(str_value)
+                    for u in found or [str_value]:
+                        if _looks_like_path(str(u)):
+                            continue  # C:\STUDY\Github\... is a directory, not an account
                         _add(users, u)
                 text += " " + str_value
         for m in _EXE_RE.findall(text):

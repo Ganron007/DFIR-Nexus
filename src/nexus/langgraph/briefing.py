@@ -177,9 +177,14 @@ def _scan_needles(
     except Exception:  # noqa: BLE001
         pass
 
-    capped = dict(list(needles.items())[:_BRIEFING_SCAN_TERMS_CAP])
+    from nexus.langgraph.query_pack import is_needle_like
+
+    # Vocabulary hygiene: paths and entity-type labels never become needles
+    # (they are machine-local/schema strings, not evidence strings).
+    clean = {k: v for k, v in needles.items() if is_needle_like(k)}
+    capped = dict(list(clean.items())[:_BRIEFING_SCAN_TERMS_CAP])
     if dropped is not None:
-        dropped.extend(k for k in needles if k not in capped)
+        dropped.extend(k for k in clean if k not in capped)
     return capped
 
 

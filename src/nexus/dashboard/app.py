@@ -1973,7 +1973,11 @@ async def api_select(request):
     explore_needles = _parse_needles(str(body.get("needles") or ""))
     if body.get("family") or body.get("start") or body.get("end") or explore_needles:
         if explore_needles:
-            merged = _parse_needles(intake.get("query_extra", "")) + explore_needles
+            from nexus.langgraph.query_pack import persistable_needles
+
+            merged = persistable_needles(
+                _parse_needles(intake.get("query_extra", "")) + explore_needles
+            )
             intake["query_extra"] = "\n".join(merged) + ("\n" if merged else "")
         start = str(body.get("start") or "").strip()
         end = str(body.get("end") or "").strip()
@@ -2166,6 +2170,7 @@ def _explore_query_from_body(case_dir, body):
         _parse_needles,
         load_case_intake,
         parse_intake_window,
+        persistable_needles,
     )
 
     needles = _parse_needles(str(body.get('needles') or ''))
@@ -2176,7 +2181,7 @@ def _explore_query_from_body(case_dir, body):
 
     intake = load_case_intake(case_dir)
     if needles:
-        merged = _parse_needles(intake.get('query_extra', '')) + needles
+        merged = persistable_needles(_parse_needles(intake.get('query_extra', '')) + needles)
         intake['query_extra'] = '\n'.join(merged) + ('\n' if merged else '')
     window = parse_intake_window(intake)
     if start or end:
@@ -2332,6 +2337,7 @@ async def api_explore_histogram(request):
         load_case_intake,
         n4_hits,
         parse_intake_window,
+        persistable_needles,
     )
     needles = _parse_needles(str(body.get('needles') or ''))
     family_filter = [f.strip() for f in str(body.get('family') or '').split(',') if f.strip()]
@@ -2339,7 +2345,7 @@ async def api_explore_histogram(request):
     end = str(body.get('end') or '').strip()
     intake = load_case_intake(case_dir)
     if needles:
-        merged = _parse_needles(intake.get('query_extra', '')) + needles
+        merged = persistable_needles(_parse_needles(intake.get('query_extra', '')) + needles)
         intake['query_extra'] = '\n'.join(merged)
     if start or end:
         parts = []

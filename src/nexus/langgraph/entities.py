@@ -41,6 +41,34 @@ _ENTITY_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 
 _ENTITY_TRAILING = ").,;:!?]}>'\""
 
+
+def _looks_like_path(value: str) -> bool:
+    """True when a value is a filesystem path (or a path fragment).
+
+    ``C:\\STUDY\\Github\\...`` and every ``dir\\leaf`` piece of it match the
+    generic DOMAIN\\user shape, so callers must reject path context explicitly.
+    """
+    v = str(value or "").strip()
+    if not v:
+        return False
+    if v.startswith(("\\\\", "/")) or re.match(r"^[A-Za-z]:[\\/]", v):
+        return True
+    return v.count("\\") >= 2 or (v.count("\\") == 1 and v.count("/") >= 1)
+
+
+def _domain_users_in(text: str) -> list[str]:
+    """DOMAIN\\user candidates from text — never path segments."""
+    out: list[str] = []
+    text = text or ""
+    for m in re.finditer(r"\b[A-Za-z][A-Za-z0-9._-]{1,31}\\[A-Za-z0-9._$-]{1,64}\b", text):
+        s, e = m.span()
+        prev = text[s - 1] if s > 0 else ""
+        nxt = text[e] if e < len(text) else ""
+        if prev in {"\\", "/", ":"} or nxt in {"\\", "/"}:
+            continue  # inside C:\STUDY\Github\... — a directory, not an account
+        out.append(m.group(0))
+    return out
+
 # Fields that are likely to contain entity values, keyed by entity type.
 # Maps field names (lowercase) to entity types they typically contain.
 _FIELD_ENTITY_MAP: dict[str, str] = {
@@ -91,7 +119,8 @@ def _extract_from_text(text: str) -> dict[str, list[str]]:
     out: dict[str, list[str]] = {}
     seen: set[str] = set()
     for kind, rx in _ENTITY_PATTERNS:
-        for raw in rx.findall(text):
+        values = _domain_users_in(text) if kind == "domain_user" else rx.findall(text)
+        for raw in values:
             value = str(raw).rstrip(_ENTITY_TRAILING)
             key = value.lower()
             if not value or key in seen:
@@ -110,8 +139,11 @@ def _extract_from_fields(fields: dict[str, str]) -> dict[str, list[str]]:
         entity_type = _FIELD_ENTITY_MAP.get(field_name.lower())
         if entity_type:
             value = value.strip().rstrip(_ENTITY_TRAILING)
-            if value:
-                out.setdefault(entity_type, []).append(value)
+            if not value:
+                continue
+            if entity_type == "domain_user" and _looks_like_path(value):
+                continue  # a path field's value is not an account
+            out.setdefault(entity_type, []).append(value)
     return out
 
 
