@@ -513,6 +513,53 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
         except Exception as exc:  # noqa: BLE001
             log.debug("briefing scan failed: %s", exc)
             hits, backend = [], ""
+    # Detection/event-ID probe: playbook event ids are TYPED facts (the
+    # vocabulary gate keeps bare numbers out of the keyword scan). This probe
+    # keeps the alert surface and EventId field-facts independent of the
+    # keyword vocabulary - a row is found by its event id, and match-site
+    # classification records it as a fact, never as signal.
+    if families:
+        try:
+            from nexus.knowledge.attack_needles import attack_packs_for
+            from nexus.knowledge.needle_terms import split_terms
+            from nexus.knowledge.sigma_needles import sigma_packs_for
+            from nexus.langgraph.query_pack import playbook_event_ids_for_families
+
+            fact_terms: list[str] = []
+            try:
+                fact_terms.extend(playbook_event_ids_for_families(families))
+            except Exception:  # noqa: BLE001
+                pass
+            for packs in (
+                attack_packs_for(families, set(), limit=8),
+                sigma_packs_for(families, limit=8),
+            ):
+                for pack in packs:
+                    _, context = split_terms(pack.get("needles") or [])
+                    fact_terms.extend(context["event_ids"])
+            fact_terms = list(dict.fromkeys(t for t in fact_terms if t))
+        except Exception:  # noqa: BLE001
+            fact_terms = []
+        if fact_terms:
+            try:
+                probe_hits, _probe = n4_hits(
+                    case_dir, fact_terms, (None, None), priority_terms=fact_terms
+                )
+                seen_hits = {
+                    (str(h.get("family")), str(h.get("file")), str(h.get("line")))
+                    for h in hits
+                }
+                for hit in probe_hits:
+                    key = (
+                        str(hit.get("family")),
+                        str(hit.get("file")),
+                        str(hit.get("line")),
+                    )
+                    if key not in seen_hits:
+                        seen_hits.add(key)
+                        hits.append(hit)
+            except Exception as exc:  # noqa: BLE001
+                log.debug("event-id probe failed: %s", exc)
     # Per-needle counts below are computed inside this window — when the scan
     # is truncated (result cap, per-file cap, skipped files, failed terms),
     # "rundll32 (21)" means "at least 21" and the UI marks those chips honestly.

@@ -74,8 +74,13 @@ def test_host_hunt_playbooks_include_log_tamper_terms():
         "playbooks": "external_compromise",
     })]
     assert "wevtutil" in terms
-    assert "1102" in terms
+    # F6 vocabulary gate: event IDs are typed hints, never scan keywords.
+    assert "1102" not in terms
     assert "dataoverwrite" in terms
+    from nexus.langgraph.query_pack import _playbook_event_ids
+
+    event_ids = _playbook_event_ids(["log_tampering"])
+    assert "1102" in event_ids and "104" in event_ids
 
 
 def test_data_staging_terms_include_wipe_and_cloud():
