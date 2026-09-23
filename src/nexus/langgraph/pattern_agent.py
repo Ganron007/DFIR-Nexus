@@ -16,35 +16,105 @@ import yaml
 log = logging.getLogger(__name__)
 
 _PATTERNS_PATH = Path(__file__).resolve().parent.parent / "data" / "knowledge" / "attack_patterns.yaml"
+# ITM chains (Insider Threat Matrix) - Preparation/Infringement/Anti-Forensics
+# sequences compiled from the Apache-2.0 ITM registry (see itm/itm_registry.yaml).
+_ITM_PATTERNS_PATH = Path(__file__).resolve().parent.parent / "data" / "knowledge" / "attack_patterns_itm.yaml"
+
+
+def _validated_patterns(patterns: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drop ITM/ATT&CK ids that do not exist in our registries.
+
+    A pattern with an invented technique id is a fabricated claim waiting to
+    happen - the id is dropped (with a warning) rather than rendered. When a
+    registry is unavailable the authored id is kept as-is (KB optional).
+    """
+    try:
+        from nexus.langgraph.itm import itm_index
+
+        itm_lookup = itm_index()
+    except Exception:  # noqa: BLE001
+        itm_lookup = {}
+    try:
+        from nexus.knowledge.loader import get_attack_techniques
+
+        mitre_ids = {
+            str(t.get("technique") or "").upper()
+            for t in (get_attack_techniques() or [])
+            if t.get("technique")
+        }
+    except Exception:  # noqa: BLE001
+        mitre_ids = set()
+
+    out: list[dict[str, Any]] = []
+    for pattern in patterns:
+        item = dict(pattern)
+        itm_ids: list[str] = []
+        for raw in item.get("itm") or []:
+            value = str(raw).strip()
+            if not value:
+                continue
+            if not itm_lookup:
+                itm_ids.append(value)
+                continue
+            candidate = value.split("/", 1)[1] if "/" in value else value
+            info = itm_lookup.get(candidate.upper())
+            if info:
+                itm_ids.append(f"{info['article']}/{info['id']}")
+            else:
+                log.warning("pattern %r: unknown ITM id %r dropped", item.get("name"), value)
+        item["itm"] = itm_ids
+        if mitre_ids:
+            kept = []
+            for raw in item.get("mitre") or []:
+                ref = str(raw).strip().upper()
+                if ref in mitre_ids:
+                    kept.append(str(raw).strip())
+                else:
+                    log.warning("pattern %r: unknown ATT&CK id %r dropped", item.get("name"), raw)
+            item["mitre"] = kept
+        out.append(item)
+    return out
 
 
 class PatternAgent:
     """Attack pattern detection from entity graph and timeline.
 
-    Matches evidence against the attack pattern library. Each pattern
-    defines required entity types, temporal windows, family combinations,
-    and MITRE mapping. Confidence is scored based on entity coverage
-    and temporal clustering.
+    Matches evidence against the attack pattern library (MITRE library +
+    Insider Threat Matrix chains). Each pattern defines required entity types,
+    optional value anchors (``required_values``), temporal windows, family
+    combinations, and MITRE/ITM mapping. Confidence is scored based on entity
+    coverage and temporal clustering.
     """
 
     name = "pattern"
 
-    def __init__(self, patterns_path: Path | None = None) -> None:
+    def __init__(self, patterns_path: Path | None = None,
+                 itm_patterns_path: Path | None = None) -> None:
         self.patterns_path = patterns_path or _PATTERNS_PATH
+        # The ITM library rides along only for the default (shipped) library;
+        # a custom path stays exactly what the caller handed in.
+        if patterns_path is None:
+            self._extra_paths = [itm_patterns_path or _ITM_PATTERNS_PATH]
+        else:
+            self._extra_paths = [itm_patterns_path] if itm_patterns_path else []
         self._patterns: list[dict[str, Any]] = []
         self._load_patterns()
 
     def _load_patterns(self) -> None:
-        """Load the attack pattern library."""
-        if not self.patterns_path.is_file():
-            log.warning("Attack patterns file not found: %s", self.patterns_path)
-            return
-        try:
-            data = yaml.safe_load(self.patterns_path.read_text(encoding="utf-8"))
-            self._patterns = data.get("patterns") or []
-            log.info("Loaded %d attack patterns", len(self._patterns))
-        except Exception as exc:
-            log.warning("Failed to load attack patterns: %s", exc)
+        """Load the attack pattern library (+ ITM chains) and validate ids."""
+        loaded: list[dict[str, Any]] = []
+        for path in [self.patterns_path, *self._extra_paths]:
+            if not path.is_file():
+                log.warning("Attack patterns file not found: %s", path)
+                continue
+            try:
+                data = yaml.safe_load(path.read_text(encoding="utf-8"))
+                loaded.extend((data or {}).get("patterns") or [])
+                log.info("Loaded %d attack patterns from %s",
+                         len((data or {}).get("patterns") or []), path.name)
+            except Exception as exc:  # noqa: BLE001 - KB must never kill the agent
+                log.warning("Failed to load attack patterns (%s): %s", path, exc)
+        self._patterns = _validated_patterns(loaded)
 
     def detect_patterns(
         self,
@@ -119,6 +189,15 @@ class PatternAgent:
                 found_optional.append(otype)
                 matched_entities.extend(entity_values[otype])
 
+        # Value anchors: each listed type must have an entity value containing
+        # one of the tokens (case-insensitive). This turns a generic
+        # "process_name + families" match into "vssadmin.exe ran" (ITM chains).
+        for vtype, tokens in (pattern.get("required_values") or {}).items():
+            wanted = [str(t).lower() for t in (tokens or []) if str(t).strip()]
+            values = entity_values.get(str(vtype), set())
+            if not wanted or not any(w in v for w in wanted for v in values):
+                return None
+
         # Check minimum entity count
         if len(matched_entities) < min_entities:
             return None
@@ -152,16 +231,22 @@ class PatternAgent:
         confidence = min(base_confidence + optional_boost + chain_boost, 0.95)
 
         # Build narrative fragment
+        itm_ids = [str(x) for x in (pattern.get("itm") or [])]
         narrative = (
             f"{pattern.get('name', 'unknown')}: "
             f"{pattern.get('description', '')} "
             f"(entities: {', '.join(sorted(set(matched_entities))[:5])})"
         )
+        if itm_ids:
+            narrative = f"{narrative} [ITM: {', '.join(itm_ids)}]"
 
         return {
             "name": pattern.get("name"),
             "description": pattern.get("description"),
             "mitre": pattern.get("mitre") or [],
+            "itm": itm_ids,
+            "evidence": pattern.get("evidence") or [],
+            "temporal_window_seconds": pattern.get("temporal_window_seconds"),
             "confidence": round(confidence, 2),
             "required_entities_found": found_required,
             "optional_entities_found": found_optional,

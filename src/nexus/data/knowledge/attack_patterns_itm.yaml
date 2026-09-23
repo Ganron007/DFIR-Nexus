@@ -1,0 +1,157 @@
+# Insider Threat Matrix pattern chains (Mode 3 / PatternAgent).
+#
+# Compiled from the Apache-2.0 ITM registry (data/knowledge/itm/; Forscie
+# Limited - see itm/NOTICE.txt). Section ids are validated against the
+# registry at load; unknown ids are dropped (no fabricated techniques).
+#
+# Schema = the PatternAgent schema plus:
+#   required_values: anchors a pattern on specific entity VALUES
+#                    (case-insensitive containment) - e.g. vssadmin.exe
+#   evidence:        what an analyst should expect to see when this fires
+#
+# Chain shape: Preparation (AR3) -> Infringement (AR4), plus Anti-Forensics
+# (AR5) tails. ATT&CK refs come from the ITM crosswalk.
+
+patterns:
+  # ---------------------------------------------------------------- AF (cover-up)
+  - name: itm_anti_forensics_shadow_deletion
+    itm: ["AR5/AF020"]
+    mitre: ["T1490", "T1047"]
+    required_entities: ["process_name"]
+    required_values:
+      process_name: ["vssadmin.exe", "wbadmin.exe", "diskshadow.exe", "wmic.exe"]
+    optional_entities: ["domain_user", "windows_path"]
+    families: ["evtxecmd", "hayabusa", "prefetch", "amcache"]
+    temporal_window_seconds: 3600
+    min_entities: 2
+    confidence_base: 0.7
+    description: "Shadow-copy or backup deletion (recovery inhibition) - insider anti-forensics or ransomware precursor."
+    evidence: ["Security 4688 / Sysmon 1 spawning vssadmin|wbadmin|diskshadow", "VSS errors in Application log", "paired wevtutil/1102 if logs were cleared after"]
+
+  - name: itm_anti_forensics_log_clearing
+    itm: ["AR5/AF002", "AR5/AF026"]
+    mitre: ["T1070.001", "T1562.002"]
+    required_entities: ["process_name"]
+    required_values:
+      process_name: ["wevtutil.exe"]
+    optional_entities: ["process_name", "domain_user"]
+    families: ["evtxecmd", "hayabusa", "prefetch", "amcache"]
+    temporal_window_seconds: 1800
+    min_entities: 2
+    confidence_base: 0.75
+    description: "Event-log clearing/tampering via wevtutil - Security 1102 / System 104 corroboration expected."
+    evidence: ["Security 1102 and System 104 events", "wevtutil cl in command lines", "gap analysis in the cleared channel"]
+
+  - name: itm_anti_forensics_timestomping
+    itm: ["AR5/AF003"]
+    mitre: ["T1070.006"]
+    required_entities: ["process_name"]
+    required_values:
+      process_name: ["timestomp.exe", "setmace.exe", "touch.exe"]
+    optional_entities: ["windows_path", "domain_user"]
+    families: ["mftecmd", "evtxecmd", "prefetch", "amcache"]
+    temporal_window_seconds: 7200
+    min_entities: 2
+    confidence_base: 0.6
+    description: "Timestamp manipulation tooling - SI/FN/$LogFile drift expected in MFT/USN."
+    evidence: ["MFT SI vs FN timestamp drift", "$UsnJrnl/$LogFile deltas", "prefetch entry for the tool"]
+
+  # ---------------------------------------------------------------- AR3 Preparation
+  - name: itm_prep_data_staging_archive
+    itm: ["AR3/PR016"]
+    mitre: ["T1074.001", "T1560.001"]
+    required_entities: ["process_name"]
+    required_values:
+      process_name: ["7z.exe", "7za.exe", "rar.exe", "winrar.exe", "tar.exe", "makecab.exe", "zip.exe"]
+    optional_entities: ["windows_path", "domain_user"]
+    families: ["prefetch", "amcache", "lnk", "jumplists", "mftecmd"]
+    temporal_window_seconds: 7200
+    min_entities: 2
+    confidence_base: 0.6
+    description: "Archive creation over collected files - data staging ahead of exfiltration."
+    evidence: ["archive output paths in LNK/JumpLists", "prefetch/amcache for the archiver", "large MFT writes under user profile or temp"]
+
+  - name: itm_prep_removable_media_mount
+    itm: ["AR3/PR002"]
+    mitre: ["T1052.001", "T1025"]
+    required_entities: ["windows_path"]
+    required_values:
+      windows_path: ["usbstor", "usb#vid", "removablemedia"]
+    optional_entities: ["process_name", "domain_user"]
+    families: ["evtxecmd", "hayabusa", "lnk", "jumplists", "srumecmd"]
+    temporal_window_seconds: 7200
+    min_entities: 2
+    confidence_base: 0.65
+    description: "Removable-media device mounted - preparation for physical-medium collection (or exfiltration)."
+    evidence: ["USBSTOR / partition device paths", "device install events (20001/20003)", "LNK/ShellBag references to the device"]
+
+  - name: itm_rdp_remote_access
+    itm: ["AR3/PR026"]
+    mitre: ["T1219.002", "T1021.001"]
+    required_entities: ["process_name"]
+    required_values:
+      process_name: ["mstsc.exe", "rdpclip.exe"]
+    optional_entities: ["domain_user", "ipv4"]
+    families: ["evtxecmd", "hayabusa"]
+    temporal_window_seconds: 3600
+    min_entities: 2
+    confidence_base: 0.6
+    description: "RDP client activity - remote access preparation or unauthorized remote access (distinguish legitimate admin use)."
+    evidence: ["Security 4624 type 10 / 4778-4779", "TerminalServices-* channels", "RDP bitmap cache artifacts"]
+
+  - name: itm_credential_collection
+    itm: ["AR3/PR041", "AR2/ME027"]
+    mitre: ["T1003", "T1003.001"]
+    required_entities: ["process_name"]
+    required_values:
+      process_name: ["mimikatz.exe", "procdump.exe", "nanodump.exe", "wce.exe", "pwdump.exe", "lazagne.exe", "sharpdump.exe", "dumpert.exe"]
+    optional_entities: ["domain_user", "windows_path"]
+    families: ["prefetch", "amcache", "evtxecmd", "hayabusa"]
+    temporal_window_seconds: 3600
+    min_entities: 2
+    confidence_base: 0.8
+    description: "Credential-dumping tooling executed - credential collection inside privileged access."
+    evidence: ["LSASS access (Sysmon 10) / 4656 with lsass handle", "dump file paths", "prefetch/amcache for the tool"]
+
+  - name: itm_account_discovery
+    itm: ["AR3/PR044"]
+    mitre: ["T1087", "T1069"]
+    required_entities: ["process_name"]
+    required_values:
+      process_name: ["nltest.exe", "dsquery.exe", "net.exe", "net1.exe", "adfind.exe", "sharphound.exe"]
+    optional_entities: ["domain_user"]
+    families: ["evtxecmd", "hayabusa", "prefetch", "amcache"]
+    temporal_window_seconds: 1800
+    min_entities: 2
+    confidence_base: 0.55
+    description: "Account/domain discovery commands - reconnaissance before collection or lateral movement (dual-use: admin scripts)."
+    evidence: ["process command lines with /domain or query targets", "prefetch entries", "Security 4662/4798/4799 patterns"]
+
+  # ---------------------------------------------------------------- AR4 Infringement
+  - name: itm_exfil_web_service
+    itm: ["AR4/IF001", "AR2/ME006"]
+    mitre: ["T1567", "T1567.002"]
+    required_entities: ["domain"]
+    required_values:
+      domain: ["mega.nz", "drive.google.com", "dropbox.com", "wetransfer.com", "transfer.sh", "onedrive.live.com", "box.com", "pcloud.com", "sendspace.com", "mediafire.com"]
+    optional_entities: ["url", "process_name", "windows_path"]
+    families: ["browser", "srumecmd", "lnk", "jumplists"]
+    temporal_window_seconds: 7200
+    min_entities: 2
+    confidence_base: 0.75
+    description: "Access to web-storage/exfil services - exfiltration over legitimate web services."
+    evidence: ["browser history/download rows with the domain", "SRUM network usage for the browser", "cloud-sync folder references in LNK/JumpLists"]
+
+  - name: itm_persistence_service_task
+    itm: ["AR3/PR046"]
+    mitre: ["T1543.003", "T1053.005"]
+    required_entities: ["process_name"]
+    required_values:
+      process_name: ["sc.exe", "schtasks.exe", "reg.exe"]
+    optional_entities: ["domain_user", "windows_path"]
+    families: ["evtxecmd", "hayabusa", "recmd"]
+    temporal_window_seconds: 1800
+    min_entities: 2
+    confidence_base: 0.55
+    description: "Service/task/registry persistence changes - system persistence outside approved change windows."
+    evidence: ["Security 4697/7045 service install", "TaskScheduler 106/140/141", "Run/RunOnce registry writes"]
