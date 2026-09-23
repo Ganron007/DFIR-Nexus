@@ -70,7 +70,9 @@ def attack_needles_for(
         if key and key not in seen:
             seen.add(key)
             out.append(needle.strip())
-    return out[:cap]
+    from nexus.knowledge.needle_terms import filter_scannable
+
+    return filter_scannable(out)[:cap]
 
 
 def attack_detections_for(

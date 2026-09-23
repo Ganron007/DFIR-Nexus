@@ -243,6 +243,7 @@ def parse_intake_window(intake: dict[str, str] | None) -> tuple[datetime | None,
 
 def _playbook_terms(playbook_ids: list[str]) -> list[str]:
     from nexus.knowledge.loader import get_playbook
+    from nexus.knowledge.needle_terms import filter_scannable
 
     terms: list[str] = []
     for name in playbook_ids:
@@ -254,7 +255,23 @@ def _playbook_terms(playbook_ids: list[str]) -> list[str]:
             terms.extend(str(t).strip() for t in raw if str(t).strip())
         blob = yaml_dump_values(pb)
         terms.extend(_EXE_RE.findall(blob))
-    return terms
+    return filter_scannable(terms)
+
+
+def _playbook_event_ids(playbook_ids: list[str]) -> list[str]:
+    """Event-ID hints from playbooks (typed checks; never keyword scans)."""
+    from nexus.knowledge.loader import get_playbook
+    from nexus.knowledge.needle_terms import split_terms
+
+    out: list[str] = []
+    for name in playbook_ids:
+        pb = get_playbook(name)
+        if not isinstance(pb, dict):
+            continue
+        for key in ("query_terms", "query_terms_strong"):
+            _, context = split_terms(pb.get(key) or [])
+            out.extend(context["event_ids"])
+    return _dedupe(out)
 
 
 def yaml_dump_values(obj: Any) -> str:
@@ -381,7 +398,9 @@ def playbook_terms_for_families(families: set[str] | list[str] | None) -> list[s
         terms = pb.get("query_terms") or []
         if isinstance(terms, list):
             out.extend(str(t).strip() for t in terms if str(t).strip())
-    return _dedupe(out)
+    from nexus.knowledge.needle_terms import filter_scannable
+
+    return filter_scannable(_dedupe(out))
 
 
 def playbook_techniques_for_families(families: set[str] | list[str] | None) -> list[str]:
@@ -394,6 +413,20 @@ def playbook_techniques_for_families(families: set[str] | list[str] | None) -> l
     return _dedupe(out)
 
 
+def playbook_event_ids_for_families(
+    families: set[str] | list[str] | None,
+) -> list[str]:
+    """Event-ID hints from family-matched playbooks (typed checks, not scans)."""
+    from nexus.knowledge.needle_terms import split_terms
+
+    out: list[str] = []
+    for pb in _family_matched_playbooks(families):
+        for key in ("query_terms", "query_terms_strong"):
+            _, context = split_terms(pb.get(key) or [])
+            out.extend(context["event_ids"])
+    return _dedupe(out)
+
+
 def playbook_strong_terms_for_families(families: set[str] | list[str] | None) -> list[str]:
     """High-signal ``query_terms_strong`` from playbooks matched to families."""
     out: list[str] = []
@@ -401,7 +434,9 @@ def playbook_strong_terms_for_families(families: set[str] | list[str] | None) ->
         strong = pb.get("query_terms_strong") or []
         if isinstance(strong, list):
             out.extend(str(t).strip() for t in strong if str(t).strip())
-    return _dedupe(out)
+    from nexus.knowledge.needle_terms import filter_scannable
+
+    return filter_scannable(_dedupe(out))
 
 
 def collect_query_terms(intake: dict[str, str] | None) -> list[str]:

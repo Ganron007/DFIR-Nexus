@@ -1,0 +1,57 @@
+# External-threat hard-artifact needle packs (Mode 1/2) - ATT&CK-grounded.
+#
+# Companion to needles/attack_needles.yaml (technique-grounded terms). These
+# packs mirror the external pattern chains (attack_patterns_external.yaml):
+# only standout tooling/artifacts, family-gated, each with a dual-use caveat.
+# Technique ids are validated against attack/attack_registry.yaml at load.
+version: 1
+source: MITRE ATT&CK (external chains mirror)
+packs:
+  - attack: T1021.002
+    name: SMB / PsExec lateral movement
+    families: [evtxecmd, hayabusa, prefetch, recmd]
+    needles: ["psexec.exe", "psexesvc.exe", "paexec.exe", "smbexec.exe"]
+    strong: ["psexesvc"]
+    caveat: "PsExec-family tools are used by admins; require remote service install + 5145/5140 context."
+
+  - attack: T1047
+    name: WMI execution
+    families: [evtxecmd, hayabusa, prefetch]
+    needles: ["wmic.exe"]
+    strong: ["wmic process call create"]
+    caveat: "WMI is native administration; require /node: or WmiPrvSE parent context."
+
+  - attack: T1219
+    name: Remote-management tools
+    families: [prefetch, amcache, evtxecmd, hayabusa]
+    needles: ["teamviewer.exe", "anydesk.exe", "screenconnect.clientservice.exe", "connectwisecontrol.client.exe", "rustdesk.exe", "gotomypc.exe", "logmein.exe", "ngrok.exe"]
+    strong: ["rustdesk.exe", "ngrok.exe"]
+    caveat: "Legitimate remote support exists; verify change window and installer path."
+
+  - attack: T1572
+    name: Tunneling tools
+    families: [prefetch, amcache, evtxecmd, hayabusa]
+    needles: ["plink.exe", "chisel.exe", "frpc.exe", "socat.exe"]
+    strong: ["chisel.exe"]
+    caveat: "plink is a legitimate SSH client; require -R/-L or proxy arguments."
+
+  - attack: T1548.002
+    name: UAC bypass primitives
+    families: [evtxecmd, hayabusa, recmd]
+    needles: ["fodhelper.exe", "computerdefaults.exe", "sdclt.exe", "eventvwr.exe", "slui.exe"]
+    strong: ["fodhelper.exe"]
+    caveat: "Auto-elevate binaries run normally too; require a non-standard parent chain."
+
+  - attack: T1105
+    name: LOLBin download/decode
+    families: [evtxecmd, hayabusa, prefetch, amcache]
+    needles: ["bitsadmin.exe", "certutil.exe", "mshta.exe", "regsvr32.exe"]
+    strong: ["bitsadmin /transfer", "certutil -urlcache"]
+    caveat: "Certutil/mshta are dual-use; require URL or -urlcache/-decode arguments."
+
+  - attack: T1555.003
+    name: Browser credential-store files
+    families: [browser, mftecmd, lnk, jumplists]
+    needles: ["login data", "logins.json", "key4.db", "key3.db"]
+    strong: ["login data"]
+    caveat: "These files exist in every profile; require access by a non-browser process or a copy."

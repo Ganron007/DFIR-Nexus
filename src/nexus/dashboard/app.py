@@ -6092,9 +6092,28 @@ async def api_playbook_needles(request):
         except Exception as exc:  # noqa: BLE001
             logger.debug("itm needle suggestions skipped: %s", exc)
 
+    # External-threat hard artifacts (ATT&CK-grounded packs).
+    external_suggestions: list[dict[str, Any]] = []
+    if families_filter:
+        try:
+            from nexus.knowledge.external_needles import external_packs_for
+
+            for pack in external_packs_for(families_filter, limit=6):
+                external_suggestions.append({
+                    "playbook": f"ATT&CK {pack.get('attack')} {pack.get('name')}".strip(),
+                    "slug": f"attack-ext:{pack.get('attack')}",
+                    "needles": [str(t) for t in (pack.get("needles") or [])[:20]],
+                    "strong_needles": [str(t) for t in (pack.get("strong") or [])[:12]],
+                    "caveats": [str(pack.get("caveat") or "")[:200]],
+                    "triggers": [],
+                    "source": "external",
+                })
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("external needle suggestions skipped: %s", exc)
+
     combined = (
         overlay_suggestions + attack_suggestions + sigma_suggestions
-        + itm_suggestions + suggestions
+        + itm_suggestions + external_suggestions + suggestions
     )
     return JSONResponse({
         "suggestions": combined,

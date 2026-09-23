@@ -201,6 +201,16 @@ def get_itm_needles() -> dict:
     return data if isinstance(data, dict) else {}
 
 
+def get_external_needles() -> dict:
+    """External-threat (ATT&CK-grounded) hard-artifact needle packs.
+
+    File: ``needles/external_needles.yaml`` — mirrors the external pattern
+    chains; pack = technique -> families + hard artifacts + caveat.
+    """
+    data = _load_yaml("needles/external_needles.yaml")
+    return data if isinstance(data, dict) else {}
+
+
 def get_attack_needles() -> list[dict]:
     """MITRE ATT&CK needle packs (data-driven search vocabulary).
 

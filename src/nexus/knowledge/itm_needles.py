@@ -49,7 +49,9 @@ def itm_needles_for(
     needles: list[str] = []
     for pack in itm_packs_for(families, limit):
         needles.extend(str(n) for n in (pack.get("needles") or []) if str(n).strip())
-    return _dedupe(needles, cap)
+    from nexus.knowledge.needle_terms import filter_scannable
+
+    return filter_scannable(_dedupe(needles, cap))
 
 
 def itm_strong_for(
@@ -60,4 +62,6 @@ def itm_strong_for(
     needles: list[str] = []
     for pack in itm_packs_for(families, limit):
         needles.extend(str(n) for n in (pack.get("strong") or []) if str(n).strip())
-    return _dedupe(needles, cap)
+    from nexus.knowledge.needle_terms import filter_scannable
+
+    return filter_scannable(_dedupe(needles, cap))

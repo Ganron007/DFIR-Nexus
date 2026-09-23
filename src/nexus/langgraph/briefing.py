@@ -180,6 +180,20 @@ def _scan_needles(
     except Exception:  # noqa: BLE001 — KB is optional
         pass
 
+    # External-threat hard artifacts (ATT&CK-grounded packs).
+    try:
+        from nexus.knowledge.external_needles import (
+            external_needles_for,
+            external_strong_for,
+        )
+
+        for t in external_strong_for(fams):
+            needles.setdefault(t.lower(), "external-strong")
+        for t in external_needles_for(fams):
+            needles.setdefault(t.lower(), "external")
+    except Exception:  # noqa: BLE001 — KB is optional
+        pass
+
     # Intake extras + question terms the examiner already named
     try:
         from nexus.langgraph.query_pack import collect_query_terms, load_case_intake
