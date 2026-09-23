@@ -79,8 +79,8 @@ def test_external_pack_valid_and_scannable():
 
 
 def test_briefing_and_endpoint_carry_external():
-    from pathlib import Path
     import tempfile
+    from pathlib import Path
 
     from nexus.langgraph.briefing import _scan_needles
 

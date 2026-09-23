@@ -29,9 +29,7 @@ def is_scannable_term(term: object) -> bool:
         return False
     if NUMERIC_TERM.fullmatch(text):
         return False
-    if _CONTAINER_FILE.search(text):
-        return False
-    return True
+    return not _CONTAINER_FILE.search(text)
 
 
 def split_terms(terms: list | tuple | None) -> tuple[list[str], dict[str, list[str]]]:
