@@ -704,6 +704,131 @@ def _load_mode2_saved_answers(case_dir: Any) -> list[dict[str, Any]]:
     return [e for e in loaded if isinstance(e, dict)] if isinstance(loaded, list) else []
 
 
+_ITM_ID_RE = re.compile(r"\bAR[1-5]/(?:MT|ME|PR|IF|AF)\d{3}(?:\.\d{3})?\b", re.IGNORECASE)
+
+
+def _itm_coverage_lines(findings: list[dict[str, Any]]) -> list[str]:
+    """Per-stage ITM coverage + evidenced sections + registry facts (F2).
+
+    Ids are validated against the registry - a finding can never put an
+    invented technique id into the report. Absence is stated as absence of
+    evidence, not absence of risk (FD-004).
+    """
+    lines: list[str] = []
+    try:
+        from nexus.langgraph.itm import itm_index, validate_itm_ids
+
+        index = itm_index()
+    except Exception:  # noqa: BLE001 - report must render without the KB
+        lines.append("_ITM registry unavailable in this build._")
+        return lines
+
+    evidenced: dict[str, list[str]] = {}
+    for finding in findings:
+        blob = (
+            str(finding.get("interpretation") or "")
+            + "\n"
+            + str(finding.get("observation") or "")
+        )
+        label = str(finding.get("id") or finding.get("title") or "")[:60]
+        for raw in _ITM_ID_RE.findall(blob):
+            check = validate_itm_ids("", [raw])
+            for canonical in check.get("objects") or []:
+                entries = evidenced.setdefault(str(canonical), [])
+                if label and label not in entries:
+                    entries.append(label)
+
+    stage_total: dict[str, int] = {}
+    try:
+        from nexus.knowledge.loader import get_itm_registry
+
+        for article in get_itm_registry().get("articles") or []:
+            stage = str(article.get("title") or "")
+            stage_total[stage] = len(article.get("sections") or [])
+    except Exception:  # noqa: BLE001
+        stage_total = {}
+
+    stage_evidenced: dict[str, set[str]] = {}
+    for section in evidenced:
+        info = index.get(section.split("/", 1)[-1].upper())
+        if not info:
+            continue
+        stage_evidenced.setdefault(str(info["stage"]), set()).add(section)
+
+    lines.append("### Stage coverage")
+    lines.append("")
+    lines.append("| Stage | Evidenced sections | Registry sections |")
+    lines.append("|---|---|---|")
+    for stage in ("Motive", "Means", "Preparation", "Infringement", "Anti-Forensics"):
+        lines.append(
+            f"| {stage} | {len(stage_evidenced.get(stage, set()))} "
+            f"| {stage_total.get(stage, '-')} |"
+        )
+    lines.append("")
+
+    if evidenced:
+        lines.append("### Evidenced sections")
+        lines.append("")
+        lines.append("| ITM | Stage | Section | Findings |")
+        lines.append("|---|---|---|---|")
+        for section in sorted(evidenced):
+            info = index.get(section.split("/", 1)[-1].upper()) or {}
+            lines.append(
+                f"| `{section}` | {info.get('stage') or ''} "
+                f"| {info.get('title') or ''} "
+                f"| {', '.join(evidenced[section][:3])} |"
+            )
+        lines.append("")
+    else:
+        lines.append(
+            "_No canonical ITM section ids on findings - no stage is evidenced "
+            "by this case's findings. That is absence of evidence, not absence "
+            "of risk._"
+        )
+        lines.append("")
+
+    try:
+        from nexus.knowledge.loader import (
+            get_atlas_registry,
+            get_itm_registry,
+            get_mbc_registry,
+        )
+
+        itm_counts = get_itm_registry().get("counts") or {}
+        atlas_counts = get_atlas_registry().get("counts") or {}
+        mbc_counts = get_mbc_registry().get("counts") or {}
+        if itm_counts or atlas_counts or mbc_counts:
+            lines.append("### Registry facts (analysis knowledge available)")
+            lines.append("")
+            if itm_counts:
+                lines.append(
+                    "- **Insider Threat Matrix**: "
+                    f"{itm_counts.get('sections', 0)} sections / "
+                    f"{itm_counts.get('detections', 0)} detections / "
+                    f"{itm_counts.get('preventions', 0)} preventions "
+                    f"({itm_counts.get('attack_maps', 0)} ATT&CK maps)"
+                )
+            if atlas_counts:
+                lines.append(
+                    "- **MITRE ATLAS** (AI/ML): "
+                    f"{atlas_counts.get('techniques', 0)} techniques / "
+                    f"{atlas_counts.get('mitigations', 0)} mitigations / "
+                    f"{atlas_counts.get('case_studies', 0)} case studies"
+                )
+            if mbc_counts:
+                lines.append(
+                    "- **MITRE MBC** (malware): "
+                    f"{mbc_counts.get('behaviors', 0)} behaviors / "
+                    f"{mbc_counts.get('methods', 0)} methods / "
+                    f"{mbc_counts.get('detection_rules', 0)} capa-YARA rules "
+                    f"({mbc_counts.get('families', 0)} families)"
+                )
+            lines.append("")
+    except Exception:  # noqa: BLE001
+        pass
+    return lines
+
+
 def build_dfir_markdown(
     *,
     case_id: str,
@@ -1260,23 +1385,7 @@ def build_dfir_markdown(
         "when later-stage objects are present."
     )
     lines.append("")
-    itm_hits = [
-        f for f in approved
-        if "insider threat matrix" in (
-            str(f.get("interpretation") or "") + str(f.get("observation") or "")
-        ).lower()
-        or f.get("itm_stage")
-    ]
-    if not itm_hits:
-        lines.append("_No explicit ITM mapping on approved findings._")
-    else:
-        for f in itm_hits:
-            lines.append(f"- **{f.get('title')}** (`{f.get('id')}`)")
-            interp = str(f.get("interpretation") or "")
-            for line in interp.splitlines():
-                if "insider threat matrix" in line.lower() or line.strip().startswith("Insider Threat"):
-                    lines.append(f"  - {line.strip()}")
-                    break
+    lines.extend(_itm_coverage_lines(approved))
     lines.append("")
 
     # Evidence registry
