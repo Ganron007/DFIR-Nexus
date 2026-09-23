@@ -1,0 +1,69 @@
+# Column classes for Mode 1 keyword match-site awareness (hand-maintained).
+#
+# A Mode 1 needle is a keyword; a hit only means something when the keyword
+# landed in evidence *content* with a token boundary. Where it landed decides
+# how the hit is counted:
+#   content   -> token-boundary hit counts as a signal hit (cite the cell)
+#   structure -> labels/enumerations (provider, level, rule text): a match is
+#                a fact about the evidence, not suspicious behaviour
+#   id_like   -> numeric identifiers even when the catalog types them text;
+#                compared by exact value, reported as a field fact
+#   provenance-> excluded (machine source paths; see path_sanitize)
+# Column TYPES come from src/nexus/data/schema/field_registry.yaml
+# (long/double -> numeric, date -> timestamp); the lists here override the
+# text default. Unlisted text columns default to content (recall bias).
+version: 1
+content:
+  - Payload
+  - CommandLine
+  - ParentCommandLine
+  - Image
+  - TargetFilename
+  - Path
+  - FullPath
+  - RelativePath
+  - URL
+  - URI
+  - Query
+  - QueryName
+  - Message
+  - Details
+  - TargetObject
+  - ScriptBlockText
+  # Detection text is behaviour text (rule titles/descriptions that fired).
+  - Rule
+  - RuleName
+  - RuleTitle
+  - Title
+  - Description
+structure:
+  - Level
+  - Provider
+  - Channel
+  - Computer
+  - ComputerName
+  - Host
+  - Hostname
+  - User
+  - UserName
+  - Severity
+  - Category
+  - Status
+  - Source
+  - SourceType
+  - ArtifactType
+  - artifact_type
+id_like:
+  - EventId
+  - EventID
+  - EventRecordId
+  - RecordNumber
+  - RecordId
+  - ProcessId
+  - ParentProcessId
+  - ThreadId
+  - SessionId
+  - LogonId
+  - Port
+  - DestinationPort
+  - SourcePort

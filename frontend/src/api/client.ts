@@ -644,6 +644,14 @@ export interface BriefingNeedle {
   hits: number;
   source: string;
 }
+/** Match-site fact: keyword matched an id/label column (EventId, Provider,
+ *  RecordNumber...). A value in the evidence — a pivot, never signal. */
+export interface BriefingNeedleFact {
+  needle: string;
+  hits: number;
+  field?: string;
+  class?: string;
+}
 export interface BriefingEntity {
   value: string;
   hits: number;
@@ -689,6 +697,8 @@ export interface BriefingResponse {
   alerts: BriefingAlert[];
   alert_count: number;
   needle_scan: BriefingNeedle[];
+  /** Id/label column matches (EventId, Provider, ...) — facts, not signal. */
+  needle_facts?: BriefingNeedleFact[];
   scanned_needles: number;
   entities: Record<string, BriefingEntity[]>;
   /** Host filesystem paths inside evidence content (NOT evidence files) —

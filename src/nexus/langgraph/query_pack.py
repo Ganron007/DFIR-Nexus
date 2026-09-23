@@ -16,6 +16,7 @@ from typing import Any
 
 from nexus.integration.evidence_table import evidence_rows_from_n4_hits
 from nexus.langgraph.audit_linkage import _FAMILY_TO_TOOL, linked_audit_ids
+from nexus.langgraph.match_site import classify_matched_terms
 from nexus.langgraph.path_sanitize import (
     sanitize_field_map,
     sanitize_row_text,
@@ -479,6 +480,37 @@ def _hit_rank(matched: list[str], strong: set[str]) -> int:
     return 3
 
 
+def _count_fact_sites(
+    stats: dict[str, Any] | None, classified: dict[str, Any]
+) -> None:
+    """Accumulate match-site facts (id/label columns) for the brief.
+
+    Counted during the scan, not from the capped hit list: fact-only rows rank
+    last and would otherwise be crowded out by signal rows when many needles
+    are scanned together.
+    """
+    if stats is None:
+        return
+    signal_low = {
+        str(s).strip().lower() for s in (classified.get("signal") or [])
+    }
+    counts = stats.setdefault("fact_counts", {})
+    fields = stats.setdefault("fact_fields", {})
+    seen: set[str] = set()
+    for site in classified.get("sites") or []:
+        term = str(site.get("term") or "").strip().lower()
+        if not term or term in signal_low or term in seen:
+            continue
+        if str(site.get("kind") or "") not in {"value", "label"}:
+            continue
+        seen.add(term)
+        counts[term] = counts.get(term, 0) + 1
+        field = str(site.get("field") or "")
+        if field:
+            slot = fields.setdefault(term, {})
+            slot[field] = slot.get(field, 0) + 1
+
+
 def _hits_from_file(
     path: Path,
     root: Path,
@@ -490,6 +522,7 @@ def _hits_from_file(
     query: Any | None = None,
     match_all: bool = False,
     case_dir: Path | None = None,
+    stats: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], bool]:
     """Keep strong-term rows even when noisier matches appear first in the file.
 
@@ -513,6 +546,9 @@ def _hits_from_file(
             # replace them outright, then normalize remaining machine prefixes.
             line = sanitize_row_text(line, raw_fields, case_dir, family=fam)
             low = line.lower()
+            classified: dict[str, Any] = {
+                "signal": [], "facts": [], "weak": [], "sites": [],
+            }
             if query is not None:
                 from nexus.langgraph.query_dsl import row_matches
 
@@ -528,8 +564,14 @@ def _hits_from_file(
                     continue
                 matched = matched[:6]
             else:
-                matched = [t for t in needles if needle_in_text(low, t)]
-                if not matched:
+                # Match-site awareness: what the keyword landed on decides
+                # whether it counts (content + token boundary), is a field
+                # fact (EventId/labels), or is noise (embedded, timestamps).
+                candidates = [t for t in needles if needle_in_text(low, t)]
+                classified = classify_matched_terms(fam, raw_fields, line, candidates)
+                _count_fact_sites(stats, classified)
+                matched = classified["signal"]
+                if not matched and not classified["facts"]:
                     if not match_all:
                         continue
                     matched = ["*"]
@@ -546,12 +588,13 @@ def _hits_from_file(
                     skipped_cap += 1
                     continue
                 weak_n += 1
-            raw.append((pri, i, matched, line.strip()[:_MAX_LINE]))
+            raw.append((pri, i, matched, line.strip()[:_MAX_LINE], classified))
     raw.sort(key=lambda row: (row[0], row[1]))
     kept = raw[:_MAX_HITS_PER_FILE]
     capped = skipped_cap > 0 or len(raw) > _MAX_HITS_PER_FILE
-    hits: list[dict[str, Any]] = [
-        {
+    hits: list[dict[str, Any]] = []
+    for _pri, i, matched, text, classified in kept:
+        hit: dict[str, Any] = {
             "family": fam,
             "file": str(path.relative_to(root)).replace("\\", "/"),
             "line": str(i),
@@ -559,8 +602,12 @@ def _hits_from_file(
             "terms_list": matched[:6],
             "text": text,
         }
-        for _pri, i, matched, text in kept
-    ]
+        if classified.get("facts"):
+            hit["fact_terms"] = classified["facts"][:6]
+            hit["fact_sites"] = classified["sites"][:6]
+        if classified.get("weak"):
+            hit["weak_terms"] = classified["weak"][:6]
+        hits.append(hit)
     return hits, capped
 
 
@@ -645,6 +692,9 @@ def _hits_from_ingest(
     for line_no, fam, text, _ts, record in iter_ingest_records(case_dir):
         text = sanitize_row_text(text, record, case_dir, family=fam)
         low = text.lower()
+        classified: dict[str, Any] = {
+            "signal": [], "facts": [], "weak": [], "sites": [],
+        }
         if query is not None:
             from nexus.langgraph.query_dsl import row_matches
 
@@ -664,8 +714,22 @@ def _hits_from_ingest(
                 continue
             matched = matched[:6]
         else:
-            matched = [t for t in needles if needle_in_text(low, t)]
-            if not matched:
+            candidates = [t for t in needles if needle_in_text(low, t)]
+            if candidates:
+                class_fields = sanitize_field_map(
+                    {
+                        str(k): str(v) for k, v in (record or {}).items()
+                        if v not in (None, "", [], {})
+                    },
+                    case_dir,
+                    family=fam,
+                )
+                classified = classify_matched_terms(
+                    fam, class_fields, text, candidates
+                )
+                _count_fact_sites(stats, classified)
+            matched = classified["signal"]
+            if not matched and not classified["facts"]:
                 if not match_all:
                     continue
                 matched = ["*"]
@@ -682,14 +746,20 @@ def _hits_from_ingest(
                 skipped_cap += 1
                 continue
             weak_n += 1
-        hits.append({
+        hit: dict[str, Any] = {
             "family": fam,
             "file": "ingest/artifacts.jsonl",
             "line": str(line_no),
             "terms": ",".join(matched[:6]),
             "terms_list": matched[:6],
             "text": text,
-        })
+        }
+        if classified.get("facts"):
+            hit["fact_terms"] = classified["facts"][:6]
+            hit["fact_sites"] = classified["sites"][:6]
+        if classified.get("weak"):
+            hit["weak_terms"] = classified["weak"][:6]
+        hits.append(hit)
     if stats is not None:
         stats["ingest_capped"] = bool(skipped_cap)
     return hits
@@ -1407,6 +1477,7 @@ def scan_extractions(
             file_hits, capped = _hits_from_file(
                 path, root, fam, needles, strong, start, end,
                 query=query, match_all=match_all, case_dir=case_dir,
+                stats=stats,
             )
         except OSError:
             if stats is not None:

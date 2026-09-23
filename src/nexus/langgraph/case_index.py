@@ -20,6 +20,7 @@ from urllib.parse import urlparse
 
 log = logging.getLogger(__name__)
 
+from nexus.langgraph.match_site import classify_matched_terms
 from nexus.langgraph.path_sanitize import (
     sanitize_field_map,
     sanitize_row_text,
@@ -29,6 +30,7 @@ from nexus.langgraph.query_pack import (
     _MAX_FILTERED_SCAN_BYTES,
     _MAX_LINE,
     _SKIP_SUFFIXES,
+    _count_fact_sites,
     _row_in_window,
     _scan_prio,
     finalize_hits,
@@ -1656,6 +1658,9 @@ def query_index(
             fields_low = " ".join(
                 str(v) for v in fields_map.values() if v is not None
             )
+        classified: dict[str, Any] = {
+            "signal": [], "facts": [], "weak": [], "sites": [],
+        }
         if query is not None:
             from nexus.langgraph.query_dsl import row_matches
 
@@ -1668,9 +1673,17 @@ def query_index(
                 continue
             matched = matched[:6]
         else:
-            matched = [t for t in needles
-                       if needle_in_text(low, t) or (fields_low and needle_in_text(fields_low.lower(), t))]
-            if not matched:
+            # Match-site awareness (Mode 1 keyword semantics): content +
+            # token boundary counts, id/label columns are facts, embedded
+            # matches and timestamps do not count.
+            candidates = [
+                t for t in needles
+                if needle_in_text(low, t) or (fields_low and needle_in_text(fields_low.lower(), t))
+            ]
+            classified = classify_matched_terms(fam, fields_map, text, candidates)
+            _count_fact_sites(stats, classified)
+            matched = classified["signal"]
+            if not matched and not classified["facts"]:
                 if not match_all:
                     continue
                 matched = ["*"]
@@ -1688,6 +1701,11 @@ def query_index(
             "terms_list": matched[:6],
             "text": text[:_MAX_LINE],
         }
+        if classified.get("facts"):
+            hit["fact_terms"] = classified["facts"][:6]
+            hit["fact_sites"] = classified["sites"][:6]
+        if classified.get("weak"):
+            hit["weak_terms"] = classified["weak"][:6]
         for key_name in ("host", "user", "event_id", "ts"):
             value = src.get(key_name)
             if value not in (None, ""):
@@ -1768,6 +1786,9 @@ def _shape_es_hit(
     fields_low = ""
     if search_fields and isinstance(fields_map, dict) and fields_map:
         fields_low = " ".join(str(v) for v in fields_map.values() if v is not None)
+    classified: dict[str, Any] = {
+        "signal": [], "facts": [], "weak": [], "sites": [],
+    }
     if query is not None:
         from nexus.langgraph.query_dsl import row_matches
 
@@ -1780,11 +1801,14 @@ def _shape_es_hit(
             return None
         matched = matched[:6]
     else:
-        matched = [
+        # Same match-site awareness as the CSV path (parity).
+        candidates = [
             t for t in needles
             if needle_in_text(low, t) or (fields_low and needle_in_text(fields_low.lower(), t))
         ]
-        if not matched:
+        classified = classify_matched_terms(fam, fields_map, text, candidates)
+        matched = classified["signal"]
+        if not matched and not classified["facts"]:
             if not match_all:
                 return None
             matched = ["*"]
@@ -1800,6 +1824,11 @@ def _shape_es_hit(
         "terms_list": matched[:6],
         "text": text[:_MAX_LINE],
     }
+    if classified.get("facts"):
+        hit["fact_terms"] = classified["facts"][:6]
+        hit["fact_sites"] = classified["sites"][:6]
+    if classified.get("weak"):
+        hit["weak_terms"] = classified["weak"][:6]
     for key_name in ("host", "user", "event_id", "ts"):
         value = src.get(key_name)
         if value not in (None, ""):

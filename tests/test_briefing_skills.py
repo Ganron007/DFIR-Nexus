@@ -48,9 +48,14 @@ def test_briefing_inventory_alerts_entities(tmp_path):
     assert "Benign Process" not in titles
     assert b["hosts"] == ["WS01"]
     assert b["ledger"]["ok"] == 2 and b["ledger"]["skip"] == 1
-    # needle→count signal map populated
+    # needle→count signal map populated; EventId cells are field facts now
     scan = {s["needle"]: s["hits"] for s in b["needle_scan"]}
-    assert scan.get("4624") == 2
+    facts = {f["needle"]: f["hits"] for f in b["needle_facts"]}
+    assert "4624" not in scan, scan
+    assert facts.get("4624") == 2, facts
+    assert facts.get("4624", 0) and "EventID" in {
+        f["field"] for f in b["needle_facts"] if f["needle"] == "4624"
+    }
     assert scan.get("lsass", 0) >= 1
     # entities extracted
     assert "domain" in b["entities"] or "ipv4" in b["entities"]
@@ -294,7 +299,17 @@ def test_briefing_writes_offline_artifacts(tmp_path):
     assert rows[0] == "needle,hits,source,scanned"
     # every scanned needle is recorded — including 0-hit ones (negative evidence)
     assert len(rows) - 1 == b["scanned_needles"]
-    assert any(r.startswith("4624,2,") for r in rows)
+    # EventId cells are field facts — a 4624 row may remain in the map as a
+    # scanned-with-0-signal entry (negative evidence), never with signal hits
+    assert not any(
+        r.startswith("4624,") and not r.startswith("4624,0,") for r in rows
+    ), rows
+    facts_path = case / "analysis" / "field_facts.csv"
+    assert b["artifacts"]["field_facts_csv"] == str(facts_path)
+    assert facts_path.exists()
+    fact_rows = facts_path.read_text(encoding="utf-8").splitlines()
+    assert fact_rows[0] == "needle,rows,field,class"
+    assert any(r.startswith("4624,2,") for r in fact_rows), fact_rows
     # this scan covered all needles — nothing is marked unscanned
     assert all(r.endswith(",yes") for r in rows[1:])
 

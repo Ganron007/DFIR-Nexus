@@ -530,6 +530,45 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
     ]
     needle_scan.sort(key=lambda r: -r["hits"])
 
+    # --- field facts (id/label columns) — pivots, never signal ---
+    # Match-site awareness: a keyword that lands in an EventId/RecordNumber/
+    # Provider/Level cell says the evidence contains the value, not that
+    # behaviour is suspicious. Counted during the scan (stats) so the
+    # per-file hit cap cannot crowd fact-only rows out; fall back to the
+    # hit list for backends that do not populate the counters.
+    stat_fact_counts = dict((scan_stats or {}).get("fact_counts") or {})
+    stat_fact_fields = (scan_stats or {}).get("fact_fields") or {}
+    fact_counts: dict[str, int] = {}
+    fact_fields: dict[str, dict[str, int]] = {}
+    fact_classes: dict[str, str] = {}
+    if stat_fact_counts:
+        fact_counts = stat_fact_counts
+        fact_fields = {
+            str(t): {str(f): int(n) for f, n in (fields or {}).items()}
+            for t, fields in stat_fact_fields.items()
+        }
+    else:
+        for h in hits:
+            for s in (h.get("fact_sites") or []):
+                term = str(s.get("term") or "").strip().lower()
+                if not term:
+                    continue
+                fact_counts[term] = fact_counts.get(term, 0) + 1
+                field = str(s.get("field") or "")
+                fact_fields.setdefault(term, {})
+                fact_fields[term][field] = fact_fields[term].get(field, 0) + 1
+                fact_classes.setdefault(term, str(s.get("class") or ""))
+    needle_facts = [
+        {
+            "needle": term,
+            "hits": n,
+            "field": max(fact_fields.get(term, {}), key=fact_fields[term].get)
+            if fact_fields.get(term) else "",
+            "class": fact_classes.get(term, ""),
+        }
+        for term, n in sorted(fact_counts.items(), key=lambda kv: -kv[1])
+    ]
+
     # --- alerts: severity rows from detection families ---
     alerts: list[dict[str, Any]] = []
     alert_hits: list[dict[str, Any]] = []
@@ -723,6 +762,7 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
         "alerts": alerts[:60],
         "alert_count": len(alerts),
         "needle_scan": needle_scan[:80],
+        "needle_facts": needle_facts[:40],
         "scanned_needles": len(terms),
         "entities": entities,
         "paths_summary": paths_summary,
@@ -784,7 +824,23 @@ def _write_briefing_artifacts(
                 w.writerow([needle, count, needle_map.get(needle, ""), scanned])
             for needle in (brief.get("scan_stats") or {}).get("needles_dropped_cap") or []:
                 w.writerow([needle, 0, needle_map.get(needle, "playbook"), "no"])
-        return {"briefing_md": str(md_path), "signal_map_csv": str(csv_path)}
+
+        # Match-site facts (EventId/RecordNumber/label cells): recorded apart
+        # from the signal map so a bare value is never read as behaviour.
+        facts_path = analysis_dir / "field_facts.csv"
+        with facts_path.open("w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(["needle", "rows", "field", "class"])
+            for fact in brief.get("needle_facts") or []:
+                w.writerow([
+                    fact.get("needle"), fact.get("hits"),
+                    fact.get("field"), fact.get("class"),
+                ])
+        return {
+            "briefing_md": str(md_path),
+            "signal_map_csv": str(csv_path),
+            "field_facts_csv": str(facts_path),
+        }
     except Exception:  # noqa: BLE001
         return {}
 
@@ -854,6 +910,20 @@ def briefing_to_markdown(brief: dict[str, Any]) -> str:
         lines.append(f"\n## Signal map ({len(scan)} needles with hits)")
         for s in scan[:40]:
             lines.append(f"- `{s['needle']}` — {s['hits']} hits ({s['source']})")
+    facts = brief.get("needle_facts") or []
+    if facts:
+        lines.append(f"\n## Field facts (not signal) — {len(facts)} term(s)")
+        lines.append(
+            "Keyword matches on id/label columns (EventId, RecordNumber, "
+            "Provider, Level, ...). They show the value exists in the evidence "
+            "- useful as pivots, never as suspicious signal or findings."
+        )
+        for f in facts[:20]:
+            field = f" in `{f['field']}`" if f.get("field") else ""
+            lines.append(
+                f"- `{f['needle']}` — {f['hits']} row(s){field} "
+                f"({f.get('class') or 'fact'})"
+            )
     scan_stats = brief.get("scan_stats") or {}
     if str(brief.get("backend") or "").startswith("csv"):
         reason = str(scan_stats.get("fallback_reason") or "NEXUS_ES_URL unset")

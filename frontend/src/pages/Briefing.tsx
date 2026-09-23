@@ -278,6 +278,7 @@ export default function Briefing() {
   const ledger = brief.ledger || { entries: [], ok: 0, skip: 0, fail: 0 };
   const inv = brief.inventory || {};
   const scan = brief.needle_scan || [];
+  const facts = brief.needle_facts || [];
   const alerts = brief.alerts || [];
   const entities = brief.entities || {};
   const intake = brief.intake || {};
@@ -947,6 +948,28 @@ export default function Briefing() {
                   </div>
                 )}
               </>
+            )}
+            {facts.length > 0 && (
+              <div style={{ marginTop: 10, borderTop: "1px solid rgba(128,128,128,0.3)", paddingTop: 8 }}>
+                <div
+                  style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}
+                  title="Keyword matches on id/label columns (EventId, RecordNumber, Provider, Level...). They show the value exists in the evidence — useful pivots, never suspicious signal or findings."
+                >
+                  Field facts — id/label column matches (not signal)
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                  {facts.slice(0, 40).map((f) => (
+                    <span
+                      key={`${f.needle}:${f.field || ""}`}
+                      style={{ fontFamily: "monospace", fontSize: 11, color: "var(--text-muted)" }}
+                      title={`${f.hits} row(s) matched ${f.field || "a field"} (${f.class || "fact"}) — the value exists in the evidence, it is not evidence of behaviour`}
+                    >
+                      {f.needle}
+                      {f.field ? ` · ${f.field}` : ""} <strong>{f.hits}</strong>
+                    </span>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
         </div>
