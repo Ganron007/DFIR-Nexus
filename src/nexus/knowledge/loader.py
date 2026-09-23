@@ -524,6 +524,17 @@ def get_atlas_registry() -> dict:
     return data if isinstance(data, dict) else {}
 
 
+def get_mbc_registry() -> dict:
+    """MITRE MBC v3 registry (malware behaviors, methods, families, rules).
+
+    File: ``mbc/mbc_registry.yaml`` — compiled from the Apache-2.0
+    ``MBCProject/mbc-stix2.1`` bundle by ``scripts/build_mbc_registry.py``;
+    attribution in ``mbc/NOTICE.txt``.
+    """
+    data = _load_yaml("mbc/mbc_registry.yaml")
+    return data if isinstance(data, dict) else {}
+
+
 def get_attack_registry() -> dict:
     """Deep MITRE ATT&CK registry (techniques + detections + mitigations).
 

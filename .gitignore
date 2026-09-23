@@ -187,3 +187,6 @@ src/nexus/data/knowledge/attack/*.json
 
 # ATLAS raw distribution (Apache-2.0, MITRE) - registry committed; rebuild via scripts/build_atlas_registry.py
 src/nexus/data/knowledge/atlas/ATLAS.yaml
+
+# MBC raw STIX bundle (Apache-2.0, MITRE) - registry committed; rebuild via scripts/build_mbc_registry.py
+src/nexus/data/knowledge/mbc/mbc.json
