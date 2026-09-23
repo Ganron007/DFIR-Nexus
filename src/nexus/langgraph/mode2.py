@@ -301,6 +301,54 @@ def _propose_with_model(
     # WP 2.11: Playbook caveats + Identify steps for hit families
     playbook_context = _playbook_context_for_families(set(families))
 
+    # Framework lenses (registry-grounded): ATT&CK detections for the hit
+    # families, the Insider Threat Matrix lens, and the AI/malware registries.
+    extras: list[str] = []
+    try:
+        from nexus.knowledge.attack_needles import (
+            attack_context_for,
+            attack_packs_for,
+        )
+        from nexus.langgraph.query_pack import playbook_techniques_for_families
+
+        techs = (
+            set(playbook_techniques_for_families(set(families))) if families else set()
+        )
+        attack_block = attack_context_for(
+            attack_packs_for(set(families), techs, limit=3), cap=3
+        )
+        if attack_block:
+            extras.append("ATT&CK detection guidance:\n" + attack_block[:1200])
+    except Exception:  # noqa: BLE001
+        pass
+    question_text = str(intake.get("question") or "")
+    try:
+        from nexus.langgraph.itm import itm_prompt_block
+
+        itm_block = itm_prompt_block(
+            question=question_text, families=families, limit=4, full_taxonomy=False
+        )
+        if itm_block:
+            extras.append("Insider Threat Matrix lens:\n" + itm_block[:1200])
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from nexus.knowledge.registry_context import (
+            atlas_context_for,
+            mbc_context_for,
+        )
+
+        atlas_block = atlas_context_for(question_text)
+        mbc_block = mbc_context_for(question_text)
+        if atlas_block or mbc_block:
+            extras.append(
+                "Framework registry matches:\n"
+                + "\n".join(x for x in (atlas_block, mbc_block) if x)[:900]
+            )
+    except Exception:  # noqa: BLE001
+        pass
+    extras_text = "\n\n".join(extras)
+
     # WP 2.6: Enriched context — aggregation + top hits per family
     agg_summary = _aggregation_summary(hits)
     top_hits = _top_hits_per_family(hits)
@@ -325,6 +373,7 @@ def _propose_with_model(
         f"Top hits per family:\n{top_hits}\n\n"
         f"RAG methodology:\n{rag_context[:1800] or '(none)'}\n\n"
         f"Playbook guidance:\n{playbook_context[:1200] or '(none)'}\n\n"
+        f"{extras_text}\n\n"
         "Evidence index fields:\n"
         f"{grammar or '(no parsed columns yet — use family/text terms)'}\n\n"
         f"{tool_contracts_block()}\n\n"

@@ -41,6 +41,31 @@ def test_family_selection_and_strong_terms():
     assert itm_needles_for(set()) == []
 
 
+def test_prompt_block_compact_and_endpoint():
+    """Compact block for proposal prompts + Explore endpoint exposure."""
+    from nexus.langgraph.itm import itm_prompt_block
+
+    block = itm_prompt_block(
+        "RDP connection from an external IP", ["evtxecmd"], 4, full_taxonomy=False
+    )
+    assert "FULL ITM TAXONOMY" not in block
+    assert "AR3/PR026" in block
+    assert "Insider Threat Matrix" in block
+
+    from starlette.applications import Starlette
+    from starlette.testclient import TestClient
+
+    from nexus.dashboard.app import create_dashboard
+
+    client = TestClient(Starlette(routes=create_dashboard()))
+    response = client.get("/portal/api/playbook/needles?families=evtxecmd")
+    data = response.json()
+    sources = {s.get("source") for s in (data.get("suggestions") or [])}
+    assert "itm" in sources, sources
+    itm = [s for s in data["suggestions"] if s.get("source") == "itm"]
+    assert itm and itm[0]["needles"], itm[:1]
+
+
 def test_briefing_signal_map_sources_itm(tmp_path):
     from nexus.langgraph.briefing import _scan_needles
 

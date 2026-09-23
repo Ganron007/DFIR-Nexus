@@ -37,15 +37,26 @@ def _validated_patterns(patterns: list[dict[str, Any]]) -> list[dict[str, Any]]:
     except Exception:  # noqa: BLE001
         itm_lookup = {}
     try:
-        from nexus.knowledge.loader import get_attack_techniques
+        from nexus.knowledge.loader import get_attack_registry
 
         mitre_ids = {
-            str(t.get("technique") or "").upper()
-            for t in (get_attack_techniques() or [])
-            if t.get("technique")
+            str(t.get("id") or "").upper()
+            for t in (get_attack_registry().get("techniques") or [])
+            if t.get("id")
         }
     except Exception:  # noqa: BLE001
         mitre_ids = set()
+    if not mitre_ids:
+        try:
+            from nexus.knowledge.loader import get_attack_techniques
+
+            mitre_ids = {
+                str(t.get("technique") or "").upper()
+                for t in (get_attack_techniques() or [])
+                if t.get("technique")
+            }
+        except Exception:  # noqa: BLE001
+            mitre_ids = set()
 
     out: list[dict[str, Any]] = []
     for pattern in patterns:

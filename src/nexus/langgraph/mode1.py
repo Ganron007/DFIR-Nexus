@@ -161,6 +161,23 @@ def _context_block(context: dict[str, Any] | None) -> str:
             "MITRE ATT&CK packs for this case (terms + false-positive caveats):\n"
             + attack_context[:1800]
         )
+    itm_context = str(context.get("itm_context") or "").strip()
+    if itm_context:
+        lines.append(
+            "Insider Threat Matrix lens for this case (cite ARx/ID exactly):\n"
+            + itm_context[:1500]
+        )
+    atlas_context = str(context.get("atlas_context") or "").strip()
+    if atlas_context:
+        lines.append(
+            "MITRE ATLAS (AI/ML adversary) techniques matching this case:\n"
+            + atlas_context[:900]
+        )
+    mbc_context = str(context.get("mbc_context") or "").strip()
+    if mbc_context:
+        lines.append(
+            "MITRE MBC malware behaviors matching this case:\n" + mbc_context[:900]
+        )
     sigma_context = str(context.get("sigma_context") or "").strip()
     if sigma_context:
         lines.append(

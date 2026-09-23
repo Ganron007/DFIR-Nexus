@@ -191,8 +191,13 @@ def itm_prompt_block(
     question: str = "",
     families: set[str] | list[str] | None = None,
     limit: int = 8,
+    full_taxonomy: bool = True,
 ) -> str:
-    """Prompt block: stages + the registry sections relevant to this case."""
+    """Prompt block: stages + the registry sections relevant to this case.
+
+    ``full_taxonomy=False`` drops the (large) citation listing - use it for
+    query-proposal prompts where only the relevant lens matters.
+    """
     relevance = itm_sections_for(question, families, limit)
     lines = [
         "HYPOTHESIS LENSES (both apply; evidence chooses which fits):",
@@ -225,16 +230,17 @@ def itm_prompt_block(
         )
     # Full taxonomy: every valid id, compact. The model cites from this set;
     # anything else is rejected at staging (no invented techniques).
-    lines.append("FULL ITM TAXONOMY (valid ids; cite 'ARx/ID'):")
-    for article in _registry().get("articles") or []:
-        aid = str(article.get("id") or "")
-        stage = _STAGE_BY_ARTICLE.get(aid, str(article.get("title") or ""))
-        titles = ", ".join(
-            f"{aid}/{s.get('id')} {s.get('title')}"
-            for s in (article.get("sections") or [])
-            if s.get("id")
-        )
-        lines.append(f"  {stage} ({aid}): {titles}")
+    if full_taxonomy:
+        lines.append("FULL ITM TAXONOMY (valid ids; cite 'ARx/ID'):")
+        for article in _registry().get("articles") or []:
+            aid = str(article.get("id") or "")
+            stage = _STAGE_BY_ARTICLE.get(aid, str(article.get("title") or ""))
+            titles = ", ".join(
+                f"{aid}/{s.get('id')} {s.get('title')}"
+                for s in (article.get("sections") or [])
+                if s.get("id")
+            )
+            lines.append(f"  {stage} ({aid}): {titles}")
     lines.append(
         "Record ITM only when the facts support an authorized user abusing "
         "access: itm_stage + itm_objects (canonical 'ARx/ID'). Omit ITM fields "

@@ -1640,6 +1640,36 @@ def _mode1_ask_context(case_dir: Path, question: str) -> dict[str, Any]:
         except Exception:  # noqa: BLE001
             pass
 
+    # Insider Threat Matrix lens (registry-validated ids) + the AI/malware
+    # registries (ATLAS/MBC) matched against the same case text.
+    try:
+        from nexus.langgraph.itm import itm_prompt_block
+
+        itm_ctx = itm_prompt_block(
+            question=question, families=families, limit=5, full_taxonomy=False
+        )
+        if itm_ctx:
+            context["itm_context"] = itm_ctx
+            context["sources"].append("itm")
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from nexus.knowledge.registry_context import (
+            atlas_context_for,
+            mbc_context_for,
+        )
+
+        atlas_ctx = atlas_context_for(technique_text)
+        if atlas_ctx:
+            context["atlas_context"] = atlas_ctx
+            context["sources"].append("atlas")
+        mbc_ctx = mbc_context_for(technique_text)
+        if mbc_ctx:
+            context["mbc_context"] = mbc_ctx
+            context["sources"].append("mbc")
+    except Exception:  # noqa: BLE001
+        pass
+
     # Phase 4g-D/C/F: SigmaHQ-derived patterns + the examiner's local overlay.
     try:
         from nexus.knowledge.needle_overlay import overlay_terms_for_families
@@ -6010,7 +6040,30 @@ async def api_playbook_needles(request):
     except Exception as exc:  # noqa: BLE001
         logger.debug("overlay needle suggestions skipped: %s", exc)
 
-    combined = overlay_suggestions + attack_suggestions + sigma_suggestions + suggestions
+    # Insider Threat Matrix packs (registry-validated hard artifacts) - the
+    # insider counterpart of the ATT&CK packs above.
+    itm_suggestions: list[dict[str, Any]] = []
+    if families_filter:
+        try:
+            from nexus.knowledge.itm_needles import itm_packs_for
+
+            for pack in itm_packs_for(families_filter, limit=6):
+                itm_suggestions.append({
+                    "playbook": f"ITM {pack.get('itm')} {pack.get('name')}".strip(),
+                    "slug": f"itm:{pack.get('itm')}",
+                    "needles": [str(t) for t in (pack.get("needles") or [])[:20]],
+                    "strong_needles": [str(t) for t in (pack.get("strong") or [])[:12]],
+                    "caveats": [str(pack.get("caveat") or "")[:200]],
+                    "triggers": [],
+                    "source": "itm",
+                })
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("itm needle suggestions skipped: %s", exc)
+
+    combined = (
+        overlay_suggestions + attack_suggestions + sigma_suggestions
+        + itm_suggestions + suggestions
+    )
     return JSONResponse({
         "suggestions": combined,
         "total": len(combined),

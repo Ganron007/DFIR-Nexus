@@ -99,6 +99,14 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/nexus"]
+exclude = [
+    # Raw upstream dumps (Apache-2.0 / CC BY 4.0 / ITS licenses) - never ship;
+    # the compiled registries are committed. Rebuild via scripts/build_*_registry.py.
+    "src/nexus/data/knowledge/itm/insider-threat-matrix.json",
+    "src/nexus/data/knowledge/attack/*.json",
+    "src/nexus/data/knowledge/atlas/ATLAS.yaml",
+    "src/nexus/data/knowledge/mbc/mbc.json",
+]
 
 [tool.ruff]
 target-version = "py312"
