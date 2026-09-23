@@ -581,26 +581,62 @@ def get_velociraptor_artifacts() -> list[dict]:
     return get_synced_entries("velociraptor_artifacts")
 
 
-def synced_source_manifest() -> list[dict]:
-    """Provenance for every synced feed: source/url/fetched/count."""
-    data_dir = _find_data_dir() / "sources"
-    if not data_dir.is_dir():
-        return []
+def registry_manifest() -> list[dict]:
+    """Compiled framework registries with counts (ITM/ATT&CK/ATLAS/MBC)."""
+    specs = (
+        ("itm", "itm/itm_registry.yaml", "Insider Threat Matrix"),
+        ("attack", "attack/attack_registry.yaml", "MITRE ATT&CK (deep)"),
+        ("atlas", "atlas/atlas_registry.yaml", "MITRE ATLAS (AI/ML)"),
+        ("mbc", "mbc/mbc_registry.yaml", "MITRE MBC (malware)"),
+    )
     out: list[dict] = []
-    for f in sorted(data_dir.glob("*.yaml")):
-        try:
-            d = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
-        except Exception:  # noqa: BLE001
+    for name, rel_path, label in specs:
+        data = _load_yaml(rel_path)
+        if not isinstance(data, dict):
             continue
-        if not isinstance(d, dict):
-            continue
+        counts = data.get("counts") or {}
+        total = sum(
+            int(v) for v in counts.values() if isinstance(v, (int, float))
+        )
         out.append({
-            "name": f.stem,
-            "source": d.get("source"),
-            "url": d.get("url"),
-            "fetched": d.get("fetched"),
-            "count": d.get("count"),
+            "name": name,
+            "kind": "compiled_registry",
+            "label": label,
+            "source": data.get("source"),
+            "version": data.get("version"),
+            "generated": data.get("generated"),
+            "count": total,
+            "counts": counts,
         })
+    return out
+
+
+def synced_source_manifest() -> list[dict]:
+    """Provenance for every synced feed + compiled registry.
+
+    ``kind`` distinguishes upstream-synced YAML feeds (``synced_source``) from
+    the registries compiled from vendored JSON/STIX by ``scripts/build_*
+    _registry.py`` (``compiled_registry``).
+    """
+    data_dir = _find_data_dir() / "sources"
+    out: list[dict] = []
+    if data_dir.is_dir():
+        for f in sorted(data_dir.glob("*.yaml")):
+            try:
+                d = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
+            except Exception:  # noqa: BLE001
+                continue
+            if not isinstance(d, dict):
+                continue
+            out.append({
+                "name": f.stem,
+                "kind": "synced_source",
+                "source": d.get("source"),
+                "url": d.get("url"),
+                "fetched": d.get("fetched"),
+                "count": d.get("count"),
+            })
+    out.extend(registry_manifest())
     return out
 
 

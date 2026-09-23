@@ -135,7 +135,7 @@ def _environment_checks() -> list[tuple[str, bool, str]]:
         rows.append((
             "knowledge sources",
             bool(feeds) and not missing,
-            f"{len(feeds)} feed(s), {n} entries" + (f" — EMPTY: {missing}" if missing else ""),
+            f"{len(feeds)} source(s), {n} entries" + (f" - EMPTY: {missing}" if missing else ""),
         ))
     except Exception as exc:  # noqa: BLE001
         rows.append(("knowledge sources", False, str(exc)))

@@ -142,6 +142,27 @@ def _get_index_dir() -> Path:
     return settings.data_root / "rag"
 
 
+def _rag_bundle_metadata(idx_dir: Path) -> dict[str, Any]:
+    """Bundle provenance + local source files (for a future local rebuild)."""
+    out: dict[str, Any] = {}
+    try:
+        meta = json.loads((Path(idx_dir) / "metadata.json").read_text(encoding="utf-8"))
+        if isinstance(meta, dict):
+            for key in (
+                "bundle_tag", "created", "install_method", "model",
+                "record_count", "source_count",
+            ):
+                value = meta.get(key)
+                if value not in (None, "", [], {}):
+                    out[key] = value
+    except (OSError, ValueError):
+        pass
+    sources_dir = Path(idx_dir) / "sources"
+    if sources_dir.is_dir():
+        out["local_source_files"] = sorted(p.stem for p in sources_dir.glob("*.jsonl"))
+    return out
+
+
 def _check_rag_available() -> tuple[bool, str]:
     if not _HAS_RAG:
         return False, "RAG dependencies not installed. Install: pip install dfir-nexus[rag]"
@@ -561,7 +582,11 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         idx = _get_index()
         try:
             stats = idx.get_stats()
-            return {"status": "ready", **stats}
+            return {
+                "status": "ready",
+                **stats,
+                "bundle": _rag_bundle_metadata(idx_dir),
+            }
         except Exception as e:
             return {"status": "error", "error": str(e)}
 
