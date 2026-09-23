@@ -344,7 +344,28 @@ Tool execution → audit_id → record_finding(artifacts=[{audit_id}])
 ```
 
 `nexus-config.json` is written to the current working directory by
-`nexus init` (LLM client config snippet — copy into `.mcp.json`).
+`nexus init` (LLM client config snippet - copy into `.mcp.json`).
+
+### Framework knowledge registries (2026-09)
+
+`src/nexus/data/knowledge/{itm,attack,atlas,mbc}/` hold compiled registries
+(vendored upstreams; attribution in each folder's `NOTICE.txt`):
+
+- **Insider Threat Matrix** — 183 sections / 776 detections / 610 preventions /
+  168 ATT&CK crosswalk maps (plus `attack_patterns_itm.yaml` chains and
+  `needles/itm_needles.yaml` packs);
+- **MITRE ATT&CK deep** — 1,140 techniques / 918 detection strategies /
+  1,390 analytics / 1,744 mitigations / 3,499 procedure examples;
+- **MITRE ATLAS** — 170 AI/ML techniques / 35 mitigations / 57 case studies;
+- **MITRE MBC v3** — 150 behaviors / 482 methods / 50 families / 1,160
+  capa-YARA rule references (mapped from capa output in Mode 1 context).
+
+They feed Mode 1 (scribe context + signal-map needles behind a vocabulary
+gate), Mode 2 (query proposals, interpretation, suggestions), Mode 3 (hunt
+prompt, pattern chains, `_registry_context_block`), the report (per-stage ITM
+coverage + registry facts) and `nexus doctor` (manifest). Rebuild with
+`scripts/build_*_registry.py`; raw dumps are gitignored and excluded from
+wheels.
 
 ## LLM Client Setup
 

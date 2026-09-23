@@ -204,7 +204,29 @@ SIFT does not load torch/Chroma. The pipeline (and any other client) calls
 `forensic_rag_status()` reports `model`, `model_load_path`, `model_source`
 (`hf_hub_cache` | `explicit_dir` | `huggingface_id`), and `local_files_only`.
 
-### 2f. Elasticsearch (N3 index — Mode 1/2/3 retrieval)
+### 2e-2. Framework knowledge registries (ITM / ATT&CK / ATLAS / MBC)
+
+Four framework registries ship **compiled** inside the package
+(`src/nexus/data/knowledge/`); nothing is fetched at runtime:
+
+| Registry | File | Rebuild |
+|---|---|---|
+| Insider Threat Matrix (Forscie, Apache-2.0) | `itm/itm_registry.yaml` | `python scripts/build_itm_registry.py` |
+| MITRE ATT&CK deep — enterprise/ICS/mobile (CC BY 4.0) | `attack/attack_registry.yaml` | `python scripts/build_attack_registry.py` |
+| MITRE ATLAS — AI/ML (Apache-2.0) | `atlas/atlas_registry.yaml` | `python scripts/build_atlas_registry.py` |
+| MITRE MBC v3 — malware behaviors (Apache-2.0) | `mbc/mbc_registry.yaml` | `python scripts/build_mbc_registry.py` |
+
+The rebuild scripts download the raw upstream JSON/STIX/YAML (gitignored and
+excluded from wheels) and recompile the registry; attribution is retained in
+each folder's `NOTICE.txt`. Registries ground the Mode 1 scribe, the Mode 2
+query proposals + interpretation, and the Mode 3 hunt prompts;
+`nexus doctor` lists them under "knowledge sources", and the report shows
+per-stage Insider Threat Matrix coverage. Needle packs
+(`needles/itm_needles.yaml`, `needles/external_needles.yaml`) feed the Mode 1
+signal map — a vocabulary gate keeps bare event IDs and evidence file names
+out of the keyword scan (they belong to typed field checks).
+
+### 2f. Elasticsearch (N3 index - Mode 1/2/3 retrieval)
 
 Mode 1 typed queries and the Mode 2/3 agents read a **per-case Elasticsearch
 index** (`nexus-case-<case_id>`), not the raw CSVs. Point the config at it:
