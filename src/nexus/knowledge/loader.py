@@ -513,6 +513,17 @@ def get_synced_entries(name: str) -> list[dict]:
     return [e for e in entries if isinstance(e, dict)] if isinstance(entries, list) else []
 
 
+def get_attack_registry() -> dict:
+    """Deep MITRE ATT&CK registry (techniques + detections + mitigations).
+
+    File: ``attack/attack_registry.yaml`` — compiled from the CC BY 4.0
+    attack-stix-data (enterprise/ICS/mobile) by
+    ``scripts/build_attack_registry.py``; attribution in ``attack/NOTICE.txt``.
+    """
+    data = _load_yaml("attack/attack_registry.yaml")
+    return data if isinstance(data, dict) else {}
+
+
 def get_attack_techniques() -> list[dict]:
     """MITRE ATT&CK techniques across matrices (id/name/tactics/platforms).
 

@@ -181,3 +181,6 @@ tools/perl/
 
 # ITM raw dump (Apache-2.0, Forscie) - registry committed; rebuild via scripts/build_itm_registry.py
 src/nexus/data/knowledge/itm/insider-threat-matrix.json
+
+# ATT&CK raw STIX (CC BY 4.0, MITRE) - registry committed; rebuild via scripts/build_attack_registry.py
+src/nexus/data/knowledge/attack/*.json

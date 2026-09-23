@@ -1,0 +1,12 @@
+MITRE ATT&CK(R) content (techniques, tactics, detection strategies, mitigations,
+procedure examples) is sourced from https://github.com/mitre-attack/attack-stix-data
+and is licensed under the Creative Commons Attribution 4.0 International license
+(CC BY 4.0): https://creativecommons.org/licenses/by/4.0/
+
+(C) The MITRE Corporation. ATT&CK is a registered trademark of The MITRE
+Corporation. DFIR-Nexus is not affiliated with or endorsed by The MITRE
+Corporation; the framework is used here as a reference taxonomy.
+
+The raw STIX JSON files are not redistributed in this repository (gitignored);
+run `python scripts/build_attack_registry.py` to fetch and compile them into
+`attack_registry.yaml`.
