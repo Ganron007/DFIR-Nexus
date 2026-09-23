@@ -511,6 +511,17 @@ def get_attack_techniques() -> list[dict]:
     return get_synced_entries("attack_techniques")
 
 
+def get_itm_registry() -> dict:
+    """Insider Threat Matrix registry (articles/sections/detections/crosswalk).
+
+    File: ``itm/itm_registry.yaml`` — compiled from the Apache-2.0 ITM JSON
+    (insiderthreatmatrix.org, Forscie Limited) by
+    ``scripts/build_itm_registry.py``; NOTICE retained in that directory.
+    """
+    data = _load_yaml("itm/itm_registry.yaml")
+    return data if isinstance(data, dict) else {}
+
+
 def get_sigma_rules() -> list[dict]:
     """SigmaHQ detection-rule index (id/title/level/logsource/attack)."""
     return get_synced_entries("sigma_rules")

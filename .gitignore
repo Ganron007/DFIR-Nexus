@@ -178,3 +178,6 @@ AGENTS.md
 
 # Portable Strawberry Perl (fetched for the RegRipper rip.pl full-plugin path)
 tools/perl/
+
+# ITM raw dump (Apache-2.0, Forscie) - registry committed; rebuild via scripts/build_itm_registry.py
+src/nexus/data/knowledge/itm/insider-threat-matrix.json

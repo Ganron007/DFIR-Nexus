@@ -1,0 +1,74 @@
+Insider Threat Matrix™
+
+Copyright © 2024–2026 Forscie Limited
+
+This product includes content developed by Forscie Limited and made
+available under the Apache License, Version 2.0.
+
+Copyright and Attribution Notices
+
+Redistributions of this work, or derivative works based on this work,
+must retain applicable copyright, licence, attribution, and NOTICE file
+notices as required by the Apache License, Version 2.0.
+
+The Forscie copyright notice should be retained in a reasonable and
+customary location for the form of redistribution, including where
+applicable a NOTICE file, repository README, documentation page,
+attribution page, software about screen, or other location where
+third-party notices are normally provided.
+
+Required notice:
+
+Copyright © 2024–2026 Forscie Limited
+
+Trademark Notice
+
+Insider Threat Matrix™ is owned by Forscie Limited.
+Insider Threat Matrix is a trademark of Forscie Limited.
+
+Where the Insider Threat Matrix™ name is used to refer to this work, the
+following trademark notice should be included in a reasonable and
+customary location:
+
+Insider Threat Matrix™ is owned by Forscie Limited.
+Insider Threat Matrix is a trademark of Forscie Limited.
+
+Use of the Insider Threat Matrix™ name, framework, taxonomy,
+identifiers, content, detections, preventions, or related materials does
+not imply sponsorship, endorsement, affiliation, approval, or control by
+Forscie Limited, except where Forscie Limited has expressly stated
+otherwise in writing.
+
+Forscie Limited reserves all rights in the Insider Threat Matrix™ name
+and associated brand identifiers. The Apache License, Version 2.0 does
+not grant permission to use Forscie Limited’s trade names, trademarks,
+service marks, or product names, except as permitted by the Apache
+License or applicable law.
+
+Framework Governance and Neutrality
+
+The Insider Threat Matrix™ is maintained by Forscie Limited as a
+vendor-neutral, practitioner-led investigative framework.
+
+Sponsorship, contribution, integration, mapping, or other use of the
+framework does not grant editorial control over the framework and does
+not constitute endorsement of any product, service, vendor, or
+organisation.
+
+Sponsorship supports development and public availability but does not
+shape the framework or its content.
+
+MITRE ATT&CK® Notice
+
+Where this repository includes mappings or references to MITRE ATT&CK®,
+those mappings are created and maintained by Forscie Limited and are not
+affiliated with, endorsed by, or sponsored by The MITRE Corporation.
+
+MITRE ATT&CK® is a registered trademark of The MITRE Corporation.
+
+Where MITRE ATT&CK® content is reproduced or distributed in this
+repository, it is used under MITRE’s Terms of Use and the following
+notice applies:
+
+© 2026 The MITRE Corporation. This work is reproduced and distributed
+with the permission of The MITRE Corporation.

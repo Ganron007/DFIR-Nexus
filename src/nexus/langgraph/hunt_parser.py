@@ -92,11 +92,24 @@ def normalize_candidate(data: dict) -> dict:
         or "See observation / tool outputs."
     )
     if itm_stage or itm_objects:
-        mapped = ", ".join(itm_objects) if itm_objects else "(objects not named)"
+        from nexus.langgraph.itm import ITM_URL, validate_itm_ids
+
+        check = validate_itm_ids(itm_stage, itm_objects)
+        mapped = (
+            ", ".join(str(x) for x in check["objects"])
+            if check["objects"] else "(objects not named)"
+        )
+        note = ""
+        if check["unknown"]:
+            note = (
+                " Unrecognised ITM id(s) omitted: "
+                + ", ".join(str(x)[:40] for x in check["unknown"][:3])
+                + "."
+            )
         interpretation = (
             f"{interpretation.rstrip()}\n\n"
-            f"Insider Threat Matrix ({itm_stage or 'unspecified'}): {mapped}. "
-            "https://insiderthreatmatrix.org/"
+            f"Insider Threat Matrix ({check['stage'] or 'unspecified'}): "
+            f"{mapped}.{note} {ITM_URL}"
         )
     return {
         "title": str(data.get("title", ""))[:200],

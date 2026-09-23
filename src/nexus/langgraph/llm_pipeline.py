@@ -1373,7 +1373,7 @@ async def hunt(state: InvestigationState, tools: dict, model) -> dict:
             f"{_DESIGN_MODE_RULES}\n"
             f"{ctx_block}\n"
             f"{pb_line}\n"
-            f"{itm_prompt_block()}\n"
+            f"{itm_prompt_block(question=str((state.get('case_context') or {}).get('question') or ''))}\n"
             f"Available tools: {available}."
         ),
     )
@@ -1719,7 +1719,7 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
             f"Case: {state['case_id']}.\n"
             f"{_COVERAGE_MODE_RULES}\n"
             f"{ctx_block}\n"
-            f"{itm_prompt_block()}\n"
+            f"{itm_prompt_block(question=str((state.get('case_context') or {}).get('question') or ''), families=sorted((digest.get('inventory') or {}).keys()))}\n"
             f"{_INTERPRETATION_RULES}\n"
             "FIRST call forensic_rag_status (must be ready). "
             "THEN forensic_rag_search once per QUERY PACK hit family "

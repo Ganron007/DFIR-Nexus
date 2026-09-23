@@ -255,7 +255,9 @@ def _wait_full_run(client, timeout=60):
     while _t.time() < deadline:
         d = client.get("/portal/api/mode1/full-run/status").json()
         last = d
-        if d.get("status") not in ("running",):
+        # "never_run" = the worker thread has not written its first record yet
+        # (POST returns 202 before the thread starts) - transient, not terminal.
+        if d.get("status") not in ("running", "never_run"):
             return d
         _t.sleep(0.1)
     raise AssertionError(
