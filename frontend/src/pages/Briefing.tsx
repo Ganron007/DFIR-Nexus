@@ -278,6 +278,9 @@ export default function Briefing() {
   const ledger = brief.ledger || { entries: [], ok: 0, skip: 0, fail: 0 };
   const inv = brief.inventory || {};
   const scan = brief.needle_scan || [];
+  const signalScan = scan.filter((s) => !s.ubiquitous);
+  const backgroundTerms = scan.filter((s) => s.ubiquitous);
+  const itmCoverage = brief.itm_coverage || [];
   const facts = brief.needle_facts || [];
   const alerts = brief.alerts || [];
   const entities = brief.entities || {};
@@ -927,7 +930,7 @@ export default function Briefing() {
             ) : (
               <>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                  {scan.slice(0, 60).map((s) => (
+                  {signalScan.slice(0, 60).map((s) => (
                     <button
                       key={s.needle}
                       className="btn btn-sm clickable-tint"
@@ -969,6 +972,44 @@ export default function Briefing() {
                     </span>
                   ))}
                 </div>
+              </div>
+            )}
+            {itmCoverage.length > 0 && (
+              <div style={{ marginTop: 10, borderTop: "1px solid rgba(128,128,128,0.3)", paddingTop: 8 }}>
+                <div
+                  style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}
+                  title="Insider Threat Matrix packs relevant to this case's families. 0 hits is negative evidence for those artifacts, not absence of risk — caveats apply."
+                >
+                  Insider Threat Matrix coverage — pack hits (not evidence)
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                  {itmCoverage.slice(0, 10).map((r) => (
+                    <span
+                      key={r.itm}
+                      style={{
+                        fontFamily: "monospace",
+                        fontSize: 11,
+                        color: r.hits ? "var(--text)" : "var(--text-muted)",
+                      }}
+                      title={`${r.name}${r.caveat ? ` — ${r.caveat}` : ""}`}
+                    >
+                      {r.itm} {r.name} <strong>{r.hits}</strong>
+                      {r.strong_hits ? ` (${r.strong_hits} strong)` : ""}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {backgroundTerms.length > 0 && (
+              <div
+                style={{ marginTop: 8, fontSize: 10, color: "var(--text-muted)" }}
+                title={`Terms matching >= ${brief.ubiquity_floor || 0} rows of this case — background noise, ranked last and never staged as findings.`}
+              >
+                Background terms (ubiquitous):{" "}
+                {backgroundTerms
+                  .slice(0, 12)
+                  .map((s) => `${s.needle} (${s.hits})`)
+                  .join(" · ")}
               </div>
             )}
           </div>

@@ -3007,6 +3007,21 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
         scan = list(brief.get("needle_scan") or [])
         if only:
             scan = [s for s in scan if str(s.get("needle", "")).lower() in only]
+        # F1: ubiquitous terms are background - reported, never staged.
+        record.setdefault("skipped", [])
+        ubiquitous = [s for s in scan if s.get("ubiquitous")]
+        if ubiquitous:
+            record["skipped"].extend(
+                {
+                    "needle": str(s.get("needle") or ""),
+                    "reason": (
+                        f"ubiquitous term ({int(s.get('hits') or 0)} hits - "
+                        "matches a large share of the case; background, not staged)"
+                    ),
+                }
+                for s in ubiquitous[:50]
+            )
+            scan = [s for s in scan if not s.get("ubiquitous")]
         needles_hit_total = len(scan)  # before the max_needles cap — report honestly
         scan = scan[:max_needles]
         record["needles"] = [str(s.get("needle") or "") for s in scan]
@@ -4197,6 +4212,15 @@ def _mode2_suggest_context(case_dir: Path) -> dict[str, Any]:
         if entry.get("role") == "examiner" and entry.get("text"):
             ctx["last_question"] = str(entry["text"])[:200]
             break
+    try:
+        from nexus.knowledge.itm_needles import itm_packs_for
+
+        ctx["itm_sections"] = [
+            f"{p.get('itm')} {p.get('name')}".strip()
+            for p in itm_packs_for(set(ctx.get("families") or []), limit=4)
+        ]
+    except Exception:  # noqa: BLE001 — suggestions are best-effort
+        pass
     return ctx
 
 
@@ -4217,6 +4241,11 @@ def _mode2_deterministic_suggestions(ctx: dict[str, Any]) -> list[dict[str, str]
         add(f"Trace {ctx['processes'][0]} across the case")
     if ctx.get("families"):
         add(f"What are the top detections in {ctx['families'][0]} evidence?")
+    if ctx.get("itm_sections"):
+        add(
+            "Check insider preparation evidence: "
+            f"{ctx['itm_sections'][0]} - any rows?"
+        )
     add("List all hosts seen in this case")
     add("List all users seen in this case")
     add("Show the highest-severity detections")
@@ -4289,11 +4318,14 @@ async def api_mode2_suggestions(request):
             f"Top hosts: {', '.join(ctx['hosts']) or 'none'}. "
             f"Top users: {', '.join(ctx['users']) or 'none'}. "
             f"Top processes: {', '.join(ctx['processes']) or 'none'}.\n"
+            f"Insider Threat Matrix sections relevant to these families: "
+            f"{', '.join(ctx.get('itm_sections') or ['none'])}\n"
             f"Last examiner question: {ctx['last_question'] or 'none'}\n\n"
             "Propose 4 to 6 SHORT investigation questions (max 120 chars each) that "
             "the examiner could ask this case next. Use only entities from the lists "
             "above; prefer pivots (drill into a host/user/process, list hosts or users, "
-            "highest-severity detections, activity around a family). "
+            "highest-severity detections, activity around a family, and an "
+            "insider-preparation check when ITM sections are listed). "
             'Reply ONLY with JSON: {"questions": ["...", "..."]}'
         )
 

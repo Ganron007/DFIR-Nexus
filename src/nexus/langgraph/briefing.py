@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -354,7 +355,7 @@ def _guided_first_pass(
             "hits": int(s.get("hits") or 0),
             "source": str(s.get("source") or ""),
         }
-        for s in needle_scan[:8]
+        for s in [x for x in needle_scan if not x.get("ubiquitous")][:8]
     ]
     steps.append({
         "order": 3,
@@ -540,6 +541,48 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
         if c > 0
     ]
     needle_scan.sort(key=lambda r: -r["hits"])
+
+    # --- F1: ubiquity demotion - a term matching a large share of the case is
+    # background noise, not a signal cluster. Env-tunable share, minimum floor.
+    total_rows = sum(int(v.get("rows") or 0) for v in inventory.values())
+    try:
+        ubiquity_pct = float(os.environ.get("NEXUS_NEEDLE_UBIQUITY_PCT", "20"))
+    except ValueError:
+        ubiquity_pct = 20.0
+    ubiquity_floor = (
+        max(25, int(total_rows * ubiquity_pct / 100.0)) if total_rows else 0
+    )
+    for entry in needle_scan:
+        entry["ubiquitous"] = bool(
+            ubiquity_floor and int(entry.get("hits") or 0) >= ubiquity_floor
+        )
+    # Signal terms first (by hits), background terms last.
+    needle_scan.sort(
+        key=lambda r: (bool(r.get("ubiquitous")), -int(r.get("hits") or 0))
+    )
+
+    # --- Insider Threat Matrix coverage (pack hits; absence = negative evidence)
+    itm_coverage: list[dict[str, Any]] = []
+    try:
+        from nexus.knowledge.itm_needles import itm_packs_for
+
+        for pack in itm_packs_for(set(families), limit=10):
+            pack_terms = [
+                str(t).strip().lower() for t in (pack.get("needles") or [])
+            ]
+            pack_strong = [
+                str(t).strip().lower() for t in (pack.get("strong") or [])
+            ]
+            itm_coverage.append({
+                "itm": str(pack.get("itm") or ""),
+                "name": str(pack.get("name") or ""),
+                "hits": int(sum(counts.get(t, 0) for t in pack_terms)),
+                "strong_hits": int(sum(counts.get(t, 0) for t in pack_strong)),
+                "caveat": str(pack.get("caveat") or "")[:200],
+            })
+        itm_coverage.sort(key=lambda r: -r["hits"])
+    except Exception:  # noqa: BLE001 — coverage panel is best-effort
+        itm_coverage = []
 
     # --- field facts (id/label columns) — pivots, never signal ---
     # Match-site awareness: a keyword that lands in an EventId/RecordNumber/
@@ -774,6 +817,9 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
         "alert_count": len(alerts),
         "needle_scan": needle_scan[:80],
         "needle_facts": needle_facts[:40],
+        "itm_coverage": itm_coverage,
+        "ubiquity_floor": ubiquity_floor,
+        "ubiquity_pct": ubiquity_pct,
         "scanned_needles": len(terms),
         "entities": entities,
         "paths_summary": paths_summary,
@@ -918,8 +964,9 @@ def briefing_to_markdown(brief: dict[str, Any]) -> str:
                 lines.append(f"  - {w}")
     scan = brief.get("needle_scan") or []
     if scan:
-        lines.append(f"\n## Signal map ({len(scan)} needles with hits)")
-        for s in scan[:40]:
+        signal_rows = [s for s in scan if not s.get("ubiquitous")]
+        lines.append(f"\n## Signal map ({len(signal_rows)} needles with signal hits)")
+        for s in signal_rows[:40]:
             lines.append(f"- `{s['needle']}` — {s['hits']} hits ({s['source']})")
     facts = brief.get("needle_facts") or []
     if facts:
@@ -932,8 +979,32 @@ def briefing_to_markdown(brief: dict[str, Any]) -> str:
         for f in facts[:20]:
             field = f" in `{f['field']}`" if f.get("field") else ""
             lines.append(
-                f"- `{f['needle']}` — {f['hits']} row(s){field} "
+                f"- `{f['needle']}` - {f['hits']} row(s){field} "
                 f"({f.get('class') or 'fact'})"
+            )
+    floor = int(brief.get("ubiquity_floor") or 0)
+    background = [s for s in scan if s.get("ubiquitous")]
+    if background:
+        lines.append(
+            f"\n## Background terms (ubiquitous, >={floor} hits) - not signal"
+        )
+        lines.append(
+            "These match a large share of the case; they are ranked last and "
+            "never staged as findings."
+        )
+        for s in background[:20]:
+            lines.append(f"- `{s['needle']}` - {s['hits']} hits ({s['source']})")
+    itm_cov = brief.get("itm_coverage") or []
+    if itm_cov:
+        lines.append(
+            f"\n## Insider Threat Matrix coverage ({len(itm_cov)} relevant pack(s))"
+        )
+        for row in itm_cov[:12]:
+            strong = (
+                f", {row['strong_hits']} strong" if row.get("strong_hits") else ""
+            )
+            lines.append(
+                f"- `{row.get('itm')}` {row.get('name')} - {row.get('hits')} hit(s){strong}"
             )
     scan_stats = brief.get("scan_stats") or {}
     if str(brief.get("backend") or "").startswith("csv"):

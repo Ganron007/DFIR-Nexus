@@ -669,6 +669,18 @@ export interface BriefingNeedle {
   needle: string;
   hits: number;
   source: string;
+  /** F1 ubiquity demotion: matches a large share of the case — background,
+   *  ranked last, never staged as a finding. */
+  ubiquitous?: boolean;
+}
+/** Insider Threat Matrix coverage: hit counts per relevant needle pack
+ *  (0 hits = negative evidence, not absence of risk). */
+export interface BriefingItmCoverage {
+  itm: string;
+  name: string;
+  hits: number;
+  strong_hits?: number;
+  caveat?: string;
 }
 /** Match-site fact: keyword matched an id/label column (EventId, Provider,
  *  RecordNumber...). A value in the evidence — a pivot, never signal. */
@@ -725,6 +737,10 @@ export interface BriefingResponse {
   needle_scan: BriefingNeedle[];
   /** Id/label column matches (EventId, Provider, ...) — facts, not signal. */
   needle_facts?: BriefingNeedleFact[];
+  /** Insider Threat Matrix pack coverage for this case (F3). */
+  itm_coverage?: BriefingItmCoverage[];
+  /** Hit count at/above which a needle is background (F1). */
+  ubiquity_floor?: number;
   scanned_needles: number;
   entities: Record<string, BriefingEntity[]>;
   /** Host filesystem paths inside evidence content (NOT evidence files) —
