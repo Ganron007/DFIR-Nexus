@@ -314,6 +314,27 @@ def _format_case_context(ctx: dict[str, str] | None) -> str:
     return "\n".join(lines)
 
 
+def _registry_context_block(state: InvestigationState | dict, cap: int = 900) -> str:
+    """AI/malware registry matches (ATLAS/MBC) for the case question (F7)."""
+    try:
+        from nexus.knowledge.registry_context import (
+            atlas_context_for,
+            mbc_context_for,
+        )
+
+        question = str((state.get("case_context") or {}).get("question") or "")
+        parts = [
+            text
+            for text in (atlas_context_for(question), mbc_context_for(question))
+            if text
+        ]
+        if not parts:
+            return ""
+        return ("Framework registry matches (ATLAS/MBC):\n" + "\n".join(parts))[:cap]
+    except Exception:  # noqa: BLE001 — KB is optional
+        return ""
+
+
 _INTERPRETATION_RULES = (
     "Interpretation rules (product contract):\n"
     "1) Evidence before narrative — every claim cites QUERY PACK hits plus audit_ids "
@@ -1374,6 +1395,7 @@ async def hunt(state: InvestigationState, tools: dict, model) -> dict:
             f"{ctx_block}\n"
             f"{pb_line}\n"
             f"{itm_prompt_block(question=str((state.get('case_context') or {}).get('question') or ''))}\n"
+            f"{_registry_context_block(state)}\n"
             f"Available tools: {available}."
         ),
     )
@@ -1720,6 +1742,7 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
             f"{_COVERAGE_MODE_RULES}\n"
             f"{ctx_block}\n"
             f"{itm_prompt_block(question=str((state.get('case_context') or {}).get('question') or ''), families=sorted((digest.get('inventory') or {}).keys()))}\n"
+            f"{_registry_context_block(state)}\n"
             f"{_INTERPRETATION_RULES}\n"
             "FIRST call forensic_rag_status (must be ready). "
             "THEN forensic_rag_search once per QUERY PACK hit family "

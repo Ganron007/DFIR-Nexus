@@ -1546,6 +1546,60 @@ async function promoteSelected() {{
     return HTMLResponse(_TEMPLATE.format(content=content))
 
 
+def _capa_rule_names_from_case(case_dir: Path, limit: int = 200) -> list[str]:
+    """capa/YARA rule names from this case's capa extraction files (bounded).
+
+    Best-effort: JSON/JSONL rows (``rule``/``name``/``rule_name`` keys) and
+    plain-text/csv rule lines. Returns [] when no capa output exists.
+    """
+    case = Path(case_dir)
+    names: list[str] = []
+    seen: set[str] = set()
+    token = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_\- ]{3,80}$")
+    for root in (case / "extractions", case / "runs"):
+        if not root.is_dir():
+            continue
+        for path in root.rglob("*capa*"):
+            if not path.is_file():
+                continue
+            if path.suffix.lower() not in {".txt", ".log", ".csv", ".json", ".jsonl", ".out"}:
+                continue
+            try:
+                with path.open(encoding="utf-8", errors="replace") as fh:
+                    for i, line in enumerate(fh):
+                        if i > 4000 or len(names) >= limit:
+                            break
+                        line = line.strip()
+                        if not line:
+                            continue
+                        candidate = ""
+                        if line.startswith("{"):
+                            try:
+                                obj = json.loads(line)
+                            except ValueError:
+                                continue
+                            if isinstance(obj, dict):
+                                for key in ("rule", "name", "rule_name"):
+                                    value = obj.get(key)
+                                    if isinstance(value, str) and value.strip():
+                                        candidate = value.strip()
+                                        break
+                        elif "," in line:
+                            candidate = line.split(",", 1)[0].strip()
+                        else:
+                            candidate = line
+                        if candidate and token.match(candidate):
+                            key = candidate.lower()
+                            if key not in seen:
+                                seen.add(key)
+                                names.append(candidate)
+            except OSError:
+                continue
+            if len(names) >= limit:
+                break
+    return names
+
+
 def _mode1_ask_context(case_dir: Path, question: str) -> dict[str, Any]:
     """Ground the Mode 1 scribe with case material (WP 4g-A).
 
@@ -1667,6 +1721,18 @@ def _mode1_ask_context(case_dir: Path, question: str) -> dict[str, Any]:
         if mbc_ctx:
             context["mbc_context"] = mbc_ctx
             context["sources"].append("mbc")
+    except Exception:  # noqa: BLE001
+        pass
+    # capa output -> MBC behaviors (ties the malware-capability tool to the
+    # registry; only when the case actually holds capa rule hits).
+    try:
+        from nexus.knowledge.mbc import mbc_capa_context
+
+        capa_names = _capa_rule_names_from_case(case_dir, limit=200)
+        capa_ctx = mbc_capa_context(capa_names, cap=6) if capa_names else ""
+        if capa_ctx:
+            context["mbc_capa_context"] = capa_ctx
+            context["sources"].append("mbc-capa")
     except Exception:  # noqa: BLE001
         pass
 

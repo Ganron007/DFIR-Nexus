@@ -178,6 +178,12 @@ def _context_block(context: dict[str, Any] | None) -> str:
         lines.append(
             "MITRE MBC malware behaviors matching this case:\n" + mbc_context[:900]
         )
+    mbc_capa_context = str(context.get("mbc_capa_context") or "").strip()
+    if mbc_capa_context:
+        lines.append(
+            "capa rule hits mapped to MITRE MBC behaviors:\n"
+            + mbc_capa_context[:900]
+        )
     sigma_context = str(context.get("sigma_context") or "").strip()
     if sigma_context:
         lines.append(
