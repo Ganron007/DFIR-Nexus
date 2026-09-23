@@ -5,9 +5,10 @@
  */
 import { useEffect, useState, useRef } from "react";
 import { Link } from "react-router-dom";
-import { api, type LedgerRow } from "../api/client";
+import { api, type LedgerRow, type PipelineStageLine, type PipelineStatusResponse } from "../api/client";
 import { useCase } from "../context/CaseContext";
 import EvidencePicker from "../components/EvidencePicker";
+import LiveRunFeed from "../components/LiveRunFeed";
 
 export default function Evidence() {
   const { activeCase, refreshStages, mode: caseMode, setMode } = useCase();
@@ -18,6 +19,8 @@ export default function Evidence() {
   const [busy, setBusy] = useState(false);
   const [runId, setRunId] = useState("");
   const [runStatus, setRunStatus] = useState("");
+  const [runStages, setRunStages] = useState<PipelineStageLine[]>([]);
+  const [runProg, setRunProg] = useState<PipelineStatusResponse["progress"] | null>(null);
   const [showPicker, setShowPicker] = useState(false);
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
   const [ledgerRunId, setLedgerRunId] = useState("");
@@ -137,6 +140,58 @@ export default function Evidence() {
     if (activeCase) await refreshStages(activeCase);
   };
 
+  const startPolling = (rid: string) => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    const poll = setInterval(async () => {
+      try {
+        const s = await api.pipelineStatus(rid);
+        setRunStatus(s.status);
+        if (s.stages) setRunStages(s.stages);
+        if (s.progress) setRunProg(s.progress);
+        if (s.status === "complete") {
+          clearInterval(poll);
+          pollRef.current = null;
+          setBusy(false);
+          setPipelineComplete(true);
+          refreshStages(activeCase);
+          load();
+        } else if (s.status === "error") {
+          clearInterval(poll);
+          pollRef.current = null;
+          setError(s.error || "Pipeline failed");
+          setBusy(false);
+        }
+      } catch {
+        // keep polling
+      }
+    }, 3000);
+    pollRef.current = poll;
+  };
+
+  // Re-attach to an in-flight run after reload (run id was client state only).
+  useEffect(() => {
+    if (!activeCase || runId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const active = await api.pipelineActive(activeCase).catch(() => null);
+        if (!cancelled && active?.run_id && active.status === "running") {
+          setRunId(active.run_id);
+          setRunStatus(active.status);
+          if (active.stages) setRunStages(active.stages);
+          if (active.progress) setRunProg(active.progress);
+          startPolling(active.run_id);
+        }
+      } catch {
+        /* nothing to re-attach */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCase, runId]);
+
   const runN2 = async () => {
     if (caseMode !== "1" && !caseQuestion.trim()) {
       setError(
@@ -155,28 +210,9 @@ export default function Evidence() {
       const r = await api.pipelineRun({ mode: pipelineMode, case_id: activeCase });
       setRunId(r.run_id);
       setRunStatus("running");
-      const poll = setInterval(async () => {
-        try {
-          const s = await api.pipelineStatus(r.run_id);
-          setRunStatus(s.status);
-          if (s.status === "complete") {
-            clearInterval(poll);
-            pollRef.current = null;
-            setBusy(false);
-            setPipelineComplete(true);
-            refreshStages(activeCase);
-            load();
-          } else if (s.status === "error") {
-            clearInterval(poll);
-            pollRef.current = null;
-            setError(s.error || "Pipeline failed");
-            setBusy(false);
-          }
-        } catch {
-          // keep polling
-        }
-      }, 3000);
-      pollRef.current = poll;
+      setRunStages([]);
+      setRunProg(null);
+      startPolling(r.run_id);
     } catch (e) {
       setError((e as Error).message);
       setBusy(false);
@@ -275,6 +311,11 @@ export default function Evidence() {
             </strong>
             {runStatus === "running" && " (polling…)"}
           </span>
+          {runStatus === "running" && (
+            <div style={{ marginTop: 8 }}>
+              <LiveRunFeed stages={runStages} progress={runProg ?? undefined} maxHeight={220} />
+            </div>
+          )}
         </div>
       )}
 

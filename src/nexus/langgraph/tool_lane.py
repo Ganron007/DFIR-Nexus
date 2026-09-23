@@ -1592,6 +1592,7 @@ async def run_tool_lane(
     pipeline_mode: str = "",
     strict: bool | None = None,
     evidence_paths: list[str] | None = None,
+    on_event: Callable[[str, str, dict[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
     """Execute the planned triage lane via MCP tools. Returns ledger + audit_ids.
 
@@ -1712,6 +1713,25 @@ async def run_tool_lane(
         with contextlib.suppress(OSError):
             (stale_dir / "_tool_lane_progress.json").unlink(missing_ok=True)
 
+    durations: dict[tuple[str, str, str], float] = {}
+
+    def _command_text(argv: list[str] | None) -> str:
+        try:
+            return " ".join(str(a) for a in (argv or []))[:400]
+        except Exception:  # noqa: BLE001 — display only
+            return ""
+
+    def _emit(status: str, job: ToolJob, detail: str = "", **extra: Any) -> None:
+        """Live per-tool event for the UI feed (best-effort, never raises)."""
+        if on_event is None:
+            return
+        payload: dict[str, Any] = {"tool": job.tool, "host": job.host}
+        payload.update(extra)
+        try:
+            on_event(status, str(detail)[:300], payload)
+        except Exception:  # noqa: BLE001 — the feed must never break the lane
+            log.debug("tool lane event emit failed", exc_info=True)
+
     def _write_progress() -> None:
         try:
             import json as _json
@@ -1719,7 +1739,18 @@ async def run_tool_lane(
             total = win_total[0] or len(jobs)
             done = len(ledger)
             entries = [
-                {"tool": e.get("tool"), "host": e.get("host"), "status": e.get("status")}
+                {
+                    "tool": e.get("tool"),
+                    "host": e.get("host"),
+                    "status": e.get("status"),
+                    "purpose": str(e.get("purpose") or "")[:200],
+                    "command": _command_text(e.get("argv") or []),
+                    "reason": str(e.get("reason") or "")[:300],
+                    "output": str(e.get("output_saved_to") or ""),
+                    "duration_s": durations.get((
+                        str(e.get("tool")), str(e.get("host")), str(e.get("purpose"))
+                    )),
+                }
                 for e in ledger
             ]
             # "current" is the next job still pending — the completed job is
@@ -1730,11 +1761,24 @@ async def run_tool_lane(
                 (j.tool for j in [*win_jobs, *sift_jobs] if j.status == "PENDING"),
                 "",
             )
+            running_job = next(
+                (j for j in [*win_jobs, *sift_jobs] if j.status == "RUNNING"),
+                None,
+            )
+            running = None
+            if running_job is not None:
+                running = {
+                    "tool": running_job.tool,
+                    "host": running_job.host,
+                    "purpose": str(running_job.purpose or "")[:200],
+                    "command": _command_text(running_job.argv),
+                }
             (extractions / "_tool_lane_progress.json").write_text(
                 _json.dumps({
                     "done": done,
                     "total": total,
                     "current": current,
+                    "running": running,
                     "entries": entries,
                 }, indent=2),
                 encoding="utf-8",
@@ -1749,12 +1793,35 @@ async def run_tool_lane(
     async def _run_one(job: ToolJob) -> None:
         if job.status in ("SKIP", "OK"):
             _mark(job)
+            _emit(job.status, job, str(job.reason or "planned"), reason=job.reason)
             return
+
+        import time as _time
+
+        job.status = "RUNNING"
+        command_text = _command_text(job.argv)
+        _emit(
+            "RUNNING", job, command_text or job.purpose,
+            command=command_text, purpose=job.purpose,
+        )
+        _write_progress()
+        t0 = _time.time()
+
+        def _finish(status: str, detail: str, **extra: Any) -> None:
+            durations[(job.tool, job.host, job.purpose)] = round(_time.time() - t0, 1)
+            job.status = status
+            _mark(job)
+            _emit(
+                status, job, detail,
+                command=command_text,
+                duration_s=durations[(job.tool, job.host, job.purpose)],
+                **extra,
+            )
+
         if job.host == "windows":
             if not win_tool:
-                job.status = "SKIP"
                 job.reason = "run_windows_command not available on MCP"
-                _mark(job)
+                _finish("SKIP", job.reason, reason=job.reason)
                 return
             try:
                 raw = await win_tool.ainvoke({
@@ -1765,15 +1832,13 @@ async def run_tool_lane(
                 })
                 result = parse_result(raw)
             except Exception as exc:  # noqa: BLE001
-                job.status = "FAIL"
                 job.reason = str(exc)
-                _mark(job)
+                _finish("FAIL", job.reason[:300], reason=job.reason)
                 return
         else:
             if not sift_tool:
-                job.status = "SKIP"
                 job.reason = "run_command not available on MCP"
-                _mark(job)
+                _finish("SKIP", job.reason, reason=job.reason)
                 return
             cmd = " ".join(shlex.quote(a) for a in job.argv)
             try:
@@ -1784,9 +1849,8 @@ async def run_tool_lane(
                 })
                 result = parse_result(raw)
             except Exception as exc:  # noqa: BLE001
-                job.status = "FAIL"
                 job.reason = str(exc)
-                _mark(job)
+                _finish("FAIL", job.reason[:300], reason=job.reason)
                 return
 
         aid = str(result.get("audit_id") or "")
@@ -1794,21 +1858,25 @@ async def run_tool_lane(
         job.output_saved_to = str(result.get("output_saved_to") or "")
         job.output_files = list(result.get("output_files") or [])
         if result.get("success") is False or result.get("error"):
-            job.status = "FAIL"
             job.reason = str(result.get("error") or result.get("stderr") or "tool failed")[:500]
+            _finish("FAIL", job.reason[:300], reason=job.reason,
+                    output=job.output_saved_to, audit_id=aid)
         elif result.get("exit_code") not in (None, 0, "0") and result.get("success") is not True:
             code = result.get("exit_code")
-            job.status = "FAIL"
             job.reason = f"exit_code={code}: {(result.get('stderr') or '')[:300]}"
+            _finish("FAIL", job.reason[:300], reason=job.reason,
+                    output=job.output_saved_to, audit_id=aid)
         else:
-            job.status = "OK"
-            soft = _soft_fail_reason(result)
-            if soft:
-                job.status = "FAIL"
-                job.reason = soft[:500]
+            job.reason = _soft_fail_reason(result) or ""
+            status = "FAIL" if job.reason else "OK"
+            out_name = Path(job.output_saved_to).name if job.output_saved_to else ""
+            detail = f"{round(_time.time() - t0, 1)}s"
+            if out_name:
+                detail += f" -> {out_name}"
+            _finish(status, detail, reason=job.reason[:300],
+                    output=job.output_saved_to, audit_id=aid)
         if aid:
             audit_ids.append(aid)
-        _mark(job)
         log.info(
             "tool_lane %s/%s -> %s audit_id=%s saved=%s",
             job.host, job.tool, job.status, aid, job.output_saved_to or "-",

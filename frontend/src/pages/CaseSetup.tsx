@@ -10,15 +10,16 @@
  */
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, type LedgerRow } from "../api/client";
+import { api, type LedgerRow, type PipelineStageLine, type PipelineStatusResponse } from "../api/client";
 import { useCase } from "../context/CaseContext";
 import EvidencePicker from "../components/EvidencePicker";
+import LiveRunFeed from "../components/LiveRunFeed";
 
 const STEPS = ["Case Details", "Register Evidence", "Choose Mode", "Run Processing"];
 
 export default function CaseSetup() {
   const navigate = useNavigate();
-  const { setActiveCase } = useCase();
+  const { activeCase, setActiveCase } = useCase();
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -50,10 +51,8 @@ export default function CaseSetup() {
   // Step 4 state
   const [pipelineRunId, setPipelineRunId] = useState("");
   const [pipelineStatus, setPipelineStatus] = useState("");
-  const [pipelineProg, setPipelineProg] = useState<{ done: number; total: number; current?: string } | null>(null);
-  const [pipelineStages, setPipelineStages] = useState<
-    { stage?: string; tool?: string; host?: string; status?: string; detail?: string }[]
-  >([]);
+  const [pipelineProg, setPipelineProg] = useState<PipelineStatusResponse["progress"] | null>(null);
+  const [pipelineStages, setPipelineStages] = useState<PipelineStageLine[]>([]);
   const [ledger, setLedger] = useState<LedgerRow[]>([]);
 
   const createCase = async () => {
@@ -136,6 +135,86 @@ export default function CaseSetup() {
     }
   };
 
+  const startPolling = (rid: string) => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    const poll = setInterval(async () => {
+      try {
+        const s = await api.pipelineStatus(rid);
+        setPipelineStatus(s.status);
+        if (s.progress) setPipelineProg(s.progress);
+        if (s.stages) setPipelineStages(s.stages);
+        if (s.status === "complete" || s.status === "error") {
+          clearInterval(poll);
+          pollRef.current = null;
+          setBusy(false);
+          if (s.status === "error") {
+            setError(s.error || "Pipeline failed");
+          } else {
+            try {
+              localStorage.removeItem(`nexus.run.${s.case_id || caseId}`);
+            } catch {
+              /* storage unavailable */
+            }
+            // Show exactly which parsers ran before the examiner enters.
+            try {
+              const lg = await api.pipelineLedger(caseId);
+              setLedger(lg.ledger || []);
+            } catch {
+              setLedger([]);
+            }
+          }
+        }
+      } catch {
+        // keep polling
+      }
+    }, 3000);
+    pollRef.current = poll;
+  };
+
+  /** Re-attach to a run that is still in flight (reload / navigation). */
+  const attachRun = (s: PipelineStatusResponse) => {
+    const modeMap: Record<string, string> = { tools: "1", coverage: "2", design: "3" };
+    if (s.case_id) setCaseId(s.case_id);
+    if (modeMap[s.mode]) setModeState(modeMap[s.mode]);
+    setPipelineRunId(s.run_id);
+    setPipelineStatus(s.status);
+    if (s.progress) setPipelineProg(s.progress);
+    if (s.stages) setPipelineStages(s.stages);
+    setStep(3);
+    if (s.status === "running") startPolling(s.run_id);
+  };
+
+  // The live feed used to be session-bound (run id was React state only): a
+  // reload lost it while the run kept going. Re-attach from localStorage or
+  // from the server's newest record for the case.
+  useEffect(() => {
+    const cid = caseId || activeCase;
+    if (!cid || pipelineRunId) return;
+    let cancelled = false;
+    (async () => {
+      let record: PipelineStatusResponse | null = null;
+      try {
+        const saved = localStorage.getItem(`nexus.run.${cid}`) || "";
+        if (saved) {
+          record = await api.pipelineStatus(saved).catch(() => null);
+        }
+        if (!record || record.status !== "running") {
+          const active = await api.pipelineActive(cid).catch(() => null);
+          if (active && active.status === "running") record = active;
+        }
+      } catch {
+        record = null;
+      }
+      if (!cancelled && record?.run_id && record.status === "running") {
+        attachRun(record);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCase, caseId]);
+
   const runPipeline = async () => {
     setBusy(true);
     setError("");
@@ -150,35 +229,14 @@ export default function CaseSetup() {
       });
       setPipelineRunId(r.run_id);
       setPipelineStatus("running");
-
-      // Poll status
-      const poll = setInterval(async () => {
-        try {
-          const s = await api.pipelineStatus(r.run_id);
-          setPipelineStatus(s.status);
-          if (s.progress) setPipelineProg(s.progress);
-          if (s.stages) setPipelineStages(s.stages);
-          if (s.status === "complete" || s.status === "error") {
-            clearInterval(poll);
-            pollRef.current = null;
-            setBusy(false);
-            if (s.status === "error") {
-              setError(s.error || "Pipeline failed");
-            } else {
-              // Show exactly which parsers ran before the examiner enters.
-              try {
-                const lg = await api.pipelineLedger(caseId);
-                setLedger(lg.ledger || []);
-              } catch {
-                setLedger([]);
-              }
-            }
-          }
-        } catch {
-          // ignore
-        }
-      }, 3000);
-      pollRef.current = poll;
+      setPipelineStages([]);
+      setPipelineProg(null);
+      try {
+        localStorage.setItem(`nexus.run.${caseId}`, r.run_id);
+      } catch {
+        /* storage unavailable — the server-side record still re-attaches */
+      }
+      startPolling(r.run_id);
     } catch (e) {
       setError((e as Error).message);
       setBusy(false);
@@ -468,9 +526,11 @@ export default function CaseSetup() {
                   {/* WP 4j.5d: real per-tool progress, not a bare spinner */}
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}>
                     <span>
-                      {pipelineProg?.current
-                        ? `Running: ${pipelineProg.current}`
-                        : "Pipeline is running…"}
+                      {pipelineProg?.running?.tool
+                        ? `Running: ${pipelineProg.running.tool}${pipelineProg.running.host ? ` (${pipelineProg.running.host})` : ""}`
+                        : pipelineProg?.current
+                          ? `Next tool: ${pipelineProg.current}`
+                          : "Pipeline is running…"}
                     </span>
                     {pipelineProg && pipelineProg.total > 0 && (
                       <span>{pipelineProg.done}/{pipelineProg.total} tools</span>
@@ -488,29 +548,10 @@ export default function CaseSetup() {
                       }}
                     />
                   </div>
-                  {pipelineStages.length > 0 && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: 11, fontFamily: "monospace" }}>
-                      {pipelineStages.slice(-14).map((st, i) => {
-                        const state = (st.status || "").toUpperCase();
-                        const color =
-                          state === "OK" || state === "DONE" ? "var(--success)"
-                          : state === "RUNNING" ? "var(--accent)"
-                          : state === "ERROR" || state === "FAIL" ? "var(--danger)"
-                          : "var(--text-muted)";
-                        return (
-                          <span key={i} style={{ color }} title={`${st.host || ""} ${st.detail || ""}`}>
-                            [{st.stage || st.tool || "?"}] {st.status || ""}
-                            {st.detail ? ` — ${st.detail}` : ""}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  )}
-                  {!pipelineProg && (
-                    <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                      This may take several minutes.
-                    </div>
-                  )}
+                  <LiveRunFeed
+                    stages={pipelineStages}
+                    progress={pipelineProg ?? undefined}
+                  />
                 </div>
               )}
               {pipelineStatus === "complete" && (

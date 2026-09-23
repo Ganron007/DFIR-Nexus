@@ -198,8 +198,13 @@ def make_initial_state(
 
 
 def emit_stage(state: InvestigationState | dict, stage: str, status: str,
-               detail: str = "") -> None:
-    """Append one stage event to the live progress JSONL (best-effort)."""
+               detail: str = "", **extra: Any) -> None:
+    """Append one stage event to the live progress JSONL (best-effort).
+
+    ``extra`` carries the granular fields the live feed renders (``tool``,
+    ``host``, ``command``, ``duration_s``, ``output``, ``reason``,
+    ``audit_id``) — scalar values only, capped, never nested.
+    """
     path_raw = ""
     if isinstance(state, dict):
         path_raw = str(state.get("progress_path") or "")
@@ -216,10 +221,24 @@ def emit_stage(state: InvestigationState | dict, stage: str, status: str,
             "status": status,
             "detail": str(detail)[:300],
         }
+        for key, value in (extra or {}).items():
+            if key not in _PROGRESS_EXTRA_KEYS or value in (None, "", [], {}):
+                continue
+            if isinstance(value, (int, float, bool)):
+                entry[key] = value
+            else:
+                entry[key] = str(value)[:400]
         with path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(entry) + "\n")
     except OSError:
         pass
+
+
+# Allowlisted journal extras (scalar, feed-rendered).
+_PROGRESS_EXTRA_KEYS = frozenset({
+    "tool", "host", "command", "duration_s", "output", "reason", "audit_id",
+    "round", "rounds", "docs", "rows",
+})
 
 
 def _is_placeholder_intake(text: str) -> bool:
@@ -803,6 +822,11 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
         return {"error": "No case_id — cannot run tool lane"}
 
     mode = state.get("pipeline_mode") or "coverage"
+
+    def _lane_event(status: str, detail: str, extra: dict[str, Any]) -> None:
+        """Per-job tool events -> the same live feed the stages use."""
+        emit_stage(state, "tool", status, detail, **extra)
+
     result = await run_tool_lane(
         tools=tools,
         evidence_path=state.get("evidence_path") or "",
@@ -813,6 +837,7 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
         skip_rag=True,
         pipeline_mode=mode,
         evidence_paths=state.get("evidence_paths") or None,
+        on_event=_lane_event,
     )
     # Phase 4h: every registered path is planned by the lane; paths the Windows
     # tool lane cannot parse (PCAP/Zeek/Suricata/cloud/syslog) go to importers.

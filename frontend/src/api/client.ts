@@ -584,6 +584,25 @@ export interface PipelineRunResponse {
   error?: string;
 }
 
+/** One live-feed line: a pipeline stage or a tool-lane job. */
+export interface PipelineStageLine {
+  ts?: string;
+  /** Pipeline node name ("interpret", "execute_tool_lane", ...). */
+  stage?: string;
+  /** Tool-lane job fields. */
+  tool?: string;
+  host?: string;
+  status?: string;
+  detail?: string;
+  /** Granular tool fields (live feed). */
+  command?: string;
+  purpose?: string;
+  reason?: string;
+  output?: string;
+  duration_s?: number;
+  audit_id?: string;
+}
+
 /** GET /pipeline/status → {run_id, case_id, mode, status, ...} */
 export interface PipelineStatusResponse {
   run_id: string;
@@ -596,10 +615,17 @@ export interface PipelineStatusResponse {
   /** True when the run got examiner intake (question/window) — N1 gate. */
   intake?: boolean;
   /** WP 4j.5d — live stage entries: pipeline nodes (stage/status/detail)
-   *  merged with per-tool entries (tool/host/status) while running. */
-  stages?: { stage?: string; tool?: string; host?: string; status?: string; detail?: string; ts?: string }[];
+   *  merged with per-tool entries (tool/host/status/command/duration) while
+   *  running. */
+  stages?: PipelineStageLine[];
   /** WP 4j.5d — live counters from _tool_lane_progress.json. */
-  progress?: { done: number; total: number; current?: string };
+  progress?: {
+    done: number;
+    total: number;
+    current?: string;
+    /** The job currently executing (tool + exact command). */
+    running?: { tool: string; host?: string; purpose?: string; command?: string };
+  };
 }
 
 /** GET /pipeline/ledger → tool-lane parser run status */
@@ -1099,6 +1125,11 @@ export const api = {
     post<PipelineRunResponse>("/pipeline/run", params),
   pipelineStatus: (runId: string) =>
     request<PipelineStatusResponse>(`/pipeline/status?run_id=${runId}`),
+  /** Re-attach to the newest (or still-running) pipeline run of a case. */
+  pipelineActive: (caseId?: string) =>
+    request<PipelineStatusResponse>(
+      `/pipeline/status${caseId ? `?case_id=${encodeURIComponent(caseId)}` : ""}`,
+    ),
   pipelineLedger: (caseId?: string) =>
     request<PipelineLedgerResponse>(
       `/pipeline/ledger${caseId ? `?case_id=${encodeURIComponent(caseId)}` : ""}`,

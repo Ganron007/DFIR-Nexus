@@ -5323,19 +5323,59 @@ def _parse_iso_ts(value: object):
         return None
 
 
+def _latest_pipeline_run_id(case_dir: Path | None) -> str:
+    """Newest pipeline run for a case (prefers a still-running one).
+
+    Used when the UI re-attaches after a reload: the run id lives in React
+    state client-side, but the server still knows the active/last run.
+    """
+    if case_dir is None:
+        return ""
+    runs_dir = Path(case_dir) / "analysis" / "pipeline_runs"
+    if not runs_dir.is_dir():
+        return ""
+    newest = ""
+    newest_mtime = -1.0
+    running = ""
+    for path in runs_dir.glob("*.json"):
+        if path.name.endswith(".progress.jsonl"):
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        rid = str(data.get("run_id") or path.stem)
+        if str(data.get("status") or "") == "running" and not running:
+            running = rid
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            continue
+        if mtime > newest_mtime:
+            newest_mtime = mtime
+            newest = rid
+    return running or newest
+
+
 async def api_pipeline_status(request):
     """GET /portal/api/pipeline/status?run_id=ID — poll pipeline run status.
 
     Memory cache first; falls back to the write-through record under
     ``<case>/analysis/pipeline_runs/<run_id>.json`` so a reload or server
-    restart keeps the examiner's run state.
+    restart keeps the examiner's run state. Without ``run_id`` the newest
+    (or still-running) record for the case is used — that is how the UI
+    re-attaches to an in-flight run after a page reload.
     """
     run_id = request.query_params.get("run_id") or ""
+    case_dir = _get_case_dir(request)
+    if not run_id:
+        run_id = _latest_pipeline_run_id(case_dir)
     if not run_id:
         return JSONResponse({"error": "run_id not found"}, status_code=404)
 
     record = _pipeline_runs.get(run_id)
-    case_dir = _get_case_dir(request)
 
     if record is None:
         candidates: list[Path] = []
@@ -5439,6 +5479,18 @@ async def api_pipeline_status(request):
             case_dir / "extractions" / "_tool_lane_progress.json",
             case_dir / "ledger" / "_tool_lane_progress.json",
         ]
+        # The record carries the SHORT run id ('51cf63cc') while run dirs are
+        # 'RUN-…-<short>': resolve_run rejects the short form, so the tool feed
+        # silently vanished. Match the run dir by suffix as the reliable path.
+        runs_dir = case_dir / "runs"
+        if runs_dir.is_dir() and run_id:
+            with contextlib.suppress(OSError):
+                for rdir in sorted(runs_dir.iterdir(), reverse=True):
+                    if rdir.is_dir() and rdir.name.endswith(f"-{run_id}"):
+                        prog_paths.insert(
+                            0, rdir / "extractions" / "_tool_lane_progress.json"
+                        )
+                        break
         for prog_path in prog_paths:
             if not prog_path.is_file():
                 continue
@@ -5447,11 +5499,20 @@ async def api_pipeline_status(request):
             except (OSError, json.JSONDecodeError):
                 continue
             if isinstance(prog, dict):
-                record["progress"] = {
+                progress: dict[str, Any] = {
                     "done": prog.get("done", 0),
                     "total": prog.get("total", 0),
                     "current": prog.get("current", ""),
                 }
+                running = prog.get("running")
+                if isinstance(running, dict) and running.get("tool"):
+                    progress["running"] = {
+                        "tool": str(running.get("tool") or ""),
+                        "host": str(running.get("host") or ""),
+                        "purpose": str(running.get("purpose") or "")[:200],
+                        "command": str(running.get("command") or "")[:400],
+                    }
+                record["progress"] = progress
                 tool_entries = list(prog.get("entries") or [])
                 seen_tool = int(record.get("_tool_stages_loaded") or 0)
                 if len(tool_entries) > seen_tool:
