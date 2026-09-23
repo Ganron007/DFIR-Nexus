@@ -591,6 +591,33 @@ Then write this in `.mcp.json` / `~/.claude/settings.json`:
 }
 ```
 
+#### Server lifecycle (read this before closing the browser)
+`nexus serve` is a **long-lived OS process**. The Examiner Portal is just a
+browser client of it - closing the tab, the window, or the whole browser does
+**not** stop the server, and any client (MCP) keeps talking to the old code.
+Two consequences:
+
+- **Code changes need a restart.** Python imports the modules once at process
+  start; edit a file, and the running server still serves the previous code
+  until you stop and start it again.
+- **Stop it explicitly when you are done.** Started in your own terminal:
+  `Ctrl+C`. Started in the background (script, agent, detached shell): kill the
+  process tree:
+
+```powershell
+# Windows: stop the listener on 4508, then any leftover wrapper processes
+Get-NetTCPConnection -State Listen -LocalPort 4508 |
+  ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
+Get-CimInstance Win32_Process |
+  Where-Object { $_.CommandLine -match 'serve --http' } |
+  ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+# verify: should print nothing
+Get-NetTCPConnection -State Listen -LocalPort 4508 -ErrorAction SilentlyContinue
+```
+
+Rule of thumb: the examiner owns the server lifecycle. An assistant that
+starts a server for a smoke test must stop it before finishing.
+
 ---
 
 ### 7b. Multi-Nexus Fleet Configuration (Lab / VM Topology)
