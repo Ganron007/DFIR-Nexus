@@ -156,7 +156,7 @@ def test_rebuild_local_index_upserts_prunes_vendor_untouched(tmp_path):
     sources.mkdir(parents=True)
 
     client = chromadb.PersistentClient(path=str(index_dir / "chroma"))
-    vendor = client.get_or_create_collection("ir_knowledge")
+    vendor = client.get_or_create_collection("ir_knowledge", metadata={"hnsw:space": "cosine"})
     vendor.add(
         ids=["v1"], documents=["vendor doc"],
         embeddings=[[0.5, 0.5, 0.5, 0.5]], metadatas=[{"source": "vendor-src"}],
@@ -167,9 +167,12 @@ def test_rebuild_local_index_upserts_prunes_vendor_untouched(tmp_path):
     assert result["status"] == "ok"
     assert result["documents"] == 3 and result["upserted"] == 3
     assert result["collection"] == DELTA_COLLECTION
+    # The delta must mirror the vendor's distance space (score comparability).
+    assert result["space"] == "cosine" and result["recreated"] is False
 
     delta = client.get_collection(DELTA_COLLECTION)
     assert delta.count() == 3
+    assert (delta.metadata or {}).get("hnsw:space") == "cosine"
     meta = delta.get(ids=["t:1"], include=["metadatas"])["metadatas"][0]
     assert meta["built_by"] == RAG_BUILD_TAG
     assert meta["itm_id"] == "AR1/PR001"
@@ -217,6 +220,207 @@ def test_delta_stats_without_chroma_dir(tmp_path):
     assert delta_stats(tmp_path / "nothing") == {"count": 0, "sources": {}}
 
 
+def test_rebuild_creates_cosine_when_absent_and_migrates_l2(tmp_path):
+    chromadb = pytest.importorskip("chromadb")
+
+    from nexus.tools.rag import DELTA_COLLECTION, rebuild_local_index
+
+    index_dir = tmp_path / "index"
+    sources = tmp_path / "sources"
+    sources.mkdir(parents=True)
+    _write_docs(sources / "a.jsonl", [_doc(1)])
+
+    # Legacy state: a delta created with Chroma's default l2 space.
+    client = chromadb.PersistentClient(path=str(index_dir / "chroma"))
+    legacy = client.create_collection(DELTA_COLLECTION)
+    legacy.add(
+        ids=["stale"], documents=["stale"],
+        embeddings=[[0.1, 0.2, 0.3, 0.4]], metadatas=[{"source": "old"}],
+    )
+
+    result = rebuild_local_index(index_dir, data_dir=sources, encode=_fake_encode)
+    assert result["status"] == "ok"
+    assert result["space"] == "cosine" and result["recreated"] is True
+
+    col = client.get_collection(DELTA_COLLECTION)
+    assert (col.metadata or {}).get("hnsw:space") == "cosine"
+    assert col.count() == 1
+    assert col.get(include=[])["ids"] == ["t:1"]
+
+
+def test_rebuild_refuses_model_mismatch(tmp_path):
+    chromadb = pytest.importorskip("chromadb")
+
+    from nexus.tools.rag import DELTA_COLLECTION, rebuild_local_index
+
+    index_dir = tmp_path / "index"
+    index_dir.mkdir()
+    sources = tmp_path / "sources"
+    sources.mkdir()
+    _write_docs(sources / "a.jsonl", [_doc(1)])
+    (index_dir / "metadata.json").write_text(
+        json.dumps({"model": "definitely/not-the-configured-embedder"}),
+        encoding="utf-8",
+    )
+
+    result = rebuild_local_index(index_dir, data_dir=sources, encode=_fake_encode)
+    assert result["status"] == "model_mismatch"
+    assert "definitely/not-the-configured-embedder" in result["error"]
+
+    client = chromadb.PersistentClient(path=str(index_dir / "chroma"))
+    with pytest.raises(chromadb.errors.NotFoundError):
+        client.get_collection(DELTA_COLLECTION)
+
+    forced = rebuild_local_index(
+        index_dir, data_dir=sources, encode=_fake_encode, allow_model_mismatch=True,
+    )
+    assert forced["status"] == "ok"
+
+
+def test_rebuild_accepts_single_jsonl_file(tmp_path):
+    pytest.importorskip("chromadb")
+
+    from nexus.tools.rag import rebuild_local_index
+
+    index_dir = tmp_path / "index"
+    one = tmp_path / "one.jsonl"
+    _write_docs(one, [_doc(1), _doc(2)])
+
+    result = rebuild_local_index(index_dir, data_dir=one, encode=_fake_encode)
+    assert result["status"] == "ok"
+    assert result["documents"] == 2 and result["upserted"] == 2
+
+
+def test_delta_space_guard_ignores_mismatched_collection(tmp_path):
+    chromadb = pytest.importorskip("chromadb")
+
+    from nexus.tools.rag import DELTA_COLLECTION, _open_delta_collection
+
+    client = chromadb.PersistentClient(path=str(tmp_path / "chroma"))
+    vendor = client.create_collection("ir_knowledge", metadata={"hnsw:space": "cosine"})
+    client.create_collection(DELTA_COLLECTION)  # default l2
+    assert _open_delta_collection(client, vendor) is None
+
+    client.delete_collection(DELTA_COLLECTION)
+    client.create_collection(DELTA_COLLECTION, metadata={"hnsw:space": "cosine"})
+    assert _open_delta_collection(client, vendor) is not None
+
+
+def test_tool_wrapper_rebuild_audits_and_refreshes(tmp_path, monkeypatch):
+    chromadb = pytest.importorskip("chromadb")
+
+    from mcp.server.fastmcp import FastMCP
+
+    from nexus import audit as audit_mod
+    from nexus.tools import rag as rag_mod
+
+    index_dir = tmp_path / "index"
+    sources = tmp_path / "sources"
+    sources.mkdir()
+    _write_docs(sources / "a.jsonl", [_doc(1), _doc(2)])
+
+    # Wrapper calls the real rebuild but with a fake encoder (no GPU in tests).
+    real_rebuild = rag_mod.rebuild_local_index
+
+    def _fake_rebuild(*args, **kwargs):
+        kwargs.setdefault("encode", _fake_encode)
+        return real_rebuild(*args, **kwargs)
+
+    monkeypatch.setattr(rag_mod, "rebuild_local_index", _fake_rebuild)
+    monkeypatch.setattr(rag_mod, "_get_index_dir", lambda: index_dir)
+    monkeypatch.setattr(rag_mod, "_global_index", None)
+
+    writer = audit_mod.AuditWriter("test-rag", audit_dir=tmp_path / "audit")
+    server = FastMCP("test")
+    rag_mod.register_tools(server, writer)
+    tool = server._tool_manager.get_tool("forensic_rag_rebuild").fn
+
+    result = tool(data_dir=str(sources))
+    assert result["status"] == "ok"
+    assert result["audit_id"]
+    assert "search_visible" not in result  # nothing loaded to refresh
+
+    # A loaded index refreshes in place: the rebuilt delta becomes visible.
+    client = chromadb.PersistentClient(path=str(index_dir / "chroma"))
+    vendor = client.get_or_create_collection("ir_knowledge", metadata={"hnsw:space": "cosine"})
+    vendor.add(
+        ids=["v1"], documents=["vendor"],
+        embeddings=[[0.5, 0.5, 0.5, 0.5]], metadatas=[{"source": "vendor-src"}],
+    )
+
+    class _Vec(list):
+        def tolist(self):
+            return list(self)
+
+    class _StubModel:
+        def encode(self, _text):
+            return _Vec([0.1, 0.2, 0.3, 0.4])
+
+    idx = rag_mod.RAGIndex(index_dir=index_dir)
+    idx.model = _StubModel()
+    idx.collection = vendor
+    idx.delta_collection = None
+    idx.available_sources = ["vendor-src"]
+    idx._loaded = True
+    monkeypatch.setattr(rag_mod, "_global_index", idx)
+
+    _write_docs(sources / "a.jsonl", [_doc(1)])
+    result2 = tool(data_dir=str(sources))
+    assert result2["status"] == "ok"
+    assert result2["search_visible"] is True
+    assert idx.delta_collection is not None
+    assert idx.delta_collection.count() == 1
+
+
+def test_refresh_delta_makes_new_collection_visible(tmp_path):
+    chromadb = pytest.importorskip("chromadb")
+
+    from nexus.tools.rag import DELTA_COLLECTION, RAGIndex
+
+    index_dir = tmp_path / "index"
+    client = chromadb.PersistentClient(path=str(index_dir / "chroma"))
+    vendor = client.get_or_create_collection("ir_knowledge", metadata={"hnsw:space": "cosine"})
+    vendor.add(
+        ids=["v1"], documents=["vendor doc"],
+        embeddings=[[0.5, 0.5, 0.5, 0.5]], metadatas=[{"source": "vendor-src", "title": "V"}],
+    )
+
+    class _Vec(list):
+        def tolist(self):
+            return list(self)
+
+    class _StubModel:
+        def encode(self, _text):
+            return _Vec([0.1, 0.2, 0.3, 0.4])
+
+    idx = RAGIndex(index_dir=index_dir)
+    idx.model = _StubModel()
+    idx.collection = vendor
+    idx.delta_collection = None
+    idx.available_sources = ["vendor-src"]
+    idx._loaded = True
+
+    assert {r["collection"] for r in idx.search("q", top_k=5)["results"]} == {"vendor"}
+
+    # In-process rebuild scenario: the delta appears after the index loaded.
+    delta = client.create_collection(DELTA_COLLECTION, metadata={"hnsw:space": "cosine"})
+    delta.add(
+        ids=["t:1"], documents=["delta doc"],
+        embeddings=[[0.5, 0.5, 0.5, 0.5]],
+        metadatas=[{"source": "itm", "title": "ITM"}],
+    )
+    assert idx.refresh_delta() is True
+    results = idx.search("q", top_k=5)["results"]
+    assert {r["collection"] for r in results} == {"vendor", "local"}
+    assert "itm" in idx.available_sources
+
+    # An empty delta (fresh create, no build yet) is never queried.
+    client.delete_collection(DELTA_COLLECTION)
+    client.create_collection(DELTA_COLLECTION, metadata={"hnsw:space": "cosine"})
+    assert idx.refresh_delta() is True
+    assert idx.search("q", top_k=5)["results"], "vendor results still returned"
+
+
 # ---------------------------------------------------------------------------
 # Search merge (vendor + local)
 # ---------------------------------------------------------------------------
@@ -243,12 +447,12 @@ def test_search_merges_vendor_and_delta(tmp_path):
 
     index_dir = tmp_path / "index"
     client = chromadb.PersistentClient(path=str(index_dir / "chroma"))
-    vendor = client.get_or_create_collection("ir_knowledge")
+    vendor = client.get_or_create_collection("ir_knowledge", metadata={"hnsw:space": "cosine"})
     vendor.add(
         ids=["v1"], documents=["vendor doc"],
         embeddings=[[0.5, 0.5, 0.5, 0.5]], metadatas=[{"source": "vendor-src", "title": "V"}],
     )
-    delta = client.get_or_create_collection(DELTA_COLLECTION)
+    delta = client.get_or_create_collection(DELTA_COLLECTION, metadata={"hnsw:space": "cosine"})
     delta.add(
         ids=["t:1"], documents=["delta doc"],
         embeddings=[[0.5, 0.5, 0.5, 0.5]],

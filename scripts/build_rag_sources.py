@@ -142,11 +142,13 @@ def build_attack_detections() -> list[dict]:
                 ) if x)
                 if block:
                     analytics.append(block)
+            tactics = ", ".join(str(t) for t in (tech.get("tactics") or []))
             text = (
                 f"MITRE ATT&CK Detection Strategy: {strategy.get('name')} "
                 f"ID: {det_id}\n"
-                f"Technique: {tid} {names.get(tid) or tech.get('name') or ''} "
-                f"(tactics: {', '.join(tech.get('tactics') or [])})\n"
+                f"Technique: {tid} {names.get(tid) or tech.get('name') or ''}"
+                + (f" (tactics: {tactics})" if tactics else "")
+                + "\n"
                 + (f"Analytics: {' | '.join(analytics[:3])}\n" if analytics else "")
                 + (f"Log sources: {', '.join(sorted(logs)[:6])}" if logs else "")
             ).strip()
@@ -167,11 +169,12 @@ def build_atlas() -> list[dict]:
     for tech in registry.get("techniques") or []:
         tid = str(tech.get("id") or "")
         refs = ",".join(str(r.get("id") or "") for r in (tech.get("attack_refs") or []))
+        tactics = ", ".join(str(t) for t in (tech.get("tactics") or []))
         text = (
             f"MITRE ATLAS Technique: {tech.get('name')} ID: {tid} "
             f"({tech.get('maturity') or 'n/a'})\n"
-            f"Tactics: {', '.join(tech.get('tactics') or [])}\n"
-            f"Description: {tech.get('description') or ''}\n"
+            + (f"Tactics: {tactics}\n" if tactics else "")
+            + (f"Description: {tech.get('description')}\n" if tech.get("description") else "")
             + (f"Related ATT&CK: {refs}" if refs else "")
         ).strip()
         docs.append(_doc(

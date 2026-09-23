@@ -1,10 +1,13 @@
 """RAG knowledge search — real ChromaDB semantic search over IR knowledge base.
 
-Downloads a pre-built index (~23K records, ~50MB) from GitHub releases, or
-builds from YAML data. Searches cover: Sigma rules, MITRE ATT&CK, Atomic Red
-Team, Splunk, KAPE, Velociraptor, LOLBAS, GTFOBins, and more.
+Downloads a pre-built index (~22K records, ~50MB) from GitHub releases, or
+builds locally. Searches cover the bundle's Sigma rules, MITRE ATT&CK, Atomic
+Red Team, Splunk, KAPE, Velociraptor, LOLBAS and GTFOBins **plus** the local
+registry delta (Insider Threat Matrix, ATT&CK v19 detection strategies, ATLAS,
+MBC capa mappings) built by ``scripts/build_rag_sources.py``.
 """
 
+import contextlib
 import hashlib
 import json
 import logging
@@ -14,6 +17,7 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+import threading
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -170,10 +174,43 @@ DELTA_COLLECTION = "ir_knowledge_extra"
 LOCAL_SOURCES_SUBDIR = Path("sources") / "local"
 RAG_BUILD_TAG = "nexus_rag_build"
 _REBUILD_BATCH = 256
+# One rebuild at a time on the server path: concurrent builds could interleave
+# collection delete/create/upsert (script use stays lock-free).
+_REBUILD_LOCK = threading.Lock()
 
 
 def _local_sources_dir(index_dir: Path) -> Path:
     return Path(index_dir) / LOCAL_SOURCES_SUBDIR
+
+
+def _collection_space(collection: Any) -> str:
+    """Distance space a Chroma collection was created with (default l2)."""
+    try:
+        return str((collection.metadata or {}).get("hnsw:space") or "l2").lower()
+    except Exception:  # noqa: BLE001 — be permissive about client types
+        return "l2"
+
+
+def _open_delta_collection(client: Any, vendor: Any) -> Any | None:
+    """Open the delta only when its scoring space matches the vendor index.
+
+    Mixing ``cosine`` (the bundle) and ``l2`` (Chroma's default) makes
+    ``score = 1 - distance`` mean different things per collection and biases
+    every merged ranking — a mismatched delta is ignored until rebuilt.
+    """
+    try:
+        col = client.get_collection(DELTA_COLLECTION)
+    except Exception:  # noqa: BLE001 — delta is optional
+        return None
+    wanted, got = _collection_space(vendor), _collection_space(col)
+    if got != wanted:
+        logger.warning(
+            "Delta collection %s uses %s space but the vendor index uses %s; "
+            "run forensic_rag_rebuild() to rebuild it",
+            DELTA_COLLECTION, got, wanted,
+        )
+        return None
+    return col
 
 
 def _load_embedder() -> tuple[Any, str]:
@@ -197,13 +234,22 @@ def rebuild_local_index(
     collection: str = DELTA_COLLECTION,
     prune: bool = True,
     encode: Any = None,
+    allow_model_mismatch: bool = False,
 ) -> dict[str, Any]:
     """Build/refresh a LOCAL delta collection from JSONL sources.
 
-    ``data_dir`` defaults to ``<index>/sources/local`` (our generated docs).
-    Vendor docs live in ``ir_knowledge`` and are never touched here; the delta
-    collection is queried *alongside* the vendor one, so the downloaded bundle
-    stays pristine and re-downloadable.
+    ``data_dir`` defaults to ``<index>/sources/local`` (our generated docs) and
+    may be a folder or a single ``.jsonl`` file. Vendor docs live in
+    ``ir_knowledge`` and are never touched here; the delta collection is
+    queried *alongside* the vendor one, so the downloaded bundle stays
+    pristine and re-downloadable.
+
+    Safety guards:
+    - the delta is created with the **same distance space as the vendor
+      index** (the bundle uses ``cosine``; a legacy ``l2`` delta is deleted
+      and rebuilt) so merged scores stay comparable;
+    - a build is refused when the index records a different embedding model
+      than the resolved one (``allow_model_mismatch=True`` bypasses).
 
     ``encode`` is an injectable callable ``(texts) -> list[list[float]]`` used
     by tests; production loads the same model the query path uses (vectors and
@@ -215,18 +261,43 @@ def rebuild_local_index(
     import chromadb
 
     index_dir = Path(index_dir)
-    src_dir = Path(data_dir) if data_dir else _local_sources_dir(index_dir)
-    if not src_dir.is_dir():
+    src_path = Path(data_dir) if data_dir else _local_sources_dir(index_dir)
+    if not src_path.exists():
         return {
             "status": "empty",
-            "error": f"no local sources at {src_dir}",
+            "error": f"no local sources at {src_path}",
             "hint": "run scripts/build_rag_sources.py, then rebuild",
         }
-    from nexus.rag.sources import load_directory
+    from nexus.rag.sources import load_directory, load_jsonl
 
-    docs = load_directory(src_dir)
+    docs = list(load_jsonl(src_path)) if src_path.is_file() else load_directory(src_path)
     if not docs:
-        return {"status": "empty", "error": f"no documents in {src_dir}"}
+        return {"status": "empty", "error": f"no documents in {src_path}"}
+
+    # Guard: a bundle recorded with a different model means the vectors would
+    # be silently incomparable - refuse unless the operator deliberately
+    # rebuilds the whole index.
+    index_model = ""
+    try:
+        meta = json.loads((index_dir / "metadata.json").read_text(encoding="utf-8"))
+        index_model = str(meta.get("model") or "")
+    except (OSError, ValueError):
+        pass
+    configured_model = str(resolve_embedding_source()["model_id"])
+    if (
+        index_model
+        and configured_model
+        and index_model != configured_model
+        and not allow_model_mismatch
+    ):
+        return {
+            "status": "model_mismatch",
+            "error": (
+                f"index records model {index_model!r} but the resolved embedder is "
+                f"{configured_model!r}; mixing embedding spaces would corrupt retrieval"
+            ),
+            "hint": "pass allow_model_mismatch=True only when rebuilding the whole index",
+        }
 
     t0 = _time.monotonic()
     model_id = ""
@@ -237,7 +308,27 @@ def rebuild_local_index(
     chroma_path = index_dir / "chroma"
     chroma_path.mkdir(parents=True, exist_ok=True)
     client = chromadb.PersistentClient(path=str(chroma_path))
-    col = client.get_or_create_collection(collection)
+
+    # Mirror the vendor's distance space so `score = 1 - distance` means the
+    # same thing in both collections (the bundle uses cosine; Chroma's own
+    # default is l2 - mixing them biases every merged ranking).
+    vendor_space = ""
+    with contextlib.suppress(Exception):  # vendor index may not exist yet
+        vendor_space = _collection_space(client.get_collection("ir_knowledge"))
+    target_space = vendor_space or "cosine"
+
+    recreated = False
+    col = None
+    try:
+        col = client.get_collection(collection)
+    except Exception:  # noqa: BLE001 — not created yet
+        col = None
+    if col is not None and _collection_space(col) != target_space:
+        client.delete_collection(collection)
+        col = None
+        recreated = True
+    if col is None:
+        col = client.create_collection(collection, metadata={"hnsw:space": target_space})
 
     now = datetime.now(UTC).isoformat()
     sources: dict[str, int] = {}
@@ -278,6 +369,8 @@ def rebuild_local_index(
     return {
         "status": "ok",
         "collection": collection,
+        "space": target_space,
+        "recreated": recreated,
         "documents": len(docs),
         "upserted": upserted,
         "pruned": pruned,
@@ -480,10 +573,7 @@ class RAGIndex:
         self.model = SentenceTransformer(source["load_path"], **st_kwargs)
         client = chromadb.PersistentClient(path=str(chroma_path))
         self.collection = client.get_collection("ir_knowledge")
-        try:
-            self.delta_collection = client.get_collection(DELTA_COLLECTION)
-        except Exception:  # noqa: BLE001 — delta collection is optional
-            self.delta_collection = None
+        self.delta_collection = _open_delta_collection(client, self.collection)
         self._load_available_sources()
         self._load_mitre_lookup()
         count = self.collection.count()
@@ -492,6 +582,24 @@ class RAGIndex:
             f"(device={self.model.device})"
         )
         self._loaded = True
+
+    def refresh_delta(self) -> bool:
+        """Re-open the delta collection after an in-process rebuild.
+
+        Returns True when a space-compatible delta is visible; False when it
+        is absent or was built with a different distance space than the
+        vendor index (``_open_delta_collection`` refuses the mismatch).
+        """
+        import chromadb
+
+        chroma_path = self.index_dir / "chroma"
+        if not chroma_path.exists():
+            self.delta_collection = None
+            return False
+        client = chromadb.PersistentClient(path=str(chroma_path))
+        self.delta_collection = _open_delta_collection(client, self.collection)
+        self._load_available_sources()
+        return self.delta_collection is not None
 
     def _load_available_sources(self) -> None:
         sources: set[str] = set()
@@ -632,7 +740,7 @@ class RAGIndex:
             return rows
 
         rows = _rows_from(self.collection, "vendor")
-        if self.delta_collection is not None:
+        if self.delta_collection is not None and self.delta_collection.count() > 0:
             rows.extend(_rows_from(self.delta_collection, "local"))
         formatted = merge_search_rows(rows, top_k)
 
@@ -647,15 +755,17 @@ class RAGIndex:
         if not self._loaded:
             self.load()
         src = self._embed_source or resolve_embedding_source()
+        delta = delta_stats(self.index_dir)
         return {
             "document_count": self.collection.count(),
+            "searchable_document_count": self.collection.count() + int(delta.get("count") or 0),
             "source_count": len(self.available_sources),
             "sources": self.available_sources,
             "model": src["model_id"],
             "model_load_path": src["load_path"],
             "model_source": src["source"],
             "local_files_only": src["local_files_only"],
-            "delta": delta_stats(self.index_dir),
+            "delta": delta,
         }
 
 
@@ -679,10 +789,12 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         technique: str = "",
         platform: str = "",
     ) -> list:
-        """Semantic search across the forensic knowledge base (~23K records).
+        """Semantic search across the forensic knowledge base (22K+ records).
 
-        Covers: Sigma rules, MITRE ATT&CK, Atomic Red Team, Splunk,
-        KAPE, Velociraptor, LOLBAS, GTFOBins.
+        Vendor bundle: Sigma rules, MITRE ATT&CK, Atomic Red Team, Splunk,
+        KAPE, Velociraptor, LOLBAS, GTFOBins. Local registry delta: Insider
+        Threat Matrix, ATT&CK v19 detection strategies, ATLAS, MBC capa
+        mappings. Hits are tagged with ``collection`` (vendor/local).
 
         Examples:
             forensic_rag_search("credential dumping detection")
@@ -771,6 +883,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         data_dir: str = "",
         collection: str = "",
         prune: bool = True,
+        allow_model_mismatch: bool = False,
     ) -> dict:
         """Build/refresh the LOCAL RAG delta from generated JSONL sources.
 
@@ -780,13 +893,17 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         (``ir_knowledge_extra``). The downloaded vendor bundle is never
         modified - search merges both and tags each hit with its collection.
         Safe to re-run: deterministic ids update in place; docs removed from
-        the sources are pruned (scoped to the delta collection only).
+        the sources are pruned (scoped to the delta collection only). The
+        delta is created in the vendor index's distance space (cosine) and a
+        build is refused if the index records a different embedding model.
 
         Args:
             data_dir: Optional folder/file of JSONL sources (default:
                 ``<index>/sources/local``)
             collection: Delta collection name (default: ir_knowledge_extra)
             prune: Drop delta docs whose ids are no longer in the sources
+            allow_model_mismatch: Bypass the index-model guard (only when
+                deliberately rebuilding the whole index with a new model)
         """
         available, msg = _check_rag_available()
         if not available:
@@ -795,16 +912,23 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         idx_dir = _get_index_dir()
         audit_id = audit.log(
             tool="forensic_rag_rebuild",
-            params={"data_dir": data_dir, "collection": collection, "prune": prune},
+            params={
+                "data_dir": data_dir,
+                "collection": collection,
+                "prune": prune,
+                "allow_model_mismatch": allow_model_mismatch,
+            },
             result_summary={"status": "building"},
         )
         try:
-            result = rebuild_local_index(
-                idx_dir,
-                data_dir=data_dir or None,
-                collection=collection or DELTA_COLLECTION,
-                prune=prune,
-            )
+            with _REBUILD_LOCK:
+                result = rebuild_local_index(
+                    idx_dir,
+                    data_dir=data_dir or None,
+                    collection=collection or DELTA_COLLECTION,
+                    prune=prune,
+                    allow_model_mismatch=allow_model_mismatch,
+                )
         except Exception as exc:  # noqa: BLE001 — report, never crash the server
             audit.log(
                 tool="forensic_rag_rebuild_error",
@@ -812,6 +936,14 @@ def register_tools(server: FastMCP, audit: AuditWriter):
                 result_summary={"error": str(exc)[:200]},
             )
             return {"status": "failed", "error": str(exc)[:400]}
+        # An already-loaded index holds the old delta handle: refresh it so
+        # the new docs are searchable without a server restart.
+        if result.get("status") == "ok" and _global_index is not None and _global_index.is_loaded:
+            try:
+                result["search_visible"] = _global_index.refresh_delta()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("delta refresh after rebuild failed: %s", exc)
+                result["search_visible"] = False
         result["audit_id"] = audit_id or audit.last_audit_id or ""
         return result
 
@@ -819,8 +951,11 @@ def register_tools(server: FastMCP, audit: AuditWriter):
     def forensic_rag_download(tag: str = "latest") -> dict:
         """Download pre-built RAG index from GitHub releases (~50MB).
 
-        Downloads a ChromaDB bundle with 23K+ records from 23 authoritative
-        IR sources. Much faster than building from scratch.
+        Downloads a ChromaDB bundle with 22K+ records from authoritative IR
+        sources. Much faster than building from scratch. Replaces the on-disk
+        bundle: a local registry delta may be dropped by the swap (the result
+        says so) and can be restored with ``forensic_rag_rebuild()``; the
+        loaded index is reset so the next call serves the new bundle.
 
         Args:
             tag: Release tag (default: 'latest', or specific tag like 'rag-index-v1')
@@ -837,6 +972,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
 
         dest = _get_index_dir()
         dest.mkdir(parents=True, exist_ok=True)
+        delta_before = delta_stats(dest)
 
         print(f"Fetching release info from {_release_repo()}...")
         try:
@@ -881,9 +1017,24 @@ def register_tools(server: FastMCP, audit: AuditWriter):
                 return {"status": "failed", "error": "Index verification failed"}
 
             print("RAG index installed successfully.")
+            # The bundle replaced the on-disk index: any local delta may have
+            # been dropped by the swap, and a loaded RAGIndex still points at
+            # the pre-download collection handles. Reset the singleton so the
+            # next call reloads from disk, and report delta state honestly.
+            global _global_index
+            _global_index = None
+            delta_after = delta_stats(dest)
             idx = _get_index()
             stats = idx.get_stats()
-            return {"status": "success", "tag": tag_name, **stats}
+            result = {"status": "success", "tag": tag_name, **stats}
+            result["delta"] = delta_after
+            if int(delta_before.get("count") or 0) > 0 and int(delta_after.get("count") or 0) == 0:
+                result["delta_note"] = (
+                    "the local RAG delta was replaced by the downloaded bundle; "
+                    "re-run forensic_rag_rebuild() to restore it"
+                )
+                result["delta_before"] = delta_before
+            return result
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
