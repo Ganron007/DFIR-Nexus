@@ -12,6 +12,7 @@ powers three surfaces: needle hit-counts (playbook auto-scan), alert rows
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -526,10 +527,8 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
             from nexus.langgraph.query_pack import playbook_event_ids_for_families
 
             fact_terms: list[str] = []
-            try:
+            with contextlib.suppress(Exception):
                 fact_terms.extend(playbook_event_ids_for_families(families))
-            except Exception:  # noqa: BLE001
-                pass
             for packs in (
                 attack_packs_for(families, set(), limit=8),
                 sigma_packs_for(families, limit=8),
