@@ -353,6 +353,15 @@ def nl_to_needles(
         if str(t).strip()
     ]
 
+    # Vocabulary gate (F6): the framework context lists carry event IDs and
+    # evidence-container file names alongside real needles. Those are typed
+    # facts (match-site classifies them, the briefing probes them) - they must
+    # never become search needles here, at any endpoint that asks this function
+    # for the query vocabulary.
+    from nexus.knowledge.needle_terms import filter_scannable
+
+    context_needles = filter_scannable(context_needles)
+
     if model is None:
         result = _heuristic_needles(question)
         result["needles"] = _dedupe_needles(

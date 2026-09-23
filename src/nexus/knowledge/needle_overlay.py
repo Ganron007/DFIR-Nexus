@@ -24,6 +24,14 @@ def overlay_path() -> Path:
 
 
 def load_overlay() -> dict[str, list[str]]:
+    """Load the local overlay, vocabulary-gated (F6).
+
+    Non-scannable entries (bare numbers, container file names) are filtered on
+    read, so a legacy overlay written before the gate existed cannot leak
+    event IDs into prompts or suggestions.
+    """
+    from nexus.knowledge.needle_terms import is_scannable_term
+
     path = overlay_path()
     if not path.is_file():
         return {}
@@ -36,6 +44,7 @@ def load_overlay() -> dict[str, list[str]]:
         for family, terms in data.items():
             if isinstance(terms, list):
                 cleaned = [str(t).strip() for t in terms if str(t).strip()]
+                cleaned = [t for t in cleaned if is_scannable_term(t)]
                 if cleaned:
                     out[str(family).lower()] = cleaned
     return out
@@ -57,11 +66,22 @@ def overlay_terms_for_families(families: set[str] | list[str] | None) -> list[st
 
 
 def promote_needles(family: str, terms: list[str]) -> dict:
-    """Merge terms into the local overlay for a family (atomic write)."""
+    """Merge terms into the local overlay for a family (atomic write).
+
+    The overlay is a *search-needle* vocabulary: bare numbers (event IDs) and
+    container file names are not needles (F6) - they are skipped and reported
+    in ``skipped`` instead of being persisted.
+    """
+    from nexus.knowledge.needle_terms import is_scannable_term
+
     overlay = load_overlay()
     fam = (family or "general").strip().lower() or "general"
+    raw = [str(t).strip() for t in terms if str(t).strip()]
+    kept = [t for t in raw if is_scannable_term(t)]
+    kept_set = set(kept)
+    skipped = [t for t in raw if t not in kept_set]
     merged = list(dict.fromkeys(
-        [str(t).strip() for t in (overlay.get(fam, []) + list(terms)) if str(t).strip()]
+        [str(t).strip() for t in (overlay.get(fam, []) + kept) if str(t).strip()]
     ))
     overlay[fam] = merged
     path = overlay_path()
@@ -75,4 +95,10 @@ def promote_needles(family: str, terms: list[str]) -> dict:
         with __import__("contextlib").suppress(OSError):
             os.unlink(tmp)
         raise
-    return {"family": fam, "terms": merged, "count": len(merged), "path": str(path)}
+    return {
+        "family": fam,
+        "terms": merged,
+        "count": len(merged),
+        "path": str(path),
+        "skipped": skipped,
+    }

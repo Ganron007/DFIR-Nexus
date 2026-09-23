@@ -53,10 +53,24 @@ def sigma_needles_for(
 
 
 def sigma_context_for(packs: list[dict[str, Any]], cap: int = 5) -> str:
+    """Render Sigma packs for prompts, vocabulary-gated (F6).
+
+    Scannable needles render as terms; bare numbers (event IDs) and container
+    file names render as typed hints instead of keywords.
+    """
+    from nexus.knowledge.needle_terms import split_terms
+
     lines: list[str] = []
     for pack in packs[:cap]:
-        terms = ", ".join(str(n) for n in (pack.get("needles") or [])[:14])
-        lines.append(f"{pack.get('name', '')}: {terms}")
+        scan_terms, hints = split_terms(pack.get("needles") or [])
+        line = str(pack.get("name", "") or "Sigma").strip()
+        if scan_terms:
+            line += ": " + ", ".join(str(n) for n in scan_terms[:14])
+        if hints["event_ids"]:
+            line += f" | event ids: {', '.join(hints['event_ids'][:8])}"
+        if hints["artifacts"]:
+            line += f" | artifact files: {', '.join(hints['artifacts'][:4])}"
+        lines.append(line)
         caveats = [str(c) for c in (pack.get("caveats") or [])[:1] if str(c).strip()]
         if caveats:
             lines.append(f"  caveat: {caveats[0][:200]}")

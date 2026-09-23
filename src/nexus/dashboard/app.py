@@ -6033,6 +6033,28 @@ def _list_dir(p: Path) -> Response:
     return JSONResponse({"path": str(p), "parent": parent, "drives": False, "entries": out})
 
 
+def _gate_suggestion_vocabulary(suggestion: dict[str, Any]) -> None:
+    """Split raw suggestion needles into scannable terms + typed hints (F6).
+
+    The Explore suggestion list is the promotable needle surface: bare numbers
+    (event IDs) and container file names must not be offered as needles. They
+    ride along as ``event_ids`` / ``artifacts`` so nothing is lost.
+    """
+    from nexus.knowledge.needle_terms import split_terms
+
+    event_ids: list[str] = []
+    artifacts: list[str] = []
+    for key, cap in (("needles", 20), ("strong_needles", 12)):
+        scan, context = split_terms(suggestion.get(key) or [])
+        suggestion[key] = scan[:cap]
+        event_ids.extend(context["event_ids"])
+        artifacts.extend(context["artifacts"])
+    if event_ids:
+        suggestion["event_ids"] = list(dict.fromkeys(event_ids))
+    if artifacts:
+        suggestion["artifacts"] = list(dict.fromkeys(artifacts))
+
+
 async def api_playbook_needles(request):
     """GET /portal/api/playbook/needles?families=fam1,fam2 — suggested needles from playbooks.
 
@@ -6181,6 +6203,9 @@ async def api_playbook_needles(request):
         overlay_suggestions + attack_suggestions + sigma_suggestions
         + itm_suggestions + external_suggestions + suggestions
     )
+    # F6: no promotable suggestion may offer a bare number or container name.
+    for suggestion in combined:
+        _gate_suggestion_vocabulary(suggestion)
     return JSONResponse({
         "suggestions": combined,
         "total": len(combined),

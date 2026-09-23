@@ -412,7 +412,9 @@ def _propose_with_model(
             raw.append(str(q["dsl"]).strip())
         elif isinstance(q, str) and q.strip():
             raw.append(q.strip())
-    for n in (parsed.get("needles") or []):
+    for n in _bare_needles(parsed):
+        # F6: the backward-compatible bare-needle fallback is auto-generated
+        # vocabulary - event IDs / container names never become query terms.
         if str(n).strip():
             raw.append(str(n).strip())
     validated = [_validate_dsl(q) for q in raw][:_MAX_NEEDLES_PER_PROPOSAL]
@@ -534,6 +536,21 @@ def _first_literal(payload: Any) -> str:
             if got:
                 return got
     return ""
+
+
+def _bare_needles(parsed: dict[str, Any]) -> list[str]:
+    """Backward-compatible bare-needle fallback, vocabulary-gated (F6).
+
+    The old proposal schema (``{"needles": [...]}``) is LLM-authored
+    vocabulary, so event IDs / container file names never become query terms.
+    """
+    from nexus.knowledge.needle_terms import filter_scannable
+
+    return [
+        str(n).strip()
+        for n in filter_scannable(list(parsed.get("needles") or []))
+        if str(n).strip()
+    ]
 
 
 def _validate_dsl(query: str) -> dict[str, Any]:

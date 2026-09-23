@@ -125,9 +125,10 @@ def _playbook_for_family(family: str) -> str:
 
 
 def _attack_for_family(families: list[str]) -> str:
-    """Load ATT&CK technique context for the given evidence families."""
+    """Load ATT&CK technique context for the given evidence families (F6-gated)."""
     try:
         from nexus.knowledge.loader import get_attack_needles
+        from nexus.knowledge.needle_terms import split_terms
 
         packs = get_attack_needles()
         blocks: list[str] = []
@@ -138,10 +139,21 @@ def _attack_for_family(families: list[str]) -> str:
             if not pack_families:
                 continue
             if any(f.lower() in [pf.lower() for pf in pack_families] for f in families):
-                block = f"--- {pack.get('technique_id', 'T')} {pack.get('name', '')} ---\n"
-                needles = pack.get("needles") or []
-                if needles:
-                    block += "Needles: " + ", ".join(str(n) for n in needles[:8]) + "\n"
+                technique = str(pack.get("technique") or pack.get("technique_id") or "T")
+                block = f"--- {technique} {pack.get('name', '')} ---\n"
+                scan_terms, hints = split_terms(pack.get("needles") or [])
+                if scan_terms:
+                    block += "Needles: " + ", ".join(str(n) for n in scan_terms[:8]) + "\n"
+                if hints["event_ids"]:
+                    block += (
+                        "Event IDs (typed probe): "
+                        + ", ".join(hints["event_ids"][:8])
+                        + "\n"
+                    )
+                if hints["artifacts"]:
+                    block += (
+                        "Artifact files: " + ", ".join(hints["artifacts"][:4]) + "\n"
+                    )
                 caveats = pack.get("caveats") or []
                 if caveats:
                     block += "Caveats:\n"
@@ -155,9 +167,10 @@ def _attack_for_family(families: list[str]) -> str:
 
 
 def _sigma_for_family(families: list[str]) -> str:
-    """Load Sigma rule context for the given evidence families."""
+    """Load Sigma rule context for the given evidence families (F6-gated)."""
     try:
         from nexus.knowledge.loader import get_sigma_needles
+        from nexus.knowledge.needle_terms import split_terms
 
         packs = get_sigma_needles()
         blocks: list[str] = []
@@ -169,9 +182,28 @@ def _sigma_for_family(families: list[str]) -> str:
                 continue
             if any(f.lower() in [pf.lower() for pf in pack_families] for f in families):
                 block = f"--- {pack.get('name', 'Sigma')} ---\n"
-                needles = pack.get("needles") or []
-                if needles:
-                    block += "Detection fields: " + ", ".join(str(n) for n in needles[:8]) + "\n"
+                scan_terms, hints = split_terms(pack.get("needles") or [])
+                if scan_terms:
+                    block += (
+                        "Detection fields: "
+                        + ", ".join(str(n) for n in scan_terms[:8])
+                        + "\n"
+                    )
+                if hints["event_ids"]:
+                    # Bare numbers are typed facts (EventId fields), never
+                    # keyword needles - label them so prompts do not teach
+                    # them as search terms.
+                    block += (
+                        "Event IDs (typed probe): "
+                        + ", ".join(hints["event_ids"][:8])
+                        + "\n"
+                    )
+                if hints["artifacts"]:
+                    block += (
+                        "Artifact files: "
+                        + ", ".join(hints["artifacts"][:4])
+                        + "\n"
+                    )
                 blocks.append(block[:600])
         return "\n".join(blocks[:3]).strip()
     except Exception as exc:

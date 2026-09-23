@@ -1236,14 +1236,21 @@ def llm_directions(
         if start == -1 or end == -1:
             return []
         parsed = json.loads(text[start:end + 1])
+        from nexus.knowledge.needle_terms import filter_scannable
+
         out = []
         for d in (parsed.get("directions") or [])[:6]:
             if not isinstance(d, dict):
                 continue
+            # F6: LLM directions are auto-generated vocabulary - keep event
+            # IDs / container names out of the proposed needles.
+            kept_needles = filter_scannable(
+                [str(n) for n in (d.get("needles") or [])[:8]]
+            )
             out.append({
                 "title": str(d.get("title") or "")[:160],
                 "why": str(d.get("why") or "")[:400],
-                "needles": [str(n)[:80] for n in (d.get("needles") or [])[:8]],
+                "needles": [n[:80] for n in kept_needles],
                 "family": str(d.get("family") or "")[:40],
             })
         return out
