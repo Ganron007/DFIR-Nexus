@@ -141,6 +141,25 @@ def test_steer_agent_provenance_travels(tmp_path):
         assert q.get("audit_id"), f"query {q['dsl']} missing audit_id"
 
 
+def test_steer_agent_legacy_path_when_loop_disabled(tmp_path, monkeypatch):
+    """NEXUS_CONTEXT_LOOP=0 keeps the legacy 3-step pipeline working."""
+    from nexus.langgraph.steer_agent import run_steer_agent
+
+    monkeypatch.setenv("NEXUS_CONTEXT_LOOP", "0")
+    case = _mkcase(tmp_path)
+    fake = _FakeModel([
+        {"queries": ["family:hayabusa AND sdelete"]},
+        {"reply": "Legacy pipeline answer."},
+    ])
+    with patch("nexus.langgraph.llm_pipeline.get_model", return_value=fake), \
+         patch("nexus.langgraph.steer_agent._gather_helper_context",
+               return_value=("", "", "")):
+        result = run_steer_agent(case, "Did someone use sdelete?")
+    assert result["queries_executed"], "legacy path must still execute queries"
+    assert "Legacy pipeline answer" in result["reply"]
+    assert result.get("tool_calls", []) == []
+
+
 def test_fast_plan_skips_llm_for_clear_intents():
     """WP 4j.34 — deterministic planner for list/IOC questions (saves the
     30-90 s LLM planning call on reasoning models)."""

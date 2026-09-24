@@ -932,9 +932,9 @@ def build_dfir_markdown(
 
         model = report_analysis.resolve_model() if llm else None
         analyses = report_analysis.analyze_clusters(
-            clusters, rows_for, model, steer=steer)
+            clusters, rows_for, model, steer=steer, case_dir=case_dir)
         assessment = report_analysis.case_assessment(
-            clusters, analyses, rows_for, model, steer=steer)
+            clusters, analyses, rows_for, model, steer=steer, case_dir=case_dir)
         llm_ran = any(a.get("source") == "llm" for a in analyses.values())
 
     mitre: dict[str, list[str]] = defaultdict(list)

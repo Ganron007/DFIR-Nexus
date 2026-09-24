@@ -45,6 +45,12 @@ You answer only from evidence retrieved through tools in this turn. You never
 invent hosts, users, files, timestamps or events.
 """
 
+
+def context_loop_enabled() -> bool:
+    """WP 10.53 kill-switch shared by steer, proposals, directions and report."""
+    raw = os.environ.get("NEXUS_CONTEXT_LOOP", "1").strip().lower()
+    return raw not in ("0", "false", "no", "off", "disabled")
+
 _TOOL_ARGS: dict[str, set[str]] = {
     "es_mappings": set(),
     "es_search": {"query", "size", "sort", "search_after"},
@@ -589,6 +595,7 @@ def run_context_loop(
     on_event: Callable[[dict[str, Any]], None] | None = None,
     budget: LoopBudget | None = None,
     audit: AuditWriter | None = None,
+    terminal_keys: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     """Run one bounded, tool-driving LLM turn.
 
@@ -755,6 +762,19 @@ def run_context_loop(
             break
 
         calls = _normalize_tool_calls(parsed)
+        if (
+            not calls
+            and terminal_keys
+            and any(key in parsed for key in terminal_keys)
+        ):
+            # Structured task final (directions/proposals/report): the model
+            # returned the domain object directly instead of the answer
+            # envelope. Treat it as the terminal reply.
+            reply = json.dumps(parsed, default=str, sort_keys=True)[:8000]
+            finish_reason = "answer_terminal"
+            partial = False
+            _emit({"event": "loop_done", "reply": reply, "partial": False})
+            break
         if not calls:
             answer = str(parsed.get("answer") or parsed.get("reply") or "").strip()
             if answer:

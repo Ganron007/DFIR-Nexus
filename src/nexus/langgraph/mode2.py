@@ -254,7 +254,15 @@ def propose_next_needles(
     """
     if model is not None:
         try:
-            return _propose_with_model(case_dir, hits, already_run, model, briefing=briefing)
+            loop_proposal = _propose_with_loop(
+                case_dir, hits, already_run, model, briefing=briefing)
+            if loop_proposal:
+                return loop_proposal
+        except Exception as exc:  # noqa: BLE001
+            log.warning("Mode 2 context-loop proposal failed (%s)", exc)
+        try:
+            return _propose_with_model(
+                case_dir, hits, already_run, model, briefing=briefing)
         except Exception as exc:  # noqa: BLE001
             log.warning("Mode 2 LLM proposal failed (%s), using heuristic", exc)
     return _propose_heuristic(hits, already_run)
@@ -284,6 +292,81 @@ def _briefing_context(briefing: dict[str, Any] | None) -> str:
         if bits:
             parts.append("Top entities: " + " | ".join(bits))
     return "\n".join(parts)
+
+
+def _propose_with_loop(
+    case_dir: Path, hits: list[dict], already_run: list[str], model: Any,
+    briefing: dict[str, Any] | None = None,
+) -> dict | None:
+    """WP 10.53: model-driven proposal via the shared bounded tool loop.
+
+    Replaces the pre-fetched RAG/playbook proposal context for the model path;
+    the model inspects schema/rows/ledger/knowledge on demand and returns the
+    proposal JSON object directly (terminal keys). Returns ``None`` to fall
+    back to the legacy one-shot prompt or the heuristic.
+    """
+    from nexus.audit import AuditWriter
+    from nexus.langgraph.context_loop import (
+        LoopBudget,
+        context_loop_enabled,
+        run_context_loop,
+    )
+    from nexus.langgraph.query_pack import load_case_intake
+
+    if not context_loop_enabled():
+        return None
+    case_dir = Path(case_dir)
+    families = sorted({str(h.get("family") or "?") for h in hits})
+    intake = load_case_intake(case_dir)
+    already = ", ".join(str(x) for x in already_run[-20:]) or "(none)"
+    question = (
+        f"Case question: {intake.get('question') or '(none)'}\n"
+        f"Families with hits: {', '.join(families) or '(none)'}\n"
+        f"Already searched: {already}\n\n"
+        "Use the read-only tools to inspect the schema, the run record, rows "
+        "or methodology you actually need, then propose 2-6 NEW Elasticsearch "
+        'queries or aggregations. Return ONLY a JSON object: {"queries":'
+        '[{"es":{"query":{...}},"why":"..."}],'
+        '"aggregations":[{"aggs":{...},"query":{},"why":"..."}],'
+        '"rationale":"..."}'
+    )
+    system = (
+        "You are the Mode 2 proposal planner. You may call the read-only "
+        "tools a few times before answering; do not pre-fetch unrelated "
+        "evidence. Prefer queries that expand or corroborate the current "
+        "hits; use aggregations for counting questions. Return the proposal "
+        "JSON object as the final answer."
+    )
+    loop = run_context_loop(
+        case_dir=case_dir,
+        case_id=case_dir.name,
+        question=question,
+        model=model,
+        system_prompt=system,
+        task="mode2-propose",
+        terminal_keys=("queries", "aggregations", "needles"),
+        budget=LoopBudget(rounds=3, seconds=180.0, calls=6),
+        audit=AuditWriter("nexus", audit_dir=case_dir / "audit"),
+    )
+    reply = str(loop.get("reply") or "")
+    start, end = reply.find("{"), reply.rfind("}")
+    if start == -1 or end <= start:
+        return None
+    try:
+        parsed = json.loads(reply[start:end + 1])
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    if not any(key in parsed for key in ("queries", "aggregations", "needles")):
+        return None
+    out = _proposal_from_parsed(parsed, source="llm-context-loop")
+    if not (
+        out.get("es_queries") or out.get("dsl_queries")
+        or out.get("es_aggregations") or out.get("aggregations")
+    ):
+        return None
+    return out
 
 
 def _propose_with_model(
@@ -402,6 +485,15 @@ def _propose_with_model(
     if start == -1 or end == -1:
         raise ValueError("model returned no JSON")
     parsed = json.loads(text[start:end + 1])
+    out = _proposal_from_parsed(parsed)
+    out["rag_context"] = rag_context
+    out["rag_provenance"] = rag_provenance
+    out["playbook_context"] = playbook_context
+    return out
+
+
+def _proposal_from_parsed(parsed: dict[str, Any], *, source: str = "llm") -> dict[str, Any]:
+    """Validate a proposal JSON object into the loop's proposal shape."""
     # WP 4j.10: proposals are DSL queries. New schema {"queries":[{"dsl","why"}]}
     # with backward compat for {"needles":[...]}. The validation wall: every
     # query must parse; a parse failure degrades that query to its bare terms
@@ -486,10 +578,7 @@ def _propose_with_model(
         "es_aggregations": es_aggregations,
         "aggregations": aggregations,
         "rationale": str(parsed.get("rationale") or "")[:300],
-        "source": "llm",
-        "rag_context": rag_context,
-        "rag_provenance": rag_provenance,
-        "playbook_context": playbook_context,
+        "source": source,
     }
 
 

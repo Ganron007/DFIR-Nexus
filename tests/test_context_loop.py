@@ -569,6 +569,67 @@ def test_mode2_chat_stream_emits_tool_events_and_history(tmp_path):
     assert seen["history"] == [{"role": "examiner", "text": "prior"}]
 
 
+def test_propose_next_needles_uses_context_loop(tmp_path):
+    from nexus.langgraph import mode2
+
+    case = _case(tmp_path)
+    (case / "audit").mkdir(exist_ok=True)
+    (case / "CASE.yaml").write_text("name: loop\nstatus: active\n", encoding="utf-8")
+    hits = [{"family": "hayabusa", "file": "a.csv", "line": "1", "text": "x"}]
+    reply = json.dumps({
+        "queries": [{"es": {"query": {"match_all": {}}}, "why": "expand"}],
+        "rationale": "context-loop proposal",
+    })
+    with patch("nexus.langgraph.context_loop.run_context_loop",
+               return_value={"reply": reply, "tool_calls": [], "hits": []}), \
+         patch.object(mode2, "_propose_with_model",
+                      side_effect=AssertionError("one-shot fallback must not run")):
+        out = mode2.propose_next_needles(case, "q", hits, [], model=object())
+    assert out["source"] == "llm-context-loop"
+    assert out["es_queries"] and out["es_queries"][0]["why"] == "expand"
+
+
+def test_analyze_cluster_uses_context_loop(tmp_path):
+    from nexus.langgraph import report_analysis
+
+    case = _case(tmp_path)
+    (case / "audit").mkdir(exist_ok=True)
+    reply = json.dumps({
+        "category": "execution", "what": "w", "why": "y",
+        "verify": ["check x"], "caveats": ["benign possibility"],
+    })
+    cluster = [{"id": "F-1", "title": "t", "severity": "high",
+                "mitre_ids": ["T1059"]}]
+    rows = [{"time": "2026-01-01T00:00:00Z", "source": "hayabusa",
+             "detail": "x"}]
+    with patch("nexus.langgraph.context_loop.run_context_loop",
+               return_value={"reply": reply, "tool_calls": [], "hits": []}):
+        out = report_analysis.analyze_cluster(
+            cluster, rows, model=object(), case_dir=case)
+    assert out["category"] == "execution"
+    assert out["source"] == "llm-context-loop"
+
+
+def test_case_assessment_uses_context_loop(tmp_path):
+    from nexus.langgraph import report_analysis
+
+    case = _case(tmp_path)
+    (case / "audit").mkdir(exist_ok=True)
+    reply = json.dumps({
+        "sequence": "s", "scope": "one host", "confidence": "medium",
+        "gaps": ["memory not collected"], "recommended": ["collect memory"],
+    })
+    clusters = [[{"id": "F-1", "title": "t", "severity": "high"}]]
+    analyses = {0: {"category": "execution", "what": "w"}}
+    rows_for = {0: [{"time": "2026-01-01T00:00:00Z", "source": "hayabusa"}]}
+    with patch("nexus.langgraph.context_loop.run_context_loop",
+               return_value={"reply": reply, "tool_calls": [], "hits": []}):
+        out = report_analysis.case_assessment(
+            clusters, analyses, rows_for, model=object(), case_dir=case)
+    assert out["sequence"] == "s"
+    assert out["source"] == "llm-context-loop"
+
+
 def test_alias_routing_is_read_only_and_documented():
     from nexus.langgraph.backbone import MODE2_TOOL_ALLOWLIST, TOOL_ALIASES
 

@@ -1166,6 +1166,8 @@ async def api_register_evidence(request):
         return sealed
     if not path:
         return JSONResponse({"ok": False, "error": "path missing"}, status_code=400)
+    # New evidence changes the index/signal map; old directions are stale.
+    _invalidate_briefing_directions(case_dir)
 
     from nexus.audit import resolve_examiner
     from nexus.case import evidence_service
@@ -2943,6 +2945,16 @@ def _invalidate_briefing(case_id: str) -> None:
         _briefing_cache.pop(case_id, None)
 
 
+def _invalidate_briefing_directions(case_dir: Path) -> None:
+    """Directions are tied to the signal map; any reprocessing makes them stale."""
+    try:
+        path = Path(case_dir) / "analysis" / "briefing_directions.json"
+        if path.is_file():
+            path.unlink()
+    except OSError:
+        pass
+
+
 def _mode1_run_path(case_dir: Path) -> Path:
     return case_dir / "analysis" / _MODE1_RUN_FILE
 
@@ -3417,6 +3429,8 @@ async def api_mode1_full_run(request):
     sealed = _sealed_case_error(case_dir.name)
     if sealed:
         return sealed
+    # The full run rescans the needle vocabulary; old directions are stale.
+    _invalidate_briefing_directions(case_dir)
 
     body: dict = {}
     with contextlib.suppress(Exception):
@@ -5366,6 +5380,9 @@ async def api_pipeline_run(request):
     sealed = _sealed_case_error(case_id)
     if sealed:
         return sealed
+    # A pipeline run reprocesses/reindexes evidence; directions built from the
+    # previous signal map are stale once it starts.
+    _invalidate_briefing_directions(case_dir)
 
     # Mode 2/3 hard-gate: the LLM works against the N3 Elasticsearch index, so
     # a case processed while ES is down would silently run on the CSV pack and

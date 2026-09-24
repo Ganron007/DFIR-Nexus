@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import re
+from pathlib import Path
 from typing import Any
 
 log = logging.getLogger(__name__)
@@ -276,9 +277,78 @@ def _heuristic_analysis(cluster: list[dict[str, Any]],
     }
 
 
+def _merge_analysis(base: dict[str, Any], parsed: dict[str, Any]) -> dict[str, Any]:
+    """Merge a model's analyst-read JSON into the deterministic skeleton."""
+    out = dict(base)
+    cat = str(parsed.get("category") or "").strip().lower()
+    out["category"] = cat if cat in CATEGORIES else base["category"]
+    for key in ("what", "why", "how", "who_when"):
+        value = str(parsed.get(key) or "").strip()
+        if value:
+            out[key] = value[:600]
+    for key in ("verify", "caveats"):
+        vals = parsed.get(key)
+        if isinstance(vals, list):
+            out[key] = _dedupe_keep([str(v) for v in vals], 5)
+        elif isinstance(vals, str) and vals.strip():
+            out[key] = [vals.strip()[:200]]
+    out["source"] = str(parsed.get("_source") or "llm")
+    return out
+
+
+def _analysis_with_loop(
+    cluster: list[dict[str, Any]], rows: list[dict[str, str]],
+    user_msg: str, model: Any, case_dir: Path,
+) -> dict[str, Any] | None:
+    """WP 10.53: analyst read via the shared bounded tool loop."""
+    try:
+        from nexus.audit import AuditWriter
+        from nexus.langgraph.context_loop import (
+            LoopBudget,
+            context_loop_enabled,
+            run_context_loop,
+        )
+
+        if not context_loop_enabled():
+            return None
+        loop = run_context_loop(
+            case_dir=case_dir,
+            case_id=case_dir.name,
+            question=user_msg,
+            model=model,
+            system_prompt=(
+                _ANALYSIS_SYSTEM
+                + "\n\nYou may call the read-only tools for case context "
+                  "(schema, run record, sampled rows, KB/RAG methodology), "
+                  "but the finding read must stay grounded in the cluster "
+                  "evidence shown. Return the analyst-read JSON object as "
+                  "the final answer."
+            ),
+            task="report-cluster",
+            terminal_keys=("category", "what", "why"),
+            budget=LoopBudget(rounds=2, seconds=120.0, calls=4),
+            audit=AuditWriter("nexus", audit_dir=case_dir / "audit"),
+        )
+        from nexus.langgraph.mode1 import _parse_json_response
+
+        parsed = _parse_json_response(str(loop.get("reply") or ""))
+        if isinstance(parsed, dict):
+            parsed.setdefault("_source", "llm-context-loop")
+            return parsed
+    except Exception as exc:  # noqa: BLE001 — report must still render
+        log.debug("report cluster context loop failed: %s", exc)
+    return None
+
+
 def analyze_cluster(cluster: list[dict[str, Any]], rows: list[dict[str, str]],
-                    model=None, steer: str = "") -> dict[str, Any]:
-    """One analyst read for a cluster — LLM JSON when a model is available."""
+                    model=None, steer: str = "",
+                    case_dir: Path | None = None) -> dict[str, Any]:
+    """One analyst read for a cluster — LLM JSON when a model is available.
+
+    WP 10.53: when ``case_dir`` is supplied, the model gets the shared bounded
+    tool loop (schema/run record/sample rows/KB/RAG on demand); without it the
+    original one-shot prompt is kept for tests and CLI callers.
+    """
     base = _heuristic_analysis(cluster, rows)
     if model is None:
         return base
@@ -292,6 +362,10 @@ def analyze_cluster(cluster: list[dict[str, Any]], rows: list[dict[str, str]],
         + steer_block
         + "\n\nReturn JSON only:\n" + _ANALYSIS_SCHEMA
     )
+    if case_dir is not None:
+        loop_parsed = _analysis_with_loop(cluster, rows, user_msg, model, Path(case_dir))
+        if loop_parsed is not None:
+            return _merge_analysis(base, loop_parsed)
     try:
         resp = model.invoke([
             {"role": "system", "content": _ANALYSIS_SYSTEM},
@@ -303,21 +377,7 @@ def analyze_cluster(cluster: list[dict[str, Any]], rows: list[dict[str, str]],
         parsed = _parse_json_response(text)
         if not isinstance(parsed, dict):
             return base
-        out = dict(base)
-        cat = str(parsed.get("category") or "").strip().lower()
-        out["category"] = cat if cat in CATEGORIES else base["category"]
-        for k in ("what", "why", "how", "who_when"):
-            v = str(parsed.get(k) or "").strip()
-            if v:
-                out[k] = v[:600]
-        for k in ("verify", "caveats"):
-            vals = parsed.get(k)
-            if isinstance(vals, list):
-                out[k] = _dedupe_keep([str(v) for v in vals], 5)
-            elif isinstance(vals, str) and vals.strip():
-                out[k] = [vals.strip()[:200]]
-        out["source"] = "llm"
-        return out
+        return _merge_analysis(base, parsed)
     except Exception as exc:  # noqa: BLE001 — LLM failure must not break the report
         log.warning("report analysis LLM failed: %s", exc)
         return base
@@ -325,19 +385,78 @@ def analyze_cluster(cluster: list[dict[str, Any]], rows: list[dict[str, str]],
 
 def analyze_clusters(clusters: list[list[dict[str, Any]]],
                      rows_for: dict[int, list[dict[str, str]]],
-                     model=None, steer: str = "") -> dict[int, dict[str, Any]]:
+                     model=None, steer: str = "",
+                     case_dir: Path | None = None) -> dict[int, dict[str, Any]]:
     """Analyst read per cluster, keyed by cluster index."""
     out: dict[int, dict[str, Any]] = {}
     for i, cluster in enumerate(clusters):
         out[i] = analyze_cluster(
-            cluster, rows_for.get(i, []), model=model, steer=steer)
+            cluster, rows_for.get(i, []), model=model, steer=steer,
+            case_dir=case_dir)
     return out
+
+
+def _merge_assessment(base: dict[str, Any], parsed: dict[str, Any]) -> dict[str, Any]:
+    out = dict(base)
+    for key in ("sequence", "scope", "confidence"):
+        value = str(parsed.get(key) or "").strip()
+        if value:
+            out[key] = value[:900]
+    for key in ("gaps", "recommended"):
+        vals = parsed.get(key)
+        if isinstance(vals, list):
+            out[key] = _dedupe_keep([str(v) for v in vals], 6)
+    out["source"] = str(parsed.get("_source") or "llm")
+    return out
+
+
+def _assessment_with_loop(
+    user_msg: str, model: Any, case_dir: Path,
+) -> dict[str, Any] | None:
+    """WP 10.53: case assessment via the shared bounded tool loop."""
+    try:
+        from nexus.audit import AuditWriter
+        from nexus.langgraph.context_loop import (
+            LoopBudget,
+            context_loop_enabled,
+            run_context_loop,
+        )
+
+        if not context_loop_enabled():
+            return None
+        loop = run_context_loop(
+            case_dir=case_dir,
+            case_id=case_dir.name,
+            question=user_msg,
+            model=model,
+            system_prompt=(
+                _ASSESS_SYSTEM
+                + "\n\nYou may call the read-only tools for case context "
+                  "(schema, run record, sampled rows, KB/RAG methodology); "
+                  "the theory must stay grounded in the cluster reads shown. "
+                  "Return the assessment JSON object as the final answer."
+            ),
+            task="report-assessment",
+            terminal_keys=("sequence", "gaps", "recommended"),
+            budget=LoopBudget(rounds=2, seconds=120.0, calls=4),
+            audit=AuditWriter("nexus", audit_dir=case_dir / "audit"),
+        )
+        from nexus.langgraph.mode1 import _parse_json_response
+
+        parsed = _parse_json_response(str(loop.get("reply") or ""))
+        if isinstance(parsed, dict):
+            parsed.setdefault("_source", "llm-context-loop")
+            return parsed
+    except Exception as exc:  # noqa: BLE001 — report must still render
+        log.debug("report assessment context loop failed: %s", exc)
+    return None
 
 
 def case_assessment(clusters: list[list[dict[str, Any]]],
                     analyses: dict[int, dict[str, Any]],
                     rows_for: dict[int, list[dict[str, str]]],
-                    model=None, steer: str = "") -> dict[str, Any]:
+                    model=None, steer: str = "",
+                    case_dir: Path | None = None) -> dict[str, Any]:
     """Case-level theory: sequence, scope, confidence, gaps, next steps."""
     if not clusters:
         return {}
@@ -383,6 +502,10 @@ def case_assessment(clusters: list[list[dict[str, Any]]],
            if steer.strip() else "")
         + "\n\nReturn JSON only."
     )
+    if case_dir is not None:
+        loop_parsed = _assessment_with_loop(user_msg, model, Path(case_dir))
+        if loop_parsed is not None:
+            return _merge_assessment(base, loop_parsed)
     try:
         resp = model.invoke([
             {"role": "system", "content": _ASSESS_SYSTEM},
@@ -394,15 +517,7 @@ def case_assessment(clusters: list[list[dict[str, Any]]],
         parsed = _parse_json_response(text)
         if not isinstance(parsed, dict):
             return base
-        for k in ("sequence", "scope", "confidence"):
-            v = str(parsed.get(k) or "").strip()
-            if v:
-                base[k] = v[:900]
-        for k in ("gaps", "recommended"):
-            vals = parsed.get(k)
-            if isinstance(vals, list):
-                base[k] = _dedupe_keep([str(v) for v in vals], 6)
-        base["source"] = "llm"
+        return _merge_assessment(base, parsed)
     except Exception as exc:  # noqa: BLE001
         log.warning("case assessment LLM failed: %s", exc)
     return base
@@ -412,7 +527,7 @@ def render_analysis_block(a: dict[str, Any]) -> list[str]:
     """Markdown lines for one cluster's analyst read."""
     if not a:
         return []
-    label = "LLM-assisted" if a.get("source") == "llm" else "deterministic"
+    label = "LLM-assisted" if str(a.get("source") or "").startswith("llm") else "deterministic"
     out = [f"**Analyst read** _({label} — verify against evidence rows; "
            "not examiner-approved)_", ""]
     if a.get("category"):
@@ -435,7 +550,7 @@ def render_assessment(assess: dict[str, Any]) -> list[str]:
     """Markdown lines for the case-level assessment."""
     if not assess:
         return []
-    label = "LLM-assisted" if assess.get("source") == "llm" else "deterministic"
+    label = "LLM-assisted" if str(assess.get("source") or "").startswith("llm") else "deterministic"
     out = ["## Assessment", "",
            f"_({label} theory-building aid — the examiner decides; nothing "
            "here is an approved conclusion.)_", ""]

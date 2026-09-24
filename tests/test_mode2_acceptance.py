@@ -112,7 +112,7 @@ def test_mode2_acceptance_end_to_end():
 
     proposal = propose_next_needles(case_dir, "sdelete rundll32 clearing?",
                                     hits, ["family:hayabusa AND sdelete"], model=fake)
-    assert proposal["source"] == "llm"
+    assert proposal["source"] in ("llm", "llm-context-loop")
     assert any("wevtutil" in q["query"] for q in proposal["dsl_queries"])
     assert proposal["aggregations"], "proposed aggregation expected"
 

@@ -7,7 +7,15 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+
+
+@pytest.fixture(autouse=True)
+def _legacy_proposal_path(monkeypatch):
+    """These tests cover the legacy one-shot fallback (pre-loop contract)."""
+    monkeypatch.setenv("NEXUS_CONTEXT_LOOP", "0")
 
 
 def _make_case(tmp_path: Path) -> Path:

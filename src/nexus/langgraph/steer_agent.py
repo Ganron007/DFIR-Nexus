@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 from pathlib import Path
 from typing import Any
@@ -802,10 +801,11 @@ def _context_loop_enabled() -> bool:
     """WP 10.53 kill-switch: ``NEXUS_CONTEXT_LOOP=0`` uses the legacy pipeline.
 
     The switch exists for A/B comparison and as an operational rollback; the
-    default is the new bounded tool loop.
+    default is the new bounded tool loop. Delegates to the shared helper.
     """
-    raw = os.environ.get("NEXUS_CONTEXT_LOOP", "1").strip().lower()
-    return raw not in ("0", "false", "no", "off", "disabled")
+    from nexus.langgraph.context_loop import context_loop_enabled
+
+    return context_loop_enabled()
 
 
 def _run_context_loop_turn(
