@@ -630,6 +630,65 @@ def test_case_assessment_uses_context_loop(tmp_path):
     assert out["source"] == "llm-context-loop"
 
 
+def test_full_run_llm_scribe_decision():
+    from nexus.dashboard.app import _full_run_llm_scribe
+
+    assert _full_run_llm_scribe("heuristic", 3, [1, 2, 3, 4]) is False
+    assert _full_run_llm_scribe("llm", 3, [1]) is True
+    assert _full_run_llm_scribe("signal", 3, [1, 2]) is False
+    assert _full_run_llm_scribe("signal", 3, [1, 2, 3]) is True
+
+
+def test_slim_tool_calls_drops_large_catalog():
+    from nexus.dashboard.app import _slim_tool_calls
+
+    calls = [{
+        "tool": "es_mappings",
+        "why": "schema",
+        "audit_id": "a-1",
+        "elapsed_ms": 12.0,
+        "summary": {
+            "family_count": 3,
+            "parsed_columns": ["c"] * 600,
+            "hits": [{"text": "x"}] * 25,
+        },
+    }]
+    out = _slim_tool_calls(calls)
+    assert out[0]["summary"]["family_count"] == 3
+    assert "parsed_columns" not in out[0]["summary"]
+    assert "hits" not in out[0]["summary"] or len(out[0]["summary"]["hits"]) <= 3
+
+
+def test_interpret_plan_accepts_run_record_tool():
+    from nexus.langgraph.interpret_loop import _normalize_plan
+
+    plan = _normalize_plan({
+        "tools": [{"tool": "run_record", "args": {}, "why": "check parsers"}],
+    })
+    assert plan["items"][0]["kind"] == "tool"
+    assert plan["items"][0]["tool"] == "run_record"
+
+
+def test_interpretation_verdict_uses_context_loop(tmp_path):
+    import asyncio
+
+    from nexus.langgraph.interpretation import write_interpretation_summary
+
+    case = _case(tmp_path)
+    (case / "audit").mkdir(exist_ok=True)
+    with patch("nexus.langgraph.context_loop.run_context_loop",
+               return_value={"reply": "## Executive verdict\nOK.",
+                             "tool_calls": [], "hits": []}):
+        out = asyncio.run(write_interpretation_summary(
+            case,
+            findings=[{"title": "T", "confidence": "medium"}],
+            model=object(),
+        ))
+    assert out is not None
+    text = out.read_text(encoding="utf-8")
+    assert "Executive verdict" in text
+
+
 def test_alias_routing_is_read_only_and_documented():
     from nexus.langgraph.backbone import MODE2_TOOL_ALLOWLIST, TOOL_ALIASES
 

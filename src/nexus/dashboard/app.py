@@ -2976,6 +2976,15 @@ def _full_run_scribe_policy() -> tuple[str, int]:
     return mode, max(1, min_hits)
 
 
+def _full_run_llm_scribe(mode: str, min_hits: int, hits: list[Any]) -> bool:
+    """Whether one full-run draft qualifies for the LLM scribe (Option B)."""
+    if mode == "llm":
+        return True
+    if mode == "signal":
+        return len(hits) >= max(1, int(min_hits))
+    return False
+
+
 def _mode1_run_record(case_dir: Path) -> dict | None:
     """Read the persisted full-run record, marking dead runs as interrupted."""
     path = _mode1_run_path(case_dir)
@@ -3311,9 +3320,7 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
             # WP 10.53 Option B: full-run default stays heuristic; ``signal``
             # upgrades only drafts clearing the hit threshold, ``llm`` upgrades
             # every draft. Any model failure falls back to the heuristic fill.
-            if scribe_mode != "heuristic" and (
-                scribe_mode == "llm" or len(hits) >= scribe_min_hits
-            ):
+            if _full_run_llm_scribe(scribe_mode, scribe_min_hits, hits):
                 if not scribe_state["resolved"]:
                     try:
                         from nexus.langgraph.llm_pipeline import get_model

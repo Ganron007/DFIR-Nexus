@@ -141,63 +141,96 @@ async def write_interpretation_summary(
 
     verdict = ""
     if model is not None:
+        summary_lines = "\n".join(
+            f"{f.get('title')} — {str(f.get('interpretation') or '')[:200]} "
+            f"(confidence {f.get('confidence')})"
+            for f in findings[:12]
+        )
+        gaps_line = ", ".join(f"{g['kind']}:{g['value']}" for g in gaps[:12]) or "(none)"
+        # Keep the verdict prompt inside the model's window too.
         try:
-            summary_lines = "\n".join(
-                f"{f.get('title')} — {str(f.get('interpretation') or '')[:200]} "
-                f"(confidence {f.get('confidence')})"
-                for f in findings[:12]
-            )
-            gaps_line = ", ".join(f"{g['kind']}:{g['value']}" for g in gaps[:12]) or "(none)"
-            # Keep the verdict prompt inside the model's window too.
-            try:
-                from nexus.langgraph.prompt_budget import budget_chars
+            from nexus.langgraph.prompt_budget import budget_chars
 
-                reconcile_cap = max(8_000, budget_chars() // 20)
-            except Exception:  # noqa: BLE001
-                reconcile_cap = 40_000
-            reconcile_lines = "\n".join(
-                f"- [{i.get('kind')}] {i.get('value')}" for i in unaddressed[:40]
-            )[:reconcile_cap]
-            response = await model.ainvoke([
-                {"role": "system", "content": (
-                    "You are the lead DFIR analyst. Write the case verdict as "
-                    "COMPACT MARKDOWN (this renders in the examiner's briefing "
-                    "— never a wall of text):\n"
-                    "1) One short paragraph: what the evidence supports (or "
-                    "that it is insufficient), the strongest signal, confidence.\n"
-                    "2) A markdown disposition table with exactly these "
-                    "columns: | Item | Disposition | Basis | — one row per "
-                    "digest reconciliation item below (disposition = covered / "
-                    "benign / gap).\n"
-                    "3) A short `Next steps` bullet list (max 5).\n"
-                    "HARD RULES:\n"
-                    "- Address the reconciliation list item by item. Never "
-                    "omit an item.\n"
-                    "- Absence of an evidence class (e.g. no memory, no "
-                    "network, no disk) is SCOPE — never phrase it as 'no "
-                    "compromise'.\n"
-                    "- Base every claim on the staged findings and evidence "
-                    "below; no invented facts."
-                )},
-                {"role": "user", "content": (
-                    f"Findings:\n{summary_lines or '(none staged)'}\n\n"
-                    f"Coverage gaps: {gaps_line}\n\n"
-                    f"Digest reconciliation (unaddressed items):\n"
-                    f"{reconcile_lines or '(none — all digest items are covered)'}\n\n"
-                    + (
-                        "SCAN COVERAGE WARNING: the briefing scan was truncated ("
-                        + "; ".join(scan_reasons or ["cap reached"])
-                        + "). Counts are lower bounds and unreconciled items may "
-                        "be an artifact of the cap — say so in the verdict.\n\n"
-                        if scan_truncated
-                        else ""
-                    )
-                    + f"Threat intel:\n{ti_md[:1500] or '(none)'}"
-                )},
-            ])
-            verdict = str(getattr(response, "content", str(response))).strip()[:2000]
+            reconcile_cap = max(8_000, budget_chars() // 20)
+        except Exception:  # noqa: BLE001
+            reconcile_cap = 40_000
+        reconcile_lines = "\n".join(
+            f"- [{i.get('kind')}] {i.get('value')}" for i in unaddressed[:40]
+        )[:reconcile_cap]
+        verdict_system = (
+            "You are the lead DFIR analyst. Write the case verdict as "
+            "COMPACT MARKDOWN (this renders in the examiner's briefing "
+            "— never a wall of text):\n"
+            "1) One short paragraph: what the evidence supports (or "
+            "that it is insufficient), the strongest signal, confidence.\n"
+            "2) A markdown disposition table with exactly these "
+            "columns: | Item | Disposition | Basis | — one row per "
+            "digest reconciliation item below (disposition = covered / "
+            "benign / gap).\n"
+            "3) A short `Next steps` bullet list (max 5).\n"
+            "HARD RULES:\n"
+            "- Address the reconciliation list item by item. Never "
+            "omit an item.\n"
+            "- Absence of an evidence class (e.g. no memory, no "
+            "network, no disk) is SCOPE — never phrase it as 'no "
+            "compromise'.\n"
+            "- Base every claim on the staged findings and evidence "
+            "below; no invented facts.\n"
+            "You may call the read-only tools (run_record, es_aggregate, "
+            "kb_search, forensic_rag_search) to verify coverage before "
+            "answering."
+        )
+        verdict_user = (
+            f"Findings:\n{summary_lines or '(none staged)'}\n\n"
+            f"Coverage gaps: {gaps_line}\n\n"
+            f"Digest reconciliation (unaddressed items):\n"
+            f"{reconcile_lines or '(none — all digest items are covered)'}\n\n"
+            + (
+                "SCAN COVERAGE WARNING: the briefing scan was truncated ("
+                + "; ".join(scan_reasons or ["cap reached"])
+                + "). Counts are lower bounds and unreconciled items may "
+                "be an artifact of the cap — say so in the verdict.\n\n"
+                if scan_truncated
+                else ""
+            )
+            + f"Threat intel:\n{ti_md[:1500] or '(none)'}"
+        )
+        # WP 10.53: prefer the bounded tool loop so the verdict can verify its
+        # own coverage (run_record/aggregations) before answering.
+        try:
+            import asyncio as _asyncio
+
+            from nexus.audit import AuditWriter
+            from nexus.langgraph.context_loop import (
+                LoopBudget,
+                context_loop_enabled,
+                run_context_loop,
+            )
+
+            if context_loop_enabled():
+                loop = await _asyncio.to_thread(
+                    run_context_loop,
+                    case_dir=case_dir,
+                    case_id=case_dir.name,
+                    question=verdict_user,
+                    model=model,
+                    system_prompt=verdict_system,
+                    task="interpretation-verdict",
+                    budget=LoopBudget(rounds=2, seconds=120.0, calls=4),
+                    audit=AuditWriter("nexus", audit_dir=case_dir / "audit"),
+                )
+                verdict = str(loop.get("reply") or "").strip()[:2000]
         except Exception as exc:  # noqa: BLE001 — verdict is best-effort
-            log.warning("Verdict LLM pass failed: %s", exc)
+            log.debug("Verdict context loop failed: %s", exc)
+        if not verdict:
+            try:
+                response = await model.ainvoke([
+                    {"role": "system", "content": verdict_system},
+                    {"role": "user", "content": verdict_user},
+                ])
+                verdict = str(getattr(response, "content", str(response))).strip()[:2000]
+            except Exception as exc:  # noqa: BLE001 — verdict is best-effort
+                log.warning("Verdict LLM pass failed: %s", exc)
 
     if verdict:
         lines.insert(4, "")

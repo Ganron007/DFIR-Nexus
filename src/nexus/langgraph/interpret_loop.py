@@ -36,6 +36,15 @@ _MAX_RESULT_ROWS = 8       # rows shown per executed item in the LLM context
 _MAX_ROW_CHARS = 300
 _MAX_PERSIST_ROWS = 50
 _DEFAULT_ROUNDS = 3
+# WP 10.53: extra read-only tools the interpret loop may call directly —
+# the same audited MCP surface the examiner uses (run record + KB + RAG).
+_EXTRA_TOOL_NAMES = (
+    "run_record",
+    "kb_search",
+    "kb_read",
+    "kb_cite",
+    "forensic_rag_search",
+)
 
 
 def _resolve_rounds(state: Mapping[str, Any], case_dir: Path, explicit: int | None) -> int:
@@ -176,11 +185,22 @@ def _normalize_plan(data: Any) -> dict[str, list[dict[str, Any]]]:
                     "n": max(1, min(sample_n, 20)),
                     "why": str(entry.get("why") or "")[:200],
                 })
+        elif kind == "tool":
+            tool = str(entry.get("tool") or "").strip()
+            if tool in _EXTRA_TOOL_NAMES:
+                args = entry.get("args") if isinstance(entry.get("args"), dict) else {}
+                plan["items"].append({
+                    "kind": "tool",
+                    "tool": tool,
+                    "args": args,
+                    "why": str(entry.get("why") or "")[:200],
+                })
 
-    for kind in ("queries", "aggregations", "aggregates", "samples"):
+    for kind in ("queries", "aggregations", "aggregates", "samples", "tools"):
         key_kind = {
             "queries": "query", "aggregations": "aggregate",
             "aggregates": "aggregate", "samples": "sample",
+            "tools": "tool",
         }[kind]
         for entry in _as_list(data.get(kind)):
             _add(key_kind, entry)
@@ -228,6 +248,12 @@ def _render_results(entries: list[dict[str, Any]]) -> str:
             lines.append(f"  aggregations: {rendered[:4000]}")
             if entry.get("next_after_key") is not None:
                 lines.append(f"  next_after_key: {entry['next_after_key']}")
+            continue
+        if kind == "tool":
+            lines.append(
+                "  tool result keys: "
+                + ", ".join(str(k) for k in (entry.get("result_keys") or []))
+            )
             continue
         if kind == "aggregate":
             lines.append(
@@ -332,7 +358,9 @@ async def run_interpret_loop(
         '{"hypotheses":[{"id":"H1","statement":"...","why":"..."}],'
         '"queries":[{"es":{"query":{"bool":{...}}},"why":"..."}],'
         '"aggregates":[{"aggs":{"by_host":{"terms":{"field":"host"}}},"query":{},"why":"..."}],'
-        '"samples":[{"family":"","field":"","value":"","n":8,"why":""}]}\n'
+        '"samples":[{"family":"","field":"","value":"","n":8,"why":""}],'
+        '"tools":[{"tool":"run_record|kb_search|forensic_rag_search",'
+        '"args":{},"why":"..."}]}\n'
         "RULES:\n"
         "- Max 6 query/aggregate/sample items total; only families and fields "
         "that actually exist in the digest/query pack.\n"
@@ -384,6 +412,12 @@ async def run_interpret_loop(
                 "field": item.get("field") or "", "value": item.get("value") or "",
                 "n": item.get("n") or 8,
             }
+        if kind == "tool":
+            tool = str(item.get("tool") or "")
+            payload = dict(item.get("args") or {})
+            if tool in ("run_record",):
+                payload.setdefault("case_id", case_id)
+            return tool, payload
         # Legacy DSL items (older planned rounds) keep executing for replay.
         if kind == "aggregate":
             return "n4_aggregate", {
@@ -424,6 +458,7 @@ async def run_interpret_loop(
                 "aggregations": result.get("aggregations") or {},
                 "next_after_key": result.get("next_after_key"),
                 "hits": (result.get("hits") or [])[:_MAX_PERSIST_ROWS],
+                "result_keys": sorted(result.keys())[:24],
             }
             entries.append(entry)
         rounds_run = round_no
@@ -440,7 +475,8 @@ async def run_interpret_loop(
             "Return ONLY JSON:\n"
             '{"notes":[{"hypothesis":"H1","status":"confirmed|refuted|unknown|partial",'
             '"evidence":"one sentence naming the rows (family/host/ts/needle)","family":"..."}],'
-            '"next":[{"es":{"query":{...}},"why":"..."}]}\n'
+            '"next":[{"es":{"query":{...}},"why":"..."},'
+            '{"tool":"run_record|kb_search|forensic_rag_search","args":{},"why":"..."}]}\n'
             "RULES: one note per hypothesis. Plan `next` ONLY for unresolved "
             "hypotheses where new evidence could resolve them (max 4 items). "
             "If everything is settled, next = []. No prose outside the JSON."
@@ -481,6 +517,10 @@ async def run_interpret_loop(
             "samples": [
                 i for i in next_list
                 if isinstance(i, dict) and i.get("family")
+            ],
+            "tools": [
+                i for i in next_list
+                if isinstance(i, dict) and i.get("tool")
             ],
         })
         _persist_round(case_dir, f"round-{round_no}-notes", {

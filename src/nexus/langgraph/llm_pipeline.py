@@ -1471,6 +1471,9 @@ INTERPRET_TOOL_NAMES = (
     "es_sample",
     "index_mappings",
     "family_fields",
+    # WP 10.53: the tool-lane ledger is part of the interpret surface so the
+    # loop can distinguish never-parsed from not-found.
+    "run_record",
     # examiner-curated KB (procedures/caveats/terminology)
     "kb_search",
     "kb_read",
