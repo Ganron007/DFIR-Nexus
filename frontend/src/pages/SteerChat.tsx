@@ -525,7 +525,12 @@ export default function SteerChat() {
         // events and persists the final/partial transcript; reloading shows
         // the exact tool chain, rows and partial state after the turn.
         await chatStream(
-          { message: text, mode, max_iterations: mode2Iterations },
+          {
+            message: text,
+            mode,
+            max_iterations: mode2Iterations,
+            history: messages.slice(-6).map((m) => ({ role: m.role, text: m.text })),
+          },
           (evt) => {
             const data = evt.data as Record<string, unknown>;
             if (evt.event === "round") {
@@ -1092,6 +1097,12 @@ export default function SteerChat() {
                           {f.label}
                         </button>
                       ))}
+                    </div>
+                  )}
+                  {m.data?.partial && (
+                    <div style={{ fontSize: 11, color: "var(--warning)", marginTop: 4 }}>
+                      Partial answer — the budget was reached before completion;
+                      the rows retrieved so far are shown above.
                     </div>
                   )}
                   <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2, textAlign: m.role === "examiner" ? "right" : "left" }}>

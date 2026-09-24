@@ -3828,13 +3828,39 @@ def _hits_for_transcript(hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
+def _slim_tool_calls(calls: list[dict[str, Any]], limit: int = 12) -> list[dict[str, Any]]:
+    """Transcript-safe tool-call view: never persist full schemas/row sets."""
+    out: list[dict[str, Any]] = []
+    for call in (calls or [])[:limit]:
+        if not isinstance(call, dict):
+            continue
+        summary = call.get("summary") if isinstance(call.get("summary"), dict) else {}
+        keep = {
+            key: summary.get(key)
+            for key in ("total", "returned", "matched", "sampled", "error",
+                        "available", "bucket_count", "counts", "family_count",
+                        "parsed_columns_count")
+            if summary.get(key) is not None
+        }
+        out.append({
+            "tool": str(call.get("tool") or "")[:60],
+            "why": str(call.get("why") or "")[:200],
+            "audit_id": str(call.get("audit_id") or "")[:80],
+            "elapsed_ms": call.get("elapsed_ms"),
+            "summary": keep,
+        })
+    return out
+
+
 def _mode2_turn_budget() -> float:
+    # Must stay strictly above the loop's own soft budget (default 360 s) +
+    # one model call; 900 s is the documented production default.
     try:
-        value = float(os.environ.get("NEXUS_MODE2_TURN_TIMEOUT", "240"))
+        value = float(os.environ.get("NEXUS_MODE2_TURN_TIMEOUT", "900"))
     except ValueError:
-        return 240.0
+        return 900.0
     if not math.isfinite(value):
-        return 240.0
+        return 900.0
     return max(1.0, min(value, 1800.0))
 
 
@@ -3975,6 +4001,7 @@ async def api_chat_stream(request):
         return JSONResponse({"error": "Invalid JSON"}, status_code=400)
     message = str(body.get("message") or "").strip()
     mode = str(body.get("mode") or "mode1").strip()
+    history = body.get("history") if isinstance(body.get("history"), list) else []
     if not message:
         return JSONResponse({"error": "Empty message"}, status_code=400)
     if mode not in ("mode1", "mode2"):
@@ -4063,7 +4090,7 @@ async def api_chat_stream(request):
                 ),
             }, {
                 "queries": final.get("queries_executed", [])[:8],
-                "tool_calls": final.get("tool_calls", [])[:12],
+                "tool_calls": _slim_tool_calls(final.get("tool_calls") or []),
                 "aggregations": final.get("aggregations", [])[:5],
                 "hits": _hits_for_transcript(hits[:10]),
                 "followups": final.get("followups", []),
@@ -4072,7 +4099,7 @@ async def api_chat_stream(request):
             q.put(("done", {
                 "reply": reply,
                 "queries_executed": final.get("queries_executed", []),
-                "tool_calls": final.get("tool_calls", []),
+                "tool_calls": _slim_tool_calls(final.get("tool_calls") or []),
                 "total_hits": final.get("total_hits", 0),
                 "partial": bool(final.get("partial")),
                 "partial_reason": str(final.get("partial_reason") or ""),
@@ -4114,19 +4141,45 @@ async def api_chat_stream(request):
                     final["backend"] = final.get("backend", "")
                 _finalize(action, final)
             else:
+                # WP 10.53/10.54: the model-driven bounded tool loop. The
+                # same one-turn-per-case guard as /mode2/chat applies here;
+                # tool events stream through the queue and the final result
+                # is still a normal chat answer (partial on budget).
+                case_key = case_dir.name
+                with _mode2_turn_lock:
+                    if case_key in _mode2_turn_active:
+                        q.put(("error", {
+                            "error": "a steering turn is already running "
+                                     "for this case",
+                        }))
+                        q.put((None, None))
+                        return
+                    _mode2_turn_active.add(case_key)
+
                 def _mode2_worker():
-                    # WP 10.53/10.54: the model-driven bounded tool loop.
-                    # Tool events stream through the same queue; the final
-                    # result is still a normal chat answer (partial on budget).
-                    from nexus.langgraph.steer_agent import run_steer_agent
+                    try:
+                        from nexus.langgraph.steer_agent import run_steer_agent
 
-                    return run_steer_agent(
-                        case_dir, message,
-                        on_event=lambda event: q.put(
-                            (str(event.get("event") or "context"), event)),
+                        return run_steer_agent(
+                            case_dir, message, history=history,
+                            on_event=lambda event: q.put(
+                                (str(event.get("event") or "context"), event)),
+                        )
+                    finally:
+                        with _mode2_turn_lock:
+                            _mode2_turn_active.discard(case_key)
+
+                try:
+                    result = await asyncio.wait_for(
+                        asyncio.to_thread(_mode2_worker),
+                        timeout=_mode2_turn_budget(),
                     )
-
-                result = await asyncio.to_thread(_mode2_worker)
+                except TimeoutError:
+                    q.put(("error", {
+                        "error": f"turn exceeded {_mode2_turn_budget():.0f}s",
+                    }))
+                    q.put((None, None))
+                    return
                 if result.get("error"):
                     q.put(("error", {"error": result["error"]}))
                     q.put((None, None))
@@ -5808,6 +5861,7 @@ async def api_case_briefing_directions(request):
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
     from nexus.langgraph.briefing import llm_directions
 
     def _resolve_model():
@@ -5825,9 +5879,10 @@ async def api_case_briefing_directions(request):
             return JSONResponse({"directions": []})
         brief = await asyncio.to_thread(_cached_briefing, case_dir)
         directions = await asyncio.to_thread(llm_directions, case_dir, brief, model)
-        if directions:
+        if directions and not sealed:
             # Persist so REPORT.md can carry the same directions as next steps
             # without regenerating them (report generation may run offline).
+            # Sealed cases are read-only: generate/return but never write.
             await asyncio.to_thread(
                 _atomic_write_json,
                 case_dir / "analysis" / "briefing_directions.json",

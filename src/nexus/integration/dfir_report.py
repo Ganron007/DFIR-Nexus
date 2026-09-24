@@ -704,12 +704,12 @@ def _load_mode2_saved_answers(case_dir: Any) -> list[dict[str, Any]]:
     return [e for e in loaded if isinstance(e, dict)] if isinstance(loaded, list) else []
 
 
-def _load_briefing_directions(case_dir: Any) -> list[dict[str, Any]]:
-    """Persisted LLM briefing directions (analysis/briefing_directions.json)."""
+def _load_briefing_directions_record(case_dir: Any) -> dict[str, Any]:
+    """Raw persisted directions record (source/generated_at/directions)."""
     import json
 
     if not case_dir:
-        return []
+        return {}
     try:
         loaded = json.loads(
             (Path(case_dir) / "analysis" / "briefing_directions.json").read_text(
@@ -717,10 +717,15 @@ def _load_briefing_directions(case_dir: Any) -> list[dict[str, Any]]:
             )
         )
     except (OSError, ValueError):
-        return []
-    if isinstance(loaded, dict):
-        loaded = loaded.get("directions")
-    return [e for e in loaded if isinstance(e, dict)] if isinstance(loaded, list) else []
+        return {}
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def _load_briefing_directions(case_dir: Any) -> list[dict[str, Any]]:
+    """Persisted LLM briefing directions (analysis/briefing_directions.json)."""
+    loaded = _load_briefing_directions_record(case_dir)
+    entries = loaded.get("directions") if loaded else []
+    return [e for e in entries if isinstance(e, dict)] if isinstance(entries, list) else []
 
 
 _ITM_ID_RE = re.compile(r"\bAR[1-5]/(?:MT|ME|PR|IF|AF)\d{3}(?:\.\d{3})?\b", re.IGNORECASE)
@@ -1042,6 +1047,7 @@ def build_dfir_markdown(
     # Mode 1 LLM directions — the examiner-led starting points, carried into
     # the report as suggested next steps (grounded in the signal map/needle
     # hits; suggestions only, never approved conclusions).
+    directions_record = _load_briefing_directions_record(case_dir)
     directions = _load_briefing_directions(case_dir)
     if directions:
         lines.append("## Suggested next steps")
@@ -1050,6 +1056,13 @@ def build_dfir_markdown(
             "_LLM-generated investigation directions grounded in the current "
             "keyword scan and needle-hit signal map — suggestions for the "
             "examiner, not approved conclusions._"
+        )
+        generated = str(directions_record.get("generated_at") or "").strip()
+        source = str(directions_record.get("source") or "llm").strip()
+        lines.append(
+            f"_Source: {source}"
+            + (f" · generated {generated[:19]}" if generated else "")
+            + "._"
         )
         lines.append("")
         for direction in directions[:6]:

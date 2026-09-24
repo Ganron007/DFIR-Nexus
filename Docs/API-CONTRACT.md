@@ -688,7 +688,7 @@ If the case is already open: `{"ok": true, "status": "created", "note": "already
 ---
 
 ### POST /portal/api/mode1/full-run
-**Description:** Mode 1 "full run" (WP 4j.5d) — one click after evidence processing: scans every playbook/ATT&CK/Sigma needle, bookmarks all matching hits into the workbench, and stages one DRAFT finding per needle. Drafts are written by the deterministic heuristic scribe (instant; no LLM wait). **Approval stays examiner-manual** — the run ends at DRAFTs and points the examiner at Approve (HMAC), then report generation (N8). Idempotent: needles whose identical draft title is already staged are skipped, and bookmarks dedupe.
+**Description:** Mode 1 "full run" (WP 4j.5d) — one click after evidence processing: scans every playbook/ATT&CK/Sigma needle, bookmarks all matching hits into the workbench, and stages one DRAFT finding per needle. Drafts use the deterministic heuristic scribe by default (instant; no LLM wait). `NEXUS_FULL_RUN_SCRIBE=signal|llm` upgrades initial fills for needles above `NEXUS_FULL_RUN_SCRIBE_MIN_HITS` or all needles respectively (model failures fall back to the heuristic fill). **Approval stays examiner-manual** — the run ends at DRAFTs and points the examiner at Approve (HMAC), then report generation (N8). Idempotent: needles whose identical draft title is already staged are skipped, and bookmarks dedupe.
 
 **Request (all fields optional):**
 ```json
@@ -1743,31 +1743,42 @@ run on the CSV pack.
 ---
 
 ### POST /portal/api/chat/stream
-**Description:** Live steer-chat turn (WP 4d.3). Runs the Mode 1 ask flow or the Mode 2 iterative loop and streams progress as Server-Sent Events. The examiner message and final reply are persisted to the case transcript; top hits are persisted in the reply entry's `data.hits` so hit cards survive reload.
+**Description:** Live steer-chat turn (WP 4d.3; WP 10.53/10.54). Mode 1 runs the ask flow; Mode 2 runs the bounded context-engineering tool loop (`src/nexus/langgraph/context_loop.py`) and streams progress as Server-Sent Events. The examiner message and final reply are persisted to the case transcript; a slim tool-call chain, `partial` flag and hits are persisted in the reply entry's `data` so they survive reload.
 
 **Request:**
 ```json
 {
   "message": "show me sdelete and prefetch activity",
   "mode": "mode1",
-  "max_iterations": 2
+  "max_iterations": 2,
+  "history": [{"role": "examiner", "text": "..."}, {"role": "llm", "text": "..."}]
 }
 ```
-- `mode`: `mode1` (ask → query) or `mode2` (iterative loop)
-- `max_iterations`: Mode 2 only, 1–5 (default 2)
+- `mode`: `mode1` (ask → query) or `mode2` (bounded tool loop)
+- `max_iterations`: accepted for API compatibility; Mode 2 is bounded by
+  `NEXUS_CONTEXT_LOOP_ROUNDS` / `NEXUS_CONTEXT_LOOP_CALLS` /
+  `NEXUS_CONTEXT_LOOP_SECONDS` (defaults 8 / 16 / 360)
+- `history`: optional prior turns (Mode 2 gets the same conversational context as
+  `/mode2/chat`)
 
 **Response:** `text/event-stream` with events:
 ```
-event: status     data: {"stage": "translating"|"querying", ...}
-event: iteration  data: {"iteration": 0, "action": "initial_query", "needles": [...], "hits": N, ...}
-event: hits       data: {"hits": [...capped 12 trimmed hits...], "count": N}
-event: done       data: {"reply": "...", "needles": [...], "count": N, "backend": "..."}
-event: error      data: {"error": "..."}
-event: ping       data: {}   (keepalive every 30s while working)
+event: status       data: {"stage": "translating"|"querying", ...}          (Mode 1)
+event: iteration    data: {"iteration": 0, "action": "initial_query", ...}  (Mode 1)
+event: round        data: {"round": N, "max_rounds": M}                    (Mode 2)
+event: tool_call    data: {"round": N, "tool": "es_search", "args": {...}, "why": "..."}
+event: tool_result  data: {"round": N, "tool": "...", "audit_id": "...", "summary": {...}, "error": "..."}
+event: partial      data: {"reason": "rounds|calls|time", "round": N}
+event: hits         data: {"hits": [...capped 12 trimmed hits...], "count": N}
+event: done         data: {"reply": "...", "queries_executed": [...], "tool_calls": [...], "total_hits": N, "partial": bool, "hits": [...]}
+event: error        data: {"error": "..."}
+event: ping         data: {}   (keepalive every 30s while working)
 ```
 
 **Notes:**
-- Mode 2 `iteration` events come from `run_iterative_loop`'s `on_event` callback (WP 4d.3).
+- Mode 1 events are unchanged. Mode 2 no longer emits `iteration`; it emits the
+  tool-loop events above. `loop_done` is an internal loop event and is not
+  treated as the client terminal event (`done` from the stream finalizer is).
 - `hits` payloads include parsed `fields` + best-effort `host` per hit (WP 4d.1).
 - Non-SSE fallback: `POST /portal/api/chat` (blocking) remains available.
 

@@ -82,13 +82,17 @@ _CONTEXT_TOOL_NAMES: tuple[str, ...] = (
 MODE3_TOOL_ALLOWLIST: dict[str, str] = dict(MODE2_TOOL_ALLOWLIST)
 
 
-def tool_contracts_block(mode: int = 2) -> str:
+def tool_contracts_block(mode: int = 2, *, include_external: bool = True) -> str:
     """Prompt block: the backbone tools the LLM may call + their contracts.
 
     WP 10.53: the model-facing names are the seven context-engineering tools
     (``es_mappings`` / ``es_search`` / ``es_aggregate`` / ``kb_query`` /
     ``rag_search`` / ``run_record`` / ``sample_rows``). The canonical
     implementations and audit names remain the existing ones (Option B).
+
+    ``include_external=False`` (the context loop) omits TI/web tools: those
+    send model-chosen values out of the process and stay outside the bounded
+    loop unless the examiner explicitly enables them elsewhere.
     """
     lines = [
         "You investigate through these READ-ONLY tools only (you cannot mutate case state):",
@@ -100,9 +104,12 @@ def tool_contracts_block(mode: int = 2) -> str:
         "- rag_search(query, top_k, source, technique, platform) — semantic methodology/detection knowledge; methodology, never evidence.",
         "- run_record(case_id) — the tool-lane ledger: which parser/tool ran, status (OK/SKIP/FAIL), reason, output file, command, audit_id. Use this before claiming evidence is absent — distinguish 'not parsed' from 'not found'.",
         "- kb_read(chunk_id) / kb_cite(chunk_id) — read/cite a KB chunk returned by kb_query.",
-        "- ti_lookup(value) / ti_fanout(value) / ti_list_providers() — threat-intel context, never evidence.",
-        "- web_status() / web_search(query) / web_fetch(url) — examiner-opt-in external context, never evidence.",
     ]
+    if include_external:
+        lines.extend([
+            "- ti_lookup(value) / ti_fanout(value) / ti_list_providers() — threat-intel context, never evidence.",
+            "- web_status() / web_search(query) / web_fetch(url) — examiner-opt-in external context, never evidence.",
+        ])
     return "\n".join(lines)
 
 
@@ -125,28 +132,33 @@ def _es_call(
     started = _time.monotonic()
     fn = getattr(es_native, name)
     label = tool_label or name
+    audit_keys = ("query", "aggs", "size", "family", "field", "value",
+                  "n", "sort", "search_after")
     try:
         result = fn(str(Path(case_dir).name), **kwargs)
-    except es_native.ESQueryError as exc:
+    except Exception as exc:  # noqa: BLE001 — audit every failure, not just ESQueryError
         if audit is not None:
             with contextlib.suppress(Exception):
                 audit.log(
                     tool=label,
                     params={"case_id": Path(case_dir).name,
-                            **{k: v for k, v in kwargs.items()
-                               if k in ("query", "aggs", "size", "family",
-                                        "field", "value")}},
-                    result_summary={"error": str(exc)[:300]},
+                            **{k: v for k, v in kwargs.items() if k in audit_keys}},
+                    result_summary={
+                        "error": f"{type(exc).__name__}: {exc}"[:300],
+                    },
                     elapsed_ms=round((_time.monotonic() - started) * 1000, 1),
                     extra={"canonical_tool": name} if label != name else None,
                 )
-        return {"error": str(exc), "case_id": Path(case_dir).name}
+        return {
+            "error": f"{label} failed: {type(exc).__name__}: {exc}"[:400],
+            "case_id": Path(case_dir).name,
+        }
     aid = None
     if audit is not None:
         aid = audit.log(
             tool=label,
             params={"case_id": Path(case_dir).name,
-                    **{k: v for k, v in kwargs.items() if k in ("query", "aggs", "size", "family", "field", "value")}},
+                    **{k: v for k, v in kwargs.items() if k in audit_keys}},
             result_summary={"total": result.get("total"),
                             "returned": result.get("returned"),
                             "families": len(result.get("families") or {})},
@@ -165,6 +177,38 @@ def _resolve_tool(name: str) -> str:
     return TOOL_ALIASES.get(name, name)
 
 
+def _guarded(
+    name: str,
+    audit: AuditWriter | None,
+    fn: Any,
+    params: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Run one binding; audit + convert any exception into a structured error.
+
+    A failing tool call must still appear in the audit trail (otherwise the
+    loop can execute a call with no provenance) and must not crash the turn.
+    """
+    import time as _time
+
+    started = _time.monotonic()
+    try:
+        return fn()
+    except Exception as exc:  # noqa: BLE001 — every failure is an observation
+        if audit is not None:
+            with contextlib.suppress(Exception):
+                audit.log(
+                    tool=name,
+                    params=params or {},
+                    result_summary={
+                        "error": f"{type(exc).__name__}: {exc}"[:300],
+                    },
+                    elapsed_ms=round((_time.monotonic() - started) * 1000, 1),
+                )
+        return {
+            "error": f"{name} failed: {type(exc).__name__}: {exc}"[:400],
+        }
+
+
 def backbone_call(name: str, audit: AuditWriter | None = None, **kwargs: Any) -> dict[str, Any]:
     """Execute one allowlisted backbone tool (in-process, same core as MCP).
 
@@ -179,33 +223,61 @@ def backbone_call(name: str, audit: AuditWriter | None = None, **kwargs: Any) ->
     if canonical in ("es_fields", "es_search", "es_aggregate", "es_sample"):
         return _es_call(canonical, audit=audit, tool_label=name, **kwargs)
     if name == "index_mappings" or canonical == "index_mappings":
-        return evidence_index.do_index_mappings(audit=audit, **kwargs)
+        return _guarded("index_mappings", audit,
+                        lambda: evidence_index.do_index_mappings(
+                            audit=audit, **kwargs),
+                        params={"case_id": kwargs.get("case_id", "")})
     if name == "family_fields" or canonical == "family_fields":
-        return evidence_index.do_family_fields(audit=audit, **kwargs)
+        return _guarded("family_fields", audit,
+                        lambda: evidence_index.do_family_fields(
+                            audit=audit, **kwargs),
+                        params={"family": kwargs.get("family", "")})
     if canonical == "kb_search":
         kwargs.setdefault("query", "")
-        return kb_tools.do_kb_search(
-            audit=audit, alias=name if name != canonical else "", **kwargs)
+        return _guarded(name, audit,
+                        lambda: kb_tools.do_kb_search(
+                            audit=audit,
+                            alias=name if name != canonical else "",
+                            **kwargs),
+                        params={"query": str(kwargs.get("query") or "")[:200]})
     if canonical == "forensic_rag_search":
-        return _rag_call(audit=audit, alias=name, **kwargs)
+        return _guarded(name, audit,
+                        lambda: _rag_call(audit=audit, alias=name, **kwargs),
+                        params={"query": str(kwargs.get("query") or "")[:200]})
     if canonical == "run_record":
-        return _run_record_call(audit=audit, **kwargs)
+        return _guarded(name, audit,
+                        lambda: _run_record_call(audit=audit, **kwargs),
+                        params={"case_id": kwargs.get("case_id", "")})
     if name == "kb_read":
-        return kb_tools.do_kb_read(audit=audit, **kwargs)
+        return _guarded("kb_read", audit,
+                        lambda: kb_tools.do_kb_read(audit=audit, **kwargs),
+                        params={"chunk_id": str(kwargs.get("chunk_id") or "")[:80]})
     if name == "kb_cite":
-        return kb_tools.do_kb_cite(audit=audit, **kwargs)
+        return _guarded("kb_cite", audit,
+                        lambda: kb_tools.do_kb_cite(audit=audit, **kwargs),
+                        params={"chunk_id": str(kwargs.get("chunk_id") or "")[:80]})
     if name == "ti_lookup":
-        return _ti_call("lookup", audit=audit, **kwargs)
+        return _guarded("ti_lookup", audit,
+                        lambda: _ti_call("lookup", audit=audit, **kwargs),
+                        params={"ioc_type": kwargs.get("ioc_type") or "auto"})
     if name == "ti_fanout":
-        return _ti_call("fanout", audit=audit, **kwargs)
+        return _guarded("ti_fanout", audit,
+                        lambda: _ti_call("fanout", audit=audit, **kwargs),
+                        params={"ioc_type": kwargs.get("ioc_type") or "auto"})
     if name == "ti_list_providers":
-        return _ti_call("providers", audit=audit, **kwargs)
+        return _guarded("ti_list_providers", audit,
+                        lambda: _ti_call("providers", audit=audit, **kwargs))
     if name == "web_status":
-        return web_tools.do_web_status(audit=audit)
+        return _guarded("web_status", audit,
+                        lambda: web_tools.do_web_status(audit=audit))
     if name == "web_search":
-        return web_tools.do_web_search(audit=audit, **kwargs)
+        return _guarded("web_search", audit,
+                        lambda: web_tools.do_web_search(audit=audit, **kwargs),
+                        params={"query": str(kwargs.get("query") or "")[:200]})
     if name == "web_fetch":
-        return web_tools.do_web_fetch(audit=audit, **kwargs)
+        return _guarded("web_fetch", audit,
+                        lambda: web_tools.do_web_fetch(audit=audit, **kwargs),
+                        params={"url": str(kwargs.get("url") or "")[:200]})
     raise PermissionError(f"tool {name!r} has no binding")
 
 
@@ -229,6 +301,20 @@ def _ti_call(
             result = {"error": "value is required"}
         else:
             ioc_type = str(kwargs.get("ioc_type") or "").strip() or None
+            if ioc_type:
+                # Accept the extractor's names (ipv4/sha256/md5/...) and fall
+                # back to inference for anything the TI router does not know.
+                alias = {
+                    "ipv4": "ip", "ipv6": "ip", "ip_address": "ip",
+                    "sha256": "hash", "sha1": "hash", "md5": "hash",
+                    "file_hash": "hash",
+                }.get(ioc_type.lower(), ioc_type.lower())
+                from nexus.ti.schemas import IOCType
+
+                try:
+                    ioc_type = IOCType(alias).value
+                except ValueError:
+                    ioc_type = None
             if kind == "fanout":
                 result = _run_async(router.fanout(value, ioc_type=ioc_type))
             else:
@@ -254,11 +340,14 @@ def _rag_call(audit: AuditWriter | None = None, *, alias: str = "",
     """RAG-search binding (WP 10.53) — same core the MCP tool uses."""
     from nexus.tools.rag import do_forensic_rag_search
 
+    source_ids = kwargs.get("source_ids")
+    if isinstance(source_ids, str):
+        source_ids = [source_ids] if source_ids.strip() else None
     result = do_forensic_rag_search(
         query=str(kwargs.get("query") or ""),
         top_k=int(kwargs.get("top_k") or 10),
         source=str(kwargs.get("source") or ""),
-        source_ids=kwargs.get("source_ids"),
+        source_ids=source_ids,
         technique=str(kwargs.get("technique") or ""),
         platform=str(kwargs.get("platform") or ""),
         audit=audit,

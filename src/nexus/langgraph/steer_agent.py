@@ -850,6 +850,11 @@ def _run_context_loop_turn(
     tool_calls = result.get("tool_calls") or []
     queries_executed: list[dict[str, Any]] = []
     for call in tool_calls:
+        # Only real evidence queries belong in queries_executed — its entries
+        # feed the Stage-DRAFT form and "Open in Explore", which expect a DSL /
+        # ES query, not a run-record or schema call.
+        if str(call.get("tool") or "") not in ("es_search", "es_aggregate"):
+            continue
         summary = call.get("summary") or {}
         queries_executed.append({
             "tool": str(call.get("tool") or ""),
@@ -870,7 +875,9 @@ def _run_context_loop_turn(
         "aggregations": aggregations,
         "hits": hits[:20],
         "turns": int(result.get("rounds") or 0),
-        "confidence": "low" if result.get("partial") else "medium",
+        "confidence": (
+            "low" if result.get("partial") or not hits else "medium"
+        ),
         "stages": result.get("stages") or [],
         "followups": followups,
         "timings_ms": result.get("timings_ms") or {},

@@ -1207,11 +1207,16 @@ def _normalize_directions(parsed: dict[str, Any]) -> list[dict[str, Any]]:
         kept_needles = filter_scannable(
             [str(n) for n in (d.get("needles") or [])[:8]]
         )
+        title = str(d.get("title") or "")[:160]
+        why = str(d.get("why") or "")[:400]
+        family = str(d.get("family") or "")[:40]
+        if not any((title.strip(), why.strip(), kept_needles, family.strip())):
+            continue
         out.append({
-            "title": str(d.get("title") or "")[:160],
-            "why": str(d.get("why") or "")[:400],
+            "title": title,
+            "why": why,
             "needles": [n[:80] for n in kept_needles],
-            "family": str(d.get("family") or "")[:40],
+            "family": family,
         })
     return out
 
@@ -1287,9 +1292,11 @@ def llm_directions(
                 "for a peer. You may call the read-only tools to inspect the real "
                 "schema (es_mappings), what actually ran (run_record), sample rows "
                 "(sample_rows) and methodology (kb_query/rag_search). Ground every "
-                "direction in real case data. Return your FINAL answer as a JSON "
-                'string only: {"directions":[{"title":"...","why":"...",'
-                '"needles":["..."],"family":"..."}]}. Max 6 directions.'
+                "direction in real case data. Return your FINAL answer through "
+                'the tool protocol answer envelope: {"answer":"<a JSON string '
+                'containing {\\"directions\\":[{\\"title\\":\\"...\\",'
+                '\\"why\\":\\"...\\",\\"needles\\":[\\"...\\"],'
+                '\\"family\\":\\"...\\"}]}>"}. Max 6 directions.'
             )
             loop_result = run_context_loop(
                 case_dir=case_path,

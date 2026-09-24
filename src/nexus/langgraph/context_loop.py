@@ -51,6 +51,8 @@ _TOOL_ARGS: dict[str, set[str]] = {
     "es_aggregate": {"aggs", "query"},
     "sample_rows": {"family", "field", "value", "n"},
     "kb_query": {"query", "folder", "signal", "limit"},
+    "kb_read": {"chunk_id"},
+    "kb_cite": {"chunk_id"},
     "rag_search": {"query", "top_k", "source", "source_ids", "technique", "platform"},
     "run_record": set(),
 }
@@ -153,7 +155,16 @@ def _normalize_tool_calls(parsed: dict[str, Any]) -> list[dict[str, Any]]:
         name = str(item.get("tool") or item.get("name") or "").strip()
         if not name:
             continue
-        args = item.get("args") if isinstance(item.get("args"), dict) else {}
+        args = item.get("args")
+        if isinstance(args, str):
+            # Models sometimes send args as a JSON string; parse it instead of
+            # silently running the tool with no arguments.
+            try:
+                args = json.loads(args) if args.strip() else {}
+            except (json.JSONDecodeError, TypeError):
+                args = {"__invalid_json__": args[:200]}
+        if not isinstance(args, dict):
+            args = {"__invalid_type__": str(type(args).__name__)}
         out.append({
             "tool": name,
             "args": args,
@@ -162,8 +173,34 @@ def _normalize_tool_calls(parsed: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
+_REQUIRED_ARGS: dict[str, tuple[str, ...]] = {
+    "es_search": ("query",),
+    "es_aggregate": ("aggs",),
+    "kb_query": ("query",),
+    "kb_read": ("chunk_id",),
+    "kb_cite": ("chunk_id",),
+    "rag_search": ("query",),
+    "ti_lookup": ("value",),
+    "ti_fanout": ("value",),
+    "web_search": ("query",),
+    "web_fetch": ("url",),
+}
+
+_STRING_FIELDS_BY_TOOL: dict[str, tuple[str, ...]] = {
+    "kb_query": ("query", "folder", "signal"),
+    "kb_read": ("chunk_id",),
+    "kb_cite": ("chunk_id",),
+    "rag_search": ("query", "source", "technique", "platform"),
+    "ti_lookup": ("value", "ioc_type"),
+    "ti_fanout": ("value", "ioc_type"),
+    "web_search": ("query",),
+    "web_fetch": ("url",),
+    "sample_rows": ("family", "field", "value"),
+}
+
+
 def _validate_args(tool: str, args: dict[str, Any]) -> tuple[dict[str, Any], str]:
-    """Reject unknown keys instead of passing them into the core functions."""
+    """Reject unknown/ill-typed or missing required arguments with a clear error."""
     allowed = _TOOL_ARGS.get(tool)
     if allowed is None:
         return {}, f"unknown tool {tool!r}"
@@ -180,6 +217,18 @@ def _validate_args(tool: str, args: dict[str, Any]) -> tuple[dict[str, Any], str
         key: value for key, value in args.items()
         if key in allowed and value is not None
     }
+    missing = [key for key in _REQUIRED_ARGS.get(tool, ()) if not clean.get(key)]
+    if missing:
+        return {}, f"{tool}: missing required argument(s): {', '.join(missing)}"
+    for key in _STRING_FIELDS_BY_TOOL.get(tool, ()):
+        if key in clean and not isinstance(clean[key], str):
+            return {}, f"{tool}: {key} must be a string"
+    if "source_ids" in clean:
+        source_ids = clean["source_ids"]
+        if isinstance(source_ids, str):
+            clean["source_ids"] = [source_ids]
+        elif not isinstance(source_ids, list):
+            return {}, f"{tool}: source_ids must be a list of strings"
     if tool == "es_search":
         try:
             size = int(clean.get("size") or 50)
@@ -286,12 +335,28 @@ def _result_summary(name: str, result: dict[str, Any]) -> dict[str, Any]:
             "available": result.get("available"),
             "hits": [
                 {
-                    "title": h.get("title") or h.get("path") or h.get("id"),
+                    "title": (h.get("title") or h.get("rel_path") or h.get("path")
+                              or h.get("id") or h.get("chunk_id")),
                     "chunk_id": h.get("chunk_id") or h.get("id"),
                     "snippet": str(h.get("snippet") or h.get("text") or "")[:400],
                 }
                 for h in hits[:8] if isinstance(h, dict)
             ],
+        }
+    if name == "kb_read":
+        return {
+            "chunk_id": result.get("chunk_id") or result.get("id"),
+            "citation": result.get("citation"),
+            "doc_title": result.get("doc_title"),
+            "text": str(result.get("text") or "")[:6000],
+        }
+    if name == "kb_cite":
+        return {
+            "chunk_id": result.get("chunk_id") or result.get("id"),
+            "citation": result.get("citation"),
+            "rel_path": result.get("rel_path"),
+            "lines": result.get("lines"),
+            "resolved": bool(result.get("chunk_id") or result.get("citation")),
         }
     if name == "rag_search":
         results = result.get("results") or []
@@ -338,7 +403,7 @@ def _append_tool_observation(
         "summary": summary,
     }
     tool_calls.append(record)
-    if name in ("es_search", "sample_rows"):
+    if name == "es_search":
         seen = {
             (str(h.get("family") or ""), str(h.get("file") or "").replace("\\", "/"), str(h.get("line") or ""))
             for h in all_hits
@@ -371,11 +436,38 @@ def _append_tool_observation(
     return record
 
 
-def _observations_block(observations: list[dict[str, Any]]) -> str:
+def _event_summary(summary: Any) -> dict[str, Any]:
+    """Compact summary for streaming/transcript events (never the full catalog)."""
+    if not isinstance(summary, dict):
+        return {}
+    out = dict(summary)
+    for key in ("parsed_columns", "core_fields", "entries"):
+        value = out.get(key)
+        if isinstance(value, list):
+            out[key] = f"{len(value)} value(s)"
+    hits = out.get("hits")
+    if isinstance(hits, list):
+        out["hits"] = hits[:3]
+        out["hits_total"] = len(hits)
+    return out
+
+
+def _observations_block(
+    observations: list[dict[str, Any]],
+    per_obs_cap: int = 60_000,
+) -> str:
+    """Render observations for the next round.
+
+    The per-observation cap is deliberately generous: the full ``es_mappings``
+    catalog can exceed 10k chars, and hiding columns behind a small cap is what
+    made the live model repeat the same tool call. The project-wide context
+    budget still bounds the final packed prompt.
+    """
     if not observations:
         return "(no tool calls yet)"
     return "\n".join(
-        f"- {o['tool']}: " + json.dumps(o.get("summary") or {}, default=str)[:4000]
+        f"- {o['tool']}: "
+        + json.dumps(o.get("summary") or {}, default=str)[:per_obs_cap]
         for o in observations
     )
 
@@ -419,8 +511,14 @@ def _force_answer(
         answer = parsed.get("answer") or parsed.get("reply")
         if isinstance(answer, str) and answer.strip():
             return answer.strip()[:8000]
+        return ""
     raw = (raw or "").strip()
-    if raw and '"tool_calls"' not in raw and '"tool"' not in raw[:80]:
+    # Never accept an empty JSON container or literal as the case answer.
+    if not raw or raw.lower() in {"{}", "[]", "null", "true", "false"}:
+        return ""
+    if raw[0] in "{[":
+        return ""
+    if '"tool_calls"' not in raw and '"tool"' not in raw[:80]:
         return raw[:8000]
     return ""
 
@@ -539,7 +637,7 @@ def run_context_loop(
         "The runtime injects case_id into every evidence tool; you do NOT need "
         "to supply it and you must never ask the examiner for it.\n\n"
         + (system_prompt.strip() or DEFAULT_SYSTEM)
-        + "\n\n" + tool_contracts_block()
+        + "\n\n" + tool_contracts_block(include_external=False)
     )
     protocol = (
         "\n\nTOOL PROTOCOL:\n"
@@ -653,7 +751,7 @@ def run_context_loop(
                 partial = False
             else:
                 finish_reason = "empty_model"
-            _emit({"event": "done", "reply": reply, "partial": partial})
+            _emit({"event": "loop_done", "reply": reply, "partial": partial})
             break
 
         calls = _normalize_tool_calls(parsed)
@@ -663,7 +761,7 @@ def run_context_loop(
                 reply = answer[:8000]
                 finish_reason = "answer"
                 partial = False
-                _emit({"event": "done", "reply": reply, "partial": False})
+                _emit({"event": "loop_done", "reply": reply, "partial": False})
                 break
             # JSON without tools and without an answer: ask again next round.
             observations.append({
@@ -721,6 +819,10 @@ def run_context_loop(
                 result = backbone_module.backbone_call(name, audit=audit, **payload)
             except Exception as exc:  # noqa: BLE001 — tool errors are observations
                 result = {"error": str(exc)}
+            if isinstance(result, dict) and result.get("error"):
+                # A transient failure must be retryable with the same args;
+                # only successful calls are suppressed as duplicates.
+                seen_call_keys.discard(call_key)
             elapsed = (time.monotonic() - t1) * 1000
             # A rejected/invalid call is still an attempted action; it must
             # not terminate the loop — the next round can recover.
@@ -735,7 +837,8 @@ def run_context_loop(
             _emit({
                 "event": "tool_result", "round": round_no, "tool": name,
                 "why": why, "audit_id": obs.get("audit_id"),
-                "summary": obs.get("summary"), "ms": round(elapsed, 1),
+                "summary": _event_summary(obs.get("summary")),
+                "ms": round(elapsed, 1),
             })
             if time.monotonic() >= deadline:
                 finish_reason = "time"
@@ -759,7 +862,7 @@ def run_context_loop(
             reply = forced
             partial = False
             finish_reason = "answer_forced"
-            _emit({"event": "done", "reply": reply, "partial": False,
+            _emit({"event": "loop_done", "reply": reply, "partial": False,
                    "forced": True})
 
     if partial and not reply:
@@ -772,6 +875,12 @@ def run_context_loop(
             "empty_model": "model returned an empty reply",
         }.get(finish_reason, finish_reason)
         reply = _fallback_partial_reply(question, observations, all_hits, reason)
+
+    if not partial and reply and not tool_calls:
+        reply += (
+            "\n\n_No evidence tool was called in this turn — treat this "
+            "answer as unverified._"
+        )
 
     elapsed_ms = round((time.monotonic() - started) * 1000, 1)
     audit_id = audit.log(

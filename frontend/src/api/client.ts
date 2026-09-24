@@ -386,6 +386,10 @@ export interface ChatEntry {
     queries?: { tool: string; dsl: string; why?: string; hits: number; audit_id?: string }[];
     aggregations?: { field: string; distinct: number; top?: { value: string; count: number }[] }[];
     followups?: { label: string; question: string }[];
+    /** WP 10.53: true when the turn returned rows on budget expiry. */
+    partial?: boolean;
+    /** Slim tool-call chain (tool/why/audit_id/summary counters). */
+    tool_calls?: { tool: string; why?: string; audit_id?: string; elapsed_ms?: number }[];
     /** Set on `answer_saved` entries: the assistant message they refer to. */
     entry_ts?: string;
   };
@@ -1236,7 +1240,12 @@ export type ChatStreamEvent =
  * Calls onEvent for each server event; resolves when the stream ends.
  */
 export async function chatStream(
-  body: { message: string; mode: "mode1" | "mode2"; max_iterations?: number },
+  body: {
+    message: string;
+    mode: "mode1" | "mode2";
+    max_iterations?: number;
+    history?: { role: string; text: string }[];
+  },
   onEvent: (evt: { event: string; data: Record<string, unknown> }) => void,
   signal?: AbortSignal,
 ): Promise<void> {

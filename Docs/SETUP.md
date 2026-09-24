@@ -113,7 +113,7 @@ NEXUS_LLM_REASONING=high                 # optional reasoning passthrough
 | `NEXUS_KB_DIR` | unset | Path to your local KB (the folder containing `kb/kb.py`, e.g. `G:\doc_extract`). Enables `kb_search`/`kb_read` and the Mode 2 KB context block. |
 | `NEXUS_RAG_DEVICE` | `auto` | Embedding device: `cpu` \| `cuda` \| `cuda:0` — `auto` picks CUDA when the installed torch build has it (the log line reports the device). |
 | `NEXUS_LLM_TIMEOUT` | `180` | Seconds per LLM request; raise it (e.g. `600`) for slow long-context providers — a stalled provider can never hang a turn. |
-| `NEXUS_MODE2_TURN_TIMEOUT` | `240` | Steering-turn budget (seconds) before the request returns a graceful timeout. |
+| `NEXUS_MODE2_TURN_TIMEOUT` | `900` | Outer steering-turn budget (seconds); must stay above `NEXUS_CONTEXT_LOOP_SECONDS` (default 360). The bounded tool loop returns a partial result before this ceiling. |
 | `NEXUS_LLM_CONTEXT_WINDOW` | `1000000` | Your model's max context window (tokens). The Mode 2 context allocator packs `window × fill` and never applies smaller artificial caps. Also settable per run in the Briefing run panel (stored in `analysis/mode2_run_options.json`). |
 | `NEXUS_CONTEXT_FILL_RATIO` | `0.7` | Share of the window packed into prompts. Every packed context is persisted to `analysis/llm_context/` for audit; usage is logged, never capped. |
 | `NEXUS_CONTEXT_RETRY_RATIO` | `0.5` | Downgrade ratio for the one retry when a provider rejects an over-long prompt. |

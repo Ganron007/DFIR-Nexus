@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 from nexus.audit import AuditWriter
 
@@ -421,6 +422,151 @@ def test_context_loop_kill_switch(monkeypatch):
         assert _context_loop_enabled() is False
     monkeypatch.setenv("NEXUS_CONTEXT_LOOP", "1")
     assert _context_loop_enabled() is True
+
+
+def test_loop_accepts_every_contract_listed_tool():
+    """The prompt's tool contracts must be callable; no listed tool is rejected."""
+    from nexus.langgraph.context_loop import _TOOL_ARGS
+
+    listed = {
+        "es_mappings", "es_search", "es_aggregate", "sample_rows",
+        "kb_query", "kb_read", "kb_cite", "rag_search", "run_record",
+    }
+    assert listed <= set(_TOOL_ARGS)
+    # External TI/web tools stay out of the bounded loop by design; the
+    # model cannot choose an outbound value.
+    assert {"ti_lookup", "ti_fanout", "web_search", "web_fetch"} & set(_TOOL_ARGS) == set()
+
+
+def test_result_summary_carries_kb_read_content():
+    from nexus.langgraph.context_loop import _result_summary
+
+    summary = _result_summary("kb_read", {
+        "chunk_id": "d_abc:c0001",
+        "citation": "doc.md:10-20",
+        "doc_title": "Procedure",
+        "text": "run reg save HKLM\\SAM",
+    })
+    assert summary["chunk_id"] == "d_abc:c0001"
+    assert "reg save" in summary["text"]
+    assert summary["citation"] == "doc.md:10-20"
+
+
+def test_force_answer_rejects_empty_json():
+    from nexus.langgraph.context_loop import _force_answer
+
+    class _EmptyModel:
+        def invoke(self, _messages):
+            class _R:
+                content = "{}"
+            return _R()
+
+    assert _force_answer(
+        model=_EmptyModel(), base_system="x", question="q",
+        observations=[], call_chars=1000,
+    ) == ""
+
+
+def test_context_loop_marks_zero_tool_answers_unverified(tmp_path, monkeypatch):
+    from nexus.langgraph.context_loop import run_context_loop
+
+    case = _case(tmp_path)
+    model = _ScriptedModel([{"answer": "sdelete ran on WS01."}])
+    result = run_context_loop(
+        case_dir=case,
+        case_id="CASE-LOOP",
+        question="Did sdelete run?",
+        model=model,
+        audit=AuditWriter("nexus", audit_dir=case / "audit"),
+    )
+    assert "No evidence tool was called" in result["reply"]
+
+
+def test_run_record_uses_real_ledger_field_names(tmp_path, monkeypatch):
+    from nexus.tools import evidence_index
+
+    case = tmp_path / "CASE-LEDGER-REAL"
+    ext = case / "runs" / "RUN-1" / "extractions"
+    ext.mkdir(parents=True)
+    (ext / "_tool_lane_ledger.json").write_text(json.dumps([
+        {"tool": "hayabusa", "status": "OK", "reason": "",
+         "purpose": "evtx", "argv": ["hayabusa", "csv-timeline", "-d", "C:\\ev"],
+         "output_saved_to": "hayabusa/evtx-timeline.csv", "audit_id": "hay-1"},
+    ]), encoding="utf-8")
+    monkeypatch.setattr(evidence_index, "_resolve_active_case",
+                        lambda case_id: (case, ""))
+    result = evidence_index.do_run_record(case_id="CASE-LEDGER-REAL")
+    entry = result["entries"][0]
+    assert "csv-timeline" in entry["command"]
+    assert entry["output"].endswith("evtx-timeline.csv")
+    assert result["counts"] == {"OK": 1, "SKIP": 0, "FAIL": 0}
+
+
+def test_run_record_counts_all_rows_beyond_entry_cap(tmp_path, monkeypatch):
+    from nexus.tools import evidence_index
+
+    case = tmp_path / "CASE-LEDGER-BIG"
+    ext = case / "runs" / "RUN-1" / "extractions"
+    ext.mkdir(parents=True)
+    rows = [{"tool": f"t{i}", "status": "OK"} for i in range(305)]
+    rows.append({"tool": "late-fail", "status": "FAIL"})
+    (ext / "_tool_lane_ledger.json").write_text(json.dumps(rows), encoding="utf-8")
+    monkeypatch.setattr(evidence_index, "_resolve_active_case",
+                        lambda case_id: (case, ""))
+    result = evidence_index.do_run_record(case_id="CASE-LEDGER-BIG")
+    assert result["counts"]["OK"] == 305
+    assert result["counts"]["FAIL"] == 1
+    assert len(result["entries"]) == 300
+
+
+def test_mode2_chat_stream_emits_tool_events_and_history(tmp_path):
+    from starlette.applications import Starlette
+    from starlette.testclient import TestClient
+
+    from nexus.dashboard.app import create_dashboard
+
+    case = tmp_path / "INC-stream-1"
+    case.mkdir(parents=True)
+    (case / "CASE.yaml").write_text("name: stream\nstatus: open\n", encoding="utf-8")
+    (case / "audit").mkdir()
+    seen: dict[str, Any] = {}
+
+    def _fake_agent(case_dir, message, history=None, on_event=None, **kwargs):
+        seen["history"] = history
+        if on_event:
+            on_event({"event": "round", "round": 1, "max_rounds": 8})
+            on_event({"event": "tool_call", "round": 1, "tool": "es_search",
+                      "args": {"query": {"match_all": {}}}, "why": "test"})
+            on_event({"event": "tool_result", "round": 1, "tool": "es_search",
+                      "audit_id": "a-1", "summary": {"total": 1}})
+        return {
+            "reply": "Found one row.",
+            "queries_executed": [{"tool": "es_search", "dsl": "{...}",
+                                  "why": "test", "hits": 1, "audit_id": "a-1"}],
+            "tool_calls": [{"tool": "es_search", "why": "test",
+                            "audit_id": "a-1", "summary": {"total": 1}}],
+            "total_hits": 1,
+            "partial": False,
+            "hits": [{"family": "hayabusa", "file": "a.csv", "line": "1",
+                      "text": "hit"}],
+        }
+
+    with patch("nexus.dashboard.app._get_case_dir", return_value=case), \
+         patch("nexus.langgraph.steer_agent.run_steer_agent", side_effect=_fake_agent):
+        client = TestClient(Starlette(routes=create_dashboard()))
+        response = client.post(
+            "/portal/api/chat/stream",
+            json={"message": "find rows", "mode": "mode2",
+                  "history": [{"role": "examiner", "text": "prior"}]},
+        )
+    assert response.status_code == 200
+    body = response.text
+    assert "event: round" in body
+    assert "event: tool_call" in body
+    assert "event: tool_result" in body
+    assert "event: done" in body
+    assert "Found one row." in body
+    assert seen["history"] == [{"role": "examiner", "text": "prior"}]
 
 
 def test_alias_routing_is_read_only_and_documented():

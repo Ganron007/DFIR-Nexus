@@ -495,19 +495,33 @@ def do_run_record(case_id: str = "", audit: AuditWriter | None = None) -> dict:
             if isinstance(loaded, list):
                 rows = [r for r in loaded if isinstance(r, dict)]
 
+    def _command_of(row: dict[str, Any]) -> str:
+        argv = row.get("argv")
+        if isinstance(argv, list):
+            return " ".join(str(a) for a in argv)[:300]
+        return str(row.get("command") or "")[:300]
+
+    def _output_of(row: dict[str, Any]) -> str:
+        value = row.get("output_saved_to") or row.get("output") or row.get("output_file")
+        if isinstance(value, dict):
+            value = value.get("path") or value.get("file") or ""
+        return str(value or "")[:300]
+
     entries: list[dict[str, Any]] = []
     counts = {"OK": 0, "SKIP": 0, "FAIL": 0}
-    for row in rows[:300]:
+    for row in rows:
         status = str(row.get("status") or "").upper()
         if status in counts:
             counts[status] += 1
+        if len(entries) >= 300:
+            continue
         entries.append({
             "tool": str(row.get("tool") or "")[:80],
             "status": status,
             "reason": str(row.get("reason") or "")[:200],
             "purpose": str(row.get("purpose") or "")[:200],
-            "command": str(row.get("command") or "")[:300],
-            "output": str(row.get("output") or row.get("output_file") or "")[:300],
+            "command": _command_of(row),
+            "output": _output_of(row),
             "duration_s": row.get("duration_s"),
             "audit_id": str(row.get("audit_id") or "")[:80],
         })
