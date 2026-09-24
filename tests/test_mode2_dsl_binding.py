@@ -155,9 +155,12 @@ def test_propose_prompt_teaches_grammar_and_binds_backbone(tmp_path):
                        "rationale": "r"})
     out = _propose_with_model(case, hits, [], fake)
     user_prompt = fake.prompts[0][1]["content"]
-    # 4k.5.5: the prompt teaches the ES surface (tool contracts + fields)
+    # 4k.5.5 + WP 10.53: the prompt teaches the ES surface and the
+    # model-facing aliases (kb_query / rag_search / run_record); the canonical
+    # kb_search implementation still backs kb_query.
     assert "es_search" in user_prompt and "es_aggregate" in user_prompt
-    assert "kb_search" in user_prompt
+    assert "kb_query" in user_prompt
+    assert "run_record" in user_prompt
     assert "Elasticsearch" in user_prompt
     assert out["source"] == "llm"
     # legacy DSL proposals still validate (backward compat path)

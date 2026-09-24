@@ -343,7 +343,10 @@ def test_backbone_allowlist_has_es_sample():
     from nexus.langgraph.backbone import MODE2_TOOL_ALLOWLIST, tool_contracts_block
 
     assert MODE2_TOOL_ALLOWLIST.get("es_sample") == "evidence"
-    assert "es_sample" in tool_contracts_block(2)
+    # WP 10.53: the model-facing contract uses the ``sample_rows`` alias, and
+    # the canonical tool name stays registered/audited underneath.
+    assert "sample_rows" in tool_contracts_block(2)
+    assert "es_search" in tool_contracts_block(2)
 
 
 def test_backbone_call_binding_exists():
@@ -352,7 +355,10 @@ def test_backbone_call_binding_exists():
     from nexus.langgraph import backbone
 
     src = inspect.getsource(backbone.backbone_call)
-    assert 'name in ("es_fields", "es_search", "es_aggregate", "es_sample")' in src
+    # Canonical names still dispatch to the ES-native core; the alias resolver
+    # maps model-facing names (sample_rows) onto the same path.
+    assert 'canonical in ("es_fields", "es_search", "es_aggregate", "es_sample")' in src
+    assert "canonical = _resolve_tool(name)" in src
 
 
 # ── interpretation reconciliation ────────────────────────────────────────

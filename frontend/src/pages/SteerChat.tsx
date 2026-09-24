@@ -521,36 +521,45 @@ export default function SteerChat() {
         );
         load();
       } else if (mode === "mode2") {
-        // WP 4j.13 — the conversational evidence agent (NOT needle proposal)
-        const r = await api.mode2Chat({
-          message: text,
-          history: messages.slice(-6).map((m) => ({ role: m.role, text: m.text })),
-        });
-        const timingText = Object.entries(r.timings_ms || {})
-          .map(([k, v]) => `${k} ${(v / 1000).toFixed(1)}s`)
-          .join(" · ");
-        if (timingText) setTurnTimings(timingText);
-        const firstQuery = (r.queries_executed || []).find((q) => q.hits > 0);
-        if (firstQuery?.dsl) setLastQuery(firstQuery.dsl);
-        setMessages((prev) => [
-          ...prev,
-          {
-            ts: new Date().toISOString(),
-            role: "llm",
-            action: "steer_answer",
-            text: r.reply || "(no answer)",
-            meta: {
-              total_hits: String(r.total_hits),
-              confidence: r.confidence,
-              timings: timingText,
-            },
-            data: {
-              queries: r.queries_executed || [],
-              followups: r.followups || [],
-              hits: r.hits || [],
-            },
+        // WP 10.53/10.54 — live bounded tool loop. The server streams tool
+        // events and persists the final/partial transcript; reloading shows
+        // the exact tool chain, rows and partial state after the turn.
+        await chatStream(
+          { message: text, mode, max_iterations: mode2Iterations },
+          (evt) => {
+            const data = evt.data as Record<string, unknown>;
+            if (evt.event === "round") {
+              setLiveStatus(`Round ${String(data.round ?? "?")} — deciding the next action…`);
+            } else if (evt.event === "tool_call") {
+              setLiveStatus(
+                `tool ${String(data.tool || "")}: ${String(data.why || "retrieving evidence")}`,
+              );
+            } else if (evt.event === "tool_result") {
+              const audit = data.audit_id ? ` · audit ${String(data.audit_id)}` : "";
+              const err = data.error ? ` · ${String(data.error)}` : "";
+              setLiveStatus(`tool ${String(data.tool || "")} returned${audit}${err}`);
+            } else if (evt.event === "partial") {
+              setLiveStatus(`Budget reached (${String(data.reason || "limit")}) — returning partial result…`);
+            } else if (evt.event === "done") {
+              const queries = Array.isArray(data.queries_executed)
+                ? (data.queries_executed as { hits?: number; dsl?: string }[])
+                : [];
+              const firstQuery = queries.find((q) => (q.hits ?? 0) > 0);
+              if (firstQuery?.dsl) setLastQuery(firstQuery.dsl);
+              const timings = data.timings_ms as Record<string, number> | undefined;
+              if (timings) {
+                const text = Object.entries(timings)
+                  .filter(([, v]) => typeof v === "number")
+                  .map(([k, v]) => `${k} ${(v / 1000).toFixed(1)}s`)
+                  .join(" · ");
+                if (text) setTurnTimings(text);
+              }
+            } else if (evt.event === "error") {
+              setError(String(data.error || "stream error"));
+            }
           },
-        ]);
+        );
+        load();
       } else if (mode === "mode3") {
         if (mode3Step === "plan") {
           const plan = await api.mode3Plan({ question: text });

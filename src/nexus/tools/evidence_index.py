@@ -16,6 +16,7 @@ the ``audit_id``.
 from __future__ import annotations
 
 import contextlib
+import json
 import logging
 import re
 import time
@@ -431,6 +432,109 @@ def do_family_fields(family: str, audit: AuditWriter | None = None) -> dict:
     }
 
 
+def do_run_record(case_id: str = "", audit: AuditWriter | None = None) -> dict:
+    """Return the tool-lane ledger: what actually ran against this case.
+
+    This is the honesty tool for negative answers. It lets the model (and the
+    examiner) distinguish:
+
+    - tool ran and found nothing
+    - tool ran and failed
+    - tool was skipped, with the reason
+    - tool never ran / no ledger exists
+
+    Context only — the ledger is routing/provenance, never a finding.
+    """
+    started = time.monotonic()
+    case_dir, err = _resolve_active_case(case_id)
+    if err or case_dir is None:
+        return {"error": err or "no active case"}
+
+    run_id = ""
+    run_dir = ""
+    ledger_path: Path | None = None
+    extractions = case_dir / "extractions"
+    try:
+        from nexus.langgraph.pipeline_runs import resolve_run
+
+        run = resolve_run(case_dir, "tools")
+        run_id = run.run_id
+        run_dir = str(run.path)
+    except Exception:  # noqa: BLE001 — no active run is a normal state
+        pass
+    try:
+        from nexus.langgraph.pipeline_runs import resolve_tools_extractions
+
+        extractions = resolve_tools_extractions(case_dir, run_id)
+    except Exception:  # noqa: BLE001 — fall back to the case-level paths
+        extractions = case_dir / "extractions"
+    for candidate in (
+        extractions / "_tool_lane_ledger.json",
+        case_dir / "ledger" / "_tool_lane_ledger.json",
+        case_dir / "extractions" / "_tool_lane_ledger.json",
+    ):
+        if candidate.is_file():
+            ledger_path = candidate
+            break
+    if ledger_path is None:
+        # Immutable runs keep the ledger under runs/<id>/extractions; the
+        # reuse-chain resolver intentionally ignores underscore files, so
+        # find the newest run ledger directly.
+        candidates = sorted(
+            case_dir.glob("runs/*/extractions/_tool_lane_ledger.json"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        if candidates:
+            ledger_path = candidates[0]
+
+    rows: list[dict[str, Any]] = []
+    if ledger_path is not None:
+        with contextlib.suppress(OSError, ValueError, TypeError):
+            loaded = json.loads(ledger_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, list):
+                rows = [r for r in loaded if isinstance(r, dict)]
+
+    entries: list[dict[str, Any]] = []
+    counts = {"OK": 0, "SKIP": 0, "FAIL": 0}
+    for row in rows[:300]:
+        status = str(row.get("status") or "").upper()
+        if status in counts:
+            counts[status] += 1
+        entries.append({
+            "tool": str(row.get("tool") or "")[:80],
+            "status": status,
+            "reason": str(row.get("reason") or "")[:200],
+            "purpose": str(row.get("purpose") or "")[:200],
+            "command": str(row.get("command") or "")[:300],
+            "output": str(row.get("output") or row.get("output_file") or "")[:300],
+            "duration_s": row.get("duration_s"),
+            "audit_id": str(row.get("audit_id") or "")[:80],
+        })
+
+    aid = audit.log(
+        tool="run_record",
+        params={"case_id": Path(case_dir).name, "run_id": run_id},
+        result_summary={"entries": len(rows), **counts},
+        elapsed_ms=round((time.monotonic() - started) * 1000, 1),
+    ) if audit else None
+    return {
+        "case_id": Path(case_dir).name,
+        "run_id": run_id,
+        "run_dir": run_dir,
+        "ledger_path": str(ledger_path) if ledger_path else "",
+        "available": bool(rows),
+        "total": len(rows),
+        "counts": counts,
+        "entries": entries,
+        "note": (
+            "Tool-lane ledger (routing/provenance). A zero-hit query is not "
+            "negative evidence until this says the relevant parser ran."
+        ),
+        "provenance": {"audit_id": aid, "case_id": Path(case_dir).name},
+    }
+
+
 def register_tools(server: FastMCP, audit: AuditWriter):
     @server.tool()
     def n4_query(case_id: str = "", dsl: str = "", limit: int = 80,
@@ -502,6 +606,17 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         schema-on-read guidance.
         """
         return do_family_fields(family=family, audit=audit)
+
+    @server.tool()
+    def run_record(case_id: str = "") -> dict:
+        """What ran against this case: the tool-lane ledger (routing/provenance).
+
+        Returns per-tool status (OK/SKIP/FAIL), reason, purpose, command,
+        output path and audit_id, plus totals. Use before claiming evidence is
+        absent — a zero-hit query is not negative evidence until the relevant
+        parser is shown to have run. Context only, never a finding.
+        """
+        return do_run_record(case_id=case_id, audit=audit)
 
     # ── Phase 4k.5 — ES-native surface (Mode 2/3; read-only, audited) ──
     @server.tool()

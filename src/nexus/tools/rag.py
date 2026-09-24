@@ -779,6 +779,73 @@ def _get_index() -> RAGIndex:
     return _global_index
 
 
+def do_forensic_rag_search(
+    query: str,
+    top_k: int = 10,
+    source: str = "",
+    source_ids: list[str] | None = None,
+    technique: str = "",
+    platform: str = "",
+    audit: AuditWriter | None = None,
+    alias: str = "",
+) -> dict[str, Any]:
+    """Shared RAG-search core (WP 10.53) used by both the MCP tool and the
+    context-engineering backbone binding. Same implementation, no drift.
+
+    The optional ``alias`` is the model-facing tool name (``rag_search``);
+    the canonical audit tool name stays ``forensic_rag_search``.
+    """
+    available, msg = _check_rag_available()
+    if not available:
+        return {"error": msg}
+
+    from nexus.audit import resolve_examiner
+
+    params: dict[str, Any] = {"query": query[:200], "top_k": top_k}
+    if alias:
+        params["alias"] = alias
+    audit_id = audit.log(
+        tool="forensic_rag_search",
+        params=params,
+        result_summary={"status": "searched"},
+    ) if audit else None
+
+    idx = _get_index()
+    try:
+        result = idx.search(
+            query=query,
+            top_k=top_k,
+            source=source or None,
+            source_ids=source_ids,
+            technique=technique or None,
+            platform=platform or None,
+        )
+        response: dict[str, Any] = {
+            "status": "ok",
+            "query": query,
+            "results": result.get("results", []),
+            "audit_id": audit_id or (audit.last_audit_id if audit else "") or "",
+            "examiner": resolve_examiner(),
+            "caveats": [
+                "Search results are semantic (vector) matches, not exact keyword matches",
+                "Relevance scores above 0.85 are excellent; 0.75-0.84 are good",
+            ],
+            "interpretation_constraint": "Scores are cosine similarity (0-1). Higher is better.",
+        }
+        if alias:
+            response["alias"] = alias
+        if result.get("matched_sources"):
+            response["matched_sources"] = result["matched_sources"]
+        if result.get("source_filter"):
+            response["source_filter_applied"] = result["source_filter"]
+        return response
+    except FileNotFoundError as e:
+        return {"status": "error", "query": query, "error": str(e)}
+    except Exception as e:
+        logger.exception("RAG search failed")
+        return {"status": "error", "query": query, "error": f"Search failed: {e}"}
+
+
 def register_tools(server: FastMCP, audit: AuditWriter):
     @server.tool()
     def forensic_rag_search(
@@ -810,50 +877,15 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             technique: Filter by MITRE technique ID (e.g. 'T1003')
             platform: Filter by platform (windows, linux, macos)
         """
-        available, msg = _check_rag_available()
-        if not available:
-            return [{"error": msg}]
-
-        from nexus.audit import resolve_examiner
-
-        audit_id = audit.log(
-            tool="forensic_rag_search",
-            params={"query": query[:200], "top_k": top_k},
-            result_summary={"status": "searched"},
+        return do_forensic_rag_search(
+            query=query,
+            top_k=top_k,
+            source=source,
+            source_ids=source_ids,
+            technique=technique,
+            platform=platform,
+            audit=audit,
         )
-
-        idx = _get_index()
-        try:
-            result = idx.search(
-                query=query,
-                top_k=top_k,
-                source=source or None,
-                source_ids=source_ids,
-                technique=technique or None,
-                platform=platform or None,
-            )
-            response = {
-                "status": "ok",
-                "query": query,
-                "results": result.get("results", []),
-                "audit_id": audit_id or audit.last_audit_id or "",
-                "examiner": resolve_examiner(),
-                "caveats": [
-                    "Search results are semantic (vector) matches, not exact keyword matches",
-                    "Relevance scores above 0.85 are excellent; 0.75-0.84 are good",
-                ],
-                "interpretation_constraint": "Scores are cosine similarity (0-1). Higher is better.",
-            }
-            if result.get("matched_sources"):
-                response["matched_sources"] = result["matched_sources"]
-            if result.get("source_filter"):
-                response["source_filter_applied"] = result["source_filter"]
-            return response
-        except FileNotFoundError as e:
-            return {"status": "error", "query": query, "error": str(e)}
-        except Exception as e:
-            logger.exception("RAG search failed")
-            return {"status": "error", "query": query, "error": f"Search failed: {e}"}
 
     @server.tool()
     def forensic_rag_status() -> dict:

@@ -2947,6 +2947,23 @@ def _mode1_run_path(case_dir: Path) -> Path:
     return case_dir / "analysis" / _MODE1_RUN_FILE
 
 
+def _full_run_scribe_policy() -> tuple[str, int]:
+    """Full-run scribe mode (WP 10.53 decision, Option B).
+
+    Default ``heuristic`` keeps the one-click run fast. ``signal`` runs the
+    LLM scribe only for needles whose hit count clears the threshold;
+    ``llm`` runs it for every staged draft. Env-overridable.
+    """
+    mode = os.environ.get("NEXUS_FULL_RUN_SCRIBE", "heuristic").strip().lower()
+    if mode not in ("heuristic", "signal", "llm"):
+        mode = "heuristic"
+    try:
+        min_hits = int(os.environ.get("NEXUS_FULL_RUN_SCRIBE_MIN_HITS", "3"))
+    except ValueError:
+        min_hits = 3
+    return mode, max(1, min_hits)
+
+
 def _mode1_run_record(case_dir: Path) -> dict | None:
     """Read the persisted full-run record, marking dead runs as interrupted."""
     path = _mode1_run_path(case_dir)
@@ -3048,6 +3065,7 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
         _heuristic_scribe,
         promote_hits_to_draft,
         save_draft_finding,
+        scribe_finding,
     )
     from nexus.langgraph.query_pack import (
         attach_hit_fields,
@@ -3057,6 +3075,8 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
     )
 
     write_lock = threading.Lock()
+    scribe_mode, scribe_min_hits = _full_run_scribe_policy()
+    scribe_state: dict[str, Any] = {"model": None, "resolved": False}
 
     def _persist() -> None:
         record["updated_at"] = time.time()
@@ -3276,6 +3296,26 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
                         arts.append({"audit_id": scan_aid, "type": "scan"})
                     draft["artifacts"] = arts
             draft = _heuristic_scribe(draft, hits, case_dir=case_dir)
+            # WP 10.53 Option B: full-run default stays heuristic; ``signal``
+            # upgrades only drafts clearing the hit threshold, ``llm`` upgrades
+            # every draft. Any model failure falls back to the heuristic fill.
+            if scribe_mode != "heuristic" and (
+                scribe_mode == "llm" or len(hits) >= scribe_min_hits
+            ):
+                if not scribe_state["resolved"]:
+                    try:
+                        from nexus.langgraph.llm_pipeline import get_model
+
+                        scribe_state["model"] = get_model()
+                    except Exception:  # noqa: BLE001 — heuristic fallback stands
+                        scribe_state["model"] = None
+                    scribe_state["resolved"] = True
+                if scribe_state["model"] is not None:
+                    with contextlib.suppress(Exception):
+                        draft = scribe_finding(
+                            draft, hits, model=scribe_state["model"],
+                            case_dir=case_dir,
+                        )
             if approved_ids:
                 draft["related_findings"] = approved_ids
             res = save_draft_finding(case_dir, draft)
@@ -3939,10 +3979,9 @@ async def api_chat_stream(request):
         return JSONResponse({"error": "Empty message"}, status_code=400)
     if mode not in ("mode1", "mode2"):
         return JSONResponse({"error": f"Unsupported stream mode: {mode}"}, status_code=400)
-    try:
-        max_iterations = max(1, min(int(body.get("max_iterations") or 2), 5))
-    except (TypeError, ValueError):
-        max_iterations = 2
+    # ``max_iterations`` is accepted for API compatibility; the new tool loop
+    # is bounded by NEXUS_CONTEXT_LOOP_* instead.
+    _ = body.get("max_iterations")
 
     import queue as _queue
 
@@ -4009,6 +4048,40 @@ async def api_chat_stream(request):
             return
         hits = final.get("hits", [])
         reply = final.get("reply", "")
+        if action == "steer_answer":
+            # WP 10.53: keep the tool chain + partial state in the transcript,
+            # so a budget stop is visible and revisitable after reload.
+            timings = final.get("timings_ms") or {}
+            append_chat(case_dir, "llm", "steer_answer", reply[:3000], {
+                "total_hits": str(final.get("total_hits", 0)),
+                "confidence": str(final.get("confidence", "")),
+                "partial": str(bool(final.get("partial"))),
+                "timings": " ".join(
+                    f"{k}={round(float(v) / 1000, 1)}s"
+                    for k, v in timings.items()
+                    if isinstance(v, (int, float))
+                ),
+            }, {
+                "queries": final.get("queries_executed", [])[:8],
+                "tool_calls": final.get("tool_calls", [])[:12],
+                "aggregations": final.get("aggregations", [])[:5],
+                "hits": _hits_for_transcript(hits[:10]),
+                "followups": final.get("followups", []),
+                "partial": bool(final.get("partial")),
+            })
+            q.put(("done", {
+                "reply": reply,
+                "queries_executed": final.get("queries_executed", []),
+                "tool_calls": final.get("tool_calls", []),
+                "total_hits": final.get("total_hits", 0),
+                "partial": bool(final.get("partial")),
+                "partial_reason": str(final.get("partial_reason") or ""),
+                "timings_ms": final.get("timings_ms", {}),
+                "hits": _hits_for_transcript(hits),
+                "followups": final.get("followups", []),
+            }))
+            q.put((None, None))
+            return
         if action == "mode2_done":
             reply = f"Iterative run complete: {final.get('total_hits', 0)} total hits across {len(final.get('needles_run', []))} needle(s)."
             from nexus.case.chat import append_chat as _ac
@@ -4042,16 +4115,15 @@ async def api_chat_stream(request):
                 _finalize(action, final)
             else:
                 def _mode2_worker():
-                    from nexus.langgraph.llm_pipeline import get_model
-                    from nexus.langgraph.mode2 import run_iterative_loop
+                    # WP 10.53/10.54: the model-driven bounded tool loop.
+                    # Tool events stream through the same queue; the final
+                    # result is still a normal chat answer (partial on budget).
+                    from nexus.langgraph.steer_agent import run_steer_agent
 
-                    try:
-                        model = get_model()
-                    except Exception:
-                        model = None
-                    return run_iterative_loop(
-                        case_dir, message, model=model, max_iterations=max_iterations,
-                        on_event=lambda e: q.put(("iteration", e)),
+                    return run_steer_agent(
+                        case_dir, message,
+                        on_event=lambda event: q.put(
+                            (str(event.get("event") or "context"), event)),
                     )
 
                 result = await asyncio.to_thread(_mode2_worker)
@@ -4061,7 +4133,7 @@ async def api_chat_stream(request):
                 else:
                     hits = result.get("hits", [])
                     q.put(("hits", {"hits": _hits_for_transcript(hits[:_CHAT_STREAM_MAX_HITS])}))
-                    _finalize("mode2_done", result)
+                    _finalize("steer_answer", result)
         except Exception as exc:
             q.put(("error", {"error": str(exc)}))
             q.put((None, None))
@@ -5753,6 +5825,18 @@ async def api_case_briefing_directions(request):
             return JSONResponse({"directions": []})
         brief = await asyncio.to_thread(_cached_briefing, case_dir)
         directions = await asyncio.to_thread(llm_directions, case_dir, brief, model)
+        if directions:
+            # Persist so REPORT.md can carry the same directions as next steps
+            # without regenerating them (report generation may run offline).
+            await asyncio.to_thread(
+                _atomic_write_json,
+                case_dir / "analysis" / "briefing_directions.json",
+                {
+                    "generated_at": datetime.now(UTC).isoformat(),
+                    "source": "llm",
+                    "directions": directions,
+                },
+            )
     except Exception as exc:  # noqa: BLE001
         logger.exception("briefing directions failed")
         return JSONResponse({"error": f"directions failed: {exc}"}, status_code=500)

@@ -1222,8 +1222,13 @@ export const api = {
 export type ChatStreamEvent =
   | { event: "status"; data: { stage: string; detail?: string; needles?: string[] } }
   | { event: "iteration"; data: Record<string, unknown> }
+  // WP 10.53/10.54 — live bounded tool loop events.
+  | { event: "round"; data: { round: number; max_rounds?: number } }
+  | { event: "tool_call"; data: { round?: number; tool: string; args?: Record<string, unknown>; why?: string } }
+  | { event: "tool_result"; data: { round?: number; tool: string; why?: string; audit_id?: string; summary?: Record<string, unknown>; error?: string; ms?: number } }
+  | { event: "partial"; data: { reason: string; round?: number } }
   | { event: "hits"; data: { hits: N4Hit[]; count?: number } }
-  | { event: "done"; data: { reply: string; needles: string[]; count: number; backend?: string; hits?: N4Hit[] } }
+  | { event: "done"; data: { reply: string; needles?: string[]; count?: number; backend?: string; hits?: N4Hit[]; queries_executed?: unknown[]; tool_calls?: unknown[]; total_hits?: number; partial?: boolean } }
   | { event: "error"; data: { error: string } };
 
 /**

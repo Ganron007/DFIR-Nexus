@@ -1177,6 +1177,45 @@ can run immediately. Rules:
 """
 
 
+def _directions_json(text: str) -> dict[str, Any] | None:
+    """Extract the directions JSON object from a model reply."""
+    import json
+
+    raw = (text or "").strip()
+    if not raw:
+        return None
+    start, end = raw.find("{"), raw.rfind("}")
+    if start == -1 or end <= start:
+        return None
+    try:
+        parsed = json.loads(raw[start:end + 1])
+    except (json.JSONDecodeError, TypeError):
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _normalize_directions(parsed: dict[str, Any]) -> list[dict[str, Any]]:
+    """Validate + vocabulary-gate the model's direction rows."""
+    from nexus.knowledge.needle_terms import filter_scannable
+
+    out = []
+    for d in (parsed.get("directions") or [])[:6]:
+        if not isinstance(d, dict):
+            continue
+        # F6: LLM directions are auto-generated vocabulary - keep event IDs /
+        # container names out of the proposed needles.
+        kept_needles = filter_scannable(
+            [str(n) for n in (d.get("needles") or [])[:8]]
+        )
+        out.append({
+            "title": str(d.get("title") or "")[:160],
+            "why": str(d.get("why") or "")[:400],
+            "needles": [n[:80] for n in kept_needles],
+            "family": str(d.get("family") or "")[:40],
+        })
+    return out
+
+
 def llm_directions(
     case_dir: Path,
     brief: dict[str, Any],
@@ -1184,9 +1223,10 @@ def llm_directions(
 ) -> list[dict[str, Any]]:
     """Optional LLM layer over the deterministic briefing.
 
-    Returns a list of investigation directions grounded in the briefing's
-    real numbers. Empty list when no model is configured — the deterministic
-    briefing stands alone.
+    WP 10.53: directions get the read-only tool loop (schema discovery, run
+    record, sample rows, KB/RAG on demand) before falling back to the original
+    one-shot directions prompt. Returns a list grounded in the briefing's real
+    numbers. Empty list when no model is configured.
     """
     if model is None:
         return []
@@ -1226,34 +1266,58 @@ def llm_directions(
         f"hypothesis={intake.get('hypothesis', '(none)')}",
     ]
 
+    # WP 10.53: prefer the bounded tool loop; fall back to the original
+    # one-shot directions prompt if the loop produces nothing parseable.
+    # Only a real case directory has schema/ledger tools worth binding; tests
+    # and bare temp dirs use the original deterministic/one-shot path.
+    _case_path = Path(case_dir) if case_dir is not None else None
+    _real_case = bool(
+        _case_path is not None
+        and ((_case_path / "CASE.yaml").is_file() or (_case_path / "analysis").is_dir())
+    )
+    if _real_case:
+        try:
+            from nexus.audit import AuditWriter
+            from nexus.langgraph.context_loop import load_loop_budget, run_context_loop
+
+            case_path = Path(case_dir)
+            audit = AuditWriter("nexus", audit_dir=case_path / "audit")
+            loop_system = (
+                "You are a senior DFIR examiner writing investigation directions "
+                "for a peer. You may call the read-only tools to inspect the real "
+                "schema (es_mappings), what actually ran (run_record), sample rows "
+                "(sample_rows) and methodology (kb_query/rag_search). Ground every "
+                "direction in real case data. Return your FINAL answer as a JSON "
+                'string only: {"directions":[{"title":"...","why":"...",'
+                '"needles":["..."],"family":"..."}]}. Max 6 directions.'
+            )
+            loop_result = run_context_loop(
+                case_dir=case_path,
+                case_id=case_path.name,
+                question="\n".join(user_parts),
+                model=model,
+                system_prompt=loop_system,
+                task="mode1-directions",
+                budget=load_loop_budget(),
+                audit=audit,
+            )
+            parsed_loop = _directions_json(str(loop_result.get("reply") or ""))
+            loop_directions = _normalize_directions(parsed_loop or {})
+            if loop_directions:
+                return loop_directions
+        except Exception as exc:  # noqa: BLE001
+            log.debug("tool-loop briefing directions failed: %s", exc)
+
     try:
         resp = model.invoke([
             {"role": "system", "content": _DIRECTIONS_SYSTEM},
             {"role": "user", "content": "\n".join(user_parts)},
         ])
         text = getattr(resp, "content", str(resp))
-        start, end = text.find("{"), text.rfind("}")
-        if start == -1 or end == -1:
+        parsed = _directions_json(text)
+        if not parsed:
             return []
-        parsed = json.loads(text[start:end + 1])
-        from nexus.knowledge.needle_terms import filter_scannable
-
-        out = []
-        for d in (parsed.get("directions") or [])[:6]:
-            if not isinstance(d, dict):
-                continue
-            # F6: LLM directions are auto-generated vocabulary - keep event
-            # IDs / container names out of the proposed needles.
-            kept_needles = filter_scannable(
-                [str(n) for n in (d.get("needles") or [])[:8]]
-            )
-            out.append({
-                "title": str(d.get("title") or "")[:160],
-                "why": str(d.get("why") or "")[:400],
-                "needles": [n[:80] for n in kept_needles],
-                "family": str(d.get("family") or "")[:40],
-            })
-        return out
+        return _normalize_directions(parsed)
     except Exception as exc:  # noqa: BLE001
         log.debug("LLM briefing directions failed: %s", exc)
         return []

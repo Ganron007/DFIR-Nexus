@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -797,12 +798,97 @@ def _suggest_followups(question: str, families: list[str],
     return chips[:4]
 
 
+def _context_loop_enabled() -> bool:
+    """WP 10.53 kill-switch: ``NEXUS_CONTEXT_LOOP=0`` uses the legacy pipeline.
+
+    The switch exists for A/B comparison and as an operational rollback; the
+    default is the new bounded tool loop.
+    """
+    raw = os.environ.get("NEXUS_CONTEXT_LOOP", "1").strip().lower()
+    return raw not in ("0", "false", "no", "off", "disabled")
+
+
+def _run_context_loop_turn(
+    question: str,
+    model: Any,
+    history: list[dict[str, str]] | None,
+    case_dir: Path,
+    on_event: Any = None,
+) -> dict[str, Any]:
+    """The WP 10.53/10.54 path: bounded, audited, model-driven tool loop.
+
+    This replaces pre-retrieved helper context for the model path. Evidence,
+    schema, the run record and knowledge are pulled on demand by the model;
+    the loop returns a partial result when a budget is exhausted.
+    """
+    from nexus.langgraph.context_loop import load_loop_budget, run_context_loop
+
+    case_dir = Path(case_dir)
+    audit = AuditWriter("nexus", audit_dir=case_dir / "audit")
+    system_prompt = (
+        "You are the Mode 2 evidence agent for this case. Answer the examiner's "
+        "question using the READ-ONLY tools. Start with es_mappings when the "
+        "question needs field knowledge; use es_search for rows, es_aggregate "
+        "for counts/distributions, sample_rows to inspect row texture, "
+        "run_record before claiming evidence is absent (distinguish never-parsed "
+        "from not-found), and kb_query/rag_search only for methodology. "
+        "Answer in compact markdown; for 3+ rows use a markdown table; end with "
+        "a Sources line naming the families/files cited. Never invent facts."
+    )
+    result = run_context_loop(
+        case_dir=case_dir,
+        case_id=case_dir.name,
+        question=question,
+        model=model,
+        system_prompt=system_prompt,
+        task="mode2-steer",
+        history=history,
+        on_event=on_event,
+        budget=load_loop_budget(),
+        audit=audit,
+    )
+    tool_calls = result.get("tool_calls") or []
+    queries_executed: list[dict[str, Any]] = []
+    for call in tool_calls:
+        summary = call.get("summary") or {}
+        queries_executed.append({
+            "tool": str(call.get("tool") or ""),
+            "dsl": _compact_query(call.get("args") or {}),
+            "why": str(call.get("why") or ""),
+            "hits": int(summary.get("total") or summary.get("returned") or 0),
+            "audit_id": str(call.get("audit_id") or ""),
+        })
+    hits = result.get("hits") or []
+    aggregations = result.get("aggregations") or []
+    families = sorted({str(h.get("family") or "") for h in hits if h.get("family")})
+    followups = _suggest_followups(question, families, hits, aggregations)
+    return {
+        "reply": result.get("reply", ""),
+        "queries_executed": queries_executed,
+        "total_hits": len(hits),
+        "rows_scanned": 0,
+        "aggregations": aggregations,
+        "hits": hits[:20],
+        "turns": int(result.get("rounds") or 0),
+        "confidence": "low" if result.get("partial") else "medium",
+        "stages": result.get("stages") or [],
+        "followups": followups,
+        "timings_ms": result.get("timings_ms") or {},
+        "partial": bool(result.get("partial")),
+        "partial_reason": str(result.get("partial_reason") or ""),
+        "finish_reason": str(result.get("finish_reason") or ""),
+        "tool_calls": tool_calls,
+        "loop_audit_id": result.get("audit_id"),
+    }
+
+
 def run_steer_agent(
     case_dir: Path,
     question: str,
     model: Any = None,
     history: list[dict[str, str]] | None = None,
-    max_turns: int = 0,  # unused — the 3-step pipeline is bounded by design
+    max_turns: int = 0,  # kept for call compatibility; the loop is bounded by budget
+    on_event: Any = None,
 ) -> dict[str, Any]:
     """Conversational Mode 2 agent: NL → plan → execute → answer.
 
@@ -856,6 +942,21 @@ def run_steer_agent(
             log.warning("steering: LLM unavailable (%s) — deterministic path", exc)
             llm = None
     history_context = _history_block(history)
+
+    # ── WP 10.53/10.54: model-driven bounded tool loop ──
+    # The model discovers the schema, pulls schema/ledger/KB/RAG/rows on
+    # demand and returns a partial result on budget expiry. The legacy
+    # 3-step pipeline below remains the deterministic fallback (no model or
+    # a loop failure), never the primary path.
+    if llm is not None and _context_loop_enabled():
+        try:
+            loop_result = _run_context_loop_turn(
+                question, llm, history, case_dir, on_event=on_event,
+            )
+            if loop_result.get("reply"):
+                return loop_result
+        except Exception as exc:  # noqa: BLE001 — legacy fallback must survive
+            log.warning("context loop failed (%s) — legacy 3-step fallback", exc)
 
     # ── Step 1: plan queries ──
     t0 = _time.monotonic()

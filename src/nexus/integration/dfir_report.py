@@ -704,6 +704,25 @@ def _load_mode2_saved_answers(case_dir: Any) -> list[dict[str, Any]]:
     return [e for e in loaded if isinstance(e, dict)] if isinstance(loaded, list) else []
 
 
+def _load_briefing_directions(case_dir: Any) -> list[dict[str, Any]]:
+    """Persisted LLM briefing directions (analysis/briefing_directions.json)."""
+    import json
+
+    if not case_dir:
+        return []
+    try:
+        loaded = json.loads(
+            (Path(case_dir) / "analysis" / "briefing_directions.json").read_text(
+                encoding="utf-8"
+            )
+        )
+    except (OSError, ValueError):
+        return []
+    if isinstance(loaded, dict):
+        loaded = loaded.get("directions")
+    return [e for e in loaded if isinstance(e, dict)] if isinstance(loaded, list) else []
+
+
 _ITM_ID_RE = re.compile(r"\bAR[1-5]/(?:MT|ME|PR|IF|AF)\d{3}(?:\.\d{3})?\b", re.IGNORECASE)
 
 
@@ -1019,6 +1038,34 @@ def build_dfir_markdown(
         from nexus.langgraph.report_analysis import render_assessment
 
         lines.extend(render_assessment(assessment))
+
+    # Mode 1 LLM directions — the examiner-led starting points, carried into
+    # the report as suggested next steps (grounded in the signal map/needle
+    # hits; suggestions only, never approved conclusions).
+    directions = _load_briefing_directions(case_dir)
+    if directions:
+        lines.append("## Suggested next steps")
+        lines.append("")
+        lines.append(
+            "_LLM-generated investigation directions grounded in the current "
+            "keyword scan and needle-hit signal map — suggestions for the "
+            "examiner, not approved conclusions._"
+        )
+        lines.append("")
+        for direction in directions[:6]:
+            title = str(direction.get("title") or "").strip() or "Direction"
+            why = str(direction.get("why") or "").strip()
+            family = str(direction.get("family") or "").strip()
+            needles = [str(n).strip() for n in (direction.get("needles") or []) if str(n).strip()]
+            suffix = f" _({family})_" if family else ""
+            lines.append(f"- **{title}**{suffix}")
+            if why:
+                lines.append(f"  - **Why:** {why[:600]}")
+            if needles:
+                lines.append(
+                    "  - **Search:** " + ", ".join(f"`{n[:80]}`" for n in needles[:8])
+                )
+        lines.append("")
 
     # N8 Q&A spine
     qs = list(questions or [])

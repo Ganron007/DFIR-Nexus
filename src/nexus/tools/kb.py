@@ -61,8 +61,12 @@ def _run_kb(*args: str) -> dict[str, Any]:
 
 
 def do_kb_search(query: str, folder: str = "", signal: str = "", limit: int = 5,
-                 audit: AuditWriter | None = None) -> dict[str, Any]:
-    """Search the KB (BM25/FTS5) — the core behind the MCP tool + binding."""
+                 audit: AuditWriter | None = None, alias: str = "") -> dict[str, Any]:
+    """Search the KB (BM25/FTS5) — the core behind the MCP tool + binding.
+
+    ``alias`` is the optional model-facing name (WP 10.53 ``kb_query``); the
+    canonical implementation and audit tool name stay ``kb_search``.
+    """
     started = time.monotonic()
     if not query.strip():
         return {"error": "query is required"}
@@ -74,7 +78,10 @@ def do_kb_search(query: str, folder: str = "", signal: str = "", limit: int = 5,
     out = _run_kb(*args, "--json")
     out.setdefault("note", "KB content is methodology/context — never case evidence (FD-001)")
     if audit:
-        aid = audit.log(tool="kb_search", params={"query": query[:200], "folder": folder},
+        params = {"query": query[:200], "folder": folder}
+        if alias:
+            params["alias"] = alias
+        aid = audit.log(tool="kb_search", params=params,
                         result_summary={"hits": len(out.get("hits") or [])},
                         elapsed_ms=round((time.monotonic() - started) * 1000, 1))
         if aid:
