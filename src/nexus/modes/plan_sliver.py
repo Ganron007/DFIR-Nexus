@@ -284,13 +284,13 @@ def plan_extras(case_dir: Path, model: Any = None) -> dict[str, Any]:
         "rag_provenance": rag_provenance,
     }
     _log_agent_run(case_dir, {
-        "action": "mode3_plan",
+        "action": "mode2_plan",
         "items": len(plan["items"]),
         "queries": len(queries),
         "rag_used": rag_used,
     })
     append_chat(
-        case_dir, "llm", "mode3_plan",
+        case_dir, "llm", "mode2_plan",
         f"Agent plan ready: {len(plan['items'])} step(s), {len(queries)} corroboration query(ies). "
         + ("RAG methodology applied." if rag_used else "")
         + " Awaiting examiner approval.",
@@ -352,14 +352,14 @@ def propose_agent_finding(
         return {"error": "Failed to stage draft finding"}
 
     _log_agent_run(case_dir, {
-        "action": "mode3_draft_finding",
+        "action": "mode2_draft_finding",
         "title": str(draft.get("title", title))[:100],
         "evidence_count": len(draft.get("evidence") or []),
         "examiner_selected": False,
         "approval_state": "DRAFT",
     })
     append_chat(
-        case_dir, "llm", "mode3_draft",
+        case_dir, "llm", "mode2_draft",
         f"Agent drafted finding: {draft.get('title', title)}. "
         f"Staged as DRAFT — examiner review required.",
     )
@@ -415,7 +415,7 @@ def execute_plan(
             case_dir, combined_query, model=model, max_iterations=3, limit=80
         )
         _log_agent_run(case_dir, {
-            "action": "mode3_iterative",
+            "action": "mode2_iterative",
             "queries": approved_queries,
             "iterations": len(iterative_result.get("iterations", [])),
             "total_hits": iterative_result.get("total_hits", 0),
@@ -438,12 +438,12 @@ def execute_plan(
             query_results.append({"query": q, "count": r.get("count", 0), "error": r.get("error")})
 
     _log_agent_run(case_dir, {
-        "action": "mode3_execute",
+        "action": "mode2_execute",
         "extras": valid_extras,
         "queries": [q.get("query") for q in query_results],
     })
     append_chat(
-        case_dir, "llm", "mode3_execute",
+        case_dir, "llm", "mode2_execute",
         f"Executed approved plan: extras={valid_extras or 'none'}, "
         f"queries={len(query_results)}. Re-run the tools lane to parse new extras.",
     )

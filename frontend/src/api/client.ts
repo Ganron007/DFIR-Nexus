@@ -438,7 +438,7 @@ export interface EntitiesResponse {
 }
 
 /** POST /mode2/iterate → {question, iterations, total_hits, needles_run, capped} */
-export interface Mode2Iteration {
+export interface Mode1Iteration {
   iteration: number;
   action: string;
   backend?: string;
@@ -455,9 +455,9 @@ export interface Mode2Iteration {
   /** WP 4j.12 — aggregations proposed + run through the backbone */
   aggregations?: { dsl?: string; field?: string; why?: string; distinct?: number; rows_scanned?: number; top?: { value: string; count: number }[]; audit_id?: string }[];
 }
-export interface Mode2IterateResponse {
+export interface Mode1IterateResponse {
   question: string;
-  iterations: Mode2Iteration[];
+  iterations: Mode1Iteration[];
   total_hits: number;
   needles_run: string[];
   capped: boolean;
@@ -485,14 +485,14 @@ export interface ProposeDraftResponse {
 }
 
 /** POST /mode2/suggestions → suggested examiner questions for the chat */
-export interface Mode2SuggestionsResponse {
+export interface Mode1SuggestionsResponse {
   suggestions: { text: string; source: string }[];
   generated_by: string;
   cached?: boolean;
 }
 
 /** POST /mode2/save-answer → bookmark an answer's rows + record it for the report */
-export interface Mode2SaveAnswerResponse {
+export interface Mode1SaveAnswerResponse {
   saved?: boolean;
   entry_ts?: string;
   bookmarked?: number;
@@ -503,14 +503,14 @@ export interface Mode2SaveAnswerResponse {
 }
 
 /** POST /mode3/plan → {items, queries, rationale, created_at, lane_complete} */
-export interface Mode3PlanItem {
+export interface Mode2PlanItem {
   type: string;
   key?: string;
   tool?: string;
   purpose: string;
 }
-export interface Mode3PlanResponse {
-  items: Mode3PlanItem[];
+export interface Mode2PlanResponse {
+  items: Mode2PlanItem[];
   queries: string[];
   rationale: string;
   created_at: string;
@@ -518,7 +518,7 @@ export interface Mode3PlanResponse {
 }
 
 /** POST /mode3/execute → {status, extras_persisted, query_results, note} or {error} */
-export interface Mode3ExecuteResponse {
+export interface Mode2ExecuteResponse {
   status: string;
   extras_persisted: string[];
   query_results: Array<{ query: string; count: number; error?: string }>;
@@ -528,7 +528,7 @@ export interface Mode3ExecuteResponse {
 
 /* ── Mode 3 supervised agent run (M6) ─────────────────────────────────── */
 
-export interface Mode3SkillRef {
+export interface WorkOrderSkillRef {
   skill: string;
   title?: string;
   version?: string;
@@ -538,7 +538,7 @@ export interface Mode3SkillRef {
   mitre?: string[];
 }
 
-export interface Mode3WorkOrder {
+export interface WorkOrder {
   order_id: string;
   role: string;
   task: string;
@@ -547,18 +547,18 @@ export interface Mode3WorkOrder {
   priority_tools?: string[];
   acceptance?: string;
   negative_evidence_rule?: string;
-  skill_refs?: Mode3SkillRef[];
+  skill_refs?: WorkOrderSkillRef[];
   status?: string;
 }
 
-export interface Mode3Budget {
+export interface RunBudget {
   rounds: number;
   calls: number;
   seconds: number;
 }
 
 /** One observable agent-run event (never hidden reasoning). */
-export interface Mode3RunEvent {
+export interface AgentRunEvent {
   event_id: string;
   ts: string;
   run_id: string;
@@ -573,7 +573,7 @@ export interface Mode3RunEvent {
   data?: Record<string, unknown>;
 }
 
-export interface Mode3CandidateFinding {
+export interface CandidateFinding {
   title?: string;
   observation?: string;
   interpretation?: string;
@@ -585,14 +585,14 @@ export interface Mode3CandidateFinding {
   itm_objects?: string;
 }
 
-export interface Mode3Verdict {
+export interface Verdict {
   title?: string;
   class?: string;
   basis?: string;
   audit_ids?: string[];
 }
 
-export interface Mode3RunStatusResponse {
+export interface Mode2RunStatusResponse {
   run_id: string;
   status?: string;
   stop_reason?: string;
@@ -606,19 +606,19 @@ export interface Mode3RunStatusResponse {
   candidates?: number;
   gaps?: number;
   events?: number;
-  last_event?: Mode3RunEvent | null;
-  verdicts?: Mode3Verdict[];
-  candidate_findings?: Mode3CandidateFinding[];
+  last_event?: AgentRunEvent | null;
+  verdicts?: Verdict[];
+  candidate_findings?: CandidateFinding[];
   narrative?: string;
   created_at?: string;
   completed_at?: string;
   error?: string;
 }
 
-export interface Mode3PlanResponseOrders {
+export interface Mode2RunPlanResponse {
   run_id: string;
   question: string;
-  orders: Mode3WorkOrder[];
+  orders: WorkOrder[];
 }
 
 export interface Mode2StageResult {
@@ -1260,7 +1260,7 @@ export const api = {
 
   // Mode 1 — LLM (ask / guided chat / iterate)
   mode1Iterate: (params: { question: string; max_iterations?: number }) =>
-    post<Mode2IterateResponse>("/mode1/iterate", params),
+    post<Mode1IterateResponse>("/mode1/iterate", params),
   /** WP 4j.13 — POST /mode1/chat → the conversational evidence agent */
   mode1Chat: (params: { message: string; history?: { role: string; text: string }[] }) =>
     post<{
@@ -1281,25 +1281,25 @@ export const api = {
     post<CorroborationResponse>("/mode1/corroborate", params),
   mode1ProposeDraft: (params: { title: string; hits?: N4Hit[]; query?: string }) =>
     post<ProposeDraftResponse>("/mode1/propose-draft", params),
-  mode1Suggestions: () => post<Mode2SuggestionsResponse>("/mode1/suggestions", {}),
+  mode1Suggestions: () => post<Mode1SuggestionsResponse>("/mode1/suggestions", {}),
   mode1SaveAnswer: (params: { entry_ts: string; note?: string }) =>
-    post<Mode2SaveAnswerResponse>("/mode1/save-answer", params),
+    post<Mode1SaveAnswerResponse>("/mode1/save-answer", params),
 
   // Mode 2 — legacy plan/execute sliver
   mode2Plan: (params?: { question?: string }) =>
-    post<Mode3PlanResponse>("/mode2/plan", params || {}),
+    post<Mode2PlanResponse>("/mode2/plan", params || {}),
   mode2Execute: (params: { extras?: string[]; queries?: string[] }) =>
-    post<Mode3ExecuteResponse>("/mode2/execute", params),
+    post<Mode2ExecuteResponse>("/mode2/execute", params),
   // Mode 2 — Multi-role supervised agent run (M6) — same runtime/event stream as the CLI.
   mode2RunPlan: (params: { question?: string; max_orders?: number }) =>
-    post<Mode3PlanResponseOrders>("/mode2/run/plan", params),
+    post<Mode2RunPlanResponse>("/mode2/run/plan", params),
   mode2RunStart: (params: { question?: string; max_orders?: number; run_id?: string }) =>
     post<{ run_id: string; status: string; question?: string; error?: string }>(
       "/mode2/run",
       params,
     ),
   mode2RunStatus: (runId?: string) =>
-    request<Mode3RunStatusResponse>(
+    request<Mode2RunStatusResponse>(
       `/mode2/run/status${runId ? `?run_id=${encodeURIComponent(runId)}` : ""}`,
     ),
   mode2RunSteer: (params: { run_id: string; text: string }) =>

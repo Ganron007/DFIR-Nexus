@@ -12,7 +12,6 @@ what the LLM was given. Usage telemetry is logged — it never caps content.
 """
 from __future__ import annotations
 
-import json
 import logging
 import os
 import re
@@ -38,15 +37,14 @@ def context_window() -> int:
 
 
 def case_window(case_dir: Path) -> int:
-    """The CASE's own window (analysis/mode2_run_options.json, set before the
-    run) — falls back to the process default. This is what keeps two cases
-    with different windows from racing over a process-wide env var."""
+    """The CASE's own window (analysis/mode1_run_options.json, set before the
+    run; the legacy mode2_ name is still read) — falls back to the process
+    default. This is what keeps two cases with different windows from racing
+    over a process-wide env var."""
     try:
-        opts = json.loads(
-            (Path(case_dir) / "analysis" / "mode2_run_options.json")
-            .read_text(encoding="utf-8")
-        )
-        value = int(opts.get("context_window") or 0)
+        from nexus.case.run_options import load_run_options
+
+        value = int(load_run_options(case_dir).get("context_window") or 0)
         if value >= 8_000:
             return value
     except (OSError, ValueError, TypeError):

@@ -1,4 +1,4 @@
-"""Tests for WP 3.6 (iterative query in Mode 3) and WP 3.7 (agent DRAFT findings)."""
+"""Tests for WP 3.6 (iterative query in the sliver) and WP 3.7 (agent DRAFT findings)."""
 
 from __future__ import annotations
 
@@ -136,7 +136,7 @@ class TestIterativeQueryInMode3:
         log_file = case_dir / "agent_runs.jsonl"
         assert log_file.is_file()
         entries = [json.loads(ln) for ln in log_file.read_text().strip().splitlines() if ln.strip()]
-        assert any(e.get("action") == "mode3_iterative" for e in entries)
+        assert any(e.get("action") == "mode2_iterative" for e in entries)
 
 
 class TestAgentDraftFindings:
@@ -201,7 +201,7 @@ class TestAgentDraftFindings:
         log_file = case_dir / "agent_runs.jsonl"
         assert log_file.is_file()
         entries = [json.loads(ln) for ln in log_file.read_text().strip().splitlines() if ln.strip()]
-        assert any(e.get("action") == "mode3_draft_finding" for e in entries)
+        assert any(e.get("action") == "mode2_draft_finding" for e in entries)
 
     def test_agent_finding_uses_llm_scribe(self, tmp_path):
         """When LLM is available, agent finding should use it for scribing."""

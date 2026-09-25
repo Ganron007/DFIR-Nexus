@@ -1,4 +1,4 @@
-"""Mode 2 suggestions + answer save/bookmark for the report."""
+"""Mode 1 suggestions + answer save/bookmark for the report."""
 
 from __future__ import annotations
 
@@ -15,9 +15,9 @@ def _clear_suggestion_cache():
     """The 120 s server cache is keyed by case name — isolate tests."""
     from nexus.dashboard import app as dash_app
 
-    dash_app._mode2_suggest_cache.clear()
+    dash_app._mode1_suggest_cache.clear()
     yield
-    dash_app._mode2_suggest_cache.clear()
+    dash_app._mode1_suggest_cache.clear()
 
 
 def _mkcase(tmp_path: Path) -> Path:
@@ -131,7 +131,7 @@ def test_save_answer_bookmarks_and_records(tmp_path):
     assert len(bookmarks) == 1
     assert "Mode 1 answer" in bookmarks[0]["note"]
 
-    saved = json.loads((case / "analysis" / "mode2_saved_answers.json").read_text(encoding="utf-8"))
+    saved = json.loads((case / "analysis" / "mode1_saved_answers.json").read_text(encoding="utf-8"))
     assert len(saved) == 1
     assert saved[0]["question"] == "what did fredr do?"
     assert saved[0]["cited_rows"] == 1
@@ -148,7 +148,7 @@ def test_save_answer_bookmarks_and_records(tmp_path):
         )
     assert resp2.status_code == 200
     assert resp2.json()["saved"] is True
-    saved2 = json.loads((case / "analysis" / "mode2_saved_answers.json").read_text(encoding="utf-8"))
+    saved2 = json.loads((case / "analysis" / "mode1_saved_answers.json").read_text(encoding="utf-8"))
     assert len(saved2) == 1
 
 
@@ -159,12 +159,12 @@ def test_save_answer_unknown_entry(tmp_path):
     assert resp.status_code == 404
 
 
-def test_report_includes_saved_mode2_answers(tmp_path):
+def test_report_includes_saved_answers(tmp_path):
     from nexus.integration.dfir_report import build_dfir_markdown
 
     case = tmp_path / "CASE-REPORT"
     (case / "analysis").mkdir(parents=True)
-    (case / "analysis" / "mode2_saved_answers.json").write_text(json.dumps([{
+    (case / "analysis" / "mode1_saved_answers.json").write_text(json.dumps([{
         "ts": "2026-09-23T10:00:05+00:00",
         "question": "what did fredr do?",
         "reply": "fredr ran powershell on WS01",
@@ -179,5 +179,32 @@ def test_report_includes_saved_mode2_answers(tmp_path):
         case_dir=case,
         llm=False,
     )
-    assert "## Saved Mode 2 answers" in md
+    assert "## Saved Mode 1 answers" in md
     assert "what did fredr do?" in md
+
+
+def test_report_reads_legacy_saved_answers(tmp_path):
+    """Cases written before the rename keep their mode2_ file — the report
+    loader must still pick those bookmarks up."""
+    from nexus.integration.dfir_report import build_dfir_markdown
+
+    case = tmp_path / "CASE-REPORT-LEGACY"
+    (case / "analysis").mkdir(parents=True)
+    (case / "analysis" / "mode2_saved_answers.json").write_text(json.dumps([{
+        "ts": "2026-09-23T10:00:05+00:00",
+        "question": "legacy question",
+        "reply": "legacy reply",
+        "cited_rows": 2,
+    }]), encoding="utf-8")
+
+    md = build_dfir_markdown(
+        case_id="CASE-REPORT-LEGACY",
+        case_name="Legacy report test",
+        findings=[],
+        evidence=[],
+        case_dir=case,
+        llm=False,
+    )
+    assert "## Saved Mode 1 answers" in md
+    assert "legacy question" in md
+    assert "legacy reply" in md

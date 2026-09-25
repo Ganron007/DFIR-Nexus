@@ -14,7 +14,7 @@ import {
   ApiError,
   api,
   mode3RunEventsPath,
-  type Mode3RunEvent,
+  type AgentRunEvent,
   type Mode3BoardEntry,
   type Mode3BoardResponse,
   type Mode3Candidate,
@@ -59,7 +59,7 @@ export default function MultiAgentBoard() {
   const [attachId, setAttachId] = useState("");
   const [status, setStatus] = useState<Mode3RunStatus | null>(null);
   const [boardData, setBoardData] = useState<Mode3BoardResponse | null>(null);
-  const [events, setEvents] = useState<Mode3RunEvent[]>([]);
+  const [events, setEvents] = useState<AgentRunEvent[]>([]);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [steerText, setSteerText] = useState("");
@@ -109,7 +109,7 @@ export default function MultiAgentBoard() {
     const source = new EventSource(mode3RunEventsPath(runId));
     const onAgent = (raw: MessageEvent) => {
       try {
-        const event = JSON.parse(raw.data) as Mode3RunEvent;
+        const event = JSON.parse(raw.data) as AgentRunEvent;
         setEvents((prev) => {
           const next = [...prev, event];
           return next.length > MAX_EVENTS ? next.slice(-MAX_EVENTS) : next;

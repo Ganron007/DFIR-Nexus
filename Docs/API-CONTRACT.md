@@ -1772,7 +1772,7 @@ Approval remains examiner-only.
 - `mode`: one of `tools`, `interpret`, `coverage`, `design`
 - `case_id`: optional; defaults to active case
 - `question` / `window` / `host` / `notes`: examiner intake → pipeline `case_context`. **Coverage/design only reach the LLM interpret node when a real question or window is present (N1 gate)**; when omitted, the case description is used as the question. The run record reports `intake` honestly.
-- `interpret_rounds` (optional, 1–5, default `NEXUS_INTERPRET_ROUNDS` or 3) and `context_window` (optional tokens, default `NEXUS_LLM_CONTEXT_WINDOW` or 1000000): LLM run options decided **before** the run. Persisted to `<case>/analysis/mode2_run_options.json`, echoed in the run record (`options`) and response. The context window drives the prompt budget allocator (`window × NEXUS_CONTEXT_FILL_RATIO`); when provided it also sets the process-wide `NEXUS_LLM_CONTEXT_WINDOW` for that run.
+- `interpret_rounds` (optional, 1–5, default `NEXUS_INTERPRET_ROUNDS` or 3) and `context_window` (optional tokens, default `NEXUS_LLM_CONTEXT_WINDOW` or 1000000): LLM run options decided **before** the run. Persisted to `<case>/analysis/mode1_run_options.json` (the legacy `mode2_run_options.json` is still read), echoed in the run record (`options`) and response. The context window drives the prompt budget allocator (`window × NEXUS_CONTEXT_FILL_RATIO`); when provided it also sets the process-wide `NEXUS_LLM_CONTEXT_WINDOW` for that run.
 
 **Response 200:**
 ```json

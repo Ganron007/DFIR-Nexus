@@ -1,4 +1,4 @@
-"""Tests for Mode 2 — iterative LLM-guided analysis."""
+"""Tests for Mode 1 — LLM: iterative guided analysis (``modes/llm_guided.py``)."""
 
 from __future__ import annotations
 
@@ -72,8 +72,8 @@ class TestIterativeLoop:
         assert len(result["iterations"]) >= 1
         assert result["total_hits"] >= 1
         chat = load_chat(case_dir)
-        assert any(m["action"] == "mode2_iter0" for m in chat)
-        assert any(m["action"] == "mode2_proposal" for m in chat)
+        assert any(m["action"] == "mode1_iter0" for m in chat)
+        assert any(m["action"] == "mode1_proposal" for m in chat)
 
     @patch("nexus.modes.llm_desk.nl_to_needles")
     def test_loop_no_needles(self, mock_nl, tmp_path):

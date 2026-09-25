@@ -84,7 +84,7 @@ def test_mode2_run_start_status_steer_pause_resume(tmp_path):
         assert any(call[3] is True for call in started)
 
 
-def test_mode3_run_stage_endpoint(tmp_path):
+def test_mode2_run_stage_endpoint(tmp_path):
     case = _case(tmp_path)
     from nexus.audit import AuditWriter
 

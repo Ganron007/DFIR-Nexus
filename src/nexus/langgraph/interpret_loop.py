@@ -58,11 +58,9 @@ def _resolve_rounds(state: Mapping[str, Any], case_dir: Path, explicit: int | No
             value = int(raw)
         if not value:
             try:
-                opts = json.loads(
-                    (Path(case_dir) / "analysis" / "mode2_run_options.json")
-                    .read_text(encoding="utf-8")
-                )
-                value = int(opts.get("interpret_rounds") or 0)
+                from nexus.case.run_options import load_run_options
+
+                value = int(load_run_options(case_dir).get("interpret_rounds") or 0)
             except (OSError, ValueError, TypeError):
                 value = 0
         if not value:

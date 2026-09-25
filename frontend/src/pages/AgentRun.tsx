@@ -17,13 +17,13 @@ import {
   ApiError,
   api,
   mode2RunEventsPath,
-  type Mode3Budget,
-  type Mode3CandidateFinding,
-  type Mode3RunEvent,
-  type Mode3RunStatusResponse,
+  type RunBudget,
+  type CandidateFinding,
+  type AgentRunEvent,
+  type Mode2RunStatusResponse,
   type Mode2StageResult,
-  type Mode3WorkOrder,
-  type Mode3Verdict,
+  type WorkOrder,
+  type Verdict,
 } from "../api/client";
 import { useCase } from "../context/CaseContext";
 import MultiAgentBoard from "../components/MultiAgentBoard";
@@ -71,13 +71,13 @@ interface Lane {
   rows: number;
   partial: boolean;
   skills: string[];
-  budget?: Mode3Budget;
+  budget?: RunBudget;
   lastDetail: string;
 }
 
-function buildLanes(events: Mode3RunEvent[]): Lane[] {
+function buildLanes(events: AgentRunEvent[]): Lane[] {
   const lanes = new Map<string, Lane>();
-  const ensure = (e: Mode3RunEvent): Lane => {
+  const ensure = (e: AgentRunEvent): Lane => {
     const id = e.agent_id || "unknown";
     let lane = lanes.get(id);
     if (!lane) {
@@ -115,7 +115,7 @@ function buildLanes(events: Mode3RunEvent[]): Lane[] {
           const item = s as { skill?: string; version?: string };
           return item.version ? `${item.skill} v${item.version}` : String(item.skill || "");
         });
-        const budget = data.budget as Mode3Budget | undefined;
+        const budget = data.budget as RunBudget | undefined;
         if (budget && typeof budget.rounds === "number") lane.budget = budget;
         break;
       }
@@ -200,9 +200,9 @@ function MultiRoleAgentRun() {
   const [maxOrders, setMaxOrders] = useState(6);
   const [runId, setRunId] = useState<string>(params.get("run") || "");
   const [attachId, setAttachId] = useState(params.get("run") || "");
-  const [plan, setPlan] = useState<Mode3WorkOrder[] | null>(null);
-  const [record, setRecord] = useState<Mode3RunStatusResponse | null>(null);
-  const [events, setEvents] = useState<Mode3RunEvent[]>([]);
+  const [plan, setPlan] = useState<WorkOrder[] | null>(null);
+  const [record, setRecord] = useState<Mode2RunStatusResponse | null>(null);
+  const [events, setEvents] = useState<AgentRunEvent[]>([]);
   const [steerText, setSteerText] = useState("");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -257,7 +257,7 @@ function MultiRoleAgentRun() {
     const source = new EventSource(mode2RunEventsPath(runId));
     const onAgent = (raw: MessageEvent) => {
       try {
-        const event = JSON.parse(raw.data) as Mode3RunEvent;
+        const event = JSON.parse(raw.data) as AgentRunEvent;
         setEvents((prev) => {
           const next = [...prev, event];
           return next.length > MAX_EVENTS ? next.slice(-MAX_EVENTS) : next;
@@ -317,7 +317,7 @@ function MultiRoleAgentRun() {
     [events, filters],
   );
 
-  const verdictFor = (title?: string): Mode3Verdict | undefined =>
+  const verdictFor = (title?: string): Verdict | undefined =>
     (record?.verdicts || []).find(
       (v) => (v.title || "").toLowerCase() === (title || "").toLowerCase(),
     );
@@ -836,7 +836,7 @@ function MultiRoleAgentRun() {
               No candidate findings yet. Candidates appear after verification + synthesis.
             </div>
           )}
-          {(record?.candidate_findings || []).map((c: Mode3CandidateFinding) => {
+          {(record?.candidate_findings || []).map((c: CandidateFinding) => {
             const verdict = verdictFor(c.title);
             return (
               <div key={c.title || Math.random()} className="agent-candidate">

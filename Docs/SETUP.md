@@ -120,7 +120,7 @@ NEXUS_LLM_REASONING=high                 # optional reasoning passthrough
 | `NEXUS_MODE3_{SETTLE_SUPERSTEPS,MAX_REDISPATCH}` | `2`/`2` | Quiet supersteps before the join settles; bounded re-dispatch passes per dispute. |
 | `NEXUS_MODE3_{ROUNDS,CALLS,SECONDS}` | `24`/`48`/`1800` | Per-seat tool budget inside one superstep (same shape as Mode 2). |
 | `NEXUS_CONTEXT_LOOP_{ROUNDS,CALLS,SECONDS}` | `8`/`16`/`360` | Shared bounded-loop budget for LLM turns. The multi-role runtime uses `NEXUS_MODE2_{ROUNDS,CALLS,SECONDS}` and the multi-agent runtime `NEXUS_MODE3_{ROUNDS,CALLS,SECONDS}`. `0` here is not unlimited — the loop needs at least one round. |
-| `NEXUS_LLM_CONTEXT_WINDOW` | `1000000` | Your model's max context window (tokens). The LLM and agent runtimes pack `window × fill` and do not apply a smaller character cap. Also settable per run in the Briefing run panel (stored in `analysis/mode2_run_options.json`). |
+| `NEXUS_LLM_CONTEXT_WINDOW` | `1000000` | Your model's max context window (tokens). The LLM and agent runtimes pack `window × fill` and do not apply a smaller character cap. Also settable per run in the Briefing run panel (stored in `analysis/mode1_run_options.json`; the legacy `mode2_run_options.json` is still read). |
 | `NEXUS_CONTEXT_FILL_RATIO` | `0.7` | Share of the window packed into prompts. Every packed context is persisted to `analysis/llm_context/` for audit; usage is logged, never capped. |
 | `NEXUS_CONTEXT_RETRY_RATIO` | `0.5` | Downgrade ratio for the one retry when a provider rejects an over-long prompt. |
 | `NEXUS_INTERPRET_ROUNDS` | `3` | Default interpretation rounds for the LLM interpretation loop (1–5). Also settable per run before processing. |

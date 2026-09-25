@@ -1,4 +1,4 @@
-"""WP 4j.13 — Mode 2 acceptance test (GATE 4j-C pre-check).
+"""WP 4j.13 - Mode 1 guided-chat acceptance test (GATE 4j-C pre-check).
 
 The experienced-analyst back-and-forth, end to end, automated:
 NL question → structured query (backbone, validated) → hits → LLM interprets →
@@ -64,7 +64,7 @@ def _mkcase() -> Path:
     return case_dir
 
 
-def test_mode2_acceptance_end_to_end():
+def test_mode1_acceptance_end_to_end():
     from nexus.audit import AuditWriter
     from nexus.langgraph.backbone import backbone_call
     from nexus.modes.llm_desk import promote_hits_to_draft, save_draft_finding
@@ -181,7 +181,7 @@ def staged_finding_visible(case_dir: Path, fid: str | None = None) -> bool:
     return bool(findings) and all(f.get("status") != "APPROVED" for f in findings)
 
 
-def test_mode2_loop_never_writes_findings():
+def test_mode1_loop_never_writes_findings():
     """Hard invariant: the Mode 2 loop returns iterations — findings.json is
     untouched until promote/save runs outside the loop."""
     from nexus.modes.llm_guided import run_iterative_loop

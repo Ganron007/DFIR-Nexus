@@ -2498,8 +2498,8 @@ async def explore_page(request):
     <input id="chat_input" style="width:100%;background:#161b22;color:#c9d1d9" placeholder="Ask the case..." onkeydown="if(event.key==='Enter') chatAsk()">
     <p>
       <button class="action-btn" onclick="chatAsk()">Ask LLM</button>
-      <button class="action-btn" style="background:#8957e5" onclick="mode2Iterate()">Iterate (Mode 1)</button>
-      <span id="mode2_status" style="margin-left:0.5rem;font-size:0.8rem;color:#8b949e"></span>
+      <button class="action-btn" style="background:#8957e5" onclick="mode1Iterate()">Iterate (Mode 1)</button>
+      <span id="mode1_status" style="margin-left:0.5rem;font-size:0.8rem;color:#8b949e"></span>
     </p>
   </div>
   <div>
@@ -2719,11 +2719,11 @@ async function loadChatHistory() {{
 }}
 document.addEventListener('DOMContentLoaded', loadChatHistory);
 document.addEventListener('DOMContentLoaded', loadChatHistory);
-async function mode2Iterate() {{
+async function mode1Iterate() {{
   const q = document.getElementById('chat_input').value.trim()
     || (currentHits.length ? 'Corroborate and expand on the current hits' : '');
   if (!q && !currentHits.length) return alert('Ask a question first or run a search');
-  const statusEl = document.getElementById('mode2_status');
+  const statusEl = document.getElementById('mode1_status');
   statusEl.textContent = 'iterating...';
   appendChat('you', '[Mode 1] iterate on: ' + (q || 'current hits'));
   try {{
@@ -2734,7 +2734,7 @@ async function mode2Iterate() {{
     const data = await r.json();
     if (data.error) {{
       appendChat('llm', 'Mode 1 error: ' + data.error);
-      document.getElementById('mode2_status').textContent = 'error';
+      document.getElementById('mode1_status').textContent = 'error';
       return;
     }}
     for (const it of data.iterations || []) {{
@@ -2751,7 +2751,7 @@ async function mode2Iterate() {{
     }}
     statusEl.textContent = 'done';
   }} catch (e) {{
-    document.getElementById('mode2_status').textContent = 'error: ' + e.message;
+    document.getElementById('mode1_status').textContent = 'error: ' + e.message;
   }}
 }}
 function appendChat(who, text) {{
@@ -4146,12 +4146,6 @@ async def api_chat_stream(request):
             }))
             q.put((None, None))
             return
-        if action == "mode2_done":
-            reply = f"Iterative run complete: {final.get('total_hits', 0)} total hits across {len(final.get('needles_run', []))} needle(s)."
-            from nexus.case.chat import append_chat as _ac
-            _ac(case_dir, "llm", "mode2_done",
-                f"Run complete: {final.get('total_hits', 0)} total hits",
-                {"needles": ",".join(final.get("needles_run", [])[:12])})
         append_chat(case_dir, "llm", action, reply, {
             "needles": ",".join(final.get("needles", [])[:12]),
             "hits": str(final.get("count", len(hits))),
@@ -4384,31 +4378,20 @@ async def api_entities(request):
 # Mode 1 suggested questions — LLM-generated (validated, grounded in the case)
 # with a deterministic fallback so the panel always populates. Cached per case
 # so the chat never pays for it twice and a slow model can't block the UI.
-_MODE2_SUGGEST_TTL = 120.0
-_mode2_suggest_cache: dict[str, tuple[float, dict]] = {}
-_mode2_suggest_lock = threading.Lock()
+_MODE1_SUGGEST_TTL = 120.0
+_mode1_suggest_cache: dict[str, tuple[float, dict]] = {}
+_mode1_suggest_lock = threading.Lock()
 
 
 def _mode1_chat_entries(case_dir: Path) -> list[dict]:
-    """Read chat.jsonl (append-only transcript) — best-effort, never raises."""
-    out: list[dict] = []
-    try:
-        lines = (Path(case_dir) / "chat.jsonl").read_text(
-            encoding="utf-8", errors="replace"
-        ).splitlines()
-    except OSError:
-        return out
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            entry = json.loads(line)
-        except ValueError:
-            continue
-        if isinstance(entry, dict):
-            out.append(entry)
-    return out
+    """Read chat.jsonl (append-only transcript) — best-effort, never raises.
+
+    Delegates to the shared loader so pre-rename action ids are normalized to
+    the canonical ones for every dashboard consumer.
+    """
+    from nexus.case.chat import load_chat
+
+    return load_chat(case_dir, limit=0)
 
 
 def _mode1_suggest_context(case_dir: Path) -> dict[str, Any]:
@@ -4480,7 +4463,7 @@ def _mode1_deterministic_suggestions(ctx: dict[str, Any]) -> list[dict[str, str]
     return out[:6]
 
 
-def _validate_mode2_suggestions(
+def _validate_mode1_suggestions(
     raw: Any, ctx: dict[str, Any], last_q: str = ""
 ) -> list[dict[str, str]]:
     """Keep only grounded, sane questions (LLM output is untrusted input)."""
@@ -4525,9 +4508,9 @@ async def api_mode1_suggestions(request):
 
     key = case_dir.name
     now = time.time()
-    with _mode2_suggest_lock:
-        hit = _mode2_suggest_cache.get(key)
-        if hit and (now - hit[0]) < _MODE2_SUGGEST_TTL:
+    with _mode1_suggest_lock:
+        hit = _mode1_suggest_cache.get(key)
+        if hit and (now - hit[0]) < _MODE1_SUGGEST_TTL:
             payload = dict(hit[1])
             payload["cached"] = True
             return JSONResponse(payload)
@@ -4565,7 +4548,7 @@ async def api_mode1_suggestions(request):
         match = re.search(r"\{.*\}", raw_text, re.DOTALL)
         parsed = json.loads(match.group(0)) if match else {}
         candidates = parsed.get("questions") if isinstance(parsed, dict) else parsed
-        suggestions = _validate_mode2_suggestions(
+        suggestions = _validate_mode1_suggestions(
             candidates, ctx, str(ctx["last_question"])
         )
         if len(suggestions) >= 3:
@@ -4583,8 +4566,8 @@ async def api_mode1_suggestions(request):
     if not suggestions:
         suggestions = fallback
     payload = {"suggestions": suggestions, "generated_by": generated_by, "cached": False}
-    with _mode2_suggest_lock:
-        _mode2_suggest_cache[key] = (now, payload)
+    with _mode1_suggest_lock:
+        _mode1_suggest_cache[key] = (now, payload)
     return JSONResponse(payload)
 
 
@@ -4593,7 +4576,8 @@ async def api_mode1_save_answer(request):
 
     Body: {entry_ts, note?}. Bookmarks the answer's cited rows to the Workbench,
     appends an ``answer_saved`` transcript entry, and records the answer in
-    ``analysis/mode2_saved_answers.json`` (the report's Saved-answers section).
+    ``analysis/mode1_saved_answers.json`` (the report's Saved-answers section;
+    legacy ``mode2_saved_answers.json`` is still read).
     """
     case_dir = _get_case_dir(request)
     if not case_dir:
@@ -4640,24 +4624,16 @@ async def api_mode1_save_answer(request):
 
     from datetime import UTC, datetime
 
-    saved_path = Path(case_dir) / "analysis" / "mode2_saved_answers.json"
-    existing: list[dict] = []
-    try:
-        loaded = json.loads(saved_path.read_text(encoding="utf-8"))
-        if isinstance(loaded, list):
-            existing = [e for e in loaded if isinstance(e, dict)]
-    except (OSError, ValueError):
-        existing = []
-    if all(str(e.get("ts") or "") != entry_ts for e in existing):
-        existing.append({
-            "ts": entry_ts,
-            "saved_at": datetime.now(UTC).isoformat(),
-            "question": question,
-            "reply": str(target.get("text") or "")[:2000],
-            "queries": [q for q in (data.get("queries") or []) if isinstance(q, dict)][:8],
-            "cited_rows": len(hits),
-        })
-        _atomic_write_json(saved_path, existing)
+    from nexus.case.saved_answers import append_saved_answer
+
+    existing = append_saved_answer(case_dir, {
+        "ts": entry_ts,
+        "saved_at": datetime.now(UTC).isoformat(),
+        "question": question,
+        "reply": str(target.get("text") or "")[:2000],
+        "queries": [q for q in (data.get("queries") or []) if isinstance(q, dict)][:8],
+        "cited_rows": len(hits),
+    })
 
     from nexus.case.chat import append_chat
 
@@ -4733,7 +4709,7 @@ async def api_mode1_iterate(request):
             with _mode1_turn_lock:
                 _mode1_turn_active.discard(case_key)
 
-    append_chat(case_dir, "examiner", "mode2_start", question, {"max_iterations": max_iterations})
+    append_chat(case_dir, "examiner", "mode1_start", question, {"max_iterations": max_iterations})
     turn_budget = _mode1_turn_budget()
     try:
         result = await asyncio.wait_for(
@@ -4742,19 +4718,19 @@ async def api_mode1_iterate(request):
         )
     except TimeoutError:
         message = f"iterative loop timed out after {turn_budget:.0f}s"
-        append_chat(case_dir, "llm", "mode2_error", message)
+        append_chat(case_dir, "llm", "mode1_error", message)
         return JSONResponse({"error": message}, status_code=504)
     except Exception:  # noqa: BLE001
         logger.exception("Mode 1 iterative loop failed")
         message = "iterative loop failed"
-        append_chat(case_dir, "llm", "mode2_error", message)
+        append_chat(case_dir, "llm", "mode1_error", message)
         return JSONResponse({"error": message}, status_code=500)
     if result.get("error"):
-        append_chat(case_dir, "llm", "mode2_error", result["error"])
+        append_chat(case_dir, "llm", "mode1_error", result["error"])
         return JSONResponse({"error": result["error"]}, status_code=400)
     # Per-iteration transcript entries are written by run_iterative_loop itself
     # (single writer) — only the summary is added here.
-    append_chat(case_dir, "llm", "mode2_done", f"Iterative loop complete: {result.get('total_hits', 0)} total hits.", {
+    append_chat(case_dir, "llm", "mode1_done", f"Iterative loop complete: {result.get('total_hits', 0)} total hits.", {
         "iterations": len(result.get("iterations", [])),
         "capped": result.get("capped", False),
     })
@@ -4829,7 +4805,7 @@ async def api_mode1_propose_draft(request):
 
         saved = save_draft_finding(case_dir, draft)
         if saved.get("status") == "STAGED":
-            append_chat(case_dir, "llm", "mode2_draft", f"Proposed DRAFT '{title}' from {len(hits)} hits (examiner approval required)", {
+            append_chat(case_dir, "llm", "mode1_draft", f"Proposed DRAFT '{title}' from {len(hits)} hits (examiner approval required)", {
                 "finding_id": saved.get("finding_id", ""),
                 "confidence": draft.get("confidence", ""),
             })
@@ -5552,10 +5528,9 @@ async def api_pipeline_run(request):
     # per-case options file (prompt_budget.case_window), so two cases with
     # different windows can never race over a process-wide value.
     with contextlib.suppress(OSError):
-        (case_dir / "analysis").mkdir(parents=True, exist_ok=True)
-        (case_dir / "analysis" / "mode2_run_options.json").write_text(
-            json.dumps(run_options, indent=2), encoding="utf-8"
-        )
+        from nexus.case.run_options import save_run_options
+
+        save_run_options(case_dir, run_options)
 
     import threading
     import uuid

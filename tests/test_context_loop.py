@@ -519,7 +519,7 @@ def test_run_record_counts_all_rows_beyond_entry_cap(tmp_path, monkeypatch):
     assert len(result["entries"]) == 300
 
 
-def test_mode2_chat_stream_emits_tool_events_and_history(tmp_path):
+def test_mode1_chat_stream_emits_tool_events_and_history(tmp_path):
     from starlette.applications import Starlette
     from starlette.testclient import TestClient
 

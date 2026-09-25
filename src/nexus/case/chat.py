@@ -4,6 +4,13 @@ Transcript lives in ``<case>/chat.jsonl`` (append-only JSONL). Every
 examiner question and LLM response is recorded so the investigation has
 an auditable record of what was asked and what the model answered. The
 LLM never edits or deletes entries.
+
+Action ids follow the final product numbering. Transcripts written before
+the rename carry the old ids and are translated on read (and defensively on
+write), so historical entries render exactly like new ones:
+
+- ``mode2_*`` (old guided-chat numbering) -> ``mode1_*`` (Mode 1 — LLM)
+- ``mode3_*`` (old plan/execute sliver numbering) -> ``mode2_*`` (Mode 2)
 """
 
 from __future__ import annotations
@@ -11,6 +18,34 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+
+LEGACY_ACTION_ALIASES: dict[str, str] = {
+    # Guided chat / iterative loop was product Mode 2 before the rename.
+    "mode2_iter0": "mode1_iter0",
+    "mode2_stop": "mode1_stop",
+    "mode2_error": "mode1_error",
+    "mode2_aggregation": "mode1_aggregation",
+    "mode2_proposal": "mode1_proposal",
+    "mode2_no_proposals": "mode1_no_proposals",
+    "mode2_done": "mode1_done",
+    "mode2_start": "mode1_start",
+    "mode2_draft": "mode1_draft",
+    "mode2_iterate_question": "mode1_iterate_question",
+    "mode2_iteration": "mode1_iteration",
+    # Plan/execute sliver was product Mode 3 before the rename.
+    "mode3_plan": "mode2_plan",
+    "mode3_execute": "mode2_execute",
+    "mode3_seal": "mode2_seal",
+    "mode3_draft": "mode2_draft",
+    "mode3_draft_finding": "mode2_draft_finding",
+    "mode3_iterative": "mode2_iterative",
+}
+
+
+def canonical_action(action: str) -> str:
+    """Translate a pre-rename chat action id to its canonical value."""
+    text = str(action or "")
+    return LEGACY_ACTION_ALIASES.get(text, text)
 
 
 def _chat_path(case_dir: Path) -> Path:
@@ -34,7 +69,7 @@ def append_chat(
     entry = {
         "ts": datetime.now(UTC).isoformat(),
         "role": role,
-        "action": action,
+        "action": canonical_action(action),
         "text": str(text)[:2000],
     }
     if meta:
@@ -54,16 +89,18 @@ def load_chat(case_dir: Path, limit: int = 200) -> list[dict]:
         return []
     out: list[dict] = []
     try:
-        for line in path.read_text(encoding="utf-8").splitlines():
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
             line = line.strip()
             if not line:
                 continue
             try:
                 entry = json.loads(line)
-                if isinstance(entry, dict):
-                    out.append(entry)
             except ValueError:
                 continue
+            if isinstance(entry, dict):
+                if entry.get("action"):
+                    entry["action"] = canonical_action(entry["action"])
+                out.append(entry)
     except OSError:
         return []
     return out[-limit:] if limit else out

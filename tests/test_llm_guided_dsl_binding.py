@@ -1,4 +1,4 @@
-"""WP 4j.10 — the Mode 2 LLM speaks N4 DSL through the backbone.
+"""WP 4j.10 - the Mode 1 LLM speaks N4 DSL through the backbone.
 
 Validation wall: every LLM-emitted query parses or degrades to bare terms
 (never a silent wrong query). The loop executes each proposal as one complete

@@ -1,4 +1,4 @@
-"""Tests for WP 3.5/3.9/3.10/3.11/3.12 — Mode 3 LLM planning + RAG + orchestrator."""
+"""Tests for WP 3.5/3.9/3.10/3.11/3.12 - sliver LLM planning + RAG + orchestrator."""
 
 from __future__ import annotations
 
@@ -163,9 +163,9 @@ class TestAgentRunLedger:
         log_file = case_dir / "agent_runs.jsonl"
         assert log_file.is_file()
         entries = [json.loads(ln) for ln in log_file.read_text().strip().splitlines() if ln.strip()]
-        assert any(e.get("action") == "mode3_plan" for e in entries)
+        assert any(e.get("action") == "mode2_plan" for e in entries)
         # The plan entry should record whether RAG was used
-        plan_entry = next(e for e in entries if e.get("action") == "mode3_plan")
+        plan_entry = next(e for e in entries if e.get("action") == "mode2_plan")
         assert "rag_used" in plan_entry
 
 

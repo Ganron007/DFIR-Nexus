@@ -1,4 +1,4 @@
-"""Tests for Mode 3 — agentic plan/execute/seal."""
+"""Tests for the legacy Mode 2 plan/execute/seal sliver (``modes/plan_sliver.py``)."""
 
 from __future__ import annotations
 
@@ -158,4 +158,4 @@ class TestAgentRunLog:
         log_file = case_dir / "agent_runs.jsonl"
         assert log_file.is_file()
         lines = [ln for ln in log_file.read_text(encoding="utf-8").splitlines() if ln.strip()]
-        assert any('"action": "mode3_plan"' in ln for ln in lines)
+        assert any('"action": "mode2_plan"' in ln for ln in lines)

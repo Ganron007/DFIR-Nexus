@@ -761,7 +761,7 @@ def run_iterative_loop(
         "audit_id": (r0.get("provenance") or {}).get("audit_id"),
     })
     _emit(on_event, iterations[-1])
-    append_chat(case_dir, "llm", "mode2_iter0", f"Initial query: {', '.join(needles0)} -> {r0.get('total', r0.get('count', 0))} hits")
+    append_chat(case_dir, "llm", "mode1_iter0", f"Initial query: {', '.join(needles0)} -> {r0.get('total', r0.get('count', 0))} hits")
 
     # WP 4i.9: compute the case briefing once — proposals ground in the
     # signal map (which needles already hit) rather than generic vocabulary.
@@ -789,7 +789,7 @@ def run_iterative_loop(
         es_specs = proposal.get("es_queries") or []
         if not dsl_queries and not es_specs:
             iterations.append({"iteration": it, "action": "no_new_proposals", "rationale": proposal.get("rationale", "")})
-            append_chat(case_dir, "llm", "mode2_stop", "No new needles to propose.", {"iteration": it})
+            append_chat(case_dir, "llm", "mode1_stop", "No new needles to propose.", {"iteration": it})
             break
         iteration_queries: list[dict[str, Any]] = []
         prior_families = {str(h.get("family")) for h in hits}
@@ -803,7 +803,7 @@ def run_iterative_loop(
             if ran.get("error"):
                 iterations.append({"iteration": it, "action": "query_error",
                                    "query": label, "error": ran["error"]})
-                append_chat(case_dir, "llm", "mode2_error", ran["error"], {"iteration": it})
+                append_chat(case_dir, "llm", "mode1_error", ran["error"], {"iteration": it})
                 break
             new_hits = ran.get("hits") or []
             new_families |= {str(h.get("family")) for h in new_hits}
@@ -826,7 +826,7 @@ def run_iterative_loop(
                 # gated/no-case — the loop cannot run; surface honestly
                 iterations.append({"iteration": it, "action": "query_error",
                                    "query": q, "error": ran["error"]})
-                append_chat(case_dir, "llm", "mode2_error", ran["error"], {"iteration": it})
+                append_chat(case_dir, "llm", "mode1_error", ran["error"], {"iteration": it})
                 break
             new_hits = ran.get("hits", [])
             new_families |= {str(h.get("family")) for h in new_hits}
@@ -897,12 +897,12 @@ def run_iterative_loop(
         if aggregations:
             iterations[-1]["aggregations"] = aggregations
             append_chat(
-                case_dir, "llm", "mode2_aggregation",
+                case_dir, "llm", "mode1_aggregation",
                 "Aggregations: " + "; ".join(_agg_label(a) for a in aggregations),
                 {"aggregations": json.dumps(aggregations)[:2000]},
             )
         append_chat(
-            case_dir, "llm", "mode2_proposal",
+            case_dir, "llm", "mode1_proposal",
             f"Iteration {it}: ran {len(iteration_queries)} query/queries -> "
             f"{sum(q['hits'] for q in iteration_queries)} hits",
             {"rationale": proposal.get("rationale", ""),

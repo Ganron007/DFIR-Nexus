@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { api, chatStream, type ChatEntry, type Mode2IterateResponse, type Mode3PlanResponse, type N4Hit } from "../api/client";
+import { api, chatStream, type ChatEntry, type Mode1IterateResponse, type Mode2PlanResponse, type N4Hit } from "../api/client";
 import { computeApprovalResponse } from "../lib/crypto";
 import { useCase } from "../context/CaseContext";
 
@@ -121,7 +121,7 @@ function ProposalCard({ entry, caseMode, onAsk, busy, saved, onSave }: {
 }) {
   const meta = (entry.meta || {}) as Record<string, string>;
   const navigate = useNavigate();
-  const isSliver = entry.action === "mode3_plan" || entry.action === "mode3_execute";
+  const isSliver = entry.action === "mode2_plan" || entry.action === "mode2_execute";
   const isSteer = entry.action === "steer_answer";
   const badge = isSliver ? "Mode 2 Multi-role"
     : isSteer ? "Mode 1 Answer"
@@ -404,7 +404,7 @@ export default function SteerChat() {
         : caseMode === "3" ? "mode3" : "mode1";
   const [mode1Iterations, setMode1Iterations] = useState(3);
   const [sliverStep, setSliverStep] = useState<"plan" | "execute" | "seal">("plan");
-  const [sliverPlan, setSliverPlan] = useState<Mode3PlanResponse | null>(null);
+  const [sliverPlan, setSliverPlan] = useState<Mode2PlanResponse | null>(null);
   const [sealChallenge, setSealChallenge] = useState<{ challenge_id: string; nonce: string; salt: string; iterations: number } | null>(null);
   const [sealPassword, setSealPassword] = useState("");
   // WP 4d.3: live progress while a streamed turn is running
@@ -554,7 +554,7 @@ export default function SteerChat() {
             {
               ts: new Date().toISOString(),
               role: "llm",
-              action: "mode3_plan",
+              action: "mode2_plan",
               text: `Plan: ${plan.items.length} step(s), ${plan.queries.length} corroboration query(ies). ${plan.rationale}`,
               meta: { rationale: plan.rationale },
             },
@@ -584,7 +584,7 @@ export default function SteerChat() {
         {
           ts: new Date().toISOString(),
           role: "llm",
-          action: "mode3_execute",
+          action: "mode2_execute",
           text: `Executed: ${r.extras_persisted.length} extras persisted, ${r.query_results.length} queries run. ${r.note}`,
           meta: {},
         },
@@ -642,7 +642,7 @@ export default function SteerChat() {
           {
             ts: new Date().toISOString(),
             role: "llm",
-            action: "mode3_seal",
+            action: "mode2_seal",
             text: `Case sealed: ${r.status} — examiner: ${r.examiner}, case: ${r.case_id}`,
             meta: {},
           },
@@ -694,7 +694,7 @@ export default function SteerChat() {
           {
             ts: new Date().toISOString(),
             role: "llm",
-            action: "mode2_proposal",
+            action: "mode1_proposal",
             text: `DRAFT finding staged: ${r.finding_id || draftTitle} (${r.status || "DRAFT"})`,
             meta: {},
           },
@@ -710,17 +710,17 @@ export default function SteerChat() {
   };
 
   const isProposal = (entry: ChatEntry) =>
-    entry.action === "mode2_proposal" ||
-    entry.action === "mode2_no_proposals" ||
-    entry.action === "mode2_done" ||
-    entry.action === "mode2_aggregation" ||
-    entry.action === "mode3_plan" ||
-    entry.action === "mode3_execute" ||
-    entry.action === "mode3_seal";
+    entry.action === "mode1_proposal" ||
+    entry.action === "mode1_no_proposals" ||
+    entry.action === "mode1_done" ||
+    entry.action === "mode1_aggregation" ||
+    entry.action === "mode2_plan" ||
+    entry.action === "mode2_execute" ||
+    entry.action === "mode2_seal";
 
   // WP 4j.13 — Mode 1 iterative loop from the UI: the full examiner
   // back-and-forth (queries + aggregations) in one tracked operation.
-  const [iterateResult, setIterateResult] = useState<Mode2IterateResponse | null>(null);
+  const [iterateResult, setIterateResult] = useState<Mode1IterateResponse | null>(null);
   const runIterate = async () => {
     if (!input.trim() || loading) return;
     setLoading(true);
@@ -729,7 +729,7 @@ export default function SteerChat() {
     setInput("");
     setMessages((prev) => [
       ...prev,
-      { ts: new Date().toISOString(), role: "examiner", action: "mode2_iterate_question", text, meta: {} },
+      { ts: new Date().toISOString(), role: "examiner", action: "mode1_iterate_question", text, meta: {} },
     ]);
     try {
       const r = await api.mode1Iterate({ question: text, max_iterations: mode1Iterations });
@@ -742,7 +742,7 @@ export default function SteerChat() {
           {
             ts: new Date().toISOString(),
             role: "llm",
-            action: "mode2_iteration",
+            action: "mode1_iteration",
             text: `Iterated: ${r.iterations.length} round(s), ${r.total_hits} total hits. `
               + `Queries: ${(r.needles_run || []).slice(0, 6).join(", ")}`,
             meta: { needles: (r.needles_run || []).join(","), hits: String(r.total_hits) },

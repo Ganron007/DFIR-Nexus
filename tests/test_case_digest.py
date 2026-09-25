@@ -250,7 +250,7 @@ def test_case_window_reads_run_options(tmp_path, monkeypatch):
     monkeypatch.setenv("NEXUS_LLM_CONTEXT_WINDOW", "500000")
     assert case_window(tmp_path) == 500_000  # no options file → env default
     (tmp_path / "analysis").mkdir(parents=True)
-    (tmp_path / "analysis" / "mode2_run_options.json").write_text(
+    (tmp_path / "analysis" / "mode1_run_options.json").write_text(
         json.dumps({"context_window": 128000}), encoding="utf-8"
     )
     assert case_window(tmp_path) == 128_000  # case's own window wins

@@ -96,7 +96,7 @@ class FakeExecutor:
 
 def test_resolve_rounds_from_options_file(tmp_path):
     (tmp_path / "analysis").mkdir(parents=True)
-    (tmp_path / "analysis" / "mode2_run_options.json").write_text(
+    (tmp_path / "analysis" / "mode1_run_options.json").write_text(
         json.dumps({"interpret_rounds": 2}), encoding="utf-8"
     )
     assert _resolve_rounds({}, tmp_path, None) == 2

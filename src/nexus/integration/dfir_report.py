@@ -687,21 +687,13 @@ def write_finding_appendices(case_dir: Path, findings: list[dict]) -> list[dict]
     return written
 
 
-def _load_mode2_saved_answers(case_dir: Any) -> list[dict[str, Any]]:
-    """Examiner-saved Mode 2 answers (analysis/mode2_saved_answers.json)."""
-    import json
-
+def _load_saved_answers(case_dir: Any) -> list[dict[str, Any]]:
+    """Examiner-saved Mode 1 answers (canonical + legacy file names)."""
     if not case_dir:
         return []
-    try:
-        loaded = json.loads(
-            (Path(case_dir) / "analysis" / "mode2_saved_answers.json").read_text(
-                encoding="utf-8"
-            )
-        )
-    except (OSError, ValueError):
-        return []
-    return [e for e in loaded if isinstance(e, dict)] if isinstance(loaded, list) else []
+    from nexus.case.saved_answers import load_saved_answers
+
+    return load_saved_answers(case_dir)
 
 
 def _load_briefing_directions_record(case_dir: Any) -> dict[str, Any]:
@@ -1091,10 +1083,10 @@ def build_dfir_markdown(
             lines.append(f"  - **A:** {row['answer']}{cite}")
         lines.append("")
 
-    # Saved Mode 2 answers — examiner-bookmarked answers carried into the report
-    saved_answers = _load_mode2_saved_answers(case_dir)
+    # Saved Mode 1 answers — examiner-bookmarked answers carried into the report
+    saved_answers = _load_saved_answers(case_dir)
     if saved_answers:
-        lines.append("## Saved Mode 2 answers")
+        lines.append("## Saved Mode 1 answers")
         lines.append("")
         for row in saved_answers[:20]:
             q = str(row.get("question") or "").strip() or "(question not recorded)"

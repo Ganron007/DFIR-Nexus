@@ -1,4 +1,4 @@
-"""Tests for WP 2.10/2.11/2.6 — RAG + playbook context in Mode 2 proposals."""
+"""Tests for WP 2.10/2.11/2.6 - RAG + playbook context in Mode 1 proposals."""
 
 from __future__ import annotations
 
