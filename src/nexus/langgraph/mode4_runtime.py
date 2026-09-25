@@ -144,6 +144,13 @@ def read_run_events(case_dir: Path, run_id: str, limit: int = 5000) -> list[dict
     return out[-limit:]
 
 
+def emit_event(case_dir: Path, run_id: str, event: Any) -> None:
+    """Append an event to the Mode 4 stream the SSE tail reads."""
+    sink = EventSink(Path(case_dir), run_id)
+    sink.path = _run_dir(Path(case_dir)) / f"{run_id}.jsonl"
+    sink.emit(event)
+
+
 def elasticsearch_ready() -> bool:
     try:
         from nexus.langgraph.case_index import es_available
@@ -295,8 +302,8 @@ def _seat_with_model(
     sink: EventSink,
     board_digest: str,
     superstep: int,
+    audit: Any = None,
 ) -> dict[str, Any]:
-    from nexus.audit import AuditWriter
     from nexus.langgraph.context_loop import LoopBudget, run_context_loop
     from nexus.langgraph.mode3_runtime import role_for
 
@@ -327,7 +334,7 @@ def _seat_with_model(
         system_prompt=role.system_prompt,
         task=f"mode4-{role_name}",
         budget=LoopBudget(rounds=rounds, seconds=seconds, calls=calls, call_chars=budget_chars(case_window(case_dir))),
-        audit=AuditWriter("nexus", audit_dir=case_dir / "audit"),
+        audit=audit,
         allowed_tools=role.tools,
         terminal_keys=("claims",),
     )
@@ -351,6 +358,7 @@ class Mode4State(TypedDict, total=False):
     superstep: int
     last_fp: list[str]
     disputes: list[dict[str, Any]]
+    steering_seen: int
 
 
 class _LockedSink:
@@ -372,10 +380,15 @@ def run_mode4(
     seat_fn: Callable[[dict[str, Any], list[dict[str, Any]], int], dict[str, Any]] | None = None,
     es_ok: bool | None = None,
     on_event: Callable[[dict[str, Any]], None] | None = None,
+    resume_state: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Run one concurrent investigation. Returns the run record. Never stages."""
     case_dir = Path(case_dir)
     run_id = run_id or f"M4-{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}-{uuid4().hex[:6]}"
+    from nexus.audit import AuditWriter
+
+    # One writer per run (locked decision): seats share it, no seat builds one.
+    run_audit = AuditWriter("nexus", audit_dir=case_dir / "audit")
     ready = elasticsearch_ready() if es_ok is None else bool(es_ok)
     record: dict[str, Any] = {
         "run_id": run_id,
@@ -392,11 +405,26 @@ def run_mode4(
         "superstep": 0,
         "product_mode": "multi-agent",
     }
+    if resume_state is not None:
+        existing = read_run_record(case_dir, run_id)
+        if existing is not None and str(existing.get("status") or "") in {
+            "completed", "failed", "stopped",
+        }:
+            return existing
+        if existing is not None:
+            record.update(existing)
+            record["status"] = "running"
+            record["stop_reason"] = ""
+            record.pop("resume_state", None)
+            record.pop("completed_at", None)
     if not ready:
         record["status"] = "failed"
         record["stop_reason"] = "elasticsearch_required"
         _persist(case_dir, run_id, record)
         return record
+    # Persist before the graph runs so mid-run controls (pause/stop), status
+    # polling and the SSE tail all see the record from superstep 0.
+    _persist(case_dir, run_id, record)
 
     max_agents = _env_int("NEXUS_MODE4_MAX_AGENTS", 4, low=2, high=8)
     max_steps = _env_int("NEXUS_MODE4_MAX_SUPERSTEPS", 6, low=1, high=12)
@@ -411,12 +439,11 @@ def run_mode4(
     indexed = list(families or [])
     if not indexed:
         try:
-            from nexus.audit import AuditWriter
             from nexus.langgraph.backbone import backbone_call
 
             index = backbone_call(
                 "index_mappings",
-                audit=AuditWriter("nexus", audit_dir=case_dir / "audit"),
+                audit=run_audit,
                 case_id=case_dir.name,
             )
             indexed = [
@@ -444,6 +471,28 @@ def run_mode4(
             return {"status": halt, "superstep": step, "spawns": []}
         if step > max_steps or calls_used["n"] >= max_calls:
             return {"status": "capped", "superstep": step, "spawns": []}
+        steering = read_steering(case_dir, run_id)
+        seen = int(state.get("steering_seen") or 0)
+        if len(steering) > seen:
+            fresh = steering[seen:]
+            spawns = [
+                {
+                    "role": "correlation",
+                    "family": "",
+                    "why": f"examiner steer: {str(line.get('text') or '')[:80]}",
+                    "question": str(line.get("text") or question),
+                }
+                for line in fresh
+            ][:max_agents]
+            sink.emit(new_event(
+                run_id, "supervisor.steer", actor="supervisor",
+                detail=f"{len(fresh)} steer line(s)",
+                data={"agents": len(spawns)},
+            ))
+            return {
+                "spawns": spawns, "superstep": step, "status": "running",
+                "steering_seen": len(steering),
+            }
         disputes = state.get("disputes") or []
         used = int(state.get("redispatch_used") or 0)
         if disputes and used < max_redispatch and int(state.get("quiet") or 0) < settle_k:
@@ -484,6 +533,12 @@ def run_mode4(
             return "join"
         board = state.get("board") or []
         digest = json.dumps(board, default=str)
+        steering = read_steering(case_dir, run_id)
+        if steering:
+            steer_text = "\n".join(
+                f"- {str(line.get('text') or '')}" for line in steering[-3:]
+            )
+            digest += f"\nEXAMINER STEERING:\n{steer_text}"
         limit = budget_chars(case_window(case_dir))
         if len(digest) > limit:
             digest = digest[:limit]
@@ -508,7 +563,7 @@ def run_mode4(
             entry = _seat_with_model(
                 spawn, case_dir=case_dir, model=model, run_id=run_id,
                 sink=sink, board_digest=str(payload.get("board_digest") or ""),
-                superstep=step,
+                superstep=step, audit=run_audit,
             )
         else:
             entry = _fallback_entry(spawn, step)
@@ -600,7 +655,19 @@ def run_mode4(
     graph.add_edge("seat", "join")
     graph.add_conditional_edges("join", after_join, ["supervisor", "synthesize"])
     graph.add_edge("synthesize", END)
-    final = graph.compile().invoke({"board": [], "quiet": 0, "redispatch_used": 0, "superstep": 0, "status": "running"})
+    seed: dict[str, Any] = {
+        "board": [], "quiet": 0, "redispatch_used": 0, "superstep": 0,
+        "status": "running", "steering_seen": 0,
+    }
+    if resume_state:
+        seed.update({
+            "board": list(resume_state.get("board") or []),
+            "superstep": int(resume_state.get("superstep") or 0),
+            "quiet": int(resume_state.get("quiet") or 0),
+            "redispatch_used": int(resume_state.get("redispatch_used") or 0),
+            "steering_seen": int(resume_state.get("steering_seen") or 0),
+        })
+    final = graph.compile().invoke(seed)
 
     status = str(final.get("status") or "completed")
     if status == "settled":
@@ -623,6 +690,15 @@ def run_mode4(
         "superstep": int(final.get("superstep") or 0),
         "completed_at": _now() if status != "paused" else "",
     })
+    if status == "paused":
+        # File-based superstep checkpoint: resume rebuilds the graph state.
+        record["resume_state"] = {
+            "board": list(record.get("board") or []),
+            "superstep": int(record.get("superstep") or 0),
+            "quiet": int(final.get("quiet") or 0),
+            "redispatch_used": int(final.get("redispatch_used") or 0),
+            "steering_seen": int(final.get("steering_seen") or 0),
+        }
     # Synthesis return was empty so candidates are derived here from the board.
     disputes = record["disputes"]
     open_keys = {(d["entity_type"], d["entity_value"], d["claim_kind"]) for d in disputes}
@@ -657,6 +733,35 @@ def run_mode4(
         record["steering"] = steering
     _persist(case_dir, run_id, record)
     return record
+
+
+def resume_mode4(
+    case_dir: Path,
+    run_id: str,
+    *,
+    model: Any = None,
+    seat_fn: Callable[[dict[str, Any], list[dict[str, Any]], int], dict[str, Any]] | None = None,
+    es_ok: bool | None = None,
+) -> dict[str, Any]:
+    """Continue a paused run from its persisted board/superstep snapshot."""
+    record = read_run_record(case_dir, run_id)
+    if record is None:
+        return {"error": "run not found", "run_id": run_id}
+    status = str(record.get("status") or "")
+    if status in {"stopped", "completed", "failed"}:
+        return {**record, "error": f"run is {status}; start a new run"}
+    if status != "paused":
+        return {**record, "error": f"run is {status}; nothing to resume"}
+    mark_paused(case_dir, run_id, False)
+    return run_mode4(
+        case_dir,
+        str(record.get("question") or ""),
+        model=model,
+        run_id=run_id,
+        seat_fn=seat_fn,
+        es_ok=es_ok,
+        resume_state=record.get("resume_state") or {},
+    )
 
 
 def stage_mode4(case_dir: Path, run_id: str) -> dict[str, Any]:

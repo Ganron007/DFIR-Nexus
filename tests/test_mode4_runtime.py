@@ -164,3 +164,131 @@ def test_run_record_roundtrip(tmp_path):
     saved = json.loads(path.read_text(encoding="utf-8"))
     assert saved["run_id"] == record["run_id"]
     assert saved["product_mode"] == "multi-agent"
+
+
+def test_display_labels_final_three_modes():
+    from nexus.langgraph.mode_mapping import display_product_mode
+
+    assert display_product_mode(1)["product_label"] == "Mode 1 \u2014 LLM"
+    assert display_product_mode(2)["product_label"] == "Mode 1 \u2014 LLM"
+    assert display_product_mode(3)["product_label"] == "Mode 2 \u2014 Multi-role"
+    assert display_product_mode(4)["product_label"] == "Mode 3 \u2014 Multi-agent"
+    assert "error" in display_product_mode(9)
+
+
+class _StubModel:
+    """First reply is a terminal claims JSON (no tool calls)."""
+
+    def invoke(self, _messages):
+        class _Resp:
+            content = json.dumps({
+                "claims": [{
+                    "entity_type": "host", "entity_value": "ws01",
+                    "claim_kind": "presence", "polarity": "affirm",
+                    "value": "4624", "audit_ids": ["audit-1"],
+                    "confidence": "LOW",
+                    "confidence_justification": "row cited",
+                }],
+                "open_questions": [],
+            })
+        return _Resp()
+
+
+def test_one_audit_writer_per_run(tmp_path, monkeypatch):
+    import nexus.audit as audit_mod
+
+    created = []
+    real = audit_mod.AuditWriter
+
+    class _Counting(real):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            created.append(self)
+
+    monkeypatch.setattr(audit_mod, "AuditWriter", _Counting)
+    record = run_mode4(
+        _case(tmp_path), "q", families=[("evtx", 3)],
+        model=_StubModel(), es_ok=True,
+    )
+    assert record["status"] == "completed"
+    assert len(created) == 1, f"one writer per run expected, got {len(created)}"
+    assert record["board"], "seats must publish entries"
+
+
+def test_steering_spawns_a_seat(tmp_path):
+    from nexus.langgraph import mode4_runtime as m4
+    from nexus.langgraph.mode3_runtime import append_steering
+
+    case = _case(tmp_path)
+    append_steering(case, "M4-steer", "chase host WS01 before settling")
+    seen = []
+
+    def seat(spawn, _board, step):
+        seen.append(dict(spawn))
+        return {
+            "entry_id": f"{spawn['role']}-{step}",
+            "agent_id": f"{spawn['role']}-{step}",
+            "role": spawn["role"], "family": spawn.get("family") or "",
+            "superstep": step, "claims": [], "open_questions": [],
+        }
+
+    record = run_mode4(
+        case, "q", run_id="M4-steer", families=[("evtx", 1)],
+        seat_fn=seat, es_ok=True,
+    )
+    assert any("WS01" in str(spawn.get("question") or "") for spawn in seen)
+    kinds = [event["event_type"] for event in m4.read_run_events(case, "M4-steer")]
+    assert "supervisor.steer" in kinds
+    assert record["status"] == "completed"
+
+
+def test_pause_and_resume_roundtrip(tmp_path):
+    from nexus.langgraph import mode4_runtime as m4
+
+    case = _case(tmp_path)
+    calls = {"n": 0}
+
+    def seat(spawn, _board, step):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            m4.mark_paused(case, "M4-pause", True)
+        return {
+            "entry_id": f"{spawn['role']}-{step}",
+            "agent_id": f"{spawn['role']}-{step}",
+            "role": spawn["role"], "family": spawn.get("family") or "",
+            "superstep": step, "claims": [], "open_questions": [],
+        }
+
+    record = run_mode4(
+        case, "q", run_id="M4-pause", families=[("evtx", 1)],
+        seat_fn=seat, es_ok=True,
+    )
+    assert record["status"] == "paused"
+    assert record.get("resume_state"), "pause must persist a resumable snapshot"
+
+    resumed = m4.resume_mode4(case, "M4-pause", seat_fn=seat, es_ok=True)
+    assert resumed["status"] == "completed"
+    assert resumed["stop_reason"] in {"settled", "completed"}
+
+
+def test_resume_refuses_terminal(tmp_path):
+    from nexus.langgraph import mode4_runtime as m4
+
+    case = _case(tmp_path)
+
+    def seat(spawn, _board, step):
+        return {
+            "entry_id": f"{spawn['role']}-{step}",
+            "agent_id": f"{spawn['role']}-{step}",
+            "role": spawn["role"], "family": spawn.get("family") or "",
+            "superstep": step, "claims": [], "open_questions": [],
+        }
+
+    record = run_mode4(
+        case, "q", run_id="M4-done", families=[("evtx", 1)],
+        seat_fn=seat, es_ok=True,
+    )
+    assert record["status"] == "completed"
+    out = m4.resume_mode4(case, "M4-done", seat_fn=seat, es_ok=True)
+    assert out.get("error")
+    assert out["status"] == "completed"

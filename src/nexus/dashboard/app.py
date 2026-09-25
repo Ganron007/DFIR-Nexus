@@ -7131,11 +7131,57 @@ def _start_mode3_thread(
         thread.start()
 
 
+# ── Mode 4 concurrent multi-agent run control ──────────────────────────
+_mode4_threads: dict[str, threading.Thread] = {}
+_mode4_thread_lock = threading.Lock()
+
+
+def _mode4_worker_thread(
+    case_dir: Path, question: str, model: Any, run_id: str, resume: bool,
+) -> None:
+    try:
+        from nexus.langgraph.mode4_runtime import resume_mode4, run_mode4
+
+        if resume:
+            resume_mode4(case_dir, run_id, model=model)
+        else:
+            run_mode4(case_dir, question, model=model, run_id=run_id)
+    except Exception:  # noqa: BLE001 — the run record carries the failure
+        logger.exception("Mode 4 run %s failed", run_id)
+    finally:
+        with _mode4_thread_lock:
+            _mode4_threads.pop(run_id, None)
+
+
+def _start_mode4_thread(
+    case_dir: Path, question: str, model: Any, run_id: str, resume: bool,
+) -> None:
+    with _mode4_thread_lock:
+        live = _mode4_threads.get(run_id)
+        if live is not None and live.is_alive():
+            raise RuntimeError("run already in progress")
+        thread = threading.Thread(
+            target=_mode4_worker_thread,
+            args=(case_dir, question, model, run_id, resume),
+            daemon=True,
+            name=f"mode4-{run_id[-8:]}",
+        )
+        _mode4_threads[run_id] = thread
+        thread.start()
+
+
 async def api_mode4_run(request):
-    """POST /portal/api/mode4/run — start the concurrent multi-agent team."""
+    """POST /portal/api/mode4/run — start the concurrent multi-agent team.
+
+    Runs in the background (like Mode 3) so the caller gets the run id and
+    consumes the SSE stream at ``/mode4/run/events``.
+    """
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
     try:
         body = await request.json()
     except Exception:  # noqa: BLE001
@@ -7148,17 +7194,123 @@ async def api_mode4_run(request):
             question = str(load_case_intake(case_dir).get("question") or "")
         except Exception:  # noqa: BLE001
             question = ""
-    from nexus.langgraph.mode4_runtime import run_mode4
-
+    run_id = str(body.get("run_id") or "").strip() or (
+        f"M4-{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}-{uuid.uuid4().hex[:6]}")
     model = await asyncio.to_thread(_mode3_resolve_model)
-    record = await asyncio.to_thread(run_mode4, case_dir, question, model=model)
-    code = 200 if record.get("status") != "failed" else 409
-    return JSONResponse({
-        "run_id": record.get("run_id"),
-        "status": record.get("status"),
-        "stop_reason": record.get("stop_reason"),
-        "question": question,
-    }, status_code=code)
+    try:
+        _start_mode4_thread(case_dir, question, model, run_id, resume=False)
+    except RuntimeError:
+        return JSONResponse(
+            {"error": "a Mode 4 run with this id is already in progress",
+             "run_id": run_id},
+            status_code=409,
+        )
+    return JSONResponse(
+        {"run_id": run_id, "status": "running", "question": question},
+        status_code=202,
+    )
+
+
+async def api_mode4_run_pause(request):
+    """POST /portal/api/mode4/run/pause — cooperative pause at superstep boundary."""
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+    run_id = str(body.get("run_id") or "").strip()
+    paused = bool(body.get("paused", True))
+    if not run_id:
+        return JSONResponse({"error": "run_id is required"}, status_code=400)
+    from nexus.langgraph.mode4_runtime import mark_paused
+
+    ok = await asyncio.to_thread(mark_paused, case_dir, run_id, paused)
+    if not ok:
+        return JSONResponse({"error": "run not found", "run_id": run_id},
+                            status_code=404)
+    return JSONResponse({"run_id": run_id, "paused": paused})
+
+
+async def api_mode4_run_resume(request):
+    """POST /portal/api/mode4/run/resume — continue a paused run from its snapshot."""
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+    run_id = str(body.get("run_id") or "").strip()
+    if not run_id:
+        return JSONResponse({"error": "run_id is required"}, status_code=400)
+    from nexus.langgraph.mode4_runtime import read_run_record
+
+    record = await asyncio.to_thread(read_run_record, case_dir, run_id)
+    if record is None:
+        return JSONResponse({"error": "run not found", "run_id": run_id},
+                            status_code=404)
+    status = str(record.get("status") or "")
+    if status != "paused":
+        return JSONResponse(
+            {"error": f"run is {status}; nothing to resume", "run_id": run_id},
+            status_code=409,
+        )
+    model = await asyncio.to_thread(_mode3_resolve_model)
+    try:
+        _start_mode4_thread(
+            case_dir, str(record.get("question") or ""), model, run_id, resume=True)
+    except RuntimeError:
+        return JSONResponse({"error": "run already in progress", "run_id": run_id},
+                            status_code=409)
+    return JSONResponse({"run_id": run_id, "status": "running"}, status_code=202)
+
+
+async def api_mode4_run_events(request):
+    """GET /portal/api/mode4/run/events — SSE tail of the run event log."""
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    from nexus.langgraph.mode4_runtime import (
+        latest_run_id,
+        read_run_events,
+        read_run_record,
+    )
+
+    run_id = str(request.query_params.get("run_id") or "").strip()
+    run_id = run_id or latest_run_id(case_dir)
+    if not run_id:
+        return JSONResponse({"error": "no Mode 4 run found"}, status_code=404)
+
+    async def _stream():
+        emitted = 0
+        terminal_seen = 0
+        while True:
+            events = await asyncio.to_thread(
+                read_run_events, case_dir, run_id, limit=100000)
+            for event in events[emitted:]:
+                yield f"event: agent\ndata: {json.dumps(event, default=str)}\n\n"
+            emitted = len(events)
+            record = await asyncio.to_thread(read_run_record, case_dir, run_id)
+            status = str((record or {}).get("status") or "")
+            if status in ("completed", "failed", "paused", "stopped"):
+                terminal_seen += 1
+                if terminal_seen >= 2:
+                    yield f"event: run\ndata: {json.dumps({'status': status}, default=str)}\n\n"
+                    break
+            else:
+                terminal_seen = 0
+            yield "event: ping\ndata: {}\n\n"
+            await asyncio.sleep(1.0)
+
+    return StreamingResponse(_stream(), media_type="text/event-stream")
 
 
 async def api_mode4_run_status(request):
@@ -7687,6 +7839,9 @@ def create_dashboard():
         Route("/portal/api/mode4/run", api_mode4_run, methods=["POST"]),
         Route("/portal/api/mode4/run/status", api_mode4_run_status, methods=["GET"]),
         Route("/portal/api/mode4/run/board", api_mode4_run_board, methods=["GET"]),
+        Route("/portal/api/mode4/run/events", api_mode4_run_events, methods=["GET"]),
+        Route("/portal/api/mode4/run/pause", api_mode4_run_pause, methods=["POST"]),
+        Route("/portal/api/mode4/run/resume", api_mode4_run_resume, methods=["POST"]),
         Route("/portal/api/mode4/run/stop", api_mode4_run_stop, methods=["POST"]),
         Route("/portal/api/mode4/run/stage", api_mode4_run_stage, methods=["POST"]),
         Route("/portal/api/case/seal", api_case_seal, methods=["POST"]),
