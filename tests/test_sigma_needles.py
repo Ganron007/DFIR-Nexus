@@ -8,12 +8,12 @@ from nexus.knowledge.sigma_needles import (
     sigma_needles_for,
     sigma_packs_for,
 )
-from nexus.modes.llm_desk import nl_to_needles
 from nexus.langgraph.query_pack import (
     finalize_hits,
     playbook_strong_terms_for_families,
     playbook_terms_for_families,
 )
+from nexus.modes.llm_desk import nl_to_needles
 
 
 def test_sigma_packs_load_and_are_well_formed():

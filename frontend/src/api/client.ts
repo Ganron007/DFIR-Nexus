@@ -621,7 +621,7 @@ export interface Mode3PlanResponseOrders {
   orders: Mode3WorkOrder[];
 }
 
-export interface Mode3StageResult {
+export interface Mode2StageResult {
   run_id: string;
   staged?: { title: string; finding_id?: string; input_call_ids?: string[]; verifier_class?: string }[];
   skipped?: { title: string; reason: string }[];
@@ -1258,11 +1258,11 @@ export const api = {
   entities: (params: { query?: string; needles?: string }) =>
     post<EntitiesResponse>("/entities", params),
 
-  // Mode 2
-  mode2Iterate: (params: { question: string; max_iterations?: number }) =>
+  // Mode 1 — LLM (ask / guided chat / iterate)
+  mode1Iterate: (params: { question: string; max_iterations?: number }) =>
     post<Mode2IterateResponse>("/mode1/iterate", params),
-  /** WP 4j.13 — POST /mode2/chat → the conversational evidence agent */
-  mode2Chat: (params: { message: string; history?: { role: string; text: string }[] }) =>
+  /** WP 4j.13 — POST /mode1/chat → the conversational evidence agent */
+  mode1Chat: (params: { message: string; history?: { role: string; text: string }[] }) =>
     post<{
       reply: string;
       queries_executed: { tool: string; dsl: string; why?: string; hits: number; audit_id?: string }[];
@@ -1277,20 +1277,20 @@ export const api = {
       hits?: N4Hit[];
       error?: string;
     }>("/mode1/chat", params),
-  mode2Corroborate: (params: { finding_id?: string }) =>
+  mode1Corroborate: (params: { finding_id?: string }) =>
     post<CorroborationResponse>("/mode1/corroborate", params),
-  mode2ProposeDraft: (params: { title: string; hits?: N4Hit[]; query?: string }) =>
+  mode1ProposeDraft: (params: { title: string; hits?: N4Hit[]; query?: string }) =>
     post<ProposeDraftResponse>("/mode1/propose-draft", params),
-  mode2Suggestions: () => post<Mode2SuggestionsResponse>("/mode1/suggestions", {}),
-  mode2SaveAnswer: (params: { entry_ts: string; note?: string }) =>
+  mode1Suggestions: () => post<Mode2SuggestionsResponse>("/mode1/suggestions", {}),
+  mode1SaveAnswer: (params: { entry_ts: string; note?: string }) =>
     post<Mode2SaveAnswerResponse>("/mode1/save-answer", params),
 
-  // Mode 3
-  mode3Plan: (params?: { question?: string }) =>
+  // Mode 2 — legacy plan/execute sliver
+  mode2Plan: (params?: { question?: string }) =>
     post<Mode3PlanResponse>("/mode2/plan", params || {}),
-  mode3Execute: (params: { extras?: string[]; queries?: string[] }) =>
+  mode2Execute: (params: { extras?: string[]; queries?: string[] }) =>
     post<Mode3ExecuteResponse>("/mode2/execute", params),
-  // Mode 3 supervised agent run (M6) — same runtime/event stream as the CLI.
+  // Mode 2 — Multi-role supervised agent run (M6) — same runtime/event stream as the CLI.
   mode2RunPlan: (params: { question?: string; max_orders?: number }) =>
     post<Mode3PlanResponseOrders>("/mode2/run/plan", params),
   mode2RunStart: (params: { question?: string; max_orders?: number; run_id?: string }) =>
@@ -1314,7 +1314,7 @@ export const api = {
   mode2RunResume: (params: { run_id: string }) =>
     post<{ run_id: string; status: string }>("/mode2/run/resume", params),
   mode2RunStage: (params: { run_id: string }) =>
-    post<Mode3StageResult>("/mode2/run/stage", params),
+    post<Mode2StageResult>("/mode2/run/stage", params),
   // Mode 3 — Multi-agent concurrent board.
   mode3Run: (params: { question?: string; run_id?: string }) =>
     post<{ run_id: string; status: string; question?: string; error?: string }>(
@@ -1343,8 +1343,8 @@ export const api = {
   mode3RunStage: (params: { run_id: string }) =>
     post<Mode3StageResult>("/mode3/run/stage", params),
   /** Seal & close the active case — HMAC challenge-response, same flow as
-   *  per-finding approval. Lifecycle action for every mode; the legacy
-   *  /mode3/seal route remains registered as an alias. */
+   *  per-finding approval (`POST /portal/api/case/seal`). Lifecycle action for
+   *  every mode. */
   sealCase: (params: {
     challenge_id: string;
     response: string;

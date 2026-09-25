@@ -113,7 +113,7 @@ NEXUS_LLM_REASONING=high                 # optional reasoning passthrough
 | `NEXUS_KB_DIR` | unset | Path to your local KB (the folder containing `kb/kb.py`, e.g. `G:\doc_extract`). Enables `kb_search`/`kb_read` and the LLM-mode KB context block. |
 | `NEXUS_RAG_DEVICE` | `auto` | Embedding device: `cpu` \| `cuda` \| `cuda:0` — `auto` picks CUDA when the installed torch build has it (the log line reports the device). |
 | `NEXUS_LLM_TIMEOUT` | `180` | Seconds per LLM request; raise it (e.g. `600`) for slow long-context providers — a stalled provider can never hang a turn. |
-| `NEXUS_MODE2_TURN_TIMEOUT` | `900` | Outer steering-turn budget (seconds); must stay above `NEXUS_CONTEXT_LOOP_SECONDS` (default 360). The bounded tool loop returns a partial result before this ceiling. |
+| `NEXUS_MODE1_TURN_TIMEOUT` | `900` | Outer steering-turn budget (seconds); must stay above `NEXUS_CONTEXT_LOOP_SECONDS` (default 360). The bounded tool loop returns a partial result before this ceiling. Legacy alias `NEXUS_MODE2_TURN_TIMEOUT` is still read. |
 | `NEXUS_MODE2_FOLLOWUPS` | `8` | Max follow-up corroboration rounds the Mode 2 (multi-role) supervisor may add (0–24). Each round is a new work order for inferred or refuted candidates. The run stops early on `converged_no_new_evidence`, and immediately on examiner stop. |
 | `NEXUS_MODE2_{ROUNDS,CALLS,SECONDS}` | `24`/`48`/`1800` | Per-agent tool budget inside one Mode 2 (multi-role) work order (highs 80 / 200 / 7200). The character ceiling is the context window, not a fixed slice. |
 | `NEXUS_MODE3_{MAX_AGENTS,MAX_SUPERSTEPS,MAX_CALLS}` | `4`/`6`/`120` | Mode 3 (multi-agent) run governor (highs 8 / 12 / 400). A hit cap ends the superstep with an honest partial. |

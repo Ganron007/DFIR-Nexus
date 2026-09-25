@@ -25,7 +25,7 @@ def _client() -> TestClient:
     return TestClient(Starlette(routes=create_dashboard()))
 
 
-def test_mode3_run_plan_endpoint(tmp_path):
+def test_mode2_run_plan_endpoint(tmp_path):
     case = _case(tmp_path)
     order = m3.WorkOrder(order_id="wo-1", role="evidence", task="t")
     with patch("nexus.dashboard.app._get_case_dir", return_value=case), \
@@ -39,7 +39,7 @@ def test_mode3_run_plan_endpoint(tmp_path):
     assert body["orders"][0]["role"] == "evidence"
 
 
-def test_mode3_run_start_status_steer_pause_resume(tmp_path):
+def test_mode2_run_start_status_steer_pause_resume(tmp_path):
     case = _case(tmp_path)
     run_id = "M2-api-test"
     started: list[tuple] = []
@@ -119,7 +119,7 @@ def test_mode3_run_stage_endpoint(tmp_path):
                and f.get("status") == "DRAFT" for f in rows)
 
 
-def test_mode3_run_stop_sets_flag(tmp_path):
+def test_mode2_run_stop_sets_flag(tmp_path):
     case = _case(tmp_path)
     m3._persist_state(case, "M2-stop-api", {
         "run_id": "M2-stop-api", "case_id": case.name, "question": "q",
@@ -134,7 +134,7 @@ def test_mode3_run_stop_sets_flag(tmp_path):
     assert m3.read_controls(case, "M2-stop-api")["stop_requested"] is True
 
 
-def test_mode3_run_plan_rejects_sealed_case(tmp_path):
+def test_mode2_run_plan_rejects_sealed_case(tmp_path):
     from starlette.responses import JSONResponse
 
     case = _case(tmp_path)
@@ -144,3 +144,28 @@ def test_mode3_run_plan_rejects_sealed_case(tmp_path):
         response = _client().post("/portal/api/mode2/run/plan",
                                   json={"question": "x"})
     assert response.status_code == 409
+
+
+def test_mode2_run_generates_m2_run_ids(tmp_path):
+    """Regression: the multi-role API must mint M2-/M2-plan- ids, not M3-."""
+    case = _case(tmp_path)
+    started: list[tuple] = []
+
+    def _fake_start(case_dir, question, model, rid, resume):
+        started.append((str(case_dir.name), question, rid, resume))
+
+    order = m3.WorkOrder(order_id="wo-1", role="evidence", task="t")
+    with patch("nexus.dashboard.app._get_case_dir", return_value=case), \
+         patch("nexus.dashboard.app._start_mode2_thread", side_effect=_fake_start), \
+         patch("nexus.modes.multi_role.plan_work_orders", return_value=[order]):
+        client = _client()
+        planned = client.post("/portal/api/mode2/run/plan",
+                              json={"question": "what happened"})
+        started_run = client.post("/portal/api/mode2/run",
+                                  json={"question": "what happened"})
+    assert planned.status_code == 200
+    assert planned.json()["run_id"].startswith("M2-plan-")
+    assert started_run.status_code == 202
+    run_id = started_run.json()["run_id"]
+    assert run_id.startswith("M2-")
+    assert started and started[0][2] == run_id

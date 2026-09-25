@@ -11,12 +11,12 @@ import pytest
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
+from nexus.langgraph.query_pack import finalize_hits
 from nexus.modes.llm_desk import (
     _context_block,
     extract_entities,
     nl_to_needles,
 )
-from nexus.langgraph.query_pack import finalize_hits
 
 
 def test_extract_entities_identifiers():
@@ -118,8 +118,8 @@ def test_api_ask_returns_entities_without_llm(client, monkeypatch):
     assert body["source"] == "heuristic"
 
 
-def test_chat_stream_mode1_uses_grounded_context(client, monkeypatch):
-    """The UI path (/chat/stream) must ground the scribe like /mode1/ask."""
+def test_chat_stream_ask_mode_uses_grounded_context(client, monkeypatch):
+    """The ask path (/chat/stream mode1-ask) must ground the scribe like /mode1/ask."""
     import nexus.modes.llm_desk as mode1
 
     captured: dict = {}
@@ -136,7 +136,7 @@ def test_chat_stream_mode1_uses_grounded_context(client, monkeypatch):
     r = client.post(
         "/portal/api/chat/stream",
         headers={"X-Nexus-Case": case_id},
-        json={"message": "Did 10.0.0.5 use powershell?", "mode": "mode1"},
+        json={"message": "Did 10.0.0.5 use powershell?", "mode": "mode1-ask"},
     )
     assert r.status_code == 200, r.text
     context = captured.get("context")

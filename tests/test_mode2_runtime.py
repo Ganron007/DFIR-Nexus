@@ -258,7 +258,7 @@ def test_stage_run_candidates_lineage_and_filters(tmp_path):
     assert staged, "the valid candidate must be staged as DRAFT"
     assert staged[0]["status"] == "DRAFT"
     assert staged[0]["input_call_ids"] == [audit_id]
-    assert staged[0].get("source") == "mode3"
+    assert staged[0].get("source") == "mode2"
     events = m3.read_run_events(case, "M2-stage")
     assert any(e["event_type"] == "finding.staged" for e in events)
 
@@ -309,7 +309,7 @@ def test_role_budget_defaults_are_respected(tmp_path):
         m3.run_work_order(order, case_dir=case, model=object(), run_id="M2-b",
                           sink=m3.EventSink(case, "M2-b"))
     budget = fake.call_args.kwargs["budget"]
-    shared = m3.mode3_loop_budget(case)
+    shared = m3.mode2_loop_budget(case)
     assert budget.rounds == shared.rounds
     assert budget.calls == shared.calls
     assert budget.seconds == shared.seconds

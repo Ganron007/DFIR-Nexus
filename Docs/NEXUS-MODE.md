@@ -342,7 +342,9 @@ approved by the agents.
 > **Agent Run** page. Pause and stop halt before the next worker and before
 > verify/synthesis. Resume refuses stopped, completed, and failed runs.
 > Build acceptance was run `M3-20260925T060304-aacc7b` (4 orders, 1 follow-up,
-> 13 verdicts, 4 DRAFTs). That case has been removed from the case store.
+> 13 verdicts, 4 DRAFTs) — the multi-role build-acceptance run of 2026-09-25,
+> whose id predates the final M2- prefix. That case has been removed from the
+> case store.
 > **GATE 4j-D still rides with the operator GATE-B pass.**
 
 ```

@@ -1,4 +1,4 @@
-"""Mode 3 agent runtime — M1/M2/M5 foundation.
+"""Mode 2 — Multi-role agent runtime — M1/M2/M5 foundation.
 
 This module is the real agentic execution layer, not the old
 ``run_orchestrator`` simulation:
@@ -60,8 +60,8 @@ def _env_float(name: str, default: float, *, low: float, high: float) -> float:
     return max(low, min(value, high))
 
 
-def mode3_loop_budget(case_dir: Path | None = None) -> LoopBudget:
-    """Per-agent tool budget for a Mode 3 investigation.
+def mode2_loop_budget(case_dir: Path | None = None) -> LoopBudget:
+    """Per-agent tool budget for a Mode 2 (multi-role) investigation.
 
     Rounds, calls and seconds are env-tunable and large enough for a
     cross-family corroboration pass. The character ceiling is the case
@@ -129,7 +129,7 @@ def _skill_lookup() -> dict[str, dict[str, Any]]:
             if str(skill.get("skill") or "").strip()
         }
     except Exception:  # noqa: BLE001 — skills are an enhancement, not a gate
-        log.debug("mode3 skill lookup failed", exc_info=True)
+        log.debug("skill lookup failed", exc_info=True)
         return {}
 
 
@@ -182,7 +182,7 @@ def skill_role(skill_id: str) -> str:
     """Role that owns a skill. Unknown ids raise — no silent orphan."""
     role = SKILL_ROLES.get(str(skill_id or "").strip())
     if role not in ROLES:
-        raise KeyError(f"skill {skill_id!r} has no Mode 3 role")
+        raise KeyError(f"skill {skill_id!r} has no agent role")
     return role
 
 
@@ -207,7 +207,7 @@ def _retrieve_skill_refs(
                 ref["role"] = ""
         return refs
     except Exception:  # noqa: BLE001
-        log.debug("mode3 skill retrieval failed", exc_info=True)
+        log.debug("skill retrieval failed", exc_info=True)
         return []
 
 
@@ -218,7 +218,7 @@ def _retrieve_skill_refs(
 
 @dataclass(frozen=True)
 class AgentEvent:
-    """One observable Mode 3 event (never hidden reasoning)."""
+    """One observable run event (never hidden reasoning)."""
 
     event_id: str
     ts: str
@@ -276,7 +276,7 @@ def new_event(
 
 
 class EventSink:
-    """Persist + optionally stream Mode 3 events (M5.1/M5.3)."""
+    """Persist + optionally stream run events (M5.1/M5.3)."""
 
     def __init__(self, case_dir: Path, run_id: str,
                  callback: Callable[[dict[str, Any]], None] | None = None):
@@ -292,12 +292,12 @@ class EventSink:
             with self.path.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(payload, default=str) + "\n")
         except OSError as exc:  # noqa: BLE001 — observability must not kill a run
-            log.warning("mode3 event write failed: %s", exc)
+            log.warning("run event write failed: %s", exc)
         if self.callback is not None:
             try:
                 self.callback(payload)
             except Exception:  # noqa: BLE001 — streaming must not kill a run
-                log.debug("mode3 event callback failed", exc_info=True)
+                log.debug("run event callback failed", exc_info=True)
 
 
 # ---------------------------------------------------------------------------
@@ -317,7 +317,7 @@ class AgentRole:
 
     def budget(self) -> LoopBudget:
         """Shared investigation budget. The context window is the character cap."""
-        return mode3_loop_budget()
+        return mode2_loop_budget()
 
 
 ROLES: dict[str, AgentRole] = {
@@ -412,7 +412,7 @@ ROLES: dict[str, AgentRole] = {
 
 def role_for(name: str) -> AgentRole:
     if name not in ROLES:
-        raise KeyError(f"unknown Mode 3 role: {name!r}")
+        raise KeyError(f"unknown agent role: {name!r}")
     return ROLES[name]
 
 
@@ -546,17 +546,19 @@ def _candidate_audit_ids(candidate: dict[str, Any]) -> list[str]:
     return out
 
 
-def _normalise_evidence(candidate: dict[str, Any]) -> list[dict[str, Any]]:
+def _normalise_evidence(
+    candidate: dict[str, Any], *, source: str = "mode2",
+) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for item in (candidate.get("evidence") or candidate.get("notes") or []):
         if isinstance(item, dict):
             row = dict(item)
             if not row.get("source"):
                 row["source"] = str(
-                    row.get("family") or row.get("file") or "mode3")
+                    row.get("family") or row.get("file") or source)
             rows.append(row)
         elif isinstance(item, str) and item.strip():
-            rows.append({"source": "mode3", "detail": _short(item, 300)})
+            rows.append({"source": source, "detail": _short(item, 300)})
     return rows[:12]
 
 
@@ -582,6 +584,14 @@ def stage_run_candidates(
     if record is None:
         return {"error": "run not found", "run_id": run_id,
                 "staged": [], "skipped": []}
+    # Staged candidates are labeled by the runtime that produced them: the
+    # multi-agent record carries ``product_mode: multi-agent``, everything
+    # else is the multi-role runtime (older records predate the field).
+    run_mode = (
+        "mode3" if str(record.get("product_mode") or "") == "multi-agent"
+        else "mode2"
+    )
+    mode_label = "Mode 3" if run_mode == "mode3" else "Mode 2"
     verdicts = {
         str(v.get("title") or "").strip().lower(): v
         for v in (record.get("verdicts") or [])
@@ -592,7 +602,7 @@ def stage_run_candidates(
     skipped: list[dict[str, Any]] = []
 
     for candidate in rows:
-        title = str(candidate.get("title") or "").strip() or "Mode 3 candidate"
+        title = str(candidate.get("title") or "").strip() or f"{mode_label} candidate"
         audit_ids = _candidate_audit_ids(candidate)
         if not audit_ids:
             skipped.append({"title": title,
@@ -617,7 +627,7 @@ def stage_run_candidates(
             confidence = "LOW"
         justification = str(
             candidate.get("confidence_justification") or "").strip() or (
-            f"Mode 3 run {run_id} synthesis candidate"
+            f"{mode_label} run {run_id} synthesis candidate"
             + (f"; verifier class={vclass}" if vclass else "")
             + "; confidence auto-capped per FD-006/007 until corroborated."
         )
@@ -637,9 +647,9 @@ def stage_run_candidates(
             "confidence_justification": justification,
             "type": "finding",
             "audit_ids": audit_ids,
-            "evidence": _normalise_evidence(candidate),
+            "evidence": _normalise_evidence(candidate, source=run_mode),
             "status": "DRAFT",
-            "source": "mode3",
+            "source": run_mode,
             "run_id": run_id,
             "input_call_ids": audit_ids,
             "mitre_ids": mitre,
@@ -851,7 +861,7 @@ def _format_final_answer(model: Any, role_name: str, reply: str) -> dict[str, An
     try:
         raw = _call_model(model, messages)
     except Exception:  # noqa: BLE001 — unparsed is honest; formatting is best-effort
-        log.debug("mode3 answer formatting failed", exc_info=True)
+        log.debug("answer formatting failed", exc_info=True)
         return {}
     parsed = _parse_json_object(raw)
     return parsed if isinstance(parsed, dict) else {}
@@ -958,7 +968,7 @@ def run_work_order(
 
     work_context = _pack(json.dumps(context or {}, default=str), case_dir)
     skill_block = _pack(_skill_procedure_block(order), case_dir)
-    shared = mode3_loop_budget(case_dir)
+    shared = mode2_loop_budget(case_dir)
     budget = LoopBudget(
         rounds=order.max_rounds or shared.rounds,
         seconds=order.max_seconds or shared.seconds,
@@ -1033,7 +1043,7 @@ def run_work_order(
             question=question,
             model=model,
             system_prompt=role.system_prompt,
-            task=f"mode3-{role.name}",
+            task=f"mode2-{role.name}",
             on_event=_on_loop_event,
             budget=budget,
             audit=AuditWriter("nexus", audit_dir=case_dir / "audit"),
@@ -1044,7 +1054,7 @@ def run_work_order(
             allowed_tools=role.tools,
         )
     except Exception as exc:  # noqa: BLE001 — every role has an honest fallback
-        log.warning("mode3 work order failed (%s): %s", order.order_id, exc)
+        log.warning("work order failed (%s): %s", order.order_id, exc)
         result = _fallback_result(order, f"{type(exc).__name__}: {exc}")
         result.elapsed_ms = round((time.monotonic() - started) * 1000, 1)
         order.status = "fallback"
@@ -1123,7 +1133,7 @@ def plan_work_orders(
             for k, v in (index.get("family_rows") or {}).items()
         }
     except Exception as exc:  # noqa: BLE001 — director must still plan
-        log.warning("mode3 director index_mappings failed: %s", exc)
+        log.warning("director index_mappings failed: %s", exc)
         families = {}
 
     ranked = sorted(families.items(), key=lambda kv: (-kv[1], kv[0]))
@@ -1242,7 +1252,7 @@ def _persist_state(case_dir: Path, run_id: str, state: dict[str, Any]) -> None:
         tmp.write_text(json.dumps(state, indent=2, default=str), encoding="utf-8")
         tmp.replace(path)
     except OSError as exc:
-        log.warning("mode3 state persist failed: %s", exc)
+        log.warning("run state persist failed: %s", exc)
 
 
 def run_mode2(
@@ -1255,7 +1265,7 @@ def run_mode2(
     max_orders: int = 6,
     resume: bool = True,
 ) -> dict[str, Any]:
-    """Run the Mode 3 supervisor graph and return the final run record.
+    """Run the Mode 2 (multi-role) supervisor graph and return the final run record.
 
     Steps: director -> worker(s) -> verifier -> synthesis -> finalize.
     Every state change is persisted so a reload can resume; every tool call is
@@ -1270,6 +1280,7 @@ def run_mode2(
         "question": question,
         "created_at": _now(),
         "status": "running",
+        "product_mode": "multi-role",
         "orders": [],
         "order_index": 0,
         "results": [],
@@ -1674,7 +1685,7 @@ def run_mode2(
         compiled = graph.compile()
         compiled.invoke(state)
     except Exception as exc:  # noqa: BLE001 — a supervisor failure is recorded
-        log.exception("mode3 supervisor failed")
+        log.exception("supervisor run failed")
         state["status"] = "failed"
         state["stop_reason"] = f"supervisor_error: {type(exc).__name__}: {exc}"
         _persist_state(case_dir, run_id, state)
@@ -1740,5 +1751,5 @@ def latest_run_id(case_dir: Path) -> str:
     directory = Path(case_dir) / _MODE2_DIR
     if not directory.is_dir():
         return ""
-    files = sorted(directory.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    files = sorted(directory.glob("M2-*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
     return files[0].stem if files else ""

@@ -5,7 +5,7 @@ against skill trigger blocks. Returns skills ranked by specificity — technique
 match outranks keyword match outranks family-only.
 
 WP 9.5 adds runtime retrieval with match reasons + content versions + citations
-so a spawned Mode 3 agent (and the finding it drafts) can be traced to the
+so a spawned agent (and the finding it drafts) can be traced to the
 exact skill version and KB source that produced it.
 """
 

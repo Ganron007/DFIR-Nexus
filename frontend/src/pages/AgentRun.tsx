@@ -21,7 +21,7 @@ import {
   type Mode3CandidateFinding,
   type Mode3RunEvent,
   type Mode3RunStatusResponse,
-  type Mode3StageResult,
+  type Mode2StageResult,
   type Mode3WorkOrder,
   type Mode3Verdict,
 } from "../api/client";
@@ -206,7 +206,7 @@ function MultiRoleAgentRun() {
   const [steerText, setSteerText] = useState("");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
-  const [stageResult, setStageResult] = useState<Mode3StageResult | null>(null);
+  const [stageResult, setStageResult] = useState<Mode2StageResult | null>(null);
   const [autoscroll, setAutoscroll] = useState(true);
   const [filters, setFilters] = useState<Record<string, boolean>>({
     tool: true,

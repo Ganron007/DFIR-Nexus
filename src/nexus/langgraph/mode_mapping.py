@@ -5,7 +5,7 @@ Final three modes (canonical, stored in CASE.yaml ``investigation_mode``):
     1  Mode 1 — LLM         deterministic lane + LLM scribe / steering /
                             coverage / interpretation surfaces (old 1+2 merged)
     2  Mode 2 — Multi-role  deterministic lane, then the supervised multi-role
-                            runtime (``nexus mode3`` / Agent Run)
+                            runtime (``nexus mode2`` / Agent Run)
     3  Mode 3 — Multi-agent deterministic lane, then the concurrent multi-agent
                             runtime (``nexus mode3`` / Investigation Board)
 
@@ -33,7 +33,7 @@ _MODE_MAP: dict[int, dict[str, Any]] = {
         "pipeline_mode": "tools",
         "pipeline_modes": ["tools", "interpret"],
         "description": "Mode 2 - Multi-role: deterministic lane, then the "
-                       "supervised multi-role run (nexus mode3 / Agent Run).",
+                       "supervised multi-role run (nexus mode2 / Agent Run).",
     },
     3: {
         "pipeline_mode": "tools",

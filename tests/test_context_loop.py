@@ -554,18 +554,22 @@ def test_mode2_chat_stream_emits_tool_events_and_history(tmp_path):
     with patch("nexus.dashboard.app._get_case_dir", return_value=case), \
          patch("nexus.langgraph.steer_agent.run_steer_agent", side_effect=_fake_agent):
         client = TestClient(Starlette(routes=create_dashboard()))
-        response = client.post(
-            "/portal/api/chat/stream",
-            json={"message": "find rows", "mode": "mode2",
-                  "history": [{"role": "examiner", "text": "prior"}]},
-        )
-    assert response.status_code == 200
-    body = response.text
-    assert "event: round" in body
-    assert "event: tool_call" in body
-    assert "event: tool_result" in body
-    assert "event: done" in body
-    assert "Found one row." in body
+        bodies = [
+            client.post(
+                "/portal/api/chat/stream",
+                json={"message": "find rows", "mode": mode,
+                      "history": [{"role": "examiner", "text": "prior"}]},
+            )
+            for mode in ("mode1", "mode2")
+        ]
+    for response in bodies:
+        assert response.status_code == 200
+        body = response.text
+        assert "event: round" in body
+        assert "event: tool_call" in body
+        assert "event: tool_result" in body
+        assert "event: done" in body
+        assert "Found one row." in body
     assert seen["history"] == [{"role": "examiner", "text": "prior"}]
 
 

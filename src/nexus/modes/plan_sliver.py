@@ -1,4 +1,4 @@
-"""Mode 3 — agentic investigation with plan approval.
+"""Legacy plan/execute sliver (Mode 2 surface) — agentic investigation with plan approval.
 
 The agent proposes an investigation plan (extra parsers for SKIP'd
 artifacts, corroboration queries) on top of the completed mandatory N2
@@ -189,7 +189,7 @@ def _llm_plan(
             return valid_items, rationale, rag_provenance
         return items, rationale, rag_provenance
     except Exception as exc:
-        log.warning("Mode 3 LLM planning failed: %s", exc)
+        log.warning("LLM planning failed: %s", exc)
         return items, "", rag_provenance
 
 
@@ -271,7 +271,7 @@ def plan_extras(case_dir: Path, model: Any = None) -> dict[str, Any]:
             if llm_rationale:
                 rationale = llm_rationale
         except Exception as exc:  # noqa: BLE001
-            log.warning("Mode 3 LLM planning failed: %s", exc)
+            log.warning("LLM planning failed: %s", exc)
 
     plan = {
         "case_id": case_dir.name,
@@ -306,9 +306,9 @@ def _run_iterative_for_queries(
     max_iterations: int = 3,
     limit: int = 80,
 ) -> dict[str, Any]:
-    """WP 3.6: Run the Mode 2 iterative query loop for Mode 3 execution.
+    """WP 3.6: Run the Mode 1 iterative query loop for sliver execution.
 
-    This wraps the Mode 2 propose→query→analyze loop so the agent iterates
+    This wraps the Mode 1 propose→query→analyze loop so the agent iterates
     on approved queries rather than running them one-shot. Every iteration
     is logged to the case chat transcript.
     """
@@ -330,7 +330,7 @@ def propose_agent_finding(
 
     Stages a DRAFT finding with ``examiner_selected=False`` — the examiner
     reviews, edits, approves, or rejects via the normal HMAC flow.
-    The agent NEVER approves. Reuses Mode 2's ``propose_draft_finding``
+    The agent NEVER approves. Reuses Mode 1's ``propose_draft_finding``
     so the scribing + corroboration logic is shared.
 
     Returns {draft, corroboration} or {error}.
@@ -465,7 +465,7 @@ def seal_case(
     *,
     skip_verify: bool = False,
 ) -> dict[str, Any]:
-    """Case-file HMAC (Mode 3): one signature over REPORT.md + findings.
+    """Case-file HMAC (legacy sliver): one signature over REPORT.md + findings.
 
     Verifies the examiner password before signing (unless ``skip_verify``
     is True — used by the challenge-response API path which has already

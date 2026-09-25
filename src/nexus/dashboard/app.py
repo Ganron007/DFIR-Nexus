@@ -1459,8 +1459,8 @@ async def ask_page(request):
 
     if case_dir and question:
         from nexus.langgraph.llm_pipeline import get_model
-        from nexus.modes.llm_desk import nl_to_needles
         from nexus.langgraph.query_pack import run_ad_hoc_query
+        from nexus.modes.llm_desk import nl_to_needles
 
         try:
             model = get_model()
@@ -1997,8 +1997,8 @@ async def api_ask(request):
         return JSONResponse({"error": "Missing question"}, status_code=400)
 
     from nexus.langgraph.llm_pipeline import get_model
-    from nexus.modes.llm_desk import nl_to_needles
     from nexus.langgraph.query_pack import run_ad_hoc_query
+    from nexus.modes.llm_desk import nl_to_needles
 
     try:
         model = get_model()
@@ -2062,7 +2062,6 @@ async def api_select(request):
         return JSONResponse({"error": "No hits selected"}, status_code=400)
 
     from nexus.langgraph.llm_pipeline import get_model
-    from nexus.modes.llm_desk import promote_hits_to_draft, save_draft_finding, scribe_finding
     from nexus.langgraph.query_pack import (
         _parse_needles,
         collect_playbook_query_terms,
@@ -2071,6 +2070,7 @@ async def api_select(request):
         n4_hits,
         parse_intake_window,
     )
+    from nexus.modes.llm_desk import promote_hits_to_draft, save_draft_finding, scribe_finding
 
     intake = load_case_intake(case_dir)
     pb_terms = collect_playbook_query_terms(intake)
@@ -2498,7 +2498,7 @@ async def explore_page(request):
     <input id="chat_input" style="width:100%;background:#161b22;color:#c9d1d9" placeholder="Ask the case..." onkeydown="if(event.key==='Enter') chatAsk()">
     <p>
       <button class="action-btn" onclick="chatAsk()">Ask LLM</button>
-      <button class="action-btn" style="background:#8957e5" onclick="mode2Iterate()">Iterate (Mode 2)</button>
+      <button class="action-btn" style="background:#8957e5" onclick="mode2Iterate()">Iterate (Mode 1)</button>
       <span id="mode2_status" style="margin-left:0.5rem;font-size:0.8rem;color:#8b949e"></span>
     </p>
   </div>
@@ -2725,7 +2725,7 @@ async function mode2Iterate() {{
   if (!q && !currentHits.length) return alert('Ask a question first or run a search');
   const statusEl = document.getElementById('mode2_status');
   statusEl.textContent = 'iterating...';
-  appendChat('you', '[Mode 2] iterate on: ' + (q || 'current hits'));
+  appendChat('you', '[Mode 1] iterate on: ' + (q || 'current hits'));
   try {{
     const r = await fetch('/portal/api/mode1/iterate', {{
       method: 'POST', headers: {{'Content-Type':'application/json'}},
@@ -2733,7 +2733,7 @@ async function mode2Iterate() {{
     }});
     const data = await r.json();
     if (data.error) {{
-      appendChat('llm', 'Mode 2 error: ' + data.error);
+      appendChat('llm', 'Mode 1 error: ' + data.error);
       document.getElementById('mode2_status').textContent = 'error';
       return;
     }}
@@ -2744,7 +2744,7 @@ async function mode2Iterate() {{
         appendChat('llm', 'Iteration ' + it.iteration + ': no new needles to propose');
       }}
     }}
-    appendChat('llm', 'Mode 2 loop complete: ' + (data.total_hits || 0) + ' total hits' + (data.capped ? ' (capped)' : ''));
+    appendChat('llm', 'Mode 1 loop complete: ' + (data.total_hits || 0) + ' total hits' + (data.capped ? ' (capped)' : ''));
     if (data.needles_run) {{
       document.getElementById('needles').value = (data.needles_run || []).join(',');
       await searchHits();
@@ -3091,17 +3091,17 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
     from nexus.audit import AuditWriter, resolve_examiner
     from nexus.case.workbench import add_bookmarks
     from nexus.langgraph.briefing import case_briefing
-    from nexus.modes.llm_desk import (
-        _heuristic_scribe,
-        promote_hits_to_draft,
-        save_draft_finding,
-        scribe_finding,
-    )
     from nexus.langgraph.query_pack import (
         attach_hit_fields,
         load_case_intake,
         n4_hits,
         parse_intake_window,
+    )
+    from nexus.modes.llm_desk import (
+        _heuristic_scribe,
+        promote_hits_to_draft,
+        save_draft_finding,
+        scribe_finding,
     )
 
     write_lock = threading.Lock()
@@ -3775,8 +3775,8 @@ async def api_chat_post(request):
 
     from nexus.case.chat import append_chat
     from nexus.langgraph.llm_pipeline import get_model
-    from nexus.modes.llm_desk import nl_to_needles
     from nexus.langgraph.query_pack import load_case_intake, n4_query, parse_intake_window
+    from nexus.modes.llm_desk import nl_to_needles
 
     append_chat(case_dir, "examiner", "ask", message)
 
@@ -3882,11 +3882,18 @@ def _slim_tool_calls(calls: list[dict[str, Any]], limit: int = 12) -> list[dict[
     return out
 
 
-def _mode2_turn_budget() -> float:
+def _mode1_turn_budget() -> float:
     # Must stay strictly above the loop's own soft budget (default 360 s) +
-    # one model call; 900 s is the documented production default.
+    # one model call; 900 s is the documented production default. The legacy
+    # NEXUS_MODE2_TURN_TIMEOUT name is still accepted (it predates the
+    # final 1/2/3 mode numbering).
     try:
-        value = float(os.environ.get("NEXUS_MODE2_TURN_TIMEOUT", "900"))
+        value = float(
+            os.environ.get(
+                "NEXUS_MODE1_TURN_TIMEOUT",
+                os.environ.get("NEXUS_MODE2_TURN_TIMEOUT", "900"),
+            )
+        )
     except ValueError:
         return 900.0
     if not math.isfinite(value):
@@ -3894,14 +3901,14 @@ def _mode2_turn_budget() -> float:
     return max(1.0, min(value, 1800.0))
 
 
-# One Mode 2 turn per case at a time — a retry must never overlap an orphaned
+# One Mode 1 turn per case at a time — a retry must never overlap an orphaned
 # (timed-out but still running) turn. Released by the worker, not the handler.
-_mode2_turn_active: set[str] = set()
-_mode2_turn_lock = threading.Lock()
+_mode1_turn_active: set[str] = set()
+_mode1_turn_lock = threading.Lock()
 
 
-async def api_mode2_chat(request):
-    """POST /portal/api/mode2/chat — the Mode 2 conversational evidence agent (WP 4j.13).
+async def api_mode1_chat(request):
+    """POST /portal/api/mode1/chat — the Mode 1 (LLM) conversational evidence agent (WP 4j.13).
 
     Body: {message, history?: [{role, text}]}
     The agent: reads the evidence landscape → formulates N4 DSL queries →
@@ -3928,8 +3935,8 @@ async def api_mode2_chat(request):
     from nexus.langgraph.steer_agent import run_steer_agent
 
     case_key = case_dir.name
-    with _mode2_turn_lock:
-        if case_key in _mode2_turn_active:
+    with _mode1_turn_lock:
+        if case_key in _mode1_turn_active:
             return JSONResponse(
                 {
                     "error": "a steering turn is already running for this case",
@@ -3942,7 +3949,7 @@ async def api_mode2_chat(request):
                 },
                 status_code=409,
             )
-        _mode2_turn_active.add(case_key)
+        _mode1_turn_active.add(case_key)
 
     # Persist the examiner's message BEFORE the turn runs — a slow or failed
     # turn must never make the question vanish from the transcript.
@@ -3959,10 +3966,10 @@ async def api_mode2_chat(request):
         finally:
             # Released when the WORK finishes, so a retry cannot overlap an
             # orphaned (timed-out) turn still writing to the case.
-            with _mode2_turn_lock:
-                _mode2_turn_active.discard(case_key)
+            with _mode1_turn_lock:
+                _mode1_turn_active.discard(case_key)
 
-    turn_budget = _mode2_turn_budget()
+    turn_budget = _mode1_turn_budget()
     try:
         result = await asyncio.wait_for(
             asyncio.to_thread(_run_turn),
@@ -3979,7 +3986,7 @@ async def api_mode2_chat(request):
             "timings_ms": {}, "stages": [],
         }
     except Exception:  # noqa: BLE001
-        logger.exception("Mode 2 steering turn failed")
+        logger.exception("Mode 1 steering turn failed")
         result = {
             "error": "steering turn failed",
             "reply": (
@@ -4011,10 +4018,10 @@ async def api_mode2_chat(request):
 async def api_chat_stream(request):
     """POST /portal/api/chat/stream — live steer-chat (WP 4d.3).
 
-    Body: {message, mode: "mode1"|"mode2", max_iterations?}
+    Body: {message, mode: "mode1"|"mode1-ask"|"ask"|"mode2", max_iterations?}
     Returns text/event-stream with events:
       status   — {stage: "translating"|"querying", ...}
-      iteration — Mode 2 loop step (needles, hits, rationale)
+      iteration — ask-flow step (needles, hits, rationale)
       hits     — {hits: [...]} top hits for the transcript
       done     — {reply, needles, count, backend}
       error    — {error}
@@ -4034,7 +4041,7 @@ async def api_chat_stream(request):
     history = body.get("history") if isinstance(body.get("history"), list) else []
     if not message:
         return JSONResponse({"error": "Empty message"}, status_code=400)
-    if mode not in ("mode1", "mode2"):
+    if mode not in ("mode1", "mode1-ask", "ask", "mode2"):
         return JSONResponse({"error": f"Unsupported stream mode: {mode}"}, status_code=400)
     # ``max_iterations`` is accepted for API compatibility; the new tool loop
     # is bounded by NEXUS_CONTEXT_LOOP_* instead.
@@ -4047,14 +4054,14 @@ async def api_chat_stream(request):
     append_chat(case_dir, "examiner", "ask", message)
     q: _queue.Queue = _queue.Queue()
 
-    def _worker_mode1() -> tuple[str, dict[str, Any]]:
-        from nexus.modes.llm_desk import nl_to_needles
+    def _worker_ask() -> tuple[str, dict[str, Any]]:
         from nexus.langgraph.query_pack import (
             attach_hit_fields,
             load_case_intake,
             n4_query,
             parse_intake_window,
         )
+        from nexus.modes.llm_desk import nl_to_needles
 
         q.put(("status", {"stage": "translating", "detail": "translating question to needles"}))
         try:
@@ -4165,28 +4172,28 @@ async def api_chat_stream(request):
 
     async def _run():
         try:
-            if mode == "mode1":
-                action, final = await asyncio.to_thread(_worker_mode1)
+            if mode in ("mode1-ask", "ask"):
+                action, final = await asyncio.to_thread(_worker_ask)
                 if action != "error":
                     final["backend"] = final.get("backend", "")
                 _finalize(action, final)
             else:
                 # WP 10.53/10.54: the model-driven bounded tool loop. The
-                # same one-turn-per-case guard as /mode2/chat applies here;
+                # same one-turn-per-case guard as /mode1/chat applies here;
                 # tool events stream through the queue and the final result
                 # is still a normal chat answer (partial on budget).
                 case_key = case_dir.name
-                with _mode2_turn_lock:
-                    if case_key in _mode2_turn_active:
+                with _mode1_turn_lock:
+                    if case_key in _mode1_turn_active:
                         q.put(("error", {
                             "error": "a steering turn is already running "
                                      "for this case",
                         }))
                         q.put((None, None))
                         return
-                    _mode2_turn_active.add(case_key)
+                    _mode1_turn_active.add(case_key)
 
-                def _mode2_worker():
+                def _guided_worker():
                     try:
                         from nexus.langgraph.steer_agent import run_steer_agent
 
@@ -4196,17 +4203,17 @@ async def api_chat_stream(request):
                                 (str(event.get("event") or "context"), event)),
                         )
                     finally:
-                        with _mode2_turn_lock:
-                            _mode2_turn_active.discard(case_key)
+                        with _mode1_turn_lock:
+                            _mode1_turn_active.discard(case_key)
 
                 try:
                     result = await asyncio.wait_for(
-                        asyncio.to_thread(_mode2_worker),
-                        timeout=_mode2_turn_budget(),
+                        asyncio.to_thread(_guided_worker),
+                        timeout=_mode1_turn_budget(),
                     )
                 except TimeoutError:
                     q.put(("error", {
-                        "error": f"turn exceeded {_mode2_turn_budget():.0f}s",
+                        "error": f"turn exceeded {_mode1_turn_budget():.0f}s",
                     }))
                     q.put((None, None))
                     return
@@ -4282,8 +4289,8 @@ async def api_timeline_lanes(request):
             count = len(all_hits)
             hits = all_hits[:400]
             defaulted = 0 if user_vocab else len(vocab)
-    from nexus.modes.llm_desk import _SEV_ORDER, _severity_from_hits
     from nexus.langgraph.query_pack import attach_hit_fields
+    from nexus.modes.llm_desk import _SEV_ORDER, _severity_from_hits
 
     hits = attach_hit_fields(case_dir, hits)
     bucket = "day" if str(body.get("bucket") or "hour") == "day" else "hour"
@@ -4374,7 +4381,7 @@ async def api_entities(request):
     return JSONResponse({"entities": extract_entities(texts), "total": result.get("count", 0)})
 
 
-# Mode 2 suggested questions — LLM-generated (validated, grounded in the case)
+# Mode 1 suggested questions — LLM-generated (validated, grounded in the case)
 # with a deterministic fallback so the panel always populates. Cached per case
 # so the chat never pays for it twice and a slow model can't block the UI.
 _MODE2_SUGGEST_TTL = 120.0
@@ -4382,7 +4389,7 @@ _mode2_suggest_cache: dict[str, tuple[float, dict]] = {}
 _mode2_suggest_lock = threading.Lock()
 
 
-def _mode2_chat_entries(case_dir: Path) -> list[dict]:
+def _mode1_chat_entries(case_dir: Path) -> list[dict]:
     """Read chat.jsonl (append-only transcript) — best-effort, never raises."""
     out: list[dict] = []
     try:
@@ -4404,7 +4411,7 @@ def _mode2_chat_entries(case_dir: Path) -> list[dict]:
     return out
 
 
-def _mode2_suggest_context(case_dir: Path) -> dict[str, Any]:
+def _mode1_suggest_context(case_dir: Path) -> dict[str, Any]:
     """Small, cheap case context for question suggestions (no needle scan)."""
     ctx: dict[str, Any] = {
         "families": [], "hosts": [], "users": [], "processes": [], "last_question": "",
@@ -4429,7 +4436,7 @@ def _mode2_suggest_context(case_dir: Path) -> dict[str, Any]:
                 ctx[key] = [str(k) for k, _v in ranked[:5]]
     except Exception:  # noqa: BLE001
         pass
-    for entry in reversed(_mode2_chat_entries(case_dir)):
+    for entry in reversed(_mode1_chat_entries(case_dir)):
         if entry.get("role") == "examiner" and entry.get("text"):
             ctx["last_question"] = str(entry["text"])[:200]
             break
@@ -4445,7 +4452,7 @@ def _mode2_suggest_context(case_dir: Path) -> dict[str, Any]:
     return ctx
 
 
-def _mode2_deterministic_suggestions(ctx: dict[str, Any]) -> list[dict[str, str]]:
+def _mode1_deterministic_suggestions(ctx: dict[str, Any]) -> list[dict[str, str]]:
     """Question ideas from what the case actually holds (never guesswork)."""
     out: list[dict[str, str]] = []
 
@@ -4505,8 +4512,8 @@ def _validate_mode2_suggestions(
     return out
 
 
-async def api_mode2_suggestions(request):
-    """POST /portal/api/mode2/suggestions — examiner question ideas for the chat.
+async def api_mode1_suggestions(request):
+    """POST /portal/api/mode1/suggestions — examiner question ideas for the chat.
 
     The LLM proposes questions grounded in the case's families/entities; every
     suggestion is validated and the deterministic set fills any gap (or the
@@ -4525,8 +4532,8 @@ async def api_mode2_suggestions(request):
             payload["cached"] = True
             return JSONResponse(payload)
 
-    ctx = await asyncio.to_thread(_mode2_suggest_context, case_dir)
-    fallback = _mode2_deterministic_suggestions(ctx)
+    ctx = await asyncio.to_thread(_mode1_suggest_context, case_dir)
+    fallback = _mode1_deterministic_suggestions(ctx)
     suggestions: list[dict[str, str]] = []
     generated_by = "deterministic"
     try:
@@ -4581,8 +4588,8 @@ async def api_mode2_suggestions(request):
     return JSONResponse(payload)
 
 
-async def api_mode2_save_answer(request):
-    """POST /portal/api/mode2/save-answer — bookmark a Mode 2 answer for the report.
+async def api_mode1_save_answer(request):
+    """POST /portal/api/mode1/save-answer — bookmark an LLM answer for the report.
 
     Body: {entry_ts, note?}. Bookmarks the answer's cited rows to the Workbench,
     appends an ``answer_saved`` transcript entry, and records the answer in
@@ -4602,7 +4609,7 @@ async def api_mode2_save_answer(request):
     if not entry_ts:
         return JSONResponse({"error": "entry_ts is required"}, status_code=400)
 
-    entries = _mode2_chat_entries(case_dir)
+    entries = _mode1_chat_entries(case_dir)
     target = next(
         (e for e in entries if str(e.get("ts") or "") == entry_ts and e.get("role") == "llm"),
         None,
@@ -4625,7 +4632,7 @@ async def api_mode2_save_answer(request):
 
         bm = add_bookmarks(
             case_dir, hits,
-            note=note or f"Mode 2 answer: {question[:120]}"[:300],
+            note=note or f"Mode 1 answer: {question[:120]}"[:300],
         )
         added = int(bm.get("added") or 0)
         skipped = int(bm.get("skipped") or 0)
@@ -4656,7 +4663,7 @@ async def api_mode2_save_answer(request):
 
     append_chat(
         case_dir, "system", "answer_saved",
-        f"Mode 2 answer saved for the report ({len(hits)} cited row(s) bookmarked)",
+        f"Mode 1 answer saved for the report ({len(hits)} cited row(s) bookmarked)",
         {"entry_ts": entry_ts},
         {"entry_ts": entry_ts},
     )
@@ -4670,8 +4677,8 @@ async def api_mode2_save_answer(request):
     })
 
 
-async def api_mode2_iterate(request):
-    """POST /portal/api/mode2/iterate - Mode 2 iterative loop (logged).
+async def api_mode1_iterate(request):
+    """POST /portal/api/mode1/iterate - Mode 1 iterative loop (logged).
 
     Body: {question, max_iterations? (default 2, hard cap 4), limit?}
     Every iteration is logged to chat.jsonl. Returns the iteration log;
@@ -4706,13 +4713,13 @@ async def api_mode2_iterate(request):
         model = None
 
     case_key = case_dir.name
-    with _mode2_turn_lock:
-        if case_key in _mode2_turn_active:
+    with _mode1_turn_lock:
+        if case_key in _mode1_turn_active:
             return JSONResponse(
-                {"error": "a Mode 2 turn is already running for this case"},
+                {"error": "a Mode 1 turn is already running for this case"},
                 status_code=409,
             )
-        _mode2_turn_active.add(case_key)
+        _mode1_turn_active.add(case_key)
 
     def _run_iterative() -> dict:
         try:
@@ -4723,11 +4730,11 @@ async def api_mode2_iterate(request):
         finally:
             # Release when the WORK finishes — a timed-out handler must not
             # unlock while the orphaned thread is still running.
-            with _mode2_turn_lock:
-                _mode2_turn_active.discard(case_key)
+            with _mode1_turn_lock:
+                _mode1_turn_active.discard(case_key)
 
     append_chat(case_dir, "examiner", "mode2_start", question, {"max_iterations": max_iterations})
-    turn_budget = _mode2_turn_budget()
+    turn_budget = _mode1_turn_budget()
     try:
         result = await asyncio.wait_for(
             asyncio.to_thread(_run_iterative),
@@ -4738,7 +4745,7 @@ async def api_mode2_iterate(request):
         append_chat(case_dir, "llm", "mode2_error", message)
         return JSONResponse({"error": message}, status_code=504)
     except Exception:  # noqa: BLE001
-        logger.exception("Mode 2 iterative loop failed")
+        logger.exception("Mode 1 iterative loop failed")
         message = "iterative loop failed"
         append_chat(case_dir, "llm", "mode2_error", message)
         return JSONResponse({"error": message}, status_code=500)
@@ -4754,8 +4761,8 @@ async def api_mode2_iterate(request):
     return JSONResponse(result)
 
 
-async def api_mode2_corroborate(request):
-    """POST /portal/api/mode2/corroborate — FD-006/007 check on a finding.
+async def api_mode1_corroborate(request):
+    """POST /portal/api/mode1/corroborate — FD-006/007 check on a finding.
 
     Body: {finding_id} or a full {finding} dict.
     """
@@ -4780,8 +4787,8 @@ async def api_mode2_corroborate(request):
     return JSONResponse(corroboration_check(finding))
 
 
-async def api_mode2_propose_draft(request):
-    """POST /portal/api/mode2/propose-draft - LLM drafts a finding from hits.
+async def api_mode1_propose_draft(request):
+    """POST /portal/api/mode1/propose-draft - LLM drafts a finding from hits.
 
     Body: {title, hits: [...]} or {title, query} (hits from the query).
     The draft stages as DRAFT (examiner_selected=False); HMAC approval
@@ -4800,8 +4807,8 @@ async def api_mode2_propose_draft(request):
 
     from nexus.case.chat import append_chat
     from nexus.langgraph.llm_pipeline import get_model
-    from nexus.modes.llm_guided import propose_draft_finding
     from nexus.langgraph.query_pack import n4_query
+    from nexus.modes.llm_guided import propose_draft_finding
 
     # WP 4j.33: sync ES query + LLM scribe must not block the event loop.
     def _draft() -> dict:
@@ -4850,7 +4857,7 @@ async def api_mode2_propose_draft(request):
 async def api_rag_status(request):
     """GET /portal/api/rag/status — RAG preflight: embedder + Chroma + test query.
 
-    WP 3.13: Exposes RAG readiness to the UI and API clients. Mode 3
+    WP 3.13: Exposes RAG readiness to the UI and API clients. The
     orchestrator and any RAG-dependent workflow should check this before
     starting. Returns {ready, embedding_model, document_count, ...}.
     """
@@ -5037,7 +5044,7 @@ async def health(request):
 
 
 async def api_mode2_orchestrator(request):
-    """POST /portal/api/mode3/orchestrator — run real multi-agent orchestrator (WP 3.21).
+    """POST /portal/api/mode2/orchestrator - run the multi-agent orchestrator (WP 3.21).
 
     Body: {hits? (optional — agents run their own queries if not provided)}
     Dispatches EvidenceAgents that run real N4 queries on assigned families,
@@ -5416,7 +5423,7 @@ async def api_pipeline_run(request):
 
     # Mode 2/3 hard-gate: the LLM works against the N3 Elasticsearch index, so
     # a case processed while ES is down would silently run on the CSV pack and
-    # leave the index empty — hollow Mode 2. Refuse before any work starts.
+    # leave the index empty — hollow agent run. Refuse before any work starts.
     import yaml
     case_mode_raw: Any = ""
     case_mode_scheme: Any = None
@@ -5515,7 +5522,7 @@ async def api_pipeline_run(request):
     if str(meta.get("created_by") or "").strip():
         case_context.setdefault("examiner", str(meta["created_by"]).strip())
 
-    # ── Mode 2 run options (operator decides BEFORE the run) ──
+    # ── Mode 1 interpret options (operator decides BEFORE the run) ──
     # interpret_rounds: how many interpretation rounds the loop runs (1–5,
     # default 3). context_window: the model's max context window — the budget
     # allocator packs window × fill (NEXUS_CONTEXT_FILL_RATIO, default 0.7).
@@ -5982,7 +5989,7 @@ async def api_case_digest(request):
 
     try:
         # Building the digest can run a full extraction scan — never on the
-        # event loop (a big Mode 2 case would stall every request).
+        # event loop (a big case would stall every request).
         payload = await asyncio.to_thread(_load_digest)
         md_path = case_dir / "analysis" / "case_digest.md"
         return JSONResponse({
@@ -7214,8 +7221,8 @@ def _start_mode3_thread(
 async def api_mode3_run(request):
     """POST /portal/api/mode3/run — start the concurrent multi-agent team.
 
-    Runs in the background (like Mode 3) so the caller gets the run id and
-    consumes the SSE stream at ``/mode3/run/events``.
+    Runs in the background so the caller gets the run id and consumes the
+    SSE stream at ``/mode3/run/events``.
     """
     case_dir = _get_case_dir(request)
     if not case_dir:
@@ -7473,7 +7480,7 @@ def _resolve_run_model() -> Any:
 
 
 async def api_mode2_run_plan(request):
-    """POST /portal/api/mode3/run/plan — director work orders before execution."""
+    """POST /portal/api/mode2/run/plan — director work orders before execution."""
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
@@ -7501,7 +7508,7 @@ async def api_mode2_run_plan(request):
         plan_work_orders,
     )
 
-    run_id = f"M3-plan-{uuid.uuid4().hex[:8]}"
+    run_id = f"M2-plan-{uuid.uuid4().hex[:8]}"
     sink = EventSink(case_dir, run_id)
     feedback = await asyncio.to_thread(examiner_feedback, case_dir)
     orders = await asyncio.to_thread(
@@ -7517,7 +7524,7 @@ async def api_mode2_run_plan(request):
 
 
 async def api_mode2_run(request):
-    """POST /portal/api/mode3/run — start a supervised Mode 3 run.
+    """POST /portal/api/mode2/run — start a supervised Mode 2 (multi-role) run.
 
     Body: {question?, max_orders?, run_id?} — returns 202 + run_id. Work orders
     execute through the shared read-only tool loop; candidates are returned but
@@ -7542,13 +7549,13 @@ async def api_mode2_run(request):
         except Exception:  # noqa: BLE001
             question = ""
     run_id = str(body.get("run_id") or "").strip() or (
-        f"M3-{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}-{uuid.uuid4().hex[:6]}")
+        f"M2-{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}-{uuid.uuid4().hex[:6]}")
     model = await asyncio.to_thread(_resolve_run_model)
     try:
         _start_mode2_thread(case_dir, question, model, run_id, resume=False)
     except RuntimeError:
         return JSONResponse(
-            {"error": "a Mode 3 run with this id is already in progress",
+            {"error": "a Mode 2 run with this id is already in progress",
              "run_id": run_id},
             status_code=409,
         )
@@ -7557,7 +7564,7 @@ async def api_mode2_run(request):
 
 
 async def api_mode2_run_status(request):
-    """GET /portal/api/mode3/run/status?run_id= — run record + counters."""
+    """GET /portal/api/mode2/run/status?run_id= — run record + counters."""
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
@@ -7571,7 +7578,7 @@ async def api_mode2_run_status(request):
     run_id = str(request.query_params.get("run_id") or "").strip()
     run_id = run_id or latest_run_id(case_dir)
     if not run_id:
-        return JSONResponse({"error": "no Mode 3 run found"}, status_code=404)
+        return JSONResponse({"error": "no Mode 2 run found"}, status_code=404)
     record = await asyncio.to_thread(read_run_record, case_dir, run_id)
     if record is None:
         return JSONResponse({"error": "run not found", "run_id": run_id},
@@ -7605,7 +7612,7 @@ async def api_mode2_run_status(request):
 
 
 async def api_mode2_run_events(request):
-    """GET /portal/api/mode3/run/events?run_id= — SSE tail of the run event log."""
+    """GET /portal/api/mode2/run/events?run_id= — SSE tail of the run event log."""
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
@@ -7618,7 +7625,7 @@ async def api_mode2_run_events(request):
     run_id = str(request.query_params.get("run_id") or "").strip()
     run_id = run_id or latest_run_id(case_dir)
     if not run_id:
-        return JSONResponse({"error": "no Mode 3 run found"}, status_code=404)
+        return JSONResponse({"error": "no Mode 2 run found"}, status_code=404)
 
     async def _stream():
         emitted = 0
@@ -7645,7 +7652,7 @@ async def api_mode2_run_events(request):
 
 
 async def api_mode2_run_steer(request):
-    """POST /portal/api/mode3/run/steer — inject an examiner directive."""
+    """POST /portal/api/mode2/run/steer — inject an examiner directive."""
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
@@ -7680,7 +7687,7 @@ async def api_mode2_run_steer(request):
 
 
 async def api_mode2_run_pause(request):
-    """POST /portal/api/mode3/run/pause — cooperative pause between work orders."""
+    """POST /portal/api/mode2/run/pause — cooperative pause between work orders."""
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
@@ -7713,7 +7720,7 @@ async def api_mode2_run_pause(request):
 
 
 async def api_mode2_run_resume(request):
-    """POST /portal/api/mode3/run/resume — clear pause and continue the run."""
+    """POST /portal/api/mode2/run/resume — clear pause and continue the run."""
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
@@ -7752,7 +7759,7 @@ async def api_mode2_run_resume(request):
 
 
 async def api_mode2_run_stop(request):
-    """POST /portal/api/mode3/run/stop — halt the run at the next work order.
+    """POST /portal/api/mode2/run/stop — halt the run at the next work order.
 
     Cooperative stop (like pause): the current order finishes, the supervisor
     does not start another, emits ``run.stopped``, and records
@@ -7793,7 +7800,7 @@ async def api_mode2_run_stop(request):
 
 
 async def api_mode2_run_stage(request):
-    """POST /portal/api/mode3/run/stage — examiner stages DRAFTs from a run.
+    """POST /portal/api/mode2/run/stage — examiner stages DRAFTs from a run.
 
     Only candidates with real audit_ids and no refuted verdict are staged;
     every staged finding carries run_id/input_call_ids lineage. Approval is
@@ -7892,15 +7899,15 @@ def create_dashboard():
         # Entity pivot
         Route("/portal/api/entities", api_entities, methods=["POST"]),
         # Mode 1 — LLM
-        Route("/portal/api/mode1/chat", api_mode2_chat, methods=["POST"]),
-        Route("/portal/api/mode1/suggestions", api_mode2_suggestions, methods=["POST"]),
-        Route("/portal/api/mode1/save-answer", api_mode2_save_answer, methods=["POST"]),
-        Route("/portal/api/mode1/iterate", api_mode2_iterate, methods=["POST"]),
-        Route("/portal/api/mode1/corroborate", api_mode2_corroborate, methods=["POST"]),
-        Route("/portal/api/mode1/propose-draft", api_mode2_propose_draft, methods=["POST"]),
+        Route("/portal/api/mode1/chat", api_mode1_chat, methods=["POST"]),
+        Route("/portal/api/mode1/suggestions", api_mode1_suggestions, methods=["POST"]),
+        Route("/portal/api/mode1/save-answer", api_mode1_save_answer, methods=["POST"]),
+        Route("/portal/api/mode1/iterate", api_mode1_iterate, methods=["POST"]),
+        Route("/portal/api/mode1/corroborate", api_mode1_corroborate, methods=["POST"]),
+        Route("/portal/api/mode1/propose-draft", api_mode1_propose_draft, methods=["POST"]),
         Route("/portal/api/mode2/plan", api_mode2_plan, methods=["POST"]),
         Route("/portal/api/mode2/execute", api_mode2_execute, methods=["POST"]),
-        # Mode 3 supervised agent runtime (M1/M5/M7)
+        # Mode 2 — Multi-role supervised agent runtime (M1/M5/M7)
         Route("/portal/api/mode2/run/plan", api_mode2_run_plan, methods=["POST"]),
         Route("/portal/api/mode2/run", api_mode2_run, methods=["POST"]),
         Route("/portal/api/mode2/run/status", api_mode2_run_status, methods=["GET"]),
@@ -7910,7 +7917,6 @@ def create_dashboard():
         Route("/portal/api/mode2/run/resume", api_mode2_run_resume, methods=["POST"]),
         Route("/portal/api/mode2/run/stop", api_mode2_run_stop, methods=["POST"]),
         Route("/portal/api/mode2/run/stage", api_mode2_run_stage, methods=["POST"]),
-        Route("/portal/api/mode3/run/plan", api_mode3_run, methods=["POST"]),
         Route("/portal/api/mode3/run", api_mode3_run, methods=["POST"]),
         Route("/portal/api/mode3/run/status", api_mode3_run_status, methods=["GET"]),
         Route("/portal/api/mode3/run/events", api_mode3_run_events, methods=["GET"]),
@@ -7923,9 +7929,9 @@ def create_dashboard():
         Route("/portal/api/case/seal", api_case_seal, methods=["POST"]),
         # RAG preflight (WP 3.13)
         Route("/portal/api/rag/status", api_rag_status, methods=["GET"]),
-        # Mode 3 orchestrator (WP 3.10)
+        # Legacy Phase-3 orchestrator (now a Mode 2 surface)
         Route("/portal/api/mode2/orchestrator", api_mode2_orchestrator, methods=["POST"]),
-        # Mode 3 agent DRAFT finding (WP 3.7)
+        # Legacy agent DRAFT finding (now a Mode 2 surface)
         Route("/portal/api/mode2/draft-finding", api_mode2_draft_finding, methods=["POST"]),
         # Product mode ↔ pipeline mode mapping (WP 3.8)
         Route("/portal/api/mode-mapping", api_mode_mapping, methods=["GET"]),

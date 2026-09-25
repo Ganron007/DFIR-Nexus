@@ -23,7 +23,7 @@ export default function Findings() {
 
   // WP 4b.13: Load corroboration for each finding
   const loadCorroboration = (findingId: string) => {
-    api.mode2Corroborate({ finding_id: findingId })
+    api.mode1Corroborate({ finding_id: findingId })
       .then((r) => setCorroboration((prev) => ({ ...prev, [findingId]: r })))
       .catch((e) => setError(`Corroboration check failed: ${(e as Error).message}`));
   };

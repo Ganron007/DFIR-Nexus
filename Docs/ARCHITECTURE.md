@@ -210,7 +210,7 @@ one unified chain.
 
 | Stack | Location | Used by | Status |
 |-------|----------|---------|--------|
-| **Dashboard HMAC flow** | `auth.py` + `dashboard/app.py` | Portal `/portal/api/commit/challenge` + `/commit` + `/mode3/seal` | **Active** — the primary examiner approval path. Challenge-response: server issues nonce → examiner computes `HMAC-SHA256(PBKDF2(password, salt, 600000), nonce)` → server verifies. |
+| **Dashboard HMAC flow** | `auth.py` + `dashboard/app.py` | Portal `/portal/api/commit/challenge` + `/commit` + `/case/seal` | **Active** — the primary examiner approval path. Challenge-response: server issues nonce → examiner computes `HMAC-SHA256(PBKDF2(password, salt, 600000), nonce)` → server verifies. |
 | **Case module ApprovalWorkflow** | `case/approval.py:ApprovalWorkflow` | `case/` module internals only | **Legacy** — not wired into the Portal dashboard. Retained for CLI-path and programmatic API use. `get_default_workflow()` returns a singleton with process-level lockout. |
 
 **Design note:** The two approval stacks share the same PBKDF2-HMAC-SHA256
@@ -367,7 +367,7 @@ coverage + registry facts) and `nexus doctor` (manifest). Rebuild with
 `scripts/build_*_registry.py`; raw dumps are gitignored and excluded from
 wheels.
 
-### Mode 2 supervised multi-role runtime (runtime `mode3`, 2026-09)
+### Mode 2 supervised multi-role runtime (runtime `mode2`, 2026-09)
 
 `src/nexus/modes/multi_role.py` is the Mode 2 supervised execution layer
 (M1–M7). It is a LangGraph `StateGraph` supervisor over the shared bounded
@@ -392,12 +392,12 @@ concurrent multi-agent**: one work order runs at a time.
 - **Events** (`AgentEvent`): one envelope (`run_id/turn_id/agent_id/call_id`,
   tool/why/audit_id/status/detail) persisted to
   `analysis/mode2_runs/<run_id>.jsonl` and streamed over SSE
-  (`GET /portal/api/mode3/run/events`). Examiner controls (pause/stop) live in
+  (`GET /portal/api/mode2/run/events`). Examiner controls (pause/stop) live in
   a `.control.json` sidecar the graph never writes, so a state persist can
   never clobber a fresh request.
 - **Run record**: `analysis/mode2_runs/<run_id>.json` (orders, results,
   verdicts, candidates, coverage, follow-up count) is the resumable
-  checkpoint; `nexus mode3` and the Agent Run page are two surfaces over the
+  checkpoint; `nexus mode2` and the Agent Run page are two surfaces over the
   same runtime.
 - **Boundary**: agents never stage or approve. Candidates stage as DRAFT only
   through the examiner action `nexus mode2 stage` / `POST /mode2/run/stage`,

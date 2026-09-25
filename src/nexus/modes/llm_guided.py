@@ -1,7 +1,7 @@
 """Mode 1 — LLM guided loop (module name ``mode2``).
 
 This is the steering and coverage half of canonical Mode 1, not a separate
-product mode. Product Mode 2 is the multi-role pipeline (``mode3``).
+product mode. Product Mode 2 is the multi-role pipeline (``nexus mode2``).
 
 The LLM proposes the next query and correlations; the examiner validates
 and steers. Every proposal is logged to the case chat transcript with its
@@ -262,12 +262,12 @@ def propose_next_needles(
             if loop_proposal:
                 return loop_proposal
         except Exception as exc:  # noqa: BLE001
-            log.warning("Mode 2 context-loop proposal failed (%s)", exc)
+            log.warning("Mode 1 context-loop proposal failed (%s)", exc)
         try:
             return _propose_with_model(
                 case_dir, hits, already_run, model, briefing=briefing)
         except Exception as exc:  # noqa: BLE001
-            log.warning("Mode 2 LLM proposal failed (%s), using heuristic", exc)
+            log.warning("Mode 1 LLM proposal failed (%s), using heuristic", exc)
     return _propose_heuristic(hits, already_run)
 
 
@@ -334,7 +334,7 @@ def _propose_with_loop(
         '"rationale":"..."}'
     )
     system = (
-        "You are the Mode 2 proposal planner. You may call the read-only "
+        "You are the Mode 1 proposal planner. You may call the read-only "
         "tools a few times before answering; do not pre-fetch unrelated "
         "evidence. Prefer queries that expand or corroborate the current "
         "hits; use aggregations for counting questions. Return the proposal "
@@ -442,8 +442,8 @@ def _propose_with_model(
     # WP 4i.9: case briefing signal map — which needles already hit
     briefing_ctx = _briefing_context(briefing)
 
-    # 4k.5.5: the LLM proposes Elasticsearch queries (Mode 2/3 query ES
-    # directly); the field catalog grounds it in columns the case holds.
+    # 4k.5.5: the LLM proposes Elasticsearch queries (the guided loop queries
+    # ES directly); the field catalog grounds it in columns the case holds.
     from nexus.langgraph.backbone import tool_contracts_block
     from nexus.langgraph.field_catalog import field_catalog_block
 
@@ -696,7 +696,7 @@ def run_iterative_loop(
     limit: int = 80,
     on_event: Any = None,
 ) -> dict[str, Any]:
-    """Mode 2 loop: query -> analyze -> propose -> re-query.
+    """Mode 1 loop: query -> analyze -> propose -> re-query.
 
     Every step is logged to the case chat transcript. Hard caps:
     max_iterations re-queries; each proposal is capped. The loop NEVER
@@ -771,7 +771,7 @@ def run_iterative_loop(
 
         briefing = case_briefing(case_dir)
     except Exception as exc:  # noqa: BLE001
-        log.debug("Mode 2 briefing unavailable: %s", exc)
+        log.debug("Mode 1 briefing unavailable: %s", exc)
 
     # Iterative proposals — WP 4j.10: each proposal is ONE complete DSL query,
     # executed separately through the backbone (audited, allowlist-enforced),
@@ -932,7 +932,7 @@ def propose_draft_finding(
     model: Any = None,
     interpretation_hint: str = "",
 ) -> dict[str, Any]:
-    """Mode 2: LLM drafts a finding from hits. Staged as DRAFT with
+    """Mode 1: LLM drafts a finding from hits. Staged as DRAFT with
     ``examiner_selected=False`` — the examiner reviews, edits, approves,
     or rejects via the normal HMAC flow. The LLM never approves.
 

@@ -1,6 +1,6 @@
 """Mode 2 — Multi-role CLI — same agent runtime and event stream as the portal.
 
-Commands wrap the in-process multi-role runtime (``nexus mode3``), so the CLI
+Commands wrap the in-process multi-role runtime (``nexus mode2``), so the CLI
 and UI share one
 implementation, one event envelope and one audit path. No HTTP server is
 required for the CLI; the portal calls the same runtime.

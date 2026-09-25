@@ -131,7 +131,7 @@ def _steering_path(case_dir: Path, run_id: str) -> Path:
 
 
 def append_mode3_steering(case_dir: Path, run_id: str, text: str) -> dict[str, Any]:
-    """Queue an examiner directive next to the Mode 3 run, not a Mode 3 run."""
+    """Queue an examiner directive for the Mode 3 run (its own steering file)."""
     entry = {"ts": _now(), "text": str(text or "")[:600]}
     path = _steering_path(case_dir, run_id)
     with path.open("a", encoding="utf-8") as handle:
@@ -938,6 +938,7 @@ def stage_mode3(case_dir: Path, run_id: str) -> dict[str, Any]:
     path = bridge / f"{run_id}.json"
     payload = {
         "run_id": run_id,
+        "product_mode": "multi-agent",
         "candidates": record.get("candidates") or [],
         "verdicts": [],
         "results": [],

@@ -756,7 +756,7 @@ def promote_hits_to_draft(
     """Promote hits to a DRAFT finding skeleton.
 
     ``examiner_selected=True`` (Mode 1): the examiner picked the hits.
-    ``examiner_selected=False`` marks an LLM-proposed finding (Mode 2) —
+    ``examiner_selected=False`` marks an LLM-proposed finding (Mode 1) —
     the draft is still examiner-gated for approval either way.
 
     Returns the DRAFT finding dict (not yet written to findings.json).
@@ -806,7 +806,7 @@ def promote_hits_to_draft(
         if not audit_ids:
             # FD-001 fallback: this promotion IS the system action that
             # observed these rows. Auditing it with the row identities keeps
-            # every promote path (full run, Explore/bookmarks, Mode 2 propose)
+            # every promote path (full run, Explore/bookmarks, Mode 1 propose)
             # provable - before this, any case without tool-lane audits staged
             # zero drafts and the Approve page stayed empty (live bug 2026-09-20).
             audit_ids = _audit_promotion(

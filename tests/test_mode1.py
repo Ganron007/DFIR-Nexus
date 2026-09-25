@@ -246,12 +246,12 @@ def test_promote_without_tool_audits_stages_real_draft(tmp_path):
     (same class as the Mode 1 full-run bug)."""
     import json as _json
 
+    from nexus.langgraph.query_pack import n4_hits
     from nexus.modes.llm_desk import (
         _heuristic_scribe,
         promote_hits_to_draft,
         save_draft_finding,
     )
-    from nexus.langgraph.query_pack import n4_hits
 
     case = tmp_path / "CASE-PROMOTE"
     ext = case / "extractions" / "hayabusa"

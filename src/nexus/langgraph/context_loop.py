@@ -71,7 +71,8 @@ class LoopBudget:
     Defaults are 8 tool rounds / 16 calls / 360 s, adjusted from the original
     6/12/300 proposal after live acceptance: the cross-family RDP trace needed
     eight rounds and a reserved answer-only pass, and ran in ~286 s. The outer
-    turn budget (NEXUS_MODE2_TURN_TIMEOUT=900) remains the hard ceiling.
+    turn budget (NEXUS_MODE1_TURN_TIMEOUT=900, legacy alias
+    NEXUS_MODE2_TURN_TIMEOUT accepted) remains the hard ceiling.
     """
 
     rounds: int = 8

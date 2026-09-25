@@ -419,8 +419,8 @@ def ask_case(
     no_llm: bool = typer.Option(False, "--no-llm", help="Use heuristic extraction (no LLM)"),
 ):
     """Mode 1 — NL to needles: translate English question into search terms, run N4 query."""
-    from nexus.modes.llm_desk import nl_to_needles
     from nexus.langgraph.query_pack import run_ad_hoc_query
+    from nexus.modes.llm_desk import nl_to_needles
 
     case_dir = _case_dir(case_id)
     if not question:

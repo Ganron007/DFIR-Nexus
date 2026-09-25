@@ -37,7 +37,7 @@ function answerTitle(text: string): string {
     .split("\n")
     .map((l) => l.trim())
     .find((l) => l && !l.startsWith("|") && !l.startsWith("#"));
-  return (line || "Mode 2 answer").replace(/[*_`>#]/g, "").slice(0, 120);
+  return (line || "Mode 1 answer").replace(/[*_`>#]/g, "").slice(0, 120);
 }
 
 function HitCard({ hit: h }: { hit: N4Hit }) {
@@ -121,11 +121,11 @@ function ProposalCard({ entry, caseMode, onAsk, busy, saved, onSave }: {
 }) {
   const meta = (entry.meta || {}) as Record<string, string>;
   const navigate = useNavigate();
-  const isMode3 = entry.action === "mode3_plan" || entry.action === "mode3_execute";
+  const isSliver = entry.action === "mode3_plan" || entry.action === "mode3_execute";
   const isSteer = entry.action === "steer_answer";
-  const badge = isMode3 ? "Mode 2 Multi-role"
+  const badge = isSliver ? "Mode 2 Multi-role"
     : isSteer ? "Mode 1 Answer"
-    : (caseMode === "1" || caseMode === "" ? "Query hits" : "Mode 2 Proposal");
+    : (caseMode === "1" || caseMode === "" ? "Query hits" : "Proposal");
   const hits = entry.data?.hits || [];
   const queries = entry.data?.queries || [];
   const followups = entry.data?.followups || [];
@@ -151,7 +151,7 @@ function ProposalCard({ entry, caseMode, onAsk, busy, saved, onSave }: {
       const title = firstHitQuery
         ? `${answerTitle(entry.text)} — ${firstHitQuery.dsl}`.slice(0, 160)
         : answerTitle(entry.text);
-      const r = await api.mode2ProposeDraft({
+      const r = await api.mode1ProposeDraft({
         title,
         query: firstHitQuery?.dsl,
         hits: hits.length > 0 ? hits : undefined,
@@ -170,7 +170,7 @@ function ProposalCard({ entry, caseMode, onAsk, busy, saved, onSave }: {
     <div
       style={{
         background: "var(--bg-tertiary)",
-        border: `1px solid ${isMode3 ? "var(--purple)" : "var(--orange)"}`,
+        border: `1px solid ${isSliver ? "var(--purple)" : "var(--orange)"}`,
         borderRadius: 8,
         padding: 12,
         margin: "8px 0",
@@ -185,8 +185,8 @@ function ProposalCard({ entry, caseMode, onAsk, busy, saved, onSave }: {
             textTransform: "uppercase",
             padding: "2px 6px",
             borderRadius: 4,
-            background: isMode3 ? "rgba(163,113,247,0.2)" : "rgba(219,109,40,0.2)",
-            color: isMode3 ? "var(--purple)" : "var(--orange)",
+            background: isSliver ? "rgba(163,113,247,0.2)" : "rgba(219,109,40,0.2)",
+            color: isSliver ? "var(--purple)" : "var(--orange)",
           }}
         >
           {badge}
@@ -402,15 +402,14 @@ export default function SteerChat() {
     caseMode === "1" ? "mode1"
       : caseMode === "2" ? "mode2"
         : caseMode === "3" ? "mode3" : "mode1";
-  const [mode2Iterations, setMode2Iterations] = useState(3);
-  const [mode3Step, setMode3Step] = useState<"plan" | "execute" | "seal">("plan");
-  const [mode3Plan, setMode3Plan] = useState<Mode3PlanResponse | null>(null);
+  const [mode1Iterations, setMode1Iterations] = useState(3);
+  const [sliverStep, setSliverStep] = useState<"plan" | "execute" | "seal">("plan");
+  const [sliverPlan, setSliverPlan] = useState<Mode3PlanResponse | null>(null);
   const [sealChallenge, setSealChallenge] = useState<{ challenge_id: string; nonce: string; salt: string; iterations: number } | null>(null);
   const [sealPassword, setSealPassword] = useState("");
   // WP 4d.3: live progress while a streamed turn is running
   const [liveStatus, setLiveStatus] = useState("");
-  const [liveIterations, setLiveIterations] = useState<Record<string, unknown>[]>([]);
-  // Mode 2 suggested questions (LLM-generated when available, server-cached)
+  // Mode 1 suggested questions (LLM-generated when available, server-cached)
   const [suggestions, setSuggestions] = useState<{ text: string; source: string }[]>([]);
   const [suggBy, setSuggBy] = useState("");
   const [suggLoading, setSuggLoading] = useState(false);
@@ -419,7 +418,7 @@ export default function SteerChat() {
 
   // Reset the legacy multi-role step whenever the case depth changes.
   useEffect(() => {
-    if (caseMode === "2") setMode3Step("plan");
+    if (caseMode === "2") setSliverStep("plan");
   }, [caseMode]);
 
   const load = () => {
@@ -443,7 +442,7 @@ export default function SteerChat() {
 
   const saveAnswer = async (entryTs: string) => {
     if (!entryTs) return;
-    const r = await api.mode2SaveAnswer({ entry_ts: entryTs });
+    const r = await api.mode1SaveAnswer({ entry_ts: entryTs });
     if (r.error) {
       throw new Error(Array.isArray(r.error) ? r.error.join("; ") : r.error);
     }
@@ -452,7 +451,7 @@ export default function SteerChat() {
 
   const refreshSuggestions = () => {
     setSuggLoading(true);
-    api.mode2Suggestions()
+    api.mode1Suggestions()
       .then((r) => {
         setSuggestions(r.suggestions || []);
         setSuggBy(r.generated_by || "");
@@ -489,7 +488,6 @@ export default function SteerChat() {
     setLoading(true);
     setError("");
     setLiveStatus("");
-    setLiveIterations([]);
     setMessages((prev) => [
       ...prev,
       {
@@ -502,28 +500,7 @@ export default function SteerChat() {
     ]);
 
     try {
-      if (mode === "mode1-ask") {
-        // WP 4d.3: streamed turn — live status + iteration events, then reload
-        await chatStream(
-          {
-            message: text,
-            mode,
-            max_iterations: mode2Iterations,
-          },
-          (evt) => {
-            if (evt.event === "status") {
-              const stage = String((evt.data as { stage?: string }).stage || "");
-              setLiveStatus(stage === "translating" ? "Translating question to needles…" : "Querying evidence…");
-            } else if (evt.event === "iteration") {
-              setLiveStatus("");
-              setLiveIterations((prev) => [...prev, evt.data]);
-            } else if (evt.event === "error") {
-              setError(String((evt.data as { error?: string }).error || "stream error"));
-            }
-          },
-        );
-        load();
-      } else if (mode === "mode1") {
+      if (mode === "mode1") {
         // WP 10.53/10.54 — live bounded tool loop. The server streams tool
         // events and persists the final/partial transcript; reloading shows
         // the exact tool chain, rows and partial state after the turn.
@@ -531,7 +508,7 @@ export default function SteerChat() {
           {
             message: text,
             mode,
-            max_iterations: mode2Iterations,
+            max_iterations: mode1Iterations,
             history: messages.slice(-6).map((m) => ({ role: m.role, text: m.text })),
           },
           (evt) => {
@@ -569,9 +546,9 @@ export default function SteerChat() {
         );
         load();
       } else if (mode === "mode2") {
-        if (mode3Step === "plan") {
-          const plan = await api.mode3Plan({ question: text });
-          setMode3Plan(plan);
+        if (sliverStep === "plan") {
+          const plan = await api.mode2Plan({ question: text });
+          setSliverPlan(plan);
           setMessages((prev) => [
             ...prev,
             {
@@ -582,7 +559,7 @@ export default function SteerChat() {
               meta: { rationale: plan.rationale },
             },
           ]);
-          setMode3Step("execute");
+          setSliverStep("execute");
         }
       }
     } catch (e) {
@@ -590,18 +567,17 @@ export default function SteerChat() {
     } finally {
       setLoading(false);
       setLiveStatus("");
-      setLiveIterations([]);
     }
   };
 
   const executePlan = async () => {
-    if (!mode3Plan) return;
+    if (!sliverPlan) return;
     setLoading(true);
     setError("");
     try {
-      const r = await api.mode3Execute({
-        extras: mode3Plan.items.filter((i) => i.type === "extra" && i.key).map((i) => i.key!),
-        queries: mode3Plan.queries,
+      const r = await api.mode2Execute({
+        extras: sliverPlan.items.filter((i) => i.type === "extra" && i.key).map((i) => i.key!),
+        queries: sliverPlan.queries,
       });
       setMessages((prev) => [
         ...prev,
@@ -613,7 +589,7 @@ export default function SteerChat() {
           meta: {},
         },
       ]);
-      setMode3Step("seal");
+      setSliverStep("seal");
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -673,8 +649,8 @@ export default function SteerChat() {
         ]);
         setSealChallenge(null);
         setSealPassword("");
-        setMode3Step("plan");
-        setMode3Plan(null);
+        setSliverStep("plan");
+        setSliverPlan(null);
       }
     } catch (e) {
       setError((e as Error).message);
@@ -691,8 +667,8 @@ export default function SteerChat() {
       return;
     }
     setMessages([]);
-    setMode3Plan(null);
-    setMode3Step("plan");
+    setSliverPlan(null);
+    setSliverStep("plan");
     setSealChallenge(null);
     setSealPassword("");
   };
@@ -709,7 +685,7 @@ export default function SteerChat() {
         setError("Ask a question first — the DRAFT is drafted from the last query's hits.");
         return;
       }
-      const r = await api.mode2ProposeDraft({ title: draftTitle, query: lastQuery });
+      const r = await api.mode1ProposeDraft({ title: draftTitle, query: lastQuery });
       if (r.error) {
         setError(Array.isArray(r.error) ? r.error.join("; ") : r.error);
       } else {
@@ -742,7 +718,7 @@ export default function SteerChat() {
     entry.action === "mode3_execute" ||
     entry.action === "mode3_seal";
 
-  // WP 4j.13 — Mode 2 iterative loop from the UI: the full examiner
+  // WP 4j.13 — Mode 1 iterative loop from the UI: the full examiner
   // back-and-forth (queries + aggregations) in one tracked operation.
   const [iterateResult, setIterateResult] = useState<Mode2IterateResponse | null>(null);
   const runIterate = async () => {
@@ -756,7 +732,7 @@ export default function SteerChat() {
       { ts: new Date().toISOString(), role: "examiner", action: "mode2_iterate_question", text, meta: {} },
     ]);
     try {
-      const r = await api.mode2Iterate({ question: text, max_iterations: mode2Iterations });
+      const r = await api.mode1Iterate({ question: text, max_iterations: mode1Iterations });
       if (r.error) {
         setError(r.error);
       } else {
@@ -781,8 +757,8 @@ export default function SteerChat() {
   };
 
   if (!modeKnown) {
-    // Never guess the mode — sending a Mode 1 stream turn for a Mode 2 case
-    // would silently run the wrong pipeline.
+    // Never guess the mode — sending a Mode 1 stream turn for a Multi-role
+    // or Multi-agent case would silently run the wrong pipeline.
     return (
       <div className="card">
         <h2>Steer Chat</h2>
@@ -805,22 +781,22 @@ export default function SteerChat() {
             title="Investigation mode was chosen when the case was created"
             style={{ fontSize: 11 }}
           >
-            {mode === "mode1" ? "Mode 1 — LLM" : mode === "mode1" ? "Mode 1 — LLM steering" : mode === "mode2" ? "Mode 2 — Multi-role" : "Mode 3 — Multi-agent"}
+            {mode === "mode1" ? "Mode 1 — LLM" : mode === "mode2" ? "Mode 2 — Multi-role" : "Mode 3 — Multi-agent"}
           </span>
           {mode === "mode1" && (
             <input
               type="number"
               min={1}
               max={4}
-              value={mode2Iterations}
-              onChange={(e) => setMode2Iterations(Math.max(1, Math.min(4, Number(e.target.value) || 2)))}
+              value={mode1Iterations}
+              onChange={(e) => setMode1Iterations(Math.max(1, Math.min(4, Number(e.target.value) || 2)))}
               style={{ width: 60 }}
               title="Maximum rounds for Iterate (1-4)"
             />
           )}
           {mode === "mode2" && (
             <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-              Step: <strong style={{ color: "var(--purple)" }}>{mode3Step}</strong>
+              Step: <strong style={{ color: "var(--purple)" }}>{sliverStep}</strong>
             </span>
           )}
           <button className="btn btn-sm" onClick={clear}>Clear</button>
@@ -828,12 +804,10 @@ export default function SteerChat() {
       </div>
       <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: -4, marginBottom: 10 }}>
         {mode === "mode1"
-          ? "Mode 1: you propose needles — the LLM scribes your findings. Evidence and the audit chain are shared."
-          : mode === "mode1"
-            ? "Mode 1 (LLM): you ask in plain language — the LLM queries the case's evidence index and cites rows. Staging a DRAFT is a separate examiner-triggered action."
-            : mode === "mode2"
-              ? "Mode 2 (Multi-role): the supervised multi-role pipeline runs from Agent Run — one work order at a time; you steer, stop and stage."
-              : "Mode 3 (Multi-agent): the concurrent team runs from Agent Run (Investigation Board) — seats, shared claims, disputes; you steer, stop and stage."}
+          ? "Mode 1 (LLM): you ask in plain language — the LLM queries the case's evidence index and cites rows. Staging a DRAFT is a separate examiner-triggered action."
+          : mode === "mode2"
+            ? "Mode 2 (Multi-role): the supervised multi-role pipeline runs from Agent Run — one work order at a time; you steer, stop and stage."
+            : "Mode 3 (Multi-agent): the concurrent team runs from Agent Run (Investigation Board) — seats, shared claims, disputes; you steer, stop and stage."}
       </div>
       {(mode === "mode2" || mode === "mode3") && (
         <div
@@ -914,12 +888,12 @@ export default function SteerChat() {
 
       {error && <div className="error-banner">{error}</div>}
 
-      {/* Mode 3 action bar — Execute */}
-      {mode === "mode2" && mode3Step === "execute" && mode3Plan && (
+      {/* Mode 2 sliver action bar — Execute */}
+      {mode === "mode2" && sliverStep === "execute" && sliverPlan && (
         <div className="card" style={{ padding: "8px 12px", marginBottom: 8 }}>
           <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-            Plan ready: {mode3Plan.items.length} step(s), {mode3Plan.queries.length} query(ies).
-            {!mode3Plan.lane_complete && (
+            Plan ready: {sliverPlan.items.length} step(s), {sliverPlan.queries.length} query(ies).
+            {!sliverPlan.lane_complete && (
               <span style={{ color: "var(--warning)", marginLeft: 8 }}>
                 ⚠ Mandatory lane not complete — extras may be refused.
               </span>
@@ -931,8 +905,8 @@ export default function SteerChat() {
         </div>
       )}
 
-      {/* Mode 3 action bar — Seal */}
-      {mode === "mode2" && mode3Step === "seal" && (
+      {/* Mode 2 sliver action bar — Seal */}
+      {mode === "mode2" && sliverStep === "seal" && (
         <div className="card" style={{ padding: "12px", marginBottom: 8 }}>
           <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 8 }}>
             Execution complete. Seal the case file with HMAC challenge-response.
@@ -966,13 +940,13 @@ export default function SteerChat() {
         </div>
       )}
 
-      {/* WP 4b.14: Propose Draft button — Mode 2 */}
+      {/* WP 4b.14: Propose Draft button — Mode 1 */}
       {mode === "mode1" && (
         <div className="card" style={{ padding: "8px 12px", marginBottom: 8, display: "flex", gap: 8, alignItems: "center" }}>
           <button className="btn btn-sm" onClick={() => setShowDraftForm(!showDraftForm)}>
             ✎ Propose Draft Finding
           </button>
-          {/* WP 4j.13 — run the full Mode 2 iterative loop */}
+          {/* WP 4j.13 — run the full Mode 1 iterative loop */}
           <button
             className="btn btn-sm btn-primary"
             onClick={runIterate}
@@ -981,8 +955,8 @@ export default function SteerChat() {
           >
             {loading ? "Investigating…" : "▶ Iterate (multi-round)"}
           </button>
-          {mode2Iterations > 1 && (
-            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{mode2Iterations} rounds max</span>
+          {mode1Iterations > 1 && (
+            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{mode1Iterations} rounds max</span>
           )}
         </div>
       )}
@@ -1157,16 +1131,7 @@ export default function SteerChat() {
                 {liveStatus && (
                   <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{liveStatus}</div>
                 )}
-                {liveIterations.map((it, i) => {
-                  const needles = Array.isArray(it.needles) ? (it.needles as string[]).join(", ") : "";
-                  return (
-                    <div key={i} style={{ fontSize: 12, color: "var(--accent)", padding: "2px 0" }}>
-                      ⟳ iteration {String(it.iteration ?? i)}: {String(it.action || "")}
-                      {needles ? ` — ${needles}` : ""} · {String(it.hits ?? 0)} hits
-                    </div>
-                  );
-                })}
-                {!liveStatus && liveIterations.length === 0 && (
+                {!liveStatus && (
                   <div style={{ color: "var(--text-muted)", fontSize: 13 }}>
                     <span className="pulse-dots">●●●</span>
                   </div>
@@ -1181,22 +1146,21 @@ export default function SteerChat() {
       <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
         <input
           placeholder={
-            mode === "mode1" ? "Ask a question..." :
             mode === "mode1" ? "Ask about the evidence..." :
             mode === "mode3" ? "Multi-agent runs on Agent Run (Investigation Board)..." :
-            mode3Step === "plan" ? "Set scope for agent..." :
+            sliverStep === "plan" ? "Set scope for agent..." :
             "Use action buttons above..."
           }
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && !loading && send()}
           placeholder-style={{ color: loading ? "var(--text-muted)" : undefined }}
-          disabled={(mode === "mode2" && mode3Step !== "plan") || mode === "mode3"}
+          disabled={(mode === "mode2" && sliverStep !== "plan") || mode === "mode3"}
         />
         <button
           className="btn btn-primary"
           onClick={send}
-          disabled={loading || (mode === "mode2" && mode3Step !== "plan") || mode === "mode3"}
+          disabled={loading || (mode === "mode2" && sliverStep !== "plan") || mode === "mode3"}
         >
           {loading ? "Working…" : "Send"}
         </button>

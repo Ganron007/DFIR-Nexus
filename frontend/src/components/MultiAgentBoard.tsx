@@ -1,5 +1,5 @@
 /**
- * Mode 3 — Multi-agent Investigation Board (runtime mode 4).
+ * Mode 3 — Multi-agent Investigation Board (runtime mode 3).
  *
  * The concurrent surface: several seats work in the same superstep, publish
  * claims on a shared board, and a join opens disputes / re-dispatches. This is

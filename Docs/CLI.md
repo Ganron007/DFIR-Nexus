@@ -222,15 +222,15 @@ agents use scoped **read-only** tools only and never stage or approve.
 ```bash
 nexus mode2 plan   -q "Trace RDP activity and USB device use"   # propose work orders (no execution)
 nexus mode2 run    -q "Trace RDP activity and USB device use"   # approve & run, streaming agent events
-nexus mode2 run    --run-id M3-20260925T060304-aacc7b           # continue a paused run (finished runs are refused)
-nexus mode2 status  --run-id M3-... [--json]                    # state, meters, stop reason
+nexus mode2 run    --run-id M2-20260925T060304-aacc7b           # continue a paused run (finished runs are refused)
+nexus mode2 status  --run-id M2-... [--json]                    # state, meters, stop reason
 nexus mode2 steer  "chase WS01 and drop the exfil line"         # directive for the next work order
-nexus mode2 pause  --run-id M3-...                              # pause between work orders
-nexus mode2 resume --run-id M3-... [--no-run]                   # clear pause (then continue)
-nexus mode2 stop   --run-id M3-...                              # halt at the next work order (terminal)
-nexus mode2 findings --run-id M3-... [--json]                   # DRAFT candidates with audit IDs
-nexus mode2 stage  --run-id M3-... [--json]                     # examiner: stage verified candidates as DRAFT
-nexus mode2 export --run-id M3-... --output run.json            # record + full event stream
+nexus mode2 pause  --run-id M2-...                              # pause between work orders
+nexus mode2 resume --run-id M2-... [--no-run]                   # clear pause (then continue)
+nexus mode2 stop   --run-id M2-...                              # halt at the next work order (terminal)
+nexus mode2 findings --run-id M2-... [--json]                   # DRAFT candidates with audit IDs
+nexus mode2 stage  --run-id M2-... [--json]                     # examiner: stage verified candidates as DRAFT
+nexus mode2 export --run-id M2-... --output run.json            # record + full event stream
 ```
 
 Notes:

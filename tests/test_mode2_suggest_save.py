@@ -129,7 +129,7 @@ def test_save_answer_bookmarks_and_records(tmp_path):
 
     bookmarks = json.loads((case / "workbench.json").read_text(encoding="utf-8"))
     assert len(bookmarks) == 1
-    assert "Mode 2 answer" in bookmarks[0]["note"]
+    assert "Mode 1 answer" in bookmarks[0]["note"]
 
     saved = json.loads((case / "analysis" / "mode2_saved_answers.json").read_text(encoding="utf-8"))
     assert len(saved) == 1
