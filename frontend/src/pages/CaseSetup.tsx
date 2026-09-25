@@ -458,12 +458,13 @@ export default function CaseSetup() {
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                <strong>Mode 3 — Agentic</strong>
+                <strong>Mode 3 — Multi-role</strong>
                 {mode === "3" && <span style={{ color: "var(--accent)" }}>✓</span>}
               </div>
               <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                Multi-agent orchestrator dispatches specialist agents per evidence family.
-                Agent drafts findings, examiner seals. Steer Chat (plan/execute/seal) is primary.
+                Supervised multi-role pipeline: specialist roles investigate your evidence one
+                work order at a time, corroborate, and stage DRAFTs. You steer, pause/stop and
+                stage. Agent Run is the primary surface.
               </p>
             </div>
             <button className="btn btn-primary" onClick={confirmMode} disabled={busy || !mode}>
@@ -483,7 +484,7 @@ export default function CaseSetup() {
               ? " Mode 1 runs the deterministic parser lane only — quick triage, no LLM."
               : mode === "2"
                 ? " Mode 2 runs the parser lane and then the LLM interpretation (RAG + threat intel) — DRAFT findings await your approval."
-                : " Mode 3 runs the parser lane, then the agentic planning/hunt loop before interpretation."}
+                : " Mode 3 runs the parser lane, then the supervised multi-role run before interpretation."}
           </p>
           {mode !== "1" && !pipelineRunId && (
             <div style={{ marginBottom: 10 }}>

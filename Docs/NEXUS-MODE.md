@@ -121,7 +121,7 @@ presets**, not separate products or UIs.
 > iterative query loop, corroboration engine (FD-006/007), and LLM-drafted
 > findings (`examiner_selected=False` provenance marker) are wired with
 > Portal endpoints (`/portal/api/mode2/iterate`, `/corroborate`,
-> `/propose-draft`). **Mode 3 is implemented as a supervised agent runtime
+> `/propose-draft`). **Mode 3 is implemented as a supervised multi-role runtime
 > (2026-09-25):** LangGraph supervisor (director → workers → verifier →
 > synthesis), KB skill procedures packed into each worker, follow-up
 > corroboration up to the context window, a convergence stop, a live SSE
@@ -320,18 +320,21 @@ N8 report from APPROVED only
 - Does not write findings inside the steering loop
 - Treats absent evidence classes as scope — never as a verdict
 
-### Mode 3 — Supervised Agentic (M1–M7 implemented)
+### Mode 3 — Supervised Multi-Role (M1–M7 implemented)
 
-**A supervisor runs scoped read-only agents over the case evidence; the
-examiner approves the plan, steers mid-run, and stages DRAFTs.**
+**A supervisor runs scoped read-only agent roles one work order at a time over
+the case evidence; the examiner approves the plan, steers mid-run, and stages
+DRAFTs. This is a followable multi-role pipeline with agentic turns — true
+concurrent multi-agent is planned as Mode 4 and is not built yet.**
 
 Mode 3 turns the case question into a bounded investigation: the director
 plans work orders (one per high-value evidence family, plus correlation and
 pattern checks, with the relevant KB skill steps and content versions
-attached), workers execute them through the shared audited tool loop, a
-verifier re-checks every candidate's cited claims (confirmed / inferred /
-refuted), an assessor appends bounded follow-up rounds, and synthesis produces
-the narrative + DRAFT candidates. Nothing is staged or approved by the agents.
+attached), workers execute them one at a time through the shared audited tool
+loop, a verifier re-checks every candidate's cited claims (confirmed /
+inferred / refuted), an assessor appends bounded follow-up rounds, and
+synthesis produces the narrative + DRAFT candidates. Nothing is staged or
+approved by the agents.
 
 > **Status (2026-09-25):** M1–M7 complete — supervisor state machine, seven
 > scoped roles, all 37 KB skills mapped to a role, skill/work-order contracts,
@@ -398,7 +401,7 @@ Examiner reviews Agent Run -> "Stage DRAFTs" -> Approval Desk HMAC -> N8 report 
    what the agent plans and asks permission.
    **Status: Phase 3 plan/execute/seal dual-audited (commits `8fc0543`, `b52ff50`);
    the supervised runtime M1–M7 is complete (2026-09-25, see "Mode 3 —
-   Supervised Agentic" above) with the Agent Run page and `nexus mode3` CLI.
+   Supervised Multi-Role" above) with the Agent Run page and `nexus mode3` CLI.
    GATE 4j-D / GATE-B operator sign-off pending.**
 4. **Phase 4 enterprise UI rewrite** — React SPA cockpit at `/portal/app/*`
    replaced the hand-written HTML/JS proof-of-concept. API contracts unchanged.

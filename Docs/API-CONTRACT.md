@@ -2395,7 +2395,7 @@ snapshot of the generated report to `analysis/report_rounds/round-NNNN.md`;
 ---
 
 ### POST /portal/api/mode3/orchestrator
-**Description:** Run the multi-agent orchestrator (WP 3.10). Dispatches specialist agents per evidence family, injects RAG methodology, and collects findings into synthesis. Examiner reviews proposals — nothing is auto-staged.
+**Description:** Run the multi-agent orchestrator (WP 3.10). Dispatches specialist agents per evidence family, injects RAG methodology, and collects findings into synthesis. Examiner reviews proposals — nothing is auto-staged. **Legacy Phase-3 simulation:** the product Mode 3 surface is the supervised multi-role runtime documented in the `/mode3/run/*` sections above; true concurrent multi-agent is planned as Mode 4.
 
 **Request:**
 ```json

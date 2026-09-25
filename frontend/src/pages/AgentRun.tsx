@@ -443,7 +443,7 @@ export default function AgentRun() {
         <div className="card-header">
           <span className="card-title">Agent Run — Mode 3</span>
           <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-            Supervised agents · read-only tools · every call audited · DRAFT-only
+            Supervised multi-role pipeline · read-only tools · every call audited · DRAFT-only
           </span>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>

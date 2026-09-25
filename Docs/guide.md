@@ -163,11 +163,12 @@ Tool: ingest_auto          → parses Suricata/Zeek logs into artifacts
 Tool: ti_lookup            → enriches IOCs via ThreatFox
 ```
 
-### Step 3b: Mode 3 supervised agent run (optional)
+### Step 3b: Mode 3 supervised multi-role run (optional)
 
-On a Mode 3 case, let the supervised agents drive the next pass instead of
-running tools by hand. Open **Agent Run** in the cockpit
-(`/portal/app/agent-run`) or use the CLI:
+On a Mode 3 case, let the supervised multi-role pipeline drive the next pass
+instead of running tools by hand. Roles run one work order at a time (true
+concurrent multi-agent is planned as Mode 4). Open **Agent Run** in the
+cockpit (`/portal/app/agent-run`) or use the CLI:
 
 ```bash
 nexus mode3 plan -q "Trace RDP activity and USB device use"   # review work orders + KB skills first

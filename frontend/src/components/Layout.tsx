@@ -13,7 +13,7 @@ const NAV_SPINE = [
   { to: "/briefing", label: "Briefing", stage: "N3.5", hint: "Case briefing — what was found before you dig" },
   { to: "/explore", label: "Explore", stage: "N3·N4", hint: "Index-backed search over parsed evidence" },
   { to: "/steer", label: "Steer Chat", stage: "N5", hint: "Interpretation — scribe, iterative, or agentic" },
-  { to: "/agent-run", label: "Agent Run", stage: "N5", hint: "Mode 3 — supervised agents, live events, DRAFT staging" },
+  { to: "/agent-run", label: "Agent Run", stage: "N5", hint: "Mode 3 — supervised multi-role pipeline, live events, DRAFT staging" },
   { to: "/workbench", label: "Workbench", stage: "N5", hint: "Build DRAFT findings from bookmarked hits" },
   { to: "/approve", label: "Approve", stage: "N6", hint: "HMAC challenge-response approval desk" },
   { to: "/timeline", label: "Timeline", stage: "N7", hint: "Per-family event lanes and brush" },
@@ -254,7 +254,7 @@ export default function Layout({ children }: { children: ReactNode }) {
                   ? "Mode 1 — Examiner-driven. Primary surface: Briefing"
                   : mode === "2"
                     ? "Mode 2 — LLM-guided. Primary surface: Steer Chat"
-                    : "Mode 3 — Agentic. Primary surface: Agent Run (plan → run → verify → stage)"
+                    : "Mode 3 — Multi-role. Primary surface: Agent Run (plan → run → verify → stage)"
               }
             >
               Mode {mode} · {mode === "1" ? "Briefing" : mode === "3" ? "Agent Run" : "Steer Chat"} primary

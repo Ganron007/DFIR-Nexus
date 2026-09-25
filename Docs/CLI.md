@@ -211,10 +211,12 @@ and [NEXUS-MODE.md](NEXUS-MODE.md).
 Requires: `pip install dfir-nexus[pipeline]` and LLM env for coverage/design/interpret
 (`NEXUS_LLM_MODEL` / `NEXUS_LLM_BASE_URL`). `tools` needs no LLM.
 
-## Mode 3 agentic runs (`nexus mode3`)
+## Mode 3 supervised multi-role runs (`nexus mode3`)
 
-Supervised agent investigation over the active case — the same runtime and
-event stream as the Agent Run page (`/portal/app/agent-run`). Requires a
+Supervised agent-role investigation over the active case — one work order at a
+time, the same runtime and event stream as the Agent Run page
+(`/portal/app/agent-run`). Concurrent multi-agent is planned as Mode 4 and is
+not built yet. Requires a
 configured model and the per-case Elasticsearch index (`NEXUS_ES_URL`);
 agents use scoped **read-only** tools only and never stage or approve.
 

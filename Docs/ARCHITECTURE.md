@@ -75,7 +75,7 @@ flowchart TB
 | **Detection** | Optional drafts after an APPROVED story. Not N5. |
 | **Examiner Portal + MCP** | Investigation UI for Register, N1–N8, ingest, detection, HMAC. Collect does not move into the Portal. |
 | **HTTP audit (4k.3)** | Every `/portal/api/*` (mutating always; reads at `NEXUS_HTTP_AUDIT=all`) and every `/mcp` call is recorded twice: rotating `logs/nexus-http-YYYYMMDD.log` and a hash-chained case entry in `audit/http.jsonl` (method/path/redacted query/status/duration/case). Failed ES tool calls are audited with their error. |
-| **LLM** | Optional. Narrates **N4 hits** only. Cannot approve. Mode 3 adds supervised agents (scoped read-only tools, see below) — they never stage or approve; DRAFT staging is an examiner action. |
+| **LLM** | Optional. Narrates **N4 hits** only. Cannot approve. Mode 3 adds a supervised multi-role pipeline (scoped read-only tools, one work order at a time — see below) — it never stages or approves; DRAFT staging is an examiner action. |
 
 ## Design Principle
 
@@ -367,11 +367,13 @@ coverage + registry facts) and `nexus doctor` (manifest). Rebuild with
 `scripts/build_*_registry.py`; raw dumps are gitignored and excluded from
 wheels.
 
-### Mode 3 supervised agent runtime (2026-09)
+### Mode 3 supervised multi-role runtime (2026-09)
 
-`src/nexus/langgraph/mode3_runtime.py` is the agentic execution layer (M1–M7).
-It is a LangGraph `StateGraph` supervisor over the shared bounded tool loop —
-there is no second bespoke agent loop:
+`src/nexus/langgraph/mode3_runtime.py` is the supervised execution layer
+(M1–M7). It is a LangGraph `StateGraph` supervisor over the shared bounded
+tool loop — there is no second bespoke agent loop. It is **multi-role, not
+concurrent multi-agent**: one work order runs at a time (concurrent
+multi-agent is planned as Mode 4).
 
 - **Roles** (`AgentRole`): director, evidence, correlation, pattern, verifier,
   synthesis, reporter — each with a scoped **read-only** tool allowlist,

@@ -123,7 +123,7 @@ function ProposalCard({ entry, caseMode, onAsk, busy, saved, onSave }: {
   const navigate = useNavigate();
   const isMode3 = entry.action === "mode3_plan" || entry.action === "mode3_execute";
   const isSteer = entry.action === "steer_answer";
-  const badge = isMode3 ? "Mode 3 Agent"
+  const badge = isMode3 ? "Mode 3 Multi-role"
     : isSteer ? "Mode 2 Answer"
     : (caseMode === "1" || caseMode === "" ? "Query hits" : "Mode 2 Proposal");
   const hits = entry.data?.hits || [];
@@ -802,7 +802,7 @@ export default function SteerChat() {
             title="Investigation mode was chosen when the case was created"
             style={{ fontSize: 11 }}
           >
-            {mode === "mode1" ? "Mode 1 — Scribe" : mode === "mode2" ? "Mode 2 — LLM steering" : "Mode 3 — Agentic"}
+            {mode === "mode1" ? "Mode 1 — Scribe" : mode === "mode2" ? "Mode 2 — LLM steering" : "Mode 3 — Multi-role"}
           </span>
           {mode === "mode2" && (
             <input
@@ -828,7 +828,7 @@ export default function SteerChat() {
           ? "Mode 1: you propose needles — the LLM scribes your findings. Evidence and the audit chain are shared."
           : mode === "mode2"
             ? "Mode 2: you ask in plain language — the LLM queries the case's evidence index and cites rows. Staging a DRAFT is a separate examiner-triggered action."
-            : "Mode 3: the agent plans, hunts and corroborates across the case; you steer and seal."}
+            : "Mode 3: the supervised multi-role pipeline plans, hunts and corroborates one work order at a time; you steer, stop and stage."}
       </div>
       {mode === "mode3" && (
         <div
@@ -844,9 +844,9 @@ export default function SteerChat() {
           }}
         >
           <span style={{ fontSize: 12 }}>
-            This chat keeps the legacy plan/execute sliver. Supervised agents now run on the
-            dedicated <strong>Agent Run</strong> page — agent board, live event stream, steering,
-            pause/resume and DRAFT staging.
+            This chat keeps the legacy plan/execute sliver. The supervised multi-role
+            pipeline now runs on the dedicated <strong>Agent Run</strong> page — agent board,
+            live event stream, steering, pause/resume/stop and DRAFT staging.
           </span>
           <Link className="btn btn-sm btn-primary" to="/agent-run">
             Open Agent Run →
