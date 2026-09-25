@@ -1,4 +1,4 @@
-"""Mode 3 run API tests (M5.3/M7 foundation)."""
+"""Mode 2 (multi-role) run API tests (M5.3/M7 foundation)."""
 from __future__ import annotations
 
 import json

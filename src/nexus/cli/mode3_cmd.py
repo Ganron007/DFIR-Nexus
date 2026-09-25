@@ -1,6 +1,7 @@
-"""Mode 3 CLI — same agent runtime and event stream as the portal.
+"""Mode 2 — Multi-role CLI — same agent runtime and event stream as the portal.
 
-Commands wrap the in-process Mode 3 runtime, so the CLI and UI share one
+Commands wrap the in-process multi-role runtime (``nexus mode3``), so the CLI
+and UI share one
 implementation, one event envelope and one audit path. No HTTP server is
 required for the CLI; the portal calls the same runtime.
 """
@@ -12,7 +13,7 @@ from pathlib import Path
 
 import typer
 
-app = typer.Typer(help="Mode 3 agentic investigation (supervised runtime)")
+app = typer.Typer(help="Mode 2 — Multi-role investigation (nexus mode3 runtime)")
 
 
 def _case_dir(case_id: str) -> Path:
@@ -105,12 +106,12 @@ def run(
     max_orders: int = typer.Option(6, "--max-orders", min=1, max=12),
     output: Path = typer.Option(None, "--output", help="Write the run record JSON"),
 ):
-    """Run the supervised Mode 3 investigation, streaming agent events."""
+    """Run the supervised Mode 2 (multi-role) investigation, streaming agent events."""
     from nexus.langgraph.mode3_runtime import run_mode3
 
     case_dir = _case_dir(case)
     run_id = run_id.strip()
-    typer.echo(f"Mode 3 run on {case_dir.name}"
+    typer.echo(f"Mode 2 (multi-role) run on {case_dir.name}"
                + (f" ({run_id})" if run_id else ""))
     state = run_mode3(
         case_dir, _question(case_dir, question),
@@ -134,7 +135,7 @@ def status(
     run_id: str = typer.Option("", "--run-id", help="Run id (default latest)"),
     as_json: bool = typer.Option(False, "--json"),
 ):
-    """Show the current/last Mode 3 run state."""
+    """Show the current/last Mode 2 (multi-role) run state."""
     from nexus.langgraph.mode3_runtime import (
         latest_run_id,
         read_controls,
@@ -146,7 +147,7 @@ def status(
     run_id = run_id.strip() or latest_run_id(case_dir)
     record = read_run_record(case_dir, run_id) if run_id else None
     if record is None:
-        typer.echo("No Mode 3 run found", err=True)
+        typer.echo("No multi-role run found", err=True)
         raise typer.Exit(1)
     events = read_run_events(case_dir, run_id, limit=5000)
     controls = read_controls(case_dir, run_id)
@@ -188,7 +189,7 @@ def steer(
     case_dir = _case_dir(case)
     run_id = run_id.strip() or latest_run_id(case_dir)
     if not run_id or read_run_record(case_dir, run_id) is None:
-        typer.echo("No Mode 3 run found", err=True)
+        typer.echo("No multi-role run found", err=True)
         raise typer.Exit(1)
     entry = append_steering(case_dir, run_id, text)
     EventSink(case_dir, run_id).emit(new_event(
@@ -208,7 +209,7 @@ def pause(
     case_dir = _case_dir(case)
     run_id = run_id.strip() or latest_run_id(case_dir)
     if not run_id or not mark_paused(case_dir, run_id, True):
-        typer.echo("No Mode 3 run found", err=True)
+        typer.echo("No multi-role run found", err=True)
         raise typer.Exit(1)
     typer.echo(f"Pause requested for {run_id}")
 
@@ -230,7 +231,7 @@ def stop(
     case_dir = _case_dir(case)
     run_id = run_id.strip() or latest_run_id(case_dir)
     if not run_id or read_run_record(case_dir, run_id) is None:
-        typer.echo("No Mode 3 run found", err=True)
+        typer.echo("No multi-role run found", err=True)
         raise typer.Exit(1)
     request_stop(case_dir, run_id)
     EventSink(case_dir, run_id).emit(new_event(
@@ -258,7 +259,7 @@ def resume(
     run_id = run_id.strip() or latest_run_id(case_dir)
     record = read_run_record(case_dir, run_id) if run_id else None
     if record is None:
-        typer.echo("No Mode 3 run found", err=True)
+        typer.echo("No multi-role run found", err=True)
         raise typer.Exit(1)
     status = str(record.get("status") or "")
     if status in ("stopped", "completed", "failed"):
@@ -288,7 +289,7 @@ def findings(
     run_id = run_id.strip() or latest_run_id(case_dir)
     record = read_run_record(case_dir, run_id) if run_id else None
     if record is None:
-        typer.echo("No Mode 3 run found", err=True)
+        typer.echo("No multi-role run found", err=True)
         raise typer.Exit(1)
     candidates = record.get("candidates") or []
     if as_json:
@@ -325,7 +326,7 @@ def stage(
     run_id = run_id.strip() or latest_run_id(case_dir)
     record = read_run_record(case_dir, run_id) if run_id else None
     if record is None:
-        typer.echo("No Mode 3 run found", err=True)
+        typer.echo("No multi-role run found", err=True)
         raise typer.Exit(1)
     result = stage_run_candidates(case_dir, run_id)
     if as_json:
@@ -360,7 +361,7 @@ def export(
     run_id = run_id.strip() or latest_run_id(case_dir)
     record = read_run_record(case_dir, run_id) if run_id else None
     if record is None:
-        typer.echo("No Mode 3 run found", err=True)
+        typer.echo("No multi-role run found", err=True)
         raise typer.Exit(1)
     payload = {
         "record": record,

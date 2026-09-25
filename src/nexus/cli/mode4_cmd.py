@@ -1,4 +1,4 @@
-"""Mode 4 CLI — concurrent multi-agent runtime.
+"""Mode 3 — Multi-agent CLI — concurrent runtime (runtime ``mode4``).
 
 Product label: Mode 3 — Multi-agent. Run ids use the M4- prefix.
 """
@@ -9,7 +9,7 @@ from pathlib import Path
 
 import typer
 
-app = typer.Typer(help="Concurrent multi-agent investigation (Mode 4 runtime)")
+app = typer.Typer(help="Mode 3 — Multi-agent investigation (nexus mode4 runtime)")
 
 
 def _case_dir(case_id: str):
@@ -74,7 +74,7 @@ def status(
     run_id = run_id or latest_run_id(case_dir)
     record = read_run_record(case_dir, run_id) if run_id else None
     if record is None:
-        typer.echo("No Mode 4 run.", err=True)
+        typer.echo("No multi-agent run.", err=True)
         raise typer.Exit(1)
     if as_json:
         typer.echo(json.dumps(record, default=str))
@@ -98,7 +98,7 @@ def board(
     run_id = run_id or latest_run_id(case_dir)
     record = read_run_record(case_dir, run_id) if run_id else None
     if record is None:
-        typer.echo("No Mode 4 run.", err=True)
+        typer.echo("No multi-agent run.", err=True)
         raise typer.Exit(1)
     for entry in record.get("board") or []:
         typer.echo(f"{entry.get('agent_id')}  claims={len(entry.get('claims') or [])}")
@@ -143,7 +143,7 @@ def steer(
     run_id = run_id or latest_run_id(case_dir)
     record = read_run_record(case_dir, run_id) if run_id else None
     if record is None:
-        typer.echo("No Mode 4 run.", err=True)
+        typer.echo("No multi-agent run.", err=True)
         raise typer.Exit(1)
     entry = append_mode4_steering(case_dir, run_id, text)
     emit_event(case_dir, run_id, new_event(
@@ -195,7 +195,7 @@ def resume(
     run_id = run_id or latest_run_id(case_dir)
     record = read_run_record(case_dir, run_id) if run_id else None
     if record is None:
-        typer.echo("No Mode 4 run.", err=True)
+        typer.echo("No multi-agent run.", err=True)
         raise typer.Exit(1)
     status = str(record.get("status") or "")
     if status != "paused":
@@ -236,7 +236,7 @@ def export(
     run_id = run_id or latest_run_id(case_dir)
     record = read_run_record(case_dir, run_id) if run_id else None
     if record is None:
-        typer.echo("No Mode 4 run.", err=True)
+        typer.echo("No multi-agent run.", err=True)
         raise typer.Exit(1)
     payload = {
         "record": record,
@@ -258,7 +258,7 @@ def stage(
     case_dir = _case_dir(case)
     run_id = run_id or latest_run_id(case_dir)
     if not run_id:
-        typer.echo("No Mode 4 run.", err=True)
+        typer.echo("No multi-agent run.", err=True)
         raise typer.Exit(1)
     result = stage_mode4(case_dir, run_id)
     typer.echo(json.dumps(result, default=str) if as_json else

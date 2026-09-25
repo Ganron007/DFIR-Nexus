@@ -88,9 +88,9 @@ app.command(name="merge", help="Merge case bundle")(_sync_merge)
 app.add_typer(exec_app, name="exec", help="Execute forensic command with audit trail")
 app.add_typer(audit_app, name="audit", help="View audit trail")
 app.add_typer(mode3_app, name="mode3",
-              help="Mode 2 multi-role pipeline (stored case mode 3)")
+              help="Mode 2 — Multi-role pipeline (nexus mode3)")
 app.add_typer(mode4_app, name="mode4",
-              help="Mode 3 multi-agent team (stored case mode 4)")
+              help="Mode 3 — Multi-agent team (nexus mode4)")
 app.add_typer(todo_app, name="todo", help="Manage TODO items")
 app.add_typer(data_app, name="data", help="Download RAG / triage / fixtures")
 app.add_typer(index_app, name="index", help="Rebuild the per-case ES index (schema v2)")

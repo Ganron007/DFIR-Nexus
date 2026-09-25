@@ -1,4 +1,4 @@
-"""Mode 3 CLI parity tests (M7.1)."""
+"""Mode 2 (multi-role) CLI parity tests (M7.1)."""
 from __future__ import annotations
 
 import json
