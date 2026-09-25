@@ -379,7 +379,8 @@ class CaseManager:
                               "affected_account", "attack_ids", "audit_ids", "iocs",
                               "event_type", "artifact_ref", "related_findings",
                               "itm_stage", "itm_objects", "evidence", "severity",
-                              "technique_ids", "scribe_source", "examiner_selected"}}
+                              "technique_ids", "scribe_source", "examiner_selected",
+                              "run_id", "input_call_ids", "source"}}
         if sanitized.get("host"):
             sanitized["host"] = str(sanitized["host"])[:200]
         if sanitized.get("affected_account"):
@@ -475,6 +476,13 @@ class CaseManager:
             # Mode 1 examiner-picked vs Mode 2 LLM-proposed, heuristic vs LLM.
             "scribe_source": sanitized.get("scribe_source") or "",
             "examiner_selected": sanitized.get("examiner_selected"),
+            # Mode 3 lineage: which run produced the candidate and the exact
+            # agent tool-call audit IDs behind it (M5.2).
+            "run_id": str(sanitized.get("run_id") or "")[:80],
+            "input_call_ids": [
+                str(x)[:100] for x in (sanitized.get("input_call_ids") or [])
+            ][:50],
+            "source": str(sanitized.get("source") or "")[:40],
             "artifacts": validated_artifacts,
             "supporting_commands": validated_commands,
             "content_hash": "",

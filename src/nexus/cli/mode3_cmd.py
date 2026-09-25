@@ -265,6 +265,46 @@ def findings(
 
 
 @app.command()
+def stage(
+    case: str = typer.Option("", "--case", help="Case id (default active)"),
+    run_id: str = typer.Option("", "--run-id", help="Run id (default latest)"),
+    as_json: bool = typer.Option(False, "--json"),
+):
+    """Stage a run's verified candidates as DRAFT findings (examiner action).
+
+    Skips candidates without real audit_ids (FD-001) and verifier-refuted
+    candidates. Staged findings keep run_id/input_call_ids lineage; approval
+    stays password-gated with the examiner.
+    """
+    from nexus.langgraph.mode3_runtime import (
+        latest_run_id,
+        read_run_record,
+        stage_run_candidates,
+    )
+
+    case_dir = _case_dir(case)
+    run_id = run_id.strip() or latest_run_id(case_dir)
+    record = read_run_record(case_dir, run_id) if run_id else None
+    if record is None:
+        typer.echo("No Mode 3 run found", err=True)
+        raise typer.Exit(1)
+    result = stage_run_candidates(case_dir, run_id)
+    if as_json:
+        typer.echo(json.dumps(result, indent=2, default=str))
+        return
+    typer.echo(f"Staged {result.get('staged_count', 0)} DRAFT finding(s); "
+               f"skipped {result.get('skipped_count', 0)}")
+    for entry in result.get("staged") or []:
+        typer.echo(
+            f"  DRAFT {entry.get('finding_id')}: {entry.get('title')} "
+            f"({len(entry.get('input_call_ids') or [])} audit id(s))"
+        )
+    for entry in result.get("skipped") or []:
+        typer.echo(f"  skipped: {entry.get('title')} — {entry.get('reason')}")
+    typer.echo("DRAFT only — approval stays with the examiner (`nexus approve`).")
+
+
+@app.command()
 def export(
     case: str = typer.Option("", "--case", help="Case id (default active)"),
     run_id: str = typer.Option("", "--run-id", help="Run id (default latest)"),

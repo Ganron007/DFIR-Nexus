@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
@@ -35,7 +36,7 @@ from typing import Any
 from uuid import uuid4
 
 from nexus.audit import AuditWriter
-from nexus.langgraph.context_loop import LoopBudget, run_context_loop
+from nexus.langgraph.context_loop import LoopBudget, _call_model, run_context_loop
 
 log = logging.getLogger(__name__)
 
@@ -64,6 +65,62 @@ def _now() -> str:
 
 def _short(text: Any, limit: int = 500) -> str:
     return " ".join(str(text or "").split())[:limit]
+
+
+_STOPWORDS = {
+    "what", "when", "where", "which", "who", "whom", "whose", "why", "how",
+    "does", "did", "was", "were", "has", "have", "had", "the", "and", "for",
+    "with", "from", "into", "onto", "over", "under", "that", "this", "these",
+    "those", "case", "evidence", "investigate", "trace", "check", "find",
+    "look", "show", "tell", "about", "there", "their", "then", "than",
+}
+
+
+def _question_keywords(question: str, limit: int = 12) -> list[str]:
+    """Cheap keyword extraction for skill retrieval (no model call)."""
+    words = re.findall(r"[a-zA-Z0-9_\-]{4,}", str(question or "").lower())
+    out: list[str] = []
+    for word in words:
+        if word in _STOPWORDS or word in out:
+            continue
+        out.append(word)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _skill_lookup() -> dict[str, dict[str, Any]]:
+    """All registered skills by id; {} when the KB is unavailable."""
+    try:
+        from nexus.knowledge.loader import get_skills
+
+        return {
+            str(skill.get("skill")): skill
+            for skill in get_skills()
+            if str(skill.get("skill") or "").strip()
+        }
+    except Exception:  # noqa: BLE001 — skills are an enhancement, not a gate
+        log.debug("mode3 skill lookup failed", exc_info=True)
+        return {}
+
+
+def _retrieve_skill_refs(
+    families: list[str], keywords: list[str], limit: int = 3,
+) -> list[dict[str, Any]]:
+    """Ranked skill provenance for a work order (M3.2).
+
+    Returns ``[{skill, title, version, score, why, citations, mitre}]`` —
+    the exact procedure version an agent may follow. A failure to load the KB
+    degrades to no skills, never to invented steps.
+    """
+    try:
+        from nexus.knowledge.skills import retrieve_skills
+
+        return retrieve_skills(
+            families=families, keywords=keywords, limit=limit)
+    except Exception:  # noqa: BLE001
+        log.debug("mode3 skill retrieval failed", exc_info=True)
+        return []
 
 
 # ---------------------------------------------------------------------------
@@ -197,9 +254,9 @@ ROLES: dict[str, AgentRole] = {
             "Do not invent evidence; a zero-hit search is not negative evidence "
             "until run_record shows the parser ran."
         ),
-        max_rounds=4,
-        max_calls=8,
-        max_seconds=240.0,
+        max_rounds=5,
+        max_calls=12,
+        max_seconds=300.0,
     ),
     "correlation": AgentRole(
         name="correlation",
@@ -212,9 +269,9 @@ ROLES: dict[str, AgentRole] = {
             "it. Return JSON with keys: corroborated_entities, chains, "
             "unexplained, next_questions, coverage."
         ),
-        max_rounds=3,
-        max_calls=6,
-        max_seconds=180.0,
+        max_rounds=4,
+        max_calls=10,
+        max_seconds=300.0,
     ),
     "pattern": AgentRole(
         name="pattern",
@@ -228,9 +285,9 @@ ROLES: dict[str, AgentRole] = {
             "caveats, next_questions, coverage. Do not force a pattern when the "
             "required evidence is missing."
         ),
-        max_rounds=3,
-        max_calls=6,
-        max_seconds=180.0,
+        max_rounds=4,
+        max_calls=10,
+        max_seconds=300.0,
     ),
     "verifier": AgentRole(
         name="verifier",
@@ -245,9 +302,9 @@ ROLES: dict[str, AgentRole] = {
             "\"confirmed|inferred|refuted\",\"basis\":\"...\","
             "\"audit_ids\":[\"...\"]}],\"coverage\":{...}}"
         ),
-        max_rounds=4,
-        max_calls=10,
-        max_seconds=300.0,
+        max_rounds=5,
+        max_calls=14,
+        max_seconds=360.0,
     ),
     "synthesis": AgentRole(
         name="synthesis",
@@ -264,9 +321,9 @@ ROLES: dict[str, AgentRole] = {
             "\"itm_objects\":\"...\"}],\"gaps\":[\"...\"],"
             "\"coverage\":{...}}. Never approve anything."
         ),
-        max_rounds=3,
-        max_calls=6,
-        max_seconds=240.0,
+        max_rounds=4,
+        max_calls=10,
+        max_seconds=300.0,
     ),
     "reporter": AgentRole(
         name="reporter",
@@ -279,9 +336,9 @@ ROLES: dict[str, AgentRole] = {
             "\"sections\":[{\"title\":\"...\",\"body\":\"...\"}],"
             "\"gaps\":[\"...\"]}."
         ),
-        max_rounds=2,
-        max_calls=4,
-        max_seconds=120.0,
+        max_rounds=3,
+        max_calls=6,
+        max_seconds=180.0,
     ),
 }
 
@@ -337,6 +394,147 @@ def mark_paused(case_dir: Path, run_id: str, paused: bool = True) -> bool:
     return True
 
 
+def _candidate_audit_ids(candidate: dict[str, Any]) -> list[str]:
+    ids = candidate.get("audit_ids")
+    if not ids and candidate.get("audit_id"):
+        ids = [candidate.get("audit_id")]
+    out: list[str] = []
+    for item in ids or []:
+        text = str(item or "").strip()
+        if text and text not in out:
+            out.append(text)
+    return out
+
+
+def _normalise_evidence(candidate: dict[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for item in (candidate.get("evidence") or candidate.get("notes") or []):
+        if isinstance(item, dict):
+            row = dict(item)
+            if not row.get("source"):
+                row["source"] = str(
+                    row.get("family") or row.get("file") or "mode3")
+            rows.append(row)
+        elif isinstance(item, str) and item.strip():
+            rows.append({"source": "mode3", "detail": _short(item, 300)})
+    return rows[:12]
+
+
+def stage_run_candidates(
+    case_dir: Path,
+    run_id: str,
+    *,
+    candidates: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Stage a run's verified candidates as DRAFT findings (examiner action).
+
+    This is the examiner's staging button, not an agent action: agents never
+    call it. Only candidates that carry at least one real ``audit_id`` are
+    staged (FD-001); refuted verdicts and evidence-free candidates are skipped
+    with reasons. Every staged finding keeps ``run_id`` / ``input_call_ids``
+    lineage so the run event stream is the provenance. Approval remains
+    password-gated and examiner-only — nothing here approves or promotes.
+    """
+    from nexus.langgraph.mode1 import save_draft_finding
+
+    case_dir = Path(case_dir)
+    record = read_run_record(case_dir, run_id)
+    if record is None:
+        return {"error": "run not found", "run_id": run_id,
+                "staged": [], "skipped": []}
+    verdicts = {
+        str(v.get("title") or "").strip().lower(): v
+        for v in (record.get("verdicts") or [])
+    }
+    rows = candidates if candidates is not None else (record.get("candidates") or [])
+    sink = EventSink(case_dir, run_id)
+    staged: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+
+    for candidate in rows:
+        title = str(candidate.get("title") or "").strip() or "Mode 3 candidate"
+        audit_ids = _candidate_audit_ids(candidate)
+        if not audit_ids:
+            skipped.append({"title": title,
+                            "reason": "FD-001: candidate has no audit_id"})
+            continue
+        verdict = verdicts.get(title.lower(), {})
+        vclass = str(verdict.get("class") or "").lower()
+        if vclass == "refuted":
+            skipped.append({"title": title, "reason": "verifier refuted"})
+            continue
+        observation = str(
+            candidate.get("observation") or candidate.get("note") or "").strip()
+        interpretation = str(candidate.get("interpretation") or "").strip()
+        if not observation or not interpretation:
+            skipped.append({
+                "title": title,
+                "reason": "missing observation/interpretation (FD-005 shape)",
+            })
+            continue
+        confidence = str(candidate.get("confidence") or "LOW").upper()
+        if confidence not in ("LOW", "MEDIUM", "HIGH", "SPECULATIVE"):
+            confidence = "LOW"
+        justification = str(
+            candidate.get("confidence_justification") or "").strip() or (
+            f"Mode 3 run {run_id} synthesis candidate"
+            + (f"; verifier class={vclass}" if vclass else "")
+            + "; confidence auto-capped per FD-006/007 until corroborated."
+        )
+        mitre = [
+            str(t) for t in (
+                candidate.get("attack_ids")
+                or candidate.get("mitre_ids")
+                or candidate.get("mitre_techniques")
+                or []
+            ) if t
+        ]
+        draft = {
+            "title": title,
+            "observation": observation,
+            "interpretation": interpretation,
+            "confidence": confidence,
+            "confidence_justification": justification,
+            "type": "finding",
+            "audit_ids": audit_ids,
+            "evidence": _normalise_evidence(candidate),
+            "status": "DRAFT",
+            "source": "mode3",
+            "run_id": run_id,
+            "input_call_ids": audit_ids,
+            "mitre_ids": mitre,
+            "itm_stage": str(candidate.get("itm_stage") or ""),
+            "itm_objects": str(candidate.get("itm_objects") or ""),
+            "examiner_selected": False,
+        }
+        saved = save_draft_finding(case_dir, draft)
+        if str(saved.get("status") or "") == "STAGED":
+            entry = {
+                "title": title,
+                "finding_id": saved.get("finding_id"),
+                "input_call_ids": audit_ids,
+                "verifier_class": vclass,
+            }
+            staged.append(entry)
+            sink.emit(new_event(
+                run_id, "finding.staged", actor="examiner", status="DRAFT",
+                detail=title, data=entry,
+            ))
+        else:
+            reasons = [str(e) for e in (saved.get("errors") or [])]
+            if not reasons:
+                reasons = [str(saved.get("status") or "failed")]
+            skipped.append({"title": title, "reason": "; ".join(reasons)})
+
+    return {
+        "run_id": run_id,
+        "staged": staged,
+        "skipped": skipped,
+        "staged_count": len(staged),
+        "skipped_count": len(skipped),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Work orders (M3.1)
 # ---------------------------------------------------------------------------
@@ -357,9 +555,10 @@ class WorkOrder:
         "A zero-hit query is not negative evidence until run_record shows the "
         "relevant parser ran."
     )
-    max_rounds: int = 4
-    max_calls: int = 8
-    max_seconds: float = 240.0
+    skill_refs: list[dict[str, Any]] = field(default_factory=list)
+    max_rounds: int = 0
+    max_calls: int = 0
+    max_seconds: float = 0.0
     status: str = "pending"
     result: dict[str, Any] | None = None
     error: str = ""
@@ -385,8 +584,8 @@ def validate_work_order(order: WorkOrder) -> list[str]:
         if unknown:
             problems.append(
                 f"priority tools outside {order.role} allowlist: {unknown}")
-    if order.max_rounds < 1 or order.max_calls < 1 or order.max_seconds < 5:
-        problems.append("budget must be positive")
+    if order.max_rounds < 0 or order.max_calls < 0 or order.max_seconds < 0:
+        problems.append("budget cannot be negative")
     return problems
 
 
@@ -433,6 +632,91 @@ def _parse_json_object(text: str) -> dict[str, Any]:
     return {}
 
 
+# Role answer schemas for the format-only turn (restructure, never invent).
+_ROLE_SCHEMAS: dict[str, str] = {
+    "evidence": (
+        '{"notes":[{"statement":"...","evidence":["family/file:line ..."],'
+        '"audit_ids":["..."]}],"entities":["..."],'
+        '"candidate_findings":[{"title":"...","observation":"...",'
+        '"interpretation":"...","confidence":"LOW|MEDIUM|HIGH",'
+        '"audit_ids":["..."]}],"coverage":{"checked":["..."],'
+        '"not_checked":["..."]},"next_questions":["..."]}'
+    ),
+    "correlation": (
+        '{"corroborated_entities":["..."],"chains":[{"entities":["..."],'
+        '"times":["..."],"evidence":["family/file:line ..."],'
+        '"audit_ids":["..."]}],"unexplained":["..."],'
+        '"candidate_findings":[{"title":"...","observation":"...",'
+        '"interpretation":"...","confidence":"LOW|MEDIUM|HIGH",'
+        '"audit_ids":["..."]}],"next_questions":["..."],'
+        '"coverage":{"checked":["..."],"not_checked":["..."]}}'
+    ),
+    "pattern": (
+        '{"patterns":[{"name":"...","technique_ids":["..."],'
+        '"evidence":["family/file:line ..."],"audit_ids":["..."]}],'
+        '"candidate_findings":[{"title":"...","observation":"...",'
+        '"interpretation":"...","confidence":"LOW|MEDIUM|HIGH",'
+        '"audit_ids":["..."]}],"caveats":["..."],"next_questions":["..."],'
+        '"coverage":{"checked":["..."],"not_checked":["..."]}}'
+    ),
+    "verifier": (
+        '{"verdicts":[{"title":"...","class":"confirmed|inferred|refuted",'
+        '"basis":"...","audit_ids":["..."]}],"coverage":{"checked":["..."],'
+        '"not_checked":["..."]}}'
+    ),
+    "synthesis": (
+        '{"narrative":"...","findings":[{"title":"...","observation":"...",'
+        '"interpretation":"...","confidence":"LOW|MEDIUM|HIGH",'
+        '"confidence_justification":"...","audit_ids":["..."],'
+        '"attack_ids":["..."],"itm_stage":"...","itm_objects":"..."}],'
+        '"gaps":["..."],"coverage":{"checked":["..."],"not_checked":["..."]}}'
+    ),
+    "reporter": (
+        '{"summary":"...","sections":[{"title":"...","body":"..."}],'
+        '"gaps":["..."]}'
+    ),
+}
+
+
+def _format_final_answer(model: Any, role_name: str, reply: str) -> dict[str, Any]:
+    """One bounded, tool-free turn: restructure a prose answer into role JSON.
+
+    The agent already did the work; this only re-formats its own text. The
+    prompt forbids adding, dropping or reinterpreting any evidence, number,
+    file name or audit_id. Returns ``{}`` when the model is unavailable or the
+    conversion fails — the role result is then honestly marked unparsed.
+    """
+    if model is None or not str(reply or "").strip():
+        return {}
+    schema = _ROLE_SCHEMAS.get(role_name, _ROLE_SCHEMAS["evidence"])
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You convert a finished forensic agent answer into a JSON "
+                "object. Do NOT add, drop, merge, rank or reinterpret evidence, "
+                "claims, numbers, file names, hosts or audit_id values; only "
+                "restructure the text that is already there. Keep audit ids "
+                "verbatim and in place. Reply with ONE JSON object only."
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                "Target JSON shape:\n" + schema
+                + "\n\nAgent answer to restructure:\n" + str(reply)[:6000]
+            ),
+        },
+    ]
+    try:
+        raw = _call_model(model, messages)
+    except Exception:  # noqa: BLE001 — unparsed is honest; formatting is best-effort
+        log.debug("mode3 answer formatting failed", exc_info=True)
+        return {}
+    parsed = _parse_json_object(raw)
+    return parsed if isinstance(parsed, dict) else {}
+
+
 def _fallback_result(order: WorkOrder, reason: str) -> AgentResult:
     """Deterministic honest fallback: no evidence invented, reason recorded."""
     return AgentResult(
@@ -455,6 +739,52 @@ def _fallback_result(order: WorkOrder, reason: str) -> AgentResult:
         },
         partial=True,
         partial_reason=reason,
+    )
+
+
+def _skill_procedure_block(order: WorkOrder, cap_steps: int = 6) -> str:
+    """Render the KB-cited procedures attached to a work order (M3.2).
+
+    Steps are copied from the KB skill, never invented; each block carries the
+    skill id, content version and KB chunk citations so an agent (and later a
+    staged finding) can be traced to the exact procedure version.
+    """
+    if not order.skill_refs:
+        return ""
+    by_id = _skill_lookup()
+    lines: list[str] = []
+    for ref in order.skill_refs[:4]:
+        skill_id = str(ref.get("skill") or "")
+        skill = by_id.get(skill_id)
+        if not skill:
+            continue
+        cites = ", ".join(str(c) for c in (ref.get("citations") or [])[:3]) or "none"
+        lines.append(
+            f"- {skill_id} v{ref.get('version') or '?'} (KB {cites}): "
+            f"{_short(ref.get('title') or skill.get('title') or '', 120)}"
+        )
+        for step in (skill.get("steps") or [])[:cap_steps]:
+            if not isinstance(step, dict):
+                continue
+            name = _short(step.get("name") or "", 60)
+            query = _short(step.get("query") or "", 160)
+            look = _short(step.get("look_for") or "", 120)
+            lines.append(
+                f"    * {name}: {query}"
+                + (f" | look_for: {look}" if look else "")
+            )
+        caveats = [str(c) for c in (skill.get("caveats") or [])][:2]
+        negative = _short(skill.get("negative") or "", 140)
+        if caveats:
+            lines.append("    ! caveats: "
+                         + "; ".join(_short(c, 100) for c in caveats))
+        if negative:
+            lines.append(f"    ! negative: {negative}")
+    if not lines:
+        return ""
+    return (
+        "KB-CITED PROCEDURES (follow the step queries; keep the skill id + "
+        "version + citations for anything you use):\n" + "\n".join(lines) + "\n"
     )
 
 
@@ -487,6 +817,7 @@ def run_work_order(
     started = time.monotonic()
 
     work_context = json.dumps(context or {}, default=str)[:6000]
+    skill_block = _skill_procedure_block(order)
     question = (
         f"WORK ORDER {order.order_id}\n"
         f"Role: {role.name}\n"
@@ -498,7 +829,8 @@ def run_work_order(
         f"Expected event IDs: {', '.join(order.expected_event_ids) or '(none)'}\n"
         f"Acceptance: {order.acceptance or 'return evidence-linked notes'}\n"
         f"Negative-evidence rule: {order.negative_evidence_rule}\n"
-        f"Run context: {work_context}\n\n"
+        + skill_block
+        + f"Run context: {work_context}\n\n"
         "Return the role JSON object as the final answer. Use the read-only "
         "tools; never claim evidence you did not retrieve."
     )
@@ -507,6 +839,10 @@ def run_work_order(
         agent_id=agent_id, detail=order.task, data={
             "order_id": order.order_id, "role": order.role,
             "family": order.family, "why": order.why,
+            "skills": [
+                {"skill": r.get("skill"), "version": r.get("version")}
+                for r in order.skill_refs
+            ],
         },
     ))
 
@@ -575,12 +911,21 @@ def run_work_order(
         ))
         return result
 
-    parsed = _parse_json_object(str(loop.get("reply") or ""))
+    raw_reply = str(loop.get("reply") or "")
+    parsed = _parse_json_object(raw_reply)
+    if not parsed and raw_reply.strip():
+        parsed = _format_final_answer(model, role.name, raw_reply)
+        if parsed:
+            sink.emit(new_event(
+                run_id, "agent.formatted", actor="agent", turn_id=turn_id,
+                agent_id=agent_id,
+                detail="prose answer restructured into the role JSON envelope",
+            ))
     result = AgentResult(
         order_id=order.order_id,
         role=order.role,
         status="ok" if parsed else "unparsed",
-        reply=str(loop.get("reply") or ""),
+        reply=raw_reply,
         parsed=parsed,
         tool_calls=list(loop.get("tool_calls") or []),
         hits=list(loop.get("hits") or []),
@@ -636,6 +981,8 @@ def plan_work_orders(
         families = {}
 
     ranked = sorted(families.items(), key=lambda kv: (-kv[1], kv[0]))
+    keywords = _question_keywords(question)
+    all_families = [family for family, _rows in ranked]
     orders: list[WorkOrder] = []
     for family, rows in ranked:
         if len(orders) >= max(1, max_orders - 2):
@@ -649,6 +996,7 @@ def plan_work_orders(
             why=f"Highest-value family with {rows} indexed rows",
             priority_tools=("es_mappings", "es_search", "es_aggregate", "run_record"),
             acceptance="evidence-linked notes with audit_ids and explicit coverage",
+            skill_refs=_retrieve_skill_refs([family], keywords, limit=3),
         ))
     orders.append(WorkOrder(
         order_id=WorkOrder.new_id(),
@@ -658,6 +1006,7 @@ def plan_work_orders(
         why="Cross-family corroboration before pattern matching",
         priority_tools=("es_search", "es_aggregate", "run_record"),
         acceptance="corroborated entities/chains with audit_ids or explicit none",
+        skill_refs=_retrieve_skill_refs(all_families, keywords, limit=4),
     ))
     orders.append(WorkOrder(
         order_id=WorkOrder.new_id(),
@@ -667,12 +1016,18 @@ def plan_work_orders(
         why="Framework-grounded pattern check after correlation",
         priority_tools=("rag_search", "kb_query", "es_search", "es_aggregate"),
         acceptance="patterns with required evidence rows, or explicit no-match",
+        skill_refs=_retrieve_skill_refs(all_families, keywords, limit=4),
     ))
     for order in orders:
         sink.emit(new_event(
             run_id, "plan.work_order", actor="director",
             data={"order_id": order.order_id, "role": order.role,
-                  "family": order.family, "task": order.task},
+                  "family": order.family, "task": order.task,
+                  "skills": [
+                      {"skill": r.get("skill"), "version": r.get("version"),
+                       "why": r.get("why")}
+                      for r in order.skill_refs
+                  ]},
         ))
     return orders[:max_orders]
 
@@ -733,6 +1088,11 @@ def run_mode3(
         "steering": [],
         "stop_reason": "",
         "max_orders": max_orders,
+        "followup_rounds": 0,
+        "followups_limit": _env_int(
+            "NEXUS_MODE3_FOLLOWUPS", 2, low=0, high=4),
+        "evidence_signature": None,
+        "converged_no_new_evidence": False,
     }
     state_path = case_dir / _MODE3_DIR / f"{run_id}.json"
     if resume and state_path.is_file():
@@ -741,6 +1101,11 @@ def run_mode3(
             if isinstance(loaded, dict) and loaded.get("run_id") == run_id:
                 state.update(loaded)
                 state["status"] = "running"
+                state.setdefault("followup_rounds", 0)
+                state.setdefault("followups_limit", _env_int(
+                    "NEXUS_MODE3_FOLLOWUPS", 2, low=0, high=4))
+                state.setdefault("evidence_signature", None)
+                state.setdefault("converged_no_new_evidence", False)
         except (OSError, ValueError):
             pass
 
@@ -789,9 +1154,10 @@ def run_mode3(
             expected_artifact_ids=tuple(raw.get("expected_artifact_ids") or ()),
             expected_event_ids=tuple(raw.get("expected_event_ids") or ()),
             acceptance=str(raw.get("acceptance") or ""),
-            max_rounds=int(raw.get("max_rounds") or 4),
-            max_calls=int(raw.get("max_calls") or 8),
-            max_seconds=float(raw.get("max_seconds") or 240.0),
+            skill_refs=list(raw.get("skill_refs") or []),
+            max_rounds=int(raw.get("max_rounds") or 0),
+            max_calls=int(raw.get("max_calls") or 0),
+            max_seconds=float(raw.get("max_seconds") or 0.0),
         )
         context = {
             "previous_results": [
@@ -816,14 +1182,19 @@ def run_mode3(
         return state
 
     # ── Verifier node ──────────────────────────────────────────────────
-    def verify_node(_state: dict[str, Any]) -> dict[str, Any]:
-        candidates: list[dict[str, Any]] = []
+    def _candidate_pool() -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
         for result in state.get("results", []):
+            if str(result.get("role") or "") in ("verifier", "synthesis"):
+                continue
             parsed = result.get("parsed") or {}
-            candidates.extend(parsed.get("candidate_findings") or [])
-            candidates.extend(parsed.get("findings") or [])
+            rows.extend(parsed.get("candidate_findings") or [])
+            rows.extend(parsed.get("findings") or [])
+        return rows
+
+    def verify_node(_state: dict[str, Any]) -> dict[str, Any]:
+        candidates = _candidate_pool()
         if not candidates:
-            state["verdicts"] = []
             state["status"] = "verified"
             _persist_state(case_dir, run_id, state)
             return state
@@ -841,9 +1212,118 @@ def run_mode3(
         )
         state.setdefault("results", []).append(result.to_dict())
         parsed = result.parsed or {}
-        state["verdicts"] = parsed.get("verdicts") or []
+        merged = {
+            str(v.get("title") or "").strip().lower(): v
+            for v in (state.get("verdicts") or [])
+            if str(v.get("title") or "").strip()
+        }
+        for verdict in parsed.get("verdicts") or []:
+            title = str(verdict.get("title") or "").strip().lower()
+            if title:
+                merged[title] = verdict
+        state["verdicts"] = list(merged.values())
         state["status"] = "verified"
         _persist_state(case_dir, run_id, state)
+        sink.emit(new_event(
+            run_id, "verify.completed", actor="verifier",
+            detail=f"{len(state['verdicts'])} verdict(s)",
+            data={"classes": sorted({
+                str(v.get("class") or "").lower()
+                for v in state["verdicts"] if v.get("class")
+            })},
+        ))
+        return state
+
+    # ── Corroboration assessor (M4) ────────────────────────────────────
+    def assess_node(_state: dict[str, Any]) -> dict[str, Any]:
+        verdicts = state.get("verdicts") or []
+        classes = {str(v.get("class") or "").lower() for v in verdicts}
+        notes = candidates = calls = 0
+        for result in state.get("results", []):
+            parsed = result.get("parsed") or {}
+            notes += len(parsed.get("notes") or [])
+            candidates += len(parsed.get("candidate_findings") or [])
+            candidates += len(parsed.get("findings") or [])
+            calls += len(result.get("tool_calls") or [])
+        signature = [notes, candidates, calls, len(verdicts)]
+        previous = state.get("evidence_signature")
+        if previous is not None and signature == previous:
+            state["converged_no_new_evidence"] = True
+            state["status"] = "assessed"
+            _persist_state(case_dir, run_id, state)
+            sink.emit(new_event(
+                run_id, "run.converged", actor="director",
+                detail="no new evidence in the last follow-up round"))
+            return state
+        state["evidence_signature"] = signature
+
+        used = int(state.get("followup_rounds") or 0)
+        limit = int(state.get("followups_limit") or 0)
+        needs = classes & {"refuted", "inferred"}
+        if not needs or used >= limit:
+            state["status"] = "assessed"
+            _persist_state(case_dir, run_id, state)
+            return state
+
+        refuted = [str(v.get("title") or "(untitled)")
+                   for v in verdicts
+                   if str(v.get("class") or "").lower() == "refuted"]
+        inferred = [str(v.get("title") or "(untitled)")
+                    for v in verdicts
+                    if str(v.get("class") or "").lower() == "inferred"]
+        role = "correlation" if (inferred or not refuted) else "evidence"
+        priority = (
+            ("es_search", "es_aggregate", "sample_rows", "run_record")
+            if role == "evidence"
+            else ("es_search", "es_aggregate", "run_record")
+        )
+        task_parts = [
+            f"Follow-up corroboration round {used + 1}/{limit}.",
+            f"Examiner question: {question or '(none)'}.",
+        ]
+        if refuted:
+            task_parts.append(
+                "REFUTED candidates — find independent counter-evidence or "
+                "confirm the refutation with a second artifact family: "
+                + "; ".join(refuted[:6]) + ".")
+        if inferred:
+            task_parts.append(
+                "INFERRED candidates — corroborate with an independent "
+                "family/audit run to escalate, or show the inference is not "
+                "supported: " + "; ".join(inferred[:6]) + ".")
+        task_parts.append(
+            "Use new queries, not a re-run of the same query. If nothing new "
+            "exists, say so explicitly and cite run_record.")
+        families = [str(o.get("family") or "") for o in _order_dicts()
+                    if o.get("family")]
+        order = WorkOrder(
+            order_id=WorkOrder.new_id(),
+            role=role,
+            task=" ".join(task_parts),
+            why=f"{len(refuted)} refuted / {len(inferred)} inferred candidate(s)",
+            priority_tools=priority,
+            acceptance=(
+                "per-candidate corroboration or honest exhaustion; no invented "
+                "evidence"),
+            skill_refs=_retrieve_skill_refs(
+                families, _question_keywords(question), limit=3),
+        )
+        state["orders"].append(order.to_dict())
+        state["followup_rounds"] = used + 1
+        state["status"] = "assessed"
+        _persist_state(case_dir, run_id, state)
+        sink.emit(new_event(
+            run_id, "plan.work_order", actor="director",
+            detail=order.task,
+            data={"order_id": order.order_id, "role": order.role,
+                  "followup": state["followup_rounds"],
+                  "refuted": refuted, "inferred": inferred},
+        ))
+        sink.emit(new_event(
+            run_id, "run.followup", actor="director",
+            detail=f"round {state['followup_rounds']}/{limit} ({role})",
+            data={"refuted": refuted, "inferred": inferred},
+        ))
         return state
 
     # ── Synthesis node ─────────────────────────────────────────────────
@@ -889,7 +1369,11 @@ def run_mode3(
             state["candidates"] = []
             state["narrative"] = ""
         state["status"] = "completed"
-        state["stop_reason"] = "converged" if not state["candidates"] else "completed"
+        state["stop_reason"] = (
+            "converged_no_new_evidence"
+            if state.get("converged_no_new_evidence")
+            else ("converged" if not state["candidates"] else "completed")
+        )
         _persist_state(case_dir, run_id, state)
         sink.emit(new_event(
             run_id, "run.completed", actor="director",
@@ -913,6 +1397,7 @@ def run_mode3(
         graph.add_node("worker", worker_node)
         graph.add_node("pause", pause_node)
         graph.add_node("verify", verify_node)
+        graph.add_node("assess", assess_node)
         graph.add_node("synthesize", synthesis_node)
 
         graph.add_edge(START, "director")
@@ -929,7 +1414,19 @@ def run_mode3(
                                     {"worker": "worker", "verify": "verify",
                                      "pause": "pause"})
         graph.add_edge("pause", END)
-        graph.add_edge("verify", "synthesize")
+
+        def _after_assess(_state: dict[str, Any]) -> str:
+            if str(state.get("status") or "") == "paused":
+                return "pause"
+            if int(state.get("order_index") or 0) < len(_order_dicts()):
+                return "worker"
+            return "synthesize"
+
+        graph.add_edge("verify", "assess")
+        graph.add_conditional_edges("assess", _after_assess,
+                                    {"worker": "worker",
+                                     "synthesize": "synthesize",
+                                     "pause": "pause"})
         graph.add_edge("synthesize", END)
         compiled = graph.compile()
         compiled.invoke(state)

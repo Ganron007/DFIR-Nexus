@@ -7399,6 +7399,39 @@ async def api_mode3_run_resume(request):
     return JSONResponse({"run_id": run_id, "status": "running"}, status_code=202)
 
 
+async def api_mode3_run_stage(request):
+    """POST /portal/api/mode3/run/stage — examiner stages DRAFTs from a run.
+
+    Only candidates with real audit_ids and no refuted verdict are staged;
+    every staged finding carries run_id/input_call_ids lineage. Approval is
+    untouched: staged findings remain DRAFT until the examiner approves them.
+    """
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+    run_id = str(body.get("run_id") or "").strip()
+    if not run_id:
+        return JSONResponse({"error": "run_id is required"}, status_code=400)
+    from nexus.langgraph.mode3_runtime import (
+        read_run_record,
+        stage_run_candidates,
+    )
+
+    record = await asyncio.to_thread(read_run_record, case_dir, run_id)
+    if record is None:
+        return JSONResponse({"error": "run not found", "run_id": run_id},
+                            status_code=404)
+    result = await asyncio.to_thread(stage_run_candidates, case_dir, run_id)
+    return JSONResponse(result)
+
+
 def create_dashboard():
     return [
         Route("/health", endpoint=health, methods=["GET"]),
@@ -7484,6 +7517,7 @@ def create_dashboard():
         Route("/portal/api/mode3/run/steer", api_mode3_run_steer, methods=["POST"]),
         Route("/portal/api/mode3/run/pause", api_mode3_run_pause, methods=["POST"]),
         Route("/portal/api/mode3/run/resume", api_mode3_run_resume, methods=["POST"]),
+        Route("/portal/api/mode3/run/stage", api_mode3_run_stage, methods=["POST"]),
         Route("/portal/api/case/seal", api_case_seal, methods=["POST"]),
         Route("/portal/api/mode3/seal", api_case_seal, methods=["POST"]),
         # RAG preflight (WP 3.13)

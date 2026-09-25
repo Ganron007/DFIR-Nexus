@@ -48,6 +48,36 @@ def test_cli_status_reads_run_record(tmp_path):
     assert payload["status"] == "completed"
 
 
+def test_cli_stage_uses_real_runtime(tmp_path):
+    case = _case(tmp_path)
+    from nexus.audit import AuditWriter
+
+    audit_id = AuditWriter("nexus", audit_dir=case / "audit").log(
+        tool="es_search",
+        params={"family": "evtxecmd", "file": "a.csv"},
+        result_summary={"total": 1},
+        source="portal",
+    )
+    m3._persist_state(case, "M3-cli-stage", {
+        "run_id": "M3-cli-stage", "case_id": case.name, "question": "q",
+        "status": "completed", "orders": [], "order_index": 0, "results": [],
+        "verdicts": [],
+        "candidates": [{
+            "title": "CLI candidate", "observation": "o", "interpretation": "i",
+            "confidence": "LOW", "confidence_justification": "audited",
+            "audit_ids": [audit_id],
+            "evidence": [{"source": "evtxecmd/a.csv", "line": "3"}],
+        }],
+        "gaps": [],
+    })
+    with patch("nexus.cli.main._resolve_case", return_value=case):
+        result = runner.invoke(app, ["mode3", "stage", "--run-id", "M3-cli-stage"])
+    assert result.exit_code == 0
+    assert "Staged 1 DRAFT" in result.stdout
+    rows = json.loads((case / "findings.json").read_text(encoding="utf-8"))
+    assert any(f.get("run_id") == "M3-cli-stage" for f in rows)
+
+
 def test_cli_steer_and_pause(tmp_path):
     case = _case(tmp_path)
     m3._persist_state(case, "M3-cli2", {

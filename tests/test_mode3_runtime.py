@@ -115,6 +115,191 @@ def test_run_work_order_falls_back_without_black_box(tmp_path):
     assert order.status == "fallback"
 
 
+def test_plan_work_orders_attaches_kb_skill_refs(tmp_path):
+    case = _case(tmp_path)
+    ref = {"skill": "evtx-logon", "title": "Logon analysis", "version": "abc123",
+           "score": 3, "why": ["family evtxecmd"], "citations": ["kb-1"]}
+    with patch("nexus.langgraph.backbone.backbone_call",
+               return_value={"family_rows": {"evtxecmd": 10}}), \
+         patch.object(m3, "_retrieve_skill_refs", return_value=[ref]):
+        orders = m3.plan_work_orders(
+            case, "rdp logons", run_id="M3-sk",
+            sink=m3.EventSink(case, "M3-sk"),
+        )
+    assert orders and all(order.skill_refs for order in orders)
+    plan_events = [e for e in m3.read_run_events(case, "M3-sk")
+                   if e["event_type"] == "plan.work_order"]
+    assert plan_events
+    assert plan_events[0]["data"]["skills"][0]["skill"] == "evtx-logon"
+    assert plan_events[0]["data"]["skills"][0]["version"] == "abc123"
+
+
+def test_skill_procedure_block_reports_version_and_citations():
+    fake_skill = {
+        "skill": "evtx-logon",
+        "title": "Logon analysis",
+        "steps": [{"name": "4624", "query": "terms event_id 4624",
+                   "look_for": "logons"}],
+        "caveats": ["system noise"],
+        "negative": "no logons means check parsing first",
+    }
+    order = m3.WorkOrder(
+        order_id="wo-sk", role="evidence", task="t",
+        skill_refs=[{"skill": "evtx-logon", "version": "abc123",
+                     "citations": ["kb-1"], "title": "Logon analysis"}],
+    )
+    with patch.object(m3, "_skill_lookup", return_value={"evtx-logon": fake_skill}):
+        block = m3._skill_procedure_block(order)
+    assert "evtx-logon vabc123" in block
+    assert "kb-1" in block
+    assert "terms event_id 4624" in block
+    assert "no logons means check parsing first" in block
+
+
+def test_supervisor_followup_then_converges(tmp_path):
+    case = _case(tmp_path)
+
+    def fake_work(order, *, case_dir, model, run_id, sink, agent_id="", context=None):
+        if order.role == "verifier":
+            parsed = {"verdicts": [{
+                "title": "Suspicious logon", "class": "inferred",
+                "basis": "single family", "audit_ids": ["a-1"],
+            }]}
+        elif order.role == "synthesis":
+            parsed = {
+                "narrative": "n",
+                "findings": [{
+                    "title": "Suspicious logon", "observation": "o",
+                    "interpretation": "i", "confidence": "LOW",
+                    "audit_ids": ["a-1"],
+                }],
+                "gaps": [], "coverage": {},
+            }
+        elif order.role == "correlation":
+            parsed = {"corroborated_entities": [], "notes": [], "coverage": {}}
+        else:
+            parsed = {
+                "notes": [{"statement": "seen", "audit_ids": ["a-1"]}],
+                "candidate_findings": [{
+                    "title": "Suspicious logon", "observation": "o",
+                    "interpretation": "i", "confidence": "LOW",
+                    "audit_ids": ["a-1"],
+                }],
+                "coverage": {},
+            }
+        return m3.AgentResult(
+            order_id=order.order_id, role=order.role, status="ok",
+            reply=json.dumps(parsed), parsed=parsed, audit_id="ctx-1",
+        )
+
+    with patch.object(m3, "run_work_order", side_effect=fake_work), \
+         patch.object(m3, "plan_work_orders", return_value=[m3.WorkOrder(
+             order_id="wo-1", role="evidence", task="t", family="evtxecmd")]):
+        state = m3.run_mode3(case, "what happened", model=object())
+
+    assert [o["role"] for o in state["orders"]] == ["evidence", "correlation"]
+    assert state["followup_rounds"] == 1
+    assert state["status"] == "completed"
+    assert state["stop_reason"] == "converged_no_new_evidence"
+    event_types = [e["event_type"] for e in m3.read_run_events(case, state["run_id"])]
+    assert "run.followup" in event_types
+    assert "run.converged" in event_types
+
+
+def test_stage_run_candidates_lineage_and_filters(tmp_path):
+    case = _case(tmp_path)
+    from nexus.audit import AuditWriter
+
+    audit_id = AuditWriter("nexus", audit_dir=case / "audit").log(
+        tool="es_search",
+        params={"family": "evtxecmd", "file": "a.csv", "query": "logon"},
+        result_summary={"total": 1},
+        source="portal",
+    )
+    assert audit_id, "fixture must create a real case audit entry"
+    m3._persist_state(case, "M3-stage", {
+        "run_id": "M3-stage", "case_id": case.name, "question": "q",
+        "status": "completed", "orders": [], "order_index": 0, "results": [],
+        "verdicts": [{"title": "Refuted thing", "class": "refuted"}],
+        "candidates": [
+            {"title": "Valid candidate", "observation": "o",
+             "interpretation": "i", "confidence": "LOW",
+             "confidence_justification": "one audited query",
+             "audit_ids": [audit_id],
+             "evidence": [{"source": "evtxecmd/a.csv", "line": "7"}]},
+            {"title": "No audit", "observation": "o", "interpretation": "i",
+             "confidence": "LOW", "audit_ids": []},
+            {"title": "Refuted thing", "observation": "o", "interpretation": "i",
+             "confidence": "LOW", "audit_ids": [audit_id]},
+        ],
+        "gaps": [],
+    })
+    result = m3.stage_run_candidates(case, "M3-stage")
+    assert result["staged_count"] == 1
+    assert result["skipped_count"] == 2
+    assert result["staged"][0]["input_call_ids"] == [audit_id]
+    rows = json.loads((case / "findings.json").read_text(encoding="utf-8"))
+    staged = [f for f in rows if f.get("run_id") == "M3-stage"]
+    assert staged, "the valid candidate must be staged as DRAFT"
+    assert staged[0]["status"] == "DRAFT"
+    assert staged[0]["input_call_ids"] == [audit_id]
+    assert staged[0].get("source") == "mode3"
+    events = m3.read_run_events(case, "M3-stage")
+    assert any(e["event_type"] == "finding.staged" for e in events)
+
+
+def test_run_work_order_formats_prose_answer(tmp_path):
+    case = _case(tmp_path)
+    order = m3.WorkOrder(order_id="wo-fmt", role="evidence", task="t")
+    prose = "Found 29,211 failed logons (4625), audit nexus-ci-test-1."
+    with patch.object(m3, "run_context_loop", return_value={
+            "reply": prose, "tool_calls": [], "hits": [], "aggregations": [],
+            "audit_id": "", "partial": False, "partial_reason": ""}), \
+         patch.object(m3, "_format_final_answer", return_value={
+             "notes": [{"statement": "failed logons",
+                        "audit_ids": ["nexus-ci-test-1"]}]}) as fmt:
+        result = m3.run_work_order(
+            order, case_dir=case, model=object(), run_id="M3-fmt",
+            sink=m3.EventSink(case, "M3-fmt"))
+    assert result.status == "ok"
+    assert result.parsed["notes"][0]["statement"] == "failed logons"
+    assert result.reply == prose
+    fmt.assert_called_once()
+    types = [e["event_type"] for e in m3.read_run_events(case, "M3-fmt")]
+    assert "agent.formatted" in types
+
+
+def test_run_work_order_stays_unparsed_when_format_fails(tmp_path):
+    case = _case(tmp_path)
+    order = m3.WorkOrder(order_id="wo-nf", role="evidence", task="t")
+    with patch.object(m3, "run_context_loop", return_value={
+            "reply": "prose without json", "tool_calls": [], "hits": [],
+            "aggregations": [], "audit_id": "", "partial": False,
+            "partial_reason": ""}), \
+         patch.object(m3, "_format_final_answer", return_value={}):
+        result = m3.run_work_order(
+            order, case_dir=case, model=object(), run_id="M3-nf",
+            sink=m3.EventSink(case, "M3-nf"))
+    assert result.status == "unparsed"
+    assert result.parsed == {}
+
+
+def test_role_budget_defaults_are_respected(tmp_path):
+    case = _case(tmp_path)
+    order = m3.WorkOrder(order_id="wo-b", role="correlation", task="t")
+    reply = json.dumps({"corroborated_entities": [], "coverage": {}})
+    with patch.object(m3, "run_context_loop", return_value={
+            "reply": reply, "tool_calls": [], "hits": [], "aggregations": [],
+            "audit_id": "", "partial": False, "partial_reason": ""}) as fake:
+        m3.run_work_order(order, case_dir=case, model=object(), run_id="M3-b",
+                          sink=m3.EventSink(case, "M3-b"))
+    budget = fake.call_args.kwargs["budget"]
+    role = m3.role_for("correlation")
+    assert budget.rounds == role.max_rounds
+    assert budget.calls == role.max_calls
+    assert budget.seconds == role.max_seconds
+
+
 def test_run_mode3_supervisor_runs_and_persists(tmp_path):
     case = _case(tmp_path)
 
