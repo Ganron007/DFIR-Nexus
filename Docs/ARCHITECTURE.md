@@ -384,18 +384,18 @@ concurrent multi-agent**: one work order runs at a time.
   prompt as step queries.
 - **Graph**: `director → worker(s) → verify → assess → synthesis`, with a
   `pause`/halt node. `assess` appends follow-up orders for inferred or
-  refuted candidates (`NEXUS_MODE3_FOLLOWUPS`, default 8, up to 24) and stops
+  refuted candidates (`NEXUS_MODE2_FOLLOWUPS`, default 8, up to 24) and stops
   early on `converged_no_new_evidence`. Each worker receives the attached KB
   skill procedures and the prior agents' notes, packed to the case context
   window. Examiner findings-feedback (approved → deepen, rejected →
   exclusion, draft → de-dup) is read at plan time.
 - **Events** (`AgentEvent`): one envelope (`run_id/turn_id/agent_id/call_id`,
   tool/why/audit_id/status/detail) persisted to
-  `analysis/mode3_runs/<run_id>.jsonl` and streamed over SSE
+  `analysis/mode2_runs/<run_id>.jsonl` and streamed over SSE
   (`GET /portal/api/mode3/run/events`). Examiner controls (pause/stop) live in
   a `.control.json` sidecar the graph never writes, so a state persist can
   never clobber a fresh request.
-- **Run record**: `analysis/mode3_runs/<run_id>.json` (orders, results,
+- **Run record**: `analysis/mode2_runs/<run_id>.json` (orders, results,
   verdicts, candidates, coverage, follow-up count) is the resumable
   checkpoint; `nexus mode3` and the Agent Run page are two surfaces over the
   same runtime.

@@ -1501,7 +1501,7 @@ needles is one event.
 ---
 
 ### POST /portal/api/mode2/run/steer
-**Description:** Inject an examiner directive. Written to `analysis/mode3_runs/<run_id>.steering.jsonl` and read into every subsequent work-order context (agents pick it up on the next order, not mid-order). Emits a `steering.injected` event.
+**Description:** Inject an examiner directive. Written to `analysis/mode2_runs/<run_id>.steering.jsonl` and read into every subsequent work-order context (agents pick it up on the next order, not mid-order). Emits a `steering.injected` event.
 
 **Request:** `{"run_id": "M3-…", "text": "chase WS01 and drop the exfil line"}`
 
@@ -1572,7 +1572,7 @@ Elasticsearch is required. Agents never stage or approve.
 ### POST /portal/api/mode3/run
 **Description:** Start the concurrent multi-agent team in the background (the
 supervisor may use the configured model; deterministic fallback otherwise).
-**Request:** `{"question": "string?", "run_id": "M4-…?"}` → **202**
+**Request:** `{"question": "string?", "run_id": "M3-…?"}` → **202**
 `{"run_id", "status": "running", "question"}`. `409` when a run with that id is
 in progress or the case is sealed; when ES is unavailable the record fails with
 `stop_reason=elasticsearch_required`.

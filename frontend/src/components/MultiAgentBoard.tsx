@@ -13,14 +13,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ApiError,
   api,
-  mode4RunEventsPath,
+  mode3RunEventsPath,
   type Mode3RunEvent,
-  type Mode4BoardEntry,
-  type Mode4BoardResponse,
-  type Mode4Candidate,
-  type Mode4Dispute,
-  type Mode4RunStatus,
-  type Mode4StageResult,
+  type Mode3BoardEntry,
+  type Mode3BoardResponse,
+  type Mode3Candidate,
+  type Mode3Dispute,
+  type Mode3RunStatus,
+  type Mode3StageResult,
 } from "../api/client";
 
 const TERMINAL = new Set(["completed", "failed", "paused", "stopped"]);
@@ -57,13 +57,13 @@ export default function MultiAgentBoard() {
   const [question, setQuestion] = useState("");
   const [runId, setRunId] = useState("");
   const [attachId, setAttachId] = useState("");
-  const [status, setStatus] = useState<Mode4RunStatus | null>(null);
-  const [boardData, setBoardData] = useState<Mode4BoardResponse | null>(null);
+  const [status, setStatus] = useState<Mode3RunStatus | null>(null);
+  const [boardData, setBoardData] = useState<Mode3BoardResponse | null>(null);
   const [events, setEvents] = useState<Mode3RunEvent[]>([]);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [steerText, setSteerText] = useState("");
-  const [stageResult, setStageResult] = useState<Mode4StageResult | null>(null);
+  const [stageResult, setStageResult] = useState<Mode3StageResult | null>(null);
   const streamRef = useRef<HTMLDivElement | null>(null);
 
   const running = !!runId && !TERMINAL.has(status?.status || "");
@@ -71,8 +71,8 @@ export default function MultiAgentBoard() {
   const refresh = async (id: string) => {
     try {
       const [s, b] = await Promise.all([
-        api.mode4RunStatus(id),
-        api.mode4RunBoard(id),
+        api.mode3RunStatus(id),
+        api.mode3RunBoard(id),
       ]);
       setStatus(s);
       setBoardData(b);
@@ -86,12 +86,12 @@ export default function MultiAgentBoard() {
     let cancelled = false;
     (async () => {
       try {
-        const s = await api.mode4RunStatus();
+        const s = await api.mode3RunStatus();
         if (!cancelled) {
           setStatus(s);
           setRunId(s.run_id);
           setAttachId(s.run_id);
-          void api.mode4RunBoard(s.run_id).then((b) => !cancelled && setBoardData(b)).catch(() => undefined);
+          void api.mode3RunBoard(s.run_id).then((b) => !cancelled && setBoardData(b)).catch(() => undefined);
         }
       } catch {
         /* no prior run — start one below */
@@ -106,7 +106,7 @@ export default function MultiAgentBoard() {
   useEffect(() => {
     if (!runId) return;
     setEvents([]);
-    const source = new EventSource(mode4RunEventsPath(runId));
+    const source = new EventSource(mode3RunEventsPath(runId));
     const onAgent = (raw: MessageEvent) => {
       try {
         const event = JSON.parse(raw.data) as Mode3RunEvent;
@@ -157,7 +157,7 @@ export default function MultiAgentBoard() {
     setError("");
     setStageResult(null);
     try {
-      const r = await api.mode4Run({
+      const r = await api.mode3Run({
         question: question.trim() || undefined,
       });
       setRunId(r.run_id);
@@ -176,9 +176,9 @@ export default function MultiAgentBoard() {
     setBusy("pause");
     try {
       if (status?.status === "paused") {
-        await api.mode4RunResume({ run_id: runId });
+        await api.mode3RunResume({ run_id: runId });
       } else {
-        await api.mode4RunPause({ run_id: runId, paused: true });
+        await api.mode3RunPause({ run_id: runId, paused: true });
       }
       await refresh(runId);
     } catch (e) {
@@ -192,7 +192,7 @@ export default function MultiAgentBoard() {
     if (!runId) return;
     setBusy("stop");
     try {
-      await api.mode4RunStop({ run_id: runId });
+      await api.mode3RunStop({ run_id: runId });
       await refresh(runId);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Stop failed");
@@ -205,7 +205,7 @@ export default function MultiAgentBoard() {
     if (!runId || !steerText.trim()) return;
     setBusy("steer");
     try {
-      await api.mode4RunSteer({ run_id: runId, text: steerText.trim() });
+      await api.mode3RunSteer({ run_id: runId, text: steerText.trim() });
       setSteerText("");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Steering failed");
@@ -218,7 +218,7 @@ export default function MultiAgentBoard() {
     if (!runId) return;
     setBusy("stage");
     try {
-      const r = await api.mode4RunStage({ run_id: runId });
+      const r = await api.mode3RunStage({ run_id: runId });
       setStageResult(r);
       await refresh(runId);
     } catch (e) {
@@ -257,7 +257,7 @@ export default function MultiAgentBoard() {
             <input
               value={attachId}
               onChange={(e) => setAttachId(e.target.value)}
-              placeholder="M4-…"
+              placeholder="M3-…"
               style={{
                 width: 200, background: "var(--bg-tertiary)", color: "var(--text-primary)",
                 border: "1px solid var(--border)", borderRadius: 4,
@@ -367,7 +367,7 @@ export default function MultiAgentBoard() {
             </div>
           )}
           <div className="agent-lanes">
-            {board.map((entry: Mode4BoardEntry) => (
+            {board.map((entry: Mode3BoardEntry) => (
               <div key={entry.entry_id || entry.agent_id} className="agent-lane">
                 <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                   <span className="badge draft">{(entry.role || "seat").toUpperCase()}</span>
@@ -442,7 +442,7 @@ export default function MultiAgentBoard() {
           </div>
           {disputes.length > 0 && (
             <div style={{ marginBottom: 10 }}>
-              {disputes.map((d: Mode4Dispute, i) => (
+              {disputes.map((d: Mode3Dispute, i) => (
                 <div key={`${d.entity_value}-${d.claim_kind}-${i}`} style={{ fontSize: 12, marginBottom: 4 }}>
                   <span style={{ color: "var(--warning)", fontWeight: 600 }}>DISPUTE</span>{" "}
                   <strong>{d.entity_type}:{d.entity_value}</strong>{" "}
@@ -458,7 +458,7 @@ export default function MultiAgentBoard() {
               No settled candidates yet. They appear after the join settles.
             </div>
           )}
-          {candidates.map((c: Mode4Candidate, i) => (
+          {candidates.map((c: Mode3Candidate, i) => (
             <div key={`${c.title}-${i}`} className="agent-candidate">
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                 <strong style={{ fontSize: 12 }}>{c.title}</strong>

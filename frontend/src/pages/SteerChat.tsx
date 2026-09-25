@@ -123,8 +123,8 @@ function ProposalCard({ entry, caseMode, onAsk, busy, saved, onSave }: {
   const navigate = useNavigate();
   const isMode3 = entry.action === "mode3_plan" || entry.action === "mode3_execute";
   const isSteer = entry.action === "steer_answer";
-  const badge = isMode3 ? "Mode 3 Multi-role"
-    : isSteer ? "Mode 2 Answer"
+  const badge = isMode3 ? "Mode 2 Multi-role"
+    : isSteer ? "Mode 1 Answer"
     : (caseMode === "1" || caseMode === "" ? "Query hits" : "Mode 2 Proposal");
   const hits = entry.data?.hits || [];
   const queries = entry.data?.queries || [];
@@ -398,10 +398,10 @@ export default function SteerChat() {
   // 3 Multi-agent (banner to the Investigation Board). "mode1" is the legacy
   // fallback when the case has no mode yet.
   const modeKnown = caseMode === "1" || caseMode === "2" || caseMode === "3";
-  const mode: "mode1" | "mode2" | "mode3" | "mode4" =
-    caseMode === "1" ? "mode2"
-      : caseMode === "2" ? "mode3"
-        : caseMode === "3" ? "mode4" : "mode1";
+  const mode: "mode1" | "mode2" | "mode3" =
+    caseMode === "1" ? "mode1"
+      : caseMode === "2" ? "mode2"
+        : caseMode === "3" ? "mode3" : "mode1";
   const [mode2Iterations, setMode2Iterations] = useState(3);
   const [mode3Step, setMode3Step] = useState<"plan" | "execute" | "seal">("plan");
   const [mode3Plan, setMode3Plan] = useState<Mode3PlanResponse | null>(null);
@@ -469,7 +469,7 @@ export default function SteerChat() {
   }, [activeCase]);
 
   useEffect(() => {
-    if (mode !== "mode2") return;
+    if (mode !== "mode1") return;
     refreshSuggestions();
     // Suggestions are server-cached (120 s) — refreshing on case/mode change is cheap.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -502,7 +502,7 @@ export default function SteerChat() {
     ]);
 
     try {
-      if (mode === "mode1") {
+      if (mode === "mode1-ask") {
         // WP 4d.3: streamed turn — live status + iteration events, then reload
         await chatStream(
           {
@@ -523,7 +523,7 @@ export default function SteerChat() {
           },
         );
         load();
-      } else if (mode === "mode2") {
+      } else if (mode === "mode1") {
         // WP 10.53/10.54 — live bounded tool loop. The server streams tool
         // events and persists the final/partial transcript; reloading shows
         // the exact tool chain, rows and partial state after the turn.
@@ -568,7 +568,7 @@ export default function SteerChat() {
           },
         );
         load();
-      } else if (mode === "mode3") {
+      } else if (mode === "mode2") {
         if (mode3Step === "plan") {
           const plan = await api.mode3Plan({ question: text });
           setMode3Plan(plan);
@@ -801,13 +801,13 @@ export default function SteerChat() {
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           {/* Mode is fixed at case creation — no in-case switching (segregation). */}
           <span
-            className={`mode-badge mode-${mode === "mode2" ? "2" : mode === "mode3" ? "3" : mode === "mode4" ? "3" : "1"}`}
+            className={`mode-badge mode-${mode === "mode1" ? "1" : mode === "mode2" ? "2" : "3"}`}
             title="Investigation mode was chosen when the case was created"
             style={{ fontSize: 11 }}
           >
-            {mode === "mode1" ? "Mode 1 — LLM" : mode === "mode2" ? "Mode 1 — LLM steering" : mode === "mode3" ? "Mode 2 — Multi-role" : "Mode 3 — Multi-agent"}
+            {mode === "mode1" ? "Mode 1 — LLM" : mode === "mode1" ? "Mode 1 — LLM steering" : mode === "mode2" ? "Mode 2 — Multi-role" : "Mode 3 — Multi-agent"}
           </span>
-          {mode === "mode2" && (
+          {mode === "mode1" && (
             <input
               type="number"
               min={1}
@@ -818,7 +818,7 @@ export default function SteerChat() {
               title="Maximum rounds for Iterate (1-4)"
             />
           )}
-          {mode === "mode3" && (
+          {mode === "mode2" && (
             <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
               Step: <strong style={{ color: "var(--purple)" }}>{mode3Step}</strong>
             </span>
@@ -829,13 +829,13 @@ export default function SteerChat() {
       <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: -4, marginBottom: 10 }}>
         {mode === "mode1"
           ? "Mode 1: you propose needles — the LLM scribes your findings. Evidence and the audit chain are shared."
-          : mode === "mode2"
+          : mode === "mode1"
             ? "Mode 1 (LLM): you ask in plain language — the LLM queries the case's evidence index and cites rows. Staging a DRAFT is a separate examiner-triggered action."
-            : mode === "mode3"
+            : mode === "mode2"
               ? "Mode 2 (Multi-role): the supervised multi-role pipeline runs from Agent Run — one work order at a time; you steer, stop and stage."
               : "Mode 3 (Multi-agent): the concurrent team runs from Agent Run (Investigation Board) — seats, shared claims, disputes; you steer, stop and stage."}
       </div>
-      {(mode === "mode3" || mode === "mode4") && (
+      {(mode === "mode2" || mode === "mode3") && (
         <div
           className="card"
           style={{
@@ -849,7 +849,7 @@ export default function SteerChat() {
           }}
         >
           <span style={{ fontSize: 12 }}>
-            {mode === "mode3" ? (
+            {mode === "mode2" ? (
               <>
                 This chat keeps the legacy plan/execute sliver. The supervised multi-role
                 pipeline runs on the dedicated <strong>Agent Run</strong> page — agent board,
@@ -868,7 +868,7 @@ export default function SteerChat() {
           </Link>
         </div>
       )}
-      {mode === "mode2" && (suggestions.length > 0 || suggLoading) && (
+      {mode === "mode1" && (suggestions.length > 0 || suggLoading) && (
         <div
           className="card"
           style={{
@@ -906,7 +906,7 @@ export default function SteerChat() {
           </button>
         </div>
       )}
-      {mode === "mode2" && turnTimings && (
+      {mode === "mode1" && turnTimings && (
         <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: -8, marginBottom: 8 }}>
           last turn: {turnTimings}
         </div>
@@ -915,7 +915,7 @@ export default function SteerChat() {
       {error && <div className="error-banner">{error}</div>}
 
       {/* Mode 3 action bar — Execute */}
-      {mode === "mode3" && mode3Step === "execute" && mode3Plan && (
+      {mode === "mode2" && mode3Step === "execute" && mode3Plan && (
         <div className="card" style={{ padding: "8px 12px", marginBottom: 8 }}>
           <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
             Plan ready: {mode3Plan.items.length} step(s), {mode3Plan.queries.length} query(ies).
@@ -932,7 +932,7 @@ export default function SteerChat() {
       )}
 
       {/* Mode 3 action bar — Seal */}
-      {mode === "mode3" && mode3Step === "seal" && (
+      {mode === "mode2" && mode3Step === "seal" && (
         <div className="card" style={{ padding: "12px", marginBottom: 8 }}>
           <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 8 }}>
             Execution complete. Seal the case file with HMAC challenge-response.
@@ -967,7 +967,7 @@ export default function SteerChat() {
       )}
 
       {/* WP 4b.14: Propose Draft button — Mode 2 */}
-      {mode === "mode2" && (
+      {mode === "mode1" && (
         <div className="card" style={{ padding: "8px 12px", marginBottom: 8, display: "flex", gap: 8, alignItems: "center" }}>
           <button className="btn btn-sm" onClick={() => setShowDraftForm(!showDraftForm)}>
             ✎ Propose Draft Finding
@@ -986,7 +986,7 @@ export default function SteerChat() {
           )}
         </div>
       )}
-      {mode === "mode2" && showDraftForm && (
+      {mode === "mode1" && showDraftForm && (
         <div className="card" style={{ padding: "8px 12px", marginBottom: 8 }}>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <input
@@ -1010,7 +1010,7 @@ export default function SteerChat() {
       )}
 
       {/* WP 4j.13 — iteration result card (queries + aggregations) */}
-      {mode === "mode2" && iterateResult && iterateResult.iterations.length > 0 && (
+      {mode === "mode1" && iterateResult && iterateResult.iterations.length > 0 && (
         <div className="card" style={{ padding: "10px 14px", marginBottom: 8 }}>
           <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
             Investigation loop — {iterateResult.iterations.length} round(s), {iterateResult.total_hits} hits
@@ -1182,8 +1182,8 @@ export default function SteerChat() {
         <input
           placeholder={
             mode === "mode1" ? "Ask a question..." :
-            mode === "mode2" ? "Ask about the evidence..." :
-            mode === "mode4" ? "Multi-agent runs on Agent Run (Investigation Board)..." :
+            mode === "mode1" ? "Ask about the evidence..." :
+            mode === "mode3" ? "Multi-agent runs on Agent Run (Investigation Board)..." :
             mode3Step === "plan" ? "Set scope for agent..." :
             "Use action buttons above..."
           }
@@ -1191,12 +1191,12 @@ export default function SteerChat() {
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && !loading && send()}
           placeholder-style={{ color: loading ? "var(--text-muted)" : undefined }}
-          disabled={(mode === "mode3" && mode3Step !== "plan") || mode === "mode4"}
+          disabled={(mode === "mode2" && mode3Step !== "plan") || mode === "mode3"}
         />
         <button
           className="btn btn-primary"
           onClick={send}
-          disabled={loading || (mode === "mode3" && mode3Step !== "plan") || mode === "mode4"}
+          disabled={loading || (mode === "mode2" && mode3Step !== "plan") || mode === "mode3"}
         >
           {loading ? "Working…" : "Send"}
         </button>

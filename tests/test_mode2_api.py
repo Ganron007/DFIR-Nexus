@@ -48,8 +48,8 @@ def test_mode3_run_start_status_steer_pause_resume(tmp_path):
         started.append((str(case_dir.name), question, rid, resume))
 
     with patch("nexus.dashboard.app._get_case_dir", return_value=case), \
-         patch("nexus.dashboard.app._start_mode3_thread", side_effect=_fake_start), \
-         patch("nexus.dashboard.app._mode3_resolve_model", return_value=None):
+         patch("nexus.dashboard.app._start_mode2_thread", side_effect=_fake_start), \
+         patch("nexus.dashboard.app._resolve_run_model", return_value=None):
         client = _client()
         start = client.post("/portal/api/mode2/run",
                             json={"question": "who did it", "run_id": run_id})

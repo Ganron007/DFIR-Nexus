@@ -12,7 +12,7 @@ This module is the real agentic execution layer, not the old
   every tool call is audited through ``backbone_call``, budget expiry returns
   partial results, and no role can stage or approve a finding.
 - **Events** use one envelope (``run_id``/``turn_id``/``agent_id``/``call_id``/
-  ``input_call_ids``) persisted to ``analysis/mode3_runs/<run_id>.jsonl`` and
+  ``input_call_ids``) persisted to ``analysis/mode2_runs/<run_id>.jsonl`` and
   streamed through an optional callback (SSE/CLI consume the same events).
 - **Supervisor** is a LangGraph ``StateGraph``: director -> worker(s) ->
   verifier -> synthesis -> finalize, with persistent run state and bounded
@@ -41,7 +41,7 @@ from nexus.langgraph.prompt_budget import budget_chars, case_window
 
 log = logging.getLogger(__name__)
 
-_MODE3_DIR = "analysis/mode3_runs"
+_MODE2_DIR = "analysis/mode2_runs"
 
 
 def _env_int(name: str, default: int, *, low: int, high: int) -> int:
@@ -71,9 +71,9 @@ def mode3_loop_budget(case_dir: Path | None = None) -> LoopBudget:
     """
     window = case_window(case_dir) if case_dir is not None else None
     return LoopBudget(
-        rounds=_env_int("NEXUS_MODE3_ROUNDS", 24, low=1, high=80),
-        seconds=_env_float("NEXUS_MODE3_SECONDS", 1800.0, low=30.0, high=7200.0),
-        calls=_env_int("NEXUS_MODE3_CALLS", 48, low=1, high=200),
+        rounds=_env_int("NEXUS_MODE2_ROUNDS", 24, low=1, high=80),
+        seconds=_env_float("NEXUS_MODE2_SECONDS", 1800.0, low=30.0, high=7200.0),
+        calls=_env_int("NEXUS_MODE2_CALLS", 48, low=1, high=200),
         call_chars=budget_chars(window),
     )
 
@@ -283,7 +283,7 @@ class EventSink:
         self.case_dir = Path(case_dir)
         self.run_id = run_id
         self.callback = callback
-        self.path = self.case_dir / _MODE3_DIR / f"{run_id}.jsonl"
+        self.path = self.case_dir / _MODE2_DIR / f"{run_id}.jsonl"
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
     def emit(self, event: AgentEvent) -> None:
@@ -417,7 +417,7 @@ def role_for(name: str) -> AgentRole:
 
 
 def _steering_path(case_dir: Path, run_id: str) -> Path:
-    return Path(case_dir) / _MODE3_DIR / f"{run_id}.steering.jsonl"
+    return Path(case_dir) / _MODE2_DIR / f"{run_id}.steering.jsonl"
 
 
 def append_steering(case_dir: Path, run_id: str, text: str) -> dict[str, Any]:
@@ -452,7 +452,7 @@ def read_steering(case_dir: Path, run_id: str, limit: int = 50) -> list[dict[str
 
 
 def _control_path(case_dir: Path, run_id: str) -> Path:
-    return Path(case_dir) / _MODE3_DIR / f"{run_id}.control.json"
+    return Path(case_dir) / _MODE2_DIR / f"{run_id}.control.json"
 
 
 def read_controls(case_dir: Path, run_id: str) -> dict[str, bool]:
@@ -1235,7 +1235,7 @@ class Mode3State(dict):
 
 
 def _persist_state(case_dir: Path, run_id: str, state: dict[str, Any]) -> None:
-    path = Path(case_dir) / _MODE3_DIR / f"{run_id}.json"
+    path = Path(case_dir) / _MODE2_DIR / f"{run_id}.json"
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".tmp")
@@ -1245,7 +1245,7 @@ def _persist_state(case_dir: Path, run_id: str, state: dict[str, Any]) -> None:
         log.warning("mode3 state persist failed: %s", exc)
 
 
-def run_mode3(
+def run_mode2(
     case_dir: Path,
     question: str,
     *,
@@ -1262,7 +1262,7 @@ def run_mode3(
     audited; DRAFT candidates are returned but never staged here.
     """
     case_dir = Path(case_dir)
-    run_id = run_id or f"M3-{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}-{uuid4().hex[:6]}"
+    run_id = run_id or f"M2-{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}-{uuid4().hex[:6]}"
     sink = EventSink(case_dir, run_id, callback=on_event)
     state: dict[str, Any] = {
         "run_id": run_id,
@@ -1283,12 +1283,12 @@ def run_mode3(
         "max_orders": max_orders,
         "followup_rounds": 0,
         "followups_limit": _env_int(
-            "NEXUS_MODE3_FOLLOWUPS", 8, low=0, high=24),
+            "NEXUS_MODE2_FOLLOWUPS", 8, low=0, high=24),
         "evidence_signature": None,
         "converged_no_new_evidence": False,
         "examiner_feedback": {},
     }
-    state_path = case_dir / _MODE3_DIR / f"{run_id}.json"
+    state_path = case_dir / _MODE2_DIR / f"{run_id}.json"
     if resume and state_path.is_file():
         try:
             loaded = json.loads(state_path.read_text(encoding="utf-8"))
@@ -1305,7 +1305,7 @@ def run_mode3(
                 state.pop("completed_at", None)
                 state.setdefault("followup_rounds", 0)
                 state.setdefault("followups_limit", _env_int(
-                    "NEXUS_MODE3_FOLLOWUPS", 8, low=0, high=24))
+                    "NEXUS_MODE2_FOLLOWUPS", 8, low=0, high=24))
                 state.setdefault("evidence_signature", None)
                 state.setdefault("converged_no_new_evidence", False)
                 state.setdefault("examiner_feedback", {})
@@ -1699,7 +1699,7 @@ def run_mode3(
 
 
 def run_record_path(case_dir: Path, run_id: str) -> Path:
-    return Path(case_dir) / _MODE3_DIR / f"{run_id}.json"
+    return Path(case_dir) / _MODE2_DIR / f"{run_id}.json"
 
 
 def read_run_record(case_dir: Path, run_id: str) -> dict[str, Any] | None:
@@ -1716,7 +1716,7 @@ def read_run_record(case_dir: Path, run_id: str) -> dict[str, Any] | None:
 def read_run_events(
     case_dir: Path, run_id: str, *, limit: int = 2000,
 ) -> list[dict[str, Any]]:
-    path = Path(case_dir) / _MODE3_DIR / f"{run_id}.jsonl"
+    path = Path(case_dir) / _MODE2_DIR / f"{run_id}.jsonl"
     if not path.is_file():
         return []
     out: list[dict[str, Any]] = []
@@ -1737,7 +1737,7 @@ def read_run_events(
 
 
 def latest_run_id(case_dir: Path) -> str:
-    directory = Path(case_dir) / _MODE3_DIR
+    directory = Path(case_dir) / _MODE2_DIR
     if not directory.is_dir():
         return ""
     files = sorted(directory.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)

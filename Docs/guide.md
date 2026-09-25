@@ -190,7 +190,7 @@ What you see and control:
 
 Staged findings feed the next run: approved findings seed a deepen work order,
 rejected findings become exclusion constraints, and pending DRAFTs are de-dup
-context. Run artifacts live in `cases/<CASE>/analysis/mode3_runs/`.
+context. Run artifacts live in `cases/<CASE>/analysis/mode2_runs/`.
 
 ### Step 3c: Mode 3 — Multi-agent run (optional)
 
@@ -199,9 +199,9 @@ Mode 3 runs the concurrent team on the **Investigation Board**
 
 ```bash
 nexus mode3 run   -q "Trace RDP activity and USB device use"   # concurrent seats + board
-nexus mode3 board  --run-id M4-...                              # claims, audit IDs, disputes
-nexus mode3 steer  "chase WS01" --run-id M4-...
-nexus mode3 stage  --run-id M4-...                              # examiner: stage settled candidates
+nexus mode3 board  --run-id M3-...                              # claims, audit IDs, disputes
+nexus mode3 steer  "chase WS01" --run-id M3-...
+nexus mode3 stage  --run-id M3-...                              # examiner: stage settled candidates
 ```
 
 The board shows simultaneous seats, audit-backed claims, disputes and join

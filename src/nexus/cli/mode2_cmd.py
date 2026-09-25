@@ -79,7 +79,7 @@ def plan(
     )
 
     case_dir = _case_dir(case)
-    run_id = f"M3-plan-{int(time.time())}"
+    run_id = f"M2-plan-{int(time.time())}"
     orders = plan_work_orders(
         case_dir, _question(case_dir, question), run_id=run_id,
         sink=EventSink(case_dir, run_id), max_orders=max_orders,
@@ -107,13 +107,13 @@ def run(
     output: Path = typer.Option(None, "--output", help="Write the run record JSON"),
 ):
     """Run the supervised Mode 2 (multi-role) investigation, streaming agent events."""
-    from nexus.modes.multi_role import run_mode3
+    from nexus.modes.multi_role import run_mode2
 
     case_dir = _case_dir(case)
     run_id = run_id.strip()
     typer.echo(f"Mode 2 (multi-role) run on {case_dir.name}"
                + (f" ({run_id})" if run_id else ""))
-    state = run_mode3(
+    state = run_mode2(
         case_dir, _question(case_dir, question),
         model=_resolve_model(), run_id=run_id, on_event=_print_event,
         max_orders=max_orders, resume=bool(run_id),
@@ -252,7 +252,7 @@ def resume(
         latest_run_id,
         mark_paused,
         read_run_record,
-        run_mode3,
+        run_mode2,
     )
 
     case_dir = _case_dir(case)
@@ -269,7 +269,7 @@ def resume(
     typer.echo(f"Resumed {run_id}")
     if no_run:
         return
-    state = run_mode3(
+    state = run_mode2(
         case_dir, str(record.get("question") or ""),
         model=_resolve_model(), run_id=run_id, on_event=_print_event, resume=True,
     )

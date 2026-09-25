@@ -35,31 +35,31 @@ const statusRecord = {
 
 vi.mock("../api/client", () => ({
   ApiError: class ApiError extends Error {},
-  mode3RunEventsPath: (id: string) => `/portal/api/mode2/run/events?run_id=${id}`,
-  mode4RunEventsPath: (id: string) => `/portal/api/mode3/run/events?run_id=${id}`,
+  mode2RunEventsPath: (id: string) => `/portal/api/mode2/run/events?run_id=${id}`,
+  mode3RunEventsPath: (id: string) => `/portal/api/mode3/run/events?run_id=${id}`,
   api: {
-    mode3RunStatus: vi.fn(async () => statusRecord),
-    mode3RunPlan: vi.fn(async () => ({
+    mode2RunStatus: vi.fn(async () => statusRecord),
+    mode2RunPlan: vi.fn(async () => ({
       run_id: "M3-plan",
       question: "Trace RDP and USB",
       orders: [
         { order_id: "wo-1", role: "evidence", task: "Investigate hayabusa", family: "hayabusa" },
       ],
     })),
-    mode3RunStart: vi.fn(async () => ({ run_id: "M3-test", status: "running" })),
-    mode3RunPause: vi.fn(async () => ({ run_id: "M3-test", paused: true })),
-    mode3RunStop: vi.fn(async () => ({ run_id: "M3-test", stop_requested: true })),
-    mode3RunResume: vi.fn(async () => ({ run_id: "M3-test", status: "running" })),
-    mode3RunSteer: vi.fn(async () => ({ run_id: "M3-test", steering: { ts: "t", text: "x" } })),
-    mode3RunStage: vi.fn(async () => ({
+    mode2RunStart: vi.fn(async () => ({ run_id: "M3-test", status: "running" })),
+    mode2RunPause: vi.fn(async () => ({ run_id: "M3-test", paused: true })),
+    mode2RunStop: vi.fn(async () => ({ run_id: "M3-test", stop_requested: true })),
+    mode2RunResume: vi.fn(async () => ({ run_id: "M3-test", status: "running" })),
+    mode2RunSteer: vi.fn(async () => ({ run_id: "M3-test", steering: { ts: "t", text: "x" } })),
+    mode2RunStage: vi.fn(async () => ({
       run_id: "M3-test",
       staged_count: 1,
       skipped_count: 0,
       staged: [{ title: "USB mass storage seen", finding_id: "F-001", verifier_class: "inferred" }],
       skipped: [],
     })),
-    mode4RunStatus: vi.fn(async () => ({
-      run_id: "M4-test",
+    mode3RunStatus: vi.fn(async () => ({
+      run_id: "M3-test",
       status: "completed",
       stop_reason: "settled",
       question: "Who moved laterally",
@@ -69,8 +69,8 @@ vi.mock("../api/client", () => ({
       candidates: 1,
       gaps: ["unresolved ws01 presence"],
     })),
-    mode4RunBoard: vi.fn(async () => ({
-      run_id: "M4-test",
+    mode3RunBoard: vi.fn(async () => ({
+      run_id: "M3-test",
       board: [{
         entry_id: "be-1",
         agent_id: "evidence:evtx:1",
@@ -94,13 +94,13 @@ vi.mock("../api/client", () => ({
         audit_ids: ["audit-m4-1"],
       }],
     })),
-    mode4Run: vi.fn(async () => ({ run_id: "M4-test", status: "running" })),
-    mode4RunPause: vi.fn(async () => ({ run_id: "M4-test", paused: true })),
-    mode4RunResume: vi.fn(async () => ({ run_id: "M4-test", status: "running" })),
-    mode4RunStop: vi.fn(async () => ({ run_id: "M4-test", stop_requested: true })),
-    mode4RunSteer: vi.fn(async () => ({ run_id: "M4-test", steering: { ts: "t", text: "x" } })),
-    mode4RunStage: vi.fn(async () => ({
-      run_id: "M4-test", staged_count: 1, skipped_count: 0,
+    mode3Run: vi.fn(async () => ({ run_id: "M3-test", status: "running" })),
+    mode3RunPause: vi.fn(async () => ({ run_id: "M3-test", paused: true })),
+    mode3RunResume: vi.fn(async () => ({ run_id: "M3-test", status: "running" })),
+    mode3RunStop: vi.fn(async () => ({ run_id: "M3-test", stop_requested: true })),
+    mode3RunSteer: vi.fn(async () => ({ run_id: "M3-test", steering: { ts: "t", text: "x" } })),
+    mode3RunStage: vi.fn(async () => ({
+      run_id: "M3-test", staged_count: 1, skipped_count: 0,
       staged: [{ title: "ws01: presence", finding_id: "F-100", input_call_ids: ["audit-m4-1"] }],
       skipped: [],
     })),

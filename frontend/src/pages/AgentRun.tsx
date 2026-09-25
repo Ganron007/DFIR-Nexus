@@ -16,7 +16,7 @@ import { useSearchParams } from "react-router-dom";
 import {
   ApiError,
   api,
-  mode3RunEventsPath,
+  mode2RunEventsPath,
   type Mode3Budget,
   type Mode3CandidateFinding,
   type Mode3RunEvent,
@@ -217,7 +217,7 @@ function MultiRoleAgentRun() {
 
   const refreshStatus = async (id: string) => {
     try {
-      const status = await api.mode3RunStatus(id);
+      const status = await api.mode2RunStatus(id);
       setRecord(status);
       return status;
     } catch {
@@ -231,7 +231,7 @@ function MultiRoleAgentRun() {
     (async () => {
       try {
         if (!runId) {
-          const status = await api.mode3RunStatus();
+          const status = await api.mode2RunStatus();
           if (!cancelled) {
             setRecord(status);
             setRunId(status.run_id);
@@ -254,7 +254,7 @@ function MultiRoleAgentRun() {
   useEffect(() => {
     if (!runId) return;
     setEvents([]);
-    const source = new EventSource(mode3RunEventsPath(runId));
+    const source = new EventSource(mode2RunEventsPath(runId));
     const onAgent = (raw: MessageEvent) => {
       try {
         const event = JSON.parse(raw.data) as Mode3RunEvent;
@@ -334,7 +334,7 @@ function MultiRoleAgentRun() {
     setError("");
     setStageResult(null);
     try {
-      const result = await api.mode3RunPlan({
+      const result = await api.mode2RunPlan({
         question: question.trim() || undefined,
         max_orders: maxOrders,
       });
@@ -352,7 +352,7 @@ function MultiRoleAgentRun() {
     setError("");
     setStageResult(null);
     try {
-      const result = await api.mode3RunStart({
+      const result = await api.mode2RunStart({
         question: question.trim() || undefined,
         max_orders: maxOrders,
       });
@@ -374,11 +374,11 @@ function MultiRoleAgentRun() {
     setBusy("pause");
     try {
       const paused = !record.pause_requested;
-      await api.mode3RunPause({ run_id: runId, paused });
+      await api.mode2RunPause({ run_id: runId, paused });
       if (paused) {
         await refreshStatus(runId);
       } else {
-        const res = await api.mode3RunResume({ run_id: runId });
+        const res = await api.mode2RunResume({ run_id: runId });
         if (res.status) {
           window.setTimeout(() => void refreshStatus(runId), 500);
         }
@@ -394,7 +394,7 @@ function MultiRoleAgentRun() {
     if (!runId || !steerText.trim()) return;
     setBusy("steer");
     try {
-      await api.mode3RunSteer({ run_id: runId, text: steerText.trim() });
+      await api.mode2RunSteer({ run_id: runId, text: steerText.trim() });
       setSteerText("");
       await refreshStatus(runId);
     } catch (e) {
@@ -408,7 +408,7 @@ function MultiRoleAgentRun() {
     if (!runId) return;
     setBusy("stop");
     try {
-      await api.mode3RunStop({ run_id: runId });
+      await api.mode2RunStop({ run_id: runId });
       await refreshStatus(runId);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Stop failed");
@@ -422,7 +422,7 @@ function MultiRoleAgentRun() {
     setBusy("stage");
     setError("");
     try {
-      const result = await api.mode3RunStage({ run_id: runId });
+      const result = await api.mode2RunStage({ run_id: runId });
       setStageResult(result);
       await refreshStatus(runId);
     } catch (e) {

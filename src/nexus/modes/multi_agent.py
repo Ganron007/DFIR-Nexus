@@ -1,4 +1,4 @@
-"""Mode 4 concurrent multi-agent runtime (plan ids MA4.1–MA4.9).
+"""Mode 3 concurrent multi-agent runtime (plan ids MA4.1–MA4.9).
 
 A model supervisor spawns evidence, correlation, and pattern seats in one
 superstep. Each seat has its own context and publishes a board entry. The
@@ -6,8 +6,9 @@ join compares claims and can send a seat back. Synthesis writes DRAFT
 candidates only after the join settles. Agents never stage or approve.
 
 Product label after the rename: this runtime is **Mode 3 — Multi-agent**.
-The on-disk run id prefix stays ``M4-`` so it cannot collide with a Mode 3
-multi-role run. Case picker storage for a new multi-agent case is ``4``.
+Run files live under ``analysis/mode3_runs`` with ids ``M3-``.
+Multi-role runs use ``analysis/mode2_runs`` and ``M2-``.
+A new multi-agent case stores ``investigation_mode: 3``.
 """
 from __future__ import annotations
 
@@ -34,7 +35,7 @@ from nexus.modes.multi_role import (
 
 log = logging.getLogger(__name__)
 
-_DIR = "analysis/mode4_runs"
+_DIR = "analysis/mode3_runs"
 _CLAIM_KINDS = {"presence", "absence", "attribution", "time_order"}
 _SEATS = ("evidence", "correlation", "pattern")
 _SINK_LOCK = threading.Lock()
@@ -121,7 +122,7 @@ def latest_run_id(case_dir: Path) -> str:
     directory = Path(case_dir) / _DIR
     if not directory.is_dir():
         return ""
-    files = sorted(directory.glob("M4-*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    files = sorted(directory.glob("M3-*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
     return files[0].stem if files else ""
 
 
@@ -129,8 +130,8 @@ def _steering_path(case_dir: Path, run_id: str) -> Path:
     return _run_dir(case_dir) / f"{run_id}.steering.jsonl"
 
 
-def append_mode4_steering(case_dir: Path, run_id: str, text: str) -> dict[str, Any]:
-    """Queue an examiner directive next to the Mode 4 run, not a Mode 3 run."""
+def append_mode3_steering(case_dir: Path, run_id: str, text: str) -> dict[str, Any]:
+    """Queue an examiner directive next to the Mode 3 run, not a Mode 3 run."""
     entry = {"ts": _now(), "text": str(text or "")[:600]}
     path = _steering_path(case_dir, run_id)
     with path.open("a", encoding="utf-8") as handle:
@@ -138,7 +139,7 @@ def append_mode4_steering(case_dir: Path, run_id: str, text: str) -> dict[str, A
     return entry
 
 
-def read_mode4_steering(case_dir: Path, run_id: str, limit: int = 50) -> list[dict[str, Any]]:
+def read_mode3_steering(case_dir: Path, run_id: str, limit: int = 50) -> list[dict[str, Any]]:
     path = _steering_path(case_dir, run_id)
     if not path.is_file():
         return []
@@ -181,7 +182,7 @@ def read_run_events(case_dir: Path, run_id: str, limit: int = 5000) -> list[dict
 
 
 def emit_event(case_dir: Path, run_id: str, event: Any) -> None:
-    """Append an event to the Mode 4 stream the SSE tail reads."""
+    """Append an event to the Mode 3 stream the SSE tail reads."""
     sink = EventSink(Path(case_dir), run_id)
     sink.path = _run_dir(Path(case_dir)) / f"{run_id}.jsonl"
     sink.emit(event)
@@ -381,7 +382,7 @@ def _supervisor_with_model(
     try:
         raw = _call_model(model, messages)
     except Exception:  # noqa: BLE001 — fallback is the contract
-        log.debug("mode4 model supervisor failed", exc_info=True)
+        log.debug("mode3 model supervisor failed", exc_info=True)
         return []
     start, end = raw.find("{"), raw.rfind("}")
     if start == -1 or end <= start:
@@ -476,16 +477,16 @@ def _seat_with_model(
         '"confidence_justification":"..."}],"open_questions":["..."]}. '
         "Every claim needs an audit_id from a tool call. Do not attribute an actor."
     )
-    rounds = _env_int("NEXUS_MODE4_ROUNDS", 24, low=1, high=80)
-    calls = _env_int("NEXUS_MODE4_CALLS", 48, low=1, high=200)
-    seconds = float(_env_int("NEXUS_MODE4_SECONDS", 1800, low=30, high=7200))
+    rounds = _env_int("NEXUS_MODE3_ROUNDS", 24, low=1, high=80)
+    calls = _env_int("NEXUS_MODE3_CALLS", 48, low=1, high=200)
+    seconds = float(_env_int("NEXUS_MODE3_SECONDS", 1800, low=30, high=7200))
     loop = run_context_loop(
         case_dir=case_dir,
         case_id=case_dir.name,
         question=question,
         model=model,
         system_prompt=role.system_prompt,
-        task=f"mode4-{role_name}",
+        task=f"mode3-{role_name}",
         budget=LoopBudget(rounds=rounds, seconds=seconds, calls=calls, call_chars=budget_chars(case_window(case_dir))),
         audit=audit,
         allowed_tools=role.tools,
@@ -502,7 +503,7 @@ def _seat_with_model(
     return entry
 
 
-class Mode4State(TypedDict, total=False):
+class Mode3State(TypedDict, total=False):
     board: Annotated[list[dict[str, Any]], add_board]
     spawns: list[dict[str, Any]]
     status: str
@@ -523,7 +524,7 @@ class _LockedSink:
             self.inner.emit(event)
 
 
-def run_mode4(
+def run_mode3(
     case_dir: Path,
     question: str,
     *,
@@ -537,7 +538,7 @@ def run_mode4(
 ) -> dict[str, Any]:
     """Run one concurrent investigation. Returns the run record. Never stages."""
     case_dir = Path(case_dir)
-    run_id = run_id or f"M4-{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}-{uuid4().hex[:6]}"
+    run_id = run_id or f"M3-{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}-{uuid4().hex[:6]}"
     from nexus.audit import AuditWriter
 
     # One writer per run (locked decision): seats share it, no seat builds one.
@@ -579,13 +580,13 @@ def run_mode4(
     # polling and the SSE tail all see the record from superstep 0.
     _persist(case_dir, run_id, record)
 
-    max_agents = _env_int("NEXUS_MODE4_MAX_AGENTS", 4, low=2, high=8)
-    max_steps = _env_int("NEXUS_MODE4_MAX_SUPERSTEPS", 6, low=1, high=12)
-    max_calls = _env_int("NEXUS_MODE4_MAX_CALLS", 120, low=1, high=400)
-    settle_k = _env_int("NEXUS_MODE4_SETTLE_SUPERSTEPS", 2, low=1, high=6)
-    max_redispatch = _env_int("NEXUS_MODE4_MAX_REDISPATCH", 2, low=0, high=6)
+    max_agents = _env_int("NEXUS_MODE3_MAX_AGENTS", 4, low=2, high=8)
+    max_steps = _env_int("NEXUS_MODE3_MAX_SUPERSTEPS", 6, low=1, high=12)
+    max_calls = _env_int("NEXUS_MODE3_MAX_CALLS", 120, low=1, high=400)
+    settle_k = _env_int("NEXUS_MODE3_SETTLE_SUPERSTEPS", 2, low=1, high=6)
+    max_redispatch = _env_int("NEXUS_MODE3_MAX_REDISPATCH", 2, low=0, high=6)
     sink = _LockedSink(EventSink(case_dir, run_id, callback=on_event))
-    # EventSink writes under mode3_runs. Mirror the jsonl next to the mode4 record.
+    # EventSink defaults to the multi-role directory. Keep this jsonl beside the Mode 3 record.
     sink.inner.path = _run_dir(case_dir) / f"{run_id}.jsonl"
     sink.inner.path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -604,7 +605,7 @@ def run_mode4(
                 for name, rows in (index.get("family_rows") or {}).items()
             ]
         except Exception:  # noqa: BLE001
-            log.debug("mode4 index_mappings failed", exc_info=True)
+            log.debug("mode3 index_mappings failed", exc_info=True)
             indexed = []
 
     calls_used = {"n": 0}
@@ -617,14 +618,14 @@ def run_mode4(
             return "paused"
         return ""
 
-    def supervisor(state: Mode4State) -> dict[str, Any]:
+    def supervisor(state: Mode3State) -> dict[str, Any]:
         halt = _halted()
         step = int(state.get("superstep") or 0) + 1
         if halt:
             return {"status": halt, "superstep": step, "spawns": []}
         if step > max_steps or calls_used["n"] >= max_calls:
             return {"status": "capped", "superstep": step, "spawns": []}
-        steering = read_mode4_steering(case_dir, run_id)
+        steering = read_mode3_steering(case_dir, run_id)
         seen = int(state.get("steering_seen") or 0)
         fresh_steer = ""
         if len(steering) > seen:
@@ -686,7 +687,7 @@ def run_mode4(
             }
         return {"status": "settled", "superstep": step, "spawns": []}
 
-    def fan(state: Mode4State) -> Any:
+    def fan(state: Mode3State) -> Any:
         from langgraph.types import Send
 
         status = str(state.get("status") or "")
@@ -694,7 +695,7 @@ def run_mode4(
             return "join"
         board = state.get("board") or []
         digest = json.dumps(board, default=str)
-        steering = read_mode4_steering(case_dir, run_id)
+        steering = read_mode3_steering(case_dir, run_id)
         if steering:
             steer_text = "\n".join(
                 f"- {str(line.get('text') or '')}" for line in steering[-3:]
@@ -739,7 +740,7 @@ def run_mode4(
         entry["claims"] = kept
         return {"board": [entry]}
 
-    def join(state: Mode4State) -> dict[str, Any]:
+    def join(state: Mode3State) -> dict[str, Any]:
         halt = _halted()
         if halt:
             return {"status": halt}
@@ -766,13 +767,13 @@ def run_mode4(
             ))
         return {"disputes": disputes, "quiet": quiet, "last_fp": fp, "status": status}
 
-    def after_join(state: Mode4State) -> str:
+    def after_join(state: Mode3State) -> str:
         status = str(state.get("status") or "")
         if status in {"settled", "stopped", "paused", "capped"}:
             return "synthesize"
         return "supervisor"
 
-    def synthesize(state: Mode4State) -> dict[str, Any]:
+    def synthesize(state: Mode3State) -> dict[str, Any]:
         disputes = find_disputes(list(state.get("board") or []))
         open_keys = {
             (d["entity_type"], d["entity_value"], d["claim_kind"]) for d in disputes
@@ -806,7 +807,7 @@ def run_mode4(
 
     from langgraph.graph import END, START, StateGraph
 
-    graph = StateGraph(Mode4State)
+    graph = StateGraph(Mode3State)
     graph.add_node("supervisor", supervisor)
     graph.add_node("seat", seat)
     graph.add_node("join", join)
@@ -889,14 +890,14 @@ def run_mode4(
     record["narrative"] = (
         f"{len(candidates)} settled claim(s); {len(disputes)} unresolved dispute(s)."
     )
-    steering = read_mode4_steering(case_dir, run_id)
+    steering = read_mode3_steering(case_dir, run_id)
     if steering:
         record["steering"] = steering
     _persist(case_dir, run_id, record)
     return record
 
 
-def resume_mode4(
+def resume_mode3(
     case_dir: Path,
     run_id: str,
     *,
@@ -914,7 +915,7 @@ def resume_mode4(
     if status != "paused":
         return {**record, "error": f"run is {status}; nothing to resume"}
     mark_paused(case_dir, run_id, False)
-    return run_mode4(
+    return run_mode3(
         case_dir,
         str(record.get("question") or ""),
         model=model,
@@ -925,14 +926,14 @@ def resume_mode4(
     )
 
 
-def stage_mode4(case_dir: Path, run_id: str) -> dict[str, Any]:
+def stage_mode3(case_dir: Path, run_id: str) -> dict[str, Any]:
     """Examiner action. Copies candidates onto a record shape stage_run_candidates reads."""
     record = read_run_record(case_dir, run_id)
     if record is None:
         return {"error": "run not found", "run_id": run_id, "staged": [], "skipped": []}
-    from nexus.modes.multi_role import _MODE3_DIR
+    from nexus.modes.multi_role import _MODE2_DIR
 
-    bridge = Path(case_dir) / _MODE3_DIR
+    bridge = Path(case_dir) / _MODE2_DIR
     bridge.mkdir(parents=True, exist_ok=True)
     path = bridge / f"{run_id}.json"
     payload = {

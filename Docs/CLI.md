@@ -242,10 +242,10 @@ Notes:
   items, and records `run_id` / `input_call_ids` lineage on each DRAFT.
 - Approval stays examiner-only (`nexus approve` / Approval Desk); it is never
   part of `nexus mode2`.
-- Run state lives under `cases/<CASE>/analysis/mode3_runs/` (`<run_id>.json`,
+- Run state lives under `cases/<CASE>/analysis/mode2_runs/` (`<run_id>.json`,
   `<run_id>.jsonl`, `<run_id>.control.json`, `<run_id>.steering.jsonl`).
-- Tuning: `NEXUS_MODE3_FOLLOWUPS` (0–24, default 8),
-  `NEXUS_MODE3_{ROUNDS,CALLS,SECONDS}` (default 24/48/1800). The character
+- Tuning: `NEXUS_MODE2_FOLLOWUPS` (0–24, default 8),
+  `NEXUS_MODE2_{ROUNDS,CALLS,SECONDS}` (default 24/48/1800). The character
   ceiling is `NEXUS_LLM_CONTEXT_WINDOW` × `NEXUS_CONTEXT_FILL_RATIO`.
 
 ## Mode 3 — Multi-agent runs (`nexus mode3`)
@@ -260,14 +260,14 @@ Agent Run.
 
 ```bash
 nexus mode3 run    -q "Trace RDP activity and USB device use"   # start & wait (streams decisions)
-nexus mode3 status --run-id M4-... [--json]                     # state, superstep, counts
-nexus mode3 board  --run-id M4-...                              # claims, audit IDs, disputes
-nexus mode3 steer  "chase WS01"      --run-id M4-...            # directive for the next superstep
-nexus mode3 pause  --run-id M4-...                              # pause at the next superstep boundary
-nexus mode3 resume --run-id M4-... [--no-run]                   # continue from the persisted snapshot
-nexus mode3 stop   --run-id M4-...                              # terminal stop
-nexus mode3 stage  --run-id M4-... [--json]                     # examiner: stage settled candidates as DRAFT
-nexus mode3 export --run-id M4-... --output run.json            # record + full event stream
+nexus mode3 status --run-id M3-... [--json]                     # state, superstep, counts
+nexus mode3 board  --run-id M3-...                              # claims, audit IDs, disputes
+nexus mode3 steer  "chase WS01"      --run-id M3-...            # directive for the next superstep
+nexus mode3 pause  --run-id M3-...                              # pause at the next superstep boundary
+nexus mode3 resume --run-id M3-... [--no-run]                   # continue from the persisted snapshot
+nexus mode3 stop   --run-id M3-...                              # terminal stop
+nexus mode3 stage  --run-id M3-... [--json]                     # examiner: stage settled candidates as DRAFT
+nexus mode3 export --run-id M3-... --output run.json            # record + full event stream
 ```
 
 Notes:
@@ -276,9 +276,9 @@ Notes:
   runs and continues from the persisted board snapshot.
 - `stage` copies only settled, audit-backed claims (FD-001/FD-003 enforced on
   the board) and keeps `run_id` / `input_call_ids` lineage.
-- Tuning: `NEXUS_MODE4_{MAX_AGENTS,MAX_SUPERSTEPS,MAX_CALLS,SETTLE_SUPERSTEPS,MAX_REDISPATCH}`
-  and `NEXUS_MODE4_{ROUNDS,CALLS,SECONDS}` per seat.
-- Run state lives under `cases/<CASE>/analysis/mode4_runs/`.
+- Tuning: `NEXUS_MODE3_{MAX_AGENTS,MAX_SUPERSTEPS,MAX_CALLS,SETTLE_SUPERSTEPS,MAX_REDISPATCH}`
+  and `NEXUS_MODE3_{ROUNDS,CALLS,SECONDS}` per seat.
+- Run state lives under `cases/<CASE>/analysis/mode3_runs/`.
 
 ## Ingest & Doctor
 

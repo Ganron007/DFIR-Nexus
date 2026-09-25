@@ -1,6 +1,6 @@
-"""Mode 3 — Multi-agent CLI — concurrent runtime (runtime ``mode4``).
+"""Mode 3 — Multi-agent CLI.
 
-Product label: Mode 3 — Multi-agent. Run ids use the M4- prefix.
+Run files live under analysis/mode3_runs. Run ids use the M3- prefix.
 """
 from __future__ import annotations
 
@@ -41,14 +41,14 @@ def run(
 ):
     """Start a concurrent multi-agent run and wait for it to finish."""
     from nexus.langgraph.llm_pipeline import get_model
-    from nexus.modes.multi_agent import run_mode4
+    from nexus.modes.multi_agent import run_mode3
 
     case_dir = _case_dir(case)
     try:
         model = get_model()
     except Exception:  # noqa: BLE001
         model = None
-    record = run_mode4(case_dir, _question(case_dir, question), model=model)
+    record = run_mode3(case_dir, _question(case_dir, question), model=model)
     if as_json:
         typer.echo(json.dumps(record, default=str))
     else:
@@ -132,7 +132,7 @@ def steer(
 ):
     """Queue a steer line for the supervisor's next superstep."""
     from nexus.modes.multi_agent import (
-        append_mode4_steering,
+        append_mode3_steering,
         emit_event,
         latest_run_id,
         new_event,
@@ -145,7 +145,7 @@ def steer(
     if record is None:
         typer.echo("No multi-agent run.", err=True)
         raise typer.Exit(1)
-    entry = append_mode4_steering(case_dir, run_id, text)
+    entry = append_mode3_steering(case_dir, run_id, text)
     emit_event(case_dir, run_id, new_event(
         run_id, "steering.injected", actor="examiner", detail=text,
         data={"steering": entry}))
@@ -188,7 +188,7 @@ def resume(
         latest_run_id,
         mark_paused,
         read_run_record,
-        resume_mode4,
+        resume_mode3,
     )
 
     case_dir = _case_dir(case)
@@ -211,7 +211,7 @@ def resume(
         model = get_model()
     except Exception:  # noqa: BLE001
         model = None
-    result = resume_mode4(case_dir, run_id, model=model)
+    result = resume_mode3(case_dir, run_id, model=model)
     typer.echo(
         f"{result.get('run_id')}  {result.get('status')}  "
         f"stop={result.get('stop_reason')}  "
@@ -253,14 +253,14 @@ def stage(
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Stage settled candidates as DRAFT. Does not approve."""
-    from nexus.modes.multi_agent import latest_run_id, stage_mode4
+    from nexus.modes.multi_agent import latest_run_id, stage_mode3
 
     case_dir = _case_dir(case)
     run_id = run_id or latest_run_id(case_dir)
     if not run_id:
         typer.echo("No multi-agent run.", err=True)
         raise typer.Exit(1)
-    result = stage_mode4(case_dir, run_id)
+    result = stage_mode3(case_dir, run_id)
     typer.echo(json.dumps(result, default=str) if as_json else
                f"staged={result.get('staged_count', len(result.get('staged') or []))} "
                f"skipped={result.get('skipped_count', len(result.get('skipped') or []))}")

@@ -4866,7 +4866,7 @@ async def api_rag_status(request):
         )
 
 
-async def api_mode3_plan(request):
+async def api_mode2_plan(request):
     """POST /portal/api/mode3/plan - agent proposes the investigation plan.
 
     Reads the tool-lane ledger (SKIPs), unrequested extras, and FD-006
@@ -4890,7 +4890,7 @@ async def api_mode3_plan(request):
     return JSONResponse(plan)
 
 
-async def api_mode3_execute(request):
+async def api_mode2_execute(request):
     """POST /portal/api/mode3/execute - run examiner-approved plan items.
 
     Body: {extras: ["usb_serial", ...], queries: ["...", ...]}
@@ -4932,7 +4932,7 @@ async def api_mode3_execute(request):
     return JSONResponse(result)
 
 
-async def api_mode3_draft_finding(request):
+async def api_mode2_draft_finding(request):
     """POST /portal/api/mode3/draft-finding - agent proposes a DRAFT finding (WP 3.7).
 
     Body: {hits, title, interpretation_hint?}
@@ -5036,7 +5036,7 @@ async def health(request):
     return JSONResponse({"status": "ok", "service": "dfir-nexus"})
 
 
-async def api_mode3_orchestrator(request):
+async def api_mode2_orchestrator(request):
     """POST /portal/api/mode3/orchestrator — run real multi-agent orchestrator (WP 3.21).
 
     Body: {hits? (optional — agents run their own queries if not provided)}
@@ -7136,7 +7136,43 @@ async def logo(request) -> Response:
     return Response(status_code=404)
 
 
-# ── Mode 3 run control (M1/M5/M7) ──────────────────────────────────────
+# ── Mode 2 multi-role run control ──────────────────────────────────────
+_mode2_threads: dict[str, threading.Thread] = {}
+_mode2_thread_lock = threading.Lock()
+
+
+def _mode2_worker_thread(
+    case_dir: Path, question: str, model: Any, run_id: str, resume: bool,
+) -> None:
+    try:
+        from nexus.modes.multi_role import run_mode2
+
+        run_mode2(case_dir, question, model=model, run_id=run_id, resume=resume)
+    except Exception:  # noqa: BLE001 — the run record carries the failure
+        logger.exception("Mode 2 run %s failed", run_id)
+    finally:
+        with _mode2_thread_lock:
+            _mode2_threads.pop(run_id, None)
+
+
+def _start_mode2_thread(
+    case_dir: Path, question: str, model: Any, run_id: str, resume: bool,
+) -> None:
+    with _mode2_thread_lock:
+        live = _mode2_threads.get(run_id)
+        if live is not None and live.is_alive():
+            raise RuntimeError("run already in progress")
+        thread = threading.Thread(
+            target=_mode2_worker_thread,
+            args=(case_dir, question, model, run_id, resume),
+            daemon=True,
+            name=f"mode2-{run_id[-8:]}",
+        )
+        _mode2_threads[run_id] = thread
+        thread.start()
+
+
+# ── Mode 3 concurrent multi-agent run control ──────────────────────────
 _mode3_threads: dict[str, threading.Thread] = {}
 _mode3_thread_lock = threading.Lock()
 
@@ -7145,9 +7181,12 @@ def _mode3_worker_thread(
     case_dir: Path, question: str, model: Any, run_id: str, resume: bool,
 ) -> None:
     try:
-        from nexus.modes.multi_role import run_mode3
+        from nexus.modes.multi_agent import resume_mode3, run_mode3
 
-        run_mode3(case_dir, question, model=model, run_id=run_id, resume=resume)
+        if resume:
+            resume_mode3(case_dir, run_id, model=model)
+        else:
+            run_mode3(case_dir, question, model=model, run_id=run_id)
     except Exception:  # noqa: BLE001 — the run record carries the failure
         logger.exception("Mode 3 run %s failed", run_id)
     finally:
@@ -7172,46 +7211,7 @@ def _start_mode3_thread(
         thread.start()
 
 
-# ── Mode 4 concurrent multi-agent run control ──────────────────────────
-_mode4_threads: dict[str, threading.Thread] = {}
-_mode4_thread_lock = threading.Lock()
-
-
-def _mode4_worker_thread(
-    case_dir: Path, question: str, model: Any, run_id: str, resume: bool,
-) -> None:
-    try:
-        from nexus.modes.multi_agent import resume_mode4, run_mode4
-
-        if resume:
-            resume_mode4(case_dir, run_id, model=model)
-        else:
-            run_mode4(case_dir, question, model=model, run_id=run_id)
-    except Exception:  # noqa: BLE001 — the run record carries the failure
-        logger.exception("Mode 4 run %s failed", run_id)
-    finally:
-        with _mode4_thread_lock:
-            _mode4_threads.pop(run_id, None)
-
-
-def _start_mode4_thread(
-    case_dir: Path, question: str, model: Any, run_id: str, resume: bool,
-) -> None:
-    with _mode4_thread_lock:
-        live = _mode4_threads.get(run_id)
-        if live is not None and live.is_alive():
-            raise RuntimeError("run already in progress")
-        thread = threading.Thread(
-            target=_mode4_worker_thread,
-            args=(case_dir, question, model, run_id, resume),
-            daemon=True,
-            name=f"mode4-{run_id[-8:]}",
-        )
-        _mode4_threads[run_id] = thread
-        thread.start()
-
-
-async def api_mode4_run(request):
+async def api_mode3_run(request):
     """POST /portal/api/mode3/run — start the concurrent multi-agent team.
 
     Runs in the background (like Mode 3) so the caller gets the run id and
@@ -7236,13 +7236,13 @@ async def api_mode4_run(request):
         except Exception:  # noqa: BLE001
             question = ""
     run_id = str(body.get("run_id") or "").strip() or (
-        f"M4-{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}-{uuid.uuid4().hex[:6]}")
-    model = await asyncio.to_thread(_mode3_resolve_model)
+        f"M3-{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}-{uuid.uuid4().hex[:6]}")
+    model = await asyncio.to_thread(_resolve_run_model)
     try:
-        _start_mode4_thread(case_dir, question, model, run_id, resume=False)
+        _start_mode3_thread(case_dir, question, model, run_id, resume=False)
     except RuntimeError:
         return JSONResponse(
-            {"error": "a Mode 4 run with this id is already in progress",
+            {"error": "a Mode 3 run with this id is already in progress",
              "run_id": run_id},
             status_code=409,
         )
@@ -7252,7 +7252,7 @@ async def api_mode4_run(request):
     )
 
 
-async def api_mode4_run_steer(request):
+async def api_mode3_run_steer(request):
     """POST /portal/api/mode3/run/steer — queue a steer line for the supervisor."""
     case_dir = _get_case_dir(request)
     if not case_dir:
@@ -7270,7 +7270,7 @@ async def api_mode4_run_steer(request):
         return JSONResponse({"error": "run_id and text are required"},
                             status_code=400)
     from nexus.modes.multi_agent import (
-        append_mode4_steering,
+        append_mode3_steering,
         emit_event,
         new_event,
         read_run_record,
@@ -7280,14 +7280,14 @@ async def api_mode4_run_steer(request):
     if record is None:
         return JSONResponse({"error": "run not found", "run_id": run_id},
                             status_code=404)
-    entry = await asyncio.to_thread(append_mode4_steering, case_dir, run_id, text)
+    entry = await asyncio.to_thread(append_mode3_steering, case_dir, run_id, text)
     emit_event(case_dir, run_id, new_event(
         run_id, "steering.injected", actor="examiner", detail=text,
         data={"steering": entry}))
     return JSONResponse({"run_id": run_id, "steering": entry})
 
 
-async def api_mode4_run_pause(request):
+async def api_mode3_run_pause(request):
     """POST /portal/api/mode3/run/pause — cooperative pause at superstep boundary."""
     case_dir = _get_case_dir(request)
     if not case_dir:
@@ -7312,7 +7312,7 @@ async def api_mode4_run_pause(request):
     return JSONResponse({"run_id": run_id, "paused": paused})
 
 
-async def api_mode4_run_resume(request):
+async def api_mode3_run_resume(request):
     """POST /portal/api/mode3/run/resume — continue a paused run from its snapshot."""
     case_dir = _get_case_dir(request)
     if not case_dir:
@@ -7339,9 +7339,9 @@ async def api_mode4_run_resume(request):
             {"error": f"run is {status}; nothing to resume", "run_id": run_id},
             status_code=409,
         )
-    model = await asyncio.to_thread(_mode3_resolve_model)
+    model = await asyncio.to_thread(_resolve_run_model)
     try:
-        _start_mode4_thread(
+        _start_mode3_thread(
             case_dir, str(record.get("question") or ""), model, run_id, resume=True)
     except RuntimeError:
         return JSONResponse({"error": "run already in progress", "run_id": run_id},
@@ -7349,7 +7349,7 @@ async def api_mode4_run_resume(request):
     return JSONResponse({"run_id": run_id, "status": "running"}, status_code=202)
 
 
-async def api_mode4_run_events(request):
+async def api_mode3_run_events(request):
     """GET /portal/api/mode3/run/events — SSE tail of the run event log."""
     case_dir = _get_case_dir(request)
     if not case_dir:
@@ -7363,7 +7363,7 @@ async def api_mode4_run_events(request):
     run_id = str(request.query_params.get("run_id") or "").strip()
     run_id = run_id or latest_run_id(case_dir)
     if not run_id:
-        return JSONResponse({"error": "no Mode 4 run found"}, status_code=404)
+        return JSONResponse({"error": "no Mode 3 run found"}, status_code=404)
 
     async def _stream():
         emitted = 0
@@ -7389,7 +7389,7 @@ async def api_mode4_run_events(request):
     return StreamingResponse(_stream(), media_type="text/event-stream")
 
 
-async def api_mode4_run_status(request):
+async def api_mode3_run_status(request):
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
@@ -7398,7 +7398,7 @@ async def api_mode4_run_status(request):
     run_id = str(request.query_params.get("run_id") or "").strip() or latest_run_id(case_dir)
     record = await asyncio.to_thread(read_run_record, case_dir, run_id) if run_id else None
     if record is None:
-        return JSONResponse({"error": "no Mode 4 run found"}, status_code=404)
+        return JSONResponse({"error": "no Mode 3 run found"}, status_code=404)
     return JSONResponse({
         "run_id": run_id,
         "status": record.get("status"),
@@ -7412,7 +7412,7 @@ async def api_mode4_run_status(request):
     })
 
 
-async def api_mode4_run_board(request):
+async def api_mode3_run_board(request):
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
@@ -7421,7 +7421,7 @@ async def api_mode4_run_board(request):
     run_id = str(request.query_params.get("run_id") or "").strip() or latest_run_id(case_dir)
     record = await asyncio.to_thread(read_run_record, case_dir, run_id) if run_id else None
     if record is None:
-        return JSONResponse({"error": "no Mode 4 run found"}, status_code=404)
+        return JSONResponse({"error": "no Mode 3 run found"}, status_code=404)
     return JSONResponse({
         "run_id": run_id,
         "board": record.get("board") or [],
@@ -7430,7 +7430,7 @@ async def api_mode4_run_board(request):
     })
 
 
-async def api_mode4_run_stop(request):
+async def api_mode3_run_stop(request):
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
@@ -7446,7 +7446,7 @@ async def api_mode4_run_stop(request):
     return JSONResponse({"run_id": run_id, "stop_requested": True})
 
 
-async def api_mode4_run_stage(request):
+async def api_mode3_run_stage(request):
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
@@ -7454,16 +7454,16 @@ async def api_mode4_run_stage(request):
         body = await request.json()
     except Exception:  # noqa: BLE001
         body = {}
-    from nexus.modes.multi_agent import latest_run_id, stage_mode4
+    from nexus.modes.multi_agent import latest_run_id, stage_mode3
 
     run_id = str(body.get("run_id") or "").strip() or latest_run_id(case_dir)
     if not run_id:
-        return JSONResponse({"error": "no Mode 4 run found"}, status_code=404)
-    result = await asyncio.to_thread(stage_mode4, case_dir, run_id)
+        return JSONResponse({"error": "no Mode 3 run found"}, status_code=404)
+    result = await asyncio.to_thread(stage_mode3, case_dir, run_id)
     return JSONResponse(result)
 
 
-def _mode3_resolve_model() -> Any:
+def _resolve_run_model() -> Any:
     try:
         from nexus.langgraph.llm_pipeline import get_model
 
@@ -7472,7 +7472,7 @@ def _mode3_resolve_model() -> Any:
         return None
 
 
-async def api_mode3_run_plan(request):
+async def api_mode2_run_plan(request):
     """POST /portal/api/mode3/run/plan — director work orders before execution."""
     case_dir = _get_case_dir(request)
     if not case_dir:
@@ -7516,7 +7516,7 @@ async def api_mode3_run_plan(request):
     })
 
 
-async def api_mode3_run(request):
+async def api_mode2_run(request):
     """POST /portal/api/mode3/run — start a supervised Mode 3 run.
 
     Body: {question?, max_orders?, run_id?} — returns 202 + run_id. Work orders
@@ -7543,9 +7543,9 @@ async def api_mode3_run(request):
             question = ""
     run_id = str(body.get("run_id") or "").strip() or (
         f"M3-{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}-{uuid.uuid4().hex[:6]}")
-    model = await asyncio.to_thread(_mode3_resolve_model)
+    model = await asyncio.to_thread(_resolve_run_model)
     try:
-        _start_mode3_thread(case_dir, question, model, run_id, resume=False)
+        _start_mode2_thread(case_dir, question, model, run_id, resume=False)
     except RuntimeError:
         return JSONResponse(
             {"error": "a Mode 3 run with this id is already in progress",
@@ -7556,7 +7556,7 @@ async def api_mode3_run(request):
                          "question": question}, status_code=202)
 
 
-async def api_mode3_run_status(request):
+async def api_mode2_run_status(request):
     """GET /portal/api/mode3/run/status?run_id= — run record + counters."""
     case_dir = _get_case_dir(request)
     if not case_dir:
@@ -7604,7 +7604,7 @@ async def api_mode3_run_status(request):
     })
 
 
-async def api_mode3_run_events(request):
+async def api_mode2_run_events(request):
     """GET /portal/api/mode3/run/events?run_id= — SSE tail of the run event log."""
     case_dir = _get_case_dir(request)
     if not case_dir:
@@ -7644,7 +7644,7 @@ async def api_mode3_run_events(request):
     return StreamingResponse(_stream(), media_type="text/event-stream")
 
 
-async def api_mode3_run_steer(request):
+async def api_mode2_run_steer(request):
     """POST /portal/api/mode3/run/steer — inject an examiner directive."""
     case_dir = _get_case_dir(request)
     if not case_dir:
@@ -7679,7 +7679,7 @@ async def api_mode3_run_steer(request):
     return JSONResponse({"run_id": run_id, "steering": entry})
 
 
-async def api_mode3_run_pause(request):
+async def api_mode2_run_pause(request):
     """POST /portal/api/mode3/run/pause — cooperative pause between work orders."""
     case_dir = _get_case_dir(request)
     if not case_dir:
@@ -7712,7 +7712,7 @@ async def api_mode3_run_pause(request):
     return JSONResponse({"run_id": run_id, "paused": paused})
 
 
-async def api_mode3_run_resume(request):
+async def api_mode2_run_resume(request):
     """POST /portal/api/mode3/run/resume — clear pause and continue the run."""
     case_dir = _get_case_dir(request)
     if not case_dir:
@@ -7741,9 +7741,9 @@ async def api_mode3_run_resume(request):
             status_code=409,
         )
     await asyncio.to_thread(mark_paused, case_dir, run_id, False)
-    model = await asyncio.to_thread(_mode3_resolve_model)
+    model = await asyncio.to_thread(_resolve_run_model)
     try:
-        _start_mode3_thread(
+        _start_mode2_thread(
             case_dir, str(record.get("question") or ""), model, run_id, resume=True)
     except RuntimeError:
         return JSONResponse({"error": "run already in progress", "run_id": run_id},
@@ -7751,7 +7751,7 @@ async def api_mode3_run_resume(request):
     return JSONResponse({"run_id": run_id, "status": "running"}, status_code=202)
 
 
-async def api_mode3_run_stop(request):
+async def api_mode2_run_stop(request):
     """POST /portal/api/mode3/run/stop — halt the run at the next work order.
 
     Cooperative stop (like pause): the current order finishes, the supervisor
@@ -7792,7 +7792,7 @@ async def api_mode3_run_stop(request):
     return JSONResponse({"run_id": run_id, "stop_requested": True})
 
 
-async def api_mode3_run_stage(request):
+async def api_mode2_run_stage(request):
     """POST /portal/api/mode3/run/stage — examiner stages DRAFTs from a run.
 
     Only candidates with real audit_ids and no refuted verdict are staged;
@@ -7898,35 +7898,35 @@ def create_dashboard():
         Route("/portal/api/mode1/iterate", api_mode2_iterate, methods=["POST"]),
         Route("/portal/api/mode1/corroborate", api_mode2_corroborate, methods=["POST"]),
         Route("/portal/api/mode1/propose-draft", api_mode2_propose_draft, methods=["POST"]),
-        Route("/portal/api/mode2/plan", api_mode3_plan, methods=["POST"]),
-        Route("/portal/api/mode2/execute", api_mode3_execute, methods=["POST"]),
+        Route("/portal/api/mode2/plan", api_mode2_plan, methods=["POST"]),
+        Route("/portal/api/mode2/execute", api_mode2_execute, methods=["POST"]),
         # Mode 3 supervised agent runtime (M1/M5/M7)
-        Route("/portal/api/mode2/run/plan", api_mode3_run_plan, methods=["POST"]),
-        Route("/portal/api/mode2/run", api_mode3_run, methods=["POST"]),
-        Route("/portal/api/mode2/run/status", api_mode3_run_status, methods=["GET"]),
-        Route("/portal/api/mode2/run/events", api_mode3_run_events, methods=["GET"]),
-        Route("/portal/api/mode2/run/steer", api_mode3_run_steer, methods=["POST"]),
-        Route("/portal/api/mode2/run/pause", api_mode3_run_pause, methods=["POST"]),
-        Route("/portal/api/mode2/run/resume", api_mode3_run_resume, methods=["POST"]),
-        Route("/portal/api/mode2/run/stop", api_mode3_run_stop, methods=["POST"]),
-        Route("/portal/api/mode2/run/stage", api_mode3_run_stage, methods=["POST"]),
-        Route("/portal/api/mode3/run/plan", api_mode4_run, methods=["POST"]),
-        Route("/portal/api/mode3/run", api_mode4_run, methods=["POST"]),
-        Route("/portal/api/mode3/run/status", api_mode4_run_status, methods=["GET"]),
-        Route("/portal/api/mode3/run/events", api_mode4_run_events, methods=["GET"]),
-        Route("/portal/api/mode3/run/steer", api_mode4_run_steer, methods=["POST"]),
-        Route("/portal/api/mode3/run/pause", api_mode4_run_pause, methods=["POST"]),
-        Route("/portal/api/mode3/run/resume", api_mode4_run_resume, methods=["POST"]),
-        Route("/portal/api/mode3/run/stop", api_mode4_run_stop, methods=["POST"]),
-        Route("/portal/api/mode3/run/stage", api_mode4_run_stage, methods=["POST"]),
-        Route("/portal/api/mode3/run/board", api_mode4_run_board, methods=["GET"]),
+        Route("/portal/api/mode2/run/plan", api_mode2_run_plan, methods=["POST"]),
+        Route("/portal/api/mode2/run", api_mode2_run, methods=["POST"]),
+        Route("/portal/api/mode2/run/status", api_mode2_run_status, methods=["GET"]),
+        Route("/portal/api/mode2/run/events", api_mode2_run_events, methods=["GET"]),
+        Route("/portal/api/mode2/run/steer", api_mode2_run_steer, methods=["POST"]),
+        Route("/portal/api/mode2/run/pause", api_mode2_run_pause, methods=["POST"]),
+        Route("/portal/api/mode2/run/resume", api_mode2_run_resume, methods=["POST"]),
+        Route("/portal/api/mode2/run/stop", api_mode2_run_stop, methods=["POST"]),
+        Route("/portal/api/mode2/run/stage", api_mode2_run_stage, methods=["POST"]),
+        Route("/portal/api/mode3/run/plan", api_mode3_run, methods=["POST"]),
+        Route("/portal/api/mode3/run", api_mode3_run, methods=["POST"]),
+        Route("/portal/api/mode3/run/status", api_mode3_run_status, methods=["GET"]),
+        Route("/portal/api/mode3/run/events", api_mode3_run_events, methods=["GET"]),
+        Route("/portal/api/mode3/run/steer", api_mode3_run_steer, methods=["POST"]),
+        Route("/portal/api/mode3/run/pause", api_mode3_run_pause, methods=["POST"]),
+        Route("/portal/api/mode3/run/resume", api_mode3_run_resume, methods=["POST"]),
+        Route("/portal/api/mode3/run/stop", api_mode3_run_stop, methods=["POST"]),
+        Route("/portal/api/mode3/run/stage", api_mode3_run_stage, methods=["POST"]),
+        Route("/portal/api/mode3/run/board", api_mode3_run_board, methods=["GET"]),
         Route("/portal/api/case/seal", api_case_seal, methods=["POST"]),
         # RAG preflight (WP 3.13)
         Route("/portal/api/rag/status", api_rag_status, methods=["GET"]),
         # Mode 3 orchestrator (WP 3.10)
-        Route("/portal/api/mode2/orchestrator", api_mode3_orchestrator, methods=["POST"]),
+        Route("/portal/api/mode2/orchestrator", api_mode2_orchestrator, methods=["POST"]),
         # Mode 3 agent DRAFT finding (WP 3.7)
-        Route("/portal/api/mode2/draft-finding", api_mode3_draft_finding, methods=["POST"]),
+        Route("/portal/api/mode2/draft-finding", api_mode2_draft_finding, methods=["POST"]),
         # Product mode ↔ pipeline mode mapping (WP 3.8)
         Route("/portal/api/mode-mapping", api_mode_mapping, methods=["GET"]),
         # Phase 4b: Workflow-driven cockpit APIs
