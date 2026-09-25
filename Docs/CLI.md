@@ -242,6 +242,9 @@ Notes:
   items, and records `run_id` / `input_call_ids` lineage on each DRAFT.
 - Approval stays examiner-only (`nexus approve` / Approval Desk); it is never
   part of `nexus mode2`.
+- Elasticsearch is required: a run refuses before any work when the cluster is
+  unavailable (`status=failed`, `stop_reason=elasticsearch_required`), matching
+  Mode 3 and the pipeline gate.
 - Run state lives under `cases/<CASE>/analysis/mode2_runs/` (`<run_id>.json`,
   `<run_id>.jsonl`, `<run_id>.control.json`, `<run_id>.steering.jsonl`).
 - Tuning: `NEXUS_MODE2_FOLLOWUPS` (0–24, default 8),

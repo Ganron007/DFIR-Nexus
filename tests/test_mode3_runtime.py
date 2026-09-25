@@ -383,3 +383,45 @@ def test_model_supervisor_bad_output_falls_back(tmp_path):
         if event["event_type"] == "supervisor.spawn"
     ]
     assert spawn_events[0]["data"]["chosen_by"] == "deterministic"
+
+
+def test_stage_mode3_labels_drafts_and_keeps_event_stream(tmp_path):
+    """Multi-agent staging: DRAFTs are labeled mode3, the finding.staged event
+    stays on the Mode 3 stream the board tails, and the staging bridge in
+    mode2_runs must not hijack the multi-role latest-run pointer."""
+    from nexus.audit import AuditWriter
+    from nexus.modes.multi_agent import _persist, read_run_events, stage_mode3
+    from nexus.modes.multi_role import latest_run_id as mode2_latest
+
+    case = _case(tmp_path)
+    (case / "audit").mkdir(exist_ok=True)
+    (case / "CASE.yaml").write_text("name: m3\nstatus: active\n", encoding="utf-8")
+    audit_id = AuditWriter("nexus", audit_dir=case / "audit").log(
+        tool="es_search",
+        params={"family": "evtxecmd", "file": "a.csv", "query": "logon"},
+        result_summary={"total": 1},
+        source="portal",
+    )
+    run_id = "M3-stage-test"
+    _persist(case, run_id, {
+        "run_id": run_id, "case_id": case.name, "question": "q",
+        "status": "completed", "product_mode": "multi-agent",
+        "board": [], "disputes": [],
+        "candidates": [{
+            "title": "Board candidate", "observation": "o",
+            "interpretation": "i", "confidence": "LOW",
+            "confidence_justification": "one audited query",
+            "audit_ids": [audit_id],
+        }],
+        "gaps": [],
+    })
+    result = stage_mode3(case, run_id)
+    assert result["staged_count"] == 1
+    rows = json.loads((case / "findings.json").read_text(encoding="utf-8"))
+    staged = [f for f in rows if f.get("run_id") == run_id]
+    assert staged and staged[0]["status"] == "DRAFT"
+    assert staged[0]["source"] == "mode3"
+    assert any(e["event_type"] == "finding.staged"
+               for e in read_run_events(case, run_id))
+    assert not (case / "analysis" / "mode2_runs" / f"{run_id}.jsonl").exists()
+    assert mode2_latest(case) == ""

@@ -36,6 +36,7 @@ from typing import Any
 from uuid import uuid4
 
 from nexus.audit import AuditWriter
+from nexus.langgraph.case_index import elasticsearch_ready
 from nexus.langgraph.context_loop import LoopBudget, _call_model, run_context_loop
 from nexus.langgraph.prompt_budget import budget_chars, case_window
 
@@ -598,6 +599,10 @@ def stage_run_candidates(
     }
     rows = candidates if candidates is not None else (record.get("candidates") or [])
     sink = EventSink(case_dir, run_id)
+    if run_mode == "mode3":
+        # Keep the staging event in the run's own stream so the Investigation
+        # Board (which tails analysis/mode3_runs/<id>.jsonl) shows it.
+        sink.path = Path(case_dir) / "analysis" / "mode3_runs" / f"{run_id}.jsonl"
     staged: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
 
@@ -1264,6 +1269,7 @@ def run_mode2(
     on_event: Callable[[dict[str, Any]], None] | None = None,
     max_orders: int = 6,
     resume: bool = True,
+    es_ok: bool | None = None,
 ) -> dict[str, Any]:
     """Run the Mode 2 (multi-role) supervisor graph and return the final run record.
 
@@ -1322,6 +1328,15 @@ def run_mode2(
                 state.setdefault("examiner_feedback", {})
         except (OSError, ValueError):
             pass
+
+    # Elasticsearch is required for a Mode 2 run (the workers query the N3
+    # index). Refuse before any work starts instead of producing a hollow run.
+    ready = elasticsearch_ready() if es_ok is None else bool(es_ok)
+    if not ready:
+        state["status"] = "failed"
+        state["stop_reason"] = "elasticsearch_required"
+        _persist_state(case_dir, run_id, state)
+        return state
 
     sink.emit(new_event(run_id, "run.started", actor="system",
                         detail=question, data={"case_id": case_dir.name}))

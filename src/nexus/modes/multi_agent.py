@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Annotated, Any, TypedDict
 from uuid import uuid4
 
+from nexus.langgraph.case_index import elasticsearch_ready
 from nexus.langgraph.prompt_budget import budget_chars, case_window
 from nexus.modes.multi_role import (
     EventSink,
@@ -186,15 +187,6 @@ def emit_event(case_dir: Path, run_id: str, event: Any) -> None:
     sink = EventSink(Path(case_dir), run_id)
     sink.path = _run_dir(Path(case_dir)) / f"{run_id}.jsonl"
     sink.emit(event)
-
-
-def elasticsearch_ready() -> bool:
-    try:
-        from nexus.langgraph.case_index import es_available
-
-        return bool(es_available())
-    except Exception:  # noqa: BLE001
-        return False
 
 
 def add_board(left: list[dict[str, Any]] | None, right: list[dict[str, Any]] | None) -> list[dict[str, Any]]:

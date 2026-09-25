@@ -398,7 +398,9 @@ concurrent multi-agent**: one work order runs at a time.
 - **Run record**: `analysis/mode2_runs/<run_id>.json` (orders, results,
   verdicts, candidates, coverage, follow-up count) is the resumable
   checkpoint; `nexus mode2` and the Agent Run page are two surfaces over the
-  same runtime.
+  same runtime. Elasticsearch is required: the runtime refuses before any work
+  when the cluster is unavailable (`status=failed`,
+  `stop_reason=elasticsearch_required`), same as Mode 3 and the pipeline gate.
 - **Boundary**: agents never stage or approve. Candidates stage as DRAFT only
   through the examiner action `nexus mode2 stage` / `POST /mode2/run/stage`,
   which requires real audit IDs (FD-001) and persists `run_id` /

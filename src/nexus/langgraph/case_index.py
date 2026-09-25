@@ -122,6 +122,14 @@ _ES_PROBE_TIMEOUT = 5.0
 _ES_PROBE_CONNECT = 3.0
 
 
+def elasticsearch_ready() -> bool:
+    """True when Elasticsearch is configured and reachable (never raises)."""
+    try:
+        return bool(es_available())
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def es_available() -> bool:
     global _es_probe_cache
     if not es_url():

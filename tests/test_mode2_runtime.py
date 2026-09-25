@@ -1,4 +1,4 @@
-"""M1/M2/M5 — Mode 3 agent runtime foundation tests."""
+"""M1/M2/M5 — Mode 2 multi-role runtime foundation tests."""
 from __future__ import annotations
 
 import json
@@ -210,7 +210,7 @@ def test_supervisor_followup_then_converges(tmp_path):
     with patch.object(m3, "run_work_order", side_effect=fake_work), \
          patch.object(m3, "plan_work_orders", return_value=[m3.WorkOrder(
              order_id="wo-1", role="evidence", task="t", family="evtxecmd")]):
-        state = m3.run_mode2(case, "what happened", model=object())
+        state = m3.run_mode2(case, "what happened", model=object(), es_ok=True)
 
     assert [o["role"] for o in state["orders"]] == ["evidence", "correlation"]
     assert state["followup_rounds"] == 1
@@ -358,7 +358,7 @@ def test_supervisor_stop_halts_before_next_order(tmp_path):
              m3.WorkOrder(order_id="wo-1", role="evidence", task="t1", family="evtxecmd"),
              m3.WorkOrder(order_id="wo-2", role="evidence", task="t2", family="hayabusa"),
          ]):
-        state = m3.run_mode2(case, "what happened", model=object())
+        state = m3.run_mode2(case, "what happened", model=object(), es_ok=True)
 
     assert executed == ["wo-1"], "the second order must not execute after stop"
     assert state["stop_reason"] == "examiner_stop"
@@ -383,7 +383,7 @@ def test_stop_before_verify_does_not_run_verifier(tmp_path):
          patch.object(m3, "plan_work_orders", return_value=[
              m3.WorkOrder(order_id="wo-1", role="evidence", task="t1", family="evtxecmd"),
          ]):
-        state = m3.run_mode2(case, "what happened", model=object())
+        state = m3.run_mode2(case, "what happened", model=object(), es_ok=True)
 
     assert roles == ["evidence"]
     assert state["status"] == "stopped"
@@ -399,7 +399,7 @@ def test_resume_of_completed_run_does_not_reexecute(tmp_path):
         "candidates": [{"title": "kept"}], "stop_reason": "completed",
     })
     with patch.object(m3, "run_work_order") as work:
-        state = m3.run_mode2(case, "q", model=object(), run_id="M2-done", resume=True)
+        state = m3.run_mode2(case, "q", model=object(), run_id="M2-done", resume=True, es_ok=True)
     work.assert_not_called()
     assert state["status"] == "completed"
     assert state["candidates"] == [{"title": "kept"}]
@@ -428,7 +428,7 @@ def test_run_mode2_supervisor_runs_and_persists(tmp_path):
     with patch.object(m3, "run_work_order", side_effect=fake_work), \
          patch.object(m3, "plan_work_orders", return_value=[m3.WorkOrder(
              order_id="wo-1", role="evidence", task="t", family="hayabusa")]):
-        state = m3.run_mode2(case, "what happened", model=object())
+        state = m3.run_mode2(case, "what happened", model=object(), es_ok=True)
 
     assert state["status"] == "completed"
     assert state["orders"]
@@ -438,3 +438,24 @@ def test_run_mode2_supervisor_runs_and_persists(tmp_path):
     assert stored is not None and stored["status"] == "completed"
     events = m3.read_run_events(case, state["run_id"])
     assert any(e["event_type"] == "run.completed" for e in events)
+
+
+def test_run_mode2_refuses_without_elasticsearch(tmp_path):
+    """A Mode 2 run must refuse before any work when ES is unavailable —
+    the workers query the N3 index, so a run without it would be hollow."""
+    case = _case(tmp_path)
+    ran: list[str] = []
+
+    def fake_work(*args, **kwargs):
+        ran.append("work")
+        raise AssertionError("no work order may run without Elasticsearch")
+
+    with patch.object(m3, "run_work_order", side_effect=fake_work):
+        state = m3.run_mode2(
+            case, "what happened", model=object(), es_ok=False, run_id="M2-no-es")
+
+    assert state["status"] == "failed"
+    assert state["stop_reason"] == "elasticsearch_required"
+    assert not ran, "the supervisor must not dispatch work orders"
+    stored = m3.read_run_record(case, "M2-no-es")
+    assert stored is not None and stored["stop_reason"] == "elasticsearch_required"
