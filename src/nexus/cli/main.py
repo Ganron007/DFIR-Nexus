@@ -61,8 +61,8 @@ from nexus.cli.evidence import app as evidence_app
 from nexus.cli.exec_cmd import app as exec_app
 from nexus.cli.index_cmd import app as index_app
 from nexus.cli.init_cmd import init as init_cmd
+from nexus.cli.mode2_cmd import app as mode2_app
 from nexus.cli.mode3_cmd import app as mode3_app
-from nexus.cli.mode4_cmd import app as mode4_app
 from nexus.cli.report import app as report_app
 from nexus.cli.review import app as review_app
 from nexus.cli.service import app as service_app
@@ -87,9 +87,9 @@ app.command(name="export", help="Export case bundle")(_sync_export)
 app.command(name="merge", help="Merge case bundle")(_sync_merge)
 app.add_typer(exec_app, name="exec", help="Execute forensic command with audit trail")
 app.add_typer(audit_app, name="audit", help="View audit trail")
-app.add_typer(mode3_app, name="mode2",
+app.add_typer(mode2_app, name="mode2",
               help="Mode 2 — Multi-role pipeline")
-app.add_typer(mode4_app, name="mode3",
+app.add_typer(mode3_app, name="mode3",
               help="Mode 3 — Multi-agent team")
 app.add_typer(todo_app, name="todo", help="Manage TODO items")
 app.add_typer(data_app, name="data", help="Download RAG / triage / fixtures")
