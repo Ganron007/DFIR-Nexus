@@ -142,7 +142,7 @@ def backbone(tmp_path, monkeypatch):
 
 
 def test_propose_prompt_teaches_grammar_and_binds_backbone(tmp_path):
-    from nexus.langgraph.mode2 import _propose_with_model
+    from nexus.modes.llm_guided import _propose_with_model
 
     case = _mkcase(tmp_path)
     hits = [
@@ -169,7 +169,7 @@ def test_propose_prompt_teaches_grammar_and_binds_backbone(tmp_path):
 
 
 def test_validation_wall_degrades_bad_dsl_to_bare_terms():
-    from nexus.langgraph.mode2 import _validate_dsl
+    from nexus.modes.llm_guided import _validate_dsl
 
     good = _validate_dsl("family:evtx event:4625 AND 10.0.0.5")
     assert good["dsl"] is True and not good["fallback"]
@@ -180,7 +180,7 @@ def test_validation_wall_degrades_bad_dsl_to_bare_terms():
 
 
 def test_propose_backward_compat_needles_schema(tmp_path):
-    from nexus.langgraph.mode2 import _propose_with_model
+    from nexus.modes.llm_guided import _propose_with_model
 
     case = _mkcase(tmp_path)
     fake = _FakeModel({"needles": ["sdelete"], "rationale": "old schema"})
@@ -193,7 +193,7 @@ def test_propose_backward_compat_needles_schema(tmp_path):
 
 
 def test_loop_runs_dsl_queries_through_backbone(backbone):
-    from nexus.langgraph.mode2 import run_iterative_loop
+    from nexus.modes.llm_guided import run_iterative_loop
 
     _tools, _cid, case_dir = backbone
     fake = _FakeModel({
@@ -218,7 +218,7 @@ def test_loop_runs_dsl_queries_through_backbone(backbone):
 
 
 def test_loop_reports_newly_discovered_families(backbone):
-    from nexus.langgraph.mode2 import run_iterative_loop
+    from nexus.modes.llm_guided import run_iterative_loop
 
     _tools, _cid, case_dir = backbone
     fake = _FakeModel({
@@ -234,7 +234,7 @@ def test_loop_reports_newly_discovered_families(backbone):
 
 
 def test_loop_falls_back_on_bad_dsl(backbone):
-    from nexus.langgraph.mode2 import run_iterative_loop
+    from nexus.modes.llm_guided import run_iterative_loop
 
     _tools, _cid, case_dir = backbone
     fake = _FakeModel({
@@ -292,7 +292,7 @@ def test_family_fields_profile(backbone):
 
 
 def test_propose_prompt_teaches_aggregations(tmp_path):
-    from nexus.langgraph.mode2 import _propose_with_model
+    from nexus.modes.llm_guided import _propose_with_model
 
     case = _mkcase(tmp_path)
     hits = [{"family": "hayabusa", "file": "a.csv", "line": "1",
@@ -304,7 +304,7 @@ def test_propose_prompt_teaches_aggregations(tmp_path):
 
 
 def test_propose_validates_aggregations(tmp_path):
-    from nexus.langgraph.mode2 import _propose_with_model
+    from nexus.modes.llm_guided import _propose_with_model
 
     case = _mkcase(tmp_path)
     fake = _FakeModel({
@@ -324,7 +324,7 @@ def test_propose_validates_aggregations(tmp_path):
 
 
 def test_loop_runs_aggregations_through_backbone(backbone):
-    from nexus.langgraph.mode2 import run_iterative_loop
+    from nexus.modes.llm_guided import run_iterative_loop
 
     _tools, _cid, case_dir = backbone
     fake = _FakeModel({
@@ -348,7 +348,7 @@ def test_loop_runs_aggregations_through_backbone(backbone):
 
 
 def test_aggregation_absent_when_not_proposed(backbone):
-    from nexus.langgraph.mode2 import run_iterative_loop
+    from nexus.modes.llm_guided import run_iterative_loop
 
     _tools, _cid, case_dir = backbone
     fake = _FakeModel({
@@ -364,7 +364,7 @@ def test_aggregation_absent_when_not_proposed(backbone):
 def test_iteration_zero_carries_an_audit_id(backbone):
     """The initial hit set is citation material — it must be audited like
     every other iteration (previously queried through query_pack directly)."""
-    from nexus.langgraph.mode2 import run_iterative_loop
+    from nexus.modes.llm_guided import run_iterative_loop
 
     _tools, _cid, case_dir = backbone
     fake = _FakeModel({"queries": [], "rationale": "stop"})

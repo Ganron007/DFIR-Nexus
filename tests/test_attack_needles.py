@@ -12,7 +12,7 @@ from nexus.knowledge.attack_needles import (
     extract_techniques,
 )
 from nexus.knowledge.loader import get_attack_needles
-from nexus.langgraph.mode1 import nl_to_needles
+from nexus.modes.llm_desk import nl_to_needles
 from nexus.langgraph.query_pack import playbook_techniques_for_families
 
 

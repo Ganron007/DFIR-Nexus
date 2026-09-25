@@ -8,7 +8,7 @@ from nexus.knowledge.sigma_needles import (
     sigma_needles_for,
     sigma_packs_for,
 )
-from nexus.langgraph.mode1 import nl_to_needles
+from nexus.modes.llm_desk import nl_to_needles
 from nexus.langgraph.query_pack import (
     finalize_hits,
     playbook_strong_terms_for_families,

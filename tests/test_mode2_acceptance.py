@@ -67,8 +67,8 @@ def _mkcase() -> Path:
 def test_mode2_acceptance_end_to_end():
     from nexus.audit import AuditWriter
     from nexus.langgraph.backbone import backbone_call
-    from nexus.langgraph.mode1 import promote_hits_to_draft, save_draft_finding
-    from nexus.langgraph.mode2 import (
+    from nexus.modes.llm_desk import promote_hits_to_draft, save_draft_finding
+    from nexus.modes.llm_guided import (
         corroboration_check,
         propose_next_needles,
     )
@@ -152,7 +152,7 @@ def test_mode2_acceptance_end_to_end():
         examiner="mode2-acceptance",
         interpretation_hint="Event 1102 — security log cleared during the window.",
     )
-    from nexus.langgraph.mode1 import _heuristic_scribe
+    from nexus.modes.llm_desk import _heuristic_scribe
 
     draft = _heuristic_scribe(draft, r4["hits"], case_dir=case_dir)
     draft = {**draft, "confidence": "LOW",
@@ -184,7 +184,7 @@ def staged_finding_visible(case_dir: Path, fid: str | None = None) -> bool:
 def test_mode2_loop_never_writes_findings():
     """Hard invariant: the Mode 2 loop returns iterations — findings.json is
     untouched until promote/save runs outside the loop."""
-    from nexus.langgraph.mode2 import run_iterative_loop
+    from nexus.modes.llm_guided import run_iterative_loop
 
     case_dir = _mkcase()
     fake = _FakeModel([{  # type: ignore[list-item]

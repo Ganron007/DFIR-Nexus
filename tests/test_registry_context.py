@@ -28,7 +28,7 @@ def test_mbc_context_matches_malware_behaviors():
 
 
 def test_mode1_context_block_renders_registry_lenses():
-    from nexus.langgraph.mode1 import _context_block
+    from nexus.modes.llm_desk import _context_block
 
     block = _context_block({
         "itm_context": "AR3/PR026 Remote Desktop (RDP)",

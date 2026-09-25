@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from nexus.langgraph.mode1 import (
+from nexus.modes.llm_desk import (
     _heuristic_needles,
     _heuristic_scribe,
     nl_to_needles,
@@ -246,7 +246,7 @@ def test_promote_without_tool_audits_stages_real_draft(tmp_path):
     (same class as the Mode 1 full-run bug)."""
     import json as _json
 
-    from nexus.langgraph.mode1 import (
+    from nexus.modes.llm_desk import (
         _heuristic_scribe,
         promote_hits_to_draft,
         save_draft_finding,

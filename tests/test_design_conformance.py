@@ -363,7 +363,7 @@ def test_invariant_draft_only_cannot_create_approved(client):
 
 def test_invariant_fd001_rejects_finding_without_audit_trail(client):
     from nexus.config import settings
-    from nexus.langgraph.mode1 import save_draft_finding
+    from nexus.modes.llm_desk import save_draft_finding
 
     case_id = _create(client, "FD001 Case")
     case_dir = settings.cases_root / case_id

@@ -1615,7 +1615,7 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
             write_kb_context(settings.cases_root / case_id, kb_ctx)
             kb_block = render_kb_markdown(kb_ctx)
             try:
-                from nexus.langgraph.mode2 import _playbook_context_for_families
+                from nexus.modes.llm_guided import _playbook_context_for_families
 
                 playbook_block = _playbook_context_for_families(set(families))[:3000]
             except Exception as exc:  # noqa: BLE001

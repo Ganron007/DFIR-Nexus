@@ -11,7 +11,7 @@ import pytest
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
-from nexus.langgraph.mode1 import (
+from nexus.modes.llm_desk import (
     _context_block,
     extract_entities,
     nl_to_needles,
@@ -120,7 +120,7 @@ def test_api_ask_returns_entities_without_llm(client, monkeypatch):
 
 def test_chat_stream_mode1_uses_grounded_context(client, monkeypatch):
     """The UI path (/chat/stream) must ground the scribe like /mode1/ask."""
-    import nexus.langgraph.mode1 as mode1
+    import nexus.modes.llm_desk as mode1
 
     captured: dict = {}
     real = mode1.nl_to_needles

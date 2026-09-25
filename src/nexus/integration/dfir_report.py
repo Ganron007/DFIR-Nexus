@@ -293,7 +293,7 @@ def _rehydrate_finding(f: dict[str, Any], case_dir) -> dict[str, Any]:
         ][:12]
         if interp_hits:
             try:
-                from nexus.langgraph.mode1 import _heuristic_scribe
+                from nexus.modes.llm_desk import _heuristic_scribe
 
                 rescribed = _heuristic_scribe(dict(f), interp_hits, case_dir)
                 new_interp = str(rescribed.get("interpretation") or "").strip()

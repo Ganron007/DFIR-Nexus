@@ -76,7 +76,7 @@ def test_suggestions_deterministic_without_model(tmp_path):
         patch("nexus.langgraph.llm_pipeline.get_model", side_effect=RuntimeError("no model")),
         _client(case) as client,
     ):
-        resp = client.post("/portal/api/mode2/suggestions", json={})
+        resp = client.post("/portal/api/mode1/suggestions", json={})
     assert resp.status_code == 200
     data = resp.json()
     assert data["generated_by"] == "deterministic"
@@ -106,7 +106,7 @@ def test_suggestions_llm_output_is_validated(tmp_path):
         patch("nexus.langgraph.llm_pipeline.get_model", return_value=_FakeModel()),
         _client(case) as client,
     ):
-        resp = client.post("/portal/api/mode2/suggestions", json={})
+        resp = client.post("/portal/api/mode1/suggestions", json={})
     assert resp.status_code == 200
     data = resp.json()
     assert data["generated_by"] == "llm"
@@ -119,7 +119,7 @@ def test_save_answer_bookmarks_and_records(tmp_path):
     case = _mkcase(tmp_path)
     with _client(case) as client:
         resp = client.post(
-            "/portal/api/mode2/save-answer",
+            "/portal/api/mode1/save-answer",
             json={"entry_ts": "2026-09-23T10:00:05+00:00"},
         )
     assert resp.status_code == 200
@@ -143,7 +143,7 @@ def test_save_answer_bookmarks_and_records(tmp_path):
     # Idempotent: a second save does not duplicate the record or the bookmark.
     with _client(case) as client:
         resp2 = client.post(
-            "/portal/api/mode2/save-answer",
+            "/portal/api/mode1/save-answer",
             json={"entry_ts": "2026-09-23T10:00:05+00:00"},
         )
     assert resp2.status_code == 200
@@ -155,7 +155,7 @@ def test_save_answer_bookmarks_and_records(tmp_path):
 def test_save_answer_unknown_entry(tmp_path):
     case = _mkcase(tmp_path)
     with _client(case) as client:
-        resp = client.post("/portal/api/mode2/save-answer", json={"entry_ts": "nope"})
+        resp = client.post("/portal/api/mode1/save-answer", json={"entry_ts": "nope"})
     assert resp.status_code == 404
 
 

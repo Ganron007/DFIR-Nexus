@@ -265,7 +265,7 @@ def test_case_seal_route_is_canonical_lifecycle_endpoint(client):
     case_id = _create(client, "Seal Route Case")["case_id"]
     hdr = {"X-Nexus-Case": case_id}
 
-    for path in ("/portal/api/case/seal", "/portal/api/mode3/seal"):
+    for path in ("/portal/api/case/seal",):
         # Missing challenge fields → 400 (not 404 — the route exists).
         r = client.post(path, json={}, headers=hdr)
         assert r.status_code == 400, (path, r.text)

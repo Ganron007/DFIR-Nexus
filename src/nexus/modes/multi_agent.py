@@ -21,7 +21,8 @@ from pathlib import Path
 from typing import Annotated, Any, TypedDict
 from uuid import uuid4
 
-from nexus.langgraph.mode3_runtime import (
+from nexus.langgraph.prompt_budget import budget_chars, case_window
+from nexus.modes.multi_role import (
     EventSink,
     WorkOrder,
     _question_keywords,
@@ -30,7 +31,6 @@ from nexus.langgraph.mode3_runtime import (
     new_event,
     stage_run_candidates,
 )
-from nexus.langgraph.prompt_budget import budget_chars, case_window
 
 log = logging.getLogger(__name__)
 
@@ -444,7 +444,7 @@ def _seat_with_model(
     audit: Any = None,
 ) -> dict[str, Any]:
     from nexus.langgraph.context_loop import LoopBudget, run_context_loop
-    from nexus.langgraph.mode3_runtime import role_for
+    from nexus.modes.multi_role import role_for
 
     role_name = str(spawn.get("role") or "evidence")
     try:
@@ -930,7 +930,7 @@ def stage_mode4(case_dir: Path, run_id: str) -> dict[str, Any]:
     record = read_run_record(case_dir, run_id)
     if record is None:
         return {"error": "run not found", "run_id": run_id, "staged": [], "skipped": []}
-    from nexus.langgraph.mode3_runtime import _MODE3_DIR
+    from nexus.modes.multi_role import _MODE3_DIR
 
     bridge = Path(case_dir) / _MODE3_DIR
     bridge.mkdir(parents=True, exist_ok=True)

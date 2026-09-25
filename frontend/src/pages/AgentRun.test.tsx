@@ -35,8 +35,8 @@ const statusRecord = {
 
 vi.mock("../api/client", () => ({
   ApiError: class ApiError extends Error {},
-  mode3RunEventsPath: (id: string) => `/portal/api/mode3/run/events?run_id=${id}`,
-  mode4RunEventsPath: (id: string) => `/portal/api/mode4/run/events?run_id=${id}`,
+  mode3RunEventsPath: (id: string) => `/portal/api/mode2/run/events?run_id=${id}`,
+  mode4RunEventsPath: (id: string) => `/portal/api/mode3/run/events?run_id=${id}`,
   api: {
     mode3RunStatus: vi.fn(async () => statusRecord),
     mode3RunPlan: vi.fn(async () => ({
@@ -192,7 +192,7 @@ describe("AgentRun (Mode 3)", () => {
     expect(await screen.findByText(/M3-test/)).toBeTruthy();
     const source = FakeEventSource.instances[0];
     expect(source).toBeTruthy();
-    expect(source.url).toContain("/mode3/run/events?run_id=M3-test");
+    expect(source.url).toContain("/mode2/run/events?run_id=M3-test");
 
     await act(async () => {
       source.emit("agent", {

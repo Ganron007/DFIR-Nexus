@@ -26,17 +26,17 @@ class TestIterationCap:
     """WP 2.7: iteration cap should be 5, not 3."""
 
     def test_max_iterations_is_5(self):
-        from nexus.langgraph.mode2 import _MAX_ITERATIONS
+        from nexus.modes.llm_guided import _MAX_ITERATIONS
 
         assert _MAX_ITERATIONS == 5, f"Expected 5, got {_MAX_ITERATIONS}"
 
     def test_loop_respects_cap_of_5(self, tmp_path):
         """The loop should allow up to 5 iterations."""
-        from nexus.langgraph.mode2 import run_iterative_loop
+        from nexus.modes.llm_guided import run_iterative_loop
 
         case_dir = _make_case(tmp_path)
         with patch("nexus.langgraph.query_pack.n4_query") as mock_n4, \
-             patch("nexus.langgraph.mode1.nl_to_needles") as mock_nl:
+             patch("nexus.modes.llm_desk.nl_to_needles") as mock_nl:
             mock_nl.return_value = {"needles": ["test"], "window": "", "source": "heuristic"}
             # Return hits for all 6 calls (initial + 5 iterations)
             mock_n4.side_effect = [
@@ -56,7 +56,7 @@ class TestPlaybookCorroboration:
 
     def test_corroboration_from_playbook(self):
         """corroboration_suggestions should use playbook caveats when available."""
-        from nexus.langgraph.mode2 import corroboration_suggestions
+        from nexus.modes.llm_guided import corroboration_suggestions
 
         finding = {"evidence": [{"source": "prefetch/x"}], "confidence": "LOW"}
         # Mock playbook with corroboration-relevant caveats

@@ -211,7 +211,7 @@ and [NEXUS-MODE.md](NEXUS-MODE.md).
 Requires: `pip install dfir-nexus[pipeline]` and LLM env for coverage/design/interpret
 (`NEXUS_LLM_MODEL` / `NEXUS_LLM_BASE_URL`). `tools` needs no LLM.
 
-## Mode 2 — Multi-role runs (`nexus mode3`)
+## Mode 2 — Multi-role runs (`nexus mode2`)
 
 Supervised agent-role investigation over the active case — one work order at a
 time, the same runtime and event stream as the Agent Run page
@@ -220,17 +220,17 @@ configured model and the per-case Elasticsearch index (`NEXUS_ES_URL`);
 agents use scoped **read-only** tools only and never stage or approve.
 
 ```bash
-nexus mode3 plan   -q "Trace RDP activity and USB device use"   # propose work orders (no execution)
-nexus mode3 run    -q "Trace RDP activity and USB device use"   # approve & run, streaming agent events
-nexus mode3 run    --run-id M3-20260925T060304-aacc7b           # continue a paused run (finished runs are refused)
-nexus mode3 status  --run-id M3-... [--json]                    # state, meters, stop reason
-nexus mode3 steer  "chase WS01 and drop the exfil line"         # directive for the next work order
-nexus mode3 pause  --run-id M3-...                              # pause between work orders
-nexus mode3 resume --run-id M3-... [--no-run]                   # clear pause (then continue)
-nexus mode3 stop   --run-id M3-...                              # halt at the next work order (terminal)
-nexus mode3 findings --run-id M3-... [--json]                   # DRAFT candidates with audit IDs
-nexus mode3 stage  --run-id M3-... [--json]                     # examiner: stage verified candidates as DRAFT
-nexus mode3 export --run-id M3-... --output run.json            # record + full event stream
+nexus mode2 plan   -q "Trace RDP activity and USB device use"   # propose work orders (no execution)
+nexus mode2 run    -q "Trace RDP activity and USB device use"   # approve & run, streaming agent events
+nexus mode2 run    --run-id M3-20260925T060304-aacc7b           # continue a paused run (finished runs are refused)
+nexus mode2 status  --run-id M3-... [--json]                    # state, meters, stop reason
+nexus mode2 steer  "chase WS01 and drop the exfil line"         # directive for the next work order
+nexus mode2 pause  --run-id M3-...                              # pause between work orders
+nexus mode2 resume --run-id M3-... [--no-run]                   # clear pause (then continue)
+nexus mode2 stop   --run-id M3-...                              # halt at the next work order (terminal)
+nexus mode2 findings --run-id M3-... [--json]                   # DRAFT candidates with audit IDs
+nexus mode2 stage  --run-id M3-... [--json]                     # examiner: stage verified candidates as DRAFT
+nexus mode2 export --run-id M3-... --output run.json            # record + full event stream
 ```
 
 Notes:
@@ -241,14 +241,14 @@ Notes:
 - `stage` skips candidates without real audit IDs (FD-001) and verifier-refuted
   items, and records `run_id` / `input_call_ids` lineage on each DRAFT.
 - Approval stays examiner-only (`nexus approve` / Approval Desk); it is never
-  part of `nexus mode3`.
+  part of `nexus mode2`.
 - Run state lives under `cases/<CASE>/analysis/mode3_runs/` (`<run_id>.json`,
   `<run_id>.jsonl`, `<run_id>.control.json`, `<run_id>.steering.jsonl`).
 - Tuning: `NEXUS_MODE3_FOLLOWUPS` (0–24, default 8),
   `NEXUS_MODE3_{ROUNDS,CALLS,SECONDS}` (default 24/48/1800). The character
   ceiling is `NEXUS_LLM_CONTEXT_WINDOW` × `NEXUS_CONTEXT_FILL_RATIO`.
 
-## Mode 3 — Multi-agent runs (`nexus mode4`)
+## Mode 3 — Multi-agent runs (`nexus mode3`)
 
 Concurrent investigation: a supervisor (model-chosen seats, deterministic
 fallback) fans out evidence / correlation / pattern seats in one superstep.
@@ -259,15 +259,15 @@ and never stage or approve. Same UI stream as the **Investigation Board** on
 Agent Run.
 
 ```bash
-nexus mode4 run    -q "Trace RDP activity and USB device use"   # start & wait (streams decisions)
-nexus mode4 status --run-id M4-... [--json]                     # state, superstep, counts
-nexus mode4 board  --run-id M4-...                              # claims, audit IDs, disputes
-nexus mode4 steer  "chase WS01"      --run-id M4-...            # directive for the next superstep
-nexus mode4 pause  --run-id M4-...                              # pause at the next superstep boundary
-nexus mode4 resume --run-id M4-... [--no-run]                   # continue from the persisted snapshot
-nexus mode4 stop   --run-id M4-...                              # terminal stop
-nexus mode4 stage  --run-id M4-... [--json]                     # examiner: stage settled candidates as DRAFT
-nexus mode4 export --run-id M4-... --output run.json            # record + full event stream
+nexus mode3 run    -q "Trace RDP activity and USB device use"   # start & wait (streams decisions)
+nexus mode3 status --run-id M4-... [--json]                     # state, superstep, counts
+nexus mode3 board  --run-id M4-...                              # claims, audit IDs, disputes
+nexus mode3 steer  "chase WS01"      --run-id M4-...            # directive for the next superstep
+nexus mode3 pause  --run-id M4-...                              # pause at the next superstep boundary
+nexus mode3 resume --run-id M4-... [--no-run]                   # continue from the persisted snapshot
+nexus mode3 stop   --run-id M4-...                              # terminal stop
+nexus mode3 stage  --run-id M4-... [--json]                     # examiner: stage settled candidates as DRAFT
+nexus mode3 export --run-id M4-... --output run.json            # record + full event stream
 ```
 
 Notes:

@@ -329,7 +329,7 @@ def _analysis_with_loop(
             budget=LoopBudget(rounds=2, seconds=120.0, calls=4),
             audit=AuditWriter("nexus", audit_dir=case_dir / "audit"),
         )
-        from nexus.langgraph.mode1 import _parse_json_response
+        from nexus.modes.llm_desk import _parse_json_response
 
         parsed = _parse_json_response(str(loop.get("reply") or ""))
         if isinstance(parsed, dict):
@@ -372,7 +372,7 @@ def analyze_cluster(cluster: list[dict[str, Any]], rows: list[dict[str, str]],
             {"role": "user", "content": user_msg},
         ])
         text = getattr(resp, "content", str(resp))
-        from nexus.langgraph.mode1 import _parse_json_response
+        from nexus.modes.llm_desk import _parse_json_response
 
         parsed = _parse_json_response(text)
         if not isinstance(parsed, dict):
@@ -441,7 +441,7 @@ def _assessment_with_loop(
             budget=LoopBudget(rounds=2, seconds=120.0, calls=4),
             audit=AuditWriter("nexus", audit_dir=case_dir / "audit"),
         )
-        from nexus.langgraph.mode1 import _parse_json_response
+        from nexus.modes.llm_desk import _parse_json_response
 
         parsed = _parse_json_response(str(loop.get("reply") or ""))
         if isinstance(parsed, dict):
@@ -512,7 +512,7 @@ def case_assessment(clusters: list[list[dict[str, Any]]],
             {"role": "user", "content": user_msg},
         ])
         text = getattr(resp, "content", str(resp))
-        from nexus.langgraph.mode1 import _parse_json_response
+        from nexus.modes.llm_desk import _parse_json_response
 
         parsed = _parse_json_response(text)
         if not isinstance(parsed, dict):

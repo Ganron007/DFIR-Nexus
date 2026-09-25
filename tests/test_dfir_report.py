@@ -557,7 +557,7 @@ def test_report_without_case_dir_keeps_working(tmp_path):
 
 
 def test_severity_from_hit_levels():
-    from nexus.langgraph.mode1 import _severity_from_hits
+    from nexus.modes.llm_desk import _severity_from_hits
 
     assert _severity_from_hits([
         {"family": "hayabusa", "fields": {"Level": "high"}},

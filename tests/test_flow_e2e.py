@@ -201,7 +201,7 @@ def test_full_loop_design_flow(flow_env, monkeypatch):
     # correlates entities, detects patterns, and synthesizes findings.
     # This is the "real agentic" path — not the old simulation.
     r = client.post(
-        "/portal/api/mode3/orchestrator",
+        "/portal/api/mode2/orchestrator",
         headers=headers,
         json={"max_agents": 4, "max_iterations": 2},
     )

@@ -72,7 +72,7 @@ def hits_to_events(hits: list[dict[str, str]], source: str = "n4") -> list[dict[
             desc = f"{fam} [{terms}]: {text[:120]}"
         sev = ""
         try:
-            from nexus.langgraph.mode1 import _severity_from_hits
+            from nexus.modes.llm_desk import _severity_from_hits
 
             sev = _severity_from_hits([h]) if h.get("fields") else ""
         except Exception:

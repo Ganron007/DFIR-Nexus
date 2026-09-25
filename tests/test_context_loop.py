@@ -570,7 +570,7 @@ def test_mode2_chat_stream_emits_tool_events_and_history(tmp_path):
 
 
 def test_propose_next_needles_uses_context_loop(tmp_path):
-    from nexus.langgraph import mode2
+    from nexus.modes import llm_guided as mode2
 
     case = _case(tmp_path)
     (case / "audit").mkdir(exist_ok=True)

@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from nexus.langgraph.mode3 import execute_plan, plan_extras, seal_case
+from nexus.modes.plan_sliver import execute_plan, plan_extras, seal_case
 
 
 def _make_case(tmp_path: Path, with_ledger: bool = True, with_ok: bool = True) -> Path:

@@ -38,7 +38,7 @@ class TestRagContextInProposals:
 
     def test_propose_with_model_includes_rag_context(self, tmp_path):
         """When RAG is available, the LLM prompt must contain methodology text."""
-        from nexus.langgraph.mode2 import propose_next_needles
+        from nexus.modes.llm_guided import propose_next_needles
 
         case_dir = _make_case(tmp_path)
         hits = [
@@ -77,7 +77,7 @@ class TestRagContextInProposals:
 
     def test_propose_without_rag_still_works(self, tmp_path):
         """When RAG is unavailable, proposals still work (degraded, no crash)."""
-        from nexus.langgraph.mode2 import propose_next_needles
+        from nexus.modes.llm_guided import propose_next_needles
 
         case_dir = _make_case(tmp_path)
         hits = [
@@ -102,7 +102,7 @@ class TestRagContextInProposals:
 
     def test_rag_provenance_recorded(self, tmp_path):
         """WP 2.10: RAG queries and retrieved doc IDs must be in the output."""
-        from nexus.langgraph.mode2 import propose_next_needles
+        from nexus.modes.llm_guided import propose_next_needles
 
         case_dir = _make_case(tmp_path)
         hits = [
@@ -142,7 +142,7 @@ class TestPlaybookContextInProposals:
 
     def test_playbook_caveats_in_proposal_context(self, tmp_path):
         """When a playbook matches hit families, its caveats appear in context."""
-        from nexus.langgraph.mode2 import propose_next_needles
+        from nexus.modes.llm_guided import propose_next_needles
 
         case_dir = _make_case(tmp_path)
         hits = [
@@ -185,7 +185,7 @@ class TestPlaybookContextInProposals:
 
     def test_playbook_context_empty_when_no_match(self, tmp_path):
         """When no playbook matches, playbook_context is empty but not crashing."""
-        from nexus.langgraph.mode2 import propose_next_needles
+        from nexus.modes.llm_guided import propose_next_needles
 
         case_dir = _make_case(tmp_path)
         hits = [
@@ -214,7 +214,7 @@ class TestContextEnrichment:
 
     def test_aggregation_summary_in_prompt(self, tmp_path):
         """The LLM prompt must include hit counts per family and per host."""
-        from nexus.langgraph.mode2 import propose_next_needles
+        from nexus.modes.llm_guided import propose_next_needles
 
         case_dir = _make_case(tmp_path)
         hits = [
@@ -246,7 +246,7 @@ class TestContextEnrichment:
 
     def test_top_hits_per_family_in_prompt(self, tmp_path):
         """Top hits per family (up to N) must appear with more text than before."""
-        from nexus.langgraph.mode2 import _MAX_HIT_TEXT_ENRICHED
+        from nexus.modes.llm_guided import _MAX_HIT_TEXT_ENRICHED
 
         # The enriched hit text cap should be larger than the old 160-char cap
         assert _MAX_HIT_TEXT_ENRICHED >= 400

@@ -72,7 +72,7 @@ def plan(
     as_json: bool = typer.Option(False, "--json", help="Machine-readable output"),
 ):
     """Propose work orders without executing them."""
-    from nexus.langgraph.mode3_runtime import (
+    from nexus.modes.multi_role import (
         EventSink,
         examiner_feedback,
         plan_work_orders,
@@ -107,7 +107,7 @@ def run(
     output: Path = typer.Option(None, "--output", help="Write the run record JSON"),
 ):
     """Run the supervised Mode 2 (multi-role) investigation, streaming agent events."""
-    from nexus.langgraph.mode3_runtime import run_mode3
+    from nexus.modes.multi_role import run_mode3
 
     case_dir = _case_dir(case)
     run_id = run_id.strip()
@@ -136,7 +136,7 @@ def status(
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Show the current/last Mode 2 (multi-role) run state."""
-    from nexus.langgraph.mode3_runtime import (
+    from nexus.modes.multi_role import (
         latest_run_id,
         read_controls,
         read_run_events,
@@ -178,7 +178,7 @@ def steer(
     run_id: str = typer.Option("", "--run-id", help="Run id (default latest)"),
 ):
     """Inject a directive the agents pick up on the next work order."""
-    from nexus.langgraph.mode3_runtime import (
+    from nexus.modes.multi_role import (
         EventSink,
         append_steering,
         latest_run_id,
@@ -204,7 +204,7 @@ def pause(
     run_id: str = typer.Option("", "--run-id", help="Run id (default latest)"),
 ):
     """Pause the run between work orders."""
-    from nexus.langgraph.mode3_runtime import latest_run_id, mark_paused
+    from nexus.modes.multi_role import latest_run_id, mark_paused
 
     case_dir = _case_dir(case)
     run_id = run_id.strip() or latest_run_id(case_dir)
@@ -220,7 +220,7 @@ def stop(
     run_id: str = typer.Option("", "--run-id", help="Run id (default latest)"),
 ):
     """Halt a run at the next work order (cooperative stop, not approval)."""
-    from nexus.langgraph.mode3_runtime import (
+    from nexus.modes.multi_role import (
         EventSink,
         latest_run_id,
         new_event,
@@ -248,7 +248,7 @@ def resume(
     no_run: bool = typer.Option(False, "--no-run", help="Only clear the pause flag"),
 ):
     """Clear the pause flag and continue the run."""
-    from nexus.langgraph.mode3_runtime import (
+    from nexus.modes.multi_role import (
         latest_run_id,
         mark_paused,
         read_run_record,
@@ -283,7 +283,7 @@ def findings(
     as_json: bool = typer.Option(False, "--json"),
 ):
     """List DRAFT candidate findings from a run (never approved here)."""
-    from nexus.langgraph.mode3_runtime import latest_run_id, read_run_record
+    from nexus.modes.multi_role import latest_run_id, read_run_record
 
     case_dir = _case_dir(case)
     run_id = run_id.strip() or latest_run_id(case_dir)
@@ -316,7 +316,7 @@ def stage(
     candidates. Staged findings keep run_id/input_call_ids lineage; approval
     stays password-gated with the examiner.
     """
-    from nexus.langgraph.mode3_runtime import (
+    from nexus.modes.multi_role import (
         latest_run_id,
         read_run_record,
         stage_run_candidates,
@@ -351,7 +351,7 @@ def export(
     output: Path = typer.Option(..., "--output", help="Output JSON path"),
 ):
     """Export the run record + event stream for review/backup."""
-    from nexus.langgraph.mode3_runtime import (
+    from nexus.modes.multi_role import (
         latest_run_id,
         read_run_events,
         read_run_record,

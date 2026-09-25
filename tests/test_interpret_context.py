@@ -65,7 +65,7 @@ def test_kb_context_unavailable_is_graceful(monkeypatch):
 
 
 def test_playbook_context_returns_guidance_for_families():
-    from nexus.langgraph.mode2 import _playbook_context_for_families
+    from nexus.modes.llm_guided import _playbook_context_for_families
 
     text = _playbook_context_for_families({"hayabusa"})
     assert isinstance(text, str)

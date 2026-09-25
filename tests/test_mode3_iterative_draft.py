@@ -35,10 +35,10 @@ class TestIterativeQueryInMode3:
 
     def test_execute_plan_runs_iterative_loop(self, tmp_path):
         """execute_plan should run the Mode 2 iterative loop for approved queries."""
-        from nexus.langgraph.mode3 import execute_plan
+        from nexus.modes.plan_sliver import execute_plan
 
         case_dir = _make_case(tmp_path)
-        with patch("nexus.langgraph.mode3._run_iterative_for_queries") as mock_iter:
+        with patch("nexus.modes.plan_sliver._run_iterative_for_queries") as mock_iter:
             mock_iter.return_value = {
                 "iterations": [
                     {"iteration": 0, "action": "initial_query", "hits": 5},
@@ -55,12 +55,12 @@ class TestIterativeQueryInMode3:
 
     def test_iterative_loop_produces_needle_proposals(self, tmp_path):
         """The iterative loop should propose new needles based on initial hits."""
-        from nexus.langgraph.mode3 import _run_iterative_for_queries
+        from nexus.modes.plan_sliver import _run_iterative_for_queries
 
         case_dir = _make_case(tmp_path)
         with patch("nexus.langgraph.backbone.backbone_call") as mock_n4, \
-             patch("nexus.langgraph.mode1.nl_to_needles") as mock_nl, \
-             patch("nexus.langgraph.mode2.propose_next_needles") as mock_propose:
+             patch("nexus.modes.llm_desk.nl_to_needles") as mock_nl, \
+             patch("nexus.modes.llm_guided.propose_next_needles") as mock_propose:
             mock_nl.return_value = {"needles": ["mimikatz"], "window": "", "source": "heuristic"}
             # Iteration 0 + every proposal round now share the backbone mock —
             # a single stable return value avoids exhausting a side-effect list.
@@ -82,12 +82,12 @@ class TestIterativeQueryInMode3:
 
     def test_iterative_loop_caps_at_max_iterations(self, tmp_path):
         """The loop should respect the max_iterations cap."""
-        from nexus.langgraph.mode3 import _run_iterative_for_queries
+        from nexus.modes.plan_sliver import _run_iterative_for_queries
 
         case_dir = _make_case(tmp_path)
         with patch("nexus.langgraph.backbone.backbone_call") as mock_n4, \
-             patch("nexus.langgraph.mode1.nl_to_needles") as mock_nl, \
-             patch("nexus.langgraph.mode2.propose_next_needles") as mock_propose:
+             patch("nexus.modes.llm_desk.nl_to_needles") as mock_nl, \
+             patch("nexus.modes.llm_guided.propose_next_needles") as mock_propose:
             mock_nl.return_value = {"needles": ["test"], "source": "heuristic"}
             mock_n4.return_value = {
                 "hits": [{"family": "hayabusa", "file": "t.csv", "line": "1",
@@ -108,11 +108,11 @@ class TestIterativeQueryInMode3:
 
     def test_iterative_loop_no_hits_stops_early(self, tmp_path):
         """If initial query returns no hits, the loop should stop."""
-        from nexus.langgraph.mode3 import _run_iterative_for_queries
+        from nexus.modes.plan_sliver import _run_iterative_for_queries
 
         case_dir = _make_case(tmp_path)
         with patch("nexus.langgraph.backbone.backbone_call") as mock_n4, \
-             patch("nexus.langgraph.mode1.nl_to_needles") as mock_nl:
+             patch("nexus.modes.llm_desk.nl_to_needles") as mock_nl:
             mock_nl.return_value = {"needles": ["nothing"], "source": "heuristic"}
             mock_n4.return_value = {"hits": [], "count": 0, "backend": "csv", "error": None}
             result = _run_iterative_for_queries(case_dir, "nothing", model=None, max_iterations=3)
@@ -122,10 +122,10 @@ class TestIterativeQueryInMode3:
 
     def test_iterative_logged_to_agent_runs(self, tmp_path):
         """Iterative loop execution must be logged to agent_runs.jsonl."""
-        from nexus.langgraph.mode3 import execute_plan
+        from nexus.modes.plan_sliver import execute_plan
 
         case_dir = _make_case(tmp_path)
-        with patch("nexus.langgraph.mode3._run_iterative_for_queries") as mock_iter:
+        with patch("nexus.modes.plan_sliver._run_iterative_for_queries") as mock_iter:
             mock_iter.return_value = {
                 "iterations": [{"iteration": 0, "hits": 1}],
                 "total_hits": 1,
@@ -144,7 +144,7 @@ class TestAgentDraftFindings:
 
     def test_propose_agent_draft_finding(self, tmp_path):
         """Agent should stage a DRAFT finding with examiner_selected=False."""
-        from nexus.langgraph.mode3 import propose_agent_finding
+        from nexus.modes.plan_sliver import propose_agent_finding
 
         case_dir = _make_case(tmp_path)
         hits = [
@@ -163,7 +163,7 @@ class TestAgentDraftFindings:
 
     def test_agent_finding_has_corroboration(self, tmp_path):
         """Agent DRAFT finding should include corroboration check."""
-        from nexus.langgraph.mode3 import propose_agent_finding
+        from nexus.modes.plan_sliver import propose_agent_finding
 
         case_dir = _make_case(tmp_path)
         hits = [
@@ -180,7 +180,7 @@ class TestAgentDraftFindings:
 
     def test_agent_finding_rejects_empty_hits(self, tmp_path):
         """Agent should refuse to draft from no hits."""
-        from nexus.langgraph.mode3 import propose_agent_finding
+        from nexus.modes.plan_sliver import propose_agent_finding
 
         case_dir = _make_case(tmp_path)
         result = propose_agent_finding(case_dir, [], "Empty finding", model=None)
@@ -188,7 +188,7 @@ class TestAgentDraftFindings:
 
     def test_agent_finding_logged_to_agent_runs(self, tmp_path):
         """Agent DRAFT finding must be logged to agent_runs.jsonl."""
-        from nexus.langgraph.mode3 import propose_agent_finding
+        from nexus.modes.plan_sliver import propose_agent_finding
 
         case_dir = _make_case(tmp_path)
         hits = [
@@ -205,7 +205,7 @@ class TestAgentDraftFindings:
 
     def test_agent_finding_uses_llm_scribe(self, tmp_path):
         """When LLM is available, agent finding should use it for scribing."""
-        from nexus.langgraph.mode3 import propose_agent_finding
+        from nexus.modes.plan_sliver import propose_agent_finding
 
         case_dir = _make_case(tmp_path)
         hits = [
@@ -223,7 +223,7 @@ class TestAgentDraftFindings:
 
     def test_agent_finding_never_auto_approves(self, tmp_path):
         """Agent finding must always be DRAFT, never APPROVED."""
-        from nexus.langgraph.mode3 import propose_agent_finding
+        from nexus.modes.plan_sliver import propose_agent_finding
 
         case_dir = _make_case(tmp_path)
         hits = [

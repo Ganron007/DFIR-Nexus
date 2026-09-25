@@ -129,7 +129,7 @@ presets**, not separate products or UIs.
 > Multi-role** ships the supervised runtime (`nexus mode3`): plan approval,
 > live steering, pause/resume/stop, verifier verdicts, DRAFT staging with
 > lineage. **Mode 3 — Multi-agent** ships the concurrent runtime
-> (`nexus mode4`): model-chosen seats, shared claim board, disputes and
+> (`nexus mode3`): model-chosen seats, shared claim board, disputes and
 > bounded re-dispatch, Investigation Board UI. Agents never stage or approve
 > in any mode; the legacy `/mode3/plan|execute|seal` endpoints remain for the
 > plan/execute sliver and case sealing. **Phase 4 (enterprise UI rewrite) is
@@ -426,9 +426,9 @@ can re-dispatch the named seats (bounded); it settles after quiet supersteps
 or when re-dispatch is exhausted. Unresolved disputes are **gaps, never
 findings**; only settled, audit-backed claims become DRAFT candidates.
 
-Controls and surfaces: `nexus mode4
+Controls and surfaces: `nexus mode3
 run|status|board|steer|pause|resume|stop|stage|export`, the API
-(`/portal/api/mode4/run*`), and the **Investigation Board** on Agent Run
+(`/portal/api/mode3/run*`), and the **Investigation Board** on Agent Run
 (concurrent board, disputes, join decisions, live SSE, steer/pause/resume/stop,
 examiner staging). Same rules as every mode: read-only tools, every call
 audited, DRAFT-only, examiner approves.

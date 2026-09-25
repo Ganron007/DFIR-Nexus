@@ -36,7 +36,7 @@ class TestLLMDrivenPlanning:
 
     def test_llm_proposes_plan_items(self, tmp_path):
         """When LLM is available, it should propose plan items beyond the static dict."""
-        from nexus.langgraph.mode3 import plan_extras
+        from nexus.modes.plan_sliver import plan_extras
 
         case_dir = _make_case(tmp_path)
         model = MagicMock()
@@ -57,7 +57,7 @@ class TestLLMDrivenPlanning:
 
     def test_llm_plan_includes_rag_context(self, tmp_path):
         """WP 3.9: LLM planning prompt must include RAG methodology for SKIP'd artifacts."""
-        from nexus.langgraph.mode3 import plan_extras
+        from nexus.modes.plan_sliver import plan_extras
 
         case_dir = _make_case(tmp_path)
         model = MagicMock()
@@ -87,7 +87,7 @@ class TestLLMDrivenPlanning:
 
     def test_plan_without_llm_still_works(self, tmp_path):
         """Without LLM, plan_extras falls back to deterministic planning."""
-        from nexus.langgraph.mode3 import plan_extras
+        from nexus.modes.plan_sliver import plan_extras
 
         case_dir = _make_case(tmp_path)
         plan = plan_extras(case_dir, model=None)
@@ -97,7 +97,7 @@ class TestLLMDrivenPlanning:
 
     def test_plan_without_rag_still_works(self, tmp_path):
         """WP 3.9: When RAG is unavailable, planning still works (degraded)."""
-        from nexus.langgraph.mode3 import plan_extras
+        from nexus.modes.plan_sliver import plan_extras
 
         case_dir = _make_case(tmp_path)
         model = MagicMock()
@@ -114,7 +114,7 @@ class TestRagProvenanceInPlan:
 
     def test_rag_provenance_in_plan_output(self, tmp_path):
         """When RAG is used during planning, provenance is in the plan output."""
-        from nexus.langgraph.mode3 import plan_extras
+        from nexus.modes.plan_sliver import plan_extras
 
         case_dir = _make_case(tmp_path)
         model = MagicMock()
@@ -143,7 +143,7 @@ class TestAgentRunLedger:
 
     def test_plan_logged_with_rag_context(self, tmp_path):
         """agent_runs.jsonl must record RAG queries used during planning."""
-        from nexus.langgraph.mode3 import plan_extras
+        from nexus.modes.plan_sliver import plan_extras
 
         case_dir = _make_case(tmp_path)
         model = MagicMock()

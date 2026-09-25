@@ -41,7 +41,7 @@ def run(
 ):
     """Start a concurrent multi-agent run and wait for it to finish."""
     from nexus.langgraph.llm_pipeline import get_model
-    from nexus.langgraph.mode4_runtime import run_mode4
+    from nexus.modes.multi_agent import run_mode4
 
     case_dir = _case_dir(case)
     try:
@@ -68,7 +68,7 @@ def status(
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Show the latest or named multi-agent run."""
-    from nexus.langgraph.mode4_runtime import latest_run_id, read_run_record
+    from nexus.modes.multi_agent import latest_run_id, read_run_record
 
     case_dir = _case_dir(case)
     run_id = run_id or latest_run_id(case_dir)
@@ -92,7 +92,7 @@ def board(
     case: str = typer.Option("", "--case"),
 ):
     """Print board claims and open disputes."""
-    from nexus.langgraph.mode4_runtime import latest_run_id, read_run_record
+    from nexus.modes.multi_agent import latest_run_id, read_run_record
 
     case_dir = _case_dir(case)
     run_id = run_id or latest_run_id(case_dir)
@@ -114,7 +114,7 @@ def stop(
     case: str = typer.Option("", "--case"),
 ):
     """Request a stop at the next superstep boundary."""
-    from nexus.langgraph.mode4_runtime import latest_run_id, request_stop_run
+    from nexus.modes.multi_agent import latest_run_id, request_stop_run
 
     case_dir = _case_dir(case)
     run_id = run_id or latest_run_id(case_dir)
@@ -131,7 +131,7 @@ def steer(
     case: str = typer.Option("", "--case"),
 ):
     """Queue a steer line for the supervisor's next superstep."""
-    from nexus.langgraph.mode4_runtime import (
+    from nexus.modes.multi_agent import (
         append_mode4_steering,
         emit_event,
         latest_run_id,
@@ -158,7 +158,7 @@ def pause(
     case: str = typer.Option("", "--case"),
 ):
     """Pause at the next superstep boundary."""
-    from nexus.langgraph.mode4_runtime import (
+    from nexus.modes.multi_agent import (
         emit_event,
         latest_run_id,
         mark_paused,
@@ -184,7 +184,7 @@ def resume(
                                 help="Only clear the pause flag"),
 ):
     """Continue a paused run from its persisted board/superstep snapshot."""
-    from nexus.langgraph.mode4_runtime import (
+    from nexus.modes.multi_agent import (
         latest_run_id,
         mark_paused,
         read_run_record,
@@ -226,7 +226,7 @@ def export(
     output: Path = typer.Option(..., "--output", help="Output JSON path"),
 ):
     """Export the run record + full event stream."""
-    from nexus.langgraph.mode4_runtime import (
+    from nexus.modes.multi_agent import (
         latest_run_id,
         read_run_events,
         read_run_record,
@@ -253,7 +253,7 @@ def stage(
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Stage settled candidates as DRAFT. Does not approve."""
-    from nexus.langgraph.mode4_runtime import latest_run_id, stage_mode4
+    from nexus.modes.multi_agent import latest_run_id, stage_mode4
 
     case_dir = _case_dir(case)
     run_id = run_id or latest_run_id(case_dir)

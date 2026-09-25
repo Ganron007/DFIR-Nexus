@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from nexus.langgraph.mode2 import corroboration_suggestions
+from nexus.modes.llm_guided import corroboration_suggestions
 
 log = logging.getLogger(__name__)
 
@@ -312,7 +312,7 @@ def _run_iterative_for_queries(
     on approved queries rather than running them one-shot. Every iteration
     is logged to the case chat transcript.
     """
-    from nexus.langgraph.mode2 import run_iterative_loop
+    from nexus.modes.llm_guided import run_iterative_loop
 
     return run_iterative_loop(
         case_dir, question, model=model, max_iterations=max_iterations, limit=limit
@@ -336,7 +336,7 @@ def propose_agent_finding(
     Returns {draft, corroboration} or {error}.
     """
     from nexus.case.chat import append_chat
-    from nexus.langgraph.mode2 import propose_draft_finding
+    from nexus.modes.llm_guided import propose_draft_finding
 
     if not hits:
         return {"error": "No hits to draft from"}

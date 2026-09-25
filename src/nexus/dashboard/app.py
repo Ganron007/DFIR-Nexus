@@ -1459,7 +1459,7 @@ async def ask_page(request):
 
     if case_dir and question:
         from nexus.langgraph.llm_pipeline import get_model
-        from nexus.langgraph.mode1 import nl_to_needles
+        from nexus.modes.llm_desk import nl_to_needles
         from nexus.langgraph.query_pack import run_ad_hoc_query
 
         try:
@@ -1657,7 +1657,7 @@ def _mode1_ask_context(case_dir: Path, question: str) -> dict[str, Any]:
         except Exception:  # noqa: BLE001
             pass
         try:
-            from nexus.langgraph.mode2 import (
+            from nexus.modes.llm_guided import (
                 _playbook_context_for_families,
                 _rag_methodology_for_proposal,
             )
@@ -1997,7 +1997,7 @@ async def api_ask(request):
         return JSONResponse({"error": "Missing question"}, status_code=400)
 
     from nexus.langgraph.llm_pipeline import get_model
-    from nexus.langgraph.mode1 import nl_to_needles
+    from nexus.modes.llm_desk import nl_to_needles
     from nexus.langgraph.query_pack import run_ad_hoc_query
 
     try:
@@ -2062,7 +2062,7 @@ async def api_select(request):
         return JSONResponse({"error": "No hits selected"}, status_code=400)
 
     from nexus.langgraph.llm_pipeline import get_model
-    from nexus.langgraph.mode1 import promote_hits_to_draft, save_draft_finding, scribe_finding
+    from nexus.modes.llm_desk import promote_hits_to_draft, save_draft_finding, scribe_finding
     from nexus.langgraph.query_pack import (
         _parse_needles,
         collect_playbook_query_terms,
@@ -2170,7 +2170,7 @@ async def api_select(request):
     else:
         # scribe=false = fast deterministic fill, not "no scribe" — a bare
         # skeleton with empty observation used to reach findings.json.
-        from nexus.langgraph.mode1 import _heuristic_scribe
+        from nexus.modes.llm_desk import _heuristic_scribe
 
         draft = _heuristic_scribe(draft, selected, case_dir=case_dir)
 
@@ -2727,7 +2727,7 @@ async function mode2Iterate() {{
   statusEl.textContent = 'iterating...';
   appendChat('you', '[Mode 2] iterate on: ' + (q || 'current hits'));
   try {{
-    const r = await fetch('/portal/api/mode2/iterate', {{
+    const r = await fetch('/portal/api/mode1/iterate', {{
       method: 'POST', headers: {{'Content-Type':'application/json'}},
       body: JSON.stringify({{ question: q || 'corroborate the current hits', max_iterations: 2 }})
     }});
@@ -3091,7 +3091,7 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
     from nexus.audit import AuditWriter, resolve_examiner
     from nexus.case.workbench import add_bookmarks
     from nexus.langgraph.briefing import case_briefing
-    from nexus.langgraph.mode1 import (
+    from nexus.modes.llm_desk import (
         _heuristic_scribe,
         promote_hits_to_draft,
         save_draft_finding,
@@ -3600,7 +3600,7 @@ async def api_workbench_promote(request):
 
     from nexus.case.workbench import load_bookmarks
     from nexus.langgraph.llm_pipeline import get_model
-    from nexus.langgraph.mode1 import promote_hits_to_draft, save_draft_finding, scribe_finding
+    from nexus.modes.llm_desk import promote_hits_to_draft, save_draft_finding, scribe_finding
 
     bookmarks = load_bookmarks(case_dir)
     by_id = {str(b.get("id")): b for b in bookmarks}
@@ -3637,7 +3637,7 @@ async def api_workbench_promote(request):
         # WP 4j.5d: scribe=false is the fast path — deterministic heuristic
         # fill, no LLM. Never leave the draft empty: a skipped scribe used
         # to produce a bare skeleton with no observation.
-        from nexus.langgraph.mode1 import _heuristic_scribe
+        from nexus.modes.llm_desk import _heuristic_scribe
 
         draft = _heuristic_scribe(draft, selected, case_dir=case_dir)
 
@@ -3775,7 +3775,7 @@ async def api_chat_post(request):
 
     from nexus.case.chat import append_chat
     from nexus.langgraph.llm_pipeline import get_model
-    from nexus.langgraph.mode1 import nl_to_needles
+    from nexus.modes.llm_desk import nl_to_needles
     from nexus.langgraph.query_pack import load_case_intake, n4_query, parse_intake_window
 
     append_chat(case_dir, "examiner", "ask", message)
@@ -4048,7 +4048,7 @@ async def api_chat_stream(request):
     q: _queue.Queue = _queue.Queue()
 
     def _worker_mode1() -> tuple[str, dict[str, Any]]:
-        from nexus.langgraph.mode1 import nl_to_needles
+        from nexus.modes.llm_desk import nl_to_needles
         from nexus.langgraph.query_pack import (
             attach_hit_fields,
             load_case_intake,
@@ -4282,7 +4282,7 @@ async def api_timeline_lanes(request):
             count = len(all_hits)
             hits = all_hits[:400]
             defaulted = 0 if user_vocab else len(vocab)
-    from nexus.langgraph.mode1 import _SEV_ORDER, _severity_from_hits
+    from nexus.modes.llm_desk import _SEV_ORDER, _severity_from_hits
     from nexus.langgraph.query_pack import attach_hit_fields
 
     hits = attach_hit_fields(case_dir, hits)
@@ -4698,7 +4698,7 @@ async def api_mode2_iterate(request):
 
     from nexus.case.chat import append_chat
     from nexus.langgraph.llm_pipeline import get_model
-    from nexus.langgraph.mode2 import run_iterative_loop
+    from nexus.modes.llm_guided import run_iterative_loop
 
     try:
         model = get_model()
@@ -4763,7 +4763,7 @@ async def api_mode2_corroborate(request):
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
     body = await request.json()
-    from nexus.langgraph.mode2 import corroboration_check
+    from nexus.modes.llm_guided import corroboration_check
 
     finding = body.get("finding")
     if not finding and body.get("finding_id"):
@@ -4800,7 +4800,7 @@ async def api_mode2_propose_draft(request):
 
     from nexus.case.chat import append_chat
     from nexus.langgraph.llm_pipeline import get_model
-    from nexus.langgraph.mode2 import propose_draft_finding
+    from nexus.modes.llm_guided import propose_draft_finding
     from nexus.langgraph.query_pack import n4_query
 
     # WP 4j.33: sync ES query + LLM scribe must not block the event loop.
@@ -4818,7 +4818,7 @@ async def api_mode2_propose_draft(request):
         if outcome.get("error"):
             return {"error": outcome["error"], "http": 400}
         draft = outcome["draft"]
-        from nexus.langgraph.mode1 import save_draft_finding
+        from nexus.modes.llm_desk import save_draft_finding
 
         saved = save_draft_finding(case_dir, draft)
         if saved.get("status") == "STAGED":
@@ -4880,7 +4880,7 @@ async def api_mode3_plan(request):
     if sealed:
         return sealed
     from nexus.langgraph.llm_pipeline import get_model
-    from nexus.langgraph.mode3 import plan_extras
+    from nexus.modes.plan_sliver import plan_extras
 
     try:
         model = get_model()
@@ -4914,7 +4914,7 @@ async def api_mode3_execute(request):
         return JSONResponse({"error": "extras and queries must be lists"}, status_code=400)
 
     from nexus.langgraph.llm_pipeline import get_model
-    from nexus.langgraph.mode3 import execute_plan
+    from nexus.modes.plan_sliver import execute_plan
 
     try:
         model = get_model()
@@ -4955,7 +4955,7 @@ async def api_mode3_draft_finding(request):
     hint = body.get("interpretation_hint") or ""
 
     from nexus.langgraph.llm_pipeline import get_model
-    from nexus.langgraph.mode3 import propose_agent_finding
+    from nexus.modes.plan_sliver import propose_agent_finding
 
     try:
         model = get_model()
@@ -5021,7 +5021,7 @@ async def api_case_seal(request):
 
     # Challenge proved the examiner knows the password. Derive the
     # signing key from the stored hash (same as per-finding approval).
-    from nexus.langgraph.mode3 import seal_case
+    from nexus.modes.plan_sliver import seal_case
 
     result = seal_case(case_dir, examiner, "", skip_verify=True)
     if result.get("error"):
@@ -7145,7 +7145,7 @@ def _mode3_worker_thread(
     case_dir: Path, question: str, model: Any, run_id: str, resume: bool,
 ) -> None:
     try:
-        from nexus.langgraph.mode3_runtime import run_mode3
+        from nexus.modes.multi_role import run_mode3
 
         run_mode3(case_dir, question, model=model, run_id=run_id, resume=resume)
     except Exception:  # noqa: BLE001 — the run record carries the failure
@@ -7181,7 +7181,7 @@ def _mode4_worker_thread(
     case_dir: Path, question: str, model: Any, run_id: str, resume: bool,
 ) -> None:
     try:
-        from nexus.langgraph.mode4_runtime import resume_mode4, run_mode4
+        from nexus.modes.multi_agent import resume_mode4, run_mode4
 
         if resume:
             resume_mode4(case_dir, run_id, model=model)
@@ -7269,7 +7269,7 @@ async def api_mode4_run_steer(request):
     if not run_id or not text:
         return JSONResponse({"error": "run_id and text are required"},
                             status_code=400)
-    from nexus.langgraph.mode4_runtime import (
+    from nexus.modes.multi_agent import (
         append_mode4_steering,
         emit_event,
         new_event,
@@ -7303,7 +7303,7 @@ async def api_mode4_run_pause(request):
     paused = bool(body.get("paused", True))
     if not run_id:
         return JSONResponse({"error": "run_id is required"}, status_code=400)
-    from nexus.langgraph.mode4_runtime import mark_paused
+    from nexus.modes.multi_agent import mark_paused
 
     ok = await asyncio.to_thread(mark_paused, case_dir, run_id, paused)
     if not ok:
@@ -7327,7 +7327,7 @@ async def api_mode4_run_resume(request):
     run_id = str(body.get("run_id") or "").strip()
     if not run_id:
         return JSONResponse({"error": "run_id is required"}, status_code=400)
-    from nexus.langgraph.mode4_runtime import read_run_record
+    from nexus.modes.multi_agent import read_run_record
 
     record = await asyncio.to_thread(read_run_record, case_dir, run_id)
     if record is None:
@@ -7354,7 +7354,7 @@ async def api_mode4_run_events(request):
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
-    from nexus.langgraph.mode4_runtime import (
+    from nexus.modes.multi_agent import (
         latest_run_id,
         read_run_events,
         read_run_record,
@@ -7393,7 +7393,7 @@ async def api_mode4_run_status(request):
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
-    from nexus.langgraph.mode4_runtime import latest_run_id, read_run_record
+    from nexus.modes.multi_agent import latest_run_id, read_run_record
 
     run_id = str(request.query_params.get("run_id") or "").strip() or latest_run_id(case_dir)
     record = await asyncio.to_thread(read_run_record, case_dir, run_id) if run_id else None
@@ -7416,7 +7416,7 @@ async def api_mode4_run_board(request):
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
-    from nexus.langgraph.mode4_runtime import latest_run_id, read_run_record
+    from nexus.modes.multi_agent import latest_run_id, read_run_record
 
     run_id = str(request.query_params.get("run_id") or "").strip() or latest_run_id(case_dir)
     record = await asyncio.to_thread(read_run_record, case_dir, run_id) if run_id else None
@@ -7438,7 +7438,7 @@ async def api_mode4_run_stop(request):
         body = await request.json()
     except Exception:  # noqa: BLE001
         body = {}
-    from nexus.langgraph.mode4_runtime import latest_run_id, request_stop_run
+    from nexus.modes.multi_agent import latest_run_id, request_stop_run
 
     run_id = str(body.get("run_id") or "").strip() or latest_run_id(case_dir)
     if not run_id or not await asyncio.to_thread(request_stop_run, case_dir, run_id):
@@ -7454,7 +7454,7 @@ async def api_mode4_run_stage(request):
         body = await request.json()
     except Exception:  # noqa: BLE001
         body = {}
-    from nexus.langgraph.mode4_runtime import latest_run_id, stage_mode4
+    from nexus.modes.multi_agent import latest_run_id, stage_mode4
 
     run_id = str(body.get("run_id") or "").strip() or latest_run_id(case_dir)
     if not run_id:
@@ -7495,7 +7495,7 @@ async def api_mode3_run_plan(request):
     max_orders = 6
     with contextlib.suppress(TypeError, ValueError):
         max_orders = max(1, min(int(body.get("max_orders") or 6), 12))
-    from nexus.langgraph.mode3_runtime import (
+    from nexus.modes.multi_role import (
         EventSink,
         examiner_feedback,
         plan_work_orders,
@@ -7561,7 +7561,7 @@ async def api_mode3_run_status(request):
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
-    from nexus.langgraph.mode3_runtime import (
+    from nexus.modes.multi_role import (
         latest_run_id,
         read_controls,
         read_run_events,
@@ -7609,7 +7609,7 @@ async def api_mode3_run_events(request):
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
-    from nexus.langgraph.mode3_runtime import (
+    from nexus.modes.multi_role import (
         latest_run_id,
         read_run_events,
         read_run_record,
@@ -7661,7 +7661,7 @@ async def api_mode3_run_steer(request):
     if not run_id or not text:
         return JSONResponse({"error": "run_id and text are required"},
                             status_code=400)
-    from nexus.langgraph.mode3_runtime import (
+    from nexus.modes.multi_role import (
         EventSink,
         append_steering,
         new_event,
@@ -7695,7 +7695,7 @@ async def api_mode3_run_pause(request):
     paused = bool(body.get("paused", True))
     if not run_id:
         return JSONResponse({"error": "run_id is required"}, status_code=400)
-    from nexus.langgraph.mode3_runtime import (
+    from nexus.modes.multi_role import (
         EventSink,
         mark_paused,
         new_event,
@@ -7727,7 +7727,7 @@ async def api_mode3_run_resume(request):
     run_id = str(body.get("run_id") or "").strip()
     if not run_id:
         return JSONResponse({"error": "run_id is required"}, status_code=400)
-    from nexus.langgraph.mode3_runtime import mark_paused, read_run_record
+    from nexus.modes.multi_role import mark_paused, read_run_record
 
     record = await asyncio.to_thread(read_run_record, case_dir, run_id)
     if record is None:
@@ -7771,7 +7771,7 @@ async def api_mode3_run_stop(request):
     run_id = str(body.get("run_id") or "").strip()
     if not run_id:
         return JSONResponse({"error": "run_id is required"}, status_code=400)
-    from nexus.langgraph.mode3_runtime import (
+    from nexus.modes.multi_role import (
         EventSink,
         new_event,
         read_run_record,
@@ -7812,7 +7812,7 @@ async def api_mode3_run_stage(request):
     run_id = str(body.get("run_id") or "").strip()
     if not run_id:
         return JSONResponse({"error": "run_id is required"}, status_code=400)
-    from nexus.langgraph.mode3_runtime import (
+    from nexus.modes.multi_role import (
         read_run_record,
         stage_run_candidates,
     )
@@ -7886,49 +7886,47 @@ def create_dashboard():
         Route("/portal/api/chat/clear", api_chat_clear, methods=["POST"]),
         # Live steer-chat stream (WP 4d.3)
         Route("/portal/api/chat/stream", api_chat_stream, methods=["POST"]),
-        Route("/portal/api/mode2/chat", api_mode2_chat, methods=["POST"]),
         # Timeline lanes
         Route("/portal/api/timeline/lanes", api_timeline_lanes, methods=["POST"]),
         Route("/portal/api/timeline/rebuild", api_timeline_rebuild, methods=["POST"]),
         # Entity pivot
         Route("/portal/api/entities", api_entities, methods=["POST"]),
-        # Mode 2 (LLM-guided)
-        Route("/portal/api/mode2/chat", api_mode2_chat, methods=["POST"]),
-        Route("/portal/api/mode2/suggestions", api_mode2_suggestions, methods=["POST"]),
-        Route("/portal/api/mode2/save-answer", api_mode2_save_answer, methods=["POST"]),
-        Route("/portal/api/mode2/iterate", api_mode2_iterate, methods=["POST"]),
-        Route("/portal/api/mode2/corroborate", api_mode2_corroborate, methods=["POST"]),
-        Route("/portal/api/mode2/propose-draft", api_mode2_propose_draft, methods=["POST"]),
-        # Mode 3 (agentic)
-        Route("/portal/api/mode3/plan", api_mode3_plan, methods=["POST"]),
-        Route("/portal/api/mode3/execute", api_mode3_execute, methods=["POST"]),
+        # Mode 1 — LLM
+        Route("/portal/api/mode1/chat", api_mode2_chat, methods=["POST"]),
+        Route("/portal/api/mode1/suggestions", api_mode2_suggestions, methods=["POST"]),
+        Route("/portal/api/mode1/save-answer", api_mode2_save_answer, methods=["POST"]),
+        Route("/portal/api/mode1/iterate", api_mode2_iterate, methods=["POST"]),
+        Route("/portal/api/mode1/corroborate", api_mode2_corroborate, methods=["POST"]),
+        Route("/portal/api/mode1/propose-draft", api_mode2_propose_draft, methods=["POST"]),
+        Route("/portal/api/mode2/plan", api_mode3_plan, methods=["POST"]),
+        Route("/portal/api/mode2/execute", api_mode3_execute, methods=["POST"]),
         # Mode 3 supervised agent runtime (M1/M5/M7)
-        Route("/portal/api/mode3/run/plan", api_mode3_run_plan, methods=["POST"]),
-        Route("/portal/api/mode3/run", api_mode3_run, methods=["POST"]),
-        Route("/portal/api/mode3/run/status", api_mode3_run_status, methods=["GET"]),
-        Route("/portal/api/mode3/run/events", api_mode3_run_events, methods=["GET"]),
-        Route("/portal/api/mode3/run/steer", api_mode3_run_steer, methods=["POST"]),
-        Route("/portal/api/mode3/run/pause", api_mode3_run_pause, methods=["POST"]),
-        Route("/portal/api/mode3/run/resume", api_mode3_run_resume, methods=["POST"]),
-        Route("/portal/api/mode3/run/stop", api_mode3_run_stop, methods=["POST"]),
-        Route("/portal/api/mode3/run/stage", api_mode3_run_stage, methods=["POST"]),
-        Route("/portal/api/mode4/run", api_mode4_run, methods=["POST"]),
-        Route("/portal/api/mode4/run/status", api_mode4_run_status, methods=["GET"]),
-        Route("/portal/api/mode4/run/board", api_mode4_run_board, methods=["GET"]),
-        Route("/portal/api/mode4/run/events", api_mode4_run_events, methods=["GET"]),
-        Route("/portal/api/mode4/run/steer", api_mode4_run_steer, methods=["POST"]),
-        Route("/portal/api/mode4/run/pause", api_mode4_run_pause, methods=["POST"]),
-        Route("/portal/api/mode4/run/resume", api_mode4_run_resume, methods=["POST"]),
-        Route("/portal/api/mode4/run/stop", api_mode4_run_stop, methods=["POST"]),
-        Route("/portal/api/mode4/run/stage", api_mode4_run_stage, methods=["POST"]),
+        Route("/portal/api/mode2/run/plan", api_mode3_run_plan, methods=["POST"]),
+        Route("/portal/api/mode2/run", api_mode3_run, methods=["POST"]),
+        Route("/portal/api/mode2/run/status", api_mode3_run_status, methods=["GET"]),
+        Route("/portal/api/mode2/run/events", api_mode3_run_events, methods=["GET"]),
+        Route("/portal/api/mode2/run/steer", api_mode3_run_steer, methods=["POST"]),
+        Route("/portal/api/mode2/run/pause", api_mode3_run_pause, methods=["POST"]),
+        Route("/portal/api/mode2/run/resume", api_mode3_run_resume, methods=["POST"]),
+        Route("/portal/api/mode2/run/stop", api_mode3_run_stop, methods=["POST"]),
+        Route("/portal/api/mode2/run/stage", api_mode3_run_stage, methods=["POST"]),
+        Route("/portal/api/mode3/run/plan", api_mode4_run, methods=["POST"]),
+        Route("/portal/api/mode3/run", api_mode4_run, methods=["POST"]),
+        Route("/portal/api/mode3/run/status", api_mode4_run_status, methods=["GET"]),
+        Route("/portal/api/mode3/run/events", api_mode4_run_events, methods=["GET"]),
+        Route("/portal/api/mode3/run/steer", api_mode4_run_steer, methods=["POST"]),
+        Route("/portal/api/mode3/run/pause", api_mode4_run_pause, methods=["POST"]),
+        Route("/portal/api/mode3/run/resume", api_mode4_run_resume, methods=["POST"]),
+        Route("/portal/api/mode3/run/stop", api_mode4_run_stop, methods=["POST"]),
+        Route("/portal/api/mode3/run/stage", api_mode4_run_stage, methods=["POST"]),
+        Route("/portal/api/mode3/run/board", api_mode4_run_board, methods=["GET"]),
         Route("/portal/api/case/seal", api_case_seal, methods=["POST"]),
-        Route("/portal/api/mode3/seal", api_case_seal, methods=["POST"]),
         # RAG preflight (WP 3.13)
         Route("/portal/api/rag/status", api_rag_status, methods=["GET"]),
         # Mode 3 orchestrator (WP 3.10)
-        Route("/portal/api/mode3/orchestrator", api_mode3_orchestrator, methods=["POST"]),
+        Route("/portal/api/mode2/orchestrator", api_mode3_orchestrator, methods=["POST"]),
         # Mode 3 agent DRAFT finding (WP 3.7)
-        Route("/portal/api/mode3/draft-finding", api_mode3_draft_finding, methods=["POST"]),
+        Route("/portal/api/mode2/draft-finding", api_mode3_draft_finding, methods=["POST"]),
         # Product mode ↔ pipeline mode mapping (WP 3.8)
         Route("/portal/api/mode-mapping", api_mode_mapping, methods=["GET"]),
         # Phase 4b: Workflow-driven cockpit APIs

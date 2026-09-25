@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from nexus.langgraph.mode2 import corroboration_check, corroboration_suggestions
+from nexus.modes.llm_guided import corroboration_check, corroboration_suggestions
 
 
 def _make_case(tmp_path: Path) -> Path:
@@ -56,10 +56,10 @@ class TestCorroboration:
 
 class TestIterativeLoop:
     @patch("nexus.langgraph.backbone.backbone_call")
-    @patch("nexus.langgraph.mode1.nl_to_needles")
+    @patch("nexus.modes.llm_desk.nl_to_needles")
     def test_loop_runs_and_logs(self, mock_nl, mock_n4, tmp_path):
         from nexus.case.chat import load_chat
-        from nexus.langgraph.mode2 import run_iterative_loop
+        from nexus.modes.llm_guided import run_iterative_loop
 
         case_dir = _make_case(tmp_path)
         mock_nl.return_value = {"needles": ["sdelete"], "window": "", "source": "heuristic"}
@@ -75,9 +75,9 @@ class TestIterativeLoop:
         assert any(m["action"] == "mode2_iter0" for m in chat)
         assert any(m["action"] == "mode2_proposal" for m in chat)
 
-    @patch("nexus.langgraph.mode1.nl_to_needles")
+    @patch("nexus.modes.llm_desk.nl_to_needles")
     def test_loop_no_needles(self, mock_nl, tmp_path):
-        from nexus.langgraph.mode2 import run_iterative_loop
+        from nexus.modes.llm_guided import run_iterative_loop
 
         case_dir = _make_case(tmp_path)
         mock_nl.return_value = {"needles": [], "window": "", "source": "heuristic"}

@@ -32,7 +32,7 @@ def client(tmp_path, monkeypatch):
 
 def test_nl_to_needles_gates_context_terms():
     """Search needles never include event IDs / container names from context."""
-    from nexus.langgraph.mode1 import nl_to_needles
+    from nexus.modes.llm_desk import nl_to_needles
 
     result = nl_to_needles(
         "anything else",
@@ -125,7 +125,7 @@ def test_llm_proposed_needles_are_gated():
     """The LLM branch of ``nl_to_needles`` obeys the gate too (live catch)."""
     import json as _json
 
-    from nexus.langgraph.mode1 import nl_to_needles
+    from nexus.modes.llm_desk import nl_to_needles
 
     class _Resp:
         content = _json.dumps({
@@ -164,7 +164,7 @@ def test_attack_for_family_uses_real_technique_and_typed_hints():
 
 
 def test_mode2_bare_needle_fallback_gated():
-    from nexus.langgraph.mode2 import _bare_needles
+    from nexus.modes.llm_guided import _bare_needles
 
     parsed = {
         "needles": ["mimikatz", "1102", "security.evtx", "psexec"],

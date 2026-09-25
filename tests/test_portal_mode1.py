@@ -39,7 +39,7 @@ def _write_hits(case_dir: Path) -> None:
 
 
 def test_nl_to_needles_question():
-    from nexus.langgraph.mode1 import _heuristic_needles
+    from nexus.modes.llm_desk import _heuristic_needles
     result = _heuristic_needles("Was sdelete used to wipe files?")
     assert "sdelete" in result["needles"]
 
@@ -57,7 +57,7 @@ def test_ask_page_renders_with_no_case():
 
 
 @patch("nexus.dashboard.app._get_case_dir")
-@patch("nexus.langgraph.mode1.nl_to_needles")
+@patch("nexus.modes.llm_desk.nl_to_needles")
 @patch("nexus.langgraph.query_pack.run_ad_hoc_query")
 def test_api_ask_returns_needles_and_hits(mock_query, mock_nl, mock_get_dir, tmp_path):
     from starlette.applications import Starlette
@@ -105,7 +105,7 @@ def test_api_select_requires_title(mock_get_dir, tmp_path):
 
 @patch("nexus.dashboard.app._get_case_dir")
 @patch("nexus.langgraph.query_pack.n4_hits")
-@patch("nexus.langgraph.mode1.save_draft_finding")
+@patch("nexus.modes.llm_desk.save_draft_finding")
 def test_api_select_promotes_hits(mock_save, mock_n4, mock_get_dir, tmp_path):
     from starlette.applications import Starlette
     from starlette.testclient import TestClient
@@ -268,7 +268,7 @@ def _wait_full_run(client, timeout=60):
 
 
 @patch("nexus.dashboard.app._get_case_dir")
-@patch("nexus.langgraph.mode1.save_draft_finding")
+@patch("nexus.modes.llm_desk.save_draft_finding")
 @patch("nexus.langgraph.query_pack.attach_hit_fields")
 @patch("nexus.langgraph.query_pack.n4_hits")
 @patch("nexus.langgraph.briefing.case_briefing")
@@ -415,7 +415,7 @@ def test_api_mode1_full_run_concurrent_posts(mock_get_dir, tmp_path):
 
 
 @patch("nexus.dashboard.app._get_case_dir")
-@patch("nexus.langgraph.mode1.save_draft_finding")
+@patch("nexus.modes.llm_desk.save_draft_finding")
 @patch("nexus.langgraph.query_pack.attach_hit_fields")
 @patch("nexus.langgraph.query_pack.n4_hits")
 @patch("nexus.langgraph.briefing.case_briefing")
@@ -486,7 +486,7 @@ def test_api_mode1_full_run_reprocess(mock_brief, mock_n4h, mock_attach, mock_sa
 
 
 @patch("nexus.dashboard.app._get_case_dir")
-@patch("nexus.langgraph.mode1.save_draft_finding")
+@patch("nexus.modes.llm_desk.save_draft_finding")
 @patch("nexus.langgraph.query_pack.attach_hit_fields")
 def test_api_workbench_promote_confidence_override(mock_attach, mock_save, mock_get_dir, tmp_path):
     """Examiner-selected confidence + justification override the heuristic
@@ -670,8 +670,8 @@ def test_api_report_generate_preserves_steering(mock_get_dir, tmp_path):
     assert "(r2) focus on persistence" in steer
 
 @patch("nexus.dashboard.app._get_case_dir")
-@patch("nexus.langgraph.mode1.save_draft_finding")
-@patch("nexus.langgraph.mode1.promote_hits_to_draft")
+@patch("nexus.modes.llm_desk.save_draft_finding")
+@patch("nexus.modes.llm_desk.promote_hits_to_draft")
 def test_api_select_rows_identity_and_drift(mock_promote, mock_save, mock_get_dir, tmp_path):
     """EH-6: selection by stable row identity — a row that is not in the
     current result is reported (409), never substituted by index drift."""

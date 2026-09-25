@@ -632,7 +632,7 @@ export interface Mode3StageResult {
 
 /** SSE path for a run's event stream (EventSource cannot send case headers). */
 export function mode3RunEventsPath(runId: string): string {
-  return `${BASE}/mode3/run/events?run_id=${encodeURIComponent(runId)}`;
+  return `${BASE}/mode2/run/events?run_id=${encodeURIComponent(runId)}`;
 }
 
 /* ── Mode 3 — Multi-agent concurrent board (runtime mode4) ───────────── */
@@ -708,7 +708,7 @@ export interface Mode4StageResult {
 
 /** SSE path for a multi-agent run's event stream. */
 export function mode4RunEventsPath(runId: string): string {
-  return `${BASE}/mode4/run/events?run_id=${encodeURIComponent(runId)}`;
+  return `${BASE}/mode3/run/events?run_id=${encodeURIComponent(runId)}`;
 }
 
 /** POST /case/seal → {status: "SEALED", case_id, examiner} or {error} */
@@ -1260,7 +1260,7 @@ export const api = {
 
   // Mode 2
   mode2Iterate: (params: { question: string; max_iterations?: number }) =>
-    post<Mode2IterateResponse>("/mode2/iterate", params),
+    post<Mode2IterateResponse>("/mode1/iterate", params),
   /** WP 4j.13 — POST /mode2/chat → the conversational evidence agent */
   mode2Chat: (params: { message: string; history?: { role: string; text: string }[] }) =>
     post<{
@@ -1276,72 +1276,72 @@ export const api = {
       /** Cited rows for bookmarking/explore (top N). */
       hits?: N4Hit[];
       error?: string;
-    }>("/mode2/chat", params),
+    }>("/mode1/chat", params),
   mode2Corroborate: (params: { finding_id?: string }) =>
-    post<CorroborationResponse>("/mode2/corroborate", params),
+    post<CorroborationResponse>("/mode1/corroborate", params),
   mode2ProposeDraft: (params: { title: string; hits?: N4Hit[]; query?: string }) =>
-    post<ProposeDraftResponse>("/mode2/propose-draft", params),
-  mode2Suggestions: () => post<Mode2SuggestionsResponse>("/mode2/suggestions", {}),
+    post<ProposeDraftResponse>("/mode1/propose-draft", params),
+  mode2Suggestions: () => post<Mode2SuggestionsResponse>("/mode1/suggestions", {}),
   mode2SaveAnswer: (params: { entry_ts: string; note?: string }) =>
-    post<Mode2SaveAnswerResponse>("/mode2/save-answer", params),
+    post<Mode2SaveAnswerResponse>("/mode1/save-answer", params),
 
   // Mode 3
   mode3Plan: (params?: { question?: string }) =>
-    post<Mode3PlanResponse>("/mode3/plan", params || {}),
+    post<Mode3PlanResponse>("/mode2/plan", params || {}),
   mode3Execute: (params: { extras?: string[]; queries?: string[] }) =>
-    post<Mode3ExecuteResponse>("/mode3/execute", params),
+    post<Mode3ExecuteResponse>("/mode2/execute", params),
   // Mode 3 supervised agent run (M6) — same runtime/event stream as the CLI.
   mode3RunPlan: (params: { question?: string; max_orders?: number }) =>
-    post<Mode3PlanResponseOrders>("/mode3/run/plan", params),
+    post<Mode3PlanResponseOrders>("/mode2/run/plan", params),
   mode3RunStart: (params: { question?: string; max_orders?: number; run_id?: string }) =>
     post<{ run_id: string; status: string; question?: string; error?: string }>(
-      "/mode3/run",
+      "/mode2/run",
       params,
     ),
   mode3RunStatus: (runId?: string) =>
     request<Mode3RunStatusResponse>(
-      `/mode3/run/status${runId ? `?run_id=${encodeURIComponent(runId)}` : ""}`,
+      `/mode2/run/status${runId ? `?run_id=${encodeURIComponent(runId)}` : ""}`,
     ),
   mode3RunSteer: (params: { run_id: string; text: string }) =>
     post<{ run_id: string; steering: { ts: string; text: string } }>(
-      "/mode3/run/steer",
+      "/mode2/run/steer",
       params,
     ),
   mode3RunPause: (params: { run_id: string; paused: boolean }) =>
-    post<{ run_id: string; paused: boolean }>("/mode3/run/pause", params),
+    post<{ run_id: string; paused: boolean }>("/mode2/run/pause", params),
   mode3RunStop: (params: { run_id: string }) =>
-    post<{ run_id: string; stop_requested: boolean }>("/mode3/run/stop", params),
+    post<{ run_id: string; stop_requested: boolean }>("/mode2/run/stop", params),
   mode3RunResume: (params: { run_id: string }) =>
-    post<{ run_id: string; status: string }>("/mode3/run/resume", params),
+    post<{ run_id: string; status: string }>("/mode2/run/resume", params),
   mode3RunStage: (params: { run_id: string }) =>
-    post<Mode3StageResult>("/mode3/run/stage", params),
+    post<Mode3StageResult>("/mode2/run/stage", params),
   // Mode 3 — Multi-agent concurrent board (runtime mode4).
   mode4Run: (params: { question?: string; run_id?: string }) =>
     post<{ run_id: string; status: string; question?: string; error?: string }>(
-      "/mode4/run",
+      "/mode3/run",
       params,
     ),
   mode4RunStatus: (runId?: string) =>
     request<Mode4RunStatus>(
-      `/mode4/run/status${runId ? `?run_id=${encodeURIComponent(runId)}` : ""}`,
+      `/mode3/run/status${runId ? `?run_id=${encodeURIComponent(runId)}` : ""}`,
     ),
   mode4RunBoard: (runId?: string) =>
     request<Mode4BoardResponse>(
-      `/mode4/run/board${runId ? `?run_id=${encodeURIComponent(runId)}` : ""}`,
+      `/mode3/run/board${runId ? `?run_id=${encodeURIComponent(runId)}` : ""}`,
     ),
   mode4RunSteer: (params: { run_id: string; text: string }) =>
     post<{ run_id: string; steering: { ts: string; text: string } }>(
-      "/mode4/run/steer",
+      "/mode3/run/steer",
       params,
     ),
   mode4RunPause: (params: { run_id: string; paused: boolean }) =>
-    post<{ run_id: string; paused: boolean }>("/mode4/run/pause", params),
+    post<{ run_id: string; paused: boolean }>("/mode3/run/pause", params),
   mode4RunResume: (params: { run_id: string }) =>
-    post<{ run_id: string; status: string }>("/mode4/run/resume", params),
+    post<{ run_id: string; status: string }>("/mode3/run/resume", params),
   mode4RunStop: (params: { run_id: string }) =>
-    post<{ run_id: string; stop_requested: boolean }>("/mode4/run/stop", params),
+    post<{ run_id: string; stop_requested: boolean }>("/mode3/run/stop", params),
   mode4RunStage: (params: { run_id: string }) =>
-    post<Mode4StageResult>("/mode4/run/stage", params),
+    post<Mode4StageResult>("/mode3/run/stage", params),
   /** Seal & close the active case — HMAC challenge-response, same flow as
    *  per-finding approval. Lifecycle action for every mode; the legacy
    *  /mode3/seal route remains registered as an alias. */

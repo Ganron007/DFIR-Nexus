@@ -8,7 +8,7 @@ from unittest.mock import patch
 from typer.testing import CliRunner
 
 from nexus.cli.main import app
-from nexus.langgraph import mode3_runtime as m3
+from nexus.modes import multi_role as m3
 
 runner = CliRunner()
 
@@ -26,9 +26,9 @@ def test_cli_plan_prints_work_orders(tmp_path):
     case = _case(tmp_path)
     order = m3.WorkOrder(order_id="wo-cli", role="evidence", task="inspect")
     with patch("nexus.cli.main._resolve_case", return_value=case), \
-         patch("nexus.langgraph.mode3_runtime.plan_work_orders",
+         patch("nexus.modes.multi_role.plan_work_orders",
                return_value=[order]):
-        result = runner.invoke(app, ["mode3", "plan", "--json"])
+        result = runner.invoke(app, ["mode2", "plan", "--json"])
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
     assert payload["orders"][0]["order_id"] == "wo-cli"
@@ -42,7 +42,7 @@ def test_cli_status_reads_run_record(tmp_path):
         "gaps": [],
     })
     with patch("nexus.cli.main._resolve_case", return_value=case):
-        result = runner.invoke(app, ["mode3", "status", "--run-id", "M3-cli", "--json"])
+        result = runner.invoke(app, ["mode2", "status", "--run-id", "M3-cli", "--json"])
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
     assert payload["status"] == "completed"
@@ -71,7 +71,7 @@ def test_cli_stage_uses_real_runtime(tmp_path):
         "gaps": [],
     })
     with patch("nexus.cli.main._resolve_case", return_value=case):
-        result = runner.invoke(app, ["mode3", "stage", "--run-id", "M3-cli-stage"])
+        result = runner.invoke(app, ["mode2", "stage", "--run-id", "M3-cli-stage"])
     assert result.exit_code == 0
     assert "Staged 1 DRAFT" in result.stdout
     rows = json.loads((case / "findings.json").read_text(encoding="utf-8"))
@@ -85,7 +85,7 @@ def test_cli_stop_and_resume_guard(tmp_path):
         "order_index": 0, "results": [], "candidates": [], "gaps": [],
     })
     with patch("nexus.cli.main._resolve_case", return_value=case):
-        stop = runner.invoke(app, ["mode3", "stop", "--run-id", "M3-cli-stop"])
+        stop = runner.invoke(app, ["mode2", "stop", "--run-id", "M3-cli-stop"])
     assert stop.exit_code == 0
     assert m3.read_controls(case, "M3-cli-stop")["stop_requested"] is True
 
@@ -94,7 +94,7 @@ def test_cli_stop_and_resume_guard(tmp_path):
     m3._persist_state(case, "M3-cli-stop", record)
     with patch("nexus.cli.main._resolve_case", return_value=case):
         resume = runner.invoke(
-            app, ["mode3", "resume", "--run-id", "M3-cli-stop", "--no-run"])
+            app, ["mode2", "resume", "--run-id", "M3-cli-stop", "--no-run"])
     assert resume.exit_code == 1, "a stopped run must not be resurrected"
 
 
@@ -105,9 +105,9 @@ def test_cli_steer_and_pause(tmp_path):
         "results": [], "candidates": [], "gaps": [],
     })
     with patch("nexus.cli.main._resolve_case", return_value=case):
-        steer = runner.invoke(app, ["mode3", "steer", "chase WS01",
+        steer = runner.invoke(app, ["mode2", "steer", "chase WS01",
                                     "--run-id", "M3-cli2"])
-        pause = runner.invoke(app, ["mode3", "pause", "--run-id", "M3-cli2"])
+        pause = runner.invoke(app, ["mode2", "pause", "--run-id", "M3-cli2"])
     assert steer.exit_code == 0
     assert pause.exit_code == 0
     assert m3.read_steering(case, "M3-cli2")[0]["text"] == "chase WS01"

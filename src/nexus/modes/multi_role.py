@@ -575,7 +575,7 @@ def stage_run_candidates(
     lineage so the run event stream is the provenance. Approval remains
     password-gated and examiner-only — nothing here approves or promotes.
     """
-    from nexus.langgraph.mode1 import save_draft_finding
+    from nexus.modes.llm_desk import save_draft_finding
 
     case_dir = Path(case_dir)
     record = read_run_record(case_dir, run_id)

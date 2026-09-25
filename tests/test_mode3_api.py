@@ -9,7 +9,7 @@ from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
 from nexus.dashboard.app import create_dashboard
-from nexus.langgraph import mode3_runtime as m3
+from nexus.modes import multi_role as m3
 
 
 def _case(tmp_path: Path) -> Path:
@@ -29,10 +29,10 @@ def test_mode3_run_plan_endpoint(tmp_path):
     case = _case(tmp_path)
     order = m3.WorkOrder(order_id="wo-1", role="evidence", task="t")
     with patch("nexus.dashboard.app._get_case_dir", return_value=case), \
-         patch("nexus.langgraph.mode3_runtime.plan_work_orders",
+         patch("nexus.modes.multi_role.plan_work_orders",
                return_value=[order]):
         response = _client().post(
-            "/portal/api/mode3/run/plan", json={"question": "what happened"})
+            "/portal/api/mode2/run/plan", json={"question": "what happened"})
     assert response.status_code == 200
     body = response.json()
     assert body["orders"][0]["order_id"] == "wo-1"
@@ -51,7 +51,7 @@ def test_mode3_run_start_status_steer_pause_resume(tmp_path):
          patch("nexus.dashboard.app._start_mode3_thread", side_effect=_fake_start), \
          patch("nexus.dashboard.app._mode3_resolve_model", return_value=None):
         client = _client()
-        start = client.post("/portal/api/mode3/run",
+        start = client.post("/portal/api/mode2/run",
                             json={"question": "who did it", "run_id": run_id})
         assert start.status_code == 202
         assert start.json()["run_id"] == run_id
@@ -64,21 +64,21 @@ def test_mode3_run_start_status_steer_pause_resume(tmp_path):
             "results": [], "candidates": [], "gaps": [], "steering": [],
         })
 
-        status = client.get("/portal/api/mode3/run/status", params={"run_id": run_id})
+        status = client.get("/portal/api/mode2/run/status", params={"run_id": run_id})
         assert status.status_code == 200
         assert status.json()["status"] == "running"
 
-        steer = client.post("/portal/api/mode3/run/steer",
+        steer = client.post("/portal/api/mode2/run/steer",
                             json={"run_id": run_id, "text": "chase WS01"})
         assert steer.status_code == 200
         assert m3.read_steering(case, run_id)[0]["text"] == "chase WS01"
 
-        pause = client.post("/portal/api/mode3/run/pause",
+        pause = client.post("/portal/api/mode2/run/pause",
                             json={"run_id": run_id, "paused": True})
         assert pause.status_code == 200
         assert m3.read_controls(case, run_id)["pause_requested"] is True
 
-        resume = client.post("/portal/api/mode3/run/resume",
+        resume = client.post("/portal/api/mode2/run/resume",
                              json={"run_id": run_id})
         assert resume.status_code == 202
         assert any(call[3] is True for call in started)
@@ -108,7 +108,7 @@ def test_mode3_run_stage_endpoint(tmp_path):
         "gaps": [],
     })
     with patch("nexus.dashboard.app._get_case_dir", return_value=case):
-        response = _client().post("/portal/api/mode3/run/stage",
+        response = _client().post("/portal/api/mode2/run/stage",
                                   json={"run_id": "M3-stage-api"})
     assert response.status_code == 200
     body = response.json()
@@ -127,7 +127,7 @@ def test_mode3_run_stop_sets_flag(tmp_path):
         "candidates": [], "gaps": [],
     })
     with patch("nexus.dashboard.app._get_case_dir", return_value=case):
-        response = _client().post("/portal/api/mode3/run/stop",
+        response = _client().post("/portal/api/mode2/run/stop",
                                   json={"run_id": "M3-stop-api"})
     assert response.status_code == 200
     assert response.json()["stop_requested"] is True
@@ -141,6 +141,6 @@ def test_mode3_run_plan_rejects_sealed_case(tmp_path):
     sealed = JSONResponse({"error": "case is sealed"}, status_code=409)
     with patch("nexus.dashboard.app._get_case_dir", return_value=case), \
          patch("nexus.dashboard.app._sealed_case_error", return_value=sealed):
-        response = _client().post("/portal/api/mode3/run/plan",
+        response = _client().post("/portal/api/mode2/run/plan",
                                   json={"question": "x"})
     assert response.status_code == 409

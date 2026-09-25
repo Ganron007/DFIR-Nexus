@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from nexus.langgraph.mode4_runtime import (
+from nexus.modes.multi_agent import (
     accept_claim,
     add_board,
     plan_spawns,
@@ -133,7 +133,7 @@ def test_stop_before_next_superstep(tmp_path):
             "open_questions": [],
         }
 
-    from nexus.langgraph import mode4_runtime as m4
+    from nexus.modes import multi_agent as m4
 
     original = m4.read_controls
 
@@ -159,7 +159,7 @@ def test_plan_spawns_reserves_correlation_and_pattern():
 
 
 def test_steering_is_stored_with_the_mode4_run(tmp_path):
-    from nexus.langgraph.mode4_runtime import append_mode4_steering, read_mode4_steering
+    from nexus.modes.multi_agent import append_mode4_steering, read_mode4_steering
 
     case = _case(tmp_path)
     record = run_mode4(case, "q", families=[("evtx", 1)], es_ok=True)
@@ -230,7 +230,7 @@ def test_one_audit_writer_per_run(tmp_path, monkeypatch):
 
 
 def test_steering_spawns_a_seat(tmp_path):
-    from nexus.langgraph import mode4_runtime as m4
+    from nexus.modes import multi_agent as m4
 
     case = _case(tmp_path)
     m4.append_mode4_steering(case, "M4-steer", "chase host WS01 before settling")
@@ -256,7 +256,7 @@ def test_steering_spawns_a_seat(tmp_path):
 
 
 def test_pause_and_resume_roundtrip(tmp_path):
-    from nexus.langgraph import mode4_runtime as m4
+    from nexus.modes import multi_agent as m4
 
     case = _case(tmp_path)
     calls = {"n": 0}
@@ -285,7 +285,7 @@ def test_pause_and_resume_roundtrip(tmp_path):
 
 
 def test_resume_refuses_terminal(tmp_path):
-    from nexus.langgraph import mode4_runtime as m4
+    from nexus.modes import multi_agent as m4
 
     case = _case(tmp_path)
 
@@ -339,7 +339,7 @@ def _recording_seat():
 
 
 def test_model_supervisor_chooses_team(tmp_path):
-    from nexus.langgraph import mode4_runtime as m4
+    from nexus.modes import multi_agent as m4
 
     case = _case(tmp_path)
     seen, seat = _recording_seat()
@@ -363,7 +363,7 @@ def test_model_supervisor_chooses_team(tmp_path):
 
 
 def test_model_supervisor_bad_output_falls_back(tmp_path):
-    from nexus.langgraph import mode4_runtime as m4
+    from nexus.modes import multi_agent as m4
 
     case = _case(tmp_path)
     seen, seat = _recording_seat()

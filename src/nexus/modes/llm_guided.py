@@ -706,8 +706,8 @@ def run_iterative_loop(
     the portal can stream live progress (WP 4d.3).
     """
     from nexus.case.chat import append_chat
-    from nexus.langgraph.mode1 import nl_to_needles
     from nexus.langgraph.query_pack import load_case_intake
+    from nexus.modes.llm_desk import nl_to_needles
 
     case_dir = Path(case_dir)
     # One cap, enforced here regardless of the caller (API/CLI/agent).
@@ -938,7 +938,7 @@ def propose_draft_finding(
 
     Returns {draft, corroboration} or {error}.
     """
-    from nexus.langgraph.mode1 import promote_hits_to_draft, scribe_finding
+    from nexus.modes.llm_desk import promote_hits_to_draft, scribe_finding
 
     if not hits:
         return {"error": "No hits to draft from"}

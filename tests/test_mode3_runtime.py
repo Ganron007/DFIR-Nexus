@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-from nexus.langgraph import mode3_runtime as m3
+from nexus.modes import multi_role as m3
 
 
 def _case(tmp_path: Path) -> Path:
