@@ -173,9 +173,7 @@ export default function CaseSetup() {
 
   /** Re-attach to a run that is still in flight (reload / navigation). */
   const attachRun = (s: PipelineStatusResponse) => {
-    const modeMap: Record<string, string> = { tools: "1", coverage: "2", design: "3" };
     if (s.case_id) setCaseId(s.case_id);
-    if (modeMap[s.mode]) setModeState(modeMap[s.mode]);
     setPipelineRunId(s.run_id);
     setPipelineStatus(s.status);
     if (s.progress) setPipelineProg(s.progress);
@@ -219,13 +217,15 @@ export default function CaseSetup() {
     setBusy(true);
     setError("");
     try {
-      // Map product mode to pipeline mode. Mode 2/3 carry the examiner's
-      // question as intake — without it the LLM interpret node never runs.
-      const pipelineMode = mode === "2" ? "coverage" : mode === "3" ? "design" : "tools";
+      // All three final modes run the deterministic lane first. The depth
+      // starts from Agent Run (multi-role / multi-agent); LLM coverage and
+      // interpretation are offered on the Briefing. The examiner question is
+      // stored as case intake so those surfaces inherit it.
+      const pipelineMode = "tools";
       const r = await api.pipelineRun({
         mode: pipelineMode,
         case_id: caseId,
-        question: mode === "1" ? undefined : question.trim() || undefined,
+        question: question.trim() || undefined,
       });
       setPipelineRunId(r.run_id);
       setPipelineStatus("running");
@@ -420,12 +420,12 @@ export default function CaseSetup() {
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                <strong>Mode 1 — LLM (examiner surface)</strong>
+                <strong>Mode 1 — LLM</strong>
                 {mode === "1" && <span style={{ color: "var(--accent)" }}>✓</span>}
               </div>
               <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                Examiner searches, reviews hits, and selects evidence. LLM only scribes findings.
-                Best for experienced examiners and legal cases. Explore is the primary surface.
+                Examiner + LLM: deterministic lane, full-run scribe, steer chat, coverage and
+                interpretation. Briefing and Steer Chat are the primary surfaces.
               </p>
             </div>
             <div
@@ -439,12 +439,13 @@ export default function CaseSetup() {
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                <strong>Mode 1 — LLM (guided)</strong>
+                <strong>Mode 2 — Multi-role</strong>
                 {mode === "2" && <span style={{ color: "var(--accent)" }}>✓</span>}
               </div>
               <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                LLM proposes next queries and corroborates with RAG + playbook context.
-                Examiner validates and steers. Steer Chat is the primary surface.
+                Supervised multi-role pipeline: specialist roles investigate your evidence one
+                work order at a time, corroborate, and stage DRAFTs. You steer, pause/stop and
+                stage. Agent Run is the primary surface.
               </p>
             </div>
             <div
@@ -458,33 +459,13 @@ export default function CaseSetup() {
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                <strong>Mode 2 — Multi-role</strong>
+                <strong>Mode 3 — Multi-agent</strong>
                 {mode === "3" && <span style={{ color: "var(--accent)" }}>✓</span>}
               </div>
               <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                Supervised multi-role pipeline: specialist roles investigate your evidence one
-                work order at a time, corroborate, and stage DRAFTs. You steer, pause/stop and
-                stage. Agent Run is the primary surface.
-              </p>
-            </div>
-            <div
-              onClick={() => chooseMode("4")}
-              style={{
-                padding: 16,
-                borderRadius: 8,
-                border: `2px solid ${mode === "4" ? "var(--accent)" : "var(--border)"}`,
-                cursor: "pointer",
-                background: mode === "4" ? "rgba(37,99,235,0.08)" : "transparent",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                <strong>Mode 3 — Multi-agent</strong>
-                {mode === "4" && <span style={{ color: "var(--accent)" }}>✓</span>}
-              </div>
-              <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                Several seats read different evidence at the same time, post claims on a
-                shared board, and a join sends them back when they disagree. Stored as
-                mode 4. Start the team with <code>nexus mode4 run</code> or Agent Run.
+                Several seats work different evidence at the same time, post claims on a shared
+                board, and a join sends them back when they disagree. You steer, pause/stop and
+                stage. Agent Run (Investigation Board) is the primary surface.
               </p>
             </div>
             <button className="btn btn-primary" onClick={confirmMode} disabled={busy || !mode}>
@@ -501,17 +482,15 @@ export default function CaseSetup() {
           <p style={{ fontSize: 13, color: "var(--text-muted)", marginBottom: 12 }}>
             Case <strong>{caseId}</strong> ready. Mode <strong>{mode}</strong> selected.
             {mode === "1"
-              ? " Mode 1 runs the deterministic parser lane only — quick triage, no LLM."
+              ? " Mode 1 (LLM) runs the deterministic parser lane; full-run, steer chat and coverage/interpretation follow from Briefing."
               : mode === "2"
-                ? " Mode 2 runs the parser lane and then the LLM interpretation (RAG + threat intel) — DRAFT findings await your approval."
-                : mode === "4"
-                  ? " Mode 3 (stored 4) runs the parser lane. The multi-agent team starts after that, from Agent Run or nexus mode4 run."
-                  : " Mode 2 (stored 3) runs the parser lane, then the multi-role pipeline."}
+                ? " Mode 2 (Multi-role) runs the parser lane; the supervised multi-role run starts from Agent Run."
+                : " Mode 3 (Multi-agent) runs the parser lane; the concurrent team starts from Agent Run (Investigation Board)."}
           </p>
-          {mode !== "1" && !pipelineRunId && (
+          {!pipelineRunId && (
             <div style={{ marginBottom: 10 }}>
               <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
-                Examiner question (drives the LLM interpretation — required for Mode 2/3 analysis)
+                Examiner question (stored as case intake; drives the LLM and agent runs)
               </label>
               <textarea
                 value={question}

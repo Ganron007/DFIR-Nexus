@@ -163,12 +163,11 @@ Tool: ingest_auto          → parses Suricata/Zeek logs into artifacts
 Tool: ti_lookup            → enriches IOCs via ThreatFox
 ```
 
-### Step 3b: Mode 3 supervised multi-role run (optional)
+### Step 3b: Mode 2 — Multi-role run (optional)
 
-On a Mode 3 case, let the supervised multi-role pipeline drive the next pass
-instead of running tools by hand. Roles run one work order at a time (true
-concurrent multi-agent is planned as Mode 4). Open **Agent Run** in the
-cockpit (`/portal/app/agent-run`) or use the CLI:
+On a Mode 2 case, let the supervised multi-role pipeline drive the next pass
+instead of running tools by hand. Roles run one work order at a time. Open
+**Agent Run** in the cockpit (`/portal/app/agent-run`) or use the CLI:
 
 ```bash
 nexus mode3 plan -q "Trace RDP activity and USB device use"   # review work orders + KB skills first
@@ -192,6 +191,22 @@ What you see and control:
 Staged findings feed the next run: approved findings seed a deepen work order,
 rejected findings become exclusion constraints, and pending DRAFTs are de-dup
 context. Run artifacts live in `cases/<CASE>/analysis/mode3_runs/`.
+
+### Step 3c: Mode 3 — Multi-agent run (optional)
+
+Mode 3 runs the concurrent team on the **Investigation Board**
+(`/portal/app/agent-run` on a Mode 3 case) or via the CLI:
+
+```bash
+nexus mode4 run   -q "Trace RDP activity and USB device use"   # concurrent seats + board
+nexus mode4 board  --run-id M4-...                              # claims, audit IDs, disputes
+nexus mode4 steer  "chase WS01" --run-id M4-...
+nexus mode4 stage  --run-id M4-...                              # examiner: stage settled candidates
+```
+
+The board shows simultaneous seats, audit-backed claims, disputes and join
+decisions; unresolved disputes stay gaps, never findings. Steer, pause/resume
+and stop work at superstep boundaries. Staging and approval stay examiner-only.
 
 ### Step 4: Record Findings
 

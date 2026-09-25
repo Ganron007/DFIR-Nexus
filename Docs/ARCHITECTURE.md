@@ -75,7 +75,7 @@ flowchart TB
 | **Detection** | Optional drafts after an APPROVED story. Not N5. |
 | **Examiner Portal + MCP** | Investigation UI for Register, N1–N8, ingest, detection, HMAC. Collect does not move into the Portal. |
 | **HTTP audit (4k.3)** | Every `/portal/api/*` (mutating always; reads at `NEXUS_HTTP_AUDIT=all`) and every `/mcp` call is recorded twice: rotating `logs/nexus-http-YYYYMMDD.log` and a hash-chained case entry in `audit/http.jsonl` (method/path/redacted query/status/duration/case). Failed ES tool calls are audited with their error. |
-| **LLM** | Optional. Narrates **N4 hits** only. Cannot approve. Mode 3 adds a supervised multi-role pipeline (scoped read-only tools, one work order at a time — see below) — it never stages or approves; DRAFT staging is an examiner action. |
+| **LLM** | Optional. Narrates **N4 hits** only. Cannot approve. Mode 2 adds a supervised multi-role pipeline (scoped read-only tools, one work order at a time — see below); Mode 3 adds the concurrent multi-agent board. Neither stages or approves; DRAFT staging is an examiner action. |
 
 ## Design Principle
 
@@ -367,13 +367,12 @@ coverage + registry facts) and `nexus doctor` (manifest). Rebuild with
 `scripts/build_*_registry.py`; raw dumps are gitignored and excluded from
 wheels.
 
-### Mode 3 supervised multi-role runtime (2026-09)
+### Mode 2 supervised multi-role runtime (runtime `mode3`, 2026-09)
 
 `src/nexus/langgraph/mode3_runtime.py` is the supervised execution layer
 (M1–M7). It is a LangGraph `StateGraph` supervisor over the shared bounded
 tool loop — there is no second bespoke agent loop. It is **multi-role, not
-concurrent multi-agent**: one work order runs at a time (concurrent
-multi-agent is planned as Mode 4).
+concurrent multi-agent**: one work order runs at a time.
 
 - **Roles** (`AgentRole`): director, evidence, correlation, pattern, verifier,
   synthesis, reporter — each with a scoped **read-only** tool allowlist,
@@ -404,6 +403,21 @@ multi-agent is planned as Mode 4).
   through the examiner action `nexus mode3 stage` / `POST /mode3/run/stage`,
   which requires real audit IDs (FD-001) and persists `run_id` /
   `input_call_ids` lineage. Approval stays password-gated in the Approval Desk.
+
+### Mode 3 concurrent multi-agent runtime (runtime `mode4`, 2026-09)
+
+`src/nexus/langgraph/mode4_runtime.py` is the concurrent layer: a
+`StateGraph` with channel reducers (`board: Annotated[list, add_board]`), a
+supervisor node (model-chosen seats, deterministic fallback) that uses
+LangGraph `Send` to fan out evidence / correlation / pattern seats **in one
+superstep**, a join that groups audit-backed claims by
+`(entity_type, entity_value, claim_kind)`, opens disputes and re-dispatches
+bounded, and synthesis that turns settled claims into DRAFT candidates.
+Unresolved disputes are gaps, never findings. One `AuditWriter`/`EventSink`
+per run (shared across seats); a run governor caps agents / supersteps / calls
+/ seconds; pause / stop / steer apply at superstep boundaries with a
+file-based `resume_state`. Surfaces: `nexus mode4`,
+`/portal/api/mode4/run*`, and the **Investigation Board** on Agent Run.
 
 ## LLM Client Setup
 

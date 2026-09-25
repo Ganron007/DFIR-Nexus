@@ -6,12 +6,18 @@
 A: A unified DFIR investigation platform that wraps your existing forensic tools behind MCP servers, enforces a cryptographic audit chain, and requires human approval before findings become final.
 
 **Q: Do I need an LLM?**
-A: No. Live IR (`nexus collect`), Register, N2 parsers (`nexus pipeline --mode tools`), the CLI, and the Examiner Portal work without any LLM. An LLM is optional at interpret: it narrates retrieved hits. It cannot approve findings. Mode 3 is a supervised multi-role runtime — it needs a configured model and Elasticsearch, but every action is a read-only audited tool call, findings stage as DRAFT only when the examiner clicks **Stage DRAFTs**, and approval stays password-gated.
+A: No. Live IR (`nexus collect`), Register, N2 parsers (`nexus pipeline --mode tools`), the CLI, and the Examiner Portal work without any LLM. An LLM is optional at interpret: it narrates retrieved hits. It cannot approve findings. The agentic modes (Mode 2 — multi-role, Mode 3 — multi-agent) need a configured model and Elasticsearch, but every action is a read-only audited tool call, findings stage as DRAFT only when the examiner clicks **Stage DRAFTs**, and approval stays password-gated.
 
-**Q: What is Mode 3 and how is it controlled?**
-A: Mode 3 is the supervised multi-role mode (concurrent multi-agent is planned as Mode 4 and is not built yet). A LangGraph supervisor plans work orders from your question and the indexed evidence families (with KB-cited skill steps attached), runs them one at a time through scoped read-only roles, verifies findings against the cited rows (confirmed / inferred / refuted), appends bounded follow-up rounds, and synthesizes DRAFT candidates. You can pause, steer, stop, re-attach and stage from the **Agent Run** page (`/portal/app/agent-run`) or `nexus mode3`; agents cannot stage or approve. See [NEXUS-MODE.md](NEXUS-MODE.md) and [guide.md](guide.md).
+**Q: What are the three modes now?**
+A: Final modes (stored 1/2/3): **Mode 1 — LLM** (merged examiner + LLM: deterministic lane, full-run scribe, steer chat with live evidence retrieval, coverage/interpretation); **Mode 2 — Multi-role** (supervised pipeline, one work order at a time — `nexus mode3`, Agent Run); **Mode 3 — Multi-agent** (concurrent seats on a shared claim board with disputes — `nexus mode4`, Investigation Board). Pre-rename cases alias on read (old 1/2 → LLM, old 3 → multi-role, old 4 → multi-agent).
 
-**Q: How does Mode 2 query my evidence?**
+**Q: What is Mode 2 (multi-role) and how is it controlled?**
+A: A LangGraph supervisor plans work orders from your question and the indexed evidence families (with KB-cited skill steps attached), runs them one at a time through scoped read-only roles, verifies findings against the cited rows (confirmed / inferred / refuted), appends bounded follow-up rounds, and synthesizes DRAFT candidates. You can pause, steer, stop, re-attach and stage from the **Agent Run** page (`/portal/app/agent-run`) or `nexus mode3`; agents cannot stage or approve. See [NEXUS-MODE.md](NEXUS-MODE.md) and [guide.md](guide.md).
+
+**Q: What is Mode 3 (multi-agent)?**
+A: The concurrent runtime (`nexus mode4` / Investigation Board). A model supervisor chooses seats; evidence (one per family), correlation and pattern run in the same superstep, each publishing audit-backed claims on a shared board. A join opens disputes on conflicts and can re-dispatch bounded; unresolved disputes stay gaps, never findings. Same rules: read-only tools, every call audited, DRAFT-only, examiner stages and approves.
+
+**Q: How does Mode 1 query my evidence?**
 A: The LLM plans an **N4 query**; the server executes it against the case's Elasticsearch index — field filters push down to structured keyword fields (`host`/`user`/`event_id` + parsed columns under `fields.*`) and counting questions use **ES-native aggregations** (the deterministic CSV backend returns identical results). The LLM then answers from the actual rows with citations. Simple list/IOC questions take a deterministic fast path (~2 ms planning). Every query is audit-logged, runs against the active case only, and the steering loop never writes or approves findings.
 
 **Q: What OS does it run on?**

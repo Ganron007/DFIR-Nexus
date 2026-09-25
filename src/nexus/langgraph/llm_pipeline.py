@@ -1310,7 +1310,11 @@ def _autoindex_case(case_dir: Path) -> list[str]:
         if meta_yaml.is_file():
             _m = yaml.safe_load(meta_yaml.read_text(encoding="utf-8")) or {}
             if isinstance(_m, dict):
-                case_mode = str(_m.get("investigation_mode") or "")
+                from nexus.langgraph.mode_mapping import resolve_stored_mode
+
+                canonical = resolve_stored_mode(
+                    _m.get("investigation_mode"), _m.get("mode_scheme"))
+                case_mode = str(canonical) if canonical else ""
     except Exception:
         case_mode = ""
 

@@ -75,39 +75,53 @@ class TestPlaybookCorroboration:
 
 
 class TestPipelineModeMapping:
-    """WP 3.8: Product modes (1/2/3) must map to pipeline modes (tools/coverage/design/interpret)."""
+    """WP 3.8 rewrite: canonical modes 1 LLM / 2 multi-role / 3 multi-agent."""
 
     def test_mode1_maps_to_tools_then_interpret(self):
         from nexus.langgraph.mode_mapping import map_product_mode_to_pipeline
 
         result = map_product_mode_to_pipeline(1)
-        assert "pipeline_mode" in result
-        assert result["pipeline_mode"] in ("tools", "interpret")
-        # Mode 1 should use tools + interpret
-        assert "interpret" in result.get("pipeline_modes", []) or result["pipeline_mode"] == "tools"
+        assert result["pipeline_mode"] == "tools"
+        assert "interpret" in result["pipeline_modes"]
+        assert "coverage" in result["pipeline_modes"]
 
-    def test_mode2_maps_to_coverage(self):
+    def test_mode2_maps_to_multi_role(self):
         from nexus.langgraph.mode_mapping import map_product_mode_to_pipeline
 
         result = map_product_mode_to_pipeline(2)
-        assert result["pipeline_mode"] == "coverage"
+        assert result["pipeline_mode"] == "tools"
+        assert "multi-role" in result["description"]
 
-    def test_mode3_maps_to_design(self):
+    def test_mode3_maps_to_multi_agent(self):
         from nexus.langgraph.mode_mapping import map_product_mode_to_pipeline
 
         result = map_product_mode_to_pipeline(3)
-        assert result["pipeline_mode"] == "design"
+        assert result["pipeline_mode"] == "tools"
+        assert "multi-agent" in result["description"]
 
     def test_invalid_mode_returns_error(self):
         from nexus.langgraph.mode_mapping import map_product_mode_to_pipeline
 
-        result = map_product_mode_to_pipeline(99)
-        assert "error" in result
+        assert "error" in map_product_mode_to_pipeline(99)
 
     def test_mapping_returns_description(self):
         from nexus.langgraph.mode_mapping import map_product_mode_to_pipeline
 
         for mode in (1, 2, 3):
             result = map_product_mode_to_pipeline(mode)
-            assert "description" in result
             assert result["description"]
+
+    def test_legacy_stored_values_alias_to_canonical(self):
+        from nexus.langgraph.mode_mapping import resolve_stored_mode
+
+        # No scheme marker = legacy: old 1/2 examiner-led/guided → LLM,
+        # old 3 multi-role → 2, old 4 multi-agent → 3.
+        assert resolve_stored_mode("1") == 1
+        assert resolve_stored_mode("2") == 1
+        assert resolve_stored_mode("3") == 2
+        assert resolve_stored_mode("4") == 3
+        # Canonical scheme: values 1–3 stay as written.
+        assert resolve_stored_mode("2", 2) == 2
+        assert resolve_stored_mode("3", 2) == 3
+        assert resolve_stored_mode("4", 2) == 3
+        assert resolve_stored_mode("nonsense") is None

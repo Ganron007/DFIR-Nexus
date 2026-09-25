@@ -1365,7 +1365,7 @@ needles is one event.
 
 ---
 
-## 11. Mode 3
+## 11. Mode 2 — Multi-role runtime (runtime mode3)
 
 ### POST /portal/api/mode3/plan
 **Description:** Agent proposes an investigation plan. Reads the tool-lane ledger (SKIPs), known extras not yet requested, and FD-006 corroboration needs from existing findings. LLM refines the rationale when configured. Logged to `agent_runs.jsonl` + chat. The examiner approves items before execution.
@@ -1559,6 +1559,57 @@ needles is one event.
 ```
 
 **Errors:** `400` — missing run_id; `404` — run not found; `409` — case sealed.
+
+---
+
+## 11b. Mode 3 — Multi-agent runtime (runtime mode4)
+
+Concurrent seats over the case index. Every claim needs an `audit_id` (FD-001);
+attribution is rejected (FD-003); unresolved disputes are gaps, never findings.
+Elasticsearch is required. Agents never stage or approve.
+
+### POST /portal/api/mode4/run
+**Description:** Start the concurrent multi-agent team in the background (the
+supervisor may use the configured model; deterministic fallback otherwise).
+**Request:** `{"question": "string?", "run_id": "M4-…?"}` → **202**
+`{"run_id", "status": "running", "question"}`. `409` when a run with that id is
+in progress or the case is sealed; when ES is unavailable the record fails with
+`stop_reason=elasticsearch_required`.
+
+### GET /portal/api/mode4/run/status
+**Description:** Run state (`run_id` optional → latest): `status`, `stop_reason`,
+`question`, `superstep`, `board`/`disputes`/`candidates` counts, `gaps`.
+
+### GET /portal/api/mode4/run/board
+**Description:** The board: entries (`agent_id`, `role`, `family`, `superstep`,
+claims with `audit_ids`, open questions), disputes (entity/kind/seats) and
+settled candidates.
+
+### GET /portal/api/mode4/run/events
+**Description:** SSE tail of the run stream (`event: agent` frames + ping +
+terminal `event: run`), replay-first so a reload re-attaches. Terminal
+statuses: `completed|failed|paused|stopped`.
+
+### POST /portal/api/mode4/run/steer
+**Description:** Queue an examiner directive; the supervisor consumes it on the
+next superstep. **Request:** `{"run_id", "text"}`.
+
+### POST /portal/api/mode4/run/pause
+**Description:** Cooperative pause at the next superstep boundary.
+**Request:** `{"run_id", "paused": true}`.
+
+### POST /portal/api/mode4/run/resume
+**Description:** Continue a paused run from its persisted board/superstep
+snapshot. `409` while running or for stopped/completed/failed runs.
+
+### POST /portal/api/mode4/run/stop
+**Description:** Terminal stop at the next superstep boundary
+(`stop_reason=examiner_stop`).
+
+### POST /portal/api/mode4/run/stage
+**Description:** Examiner action — stage settled, audit-backed claims as DRAFT
+findings with `run_id` / `input_call_ids` lineage; skipped claims carry reasons.
+Approval remains examiner-only.
 
 ---
 

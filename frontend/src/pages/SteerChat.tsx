@@ -394,11 +394,14 @@ export default function SteerChat() {
   // needs a query (or hits) to draft from.
   const [lastQuery, setLastQuery] = useState("");
   // Phase 4f fix: depth is a case-level decision (single source = caseMode).
-  // No private chat mode that can disagree with the case setting; changing it
-  // persists to the case via setCaseMode.
+  // Final three modes: 1 LLM (guided chat), 2 Multi-role (banner to Agent Run),
+  // 3 Multi-agent (banner to the Investigation Board). "mode1" is the legacy
+  // fallback when the case has no mode yet.
   const modeKnown = caseMode === "1" || caseMode === "2" || caseMode === "3";
-  const mode: "mode1" | "mode2" | "mode3" =
-    caseMode === "2" ? "mode2" : caseMode === "3" ? "mode3" : "mode1";
+  const mode: "mode1" | "mode2" | "mode3" | "mode4" =
+    caseMode === "1" ? "mode2"
+      : caseMode === "2" ? "mode3"
+        : caseMode === "3" ? "mode4" : "mode1";
   const [mode2Iterations, setMode2Iterations] = useState(3);
   const [mode3Step, setMode3Step] = useState<"plan" | "execute" | "seal">("plan");
   const [mode3Plan, setMode3Plan] = useState<Mode3PlanResponse | null>(null);
@@ -414,9 +417,9 @@ export default function SteerChat() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollTimerRef = useRef<number | null>(null);
 
-  // Reset the Mode-3 step whenever the case depth changes.
+  // Reset the legacy multi-role step whenever the case depth changes.
   useEffect(() => {
-    if (caseMode === "3") setMode3Step("plan");
+    if (caseMode === "2") setMode3Step("plan");
   }, [caseMode]);
 
   const load = () => {
@@ -798,11 +801,11 @@ export default function SteerChat() {
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           {/* Mode is fixed at case creation — no in-case switching (segregation). */}
           <span
-            className={`mode-badge mode-${mode === "mode2" ? "2" : mode === "mode3" ? "3" : "1"}`}
+            className={`mode-badge mode-${mode === "mode2" ? "2" : mode === "mode3" ? "3" : mode === "mode4" ? "3" : "1"}`}
             title="Investigation mode was chosen when the case was created"
             style={{ fontSize: 11 }}
           >
-            {mode === "mode1" ? "Mode 1 — Scribe" : mode === "mode2" ? "Mode 2 — LLM steering" : "Mode 3 — Multi-role"}
+            {mode === "mode1" ? "Mode 1 — LLM" : mode === "mode2" ? "Mode 1 — LLM steering" : mode === "mode3" ? "Mode 2 — Multi-role" : "Mode 3 — Multi-agent"}
           </span>
           {mode === "mode2" && (
             <input
@@ -827,10 +830,12 @@ export default function SteerChat() {
         {mode === "mode1"
           ? "Mode 1: you propose needles — the LLM scribes your findings. Evidence and the audit chain are shared."
           : mode === "mode2"
-            ? "Mode 2: you ask in plain language — the LLM queries the case's evidence index and cites rows. Staging a DRAFT is a separate examiner-triggered action."
-            : "Mode 3: the supervised multi-role pipeline plans, hunts and corroborates one work order at a time; you steer, stop and stage."}
+            ? "Mode 1 (LLM): you ask in plain language — the LLM queries the case's evidence index and cites rows. Staging a DRAFT is a separate examiner-triggered action."
+            : mode === "mode3"
+              ? "Mode 2 (Multi-role): the supervised multi-role pipeline runs from Agent Run — one work order at a time; you steer, stop and stage."
+              : "Mode 3 (Multi-agent): the concurrent team runs from Agent Run (Investigation Board) — seats, shared claims, disputes; you steer, stop and stage."}
       </div>
-      {mode === "mode3" && (
+      {(mode === "mode3" || mode === "mode4") && (
         <div
           className="card"
           style={{
@@ -844,9 +849,19 @@ export default function SteerChat() {
           }}
         >
           <span style={{ fontSize: 12 }}>
-            This chat keeps the legacy plan/execute sliver. The supervised multi-role
-            pipeline now runs on the dedicated <strong>Agent Run</strong> page — agent board,
-            live event stream, steering, pause/resume/stop and DRAFT staging.
+            {mode === "mode3" ? (
+              <>
+                This chat keeps the legacy plan/execute sliver. The supervised multi-role
+                pipeline runs on the dedicated <strong>Agent Run</strong> page — agent board,
+                live event stream, steering, pause/resume/stop and DRAFT staging.
+              </>
+            ) : (
+              <>
+                The concurrent multi-agent team runs on <strong>Agent Run
+                (Investigation Board)</strong> — simultaneous seats, a shared claim board,
+                disputes and join decisions, with steer / pause / resume / stop.
+              </>
+            )}
           </span>
           <Link className="btn btn-sm btn-primary" to="/agent-run">
             Open Agent Run →
@@ -1168,6 +1183,7 @@ export default function SteerChat() {
           placeholder={
             mode === "mode1" ? "Ask a question..." :
             mode === "mode2" ? "Ask about the evidence..." :
+            mode === "mode4" ? "Multi-agent runs on Agent Run (Investigation Board)..." :
             mode3Step === "plan" ? "Set scope for agent..." :
             "Use action buttons above..."
           }
@@ -1175,12 +1191,12 @@ export default function SteerChat() {
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && !loading && send()}
           placeholder-style={{ color: loading ? "var(--text-muted)" : undefined }}
-          disabled={mode === "mode3" && mode3Step !== "plan"}
+          disabled={(mode === "mode3" && mode3Step !== "plan") || mode === "mode4"}
         />
         <button
           className="btn btn-primary"
           onClick={send}
-          disabled={loading || (mode === "mode3" && mode3Step !== "plan")}
+          disabled={loading || (mode === "mode3" && mode3Step !== "plan") || mode === "mode4"}
         >
           {loading ? "Working…" : "Send"}
         </button>

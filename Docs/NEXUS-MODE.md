@@ -110,33 +110,31 @@ presets**, not separate products or UIs.
 
 > **UI purpose (all modes):** the Portal is the manual evidence-analysis
 > workbench + the LLM/agent steering chat. Whether the LLM is thin (Mode 1),
-> thick (Mode 2), or agentic (Mode 3), the examiner always sees the same
-> evidence, the same chat pane, and the same approval gate.
+> thick (Mode 1 guided), or agentic (Modes 2/3), the examiner always sees the
+> same evidence, the same chat pane, and the same approval gate.
 
-> **Honest status (2026-09-08):** Mode 1 is implemented and dual-audited —
-> the Portal ships Explore (faceted search + timeline lanes + entity
-> pivots), persistent Steer Chat, Finding Workbench (bookmarks -> DRAFT
-> promotion), Approval Desk (HMAC challenge-response), and Report
-> generation from APPROVED findings only. Mode 2 is implemented —
-> iterative query loop, corroboration engine (FD-006/007), and LLM-drafted
-> findings (`examiner_selected=False` provenance marker) are wired with
-> Portal endpoints (`/portal/api/mode2/iterate`, `/corroborate`,
-> `/propose-draft`). **Mode 3 is implemented as a supervised multi-role runtime
-> (2026-09-25):** LangGraph supervisor (director → workers → verifier →
-> synthesis), KB skill procedures packed into each worker, follow-up
-> corroboration up to the context window, a convergence stop, a live SSE
-> run event stream, the Agent Run page and `nexus mode3` CLI parity; DRAFT staging is an examiner action and approval
-> is unchanged. The legacy `/mode3/plan|execute|seal` endpoints remain for
-> the plan/execute sliver and case sealing. All three modes share the same
-> Cockpit. **Phase 4 (enterprise UI rewrite) is complete** — the
-> React SPA cockpit at `/portal/app/*` replaced the hand-written HTML/JS
-> proof-of-concept without changing the API contracts. **Phase 4e (case
-> management segregation) is complete (2026-09-10):** the SPA Overview is the
-> single case-management surface (status badges, preview, explicit Enter),
-> cockpit routes require an active case, create/seed no longer switch cases,
-> evidence uses SQLite as the system of record (registered evidence appears
-> immediately), and every request carries an explicit `X-Nexus-Case` header.
-> Operator review on a real case (Gate 1/2/3) remains pending.
+> **Final mode map (2026-09-25):** the product now ships exactly three modes —
+> **Mode 1 — LLM** (the merged examiner-led + LLM-guided surfaces),
+> **Mode 2 — Multi-role** (the supervised pipeline, runtime `mode3`), and
+> **Mode 3 — Multi-agent** (the concurrent board, runtime `mode4`). Stored
+> `CASE.yaml` values are canonical `1/2/3` with read aliases for pre-rename
+> cases. Below, sections written as "Mode 1 — Examiner-Driven" and "Mode 2 —
+> LLM-Guided" are both part of canonical Mode 1.
+
+> **Honest status (2026-09-25):** all three modes are implemented; the one
+> operator gate pass for this build remains pending. **Mode 1 — LLM** ships
+> the full examiner surface (Explore, persistent Steer Chat with live evidence
+> retrieval, Finding Workbench, Approval Desk, report steering) plus the
+> merged full-run scribe and coverage/interpretation loop. **Mode 2 —
+> Multi-role** ships the supervised runtime (`nexus mode3`): plan approval,
+> live steering, pause/resume/stop, verifier verdicts, DRAFT staging with
+> lineage. **Mode 3 — Multi-agent** ships the concurrent runtime
+> (`nexus mode4`): model-chosen seats, shared claim board, disputes and
+> bounded re-dispatch, Investigation Board UI. Agents never stage or approve
+> in any mode; the legacy `/mode3/plan|execute|seal` endpoints remain for the
+> plan/execute sliver and case sealing. **Phase 4 (enterprise UI rewrite) is
+> complete** — React SPA at `/portal/app/*`; **Phase 4e** case segregation,
+> SQLite evidence SOR and explicit `X-Nexus-Case` scoping are live.
 
 ### The two axes (do not confuse them)
 
@@ -168,7 +166,7 @@ scripting and headless work, but the UI must expose every N1–N8 action:
 | **Approval Desk** | HMAC sign-off on DRAFT findings. | Nothing. Approval is always human. |
 | **Report** | Trigger N8 from APPROVED. Steer the narrative per round (whole report or one finding). | Mode 1: shapes an evidence-constrained narrative from APPROVED findings under examiner steering — adds no evidence or facts, never approves. Mode 2/3: same boundary over agent-gathered evidence. |
 
-### Mode 1 — Examiner-Driven (ship door)
+### Mode 1 — LLM: examiner surfaces (merged ship door)
 
 **The examiner does the analysis. The LLM is a thin scribe + NL query helper.**
 
@@ -241,7 +239,7 @@ its starting point — Mode 2 never feeds directions back.
 > (commit `7cc7ec0`), with the Phase 4/4e SPA cockpit on top. Operator review
 > on a real case remains the gate before Mode 1 is declared *proven*.
 
-### Mode 2 — LLM-Guided Analysis (implemented; 4j-H GATE-A + GATE-B built 2026-09-17/18)
+### Mode 1 (LLM) — guided analysis: digest + interpretation loop + steer chat
 
 **The examiner asks in plain language; the LLM queries the case's evidence
 index, cites rows, and stages DRAFT findings for approval — then steers
@@ -320,7 +318,7 @@ N8 report from APPROVED only
 - Does not write findings inside the steering loop
 - Treats absent evidence classes as scope — never as a verdict
 
-### Mode 3 — Supervised Multi-Role (M1–M7 implemented)
+### Mode 2 — Multi-role (runtime `mode3`; M1–M7 implemented)
 
 **A supervisor runs scoped read-only agent roles one work order at a time over
 the case evidence; the examiner approves the plan, steers mid-run, and stages
@@ -397,17 +395,40 @@ Examiner reviews Agent Run -> "Stage DRAFTs" -> Approval Desk HMAC -> N8 report 
 2. **Mode 2 reasoning** — Make the Steer Chat drive iterative query and
    corroboration. LLM proposes; examiner accepts/rejects. Same Cockpit.
    **Status: implemented + dual-audited (Phase 2, commits `fe62295`, `49720eb`).**
-3. **Mode 3 agentic** — Agent chooses MCP tools. Same Cockpit; the chat shows
-   what the agent plans and asks permission.
-   **Status: Phase 3 plan/execute/seal dual-audited (commits `8fc0543`, `b52ff50`);
-   the supervised runtime M1–M7 is complete (2026-09-25, see "Mode 3 —
-   Supervised Multi-Role" above) with the Agent Run page and `nexus mode3` CLI.
-   GATE 4j-D / GATE-B operator sign-off pending.**
+3. **Multi-role → multi-agent** — the agentic depths. Same Cockpit; Agent Run
+   shows the plan/run/verify/stage lanes (Mode 2, runtime `mode3`) or the
+   concurrent Investigation Board (Mode 3, runtime `mode4`).
+   **Status: the supervised multi-role runtime M1–M7 is complete (2026-09-25);
+   the concurrent multi-agent runtime (reducer board, `Send` seats, disputes,
+   model supervisor, Board UI, CLI) is complete. The operator gate pass
+   (GATE-B / 4j-D / 4j-E) is the next step.**
 4. **Phase 4 enterprise UI rewrite** — React SPA cockpit at `/portal/app/*`
    replaced the hand-written HTML/JS proof-of-concept. API contracts unchanged.
    **Status: complete (Phase 4b workflow cockpit + Phase 4d UI hardening +
    Phase 4e case-management segregation + Phase 4f design conformance +
    Phase 4g needle quality + Phase 4h evidence intake).**
+
+### Mode 3 — Multi-agent (runtime `mode4`; concurrent)
+
+**A supervisor spawns seats that work at the same time and argue on a board.**
+
+The multi-agent runtime is the concurrent depth: a **model supervisor** reads
+the objective, the indexed families, the board and any steering, and emits the
+seat list (deterministic fallback kept). Evidence seats (one per family),
+correlation and pattern run **in the same superstep**, each with its own
+context, role allowlist and budget, and each publishes one **BoardEntry** of
+audit-backed claims. The **join** groups claims by
+`(entity_type, entity_value, claim_kind)`, opens **disputes** on conflicts and
+can re-dispatch the named seats (bounded); it settles after quiet supersteps
+or when re-dispatch is exhausted. Unresolved disputes are **gaps, never
+findings**; only settled, audit-backed claims become DRAFT candidates.
+
+Controls and surfaces: `nexus mode4
+run|status|board|steer|pause|resume|stop|stage|export`, the API
+(`/portal/api/mode4/run*`), and the **Investigation Board** on Agent Run
+(concurrent board, disputes, join decisions, live SSE, steer/pause/resume/stop,
+examiner staging). Same rules as every mode: read-only tools, every call
+audited, DRAFT-only, examiner approves.
 
 ## Product flow (canonical)
 

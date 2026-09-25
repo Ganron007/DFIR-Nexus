@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/Tests-1314%2B%20pytest-success.svg" alt="Tests: 1314+ pytest, 3 skipped">
+  <img src="https://img.shields.io/badge/Tests-1334%2B%20pytest-success.svg" alt="Tests: 1334+ pytest, 3 skipped">
   <img src="https://img.shields.io/badge/MCP%20Tools-135%20Win%20%7C%20132%20Linux-blue.svg" alt="MCP Tools: 135 Win | 132 Linux">
   <img src="https://img.shields.io/badge/Status-v2%20in%20development-yellow.svg" alt="Status: v2 in development">
 </p>
@@ -111,7 +111,7 @@ DFIR-Nexus uses a dual-layer storage model separating immutable forensic state f
 | **Threat Intel** | Integrated lookups across 10 TI providers (ThreatFox, MalwareBazaar, URLhaus, Yaraify, MISP, OTX, Shodan, VT, AbuseIPDB, and CrowdStrike). |
 | **Semantic RAG** | Search over **22,000+ IR records** (SANS posters, Sigma, LOLBAS, GTFOBins, and KAPE targets) using a local ChromaDB collection. Bring your own index, download the prebuilt release, or rebuild from your own sources; embedding model is operator-configurable (`NEXUS_RAG_MODEL`). |
 | **Live IR pack (Stage 0)** | Authenticated **SSH / WinRM / local** collection — **CLI only** (portable, no UI). Ship spine (`--profile disk`): Windows **KAPE** `!SANS_Triage`/`!EZParser` + Sysinternals + PersistenceSniper + wevtutil + Velociraptor `IRTriage`; Linux **POSIX volatile + journalctl + UAC `ir_triage` + Velociraptor `LinuxIRTriage`**. Extra *collectors* (Kansa, DFIR-ORC, WinPmem/AVML, UAC `full`) stay on `--profile full` and **skip with a reason** if missing or broken. **Hayabusa / Suzaku / Chainsaw are N2 parsers**, not Stage 0. Live Velociraptor needs examiner `.env` MCP URL + key — [SETUP.md §2.6](Docs/SETUP.md#26-live-velociraptor-hunts-every-examiner-host). |
-| **Three Nexus Modes** | Progressive investigation models driving the same N1–N8 spine, same `case_id`, and same HMAC lock:<br>• **Mode 1 (Examiner-Led):** Deterministic tool execution + code-based N4 query pack + LLM scribe & natural-language query assistant + manual examiner cryptographic sign-off.<br>• **Mode 2 (LLM-Guided):** Same deterministic lane, then the LLM builds case context (RAG + playbooks + KB + threat intel + deterministic entity inventory) and stages DRAFT findings with an executive verdict and coverage gaps. **Steering is live evidence retrieval** — the LLM plans N4 queries that push down to the per-case ES index (field filters + ES-native aggregations) and answers with cited rows, per-stage timings and audit ids. List/IOC questions take a deterministic fast path (~2 ms plan). Interpretation does not run on a CSV fallback.<br>• **Mode 3 (Supervised Multi-Role):** A LangGraph supervisor runs scoped **read-only** agent roles **one work order at a time** (director → evidence / correlation / pattern workers → verifier / refuter → synthesis) over the same case-gated evidence tools — a followable multi-role pipeline with agentic turns (concurrent multi-agent is planned as Mode 4, not yet built). Each worker is given the KB skill procedures that match the question (steps, queries, look-fors, caveats, citations) and the prior agents' notes, up to the model context window (`NEXUS_LLM_CONTEXT_WINDOW` × fill ratio, default 1,000,000 × 0.7). Follow-up corroboration continues while new evidence appears (`NEXUS_MODE3_FOLLOWUPS`, default 8, up to 24). The run stops when evidence stops changing, or when the examiner pauses or stops it. Per-agent tool rounds default to 24 rounds / 48 calls / 30 minutes and are env-tunable; they are not a few-thousand-character cap. The examiner owns plan approval, live steering, pause / resume / **stop** and DRAFT staging (`nexus mode3 stage`); agents never stage or approve on their own. Surfaces: the **Agent Run** page (`/portal/app/agent-run`, live SSE event stream, budget meters, verdict board, lineage) and `nexus mode3 plan|run|status|steer|pause|resume|stop|findings|stage|export`.<br>• **Examiner Cockpit:** React SPA at `/portal/app/*` — Case Setup, Overview, Briefing, Explore, Timeline, Steer Chat, Agent Run, Workbench, Findings, Approval, Report, Evidence, Entities, Transparency, IOCs, TODOs. |
+| **Three Nexus Modes** | Progressive investigation models driving the same N1–N8 spine, same `case_id`, and same HMAC lock:<br>• **Mode 1 (LLM):** The merged examiner + LLM surface. Deterministic tool lane and code-based N4 query pack, Mode 1 full-run scribe, live steer chat (the LLM plans N4 queries that push down to the per-case ES index — field filters + ES-native aggregations — and answers with cited rows, per-stage timings and audit IDs), coverage/interpretation, and manual examiner cryptographic sign-off. Briefing + Steer Chat are the primary surfaces; interpretation does not run on a CSV fallback.<br>• **Mode 2 (Multi-role):** A LangGraph supervisor runs scoped **read-only** agent roles **one work order at a time** (director → evidence / correlation / pattern workers → verifier / refuter → synthesis) over the same case-gated evidence tools, with KB skill procedures, bounded budgets, follow-up corroboration and a no-new-evidence convergence stop. The examiner owns plan approval, live steering, pause / resume / **stop** and DRAFT staging (`nexus mode3 stage`); agents never stage or approve. Surfaces: **Agent Run** (`/portal/app/agent-run`) and `nexus mode3 plan|run|status|steer|pause|resume|stop|findings|stage|export`.<br>• **Mode 3 (Multi-agent):** A concurrent team — a supervisor (model-chosen seats) fans out evidence / correlation / pattern seats in one superstep; each publishes claims (audit-backed only) on a shared board; a join opens disputes and can re-dispatch, and synthesis stages nothing. Same read-only/audited/DRAFT-only rules. Surfaces: **Agent Run — Investigation Board** and `nexus mode4 run|status|board|steer|pause|resume|stop|stage|export`.<br>• **Examiner Cockpit:** React SPA at `/portal/app/*` — Case Setup, Overview, Briefing, Explore, Timeline, Steer Chat, Agent Run (mode-aware: multi-role lanes / multi-agent board), Workbench, Findings, Approval, Report, Evidence, Entities, Transparency, IOCs, TODOs. |
 
 ---
 
@@ -150,12 +150,16 @@ nexus evidence register <pack>
 # (without --from-case the pipeline auto-creates a new INC-* case)
 nexus pipeline --mode tools --from-case <CASE-ID> --case <pack>
 
-# Mode 1 — Examiner-Led Query Desk (thin LLM as scribe)
+# Mode 1 — LLM query desk (examiner + scribe + steer chat)
 nexus case ask --question "Was sdelete used to wipe files?"
 nexus case select --hits 1,3,5 --title "sdelete wipe on WS01"
 nexus case findings --status DRAFT
 nexus approve --examiner <id> F-001            # HMAC sign-off
 nexus report generate                          # N8 from APPROVED only
+
+# Mode 2 — Multi-role runs / Mode 3 — Multi-agent runs
+nexus mode3 plan -q "Trace RDP activity and USB device use"
+nexus mode4 run  -q "Trace RDP activity and USB device use"
 
 # Or open the Examiner Cockpit for query / approve / timeline / report
 nexus portal
@@ -191,7 +195,7 @@ Detailed guidelines are grouped in the `Docs/` directory:
 
 ## Verification & Testing
 
-DFIR-Nexus includes a rigorous testing suite covering unit, script, functional wiring, and blocker regression tests. The last full pytest run (2026-09-25, after the Mode 3 review fixes and context-window packing) recorded **1314 passed / 3 skipped**, plus the script suites and the E2E functional audit.
+DFIR-Nexus includes a rigorous testing suite covering unit, script, functional wiring, and blocker regression tests. The last full pytest run (2026-09-25, after the multi-agent runtime, model supervisor, Investigation Board UI and the mode rename/merge) recorded **1334 passed / 3 skipped**, plus the script suites and the E2E functional audit.
 
 ```bash
 # 1. Run the pytest suite (Mode 1/2/3 + audit regression tests)

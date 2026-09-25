@@ -36,6 +36,7 @@ const statusRecord = {
 vi.mock("../api/client", () => ({
   ApiError: class ApiError extends Error {},
   mode3RunEventsPath: (id: string) => `/portal/api/mode3/run/events?run_id=${id}`,
+  mode4RunEventsPath: (id: string) => `/portal/api/mode4/run/events?run_id=${id}`,
   api: {
     mode3RunStatus: vi.fn(async () => statusRecord),
     mode3RunPlan: vi.fn(async () => ({
@@ -57,7 +58,59 @@ vi.mock("../api/client", () => ({
       staged: [{ title: "USB mass storage seen", finding_id: "F-001", verifier_class: "inferred" }],
       skipped: [],
     })),
+    mode4RunStatus: vi.fn(async () => ({
+      run_id: "M4-test",
+      status: "completed",
+      stop_reason: "settled",
+      question: "Who moved laterally",
+      superstep: 2,
+      board: 1,
+      disputes: 1,
+      candidates: 1,
+      gaps: ["unresolved ws01 presence"],
+    })),
+    mode4RunBoard: vi.fn(async () => ({
+      run_id: "M4-test",
+      board: [{
+        entry_id: "be-1",
+        agent_id: "evidence:evtx:1",
+        role: "evidence",
+        family: "evtx",
+        superstep: 1,
+        claims: [{
+          entity_type: "host", entity_value: "ws01", claim_kind: "presence",
+          polarity: "affirm", value: "4624", audit_ids: ["audit-m4-1"],
+          confidence: "LOW",
+        }],
+      }],
+      disputes: [{
+        entity_type: "host", entity_value: "ws01", claim_kind: "presence",
+        seats: ["evidence", "correlation"],
+      }],
+      candidates: [{
+        title: "ws01: presence",
+        observation: "4624",
+        confidence: "LOW",
+        audit_ids: ["audit-m4-1"],
+      }],
+    })),
+    mode4Run: vi.fn(async () => ({ run_id: "M4-test", status: "running" })),
+    mode4RunPause: vi.fn(async () => ({ run_id: "M4-test", paused: true })),
+    mode4RunResume: vi.fn(async () => ({ run_id: "M4-test", status: "running" })),
+    mode4RunStop: vi.fn(async () => ({ run_id: "M4-test", stop_requested: true })),
+    mode4RunSteer: vi.fn(async () => ({ run_id: "M4-test", steering: { ts: "t", text: "x" } })),
+    mode4RunStage: vi.fn(async () => ({
+      run_id: "M4-test", staged_count: 1, skipped_count: 0,
+      staged: [{ title: "ws01: presence", finding_id: "F-100", input_call_ids: ["audit-m4-1"] }],
+      skipped: [],
+    })),
   },
+}));
+
+const caseModeState = vi.hoisted(() => ({ value: "2" }));
+
+vi.mock("../context/CaseContext", () => ({
+  useCase: () => ({ mode: caseModeState.value, activeCase: "CASE-TEST" }),
 }));
 
 class FakeEventSource {
@@ -84,6 +137,7 @@ class FakeEventSource {
 
 beforeEach(() => {
   FakeEventSource.instances = [];
+  caseModeState.value = "2";
   (globalThis as unknown as { EventSource: unknown }).EventSource = FakeEventSource;
 });
 
@@ -102,6 +156,25 @@ describe("AgentRun (Mode 3)", () => {
     expect(await screen.findByText("USB mass storage seen")).toBeTruthy();
     expect(await screen.findByText(/nexus-audit-1/)).toBeTruthy();
     expect(screen.getByRole("button", { name: /^Stop$/ })).toBeTruthy();
+
+    const stageButton = screen.getByRole("button", { name: /Stage DRAFTs/ });
+    await act(async () => {
+      stageButton.click();
+    });
+    expect(await screen.findByText(/Staged 1 DRAFT/)).toBeTruthy();
+  });
+
+  it("renders the multi-agent Investigation Board when the case mode is 3", async () => {
+    caseModeState.value = "3";
+    render(
+      <MemoryRouter>
+        <AgentRun />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText(/Investigation Board — Mode 3 Multi-agent/)).toBeTruthy();
+    expect(await screen.findByText(/AFFIRM/)).toBeTruthy();
+    expect(await screen.findByText(/DISPUTE/)).toBeTruthy();
+    expect(document.body.textContent).toContain("audit-m4-1");
 
     const stageButton = screen.getByRole("button", { name: /Stage DRAFTs/ });
     await act(async () => {

@@ -75,6 +75,7 @@ def seed_demo_case(
         "description": "Assumed-breach incident simulation — credential access, lateral movement & persistence",
         "status": "created",
         "investigation_mode": "1",
+        "mode_scheme": 2,
         "examiner": examiner,
         "created_at": datetime.now(UTC).isoformat(),
     }

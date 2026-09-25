@@ -13,7 +13,7 @@ const NAV_SPINE = [
   { to: "/briefing", label: "Briefing", stage: "N3.5", hint: "Case briefing — what was found before you dig" },
   { to: "/explore", label: "Explore", stage: "N3·N4", hint: "Index-backed search over parsed evidence" },
   { to: "/steer", label: "Steer Chat", stage: "N5", hint: "Interpretation — scribe, iterative, or agentic" },
-  { to: "/agent-run", label: "Agent Run", stage: "N5", hint: "Mode 3 — supervised multi-role pipeline, live events, DRAFT staging" },
+  { to: "/agent-run", label: "Agent Run", stage: "N5", hint: "Mode 2 — multi-role Agent Run; Mode 3 — multi-agent Investigation Board" },
   { to: "/workbench", label: "Workbench", stage: "N5", hint: "Build DRAFT findings from bookmarked hits" },
   { to: "/approve", label: "Approve", stage: "N6", hint: "HMAC challenge-response approval desk" },
   { to: "/timeline", label: "Timeline", stage: "N7", hint: "Per-family event lanes and brush" },
@@ -247,19 +247,17 @@ export default function Layout({ children }: { children: ReactNode }) {
         {activeCase && mode && (
           <div className="mode-indicator">
             <NavLink
-              to={mode === "1" ? "/briefing" : mode === "2" ? "/steer" : "/agent-run"}
+              to={mode === "1" ? "/steer" : "/agent-run"}
               className={`mode-badge mode-${mode}`}
               title={
                 mode === "1"
-                  ? "Mode 1 — LLM, examiner surface. Primary: Briefing"
+                  ? "Mode 1 — LLM. Primary surfaces: Steer Chat + Briefing"
                   : mode === "2"
-                    ? "Mode 1 — LLM, guided. Primary: Steer Chat"
-                    : mode === "4"
-                      ? "Mode 3 — Multi-agent (stored 4). Primary: Agent Run"
-                      : "Mode 2 — Multi-role (stored 3). Primary: Agent Run"
+                    ? "Mode 2 — Multi-role. Primary: Agent Run (plan → run → verify → stage)"
+                    : "Mode 3 — Multi-agent. Primary: Agent Run (Investigation Board)"
               }
             >
-              {mode === "1" ? "Mode 1 · Briefing" : mode === "2" ? "Mode 1 · Steer" : mode === "4" ? "Mode 3 · Agent Run" : "Mode 2 · Agent Run"} primary
+              {mode === "1" ? "Mode 1 · LLM" : mode === "2" ? "Mode 2 · Agent Run" : "Mode 3 · Agent Run"} primary
             </NavLink>
           </div>
         )}

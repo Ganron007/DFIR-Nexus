@@ -197,7 +197,7 @@ export default function Briefing() {
     setModeRunStatus("running");
     try {
       const r = await api.pipelineRun({
-        mode: mode === "3" ? "design" : "coverage",
+        mode: "coverage",
         case_id: activeCase,
         question: modeQuestion.trim(),
         interpret_rounds: interpretRounds,
@@ -321,16 +321,15 @@ export default function Briefing() {
         already caught, and where to start digging.
       </p>
 
-      {/* Mode 2/3 — question-driven LLM run with the live stage feed */}
-      {(mode === "2" || mode === "3") && (
+      {/* Mode 1 (LLM) — question-driven interpretation run with the live feed */}
+      {mode === "1" && (
         <div className="card" style={{ borderLeft: "3px solid var(--purple)" }}>
           <div className="card-title" style={{ marginBottom: 6 }}>
-            {mode === "2" ? "Mode 2 — LLM interpretation run" : "Mode 3 — agentic run"}
+            Mode 1 — LLM interpretation run (coverage)
           </div>
           <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>
-            {mode === "2"
-              ? "The deterministic lane parses and indexes, then the LLM interprets every entity against RAG methodology and threat intel, and stages DRAFT findings for your approval."
-              : "The deterministic lane runs, then the ReAct agent plans and adds hunts before interpretation."}
+            The deterministic lane parses and indexes, then the LLM interprets every entity
+            against RAG methodology and threat intel, and stages DRAFT findings for your approval.
           </div>
           <textarea
             value={modeQuestion}
@@ -371,7 +370,7 @@ export default function Briefing() {
             >
               {modeRunStatus === "running"
                 ? "Running…"
-                : mode === "2" ? "▶ Run Mode 2 interpretation" : "▶ Run Mode 3 agent plan"}
+                : "▶ Run LLM interpretation"}
             </button>
             {modeRunStatus === "complete" && (
               <span style={{ fontSize: 12, color: "var(--ok)" }}>
@@ -400,8 +399,25 @@ export default function Briefing() {
         </div>
       )}
 
-      {/* GATE-A — deterministic Case Digest (Mode 2/3): every fact the LLM must reconcile */}
+      {/* Mode 2/3 — the depths run from Agent Run; the lane is the prerequisite */}
       {(mode === "2" || mode === "3") && (
+        <div className="card" style={{ borderLeft: "3px solid var(--purple)", marginBottom: 12 }}>
+          <div className="card-title" style={{ marginBottom: 6 }}>
+            {mode === "2" ? "Mode 2 — Multi-role runs from Agent Run" : "Mode 3 — Multi-agent runs from Agent Run"}
+          </div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>
+            {mode === "2"
+              ? "The deterministic lane is the prerequisite. Start the supervised multi-role run on Agent Run (plan → run → verify → stage); you steer, pause/stop and stage."
+              : "The deterministic lane is the prerequisite. Start the concurrent multi-agent team on Agent Run (Investigation Board): simultaneous seats, a shared claim board, disputes and join decisions."}
+          </div>
+          <button className="btn btn-sm btn-primary" onClick={() => navigate("/agent-run")}>
+            Open Agent Run →
+          </button>
+        </div>
+      )}
+
+      {/* GATE-A — deterministic Case Digest: every fact the interpretation must reconcile */}
+      {(mode === "1" || mode === "2" || mode === "3") && (
         <div className="card" style={{ borderLeft: "3px solid var(--purple)" }}>
           <div className="card-title" style={{ marginBottom: 6 }}>
             Case Digest{" "}

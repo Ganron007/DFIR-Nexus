@@ -170,9 +170,11 @@ def test_display_labels_final_three_modes():
     from nexus.langgraph.mode_mapping import display_product_mode
 
     assert display_product_mode(1)["product_label"] == "Mode 1 \u2014 LLM"
-    assert display_product_mode(2)["product_label"] == "Mode 1 \u2014 LLM"
-    assert display_product_mode(3)["product_label"] == "Mode 2 \u2014 Multi-role"
-    assert display_product_mode(4)["product_label"] == "Mode 3 \u2014 Multi-agent"
+    assert display_product_mode(2)["product_label"] == "Mode 2 \u2014 Multi-role"
+    assert display_product_mode(3)["product_label"] == "Mode 3 \u2014 Multi-agent"
+    assert display_product_mode(1)["depth"] == "llm"
+    assert display_product_mode(2)["depth"] == "multi_role"
+    assert display_product_mode(3)["depth"] == "multi_agent"
     assert "error" in display_product_mode(9)
 
 

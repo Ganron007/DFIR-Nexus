@@ -1007,7 +1007,15 @@ def _case_summary(case_id: str, mgr) -> dict[str, Any]:
                 summary["name"] = str(meta.get("name") or summary["name"])
                 if not summary["status"] or summary["status"] == "unknown":
                     summary["status"] = str(meta.get("status") or "")
-                summary["mode"] = str(meta.get("investigation_mode") or "")
+                from nexus.langgraph.mode_mapping import (
+                    mode_label,
+                    resolve_stored_mode,
+                )
+
+                canonical = resolve_stored_mode(
+                    meta.get("investigation_mode"), meta.get("mode_scheme"))
+                summary["mode"] = str(canonical) if canonical else ""
+                summary["mode_label"] = mode_label(canonical)
         except Exception:  # noqa: BLE001
             pass
 
@@ -5192,8 +5200,12 @@ async def api_case_create(request):
         active.parent.mkdir(parents=True, exist_ok=True)
         active.write_text(case.id, encoding="utf-8")
 
-    # Store mode in CASE.yaml if provided
-    if mode in ("1", "2", "3"):
+    # Store mode in CASE.yaml if provided (canonical 1–3 + scheme marker;
+    # legacy "4" is accepted and stored as canonical 3).
+    from nexus.langgraph.mode_mapping import MODE_SCHEME, canonical_for_write
+
+    canonical_mode = canonical_for_write(mode)
+    if canonical_mode is not None:
         try:
             case_dir = settings.cases_root / case.id
             case_yaml = case_dir / "CASE.yaml"
@@ -5202,7 +5214,8 @@ async def api_case_create(request):
                 meta = yaml.safe_load(case_yaml.read_text(encoding="utf-8")) or {}
                 if not isinstance(meta, dict):
                     meta = {}
-                meta["investigation_mode"] = mode
+                meta["investigation_mode"] = str(canonical_mode)
+                meta["mode_scheme"] = MODE_SCHEME
                 case_yaml.write_text(yaml.safe_dump(meta, sort_keys=False), encoding="utf-8")
         except Exception:
             pass
@@ -5305,7 +5318,16 @@ async def api_case_details(request):
                 details["name"] = meta.get("name", "")
                 details["description"] = meta.get("description", "")
                 details["status"] = meta.get("status", "")
-                details["investigation_mode"] = str(meta.get("investigation_mode", ""))
+                from nexus.langgraph.mode_mapping import (
+                    mode_label,
+                    resolve_stored_mode,
+                )
+
+                canonical = resolve_stored_mode(
+                    meta.get("investigation_mode"), meta.get("mode_scheme"))
+                details["investigation_mode"] = str(canonical) if canonical else ""
+                details["mode_scheme"] = meta.get("mode_scheme", "")
+                details["mode_label"] = mode_label(canonical)
         except Exception:
             pass
 
@@ -5396,21 +5418,28 @@ async def api_pipeline_run(request):
     # a case processed while ES is down would silently run on the CSV pack and
     # leave the index empty — hollow Mode 2. Refuse before any work starts.
     import yaml
-    case_mode = ""
+    case_mode_raw: Any = ""
+    case_mode_scheme: Any = None
     case_yaml = case_dir / "CASE.yaml"
     if case_yaml.is_file():
         try:
             _meta = yaml.safe_load(case_yaml.read_text(encoding="utf-8")) or {}
             if isinstance(_meta, dict):
-                case_mode = str(_meta.get("investigation_mode") or "")
+                case_mode_raw = _meta.get("investigation_mode") or ""
+                case_mode_scheme = _meta.get("mode_scheme")
         except Exception:
-            case_mode = ""
-    # Case-mode gate: the pipeline stage must belong to the case's chosen
-    # investigation mode — a Mode 1 case must never run design/coverage.
+            case_mode_raw = ""
+    from nexus.langgraph.mode_mapping import resolve_stored_mode
+
+    case_mode = (
+        resolve_stored_mode(case_mode_raw, case_mode_scheme)
+        if case_mode_raw else None
+    )
+    # Final three modes: 1 LLM (lane + LLM stages), 2 multi-role, 3 multi-agent.
     _allowed_by_case_mode = {
-        "1": {"tools", "interpret"},
-        "2": {"tools", "coverage", "interpret"},
-        "3": {"tools", "design", "interpret"},
+        1: {"tools", "interpret", "coverage"},
+        2: {"tools", "interpret"},
+        3: {"tools", "interpret"},
     }
     if case_mode and pipeline_mode not in _allowed_by_case_mode.get(case_mode, set()):
         return JSONResponse(
@@ -5421,21 +5450,24 @@ async def api_pipeline_run(request):
             status_code=409,
         )
 
-    if case_mode in ("2", "3"):
+    # ES is mandatory for the agentic depths (2/3) and for the LLM stages
+    # (coverage/design); the lane alone can still produce CSVs on Mode 1.
+    requires_es = case_mode in (2, 3) or pipeline_mode in ("coverage", "design")
+    if requires_es:
         from nexus.langgraph.case_index import es_available
 
         if not (os.environ.get("NEXUS_ES_URL") or "").strip():
             return JSONResponse({
                 "error": (
-                    f"Mode {case_mode} requires Elasticsearch — set NEXUS_ES_URL so parsed "
-                    "evidence lands in the N3 index the LLM queries, or run this case in Mode 1."
+                    f"Mode {case_mode or '?'} / {pipeline_mode} requires Elasticsearch — set "
+                    "NEXUS_ES_URL so parsed evidence lands in the N3 index the LLM queries."
                 )
             }, status_code=409)
         if not es_available():
             return JSONResponse({
                 "error": (
-                    f"Mode {case_mode} requires Elasticsearch — NEXUS_ES_URL is set but the "
-                    "cluster is unreachable. Start ES and retry, or run this case in Mode 1."
+                    f"Mode {case_mode or '?'} / {pipeline_mode} requires Elasticsearch — "
+                    "NEXUS_ES_URL is set but the cluster is unreachable. Start ES and retry."
                 )
             }, status_code=409)
 
@@ -6444,7 +6476,10 @@ async def api_case_mode(request):
         return JSONResponse({"error": "Invalid JSON"}, status_code=400)
 
     mode = str(body.get("mode") or "").strip()
-    if mode not in ("1", "2", "3"):
+    from nexus.langgraph.mode_mapping import MODE_SCHEME, canonical_for_write
+
+    canonical_mode = canonical_for_write(mode)
+    if canonical_mode is None:
         return JSONResponse({"error": "mode must be 1, 2, or 3"}, status_code=400)
 
     case_dir = _resolve_case_dir_for(str(body.get("case_id") or ""), request)
@@ -6486,12 +6521,13 @@ async def api_case_mode(request):
             meta = yaml.safe_load(case_yaml.read_text(encoding="utf-8")) or {}
             if not isinstance(meta, dict):
                 meta = {}
-        meta["investigation_mode"] = mode
+        meta["investigation_mode"] = str(canonical_mode)
+        meta["mode_scheme"] = MODE_SCHEME
         case_yaml.write_text(yaml.safe_dump(meta, sort_keys=False), encoding="utf-8")
     except Exception as exc:
         return JSONResponse({"error": str(exc)}, status_code=500)
 
-    return JSONResponse({"ok": True, "mode": mode})
+    return JSONResponse({"ok": True, "mode": str(canonical_mode)})
 
 
 async def api_get_case_mode(request):
@@ -6507,7 +6543,12 @@ async def api_get_case_mode(request):
 
     try:
         meta = yaml.safe_load(case_yaml.read_text(encoding="utf-8")) or {}
-        mode = str(meta.get("investigation_mode", "")) if isinstance(meta, dict) else ""
+        raw_mode = meta.get("investigation_mode", "") if isinstance(meta, dict) else ""
+        scheme = meta.get("mode_scheme") if isinstance(meta, dict) else None
+        from nexus.langgraph.mode_mapping import resolve_stored_mode
+
+        canonical = resolve_stored_mode(raw_mode, scheme) if raw_mode else None
+        mode = str(canonical) if canonical else ""
     except Exception:
         mode = ""
 
@@ -7211,6 +7252,41 @@ async def api_mode4_run(request):
     )
 
 
+async def api_mode4_run_steer(request):
+    """POST /portal/api/mode4/run/steer — queue a steer line for the supervisor."""
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+    run_id = str(body.get("run_id") or "").strip()
+    text = str(body.get("text") or "").strip()
+    if not run_id or not text:
+        return JSONResponse({"error": "run_id and text are required"},
+                            status_code=400)
+    from nexus.langgraph.mode4_runtime import (
+        append_mode4_steering,
+        emit_event,
+        new_event,
+        read_run_record,
+    )
+
+    record = await asyncio.to_thread(read_run_record, case_dir, run_id)
+    if record is None:
+        return JSONResponse({"error": "run not found", "run_id": run_id},
+                            status_code=404)
+    entry = await asyncio.to_thread(append_mode4_steering, case_dir, run_id, text)
+    emit_event(case_dir, run_id, new_event(
+        run_id, "steering.injected", actor="examiner", detail=text,
+        data={"steering": entry}))
+    return JSONResponse({"run_id": run_id, "steering": entry})
+
+
 async def api_mode4_run_pause(request):
     """POST /portal/api/mode4/run/pause — cooperative pause at superstep boundary."""
     case_dir = _get_case_dir(request)
@@ -7840,6 +7916,7 @@ def create_dashboard():
         Route("/portal/api/mode4/run/status", api_mode4_run_status, methods=["GET"]),
         Route("/portal/api/mode4/run/board", api_mode4_run_board, methods=["GET"]),
         Route("/portal/api/mode4/run/events", api_mode4_run_events, methods=["GET"]),
+        Route("/portal/api/mode4/run/steer", api_mode4_run_steer, methods=["POST"]),
         Route("/portal/api/mode4/run/pause", api_mode4_run_pause, methods=["POST"]),
         Route("/portal/api/mode4/run/resume", api_mode4_run_resume, methods=["POST"]),
         Route("/portal/api/mode4/run/stop", api_mode4_run_stop, methods=["POST"]),

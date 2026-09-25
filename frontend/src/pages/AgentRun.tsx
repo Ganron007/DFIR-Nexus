@@ -25,6 +25,8 @@ import {
   type Mode3WorkOrder,
   type Mode3Verdict,
 } from "../api/client";
+import { useCase } from "../context/CaseContext";
+import MultiAgentBoard from "../components/MultiAgentBoard";
 
 const TERMINAL = new Set(["completed", "failed", "paused", "stopped"]);
 const MAX_EVENTS = 800;
@@ -183,6 +185,16 @@ function TypeBadge({ kind }: { kind: string }) {
 }
 
 export default function AgentRun() {
+  // Final three modes: 2 = Multi-role (this Agent Run surface),
+  // 3 = Multi-agent (the concurrent Investigation Board).
+  const { mode: caseMode } = useCase();
+  if (caseMode === "3") {
+    return <MultiAgentBoard />;
+  }
+  return <MultiRoleAgentRun />;
+}
+
+function MultiRoleAgentRun() {
   const [params, setParams] = useSearchParams();
   const [question, setQuestion] = useState("");
   const [maxOrders, setMaxOrders] = useState(6);

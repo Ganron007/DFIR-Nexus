@@ -635,6 +635,82 @@ export function mode3RunEventsPath(runId: string): string {
   return `${BASE}/mode3/run/events?run_id=${encodeURIComponent(runId)}`;
 }
 
+/* ── Mode 3 — Multi-agent concurrent board (runtime mode4) ───────────── */
+
+export interface Mode4Claim {
+  entity_type?: string;
+  entity_value?: string;
+  claim_kind?: string;
+  polarity?: string;
+  value?: string;
+  audit_ids?: string[];
+  confidence?: string;
+  confidence_justification?: string;
+}
+
+export interface Mode4BoardEntry {
+  entry_id?: string;
+  agent_id?: string;
+  role?: string;
+  family?: string;
+  superstep?: number;
+  claims?: Mode4Claim[];
+  open_questions?: string[];
+  note?: string;
+}
+
+export interface Mode4Dispute {
+  entity_type?: string;
+  entity_value?: string;
+  claim_kind?: string;
+  seats?: string[];
+  families?: string[];
+  audit_ids?: string[];
+}
+
+export interface Mode4Candidate {
+  title?: string;
+  observation?: string;
+  confidence?: string;
+  confidence_justification?: string;
+  audit_ids?: string[];
+  agent_id?: string;
+}
+
+export interface Mode4RunStatus {
+  run_id: string;
+  status?: string;
+  stop_reason?: string;
+  question?: string;
+  superstep?: number;
+  board?: number;
+  disputes?: number;
+  candidates?: number;
+  gaps?: string[];
+  error?: string;
+}
+
+export interface Mode4BoardResponse {
+  run_id: string;
+  board?: Mode4BoardEntry[];
+  disputes?: Mode4Dispute[];
+  candidates?: Mode4Candidate[];
+}
+
+export interface Mode4StageResult {
+  run_id?: string;
+  staged?: { title?: string; finding_id?: string; input_call_ids?: string[] }[];
+  skipped?: { title?: string; reason?: string }[];
+  staged_count?: number;
+  skipped_count?: number;
+  error?: string;
+}
+
+/** SSE path for a multi-agent run's event stream. */
+export function mode4RunEventsPath(runId: string): string {
+  return `${BASE}/mode4/run/events?run_id=${encodeURIComponent(runId)}`;
+}
+
 /** POST /case/seal → {status: "SEALED", case_id, examiner} or {error} */
 export interface CaseSealResponse {
   status: string;
@@ -1239,6 +1315,33 @@ export const api = {
     post<{ run_id: string; status: string }>("/mode3/run/resume", params),
   mode3RunStage: (params: { run_id: string }) =>
     post<Mode3StageResult>("/mode3/run/stage", params),
+  // Mode 3 — Multi-agent concurrent board (runtime mode4).
+  mode4Run: (params: { question?: string; run_id?: string }) =>
+    post<{ run_id: string; status: string; question?: string; error?: string }>(
+      "/mode4/run",
+      params,
+    ),
+  mode4RunStatus: (runId?: string) =>
+    request<Mode4RunStatus>(
+      `/mode4/run/status${runId ? `?run_id=${encodeURIComponent(runId)}` : ""}`,
+    ),
+  mode4RunBoard: (runId?: string) =>
+    request<Mode4BoardResponse>(
+      `/mode4/run/board${runId ? `?run_id=${encodeURIComponent(runId)}` : ""}`,
+    ),
+  mode4RunSteer: (params: { run_id: string; text: string }) =>
+    post<{ run_id: string; steering: { ts: string; text: string } }>(
+      "/mode4/run/steer",
+      params,
+    ),
+  mode4RunPause: (params: { run_id: string; paused: boolean }) =>
+    post<{ run_id: string; paused: boolean }>("/mode4/run/pause", params),
+  mode4RunResume: (params: { run_id: string }) =>
+    post<{ run_id: string; status: string }>("/mode4/run/resume", params),
+  mode4RunStop: (params: { run_id: string }) =>
+    post<{ run_id: string; stop_requested: boolean }>("/mode4/run/stop", params),
+  mode4RunStage: (params: { run_id: string }) =>
+    post<Mode4StageResult>("/mode4/run/stage", params),
   /** Seal & close the active case — HMAC challenge-response, same flow as
    *  per-finding approval. Lifecycle action for every mode; the legacy
    *  /mode3/seal route remains registered as an alias. */

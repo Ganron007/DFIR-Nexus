@@ -211,12 +211,11 @@ and [NEXUS-MODE.md](NEXUS-MODE.md).
 Requires: `pip install dfir-nexus[pipeline]` and LLM env for coverage/design/interpret
 (`NEXUS_LLM_MODEL` / `NEXUS_LLM_BASE_URL`). `tools` needs no LLM.
 
-## Mode 3 supervised multi-role runs (`nexus mode3`)
+## Mode 2 — Multi-role runs (`nexus mode3`)
 
 Supervised agent-role investigation over the active case — one work order at a
 time, the same runtime and event stream as the Agent Run page
-(`/portal/app/agent-run`). Concurrent multi-agent is planned as Mode 4 and is
-not built yet. Requires a
+(`/portal/app/agent-run`). Requires a
 configured model and the per-case Elasticsearch index (`NEXUS_ES_URL`);
 agents use scoped **read-only** tools only and never stage or approve.
 
@@ -248,6 +247,38 @@ Notes:
 - Tuning: `NEXUS_MODE3_FOLLOWUPS` (0–24, default 8),
   `NEXUS_MODE3_{ROUNDS,CALLS,SECONDS}` (default 24/48/1800). The character
   ceiling is `NEXUS_LLM_CONTEXT_WINDOW` × `NEXUS_CONTEXT_FILL_RATIO`.
+
+## Mode 3 — Multi-agent runs (`nexus mode4`)
+
+Concurrent investigation: a supervisor (model-chosen seats, deterministic
+fallback) fans out evidence / correlation / pattern seats in one superstep.
+Each publishes audit-backed **claims** on a shared board; a join opens
+**disputes** and can re-dispatch bounded; unresolved disputes stay gaps.
+Requires the per-case Elasticsearch index; agents use scoped read-only tools
+and never stage or approve. Same UI stream as the **Investigation Board** on
+Agent Run.
+
+```bash
+nexus mode4 run    -q "Trace RDP activity and USB device use"   # start & wait (streams decisions)
+nexus mode4 status --run-id M4-... [--json]                     # state, superstep, counts
+nexus mode4 board  --run-id M4-...                              # claims, audit IDs, disputes
+nexus mode4 steer  "chase WS01"      --run-id M4-...            # directive for the next superstep
+nexus mode4 pause  --run-id M4-...                              # pause at the next superstep boundary
+nexus mode4 resume --run-id M4-... [--no-run]                   # continue from the persisted snapshot
+nexus mode4 stop   --run-id M4-...                              # terminal stop
+nexus mode4 stage  --run-id M4-... [--json]                     # examiner: stage settled candidates as DRAFT
+nexus mode4 export --run-id M4-... --output run.json            # record + full event stream
+```
+
+Notes:
+
+- Stopped/completed/failed runs are terminal; **resume only works on paused**
+  runs and continues from the persisted board snapshot.
+- `stage` copies only settled, audit-backed claims (FD-001/FD-003 enforced on
+  the board) and keeps `run_id` / `input_call_ids` lineage.
+- Tuning: `NEXUS_MODE4_{MAX_AGENTS,MAX_SUPERSTEPS,MAX_CALLS,SETTLE_SUPERSTEPS,MAX_REDISPATCH}`
+  and `NEXUS_MODE4_{ROUNDS,CALLS,SECONDS}` per seat.
+- Run state lives under `cases/<CASE>/analysis/mode4_runs/`.
 
 ## Ingest & Doctor
 

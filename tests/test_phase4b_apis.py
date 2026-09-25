@@ -94,6 +94,59 @@ def test_case_mode_invalid(client):
     assert r.status_code == 400
 
 
+def test_case_create_stores_canonical_mode_and_scheme(client):
+    """Rename/merge: new writes store canonical 1–3 + mode_scheme: 2."""
+    import yaml as _yaml
+
+    from nexus.config import settings
+
+    r = client.post("/portal/api/case/create", json={"name": "Canon", "mode": "3"})
+    case_id = r.json()["case_id"]
+    meta = _yaml.safe_load(
+        (settings.cases_root / case_id / "CASE.yaml").read_text(encoding="utf-8"))
+    assert meta["investigation_mode"] == "3"
+    assert meta["mode_scheme"] == 2
+    details = client.get(f"/portal/api/case/details?case_id={case_id}").json()
+    assert details["investigation_mode"] == "3"
+    assert details["mode_label"] == "Mode 3 \u2014 Multi-agent"
+
+    # Legacy "4" is accepted on write and stored as canonical 3.
+    r = client.post("/portal/api/case/create", json={"name": "Legacy4", "mode": "4"})
+    case_id = r.json()["case_id"]
+    meta = _yaml.safe_load(
+        (settings.cases_root / case_id / "CASE.yaml").read_text(encoding="utf-8"))
+    assert meta["investigation_mode"] == "3"
+    assert meta["mode_scheme"] == 2
+
+
+def test_case_details_aliases_legacy_stored_modes(client):
+    """Pre-rename CASE.yaml values alias on read: 1/2→1, 3→2, 4→3."""
+    import yaml as _yaml
+
+    from nexus.config import settings
+
+    for legacy, canonical in {"1": "1", "2": "1", "3": "2", "4": "3"}.items():
+        r = client.post("/portal/api/case/create", json={"name": f"Legacy {legacy}"})
+        case_id = r.json()["case_id"]
+        path = settings.cases_root / case_id / "CASE.yaml"
+        meta = _yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        meta["investigation_mode"] = legacy
+        meta.pop("mode_scheme", None)
+        path.write_text(_yaml.safe_dump(meta, sort_keys=False), encoding="utf-8")
+        details = client.get(f"/portal/api/case/details?case_id={case_id}").json()
+        assert details["investigation_mode"] == canonical, legacy
+        assert details["mode_label"]
+        mode = client.get(f"/portal/api/case/mode?case_id={case_id}").json()
+        assert mode["mode"] == canonical, legacy
+
+
+def test_mode_mapping_endpoint_canonical(client):
+    r = client.get("/portal/api/mode-mapping?product_mode=2")
+    assert r.status_code == 200
+    assert "multi-role" in r.json()["description"]
+    assert client.get("/portal/api/mode-mapping?product_mode=9").status_code == 400
+
+
 def test_playbook_needles(client):
     """WP 4b.7: Playbook needles endpoint returns suggestions."""
     r = client.get("/portal/api/playbook/needles")
@@ -461,12 +514,12 @@ def test_case_mode_is_fixed_after_processing(client, tmp_path):
 
 
 def test_pipeline_mode_must_match_case_mode(client, tmp_path, monkeypatch):
-    """A Mode 1 case must not run the Mode 2/3 pipeline stages."""
+    """Canonical Mode 2 (multi-role) must not run the LLM coverage stage."""
     from nexus.case import CaseManager
     from nexus.config import settings
 
     r = client.post("/portal/api/case/create", json={
-        "name": "Mode Gate", "description": "d", "mode": "1", "activate": True,
+        "name": "Mode Gate", "description": "d", "mode": "2", "activate": True,
     })
     case_id = r.json()["case_id"]
     ev = tmp_path / "artifact.evtx"
