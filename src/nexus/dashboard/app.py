@@ -19,6 +19,7 @@ import re
 import secrets
 import threading
 import time
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -7094,6 +7095,310 @@ async def logo(request) -> Response:
     return Response(status_code=404)
 
 
+# ── Mode 3 run control (M1/M5/M7) ──────────────────────────────────────
+_mode3_threads: dict[str, threading.Thread] = {}
+_mode3_thread_lock = threading.Lock()
+
+
+def _mode3_worker_thread(
+    case_dir: Path, question: str, model: Any, run_id: str, resume: bool,
+) -> None:
+    try:
+        from nexus.langgraph.mode3_runtime import run_mode3
+
+        run_mode3(case_dir, question, model=model, run_id=run_id, resume=resume)
+    except Exception:  # noqa: BLE001 — the run record carries the failure
+        logger.exception("Mode 3 run %s failed", run_id)
+    finally:
+        with _mode3_thread_lock:
+            _mode3_threads.pop(run_id, None)
+
+
+def _start_mode3_thread(
+    case_dir: Path, question: str, model: Any, run_id: str, resume: bool,
+) -> None:
+    with _mode3_thread_lock:
+        live = _mode3_threads.get(run_id)
+        if live is not None and live.is_alive():
+            raise RuntimeError("run already in progress")
+        thread = threading.Thread(
+            target=_mode3_worker_thread,
+            args=(case_dir, question, model, run_id, resume),
+            daemon=True,
+            name=f"mode3-{run_id[-8:]}",
+        )
+        _mode3_threads[run_id] = thread
+        thread.start()
+
+
+def _mode3_resolve_model() -> Any:
+    try:
+        from nexus.langgraph.llm_pipeline import get_model
+
+        return get_model()
+    except Exception:  # noqa: BLE001 — deterministic fallback roles still run
+        return None
+
+
+async def api_mode3_run_plan(request):
+    """POST /portal/api/mode3/run/plan — director work orders before execution."""
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    question = str(body.get("question") or "").strip()
+    if not question:
+        try:
+            from nexus.langgraph.query_pack import load_case_intake
+
+            question = str(load_case_intake(case_dir).get("question") or "")
+        except Exception:  # noqa: BLE001
+            question = ""
+    max_orders = 6
+    with contextlib.suppress(TypeError, ValueError):
+        max_orders = max(1, min(int(body.get("max_orders") or 6), 12))
+    from nexus.langgraph.mode3_runtime import (
+        EventSink,
+        plan_work_orders,
+    )
+
+    run_id = f"M3-plan-{uuid.uuid4().hex[:8]}"
+    sink = EventSink(case_dir, run_id)
+    orders = await asyncio.to_thread(
+        plan_work_orders, case_dir, question,
+        run_id=run_id, sink=sink, max_orders=max_orders,
+    )
+    return JSONResponse({
+        "run_id": run_id,
+        "question": question,
+        "orders": [o.to_dict() for o in orders],
+    })
+
+
+async def api_mode3_run(request):
+    """POST /portal/api/mode3/run — start a supervised Mode 3 run.
+
+    Body: {question?, max_orders?, run_id?} — returns 202 + run_id. Work orders
+    execute through the shared read-only tool loop; candidates are returned but
+    never staged or approved here.
+    """
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    question = str(body.get("question") or "").strip()
+    if not question:
+        try:
+            from nexus.langgraph.query_pack import load_case_intake
+
+            question = str(load_case_intake(case_dir).get("question") or "")
+        except Exception:  # noqa: BLE001
+            question = ""
+    run_id = str(body.get("run_id") or "").strip() or (
+        f"M3-{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}-{uuid.uuid4().hex[:6]}")
+    model = await asyncio.to_thread(_mode3_resolve_model)
+    try:
+        _start_mode3_thread(case_dir, question, model, run_id, resume=False)
+    except RuntimeError:
+        return JSONResponse(
+            {"error": "a Mode 3 run with this id is already in progress",
+             "run_id": run_id},
+            status_code=409,
+        )
+    return JSONResponse({"run_id": run_id, "status": "running",
+                         "question": question}, status_code=202)
+
+
+async def api_mode3_run_status(request):
+    """GET /portal/api/mode3/run/status?run_id= — run record + counters."""
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    from nexus.langgraph.mode3_runtime import (
+        latest_run_id,
+        read_run_events,
+        read_run_record,
+    )
+
+    run_id = str(request.query_params.get("run_id") or "").strip()
+    run_id = run_id or latest_run_id(case_dir)
+    if not run_id:
+        return JSONResponse({"error": "no Mode 3 run found"}, status_code=404)
+    record = await asyncio.to_thread(read_run_record, case_dir, run_id)
+    if record is None:
+        return JSONResponse({"error": "run not found", "run_id": run_id},
+                            status_code=404)
+    events = await asyncio.to_thread(read_run_events, case_dir, run_id, limit=500)
+    results = record.get("results") or []
+    return JSONResponse({
+        "run_id": run_id,
+        "status": record.get("status"),
+        "stop_reason": record.get("stop_reason"),
+        "pause_requested": bool(record.get("pause_requested")),
+        "orders": len(record.get("orders") or []),
+        "order_index": record.get("order_index") or 0,
+        "results": len(results),
+        "candidates": len(record.get("candidates") or []),
+        "gaps": len(record.get("gaps") or []),
+        "events": len(events),
+        "last_event": events[-1] if events else None,
+        "created_at": record.get("created_at"),
+        "completed_at": record.get("completed_at"),
+    })
+
+
+async def api_mode3_run_events(request):
+    """GET /portal/api/mode3/run/events?run_id= — SSE tail of the run event log."""
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    from nexus.langgraph.mode3_runtime import (
+        latest_run_id,
+        read_run_events,
+        read_run_record,
+    )
+
+    run_id = str(request.query_params.get("run_id") or "").strip()
+    run_id = run_id or latest_run_id(case_dir)
+    if not run_id:
+        return JSONResponse({"error": "no Mode 3 run found"}, status_code=404)
+
+    async def _stream():
+        emitted = 0
+        terminal_seen = 0
+        while True:
+            events = await asyncio.to_thread(
+                read_run_events, case_dir, run_id, limit=100000)
+            for event in events[emitted:]:
+                yield f"event: agent\ndata: {json.dumps(event, default=str)}\n\n"
+            emitted = len(events)
+            record = await asyncio.to_thread(read_run_record, case_dir, run_id)
+            status = str((record or {}).get("status") or "")
+            if status in ("completed", "failed", "paused"):
+                terminal_seen += 1
+                if terminal_seen >= 2:
+                    yield f"event: run\ndata: {json.dumps({'status': status}, default=str)}\n\n"
+                    break
+            else:
+                terminal_seen = 0
+            yield "event: ping\ndata: {}\n\n"
+            await asyncio.sleep(1.0)
+
+    return StreamingResponse(_stream(), media_type="text/event-stream")
+
+
+async def api_mode3_run_steer(request):
+    """POST /portal/api/mode3/run/steer — inject an examiner directive."""
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+    run_id = str(body.get("run_id") or "").strip()
+    text = str(body.get("text") or "").strip()
+    if not run_id or not text:
+        return JSONResponse({"error": "run_id and text are required"},
+                            status_code=400)
+    from nexus.langgraph.mode3_runtime import (
+        EventSink,
+        append_steering,
+        new_event,
+        read_run_record,
+    )
+
+    record = await asyncio.to_thread(read_run_record, case_dir, run_id)
+    if record is None:
+        return JSONResponse({"error": "run not found", "run_id": run_id},
+                            status_code=404)
+    entry = await asyncio.to_thread(append_steering, case_dir, run_id, text)
+    sink = EventSink(case_dir, run_id)
+    sink.emit(new_event(run_id, "steering.injected", actor="examiner",
+                        detail=text, data={"steering": entry}))
+    return JSONResponse({"run_id": run_id, "steering": entry})
+
+
+async def api_mode3_run_pause(request):
+    """POST /portal/api/mode3/run/pause — cooperative pause between work orders."""
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+    run_id = str(body.get("run_id") or "").strip()
+    paused = bool(body.get("paused", True))
+    if not run_id:
+        return JSONResponse({"error": "run_id is required"}, status_code=400)
+    from nexus.langgraph.mode3_runtime import (
+        EventSink,
+        mark_paused,
+        new_event,
+    )
+
+    ok = await asyncio.to_thread(mark_paused, case_dir, run_id, paused)
+    if not ok:
+        return JSONResponse({"error": "run not found", "run_id": run_id},
+                            status_code=404)
+    EventSink(case_dir, run_id).emit(
+        new_event(run_id, "run.pause_requested", actor="examiner",
+                  status="paused" if paused else "running",
+                  detail="pause" if paused else "resume"))
+    return JSONResponse({"run_id": run_id, "paused": paused})
+
+
+async def api_mode3_run_resume(request):
+    """POST /portal/api/mode3/run/resume — clear pause and continue the run."""
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+    run_id = str(body.get("run_id") or "").strip()
+    if not run_id:
+        return JSONResponse({"error": "run_id is required"}, status_code=400)
+    from nexus.langgraph.mode3_runtime import mark_paused, read_run_record
+
+    record = await asyncio.to_thread(read_run_record, case_dir, run_id)
+    if record is None:
+        return JSONResponse({"error": "run not found", "run_id": run_id},
+                            status_code=404)
+    await asyncio.to_thread(mark_paused, case_dir, run_id, False)
+    model = await asyncio.to_thread(_mode3_resolve_model)
+    try:
+        _start_mode3_thread(
+            case_dir, str(record.get("question") or ""), model, run_id, resume=True)
+    except RuntimeError:
+        return JSONResponse({"error": "run already in progress", "run_id": run_id},
+                            status_code=409)
+    return JSONResponse({"run_id": run_id, "status": "running"}, status_code=202)
+
+
 def create_dashboard():
     return [
         Route("/health", endpoint=health, methods=["GET"]),
@@ -7171,6 +7476,14 @@ def create_dashboard():
         # Mode 3 (agentic)
         Route("/portal/api/mode3/plan", api_mode3_plan, methods=["POST"]),
         Route("/portal/api/mode3/execute", api_mode3_execute, methods=["POST"]),
+        # Mode 3 supervised agent runtime (M1/M5/M7)
+        Route("/portal/api/mode3/run/plan", api_mode3_run_plan, methods=["POST"]),
+        Route("/portal/api/mode3/run", api_mode3_run, methods=["POST"]),
+        Route("/portal/api/mode3/run/status", api_mode3_run_status, methods=["GET"]),
+        Route("/portal/api/mode3/run/events", api_mode3_run_events, methods=["GET"]),
+        Route("/portal/api/mode3/run/steer", api_mode3_run_steer, methods=["POST"]),
+        Route("/portal/api/mode3/run/pause", api_mode3_run_pause, methods=["POST"]),
+        Route("/portal/api/mode3/run/resume", api_mode3_run_resume, methods=["POST"]),
         Route("/portal/api/case/seal", api_case_seal, methods=["POST"]),
         Route("/portal/api/mode3/seal", api_case_seal, methods=["POST"]),
         # RAG preflight (WP 3.13)

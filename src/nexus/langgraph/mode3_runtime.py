@@ -292,6 +292,51 @@ def role_for(name: str) -> AgentRole:
     return ROLES[name]
 
 
+def _steering_path(case_dir: Path, run_id: str) -> Path:
+    return Path(case_dir) / _MODE3_DIR / f"{run_id}.steering.jsonl"
+
+
+def append_steering(case_dir: Path, run_id: str, text: str) -> dict[str, Any]:
+    """Append an examiner directive for the next work-order turn."""
+    entry = {"ts": _now(), "text": _short(text, 600)}
+    path = _steering_path(case_dir, run_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(entry, default=str) + "\n")
+    return entry
+
+
+def read_steering(case_dir: Path, run_id: str, limit: int = 50) -> list[dict[str, Any]]:
+    path = _steering_path(case_dir, run_id)
+    if not path.is_file():
+        return []
+    out: list[dict[str, Any]] = []
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(entry, dict):
+                out.append(entry)
+    except OSError:
+        return []
+    return out[-limit:]
+
+
+def mark_paused(case_dir: Path, run_id: str, paused: bool = True) -> bool:
+    """Set/clear the cooperative pause flag in the persisted run record."""
+    state = read_run_record(case_dir, run_id)
+    if state is None:
+        return False
+    state["pause_requested"] = bool(paused)
+    _persist_state(Path(case_dir), run_id, state)
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Work orders (M3.1)
 # ---------------------------------------------------------------------------
@@ -721,6 +766,14 @@ def run_mode3(
 
     # ── Worker node ────────────────────────────────────────────────────
     def worker_node(_state: dict[str, Any]) -> dict[str, Any]:
+        record = read_run_record(case_dir, run_id) or {}
+        if record.get("pause_requested"):
+            state["status"] = "paused"
+            state["stop_reason"] = "paused"
+            _persist_state(case_dir, run_id, state)
+            sink.emit(new_event(run_id, "run.paused", actor="examiner",
+                                detail="pause requested"))
+            return state
         orders = _order_dicts()
         index = int(state.get("order_index") or 0)
         if index >= len(orders):
@@ -751,7 +804,7 @@ def run_mode3(
                 }
                 for r in state.get("results", [])
             ],
-            "steering": state.get("steering") or [],
+            "steering": read_steering(case_dir, run_id),
         }
         result = run_work_order(
             order, case_dir=case_dir, model=model, run_id=run_id,
@@ -850,8 +903,15 @@ def run_mode3(
         from langgraph.graph import END, START, StateGraph
 
         graph = StateGraph(dict)
+        def pause_node(_state: dict[str, Any]) -> dict[str, Any]:
+            # Cooperative pause: the worker stopped before the next order.
+            sink.emit(new_event(run_id, "run.paused", actor="system",
+                                detail="awaiting resume"))
+            return state
+
         graph.add_node("director", director_node)
         graph.add_node("worker", worker_node)
+        graph.add_node("pause", pause_node)
         graph.add_node("verify", verify_node)
         graph.add_node("synthesize", synthesis_node)
 
@@ -859,10 +919,16 @@ def run_mode3(
         graph.add_edge("director", "worker")
 
         def _more_orders(_state: dict[str, Any]) -> str:
-            return "worker" if int(state.get("order_index") or 0) < len(_order_dicts()) else "verify"
+            if str(state.get("status") or "") == "paused":
+                return "pause"
+            if int(state.get("order_index") or 0) < len(_order_dicts()):
+                return "worker"
+            return "verify"
 
         graph.add_conditional_edges("worker", _more_orders,
-                                    {"worker": "worker", "verify": "verify"})
+                                    {"worker": "worker", "verify": "verify",
+                                     "pause": "pause"})
+        graph.add_edge("pause", END)
         graph.add_edge("verify", "synthesize")
         graph.add_edge("synthesize", END)
         compiled = graph.compile()
@@ -877,7 +943,9 @@ def run_mode3(
             detail=str(exc)[:300],
         ))
 
-    if state.get("status") != "failed":
+    if str(state.get("status") or "") == "paused":
+        state["stop_reason"] = "paused"
+    elif state.get("status") != "failed":
         state["status"] = "completed"
         if not state.get("stop_reason"):
             state["stop_reason"] = "completed"
