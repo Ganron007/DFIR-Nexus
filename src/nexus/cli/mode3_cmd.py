@@ -71,13 +71,18 @@ def plan(
     as_json: bool = typer.Option(False, "--json", help="Machine-readable output"),
 ):
     """Propose work orders without executing them."""
-    from nexus.langgraph.mode3_runtime import EventSink, plan_work_orders
+    from nexus.langgraph.mode3_runtime import (
+        EventSink,
+        examiner_feedback,
+        plan_work_orders,
+    )
 
     case_dir = _case_dir(case)
     run_id = f"M3-plan-{int(time.time())}"
     orders = plan_work_orders(
         case_dir, _question(case_dir, question), run_id=run_id,
         sink=EventSink(case_dir, run_id), max_orders=max_orders,
+        known_findings=examiner_feedback(case_dir),
     )
     rows = [o.to_dict() for o in orders]
     if as_json:
@@ -132,6 +137,7 @@ def status(
     """Show the current/last Mode 3 run state."""
     from nexus.langgraph.mode3_runtime import (
         latest_run_id,
+        read_controls,
         read_run_events,
         read_run_record,
     )
@@ -143,11 +149,13 @@ def status(
         typer.echo("No Mode 3 run found", err=True)
         raise typer.Exit(1)
     events = read_run_events(case_dir, run_id, limit=5000)
+    controls = read_controls(case_dir, run_id)
     payload = {
         "run_id": run_id,
         "status": record.get("status"),
         "stop_reason": record.get("stop_reason"),
-        "pause_requested": bool(record.get("pause_requested")),
+        "pause_requested": controls["pause_requested"],
+        "stop_requested": controls["stop_requested"],
         "orders": len(record.get("orders") or []),
         "order_index": record.get("order_index") or 0,
         "results": len(record.get("results") or []),
@@ -252,8 +260,9 @@ def resume(
     if record is None:
         typer.echo("No Mode 3 run found", err=True)
         raise typer.Exit(1)
-    if str(record.get("status") or "") == "stopped":
-        typer.echo("Run was stopped by the examiner; start a new run.", err=True)
+    status = str(record.get("status") or "")
+    if status in ("stopped", "completed", "failed"):
+        typer.echo(f"Run is {status}; start a new run.", err=True)
         raise typer.Exit(1)
     mark_paused(case_dir, run_id, False)
     typer.echo(f"Resumed {run_id}")

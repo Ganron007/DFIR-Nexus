@@ -7165,14 +7165,17 @@ async def api_mode3_run_plan(request):
         max_orders = max(1, min(int(body.get("max_orders") or 6), 12))
     from nexus.langgraph.mode3_runtime import (
         EventSink,
+        examiner_feedback,
         plan_work_orders,
     )
 
     run_id = f"M3-plan-{uuid.uuid4().hex[:8]}"
     sink = EventSink(case_dir, run_id)
+    feedback = await asyncio.to_thread(examiner_feedback, case_dir)
     orders = await asyncio.to_thread(
         plan_work_orders, case_dir, question,
         run_id=run_id, sink=sink, max_orders=max_orders,
+        known_findings=feedback,
     )
     return JSONResponse({
         "run_id": run_id,
@@ -7398,9 +7401,10 @@ async def api_mode3_run_resume(request):
     if record is None:
         return JSONResponse({"error": "run not found", "run_id": run_id},
                             status_code=404)
-    if str(record.get("status") or "") == "stopped":
+    status = str(record.get("status") or "")
+    if status in ("stopped", "completed", "failed"):
         return JSONResponse(
-            {"error": "run was stopped by the examiner; start a new run",
+            {"error": f"run is {status}; start a new run",
              "run_id": run_id},
             status_code=409,
         )

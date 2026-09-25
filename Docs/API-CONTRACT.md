@@ -1522,13 +1522,13 @@ needles is one event.
 ---
 
 ### POST /portal/api/mode3/run/resume
-**Description:** Clears the pause flag and continues a paused run from the persisted state (same run id, no re-plan of completed orders). A **stopped** run is terminal and cannot be resumed (`409`).
+**Description:** Clears the pause flag and continues a paused run from the persisted state (same run id, no re-plan of completed orders). A **stopped**, **completed**, or **failed** run is terminal and cannot be resumed (`409`). Pause and stop are applied before the next evidence worker and again before verify and synthesis.
 
 **Request:** `{"run_id": "M3-…"}`
 
 **Response 202:** `{"run_id": "M3-…", "status": "running"}`
 
-**Errors:** `400` — missing run_id; `404` — run not found; `409` — run already in progress, run stopped, or case sealed.
+**Errors:** `400` — missing run_id; `404` — run not found; `409` — run already in progress, run stopped/completed/failed, or case sealed.
 
 ---
 

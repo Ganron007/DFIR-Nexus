@@ -104,6 +104,59 @@ def _skill_lookup() -> dict[str, dict[str, Any]]:
         return {}
 
 
+# M3.2 — every shipped skill belongs to one supervisor role. Artifact
+# procedures are evidence work; cross-source sequencing is correlation;
+# attack-class procedures are pattern work. A skill missing from this map
+# is an orphan and the mapping test fails.
+SKILL_ROLES: dict[str, str] = {
+    "windows_event_log_analysis": "evidence",
+    "registry_artifact_analysis": "evidence",
+    "usb_device_intrusion": "evidence",
+    "lnk_jumplist_analysis": "evidence",
+    "execution_artifact_analysis": "evidence",
+    "deleted_file_recovery": "evidence",
+    "browser_artifact_analysis": "evidence",
+    "mft_file_activity": "evidence",
+    "memory_process_analysis": "evidence",
+    "email_phishing": "evidence",
+    "windows_data_hiding": "evidence",
+    "malware_analysis_triage": "evidence",
+    "macos_forensics": "evidence",
+    "mobile_forensics": "evidence",
+    "ics_ot_forensics": "evidence",
+    "container_forensics": "evidence",
+    "cloud_identity_forensics": "evidence",
+    "evidence_acquisition_handling": "evidence",
+    "timeline_construction": "correlation",
+    "ir_scoping_and_leads": "correlation",
+    "network_session_analysis": "correlation",
+    "lateral_movement": "correlation",
+    "powershell_abuse": "pattern",
+    "exfiltration": "pattern",
+    "execution_anomaly": "pattern",
+    "lsass_credential_access": "pattern",
+    "sam_ntds_credential_theft": "pattern",
+    "linux_compromise": "pattern",
+    "ad_credential_attacks": "pattern",
+    "webshell_investigation": "pattern",
+    "persistence": "pattern",
+    "log_clearing": "pattern",
+    "impact_ransomware": "pattern",
+    "initial_access": "pattern",
+    "discovery_recon": "pattern",
+    "defense_evasion": "pattern",
+    "c2_beaconing": "pattern",
+}
+
+
+def skill_role(skill_id: str) -> str:
+    """Role that owns a skill. Unknown ids raise — no silent orphan."""
+    role = SKILL_ROLES.get(str(skill_id or "").strip())
+    if role not in ROLES:
+        raise KeyError(f"skill {skill_id!r} has no Mode 3 role")
+    return role
+
+
 def _retrieve_skill_refs(
     families: list[str], keywords: list[str], limit: int = 3,
 ) -> list[dict[str, Any]]:
@@ -116,8 +169,14 @@ def _retrieve_skill_refs(
     try:
         from nexus.knowledge.skills import retrieve_skills
 
-        return retrieve_skills(
+        refs = retrieve_skills(
             families=families, keywords=keywords, limit=limit)
+        for ref in refs:
+            try:
+                ref["role"] = skill_role(str(ref.get("skill") or ""))
+            except KeyError:
+                ref["role"] = ""
+        return refs
     except Exception:  # noqa: BLE001
         log.debug("mode3 skill retrieval failed", exc_info=True)
         return []
@@ -1225,10 +1284,15 @@ def run_mode3(
             loaded = json.loads(state_path.read_text(encoding="utf-8"))
             if isinstance(loaded, dict) and loaded.get("run_id") == run_id:
                 state.update(loaded)
-                # A stopped run is terminal — resume must not resurrect it.
-                if str(state.get("status") or "") == "stopped":
+                # Stopped, completed, and failed runs are terminal. Resuming
+                # them used to re-enter verify/synthesis and append a second
+                # pass onto a finished investigation.
+                if str(state.get("status") or "") in (
+                    "stopped", "completed", "failed",
+                ):
                     return state
                 state["status"] = "running"
+                state.pop("completed_at", None)
                 state.setdefault("followup_rounds", 0)
                 state.setdefault("followups_limit", _env_int(
                     "NEXUS_MODE3_FOLLOWUPS", 2, low=0, high=4))
@@ -1270,23 +1334,29 @@ def run_mode3(
         ))
         return state
 
-    # ── Worker node ────────────────────────────────────────────────────
-    def worker_node(_state: dict[str, Any]) -> dict[str, Any]:
+    def _halt_if_requested() -> bool:
+        """Apply the control sidecar at a work-order boundary.
+
+        Checked before every worker, and again before verify/synthesis, so a
+        stop or pause requested during the last evidence order still halts
+        before the verifier starts. The pause node is the only emitter.
+        """
         controls = read_controls(case_dir, run_id)
         if controls.get("stop_requested"):
             state["status"] = "stopped"
             state["stop_reason"] = "examiner_stop"
             _persist_state(case_dir, run_id, state)
-            sink.emit(new_event(run_id, "run.stopped", actor="examiner",
-                                detail="stop requested — halting before the "
-                                       "next work order"))
-            return state
+            return True
         if controls.get("pause_requested"):
             state["status"] = "paused"
             state["stop_reason"] = "paused"
             _persist_state(case_dir, run_id, state)
-            sink.emit(new_event(run_id, "run.paused", actor="examiner",
-                                detail="pause requested"))
+            return True
+        return False
+
+    # ── Worker node ────────────────────────────────────────────────────
+    def worker_node(_state: dict[str, Any]) -> dict[str, Any]:
+        if _halt_if_requested():
             return state
         orders = _order_dicts()
         index = int(state.get("order_index") or 0)
@@ -1567,7 +1637,7 @@ def run_mode3(
             return str(state.get("status") or "") in ("paused", "stopped")
 
         def _more_orders(_state: dict[str, Any]) -> str:
-            if _halted():
+            if _halted() or _halt_if_requested():
                 return "pause"
             if int(state.get("order_index") or 0) < len(_order_dicts()):
                 return "worker"
@@ -1579,7 +1649,7 @@ def run_mode3(
         graph.add_edge("pause", END)
 
         def _after_assess(_state: dict[str, Any]) -> str:
-            if _halted():
+            if _halted() or _halt_if_requested():
                 return "pause"
             if int(state.get("order_index") or 0) < len(_order_dicts()):
                 return "worker"
@@ -1612,7 +1682,8 @@ def run_mode3(
         state["status"] = "completed"
         if not state.get("stop_reason"):
             state["stop_reason"] = "completed"
-    state["completed_at"] = _now()
+    if str(state.get("status") or "") != "paused":
+        state["completed_at"] = _now()
     _persist_state(case_dir, run_id, state)
     return state
 

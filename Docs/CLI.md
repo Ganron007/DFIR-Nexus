@@ -221,7 +221,7 @@ agents use scoped **read-only** tools only and never stage or approve.
 ```bash
 nexus mode3 plan   -q "Trace RDP activity and USB device use"   # propose work orders (no execution)
 nexus mode3 run    -q "Trace RDP activity and USB device use"   # approve & run, streaming agent events
-nexus mode3 run    --run-id M3-20260925T060304-aacc7b           # resume/re-attach a run
+nexus mode3 run    --run-id M3-20260925T060304-aacc7b           # continue a paused run (finished runs are refused)
 nexus mode3 status  --run-id M3-... [--json]                    # state, meters, stop reason
 nexus mode3 steer  "chase WS01 and drop the exfil line"         # directive for the next work order
 nexus mode3 pause  --run-id M3-...                              # pause between work orders
@@ -234,7 +234,9 @@ nexus mode3 export --run-id M3-... --output run.json            # record + full 
 
 Notes:
 
-- A **stopped** run is terminal — `resume` refuses it; start a new run.
+- A **stopped**, **completed**, or **failed** run is terminal — `resume` and
+  `run --run-id` refuse it; start a new run. Pause and stop also halt before
+  verify and synthesis. `status` reads pause/stop from the control sidecar.
 - `stage` skips candidates without real audit IDs (FD-001) and verifier-refuted
   items, and records `run_id` / `input_call_ids` lineage on each DRAFT.
 - Approval stays examiner-only (`nexus approve` / Approval Desk); it is never

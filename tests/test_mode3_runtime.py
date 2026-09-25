@@ -30,6 +30,21 @@ def test_event_envelope_has_run_and_actor_ids():
     assert payload["audit_id"] == "a-1"
 
 
+def test_every_skill_maps_to_one_role():
+    from nexus.knowledge.loader import get_skills
+
+    skills = [s for s in get_skills() if str(s.get("skill") or "").strip()]
+    assert len(skills) == 37
+    seen = set()
+    for skill in skills:
+        skill_id = str(skill["skill"])
+        role = m3.skill_role(skill_id)
+        assert role in m3.ROLES
+        assert role != "reporter"
+        seen.add(skill_id)
+    assert seen == set(m3.SKILL_ROLES)
+
+
 def test_role_allowlists_are_scoped_and_work_orders_validated():
     evidence = m3.role_for("evidence")
     assert "es_search" in evidence.tools
@@ -347,7 +362,45 @@ def test_supervisor_stop_halts_before_next_order(tmp_path):
     assert state["stop_reason"] == "examiner_stop"
     assert state["status"] == "stopped"
     events = [e["event_type"] for e in m3.read_run_events(case, state["run_id"])]
-    assert "run.stopped" in events
+    assert events.count("run.stopped") == 1
+
+
+def test_stop_before_verify_does_not_run_verifier(tmp_path):
+    case = _case(tmp_path)
+    roles: list[str] = []
+
+    def fake_work(order, *, case_dir, model, run_id, sink, agent_id="", context=None):
+        roles.append(order.role)
+        m3.request_stop(case_dir, run_id)
+        return m3.AgentResult(
+            order_id=order.order_id, role=order.role, status="ok",
+            parsed={"notes": [], "candidate_findings": [], "coverage": {}},
+        )
+
+    with patch.object(m3, "run_work_order", side_effect=fake_work), \
+         patch.object(m3, "plan_work_orders", return_value=[
+             m3.WorkOrder(order_id="wo-1", role="evidence", task="t1", family="evtxecmd"),
+         ]):
+        state = m3.run_mode3(case, "what happened", model=object())
+
+    assert roles == ["evidence"]
+    assert state["status"] == "stopped"
+    assert "completed_at" in state
+
+
+def test_resume_of_completed_run_does_not_reexecute(tmp_path):
+    case = _case(tmp_path)
+    m3._persist_state(case, "M3-done", {
+        "run_id": "M3-done", "case_id": case.name, "question": "q",
+        "status": "completed", "orders": [{"order_id": "wo-1"}],
+        "order_index": 1, "results": [{"role": "evidence"}],
+        "candidates": [{"title": "kept"}], "stop_reason": "completed",
+    })
+    with patch.object(m3, "run_work_order") as work:
+        state = m3.run_mode3(case, "q", model=object(), run_id="M3-done", resume=True)
+    work.assert_not_called()
+    assert state["status"] == "completed"
+    assert state["candidates"] == [{"title": "kept"}]
 
 
 def test_run_mode3_supervisor_runs_and_persists(tmp_path):

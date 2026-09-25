@@ -334,13 +334,15 @@ refuted), an assessor appends bounded follow-up rounds, and synthesis produces
 the narrative + DRAFT candidates. Nothing is staged or approved by the agents.
 
 > **Status (2026-09-25):** M1–M7 complete — supervisor state machine, seven
-> scoped roles, skill/work-order contracts, corroboration + examiner
-> findings-feedback, event envelope + SSE, run API
+> scoped roles, all 37 KB skills mapped to a role, skill/work-order contracts,
+> corroboration + examiner findings-feedback, event envelope + SSE, run API
 > (`plan/run/status/events/steer/pause/resume/stop/stage`), CLI parity and the
-> **Agent Run** page. Live acceptance: CASE-F2358250 run
+> **Agent Run** page. Pause and stop halt before the next worker and before
+> verify/synthesis. Resume refuses stopped, completed, and failed runs.
+> Live acceptance: CASE-F2358250 run
 > `M3-20260925T060304-aacc7b` — 4 orders, 1 follow-up round, 2 verifier passes
-> (13 verdicts), 4 DRAFTs staged with audit lineage. **GATE 4j-D and GATE-B
-> are operator sign-offs and remain pending.**
+> (13 verdicts), 4 DRAFTs staged with audit lineage. **GATE 4j-D rides with
+> GATE-B; that operator sign-off is the only item still open through Phase 4.**
 
 ```
 Examiner question / case intake
