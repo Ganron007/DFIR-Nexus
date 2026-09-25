@@ -1,4 +1,7 @@
-"""Mode 2 — LLM-guided iterative analysis.
+"""Mode 1 — LLM guided loop (module name ``mode2``).
+
+This is the steering and coverage half of canonical Mode 1, not a separate
+product mode. Product Mode 2 is the multi-role pipeline (``mode3``).
 
 The LLM proposes the next query and correlations; the examiner validates
 and steers. Every proposal is logged to the case chat transcript with its

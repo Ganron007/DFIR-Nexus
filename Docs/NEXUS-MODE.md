@@ -341,10 +341,9 @@ approved by the agents.
 > (`plan/run/status/events/steer/pause/resume/stop/stage`), CLI parity and the
 > **Agent Run** page. Pause and stop halt before the next worker and before
 > verify/synthesis. Resume refuses stopped, completed, and failed runs.
-> Live acceptance: CASE-F2358250 run
-> `M3-20260925T060304-aacc7b` — 4 orders, 1 follow-up round, 2 verifier passes
-> (13 verdicts), 4 DRAFTs staged with audit lineage. **GATE 4j-D rides with
-> GATE-B; that operator sign-off is the only item still open through Phase 4.**
+> Build acceptance was run `M3-20260925T060304-aacc7b` (4 orders, 1 follow-up,
+> 13 verdicts, 4 DRAFTs). That case has been removed from the case store.
+> **GATE 4j-D still rides with the operator GATE-B pass.**
 
 ```
 Examiner question / case intake

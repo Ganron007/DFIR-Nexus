@@ -396,7 +396,7 @@ def intake_case(
 
 
 # ---------------------------------------------------------------------------
-# Mode 1 — Examiner-Led Query Desk
+# Mode 1 — LLM examiner desk
 # ---------------------------------------------------------------------------
 
 
@@ -505,7 +505,7 @@ def select_case(
         help="Run LLM scribe to format the DRAFT (use --no-scribe for raw skeleton)",
     ),
 ):
-    """Mode 1 — Examiner selects hits -> promote to DRAFT finding."""
+    """Mode 1 — examiner selects hits and promotes them to a DRAFT finding."""
     from nexus.langgraph.mode1 import promote_hits_to_draft, save_draft_finding, scribe_finding
 
     case_dir = _case_dir(case_id)

@@ -1,4 +1,7 @@
-"""Mode 1 — Examiner-Led Query Desk.
+"""Mode 1 — LLM, examiner desk.
+
+Part of canonical Mode 1 (stored mode 1). The guided steering loop lives in
+``mode2.py`` and is the same product mode, not a separate one.
 
 The examiner drives. The LLM is a thin scribe:
 1. NL -> needles: translate English question into search terms + time window
