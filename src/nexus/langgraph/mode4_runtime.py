@@ -262,6 +262,109 @@ def plan_spawns(
     return spawns[:cap]
 
 
+def _validated_spawns(
+    raw_spawns: Any,
+    families: list[tuple[str, int]],
+    *,
+    max_agents: int,
+    question: str,
+    why_default: str,
+) -> list[dict[str, Any]]:
+    """Shape and bound a model's spawn list. Empty means "use the fallback"."""
+    names = {str(name).strip().lower() for name, _rows in families}
+    out: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for item in raw_spawns or []:
+        if not isinstance(item, dict):
+            continue
+        role = str(item.get("role") or "").strip().lower()
+        family = str(item.get("family") or "").strip()
+        if role not in _SEATS:
+            continue
+        if role == "evidence":
+            if family.lower() not in names:
+                continue
+        else:
+            family = ""
+        key = (role, family.lower())
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({
+            "role": role,
+            "family": family,
+            "why": str(item.get("why") or why_default)[:160],
+            "question": question,
+        })
+        if len(out) >= max_agents:
+            break
+    return out
+
+
+def _supervisor_with_model(
+    model: Any,
+    *,
+    case_dir: Path,
+    question: str,
+    families: list[tuple[str, int]],
+    board_digest: str,
+    steering: str,
+    max_agents: int,
+) -> list[dict[str, Any]]:
+    """MA4.2 — the model chooses the team; [] on any doubt (caller falls back)."""
+    from nexus.langgraph.context_loop import _call_model
+
+    family_lines = "\n".join(
+        f"- {name} ({rows} rows)" for name, rows in families[:40]
+    ) or "(no indexed families visible)"
+    limit = budget_chars(case_window(case_dir))
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You supervise a concurrent forensic investigation. Choose the "
+                "seats to spawn for the next superstep. Roles: evidence (one per "
+                "indexed family), correlation (cross-family), pattern "
+                "(ITM/ATT&CK/ATLAS/MBC). Reply with ONE JSON object only: "
+                '{"spawns":[{"role":"evidence|correlation|pattern",'
+                '"family":"<family or empty>","why":"one clause"}]}. '
+                f"At most {max_agents} seats. Evidence families must come from "
+                "the indexed list. No prose outside the JSON."
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                f"Objective: {question}\n\nIndexed families:\n{family_lines}\n\n"
+                + (f"Examiner steering:\n{steering}\n\n" if steering else "")
+                + "Board so far:\n"
+                + ((board_digest or "(empty)")[:limit])
+            ),
+        },
+    ]
+    try:
+        raw = _call_model(model, messages)
+    except Exception:  # noqa: BLE001 — fallback is the contract
+        log.debug("mode4 model supervisor failed", exc_info=True)
+        return []
+    start, end = raw.find("{"), raw.rfind("}")
+    if start == -1 or end <= start:
+        return []
+    try:
+        parsed = json.loads(raw[start:end + 1])
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(parsed, dict):
+        return []
+    return _validated_spawns(
+        parsed.get("spawns"),
+        families,
+        max_agents=max_agents,
+        question=question,
+        why_default="model supervisor",
+    )
+
+
 def _fallback_entry(spawn: dict[str, Any], superstep: int) -> dict[str, Any]:
     role = str(spawn.get("role") or "evidence")
     family = str(spawn.get("family") or "")
@@ -516,11 +619,27 @@ def run_mode4(
             ))
             return {"spawns": spawns, "superstep": step, "status": "running", "redispatch_used": used + 1}
         if step == 1 or not state.get("board"):
-            spawns = plan_spawns(indexed, max_agents=max_agents, question=question)
+            spawns: list[dict[str, Any]] = []
+            if model is not None:
+                spawns = _supervisor_with_model(
+                    model,
+                    case_dir=case_dir,
+                    question=question,
+                    families=indexed,
+                    board_digest=json.dumps(state.get("board") or [], default=str),
+                    steering="\n".join(
+                        f"- {str(line.get('text') or '')}" for line in steering[-3:]
+                    ),
+                    max_agents=max_agents,
+                )
+            supervisor_mode = "model" if spawns else "deterministic"
+            if not spawns:
+                spawns = plan_spawns(indexed, max_agents=max_agents, question=question)
             sink.emit(new_event(
                 run_id, "supervisor.spawn", actor="supervisor",
-                detail=f"{len(spawns)} seats",
-                data={"agents": [s["role"] for s in spawns]},
+                detail=f"{len(spawns)} seats ({supervisor_mode})",
+                data={"agents": [s["role"] for s in spawns],
+                      "chosen_by": supervisor_mode},
             ))
             return {"spawns": spawns, "superstep": step, "status": "running"}
         return {"status": "settled", "superstep": step, "spawns": []}

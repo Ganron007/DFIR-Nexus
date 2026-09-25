@@ -292,3 +292,81 @@ def test_resume_refuses_terminal(tmp_path):
     out = m4.resume_mode4(case, "M4-done", seat_fn=seat, es_ok=True)
     assert out.get("error")
     assert out["status"] == "completed"
+
+
+class _SpawnModel:
+    """Supervisor-only stub: returns a fixed JSON spawn list."""
+
+    def __init__(self, content: str):
+        self._content = content
+
+    def invoke(self, _messages):
+        content = self._content
+
+        class _Resp:
+            pass
+
+        _Resp.content = content
+        return _Resp()
+
+
+def _recording_seat():
+    seen: list[dict] = []
+
+    def seat(spawn, _board, step):
+        seen.append(dict(spawn))
+        return {
+            "entry_id": f"{spawn['role']}-{step}",
+            "agent_id": f"{spawn['role']}-{step}",
+            "role": spawn["role"], "family": spawn.get("family") or "",
+            "superstep": step, "claims": [], "open_questions": [],
+        }
+
+    return seen, seat
+
+
+def test_model_supervisor_chooses_team(tmp_path):
+    from nexus.langgraph import mode4_runtime as m4
+
+    case = _case(tmp_path)
+    seen, seat = _recording_seat()
+    model = _SpawnModel(json.dumps({"spawns": [
+        {"role": "evidence", "family": "mft", "why": "registry hives"},
+        {"role": "correlation", "family": "", "why": "ties hosts"},
+    ]}))
+    record = run_mode4(
+        case, "q", run_id="M4-model", families=[("evtx", 10), ("mft", 5)],
+        model=model, seat_fn=seat, es_ok=True,
+    )
+    families = {str(spawn.get("family") or "") for spawn in seen}
+    assert "mft" in families, "model-chosen family must be spawned"
+    assert "evtx" not in families, "model did not choose evtx"
+    assert record["status"] == "completed"
+    spawn_events = [
+        event for event in m4.read_run_events(case, "M4-model")
+        if event["event_type"] == "supervisor.spawn"
+    ]
+    assert spawn_events and spawn_events[0]["data"]["chosen_by"] == "model"
+
+
+def test_model_supervisor_bad_output_falls_back(tmp_path):
+    from nexus.langgraph import mode4_runtime as m4
+
+    case = _case(tmp_path)
+    seen, seat = _recording_seat()
+    model = _SpawnModel("this is not json at all")
+    record = run_mode4(
+        case, "q", run_id="M4-fallback", families=[("evtx", 10), ("mft", 5)],
+        model=model, seat_fn=seat, es_ok=True,
+    )
+    assert record["status"] == "completed"
+    kinds = {(str(spawn.get("role") or ""), str(spawn.get("family") or ""))
+             for spawn in seen}
+    assert ("evidence", "evtx") in kinds
+    assert ("correlation", "") in kinds
+    assert ("pattern", "") in kinds
+    spawn_events = [
+        event for event in m4.read_run_events(case, "M4-fallback")
+        if event["event_type"] == "supervisor.spawn"
+    ]
+    assert spawn_events[0]["data"]["chosen_by"] == "deterministic"
