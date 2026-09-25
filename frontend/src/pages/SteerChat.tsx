@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { api, chatStream, type ChatEntry, type Mode2IterateResponse, type Mode3PlanResponse, type N4Hit } from "../api/client";
@@ -830,6 +830,29 @@ export default function SteerChat() {
             ? "Mode 2: you ask in plain language — the LLM queries the case's evidence index and cites rows. Staging a DRAFT is a separate examiner-triggered action."
             : "Mode 3: the agent plans, hunts and corroborates across the case; you steer and seal."}
       </div>
+      {mode === "mode3" && (
+        <div
+          className="card"
+          style={{
+            padding: "8px 12px",
+            marginBottom: 8,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 10,
+            flexWrap: "wrap",
+          }}
+        >
+          <span style={{ fontSize: 12 }}>
+            This chat keeps the legacy plan/execute sliver. Supervised agents now run on the
+            dedicated <strong>Agent Run</strong> page — agent board, live event stream, steering,
+            pause/resume and DRAFT staging.
+          </span>
+          <Link className="btn btn-sm btn-primary" to="/agent-run">
+            Open Agent Run →
+          </Link>
+        </div>
+      )}
       {mode === "mode2" && (suggestions.length > 0 || suggLoading) && (
         <div
           className="card"

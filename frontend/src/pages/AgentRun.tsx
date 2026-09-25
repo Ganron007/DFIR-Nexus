@@ -407,6 +407,20 @@ export default function AgentRun() {
     }
   };
 
+  const handleExport = () => {
+    if (!runId) return;
+    const payload = { record, events };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${runId}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   const status = record?.status || (runId ? "running" : "");
   const running = !!runId && !TERMINAL.has(status);
 
@@ -605,6 +619,14 @@ export default function AgentRun() {
               title="Stage the run's verified candidates as DRAFT findings (examiner action)"
             >
               {busy === "stage" ? "Staging…" : "Stage DRAFTs"}
+            </button>
+            <button
+              className="btn btn-sm"
+              onClick={handleExport}
+              disabled={!runId}
+              title="Download the run record + event stream as JSON (same payload as nexus mode3 export)"
+            >
+              Export run JSON
             </button>
           </div>
           {stageResult && (
