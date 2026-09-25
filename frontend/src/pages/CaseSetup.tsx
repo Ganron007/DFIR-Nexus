@@ -221,7 +221,7 @@ export default function CaseSetup() {
     try {
       // Map product mode to pipeline mode. Mode 2/3 carry the examiner's
       // question as intake — without it the LLM interpret node never runs.
-      const pipelineMode = mode === "1" ? "tools" : mode === "2" ? "coverage" : "design";
+      const pipelineMode = mode === "2" ? "coverage" : mode === "3" ? "design" : "tools";
       const r = await api.pipelineRun({
         mode: pipelineMode,
         case_id: caseId,
@@ -420,7 +420,7 @@ export default function CaseSetup() {
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                <strong>Mode 1 — Examiner-Driven</strong>
+                <strong>Mode 1 — LLM (examiner surface)</strong>
                 {mode === "1" && <span style={{ color: "var(--accent)" }}>✓</span>}
               </div>
               <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
@@ -439,7 +439,7 @@ export default function CaseSetup() {
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                <strong>Mode 2 — LLM-Guided</strong>
+                <strong>Mode 1 — LLM (guided)</strong>
                 {mode === "2" && <span style={{ color: "var(--accent)" }}>✓</span>}
               </div>
               <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
@@ -458,13 +458,33 @@ export default function CaseSetup() {
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                <strong>Mode 3 — Multi-role</strong>
+                <strong>Mode 2 — Multi-role</strong>
                 {mode === "3" && <span style={{ color: "var(--accent)" }}>✓</span>}
               </div>
               <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
                 Supervised multi-role pipeline: specialist roles investigate your evidence one
                 work order at a time, corroborate, and stage DRAFTs. You steer, pause/stop and
                 stage. Agent Run is the primary surface.
+              </p>
+            </div>
+            <div
+              onClick={() => chooseMode("4")}
+              style={{
+                padding: 16,
+                borderRadius: 8,
+                border: `2px solid ${mode === "4" ? "var(--accent)" : "var(--border)"}`,
+                cursor: "pointer",
+                background: mode === "4" ? "rgba(37,99,235,0.08)" : "transparent",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <strong>Mode 3 — Multi-agent</strong>
+                {mode === "4" && <span style={{ color: "var(--accent)" }}>✓</span>}
+              </div>
+              <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                Several seats read different evidence at the same time, post claims on a
+                shared board, and a join sends them back when they disagree. Stored as
+                mode 4. Start the team with <code>nexus mode4 run</code> or Agent Run.
               </p>
             </div>
             <button className="btn btn-primary" onClick={confirmMode} disabled={busy || !mode}>
@@ -484,7 +504,9 @@ export default function CaseSetup() {
               ? " Mode 1 runs the deterministic parser lane only — quick triage, no LLM."
               : mode === "2"
                 ? " Mode 2 runs the parser lane and then the LLM interpretation (RAG + threat intel) — DRAFT findings await your approval."
-                : " Mode 3 runs the parser lane, then the supervised multi-role run before interpretation."}
+                : mode === "4"
+                  ? " Mode 3 (stored 4) runs the parser lane. The multi-agent team starts after that, from Agent Run or nexus mode4 run."
+                  : " Mode 2 (stored 3) runs the parser lane, then the multi-role pipeline."}
           </p>
           {mode !== "1" && !pipelineRunId && (
             <div style={{ marginBottom: 10 }}>

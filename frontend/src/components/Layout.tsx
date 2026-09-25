@@ -247,17 +247,19 @@ export default function Layout({ children }: { children: ReactNode }) {
         {activeCase && mode && (
           <div className="mode-indicator">
             <NavLink
-              to={mode === "1" ? "/briefing" : mode === "3" ? "/agent-run" : "/steer"}
+              to={mode === "1" ? "/briefing" : mode === "2" ? "/steer" : "/agent-run"}
               className={`mode-badge mode-${mode}`}
               title={
                 mode === "1"
-                  ? "Mode 1 — Examiner-driven. Primary surface: Briefing"
+                  ? "Mode 1 — LLM, examiner surface. Primary: Briefing"
                   : mode === "2"
-                    ? "Mode 2 — LLM-guided. Primary surface: Steer Chat"
-                    : "Mode 3 — Multi-role. Primary surface: Agent Run (plan → run → verify → stage)"
+                    ? "Mode 1 — LLM, guided. Primary: Steer Chat"
+                    : mode === "4"
+                      ? "Mode 3 — Multi-agent (stored 4). Primary: Agent Run"
+                      : "Mode 2 — Multi-role (stored 3). Primary: Agent Run"
               }
             >
-              Mode {mode} · {mode === "1" ? "Briefing" : mode === "3" ? "Agent Run" : "Steer Chat"} primary
+              {mode === "1" ? "Mode 1 · Briefing" : mode === "2" ? "Mode 1 · Steer" : mode === "4" ? "Mode 3 · Agent Run" : "Mode 2 · Agent Run"} primary
             </NavLink>
           </div>
         )}

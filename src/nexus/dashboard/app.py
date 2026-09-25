@@ -7131,6 +7131,110 @@ def _start_mode3_thread(
         thread.start()
 
 
+async def api_mode4_run(request):
+    """POST /portal/api/mode4/run — start the concurrent multi-agent team."""
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    question = str(body.get("question") or "").strip()
+    if not question:
+        try:
+            from nexus.langgraph.query_pack import load_case_intake
+
+            question = str(load_case_intake(case_dir).get("question") or "")
+        except Exception:  # noqa: BLE001
+            question = ""
+    from nexus.langgraph.mode4_runtime import run_mode4
+
+    model = await asyncio.to_thread(_mode3_resolve_model)
+    record = await asyncio.to_thread(run_mode4, case_dir, question, model=model)
+    code = 200 if record.get("status") != "failed" else 409
+    return JSONResponse({
+        "run_id": record.get("run_id"),
+        "status": record.get("status"),
+        "stop_reason": record.get("stop_reason"),
+        "question": question,
+    }, status_code=code)
+
+
+async def api_mode4_run_status(request):
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    from nexus.langgraph.mode4_runtime import latest_run_id, read_run_record
+
+    run_id = str(request.query_params.get("run_id") or "").strip() or latest_run_id(case_dir)
+    record = await asyncio.to_thread(read_run_record, case_dir, run_id) if run_id else None
+    if record is None:
+        return JSONResponse({"error": "no Mode 4 run found"}, status_code=404)
+    return JSONResponse({
+        "run_id": run_id,
+        "status": record.get("status"),
+        "stop_reason": record.get("stop_reason"),
+        "question": record.get("question") or "",
+        "superstep": record.get("superstep"),
+        "board": len(record.get("board") or []),
+        "disputes": len(record.get("disputes") or []),
+        "candidates": len(record.get("candidates") or []),
+        "gaps": record.get("gaps") or [],
+    })
+
+
+async def api_mode4_run_board(request):
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    from nexus.langgraph.mode4_runtime import latest_run_id, read_run_record
+
+    run_id = str(request.query_params.get("run_id") or "").strip() or latest_run_id(case_dir)
+    record = await asyncio.to_thread(read_run_record, case_dir, run_id) if run_id else None
+    if record is None:
+        return JSONResponse({"error": "no Mode 4 run found"}, status_code=404)
+    return JSONResponse({
+        "run_id": run_id,
+        "board": record.get("board") or [],
+        "disputes": record.get("disputes") or [],
+        "candidates": record.get("candidates") or [],
+    })
+
+
+async def api_mode4_run_stop(request):
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    from nexus.langgraph.mode4_runtime import latest_run_id, request_stop_run
+
+    run_id = str(body.get("run_id") or "").strip() or latest_run_id(case_dir)
+    if not run_id or not await asyncio.to_thread(request_stop_run, case_dir, run_id):
+        return JSONResponse({"error": "run not found"}, status_code=404)
+    return JSONResponse({"run_id": run_id, "stop_requested": True})
+
+
+async def api_mode4_run_stage(request):
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        body = {}
+    from nexus.langgraph.mode4_runtime import latest_run_id, stage_mode4
+
+    run_id = str(body.get("run_id") or "").strip() or latest_run_id(case_dir)
+    if not run_id:
+        return JSONResponse({"error": "no Mode 4 run found"}, status_code=404)
+    result = await asyncio.to_thread(stage_mode4, case_dir, run_id)
+    return JSONResponse(result)
+
+
 def _mode3_resolve_model() -> Any:
     try:
         from nexus.langgraph.llm_pipeline import get_model
@@ -7580,6 +7684,11 @@ def create_dashboard():
         Route("/portal/api/mode3/run/resume", api_mode3_run_resume, methods=["POST"]),
         Route("/portal/api/mode3/run/stop", api_mode3_run_stop, methods=["POST"]),
         Route("/portal/api/mode3/run/stage", api_mode3_run_stage, methods=["POST"]),
+        Route("/portal/api/mode4/run", api_mode4_run, methods=["POST"]),
+        Route("/portal/api/mode4/run/status", api_mode4_run_status, methods=["GET"]),
+        Route("/portal/api/mode4/run/board", api_mode4_run_board, methods=["GET"]),
+        Route("/portal/api/mode4/run/stop", api_mode4_run_stop, methods=["POST"]),
+        Route("/portal/api/mode4/run/stage", api_mode4_run_stage, methods=["POST"]),
         Route("/portal/api/case/seal", api_case_seal, methods=["POST"]),
         Route("/portal/api/mode3/seal", api_case_seal, methods=["POST"]),
         # RAG preflight (WP 3.13)
