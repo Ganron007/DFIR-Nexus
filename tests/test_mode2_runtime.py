@@ -18,12 +18,12 @@ def _case(tmp_path: Path) -> Path:
 
 def test_event_envelope_has_run_and_actor_ids():
     event = m3.new_event(
-        "M3-test", "tool.call", actor="agent", agent_id="evidence-1",
+        "M2-test", "tool.call", actor="agent", agent_id="evidence-1",
         call_id="c1", tool="es_search", why="find rows", audit_id="a-1",
     )
     payload = event.to_dict()
     assert payload["event_id"].startswith("evt-")
-    assert payload["run_id"] == "M3-test"
+    assert payload["run_id"] == "M2-test"
     assert payload["actor"] == "agent"
     assert payload["agent_id"] == "evidence-1"
     assert payload["tool"] == "es_search"
@@ -65,8 +65,8 @@ def test_plan_work_orders_covers_families_and_roles(tmp_path):
     with patch("nexus.langgraph.backbone.backbone_call",
                return_value={"family_rows": {"hayabusa": 100, "evtxecmd": 50}}):
         orders = m3.plan_work_orders(
-            case, "what happened", run_id="M3-plan",
-            sink=m3.EventSink(case, "M3-plan"),
+            case, "what happened", run_id="M2-plan",
+            sink=m3.EventSink(case, "M2-plan"),
         )
     roles = [o.role for o in orders]
     assert roles.count("evidence") == 2
@@ -86,7 +86,7 @@ def test_run_work_order_emits_events_and_parses_json(tmp_path):
         "coverage": {"checked": ["usb"], "not_checked": []},
     })
     events: list[dict] = []
-    sink = m3.EventSink(case, "M3-run", callback=events.append)
+    sink = m3.EventSink(case, "M2-run", callback=events.append)
     def fake_loop(**kwargs):
         callback = kwargs.get("on_event")
         if callback:
@@ -104,7 +104,7 @@ def test_run_work_order_emits_events_and_parses_json(tmp_path):
 
     with patch.object(m3, "run_context_loop", side_effect=fake_loop) as fake_loop_mock:
         result = m3.run_work_order(
-            order, case_dir=case, model=object(), run_id="M3-run", sink=sink)
+            order, case_dir=case, model=object(), run_id="M2-run", sink=sink)
     assert result.status == "ok"
     assert result.parsed["notes"][0]["statement"] == "USB found"
     assert result.partial is False
@@ -113,17 +113,17 @@ def test_run_work_order_emits_events_and_parses_json(tmp_path):
     assert "work_order.started" in kinds
     assert "tool.call" in kinds  # emitted from the loop callback only in real loop
     assert "work_order.completed" in kinds
-    stored = m3.read_run_events(case, "M3-run")
+    stored = m3.read_run_events(case, "M2-run")
     assert any(e["event_type"] == "work_order.completed" for e in stored)
 
 
 def test_run_work_order_falls_back_without_black_box(tmp_path):
     case = _case(tmp_path)
     order = m3.WorkOrder(order_id="wo-fb", role="evidence", task="find x")
-    sink = m3.EventSink(case, "M3-fallback")
+    sink = m3.EventSink(case, "M2-fallback")
     with patch.object(m3, "run_context_loop", side_effect=RuntimeError("no model")):
         result = m3.run_work_order(
-            order, case_dir=case, model=None, run_id="M3-fallback", sink=sink)
+            order, case_dir=case, model=None, run_id="M2-fallback", sink=sink)
     assert result.status == "fallback"
     assert result.partial is True
     assert "no model" in result.partial_reason
@@ -138,11 +138,11 @@ def test_plan_work_orders_attaches_kb_skill_refs(tmp_path):
                return_value={"family_rows": {"evtxecmd": 10}}), \
          patch.object(m3, "_retrieve_skill_refs", return_value=[ref]):
         orders = m3.plan_work_orders(
-            case, "rdp logons", run_id="M3-sk",
-            sink=m3.EventSink(case, "M3-sk"),
+            case, "rdp logons", run_id="M2-sk",
+            sink=m3.EventSink(case, "M2-sk"),
         )
     assert orders and all(order.skill_refs for order in orders)
-    plan_events = [e for e in m3.read_run_events(case, "M3-sk")
+    plan_events = [e for e in m3.read_run_events(case, "M2-sk")
                    if e["event_type"] == "plan.work_order"]
     assert plan_events
     assert plan_events[0]["data"]["skills"][0]["skill"] == "evtx-logon"
@@ -232,8 +232,8 @@ def test_stage_run_candidates_lineage_and_filters(tmp_path):
         source="portal",
     )
     assert audit_id, "fixture must create a real case audit entry"
-    m3._persist_state(case, "M3-stage", {
-        "run_id": "M3-stage", "case_id": case.name, "question": "q",
+    m3._persist_state(case, "M2-stage", {
+        "run_id": "M2-stage", "case_id": case.name, "question": "q",
         "status": "completed", "orders": [], "order_index": 0, "results": [],
         "verdicts": [{"title": "Refuted thing", "class": "refuted"}],
         "candidates": [
@@ -249,17 +249,17 @@ def test_stage_run_candidates_lineage_and_filters(tmp_path):
         ],
         "gaps": [],
     })
-    result = m3.stage_run_candidates(case, "M3-stage")
+    result = m3.stage_run_candidates(case, "M2-stage")
     assert result["staged_count"] == 1
     assert result["skipped_count"] == 2
     assert result["staged"][0]["input_call_ids"] == [audit_id]
     rows = json.loads((case / "findings.json").read_text(encoding="utf-8"))
-    staged = [f for f in rows if f.get("run_id") == "M3-stage"]
+    staged = [f for f in rows if f.get("run_id") == "M2-stage"]
     assert staged, "the valid candidate must be staged as DRAFT"
     assert staged[0]["status"] == "DRAFT"
     assert staged[0]["input_call_ids"] == [audit_id]
     assert staged[0].get("source") == "mode3"
-    events = m3.read_run_events(case, "M3-stage")
+    events = m3.read_run_events(case, "M2-stage")
     assert any(e["event_type"] == "finding.staged" for e in events)
 
 
@@ -274,13 +274,13 @@ def test_run_work_order_formats_prose_answer(tmp_path):
              "notes": [{"statement": "failed logons",
                         "audit_ids": ["nexus-ci-test-1"]}]}) as fmt:
         result = m3.run_work_order(
-            order, case_dir=case, model=object(), run_id="M3-fmt",
-            sink=m3.EventSink(case, "M3-fmt"))
+            order, case_dir=case, model=object(), run_id="M2-fmt",
+            sink=m3.EventSink(case, "M2-fmt"))
     assert result.status == "ok"
     assert result.parsed["notes"][0]["statement"] == "failed logons"
     assert result.reply == prose
     fmt.assert_called_once()
-    types = [e["event_type"] for e in m3.read_run_events(case, "M3-fmt")]
+    types = [e["event_type"] for e in m3.read_run_events(case, "M2-fmt")]
     assert "agent.formatted" in types
 
 
@@ -293,8 +293,8 @@ def test_run_work_order_stays_unparsed_when_format_fails(tmp_path):
             "partial_reason": ""}), \
          patch.object(m3, "_format_final_answer", return_value={}):
         result = m3.run_work_order(
-            order, case_dir=case, model=object(), run_id="M3-nf",
-            sink=m3.EventSink(case, "M3-nf"))
+            order, case_dir=case, model=object(), run_id="M2-nf",
+            sink=m3.EventSink(case, "M2-nf"))
     assert result.status == "unparsed"
     assert result.parsed == {}
 
@@ -306,8 +306,8 @@ def test_role_budget_defaults_are_respected(tmp_path):
     with patch.object(m3, "run_context_loop", return_value={
             "reply": reply, "tool_calls": [], "hits": [], "aggregations": [],
             "audit_id": "", "partial": False, "partial_reason": ""}) as fake:
-        m3.run_work_order(order, case_dir=case, model=object(), run_id="M3-b",
-                          sink=m3.EventSink(case, "M3-b"))
+        m3.run_work_order(order, case_dir=case, model=object(), run_id="M2-b",
+                          sink=m3.EventSink(case, "M2-b"))
     budget = fake.call_args.kwargs["budget"]
     shared = m3.mode3_loop_budget(case)
     assert budget.rounds == shared.rounds
@@ -322,7 +322,7 @@ def test_plan_work_orders_adds_examiner_feedback_order(tmp_path):
     with patch("nexus.langgraph.backbone.backbone_call",
                return_value={"family_rows": {"evtxecmd": 10, "hayabusa": 5}}):
         orders = m3.plan_work_orders(
-            case, "what happened", run_id="M3-fb", sink=m3.EventSink(case, "M3-fb"),
+            case, "what happened", run_id="M2-fb", sink=m3.EventSink(case, "M2-fb"),
             max_orders=4,
             known_findings={
                 "approved": [{"id": "F-1", "title": "USB seen"}],
@@ -392,14 +392,14 @@ def test_stop_before_verify_does_not_run_verifier(tmp_path):
 
 def test_resume_of_completed_run_does_not_reexecute(tmp_path):
     case = _case(tmp_path)
-    m3._persist_state(case, "M3-done", {
-        "run_id": "M3-done", "case_id": case.name, "question": "q",
+    m3._persist_state(case, "M2-done", {
+        "run_id": "M2-done", "case_id": case.name, "question": "q",
         "status": "completed", "orders": [{"order_id": "wo-1"}],
         "order_index": 1, "results": [{"role": "evidence"}],
         "candidates": [{"title": "kept"}], "stop_reason": "completed",
     })
     with patch.object(m3, "run_work_order") as work:
-        state = m3.run_mode2(case, "q", model=object(), run_id="M3-done", resume=True)
+        state = m3.run_mode2(case, "q", model=object(), run_id="M2-done", resume=True)
     work.assert_not_called()
     assert state["status"] == "completed"
     assert state["candidates"] == [{"title": "kept"}]

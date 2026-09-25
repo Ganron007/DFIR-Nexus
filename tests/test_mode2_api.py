@@ -41,7 +41,7 @@ def test_mode3_run_plan_endpoint(tmp_path):
 
 def test_mode3_run_start_status_steer_pause_resume(tmp_path):
     case = _case(tmp_path)
-    run_id = "M3-api-test"
+    run_id = "M2-api-test"
     started: list[tuple] = []
 
     def _fake_start(case_dir, question, model, rid, resume):
@@ -94,8 +94,8 @@ def test_mode3_run_stage_endpoint(tmp_path):
         result_summary={"total": 1},
         source="portal",
     )
-    m3._persist_state(case, "M3-stage-api", {
-        "run_id": "M3-stage-api", "case_id": case.name, "question": "q",
+    m3._persist_state(case, "M2-stage-api", {
+        "run_id": "M2-stage-api", "case_id": case.name, "question": "q",
         "status": "completed", "orders": [], "order_index": 0, "results": [],
         "verdicts": [],
         "candidates": [{
@@ -109,29 +109,29 @@ def test_mode3_run_stage_endpoint(tmp_path):
     })
     with patch("nexus.dashboard.app._get_case_dir", return_value=case):
         response = _client().post("/portal/api/mode2/run/stage",
-                                  json={"run_id": "M3-stage-api"})
+                                  json={"run_id": "M2-stage-api"})
     assert response.status_code == 200
     body = response.json()
     assert body["staged_count"] == 1
     assert body["staged"][0]["input_call_ids"] == [audit_id]
     rows = json.loads((case / "findings.json").read_text(encoding="utf-8"))
-    assert any(f.get("run_id") == "M3-stage-api"
+    assert any(f.get("run_id") == "M2-stage-api"
                and f.get("status") == "DRAFT" for f in rows)
 
 
 def test_mode3_run_stop_sets_flag(tmp_path):
     case = _case(tmp_path)
-    m3._persist_state(case, "M3-stop-api", {
-        "run_id": "M3-stop-api", "case_id": case.name, "question": "q",
+    m3._persist_state(case, "M2-stop-api", {
+        "run_id": "M2-stop-api", "case_id": case.name, "question": "q",
         "status": "running", "orders": [], "order_index": 0, "results": [],
         "candidates": [], "gaps": [],
     })
     with patch("nexus.dashboard.app._get_case_dir", return_value=case):
         response = _client().post("/portal/api/mode2/run/stop",
-                                  json={"run_id": "M3-stop-api"})
+                                  json={"run_id": "M2-stop-api"})
     assert response.status_code == 200
     assert response.json()["stop_requested"] is True
-    assert m3.read_controls(case, "M3-stop-api")["stop_requested"] is True
+    assert m3.read_controls(case, "M2-stop-api")["stop_requested"] is True
 
 
 def test_mode3_run_plan_rejects_sealed_case(tmp_path):
