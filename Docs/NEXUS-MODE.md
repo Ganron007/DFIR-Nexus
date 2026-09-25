@@ -123,9 +123,9 @@ presets**, not separate products or UIs.
 > Portal endpoints (`/portal/api/mode2/iterate`, `/corroborate`,
 > `/propose-draft`). **Mode 3 is implemented as a supervised agent runtime
 > (2026-09-25):** LangGraph supervisor (director → workers → verifier →
-> synthesis), KB skill contracts, bounded budgets, follow-up corroboration
-> and convergence stop, a live SSE run event stream, the Agent Run page and
-> `nexus mode3` CLI parity; DRAFT staging is an examiner action and approval
+> synthesis), KB skill procedures packed into each worker, follow-up
+> corroboration up to the context window, a convergence stop, a live SSE
+> run event stream, the Agent Run page and `nexus mode3` CLI parity; DRAFT staging is an examiner action and approval
 > is unchanged. The legacy `/mode3/plan|execute|seal` endpoints remain for
 > the plan/execute sliver and case sealing. All three modes share the same
 > Cockpit. **Phase 4 (enterprise UI rewrite) is complete** — the

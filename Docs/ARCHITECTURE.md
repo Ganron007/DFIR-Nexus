@@ -108,7 +108,7 @@ flowchart TD
     subgraph CORE [" FastMCP Single-Process Engine (app.py) "]
         MCP["⚡ FastMCP Server Process<br/><i>(Stdio & Uvicorn HTTP :4508)</i>"]:::serverStyle
         
-        subgraph MODULES [" Integrated Tool Engine (129 Win / 125 Linux Endpoints) "]
+        subgraph MODULES [" Integrated Tool Engine (135 Win / 132 Linux Endpoints) "]
             direction LR
             CORE_TOOLS["<b>Forensics & Case Ops</b><br/>• forensic.py (23 tools)<br/>• case.py (13 tools)<br/>• report.py (6 tools)"]:::toolStyle
             INTEL_TOOLS["<b>RAG & Threat Intel</b><br/>• rag.py (ChromaDB 22k records)<br/>• triage/ (2.6M baselines)<br/>• ti/ (10 TI Providers)"]:::toolStyle
@@ -382,10 +382,12 @@ there is no second bespoke agent loop:
   `skill_refs` (KB skill id + content version + citations) rendered into the
   prompt as step queries.
 - **Graph**: `director → worker(s) → verify → assess → synthesis`, with a
-  `pause`/halt node. `assess` appends bounded follow-up orders for
-  inferred/refuted candidates (`NEXUS_MODE3_FOLLOWUPS`, default 2) and stops
-  early on `converged_no_new_evidence`; examiner findings-feedback (approved →
-  deepen, rejected → exclusion, draft → de-dup) is read at plan time.
+  `pause`/halt node. `assess` appends follow-up orders for inferred or
+  refuted candidates (`NEXUS_MODE3_FOLLOWUPS`, default 8, up to 24) and stops
+  early on `converged_no_new_evidence`. Each worker receives the attached KB
+  skill procedures and the prior agents' notes, packed to the case context
+  window. Examiner findings-feedback (approved → deepen, rejected →
+  exclusion, draft → de-dup) is read at plan time.
 - **Events** (`AgentEvent`): one envelope (`run_id/turn_id/agent_id/call_id`,
   tool/why/audit_id/status/detail) persisted to
   `analysis/mode3_runs/<run_id>.jsonl` and streamed over SSE

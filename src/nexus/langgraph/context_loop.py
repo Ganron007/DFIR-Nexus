@@ -354,7 +354,7 @@ def _result_summary(name: str, result: dict[str, Any]) -> dict[str, Any]:
             "chunk_id": result.get("chunk_id") or result.get("id"),
             "citation": result.get("citation"),
             "doc_title": result.get("doc_title"),
-            "text": str(result.get("text") or "")[:6000],
+            "text": str(result.get("text") or "")[:60_000],
         }
     if name == "kb_cite":
         return {
@@ -458,6 +458,14 @@ def _event_summary(summary: Any) -> dict[str, Any]:
     return out
 
 
+def _clip(text: str, limit: int) -> str:
+    """Keep an agent answer up to the call budget. Zero means no clip."""
+    body = text or ""
+    if limit <= 0 or len(body) <= limit:
+        return body
+    return body[:limit]
+
+
 def _observations_block(
     observations: list[dict[str, Any]],
     per_obs_cap: int = 60_000,
@@ -516,7 +524,7 @@ def _force_answer(
     if parsed:
         answer = parsed.get("answer") or parsed.get("reply")
         if isinstance(answer, str) and answer.strip():
-            return answer.strip()[:8000]
+            return _clip(answer.strip(), call_chars)
         return ""
     raw = (raw or "").strip()
     # Never accept an empty JSON container or literal as the case answer.
@@ -525,7 +533,7 @@ def _force_answer(
     if raw[0] in "{[":
         return ""
     if '"tool_calls"' not in raw and '"tool"' not in raw[:80]:
-        return raw[:8000]
+        return _clip(raw, call_chars)
     return ""
 
 
@@ -762,7 +770,7 @@ def run_context_loop(
                 })
                 continue
             if raw.strip():
-                reply = raw.strip()[:8000]
+                reply = _clip(raw.strip(), budget.call_chars)
                 finish_reason = "answer_text"
                 partial = False
             else:
@@ -779,7 +787,7 @@ def run_context_loop(
             # Structured task final (directions/proposals/report): the model
             # returned the domain object directly instead of the answer
             # envelope. Treat it as the terminal reply.
-            reply = json.dumps(parsed, default=str, sort_keys=True)[:8000]
+            reply = _clip(json.dumps(parsed, default=str, sort_keys=True), budget.call_chars)
             finish_reason = "answer_terminal"
             partial = False
             _emit({"event": "loop_done", "reply": reply, "partial": False})
@@ -787,7 +795,7 @@ def run_context_loop(
         if not calls:
             answer = str(parsed.get("answer") or parsed.get("reply") or "").strip()
             if answer:
-                reply = answer[:8000]
+                reply = _clip(answer, budget.call_chars)
                 finish_reason = "answer"
                 partial = False
                 _emit({"event": "loop_done", "reply": reply, "partial": False})

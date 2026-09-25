@@ -309,10 +309,12 @@ def test_role_budget_defaults_are_respected(tmp_path):
         m3.run_work_order(order, case_dir=case, model=object(), run_id="M3-b",
                           sink=m3.EventSink(case, "M3-b"))
     budget = fake.call_args.kwargs["budget"]
-    role = m3.role_for("correlation")
-    assert budget.rounds == role.max_rounds
-    assert budget.calls == role.max_calls
-    assert budget.seconds == role.max_seconds
+    shared = m3.mode3_loop_budget(case)
+    assert budget.rounds == shared.rounds
+    assert budget.calls == shared.calls
+    assert budget.seconds == shared.seconds
+    assert budget.call_chars == shared.call_chars
+    assert budget.call_chars > 100_000
 
 
 def test_plan_work_orders_adds_examiner_feedback_order(tmp_path):

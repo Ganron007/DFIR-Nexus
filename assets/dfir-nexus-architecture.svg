@@ -95,7 +95,7 @@
     <!-- Header Badges -->
     <g transform="translate(910, 10)">
       <rect x="0" y="0" width="120" height="26" rx="13" fill="#1e3a8a" stroke="#3b82f6" stroke-width="1"/>
-      <text x="60" y="17" font-family="'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#60a5fa" text-anchor="middle">MODE 1 READY</text>
+      <text x="60" y="17" font-family="'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#60a5fa" text-anchor="middle">MODES 1–3</text>
 
       <rect x="130" y="0" width="130" height="26" rx="13" fill="#065f46" stroke="#10b981" stroke-width="1"/>
       <text x="195" y="17" font-family="'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#34d399" text-anchor="middle">HITL GATED</text>
@@ -184,16 +184,16 @@
         <text x="10" y="34" font-family="'Segoe UI', sans-serif" font-size="10" fill="#94a3b8">Case selection &amp; intake framing</text>
 
         <rect x="200" y="0" width="190" height="48" rx="6" fill="#1e293b"/>
-        <text x="210" y="18" font-family="'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#ffffff">🔍 Query Explorer (/query)</text>
-        <text x="210" y="34" font-family="'Segoe UI', sans-serif" font-size="10" fill="#94a3b8">Needle search &amp; provenance hits</text>
+        <text x="210" y="18" font-family="'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#ffffff">🔍 Explore (/explore)</text>
+        <text x="210" y="34" font-family="'Segoe UI', sans-serif" font-size="10" fill="#94a3b8">Faceted search &amp; cited hits</text>
 
         <rect x="0" y="54" width="190" height="48" rx="6" fill="#1e293b"/>
         <text x="10" y="72" font-family="'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#ffffff">⏱️ Timeline Desk (/timeline)</text>
         <text x="10" y="88" font-family="'Segoe UI', sans-serif" font-size="10" fill="#94a3b8">Chronological event inspection</text>
 
         <rect x="200" y="54" width="190" height="48" rx="6" fill="#1e293b"/>
-        <text x="210" y="72" font-family="'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#ffffff">🔐 Approval Desk (/approve)</text>
-        <text x="210" y="88" font-family="'Segoe UI', sans-serif" font-size="10" fill="#94a3b8">Web Crypto PBKDF2/HMAC sign-off</text>
+        <text x="210" y="72" font-family="'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#ffffff">🤖 Agent Run (/agent-run)</text>
+        <text x="210" y="88" font-family="'Segoe UI', sans-serif" font-size="10" fill="#94a3b8">Plan, run, pause, stage DRAFTs</text>
       </g>
     </g>
 
@@ -213,9 +213,9 @@
       <!-- Spine Step 2: N3-N4 -->
       <g transform="translate(15, 104)">
         <rect width="390" height="60" rx="6" fill="#1e3a8a" opacity="0.6"/>
-        <text x="12" y="20" font-family="'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#ffffff">N3 Case Index (ES / CSV) &amp; N4 Query Pack</text>
-        <text x="12" y="38" font-family="'Segoe UI', sans-serif" font-size="11" fill="#93c5fd">• Scans extractions/ via Elasticsearch (nexus-es) or offline CSV</text>
-        <text x="12" y="52" font-family="'Segoe UI', sans-serif" font-size="10" fill="#cbd5e1">Returns bounded candidate hits with file:line audit citations</text>
+        <text x="12" y="20" font-family="'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#ffffff">N3 Elasticsearch Index &amp; N4 Query Pack</text>
+        <text x="12" y="38" font-family="'Segoe UI', sans-serif" font-size="11" fill="#93c5fd">• nexus-es index. Mode 1 search can read CSV if ES is down</text>
+        <text x="12" y="52" font-family="'Segoe UI', sans-serif" font-size="10" fill="#cbd5e1">Mode 2/3 interpret only on ES, with file:line citations</text>
       </g>
 
       <!-- Spine Step 3: N5 Scribe -->
@@ -230,9 +230,9 @@
       <g transform="translate(15, 240)">
         <rect width="390" height="95" rx="6" fill="#1e293b"/>
         <text x="12" y="20" font-family="'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#f59e0b">Three Driving Modes (Same Spine &amp; HMAC Lock):</text>
-        <text x="12" y="40" font-family="'Segoe UI', sans-serif" font-size="11" fill="#e2e8f0"><tspan font-weight="700" fill="#60a5fa">Mode 1 (Examiner-Led):</tspan> NL Query + RAG + Scribe (Public Beta)</text>
-        <text x="12" y="58" font-family="'Segoe UI', sans-serif" font-size="11" fill="#e2e8f0"><tspan font-weight="700" fill="#38bdf8">Mode 2 (Thick Analysis):</tspan> Agentic hypothesis &amp; corroboration</text>
-        <text x="12" y="76" font-family="'Segoe UI', sans-serif" font-size="11" fill="#e2e8f0"><tspan font-weight="700" fill="#a7f3d0">Mode 3 (Autonomous):</tspan> Autonomous MCP tool selection (Final)</text>
+        <text x="12" y="40" font-family="'Segoe UI', sans-serif" font-size="11" fill="#e2e8f0"><tspan font-weight="700" fill="#60a5fa">Mode 1 (Examiner-Led):</tspan> N4 search + scribe; you drive</text>
+        <text x="12" y="58" font-family="'Segoe UI', sans-serif" font-size="11" fill="#e2e8f0"><tspan font-weight="700" fill="#38bdf8">Mode 2 (LLM-Guided):</tspan> ES retrieval, cited DRAFT findings</text>
+        <text x="12" y="76" font-family="'Segoe UI', sans-serif" font-size="11" fill="#e2e8f0"><tspan font-weight="700" fill="#a7f3d0">Mode 3 (Supervised):</tspan> Workers corroborate; you stage DRAFTs</text>
       </g>
     </g>
   </g>
@@ -263,14 +263,15 @@
     <g transform="translate(15, 165)">
       <rect width="220" height="175" rx="8" fill="#0f172a" stroke="#38bdf8" stroke-width="1"/>
       <text x="12" y="22" font-family="'Segoe UI', sans-serif" font-size="12" font-weight="700" fill="#38bdf8">🛡️ Discipline Rules (FD-001..007)</text>
-      <text x="12" y="42" font-family="'Segoe UI', sans-serif" font-size="11" fill="#e0f2fe">• FD-001: Evidence Before Claims</text>
-      <text x="12" y="60" font-family="'Segoe UI', sans-serif" font-size="11" fill="#e0f2fe">• FD-002: Human Approval Only</text>
-      <text x="12" y="78" font-family="'Segoe UI', sans-serif" font-size="11" fill="#e0f2fe">• FD-004: UNKNOWN is Neutral</text>
-      <text x="12" y="96" font-family="'Segoe UI', sans-serif" font-size="11" fill="#e0f2fe">• FD-005: Confidence Justification</text>
-      <text x="12" y="114" font-family="'Segoe UI', sans-serif" font-size="11" fill="#e0f2fe">• FD-006: Multi-Source Corroborate</text>
-      <text x="12" y="132" font-family="'Segoe UI', sans-serif" font-size="11" fill="#e0f2fe">• FD-007: Prompt Injection Defense</text>
-      <rect x="12" y="144" width="196" height="22" rx="4" fill="#1e293b"/>
-      <text x="110" y="159" font-family="'Segoe UI', sans-serif" font-size="10" font-weight="700" fill="#38bdf8" text-anchor="middle">mcp &gt; hook &gt; shell &gt; none (REJECT)</text>
+      <text x="12" y="40" font-family="'Segoe UI', sans-serif" font-size="10" fill="#e0f2fe">• FD-001: Evidence Before Claims</text>
+      <text x="12" y="54" font-family="'Segoe UI', sans-serif" font-size="10" fill="#e0f2fe">• FD-002: Human Approval Only</text>
+      <text x="12" y="68" font-family="'Segoe UI', sans-serif" font-size="10" fill="#e0f2fe">• FD-003: No Autonomous Attribution</text>
+      <text x="12" y="82" font-family="'Segoe UI', sans-serif" font-size="10" fill="#e0f2fe">• FD-004: UNKNOWN is Neutral</text>
+      <text x="12" y="96" font-family="'Segoe UI', sans-serif" font-size="10" fill="#e0f2fe">• FD-005: Confidence Justification</text>
+      <text x="12" y="110" font-family="'Segoe UI', sans-serif" font-size="10" fill="#e0f2fe">• FD-006: Multi-Source Corroborate</text>
+      <text x="12" y="124" font-family="'Segoe UI', sans-serif" font-size="10" fill="#e0f2fe">• FD-007: Prompt Injection Defense</text>
+      <rect x="12" y="136" width="196" height="22" rx="4" fill="#1e293b"/>
+      <text x="110" y="151" font-family="'Segoe UI', sans-serif" font-size="10" font-weight="700" fill="#38bdf8" text-anchor="middle">mcp &gt; hook &gt; shell &gt; none (REJECT)</text>
     </g>
 
     <!-- Item 3: Staged Findings (DRAFT) -->
@@ -308,7 +309,7 @@
       
       <text x="15" y="55" font-family="'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#a7f3d0">• Verified Sign-Off Desks:</text>
       <text x="25" y="73" font-family="'Segoe UI', sans-serif" font-size="11" fill="#ecfdf5">CLI: nexus approve</text>
-      <text x="25" y="91" font-family="'Segoe UI', sans-serif" font-size="11" fill="#ecfdf5">Web: /portal/approve</text>
+      <text x="25" y="91" font-family="'Segoe UI', sans-serif" font-size="11" fill="#ecfdf5">Web: /portal/app/approve</text>
 
       <text x="15" y="118" font-family="'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#a7f3d0">• Cryptographic Controls:</text>
       <text x="25" y="136" font-family="'Segoe UI', sans-serif" font-size="11" fill="#ecfdf5">PBKDF2-HMAC-SHA256</text>
@@ -335,7 +336,7 @@
       <rect x="15" y="160" width="190" height="70" rx="6" fill="#022c22" stroke="#10b981" stroke-width="1"/>
       <text x="25" y="180" font-family="'Segoe UI', sans-serif" font-size="11" font-weight="700" fill="#34d399">N8 Report Generation:</text>
       <text x="25" y="198" font-family="'Segoe UI', sans-serif" font-size="10" fill="#ecfdf5">• Markdown • HTML • STIX 2.1</text>
-      <text x="25" y="214" font-family="'Segoe UI', sans-serif" font-size="10" fill="#ecfdf5">• DOCX • Encrypted ZIP</text>
+      <text x="25" y="214" font-family="'Segoe UI', sans-serif" font-size="10" fill="#ecfdf5">• DOCX • ZIP</text>
     </g>
   </g>
 
@@ -371,7 +372,7 @@
       <text x="15" y="44" font-family="'Segoe UI', sans-serif" font-size="11" fill="#e0f2fe">• Ingest Zeek, Suricata, EDR, SIEM, PCAP onto same case_id</text>
       <text x="15" y="62" font-family="'Segoe UI', sans-serif" font-size="11" fill="#e0f2fe">• Merges network &amp; cloud telemetry with host evidence</text>
       <text x="15" y="80" font-family="'Segoe UI', sans-serif" font-size="11" fill="#93c5fd">• Re-runs N4→N8 query cycle across merged telemetry</text>
-      <text x="15" y="98" font-family="'Segoe UI', sans-serif" font-size="10" fill="#94a3b8">36 registered parser classes across 7 forensic categories</text>
+      <text x="15" y="98" font-family="'Segoe UI', sans-serif" font-size="10" fill="#94a3b8">41 registered importers across 7 forensic categories</text>
     </g>
 
     <!-- Component 5C: Detection Engineering -->

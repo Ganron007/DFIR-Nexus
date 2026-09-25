@@ -243,8 +243,9 @@ Notes:
   part of `nexus mode3`.
 - Run state lives under `cases/<CASE>/analysis/mode3_runs/` (`<run_id>.json`,
   `<run_id>.jsonl`, `<run_id>.control.json`, `<run_id>.steering.jsonl`).
-- Tuning: `NEXUS_MODE3_FOLLOWUPS` (0–4, default 2), plus the shared loop knobs
-  `NEXUS_CONTEXT_LOOP_{ROUNDS,CALLS,SECONDS}`.
+- Tuning: `NEXUS_MODE3_FOLLOWUPS` (0–24, default 8),
+  `NEXUS_MODE3_{ROUNDS,CALLS,SECONDS}` (default 24/48/1800). The character
+  ceiling is `NEXUS_LLM_CONTEXT_WINDOW` × `NEXUS_CONTEXT_FILL_RATIO`.
 
 ## Ingest & Doctor
 

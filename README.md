@@ -10,8 +10,8 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/Tests-1041%2B%20Checks-success.svg" alt="Tests: 922+ checks">
-  <img src="https://img.shields.io/badge/MCP%20Tools-129%20Win%20%7C%20125%20Linux-blue.svg" alt="MCP Tools: 129 Win | 125 Linux">
+  <img src="https://img.shields.io/badge/Tests-1311%2B%20pytest-success.svg" alt="Tests: 1311+ pytest, 3 skipped">
+  <img src="https://img.shields.io/badge/MCP%20Tools-135%20Win%20%7C%20132%20Linux-blue.svg" alt="MCP Tools: 135 Win | 132 Linux">
   <img src="https://img.shields.io/badge/Status-v2%20in%20development-yellow.svg" alt="Status: v2 in development">
 </p>
 
@@ -43,7 +43,7 @@ See **[Docs/NEXUS-MODE.md](Docs/NEXUS-MODE.md)** for the full operator loop, and
 
 <p align="center">
   <a href="assets/dfir-nexus-architecture.svg">
-    <img src="assets/dfir-nexus-architecture.png" alt="DFIR-Nexus v2 Architecture &amp; Lifecycle: Stage 0 Collect → Register Custody → Examiner Cockpit &amp; N1-N8 Spine → HITL Gate → Storage &amp; Exporters" width="1000">
+    <img src="assets/dfir-nexus-architecture.svg" alt="DFIR-Nexus v2 Architecture &amp; Lifecycle: Stage 0 Collect → Register Custody → Examiner Cockpit &amp; N1-N8 Spine → HITL Gate → Storage &amp; Exporters" width="1000">
   </a>
 </p>
 
@@ -71,11 +71,19 @@ DFIR-Nexus features a web-based **Examiner Portal** (`nexus portal` on `http://1
 
 | Desk | Route | Capability |
 | :--- | :--- | :--- |
+| **Case Setup** | `/portal/app/case-setup` | Create a case and choose the investigation mode |
 | 🎯 **Case Steer** | `/portal/app/steer` | Active case switching, intake, mode badge (mode is fixed at case creation), SSE chat streaming |
+| 📄 **Briefing** | `/portal/app/briefing` | Question, run options, and the Mode 1/2/3 run panel |
 | 🔍 **Explore** | `/portal/app/explore` | Faceted DSL search, type-aware hit columns, host facets, histogram, bookmarking |
 | ⏱️ **Timeline** | `/portal/app/timeline` | Per-family lanes, type-aware event panels, brush-zoom |
+| 🤖 **Agent Run** | `/portal/app/agent-run` | Mode 3 plan, live run, pause / steer / stop, verdict board, DRAFT staging |
+| 🛠️ **Workbench** | `/portal/app/workbench` | Bookmark-to-DRAFT promotion |
 | 🗃️ **Evidence** | `/portal/app/evidence` | Evidence registry, filesystem picker, parser-lane ledger |
-| � **Findings** | `/portal/app/findings` | Finding cards with status/confidence badges, HMAC approval flow |
+| 📋 **Findings** | `/portal/app/findings` | Finding cards with status/confidence badges |
+| ✅ **Approve** | `/portal/app/approve` | HMAC approval of DRAFT findings |
+| 📊 **Report** | `/portal/app/report` | Report generation from APPROVED findings |
+| 🔗 **Entities** | `/portal/app/entities` | Entity pivots across families |
+| 🔏 **Transparency** | `/portal/app/transparency` | Audit-chain verification |
 | 📋 **IOCs** | `/portal/app/iocs` | IOC list extracted from findings |
 | ✅ **TODOs** | `/portal/app/todos` | Investigation TODO tracking |
 | 📊 **Overview** | `/portal/app/` | In-cockpit dashboard with health strip |
@@ -89,7 +97,7 @@ DFIR-Nexus uses a dual-layer storage model separating immutable forensic state f
 | Layer | Technology | Role & Behavior |
 | :--- | :--- | :--- |
 | **Forensic State & Ledger** | **SQLite (`cases.db`)** | **Permanent Single Source of Truth (SSoT)**. Stores case metadata, registered evidence SHA-256 hashes, finding states (`DRAFT` vs `APPROVED`), timeline events, investigator TODOs, and the tamper-evident cryptographic verification ledger (`transparency.jsonl`). Always local, zero-dependency, and offline-first. |
-| **Case Search Backend** | **Elasticsearch (`nexus-es` / N3 Index)** | **High-Scale Query Acceleration Engine**. Indexes millions of raw parsed log lines from `extractions/` (EVTX, MFT, Prefetch, Zeek) for rapid N4 needle search. Does *not* store findings or replace SQLite. If Elasticsearch or Docker is not running, Nexus automatically falls back to local disk CSV/JSONL parsing with zero disruption. |
+| **Case Search Backend** | **Elasticsearch (`nexus-es` / N3 Index)** | **High-Scale Query Acceleration Engine**. Indexes parsed log lines from `extractions/` for N4 needle search. Does *not* store findings or replace SQLite. Mode 1 search can read local CSV/JSONL when Elasticsearch is down. Mode 2 and Mode 3 interpretation require the Elasticsearch digest and stop with an explicit reason when it is not the backend. |
 
 ---
 
@@ -103,7 +111,7 @@ DFIR-Nexus uses a dual-layer storage model separating immutable forensic state f
 | **Threat Intel** | Integrated lookups across 10 TI providers (ThreatFox, MalwareBazaar, URLhaus, Yaraify, MISP, OTX, Shodan, VT, AbuseIPDB, and CrowdStrike). |
 | **Semantic RAG** | Search over **22,000+ IR records** (SANS posters, Sigma, LOLBAS, GTFOBins, and KAPE targets) using a local ChromaDB collection. Bring your own index, download the prebuilt release, or rebuild from your own sources; embedding model is operator-configurable (`NEXUS_RAG_MODEL`). |
 | **Live IR pack (Stage 0)** | Authenticated **SSH / WinRM / local** collection — **CLI only** (portable, no UI). Ship spine (`--profile disk`): Windows **KAPE** `!SANS_Triage`/`!EZParser` + Sysinternals + PersistenceSniper + wevtutil + Velociraptor `IRTriage`; Linux **POSIX volatile + journalctl + UAC `ir_triage` + Velociraptor `LinuxIRTriage`**. Extra *collectors* (Kansa, DFIR-ORC, WinPmem/AVML, UAC `full`) stay on `--profile full` and **skip with a reason** if missing or broken. **Hayabusa / Suzaku / Chainsaw are N2 parsers**, not Stage 0. Live Velociraptor needs examiner `.env` MCP URL + key — [SETUP.md §2.6](Docs/SETUP.md#26-live-velociraptor-hunts-every-examiner-host). |
-| **Three Nexus Modes** | Progressive investigation models driving the same N1–N8 spine, same `case_id`, and same HMAC lock:<br>• **Mode 1 (Examiner-Led):** Deterministic tool execution + code-based N4 query pack + LLM scribe & natural-language query assistant + manual examiner cryptographic sign-off.<br>• **Mode 2 (LLM-Guided):** Same deterministic lane, then the LLM builds case context (RAG + playbooks + KB + threat intel + deterministic entity inventory) and stages DRAFT findings with an executive verdict and coverage gaps. **Steering is live evidence retrieval** — the LLM plans N4 queries that push down to the per-case ES index (field filters + ES-native aggregations; CSV fallback identical) and answers with cited rows, per-stage timings and audit ids. List/IOC questions take a deterministic fast path (~2 ms plan).<br>• **Mode 3 (Supervised Agentic):** A LangGraph supervisor runs scoped **read-only** agent roles (director → evidence / correlation / pattern workers → verifier / refuter → synthesis) over the same case-gated evidence tools, with KB-cited skill contracts, bounded budgets, follow-up corroboration and a no-new-evidence convergence stop. The examiner owns plan approval, live steering, pause / resume / **stop** and DRAFT staging (`nexus mode3 stage`); agents never stage or approve on their own. Surfaces: the **Agent Run** page (`/portal/app/agent-run`, live SSE event stream, budget meters, verdict board, lineage) and `nexus mode3 plan|run|status|steer|pause|resume|stop|findings|stage|export`.<br>• **Examiner Cockpit:** React SPA at `/portal/app/*` — Explore, Agent Run, Timeline, Steer Chat, Workbench, Findings, Approval, Evidence, IOCs, TODOs. |
+| **Three Nexus Modes** | Progressive investigation models driving the same N1–N8 spine, same `case_id`, and same HMAC lock:<br>• **Mode 1 (Examiner-Led):** Deterministic tool execution + code-based N4 query pack + LLM scribe & natural-language query assistant + manual examiner cryptographic sign-off.<br>• **Mode 2 (LLM-Guided):** Same deterministic lane, then the LLM builds case context (RAG + playbooks + KB + threat intel + deterministic entity inventory) and stages DRAFT findings with an executive verdict and coverage gaps. **Steering is live evidence retrieval** — the LLM plans N4 queries that push down to the per-case ES index (field filters + ES-native aggregations) and answers with cited rows, per-stage timings and audit ids. List/IOC questions take a deterministic fast path (~2 ms plan). Interpretation does not run on a CSV fallback.<br>• **Mode 3 (Supervised Agentic):** A LangGraph supervisor runs scoped **read-only** agent roles (director → evidence / correlation / pattern workers → verifier / refuter → synthesis) over the same case-gated evidence tools. Each worker is given the KB skill procedures that match the question (steps, queries, look-fors, caveats, citations) and the prior agents' notes, up to the model context window (`NEXUS_LLM_CONTEXT_WINDOW` × fill ratio, default 1,000,000 × 0.7). Follow-up corroboration continues while new evidence appears (`NEXUS_MODE3_FOLLOWUPS`, default 8, up to 24). The run stops when evidence stops changing, or when the examiner pauses or stops it. Per-agent tool rounds default to 24 rounds / 48 calls / 30 minutes and are env-tunable; they are not a few-thousand-character cap. The examiner owns plan approval, live steering, pause / resume / **stop** and DRAFT staging (`nexus mode3 stage`); agents never stage or approve on their own. Surfaces: the **Agent Run** page (`/portal/app/agent-run`, live SSE event stream, budget meters, verdict board, lineage) and `nexus mode3 plan|run|status|steer|pause|resume|stop|findings|stage|export`.<br>• **Examiner Cockpit:** React SPA at `/portal/app/*` — Case Setup, Overview, Briefing, Explore, Timeline, Steer Chat, Agent Run, Workbench, Findings, Approval, Report, Evidence, Entities, Transparency, IOCs, TODOs. |
 
 ---
 
@@ -183,10 +191,10 @@ Detailed guidelines are grouped in the `Docs/` directory:
 
 ## Verification & Testing
 
-DFIR-Nexus includes a rigorous testing suite covering unit, script, functional wiring, and blocker regression tests (**1041+ checks**: pytest + script suites + the E2E functional audit).
+DFIR-Nexus includes a rigorous testing suite covering unit, script, functional wiring, and blocker regression tests. The last full pytest run recorded **1311 passed / 3 skipped**, plus the script suites and the E2E functional audit. Mode 3 budget tests added after that run are not included in that count.
 
 ```bash
-# 1. Run the pytest suite (922 tests, including Mode 1/2/3 + audit regression tests)
+# 1. Run the pytest suite (Mode 1/2/3 + audit regression tests)
 pytest
 
 # 2. Run the individual script-based test suites

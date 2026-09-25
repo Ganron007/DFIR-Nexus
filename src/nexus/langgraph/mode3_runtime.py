@@ -37,6 +37,7 @@ from uuid import uuid4
 
 from nexus.audit import AuditWriter
 from nexus.langgraph.context_loop import LoopBudget, _call_model, run_context_loop
+from nexus.langgraph.prompt_budget import budget_chars, case_window
 
 log = logging.getLogger(__name__)
 
@@ -57,6 +58,34 @@ def _env_float(name: str, default: float, *, low: float, high: float) -> float:
     except (TypeError, ValueError):
         value = default
     return max(low, min(value, high))
+
+
+def mode3_loop_budget(case_dir: Path | None = None) -> LoopBudget:
+    """Per-agent tool budget for a Mode 3 investigation.
+
+    Rounds, calls and seconds are env-tunable and large enough for a
+    cross-family corroboration pass. The character ceiling is the case
+    context window (``NEXUS_LLM_CONTEXT_WINDOW`` × fill ratio), not a
+    fixed few-thousand-character slice. Convergence and examiner stop
+    end the run; this budget must not.
+    """
+    window = case_window(case_dir) if case_dir is not None else None
+    return LoopBudget(
+        rounds=_env_int("NEXUS_MODE3_ROUNDS", 24, low=1, high=80),
+        seconds=_env_float("NEXUS_MODE3_SECONDS", 1800.0, low=30.0, high=7200.0),
+        calls=_env_int("NEXUS_MODE3_CALLS", 48, low=1, high=200),
+        call_chars=budget_chars(window),
+    )
+
+
+def _pack(text: str, case_dir: Path | None = None) -> str:
+    """Keep investigation text up to the context-window budget."""
+    window = case_window(case_dir) if case_dir is not None else None
+    limit = budget_chars(window)
+    body = text or ""
+    if len(body) <= limit:
+        return body
+    return body[:limit] + "\n…[truncated at context-window budget]"
 
 
 def _now() -> str:
@@ -282,16 +311,13 @@ class AgentRole:
     description: str
     tools: tuple[str, ...]
     system_prompt: str
-    max_rounds: int = 4
-    max_calls: int = 8
-    max_seconds: float = 240.0
+    max_rounds: int = 24
+    max_calls: int = 48
+    max_seconds: float = 1800.0
 
     def budget(self) -> LoopBudget:
-        return LoopBudget(
-            rounds=self.max_rounds,
-            seconds=self.max_seconds,
-            calls=self.max_calls,
-        )
+        """Shared investigation budget. The context window is the character cap."""
+        return mode3_loop_budget()
 
 
 ROLES: dict[str, AgentRole] = {
@@ -313,9 +339,6 @@ ROLES: dict[str, AgentRole] = {
             "Do not invent evidence; a zero-hit search is not negative evidence "
             "until run_record shows the parser ran."
         ),
-        max_rounds=5,
-        max_calls=12,
-        max_seconds=300.0,
     ),
     "correlation": AgentRole(
         name="correlation",
@@ -328,9 +351,6 @@ ROLES: dict[str, AgentRole] = {
             "it. Return JSON with keys: corroborated_entities, chains, "
             "unexplained, next_questions, coverage."
         ),
-        max_rounds=4,
-        max_calls=10,
-        max_seconds=300.0,
     ),
     "pattern": AgentRole(
         name="pattern",
@@ -344,9 +364,6 @@ ROLES: dict[str, AgentRole] = {
             "caveats, next_questions, coverage. Do not force a pattern when the "
             "required evidence is missing."
         ),
-        max_rounds=4,
-        max_calls=10,
-        max_seconds=300.0,
     ),
     "verifier": AgentRole(
         name="verifier",
@@ -361,9 +378,6 @@ ROLES: dict[str, AgentRole] = {
             "\"confirmed|inferred|refuted\",\"basis\":\"...\","
             "\"audit_ids\":[\"...\"]}],\"coverage\":{...}}"
         ),
-        max_rounds=5,
-        max_calls=14,
-        max_seconds=360.0,
     ),
     "synthesis": AgentRole(
         name="synthesis",
@@ -380,9 +394,6 @@ ROLES: dict[str, AgentRole] = {
             "\"itm_objects\":\"...\"}],\"gaps\":[\"...\"],"
             "\"coverage\":{...}}. Never approve anything."
         ),
-        max_rounds=4,
-        max_calls=10,
-        max_seconds=300.0,
     ),
     "reporter": AgentRole(
         name="reporter",
@@ -395,9 +406,6 @@ ROLES: dict[str, AgentRole] = {
             "\"sections\":[{\"title\":\"...\",\"body\":\"...\"}],"
             "\"gaps\":[\"...\"]}."
         ),
-        max_rounds=3,
-        max_calls=6,
-        max_seconds=180.0,
     ),
 }
 
@@ -836,7 +844,7 @@ def _format_final_answer(model: Any, role_name: str, reply: str) -> dict[str, An
             "role": "user",
             "content": (
                 "Target JSON shape:\n" + schema
-                + "\n\nAgent answer to restructure:\n" + str(reply)[:6000]
+                + "\n\nAgent answer to restructure:\n" + _pack(str(reply))
             ),
         },
     ]
@@ -874,7 +882,7 @@ def _fallback_result(order: WorkOrder, reason: str) -> AgentResult:
     )
 
 
-def _skill_procedure_block(order: WorkOrder, cap_steps: int = 6) -> str:
+def _skill_procedure_block(order: WorkOrder) -> str:
     """Render the KB-cited procedures attached to a work order (M3.2).
 
     Steps are copied from the KB skill, never invented; each block carries the
@@ -885,31 +893,31 @@ def _skill_procedure_block(order: WorkOrder, cap_steps: int = 6) -> str:
         return ""
     by_id = _skill_lookup()
     lines: list[str] = []
-    for ref in order.skill_refs[:4]:
+    for ref in order.skill_refs:
         skill_id = str(ref.get("skill") or "")
         skill = by_id.get(skill_id)
         if not skill:
             continue
-        cites = ", ".join(str(c) for c in (ref.get("citations") or [])[:3]) or "none"
+        cites = ", ".join(str(c) for c in (ref.get("citations") or [])) or "none"
         lines.append(
-            f"- {skill_id} v{ref.get('version') or '?'} (KB {cites}): "
-            f"{_short(ref.get('title') or skill.get('title') or '', 120)}"
+            f"- {skill_id} v{ref.get('version') or '?'} "
+            f"role={ref.get('role') or ''} (KB {cites}): "
+            f"{ref.get('title') or skill.get('title') or ''}"
         )
-        for step in (skill.get("steps") or [])[:cap_steps]:
+        for step in (skill.get("steps") or []):
             if not isinstance(step, dict):
                 continue
-            name = _short(step.get("name") or "", 60)
-            query = _short(step.get("query") or "", 160)
-            look = _short(step.get("look_for") or "", 120)
+            name = str(step.get("name") or "")
+            query = str(step.get("query") or "")
+            look = str(step.get("look_for") or "")
             lines.append(
                 f"    * {name}: {query}"
                 + (f" | look_for: {look}" if look else "")
             )
-        caveats = [str(c) for c in (skill.get("caveats") or [])][:2]
-        negative = _short(skill.get("negative") or "", 140)
+        caveats = [str(c) for c in (skill.get("caveats") or [])]
+        negative = str(skill.get("negative") or "")
         if caveats:
-            lines.append("    ! caveats: "
-                         + "; ".join(_short(c, 100) for c in caveats))
+            lines.append("    ! caveats: " + "; ".join(caveats))
         if negative:
             lines.append(f"    ! negative: {negative}")
     if not lines:
@@ -948,12 +956,14 @@ def run_work_order(
     turn_id = f"turn-{uuid4().hex[:10]}"
     started = time.monotonic()
 
-    work_context = json.dumps(context or {}, default=str)[:6000]
-    skill_block = _skill_procedure_block(order)
+    work_context = _pack(json.dumps(context or {}, default=str), case_dir)
+    skill_block = _pack(_skill_procedure_block(order), case_dir)
+    shared = mode3_loop_budget(case_dir)
     budget = LoopBudget(
-        rounds=order.max_rounds or role.max_rounds,
-        seconds=order.max_seconds or role.max_seconds,
-        calls=order.max_calls or role.max_calls,
+        rounds=order.max_rounds or shared.rounds,
+        seconds=order.max_seconds or shared.seconds,
+        calls=order.max_calls or shared.calls,
+        call_chars=shared.call_chars,
     )
     question = (
         f"WORK ORDER {order.order_id}\n"
@@ -1132,7 +1142,7 @@ def plan_work_orders(
             why=f"Highest-value family with {rows} indexed rows",
             priority_tools=("es_mappings", "es_search", "es_aggregate", "run_record"),
             acceptance="evidence-linked notes with audit_ids and explicit coverage",
-            skill_refs=_retrieve_skill_refs([family], keywords, limit=3),
+            skill_refs=_retrieve_skill_refs([family], keywords, limit=8),
         ))
     orders.append(WorkOrder(
         order_id=WorkOrder.new_id(),
@@ -1142,7 +1152,7 @@ def plan_work_orders(
         why="Cross-family corroboration before pattern matching",
         priority_tools=("es_search", "es_aggregate", "run_record"),
         acceptance="corroborated entities/chains with audit_ids or explicit none",
-        skill_refs=_retrieve_skill_refs(all_families, keywords, limit=4),
+        skill_refs=_retrieve_skill_refs(all_families, keywords, limit=8),
     ))
     orders.append(WorkOrder(
         order_id=WorkOrder.new_id(),
@@ -1152,7 +1162,7 @@ def plan_work_orders(
         why="Framework-grounded pattern check after correlation",
         priority_tools=("rag_search", "kb_query", "es_search", "es_aggregate"),
         acceptance="patterns with required evidence rows, or explicit no-match",
-        skill_refs=_retrieve_skill_refs(all_families, keywords, limit=4),
+        skill_refs=_retrieve_skill_refs(all_families, keywords, limit=8),
     ))
 
     # 4j.16 — examiner accept/reject feeds the next round: approved findings
@@ -1197,7 +1207,7 @@ def plan_work_orders(
             acceptance=(
                 "per-finding disposition: deepened with new evidence, kept "
                 "as-is, or explicitly dropped"),
-            skill_refs=_retrieve_skill_refs(all_families, keywords, limit=4),
+            skill_refs=_retrieve_skill_refs(all_families, keywords, limit=8),
         )
         orders = orders[: max(1, max_orders - 1)] + [feedback_order]
 
@@ -1273,7 +1283,7 @@ def run_mode3(
         "max_orders": max_orders,
         "followup_rounds": 0,
         "followups_limit": _env_int(
-            "NEXUS_MODE3_FOLLOWUPS", 2, low=0, high=4),
+            "NEXUS_MODE3_FOLLOWUPS", 8, low=0, high=24),
         "evidence_signature": None,
         "converged_no_new_evidence": False,
         "examiner_feedback": {},
@@ -1295,7 +1305,7 @@ def run_mode3(
                 state.pop("completed_at", None)
                 state.setdefault("followup_rounds", 0)
                 state.setdefault("followups_limit", _env_int(
-                    "NEXUS_MODE3_FOLLOWUPS", 2, low=0, high=4))
+                    "NEXUS_MODE3_FOLLOWUPS", 8, low=0, high=24))
                 state.setdefault("evidence_signature", None)
                 state.setdefault("converged_no_new_evidence", False)
                 state.setdefault("examiner_feedback", {})
@@ -1422,7 +1432,7 @@ def run_mode3(
             order_id=WorkOrder.new_id(),
             role="verifier",
             task=("Verify or refute these candidate findings with tool calls:\n"
-                  + json.dumps(candidates, default=str)[:8000]),
+                  + _pack(json.dumps(candidates, default=str), case_dir)),
             why="Adversarial refutation before synthesis",
             acceptance="per-candidate class confirmed/inferred/refuted with basis",
         )
@@ -1567,12 +1577,12 @@ def run_mode3(
                 role="synthesis",
                 task=("Build the narrative and final DRAFT candidates from the "
                       "verified evidence:\n"
-                      + json.dumps({
+                      + _pack(json.dumps({
                           "question": question,
                           "verdicts": state.get("verdicts") or [],
                           "candidates": candidates,
                           "examiner_feedback": state.get("examiner_feedback") or {},
-                      }, default=str)[:9000]),
+                      }, default=str), case_dir)),
                 why="Final narrative + DRAFT candidate findings",
                 acceptance="narrative + findings with audit_ids; no approvals",
             )
