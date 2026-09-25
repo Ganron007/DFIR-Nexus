@@ -23,9 +23,11 @@ from uuid import uuid4
 
 from nexus.langgraph.mode3_runtime import (
     EventSink,
-    append_steering,
+    WorkOrder,
+    _question_keywords,
+    _retrieve_skill_refs,
+    _skill_procedure_block,
     new_event,
-    read_steering,
     stage_run_candidates,
 )
 from nexus.langgraph.prompt_budget import budget_chars, case_window
@@ -121,6 +123,40 @@ def latest_run_id(case_dir: Path) -> str:
         return ""
     files = sorted(directory.glob("M4-*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
     return files[0].stem if files else ""
+
+
+def _steering_path(case_dir: Path, run_id: str) -> Path:
+    return _run_dir(case_dir) / f"{run_id}.steering.jsonl"
+
+
+def append_mode4_steering(case_dir: Path, run_id: str, text: str) -> dict[str, Any]:
+    """Queue an examiner directive next to the Mode 4 run, not a Mode 3 run."""
+    entry = {"ts": _now(), "text": str(text or "")[:600]}
+    path = _steering_path(case_dir, run_id)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(entry) + "\n")
+    return entry
+
+
+def read_mode4_steering(case_dir: Path, run_id: str, limit: int = 50) -> list[dict[str, Any]]:
+    path = _steering_path(case_dir, run_id)
+    if not path.is_file():
+        return []
+    out: list[dict[str, Any]] = []
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                item = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(item, dict):
+                out.append(item)
+    except OSError:
+        return []
+    return out[-limit:]
 
 
 def read_run_events(case_dir: Path, run_id: str, limit: int = 5000) -> list[dict[str, Any]]:
@@ -416,9 +452,23 @@ def _seat_with_model(
     except KeyError:
         role = role_for("evidence")
     family = str(spawn.get("family") or "")
+    objective = str(spawn.get("question") or "")
+    skill_refs = _retrieve_skill_refs(
+        [family] if family else [],
+        _question_keywords(objective),
+        limit=8,
+    )
+    skill_block = _skill_procedure_block(WorkOrder(
+        order_id="seat",
+        role=role_name if role_name in _SEATS else "evidence",
+        task=objective or "investigate",
+        family=family,
+        skill_refs=skill_refs,
+    ))
     question = (
-        f"You are the {role_name} seat. Examiner objective: {spawn.get('question') or ''}\n"
+        f"You are the {role_name} seat. Examiner objective: {objective}\n"
         f"Family: {family or '(cross-family)'}. Why you were spawned: {spawn.get('why') or ''}\n"
+        f"{skill_block}\n"
         f"Board so far:\n{board_digest}\n\n"
         'Return JSON {"claims":[{"entity_type":"...","entity_value":"...",'
         '"claim_kind":"presence|absence|attribution|time_order","polarity":"affirm|deny",'
@@ -574,28 +624,16 @@ def run_mode4(
             return {"status": halt, "superstep": step, "spawns": []}
         if step > max_steps or calls_used["n"] >= max_calls:
             return {"status": "capped", "superstep": step, "spawns": []}
-        steering = read_steering(case_dir, run_id)
+        steering = read_mode4_steering(case_dir, run_id)
         seen = int(state.get("steering_seen") or 0)
+        fresh_steer = ""
         if len(steering) > seen:
-            fresh = steering[seen:]
-            spawns = [
-                {
-                    "role": "correlation",
-                    "family": "",
-                    "why": f"examiner steer: {str(line.get('text') or '')[:80]}",
-                    "question": str(line.get("text") or question),
-                }
-                for line in fresh
-            ][:max_agents]
+            fresh_steer = str(steering[-1].get("text") or "")
             sink.emit(new_event(
                 run_id, "supervisor.steer", actor="supervisor",
-                detail=f"{len(fresh)} steer line(s)",
-                data={"agents": len(spawns)},
+                detail=fresh_steer[:160],
+                data={"lines": len(steering) - seen},
             ))
-            return {
-                "spawns": spawns, "superstep": step, "status": "running",
-                "steering_seen": len(steering),
-            }
         disputes = state.get("disputes") or []
         used = int(state.get("redispatch_used") or 0)
         if disputes and used < max_redispatch and int(state.get("quiet") or 0) < settle_k:
@@ -618,13 +656,14 @@ def run_mode4(
                 data={"agents": len(spawns)},
             ))
             return {"spawns": spawns, "superstep": step, "status": "running", "redispatch_used": used + 1}
-        if step == 1 or not state.get("board"):
+        if step == 1 or not state.get("board") or fresh_steer:
+            focus = f"{question}\nExaminer steer: {fresh_steer}" if fresh_steer else question
             spawns: list[dict[str, Any]] = []
             if model is not None:
                 spawns = _supervisor_with_model(
                     model,
                     case_dir=case_dir,
-                    question=question,
+                    question=focus,
                     families=indexed,
                     board_digest=json.dumps(state.get("board") or [], default=str),
                     steering="\n".join(
@@ -634,14 +673,17 @@ def run_mode4(
                 )
             supervisor_mode = "model" if spawns else "deterministic"
             if not spawns:
-                spawns = plan_spawns(indexed, max_agents=max_agents, question=question)
+                spawns = plan_spawns(indexed, max_agents=max_agents, question=focus)
             sink.emit(new_event(
                 run_id, "supervisor.spawn", actor="supervisor",
                 detail=f"{len(spawns)} seats ({supervisor_mode})",
                 data={"agents": [s["role"] for s in spawns],
                       "chosen_by": supervisor_mode},
             ))
-            return {"spawns": spawns, "superstep": step, "status": "running"}
+            return {
+                "spawns": spawns, "superstep": step, "status": "running",
+                "steering_seen": len(steering),
+            }
         return {"status": "settled", "superstep": step, "spawns": []}
 
     def fan(state: Mode4State) -> Any:
@@ -652,7 +694,7 @@ def run_mode4(
             return "join"
         board = state.get("board") or []
         digest = json.dumps(board, default=str)
-        steering = read_steering(case_dir, run_id)
+        steering = read_mode4_steering(case_dir, run_id)
         if steering:
             steer_text = "\n".join(
                 f"- {str(line.get('text') or '')}" for line in steering[-3:]
@@ -847,7 +889,7 @@ def run_mode4(
     record["narrative"] = (
         f"{len(candidates)} settled claim(s); {len(disputes)} unresolved dispute(s)."
     )
-    steering = read_steering(case_dir, run_id)
+    steering = read_mode4_steering(case_dir, run_id)
     if steering:
         record["steering"] = steering
     _persist(case_dir, run_id, record)
@@ -906,4 +948,3 @@ def stage_mode4(case_dir: Path, run_id: str) -> dict[str, Any]:
 
 # Re-export stop helper name used by the CLI. The Mode 3 sidecar is not used.
 request_stop = request_stop_run
-append_mode4_steering = append_steering

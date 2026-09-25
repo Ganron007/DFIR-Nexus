@@ -158,6 +158,18 @@ def test_plan_spawns_reserves_correlation_and_pattern():
     assert roles[-2:] == ["correlation", "pattern"]
 
 
+def test_steering_is_stored_with_the_mode4_run(tmp_path):
+    from nexus.langgraph.mode4_runtime import append_mode4_steering, read_mode4_steering
+
+    case = _case(tmp_path)
+    record = run_mode4(case, "q", families=[("evtx", 1)], es_ok=True)
+    append_mode4_steering(case, record["run_id"], "check the proxy log")
+    rows = read_mode4_steering(case, record["run_id"])
+    assert rows[-1]["text"] == "check the proxy log"
+    assert (case / "analysis" / "mode4_runs" / f"{record['run_id']}.steering.jsonl").is_file()
+    assert not (case / "analysis" / "mode3_runs" / f"{record['run_id']}.steering.jsonl").exists()
+
+
 def test_run_record_roundtrip(tmp_path):
     record = run_mode4(_case(tmp_path), "q", families=[("evtx", 1)], es_ok=True)
     path = tmp_path / "CASE-M4" / "analysis" / "mode4_runs" / f"{record['run_id']}.json"
@@ -219,10 +231,9 @@ def test_one_audit_writer_per_run(tmp_path, monkeypatch):
 
 def test_steering_spawns_a_seat(tmp_path):
     from nexus.langgraph import mode4_runtime as m4
-    from nexus.langgraph.mode3_runtime import append_steering
 
     case = _case(tmp_path)
-    append_steering(case, "M4-steer", "chase host WS01 before settling")
+    m4.append_mode4_steering(case, "M4-steer", "chase host WS01 before settling")
     seen = []
 
     def seat(spawn, _board, step):
