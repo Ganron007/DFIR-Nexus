@@ -596,6 +596,7 @@ def run_context_loop(
     budget: LoopBudget | None = None,
     audit: AuditWriter | None = None,
     terminal_keys: tuple[str, ...] = (),
+    allowed_tools: tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
     """Run one bounded, tool-driving LLM turn.
 
@@ -639,11 +640,19 @@ def run_context_loop(
         if history_block:
             history_block = "Prior conversation (context only):\n" + history_block
 
+    allow_line = ""
+    if allowed_tools:
+        allow_line = (
+            "\nROLE TOOL ALLOWLIST: "
+            + ", ".join(allowed_tools)
+            + ". Any other tool is rejected by the runtime.\n"
+        )
     base_system = (
         f"ACTIVE CASE: {case_id}\n"
         "The runtime injects case_id into every evidence tool; you do NOT need "
-        "to supply it and you must never ask the examiner for it.\n\n"
-        + (system_prompt.strip() or DEFAULT_SYSTEM)
+        "to supply it and you must never ask the examiner for it.\n"
+        + allow_line
+        + "\n" + (system_prompt.strip() or DEFAULT_SYSTEM)
         + "\n\n" + tool_contracts_block(include_external=False)
     )
     protocol = (
@@ -808,6 +817,17 @@ def run_context_loop(
                 })
                 _emit({"event": "tool_result", "tool": name or "unknown",
                        "error": problem})
+                continue
+            if allowed_tools and name not in allowed_tools:
+                message = (
+                    f"tool {name!r} is outside this role's allowlist "
+                    f"({', '.join(allowed_tools)})"
+                )
+                observations.append({
+                    "tool": name, "why": why, "audit_id": "",
+                    "summary": {"error": message},
+                })
+                _emit({"event": "tool_result", "tool": name, "error": message})
                 continue
             payload = dict(clean_args)
             if name in ("es_mappings", "es_search", "es_aggregate", "sample_rows", "run_record"):
