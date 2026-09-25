@@ -73,10 +73,10 @@ DFIR-Nexus features a web-based **Examiner Portal** (`nexus portal` on `http://1
 | :--- | :--- | :--- |
 | **Case Setup** | `/portal/app/case-setup` | Create a case and choose the investigation mode |
 | 🎯 **Case Steer** | `/portal/app/steer` | Active case switching, intake, mode badge (mode is fixed at case creation), SSE chat streaming |
-| 📄 **Briefing** | `/portal/app/briefing` | Question, run options, and the Mode 1/2/3 run panel |
+| 📄 **Briefing** | `/portal/app/briefing` | Question, run options, and the LLM run panel (Mode 1) |
 | 🔍 **Explore** | `/portal/app/explore` | Faceted DSL search, type-aware hit columns, host facets, histogram, bookmarking |
 | ⏱️ **Timeline** | `/portal/app/timeline` | Per-family lanes, type-aware event panels, brush-zoom |
-| 🤖 **Agent Run** | `/portal/app/agent-run` | Mode 3 plan, live run, pause / steer / stop, verdict board, DRAFT staging |
+| 🤖 **Agent Run** | `/portal/app/agent-run` | Mode-aware: multi-role lanes (plan → run → verify → stage) and the multi-agent Investigation Board |
 | 🛠️ **Workbench** | `/portal/app/workbench` | Bookmark-to-DRAFT promotion |
 | 🗃️ **Evidence** | `/portal/app/evidence` | Evidence registry, filesystem picker, parser-lane ledger |
 | 📋 **Findings** | `/portal/app/findings` | Finding cards with status/confidence badges |
@@ -97,7 +97,7 @@ DFIR-Nexus uses a dual-layer storage model separating immutable forensic state f
 | Layer | Technology | Role & Behavior |
 | :--- | :--- | :--- |
 | **Forensic State & Ledger** | **SQLite (`cases.db`)** | **Permanent Single Source of Truth (SSoT)**. Stores case metadata, registered evidence SHA-256 hashes, finding states (`DRAFT` vs `APPROVED`), timeline events, investigator TODOs, and the tamper-evident cryptographic verification ledger (`transparency.jsonl`). Always local, zero-dependency, and offline-first. |
-| **Case Search Backend** | **Elasticsearch (`nexus-es` / N3 Index)** | **High-Scale Query Acceleration Engine**. Indexes parsed log lines from `extractions/` for N4 needle search. Does *not* store findings or replace SQLite. Mode 1 search can read local CSV/JSONL when Elasticsearch is down. Mode 2 and Mode 3 interpretation require the Elasticsearch digest and stop with an explicit reason when it is not the backend. |
+| **Case Search Backend** | **Elasticsearch (`nexus-es` / N3 Index)** | **High-Scale Query Acceleration Engine**. Indexes parsed log lines from `extractions/` for N4 needle search. Does *not* store findings or replace SQLite. The Mode 1 lane can produce CSVs with Elasticsearch down (examiner surfaces still work); interpretation and the Modes 2/3 agentic depths require the Elasticsearch digest and stop with an explicit reason when it is not the backend. |
 
 ---
 

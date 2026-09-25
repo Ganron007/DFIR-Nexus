@@ -110,20 +110,20 @@ NEXUS_LLM_REASONING=high                 # optional reasoning passthrough
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `NEXUS_KB_DIR` | unset | Path to your local KB (the folder containing `kb/kb.py`, e.g. `G:\doc_extract`). Enables `kb_search`/`kb_read` and the Mode 2 KB context block. |
+| `NEXUS_KB_DIR` | unset | Path to your local KB (the folder containing `kb/kb.py`, e.g. `G:\doc_extract`). Enables `kb_search`/`kb_read` and the LLM-mode KB context block. |
 | `NEXUS_RAG_DEVICE` | `auto` | Embedding device: `cpu` \| `cuda` \| `cuda:0` — `auto` picks CUDA when the installed torch build has it (the log line reports the device). |
 | `NEXUS_LLM_TIMEOUT` | `180` | Seconds per LLM request; raise it (e.g. `600`) for slow long-context providers — a stalled provider can never hang a turn. |
 | `NEXUS_MODE2_TURN_TIMEOUT` | `900` | Outer steering-turn budget (seconds); must stay above `NEXUS_CONTEXT_LOOP_SECONDS` (default 360). The bounded tool loop returns a partial result before this ceiling. |
-| `NEXUS_MODE3_FOLLOWUPS` | `8` | Max follow-up corroboration rounds the Mode 3 supervisor may add (0–24). Each round is a new work order for inferred or refuted candidates. The run stops early on `converged_no_new_evidence`, and immediately on examiner stop. |
+| `NEXUS_MODE3_FOLLOWUPS` | `8` | Max follow-up corroboration rounds the Mode 2 (multi-role) supervisor may add (0–24). Each round is a new work order for inferred or refuted candidates. The run stops early on `converged_no_new_evidence`, and immediately on examiner stop. |
 | `NEXUS_MODE3_{ROUNDS,CALLS,SECONDS}` | `24`/`48`/`1800` | Per-agent tool budget inside one Mode 2 (multi-role) work order (highs 80 / 200 / 7200). The character ceiling is the context window, not a fixed slice. |
 | `NEXUS_MODE4_{MAX_AGENTS,MAX_SUPERSTEPS,MAX_CALLS}` | `4`/`6`/`120` | Mode 3 (multi-agent) run governor (highs 8 / 12 / 400). A hit cap ends the superstep with an honest partial. |
 | `NEXUS_MODE4_{SETTLE_SUPERSTEPS,MAX_REDISPATCH}` | `2`/`2` | Quiet supersteps before the join settles; bounded re-dispatch passes per dispute. |
 | `NEXUS_MODE4_{ROUNDS,CALLS,SECONDS}` | `24`/`48`/`1800` | Per-seat tool budget inside one superstep (same shape as Mode 2). |
-| `NEXUS_CONTEXT_LOOP_{ROUNDS,CALLS,SECONDS}` | `8`/`16`/`360` | Shared bounded-loop budget for Mode 1 and Mode 2 turns. Mode 3 uses `NEXUS_MODE3_{ROUNDS,CALLS,SECONDS}` instead. `0` here is not unlimited — the loop needs at least one round. |
-| `NEXUS_LLM_CONTEXT_WINDOW` | `1000000` | Your model's max context window (tokens). Mode 2 and Mode 3 pack `window × fill` and do not apply a smaller character cap. Also settable per run in the Briefing run panel (stored in `analysis/mode2_run_options.json`). |
+| `NEXUS_CONTEXT_LOOP_{ROUNDS,CALLS,SECONDS}` | `8`/`16`/`360` | Shared bounded-loop budget for LLM turns. The multi-role runtime uses `NEXUS_MODE3_{ROUNDS,CALLS,SECONDS}` and the multi-agent runtime `NEXUS_MODE4_{ROUNDS,CALLS,SECONDS}`. `0` here is not unlimited — the loop needs at least one round. |
+| `NEXUS_LLM_CONTEXT_WINDOW` | `1000000` | Your model's max context window (tokens). The LLM and agent runtimes pack `window × fill` and do not apply a smaller character cap. Also settable per run in the Briefing run panel (stored in `analysis/mode2_run_options.json`). |
 | `NEXUS_CONTEXT_FILL_RATIO` | `0.7` | Share of the window packed into prompts. Every packed context is persisted to `analysis/llm_context/` for audit; usage is logged, never capped. |
 | `NEXUS_CONTEXT_RETRY_RATIO` | `0.5` | Downgrade ratio for the one retry when a provider rejects an over-long prompt. |
-| `NEXUS_INTERPRET_ROUNDS` | `3` | Default interpretation rounds for the Mode 2 loop (1–5). Also settable per run before processing. |
+| `NEXUS_INTERPRET_ROUNDS` | `3` | Default interpretation rounds for the LLM interpretation loop (1–5). Also settable per run before processing. |
 | `NEXUS_WEB_ALLOW` | unset (off) | `1` enables the opt-in `web_search`/`web_fetch` tools (loopback/private blocked). |
 | `NEXUS_INGEST_MAX_ARTIFACTS` | `20000` | Per-file cap for imported artifacts (network/cloud/…) with honest `N/N (capped)` reporting. |
 | `NEXUS_PCAP_TIMEOUT` | command timeout | tshark conversion timeout for raw PCAP ingestion. |
@@ -180,10 +180,11 @@ The per-case Elasticsearch index is **schema-versioned** (**v3**: structured
 coverage in the digest and Evidence page). Old indexes rebuild automatically on
 the next processing run; force it with `nexus index rebuild`.
 
-**Query model by mode:** Mode 1 uses the **typed DSL** (any catalog column:
+**Query model by mode:** Mode 1 (LLM) uses the **typed DSL** (any catalog column:
 `=` exact, `!=`, `> >= < <=` on numeric/date, `a..b` ranges, `exists:`,
 `in:(…)`, `ts:>=…`/`after:`/`before:`; `field:value` = contains; unknown fields
-are rejected with suggestions). Mode 2/3 use **ES-native tools**
+are rejected with suggestions) through the editor/steer chat, and the
+ES-native tools in the guided chat. Modes 2/3 agents use **ES-native tools**
 (`es_fields`/`es_search`/`es_aggregate`/`es_sample`) — Elasticsearch is
 required, there is no CSV fallback for agent analysis.
 
@@ -224,18 +225,18 @@ Four framework registries ship **compiled** inside the package
 
 The rebuild scripts download the raw upstream JSON/STIX/YAML (gitignored and
 excluded from wheels) and recompile the registry; attribution is retained in
-each folder's `NOTICE.txt`. Registries ground the Mode 1 scribe, the Mode 2
-query proposals + interpretation, and the Mode 3 work-order planning /
-tool-selection prompts;
+each folder's `NOTICE.txt`. Registries ground the Mode 1 (LLM) scribe,
+query proposals + interpretation, and the multi-role / multi-agent work-order
+planning and tool-selection prompts;
 `nexus doctor` lists them under "knowledge sources", and the report shows
 per-stage Insider Threat Matrix coverage. Needle packs
 (`needles/itm_needles.yaml`, `needles/external_needles.yaml`) feed the Mode 1
 signal map — a vocabulary gate keeps bare event IDs and evidence file names
 out of the keyword scan (they belong to typed field checks).
 
-### 2f. Elasticsearch (N3 index - Mode 1/2/3 retrieval)
+### 2f. Elasticsearch (N3 index — all modes' retrieval)
 
-Mode 1 typed queries and the Mode 2/3 agents read a **per-case Elasticsearch
+The Mode 1 typed queries and the agent modes read a **per-case Elasticsearch
 index** (`nexus-case-<case_id>`), not the raw CSVs. Point the config at it:
 
 ```bash

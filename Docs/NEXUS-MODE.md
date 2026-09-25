@@ -86,7 +86,7 @@ Why Register is separate:
 
 - Import-only cases must register without collect.
 - Re-running N2 must not re-register.
-- The three Nexus modes all need an existing `case_id`. Mixing Register into N1 makes Mode 2/3 awkward.
+- The three Nexus modes all need an existing `case_id`. Mixing Register into N1 makes the LLM/agent modes awkward.
 
 One collect command. Follow-up is **separate CLI commands**, not one mega-script.
 
@@ -158,13 +158,13 @@ scripting and headless work, but the UI must expose every N1–N8 action:
 
 | Pane | What the examiner does | What the LLM/agent can do |
 |------|------------------------|----------------------------|
-| **Explore** | Faceted search over parsed evidence (family, host, date, user, needle, regex). Bookmark hits. | Mode 1: scribe only. Mode 2: the LLM answers questions by querying the same index (citations + aggregations). Mode 3: agent runs filters and proposes. |
-| **Timeline** | Time scrubber, histogram, event lanes, brush-to-zoom. | Mode 1: none. Mode 2: mark pivot points. Mode 3: add events from new tools. |
-| **Steer Chat** | Ask English questions, drill ("corroborate this", "drill into WS01"), and read cited answers. | Always the co-pilot. Mode 1: translate/scribe only. Mode 2: live evidence retrieval — plans **Elasticsearch query JSON**, runs `es_search`/`es_aggregate` over the case index, answers with citations + per-stage timings. Mode 3: primary surface is the Agent Run page (this chat keeps the legacy plan/execute sliver). |
-| **Agent Run** | Approve the work-order plan, watch agents/tools live, steer mid-run, pause/resume/stop, review verifier verdicts and lineage, stage DRAFTs, export the run. | The Mode 3 supervisor and its scoped read-only agents; every plan, tool call, verdict and output appears in the SSE event stream. |
-| **Finding Workbench** | Bookmarked hits -> DRAFT builder + evidence list + scribe + validation. | Format DRAFTs (Mode 1). Propose DRAFTs (Mode 2/3). Never self-approve. |
+| **Explore** | Faceted search over parsed evidence (family, host, date, user, needle, regex). Bookmark hits. | LLM mode: scribe + guided queries. Multi-role / multi-agent: the agents run the same filters via tools and bring back claims/notes. |
+| **Timeline** | Time scrubber, histogram, event lanes, brush-to-zoom. | LLM mode: none. Agent modes: events from new tools land here. |
+| **Steer Chat** | Ask English questions, drill ("corroborate this", "drill into WS01"), and read cited answers. | Always the co-pilot. LLM mode: live evidence retrieval — plans **Elasticsearch query JSON**, runs `es_search`/`es_aggregate` over the case index, answers with citations + per-stage timings. Multi-role / multi-agent: this chat points at Agent Run (the legacy plan/execute sliver remains for multi-role). |
+| **Agent Run** | Approve the work-order plan, watch agents/tools live, steer mid-run, pause/resume/stop, review verifier verdicts and lineage, stage DRAFTs, export the run. | Mode 2 (multi-role): one supervisor + scoped roles, one work order at a time. Mode 3 (multi-agent): concurrent seats on the shared board. Every plan, tool call, verdict and output appears in the SSE stream. |
+| **Finding Workbench** | Bookmarked hits -> DRAFT builder + evidence list + scribe + validation. | Format DRAFTs (LLM mode). Propose DRAFTs (agent modes). Never self-approve. |
 | **Approval Desk** | HMAC sign-off on DRAFT findings. | Nothing. Approval is always human. |
-| **Report** | Trigger N8 from APPROVED. Steer the narrative per round (whole report or one finding). | Mode 1: shapes an evidence-constrained narrative from APPROVED findings under examiner steering — adds no evidence or facts, never approves. Mode 2/3: same boundary over agent-gathered evidence. |
+| **Report** | Trigger N8 from APPROVED. Steer the narrative per round (whole report or one finding). | LLM mode: shapes an evidence-constrained narrative from APPROVED findings under examiner steering — adds no evidence or facts, never approves. Agent modes: same boundary over agent-gathered evidence. |
 
 ### Mode 1 — LLM: examiner surfaces (merged ship door)
 
@@ -222,11 +222,11 @@ N8 report from APPROVED only
 - Does not approve
 - Does not invent facts or evidence beyond N4 hits and approved findings
 
-**UI note:** Mode 1 shows the guided walkthrough + Suggested Directions;
-Mode 2/3 show the Case Digest card instead (the digest is what their
-interpretation consumes). The deterministic base (inventory, ledger, alerts,
-signal map, entities, intake) is shared by all modes. Directions give Mode 2
-its starting point — Mode 2 never feeds directions back.
+**UI note:** LLM mode shows the guided walkthrough + Suggested Directions;
+the agent modes show the Case Digest card (the digest is also available on the
+LLM Briefing). The deterministic base (inventory, ledger, alerts, signal map,
+entities, intake) is shared by all modes. Directions are an LLM-mode layer —
+the agent modes never feed directions back.
 
 **Mode 1 is complete when the Portal has:**
 - ~~Explore pane with faceted search + histogram~~ — **implemented** (Phase 1.3)
@@ -245,7 +245,7 @@ its starting point — Mode 2 never feeds directions back.
 index, cites rows, and stages DRAFT findings for approval — then steers
 conversationally with live evidence retrieval.**
 
-Mode 2 is the **product differentiator**, and it has two halves:
+The guided half of Mode 1 is the **product differentiator**, and it has two halves:
 
 1. **Interpretation at processing time — a bounded loop.** After the
    deterministic lane, the LLM runs Orient → Verify ×N → Reconcile (round
@@ -267,11 +267,11 @@ Mode 2 is the **product differentiator**, and it has two halves:
 2. **Live steering.** The examiner asks a question and the LLM answers it
    from the actual evidence, with citations, queries and per-stage timings.
 
-Mode 2 run options (rounds 1–5, default 3; context window) are set **before**
+LLM run options (rounds 1–5, default 3; context window) are set **before**
 the run in the Briefing run panel.
 
 ```
-Examiner sets rounds + context window, then runs the Mode 2 pipeline
+Examiner sets rounds + context window, then runs the interpretation pipeline
     |
     v
 Deterministic lane parses, indexes (ES), builds the Case Digest +
@@ -295,8 +295,9 @@ Staging: DRAFT findings + interpretation.md (verdict + reconciliation of
     |
     v
 Steer Chat: PLAN (fast path ~2 ms or LLM, each query with a why) -> EXECUTE
-(Mode 2/3: allowlisted ES query JSON + ES-native aggregations/`composite`
-paging; Mode 1: typed DSL pushed down to one ES query) -> ANSWER (rows +
+(guided/agent modes: allowlisted ES query JSON + ES-native
+aggregations/`composite` paging; the typed editor: DSL pushed down to one ES
+query) -> ANSWER (rows +
 RAG/KB/TI helpers, citations, per-stage timings) + deterministic follow-up
 chips (top host/exe/user, list users/hosts) — click to drill
     |
@@ -304,7 +305,7 @@ chips (top host/exe/user, list users/hosts) — click to drill
 N8 report from APPROVED only
 ```
 
-**What the LLM does in Mode 2 (plus Mode 1):**
+**What the LLM does in Mode 1 (guided):**
 - Answers examiner questions from the actual evidence rows, with citations
 - Plans and runs its own ES queries (case-gated; FD-001 audit_ids)
 - Reconciles the full deterministic digest (incl. negative evidence) during
@@ -312,7 +313,7 @@ N8 report from APPROVED only
 - Suggests DRAFT findings during interpretation; examiner edits or rejects
 - Applies FD-006 (single-source stays LOW)
 
-**What the LLM does NOT do in Mode 2:**
+**What the LLM does NOT do in Mode 1 (guided):**
 - Does not choose tools or parsers (the deterministic lane decides)
 - Does not approve
 - Does not write findings inside the steering loop
@@ -322,10 +323,10 @@ N8 report from APPROVED only
 
 **A supervisor runs scoped read-only agent roles one work order at a time over
 the case evidence; the examiner approves the plan, steers mid-run, and stages
-DRAFTs. This is a followable multi-role pipeline with agentic turns — true
-concurrent multi-agent is planned as Mode 4 and is not built yet.**
+DRAFTs. This is a followable multi-role pipeline with agentic turns — the
+concurrent multi-agent runtime is Mode 3 (runtime `mode4`).**
 
-Mode 3 turns the case question into a bounded investigation: the director
+Mode 2 turns the case question into a bounded investigation: the director
 plans work orders (one per high-value evidence family, plus correlation and
 pattern checks, with the relevant KB skill steps and content versions
 attached), workers execute them one at a time through the shared audited tool
@@ -365,12 +366,12 @@ Synthesis: narrative + DRAFT candidates  (lineage: run_id + input_call_ids)
 Examiner reviews Agent Run -> "Stage DRAFTs" -> Approval Desk HMAC -> N8 report from APPROVED only
 ```
 
-**What the agents do in Mode 3:**
+**What the agents do in Mode 2:**
 - Plan and run bounded read-only tool calls against the case index, KB and RAG
 - Follow KB-cited skill steps, cite rows with audit IDs, state coverage and gaps
 - Corroborate or refute candidates; drop refuted items; stop on convergence
 
-**What the agents do NOT do in Mode 3:**
+**What the agents do NOT do in Mode 2:**
 - No write/approve/stage tools — staging is the examiner's Agent Run action
 - No skipped mandatory lane, no invented evidence (negative-evidence rule)
 - No hidden chain-of-thought — plans, work orders, tool calls and outputs are recorded and streamed
@@ -388,6 +389,9 @@ Examiner reviews Agent Run -> "Stage DRAFTs" -> Approval Desk HMAC -> N8 report 
 - HMAC / FD-001..007 / AI-cannot-approve: **no compromise** in any mode
 
 ### Build order
+
+> Historical build order — items 1–2 use the pre-rename names; both are part
+> of canonical **Mode 1 — LLM** today. Item 3 covers the two agent depths.
 
 1. **Mode 1 Cockpit** — Explore + Timeline + Steer Chat + Finding Workbench.
    The examiner can do the full N1–N8 loop without touching the CLI. Ship door.
@@ -464,7 +468,7 @@ flowchart TB
 
   REG --> N1
 
-  MODE["How you drive the same spine<br/>Mode 1 examiner-led · Mode 2 thick · Mode 3 agents/MCP"]
+  MODE["How you drive the same spine<br/>Mode 1 LLM · Mode 2 multi-role · Mode 3 multi-agent"]
   MODE -.-> NEXUS
 
   ING["Ingest<br/>Zeek / Suricata / PCAP / EDR / SIEM / cloud / TI<br/>non-direct-host only · PCAP parsed via tshark<br/>onto the same case_id"]

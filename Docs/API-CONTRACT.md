@@ -31,14 +31,15 @@
 1. [Auth & Approval](#1-auth--approval)
 2. [Case Management](#2-case-management)
 3. [Findings & Evidence](#3-findings--evidence)
-4. [Mode 1](#4-mode-1)
+4. [Mode 1 — LLM (examiner)](#4-mode-1--llm-examiner)
 5. [Explore](#5-explore)
 6. [Workbench](#6-workbench)
 7. [Chat](#7-chat)
 8. [Timeline](#8-timeline)
 9. [Entities](#9-entities)
-10. [Mode 2](#10-mode-2)
-11. [Mode 3](#11-mode-3)
+10. [Mode 1 — LLM (guided)](#10-mode-1--llm-guided)
+11. [Mode 2 — Multi-role runtime](#11-mode-2--multi-role-runtime-runtime-mode3)
+11b. [Mode 3 — Multi-agent runtime](#11b-mode-3--multi-agent-runtime-runtime-mode4)
 12. [HTML Page Routes (React Routes)](#12-html-page-routes-react-routes)
 13. [Health](#13-health)
 
@@ -600,7 +601,7 @@ If the case is already open: `{"ok": true, "status": "created", "note": "already
 
 ---
 
-## 4. Mode 1
+## 4. Mode 1 — LLM (examiner)
 
 ### POST /portal/api/mode1/ask
 **Description:** Mode 1 natural-language query. The scribe is **grounded with case context** (Phase 4g): evidence families present, playbook terms/caveats for those families, **MITRE ATT&CK needle packs** (techniques named in intake or implied by matched playbooks), RAG methodology, already-searched needles, and the case intake. Deterministic entity extraction (IPs, domains, URLs, hashes, paths, `DOMAIN\user`) always contributes needles, LLM or not. Runs an N4 ad-hoc query (persisting needles to intake) and returns the hits.
@@ -1225,10 +1226,10 @@ needles is one event.
 
 ---
 
-## 10. Mode 2
+## 10. Mode 1 — LLM (guided)
 
 ### POST /portal/api/mode2/chat
-**Description:** The Mode 2 conversational evidence agent — the primary steering surface. The LLM plans Elasticsearch query JSON from the examiner's question, the server executes them against the active case's ES index (audited allowlisted es_search/es_aggregate; Elasticsearch required, no CSV fallback for analysis), and the LLM answers from the actual rows. Clear list/IOC questions use a deterministic fast path (no LLM planning call). The turn runs **off the event loop** (`asyncio.to_thread`) with a hard budget, and the examiner's message is persisted **before** the turn runs.
+**Description:** The guided (Mode 1) conversational evidence agent — the primary steering surface (runtime route name `mode2/chat`). The LLM plans Elasticsearch query JSON from the examiner's question, the server executes them against the active case's ES index (audited allowlisted es_search/es_aggregate; Elasticsearch required, no CSV fallback for analysis), and the LLM answers from the actual rows. Clear list/IOC questions use a deterministic fast path (no LLM planning call). The turn runs **off the event loop** (`asyncio.to_thread`) with a hard budget, and the examiner's message is persisted **before** the turn runs.
 
 **Request:**
 ```json
@@ -1255,7 +1256,7 @@ needles is one event.
 - The transcript is appended to `<case>/chat.jsonl` (`steer_question` before the turn, `steer_answer` with `timings`, `queries`, `hits` and `followups` after — reloads stay bookmarkable/explorable).
 
 ### POST /portal/api/mode2/iterate
-**Description:** Mode 2 iterative loop: query → analyze → propose new needles → re-query. Every iteration is logged to the case chat transcript. Hard cap on iterations (1-4, default 2). The loop NEVER writes findings — it returns the iteration log for examiner review.
+**Description:** Guided iterative loop (`mode2/iterate`): query → analyze → propose new needles → re-query. Every iteration is logged to the case chat transcript. Hard cap on iterations (1-4, default 2). The loop NEVER writes findings — it returns the iteration log for examiner review.
 
 **Request:**
 ```json
@@ -1647,7 +1648,7 @@ Approval remains examiner-only.
 ## 11b. RAG Preflight (WP 3.13)
 
 ### GET /portal/api/rag/status
-**Description:** RAG readiness preflight. Verifies that the embedding model loads, the Chroma collection opens, the index has sufficient records, and a test query returns results. Mode 3 orchestrator and any RAG-dependent workflow should check this before starting.
+**Description:** RAG readiness preflight. Verifies that the embedding model loads, the Chroma collection opens, the index has sufficient records, and a test query returns results. The agent runtimes and any RAG-dependent workflow should check this before starting.
 
 **Request:** No body required.
 
@@ -1771,7 +1772,7 @@ Approval remains examiner-only.
 - `mode`: one of `tools`, `interpret`, `coverage`, `design`
 - `case_id`: optional; defaults to active case
 - `question` / `window` / `host` / `notes`: examiner intake → pipeline `case_context`. **Coverage/design only reach the LLM interpret node when a real question or window is present (N1 gate)**; when omitted, the case description is used as the question. The run record reports `intake` honestly.
-- `interpret_rounds` (optional, 1–5, default `NEXUS_INTERPRET_ROUNDS` or 3) and `context_window` (optional tokens, default `NEXUS_LLM_CONTEXT_WINDOW` or 1000000): Mode 2 run options decided **before** the run. Persisted to `<case>/analysis/mode2_run_options.json`, echoed in the run record (`options`) and response. The context window drives the prompt budget allocator (`window × NEXUS_CONTEXT_FILL_RATIO`); when provided it also sets the process-wide `NEXUS_LLM_CONTEXT_WINDOW` for that run.
+- `interpret_rounds` (optional, 1–5, default `NEXUS_INTERPRET_ROUNDS` or 3) and `context_window` (optional tokens, default `NEXUS_LLM_CONTEXT_WINDOW` or 1000000): LLM run options decided **before** the run. Persisted to `<case>/analysis/mode2_run_options.json`, echoed in the run record (`options`) and response. The context window drives the prompt budget allocator (`window × NEXUS_CONTEXT_FILL_RATIO`); when provided it also sets the process-wide `NEXUS_LLM_CONTEXT_WINDOW` for that run.
 
 **Response 200:**
 ```json
@@ -1788,7 +1789,7 @@ Approval remains examiner-only.
 
 **Response 409 — ES gate (WP 4j.5):** when the case's `investigation_mode`
 is `2` or `3`, the run refuses to start unless Elasticsearch is configured
-(`NEXUS_ES_URL`) and reachable — Mode 2/3 promise that parsed evidence lands
+(`NEXUS_ES_URL`) and reachable — the LLM/agent modes promise that parsed evidence lands
 in the N3 index the LLM queries; silently degrading to the CSV pack would
 make the mode hollow. Mode `1` (or unset) is not gated — it is designed to
 run on the CSV pack.
@@ -1926,7 +1927,7 @@ run on the CSV pack.
 ---
 
 ### POST /portal/api/chat/stream
-**Description:** Live steer-chat turn (WP 4d.3; WP 10.53/10.54). Mode 1 runs the ask flow; Mode 2 runs the bounded context-engineering tool loop (`src/nexus/langgraph/context_loop.py`) and streams progress as Server-Sent Events. The examiner message and final reply are persisted to the case transcript; a slim tool-call chain, `partial` flag and hits are persisted in the reply entry's `data` so they survive reload.
+**Description:** Live steer-chat turn (WP 4d.3; WP 10.53/10.54). The `mode1` ask flow runs the deterministic ask; the `mode2` guided loop runs the bounded context-engineering tool loop (`src/nexus/langgraph/context_loop.py`) and streams progress as Server-Sent Events. The examiner message and final reply are persisted to the case transcript; a slim tool-call chain, `partial` flag and hits are persisted in the reply entry's `data` so they survive reload.
 
 **Request:**
 ```json
@@ -2079,8 +2080,8 @@ configured. The frontend fetches this lazily after the briefing renders.
 also resolves it).
 
 **Response 200:** `{directions: [{title, why, needles[], family}]}` — empty
-list when no LLM is configured or generation fails. **Rendered in Mode 1
-only** (Mode 2/3 use the Case Digest + LLM run instead).
+list when no LLM is configured or generation fails. **Rendered in LLM mode
+only** (the Case Digest + interpretation run covers the agent modes).
 
 ### GET /portal/api/case/digest
 **Description:** GATE-A deterministic Case Digest (Mode 2/3) — everything the
@@ -2336,7 +2337,7 @@ rows signature-collapse (×N) and tables cap at 40 rows.
 ---
 
 ### POST /portal/api/report/steer
-**Description:** Mode 1 narrative loop — the examiner steers the report's
+**Description:** LLM report narrative loop — the examiner steers the report's
 LLM analysis and regenerates. Each round persists the instruction, the
 accumulated steering (all rounds, last 8 in prompt) is injected into every
 analysis prompt, and `REPORT.md` is rewritten. Facts still come only from
@@ -2446,7 +2447,7 @@ snapshot of the generated report to `analysis/report_rounds/round-NNNN.md`;
 ---
 
 ### POST /portal/api/mode3/orchestrator
-**Description:** Run the multi-agent orchestrator (WP 3.10). Dispatches specialist agents per evidence family, injects RAG methodology, and collects findings into synthesis. Examiner reviews proposals — nothing is auto-staged. **Legacy Phase-3 simulation:** the product Mode 3 surface is the supervised multi-role runtime documented in the `/mode3/run/*` sections above; true concurrent multi-agent is planned as Mode 4.
+**Description:** Run the multi-agent orchestrator (WP 3.10). Dispatches specialist agents per evidence family, injects RAG methodology, and collects findings into synthesis. Examiner reviews proposals — nothing is auto-staged. **Legacy Phase-3 simulation:** the product multi-role surface is the supervised runtime in §11 (`/mode3/run/*`); the concurrent multi-agent runtime is §11b (`/mode4/run/*`).
 
 **Request:**
 ```json

@@ -47,7 +47,7 @@ flowchart TB
 
   REG --> N1
 
-  MODE["Mode 1 examiner · Mode 2 thick · Mode 3 agents/MCP"]
+  MODE["Mode 1 LLM · Mode 2 multi-role · Mode 3 multi-agent"]
   MODE -.-> NEXUS
 
   ING["Ingest — Zeek / Suricata / PCAP(tshark) / EDR / SIEM / cloud / TI<br/>non-direct-host only · same case_id"]
@@ -69,7 +69,7 @@ flowchart TB
 | **`nexus collect`** | Live IR. Stays **CLI** — handy, headless, no browser. No parsers. No empty parser dirs on the target. |
 | **Register** | SHA-256 pack into a case. Import-only cases skip collect. |
 | **N2** | All direct host logs (Win/Linux/Mac): binary parsers (Hayabusa/Suzaku/Chainsaw/Zimmerman) + pre-collected host output (VR hunts, KAPE, Kansa, UAC, journalctl) → CSVs under the case with audit_id. Given a directory (pack or mounted VMDK) and recursively parses all host evidence. |
-| **N3** | SQLite (default; deterministic CSV fallback) or Elasticsearch (required for Mode 2/3). Per-case index, **schema v3**: `family/file/line/ts` + timestamp authority (`ts_raw/ts_src/ts_precision` + assumed flags) + structured `host/user/event_id` + parsed columns under `fields.*`. Query model by mode: **Mode 1 = typed DSL** (every catalog column: `= != > >= < <=`, ranges, `exists:`, `in:(…)`, `ts` ranges; unknown fields are rejected) which pushes down to ES or evaluates on CSV; **Mode 2/3 = ES-native tools** (`es_fields`/`es_search`/`es_aggregate`/`es_sample`, allowlisted query JSON, exact totals, `search_after` paging, composite aggregations) — the DSL is not an agent surface there. Not the lab SIEM. |
+| **N3** | SQLite (default; deterministic CSV fallback) or Elasticsearch (required for the agentic depths and LLM interpretation). Per-case index, **schema v3**: `family/file/line/ts` + timestamp authority (`ts_raw/ts_src/ts_precision` + assumed flags) + structured `host/user/event_id` + parsed columns under `fields.*`. Query model by mode: **Mode 1 (LLM) = typed DSL** (every catalog column: `= != > >= < <=`, ranges, `exists:`, `in:(…)`, `ts` ranges; unknown fields are rejected) which pushes down to ES or evaluates on CSV, plus the ES-native tools in the steer chat; **Modes 2/3 agents = ES-native tools** (`es_fields`/`es_search`/`es_aggregate`/`es_sample`, allowlisted query JSON, exact totals, `search_after` paging, composite aggregations) — the DSL is not an agent surface there. Not the lab SIEM. |
 | **3 modes** | How you drive the same N1–N8 spine (examiner / thick / agents) — not extra stages. |
 | **Ingest** | Network/SIEM/cloud/EDR/PCAP onto that case (after N8). PCAP parsed via tshark. Direct host logs stay in N2. |
 | **Detection** | Optional drafts after an APPROVED story. Not N5. |
@@ -361,8 +361,8 @@ Tool execution → audit_id → record_finding(artifacts=[{audit_id}])
   capa-YARA rule references (mapped from capa output in Mode 1 context).
 
 They feed Mode 1 (scribe context + signal-map needles behind a vocabulary
-gate), Mode 2 (query proposals, interpretation, suggestions), Mode 3 (hunt
-prompt, pattern chains, `_registry_context_block`), the report (per-stage ITM
+gate, steer/proposal prompts, interpretation), Modes 2/3 (work-order planning,
+pattern seats, `_registry_context_block`), the report (per-stage ITM
 coverage + registry facts) and `nexus doctor` (manifest). Rebuild with
 `scripts/build_*_registry.py`; raw dumps are gitignored and excluded from
 wheels.
