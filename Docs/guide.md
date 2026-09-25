@@ -170,8 +170,8 @@ instead of running tools by hand. Roles run one work order at a time. Open
 **Agent Run** in the cockpit (`/portal/app/agent-run`) or use the CLI:
 
 ```bash
-nexus mode3 plan -q "Trace RDP activity and USB device use"   # review work orders + KB skills first
-nexus mode3 run  -q "Trace RDP activity and USB device use"   # approve the plan and run, streaming events
+nexus mode2 plan -q "Trace RDP activity and USB device use"   # review work orders + KB skills first
+nexus mode2 run  -q "Trace RDP activity and USB device use"   # approve the plan and run, streaming events
 ```
 
 What you see and control:
@@ -198,10 +198,10 @@ Mode 3 runs the concurrent team on the **Investigation Board**
 (`/portal/app/agent-run` on a Mode 3 case) or via the CLI:
 
 ```bash
-nexus mode4 run   -q "Trace RDP activity and USB device use"   # concurrent seats + board
-nexus mode4 board  --run-id M4-...                              # claims, audit IDs, disputes
-nexus mode4 steer  "chase WS01" --run-id M4-...
-nexus mode4 stage  --run-id M4-...                              # examiner: stage settled candidates
+nexus mode3 run   -q "Trace RDP activity and USB device use"   # concurrent seats + board
+nexus mode3 board  --run-id M4-...                              # claims, audit IDs, disputes
+nexus mode3 steer  "chase WS01" --run-id M4-...
+nexus mode3 stage  --run-id M4-...                              # examiner: stage settled candidates
 ```
 
 The board shows simultaneous seats, audit-backed claims, disputes and join

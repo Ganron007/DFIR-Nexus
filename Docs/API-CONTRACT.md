@@ -39,7 +39,7 @@
 9. [Entities](#9-entities)
 10. [Mode 1 — LLM (guided)](#10-mode-1--llm-guided)
 11. [Mode 2 — Multi-role runtime](#11-mode-2--multi-role-runtime-runtime-mode3)
-11b. [Mode 3 — Multi-agent runtime](#11b-mode-3--multi-agent-runtime-runtime-mode4)
+11b. [Mode 3 — Multi-agent runtime](#11b-mode-3--multi-agent-runtime-nexus-mode3-mode3run)
 12. [HTML Page Routes (React Routes)](#12-html-page-routes-react-routes)
 13. [Health](#13-health)
 
@@ -48,7 +48,7 @@
 ## 1. Auth & Approval
 
 ### GET /portal/api/commit/challenge
-**Description:** Issues a challenge nonce + salt for password-based approval authentication. The examiner computes `HMAC-SHA256(pbkdf2(password, salt, 600000), nonce)` and submits it to `POST /portal/api/commit` or `POST /portal/api/mode3/seal`.
+**Description:** Issues a challenge nonce + salt for password-based approval authentication. The examiner computes `HMAC-SHA256(pbkdf2(password, salt, 600000), nonce)` and submits it to `POST /portal/api/commit` or `POST /portal/api/case/seal`.
 
 **Request:** No body. No query params.
 
@@ -1366,9 +1366,9 @@ needles is one event.
 
 ---
 
-## 11. Mode 2 — Multi-role runtime (runtime mode3)
+## 11. Mode 2 — Multi-role runtime (nexus mode2, /mode2/run)
 
-### POST /portal/api/mode3/plan
+### POST /portal/api/mode2/plan
 **Description:** Agent proposes an investigation plan. Reads the tool-lane ledger (SKIPs), known extras not yet requested, and FD-006 corroboration needs from existing findings. LLM refines the rationale when configured. Logged to `agent_runs.jsonl` + chat. The examiner approves items before execution.
 
 **Request:** No body required (empty JSON `{}` is acceptable).
@@ -1398,7 +1398,7 @@ needles is one event.
 
 ---
 
-### POST /portal/api/mode3/execute
+### POST /portal/api/mode2/execute
 **Description:** Runs examiner-approved plan items. Extras are persisted to `CASE.yaml` intake (next lane run parses them; mandatory lane must complete first). Queries run immediately as read-only N4 searches. Everything is logged to `agent_runs.jsonl` + chat.
 
 **Request:**
@@ -1431,7 +1431,7 @@ needles is one event.
 
 ---
 
-### POST /portal/api/mode3/run/plan
+### POST /portal/api/mode2/run/plan
 **Description:** Director preview for a supervised Mode 3 run. Returns the work orders that would execute (families + correlation + pattern, KB skill refs, examiner findings-feedback constraints) without running anything. Read-only. Requires ES for the real family census; without a model/families the director still returns a valid plan.
 
 **Request:**
@@ -1462,8 +1462,8 @@ needles is one event.
 
 ---
 
-### POST /portal/api/mode3/run
-**Description:** Approves the plan and starts a supervised run in the background (same runtime as `nexus mode3 run`). Every agent tool call is audited through `backbone_call`; agents cannot stage or approve. Returns `202` with the `run_id`; stream events from `/portal/api/mode3/run/events`.
+### POST /portal/api/mode2/run
+**Description:** Approves the plan and starts a supervised run in the background (same runtime as `nexus mode2 run`). Every agent tool call is audited through `backbone_call`; agents cannot stage or approve. Returns `202` with the `run_id`; stream events from `/portal/api/mode2/run/events`.
 
 **Request:** `{"question": "string?", "max_orders": 6, "run_id": "string?"}`
 
@@ -1473,7 +1473,7 @@ needles is one event.
 
 ---
 
-### GET /portal/api/mode3/run/status
+### GET /portal/api/mode2/run/status
 **Description:** Run state for the Agent Run page / CLI — meters plus verifier verdicts, candidate findings and narrative. `run_id` is optional (defaults to the latest run for the case).
 
 **Response 200:**
@@ -1493,14 +1493,14 @@ needles is one event.
 
 ---
 
-### GET /portal/api/mode3/run/events
+### GET /portal/api/mode2/run/events
 **Description:** Server-sent events for a run (`text/event-stream`). Frames: `event: agent` with one JSON event envelope (`event_id/ts/run_id/event_type/actor/agent_id/tool/why/audit_id/status/detail/data`), `event: ping` keepalives, and a terminal `event: run` when the run reaches `completed|failed|paused|stopped`. Replays the full log first, so a reload re-attaches without loss. `run_id` optional (latest run).
 
 **Errors:** `404` — no active case or no run found.
 
 ---
 
-### POST /portal/api/mode3/run/steer
+### POST /portal/api/mode2/run/steer
 **Description:** Inject an examiner directive. Written to `analysis/mode3_runs/<run_id>.steering.jsonl` and read into every subsequent work-order context (agents pick it up on the next order, not mid-order). Emits a `steering.injected` event.
 
 **Request:** `{"run_id": "M3-…", "text": "chase WS01 and drop the exfil line"}`
@@ -1511,7 +1511,7 @@ needles is one event.
 
 ---
 
-### POST /portal/api/mode3/run/pause
+### POST /portal/api/mode2/run/pause
 **Description:** Cooperative pause/resume. The current work order finishes; the supervisor does not start another and emits `run.paused`. Resume clears the flag and continues from the persisted order index.
 
 **Request:** `{"run_id": "M3-…", "paused": true}`
@@ -1522,7 +1522,7 @@ needles is one event.
 
 ---
 
-### POST /portal/api/mode3/run/resume
+### POST /portal/api/mode2/run/resume
 **Description:** Clears the pause flag and continues a paused run from the persisted state (same run id, no re-plan of completed orders). A **stopped**, **completed**, or **failed** run is terminal and cannot be resumed (`409`). Pause and stop are applied before the next evidence worker and again before verify and synthesis.
 
 **Request:** `{"run_id": "M3-…"}`
@@ -1533,7 +1533,7 @@ needles is one event.
 
 ---
 
-### POST /portal/api/mode3/run/stop
+### POST /portal/api/mode2/run/stop
 **Description:** Cooperative terminal stop. The current work order finishes; the supervisor halts with `status=stopped`, `stop_reason=examiner_stop` and emits `run.stopped`. Nothing is staged or approved by stopping.
 
 **Request:** `{"run_id": "M3-…"}`
@@ -1544,7 +1544,7 @@ needles is one event.
 
 ---
 
-### POST /portal/api/mode3/run/stage
+### POST /portal/api/mode2/run/stage
 **Description:** Examiner action that stages a run's verified candidates as DRAFT findings. Only candidates with at least one real `audit_id` are staged (FD-001); verifier-refuted and evidence-shape-invalid candidates are skipped with reasons. Each staged finding carries `run_id` and `input_call_ids` lineage. Approval is untouched — staged findings stay DRAFT until the examiner approves them in the Approval Desk.
 
 **Request:** `{"run_id": "M3-…"}`
@@ -1563,13 +1563,13 @@ needles is one event.
 
 ---
 
-## 11b. Mode 3 — Multi-agent runtime (runtime mode4)
+## 11b. Mode 3 — Multi-agent runtime (nexus mode3, /mode3/run)
 
 Concurrent seats over the case index. Every claim needs an `audit_id` (FD-001);
 attribution is rejected (FD-003); unresolved disputes are gaps, never findings.
 Elasticsearch is required. Agents never stage or approve.
 
-### POST /portal/api/mode4/run
+### POST /portal/api/mode3/run
 **Description:** Start the concurrent multi-agent team in the background (the
 supervisor may use the configured model; deterministic fallback otherwise).
 **Request:** `{"question": "string?", "run_id": "M4-…?"}` → **202**
@@ -1577,37 +1577,37 @@ supervisor may use the configured model; deterministic fallback otherwise).
 in progress or the case is sealed; when ES is unavailable the record fails with
 `stop_reason=elasticsearch_required`.
 
-### GET /portal/api/mode4/run/status
+### GET /portal/api/mode3/run/status
 **Description:** Run state (`run_id` optional → latest): `status`, `stop_reason`,
 `question`, `superstep`, `board`/`disputes`/`candidates` counts, `gaps`.
 
-### GET /portal/api/mode4/run/board
+### GET /portal/api/mode3/run/board
 **Description:** The board: entries (`agent_id`, `role`, `family`, `superstep`,
 claims with `audit_ids`, open questions), disputes (entity/kind/seats) and
 settled candidates.
 
-### GET /portal/api/mode4/run/events
+### GET /portal/api/mode3/run/events
 **Description:** SSE tail of the run stream (`event: agent` frames + ping +
 terminal `event: run`), replay-first so a reload re-attaches. Terminal
 statuses: `completed|failed|paused|stopped`.
 
-### POST /portal/api/mode4/run/steer
+### POST /portal/api/mode3/run/steer
 **Description:** Queue an examiner directive; the supervisor consumes it on the
 next superstep. **Request:** `{"run_id", "text"}`.
 
-### POST /portal/api/mode4/run/pause
+### POST /portal/api/mode3/run/pause
 **Description:** Cooperative pause at the next superstep boundary.
 **Request:** `{"run_id", "paused": true}`.
 
-### POST /portal/api/mode4/run/resume
+### POST /portal/api/mode3/run/resume
 **Description:** Continue a paused run from its persisted board/superstep
 snapshot. `409` while running or for stopped/completed/failed runs.
 
-### POST /portal/api/mode4/run/stop
+### POST /portal/api/mode3/run/stop
 **Description:** Terminal stop at the next superstep boundary
 (`stop_reason=examiner_stop`).
 
-### POST /portal/api/mode4/run/stage
+### POST /portal/api/mode3/run/stage
 **Description:** Examiner action — stage settled, audit-backed claims as DRAFT
 findings with `run_id` / `input_call_ids` lineage; skipped claims carry reasons.
 Approval remains examiner-only.
@@ -1615,7 +1615,7 @@ Approval remains examiner-only.
 ---
 
 ### POST /portal/api/case/seal
-**Description:** Case-file HMAC seal via challenge-response — the canonical case-lifecycle close action, usable from any mode (Mode 1 surfaces it on the Report page). Reuses the same challenge-response flow as per-finding approval (get a challenge from `GET /portal/api/commit/challenge` first). Computes an HMAC signature over `REPORT.md` content and writes it to the verification ledger. Requires a generated report first. `POST /portal/api/mode3/seal` remains as an alias for compatibility.
+**Description:** Case-file HMAC seal via challenge-response — the canonical case-lifecycle close action, usable from any mode (Mode 1 surfaces it on the Report page). Reuses the same challenge-response flow as per-finding approval (get a challenge from `GET /portal/api/commit/challenge` first). Computes an HMAC signature over `REPORT.md` content and writes it to the verification ledger. Requires a generated report first. The seal route is `POST /portal/api/case/seal`.
 
 **Request:**
 ```json
@@ -1641,7 +1641,7 @@ Approval remains examiner-only.
 - `403` — No password configured for examiner.
 - `404` — No active case.
 
-`POST /portal/api/mode3/seal` — identical request/response; kept as a compatibility alias.
+`POST /portal/api/case/seal` is the seal route for every mode.
 
 ---
 
@@ -2415,7 +2415,7 @@ snapshot of the generated report to `analysis/report_rounds/round-NNNN.md`;
 
 ---
 
-### POST /portal/api/mode3/draft-finding
+### POST /portal/api/mode2/draft-finding
 **Description:** Agent proposes a DRAFT finding from selected hits (WP 3.7). The finding is staged with `examiner_selected=false` — the examiner reviews and approves via the normal HMAC flow. The agent **never** approves.
 
 **Request:**
@@ -2446,8 +2446,8 @@ snapshot of the generated report to `analysis/report_rounds/round-NNNN.md`;
 
 ---
 
-### POST /portal/api/mode3/orchestrator
-**Description:** Run the multi-agent orchestrator (WP 3.10). Dispatches specialist agents per evidence family, injects RAG methodology, and collects findings into synthesis. Examiner reviews proposals — nothing is auto-staged. **Legacy Phase-3 simulation:** the product multi-role surface is the supervised runtime in §11 (`/mode3/run/*`); the concurrent multi-agent runtime is §11b (`/mode4/run/*`).
+### POST /portal/api/mode2/orchestrator
+**Description:** Run the multi-agent orchestrator (WP 3.10). Dispatches specialist agents per evidence family, injects RAG methodology, and collects findings into synthesis. Examiner reviews proposals — nothing is auto-staged. **Legacy Phase-3 simulation:** the product multi-role surface is §11 (`/mode2/run/*`); the concurrent multi-agent runtime is §11b (`/mode3/run/*`).
 
 **Request:**
 ```json

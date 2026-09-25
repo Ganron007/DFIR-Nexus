@@ -158,8 +158,8 @@ nexus approve --examiner <id> F-001            # HMAC sign-off
 nexus report generate                          # N8 from APPROVED only
 
 # Mode 2 — Multi-role runs / Mode 3 — Multi-agent runs
-nexus mode3 plan -q "Trace RDP activity and USB device use"
-nexus mode4 run  -q "Trace RDP activity and USB device use"
+nexus mode2 plan -q "Trace RDP activity and USB device use"
+nexus mode3 run  -q "Trace RDP activity and USB device use"
 
 # Or open the Examiner Cockpit for query / approve / timeline / report
 nexus portal

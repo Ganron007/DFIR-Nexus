@@ -115,8 +115,8 @@ presets**, not separate products or UIs.
 
 > **Final mode map (2026-09-25):** the product now ships exactly three modes —
 > **Mode 1 — LLM** (the merged examiner-led + LLM-guided surfaces),
-> **Mode 2 — Multi-role** (the supervised pipeline, runtime `mode3`), and
-> **Mode 3 — Multi-agent** (the concurrent board, runtime `mode4`). Stored
+> **Mode 2 — Multi-role** (`nexus mode2`, `/mode2/run`), and
+> **Mode 3 — Multi-agent** (`nexus mode3`, `/mode3/run`). Stored
 > `CASE.yaml` values are canonical `1/2/3` with read aliases for pre-rename
 > cases. Below, sections written as "Mode 1 — Examiner-Driven" and "Mode 2 —
 > LLM-Guided" are both part of canonical Mode 1.
@@ -126,7 +126,7 @@ presets**, not separate products or UIs.
 > the full examiner surface (Explore, persistent Steer Chat with live evidence
 > retrieval, Finding Workbench, Approval Desk, report steering) plus the
 > merged full-run scribe and coverage/interpretation loop. **Mode 2 —
-> Multi-role** ships the supervised runtime (`nexus mode3`): plan approval,
+> Multi-role** ships the supervised runtime (`nexus mode2`): plan approval,
 > live steering, pause/resume/stop, verifier verdicts, DRAFT staging with
 > lineage. **Mode 3 — Multi-agent** ships the concurrent runtime
 > (`nexus mode3`): model-chosen seats, shared claim board, disputes and
@@ -319,12 +319,12 @@ N8 report from APPROVED only
 - Does not write findings inside the steering loop
 - Treats absent evidence classes as scope — never as a verdict
 
-### Mode 2 — Multi-role (runtime `mode3`; M1–M7 implemented)
+### Mode 2 — Multi-role (`nexus mode2`, `/mode2/run`; M1–M7 implemented)
 
 **A supervisor runs scoped read-only agent roles one work order at a time over
 the case evidence; the examiner approves the plan, steers mid-run, and stages
 DRAFTs. This is a followable multi-role pipeline with agentic turns — the
-concurrent multi-agent runtime is Mode 3 (runtime `mode4`).**
+concurrent multi-agent runtime is Mode 3 (`nexus mode3`, `/mode3/run`).**
 
 Mode 2 turns the case question into a bounded investigation: the director
 plans work orders (one per high-value evidence family, plus correlation and
@@ -399,8 +399,8 @@ Examiner reviews Agent Run -> "Stage DRAFTs" -> Approval Desk HMAC -> N8 report 
    corroboration. LLM proposes; examiner accepts/rejects. Same Cockpit.
    **Status: implemented + dual-audited (Phase 2, commits `fe62295`, `49720eb`).**
 3. **Multi-role → multi-agent** — the agentic depths. Same Cockpit; Agent Run
-   shows the plan/run/verify/stage lanes (Mode 2, runtime `mode3`) or the
-   concurrent Investigation Board (Mode 3, runtime `mode4`).
+   shows the plan/run/verify/stage lanes (Mode 2, `nexus mode2`) or the
+   concurrent Investigation Board (Mode 3, `nexus mode3`).
    **Status: the supervised multi-role runtime M1–M7 is complete (2026-09-25);
    the concurrent multi-agent runtime (reducer board, `Send` seats, disputes,
    model supervisor, Board UI, CLI) is complete. The operator gate pass
@@ -411,7 +411,7 @@ Examiner reviews Agent Run -> "Stage DRAFTs" -> Approval Desk HMAC -> N8 report 
    Phase 4e case-management segregation + Phase 4f design conformance +
    Phase 4g needle quality + Phase 4h evidence intake).**
 
-### Mode 3 — Multi-agent (runtime `mode4`; concurrent)
+### Mode 3 — Multi-agent (`nexus mode3`, `/mode3/run`; concurrent)
 
 **A supervisor spawns seats that work at the same time and argue on a board.**
 

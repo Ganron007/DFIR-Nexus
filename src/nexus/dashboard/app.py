@@ -7212,10 +7212,10 @@ def _start_mode4_thread(
 
 
 async def api_mode4_run(request):
-    """POST /portal/api/mode4/run — start the concurrent multi-agent team.
+    """POST /portal/api/mode3/run — start the concurrent multi-agent team.
 
     Runs in the background (like Mode 3) so the caller gets the run id and
-    consumes the SSE stream at ``/mode4/run/events``.
+    consumes the SSE stream at ``/mode3/run/events``.
     """
     case_dir = _get_case_dir(request)
     if not case_dir:
@@ -7253,7 +7253,7 @@ async def api_mode4_run(request):
 
 
 async def api_mode4_run_steer(request):
-    """POST /portal/api/mode4/run/steer — queue a steer line for the supervisor."""
+    """POST /portal/api/mode3/run/steer — queue a steer line for the supervisor."""
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
@@ -7288,7 +7288,7 @@ async def api_mode4_run_steer(request):
 
 
 async def api_mode4_run_pause(request):
-    """POST /portal/api/mode4/run/pause — cooperative pause at superstep boundary."""
+    """POST /portal/api/mode3/run/pause — cooperative pause at superstep boundary."""
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
@@ -7313,7 +7313,7 @@ async def api_mode4_run_pause(request):
 
 
 async def api_mode4_run_resume(request):
-    """POST /portal/api/mode4/run/resume — continue a paused run from its snapshot."""
+    """POST /portal/api/mode3/run/resume — continue a paused run from its snapshot."""
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
@@ -7350,7 +7350,7 @@ async def api_mode4_run_resume(request):
 
 
 async def api_mode4_run_events(request):
-    """GET /portal/api/mode4/run/events — SSE tail of the run event log."""
+    """GET /portal/api/mode3/run/events — SSE tail of the run event log."""
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)

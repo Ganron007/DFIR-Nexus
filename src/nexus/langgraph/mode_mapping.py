@@ -7,7 +7,7 @@ Final three modes (canonical, stored in CASE.yaml ``investigation_mode``):
     2  Mode 2 — Multi-role  deterministic lane, then the supervised multi-role
                             runtime (``nexus mode3`` / Agent Run)
     3  Mode 3 — Multi-agent deterministic lane, then the concurrent multi-agent
-                            runtime (``nexus mode4`` / Investigation Board)
+                            runtime (``nexus mode3`` / Investigation Board)
 
 Cases written before ``mode_scheme: 2`` used the old values (1 examiner-led,
 2 guided LLM, 3 multi-role, 4 multi-agent) and are aliased on read:
@@ -39,7 +39,7 @@ _MODE_MAP: dict[int, dict[str, Any]] = {
         "pipeline_mode": "tools",
         "pipeline_modes": ["tools", "interpret"],
         "description": "Mode 3 - Multi-agent: deterministic lane, then the "
-                       "concurrent multi-agent run (nexus mode4 / Board).",
+                       "concurrent multi-agent run (nexus mode3 / Board).",
     },
 }
 

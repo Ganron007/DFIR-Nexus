@@ -369,7 +369,7 @@ wheels.
 
 ### Mode 2 supervised multi-role runtime (runtime `mode3`, 2026-09)
 
-`src/nexus/langgraph/mode3_runtime.py` is the supervised execution layer
+`src/nexus/modes/multi_role.py` is the Mode 2 supervised execution layer
 (M1–M7). It is a LangGraph `StateGraph` supervisor over the shared bounded
 tool loop — there is no second bespoke agent loop. It is **multi-role, not
 concurrent multi-agent**: one work order runs at a time.
@@ -400,13 +400,13 @@ concurrent multi-agent**: one work order runs at a time.
   checkpoint; `nexus mode3` and the Agent Run page are two surfaces over the
   same runtime.
 - **Boundary**: agents never stage or approve. Candidates stage as DRAFT only
-  through the examiner action `nexus mode3 stage` / `POST /mode3/run/stage`,
+  through the examiner action `nexus mode2 stage` / `POST /mode2/run/stage`,
   which requires real audit IDs (FD-001) and persists `run_id` /
   `input_call_ids` lineage. Approval stays password-gated in the Approval Desk.
 
-### Mode 3 concurrent multi-agent runtime (runtime `mode4`, 2026-09)
+### Mode 3 concurrent multi-agent runtime (2026-09)
 
-`src/nexus/langgraph/mode4_runtime.py` is the concurrent layer: a
+`src/nexus/modes/multi_agent.py` is the concurrent layer: a
 `StateGraph` with channel reducers (`board: Annotated[list, add_board]`), a
 supervisor node (model-chosen seats, deterministic fallback) that uses
 LangGraph `Send` to fan out evidence / correlation / pattern seats **in one
@@ -416,8 +416,8 @@ bounded, and synthesis that turns settled claims into DRAFT candidates.
 Unresolved disputes are gaps, never findings. One `AuditWriter`/`EventSink`
 per run (shared across seats); a run governor caps agents / supersteps / calls
 / seconds; pause / stop / steer apply at superstep boundaries with a
-file-based `resume_state`. Surfaces: `nexus mode4`,
-`/portal/api/mode4/run*`, and the **Investigation Board** on Agent Run.
+file-based `resume_state`. Surfaces: `nexus mode3`,
+`/portal/api/mode3/run*`, and the **Investigation Board** on Agent Run.
 
 ## LLM Client Setup
 

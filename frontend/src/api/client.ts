@@ -635,7 +635,7 @@ export function mode3RunEventsPath(runId: string): string {
   return `${BASE}/mode2/run/events?run_id=${encodeURIComponent(runId)}`;
 }
 
-/* ── Mode 3 — Multi-agent concurrent board (runtime mode4) ───────────── */
+/* ── Mode 3 — Multi-agent concurrent board ───────────────────────────── */
 
 export interface Mode4Claim {
   entity_type?: string;
@@ -1315,7 +1315,7 @@ export const api = {
     post<{ run_id: string; status: string }>("/mode2/run/resume", params),
   mode3RunStage: (params: { run_id: string }) =>
     post<Mode3StageResult>("/mode2/run/stage", params),
-  // Mode 3 — Multi-agent concurrent board (runtime mode4).
+  // Mode 3 — Multi-agent concurrent board.
   mode4Run: (params: { question?: string; run_id?: string }) =>
     post<{ run_id: string; status: string; question?: string; error?: string }>(
       "/mode3/run",
