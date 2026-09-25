@@ -818,6 +818,11 @@ def run_work_order(
 
     work_context = json.dumps(context or {}, default=str)[:6000]
     skill_block = _skill_procedure_block(order)
+    budget = LoopBudget(
+        rounds=order.max_rounds or role.max_rounds,
+        seconds=order.max_seconds or role.max_seconds,
+        calls=order.max_calls or role.max_calls,
+    )
     question = (
         f"WORK ORDER {order.order_id}\n"
         f"Role: {role.name}\n"
@@ -839,6 +844,8 @@ def run_work_order(
         agent_id=agent_id, detail=order.task, data={
             "order_id": order.order_id, "role": order.role,
             "family": order.family, "why": order.why,
+            "budget": {"rounds": budget.rounds, "calls": budget.calls,
+                       "seconds": budget.seconds},
             "skills": [
                 {"skill": r.get("skill"), "version": r.get("version")}
                 for r in order.skill_refs
@@ -886,11 +893,7 @@ def run_work_order(
             system_prompt=role.system_prompt,
             task=f"mode3-{role.name}",
             on_event=_on_loop_event,
-            budget=LoopBudget(
-                rounds=order.max_rounds or role.max_rounds,
-                seconds=order.max_seconds or role.max_seconds,
-                calls=order.max_calls or role.max_calls,
-            ),
+            budget=budget,
             audit=AuditWriter("nexus", audit_dir=case_dir / "audit"),
             terminal_keys=(
                 "notes", "candidate_findings", "narrative", "verdicts",

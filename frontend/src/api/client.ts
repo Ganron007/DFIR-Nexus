@@ -526,6 +526,114 @@ export interface Mode3ExecuteResponse {
   error?: string;
 }
 
+/* ── Mode 3 supervised agent run (M6) ─────────────────────────────────── */
+
+export interface Mode3SkillRef {
+  skill: string;
+  title?: string;
+  version?: string;
+  score?: number;
+  why?: string[];
+  citations?: string[];
+  mitre?: string[];
+}
+
+export interface Mode3WorkOrder {
+  order_id: string;
+  role: string;
+  task: string;
+  family?: string;
+  why?: string;
+  priority_tools?: string[];
+  acceptance?: string;
+  negative_evidence_rule?: string;
+  skill_refs?: Mode3SkillRef[];
+  status?: string;
+}
+
+export interface Mode3Budget {
+  rounds: number;
+  calls: number;
+  seconds: number;
+}
+
+/** One observable agent-run event (never hidden reasoning). */
+export interface Mode3RunEvent {
+  event_id: string;
+  ts: string;
+  run_id: string;
+  event_type: string;
+  actor: string;
+  agent_id?: string;
+  tool?: string;
+  why?: string;
+  audit_id?: string;
+  status?: string;
+  detail?: string;
+  data?: Record<string, unknown>;
+}
+
+export interface Mode3CandidateFinding {
+  title?: string;
+  observation?: string;
+  interpretation?: string;
+  confidence?: string;
+  confidence_justification?: string;
+  audit_ids?: string[];
+  attack_ids?: string[];
+  itm_stage?: string;
+  itm_objects?: string;
+}
+
+export interface Mode3Verdict {
+  title?: string;
+  class?: string;
+  basis?: string;
+  audit_ids?: string[];
+}
+
+export interface Mode3RunStatusResponse {
+  run_id: string;
+  status?: string;
+  stop_reason?: string;
+  pause_requested?: boolean;
+  question?: string;
+  orders?: number;
+  order_index?: number;
+  followup_rounds?: number;
+  results?: number;
+  candidates?: number;
+  gaps?: number;
+  events?: number;
+  last_event?: Mode3RunEvent | null;
+  verdicts?: Mode3Verdict[];
+  candidate_findings?: Mode3CandidateFinding[];
+  narrative?: string;
+  created_at?: string;
+  completed_at?: string;
+  error?: string;
+}
+
+export interface Mode3PlanResponseOrders {
+  run_id: string;
+  question: string;
+  orders: Mode3WorkOrder[];
+}
+
+export interface Mode3StageResult {
+  run_id: string;
+  staged?: { title: string; finding_id?: string; input_call_ids?: string[]; verifier_class?: string }[];
+  skipped?: { title: string; reason: string }[];
+  staged_count?: number;
+  skipped_count?: number;
+  error?: string;
+}
+
+/** SSE path for a run's event stream (EventSource cannot send case headers). */
+export function mode3RunEventsPath(runId: string): string {
+  return `${BASE}/mode3/run/events?run_id=${encodeURIComponent(runId)}`;
+}
+
 /** POST /case/seal → {status: "SEALED", case_id, examiner} or {error} */
 export interface CaseSealResponse {
   status: string;
@@ -1105,6 +1213,29 @@ export const api = {
     post<Mode3PlanResponse>("/mode3/plan", params || {}),
   mode3Execute: (params: { extras?: string[]; queries?: string[] }) =>
     post<Mode3ExecuteResponse>("/mode3/execute", params),
+  // Mode 3 supervised agent run (M6) — same runtime/event stream as the CLI.
+  mode3RunPlan: (params: { question?: string; max_orders?: number }) =>
+    post<Mode3PlanResponseOrders>("/mode3/run/plan", params),
+  mode3RunStart: (params: { question?: string; max_orders?: number; run_id?: string }) =>
+    post<{ run_id: string; status: string; question?: string; error?: string }>(
+      "/mode3/run",
+      params,
+    ),
+  mode3RunStatus: (runId?: string) =>
+    request<Mode3RunStatusResponse>(
+      `/mode3/run/status${runId ? `?run_id=${encodeURIComponent(runId)}` : ""}`,
+    ),
+  mode3RunSteer: (params: { run_id: string; text: string }) =>
+    post<{ run_id: string; steering: { ts: string; text: string } }>(
+      "/mode3/run/steer",
+      params,
+    ),
+  mode3RunPause: (params: { run_id: string; paused: boolean }) =>
+    post<{ run_id: string; paused: boolean }>("/mode3/run/pause", params),
+  mode3RunResume: (params: { run_id: string }) =>
+    post<{ run_id: string; status: string }>("/mode3/run/resume", params),
+  mode3RunStage: (params: { run_id: string }) =>
+    post<Mode3StageResult>("/mode3/run/stage", params),
   /** Seal & close the active case — HMAC challenge-response, same flow as
    *  per-finding approval. Lifecycle action for every mode; the legacy
    *  /mode3/seal route remains registered as an alias. */

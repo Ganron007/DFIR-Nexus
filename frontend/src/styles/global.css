@@ -837,3 +837,63 @@ tr:hover td {
 .chat-markdown td {
   padding: 3px 6px;
 }
+
+/* ── Mode 3 Agent Run (M6) ─────────────────────────────────────────── */
+.agent-run-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) minmax(420px, 1.6fr);
+  gap: 12px;
+  align-items: start;
+}
+.agent-run-grid > .card:last-child {
+  grid-column: 1 / -1;
+}
+@media (max-width: 1200px) {
+  .agent-run-grid { grid-template-columns: 1fr; }
+}
+.agent-lanes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+.agent-lane {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: var(--bg-tertiary);
+}
+.agent-meters {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.agent-meters strong { color: var(--text-primary); }
+.agent-stream {
+  max-height: 520px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: monospace;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.agent-stream-line { overflow-wrap: anywhere; }
+.agent-plan-list { display: flex; flex-direction: column; gap: 8px; }
+.agent-plan-item {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: var(--bg-tertiary);
+}
+.agent-candidate {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  background: var(--bg-tertiary);
+}

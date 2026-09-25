@@ -7242,18 +7242,25 @@ async def api_mode3_run_status(request):
                             status_code=404)
     events = await asyncio.to_thread(read_run_events, case_dir, run_id, limit=500)
     results = record.get("results") or []
+    candidates = record.get("candidates") or []
+    verdicts = record.get("verdicts") or []
     return JSONResponse({
         "run_id": run_id,
         "status": record.get("status"),
         "stop_reason": record.get("stop_reason"),
         "pause_requested": bool(record.get("pause_requested")),
+        "question": record.get("question") or "",
         "orders": len(record.get("orders") or []),
         "order_index": record.get("order_index") or 0,
+        "followup_rounds": record.get("followup_rounds") or 0,
         "results": len(results),
-        "candidates": len(record.get("candidates") or []),
+        "candidates": len(candidates),
         "gaps": len(record.get("gaps") or []),
         "events": len(events),
         "last_event": events[-1] if events else None,
+        "verdicts": verdicts[:50],
+        "candidate_findings": candidates[:50],
+        "narrative": str(record.get("narrative") or "")[:4000],
         "created_at": record.get("created_at"),
         "completed_at": record.get("completed_at"),
     })

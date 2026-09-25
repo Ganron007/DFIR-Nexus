@@ -7,6 +7,7 @@ import Briefing from "./pages/Briefing";
 import Explore from "./pages/Explore";
 import Timeline from "./pages/Timeline";
 import SteerChat from "./pages/SteerChat";
+import AgentRun from "./pages/AgentRun";
 import Workbench from "./pages/Workbench";
 import Findings from "./pages/Findings";
 import Approve from "./pages/Approve";
@@ -32,6 +33,7 @@ export default function App() {
           <Route path="/briefing" element={<RequireCase><Briefing /></RequireCase>} />
           <Route path="/timeline" element={<RequireCase><Timeline /></RequireCase>} />
           <Route path="/steer" element={<RequireCase><SteerChat /></RequireCase>} />
+          <Route path="/agent-run" element={<RequireCase><AgentRun /></RequireCase>} />
           <Route path="/workbench" element={<RequireCase><Workbench /></RequireCase>} />
           <Route path="/findings" element={<RequireCase><Findings /></RequireCase>} />
           <Route path="/approve" element={<RequireCase><Approve /></RequireCase>} />
