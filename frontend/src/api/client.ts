@@ -597,6 +597,7 @@ export interface Mode3RunStatusResponse {
   status?: string;
   stop_reason?: string;
   pause_requested?: boolean;
+  stop_requested?: boolean;
   question?: string;
   orders?: number;
   order_index?: number;
@@ -1232,6 +1233,8 @@ export const api = {
     ),
   mode3RunPause: (params: { run_id: string; paused: boolean }) =>
     post<{ run_id: string; paused: boolean }>("/mode3/run/pause", params),
+  mode3RunStop: (params: { run_id: string }) =>
+    post<{ run_id: string; stop_requested: boolean }>("/mode3/run/stop", params),
   mode3RunResume: (params: { run_id: string }) =>
     post<{ run_id: string; status: string }>("/mode3/run/resume", params),
   mode3RunStage: (params: { run_id: string }) =>

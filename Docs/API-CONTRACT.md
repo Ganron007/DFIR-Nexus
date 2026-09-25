@@ -1430,6 +1430,138 @@ needles is one event.
 
 ---
 
+### POST /portal/api/mode3/run/plan
+**Description:** Director preview for a supervised Mode 3 run. Returns the work orders that would execute (families + correlation + pattern, KB skill refs, examiner findings-feedback constraints) without running anything. Read-only. Requires ES for the real family census; without a model/families the director still returns a valid plan.
+
+**Request:**
+```json
+{
+  "question": "string (optional — falls back to the case intake question)",
+  "max_orders": 6
+}
+```
+
+**Response 200:**
+```json
+{
+  "run_id": "M3-plan-…",
+  "question": "string",
+  "orders": [
+    {
+      "order_id": "wo-…", "role": "evidence|correlation|pattern",
+      "task": "string", "family": "string", "why": "string",
+      "priority_tools": ["es_search"], "acceptance": "string",
+      "skill_refs": [{"skill": "string", "version": "string", "citations": ["string"]}]
+    }
+  ]
+}
+```
+
+**Errors:** `404` — no active case; `409` — case sealed.
+
+---
+
+### POST /portal/api/mode3/run
+**Description:** Approves the plan and starts a supervised run in the background (same runtime as `nexus mode3 run`). Every agent tool call is audited through `backbone_call`; agents cannot stage or approve. Returns `202` with the `run_id`; stream events from `/portal/api/mode3/run/events`.
+
+**Request:** `{"question": "string?", "max_orders": 6, "run_id": "string?"}`
+
+**Response 202:** `{"run_id": "M3-…", "status": "running", "question": "string"}`
+
+**Errors:** `404` — no active case; `409` — a run with this id is already in progress or the case is sealed.
+
+---
+
+### GET /portal/api/mode3/run/status
+**Description:** Run state for the Agent Run page / CLI — meters plus verifier verdicts, candidate findings and narrative. `run_id` is optional (defaults to the latest run for the case).
+
+**Response 200:**
+```json
+{
+  "run_id": "M3-…", "status": "running|paused|stopped|completed|failed",
+  "stop_reason": "string", "pause_requested": false, "stop_requested": false,
+  "question": "string", "orders": 4, "order_index": 4, "followup_rounds": 1,
+  "results": 5, "candidates": 4, "gaps": 0, "events": 120,
+  "verdicts": [{"title": "string", "class": "confirmed|inferred|refuted", "basis": "string", "audit_ids": ["string"]}],
+  "candidate_findings": [{"title": "string", "confidence": "LOW", "audit_ids": ["string"]}],
+  "narrative": "string", "created_at": "ISO 8601", "completed_at": "ISO 8601"
+}
+```
+
+**Errors:** `404` — no active case or run not found.
+
+---
+
+### GET /portal/api/mode3/run/events
+**Description:** Server-sent events for a run (`text/event-stream`). Frames: `event: agent` with one JSON event envelope (`event_id/ts/run_id/event_type/actor/agent_id/tool/why/audit_id/status/detail/data`), `event: ping` keepalives, and a terminal `event: run` when the run reaches `completed|failed|paused|stopped`. Replays the full log first, so a reload re-attaches without loss. `run_id` optional (latest run).
+
+**Errors:** `404` — no active case or no run found.
+
+---
+
+### POST /portal/api/mode3/run/steer
+**Description:** Inject an examiner directive. Written to `analysis/mode3_runs/<run_id>.steering.jsonl` and read into every subsequent work-order context (agents pick it up on the next order, not mid-order). Emits a `steering.injected` event.
+
+**Request:** `{"run_id": "M3-…", "text": "chase WS01 and drop the exfil line"}`
+
+**Response 200:** `{"run_id": "M3-…", "steering": {"ts": "ISO 8601", "text": "string"}}`
+
+**Errors:** `400` — missing run_id/text; `404` — run not found; `409` — case sealed.
+
+---
+
+### POST /portal/api/mode3/run/pause
+**Description:** Cooperative pause/resume. The current work order finishes; the supervisor does not start another and emits `run.paused`. Resume clears the flag and continues from the persisted order index.
+
+**Request:** `{"run_id": "M3-…", "paused": true}`
+
+**Response 200:** `{"run_id": "M3-…", "paused": true}`
+
+**Errors:** `400` — missing run_id; `404` — run not found; `409` — case sealed.
+
+---
+
+### POST /portal/api/mode3/run/resume
+**Description:** Clears the pause flag and continues a paused run from the persisted state (same run id, no re-plan of completed orders). A **stopped** run is terminal and cannot be resumed (`409`).
+
+**Request:** `{"run_id": "M3-…"}`
+
+**Response 202:** `{"run_id": "M3-…", "status": "running"}`
+
+**Errors:** `400` — missing run_id; `404` — run not found; `409` — run already in progress, run stopped, or case sealed.
+
+---
+
+### POST /portal/api/mode3/run/stop
+**Description:** Cooperative terminal stop. The current work order finishes; the supervisor halts with `status=stopped`, `stop_reason=examiner_stop` and emits `run.stopped`. Nothing is staged or approved by stopping.
+
+**Request:** `{"run_id": "M3-…"}`
+
+**Response 200:** `{"run_id": "M3-…", "stop_requested": true}`
+
+**Errors:** `400` — missing run_id; `404` — run not found; `409` — case sealed.
+
+---
+
+### POST /portal/api/mode3/run/stage
+**Description:** Examiner action that stages a run's verified candidates as DRAFT findings. Only candidates with at least one real `audit_id` are staged (FD-001); verifier-refuted and evidence-shape-invalid candidates are skipped with reasons. Each staged finding carries `run_id` and `input_call_ids` lineage. Approval is untouched — staged findings stay DRAFT until the examiner approves them in the Approval Desk.
+
+**Request:** `{"run_id": "M3-…"}`
+
+**Response 200:**
+```json
+{
+  "run_id": "M3-…",
+  "staged": [{"title": "string", "finding_id": "F-…", "input_call_ids": ["string"], "verifier_class": "confirmed|inferred|"}],
+  "skipped": [{"title": "string", "reason": "string"}],
+  "staged_count": 1, "skipped_count": 0
+}
+```
+
+**Errors:** `400` — missing run_id; `404` — run not found; `409` — case sealed.
+
+---
+
 ### POST /portal/api/case/seal
 **Description:** Case-file HMAC seal via challenge-response — the canonical case-lifecycle close action, usable from any mode (Mode 1 surfaces it on the Report page). Reuses the same challenge-response flow as per-finding approval (get a challenge from `GET /portal/api/commit/challenge` first). Computes an HMAC signature over `REPORT.md` content and writes it to the verification ledger. Requires a generated report first. `POST /portal/api/mode3/seal` remains as an alias for compatibility.
 

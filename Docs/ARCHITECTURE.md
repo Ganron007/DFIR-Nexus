@@ -75,7 +75,7 @@ flowchart TB
 | **Detection** | Optional drafts after an APPROVED story. Not N5. |
 | **Examiner Portal + MCP** | Investigation UI for Register, N1–N8, ingest, detection, HMAC. Collect does not move into the Portal. |
 | **HTTP audit (4k.3)** | Every `/portal/api/*` (mutating always; reads at `NEXUS_HTTP_AUDIT=all`) and every `/mcp` call is recorded twice: rotating `logs/nexus-http-YYYYMMDD.log` and a hash-chained case entry in `audit/http.jsonl` (method/path/redacted query/status/duration/case). Failed ES tool calls are audited with their error. |
-| **LLM** | Optional. Narrates **N4 hits** only. Cannot approve. Fully agentic tool-selection is a later mode. |
+| **LLM** | Optional. Narrates **N4 hits** only. Cannot approve. Mode 3 adds supervised agents (scoped read-only tools, see below) — they never stage or approve; DRAFT staging is an examiner action. |
 
 ## Design Principle
 
@@ -366,6 +366,40 @@ prompt, pattern chains, `_registry_context_block`), the report (per-stage ITM
 coverage + registry facts) and `nexus doctor` (manifest). Rebuild with
 `scripts/build_*_registry.py`; raw dumps are gitignored and excluded from
 wheels.
+
+### Mode 3 supervised agent runtime (2026-09)
+
+`src/nexus/langgraph/mode3_runtime.py` is the agentic execution layer (M1–M7).
+It is a LangGraph `StateGraph` supervisor over the shared bounded tool loop —
+there is no second bespoke agent loop:
+
+- **Roles** (`AgentRole`): director, evidence, correlation, pattern, verifier,
+  synthesis, reporter — each with a scoped **read-only** tool allowlist,
+  system prompt, budget (rounds/calls/seconds) and deterministic honest
+  fallback. The allowlist is enforced by `context_loop.allowed_tools`.
+- **Work orders** (`WorkOrder`): task, family, priority tools, expected
+  artifact/event IDs, acceptance signal, negative-evidence rule, and
+  `skill_refs` (KB skill id + content version + citations) rendered into the
+  prompt as step queries.
+- **Graph**: `director → worker(s) → verify → assess → synthesis`, with a
+  `pause`/halt node. `assess` appends bounded follow-up orders for
+  inferred/refuted candidates (`NEXUS_MODE3_FOLLOWUPS`, default 2) and stops
+  early on `converged_no_new_evidence`; examiner findings-feedback (approved →
+  deepen, rejected → exclusion, draft → de-dup) is read at plan time.
+- **Events** (`AgentEvent`): one envelope (`run_id/turn_id/agent_id/call_id`,
+  tool/why/audit_id/status/detail) persisted to
+  `analysis/mode3_runs/<run_id>.jsonl` and streamed over SSE
+  (`GET /portal/api/mode3/run/events`). Examiner controls (pause/stop) live in
+  a `.control.json` sidecar the graph never writes, so a state persist can
+  never clobber a fresh request.
+- **Run record**: `analysis/mode3_runs/<run_id>.json` (orders, results,
+  verdicts, candidates, coverage, follow-up count) is the resumable
+  checkpoint; `nexus mode3` and the Agent Run page are two surfaces over the
+  same runtime.
+- **Boundary**: agents never stage or approve. Candidates stage as DRAFT only
+  through the examiner action `nexus mode3 stage` / `POST /mode3/run/stage`,
+  which requires real audit IDs (FD-001) and persists `run_id` /
+  `input_call_ids` lineage. Approval stays password-gated in the Approval Desk.
 
 ## LLM Client Setup
 

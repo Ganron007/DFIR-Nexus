@@ -26,7 +26,7 @@ import {
   type Mode3Verdict,
 } from "../api/client";
 
-const TERMINAL = new Set(["completed", "failed", "paused"]);
+const TERMINAL = new Set(["completed", "failed", "paused", "stopped"]);
 const MAX_EVENTS = 800;
 
 function fmtTs(ts?: string): string {
@@ -392,6 +392,19 @@ export default function AgentRun() {
     }
   };
 
+  const handleStop = async () => {
+    if (!runId) return;
+    setBusy("stop");
+    try {
+      await api.mode3RunStop({ run_id: runId });
+      await refreshStatus(runId);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : "Stop failed");
+    } finally {
+      setBusy("");
+    }
+  };
+
   const handleStage = async () => {
     if (!runId) return;
     setBusy("stage");
@@ -590,6 +603,14 @@ export default function AgentRun() {
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
             <button className="btn btn-sm" onClick={handlePauseToggle} disabled={!!busy || (!running && !record?.pause_requested)}>
               {record?.pause_requested ? "Resume" : "Pause"}
+            </button>
+            <button
+              className="btn btn-sm btn-danger"
+              onClick={handleStop}
+              disabled={!!busy || !running}
+              title="Halt at the next work order (cooperative stop; nothing is staged or approved)"
+            >
+              {busy === "stop" ? "Stopping…" : "Stop"}
             </button>
             <input
               value={steerText}

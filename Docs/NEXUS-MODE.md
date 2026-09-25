@@ -121,11 +121,14 @@ presets**, not separate products or UIs.
 > iterative query loop, corroboration engine (FD-006/007), and LLM-drafted
 > findings (`examiner_selected=False` provenance marker) are wired with
 > Portal endpoints (`/portal/api/mode2/iterate`, `/corroborate`,
-> `/propose-draft`). Mode 3 is implemented — agentic planning, mandatory-
-> lane-first execution guard, case-file HMAC sealing (challenge-response),
-> and agent run ledger are wired with Portal endpoints
-> (`/portal/api/mode3/plan`, `/execute`, `/seal`). All three modes share
-> the same Cockpit. **Phase 4 (enterprise UI rewrite) is complete** — the
+> `/propose-draft`). **Mode 3 is implemented as a supervised agent runtime
+> (2026-09-25):** LangGraph supervisor (director → workers → verifier →
+> synthesis), KB skill contracts, bounded budgets, follow-up corroboration
+> and convergence stop, a live SSE run event stream, the Agent Run page and
+> `nexus mode3` CLI parity; DRAFT staging is an examiner action and approval
+> is unchanged. The legacy `/mode3/plan|execute|seal` endpoints remain for
+> the plan/execute sliver and case sealing. All three modes share the same
+> Cockpit. **Phase 4 (enterprise UI rewrite) is complete** — the
 > React SPA cockpit at `/portal/app/*` replaced the hand-written HTML/JS
 > proof-of-concept without changing the API contracts. **Phase 4e (case
 > management segregation) is complete (2026-09-10):** the SPA Overview is the
@@ -159,7 +162,8 @@ scripting and headless work, but the UI must expose every N1–N8 action:
 |------|------------------------|----------------------------|
 | **Explore** | Faceted search over parsed evidence (family, host, date, user, needle, regex). Bookmark hits. | Mode 1: scribe only. Mode 2: the LLM answers questions by querying the same index (citations + aggregations). Mode 3: agent runs filters and proposes. |
 | **Timeline** | Time scrubber, histogram, event lanes, brush-to-zoom. | Mode 1: none. Mode 2: mark pivot points. Mode 3: add events from new tools. |
-| **Steer Chat** | Ask English questions, drill ("corroborate this", "drill into WS01"), and read cited answers. | Always the co-pilot. Mode 1: translate/scribe only. Mode 2: live evidence retrieval — plans **Elasticsearch query JSON**, runs `es_search`/`es_aggregate` over the case index, answers with citations + per-stage timings. Mode 3: plans/hunts and executes. |
+| **Steer Chat** | Ask English questions, drill ("corroborate this", "drill into WS01"), and read cited answers. | Always the co-pilot. Mode 1: translate/scribe only. Mode 2: live evidence retrieval — plans **Elasticsearch query JSON**, runs `es_search`/`es_aggregate` over the case index, answers with citations + per-stage timings. Mode 3: primary surface is the Agent Run page (this chat keeps the legacy plan/execute sliver). |
+| **Agent Run** | Approve the work-order plan, watch agents/tools live, steer mid-run, pause/resume/stop, review verifier verdicts and lineage, stage DRAFTs, export the run. | The Mode 3 supervisor and its scoped read-only agents; every plan, tool call, verdict and output appears in the SSE event stream. |
 | **Finding Workbench** | Bookmarked hits -> DRAFT builder + evidence list + scribe + validation. | Format DRAFTs (Mode 1). Propose DRAFTs (Mode 2/3). Never self-approve. |
 | **Approval Desk** | HMAC sign-off on DRAFT findings. | Nothing. Approval is always human. |
 | **Report** | Trigger N8 from APPROVED. Steer the narrative per round (whole report or one finding). | Mode 1: shapes an evidence-constrained narrative from APPROVED findings under examiner steering — adds no evidence or facts, never approves. Mode 2/3: same boundary over agent-gathered evidence. |
@@ -316,58 +320,57 @@ N8 report from APPROVED only
 - Does not write findings inside the steering loop
 - Treats absent evidence classes as scope — never as a verdict
 
-### Mode 3 — Agentic (plan/execute/seal implemented; autonomous loop pending)
+### Mode 3 — Supervised Agentic (M1–M7 implemented)
 
-**The agent chooses MCP tools, runs extras, proposes findings, and the examiner
-steers at the end.**
+**A supervisor runs scoped read-only agents over the case evidence; the
+examiner approves the plan, steers mid-run, and stages DRAFTs.**
 
-Mode 3 is the old plan done right. A ReAct agent can run the mandatory N2 lane,
-then choose additional MCP tools, iterate on queries, and propose DRAFTs. The
-examiner reviews the whole case file and signs off.
+Mode 3 turns the case question into a bounded investigation: the director
+plans work orders (one per high-value evidence family, plus correlation and
+pattern checks, with the relevant KB skill steps and content versions
+attached), workers execute them through the shared audited tool loop, a
+verifier re-checks every candidate's cited claims (confirmed / inferred /
+refuted), an assessor appends bounded follow-up rounds, and synthesis produces
+the narrative + DRAFT candidates. Nothing is staged or approved by the agents.
 
-> **Status (2026-09-16):** Mode 2 is complete (incl. ES retrieval v2); Mode 3's
-> **plan / execute / seal** stages are implemented and dual-audited (commits
-> `8fc0543`, `b52ff50`) — mandatory-lane guard, challenge-response case-file
-> HMAC sealing, and the agent run ledger are wired; Portal endpoints
-> `/portal/api/mode3/plan`, `/execute`, `/seal`. **Pending (WPs 4j.14–4j.19):**
-> orchestrator loop controller, mid-run examiner steering, findings-feedback
-> loop, real cross-family corroboration, loop-until-satisfied, acceptance test
-> — plus 8.1 SSE streaming and the agent-run view in the UI.
-> **Gate 3 (operator review on a real case) remains pending.**
+> **Status (2026-09-25):** M1–M7 complete — supervisor state machine, seven
+> scoped roles, skill/work-order contracts, corroboration + examiner
+> findings-feedback, event envelope + SSE, run API
+> (`plan/run/status/events/steer/pause/resume/stop/stage`), CLI parity and the
+> **Agent Run** page. Live acceptance: CASE-F2358250 run
+> `M3-20260925T060304-aacc7b` — 4 orders, 1 follow-up round, 2 verifier passes
+> (13 verdicts), 4 DRAFTs staged with audit lineage. **GATE 4j-D and GATE-B
+> are operator sign-offs and remain pending.**
 
 ```
-Examiner sets scope in Steer Chat
+Examiner question / case intake
     |
     v
-Agent runs mandatory N2 lane (cannot skip)
+Director plans work orders  (families + correlation + pattern; KB skills; examiner feedback)
     |
     v
-Agent adds extras via MCP tools (carve, Volatility, network parsers)
-    |  (only for SKIP'd artifacts or playbook extras — not instead of lane)
+Workers run read-only tools (es_*, rag_search, kb_query, run_record, sample_rows) — every call audited
+    |                              ^
+    |                              |  steer / pause / resume / stop  (examiner, at any work-order boundary)
     v
-Agent iterates: query -> analyze -> propose needles -> re-query
+Verifier: confirmed / inferred / refuted  ->  Assess: bounded follow-up rounds until corroborated or no new evidence
     |
     v
-Agent corroborates and proposes DRAFTs
+Synthesis: narrative + DRAFT candidates  (lineage: run_id + input_call_ids)
     |
     v
-Examiner reviews all DRAFTs and case file in Cockpit
-    |
-    v
-HMAC on case file  (or per-finding if the examiner wants)
-    |
-    v
-N8 report from APPROVED only
+Examiner reviews Agent Run -> "Stage DRAFTs" -> Approval Desk HMAC -> N8 report from APPROVED only
 ```
 
-**What the agent does in Mode 3 (plus Mode 2):**
-- Chooses which MCP tools to run (lane first, then extras)
-- May ingest network logs and re-run N4->N8
-- Full autonomous investigation with audit chain
+**What the agents do in Mode 3:**
+- Plan and run bounded read-only tool calls against the case index, KB and RAG
+- Follow KB-cited skill steps, cite rows with audit IDs, state coverage and gaps
+- Corroborate or refute candidates; drop refuted items; stop on convergence
 
-**What the agent does NOT do in Mode 3:**
-- Does not skip the mandatory lane
-- Does not self-approve
+**What the agents do NOT do in Mode 3:**
+- No write/approve/stage tools — staging is the examiner's Agent Run action
+- No skipped mandatory lane, no invented evidence (negative-evidence rule)
+- No hidden chain-of-thought — plans, work orders, tool calls and outputs are recorded and streamed
 
 ### What stays constant across all modes
 
@@ -391,7 +394,10 @@ N8 report from APPROVED only
    **Status: implemented + dual-audited (Phase 2, commits `fe62295`, `49720eb`).**
 3. **Mode 3 agentic** — Agent chooses MCP tools. Same Cockpit; the chat shows
    what the agent plans and asks permission.
-   **Status: implemented + dual-audited (Phase 3, commits `8fc0543`, `b52ff50`).**
+   **Status: Phase 3 plan/execute/seal dual-audited (commits `8fc0543`, `b52ff50`);
+   the supervised runtime M1–M7 is complete (2026-09-25, see "Mode 3 —
+   Supervised Agentic" above) with the Agent Run page and `nexus mode3` CLI.
+   GATE 4j-D / GATE-B operator sign-off pending.**
 4. **Phase 4 enterprise UI rewrite** — React SPA cockpit at `/portal/app/*`
    replaced the hand-written HTML/JS proof-of-concept. API contracts unchanged.
    **Status: complete (Phase 4b workflow cockpit + Phase 4d UI hardening +

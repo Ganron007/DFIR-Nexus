@@ -114,6 +114,8 @@ NEXUS_LLM_REASONING=high                 # optional reasoning passthrough
 | `NEXUS_RAG_DEVICE` | `auto` | Embedding device: `cpu` \| `cuda` \| `cuda:0` — `auto` picks CUDA when the installed torch build has it (the log line reports the device). |
 | `NEXUS_LLM_TIMEOUT` | `180` | Seconds per LLM request; raise it (e.g. `600`) for slow long-context providers — a stalled provider can never hang a turn. |
 | `NEXUS_MODE2_TURN_TIMEOUT` | `900` | Outer steering-turn budget (seconds); must stay above `NEXUS_CONTEXT_LOOP_SECONDS` (default 360). The bounded tool loop returns a partial result before this ceiling. |
+| `NEXUS_MODE3_FOLLOWUPS` | `2` | Max follow-up corroboration rounds the Mode 3 supervisor may add (0–4). Each round is a new work order for inferred/refuted candidates; the run stops early on `converged_no_new_evidence`. |
+| `NEXUS_CONTEXT_LOOP_{ROUNDS,CALLS,SECONDS}` | `8`/`16`/`360` | Shared bounded-loop budget used by every Mode 1/2/3 agent turn (per-role Mode 3 budgets cap it further). Unlike `NEXUS_MODE3_FOLLOWUPS`, `0` here is not unlimited — the loop needs at least one round. |
 | `NEXUS_LLM_CONTEXT_WINDOW` | `1000000` | Your model's max context window (tokens). The Mode 2 context allocator packs `window × fill` and never applies smaller artificial caps. Also settable per run in the Briefing run panel (stored in `analysis/mode2_run_options.json`). |
 | `NEXUS_CONTEXT_FILL_RATIO` | `0.7` | Share of the window packed into prompts. Every packed context is persisted to `analysis/llm_context/` for audit; usage is logged, never capped. |
 | `NEXUS_CONTEXT_RETRY_RATIO` | `0.5` | Downgrade ratio for the one retry when a provider rejects an over-long prompt. |
@@ -219,7 +221,8 @@ Four framework registries ship **compiled** inside the package
 The rebuild scripts download the raw upstream JSON/STIX/YAML (gitignored and
 excluded from wheels) and recompile the registry; attribution is retained in
 each folder's `NOTICE.txt`. Registries ground the Mode 1 scribe, the Mode 2
-query proposals + interpretation, and the Mode 3 hunt prompts;
+query proposals + interpretation, and the Mode 3 work-order planning /
+tool-selection prompts;
 `nexus doctor` lists them under "knowledge sources", and the report shows
 per-stage Insider Threat Matrix coverage. Needle packs
 (`needles/itm_needles.yaml`, `needles/external_needles.yaml`) feed the Mode 1

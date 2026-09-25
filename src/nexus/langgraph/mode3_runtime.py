@@ -384,14 +384,87 @@ def read_steering(case_dir: Path, run_id: str, limit: int = 50) -> list[dict[str
     return out[-limit:]
 
 
-def mark_paused(case_dir: Path, run_id: str, paused: bool = True) -> bool:
-    """Set/clear the cooperative pause flag in the persisted run record."""
-    state = read_run_record(case_dir, run_id)
-    if state is None:
+def _control_path(case_dir: Path, run_id: str) -> Path:
+    return Path(case_dir) / _MODE3_DIR / f"{run_id}.control.json"
+
+
+def read_controls(case_dir: Path, run_id: str) -> dict[str, bool]:
+    """Examiner control flags (pause/stop) — a sidecar the graph never writes."""
+    path = _control_path(case_dir, run_id)
+    out = {"pause_requested": False, "stop_requested": False}
+    if not path.is_file():
+        return out
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return out
+    if isinstance(data, dict):
+        for key in out:
+            out[key] = bool(data.get(key))
+    return out
+
+
+def _update_controls(case_dir: Path, run_id: str, **changes: bool) -> bool:
+    case_dir = Path(case_dir)
+    if read_run_record(case_dir, run_id) is None:
         return False
-    state["pause_requested"] = bool(paused)
-    _persist_state(Path(case_dir), run_id, state)
+    controls = read_controls(case_dir, run_id)
+    controls.update({key: bool(value) for key, value in changes.items()})
+    path = _control_path(case_dir, run_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(controls, indent=2), encoding="utf-8")
+    tmp.replace(path)
     return True
+
+
+def mark_paused(case_dir: Path, run_id: str, paused: bool = True) -> bool:
+    """Set/clear the cooperative pause flag (sidecar; graph-safe)."""
+    return _update_controls(case_dir, run_id, pause_requested=paused)
+
+
+def request_stop(case_dir: Path, run_id: str) -> bool:
+    """Set the cooperative stop flag — the run halts before the next order."""
+    return _update_controls(case_dir, run_id, stop_requested=True)
+
+
+def read_case_findings(case_dir: Path) -> list[dict[str, Any]]:
+    """Examiner-visible findings for the next round (4j.16)."""
+    path = Path(case_dir) / "findings.json"
+    if not path.is_file():
+        return []
+    try:
+        rows = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    return [row for row in rows if isinstance(row, dict)]
+
+
+def examiner_feedback(case_dir: Path) -> dict[str, list[dict[str, Any]]]:
+    """Approved/DRAFT/rejected findings as run feedback.
+
+    Approved findings seed a deepen order; rejected findings become explicit
+    exclusion constraints (no re-proposal without new independent evidence);
+    pending DRAFTs are de-duplication context. Titles only — no agent reads or
+    writes finding state, and nothing here approves.
+    """
+    out: dict[str, list[dict[str, Any]]] = {
+        "approved": [], "draft": [], "rejected": [],
+    }
+    for row in read_case_findings(case_dir):
+        status = str(row.get("status") or "").upper()
+        item = {
+            "id": str(row.get("id") or ""),
+            "title": str(row.get("title") or ""),
+            "confidence": str(row.get("confidence") or ""),
+        }
+        if status == "APPROVED":
+            out["approved"].append(item)
+        elif status == "REJECTED":
+            out["rejected"].append(item)
+        elif status == "DRAFT":
+            out["draft"].append(item)
+    return out
 
 
 def _candidate_audit_ids(candidate: dict[str, Any]) -> list[str]:
@@ -967,8 +1040,9 @@ def plan_work_orders(
     run_id: str,
     sink: EventSink,
     max_orders: int = 6,
+    known_findings: dict[str, list[dict[str, Any]]] | None = None,
 ) -> list[WorkOrder]:
-    """Deterministic director: one evidence order per family + correlation/pattern."""
+    """Deterministic director: families + correlation/pattern + examiner feedback."""
     case_dir = Path(case_dir)
     audit = AuditWriter("nexus", audit_dir=case_dir / "audit")
     try:
@@ -1021,6 +1095,53 @@ def plan_work_orders(
         acceptance="patterns with required evidence rows, or explicit no-match",
         skill_refs=_retrieve_skill_refs(all_families, keywords, limit=4),
     ))
+
+    # 4j.16 — examiner accept/reject feeds the next round: approved findings
+    # seed a deepen order, rejected findings become exclusion constraints.
+    feedback = known_findings or {}
+    approved = list(feedback.get("approved") or [])
+    draft = list(feedback.get("draft") or [])
+    rejected = list(feedback.get("rejected") or [])
+    feedback_order: WorkOrder | None = None
+    if approved or draft or rejected:
+        parts = [f"Examiner findings feedback for: {question or '(none)'}."]
+        if approved:
+            parts.append(
+                "EXAMINER-APPROVED (deepen/extend with new independent "
+                "evidence; do not merely restate): "
+                + "; ".join(f"{f.get('id')} {f.get('title')}" for f in approved[:8])
+                + ".")
+        if draft:
+            parts.append(
+                "PENDING DRAFTS (already staged — only re-propose with new "
+                "corroboration or a material correction): "
+                + "; ".join(f"{f.get('id')} {f.get('title')}" for f in draft[:8])
+                + ".")
+        if rejected:
+            parts.append(
+                "EXAMINER-REJECTED (negative constraint — do not re-propose "
+                "without new, independent, cited evidence; if the existing "
+                "evidence supports the rejection, say so): "
+                + "; ".join(f"{f.get('id')} {f.get('title')}" for f in rejected[:8])
+                + ".")
+        parts.append(
+            "Use new queries and cite audit_ids; a restatement of already "
+            "staged evidence is not new evidence.")
+        feedback_order = WorkOrder(
+            order_id=WorkOrder.new_id(),
+            role="correlation",
+            task=" ".join(parts),
+            why=(
+                f"examiner feedback: {len(approved)} approved / "
+                f"{len(draft)} draft / {len(rejected)} rejected"),
+            priority_tools=("es_search", "es_aggregate", "run_record"),
+            acceptance=(
+                "per-finding disposition: deepened with new evidence, kept "
+                "as-is, or explicitly dropped"),
+            skill_refs=_retrieve_skill_refs(all_families, keywords, limit=4),
+        )
+        orders = orders[: max(1, max_orders - 1)] + [feedback_order]
+
     for order in orders:
         sink.emit(new_event(
             run_id, "plan.work_order", actor="director",
@@ -1096,6 +1217,7 @@ def run_mode3(
             "NEXUS_MODE3_FOLLOWUPS", 2, low=0, high=4),
         "evidence_signature": None,
         "converged_no_new_evidence": False,
+        "examiner_feedback": {},
     }
     state_path = case_dir / _MODE3_DIR / f"{run_id}.json"
     if resume and state_path.is_file():
@@ -1103,12 +1225,16 @@ def run_mode3(
             loaded = json.loads(state_path.read_text(encoding="utf-8"))
             if isinstance(loaded, dict) and loaded.get("run_id") == run_id:
                 state.update(loaded)
+                # A stopped run is terminal — resume must not resurrect it.
+                if str(state.get("status") or "") == "stopped":
+                    return state
                 state["status"] = "running"
                 state.setdefault("followup_rounds", 0)
                 state.setdefault("followups_limit", _env_int(
                     "NEXUS_MODE3_FOLLOWUPS", 2, low=0, high=4))
                 state.setdefault("evidence_signature", None)
                 state.setdefault("converged_no_new_evidence", False)
+                state.setdefault("examiner_feedback", {})
         except (OSError, ValueError):
             pass
 
@@ -1120,22 +1246,42 @@ def run_mode3(
 
     # ── Director node ──────────────────────────────────────────────────
     def director_node(_state: dict[str, Any]) -> dict[str, Any]:
+        # 4j.16 — read examiner decisions fresh so a resumed run also picks up
+        # findings approved/rejected since the last turn.
+        state["examiner_feedback"] = examiner_feedback(case_dir)
         if not state["orders"]:
             orders = plan_work_orders(
                 case_dir, question, run_id=run_id, sink=sink,
                 max_orders=max_orders,
+                known_findings=state["examiner_feedback"],
             )
             state["orders"] = [o.to_dict() for o in orders]
         state["status"] = "planned"
         _persist_state(case_dir, run_id, state)
-        sink.emit(new_event(run_id, "plan.ready", actor="director",
-                            detail=f"{len(state['orders'])} work order(s)"))
+        sink.emit(new_event(
+            run_id, "plan.ready", actor="director",
+            detail=f"{len(state['orders'])} work order(s)",
+            data={
+                "feedback": {
+                    key: len(state["examiner_feedback"].get(key) or [])
+                    for key in ("approved", "draft", "rejected")
+                },
+            },
+        ))
         return state
 
     # ── Worker node ────────────────────────────────────────────────────
     def worker_node(_state: dict[str, Any]) -> dict[str, Any]:
-        record = read_run_record(case_dir, run_id) or {}
-        if record.get("pause_requested"):
+        controls = read_controls(case_dir, run_id)
+        if controls.get("stop_requested"):
+            state["status"] = "stopped"
+            state["stop_reason"] = "examiner_stop"
+            _persist_state(case_dir, run_id, state)
+            sink.emit(new_event(run_id, "run.stopped", actor="examiner",
+                                detail="stop requested — halting before the "
+                                       "next work order"))
+            return state
+        if controls.get("pause_requested"):
             state["status"] = "paused"
             state["stop_reason"] = "paused"
             _persist_state(case_dir, run_id, state)
@@ -1174,6 +1320,7 @@ def run_mode3(
                 for r in state.get("results", [])
             ],
             "steering": read_steering(case_dir, run_id),
+            "examiner_feedback": state.get("examiner_feedback") or {},
         }
         result = run_work_order(
             order, case_dir=case_dir, model=model, run_id=run_id,
@@ -1354,13 +1501,17 @@ def run_mode3(
                           "question": question,
                           "verdicts": state.get("verdicts") or [],
                           "candidates": candidates,
+                          "examiner_feedback": state.get("examiner_feedback") or {},
                       }, default=str)[:9000]),
                 why="Final narrative + DRAFT candidate findings",
                 acceptance="narrative + findings with audit_ids; no approvals",
             )
             result = run_work_order(
                 order, case_dir=case_dir, model=model, run_id=run_id,
-                sink=sink, context={"verdicts": state.get("verdicts") or []},
+                sink=sink, context={
+                    "verdicts": state.get("verdicts") or [],
+                    "examiner_feedback": state.get("examiner_feedback") or {},
+                },
             )
             state.setdefault("results", []).append(result.to_dict())
             parsed = result.parsed or {}
@@ -1390,10 +1541,16 @@ def run_mode3(
         from langgraph.graph import END, START, StateGraph
 
         graph = StateGraph(dict)
+
         def pause_node(_state: dict[str, Any]) -> dict[str, Any]:
-            # Cooperative pause: the worker stopped before the next order.
-            sink.emit(new_event(run_id, "run.paused", actor="system",
-                                detail="awaiting resume"))
+            # Cooperative halt: the worker stopped before the next order.
+            status = str(state.get("status") or "")
+            if status == "stopped":
+                sink.emit(new_event(run_id, "run.stopped", actor="system",
+                                    detail="halted by examiner"))
+            else:
+                sink.emit(new_event(run_id, "run.paused", actor="system",
+                                    detail="awaiting resume"))
             return state
 
         graph.add_node("director", director_node)
@@ -1406,8 +1563,11 @@ def run_mode3(
         graph.add_edge(START, "director")
         graph.add_edge("director", "worker")
 
+        def _halted() -> bool:
+            return str(state.get("status") or "") in ("paused", "stopped")
+
         def _more_orders(_state: dict[str, Any]) -> str:
-            if str(state.get("status") or "") == "paused":
+            if _halted():
                 return "pause"
             if int(state.get("order_index") or 0) < len(_order_dicts()):
                 return "worker"
@@ -1419,7 +1579,7 @@ def run_mode3(
         graph.add_edge("pause", END)
 
         def _after_assess(_state: dict[str, Any]) -> str:
-            if str(state.get("status") or "") == "paused":
+            if _halted():
                 return "pause"
             if int(state.get("order_index") or 0) < len(_order_dicts()):
                 return "worker"
@@ -1443,9 +1603,12 @@ def run_mode3(
             detail=str(exc)[:300],
         ))
 
-    if str(state.get("status") or "") == "paused":
+    final_status = str(state.get("status") or "")
+    if final_status == "paused":
         state["stop_reason"] = "paused"
-    elif state.get("status") != "failed":
+    elif final_status == "stopped":
+        state["stop_reason"] = "examiner_stop"
+    elif final_status != "failed":
         state["status"] = "completed"
         if not state.get("stop_reason"):
             state["stop_reason"] = "completed"

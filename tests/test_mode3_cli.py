@@ -78,6 +78,26 @@ def test_cli_stage_uses_real_runtime(tmp_path):
     assert any(f.get("run_id") == "M3-cli-stage" for f in rows)
 
 
+def test_cli_stop_and_resume_guard(tmp_path):
+    case = _case(tmp_path)
+    m3._persist_state(case, "M3-cli-stop", {
+        "run_id": "M3-cli-stop", "status": "running", "orders": [],
+        "order_index": 0, "results": [], "candidates": [], "gaps": [],
+    })
+    with patch("nexus.cli.main._resolve_case", return_value=case):
+        stop = runner.invoke(app, ["mode3", "stop", "--run-id", "M3-cli-stop"])
+    assert stop.exit_code == 0
+    assert m3.read_controls(case, "M3-cli-stop")["stop_requested"] is True
+
+    record = m3.read_run_record(case, "M3-cli-stop")
+    record["status"] = "stopped"
+    m3._persist_state(case, "M3-cli-stop", record)
+    with patch("nexus.cli.main._resolve_case", return_value=case):
+        resume = runner.invoke(
+            app, ["mode3", "resume", "--run-id", "M3-cli-stop", "--no-run"])
+    assert resume.exit_code == 1, "a stopped run must not be resurrected"
+
+
 def test_cli_steer_and_pause(tmp_path):
     case = _case(tmp_path)
     m3._persist_state(case, "M3-cli2", {
@@ -91,5 +111,4 @@ def test_cli_steer_and_pause(tmp_path):
     assert steer.exit_code == 0
     assert pause.exit_code == 0
     assert m3.read_steering(case, "M3-cli2")[0]["text"] == "chase WS01"
-    record = m3.read_run_record(case, "M3-cli2")
-    assert record and record.get("pause_requested") is True
+    assert m3.read_controls(case, "M3-cli2")["pause_requested"] is True

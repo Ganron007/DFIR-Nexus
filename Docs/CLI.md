@@ -211,6 +211,39 @@ and [NEXUS-MODE.md](NEXUS-MODE.md).
 Requires: `pip install dfir-nexus[pipeline]` and LLM env for coverage/design/interpret
 (`NEXUS_LLM_MODEL` / `NEXUS_LLM_BASE_URL`). `tools` needs no LLM.
 
+## Mode 3 agentic runs (`nexus mode3`)
+
+Supervised agent investigation over the active case — the same runtime and
+event stream as the Agent Run page (`/portal/app/agent-run`). Requires a
+configured model and the per-case Elasticsearch index (`NEXUS_ES_URL`);
+agents use scoped **read-only** tools only and never stage or approve.
+
+```bash
+nexus mode3 plan   -q "Trace RDP activity and USB device use"   # propose work orders (no execution)
+nexus mode3 run    -q "Trace RDP activity and USB device use"   # approve & run, streaming agent events
+nexus mode3 run    --run-id M3-20260925T060304-aacc7b           # resume/re-attach a run
+nexus mode3 status  --run-id M3-... [--json]                    # state, meters, stop reason
+nexus mode3 steer  "chase WS01 and drop the exfil line"         # directive for the next work order
+nexus mode3 pause  --run-id M3-...                              # pause between work orders
+nexus mode3 resume --run-id M3-... [--no-run]                   # clear pause (then continue)
+nexus mode3 stop   --run-id M3-...                              # halt at the next work order (terminal)
+nexus mode3 findings --run-id M3-... [--json]                   # DRAFT candidates with audit IDs
+nexus mode3 stage  --run-id M3-... [--json]                     # examiner: stage verified candidates as DRAFT
+nexus mode3 export --run-id M3-... --output run.json            # record + full event stream
+```
+
+Notes:
+
+- A **stopped** run is terminal — `resume` refuses it; start a new run.
+- `stage` skips candidates without real audit IDs (FD-001) and verifier-refuted
+  items, and records `run_id` / `input_call_ids` lineage on each DRAFT.
+- Approval stays examiner-only (`nexus approve` / Approval Desk); it is never
+  part of `nexus mode3`.
+- Run state lives under `cases/<CASE>/analysis/mode3_runs/` (`<run_id>.json`,
+  `<run_id>.jsonl`, `<run_id>.control.json`, `<run_id>.steering.jsonl`).
+- Tuning: `NEXUS_MODE3_FOLLOWUPS` (0–4, default 2), plus the shared loop knobs
+  `NEXUS_CONTEXT_LOOP_{ROUNDS,CALLS,SECONDS}`.
+
 ## Ingest & Doctor
 
 ```bash

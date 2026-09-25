@@ -131,7 +131,7 @@ nexus evidence verify     # re-hash and check for tampering
 
 DFIR-Nexus wraps your existing forensic tools as MCP tools. Every tool run is audited and returns an `audit_id`. **This is the key concept — every action gets a unique audit_id that findings must reference:**
 
-**Tools available (115 on Windows / 112 on Linux):**
+**Tools available (135 on Windows / 132 on Linux):**
 
 | Category | Tools | When to use |
 |----------|-------|-------------|
@@ -162,6 +162,35 @@ Tool: vr_run_hunt          → collects process tree from compromised host
 Tool: ingest_auto          → parses Suricata/Zeek logs into artifacts
 Tool: ti_lookup            → enriches IOCs via ThreatFox
 ```
+
+### Step 3b: Mode 3 supervised agent run (optional)
+
+On a Mode 3 case, let the supervised agents drive the next pass instead of
+running tools by hand. Open **Agent Run** in the cockpit
+(`/portal/app/agent-run`) or use the CLI:
+
+```bash
+nexus mode3 plan -q "Trace RDP activity and USB device use"   # review work orders + KB skills first
+nexus mode3 run  -q "Trace RDP activity and USB device use"   # approve the plan and run, streaming events
+```
+
+What you see and control:
+
+- **Plan preview** — one work order per high-value evidence family, plus
+  correlation and pattern checks, each carrying the KB skill steps and content
+  versions the agent will follow.
+- **Live board + stream** — agent lanes (rounds, tool calls, rows, partial
+  flags), every tool call with its `why` and `audit_id`, and the verifier
+  verdicts (`confirmed` / `inferred` / `refuted`) with their basis.
+- **Controls** — steer the next work order, pause/resume, **stop** (terminal),
+  re-attach by run id (`?run=…`), and export the run record + full event stream.
+- **Stage DRAFTs** — the examiner action that turns verified candidates into
+  DRAFT findings with `run_id` / `input_call_ids` lineage. Agents never stage or
+  approve; approve in the Approval Desk as usual.
+
+Staged findings feed the next run: approved findings seed a deepen work order,
+rejected findings become exclusion constraints, and pending DRAFTs are de-dup
+context. Run artifacts live in `cases/<CASE>/analysis/mode3_runs/`.
 
 ### Step 4: Record Findings
 

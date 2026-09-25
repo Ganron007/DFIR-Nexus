@@ -206,6 +206,33 @@ def pause(
 
 
 @app.command()
+def stop(
+    case: str = typer.Option("", "--case", help="Case id (default active)"),
+    run_id: str = typer.Option("", "--run-id", help="Run id (default latest)"),
+):
+    """Halt a run at the next work order (cooperative stop, not approval)."""
+    from nexus.langgraph.mode3_runtime import (
+        EventSink,
+        latest_run_id,
+        new_event,
+        read_run_record,
+        request_stop,
+    )
+
+    case_dir = _case_dir(case)
+    run_id = run_id.strip() or latest_run_id(case_dir)
+    if not run_id or read_run_record(case_dir, run_id) is None:
+        typer.echo("No Mode 3 run found", err=True)
+        raise typer.Exit(1)
+    request_stop(case_dir, run_id)
+    EventSink(case_dir, run_id).emit(new_event(
+        run_id, "run.stop_requested", actor="examiner",
+        detail="stop requested — halts before the next work order"))
+    typer.echo(f"Stop requested for {run_id} (run halts after the current "
+               "work order; DRAFTs are not staged or approved).")
+
+
+@app.command()
 def resume(
     case: str = typer.Option("", "--case", help="Case id (default active)"),
     run_id: str = typer.Option("", "--run-id", help="Run id (default latest)"),
@@ -224,6 +251,9 @@ def resume(
     record = read_run_record(case_dir, run_id) if run_id else None
     if record is None:
         typer.echo("No Mode 3 run found", err=True)
+        raise typer.Exit(1)
+    if str(record.get("status") or "") == "stopped":
+        typer.echo("Run was stopped by the examiner; start a new run.", err=True)
         raise typer.Exit(1)
     mark_paused(case_dir, run_id, False)
     typer.echo(f"Resumed {run_id}")

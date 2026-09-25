@@ -7228,6 +7228,7 @@ async def api_mode3_run_status(request):
         return JSONResponse({"error": "No active case"}, status_code=404)
     from nexus.langgraph.mode3_runtime import (
         latest_run_id,
+        read_controls,
         read_run_events,
         read_run_record,
     )
@@ -7240,6 +7241,7 @@ async def api_mode3_run_status(request):
     if record is None:
         return JSONResponse({"error": "run not found", "run_id": run_id},
                             status_code=404)
+    controls = await asyncio.to_thread(read_controls, case_dir, run_id)
     events = await asyncio.to_thread(read_run_events, case_dir, run_id, limit=500)
     results = record.get("results") or []
     candidates = record.get("candidates") or []
@@ -7248,7 +7250,8 @@ async def api_mode3_run_status(request):
         "run_id": run_id,
         "status": record.get("status"),
         "stop_reason": record.get("stop_reason"),
-        "pause_requested": bool(record.get("pause_requested")),
+        "pause_requested": controls["pause_requested"],
+        "stop_requested": controls["stop_requested"],
         "question": record.get("question") or "",
         "orders": len(record.get("orders") or []),
         "order_index": record.get("order_index") or 0,
@@ -7293,7 +7296,7 @@ async def api_mode3_run_events(request):
             emitted = len(events)
             record = await asyncio.to_thread(read_run_record, case_dir, run_id)
             status = str((record or {}).get("status") or "")
-            if status in ("completed", "failed", "paused"):
+            if status in ("completed", "failed", "paused", "stopped"):
                 terminal_seen += 1
                 if terminal_seen >= 2:
                     yield f"event: run\ndata: {json.dumps({'status': status}, default=str)}\n\n"
@@ -7395,6 +7398,12 @@ async def api_mode3_run_resume(request):
     if record is None:
         return JSONResponse({"error": "run not found", "run_id": run_id},
                             status_code=404)
+    if str(record.get("status") or "") == "stopped":
+        return JSONResponse(
+            {"error": "run was stopped by the examiner; start a new run",
+             "run_id": run_id},
+            status_code=409,
+        )
     await asyncio.to_thread(mark_paused, case_dir, run_id, False)
     model = await asyncio.to_thread(_mode3_resolve_model)
     try:
@@ -7404,6 +7413,47 @@ async def api_mode3_run_resume(request):
         return JSONResponse({"error": "run already in progress", "run_id": run_id},
                             status_code=409)
     return JSONResponse({"run_id": run_id, "status": "running"}, status_code=202)
+
+
+async def api_mode3_run_stop(request):
+    """POST /portal/api/mode3/run/stop — halt the run at the next work order.
+
+    Cooperative stop (like pause): the current order finishes, the supervisor
+    does not start another, emits ``run.stopped``, and records
+    ``stop_reason=examiner_stop``. Nothing is staged or approved by stopping.
+    """
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+    run_id = str(body.get("run_id") or "").strip()
+    if not run_id:
+        return JSONResponse({"error": "run_id is required"}, status_code=400)
+    from nexus.langgraph.mode3_runtime import (
+        EventSink,
+        new_event,
+        read_run_record,
+        request_stop,
+    )
+
+    record = await asyncio.to_thread(read_run_record, case_dir, run_id)
+    if record is None:
+        return JSONResponse({"error": "run not found", "run_id": run_id},
+                            status_code=404)
+    ok = await asyncio.to_thread(request_stop, case_dir, run_id)
+    if not ok:
+        return JSONResponse({"error": "run not found", "run_id": run_id},
+                            status_code=404)
+    EventSink(case_dir, run_id).emit(
+        new_event(run_id, "run.stop_requested", actor="examiner",
+                  detail="stop requested — halts before the next work order"))
+    return JSONResponse({"run_id": run_id, "stop_requested": True})
 
 
 async def api_mode3_run_stage(request):
@@ -7524,6 +7574,7 @@ def create_dashboard():
         Route("/portal/api/mode3/run/steer", api_mode3_run_steer, methods=["POST"]),
         Route("/portal/api/mode3/run/pause", api_mode3_run_pause, methods=["POST"]),
         Route("/portal/api/mode3/run/resume", api_mode3_run_resume, methods=["POST"]),
+        Route("/portal/api/mode3/run/stop", api_mode3_run_stop, methods=["POST"]),
         Route("/portal/api/mode3/run/stage", api_mode3_run_stage, methods=["POST"]),
         Route("/portal/api/case/seal", api_case_seal, methods=["POST"]),
         Route("/portal/api/mode3/seal", api_case_seal, methods=["POST"]),

@@ -10,6 +10,7 @@ const statusRecord = {
   status: "running",
   stop_reason: "",
   pause_requested: false,
+  stop_requested: false,
   question: "Trace RDP and USB",
   orders: 2,
   order_index: 1,
@@ -46,6 +47,7 @@ vi.mock("../api/client", () => ({
     })),
     mode3RunStart: vi.fn(async () => ({ run_id: "M3-test", status: "running" })),
     mode3RunPause: vi.fn(async () => ({ run_id: "M3-test", paused: true })),
+    mode3RunStop: vi.fn(async () => ({ run_id: "M3-test", stop_requested: true })),
     mode3RunResume: vi.fn(async () => ({ run_id: "M3-test", status: "running" })),
     mode3RunSteer: vi.fn(async () => ({ run_id: "M3-test", steering: { ts: "t", text: "x" } })),
     mode3RunStage: vi.fn(async () => ({
@@ -99,6 +101,7 @@ describe("AgentRun (Mode 3)", () => {
     expect(await screen.findByText("RDP reconnect")).toBeTruthy();
     expect(await screen.findByText("USB mass storage seen")).toBeTruthy();
     expect(await screen.findByText(/nexus-audit-1/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^Stop$/ })).toBeTruthy();
 
     const stageButton = screen.getByRole("button", { name: /Stage DRAFTs/ });
     await act(async () => {

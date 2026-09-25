@@ -76,8 +76,7 @@ def test_mode3_run_start_status_steer_pause_resume(tmp_path):
         pause = client.post("/portal/api/mode3/run/pause",
                             json={"run_id": run_id, "paused": True})
         assert pause.status_code == 200
-        record = m3.read_run_record(case, run_id)
-        assert record and record.get("pause_requested") is True
+        assert m3.read_controls(case, run_id)["pause_requested"] is True
 
         resume = client.post("/portal/api/mode3/run/resume",
                              json={"run_id": run_id})
@@ -118,6 +117,21 @@ def test_mode3_run_stage_endpoint(tmp_path):
     rows = json.loads((case / "findings.json").read_text(encoding="utf-8"))
     assert any(f.get("run_id") == "M3-stage-api"
                and f.get("status") == "DRAFT" for f in rows)
+
+
+def test_mode3_run_stop_sets_flag(tmp_path):
+    case = _case(tmp_path)
+    m3._persist_state(case, "M3-stop-api", {
+        "run_id": "M3-stop-api", "case_id": case.name, "question": "q",
+        "status": "running", "orders": [], "order_index": 0, "results": [],
+        "candidates": [], "gaps": [],
+    })
+    with patch("nexus.dashboard.app._get_case_dir", return_value=case):
+        response = _client().post("/portal/api/mode3/run/stop",
+                                  json={"run_id": "M3-stop-api"})
+    assert response.status_code == 200
+    assert response.json()["stop_requested"] is True
+    assert m3.read_controls(case, "M3-stop-api")["stop_requested"] is True
 
 
 def test_mode3_run_plan_rejects_sealed_case(tmp_path):

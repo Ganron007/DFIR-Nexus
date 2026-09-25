@@ -300,6 +300,56 @@ def test_role_budget_defaults_are_respected(tmp_path):
     assert budget.seconds == role.max_seconds
 
 
+def test_plan_work_orders_adds_examiner_feedback_order(tmp_path):
+    case = _case(tmp_path)
+    with patch("nexus.langgraph.backbone.backbone_call",
+               return_value={"family_rows": {"evtxecmd": 10, "hayabusa": 5}}):
+        orders = m3.plan_work_orders(
+            case, "what happened", run_id="M3-fb", sink=m3.EventSink(case, "M3-fb"),
+            max_orders=4,
+            known_findings={
+                "approved": [{"id": "F-1", "title": "USB seen"}],
+                "draft": [{"id": "F-2", "title": "RDP guessing"}],
+                "rejected": [{"id": "F-3", "title": "False lead"}],
+            },
+        )
+    assert len(orders) <= 4
+    feedback = orders[-1]
+    assert feedback.role == "correlation"
+    assert "EXAMINER-APPROVED" in feedback.task
+    assert "EXAMINER-REJECTED" in feedback.task
+    assert "F-1 USB seen" in feedback.task
+    assert "False lead" in feedback.task
+    assert m3.validate_work_order(feedback) == []
+
+
+def test_supervisor_stop_halts_before_next_order(tmp_path):
+    case = _case(tmp_path)
+    executed: list[str] = []
+
+    def fake_work(order, *, case_dir, model, run_id, sink, agent_id="", context=None):
+        executed.append(order.order_id)
+        # The examiner stops the run while the first order is executing.
+        m3.request_stop(case_dir, run_id)
+        return m3.AgentResult(
+            order_id=order.order_id, role=order.role, status="ok",
+            parsed={"notes": [], "candidate_findings": [], "coverage": {}},
+        )
+
+    with patch.object(m3, "run_work_order", side_effect=fake_work), \
+         patch.object(m3, "plan_work_orders", return_value=[
+             m3.WorkOrder(order_id="wo-1", role="evidence", task="t1", family="evtxecmd"),
+             m3.WorkOrder(order_id="wo-2", role="evidence", task="t2", family="hayabusa"),
+         ]):
+        state = m3.run_mode3(case, "what happened", model=object())
+
+    assert executed == ["wo-1"], "the second order must not execute after stop"
+    assert state["stop_reason"] == "examiner_stop"
+    assert state["status"] == "stopped"
+    events = [e["event_type"] for e in m3.read_run_events(case, state["run_id"])]
+    assert "run.stopped" in events
+
+
 def test_run_mode3_supervisor_runs_and_persists(tmp_path):
     case = _case(tmp_path)
 
