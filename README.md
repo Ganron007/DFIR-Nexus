@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/Tests-1311%2B%20pytest-success.svg" alt="Tests: 1311+ pytest, 3 skipped">
+  <img src="https://img.shields.io/badge/Tests-1314%2B%20pytest-success.svg" alt="Tests: 1314+ pytest, 3 skipped">
   <img src="https://img.shields.io/badge/MCP%20Tools-135%20Win%20%7C%20132%20Linux-blue.svg" alt="MCP Tools: 135 Win | 132 Linux">
   <img src="https://img.shields.io/badge/Status-v2%20in%20development-yellow.svg" alt="Status: v2 in development">
 </p>
@@ -191,7 +191,7 @@ Detailed guidelines are grouped in the `Docs/` directory:
 
 ## Verification & Testing
 
-DFIR-Nexus includes a rigorous testing suite covering unit, script, functional wiring, and blocker regression tests. The last full pytest run recorded **1311 passed / 3 skipped**, plus the script suites and the E2E functional audit. Mode 3 budget tests added after that run are not included in that count.
+DFIR-Nexus includes a rigorous testing suite covering unit, script, functional wiring, and blocker regression tests. The last full pytest run (2026-09-25, after the Mode 3 review fixes and context-window packing) recorded **1314 passed / 3 skipped**, plus the script suites and the E2E functional audit.
 
 ```bash
 # 1. Run the pytest suite (Mode 1/2/3 + audit regression tests)
