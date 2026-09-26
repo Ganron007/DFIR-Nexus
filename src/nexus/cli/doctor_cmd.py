@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import sys
 from pathlib import Path
@@ -185,10 +186,40 @@ def doctor(
         "--rag",
         help="Run full RAG preflight: load embedding model, open Chroma, test query.",
     ),
+    gate: bool = typer.Option(
+        False,
+        "--gate",
+        help=(
+            "Case-start gate (WIRING-PLAN 5.2): prove the backbone for the active "
+            "case's mode, then exit non-zero with an ordered fix list."
+        ),
+    ),
+    gate_json: bool = typer.Option(
+        False,
+        "--gate-json",
+        help="Machine-readable gate report (implies --gate).",
+    ),
 ) -> None:
     """Print found/missing extras, RAG/triage, catalog binaries, optional TI keys."""
     from nexus import __version__
     from nexus.ingest.registry import get_registry
+
+    if gate or gate_json:
+        from nexus.preflight import format_report, run_gate
+
+        report = run_gate(deep=rag_preflight)
+        if gate_json:
+            typer.echo(json.dumps(report.to_dict(), indent=2, sort_keys=True))
+        else:
+            for line in format_report(report):
+                typer.echo(line)
+        if not report.ok:
+            raise typer.Exit(1)
+        if gate_json:
+            return
+        typer.echo("")
+        typer.echo("(full inventory follows)")
+        typer.echo("")
 
     rows: list[tuple[str, bool, str]] = []
     golden_fail = False

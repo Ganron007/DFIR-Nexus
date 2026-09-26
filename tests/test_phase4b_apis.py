@@ -326,8 +326,14 @@ def test_pipeline_status_reconciles_its_own_manifest(client):
 def test_pipeline_run_accepts_examiner_intake(client, monkeypatch, tmp_path):
     """The N1 intake (question/window) must reach the pipeline's case_context —
     without it coverage/design degrade to TOOL-RUN only (no LLM interpret)."""
+    import nexus.langgraph.case_index as _ci
     from nexus.case import CaseManager
     from nexus.config import settings
+
+    # Intake acceptance, not the ES gate: pin ES reachable so the result does not
+    # depend on whether the operator's live cluster happens to be up.
+    monkeypatch.setenv("NEXUS_ES_URL", "http://localhost:9200")
+    monkeypatch.setattr(_ci, "es_available", lambda: True)
 
     r = client.post("/portal/api/case/create", json={
         "name": "Intake Case", "description": "suspicious sdelete activity",
@@ -362,6 +368,10 @@ def test_pipeline_run_accepts_examiner_intake(client, monkeypatch, tmp_path):
         "mode": "coverage", "case_id": case_id,
         "question": "How did the exe land?",
     })
+    # This asserts intake acceptance, not the ES gate. Pin ES up explicitly so
+    # the test does not inherit the operator's live cluster state (the coverage
+    # mode hard-refuses when NEXUS_ES_URL is set but unreachable — tested
+    # separately in test_pipeline_run_mode2_requires_es / _es_up_passes_gate).
     assert r.status_code == 200, r.json()
     run_id = r.json()["run_id"]
 
