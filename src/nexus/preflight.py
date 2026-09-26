@@ -290,7 +290,19 @@ def run_gate(
 
     # ── case ──
     if case_dir is None:
-        report.add("active case", False, "no active case", _FIX_CASE)
+        # No case is the *starting* state of an investigation, not a broken
+        # environment: the environment is exactly what this gate exists to
+        # prove, and it can be proven with no case present. A hard failure here
+        # made `doctor --gate` unusable as a preflight-before-creating-a-case,
+        # so it is a warning that names the next action. Once a case exists, the
+        # per-case checks below become real requirements.
+        report.add(
+            "active case",
+            True,
+            "none yet — environment verified; create a case to check case-level items",
+            _FIX_CASE,
+            WARN,
+        )
     else:
         writable = os.access(case_dir, os.W_OK)
         report.add(

@@ -49,9 +49,10 @@ def _offline(monkeypatch):
     monkeypatch.setattr(
         preflight, "_mcp_probe", lambda: (True, ""), raising=False
     )
-    monkeypatch.setattr(preflight, "_triage_probe", lambda: (False, "absent"))
-    monkeypatch.setattr(preflight, "_kb_probe", lambda: (False, "absent"))
+    monkeypatch.setattr(preflight, "_triage_probe", lambda: (True, "present"))
+    monkeypatch.setattr(preflight, "_kb_probe", lambda: (True, "kb.py"))
     monkeypatch.setattr(preflight, "_knowledge_probe", lambda: (True, "8 feeds, 7430 entries"))
+    monkeypatch.setattr(preflight, "_rag_probe", lambda: (True, "bge via hf_hub_cache", True))
 
 
 def test_report_ok_when_no_required_failures():
@@ -61,6 +62,14 @@ def test_report_ok_when_no_required_failures():
     assert report.ok is True
     assert report.failures == []
     assert [w.name for w in report.warnings] == ["b"]
+
+
+def test_warnings_include_not_ok_items_only():
+    """A warn-severity item that passed must not be listed as a warning."""
+    report = preflight.GateReport()
+    report.add("a", True, "fine", "do the thing", WARN)
+    assert report.warnings == []
+    assert report.ok is True
 
 
 def test_required_failure_fails_the_gate():
@@ -105,11 +114,25 @@ def test_no_case_with_es_down_says_modes_2_3_will_require_es(monkeypatch):
     assert fallback and "Modes 2/3 will require ES" in fallback[0].detail
 
 
-def test_missing_active_case_is_a_required_failure(monkeypatch):
-    monkeypatch.setattr(preflight, "_es_probe", lambda: (False, "unset"))
+def test_missing_active_case_is_a_warning_not_a_blocker(monkeypatch):
+    """An empty store is the start of an investigation, not a broken environment.
+
+    `doctor --gate` is the preflight an examiner runs *before* creating a case, so
+    a hard failure here made it unusable for its own purpose.
+    """
+    monkeypatch.setattr(preflight, "_es_probe", lambda: (True, "ok"))
+    monkeypatch.setattr(preflight, "_llm_probe", lambda: (True, "ok"))
+    monkeypatch.setattr(preflight, "_rag_probe", lambda: (True, "bge via hf_hub_cache", True))
     report = run_gate()
-    assert report.ok is False
-    assert "active case" in [f.name for f in report.failures]
+    assert report.ok is True
+    assert "active case" not in [f.name for f in report.failures]
+    # It must still name the next action rather than read as "nothing to do",
+    # even though the item itself passed (a warn item that is ok is not a warning).
+    case_item = next(i for i in report.items if i.name == "active case")
+    assert case_item.ok is True
+    assert case_item.severity == WARN
+    assert case_item.fix
+    assert "environment verified" in case_item.detail
 
 
 def test_mode2_without_llm_is_a_required_failure(monkeypatch, tmp_path):
@@ -171,6 +194,16 @@ def test_cli_gate_json_exits_zero_when_gate_passes(monkeypatch, tmp_path):
     payload = json.loads(result.output)
     assert payload["ok"] is True
     assert payload["mode"] == 1
+
+
+def test_gate_still_fails_on_a_real_environment_blocker(monkeypatch):
+    """Relaxing the empty case must not relax a genuine environment failure."""
+    monkeypatch.setattr(preflight, "_es_probe", lambda: (False, "unreachable"))
+    monkeypatch.setattr(preflight, "_mcp_probe", lambda: (False, ""))
+    report = run_gate(mode=2)
+    assert report.ok is False
+    assert "mcp catalog" in [f.name for f in report.failures]
+    assert "elasticsearch" in [f.name for f in report.failures]
 
 
 def test_cli_gate_exits_nonzero_with_fix_list(monkeypatch, tmp_path):

@@ -267,6 +267,58 @@ def _wrong_mode_error(case_dir: Path, expected: int):
     )
 
 
+#: Canonical mode -> the route family that belongs to it. Used by
+#: :func:`_mode_route` so every mode-owned endpoint is guarded at registration
+#: instead of relying on each handler to remember.
+_MODE_ROUTE_OWNERS: dict[str, int] = {
+    "/portal/api/mode1/": 1,
+    "/portal/api/mode2/": 2,
+    "/portal/api/mode3/": 3,
+}
+
+
+def _mode_guarded(expected: int, handler):
+    """Wrap a portal handler with the per-case mode boundary.
+
+    Applied at route registration so a new mode endpoint cannot ship unguarded
+    by omission — the defect this replaces was 27 endpoints that each had to opt
+    in individually, and 22 of them did not.
+
+    Resolution mirrors the handlers themselves (``X-Nexus-Case`` /
+    ``?case_id=`` / active-case pointer). With no case resolved the wrapper
+    stands aside and lets the handler produce its own 404, so
+    "no active case" keeps reporting the way it always has.
+    """
+
+    async def _guarded(request):
+        case_dir = _get_case_dir(request)
+        if case_dir is not None:
+            wrong = _wrong_mode_error(case_dir, expected)
+            if wrong is not None:
+                return wrong
+        return await handler(request)
+
+    _guarded.__name__ = getattr(handler, "__name__", "handler")
+    return _guarded
+
+
+def _mode_route(path: str, handler, methods: list[str]):
+    """Register a mode-owned route behind the mode boundary.
+
+    The owning mode is derived from the path prefix. An unrecognised prefix is
+    registered unguarded on purpose: the mapping read
+    (``/portal/api/mode-mapping``) is mode-agnostic by design.
+    """
+    expected = 0
+    for prefix, mode in _MODE_ROUTE_OWNERS.items():
+        if path.startswith(prefix):
+            expected = mode
+            break
+    if expected:
+        handler = _mode_guarded(expected, handler)
+    return Route(path, handler, methods=methods)
+
+
 def _pipeline_run_status_path(case_dir: Path, run_id: str) -> Path:
     return case_dir / "analysis" / "pipeline_runs" / f"{run_id}.json"
 
@@ -7928,8 +7980,8 @@ def create_dashboard():
         Route("/portal/api/intake", api_intake, methods=["POST"]),
         Route("/portal/api/query-rerun", api_query_rerun, methods=["POST"]),
         # Mode 1 API endpoints
-        Route("/portal/api/mode1/ask", api_ask, methods=["POST"]),
-        Route("/portal/api/mode1/select", api_select, methods=["POST"]),
+        _mode_route("/portal/api/mode1/ask", api_ask, ["POST"]),
+        _mode_route("/portal/api/mode1/select", api_select, ["POST"]),
         # Mode 1 Cockpit
         Route("/portal/explore", explore_page),
         Route("/portal/workbench", workbench_page),
@@ -7939,8 +7991,8 @@ def create_dashboard():
         Route("/portal/api/workbench", api_workbench, methods=["GET"]),
         Route("/portal/api/workbench/add", api_workbench_add, methods=["POST"]),
         Route("/portal/api/workbench/add_many", api_workbench_add_many, methods=["POST"]),
-        Route("/portal/api/mode1/full-run", api_mode1_full_run, methods=["POST"]),
-        Route("/portal/api/mode1/full-run/status", api_mode1_full_run_status, methods=["GET"]),
+        _mode_route("/portal/api/mode1/full-run", api_mode1_full_run, ["POST"]),
+        _mode_route("/portal/api/mode1/full-run/status", api_mode1_full_run_status, ["GET"]),
         Route("/portal/api/workbench/remove", api_workbench_remove, methods=["POST"]),
         Route("/portal/api/workbench/clear", api_workbench_clear, methods=["POST"]),
         Route("/portal/api/workbench/promote", api_workbench_promote, methods=["POST"]),
@@ -7956,40 +8008,40 @@ def create_dashboard():
         # Entity pivot
         Route("/portal/api/entities", api_entities, methods=["POST"]),
         # Mode 1 — LLM
-        Route("/portal/api/mode1/chat", api_mode1_chat, methods=["POST"]),
-        Route("/portal/api/mode1/suggestions", api_mode1_suggestions, methods=["POST"]),
-        Route("/portal/api/mode1/save-answer", api_mode1_save_answer, methods=["POST"]),
-        Route("/portal/api/mode1/iterate", api_mode1_iterate, methods=["POST"]),
-        Route("/portal/api/mode1/corroborate", api_mode1_corroborate, methods=["POST"]),
-        Route("/portal/api/mode1/propose-draft", api_mode1_propose_draft, methods=["POST"]),
-        Route("/portal/api/mode2/plan", api_mode2_plan, methods=["POST"]),
-        Route("/portal/api/mode2/execute", api_mode2_execute, methods=["POST"]),
+        _mode_route("/portal/api/mode1/chat", api_mode1_chat, ["POST"]),
+        _mode_route("/portal/api/mode1/suggestions", api_mode1_suggestions, ["POST"]),
+        _mode_route("/portal/api/mode1/save-answer", api_mode1_save_answer, ["POST"]),
+        _mode_route("/portal/api/mode1/iterate", api_mode1_iterate, ["POST"]),
+        _mode_route("/portal/api/mode1/corroborate", api_mode1_corroborate, ["POST"]),
+        _mode_route("/portal/api/mode1/propose-draft", api_mode1_propose_draft, ["POST"]),
+        _mode_route("/portal/api/mode2/plan", api_mode2_plan, ["POST"]),
+        _mode_route("/portal/api/mode2/execute", api_mode2_execute, ["POST"]),
         # Mode 2 — Multi-role supervised agent runtime (M1/M5/M7)
-        Route("/portal/api/mode2/run/plan", api_mode2_run_plan, methods=["POST"]),
-        Route("/portal/api/mode2/run", api_mode2_run, methods=["POST"]),
-        Route("/portal/api/mode2/run/status", api_mode2_run_status, methods=["GET"]),
-        Route("/portal/api/mode2/run/events", api_mode2_run_events, methods=["GET"]),
-        Route("/portal/api/mode2/run/steer", api_mode2_run_steer, methods=["POST"]),
-        Route("/portal/api/mode2/run/pause", api_mode2_run_pause, methods=["POST"]),
-        Route("/portal/api/mode2/run/resume", api_mode2_run_resume, methods=["POST"]),
-        Route("/portal/api/mode2/run/stop", api_mode2_run_stop, methods=["POST"]),
-        Route("/portal/api/mode2/run/stage", api_mode2_run_stage, methods=["POST"]),
-        Route("/portal/api/mode3/run", api_mode3_run, methods=["POST"]),
-        Route("/portal/api/mode3/run/status", api_mode3_run_status, methods=["GET"]),
-        Route("/portal/api/mode3/run/events", api_mode3_run_events, methods=["GET"]),
-        Route("/portal/api/mode3/run/steer", api_mode3_run_steer, methods=["POST"]),
-        Route("/portal/api/mode3/run/pause", api_mode3_run_pause, methods=["POST"]),
-        Route("/portal/api/mode3/run/resume", api_mode3_run_resume, methods=["POST"]),
-        Route("/portal/api/mode3/run/stop", api_mode3_run_stop, methods=["POST"]),
-        Route("/portal/api/mode3/run/stage", api_mode3_run_stage, methods=["POST"]),
-        Route("/portal/api/mode3/run/board", api_mode3_run_board, methods=["GET"]),
+        _mode_route("/portal/api/mode2/run/plan", api_mode2_run_plan, ["POST"]),
+        _mode_route("/portal/api/mode2/run", api_mode2_run, ["POST"]),
+        _mode_route("/portal/api/mode2/run/status", api_mode2_run_status, ["GET"]),
+        _mode_route("/portal/api/mode2/run/events", api_mode2_run_events, ["GET"]),
+        _mode_route("/portal/api/mode2/run/steer", api_mode2_run_steer, ["POST"]),
+        _mode_route("/portal/api/mode2/run/pause", api_mode2_run_pause, ["POST"]),
+        _mode_route("/portal/api/mode2/run/resume", api_mode2_run_resume, ["POST"]),
+        _mode_route("/portal/api/mode2/run/stop", api_mode2_run_stop, ["POST"]),
+        _mode_route("/portal/api/mode2/run/stage", api_mode2_run_stage, ["POST"]),
+        _mode_route("/portal/api/mode3/run", api_mode3_run, ["POST"]),
+        _mode_route("/portal/api/mode3/run/status", api_mode3_run_status, ["GET"]),
+        _mode_route("/portal/api/mode3/run/events", api_mode3_run_events, ["GET"]),
+        _mode_route("/portal/api/mode3/run/steer", api_mode3_run_steer, ["POST"]),
+        _mode_route("/portal/api/mode3/run/pause", api_mode3_run_pause, ["POST"]),
+        _mode_route("/portal/api/mode3/run/resume", api_mode3_run_resume, ["POST"]),
+        _mode_route("/portal/api/mode3/run/stop", api_mode3_run_stop, ["POST"]),
+        _mode_route("/portal/api/mode3/run/stage", api_mode3_run_stage, ["POST"]),
+        _mode_route("/portal/api/mode3/run/board", api_mode3_run_board, ["GET"]),
         Route("/portal/api/case/seal", api_case_seal, methods=["POST"]),
         # RAG preflight (WP 3.13)
         Route("/portal/api/rag/status", api_rag_status, methods=["GET"]),
         # Legacy Phase-3 orchestrator (now a Mode 2 surface)
-        Route("/portal/api/mode2/orchestrator", api_mode2_orchestrator, methods=["POST"]),
+        _mode_route("/portal/api/mode2/orchestrator", api_mode2_orchestrator, ["POST"]),
         # Legacy agent DRAFT finding (now a Mode 2 surface)
-        Route("/portal/api/mode2/draft-finding", api_mode2_draft_finding, methods=["POST"]),
+        _mode_route("/portal/api/mode2/draft-finding", api_mode2_draft_finding, ["POST"]),
         # Product mode ↔ pipeline mode mapping (WP 3.8)
         Route("/portal/api/mode-mapping", api_mode_mapping, methods=["GET"]),
         # Phase 4b: Workflow-driven cockpit APIs
