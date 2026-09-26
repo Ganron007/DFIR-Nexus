@@ -144,6 +144,18 @@ beforeEach(() => {
 import AgentRun from "./AgentRun";
 
 describe("AgentRun (Mode 3)", () => {
+  it("does not offer a Mode 2 or Mode 3 run on a Mode 1 case", async () => {
+    caseModeState.value = "1";
+    render(
+      <MemoryRouter>
+        <AgentRun />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText(/not part of this case/)).toBeTruthy();
+    expect(screen.queryByText(/Agent Run — Mode 2/)).toBeNull();
+    expect(screen.queryByText(/Investigation Board/)).toBeNull();
+  });
+
   it("renders verdicts, candidates with lineage and stages DRAFTs", async () => {
     render(
       <MemoryRouter>

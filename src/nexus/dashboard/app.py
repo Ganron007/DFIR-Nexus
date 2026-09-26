@@ -221,6 +221,52 @@ def _sealed_case_error(case_id: str):
     return None
 
 
+def _stored_case_mode(case_dir: Path) -> int | None:
+    """Canonical investigation mode from CASE.yaml, or None when unset."""
+    import yaml
+
+    case_yaml = Path(case_dir) / "CASE.yaml"
+    if not case_yaml.is_file():
+        return None
+    try:
+        meta = yaml.safe_load(case_yaml.read_text(encoding="utf-8")) or {}
+    except Exception:  # noqa: BLE001
+        return None
+    if not isinstance(meta, dict):
+        return None
+    from nexus.langgraph.mode_mapping import resolve_stored_mode
+
+    raw = meta.get("investigation_mode") or ""
+    if not raw:
+        return None
+    return resolve_stored_mode(raw, meta.get("mode_scheme"))
+
+
+def _wrong_mode_error(case_dir: Path, expected: int):
+    """409 when this case was opened in a different mode.
+
+    Unset mode is left alone so older cases without a stored mode still run.
+    A stored mode is the segregation boundary: a Mode 1 case cannot start a
+    Mode 2 or Mode 3 run, and the reverse.
+    """
+    stored = _stored_case_mode(case_dir)
+    if stored is None or stored == expected:
+        return None
+    from nexus.langgraph.mode_mapping import mode_label
+
+    return JSONResponse(
+        {
+            "error": (
+                f"This case is {mode_label(stored)}. "
+                f"That action belongs to {mode_label(expected)}."
+            ),
+            "case_mode": stored,
+            "expected_mode": expected,
+        },
+        status_code=409,
+    )
+
+
 def _pipeline_run_status_path(case_dir: Path, run_id: str) -> Path:
     return case_dir / "analysis" / "pipeline_runs" / f"{run_id}.json"
 
@@ -3426,7 +3472,7 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
 
 
 async def api_mode1_full_run(request):
-    """POST /portal/api/mode1/full-run — start a tracked Mode 1 'full run' (WP 4j.5d).
+    """POST /portal/api/mode1/full-run — start a tracked Mode 1 needle scan (WP 4j.5d).
 
     Runs in a background thread with a persisted record at
     analysis/mode1_full_run.json so the cockpit can reconnect after
@@ -3438,6 +3484,9 @@ async def api_mode1_full_run(request):
            re-stage them fresh. APPROVED findings are never overwritten or
            rejected (signed examiner decisions); reprocess stages a fresh
            DRAFT revision alongside them for examiner comparison}.
+
+    The scan itself does not call the LLM. Draft text uses the heuristic
+    scribe unless ``NEXUS_FULL_RUN_SCRIBE`` is ``signal`` or ``llm``.
     """
     case_dir = _get_case_dir(request)
     if not case_dir:
@@ -3445,6 +3494,9 @@ async def api_mode1_full_run(request):
     sealed = _sealed_case_error(case_dir.name)
     if sealed:
         return sealed
+    wrong = _wrong_mode_error(case_dir, 1)
+    if wrong:
+        return wrong
     # The full run rescans the needle vocabulary; old directions are stale.
     _invalidate_briefing_directions(case_dir)
 
@@ -3921,6 +3973,9 @@ async def api_mode1_chat(request):
     sealed = _sealed_case_error(case_dir.name)
     if sealed:
         return sealed
+    wrong = _wrong_mode_error(case_dir, 1)
+    if wrong:
+        return wrong
 
     try:
         body = await request.json()
@@ -7205,6 +7260,9 @@ async def api_mode3_run(request):
     sealed = _sealed_case_error(case_dir.name)
     if sealed:
         return sealed
+    wrong = _wrong_mode_error(case_dir, 3)
+    if wrong:
+        return wrong
     try:
         body = await request.json()
     except Exception:  # noqa: BLE001
@@ -7462,6 +7520,9 @@ async def api_mode2_run_plan(request):
     sealed = _sealed_case_error(case_dir.name)
     if sealed:
         return sealed
+    wrong = _wrong_mode_error(case_dir, 2)
+    if wrong:
+        return wrong
     try:
         body = await request.json()
     except Exception:  # noqa: BLE001
@@ -7511,6 +7572,9 @@ async def api_mode2_run(request):
     sealed = _sealed_case_error(case_dir.name)
     if sealed:
         return sealed
+    wrong = _wrong_mode_error(case_dir, 2)
+    if wrong:
+        return wrong
     try:
         body = await request.json()
     except Exception:  # noqa: BLE001

@@ -169,3 +169,19 @@ def test_mode2_run_generates_m2_run_ids(tmp_path):
     run_id = started_run.json()["run_id"]
     assert run_id.startswith("M2-")
     assert started and started[0][2] == run_id
+
+
+def test_mode1_case_cannot_start_mode2_or_mode3_run(tmp_path):
+    case = _case(tmp_path)
+    (case / "CASE.yaml").write_text(
+        "name: mode1\nstatus: active\ninvestigation_mode: 1\nmode_scheme: 2\n",
+        encoding="utf-8",
+    )
+    with patch("nexus.dashboard.app._get_case_dir", return_value=case):
+        client = _client()
+        mode2 = client.post("/portal/api/mode2/run", json={"question": "who"})
+        mode3 = client.post("/portal/api/mode3/run", json={"question": "who"})
+    assert mode2.status_code == 409
+    assert mode3.status_code == 409
+    assert "Mode 1" in mode2.json()["error"]
+    assert "Mode 1" in mode3.json()["error"]

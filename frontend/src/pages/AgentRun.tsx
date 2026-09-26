@@ -185,13 +185,27 @@ function TypeBadge({ kind }: { kind: string }) {
 }
 
 export default function AgentRun() {
-  // Final three modes: 2 = Multi-role (this Agent Run surface),
-  // 3 = Multi-agent (the concurrent Investigation Board).
+  // Mode 2 = this multi-role surface. Mode 3 = the Investigation Board.
+  // A Mode 1 case does not get either control.
   const { mode: caseMode } = useCase();
   if (caseMode === "3") {
     return <MultiAgentBoard />;
   }
-  return <MultiRoleAgentRun />;
+  if (caseMode === "2") {
+    return <MultiRoleAgentRun />;
+  }
+  return (
+    <div className="card">
+      <div className="card-header">
+        <span className="card-title">Agent Run is not part of this case</span>
+      </div>
+      <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
+        This case is Mode 1 — LLM. Interpretation is Briefing and Steer Chat.
+        Agent Run is only on a Mode 2 (multi-role) or Mode 3 (multi-agent) case,
+        and that choice is fixed when the case is created.
+      </p>
+    </div>
+  );
 }
 
 function MultiRoleAgentRun() {
@@ -453,7 +467,7 @@ function MultiRoleAgentRun() {
     <div className="agent-run">
       <div className="card" style={{ marginBottom: 12 }}>
         <div className="card-header">
-          <span className="card-title">Agent Run — Mode 3</span>
+          <span className="card-title">Agent Run — Mode 2</span>
           <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
             Supervised multi-role pipeline · read-only tools · every call audited · DRAFT-only
           </span>

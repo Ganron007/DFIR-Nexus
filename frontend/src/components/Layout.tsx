@@ -64,13 +64,13 @@ const LOGO_SVG = `<svg width="28" height="32" viewBox="0 0 128 148" fill="none" 
 </svg>`;
 
 /** WP 4b.4: N1-N8 stage stepper — live completion states from CaseContext. */
-function StageStepper({ stages }: { stages: Record<string, boolean> }) {
+function StageStepper({ stages, n5To }: { stages: Record<string, boolean>; n5To: string }) {
   return (
     <div className="stage-stepper">
       {STAGES.map((stage, i) => (
         <NavLink
           key={stage.id}
-          to={stage.to}
+          to={stage.id === "N5" ? n5To : stage.to}
           className={`stage-step ${stages[stage.id] ? "complete" : ""}`}
           title={`${stage.id}: ${stage.label}`}
         >
@@ -275,12 +275,24 @@ export default function Layout({ children }: { children: ReactNode }) {
           {activeCase ? (
             <>
               <div className="nav-group-label" style={{ marginTop: 8 }}>Investigation Spine</div>
-              {NAV_SPINE.map((item) => (
+              {NAV_SPINE.filter((item) => {
+                if (item.to === "/agent-run") return mode === "2" || mode === "3";
+                if (item.to === "/steer") return mode !== "2" && mode !== "3";
+                return true;
+              }).map((item) => (
                 <NavLink
                   key={item.to}
                   to={item.to}
                   className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
-                  title={item.hint}
+                  title={
+                    item.to === "/agent-run"
+                      ? (mode === "3"
+                        ? "Mode 3 — multi-agent Investigation Board"
+                        : "Mode 2 — multi-role Agent Run")
+                      : item.to === "/steer"
+                        ? "Mode 1 — LLM steering"
+                        : item.hint
+                  }
                 >
                   <span className="nav-stage">{item.stage}</span>
                   <span className="nav-label">{item.label}</span>
@@ -373,7 +385,9 @@ export default function Layout({ children }: { children: ReactNode }) {
           </div>
         )}
         {/* WP 4b.4: N1-N8 stage stepper — only inside an investigation */}
-        {activeCase && <StageStepper stages={stages} />}
+        {activeCase && (
+          <StageStepper stages={stages} n5To={mode === "2" || mode === "3" ? "/agent-run" : "/steer"} />
+        )}
         <div className="content">{children}</div>
       </main>
     </div>

@@ -770,6 +770,26 @@ export default function SteerChat() {
     );
   }
 
+  if (mode !== "mode1") {
+    return (
+      <div>
+        <h2>Steer Chat</h2>
+        <div className="card" style={{ padding: 12 }}>
+          <div className="card-title" style={{ marginBottom: 8 }}>
+            {mode === "mode2" ? "Mode 2 — Multi-role" : "Mode 3 — Multi-agent"}
+          </div>
+          <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 0 }}>
+            Steer Chat is the Mode 1 LLM surface. This case does not use it.
+            {mode === "mode2"
+              ? " The multi-role pipeline is on Agent Run."
+              : " The multi-agent team is on Agent Run (Investigation Board)."}
+          </p>
+          <Link className="btn btn-sm btn-primary" to="/agent-run">Open Agent Run →</Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 120px)" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>

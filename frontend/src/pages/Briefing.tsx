@@ -301,11 +301,11 @@ export default function Briefing() {
               ? "A Mode 1 full run is already in progress — status below"
               : scan.length === 0
                 ? "No playbook needles matched any evidence — nothing to promote"
-                : `Full run: bookmark all hits from ${scan.length} needle(s) and stage one DRAFT finding per needle — you approve manually in Approve`
+                : `Needle scan: bookmark hits and stage one DRAFT per needle. This does not call the LLM. The interpretation card below does.`
           }
           onClick={fullRun}
         >
-          {fullRunRunning ? "Mode 1 full run in progress…" : hasPriorRun ? "↻ Re-run full scan" : "▶ Mode 1 full run"}
+          {fullRunRunning ? "Needle scan in progress…" : hasPriorRun ? "↻ Re-run needle scan" : "▶ Needle scan"}
         </button>
         )}
         {mode === "1" && hasPriorRun && !fullRunRunning && (

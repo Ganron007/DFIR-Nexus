@@ -206,7 +206,9 @@ export default function Evidence() {
       // Mode-aware: a Mode 2/3 case must go through coverage/design so the
       // LLM interpretation (and digest/rounds) actually runs — the lane alone
       // is only the parsing step.
-      const pipelineMode = caseMode === "2" ? "coverage" : caseMode === "3" ? "design" : "tools";
+      // All three modes share the deterministic lane here. Mode 1 LLM work is
+      // Briefing + Steer Chat. Mode 2/3 agent runs start on Agent Run.
+      const pipelineMode = "tools";
       const r = await api.pipelineRun({ mode: pipelineMode, case_id: activeCase });
       setRunId(r.run_id);
       setRunStatus("running");
@@ -261,16 +263,12 @@ export default function Evidence() {
               onClick={runN2}
               disabled={busy || runStatus === "running"}
               title={caseMode === "2"
-                ? "Run the deterministic lane, then the Mode 2 LLM interpretation (digest + rounds + DRAFT findings)"
+                ? "Parse and index. The multi-role run starts on Agent Run, not here."
                 : caseMode === "3"
-                  ? "Run the deterministic lane, then the Mode 3 agent plan"
-                  : "Run the parsing lane only — set a mode first for Mode 2/3 analysis"}
+                  ? "Parse and index. The multi-agent team starts on Agent Run, not here."
+                  : "Parse and index. Mode 1 LLM work is Briefing and Steer Chat."}
             >
-              {busy
-                ? "Starting…"
-                : caseMode === "2" ? "▶ Run Mode 2 analysis"
-                : caseMode === "3" ? "▶ Run Mode 3 analysis"
-                : "▶ Run N2 lane"}
+              {busy ? "Starting…" : "▶ Run N2 lane"}
             </button>
           </div>
         )}
