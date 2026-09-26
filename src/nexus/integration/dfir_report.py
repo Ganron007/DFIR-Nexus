@@ -1535,6 +1535,32 @@ def build_dfir_markdown(
             )
         lines.append("")
 
+    # Submission integrity (WP 10.4): a finding whose seal no longer matches was
+    # edited after staging. Surface it - never silently repair a tamper signal.
+    try:
+        from nexus.analysis.integrity import verify_seal
+
+        broken = []
+        for f in findings:
+            if not isinstance(f, dict):
+                continue
+            ok, reason = verify_seal(f)
+            if not ok and (f.get("seal") or f.get("content_hash")):
+                broken.append((str(f.get("id") or f.get("finding_id") or "?"), reason))
+    except Exception:  # noqa: BLE001
+        broken = []
+    if broken:
+        lines.append("## Submission integrity")
+        lines.append("")
+        lines.append(
+            f"**{len(broken)} finding(s) changed after staging** (WP 10.4 seal mismatch). "
+            "The stored content no longer matches the digest recorded at submission:"
+        )
+        lines.append("")
+        for fid, reason in broken:
+            lines.append(f"- `{fid}` — {reason}")
+        lines.append("")
+
     # Coverage audit (WP 10.2) — required reading before sealing: which
     # applicable tools never ran, which indexed families no finding cites, and
     # which needles were never queried (so their 0-hit rows prove nothing).

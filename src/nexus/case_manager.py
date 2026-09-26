@@ -52,6 +52,9 @@ _HASH_EXCLUDE_KEYS = {
     "content_hash", "verification", "modified_at", "provenance",
     "provenance_detail", "provenance_chain", "provenance_grade",
     "provenance_warnings", "provenance_gaps", "timeline_event_id",
+    # WP 10.4: the seal is derived from the entry, so it must not feed back
+    # into the legacy content_hash.
+    "seal",
 }
 
 
@@ -493,7 +496,32 @@ class CaseManager:
             "staged": True,
         }
         entry["content_hash"] = _compute_content_hash(entry)
-        # Check provenance BEFORE saving — reject findings with no audit trail
+        # WP 10.4: citation existence + timestamp integrity at submission.
+        # A finding may not cite an audit_id that is not in this case's audit
+        # log (FD-001 needs one real ref; this closes the "three real + two
+        # invented" hole). Implausible timestamps are nullified + flagged, not
+        # rejected — a bad timestamp is data quality, not forged provenance.
+        from nexus.analysis.integrity import enforce_submission_integrity
+
+        integrity = enforce_submission_integrity(entry, case_dir)
+        if not integrity["ok"]:
+            # Keep the FD-001 rejection contract stable for callers that key on
+            # `missing_audit_ids` / the "evidence trail" wording: this check is a
+            # superset of that rejection, not a replacement.
+            return {
+                "status": "REJECTED",
+                "error": "Finding rejected: citation integrity / evidence trail. "
+                         + " ".join(integrity["errors"]),
+                "errors": integrity["errors"],
+                "missing_audit_ids": integrity["citations"]["unknown"],
+                "unknown_audit_ids": integrity["citations"]["unknown"],
+            }
+        if integrity["timestamps"]["nullified"]:
+            entry.setdefault("integrity_notes", []).extend(
+                f"timestamp nullified: {n['field']} ({n['reason']})"
+                for n in integrity["timestamps"]["nullified"]
+            )
+        # Check provenance BEFORE saving - reject findings with no audit trail
         provenance = self._score_provenance(entry, case_dir)
         if provenance.get("summary") == "NONE" or provenance.get("none"):
             missing = provenance.get("none") or audit_ids
@@ -510,6 +538,16 @@ class CaseManager:
         if timeline_event_id:
             entry["timeline_event_id"] = timeline_event_id
             entry["content_hash"] = _compute_content_hash(entry)
+
+        # WP 10.4: seal the finalized DRAFT so a later edit is detectable.
+        from nexus.analysis.integrity import SEAL_ALGO, seal_digest
+
+        entry["seal"] = {
+            "algo": SEAL_ALGO,
+            "digest": seal_digest(entry),
+            "sealed_at": now,
+            "revision": 1,
+        }
 
         findings.append(entry)
         self._save_findings(case_dir, findings)

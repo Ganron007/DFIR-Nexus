@@ -116,6 +116,24 @@ def approve_finding(
     for f in findings:
         fid = f.get("id") or f.get("finding_id", "")
         if fid == finding_id and f.get("status") == "DRAFT":
+            # WP 10.4: the seal must still verify at approval time. Approval is
+            # the last moment a staged finding becomes official, so a mismatch
+            # here is refused rather than signed.
+            try:
+                from nexus.analysis.integrity import verify_seal
+
+                seal_ok, seal_reason = verify_seal(f)
+            except Exception as exc:  # noqa: BLE001
+                seal_ok, seal_reason = False, f"seal check failed: {exc}"
+            if not seal_ok and (f.get("seal") or f.get("content_hash")):
+                return {
+                    "error": (
+                        f"Refused: finding {finding_id} failed its submission seal — {seal_reason}. "
+                        "It was edited after staging; re-stage it so the digest matches the content."
+                    ),
+                    "finding_id": finding_id,
+                    "seal_reason": seal_reason,
+                }
             f["status"] = "APPROVED"
             f["approved_by"] = analyst
             f["approved_at"] = datetime.now(UTC).isoformat()
