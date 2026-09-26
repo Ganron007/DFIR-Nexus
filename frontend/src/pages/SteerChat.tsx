@@ -2,8 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { api, chatStream, type ChatEntry, type Mode1IterateResponse, type Mode2PlanResponse, type N4Hit } from "../api/client";
-import { computeApprovalResponse } from "../lib/crypto";
+import { api, chatStream, type ChatEntry, type Mode1IterateResponse, type N4Hit } from "../api/client";
 import { useCase } from "../context/CaseContext";
 
 /**
@@ -403,10 +402,6 @@ export default function SteerChat() {
       : caseMode === "2" ? "mode2"
         : caseMode === "3" ? "mode3" : "mode1";
   const [mode1Iterations, setMode1Iterations] = useState(3);
-  const [sliverStep, setSliverStep] = useState<"plan" | "execute" | "seal">("plan");
-  const [sliverPlan, setSliverPlan] = useState<Mode2PlanResponse | null>(null);
-  const [sealChallenge, setSealChallenge] = useState<{ challenge_id: string; nonce: string; salt: string; iterations: number } | null>(null);
-  const [sealPassword, setSealPassword] = useState("");
   // WP 4d.3: live progress while a streamed turn is running
   const [liveStatus, setLiveStatus] = useState("");
   // Mode 1 suggested questions (LLM-generated when available, server-cached)
@@ -415,11 +410,6 @@ export default function SteerChat() {
   const [suggLoading, setSuggLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollTimerRef = useRef<number | null>(null);
-
-  // Reset the legacy multi-role step whenever the case depth changes.
-  useEffect(() => {
-    if (caseMode === "2") setSliverStep("plan");
-  }, [caseMode]);
 
   const load = () => {
     api.chat(200)
@@ -545,117 +535,12 @@ export default function SteerChat() {
           },
         );
         load();
-      } else if (mode === "mode2") {
-        if (sliverStep === "plan") {
-          const plan = await api.mode2Plan({ question: text });
-          setSliverPlan(plan);
-          setMessages((prev) => [
-            ...prev,
-            {
-              ts: new Date().toISOString(),
-              role: "llm",
-              action: "mode2_plan",
-              text: `Plan: ${plan.items.length} step(s), ${plan.queries.length} corroboration query(ies). ${plan.rationale}`,
-              meta: { rationale: plan.rationale },
-            },
-          ]);
-          setSliverStep("execute");
-        }
       }
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setLoading(false);
       setLiveStatus("");
-    }
-  };
-
-  const executePlan = async () => {
-    if (!sliverPlan) return;
-    setLoading(true);
-    setError("");
-    try {
-      const r = await api.mode2Execute({
-        extras: sliverPlan.items.filter((i) => i.type === "extra" && i.key).map((i) => i.key!),
-        queries: sliverPlan.queries,
-      });
-      setMessages((prev) => [
-        ...prev,
-        {
-          ts: new Date().toISOString(),
-          role: "llm",
-          action: "mode2_execute",
-          text: `Executed: ${r.extras_persisted.length} extras persisted, ${r.query_results.length} queries run. ${r.note}`,
-          meta: {},
-        },
-      ]);
-      setSliverStep("seal");
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const getSealChallenge = async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const ch = await api.getChallenge();
-      setSealChallenge({
-        challenge_id: ch.challenge_id,
-        nonce: ch.nonce,
-        salt: ch.salt,
-        iterations: ch.iterations,
-      });
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const sealCase = async () => {
-    if (!sealChallenge || !sealPassword) {
-      setError("Approval password required — sealing signs the case file with your examiner identity.");
-      return;
-    }
-    setLoading(true);
-    setError("");
-    try {
-      const response = await computeApprovalResponse(
-        sealPassword,
-        sealChallenge.salt,
-        sealChallenge.iterations,
-        sealChallenge.nonce,
-      );
-      const r = await api.sealCase({
-        challenge_id: sealChallenge.challenge_id,
-        response,
-      });
-      setSealPassword("");
-      if (r.error) {
-        setError(r.error);
-      } else {
-        setMessages((prev) => [
-          ...prev,
-          {
-            ts: new Date().toISOString(),
-            role: "llm",
-            action: "mode2_seal",
-            text: `Case sealed: ${r.status} — examiner: ${r.examiner}, case: ${r.case_id}`,
-            meta: {},
-          },
-        ]);
-        setSealChallenge(null);
-        setSealPassword("");
-        setSliverStep("plan");
-        setSliverPlan(null);
-      }
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -667,10 +552,6 @@ export default function SteerChat() {
       return;
     }
     setMessages([]);
-    setSliverPlan(null);
-    setSliverStep("plan");
-    setSealChallenge(null);
-    setSealPassword("");
   };
 
   // WP 4b.14: Propose-draft UI — trigger LLM-drafted findings from the UI
@@ -795,73 +676,30 @@ export default function SteerChat() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
         <h2>Steer Chat</h2>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {/* Mode is fixed at case creation — no in-case switching (segregation). */}
+          {/* Mode is fixed at case creation — Steer Chat is the Mode 1 surface. */}
           <span
-            className={`mode-badge mode-${mode === "mode1" ? "1" : mode === "mode2" ? "2" : "3"}`}
+            className="mode-badge mode-1"
             title="Investigation mode was chosen when the case was created"
             style={{ fontSize: 11 }}
           >
-            {mode === "mode1" ? "Mode 1 — LLM" : mode === "mode2" ? "Mode 2 — Multi-role" : "Mode 3 — Multi-agent"}
+            Mode 1 — LLM
           </span>
-          {mode === "mode1" && (
-            <input
-              type="number"
-              min={1}
-              max={4}
-              value={mode1Iterations}
-              onChange={(e) => setMode1Iterations(Math.max(1, Math.min(4, Number(e.target.value) || 2)))}
-              style={{ width: 60 }}
-              title="Maximum rounds for Iterate (1-4)"
-            />
-          )}
-          {mode === "mode2" && (
-            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-              Step: <strong style={{ color: "var(--purple)" }}>{sliverStep}</strong>
-            </span>
-          )}
+          <input
+            type="number"
+            min={1}
+            max={4}
+            value={mode1Iterations}
+            onChange={(e) => setMode1Iterations(Math.max(1, Math.min(4, Number(e.target.value) || 2)))}
+            style={{ width: 60 }}
+            title="Maximum rounds for Iterate (1-4)"
+          />
           <button className="btn btn-sm" onClick={clear}>Clear</button>
         </div>
       </div>
       <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: -4, marginBottom: 10 }}>
-        {mode === "mode1"
-          ? "Mode 1 (LLM): you ask in plain language — the LLM queries the case's evidence index and cites rows. Staging a DRAFT is a separate examiner-triggered action."
-          : mode === "mode2"
-            ? "Mode 2 (Multi-role): the supervised multi-role pipeline runs from Agent Run — one work order at a time; you steer, stop and stage."
-            : "Mode 3 (Multi-agent): the concurrent team runs from Agent Run (Investigation Board) — seats, shared claims, disputes; you steer, stop and stage."}
+        Mode 1 (LLM): you ask in plain language — the LLM queries the case&apos;s evidence index
+        and cites rows. Staging a DRAFT is a separate examiner-triggered action.
       </div>
-      {(mode === "mode2" || mode === "mode3") && (
-        <div
-          className="card"
-          style={{
-            padding: "8px 12px",
-            marginBottom: 8,
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 10,
-            flexWrap: "wrap",
-          }}
-        >
-          <span style={{ fontSize: 12 }}>
-            {mode === "mode2" ? (
-              <>
-                This chat keeps the legacy plan/execute sliver. The supervised multi-role
-                pipeline runs on the dedicated <strong>Agent Run</strong> page — agent board,
-                live event stream, steering, pause/resume/stop and DRAFT staging.
-              </>
-            ) : (
-              <>
-                The concurrent multi-agent team runs on <strong>Agent Run
-                (Investigation Board)</strong> — simultaneous seats, a shared claim board,
-                disputes and join decisions, with steer / pause / resume / stop.
-              </>
-            )}
-          </span>
-          <Link className="btn btn-sm btn-primary" to="/agent-run">
-            Open Agent Run →
-          </Link>
-        </div>
-      )}
       {mode === "mode1" && (suggestions.length > 0 || suggLoading) && (
         <div
           className="card"
@@ -907,58 +745,6 @@ export default function SteerChat() {
       )}
 
       {error && <div className="error-banner">{error}</div>}
-
-      {/* Mode 2 sliver action bar — Execute */}
-      {mode === "mode2" && sliverStep === "execute" && sliverPlan && (
-        <div className="card" style={{ padding: "8px 12px", marginBottom: 8 }}>
-          <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-            Plan ready: {sliverPlan.items.length} step(s), {sliverPlan.queries.length} query(ies).
-            {!sliverPlan.lane_complete && (
-              <span style={{ color: "var(--warning)", marginLeft: 8 }}>
-                ⚠ Mandatory lane not complete — extras may be refused.
-              </span>
-            )}
-          </span>
-          <button className="btn btn-primary btn-sm" style={{ marginLeft: 12 }} onClick={executePlan} disabled={loading}>
-            Execute Plan
-          </button>
-        </div>
-      )}
-
-      {/* Mode 2 sliver action bar — Seal */}
-      {mode === "mode2" && sliverStep === "seal" && (
-        <div className="card" style={{ padding: "12px", marginBottom: 8 }}>
-          <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 8 }}>
-            Execution complete. Seal the case file with HMAC challenge-response.
-          </div>
-          {!sealChallenge ? (
-            <button className="btn btn-primary btn-sm" onClick={getSealChallenge} disabled={loading}>
-              Get Seal Challenge
-            </button>
-          ) : (
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                Nonce: {sealChallenge.nonce.slice(0, 32)}...
-              </span>
-              <input
-                type="password"
-                placeholder="Approval password"
-                value={sealPassword}
-                onChange={(e) => setSealPassword(e.target.value)}
-                style={{ width: 220 }}
-                title="Your examiner approval password — the HMAC is computed in your browser; the password never leaves it."
-              />
-              <button
-                className="btn btn-primary btn-sm"
-                onClick={sealCase}
-                disabled={loading || !sealPassword}
-              >
-                Seal Case
-              </button>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* WP 4b.14: Propose Draft button — Mode 1 */}
       {mode === "mode1" && (
@@ -1162,25 +948,20 @@ export default function SteerChat() {
         )}
       </div>
 
-      {/* Input bar */}
+      {/* Input bar — Steer Chat is the Mode 1 surface; Mode 2/3 cases render
+          the Agent Run banner above, so the mode branches are gone here. */}
       <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
         <input
-          placeholder={
-            mode === "mode1" ? "Ask about the evidence..." :
-            mode === "mode3" ? "Multi-agent runs on Agent Run (Investigation Board)..." :
-            sliverStep === "plan" ? "Set scope for agent..." :
-            "Use action buttons above..."
-          }
+          placeholder="Ask about the evidence..."
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && !loading && send()}
           placeholder-style={{ color: loading ? "var(--text-muted)" : undefined }}
-          disabled={(mode === "mode2" && sliverStep !== "plan") || mode === "mode3"}
         />
         <button
           className="btn btn-primary"
           onClick={send}
-          disabled={loading || (mode === "mode2" && sliverStep !== "plan") || mode === "mode3"}
+          disabled={loading}
         >
           {loading ? "Working…" : "Send"}
         </button>

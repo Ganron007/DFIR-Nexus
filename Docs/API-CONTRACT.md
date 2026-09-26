@@ -758,7 +758,7 @@ needle name, so an identical needle never re-stages under a new hit count.
 **Errors:**
 - `400` — `max_needles` not an integer.
 - `404` — No active case.
-- `409` — A full run is already in progress (body carries the live record) OR case is sealed.
+- `409` — A full run is already in progress (body carries the live record) OR case is sealed OR the case's stored investigation mode is not `1`.
 
 ### GET /portal/api/mode1/full-run/status
 **Description:** Latest Mode 1 full-run record for the active case. Returns `{status: "never_run"}` when no run exists.
@@ -1228,8 +1228,8 @@ needles is one event.
 
 ## 10. Mode 1 — LLM (guided)
 
-### POST /portal/api/mode2/chat
-**Description:** The guided (Mode 1) conversational evidence agent — the primary steering surface (runtime route name `mode2/chat`). The LLM plans Elasticsearch query JSON from the examiner's question, the server executes them against the active case's ES index (audited allowlisted es_search/es_aggregate; Elasticsearch required, no CSV fallback for analysis), and the LLM answers from the actual rows. Clear list/IOC questions use a deterministic fast path (no LLM planning call). The turn runs **off the event loop** (`asyncio.to_thread`) with a hard budget, and the examiner's message is persisted **before** the turn runs.
+### POST /portal/api/mode1/chat
+**Description:** The guided (Mode 1) conversational evidence agent — the primary steering surface (route `/portal/api/mode1/chat`; Steer Chat uses the streaming form `/portal/api/chat/stream`). The LLM plans Elasticsearch query JSON from the examiner's question, the server executes them against the active case's ES index (audited allowlisted es_search/es_aggregate; Elasticsearch required, no CSV fallback for analysis), and the LLM answers from the actual rows. Clear list/IOC questions use a deterministic fast path (no LLM planning call). The turn runs **off the event loop** (`asyncio.to_thread`) with a hard budget, and the examiner's message is persisted **before** the turn runs.
 
 **Request:**
 ```json
@@ -1252,11 +1252,16 @@ needles is one event.
 - `queries_executed[].why`: the planner rationale per query (the UI shows what was queried **and why**).
 - `hits`: top cited rows for the transcript — hit cards carry one-click bookmarking and an Explore link, so every claim can be traced back to the logs.
 - `followups`: deterministic drill-down chips (top host/executable/user, list users/hosts) — the UI renders them click-to-ask.
-- Bounds: `NEXUS_LLM_TIMEOUT` (per LLM call, default 120 s) and `NEXUS_MODE2_TURN_TIMEOUT` (turn budget, default 240 s → graceful timeout reply instead of a hang).
+- Bounds: `NEXUS_LLM_TIMEOUT` (per LLM call, default 120 s) and `NEXUS_MODE1_TURN_TIMEOUT` (turn budget, default 900 s → graceful timeout reply instead of a hang; the legacy `NEXUS_MODE2_TURN_TIMEOUT` name is still read).
 - The transcript is appended to `<case>/chat.jsonl` (`steer_question` before the turn, `steer_answer` with `timings`, `queries`, `hits` and `followups` after — reloads stay bookmarkable/explorable).
 
-### POST /portal/api/mode2/iterate
-**Description:** Guided iterative loop (`mode2/iterate`): query → analyze → propose new needles → re-query. Every iteration is logged to the case chat transcript. Hard cap on iterations (1-4, default 2). The loop NEVER writes findings — it returns the iteration log for examiner review.
+**Errors:**
+- `400` — Empty message.
+- `404` — No active case.
+- `409` — Case is sealed, or the case's stored investigation mode is not `1`.
+
+### POST /portal/api/mode1/iterate
+**Description:** Guided iterative loop (`mode1/iterate`): query → analyze → propose new needles → re-query. Every iteration is logged to the case chat transcript. Hard cap on iterations (1-4, default 2). The loop NEVER writes findings — it returns the iteration log for examiner review.
 
 **Request:**
 ```json
@@ -1295,7 +1300,7 @@ needles is one event.
 
 ---
 
-### POST /portal/api/mode2/corroborate
+### POST /portal/api/mode1/corroborate
 **Description:** Runs an FD-006/007 corroboration check on a finding. Checks whether the finding has sufficient evidence family diversity and audit_id count for its confidence level. Returns problems and suggested corroboration queries.
 
 **Draft-staging behavior (FD-006/007 auto-cap):** when any draft is staged through `record_finding` (workbench promote, hit-promote, mode2/mode3 draft, full-run), a `MEDIUM`/`HIGH` confidence that fails these requirements is automatically lowered to `LOW` with an auditable note appended to `confidence_justification` and returned as `confidence_adjusted` in the response — the draft stages rather than being rejected. `LOW` and `SPECULATIVE` are below the escalation bar and never capped. To escalate, add corroborating evidence (another artifact family, or a second audit_id) and re-stage. `validate_finding` still rejects over-claimed confidence for direct/uncapped calls.
@@ -1325,7 +1330,7 @@ needles is one event.
 
 ---
 
-### POST /portal/api/mode2/propose-draft
+### POST /portal/api/mode1/propose-draft
 **Description:** LLM drafts a finding from hits (or from a query that produces hits). The draft is staged as DRAFT with `examiner_selected=False` — the examiner reviews, edits, and approves via the normal HMAC flow. The LLM never approves.
 
 **Request:**
@@ -1363,6 +1368,47 @@ needles is one event.
 **Errors:**
 - `400` — Missing title, no hits to draft from, or draft staging error.
 - `404` — No active case.
+
+### POST /portal/api/mode1/suggestions
+**Description:** Examiner question ideas for Steer Chat. LLM-generated when a model is configured (server-validated: no raw injected text reaches the examiner panel), deterministic fallback otherwise. Results are cached per case for 120 s.
+
+**Request:** `{}`
+
+**Response 200:**
+```json
+{
+  "suggestions": [{"text": "string", "source": "llm|deterministic"}],
+  "generated_by": "llm|deterministic",
+  "cached": false
+}
+```
+
+**Errors:** `404` — No active case.
+
+### POST /portal/api/mode1/save-answer
+**Description:** Bookmarks an LLM answer for the report. Bookmarks the answer's cited rows to the Workbench, appends an `answer_saved` transcript entry, and records the answer in `analysis/mode1_saved_answers.json` (the report's Saved-answers section; the legacy `mode2_saved_answers.json` is still read). Idempotent on `entry_ts`.
+
+**Request:**
+```json
+{ "entry_ts": "ISO 8601 (ts of the chat entry)", "note": "string (optional bookmark note)" }
+```
+
+**Response 200:**
+```json
+{
+  "saved": true,
+  "entry_ts": "ISO 8601",
+  "bookmarked": 2,
+  "existed": 0,
+  "total": 2,
+  "saved_answers": 1
+}
+```
+
+**Errors:**
+- `400` — `entry_ts` missing.
+- `404` — No active case, or no chat entry with that `ts`.
+- `409` — Case is sealed.
 
 ---
 
@@ -1458,7 +1504,7 @@ needles is one event.
 }
 ```
 
-**Errors:** `404` — no active case; `409` — case sealed.
+**Errors:** `404` — no active case; `409` — case sealed, or the case's stored investigation mode is not `2`.
 
 ---
 
@@ -1469,7 +1515,7 @@ needles is one event.
 
 **Response 202:** `{"run_id": "M2-…", "status": "running", "question": "string"}`
 
-**Errors:** `404` — no active case; `409` — a run with this id is already in progress or the case is sealed.
+**Errors:** `404` — no active case; `409` — a run with this id is already in progress, the case is sealed, or the case's stored investigation mode is not `2`.
 
 ---
 
@@ -1573,9 +1619,9 @@ Elasticsearch is required. Agents never stage or approve.
 **Description:** Start the concurrent multi-agent team in the background (the
 supervisor may use the configured model; deterministic fallback otherwise).
 **Request:** `{"question": "string?", "run_id": "M3-…?"}` → **202**
-`{"run_id", "status": "running", "question"}`. `409` when a run with that id is
-in progress or the case is sealed; when ES is unavailable the record fails with
-`stop_reason=elasticsearch_required`.
+`{"run_id": "M3-…"}`, `status: "running", "question"}`. `409` when a run with that id is
+in progress, the case is sealed, or the case's stored investigation mode is not
+`3`; when ES is unavailable the record fails with `stop_reason=elasticsearch_required`.
 
 ### GET /portal/api/mode3/run/status
 **Description:** Run state (`run_id` optional → latest): `status`, `stop_reason`,
@@ -1927,7 +1973,7 @@ run on the CSV pack.
 ---
 
 ### POST /portal/api/chat/stream
-**Description:** Live steer-chat turn (WP 4d.3; WP 10.53/10.54). The `mode1` ask flow runs the deterministic ask; the `mode2` guided loop runs the bounded context-engineering tool loop (`src/nexus/langgraph/context_loop.py`) and streams progress as Server-Sent Events. The examiner message and final reply are persisted to the case transcript; a slim tool-call chain, `partial` flag and hits are persisted in the reply entry's `data` so they survive reload.
+**Description:** Live steer-chat turn (WP 4d.3; WP 10.53/10.54). `mode1` runs the bounded context-engineering guided tool loop (`src/nexus/langgraph/context_loop.py`); `mode1-ask` (alias `ask`) runs the deterministic ask flow; `mode2` is kept as a legacy alias for the guided loop. The examiner message and final reply are persisted to the case transcript; a slim tool-call chain, `partial` flag and hits are persisted in the reply entry's `data` so they survive reload.
 
 **Request:**
 ```json
@@ -1938,18 +1984,18 @@ run on the CSV pack.
   "history": [{"role": "examiner", "text": "..."}, {"role": "llm", "text": "..."}]
 }
 ```
-- `mode`: `mode1` (ask → query) or `mode2` (bounded tool loop)
-- `max_iterations`: accepted for API compatibility; Mode 2 is bounded by
+- `mode`: `mode1` (bounded guided tool loop — what Steer Chat sends), `mode1-ask` / `ask` (deterministic ask flow), `mode2` (legacy alias for the guided loop)
+- `max_iterations`: accepted for API compatibility; the guided loop is bounded by
   `NEXUS_CONTEXT_LOOP_ROUNDS` / `NEXUS_CONTEXT_LOOP_CALLS` /
   `NEXUS_CONTEXT_LOOP_SECONDS` (defaults 8 / 16 / 360)
-- `history`: optional prior turns (Mode 2 gets the same conversational context as
-  `/mode2/chat`)
+- `history`: optional prior turns (the guided loop gets the same conversational context as
+  `/mode1/chat`)
 
 **Response:** `text/event-stream` with events:
 ```
-event: status       data: {"stage": "translating"|"querying", ...}          (Mode 1)
-event: iteration    data: {"iteration": 0, "action": "initial_query", ...}  (Mode 1)
-event: round        data: {"round": N, "max_rounds": M}                    (Mode 2)
+event: status       data: {"stage": "translating"|"querying", ...}          (ask flow)
+event: iteration    data: {"iteration": 0, "action": "initial_query", ...}  (ask flow)
+event: round        data: {"round": N, "max_rounds": M}                    (guided loop)
 event: tool_call    data: {"round": N, "tool": "es_search", "args": {...}, "why": "..."}
 event: tool_result  data: {"round": N, "tool": "...", "audit_id": "...", "summary": {...}, "error": "..."}
 event: partial      data: {"reason": "rounds|calls|time", "round": N}
@@ -1960,8 +2006,8 @@ event: ping         data: {}   (keepalive every 30s while working)
 ```
 
 **Notes:**
-- Mode 1 events are unchanged. Mode 2 no longer emits `iteration`; it emits the
-  tool-loop events above. `loop_done` is an internal loop event and is not
+- The ask flow emits `status`/`iteration`; the guided loop emits the tool-loop
+  events above and never `iteration`. `loop_done` is an internal loop event and is not
   treated as the client terminal event (`done` from the stream finalizer is).
 - `hits` payloads include parsed `fields` + best-effort `host` per hit (WP 4d.1).
 - Non-SSE fallback: `POST /portal/api/chat` (blocking) remains available.
@@ -2575,7 +2621,7 @@ Returned by mode3/plan:
 ```
 
 ### Corroboration Result Object
-Returned by mode2/corroborate and mode2/propose-draft:
+Returned by mode1/corroborate and mode1/propose-draft:
 ```json
 {
   "families": ["string"],
