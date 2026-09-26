@@ -99,6 +99,7 @@ app.add_typer(collect_app, name="collect", help="Stage 0 IR orchestrator — liv
 # `nexus init "Case" --evidence ...` form works.
 app.command(name="init", help="Quickstart — one-command onboarding")(init_cmd)
 
+from nexus.cli.coverage_cmd import coverage_audit as _coverage_cmd
 from nexus.cli.doctor_cmd import doctor as doctor_cmd
 from nexus.cli.ingest_cmd import ingest as ingest_cmd
 from nexus.cli.investigate import brief as _brief_cmd
@@ -107,6 +108,8 @@ from nexus.cli.investigate import hits_cmd as _hits_cmd
 
 app.command(name="ingest", help="Auto-detect and ingest a forensic file or tree")(ingest_cmd)
 app.command(name="doctor", help="Report extras, catalog binaries, indexes, optional keys")(doctor_cmd)
+# WP 10.2: the coverage audit answers "what did this investigation NOT cover?".
+app.command(name="coverage-audit", help="Case coverage audit: tools not run, sources not cited, needles not scanned")(_coverage_cmd)
 
 # WP 4i.10: headless investigation verbs — the UI stays primary, these keep
 # the spine usable without a browser.

@@ -5939,10 +5939,28 @@ async def api_case_briefing(request):
     try:
         # EH-10: the first (cache-miss) build scans every extraction file —
         # never on the event loop, or a big case stalls every other request.
-        return JSONResponse(await asyncio.to_thread(_cached_briefing, case_dir))
+        payload = await asyncio.to_thread(_cached_briefing, case_dir)
     except Exception as exc:  # noqa: BLE001
         logger.exception("briefing failed")
         return JSONResponse({"error": f"briefing failed: {exc}"}, status_code=500)
+
+    # WP 10.2: the persisted coverage audit rides along (cheap file read, no
+    # rescan) so the briefing shows what was NOT covered. A missing audit simply
+    # omits the key — it never blocks the briefing.
+    try:
+        from nexus.analysis.coverage_audit import load_coverage_audit, summary_lines
+
+        audit = await asyncio.to_thread(load_coverage_audit, case_dir)
+        if audit:
+            payload = dict(payload or {})
+            payload["coverage_audit"] = {
+                "overall": audit.get("overall"),
+                "summary": summary_lines(audit, limit=4),
+            }
+    except Exception:  # noqa: BLE001
+        logger.debug("coverage audit attach failed", exc_info=True)
+
+    return JSONResponse(payload)
 
 
 async def api_case_briefing_directions(request):

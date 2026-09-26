@@ -1535,6 +1535,18 @@ def build_dfir_markdown(
             )
         lines.append("")
 
+    # Coverage audit (WP 10.2) — required reading before sealing: which
+    # applicable tools never ran, which indexed families no finding cites, and
+    # which needles were never queried (so their 0-hit rows prove nothing).
+    try:
+        from nexus.analysis.coverage_audit import load_coverage_audit, report_section
+
+        coverage_lines = report_section(load_coverage_audit(case_dir))
+    except Exception:  # noqa: BLE001 - a missing audit must not break the report
+        coverage_lines = []
+    if coverage_lines:
+        lines.extend(coverage_lines)
+
     lines.append("---")
     lines.append("")
     if include_draft:
