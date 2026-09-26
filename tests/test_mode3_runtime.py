@@ -89,6 +89,7 @@ def test_two_seats_publish_without_clobber(tmp_path):
     assert record["status"] == "completed"
     assert record["candidates"]
     assert record["candidates"][0]["audit_ids"] == ["audit-evidence"]
+    assert record["candidates"][0]["interpretation"]
 
 
 def test_dispute_is_not_a_candidate(tmp_path, monkeypatch):

@@ -223,6 +223,48 @@ def accept_claim(claim: dict[str, Any]) -> str:
     return ""
 
 
+def settled_candidates(
+    board: list[dict[str, Any]],
+    disputes: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """DRAFT-shaped candidates from settled claims.
+
+    Staging requires observation and interpretation. A claim that passes
+    ``accept_claim`` already has a justification; that text is the
+    interpretation so the examiner stage step does not skip the row.
+    """
+    open_keys = {
+        (d["entity_type"], d["entity_value"], d["claim_kind"]) for d in disputes
+    }
+    candidates: list[dict[str, Any]] = []
+    gaps = [f"unresolved {d['entity_value']} {d['claim_kind']}" for d in disputes]
+    for entry in board:
+        for claim in entry.get("claims") or []:
+            if not isinstance(claim, dict):
+                continue
+            reason = accept_claim(claim)
+            if reason:
+                gaps.append(reason)
+                continue
+            key = _claim_key(claim)
+            if key in open_keys:
+                continue
+            justification = str(claim.get("confidence_justification") or "").strip()
+            value = str(claim.get("value") or "").strip()
+            kind = str(claim.get("claim_kind") or "")
+            entity = str(claim.get("entity_value") or "")
+            candidates.append({
+                "title": f"{entity}: {kind}",
+                "observation": value or f"{kind} recorded for {entity}",
+                "interpretation": justification,
+                "confidence": str(claim.get("confidence") or "LOW"),
+                "confidence_justification": justification,
+                "audit_ids": _audit_ids(claim),
+                "agent_id": entry.get("agent_id"),
+            })
+    return candidates, gaps
+
+
 def find_disputes(board: list[dict[str, Any]]) -> list[dict[str, Any]]:
     grouped: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
     for entry in board:
@@ -767,30 +809,9 @@ def run_mode3(
 
     def synthesize(state: Mode3State) -> dict[str, Any]:
         disputes = find_disputes(list(state.get("board") or []))
-        open_keys = {
-            (d["entity_type"], d["entity_value"], d["claim_kind"]) for d in disputes
-        }
-        candidates: list[dict[str, Any]] = []
-        gaps = [f"unresolved {d['entity_value']} {d['claim_kind']}" for d in disputes]
-        for entry in state.get("board") or []:
-            for claim in entry.get("claims") or []:
-                if not isinstance(claim, dict):
-                    continue
-                reason = accept_claim(claim)
-                if reason:
-                    gaps.append(reason)
-                    continue
-                key = _claim_key(claim)
-                if key in open_keys:
-                    continue
-                candidates.append({
-                    "title": f"{claim.get('entity_value')}: {claim.get('claim_kind')}",
-                    "observation": str(claim.get("value") or ""),
-                    "confidence": str(claim.get("confidence") or "LOW"),
-                    "confidence_justification": str(claim.get("confidence_justification") or ""),
-                    "audit_ids": _audit_ids(claim),
-                    "agent_id": entry.get("agent_id"),
-                })
+        candidates, _gaps = settled_candidates(
+            list(state.get("board") or []), list(disputes),
+        )
         sink.emit(new_event(
             run_id, "synthesis.candidates", actor="synthesis",
             detail=f"{len(candidates)} candidate(s)",
@@ -854,33 +875,14 @@ def run_mode3(
             "steering_seen": int(final.get("steering_seen") or 0),
         }
     # Synthesis return was empty so candidates are derived here from the board.
-    disputes = record["disputes"]
-    open_keys = {(d["entity_type"], d["entity_value"], d["claim_kind"]) for d in disputes}
-    candidates = []
-    gaps = [f"unresolved {d['entity_value']} {d['claim_kind']}" for d in disputes]
-    for entry in record["board"]:
-        for claim in entry.get("claims") or []:
-            if not isinstance(claim, dict):
-                continue
-            reason = accept_claim(claim)
-            if reason:
-                gaps.append(reason)
-                continue
-            key = _claim_key(claim)
-            if key in open_keys:
-                continue
-            candidates.append({
-                "title": f"{claim.get('entity_value')}: {claim.get('claim_kind')}",
-                "observation": str(claim.get("value") or ""),
-                "confidence": str(claim.get("confidence") or "LOW"),
-                "confidence_justification": str(claim.get("confidence_justification") or ""),
-                "audit_ids": _audit_ids(claim),
-                "agent_id": entry.get("agent_id"),
-            })
+    candidates, gaps = settled_candidates(
+        list(record.get("board") or []), list(record.get("disputes") or []),
+    )
     record["candidates"] = candidates
     record["gaps"] = gaps
     record["narrative"] = (
-        f"{len(candidates)} settled claim(s); {len(disputes)} unresolved dispute(s)."
+        f"{len(candidates)} settled claim(s); "
+        f"{len(record.get('disputes') or [])} unresolved dispute(s)."
     )
     steering = read_mode3_steering(case_dir, run_id)
     if steering:
