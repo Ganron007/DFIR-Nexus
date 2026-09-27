@@ -406,6 +406,12 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
         add("thumbcache_viewer",
             ["thumbcache_viewer_cmd", "-d", str(evidence), "-o", str(reports), "-c"],
             f"Thumbcache entries ({evidence.name})", 300)
+    elif _is_history_text(name):
+        # No parser exists, so stage the content verbatim. strings keeps the
+        # lines intact and drops binary noise from a UTF-16 history file.
+        d = out_dir("history")
+        add("strings", ["strings64", "-nobanner", str(evidence)],
+            f"Console/shell history ({evidence.name})", 300)
     elif name.startswith("setupapi"):
         # setupapi.dev.log is plain text; stage it verbatim so the indexer and
         # the analyst can read the driver install history directly.
@@ -474,6 +480,42 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
     return jobs
 
 
+# Recognised by name, not by extension: `random.txt` must stay unrecognised, or
+# the lane invents a parser for every notes file on the host.
+_HISTORY_TEXT_NAMES = (
+    "consolehost_history.txt",       # PSReadLine
+    "psreadline_history.txt",
+    ".bash_history",
+    "bash_history",
+    ".sh_history",
+    "sh_history",
+    ".zsh_history",
+    "zsh_history",
+    ".python_history",
+    "powershell_transcript",
+    "wsmprovhost_history.txt",
+    "history.txt",                   # PowerShell `Get-History | Out-File`
+)
+
+
+def _is_history_text(name: str) -> bool:
+    """True for a named console/shell history artifact.
+
+    Matched on the distinctive part of the name rather than by equality: an
+    examiner exporting one user's history names the file after the user, so the
+    real corpus holds `srl-h-ConsoleHost_history.txt` and not
+    `ConsoleHost_history.txt`. A strict equality check recognised exactly the
+    file nobody has, which is how the one artifact that records what a user
+    typed ended up as a discovery SKIP.
+
+    The names below are distinctive enough for containment to be safe:
+    `consolehost_history`, `bash_history`, `zsh_history` and `psreadline` do not
+    occur in the name of an unrelated file.
+    """
+    lowered = name.lower()
+    return any(n in lowered for n in _HISTORY_TEXT_NAMES)
+
+
 def is_host_evidence(path: str | Path) -> bool:
     """True when the Windows tool lane can parse this evidence path.
 
@@ -501,6 +543,12 @@ def is_host_evidence(path: str | Path) -> bool:
             or name.startswith("setupapi")
             or name == "$i30"
             or (suffix == ".exe")
+            # Console and shell history is the primary record of what a user
+            # typed, and it has no parser in the catalogue. It must still be
+            # staged so its content reaches the index and the needles - a
+            # discovery SKIP means the one artifact that says what happened is
+            # the one thing never read.
+            or _is_history_text(name)
         )
     if p.is_dir():
         if (
@@ -1955,6 +2003,16 @@ async def run_tool_lane(
         job.audit_id = aid
         job.output_saved_to = str(result.get("output_saved_to") or "")
         job.output_files = list(result.get("output_files") or [])
+        # A tool whose only product is stdout - strings, sigcheck - writes
+        # `<tool>_stdout.txt`, and the indexer skips `*_stdout.txt` as scratch.
+        # That is correct when a structured CSV sits beside it and wrong when it
+        # does not: the extraction is then silently unreachable, and the format
+        # parses, records OK, and contributes zero rows to the index. Promote the
+        # saved stdout to a named artifact so the content is reachable.
+        if job.output_saved_to and not _structured_output_present(job):
+            promoted = _promote_stdout(job, str(result.get("output_saved_to") or ""))
+            if promoted:
+                job.output_files = [*job.output_files, promoted]
         if result.get("success") is False or result.get("error"):
             job.reason = str(result.get("error") or result.get("stderr") or "tool failed")[:500]
             _finish("FAIL", job.reason[:300], reason=job.reason,
@@ -2174,6 +2232,41 @@ def _soft_fail_reason(result: dict[str, Any]) -> str:
             idx = blob.find(m)
             return blob[idx:idx + 240].replace("\n", " ")
     return ""
+
+
+def _structured_output_present(job: ToolJob) -> bool:
+    """True when a job produced something other than its own stdout capture."""
+    for path in (job.output_files or []):
+        name = Path(str(path)).name.lower()
+        if name.endswith(("_stdout.txt", "_stderr.txt", "_meta.json")):
+            continue
+        if Path(str(path)).is_file():
+            return True
+    return False
+
+
+def _promote_stdout(job: ToolJob, saved: str) -> str:
+    """Copy a stdout-only capture beside itself under an indexed name.
+
+    Returns the new path, or "" when there is nothing to promote. The copy keeps
+    the tool and source in the name so the row's provenance is still readable in
+    the index, and the original scratch file is left alone - it is what the audit
+    trail points at.
+    """
+    if not saved:
+        return ""
+    src = Path(saved)
+    if not src.is_file() or src.stat().st_size <= 0:
+        return ""
+    stem = _stem(Path(str((job.argv or ["artifact"])[-1])))
+    target = src.with_name(f"{job.tool}-{stem}.txt")
+    try:
+        if target.exists() and target.stat().st_size == src.stat().st_size:
+            return str(target)
+        shutil.copy2(src, target)
+    except OSError:
+        return ""
+    return str(target)
 
 
 def _produced_expected_output(job: ToolJob) -> bool:
