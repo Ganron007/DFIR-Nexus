@@ -1664,12 +1664,47 @@ def run_mode2(
         else:
             state["candidates"] = []
             state["narrative"] = ""
-        state["status"] = "completed"
-        state["stop_reason"] = (
-            "converged_no_new_evidence"
-            if state.get("converged_no_new_evidence")
-            else ("converged" if not state["candidates"] else "completed")
-        )
+        # A run whose every work order failed to parse has not converged - it
+        # never ran. Reporting "completed / converged" from a dead model is the
+        # silent-degradation shape this project forbids: seen live, four orders
+        # came back "**Partial result — model call failed.**", every one
+        # `unparsed`, and the record said completed, error=None, gaps=0.
+        results = list(state.get("results") or [])
+        orders = list(state.get("orders") or [])
+        unparsed = [r for r in results if str(r.get("status") or "") == "unparsed"]
+        failed = [r for r in results
+                  if str(r.get("status") or "") in ("failed", "error")
+                  or str(r.get("error") or "").strip()]
+        produced = [
+            r for r in results
+            if (r.get("parsed") or {}).get("candidate_findings")
+            or (r.get("parsed") or {}).get("findings")
+            or str(r.get("reply") or "").strip()
+            and "model call failed" not in str(r.get("reply") or "")
+        ]
+        model_dead = bool(orders) and not produced and (unparsed or failed)
+        state["status"] = "failed" if model_dead else "completed"
+        if model_dead:
+            state["stop_reason"] = (
+                f"model unavailable: {len(unparsed) + len(failed)}/{len(orders)} work "
+                f"order(s) produced nothing parseable"
+            )
+            gaps = list(state.get("gaps") or [])
+            note = (
+                f"no work order produced a parseable result "
+                f"({len(unparsed)} unparsed, {len(failed)} failed of {len(orders)}) - "
+                f"the run did not investigate anything"
+            )
+            if note not in gaps:
+                gaps.append(note)
+            state["gaps"] = gaps
+            state["error"] = state["stop_reason"]
+        else:
+            state["stop_reason"] = (
+                "converged_no_new_evidence"
+                if state.get("converged_no_new_evidence")
+                else ("converged" if not state["candidates"] else "completed")
+            )
         _persist_state(case_dir, run_id, state)
         sink.emit(new_event(
             run_id, "run.completed", actor="director",

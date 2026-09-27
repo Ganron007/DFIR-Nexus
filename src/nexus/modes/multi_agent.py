@@ -161,6 +161,79 @@ def read_mode3_steering(case_dir: Path, run_id: str, limit: int = 50) -> list[di
     return out[-limit:]
 
 
+def active_seats(
+    case_dir: Path,
+    run_id: str,
+    *,
+    events: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """Seats that have started work and have not yet reported.
+
+    The board holds only seats that have *finished*, so on its own it cannot
+    answer "how many agents are running right now" - the question an examiner
+    watching a live run actually has. Liveness is derived from the event stream
+    instead: a ``seat.started`` with no matching ``board.entry`` is in flight.
+
+    Derived rather than stored on purpose: the stream is already the append-only
+    record of what the agents did, so a second mutable liveness counter could
+    disagree with it and there would be no way to tell which was telling the
+    truth.
+    """
+    stream = events if events is not None else read_run_events(case_dir, run_id)
+    started: dict[str, dict[str, Any]] = {}
+    reported: set[str] = set()
+    for ev in stream:
+        if not isinstance(ev, dict):
+            continue
+        kind = str(ev.get("event_type") or "")
+        agent = str(ev.get("agent_id") or "").strip()
+        if not agent:
+            continue
+        if kind == "seat.started":
+            started[agent] = {
+                "agent_id": agent,
+                "role": (ev.get("data") or {}).get("role") or agent.split(":")[0],
+                "family": (ev.get("data") or {}).get("family") or "",
+                "superstep": (ev.get("data") or {}).get("superstep"),
+                "why": (ev.get("data") or {}).get("why") or "",
+                "started_at": ev.get("ts") or "",
+            }
+        elif kind == "board.entry":
+            reported.add(agent)
+    # Later starts win, so a re-dispatched seat shows its current superstep.
+    return [s for a, s in started.items() if a not in reported]
+
+
+def interaction_timeline(
+    stream: list[dict[str, Any]], limit: int = 200,
+) -> list[dict[str, Any]]:
+    """The agent-to-agent interaction log, in the shape the board renders.
+
+    One row per event an examiner would want to read as a narrative: who acted,
+    which seat, what they touched, and why. Tool calls and results are included
+    because "seat claimed X" is only meaningful next to the call that produced it.
+    """
+    rows: list[dict[str, Any]] = []
+    for ev in stream:
+        if not isinstance(ev, dict):
+            continue
+        kind = str(ev.get("event_type") or "")
+        if not kind:
+            continue
+        data = ev.get("data") if isinstance(ev.get("data"), dict) else {}
+        rows.append({
+            "ts": ev.get("ts") or "",
+            "event": kind,
+            "actor": ev.get("actor") or "",
+            "agent_id": ev.get("agent_id") or "",
+            "detail": ev.get("detail") or "",
+            "tool": ev.get("tool") or "",
+            "audit_id": ev.get("audit_id") or "",
+            "data": data,
+        })
+    return rows[-limit:]
+
+
 def read_run_events(case_dir: Path, run_id: str, limit: int = 5000) -> list[dict[str, Any]]:
     path = _run_dir(case_dir) / f"{run_id}.jsonl"
     if not path.is_file():
@@ -494,6 +567,18 @@ def _seat_with_model(
         role = role_for("evidence")
     family = str(spawn.get("family") or "")
     objective = str(spawn.get("question") or "")
+    # Announce the seat before it works. The board only holds seats that have
+    # *reported*, so without this an examiner watching a run cannot tell one
+    # agent grinding from three - and the interaction timeline has no start.
+    seat_agent_id = (
+        f"{role_name if role_name in _SEATS else 'evidence'}:{family or 'unknown'}:{superstep}"
+    )
+    sink.emit(new_event(
+        run_id, "seat.started", actor="agent", agent_id=seat_agent_id,
+        detail=f"{role_name} {family}".strip(),
+        data={"role": role_name, "family": family, "superstep": superstep,
+              "why": spawn.get("why") or "", "question": objective},
+    ))
     skill_refs = _retrieve_skill_refs(
         [family] if family else [],
         _question_keywords(objective),
@@ -535,6 +620,11 @@ def _seat_with_model(
     entry = _fallback_entry(spawn, superstep)
     entry["claims"] = _parse_claims(str(loop.get("reply") or ""))
     entry["open_questions"] = []
+    # How the seat finished. `model_error` is the structured signal that the
+    # model never answered - the difference between a seat that legitimately
+    # found nothing and a seat that never ran, which look identical from an empty
+    # claim list and must not be reported the same way.
+    entry["finish_reason"] = str(loop.get("finish_reason") or "")
     # Return the procedures this seat was given. Without them the run record
     # cannot say which documented method produced its claims, so "did the agent
     # follow a procedure or improvise" is unanswerable from the case afterwards
@@ -633,6 +723,13 @@ def run_mode3(
     max_steps = _env_int("NEXUS_MODE3_MAX_SUPERSTEPS", 6, low=1, high=12)
     max_calls = _env_int("NEXUS_MODE3_MAX_CALLS", 120, low=1, high=400)
     settle_k = _env_int("NEXUS_MODE3_SETTLE_SUPERSTEPS", 2, low=1, high=6)
+    # settled whenever `superstep >= 1 and not disputes`, so a first superstep
+    # whose seats happened not to collide ended the investigation at one round:
+    # four evidence seats looked at four families, never cross-examined, and the
+    # correlation and pattern seats never got a turn. The criterion rewarded
+    # not colliding, which is backwards - an un-cross-examined board is the
+    # strongest argument for another round, not for stopping.
+    min_supersteps = _env_int("NEXUS_MODE3_MIN_SUPERSTEPS", 2, low=1, high=6)
     max_redispatch = _env_int("NEXUS_MODE3_MAX_REDISPATCH", 2, low=0, high=6)
     sink = _LockedSink(EventSink(case_dir, run_id, callback=on_event))
     # EventSink defaults to the multi-role directory. Keep this jsonl beside the Mode 3 record.
@@ -799,11 +896,34 @@ def run_mode3(
         quiet = int(state.get("quiet") or 0)
         quiet = quiet + 1 if fp == list(state.get("last_fp") or []) else 0
         status = str(state.get("status") or "running")
+        step_no = int(state.get("superstep") or 0)
         if status != "capped" and (
             (disputes and quiet >= settle_k)
-            or (not disputes and int(state.get("superstep") or 0) >= 1)
+            or (not disputes and step_no >= min_supersteps)
         ):
             status = "settled"
+        # Settling is a claim that the investigation is done, so record which
+        # roles actually contributed. A run where only evidence seats ever ran has
+        # not cross-examined anything, and saying so is the point.
+        roles_used = sorted({
+            str((e or {}).get("role") or "") for e in board if (e or {}).get("role")
+        })
+        if status == "settled" and len(set(roles_used) & set(_SEATS)) < len(_SEATS):
+            missing = sorted(set(_SEATS) - set(roles_used))
+            gaps = list(state.get("gaps") or [])
+            note = (
+                f"settled after {step_no} superstep(s) with no {', '.join(missing)} "
+                f"seat - those roles never contributed"
+            )
+            if note not in gaps:
+                gaps.append(note)
+            sink.emit(new_event(
+                run_id, "join.role_gap", actor="join", detail=note,
+                data={"roles_used": roles_used, "missing": missing,
+                      "superstep": step_no},
+            ))
+            return {"disputes": disputes, "quiet": quiet, "last_fp": fp,
+                    "status": status, "gaps": gaps, "roles_used": roles_used}
         sink.emit(new_event(
             run_id, "join.decision", actor="join",
             detail=status,
@@ -860,7 +980,25 @@ def run_mode3(
     final = graph.compile().invoke(seed)
 
     status = str(final.get("status") or "completed")
-    if status == "settled":
+    # A run where every seat came back empty because the model was unreachable has
+    # not settled - it never ran. Mode 2 recorded that state as
+    # "completed / converged", and Mode 3 settles on an empty board for the same
+    # reason, so a dead model reads as a clean investigation in both.
+    _board = list(final.get("board") or [])
+    _seats = [e for e in _board if isinstance(e, dict)]
+    # Keyed on the model's own finish reason, not on an empty claim list: a seat
+    # that ran and found nothing is a real result, and failing it would be wrong.
+    # A seat that never got an answer is not.
+    _model_dead = bool(_seats) and all(
+        str(e.get("finish_reason") or "") == "model_error" for e in _seats
+    )
+    _dead_model = _model_dead
+    if _dead_model and status in ("settled", "completed"):
+        status = "failed"
+        stop_reason = (
+            f"model unavailable: {len(_seats)} seat(s) returned no claims"
+        )
+    elif status == "settled":
         status = "completed"
         stop_reason = "settled"
     elif status == "capped":
