@@ -535,6 +535,15 @@ def _seat_with_model(
     entry = _fallback_entry(spawn, superstep)
     entry["claims"] = _parse_claims(str(loop.get("reply") or ""))
     entry["open_questions"] = []
+    # Return the procedures this seat was given. Without them the run record
+    # cannot say which documented method produced its claims, so "did the agent
+    # follow a procedure or improvise" is unanswerable from the case afterwards
+    # - which is the question a Phase 6 review asks first.
+    entry["skill_refs"] = [
+        {"skill": str(r.get("skill") or ""), "version": r.get("version"),
+         "role": r.get("role"), "citations": list(r.get("citations") or [])[:6]}
+        for r in (skill_refs or []) if isinstance(r, dict) and r.get("skill")
+    ]
     sink.emit(new_event(
         run_id, "board.entry", actor="agent", agent_id=entry["agent_id"],
         detail=f"{role_name} {family}".strip(),
@@ -863,6 +872,26 @@ def run_mode3(
         stop_reason = "paused"
     else:
         stop_reason = status
+    # Which documented procedures this run actually used, aggregated from what
+    # each seat was given. Without this the run record cannot answer "did the
+    # agent follow a method or improvise", and skill usage cannot be measured.
+    used: list[dict[str, Any]] = []
+    seen_skills: set[tuple[str, str]] = set()
+    for entry in (final.get("board") or []):
+        for ref in (entry.get("skill_refs") or []):
+            if not isinstance(ref, dict):
+                continue
+            key = (str(ref.get("skill") or ""), str(ref.get("version") or ""))
+            if not key[0] or key in seen_skills:
+                continue
+            seen_skills.add(key)
+            used.append({
+                "skill": key[0], "version": ref.get("version"),
+                "role": ref.get("role"), "agent_id": entry.get("agent_id"),
+                "citations": list(ref.get("citations") or [])[:6],
+            })
+    record["skills_used"] = used
+
     record.update({
         "status": status,
         "stop_reason": stop_reason,
@@ -936,10 +965,20 @@ def stage_mode3(case_dir: Path, run_id: str) -> dict[str, Any]:
     bridge = Path(case_dir) / _MODE2_DIR
     bridge.mkdir(parents=True, exist_ok=True)
     path = bridge / f"{run_id}.json"
+    rows = list(record.get("candidates") or [])
+    provenance = [
+        {"skill": u["skill"], "version": u.get("version"), "role": u.get("role")}
+        for u in (record.get("skills_used") or [])
+    ]
+    if provenance:
+        for cand in rows:
+            if isinstance(cand, dict) and not cand.get("skill_provenance"):
+                cand["skill_provenance"] = provenance
     payload = {
         "run_id": run_id,
         "product_mode": "multi-agent",
-        "candidates": record.get("candidates") or [],
+        "candidates": rows,
+        "skills_used": record.get("skills_used") or [],
         "verdicts": [],
         "results": [],
     }
