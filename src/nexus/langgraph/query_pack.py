@@ -911,6 +911,29 @@ def finalize_hits(
     return ranked[:_MAX_HITS_TOTAL]
 
 
+def _case_index_is_empty(case_dir: Path) -> bool:
+    """True when the case's index exists but holds no documents.
+
+    Distinguishes "indexed, found nothing" from "not indexed" - the two produced
+    the same empty result and only one of them justifies falling back to the CSV
+    pack. Returns False on any doubt, so a hiccup never silently changes backend.
+    """
+    try:
+        import json as _json
+        import urllib.request
+
+        from nexus.langgraph.case_index import es_url, index_name
+
+        name = index_name(Path(case_dir).name)
+        base = es_url()
+        if not name or not base:
+            return False
+        with urllib.request.urlopen(f"{base}/{name}/_count", timeout=10) as resp:
+            return int(_json.loads(resp.read().decode()).get("count") or 0) == 0
+    except Exception:  # noqa: BLE001 - a count check must never break a query
+        return False
+
+
 def n4_hits(
     case_dir: Path,
     terms: list[str],
@@ -965,10 +988,22 @@ def n4_hits(
                     query=query, match_all=match_all, stats=stats,
                     catalog=catalog,
                 )
-                if stats is not None:
-                    stats["backend"] = "elasticsearch"
-                    stats["fallback_reason"] = ""
-                return result, "elasticsearch"
+                # An index that *exists* but holds no docs is not "indexed". It
+                # returns an empty result without raising IndexMissing, so the
+                # fallback below never fired and the caller got a confident zero
+                # from a case whose CSV pack was full. Seen live: a stray
+                # zero-doc index left by an earlier run made every query return
+                # nothing. Only checked when the result is empty, so the common
+                # case pays nothing.
+                if not result and choice == "auto" and _case_index_is_empty(case_dir):
+                    fallback_reason = (
+                        "the case index exists but holds 0 docs - using the CSV pack"
+                    )
+                else:
+                    if stats is not None:
+                        stats["backend"] = "elasticsearch"
+                        stats["fallback_reason"] = ""
+                    return result, "elasticsearch"
         except IndexMissing as exc:
             if choice != "auto":
                 raise

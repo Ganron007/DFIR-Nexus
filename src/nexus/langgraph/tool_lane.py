@@ -406,6 +406,13 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
         add("thumbcache_viewer",
             ["thumbcache_viewer_cmd", "-d", str(evidence), "-o", str(reports), "-c"],
             f"Thumbcache entries ({evidence.name})", 300)
+    elif _task_xml_kind(evidence) == "task":
+        # A task definition is UTF-16 XML. `-u` extracts the wide strings, which
+        # is what carries the Exec command, the arguments and the Principal SID
+        # into the index - the strings a scheduled-task investigation searches on.
+        d = out_dir("tasks")
+        add("strings", ["strings64", "-u", "-nobanner", str(evidence)],
+            f"Scheduled task definition ({evidence.name[:40]})", 300)
     elif _is_history_text(name):
         # No parser exists, so stage the content verbatim. strings keeps the
         # lines intact and drops binary noise from a UTF-16 history file.
@@ -516,6 +523,51 @@ def _is_history_text(name: str) -> bool:
     return any(n in lowered for n in _HISTORY_TEXT_NAMES)
 
 
+def _decode_head(path: Path, limit: int = 4096) -> str:
+    """First bytes of a file as text, handling the UTF-16LE BOM Windows uses.
+
+    Scheduled-task definitions are UTF-16LE XML with no file extension, so a
+    sniff for `<Task` in raw bytes finds nothing: every character is followed by
+    a NUL. Decoding first is what makes the artefact recognisable at all.
+    """
+    try:
+        raw = Path(path).read_bytes()[:limit]
+    except OSError:
+        return ""
+    if raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        try:
+            return raw.decode("utf-16", errors="replace")
+        except (UnicodeDecodeError, LookupError):
+            pass
+    if raw[:2] in (b"\xff\xfe", b"\xfe\xff") or b"\x00" in raw[:64]:
+        try:
+            return raw.decode("utf-16-le", errors="replace")
+        except (UnicodeDecodeError, LookupError):
+            pass
+    return raw.decode("utf-8", errors="replace")
+
+
+def _task_xml_kind(path: Path) -> str:
+    """"task" for a Windows task definition, "" otherwise.
+
+    Matched on content, not on the name: Windows stores task definitions with no
+    file extension at all, so the only reliable signal is the document itself.
+    Eight of these - the anchor artefacts of the whole case plan, carrying the
+    Exec command and the Principal SID - were registered and skipped because a
+    name-based recogniser had nothing to match on.
+    """
+    head = _decode_head(path)
+    if not head:
+        return ""
+    # The wrapper and namespace appear within the first element of every
+    # version of the schema.
+    if "<Task" not in head:
+        return ""
+    if "schemas.microsoft.com/windows" not in head and "taskservice" not in head.lower():
+        return ""
+    return "task"
+
+
 def is_host_evidence(path: str | Path) -> bool:
     """True when the Windows tool lane can parse this evidence path.
 
@@ -549,6 +601,8 @@ def is_host_evidence(path: str | Path) -> bool:
             # discovery SKIP means the one artifact that says what happened is
             # the one thing never read.
             or _is_history_text(name)
+            # No extension to match on, so the content decides.
+            or _task_xml_kind(p) == "task"
         )
     if p.is_dir():
         if (

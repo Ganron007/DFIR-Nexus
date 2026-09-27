@@ -3215,9 +3215,32 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
         # Stage 1 — deterministic scan of every playbook/ATT&CK/Sigma needle.
         # This is the expensive step (~seconds on big evidence) — it lives in
         # the worker so the POST returns instantly.
+        record["stage"] = "preparing index"
+        _persist()
+        prep_note = _prepare_scan_index(case_dir)
+        if prep_note:
+            record.setdefault("skipped", []).append({"needle": None, "reason": prep_note})
+
         record["stage"] = "scanning briefing"
         _persist()
         brief = case_briefing(case_dir)
+        # A scan that had nothing to read is not a clean result. Judge it from
+        # what actually happened rather than from the configured backend.
+        try:
+            _ev_count = len(files) if files else 0
+        except NameError:
+            _ev_count = 0
+        _blocked = _scan_had_a_corpus(case_dir, brief, _ev_count)
+        if _blocked:
+            record["stage"] = "index not ready"
+            record["needles_total"] = 0
+            record["drafts_staged"] = 0
+            record.setdefault("skipped", []).append({"needle": None, "reason": _blocked})
+            record["completed_at"] = time.time()
+            record["next"] = f"Scan not run: {_blocked}"
+            record["status"] = "failed"
+            _persist()
+            return
         scan = list(brief.get("needle_scan") or [])
         if only:
             scan = [s for s in scan if str(s.get("needle", "")).lower() in only]
@@ -3530,6 +3553,57 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
             if _mode1_run_threads.get(key) is threading.current_thread():
                 _mode1_run_threads.pop(key, None)
         _invalidate_briefing(_case_key(case_dir))  # run changed drafts/bookmarks
+
+
+def _prepare_scan_index(case_dir: Path) -> str:
+    """Best-effort index repair before a needle scan. Returns a note, "" if fine.
+
+    Only repairs: deciding whether the scan was *possible* is done after the
+    scan ran, from whether it had a corpus to read. Guessing the backend up front
+    was wrong twice over - it refused on a configured-but-down ES even though the
+    CSV pack was serving, and it could not tell a scan that found nothing from a
+    scan that never had anything to look at.
+    """
+    import os
+
+    from nexus.langgraph.case_index import es_available, index_case, index_stale
+
+    if not (os.environ.get("NEXUS_ES_URL") or "").strip():
+        return ""                      # CSV pack backend by design
+    if not es_available():
+        return "Elasticsearch is configured but not reachable; using the CSV pack"
+    try:
+        stale, why = index_stale(case_dir)
+    except Exception as exc:  # noqa: BLE001
+        return f"index freshness unknown ({exc}); continuing"
+    if not stale:
+        return ""
+    try:
+        meta = index_case(case_dir, incremental=True)
+    except Exception as exc:  # noqa: BLE001
+        return f"index rebuild failed ({type(exc).__name__}: {exc}); continuing"
+    return f"index rebuilt before the scan ({int((meta or {}).get('docs') or 0)} docs; was {why})"
+
+
+def _scan_had_a_corpus(case_dir: Path, brief: dict, evidence_count: int) -> str:
+    """Reason the scan was impossible, or "" when it genuinely found nothing.
+
+    The failure this exists for: on the real corpus the scan read 198 needles
+    against an index with no rows, reported zero hits, and completed with
+    "nothing to promote" - from a case holding 81,115 rows. It was
+    indistinguishable from a real miss, and the stated reason pointed the
+    examiner at their evidence rather than at the index.
+    """
+    scanned = int(brief.get("scanned_needles") or 0)
+    if scanned > 0:
+        return ""                      # the scan had rows to read; empty is genuine
+    if evidence_count <= 0:
+        return ""                      # nothing registered: genuinely nothing to do
+    return (
+        f"the scan had no corpus to read: 0 needles scanned from {evidence_count} "
+        f"registered evidence item(s). This is an index problem, not an absence of "
+        f"evidence - re-run the tool lane, then scan again."
+    )
 
 
 async def api_mode1_full_run(request):
@@ -7677,6 +7751,11 @@ async def api_mode3_run_status(request):
     record = await asyncio.to_thread(read_run_record, case_dir, run_id) if run_id else None
     if record is None:
         return JSONResponse({"error": "no Mode 3 run found"}, status_code=404)
+    from nexus.modes.multi_agent import active_seats, read_run_events
+
+    events = await asyncio.to_thread(read_run_events, case_dir, run_id)
+    active = active_seats(case_dir, run_id, events=events)
+    live = str(record.get("status") or "") in {"running", "planned", "settled", "capped"}
     return JSONResponse({
         "run_id": run_id,
         "status": record.get("status"),
@@ -7687,6 +7766,15 @@ async def api_mode3_run_status(request):
         "disputes": len(record.get("disputes") or []),
         "candidates": len(record.get("candidates") or []),
         "gaps": record.get("gaps") or [],
+        # How many agents are working right now, and what each one is doing.
+        # The board alone cannot answer this: it only holds seats that have
+        # already reported, so a run with three agents in flight looks empty.
+        "agents_running": len(active) if live else 0,
+        "agents_active": active,
+        "roles": sorted({str(s.get("role") or "") for s in (record.get("board") or [])
+                         if s.get("role")}),
+        "skills_used": len(record.get("skills_used") or []),
+        "events": len(events),
     })
 
 
@@ -7694,17 +7782,29 @@ async def api_mode3_run_board(request):
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
-    from nexus.modes.multi_agent import latest_run_id, read_run_record
+    from nexus.modes.multi_agent import (
+        active_seats,
+        interaction_timeline,
+        latest_run_id,
+        read_run_events,
+        read_run_record,
+    )
 
     run_id = str(request.query_params.get("run_id") or "").strip() or latest_run_id(case_dir)
     record = await asyncio.to_thread(read_run_record, case_dir, run_id) if run_id else None
     if record is None:
         return JSONResponse({"error": "no Mode 3 run found"}, status_code=404)
+    events = await asyncio.to_thread(read_run_events, case_dir, run_id)
     return JSONResponse({
         "run_id": run_id,
         "board": record.get("board") or [],
         "disputes": record.get("disputes") or [],
         "candidates": record.get("candidates") or [],
+        # Who is running, and the ordered log of how they interacted - the two
+        # things the board could not previously show.
+        "active": active_seats(case_dir, run_id, events=events),
+        "timeline": interaction_timeline(events),
+        "skills_used": record.get("skills_used") or [],
     })
 
 

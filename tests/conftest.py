@@ -46,6 +46,20 @@ def _isolated_case_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     active_file = tmp_path / "active_case"
     monkeypatch.setenv("NEXUS_ACTIVE_CASE_FILE", str(active_file))
 
+    # Point ES at nothing for the duration of the test.
+    #
+    # The case store is redirected but Elasticsearch was not, so a test that
+    # created a case also created a real index on the developer's cluster - named
+    # after the test case, and never deleted. Those indexes then outlived the test
+    # that made them: a zero-doc `nexus-case-inc-test-0001` left by an earlier run
+    # made `n4_hits` take the ES path, find nothing, and return a confident zero
+    # while the CSV pack beside it was full. Two suites failed because of it.
+    #
+    # Redirecting rather than deleting: a test must not reach a shared external
+    # service, or its result depends on what other runs left behind.
+    monkeypatch.setenv("NEXUS_ES_URL", "")
+    monkeypatch.setenv("NEXUS_ES_AUTOINDEX", "0")
+
     # Module-level constants captured the real path at import time.
     for mod_name, attr in (
         ("nexus.cli.case_cmd", "_ACTIVE_CASE_FILE"),
