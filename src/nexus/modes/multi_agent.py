@@ -253,8 +253,14 @@ def settled_candidates(
             value = str(claim.get("value") or "").strip()
             kind = str(claim.get("claim_kind") or "")
             entity = str(claim.get("entity_value") or "")
+            from nexus.analysis.titles import claim_title
+
             candidates.append({
-                "title": f"{entity}: {kind}",
+                # "evtxecmd: presence" is a dispute key rendered as English. The
+                # claim carries a value and a justification, and either is a
+                # sentence an examiner can read, so one of them leads the title.
+                "title": claim_title(entity, kind, value=value,
+                                     justification=justification),
                 "observation": value or f"{kind} recorded for {entity}",
                 "interpretation": justification,
                 "confidence": str(claim.get("confidence") or "LOW"),

@@ -3382,7 +3382,16 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
             record["stage"] = "staging draft"
             families = sorted({str(h.get("family") or "?") for h in hits})
             more = "+" if scan_capped else ""
-            title = f"Signal: {needle} — {len(hits)}{more} hit(s) across {', '.join(families)}"
+            # The title is what an examiner reads first, so it states what the
+            # rows say rather than repeating the needle that matched them. A
+            # title of "Signal: sdelete - 1 hit(s) across evtxecmd" is an
+            # inventory entry; the needle is kept for traceability and grouping,
+            # not for the reader.
+            from nexus.analysis.titles import needle_title
+
+            title = needle_title(needle, hits, families)
+            if more:
+                title = f"{title} (scan truncated, count is a lower bound)"
             needle_key = needle.lower()
             approved_ids = approved_by_needle.get(needle_key) or []
             if needle_key in existing:
