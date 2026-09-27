@@ -244,7 +244,12 @@ def seed_demo_case(
         {
             "id": "F-DEMO-003",
             "title": "Anomalous SMB Lateral Movement from Provisioning Host 192.168.77.60",
-            "status": "APPROVED",
+            # Seeded findings are DRAFT. APPROVED is a signed examiner decision
+            # reached through the password-gated commit path; writing it here -
+            # together with a forged approved_by/approved_at - would put an
+            # approval signature on a case that was never approved by anyone.
+            "status": "DRAFT",
+            "demo_note": "demo fixture - approve through the real portal/CLI path",
             "confidence": "HIGH",
             "severity": FindingSeverity.CRITICAL,
             "technique_ids": ["T1021.002"],
@@ -253,13 +258,12 @@ def seed_demo_case(
             "justification": "Confirmed by Zeek TCP 445 byte volume (1MB+) and System Event 7045 PSEXESVC on MBR01.",
             "audit_ids": ["audit-zeek-smb-003", "audit-evtx-7045-003"],
             "examiner_selected": True,
-            "approved_by": examiner,
-            "approved_at": now.strftime("%Y-%m-%d %H:%M:%S UTC"),
         },
         {
             "id": "F-DEMO-004",
             "title": "Credential Access via Mimikatz / LSA Secret Extraction",
-            "status": "APPROVED",
+            "status": "DRAFT",
+            "demo_note": "demo fixture - approve through the real portal/CLI path",
             "confidence": "HIGH",
             "severity": FindingSeverity.CRITICAL,
             "technique_ids": ["T1003.001"],
@@ -268,8 +272,6 @@ def seed_demo_case(
             "justification": "PECmd summary confirms MIMIKATZ.EXE executed 3 times from temp staging path.",
             "audit_ids": ["audit-pf-mimi-004"],
             "examiner_selected": True,
-            "approved_by": examiner,
-            "approved_at": now.strftime("%Y-%m-%d %H:%M:%S UTC"),
         },
         {
             "id": "F-DEMO-005",
