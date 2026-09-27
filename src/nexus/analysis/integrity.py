@@ -281,12 +281,108 @@ def load_known_audit_ids(case_dir) -> set[str]:
     return ids
 
 
+_NARRATIVE_FIELDS = ("title", "description", "interpretation", "rationale",
+                     "claim", "impact", "observation")
+
+
+def _evidence_blob(finding: dict[str, Any]) -> str:
+    """Everything the finding's own rows actually say, as one searchable blob."""
+    parts: list[str] = []
+    for row in finding.get("evidence") or ():
+        if not isinstance(row, dict):
+            continue
+        for key in ("detail", "source", "artifact", "loc"):
+            parts.append(str(row.get(key) or ""))
+        fields = row.get("fields")
+        if isinstance(fields, dict):
+            parts.extend(str(v) for v in fields.values())
+    for key in ("sources", "families", "family"):
+        v = finding.get(key)
+        if isinstance(v, list):
+            parts.extend(str(x) for x in v)
+        elif v:
+            parts.append(str(v))
+    return " ".join(parts).lower()
+
+
+def sanitize_entity_mentions(
+    finding: dict[str, Any],
+    *,
+    case_dir=None,
+    resolver=None,
+) -> dict[str, Any]:
+    """Nullify and flag every entity a finding names that its own rows do not.
+
+    The asymmetry with Modes 2 and 3 is structural, not a prompt problem. Both
+    agent runtimes put every candidate through ``accept_claim`` (FD-001..007)
+    and a verifier node before anything is staged. Mode 1 goes needle -> scribe
+    -> DRAFT with nothing in between, so an LLM-written interpretation can name a
+    process the rows never mention. On the first real case one finding's
+    interpretation named ``msmpeng.exe`` while all eleven of its evidence rows
+    were ``PwSh Engine Started`` - PowerShell only.
+
+    The remedy follows the rule 10.4 already sets for timestamps: **nullify and
+    flag, never reject.** A mention that does not resolve might be a negative
+    one ("this is not msmpeng.exe"), and rejecting a correct finding over a
+    phrase would be worse than flagging it. So the unsupported mention is
+    removed from the narrative, recorded, and the examiner sees both.
+
+    ``resolver`` is the optional live-index hook. Without it this returns
+    ``unknown`` rather than guessing - a check with no input is not a pass.
+    """
+    rows_blob = _evidence_blob(finding)
+    if not rows_blob.strip():
+        return {"checked": False, "reason": "finding carries no evidence rows",
+                "unsupported": [], "nullified": []}
+
+    from nexus.analysis.cross_mode import _entities
+
+    found: list[dict[str, Any]] = []
+    for field in _NARRATIVE_FIELDS:
+        value = finding.get(field)
+        if not isinstance(value, str) or not value.strip():
+            continue
+        for etype, entity in _entities(value):
+            if entity in rows_blob:
+                continue
+            if resolver is not None and resolver(entity):
+                continue
+            found.append({"field": field, "entity_type": etype,
+                          "entity": entity, "value": value})
+
+    if not found:
+        return {"checked": True, "reason": "", "unsupported": [], "nullified": []}
+
+    nullified: list[dict[str, Any]] = []
+    by_field: dict[str, list[str]] = {}
+    for item in found:
+        by_field.setdefault(item["field"], []).append(item["entity"])
+    for field, entities in by_field.items():
+        text = str(finding.get(field) or "")
+        kept = text
+        for entity in sorted(set(entities), key=len, reverse=True):
+            for form in {entity, entity.title(), entity.upper()}:
+                if form and form in kept:
+                    kept = kept.replace(form, f"[{entity}: unsupported by the cited rows]")
+        if kept != text:
+            finding[field] = kept
+            nullified.append({"field": field, "entities": sorted(set(entities))})
+
+    return {
+        "checked": True,
+        "reason": "",
+        "unsupported": found,
+        "nullified": nullified,
+    }
+
+
 def enforce_submission_integrity(
     finding: dict[str, Any],
     case_dir,
     *,
     known_ids: set[str] | None = None,
     now: datetime | None = None,
+    resolver=None,
 ) -> dict[str, Any]:
     """Apply all three checks to a finding about to be staged.
 
@@ -297,6 +393,7 @@ def enforce_submission_integrity(
     ids = load_known_audit_ids(case_dir) if known_ids is None else known_ids
     citations = verify_citations(finding, ids)
     timestamps = sanitize_timestamps(finding, now=now)
+    entities = sanitize_entity_mentions(finding, case_dir=case_dir, resolver=resolver)
 
     errors: list[str] = []
     warnings: list[str] = []
@@ -314,8 +411,17 @@ def enforce_submission_integrity(
 
     for item in timestamps["nullified"]:
         warnings.append(
-            f"timestamp nullified: {item['field']}={item['original']!r} ({item['reason']}) — "
-            f"implausible value cleared, not used as evidence"
+            f"timestamp nullified: {item['field']}={item['original']!r} "
+            f"({item['reason']}) - implausible value cleared, not used as evidence"
+        )
+
+    for item in entities.get("nullified") or ():
+        listed = ", ".join(item["entities"][:6])
+        warnings.append(
+            f"entity mention nullified: {item['field']} named {listed}, which the cited "
+            f"rows do not contain. The mention was marked rather than the finding being "
+            f"rejected - a negative mention ('this is not X') is legitimate, and the "
+            f"examiner decides."
         )
 
     return {
@@ -324,4 +430,5 @@ def enforce_submission_integrity(
         "warnings": warnings,
         "citations": citations,
         "timestamps": timestamps,
+        "entities": entities,
     }
