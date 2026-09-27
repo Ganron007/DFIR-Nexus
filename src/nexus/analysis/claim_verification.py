@@ -79,6 +79,13 @@ _COUNT_RE = re.compile(
     r"files?|sources?|findings?|indicators?|iocs?|entries)\b",
     re.I,
 )
+# A count bound to a parser family: "46+ hit(s) across evtxecmd". Only this
+# form is replayable, because only it says what the number is counting.
+_COUNT_CLAIM_RE = re.compile(
+    r"\b(\d[\d,]{0,8})\s*(?:\+\s*)?(hits?|records?|rows?|events?|entries|matches)\b"
+    r"(?:\(s\)|s)?\s+(?:across|from|in)\s+([A-Za-z0-9_.\-]{2,40})",
+    re.I,
+)
 _FILELINE_RE = re.compile(r"\b([\w.\\/:-]+\.(?:csv|jsonl?|log|txt|evtx|db|dat|exe|dll|bin|md))"
                           r"[:|](\d{1,7})\b", re.I)
 
@@ -315,28 +322,63 @@ def _l1_6(finding, res, **_kw) -> None:
     _check(res, "L1.6", "fail", reason)
 
 
-def _l1_7(finding, res, replay=None, **_kw) -> None:
+def _l1_7(finding, res, family_count=None, **_kw) -> None:
+    """Does every count in the prose replay against the index?
+
+    The checkable form is a count bound to a family: "46+ hit(s) across
+    evtxecmd" claims 46 rows from one parser. That replays as the index's own
+    total for that family, which is a real verification rather than a restatement.
+    A bare count with no family ("25 events were seen") has nothing to replay
+    against, so it is skipped rather than counted as clean - an uncheckable
+    number is exactly the one a reader should be told about.
+    """
     text = _text(finding)
-    counts = [m.group(0) for m in _COUNT_RE.finditer(text)]
-    if not counts:
+    claims = _COUNT_CLAIM_RE.findall(text)
+    if not claims:
         _check(res, "L1.7", "skipped", "no count asserted in the prose")
         return
-    if replay is None:
-        _check(res, "L1.7", "unverifiable", "no count replay available")
+    if family_count is None:
+        _check(res, "L1.7", "unverifiable",
+               "no family-count replay available (index not queryable)")
         return
-    bad = []
-    for phrase in counts:
-        m = _COUNT_RE.match(phrase)
-        claimed = int(m.group(1).replace(",", ""))
-        actual = replay(_noun_from(text, m.group(1)))
-        if actual is None:
+
+    bad: list[str] = []
+    replayed = 0
+    unknown: list[str] = []
+    for raw, noun, family in claims:
+        try:
+            claimed = int(raw.replace(",", ""))
+        except ValueError:
             continue
-        if abs(claimed - actual) > max(1, int(claimed * 0.02)):
-            bad.append(f"claimed {claimed}, index holds {actual}")
+        actual = family_count(family)
+        if actual is None:
+            unknown.append(f"{family}")
+            continue
+        replayed += 1
+        # A count may be a floor ("46+") and so sit under the real number, but
+        # it may never exceed it. A large overstatement is a discrepancy too,
+        # unless the claim flagged itself as a bound.
+        overstates = claimed > actual
+        understates = (actual - claimed) > max(2, int(claimed * 0.5))
+        if overstates or (understates and not _is_lower_bound(text)):
+            bad.append(f"claims {claimed} {noun} from {family}; the index holds {actual}")
     if bad:
         _check(res, "L1.7", "fail", "; ".join(bad[:3]), evidence=bad[:6])
         return
-    _check(res, "L1.7", "pass", f"{len(counts)} count(s) replay")
+    if not replayed:
+        _check(res, "L1.7", "unverifiable",
+               f"no count could be replayed (families: {', '.join(sorted(set(unknown))[:4]) or 'none named'})")
+        return
+    if unknown:
+        _check(res, "L1.7", "unverifiable",
+               f"{len(unknown)} count(s) not replayable ({', '.join(sorted(set(unknown))[:3])})")
+        return
+    _check(res, "L1.7", "pass", f"{replayed} count(s) replay against the index")
+
+
+def _is_lower_bound(text: str) -> bool:
+    """The claim states it is a floor, so under-counting is not a discrepancy."""
+    return bool(re.search(r"\d+\s*\+\s*(?:hit|record|row|event|match|entr)", text, re.I))
 
 
 def _noun_from(text: str, raw: str) -> str:
@@ -515,17 +557,17 @@ def verify_claim(
     technique_ids: set[str] | None = None,
     cross_mode: dict[str, Any] | None = None,
     coverage: dict[str, Any] | None = None,
-    replay=None,
+    family_count=None,
     search=None,
     now=None,
 ) -> dict[str, Any]:
     """Verify one claim against every check.
 
-    ``search`` and ``replay`` are the two optional Elasticsearch hooks. Without
-    them L1.3 and L1.7 report ``unverifiable`` rather than passing, because
-    "I could not check this" and "this is clean" are different answers. With
-    them, ``search(term) -> int | None`` answers "how many indexed rows mention
-    this" and drives L1.3, and ``replay(noun) -> int | None`` drives L1.7.
+    ``search`` and ``family_count`` are the two optional Elasticsearch hooks.
+    Without them L1.3 and L1.7 report ``unverifiable`` rather than passing,
+    because "I could not check this" and "this is clean" are different answers.
+    ``search(term) -> int | None`` answers "how many indexed rows mention this"
+    and drives L1.3; ``family_count(family) -> int | None`` drives L1.7.
     """
     res: dict[str, dict[str, Any]] = {}
     _l1_1(finding, known_ids, res)
@@ -534,7 +576,7 @@ def verify_claim(
     _l1_4(finding, res, technique_ids=technique_ids)
     _l1_5(finding, res, now=now)
     _l1_6(finding, res)
-    _l1_7(finding, res, replay=replay)
+    _l1_7(finding, res, family_count=family_count)
     _l1_8(finding, res, cross_mode=cross_mode)
     _l1_9(res, coverage=coverage)
     _l1_10(finding, res)
@@ -584,23 +626,29 @@ def _technique_registry() -> set[str] | None:
 
 
 def _es_searcher(case_dir: Path):
-    """``search(term) -> row count | None`` against this case's index, or None.
+    """Index-backed hooks for this case, or None when the index is unusable.
 
     Wrapped so an unreachable Elasticsearch returns None (unknown) rather than
-    raising: L1.3 must degrade to "could not check", never to a pass and never
-    to a crash.
+    raising: L1.3 and L1.7 must degrade to "could not check", never to a pass and
+    never to a crash.
+
+    ``search(term) -> row count | None``
+        "how many indexed rows mention this", for L1.3.
+    ``family_count(family) -> row count | None``
+        "how many indexed rows came from this parser family", so a claim's
+        "46+ hit(s) across evtxecmd" replays against the real number.
     """
     from nexus.langgraph.case_index import es_available, index_name
     from nexus.langgraph.query_pack import n4_query
 
+    case_id = Path(case_dir).name
     try:
         if not es_available():
             return None
-        # index_name takes the case id / path as a string, not a Path.
-        name = index_name(str(case_dir))
+        # index_name takes the case id, not the path.
+        if not index_name(case_id):
+            return None
     except Exception:  # noqa: BLE001
-        return None
-    if not name:
         return None
 
     cache: dict[str, int | None] = {}
@@ -625,13 +673,56 @@ def _es_searcher(case_dir: Path):
             cache[key] = None
             return None
         # A lower bound is still a proof of presence: "at least 5 rows" means the
-        # entity is in the index. Only a failed query is unknown - refusing to
-        # use a lower bound would report unverifiable for every term the index
-        # could not count exactly, which is most of them.
+        # entity is in the index. Only a failed query is unknown - refusing to use
+        # a lower bound would report unverifiable for every term the index could
+        # not count exactly, which is most of them.
         cache[key] = count
         return count
 
+    fam_cache: dict[str, int | None] = {}
+
+    def family_count(family: str) -> int | None:
+        """Exact row count for one parser family, read from the index.
+
+        Uses the mapped ``family`` field rather than a text query, so the number
+        is the family total and not a phrase that happens to appear in it.
+        """
+        key = (family or "").strip().lower()
+        if not key:
+            return None
+        if key not in fam_cache:
+            fam_cache[key] = _es_family_count(case_id, key)
+        return fam_cache[key]
+
+    search.family_count = family_count  # type: ignore[attr-defined]
     return search
+
+
+def _es_family_count(case_id: str, family: str) -> int | None:
+    """Total docs in this case's index whose ``family`` matches. None on failure."""
+    import json as _json
+    import urllib.error
+    import urllib.request
+
+    try:
+        from nexus.langgraph.case_index import es_url, index_name
+
+        name = index_name(case_id)
+        base = es_url()
+        if not name or not base:
+            return None
+        body = _json.dumps({"size": 0, "query": {"term": {"family": family}}}).encode()
+        req = urllib.request.Request(
+            f"{base}/{name}/_count", data=body, method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            payload = _json.loads(resp.read().decode())
+        return int(payload.get("count") or 0)
+    except (urllib.error.URLError, OSError, ValueError, TypeError):
+        return None
+    except Exception:  # noqa: BLE001 - a count hook must never break the run
+        return None
 
 
 def verify_case(
@@ -671,16 +762,13 @@ def verify_case(
     if technique_ids is None:
         technique_ids = _technique_registry()
     searcher = _es_searcher(case_dir) if use_index else None
-    if searcher is None:
-        # No live index: fall back to whatever text the caller supplied, so the
-        # check still runs rather than going dark.
-        searcher = None
+    fam_counter = getattr(searcher, "family_count", None) if searcher else None
 
     rows = [
         verify_claim(
             f, case_dir=case_dir, known_ids=known, indexed_text=indexed_text,
             technique_ids=technique_ids, cross_mode=cross, coverage=coverage,
-            search=searcher,
+            search=searcher, family_count=fam_counter,
         )
         for f in findings
     ]

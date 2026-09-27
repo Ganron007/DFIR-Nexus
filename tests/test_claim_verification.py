@@ -212,17 +212,59 @@ def test_l1_6_intact_seal_passes():
     assert v["checks"]["L1.6"]["status"] == "pass"
 
 
-def test_l1_7_wrong_count_fails():
-    f = _f(title="powershell.exe executed; 4321 events were seen")
-    v = verify_claim(f, **_good(replay=lambda _n: 10))
-    assert v["checks"]["L1.7"]["status"] == "fail"
+def _replayer(counts: dict[str, int]):
+    """A replay hook with the family_count attribute L1.7 requires."""
+    def family_count(family: str):
+        return counts.get((family or "").lower())
+    return family_count
+
+
+def test_l1_7_count_above_the_index_fails():
+    f = _f(title="powershell.exe in 4321 hit(s) across evtxecmd")
+    v = verify_claim(f, **_good(family_count=_replayer({"evtxecmd": 10})))
+    assert v["checks"]["L1.7"]["status"] == "fail", v["checks"]["L1.7"]
     assert "4321" in v["checks"]["L1.7"]["detail"]
+    assert v["verdict"] == "UNSUPPORTED"
 
 
-def test_l1_7_right_count_passes():
-    f = _f(title="powershell.exe executed; 10 events were seen")
-    v = verify_claim(f, **_good(replay=lambda _n: 10))
-    assert v["checks"]["L1.7"]["status"] == "pass"
+def test_l1_7_matching_count_passes():
+    f = _f(title="powershell.exe in 10 hit(s) across evtxecmd")
+    v = verify_claim(f, **_good(family_count=_replayer({"evtxecmd": 10})))
+    assert v["checks"]["L1.7"]["status"] == "pass", v["checks"]["L1.7"]
+
+
+def test_l1_7_a_lower_bound_may_sit_under_the_real_number():
+    """A truncated scan says "46+", so under-counting is not a discrepancy."""
+    f = _f(title="onedrive appears in 46+ hit(s) across evtxecmd")
+    v = verify_claim(f, **_good(family_count=_replayer({"evtxecmd": 120})))
+    assert v["checks"]["L1.7"]["status"] == "pass", v["checks"]["L1.7"]
+
+
+def test_l1_7_a_lower_bound_may_not_overstate():
+    f = _f(title="onedrive appears in 500+ hit(s) across evtxecmd")
+    v = verify_claim(f, **_good(family_count=_replayer({"evtxecmd": 10})))
+    assert v["checks"]["L1.7"]["status"] == "fail"
+
+
+def test_l1_7_a_count_with_no_family_cannot_be_replayed_so_is_skipped():
+    """An uncheckable number is the one a reader should be told about."""
+    f = _f(title="powershell.exe executed; 25 events were seen")
+    v = verify_claim(f, **_good(family_count=_replayer({})))
+    assert v["checks"]["L1.7"]["status"] == "skipped", v["checks"]["L1.7"]
+
+
+def test_l1_7_an_unknown_family_is_unverifiable_not_passed():
+    f = _f(title="powershell.exe in 10 hit(s) across nosuchfamily")
+    v = verify_claim(f, **_good(family_count=_replayer({})))
+    assert v["checks"]["L1.7"]["status"] == "unverifiable", v["checks"]["L1.7"]
+    assert v["verdict"] == "UNVERIFIABLE"
+
+
+def test_l1_7_no_family_count_hook_is_unverifiable():
+    f = _f(title="powershell.exe in 10 hit(s) across evtxecmd")
+    v = verify_claim(f, **_good())  # no hook wired at all
+    assert v["checks"]["L1.7"]["status"] == "unverifiable"
+    assert "index not queryable" in v["checks"]["L1.7"]["detail"]
 
 
 def test_l1_8_cross_mode_denial_is_contradicted():
