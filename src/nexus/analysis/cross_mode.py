@@ -369,6 +369,14 @@ def check_cross_mode(
                     })
 
     total = sum(len(v) for v in claims_by_mode.values())
+    # Do the modes name anything in common at all? Computed from the entity sets
+    # rather than the Jaccard dict, which is filled in below.
+    shared_entities = set()
+    seen_sets = [s for s in entity_sets.values() if s]
+    for i, a in enumerate(seen_sets):
+        for b in seen_sets[i + 1:]:
+            shared_entities |= a & b
+
     # A contradiction outranks an absent mode. Reporting "incomplete" while a
     # real contradiction is on the table would hide the defect behind a gap in
     # coverage, which is exactly what this check exists to prevent.
@@ -376,10 +384,18 @@ def check_cross_mode(
         verdict = "contradictory"
     elif missing and present:
         verdict = "incomplete"
-    elif present:
-        verdict = "consistent"
-    else:
+    elif not present:
         verdict = "unknown"
+    elif not shared_entities and len(present) >= 2:
+        # Zero overlap with no contradiction is NOT agreement. It means the modes
+        # share no comparable vocabulary, so there was nothing for them to agree
+        # or disagree about. Calling that "consistent" is false assurance - the
+        # strongest honest statement is that the comparison established nothing.
+        # This is the real corpus result: three modes over 81,115 indexed rows
+        # named not one entity in common.
+        verdict = "disjoint"
+    else:
+        verdict = "consistent"
 
     jaccard: dict[str, float] = {}
     pairs = [("1", "2"), ("1", "3"), ("2", "3")]
@@ -393,6 +409,7 @@ def check_cross_mode(
         "modes_missing": [MODES.get(m, m) for m in missing],
         "verdict": verdict,
         "claim_rows": total,
+        "shared_entities": sorted(shared_entities)[:40],
         "entity_overlap": jaccard,
         "shared": shared,
         "contradictions": contradictions,
@@ -410,6 +427,12 @@ def render_consistency_markdown(result: dict[str, Any]) -> str:
         return ""
     v = str(result.get("verdict") or "unknown").upper()
     out = ["## Cross-mode consistency", "", f"**Verdict: {v}**", ""]
+    if v == "DISJOINT":
+        out += [
+            "The modes named **no entity in common**, so this comparison establishes "
+            "nothing: there was no shared subject for them to agree or disagree "
+            "about. That is not agreement, and it is not a clean bill of health.",
+        ]
     if result.get("modes_missing"):
         out += [
             f"- Not run: {', '.join(result['modes_missing'])} - absence is not agreement.",

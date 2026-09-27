@@ -397,6 +397,45 @@ def test_tenancy_of_entity_extraction_is_case_insensitive():
     assert a["counts"]["shared"] == 1
 
 
+def test_zero_overlap_is_disjoint_not_consistent():
+    """No shared entity with no contradiction is not agreement.
+
+    This is the real result: Modes 1, 2 and 3 ran over the same 81,115 indexed
+    rows and named not one entity in common - Mode 1 reported needle terms,
+    Mode 2 reported host and process conclusions, Mode 3 reported parser family
+    names. There was no shared subject, so nothing could be agreed or disagreed
+    about, and reporting "consistent" would be false assurance in the exact
+    direction that matters.
+    """
+    r = check_cross_mode(claims_by_mode={
+        "1": [{"mode": "1", "source": "f1", "key": ["process", "sdelete", "observation"],
+               "polarity": "affirm", "audit_ids": ["nx-audit-0001"], "title": "sdelete ran"}],
+        "2": [{"mode": "2", "source": "f2", "key": ["ipv4", "srl-forge", "observation"],
+               "polarity": "affirm", "audit_ids": ["nx-audit-0002"], "title": "host SRL-FORGE"}],
+        "3": [{"mode": "3", "source": "f3", "key": ["process", "evtxecmd", "observation"],
+               "polarity": "affirm", "audit_ids": ["nx-audit-0001"], "title": "evtxecmd: presence"}],
+    })
+    assert r["verdict"] == "disjoint", r["verdict"]
+    assert r["counts"]["contradictions"] == 0
+    assert r["shared_entities"] == []
+    md = render_consistency_markdown(r)
+    assert "DISJOINT" in md
+    assert "not agreement" in md
+
+
+def test_a_contradiction_outranks_disjointness():
+    r = check_cross_mode(claims_by_mode={
+        "1": [{"mode": "1", "source": "f1", "key": ["process", "a.exe", "observation"],
+               "polarity": "affirm", "audit_ids": ["nx-audit-0001"], "title": "a.exe ran"}],
+        "2": [{"mode": "2", "source": "f2", "key": ["process", "a.exe", "observation"],
+               "polarity": "deny", "audit_ids": ["nx-audit-0002"], "title": "a.exe did not run"}],
+        "3": [{"mode": "3", "source": "f3", "key": ["process", "z.exe", "observation"],
+               "polarity": "affirm", "audit_ids": ["nx-audit-0001"], "title": "z.exe ran"}],
+    })
+    assert r["verdict"] == "contradictory"
+    assert r["shared_entities"] == ["a.exe"]
+
+
 def test_different_entities_do_not_collide():
     r = check_cross_mode(claims_by_mode={
         "1": [{"mode": "1", "source": "f1", "key": ["process", "a.exe", "observation"],

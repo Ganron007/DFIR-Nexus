@@ -369,5 +369,32 @@ def test_l1_10_a_blank_descriptor_is_not_held_against_the_finding():
     assert v["checks"]["L1.10"]["status"] == "skipped"
 
 
+def test_l1_5_an_absent_timestamp_is_not_a_fabricated_one():
+    """An empty field claims nothing about time, so there is nothing to check.
+
+    Mode 2 and Mode 3 both stage findings with `event_timestamp=""`. Failing
+    those as "placeholder" repeats the error this module exists to avoid - a
+    check with nothing to check read as a check that failed - and it marked all
+    56 real claims UNSUPPORTED before any real failure could be read.
+    """
+    v = verify_claim(_f(timestamp=""), **_good())
+    assert v["checks"]["L1.5"]["status"] == "skipped", v["checks"]["L1.5"]
+    assert "no time claimed" in v["checks"]["L1.5"]["detail"]
+
+
+def test_l1_5_a_nullified_timestamp_alongside_a_real_one():
+    """One real time and one empty field: the real time is what gets judged."""
+    f = _f(timestamp="2026-03-04T11:22:33Z", last_seen="")
+    v = verify_claim(f, **_good())
+    assert v["checks"]["L1.5"]["status"] == "pass", v["checks"]["L1.5"]
+
+
+def test_l1_5_all_empty_fields_skips_rather_than_fails():
+    f = _f(timestamp="", first_seen="", last_seen="")
+    v = verify_claim(f, **_good())
+    assert v["checks"]["L1.5"]["status"] == "skipped"
+    assert "3 timestamp field(s)" in v["checks"]["L1.5"]["detail"]
+
+
 def test_verdict_vocabulary_is_fixed():
     assert set(VERDICTS) == {"PROVEN", "UNSUPPORTED", "CONTRADICTED", "UNVERIFIABLE"}

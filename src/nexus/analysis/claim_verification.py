@@ -276,8 +276,19 @@ def _l1_5(finding, res, now=None, **_kw) -> None:
     if not fields:
         _check(res, "L1.5", "skipped", "no timestamps on the finding")
         return
+    # A field that is absent, empty or nullified claims nothing about time, so
+    # there is nothing to validate. Failing it repeats the mistake this module
+    # exists to avoid - turning "the check had nothing to check" into "the check
+    # failed". It marked all 56 Mode 2 and Mode 3 claims on the real case
+    # UNSUPPORTED on `event_timestamp='' (placeholder)` before any real failure
+    # could be read.
+    present = [(n, v) for n, v in fields if str(v or "").strip()]
+    if not present:
+        _check(res, "L1.5", "skipped",
+               f"{len(fields)} timestamp field(s) present but empty - no time claimed")
+        return
     bad: list[str] = []
-    for name, raw in fields:
+    for name, raw in present:
         # validate_timestamp returns (value, reason); a non-empty reason means the
         # value must not be used as a time.
         value, reason = validate_timestamp(raw, now=now)
@@ -288,7 +299,7 @@ def _l1_5(finding, res, now=None, **_kw) -> None:
     if bad:
         _check(res, "L1.5", "fail", "; ".join(bad[:3]), evidence=bad[:8])
         return
-    _check(res, "L1.5", "pass", f"{len(fields)} timestamp(s) plausible")
+    _check(res, "L1.5", "pass", f"{len(present)} timestamp(s) plausible")
 
 
 def _l1_6(finding, res, **_kw) -> None:
