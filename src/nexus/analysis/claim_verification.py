@@ -208,18 +208,41 @@ def _resolve_path(case_dir, ref: str) -> Path | None:
     return None
 
 
-def _l1_3(finding, res, indexed_text=None, **_kw) -> None:
+def _l1_3(finding, res, indexed_text=None, search=None, **_kw) -> None:
     from nexus.analysis.cross_mode import _entities
 
-    named = _entities(_text(finding))
+    named = [v for _t, v in _entities(_text(finding))]
     if not named:
         _check(res, "L1.3", "skipped", "no host/user/executable named")
+        return
+    if search is not None:
+        # Live replay against the index: the only version of this check that
+        # actually proves the entity is in the rows. ``None`` from the searcher
+        # means *unknown* (no index, or the count is only a lower bound) and must
+        # not be folded into 0, which would call every entity invented.
+        unknown = [n for n in named if search(n) is None]
+        absent = [n for n in named if search(n) == 0]
+        if absent:
+            _check(res, "L1.3", "fail",
+                   f"named entit(ies) return no indexed rows: {', '.join(absent[:4])}",
+                   evidence=absent[:10])
+            return
+        if unknown and len(unknown) == len(named):
+            _check(res, "L1.3", "unverifiable",
+                   f"the index could not answer for {len(unknown)} entit(ies)")
+            return
+        if unknown:
+            _check(res, "L1.3", "unverifiable",
+                   f"{len(unknown)} of {len(named)} entit(ies) could not be replayed "
+                   f"({', '.join(unknown[:3])})")
+            return
+        _check(res, "L1.3", "pass", f"{len(named)} named entit(ies) present in the index")
         return
     if indexed_text is None:
         _check(res, "L1.3", "unverifiable", "indexed rows not available for replay")
         return
     hay = indexed_text.lower()
-    missing = [f"{t}:{v}" for t, v in named if v not in hay]
+    missing = [f"{t}:{v}" for t, v in _entities(_text(finding)) if v not in hay]
     if missing:
         _check(res, "L1.3", "fail",
                f"{len(missing)} named entit(ies) absent from the indexed rows: {', '.join(missing[:4])}",
@@ -482,13 +505,21 @@ def verify_claim(
     cross_mode: dict[str, Any] | None = None,
     coverage: dict[str, Any] | None = None,
     replay=None,
+    search=None,
     now=None,
 ) -> dict[str, Any]:
-    """Verify one claim against all nine checks."""
+    """Verify one claim against every check.
+
+    ``search`` and ``replay`` are the two optional Elasticsearch hooks. Without
+    them L1.3 and L1.7 report ``unverifiable`` rather than passing, because
+    "I could not check this" and "this is clean" are different answers. With
+    them, ``search(term) -> int | None`` answers "how many indexed rows mention
+    this" and drives L1.3, and ``replay(noun) -> int | None`` drives L1.7.
+    """
     res: dict[str, dict[str, Any]] = {}
     _l1_1(finding, known_ids, res)
     _l1_2(finding, case_dir, res, indexed_text=indexed_text)
-    _l1_3(finding, res, indexed_text=indexed_text)
+    _l1_3(finding, res, indexed_text=indexed_text, search=search)
     _l1_4(finding, res, technique_ids=technique_ids)
     _l1_5(finding, res, now=now)
     _l1_6(finding, res)
@@ -509,12 +540,96 @@ def verify_claim(
         "counts": counts,
     }
 
+def _technique_registry() -> set[str] | None:
+    """Every ATT&CK / ITM id the knowledge base knows, or None if unavailable.
+
+    Returns None - not an empty set - when the registry cannot be read, so L1.4
+    reports unknown instead of calling every technique invented.
+    """
+    import contextlib
+
+    with contextlib.suppress(Exception):
+        from nexus.mitre.registry import all_technique_ids
+
+        ids = {str(t).strip().upper() for t in (all_technique_ids() or ())}
+        if ids:
+            return ids
+    with contextlib.suppress(Exception):
+        from pathlib import Path as _P
+
+        from nexus.config import settings
+
+        root = _P(settings.knowledge_dir)
+        found: set[str] = set()
+        for p in root.rglob("*.y*ml"):
+            try:
+                text = p.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            found.update(m.group(0).upper() for m in re.finditer(r"\bT\d{4}(?:\.\d{3})?\b", text))
+        if found:
+            return found
+    return None
+
+
+def _es_searcher(case_dir: Path):
+    """``search(term) -> row count | None`` against this case's index, or None.
+
+    Wrapped so an unreachable Elasticsearch returns None (unknown) rather than
+    raising: L1.3 must degrade to "could not check", never to a pass and never
+    to a crash.
+    """
+    from nexus.langgraph.case_index import es_available, index_name
+    from nexus.langgraph.query_pack import n4_query
+
+    try:
+        if not es_available():
+            return None
+        # index_name takes the case id / path as a string, not a Path.
+        name = index_name(str(case_dir))
+    except Exception:  # noqa: BLE001
+        return None
+    if not name:
+        return None
+
+    cache: dict[str, int | None] = {}
+
+    def search(term: str) -> int | None:
+        key = (term or "").strip().lower()
+        if not key:
+            return None
+        if key in cache:
+            return cache[key]
+        try:
+            result = n4_query(case_dir, key, limit=1)
+        except Exception:  # noqa: BLE001
+            cache[key] = None
+            return None
+        if not isinstance(result, dict) or result.get("error"):
+            cache[key] = None
+            return None
+        try:
+            count = int(result.get("count") or 0)
+        except (TypeError, ValueError):
+            cache[key] = None
+            return None
+        # A lower bound is still a proof of presence: "at least 5 rows" means the
+        # entity is in the index. Only a failed query is unknown - refusing to
+        # use a lower bound would report unverifiable for every term the index
+        # could not count exactly, which is most of them.
+        cache[key] = count
+        return count
+
+    return search
+
+
 def verify_case(
     case_dir: Path,
     findings: list[dict[str, Any]] | None = None,
     *,
     indexed_text: str | None = None,
     technique_ids: set[str] | None = None,
+    use_index: bool = True,
 ) -> dict[str, Any]:
     """Verify every claim in a case and return the L1 ledger."""
     from nexus.analysis.coverage_audit import load_coverage_audit
@@ -542,10 +657,19 @@ def verify_case(
     except Exception:  # noqa: BLE001
         cross = None
 
+    if technique_ids is None:
+        technique_ids = _technique_registry()
+    searcher = _es_searcher(case_dir) if use_index else None
+    if searcher is None:
+        # No live index: fall back to whatever text the caller supplied, so the
+        # check still runs rather than going dark.
+        searcher = None
+
     rows = [
         verify_claim(
             f, case_dir=case_dir, known_ids=known, indexed_text=indexed_text,
             technique_ids=technique_ids, cross_mode=cross, coverage=coverage,
+            search=searcher,
         )
         for f in findings
     ]

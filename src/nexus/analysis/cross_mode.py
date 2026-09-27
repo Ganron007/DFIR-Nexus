@@ -47,6 +47,14 @@ MODES: dict[str, str] = {"1": "Mode 1 (LLM)", "2": "Mode 2 (multi-role)", "3": "
 _AFFIRM = {"affirm", "true", "present", "executed", "occurred", "yes", "support", "supports"}
 _DENY = {"deny", "false", "absent", "not_executed", "did_not_occur", "no", "refute", "refutes", "contradicts"}
 
+_FILE_EXTENSIONS = frozenset({
+    "exe", "dll", "sys", "bat", "cmd", "ps1", "vbs", "js", "jse", "wsf",
+    "evtx", "log", "csv", "json", "jsonl", "txt", "xml", "yaml", "yml",
+    "db", "dat", "sqlite", "edb", "bin", "pf", "lnk", "etl", "reg", "hve",
+    "doc", "docx", "xls", "xlsx", "pdf", "png", "jpg", "gif", "zip", "7z",
+    "bak", "tmp", "ini", "cfg", "conf", "htm", "html", "md", "py", "pl",
+})
+
 _ENTITY_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("process", re.compile(r"\b([A-Za-z0-9_.\-]{3,}\.exe)\b", re.I)),
     ("domain", re.compile(r"\b((?:[a-z0-9](?:[a-z0-9\-]{0,61}[a-z0-9])?\.)+[a-z]{2,})\b", re.I)),
@@ -58,6 +66,31 @@ _ENTITY_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("file", re.compile(r"\b([A-Za-z]:\\[^\s,;\"'<>|]{4,}|[^\s,;\"']{3,}\\(?:\d{4}\.[A-Za-z]{2,3}))\b")),
     ("url", re.compile(r"\b(https?://[^\s,;\"'<>]{6,})", re.I)),
 )
+
+# A dotted word is not automatically a domain. `security.evtx`, `zone.identifier`
+# and `lsass.exe` are filenames, and calling them domains sent L1.3 hunting for
+# DNS records that do not exist - so a value whose last label is a known file
+# extension is not a domain. Filtered in code rather than in the pattern, which
+# stays readable and keeps the extension list in one place.
+_NOT_A_DOMAIN = frozenset(_FILE_EXTENSIONS) | {"identifier", "microsoft", "windows"}
+
+# Public-suffix-ish list. A real host's last label is a TLD; `lsass.exe` ends in
+# a filename extension and `zone.identifier` in a data-stream name. Keeping the
+# two lists apart means the check asks the index about hosts and nothing else.
+_TLDS = frozenset({
+    "com", "net", "org", "edu", "gov", "mil", "int", "info", "biz", "name",
+    "pro", "coop", "museum", "aero", "jobs", "mobi", "travel", "cat", "tel",
+    "asia", "post", "xxx", "arpa", "dev", "app", "ai", "cloud", "online",
+    "site", "store", "shop", "tech", "xyz", "io", "co", "uk", "de", "fr",
+    "nl", "be", "ch", "at", "it", "es", "se", "no", "fi", "dk", "pl", "cz",
+    "sk", "hu", "ro", "bg", "gr", "pt", "ie", "ru", "ua", "by", "kz", "uz",
+    "tr", "il", "ae", "sa", "eg", "za", "ng", "ke", "gh", "tz", "ug", "zw",
+    "zm", "cm", "ci", "sn", "ml", "ma", "dz", "tn", "ly", "us", "ca", "mx",
+    "br", "ar", "cl", "pe", "ve", "cr", "pa", "cu", "do", "gt", "hn", "sv",
+    "ni", "bo", "py", "uy", "ec", "jm", "tt", "in", "cn", "jp", "kr", "tw",
+    "hk", "sg", "my", "th", "vn", "ph", "id", "bn", "lk", "np", "mm", "kh",
+    "la", "mn", "ge", "am", "az",
+})
 
 # Claim kinds, matching the multi-agent board's vocabulary.
 _CLAIM_KINDS = {"observation", "interpretation", "temporal", "network", "persistence", "attribution"}
@@ -81,22 +114,33 @@ def _polarity(v: Any, *, default_affirm: bool = True) -> str:
 
 
 def _entities(text: str) -> list[tuple[str, str]]:
-    """(entity_type, entity_value) pairs named in the text."""
+    """(entity_type, entity_value) pairs named in the text.
+
+    A value gets its most specific type only: `lsass.exe` is a process, and
+    emitting it again as a domain produced a phantom DNS lookup in every check
+    that consumes entities. The first matching pattern in ``_ENTITY_PATTERNS``
+    is the most specific one, so the first type to claim a value keeps it.
+    """
     out: list[tuple[str, str]] = []
+    claimed: set[str] = set()
     for etype, pat in _ENTITY_PATTERNS:
         for m in pat.finditer(text or ""):
             val = m.group(1).strip().strip('".,;')
             if len(val) < 3:
                 continue
-            out.append((etype, val.lower()))
-    # Stable dedupe, deterministic order.
-    seen: set[tuple[str, str]] = set()
-    uniq: list[tuple[str, str]] = []
-    for pair in out:
-        if pair not in seen:
-            seen.add(pair)
-            uniq.append(pair)
-    return uniq
+            key = val.lower()
+            if key in claimed:
+                continue
+            if etype == "domain":
+                last = key.rsplit(".", 1)[-1]
+                if last in _NOT_A_DOMAIN:
+                    continue
+                # A bare filename with a known extension is a file, not a host.
+                if "." in key[:-len(last) - 1] and last not in _TLDS:
+                    continue
+            claimed.add(key)
+            out.append((etype, key))
+    return out
 
 
 def _audit_ids(claim: dict[str, Any]) -> list[str]:
