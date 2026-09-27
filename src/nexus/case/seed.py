@@ -20,6 +20,12 @@ from nexus.config import settings
 log = logging.getLogger(__name__)
 
 
+# A demo case still needs a real approval, so it needs a real password.
+# Documented, not secret: it protects a fixture and is regenerated on every
+# seed, exactly like the demo data it signs.
+_DEMO_APPROVAL_PASSWORD = "nexus-demo-fixture-approval"
+
+
 def seed_demo_case(
     case_name: str = "Demo Investigation",
     examiner: str = "analyst_purple",
@@ -249,7 +255,8 @@ def seed_demo_case(
             # together with a forged approved_by/approved_at - would put an
             # approval signature on a case that was never approved by anyone.
             "status": "DRAFT",
-            "demo_note": "demo fixture - approve through the real portal/CLI path",
+            "demo_approve": True,
+            "demo_note": "demo fixture, approved through the real password-gated path on every seed",
             "confidence": "HIGH",
             "severity": FindingSeverity.CRITICAL,
             "technique_ids": ["T1021.002"],
@@ -263,7 +270,8 @@ def seed_demo_case(
             "id": "F-DEMO-004",
             "title": "Credential Access via Mimikatz / LSA Secret Extraction",
             "status": "DRAFT",
-            "demo_note": "demo fixture - approve through the real portal/CLI path",
+            "demo_approve": True,
+            "demo_note": "demo fixture, approved through the real password-gated path on every seed",
             "confidence": "HIGH",
             "severity": FindingSeverity.CRITICAL,
             "technique_ids": ["T1003.001"],
@@ -285,10 +293,15 @@ def seed_demo_case(
             "justification": "Verified against CADRE lab baseline and vendor hash registry.",
             "audit_ids": ["audit-task-005"],
             "examiner_selected": True,
+            "demo_reject": True,
             "rejected_by": examiner,
             "rejection_reason": "Legitimate enterprise software management update; verified against baseline.",
         },
     ]
+
+    # A real approval needs a real password on the case. Set before approving so
+    # the fixture's approval is signed exactly the way an examiner's would be.
+    mgr.set_case_approval_password(case.id, _DEMO_APPROVAL_PASSWORD)
 
     # Save to SQLite and mirror to findings.json
     flat_findings: list[dict[str, Any]] = []
@@ -312,11 +325,42 @@ def seed_demo_case(
             initial_state=ApprovalState.DRAFT,
         )
         if f_obj:
+            # Approve through the real password-gated path rather than writing
+            # APPROVED into the flat mirror. Two demos need a genuinely approved
+            # finding so the Approve desk and the report have something to show,
+            # and the SQLite row and findings.json must agree - the report reads
+            # the flat file while approval is signed against the database. Writing
+            # the state directly is how the two drifted apart in the first place.
+            state = str(getattr(f_obj, "approval_state", None)
+                         or getattr(f_obj, "state", None) or "DRAFT")
+            approved_by = fd.get("approved_by")
+            approved_at = fd.get("approved_at")
+            if fd.get("demo_reject") and state.upper() != "REJECTED":
+                rejected = mgr.reject_finding(
+                    f_obj.id, _DEMO_APPROVAL_PASSWORD,
+                    rejected_by=examiner,
+                    reason=fd.get("rejection_reason") or "rejected demo fixture",
+                )
+                if rejected is not None:
+                    state = "REJECTED"
+            if fd.get("demo_approve") and state.upper() != "APPROVED":
+                approved = mgr.approve_finding(
+                    f_obj.id, _DEMO_APPROVAL_PASSWORD, approved_by=examiner,
+                    note="demo fixture approval",
+                )
+                if approved is not None:
+                    state = "APPROVED"
+                    approved_by = examiner
+                    approved_at = getattr(approved, "approved_at", None)
+                    approved_at = (
+                        approved_at.isoformat() if hasattr(approved_at, "isoformat")
+                        else approved_at
+                    )
             flat_findings.append({
                 "id": fd["id"],
                 "case_id": case.id,
                 "title": fd["title"],
-                "status": fd["status"],
+                "status": state,
                 "confidence": fd["confidence"],
                 "observation": fd["observation"],
                 "interpretation": fd["interpretation"],
@@ -324,10 +368,10 @@ def seed_demo_case(
                 "audit_ids": fd["audit_ids"],
                 "technique_ids": fd["technique_ids"],
                 "examiner_selected": fd["examiner_selected"],
-                "approved_by": fd.get("approved_by"),
-                "approved_at": fd.get("approved_at"),
-                "rejected_by": fd.get("rejected_by"),
-                "rejection_reason": fd.get("rejection_reason"),
+                "approved_by": approved_by,
+                "approved_at": approved_at,
+                "rejected_by": fd.get("rejected_by") if state == "REJECTED" else None,
+                "rejection_reason": fd.get("rejection_reason") if state == "REJECTED" else None,
             })
 
     (case_dir / "findings.json").write_text(json.dumps(flat_findings, indent=2), encoding="utf-8")
