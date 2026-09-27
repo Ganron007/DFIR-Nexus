@@ -140,20 +140,63 @@ def validate_timestamp(raw: Any, *, now: datetime | None = None) -> tuple[str, s
     return text, ""
 
 
-def _iter_timestamp_fields(finding: dict[str, Any]) -> list[tuple[str, Any]]:
-    """Every timestamp-bearing field on a finding: ``(field_path, raw)``."""
+_TIMESTAMP_FIELD_NAMES = ("event_timestamp", "timestamp", "ts", "first_seen", "last_seen")
+
+# Fields whose *name* marks them as a time. The fixed list above cannot keep up
+# with the corpus: parsers also write start_time / end_time / entry_ts /
+# date_added / last_used_at / mactime / mtime, and an implausible value in any
+# of those used to escape validation entirely - which is the exact hole L1.5
+# exists to close. Matching on the name means a new field is covered the day it
+# is written rather than the day somebody remembers to add it here.
+_TIMESTAMP_NAME_RE = re.compile(
+    r"(?:^|_)(?:time|timestamp|ts|date|seen|datetime|mactime|mtime|added|at)$"
+    r"|(?:^|_)(?:start|end|entry|last|first|modified|created|registered|saved)"
+    r"_(?:time|timestamp|ts|date|seen|at)$",
+    re.I,
+)
+# Not times, despite the shape.
+_TIMESTAMP_NAME_EXEMPT = frozenset({
+    "date_histogram", "sse_read_timeout", "due_date", "deadline",
+    "candidate_findings", "draft_timeline_ids", "disk_timeline",
+    "newest_extraction_mtime", "file_mtimes", "ad_credential_attacks",
+    "date_detection",
+})
+# Cap on the nested list walk, so a finding carrying thousands of artifact rows
+# cannot turn timestamp validation into a full extra pass over the case.
+_MAX_NESTED_ROWS = 200
+
+
+def _is_timestamp_field(key: str) -> bool:
+    if key in _TIMESTAMP_FIELD_NAMES:
+        return True
+    if key in _TIMESTAMP_NAME_EXEMPT:
+        return False
+    return bool(_TIMESTAMP_NAME_RE.search(key))
+
+
+def _iter_timestamp_fields(finding: dict[str, Any], _depth: int = 0) -> list[tuple[str, Any]]:
+    """Every timestamp-bearing field on a finding: ``(field_path, raw)``.
+
+    Top-level fields matched by name, then dict values and short lists of dicts
+    walked one level (artifacts and evidence rows carry their own times). The
+    list walk is capped at ``_MAX_NESTED_ROWS`` so a large finding cannot make
+    this unbounded.
+    """
     out: list[tuple[str, Any]] = []
-    for key in ("event_timestamp", "timestamp", "ts", "first_seen", "last_seen"):
-        if key in finding:
-            out.append((key, finding.get(key)))
-    rows = finding.get("evidence")
-    if isinstance(rows, list):
-        for i, row in enumerate(rows):
-            if not isinstance(row, dict):
-                continue
-            for key in ("ts", "timestamp", "event_timestamp"):
-                if key in row:
-                    out.append((f"evidence[{i}].{key}", row.get(key)))
+    for key, value in finding.items():
+        if not isinstance(key, str):
+            continue
+        if _is_timestamp_field(key):
+            if value is None or isinstance(value, (str, int, float, datetime)):
+                out.append((key, value))
+        elif _depth == 0 and isinstance(value, dict):
+            for sub, subval in _iter_timestamp_fields(value, _depth + 1):
+                out.append((f"{key}.{sub}", subval))
+        elif _depth == 0 and isinstance(value, list):
+            for i, row in enumerate(value[:_MAX_NESTED_ROWS]):
+                if isinstance(row, dict):
+                    for sub, subval in _iter_timestamp_fields(row, _depth + 1):
+                        out.append((f"{key}[{i}].{sub}", subval))
     return out
 
 

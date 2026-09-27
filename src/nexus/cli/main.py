@@ -111,6 +111,12 @@ app.command(name="doctor", help="Report extras, catalog binaries, indexes, optio
 # WP 10.2: the coverage audit answers "what did this investigation NOT cover?".
 app.command(name="coverage-audit", help="Case coverage audit: tools not run, sources not cited, needles not scanned")(_coverage_cmd)
 
+# Level 1: verify every claim the case made, mechanically, with UNVERIFIABLE
+# kept distinct from a pass.
+from nexus.cli.verify_cmd import verify_claims as _verify_cmd
+
+app.command(name="verify-claims", help="Level 1 claim check: citations, entities, techniques, timestamps, counts")(_verify_cmd)
+
 # WP 4i.10: headless investigation verbs — the UI stays primary, these keep
 # the spine usable without a browser.
 app.command(name="brief", help="Case briefing — what was processed + signal map")(_brief_cmd)

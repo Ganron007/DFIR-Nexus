@@ -7021,6 +7021,11 @@ def _augment_report_with_grade(case_dir, out_file, report_text: str,
     """
     import contextlib
 
+    from nexus.analysis.claim_verification import (
+        render_ledger_markdown,
+        verify_case,
+        write_ledger,
+    )
     from nexus.analysis.cross_mode import (
         check_cross_mode,
         render_consistency_markdown,
@@ -7033,6 +7038,16 @@ def _augment_report_with_grade(case_dir, out_file, report_text: str,
     )
 
     tail: list[str] = []
+
+    # Level 1 first: the ledger is what the grade and the cross-mode check are
+    # read against, and a report whose claims are unsupported should not be
+    # graded without saying so.
+    with contextlib.suppress(Exception):
+        ledger = verify_case(case_dir, findings=findings)
+        with contextlib.suppress(OSError):
+            write_ledger(case_dir, ledger)
+        tail.append(render_ledger_markdown(ledger))
+
     try:
         known = _case_audit_ids(case_dir)
     except Exception:  # noqa: BLE001
@@ -7094,6 +7109,27 @@ def _case_audit_ids(case_dir) -> set[str] | None:
                 if aid:
                     ids.add(aid)
     return ids if seen else None
+
+
+async def api_report_claims(request):
+    """GET /portal/api/report/claims - the Level 1 claim ledger.
+
+    Read-only. Returns the persisted ledger, or recomputes it when none exists
+    so an examiner can ask before a report has been generated. Recomputing is
+    the default because the ledger is a pure function of the case and a stale
+    persisted copy is worse than a fresh one.
+    """
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+
+    from nexus.analysis.claim_verification import verify_case
+
+    try:
+        ledger = verify_case(case_dir)
+    except Exception as exc:  # noqa: BLE001 - report the failure, do not 500 a read
+        return JSONResponse({"error": f"claim verification failed: {exc}"}, status_code=500)
+    return JSONResponse({"case_id": case_dir.name, **ledger})
 
 
 async def api_report_grade(request):
@@ -8198,6 +8234,7 @@ def create_dashboard():
         Route("/portal/api/report/steer", api_report_steer, methods=["POST"]),
         Route("/portal/api/report/rounds", api_report_rounds, methods=["GET"]),
         Route("/portal/api/report/grade", api_report_grade, methods=["GET"]),
+        Route("/portal/api/report/claims", api_report_claims, methods=["GET"]),
         Route("/portal/api/evidence/verify", api_evidence_verify, methods=["POST"]),
         # Phase 4: React SPA (served after API + legacy HTML routes)
         Route("/portal/app/assets/{path:path}", spa_asset),
