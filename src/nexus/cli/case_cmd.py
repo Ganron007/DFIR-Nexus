@@ -108,15 +108,43 @@ def clean_cases(
             raise typer.Exit(1)
 
     import contextlib
+    import os
     import shutil
+    import stat
 
-    removed = 0
+    def _clear_readonly(target) -> None:
+        """Make a case tree deletable.
+
+        The tool lane stages evidence with ``shutil.copy2``, which carries the
+        source file's ReadOnly attribute across - and the corpus' .evtx files
+        are read-only. A read-only file cannot be unlinked on Windows, so
+        ``rmtree`` raises; under the ``ignore_errors=True`` this used to pass,
+        the failure was swallowed and the command still reported
+        "Cleaned N case folder(s)". Those are exactly the orphans that kept
+        reappearing after every earlier clean.
+        """
+        with contextlib.suppress(OSError):
+            for path in Path(target).rglob("*"):
+                if path.is_file():
+                    with contextlib.suppress(OSError):
+                        os.chmod(path, stat.S_IWRITE | stat.S_IREAD)
+
+    removed: list[str] = []
+    failed: list[tuple[str, str]] = []
     for d in case_dirs:
         if d.name in keep:
             typer.echo(f"  kept: {d.name}")
             continue
-        shutil.rmtree(d, ignore_errors=True)
-        removed += 1
+        _clear_readonly(d)
+        try:
+            shutil.rmtree(d)
+        except OSError as exc:
+            failed.append((d.name, str(exc)))
+            continue
+        if d.exists():
+            failed.append((d.name, "directory still present after rmtree"))
+        else:
+            removed.append(d.name)
     if db_path.exists() and not keep:
         with contextlib.suppress(OSError):
             db_path.unlink()
@@ -125,9 +153,22 @@ def clean_cases(
         _ACTIVE_CASE_FILE.write_text("")
     # Best-effort: drop the ES indexes of the removed cases too, so test
     # indexes never outlive their case (see SETUP.md -> Elasticsearch).
-    idx_note = _delete_case_indexes(sorted({d.name for d in case_dirs} - keep))
+    idx_note = _delete_case_indexes(sorted(removed))
+
+    if failed:
+        # A cleanup that cannot finish must say so and exit non-zero. Reporting
+        # success here is how a store fills with orphans nobody notices.
+        for name, why in failed:
+            typer.echo(f"  FAILED: {name}: {why}", err=True)
+        typer.echo(
+            f"Cleaned {len(removed)} of {len(case_dirs) - len(keep)} case folder(s); "
+            f"{len(failed)} FAILED; active case cleared; {idx_note}.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
     typer.echo(
-        f"Cleaned {len(case_dirs)} case folder(s); cases.db removed; "
+        f"Cleaned {len(removed)} case folder(s); cases.db removed; "
         f"active case cleared; {idx_note}."
     )
 
