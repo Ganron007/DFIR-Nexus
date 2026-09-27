@@ -18,8 +18,10 @@ The LLM does **not** choose whether mandatory parsers run.
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import logging
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -63,6 +65,21 @@ def timeout_for_bytes(
         n = 0
     mb = n // (1024 * 1024)
     return min(cap, max(base, base + mb * per_mb))
+
+
+def _stem(evidence: Path) -> str:
+    """A filesystem-safe output stem for a per-file parser invocation.
+
+    Distinct sources must not share a ``--csvf`` name (Zimmerman tools write it
+    verbatim, so a shared name means silent overwrite). The stem alone is not
+    enough when two evidence roots hold the same filename — two staged machines
+    both ship a ``NTUSER.DAT`` — so a short hash of the *absolute* path is
+    appended whenever the bare stem would not already be unique.
+    """
+    raw = evidence.stem.strip() or "artifact"
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "_", raw).strip("._-") or "artifact"
+    digest = hashlib.sha1(str(evidence.resolve()).encode("utf-8", "replace")).hexdigest()[:8]
+    return f"{safe[:60]}-{digest}"
 
 
 def _copy_ese_siblings(src_dir: Path, work: Path, prefixes: tuple[str, ...]) -> None:
@@ -351,26 +368,86 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
     name = evidence.name.lower()
     suffix = evidence.suffix.lower()
 
+    # Per-source CSV names. Several registered artifacts each get their own job
+    # (one .pf, one .lnk, one hive), and Zimmerman tools write `--csvf <name>`
+    # verbatim — so a fixed name means every job after the first OVERWRITES the
+    # previous one and all but the last file's rows are silently lost. The
+    # batch path is safe (one invocation covers a folder); these per-file jobs
+    # must not share an output name.
     if suffix == ".pf":
         d = out_dir("pecmd")
-        add("pecmd", ["pecmd", "-f", str(evidence), "--csv", str(d), "--csvf", "prefetch.csv"],
+        add("pecmd", ["pecmd", "-f", str(evidence), "--csv", str(d), "--csvf", f"{_stem(evidence)}.csv"],
             "Prefetch execution evidence")
     elif suffix == ".lnk":
         d = out_dir("lecmd")
-        add("lecmd", ["lecmd", "-f", str(evidence), "--csv", str(d), "--csvf", "lecmd.csv"],
+        add("lecmd", ["lecmd", "-f", str(evidence), "--csv", str(d), "--csvf", f"{_stem(evidence)}.csv"],
             "LNK target/usage", 300)
     elif name.startswith("$mft") or suffix == ".mft":
         d = out_dir("mftecmd")
-        add("mftecmd", ["mftecmd", "-f", str(evidence), "--csv", str(d), "--csvf", "mft.csv"],
+        add("mftecmd", ["mftecmd", "-f", str(evidence), "--csv", str(d), "--csvf", f"{_stem(evidence)}.csv"],
             "MFT file system timeline", 1800)
     elif name.startswith("amcache"):
         d = out_dir("amcache")
         add("amcacheparser",
-            ["amcacheparser", "-f", str(evidence), "--csv", str(d), "--csvf", "amcache.csv"],
+            ["amcacheparser", "-f", str(evidence), "--csv", str(d), "--csvf", f"{_stem(evidence)}.csv"],
             "Amcache application execution", 300)
-    elif name == "srudb.dat" or "sru" in name:
+    elif suffix == ".exe":
+        # Malware samples / dropped binaries: hash + version + strings.
+        d = out_dir("sigcheck")
+        add("sigcheck", ["sigcheck", "-nobanner", "-a", "-h", "-s", "-vt", str(evidence)],
+            f"File identity ({evidence.name})", 300)
+    elif name.startswith(("thumbcache_", "iconcache_")) and suffix == ".db":
+        # thumbcache_viewer_cmd is NOT a Zimmerman CSV tool — it writes a report
+        # tree into -o, and -c adds the CSV. Without -c it prints its usage
+        # banner and exits 0, which is how this format produced ten OK jobs and
+        # zero evidence in the first sweep.
+        d = out_dir("thumbcache")
+        reports = d / _stem(evidence)
+        add("thumbcache_viewer",
+            ["thumbcache_viewer_cmd", "-d", str(evidence), "-o", str(reports), "-c"],
+            f"Thumbcache entries ({evidence.name})", 300)
+    elif name.startswith("setupapi"):
+        # setupapi.dev.log is plain text; stage it verbatim so the indexer and
+        # the analyst can read the driver install history directly.
+        d = out_dir("setupapi")
+        add("strings", ["strings64", "-nobanner", str(evidence)],
+            f"Device install log ({evidence.name})", 300)
+    elif name.startswith("cache0") and name.endswith(".bin"):
+        # RDP bitmap cache: plain-text extraction is the dependable path; the
+        # catalog carries no rdp-cache binary, so a shell reader is used instead
+        # of silently routing the evidence nowhere.
+        d = out_dir("rdp")
+        add("strings", ["strings64", "-n", "6", "-o", str(evidence), "-nobanner"],
+            f"RDP bitmap cache strings ({evidence.name})", 900)
+    elif name.startswith("srudb.dat") or name == "sru.db" or "sru" in name:
+        # SRUDB.dat is a live ESE database. SrumECmd refuses it in place
+        # ("Cannot access file, the file is locked or in use"), so the single-file
+        # path must stage it on a writable workdir with its log siblings, the
+        # same way the batch path already does.
         d = out_dir("srum")
-        add("srumecmd", ["srumecmd", "-f", str(evidence), "--csv", str(d)],
+        staged = evidence
+        try:
+            work = extractions / "_staged" / "sru"
+            _copy_ese_siblings(evidence.parent, work, ("SRU",))
+            _esentutl_repair(work, db_name=evidence.name, log_bases=("sru",))
+            candidate = work / evidence.name
+            if candidate.is_file():
+                staged = candidate
+            else:
+                jobs.append(ToolJob(
+                    host="windows", tool="srumecmd", argv=[],
+                    purpose=f"SRUM database ({evidence.name})", status="SKIP",
+                    reason=f"could not stage {evidence.name} (ESE siblings not copied)",
+                ))
+                return jobs
+        except Exception as exc:  # noqa: BLE001 - staging is best-effort, say so
+            jobs.append(ToolJob(
+                host="windows", tool="srumecmd", argv=[],
+                purpose=f"SRUM database ({evidence.name})", status="SKIP",
+                reason=f"ESE staging failed: {exc}"[:200],
+            ))
+            return jobs
+        add("srumecmd", ["srumecmd", "-f", str(staged), "--csv", str(d)],
             "SRUM database", 600)
     elif name in ("system", "software", "sam", "security", "ntuser.dat", "usrclass.dat"):
         # RECmd needs a batch (--bn) or a search switch; single-hive runs without
@@ -387,12 +464,12 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
         else:
             d = out_dir("recmd")
             add("recmd", ["recmd", "-f", str(evidence), "--bn", str(batch),
-                         "--csv", str(d), "--csvf", "recmd.csv"],
+                         "--csv", str(d), "--csvf", f"{_stem(evidence)}.csv"],
                 f"Registry hive ({evidence.name})")
         if name == "system":
             ad = out_dir("appcompat")
             add("appcompatcacheparser",
-                ["appcompatcacheparser", "-f", str(evidence), "--csv", str(ad), "--csvf", "appcompat.csv"],
+                ["appcompatcacheparser", "-f", str(evidence), "--csv", str(ad), "--csvf", f"{_stem(evidence)}.csv"],
                 "Shimcache / AppCompat", 300)
     return jobs
 
@@ -415,15 +492,36 @@ def is_host_evidence(path: str | Path) -> bool:
             or name.startswith("amcache")
             or name == "srudb.dat"
             or name in ("system", "software", "sam", "security", "ntuser.dat", "usrclass.dat")
+            # Formats the lane can actually parse but was not recognising, so the
+            # evidence was routed nowhere and the run ended in a discovery SKIP
+            # (debug-mode sweep: thumbcache, recycle, rdp, setupapi, samples).
+            or name.startswith("thumbcache_") or name.startswith("iconcache_")
+            or name in ("srum.dat", "sru.db")
+            or name.startswith("cache0") and name.endswith(".bin")
+            or name.startswith("setupapi")
+            or name == "$i30"
+            or (suffix == ".exe")
         )
     if p.is_dir():
         if (
             next(p.glob("*.pf"), None) is not None
             or next(p.glob("*.lnk"), None) is not None
             or next(p.glob("*.evtx"), None) is not None
+            or next(p.glob("thumbcache_*.db"), None) is not None
+            or next(p.glob("iconcache_*.db"), None) is not None
+            or next(p.glob("Cache*.bin"), None) is not None
+            or next(p.glob("setupapi*.log"), None) is not None
+            or next(p.glob("*.exe"), None) is not None
         ):
             return True
-        return p.name.lower() in ("automaticdestinations", "customdestinations")
+        return p.name.lower() in (
+            "automaticdestinations",
+            "customdestinations",
+            "srum",
+            "rdp",
+            "setupapi",
+            "samples",
+        )
     return False
 
 
@@ -1873,6 +1971,19 @@ async def run_tool_lane(
             detail = f"{round(_time.time() - t0, 1)}s"
             if out_name:
                 detail += f" -> {out_name}"
+            # A parser that names an output but writes nothing is not a success.
+            # Output on disk is the only trustworthy signal: the bundled
+            # Zimmerman 1.5 tools print "Administrator privileges not found"
+            # whether or not they then write a valid CSV, so a stdout marker
+            # would fail a job that actually succeeded.
+            if status == "OK" and not _produced_expected_output(job):
+                status = "FAIL"
+                job.reason = (
+                    f"{job.tool} exited cleanly but produced no output file "
+                    f"(expected a file under the --csv target). Treat this evidence as "
+                    f"unparsed, not clean."
+                )
+                detail += " (no output produced)"
             _finish(status, detail, reason=job.reason[:300],
                     output=job.output_saved_to, audit_id=aid)
         if aid:
@@ -2055,7 +2166,7 @@ def _soft_fail_reason(result: dict[str, Any]) -> str:
     )
     for m in markers:
         if m in blob:
-            # Partial EvtxECmd record errors still often produce a usable CSV —
+            # Partial EvtxECmd record errors still often produce a usable CSV -
             # if output_files or a sibling .csv exists, do not soft-fail.
             outs = result.get("output_files") or []
             if outs and "Error processing record" in blob and "Error processing file!" not in blob:
@@ -2063,6 +2174,43 @@ def _soft_fail_reason(result: dict[str, Any]) -> str:
             idx = blob.find(m)
             return blob[idx:idx + 240].replace("\n", " ")
     return ""
+
+
+def _produced_expected_output(job: ToolJob) -> bool:
+    """True when a job that named an output path actually wrote one.
+
+    A parser can exit 0, print a warning, and write nothing. The lane must not
+    record that as OK: an OK row with no output is a silent coverage gap, which
+    is the exact failure class the ledger exists to prevent.
+    """
+    argv = list(job.argv or ())
+    produced = False
+    for i, arg in enumerate(argv):
+        if arg in ("--csv", "--json", "--jsonl", "--out", "-o") and i + 1 < len(argv):
+            target = Path(argv[i + 1])
+            if target.is_file():
+                return target.stat().st_size > 0
+            if target.is_dir():
+                # A file that exists but is empty is not output.
+                with contextlib.suppress(OSError):
+                    if any(f.is_file() and f.stat().st_size > 0 for f in target.rglob("*")):
+                        produced = True
+    if produced:
+        return True
+    # Tools that write into a directory given positionally in the argv.
+    for arg in argv:
+        if arg.startswith("-"):
+            continue
+        p = Path(arg)
+        if p.is_dir():
+            with contextlib.suppress(OSError):
+                if any(f.is_file() and f.stat().st_size > 0 for f in p.rglob("*.csv")):
+                    return True
+    if job.output_saved_to:
+        p = Path(job.output_saved_to)
+        if p.is_file() and p.stat().st_size > 0:
+            return True
+    return False
 
 
 def _bridge_remote_audits(case_dir: Path, ledger: list[dict[str, Any]]) -> int:
