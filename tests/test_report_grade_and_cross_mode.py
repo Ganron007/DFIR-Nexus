@@ -407,3 +407,60 @@ def test_different_entities_do_not_collide():
     })
     assert r["counts"]["contradictions"] == 0
     assert r["entity_overlap"]["1-2"] == 0.0
+
+
+# --------------------------------------------------------------------------
+# structure: a report of search terms is navigable and useless
+# --------------------------------------------------------------------------
+
+_TITLED_MD = (
+    "## Scope\n\n22 files were registered as evidence.\n\n"
+    "## Findings\n\n### Execution\n\nThe rows show a prefetch entry.\n\n"
+    "## Limitations\n\nOther families were not parsed.\n"
+)
+
+
+def test_raw_needle_titles_cost_the_structure_axis():
+    """The Mode 1 scribe titles findings after the needle that matched.
+
+    All eleven titles on the first real case read "Signal: <needle> - N hit(s)".
+    That is an inventory of search terms, not a set of conclusions, and the
+    grader scored structure 5/5 on it until the expert review flagged it.
+    """
+    needles = ["sdelete", "pid_", "vid_", "usbstor", "onedrive", "usb",
+               "rdp", "scriptblock", "winlogon", "my drive", "sdelete"]
+    findings = [
+        {"id": f"F{i}", "title": f"Signal: {n} - 2+ hit(s) across evtxecmd",
+         "artifacts": [{"audit_id": f"nx-audit-{i:04d}"}], "sources": ["f1", "f2"]}
+        for i, n in enumerate(needles, 1)
+    ]
+    g = grade_report(markdown=_TITLED_MD, findings=findings,
+                     known_audit_ids=AUDIT, evidence_count=22)
+    assert g["axes"]["structure"]["score"] < 5, g["axes"]["structure"]
+    assert any("raw needle" in n for n in g["why_not_higher"])
+    # The penalty is bounded - unreadable is not the same as absent.
+    assert g["axes"]["structure"]["score"] >= 1
+
+
+def test_analyst_readable_titles_keep_the_structure_score():
+    findings = [
+        {"id": f"F{i}",
+         "title": "powershell.exe executed from C:\\Users\\bob\\AppData\\Local\\Temp",
+         "artifacts": [{"audit_id": f"nx-audit-{i:04d}"}], "sources": ["f1", "f2"]}
+        for i in (1, 2, 3)
+    ]
+    g = grade_report(markdown=_TITLED_MD, findings=findings,
+                     known_audit_ids=AUDIT, evidence_count=22)
+    assert g["axes"]["structure"]["score"] == 5, g["why_not_higher"]
+
+
+def test_a_mix_of_title_quality_is_diagnosed():
+    findings = [
+        {"id": "F1", "title": "Signal: sdelete - 1 hit(s) across evtxecmd",
+         "artifacts": [{"audit_id": "nx-audit-0001"}], "sources": ["f1", "f2"]},
+        {"id": "F2", "title": "powershell.exe executed from a temp directory",
+         "artifacts": [{"audit_id": "nx-audit-0002"}], "sources": ["f1", "f2"]},
+    ]
+    g = grade_report(markdown=_TITLED_MD, findings=findings,
+                     known_audit_ids=AUDIT, evidence_count=22)
+    assert any("1/2 finding title" in n for n in g["why_not_higher"]), g["why_not_higher"]

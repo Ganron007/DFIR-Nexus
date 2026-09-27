@@ -161,6 +161,38 @@ _SCOPE_MARKERS = (
 _CITATION_RE = re.compile(r"\baudit[_-]?id\b|\bnx-[0-9a-f]{8,}\b|\bnexus-[0-9a-f]{8,}\b", re.I)
 _ROW_REF_RE = re.compile(r"\b[\w./\\-]+\.(?:csv|jsonl?|log|txt|evtx|db|dat|exe|dll|bin)\b", re.I)
 
+# A title that names the machine rather than the finding. The Mode 1 scribe emits
+# "Signal: <needle> - N hit(s) across <family>", so a report of these is an
+# inventory of search terms, not a set of conclusions.
+_MACHINE_TITLE_RE = re.compile(
+    r"^\s*signal\s*:", re.I
+)
+# A bare needle: no spaces, no verb, no conclusion - `sdelete`, `pid_`, `vid_`,
+# `usbstor`, `onedrive`. Truncated needles keep a trailing underscore.
+_BARE_NEEDLE_RE = re.compile(r"^[A-Za-z0-9_.\-]{2,24}$")
+# Words that make a title a statement rather than a label.
+_PROSE_TITLE_RE = re.compile(
+    r"\b(?:executed|ran|created|modified|deleted|dropped|persisted|connected|"
+    r"downloaded|registered|scheduled|injected|accessed|attempted|succeeded|"
+    r"failed|contains|shows|indicates|was|were|has|had|is|are|after|before|"
+    r"while|during|without|despite|following|via|through)\b",
+    re.I,
+)
+
+
+def _is_machine_title(title: str) -> bool:
+    """True when a finding title is a search term or rule id, not a conclusion."""
+    t = (title or "").strip()
+    if not t:
+        return False
+    if _PROSE_TITLE_RE.search(t):
+        return False
+    if _MACHINE_TITLE_RE.match(t):
+        return True
+    # "Signal: sdelete - 1 hit(s) across evtxecmd" is caught above; a bare
+    # needle with no prose is the same problem in a different wrapper.
+    return bool(_BARE_NEEDLE_RE.match(t))
+
 
 def _norm(value: Any) -> str:
     return str(value or "").strip()
@@ -474,7 +506,18 @@ def _score_axes(
         st = 3
     else:
         st = 1
-    if st < _MAX:
+    # Structure is navigable but unreadable when every heading is a machine
+    # identifier. The Mode 1 scribe titles a finding after the needle that
+    # matched, so a whole report can come out as "Signal: pid_ - 2+ hit(s)",
+    # perfectly navigable and useless to the responder reading it.
+    raw = [f for f in findings if _is_machine_title(str(f.get("title") or ""))]
+    if raw and n_findings:
+        st = max(1, st - (2 if len(raw) == n_findings else 1))
+        notes.append(
+            f"structure: {len(raw)}/{n_findings} finding title(s) are raw needle or "
+            f"rule identifiers rather than analyst-readable conclusions"
+        )
+    if st < _MAX and not raw:
         notes.append(f"structure: {len(heads)} heading(s) for {n_findings} finding(s)")
 
     # --- actionability ---------------------------------------------------
