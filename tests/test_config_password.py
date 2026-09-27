@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from nexus.audit import normalize_examiner
 from nexus.auth import has_password, setup_password, verify_password
 from nexus.cli.config_cmd import _run_set
 
@@ -16,4 +17,8 @@ def test_replace_uses_env_password(tmp_path: Path, monkeypatch):
     _run_set("", setup_password=True, replace=True)
     assert verify_password("e2e_host", "dfirnexus")
     assert not verify_password("e2e_host", "old-lab-secret")
-    assert (tmp_path / "e2e_host.json").is_file()
+    # The store is keyed on the canonical identity the audit chain records, so
+    # `e2e_host` lands in `e2e-host.json`. A store named after the raw string
+    # was unreachable by resolve_examiner() - see tests/test_examiner_identity_store.py.
+    assert (tmp_path / f"{normalize_examiner('e2e_host')}.json").is_file()
+    assert not (tmp_path / "e2e_host.json").is_file()

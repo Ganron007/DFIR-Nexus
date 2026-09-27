@@ -6997,13 +6997,136 @@ def _write_case_report(case_dir, *, llm: bool = True, steer: str = ""):
     reports_dir = case_dir / "reports"
     reports_dir.mkdir(exist_ok=True)
     out_file = reports_dir / "REPORT.md"
-    _atomic_write_text(out_file, report_text)
+
+    # WP 10.0a / 10.0b: grade the report that was just built, and check the
+    # modes against each other. Both are appended to the rendered markdown and
+    # persisted next to the run, so the grade describes the document the
+    # examiner actually reads.
+    _augment_report_with_grade(case_dir, out_file, report_text, findings, evidence)
+
     approved_count = len([f for f in findings if str(f.get("status") or "").upper() == "APPROVED"])
     return {
         "ok": True,
         "report_path": str(out_file),
         "findings_count": approved_count,
     }
+
+
+def _augment_report_with_grade(case_dir, out_file, report_text: str,
+                               findings: list, evidence: list) -> None:
+    """Append the report grade and cross-mode check, then rewrite the file.
+
+    A grader that can fail must never take the report down with it: a missing
+    audit index or a malformed finding degrades to a note, not an exception.
+    """
+    import contextlib
+
+    from nexus.analysis.cross_mode import (
+        check_cross_mode,
+        render_consistency_markdown,
+        write_consistency,
+    )
+    from nexus.analysis.report_grade import (
+        grade_report,
+        render_grade_markdown,
+        write_grade,
+    )
+
+    tail: list[str] = []
+    try:
+        known = _case_audit_ids(case_dir)
+    except Exception:  # noqa: BLE001
+        known = None
+
+    with contextlib.suppress(Exception):
+        coverage = None
+        cov = case_dir / "analysis" / "coverage_audit.json"
+        if cov.is_file():
+            coverage = json.loads(cov.read_text(encoding="utf-8"))
+        grade = grade_report(
+            markdown=report_text,
+            findings=findings,
+            known_audit_ids=known,
+            coverage=coverage,
+            evidence_count=len(evidence),
+            case_id=case_dir.name,
+        )
+        with contextlib.suppress(OSError):
+            write_grade(case_dir, grade)
+        tail.append(render_grade_markdown(grade))
+
+    with contextlib.suppress(Exception):
+        result = check_cross_mode(case_dir=case_dir)
+        with contextlib.suppress(OSError):
+            write_consistency(case_dir, result)
+        tail.append(render_consistency_markdown(result))
+
+    if not tail:
+        return
+    section = "\n".join(t for t in tail if t)
+    if not section.strip():
+        return
+    with contextlib.suppress(OSError):
+        _atomic_write_text(out_file, f"{report_text.rstrip()}\n\n---\n\n{section}")
+
+
+def _case_audit_ids(case_dir) -> set[str] | None:
+    """Audit ids that actually exist for this case, or None if unknowable.
+
+    Returning None (rather than an empty set) matters: an empty set would make
+    every citation look fabricated and grade a good report as Misleading.
+    """
+    import contextlib
+
+    ids: set[str] = set()
+    seen = False
+    for rel in ("audit/nexus.jsonl", "audit/http.jsonl", "transparency.jsonl"):
+        p = case_dir / rel
+        if not p.is_file():
+            continue
+        seen = True
+        with contextlib.suppress(OSError, ValueError):
+            for line in p.read_text(encoding="utf-8", errors="replace").splitlines():
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                aid = str(row.get("audit_id") or "").strip()
+                if aid:
+                    ids.add(aid)
+    return ids if seen else None
+
+
+async def api_report_grade(request):
+    """GET /portal/api/report/grade - the 10.0a grade and the 10.0b check.
+
+    Read-only and recomputable. It reads the persisted artefacts when they
+    exist and rebuilds them otherwise, so an examiner can ask for the grade
+    before a report has ever been generated. A missing grade is reported as
+    ``null`` with the reason, never as a passing default.
+    """
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+
+    grade_path = case_dir / "analysis" / "report_grade.json"
+    cons_path = case_dir / "analysis" / "cross_mode.json"
+    grade = consistency = None
+    if grade_path.is_file():
+        with contextlib.suppress(OSError, ValueError):
+            grade = json.loads(grade_path.read_text(encoding="utf-8"))
+    if cons_path.is_file():
+        with contextlib.suppress(OSError, ValueError):
+            consistency = json.loads(cons_path.read_text(encoding="utf-8"))
+
+    reason = None
+    if grade is None and consistency is None:
+        reason = "not yet graded - generate the report (POST /portal/api/report/generate) first"
+    return JSONResponse({
+        "case_id": case_dir.name,
+        "grade": grade,
+        "cross_mode": consistency,
+        "reason": reason,
+    })
 
 
 async def api_report_generate(request):
@@ -8074,6 +8197,7 @@ def create_dashboard():
         Route("/portal/api/report/view", api_report_view, methods=["GET"]),
         Route("/portal/api/report/steer", api_report_steer, methods=["POST"]),
         Route("/portal/api/report/rounds", api_report_rounds, methods=["GET"]),
+        Route("/portal/api/report/grade", api_report_grade, methods=["GET"]),
         Route("/portal/api/evidence/verify", api_evidence_verify, methods=["POST"]),
         # Phase 4: React SPA (served after API + legacy HTML routes)
         Route("/portal/app/assets/{path:path}", spa_asset),

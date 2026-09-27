@@ -1,0 +1,285 @@
+"""WP 10.0a / 10.0b - report grade and cross-mode consistency.
+
+Acceptance criteria from the plan:
+
+* 10.0a - the same report graded twice is stable; a seeded overclaim drops the
+  class.
+* 10.0b - on one case, every cross-mode contradiction is surfaced with both
+  citations.
+"""
+from __future__ import annotations
+
+import json
+
+from nexus.analysis.cross_mode import (
+    check_cross_mode,
+    collect_mode_claims,
+    render_consistency_markdown,
+    write_consistency,
+)
+from nexus.analysis.report_grade import (
+    AXES,
+    classify_finding,
+    grade_report,
+    render_grade_markdown,
+    write_grade,
+)
+
+AUDIT = {"nx-audit-0001", "nx-audit-0002"}
+
+
+def _finding(fid="F1", n_art=1, n_audit=1, **extra):
+    f = {
+        "id": fid,
+        "title": "powershell.exe executed from a temp directory",
+        "status": "APPROVED",
+        "artifacts": [{"audit_id": f"nx-audit-{i:04d}"} for i in range(1, n_art + 1)],
+        "sources": [f"family-{i}" for i in range(1, n_art + 1)],
+    }
+    f.update(extra)
+    return f
+
+
+# --------------------------------------------------------------------------
+# 10.0a - grading
+# --------------------------------------------------------------------------
+
+def test_grading_is_stable():
+    """Acceptance: the same report graded twice is stable."""
+    md = "## Findings\n\n### powershell.exe execution\n\nBecause a prefetch row shows it.\n\n## Limitations\n\nOnly 3 files were registered; 40 were unregistered and unparsed."
+    f = [_finding(n_art=2, n_audit=2)]
+    a = grade_report(markdown=md, findings=f, known_audit_ids=AUDIT, evidence_count=3)
+    b = grade_report(markdown=md, findings=f, known_audit_ids=AUDIT, evidence_count=3)
+    assert json.dumps(a, sort_keys=True) == json.dumps(b, sort_keys=True)
+    assert a["report_class"] in {"A", "B"}
+
+
+def test_seeded_overclaim_drops_the_class():
+    """Acceptance: a seeded overclaim drops the class."""
+    honest = (
+        "## Scope\n\n12 files were registered from evtx and tasks.\n\n"
+        "## Findings\n\n### a.exe execution\n\nPrefetch shows it ran, consistent with the task XML.\n\n"
+        "## Limitations\n\nPrefetch deletion means execution counts are a lower bound; "
+        "no memory was acquired."
+    )
+    f = [_finding(n_art=2, n_audit=2)]
+    base = grade_report(markdown=honest, findings=f, known_audit_ids=AUDIT, evidence_count=12)
+
+    overclaim = (
+        "## Findings\n\n### a.exe execution\n\n"
+        "This **proves** the attacker executed a.exe. It **definitely** ran, and this is the "
+        "**complete picture**: it **fully reconstructed** the whole intrusion, and we have "
+        "**ruled out** any other activity.\n"
+    )
+    worse = grade_report(markdown=overclaim, findings=f, known_audit_ids=AUDIT, evidence_count=12)
+
+    assert worse["report_class"] not in {"A", "B"}, "overclaim must not grade as sound"
+    assert worse["total"] < base["total"], f"overclaim scored {worse['total']} vs {base['total']}"
+
+
+def test_fabricated_citation_is_class_f():
+    md = "## Findings\n\n### a.exe\n\nBecause the prefetch row shows it.\n"
+    f = [_finding(n_art=1, n_audit=1)]
+    f[0]["artifacts"] = [{"audit_id": "nx-audit-9999"}]  # never happened
+    g = grade_report(markdown=md, findings=f, known_audit_ids=AUDIT, evidence_count=1)
+    assert g["report_class"] == "F"
+    assert g["axes"]["non_fabrication"]["score"] == 0
+
+
+def test_no_findings_is_class_d():
+    g = grade_report(markdown="## Scope\n\n4 files.\n\n## Limitations\n\nNone parsed.",
+                     findings=[], known_audit_ids=set(), evidence_count=4)
+    assert g["report_class"] == "D"
+
+
+def test_all_axes_present_and_bounded():
+    md = "## Findings\n\n### x\n\nBecause a row shows it.\n"
+    g = grade_report(markdown=md, findings=[_finding()], known_audit_ids=AUDIT, evidence_count=1)
+    assert set(g["axes"]) == set(AXES)
+    for a in g["axes"].values():
+        assert 0 <= a["score"] <= 5
+
+
+def test_missing_limitations_caps_the_class_at_c():
+    md = (
+        "## Scope\n\n12 files were registered.\n\n"
+        "## Findings\n\n### a.exe\n\nPrefetch and the task XML agree, so it executed.\n"
+    )
+    g = grade_report(markdown=md, findings=[_finding(n_art=2, n_audit=2)],
+                     known_audit_ids=AUDIT, evidence_count=12)
+    assert g["report_class"] == "C"
+    assert g["axes"]["limitations"]["score"] < 5
+
+
+def test_scope_count_mismatch_is_penalised():
+    md = (
+        "## Scope\n\n3 files were registered.\n\n"
+        "## Findings\n\n### a.exe\n\nA row shows it, so it executed.\n\n"
+        "## Limitations\n\nOther families were not parsed.\n"
+    )
+    g = grade_report(markdown=md, findings=[_finding(n_art=2, n_audit=2)],
+                     known_audit_ids=AUDIT, evidence_count=200)
+    assert g["axes"]["scope_honesty"]["score"] <= 2
+    assert any("scope_honesty" in n for n in g["why_not_higher"])
+
+
+# --------------------------------------------------------------------------
+# 10.0a - per-finding classes
+# --------------------------------------------------------------------------
+
+def test_finding_confirmed_needs_two_sources():
+    assert classify_finding(_finding(n_art=2, n_audit=2))["class"] == "CONFIRMED"
+
+
+def test_finding_indicated_with_one_source():
+    assert classify_finding(_finding(n_art=1, n_audit=1))["class"] == "INDICATED"
+
+
+def test_finding_unresolved_without_artifacts():
+    assert classify_finding({"id": "F9", "title": "something happened"})["class"] == "UNRESOLVED"
+
+
+def test_finding_refuted_by_verifier():
+    g = classify_finding(_finding(verdict="refuted"))
+    assert g["class"] == "REFUTED"
+
+
+def test_finding_refuted_by_invented_audit_id():
+    g = classify_finding(_finding(n_art=1, n_audit=1), known_audit_ids=set())
+    assert g["class"] == "REFUTED"
+    assert g["invented_audit_ids"] == ["nx-audit-0001"]
+
+
+def test_render_and_write(tmp_path):
+    g = grade_report(markdown="## Findings\n\n### x\n\nBecause a row shows it.\n",
+                     findings=[_finding()], known_audit_ids=AUDIT, evidence_count=1)
+    md = render_grade_markdown(g)
+    assert "Report quality grade" in md and "| Analytical soundness |" in md
+    p = write_grade(tmp_path, g)
+    assert json.loads(p.read_text(encoding="utf-8"))["report_class"] == g["report_class"]
+
+
+# --------------------------------------------------------------------------
+# 10.0b - cross-mode consistency
+# --------------------------------------------------------------------------
+
+def _claims(mode, title, polarity="affirm", audit=("nx-audit-0001",)):
+    return [{
+        "mode": mode, "source": f"finding:{mode}-1",
+        "key": ["process", "powershell.exe", "observation"],
+        "polarity": polarity, "audit_ids": list(audit), "title": title,
+        "confidence": "high",
+    }]
+
+
+def test_contradiction_is_surfaced_with_both_citations():
+    """Acceptance: every cross-mode contradiction carries both citations."""
+    r = check_cross_mode(claims_by_mode={
+        "1": _claims("1", "powershell.exe executed"),
+        "2": _claims("2", "powershell.exe did not execute", polarity="deny"),
+        "3": [],
+    })
+    assert r["verdict"] == "contradictory"
+    assert len(r["contradictions"]) == 1
+    c = r["contradictions"][0]
+    assert c["affirms"][0]["mode"] == "1"
+    assert c["denials"][0]["mode"] == "2"
+    assert c["affirms"][0]["audit_ids"] and c["denials"][0]["audit_ids"]
+    assert "powershell.exe" in render_consistency_markdown(r)
+
+
+def test_agreement_is_reported_as_shared_not_contradiction():
+    r = check_cross_mode(claims_by_mode={
+        "1": _claims("1", "powershell.exe executed"),
+        "2": _claims("2", "powershell.exe executed"),
+        "3": _claims("3", "powershell.exe executed"),
+    })
+    assert r["verdict"] == "consistent"
+    assert r["counts"]["shared"] == 1
+    assert r["counts"]["contradictions"] == 0
+    assert r["entity_overlap"]["1-2"] == 1.0
+
+
+def test_a_missing_mode_is_unknown_not_agreement():
+    r = check_cross_mode(claims_by_mode={"1": _claims("1", "x.exe ran"), "2": [], "3": []})
+    assert r["verdict"] == "incomplete"
+    assert r["modes_missing"]
+    assert "not agreement" in render_consistency_markdown(r)
+
+
+def test_no_modes_at_all_is_unknown():
+    assert check_cross_mode(claims_by_mode={"1": [], "2": [], "3": []})["verdict"] == "unknown"
+
+
+def test_row_contradiction_detected():
+    rows = (
+        "Query result for powershell.exe: no matching records found in the indexed rows.\n"
+    )
+    r = check_cross_mode(
+        claims_by_mode={"1": _claims("1", "powershell.exe executed"), "2": [], "3": []},
+        rows_text=rows,
+    )
+    assert r["counts"]["row_contradictions"] == 1
+    assert r["verdict"] == "contradictory"
+    assert r["row_contradictions"][0]["audit_ids"] == ["nx-audit-0001"]
+
+
+def test_denial_detected_from_prose_when_no_polarity_field():
+    """A claim row with no explicit polarity must take its polarity from prose.
+
+    This is the projection layer a real case artifact goes through, so a title
+    that says "did not execute" is read as a denial even when the run never set
+    a polarity field. If it were read as an affirmation, a contradiction would
+    be silently lost.
+    """
+    from nexus.analysis.cross_mode import _claim_from_finding
+
+    rows = _claim_from_finding("2", {
+        "id": "F7", "title": "powershell.exe did not execute on this host",
+        "artifacts": [{"audit_id": "nx-audit-0002"}],
+    })
+    assert rows and rows[0]["polarity"] == "deny"
+    r = check_cross_mode(claims_by_mode={
+        "1": _claims("1", "powershell.exe executed"),
+        "2": rows,
+        "3": _claims("3", "powershell.exe executed"),
+    })
+    assert r["counts"]["contradictions"] == 1
+    assert r["verdict"] == "contradictory"
+
+
+def test_collect_mode_claims_from_a_case(tmp_path):
+    case = tmp_path / "CASE-X"
+    (case / "analysis" / "mode3_runs").mkdir(parents=True)
+    (case / "findings.json").write_text(json.dumps([
+        {"id": "F1", "title": "powershell.exe ran from temp",
+         "artifacts": [{"audit_id": "nx-audit-0001"}]},
+    ]), encoding="utf-8")
+    (case / "analysis" / "mode3_runs" / "M3-1.json").write_text(json.dumps({
+        "candidates": [{"title": "powershell.exe did not run", "claim_kind": "observation",
+                        "audit_ids": ["nx-audit-0002"]}],
+    }), encoding="utf-8")
+    got = collect_mode_claims(case)
+    assert got["1"] and got["3"]
+    r = check_cross_mode(case_dir=case)
+    assert r["verdict"] == "contradictory"
+    p = write_consistency(case, r)
+    assert json.loads(p.read_text(encoding="utf-8"))["verdict"] == "contradictory"
+
+
+def test_tenancy_of_entity_extraction_is_case_insensitive():
+    a = check_cross_mode(claims_by_mode={"1": _claims("1", "POWERSHELL.EXE executed"),
+                                         "2": _claims("2", "powershell.exe executed"), "3": []})
+    assert a["counts"]["shared"] == 1
+
+
+def test_different_entities_do_not_collide():
+    r = check_cross_mode(claims_by_mode={
+        "1": [{"mode": "1", "source": "f1", "key": ["process", "a.exe", "observation"],
+               "polarity": "affirm", "audit_ids": ["nx-audit-0001"], "title": "a.exe ran"}],
+        "2": [{"mode": "2", "source": "f2", "key": ["process", "b.exe", "observation"],
+               "polarity": "affirm", "audit_ids": ["nx-audit-0002"], "title": "b.exe ran"}],
+        "3": [],
+    })
+    assert r["counts"]["contradictions"] == 0
+    assert r["entity_overlap"]["1-2"] == 0.0

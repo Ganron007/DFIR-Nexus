@@ -16,6 +16,8 @@ import tempfile
 import time
 from pathlib import Path
 
+from nexus.audit import normalize_examiner
+
 logger = logging.getLogger(__name__)
 
 PBKDF2_ITERATIONS = 600_000
@@ -36,8 +38,28 @@ def verify_bearer_token(token: str, expected: str) -> bool:
 # Approval Password Auth
 # =============================================================================
 
+def _analyst_slug(analyst: str) -> str:
+    """The password store keys on the same canonical identity the audit chain uses.
+
+    An examiner whose name contains an underscore, dot or space (gate_bot,
+    j.doe, Jane Doe) is stored as a slug everywhere else. Keying the store on
+    the raw string meant the file was written as ``gate_bot.json`` and read as
+    ``gate-bot.json``, so approval failed with a misleading "No password
+    configured". See ``nexus.audit.normalize_examiner``.
+    """
+    return normalize_examiner(analyst)
+
+
 def _password_file(analyst: str) -> Path:
-    return _PASSWORDS_DIR / f"{analyst}.json"
+    return _PASSWORDS_DIR / f"{_analyst_slug(analyst)}.json"
+
+
+def _legacy_password_file(analyst: str) -> Path | None:
+    """The pre-canonicalisation path, for stores written before the fix."""
+    raw = (analyst or "").strip()
+    if not raw or raw == _analyst_slug(analyst):
+        return None
+    return _PASSWORDS_DIR / f"{raw}.json"
 
 
 def has_password(analyst: str) -> bool:
@@ -46,14 +68,52 @@ def has_password(analyst: str) -> bool:
     return entry is not None
 
 
-def _load_password_entry(analyst: str) -> dict | None:
-    path = _password_file(analyst)
+def _adopt_misnamed_entry(slug: str) -> Path | None:
+    """Find a store file written under a pre-canonicalisation name and adopt it.
+
+    Before the slug became the key, the file was named after the raw identity
+    (``gate_bot.json``). An examiner who had already set a password must keep
+    the ability to approve, so the entry is renamed to the canonical name on
+    first read. A rename failure is not fatal - the entry is still returned,
+    just under the old name.
+    """
     try:
-        data = json.loads(path.read_text())
+        for candidate in _PASSWORDS_DIR.glob("*.json"):
+            if candidate.stem == slug:
+                return candidate
+            if normalize_examiner(candidate.stem) != slug:
+                continue
+            target = _PASSWORDS_DIR / f"{slug}.json"
+            if not target.exists():
+                with contextlib.suppress(OSError):
+                    candidate.replace(target)
+                    return target
+            return candidate
+    except OSError:
+        return None
+    return None
+
+
+def _load_password_entry(analyst: str) -> dict | None:
+    slug = _analyst_slug(analyst)
+    for path in (_password_file(analyst), _legacy_password_file(analyst)):
+        if path is None:
+            continue
+        try:
+            data = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError, ValueError):
+            continue
         if isinstance(data, dict) and "hash" in data and "salt" in data:
             return data
+    adopted = _adopt_misnamed_entry(slug)
+    if adopted is None:
+        return None
+    try:
+        data = json.loads(adopted.read_text())
     except (OSError, json.JSONDecodeError, ValueError):
-        pass
+        return None
+    if isinstance(data, dict) and "hash" in data and "salt" in data:
+        return data
     return None
 
 

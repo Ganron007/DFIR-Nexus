@@ -22,6 +22,27 @@ logger = logging.getLogger(__name__)
 _EXAMINER_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,19}$")
 
 
+def normalize_examiner(raw: str | None) -> str:
+    """The one canonical form of an examiner identity.
+
+    Every consumer of an examiner name - the audit chain, the password store,
+    the commit lockout, the verification ledger - must agree on this string. It
+    is factored out of ``resolve_examiner`` because the password store used to
+    key on the *raw* name while the audit chain used the slug: an examiner
+    named ``gate_bot`` wrote ``gate_bot.json`` and then looked up
+    ``gate-bot.json``, so approval was permanently 403 "No password configured".
+    """
+    text = (raw or "").strip().lower().replace(" ", "-").replace("_", "-")
+    slug = re.sub(r"[^a-z0-9-]", "", text)
+    if not slug:
+        return "unknown"
+    if not _EXAMINER_PATTERN.match(slug):
+        slug = slug[:20]
+        if not slug:
+            return "unknown"
+    return slug
+
+
 def resolve_examiner() -> str:
     """Resolve examiner identity.
 
@@ -37,15 +58,7 @@ def resolve_examiner() -> str:
         or os.environ.get("USERNAME")
         or "unknown"
     )
-    slug = raw.strip().lower().replace(" ", "-").replace("_", "-")
-    slug = re.sub(r"[^a-z0-9-]", "", slug)
-    if not slug:
-        slug = "unknown"
-    if not _EXAMINER_PATTERN.match(slug):
-        slug = slug[:20]
-        if not slug:
-            slug = "unknown"
-    return slug
+    return normalize_examiner(raw)
 
 
 _GLOBAL_SEQ: dict[str, int] = {}
