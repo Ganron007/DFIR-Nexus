@@ -7,6 +7,7 @@
 #      /var/log inside the appliance and host)
 skill: container_forensics
 title: Container & Kubernetes investigation — images, overlay layers, runtime
+platform: linux
 description: >-
   Investigate a compromised container or Kubernetes workload: enumerate images
   and running containers from the host, read the container logs and overlay2

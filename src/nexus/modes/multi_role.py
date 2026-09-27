@@ -660,6 +660,11 @@ def stage_run_candidates(
             "mitre_ids": mitre,
             "itm_stage": str(candidate.get("itm_stage") or ""),
             "itm_objects": str(candidate.get("itm_objects") or ""),
+            # Which documented procedure produced this finding, and at which
+            # content version. Without it the examiner cannot tell whether an
+            # agent followed a method or improvised, and skill usage cannot be
+            # measured at all - which is the question Phase 6 will ask.
+            "skill_provenance": list(candidate.get("skill_provenance") or []),
             "examiner_selected": False,
         }
         saved = save_draft_finding(case_dir, draft)
@@ -1623,6 +1628,37 @@ def run_mode2(
             parsed = result.parsed or {}
             state["narrative"] = str(parsed.get("narrative") or "")
             state["candidates"] = parsed.get("findings") or candidates
+
+            # Record which procedures this run actually used. Skills are injected
+            # into each work order's prompt, but nothing said which ones - so
+            # whether an agent followed a documented method or improvised could
+            # not be answered from the case afterwards, and skill usage could not
+            # be measured. Refs carry skill id, content version and KB citations,
+            # so a staged finding traces to the exact procedure text behind it.
+            used: list[dict[str, Any]] = []
+            seen_skills: set[tuple[str, str]] = set()
+            for entry in state.get("orders", []):
+                for ref in (entry.get("skill_refs") or []):
+                    if not isinstance(ref, dict):
+                        continue
+                    key = (str(ref.get("skill") or ""), str(ref.get("version") or ""))
+                    if not key[0] or key in seen_skills:
+                        continue
+                    seen_skills.add(key)
+                    used.append({
+                        "skill": key[0],
+                        "version": ref.get("version"),
+                        "role": ref.get("role"),
+                        "order_id": entry.get("order_id"),
+                        "citations": list(ref.get("citations") or [])[:6],
+                    })
+            state["skills_used"] = used
+            for cand in state.get("candidates") or []:
+                if isinstance(cand, dict) and used and not cand.get("skill_provenance"):
+                    cand["skill_provenance"] = [
+                        {"skill": u["skill"], "version": u["version"], "role": u["role"]}
+                        for u in used
+                    ]
             state["gaps"] = parsed.get("gaps") or []
             state["coverage"] = parsed.get("coverage") or {}
         else:
@@ -1768,3 +1804,4 @@ def latest_run_id(case_dir: Path) -> str:
         return ""
     files = sorted(directory.glob("M2-*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
     return files[0].stem if files else ""
+

@@ -3,6 +3,7 @@
 # kb: 13Cubed WE mod 3 (Fundamentals/In-depth/Tools)
 skill: windows_event_log_analysis
 title: Windows event-log triage — Security/System/Sysmon by hypothesis
+kind: methodology
 description: >-
   Systematic event-log examination: inventory the logs present, map the
   hypothesis to the event IDs that prove it, then correlate across channels.

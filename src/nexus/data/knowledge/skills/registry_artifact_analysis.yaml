@@ -4,6 +4,7 @@
 # kb: FOR500 Book 3 + Registry Analysis Guides (d_770cab5a1915)
 skill: registry_artifact_analysis
 title: Registry-hive analysis — NTUSER/UsrClass/SYSTEM/SOFTWARE user + OS activity
+kind: methodology
 description: >-
   The registry answers two questions most artifacts cannot: what the USER
   did (Explorer MRUs, ShellBags, UserAssist, searches) and how the OS is

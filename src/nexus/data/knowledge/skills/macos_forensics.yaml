@@ -9,6 +9,7 @@
 #      Manifest.plist IsEncrypted, Elcomsoft/backup tooling)
 skill: macos_forensics
 title: macOS host investigation — APFS, unified log, launchd, quarantine, TCC
+platform: macos
 description: >-
   Investigate a suspected-compromised macOS host: acquire and mount the APFS
   volume, read the Apple Unified Log, enumerate launchd/login-item persistence,

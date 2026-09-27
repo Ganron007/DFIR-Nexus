@@ -22,6 +22,68 @@ _KEY_WEIGHT = 2
 _FAM_WEIGHT = 1
 
 
+# A trigger family that is a generic *output format* is not evidence of anything.
+# Every case in a Windows corpus has a `csv` family because that is how the
+# parsers write, so a skill listing csv/jsonl in its trigger families fires on
+# every case regardless of content - which is how `mobile_forensics` surfaced on a
+# Windows EVTX investigation. Formatting is not a finding.
+_NON_DISCRIMINATIVE_FAMILIES = frozenset({
+    "csv", "tsv", "jsonl", "json", "txt", "log", "xml", "html", "md",
+    "sqlite", "db", "dat", "bin", "output", "raw", "text",
+})
+
+# Platform-specific skills must not fire on a case from another platform. The 37
+# skills carried no platform field at all, so `mobile_forensics`, `macos_forensics`,
+# `linux_compromise` and `container_forensics` were indistinguishable from Windows
+# skills to the matcher.
+_SKILL_PLATFORMS = frozenset({"windows", "linux", "macos", "mobile", "any"})
+
+# Windows parser/artifact families, used to infer a case's platform.
+_WINDOWS_FAMILIES = frozenset({
+    "evtx", "evtxecmd", "hayabusa", "chainsaw", "suzaku", "sysmon", "security",
+    "system", "application", "prefetch", "pecmd", "amcache", "appcompat",
+    "mft", "mftecmd", "usn", "i30", "registry", "recmd", "lnk", "lecmd",
+    "jlecmd", "jumplist", "srum", "srumecmd", "sru", "shimcache", "setupapi",
+    "services", "scheduled_tasks", "bits", "tasks", "wmi", "wer",
+    "rpcmd", "recycle", "shellbags", "sbecmd", "thumbcache",
+})
+_LINUX_FAMILIES = frozenset({
+    "syslog", "authlog", "journal", "journald", "bash_history", "systemd",
+    "sysdig", "audit", "wtmp", "btmp", "lastlog", "cron",
+})
+
+
+def skill_platforms(skill: dict[str, Any]) -> set[str]:
+    """The platforms a skill applies to. Absent or unrecognised means ``any``."""
+    raw = skill.get("platform") or skill.get("platforms")
+    if raw is None:
+        return {"any"}
+    if isinstance(raw, str):
+        raw = [raw]
+    out = {str(p).strip().lower() for p in raw if str(p).strip()}
+    out &= _SKILL_PLATFORMS
+    return out or {"any"}
+
+
+def infer_case_platform(families) -> set[str]:
+    """Platforms a set of parser families is consistent with."""
+    fams = {str(f).lower().strip() for f in (families or ()) if str(f).strip()}
+    out: set[str] = set()
+    if fams & _WINDOWS_FAMILIES:
+        out.add("windows")
+    if fams & _LINUX_FAMILIES:
+        out.add("linux")
+    return out or {"any"}
+
+
+def platform_compatible(skill: dict[str, Any], case_platforms: set[str]) -> bool:
+    """False when a skill is scoped to a platform the case is not from."""
+    declared = skill_platforms(skill)
+    if "any" in declared or "any" in case_platforms:
+        return True
+    return bool(declared & case_platforms)
+
+
 def _score_skill(
     skill: dict[str, Any],
     fams: set[str],
@@ -41,7 +103,9 @@ def _score_skill(
         score += _KEY_WEIGHT * len(hit)
         why.extend(f"keyword {k}" for k in sorted(hit))
     if fams:
-        hit = fams & {str(f).lower() for f in (trig.get("families") or [])}
+        declared = {str(f).lower() for f in (trig.get("families") or [])}
+        # A generic output format is not evidence of a hypothesis.
+        hit = (fams & declared) - _NON_DISCRIMINATIVE_FAMILIES
         score += _FAM_WEIGHT * len(hit)
         why.extend(f"family {f}" for f in sorted(hit))
     return score, why[:6]
@@ -58,6 +122,40 @@ def _context(
     return fams, kws, techs
 
 
+def _surfaceable(
+    skill: dict[str, Any],
+    score: int,
+    kws: set[str],
+    techs: set[str],
+    fams: set[str],
+) -> bool:
+    """Whether a positive score is enough to hand this skill to an agent.
+
+    A single family hit is weak: a skill whose trigger lists eight Windows
+    families - USB, timeline, event-log methodology - matches *any* EVTX case, so
+    every hypothesis surfaced on every case and the analyst got noise instead of
+    a lead. Two rules close that:
+
+    * A skill explicitly marked ``kind: methodology`` is satisfied by one family,
+      because the artifact type *is* its subject - "how to read event logs" is
+      the right skill to hand someone holding an event log.
+    * Otherwise a keyword or technique hit is required, or the case must have
+      matched **two or more** of the skill's declared families. A combination is
+      the signal: LNK + prefetch + browser artifacts together are the
+      initial-access signature, while a single `evtx` hit should not hand an
+      analyst a USB hypothesis.
+    """
+    if str(skill.get("kind") or "").lower() == "methodology":
+        return True
+    trig = skill.get("trigger") or {}
+    if kws & {str(k).lower() for k in (trig.get("keywords") or [])}:
+        return True
+    if techs & {str(x).upper() for x in (trig.get("techniques") or [])}:
+        return True
+    declared = {str(f).lower() for f in (trig.get("families") or [])} - _NON_DISCRIMINATIVE_FAMILIES
+    return len(fams & declared) >= 2
+
+
 def skills_for(
     families: set[str] | list[str] | None = None,
     keywords: set[str] | list[str] | None = None,
@@ -71,12 +169,18 @@ def skills_for(
     run procedures that are relevant to the evidence and suspicion.
     """
     fams, kws, techs = _context(families, keywords, techniques)
+    case_platforms = infer_case_platform(fams)
     scored: list[tuple[int, dict[str, Any]]] = []
     for skill in get_skills():
         if validate_skill(skill):
             continue
+        # A skill scoped to another platform never fires. Without this,
+        # `mobile_forensics` surfaced on a Windows EVTX case because its
+        # trigger listed csv/jsonl - output formats every case has.
+        if not platform_compatible(skill, case_platforms):
+            continue
         score, _why = _score_skill(skill, fams, kws, techs)
-        if score > 0:
+        if score > 0 and _surfaceable(skill, score, kws, techs, fams):
             scored.append((score, skill))
     scored.sort(key=lambda t: -t[0])
     return [s for _score, s in scored[: max(1, limit)]]

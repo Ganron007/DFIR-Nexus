@@ -4,6 +4,7 @@
 # kb: BTL1 M5 (order of volatility, chain of custody, live acquisition)
 skill: evidence_acquisition_handling
 title: Evidence acquisition & handling — volatility order, imaging, hashing, custody
+kind: methodology
 description: >-
   How evidence enters the case correctly: acquire in volatility order
   (memory first, then triage, then disk), check encryption before pulling

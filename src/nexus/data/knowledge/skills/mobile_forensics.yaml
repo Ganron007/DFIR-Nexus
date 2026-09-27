@@ -8,6 +8,7 @@
 #      Date, WasPasscodeSet; backup metadata)
 skill: mobile_forensics
 title: Mobile device investigation — Android/iOS acquisition and app artifacts
+platform: mobile
 description: >-
   Investigate a mobile device (Android or iOS): choose and validate the
   acquisition method (logical vs file-system), decrypt and parse iOS backups,
