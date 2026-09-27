@@ -16,6 +16,8 @@ L1.6  the WP 10.4 seal verifies at approval
 L1.7  every count in the prose replays from Elasticsearch
 L1.8  no contradiction with another mode or with the raw rows
 L1.9  coverage is declared (tools / sources / needles)
+L1.10 a cited row corroborates the claim, rather than merely naming the
+       entity somewhere in an unstructured data blob
 =====  ==========================================================
 
 Claim verdict:
@@ -68,6 +70,7 @@ CHECKS = {
     "L1.7": "count in the prose replays from the index",
     "L1.8": "no contradiction with another mode or the raw rows",
     "L1.9": "coverage is declared",
+    "L1.10": "cited row corroborates the claim (not just a mention in a data blob)",
 }
 
 _TECHNIQUE_RE = re.compile(r"\bT\d{4}(?:\.\d{3})?\b", re.I)
@@ -354,15 +357,22 @@ def _l1_9(res, coverage=None, **_kw) -> None:
 # claim / case
 # --------------------------------------------------------------------------
 
+# Checks that describe the *case*, not an individual claim. Folding them into
+# every claim's verdict makes one coverage gap mark all N claims UNSUPPORTED and
+# buries the per-claim signal that actually needs review. They are still run and
+# still reported - once, at case level.
+_CASE_LEVEL_CHECKS = frozenset({"L1.9"})
+
 _VERDICT_RANK = {"UNVERIFIABLE": 0, "UNSUPPORTED": 1, "CONTRADICTED": 2, "PROVEN": 3}
 
 
 def _verdict_for(results: dict[str, dict[str, Any]]) -> str:
-    if any(r["status"] == "fail" and _is_contradiction(r) for r in results.values()):
+    claim_results = {k: v for k, v in results.items() if k not in _CASE_LEVEL_CHECKS}
+    if any(r["status"] == "fail" and _is_contradiction(r) for r in claim_results.values()):
         return "CONTRADICTED"
-    if any(r["status"] == "fail" for r in results.values()):
+    if any(r["status"] == "fail" for r in claim_results.values()):
         return "UNSUPPORTED"
-    ran = [r for r in results.values() if r["status"] in {"pass", "unverifiable", "fail"}]
+    ran = [r for r in claim_results.values() if r["status"] in {"pass", "unverifiable", "fail"}]
     if not ran:
         return "UNVERIFIABLE"
     if any(r["status"] == "unverifiable" for r in ran):
@@ -373,6 +383,93 @@ def _verdict_for(results: dict[str, dict[str, Any]]) -> str:
 def _is_contradiction(entry: dict[str, Any]) -> bool:
     d = (entry.get("detail") or "").lower()
     return "another mode" in d or "rows deny" in d or "contradict" in d
+
+
+def _claim_subjects(finding: dict[str, Any]) -> list[str]:
+    """What the claim is *about* - the things a row must corroborate.
+
+    A Mode 1 finding is titled ``Signal: <needle> - N hit(s)``, and the needle is
+    a bare term like ``sdelete`` or ``pid_`` that the entity extractor (which
+    looks for executables, domains, paths, hashes) cannot see. Checking nothing
+    would let exactly the case this check exists for pass untouched, so the
+    needle is lifted from the title and checked alongside any real entities.
+    """
+    from nexus.analysis.cross_mode import _entities
+
+    out: list[str] = []
+    m = re.search(r"signal\s*:\s*([^-\u2014\u2013(\n]{2,80}?)\s*(?:[-\u2014\u2013]|\(|$)",
+                  _text(finding), re.I)
+    if m:
+        needle = m.group(1).strip().strip("*`")
+        if len(needle) >= 2:
+            out.append(needle.lower())
+    out.extend(v for _t, v in _entities(_text(finding)))
+    seen: set[str] = set()
+    uniq = []
+    for s in out:
+        if s and s not in seen:
+            seen.add(s)
+            uniq.append(s)
+    return uniq
+
+
+def _l1_10(finding, res, **_kw) -> None:
+    """Does each cited row *corroborate* the claim, or merely mention the entity?
+
+    The Mode 1 needle scan matches a substring anywhere in a row, including
+    inside an unstructured data blob. The corpus has a real case: a `sdelete`
+    needle matched a System Restore event (EventID 8194, "Restore point created
+    successfully") whose Data field merely *lists* sdelete among the applications
+    registered for the restore point. The row mentions the entity; it does not
+    evidence it. "Signal: sdelete - 1 hit(s)" reads as though it did.
+
+    So: the subject of the claim must appear in a descriptor field (detail,
+    title, source, provider, artifact) rather than only in a free-text blob.
+    A row with no descriptor fields at all cannot be judged either way, so it is
+    skipped rather than counted as corroboration.
+    """
+    rows = finding.get("evidence")
+    if not isinstance(rows, list) or not rows:
+        _check(res, "L1.10", "skipped", "no evidence rows attached")
+        return
+    subjects = _claim_subjects(finding)
+    if not subjects:
+        _check(res, "L1.10", "skipped", "no claim subject to corroborate")
+        return
+
+    descriptor_fields = ("detail", "title", "source", "provider", "artifact",
+                         "event_id", "mapdescription", "rule", "rule_title")
+    mention_only: list[str] = []
+    judged = 0
+    for i, row in enumerate(rows):
+        if not isinstance(row, dict):
+            continue
+        fields = row.get("fields")
+        blob = " ".join(str(row.get(k) or "") for k in descriptor_fields)
+        if isinstance(fields, dict):
+            blob += " " + " ".join(
+                str(fields.get(k) or "")
+                for k in ("MapDescription", "RuleTitle", "Provider", "EventId", "Task")
+            )
+        blob_low = blob.lower()
+        if not blob_low.strip():
+            continue
+        judged += 1
+        if not any(s in blob_low for s in subjects):
+            mention_only.append(
+                f"row[{i}] {str(row.get('loc') or row.get('source') or '')[:60]}"
+            )
+    if mention_only:
+        _check(res, "L1.10", "fail",
+               f"{len(mention_only)} cited row(s) name the subject only in an "
+               f"unstructured data field - a mention, not an instance",
+               evidence=mention_only[:8])
+        return
+    if not judged:
+        _check(res, "L1.10", "skipped",
+               "no cited row carries descriptor fields, so corroboration is unknown")
+        return
+    _check(res, "L1.10", "pass", f"{judged} cited row(s) corroborate the claim subject")
 
 
 def verify_claim(
@@ -398,6 +495,7 @@ def verify_claim(
     _l1_7(finding, res, replay=replay)
     _l1_8(finding, res, cross_mode=cross_mode)
     _l1_9(res, coverage=coverage)
+    _l1_10(finding, res)
 
     counts = {"pass": 0, "fail": 0, "unverifiable": 0, "skipped": 0}
     for entry in res.values():
@@ -410,7 +508,6 @@ def verify_claim(
         "checks": res,
         "counts": counts,
     }
-
 
 def verify_case(
     case_dir: Path,
@@ -455,12 +552,25 @@ def verify_case(
     tally: dict[str, int] = {v: 0 for v in VERDICTS}
     for r in rows:
         tally[r["verdict"]] = tally.get(r["verdict"], 0) + 1
+
+    # The case-level check, reported once. It does not colour any single claim.
+    coverage_entry: dict[str, Any] = {"status": "unverifiable",
+                                      "detail": "no claim ran this check"}
+    for r in rows:
+        if "L1.9" in (r.get("checks") or {}):
+            coverage_entry = dict(r["checks"]["L1.9"])
+            break
+
+    all_clean = bool(rows) and all(r["verdict"] == "PROVEN" for r in rows)
     return {
         "case_id": case_dir.name,
         "claims": rows,
         "verdict_counts": tally,
-        "overall": "PROVEN" if rows and all(r["verdict"] == "PROVEN" for r in rows) else (
-            "UNVERIFIABLE" if not rows else "MIXED"
+        "case_level": {"L1.9": coverage_entry},
+        "overall": (
+            "PROVEN" if all_clean
+            else "UNVERIFIABLE" if not rows
+            else "MIXED"
         ),
     }
 
@@ -471,6 +581,13 @@ def render_ledger_markdown(ledger: dict[str, Any]) -> str:
     out = ["## Level 1 claim ledger", ""]
     counts = ledger.get("verdict_counts") or {}
     out.append("**Verdicts**  " + "  ".join(f"{k}: {counts.get(k, 0)}" for k in VERDICTS))
+    case_level = ledger.get("case_level") or {}
+    for key, entry in case_level.items():
+        if entry.get("status") in {"fail", "unverifiable"}:
+            out.append(
+                f"**Case-level {key}** ({CHECKS.get(key, '')}): "
+                f"{entry.get('status')} - {entry.get('detail')}"
+            )
     out += ["", "| Claim | Verdict | Failures | Unverifiable |",
             "|-------|---------|----------|--------------|"]
     for c in ledger.get("claims") or ():

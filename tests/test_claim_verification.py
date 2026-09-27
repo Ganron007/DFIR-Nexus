@@ -62,10 +62,36 @@ def test_missing_audit_log_makes_l1_1_unverifiable():
     assert v["verdict"] == "UNVERIFIABLE"
 
 
-def test_coverage_unknown_is_not_a_pass():
+def test_coverage_unknown_is_not_a_pass(tmp_path):
+    """Coverage is a fact about the case, so it is reported once at case level.
+
+    It still must not read as a pass - an unknown coverage audit means coverage
+    could not be proven - but folding it into every claim would mark all of them
+    UNSUPPORTED and bury the per-claim signal.
+    """
     v = verify_claim(_f(), **_good(coverage={"overall": "unknown", "sections": {}}))
     assert v["checks"]["L1.9"]["status"] == "unverifiable"
-    assert v["verdict"] == "UNVERIFIABLE"
+    assert v["verdict"] == "PROVEN", "a case-level check must not colour the claim"
+
+    led = verify_case(tmp_path)
+    assert led["case_level"]["L1.9"]["status"] in {"unverifiable", "fail"}
+
+
+def test_a_coverage_gap_does_not_drive_every_claim_to_unsupported():
+    """The signal this keeps: one coverage gap must not mark all N claims.
+
+    A claim whose only failing check is the case-level L1.9 is not itself
+    unsupported - it has an artifact, resolves, and corroborates. Burying that
+    under a case-wide gap is how a reviewer stops reading the column.
+    """
+    gap = {"overall": "gaps", "sections": {"tools": {"status": "gaps"}}}
+    v = verify_claim(_f(), **_good(coverage=gap))
+    assert v["checks"]["L1.9"]["status"] == "fail"
+    assert v["verdict"] == "PROVEN"
+
+    # A genuine per-claim failure still shows through.
+    v2 = verify_claim(_f(artifacts=[{"audit_id": "nx-invented"}]), **_good(coverage=gap))
+    assert v2["verdict"] == "UNSUPPORTED"
 
 
 def test_a_fully_checked_claim_is_proven():
@@ -262,6 +288,85 @@ def test_markdown_separates_failures_from_could_not_verify(tmp_path):
     assert "**Could not verify**" in md
     assert "L1.9" in md and "L1.3" in md
     assert md.index("**Details**") < md.index("**Could not verify**")
+
+
+def test_l1_10_mention_in_a_data_blob_is_not_corroboration():
+    """The real case: a `sdelete` needle matched a System Restore event.
+
+    EventID 8194 "Restore point created successfully" whose Data field merely
+    lists sdelete among the applications registered for the restore point. The
+    row mentions the entity; it does not evidence it, and "Signal: sdelete -
+    1 hit(s)" reads as though it did. A needle matches a substring anywhere in
+    a row, so nothing upstream will catch this on its own.
+    """
+    f = _f(
+        title="Signal: sdelete - 1 hit(s) across evtxecmd",
+        evidence=[{
+            "time": "2020-11-14T13:48:07",
+            "source": "evtxecmd/EvtxECmd_Output.csv",
+            "artifact": "evtxecmd/EvtxECmd_Output.csv",
+            "detail": "MapDescription: Restore point created successfully",
+            "loc": "evtxecmd/EvtxECmd_Output.csv:2272",
+            "fields": {"EventId": "8194", "Provider": "System Restore",
+                       "Data": 'systempropertiesprotection.exe, sdelete'},
+        }],
+    )
+    v = verify_claim(f, **_good())
+    assert v["checks"]["L1.10"]["status"] == "fail", v["checks"]["L1.10"]
+    assert "mention, not an instance" in v["checks"]["L1.10"]["detail"]
+    assert v["verdict"] == "UNSUPPORTED"
+
+
+def test_l1_10_a_row_that_names_the_entity_passes():
+    f = _f(
+        title="Signal: powershell.exe - 11 hit(s) across hayabusa",
+        evidence=[{
+            "time": "2020-11-02T18:38:46",
+            "source": "hayabusa/evtx-timeline.csv",
+            "artifact": "hayabusa/evtx-timeline.csv",
+            "detail": "powershell.exe launched an encoded command from temp",
+            "loc": "hayabusa/evtx-timeline.csv:41",
+            "fields": {"EventId": "4104", "Provider": "Microsoft-Windows-PowerShell"},
+        }],
+    )
+    v = verify_claim(f, **_good())
+    assert v["checks"]["L1.10"]["status"] == "pass", v["checks"]["L1.10"]
+
+
+def test_l1_10_skipped_when_there_are_no_evidence_rows():
+    v = verify_claim(_f(), **_good())
+    assert v["checks"]["L1.10"]["status"] == "skipped"
+
+
+def test_l1_10_skipped_when_the_claim_names_no_subject():
+    """No needle and no entity means there is nothing a row could corroborate."""
+    f = _f(title="An unexplained event occurred on the host",
+           evidence=[{"detail": "something happened", "source": "x.csv"}])
+    v = verify_claim(f, **_good())
+    assert v["checks"]["L1.10"]["status"] == "skipped", v["checks"]["L1.10"]
+
+
+def test_l1_10_the_needle_is_the_claim_subject():
+    """A bare needle is the subject even when the entity extractor sees nothing.
+
+    `sdelete` and `pid_` are bare terms - no `.exe`, no path, no domain - so
+    without lifting the needle from the title this check would have nothing to
+    test and would pass the exact case it exists to catch.
+    """
+    from nexus.analysis.claim_verification import _claim_subjects
+
+    assert "sdelete" in _claim_subjects({"title": "Signal: sdelete - 1 hit(s) across evtxecmd"})
+    assert "pid_" in _claim_subjects({"title": "Signal: pid_ - 2+ hit(s) across hayabusa"})
+    assert _claim_subjects({"title": "An unexplained event occurred"}) == []
+
+
+def test_l1_10_a_blank_descriptor_is_not_held_against_the_finding():
+    """A row with no descriptor fields at all cannot corroborate, but it also
+    cannot be shown to be a false citation - it stays skipped, not failed."""
+    f = _f(title="Signal: powershell.exe - 1 hit(s)",
+           evidence=[{"loc": "x.csv:9"}])
+    v = verify_claim(f, **_good())
+    assert v["checks"]["L1.10"]["status"] == "skipped"
 
 
 def test_verdict_vocabulary_is_fixed():
