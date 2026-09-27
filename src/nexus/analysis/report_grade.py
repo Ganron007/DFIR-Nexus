@@ -88,11 +88,21 @@ FINDING_CLASSES = ("CONFIRMED", "INDICATED", "REFUTED", "UNRESOLVED")
 
 _MAX = 5
 
-# Language that asserts more than the artifact set can carry. Each pattern is
-# (regex, axis_penalised, points). A report carrying these without a scope
-# statement is the classic overclaim and drops the class to C or below.
+# Language that asserts more than the artifact set can carry.
+#
+# Two things are deliberately NOT here. A bare "prove(s)" is not an overclaim
+# signal: this corpus writes "the current evidence only proves a Winlogon-to-LSA
+# registration", "the cluster is insufficient to prove phishing delivery", "map
+# the hypothesis to the event IDs that prove it", "Failures prove spoofing" and
+# "**Interpretation** Prove what was deleted, when, and by which path". Those
+# are limitations, methodology and general rules - scoring them as overclaims
+# penalises the report for writing correctly, and an axis that fires on good
+# writing is worse than a slightly weaker axis. Invented entities and invented
+# counts are already caught mechanically by L1.1 and L1.3.
+#
+# So the list holds only phrases that are overclaiming *about this case*, and
+# only count when no negation or limiting word shares the sentence.
 _OVERCLAIM: tuple[tuple[re.Pattern[str], int], ...] = (
-    (re.compile(r"\bproves?\b", re.I), 1),
     (re.compile(r"\bconfirms?\s+(?:that\s+)?(?:the\s+)?(?:attacker|adversary|intruder)\b", re.I), 1),
     (re.compile(r"\b(?:definitely|certainly|undoubtedly|unquestionably)\b", re.I), 1),
     (re.compile(r"\bfully\s+(?:determined|established|reconstructed)\b", re.I), 1),
@@ -100,6 +110,35 @@ _OVERCLAIM: tuple[tuple[re.Pattern[str], int], ...] = (
     (re.compile(r"\bno\s+other\s+(?:activity|artifacts?|evidence)\b", re.I), 1),
     (re.compile(r"\b(?:all|every)\s+(?:activity|execution|artifact)\s+(?:was|is)\s+(?:captured|accounted|covered)\b", re.I), 1),
     (re.compile(r"\bruled\s+out\b", re.I), 1),
+    (re.compile(r"\b(?:establishes|establish)\s+(?:that\s+)?(?:the\s+)?"
+                r"(?:attacker|adversary|intruder|compromise|breach)\s+(?:occurred|happened|took\s+place)\b", re.I), 1),
+)
+
+# A hedge or negation in the same sentence makes the statement a claim about the
+# *limits* of the evidence, which is exactly what a defensible report does.
+_HEDGE = re.compile(
+    r"\b(?:only|just|merely|not|no|never|cannot|can\s+not|does\s+not|doesn't|do\s+not|don't|"
+    r"did\s+not|didn't|is\s+not|isn't|was\s+not|wasn't|were\s+not|weren't|"
+    r"insufficient|unable|fails?\s+to|nothing\s+in|absent|without)\b",
+    re.I,
+)
+
+# Knowledge-base statistics are not evidence-scope claims. The corpus prints
+# "1160 capa-YARA rules (50 families)" in its ATT&CK/MBC reference block; reading
+# that as the report's evidence scope accuses a report of overstating a scope
+# it never claimed - which is what the first graded run of this corpus did.
+_SCOPE_COUNT_CONTEXT = re.compile(
+    r"(?:evidence\s+registry|registry\s+size|registered\s+items?|files?\s+(?:were|was)\s+"
+    r"(?:registered|examined|collected|analyzed|analysed|ingested)|evidence\s+set|"
+    r"artifact\s+count|sources?\s*:|this\s+report\s+covers|scope\s+of|"
+    r"\bparsed\b|\bingested\b|\bexamined\b|\bregistered\b)",
+    re.I,
+)
+# Nouns that are inventory of the *knowledge base*, not of the case.
+_KB_COUNT_NOUNS = re.compile(
+    r"\b(?:techniques?|mitigations?|behaviors?|methods?|rules?|case\s+studies|"
+    r"detections?|signatures|queries|indicators?\s+in\s+the\s+corpus)\b",
+    re.I,
 )
 
 # Sections that disclose limits. Matched against headings, so a report needs a
@@ -125,6 +164,86 @@ _ROW_REF_RE = re.compile(r"\b[\w./\\-]+\.(?:csv|jsonl?|log|txt|evtx|db|dat|exe|d
 
 def _norm(value: Any) -> str:
     return str(value or "").strip()
+
+
+def _sentences(markdown: str) -> list[str]:
+    """Sentence-ish units, so a hedge elsewhere in the line does not hide a claim."""
+    out: list[str] = []
+    for raw in markdown.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or line.startswith("|"):
+            continue
+        for part in re.split(r"(?<=[.;!?])\s+", line):
+            part = part.strip()
+            if part:
+                out.append(part)
+    return out
+
+
+def _unhedged_overclaims(markdown: str) -> list[str]:
+    """Overclaim phrases with no negation or limiting word in the same sentence."""
+    hits: list[str] = []
+    for sentence in _sentences(markdown):
+        if _HEDGE.search(sentence):
+            continue
+        for pattern, _points in _OVERCLAIM:
+            if pattern.search(sentence):
+                hits.append(pattern.pattern)
+    return hits
+
+
+def _scope_count_claims(markdown: str) -> list[tuple[int, str]]:
+    """Numbers asserted as *this case's* evidence scope.
+
+    Only counted inside a sentence that actually talks about the evidence set.
+    A number elsewhere - a knowledge-base statistic, a byte size, a count of
+    samples - says nothing about scope, and treating it as a scope claim
+    manufactures an inconsistency that is not there.
+    """
+    out: list[tuple[int, str]] = []
+    for sentence in _sentences(markdown):
+        if not _SCOPE_COUNT_CONTEXT.search(sentence):
+            continue
+        for m in re.finditer(
+            r"\b(\d[\d,]{0,8})\s+([a-z]+(?:s|es)?)\b", sentence, re.I
+        ):
+            # "EventID 4611 row", "Event ID 4624 record": an identifier, not a
+            # count. The corpus is full of them, and reading one as a scope
+            # claim is how a 22-file case got accused of claiming 4611 sources.
+            before = sentence[max(0, m.start() - 24):m.start()]
+            if re.search(r"(?:event\s*id|eventid|\bid|\bcode|\bopcode|\bsid|"
+                         r"\b4624|\b4625|\b4648|\b4672|\b4673)\s*[:=]?\s*$",
+                         before, re.I):
+                continue
+            noun = m.group(2).lower()
+            if not re.match(
+                r"^(source|file|artifact|evidence|record|event|row|hit|item|"
+                r"entry|document|log|registry|signal|finding)", noun
+            ):
+                continue
+            if _KB_COUNT_NOUNS.search(noun):
+                continue
+            try:
+                out.append((int(m.group(1).replace(",", "")), noun))
+            except ValueError:
+                continue
+    return out
+
+
+def _strip_appended_sections(markdown: str) -> str:
+    """Drop the grade / ledger / cross-mode blocks this tool appends.
+
+    Grading a report that already carries a grade must grade the same document:
+    otherwise the grader reads its own note ("report states 50 source(s)") as
+    evidence, and re-grading is not idempotent.
+    """
+    cut = len(markdown)
+    for heading in ("## Report quality grade", "## Level 1 claim ledger",
+                    "## Cross-mode consistency"):
+        i = markdown.find(heading)
+        if i > 0:
+            cut = min(cut, i)
+    return markdown[:cut]
 
 
 def _headings(markdown: str) -> list[str]:
@@ -286,17 +405,17 @@ def _score_axes(
         for aid in sorted(_collect_audit_ids(findings)):
             if aid not in known_audit_ids:
                 fabricated.append(aid)
-    overclaims = [p.pattern for p, _ in _OVERCLAIM if p.search(body)]
+    overclaims = _unhedged_overclaims(body)
     nf = _MAX
     if fabricated:
         nf = 0
         notes.append(f"non_fabrication: {len(fabricated)} cited audit id(s) do not exist")
     elif len(overclaims) >= 3:
         nf = 1
-        notes.append("non_fabrication: repeated overclaiming language")
+        notes.append("non_fabrication: repeated unhedged overclaiming language")
     elif overclaims:
         nf = 3
-        notes.append(f"non_fabrication: {len(overclaims)} overclaiming phrase(s)")
+        notes.append(f"non_fabrication: {len(overclaims)} unhedged overclaiming phrase(s)")
 
     # --- traceability ----------------------------------------------------
     per_finding = sum(1 for f in findings if _collect_audit_ids([f]))
@@ -328,13 +447,14 @@ def _score_axes(
         sh = 3
     if has_scope and _mentions_partial_processing(body):
         sh = _MAX
-    if evidence_count and has_scope:
-        m = re.search(r"\b(\d+)\s+(?:files?|artifacts?|sources?|families)\b", lower)
-        if m and abs(int(m.group(1)) - evidence_count) > max(3, evidence_count // 2):
-            sh = min(sh, 2)
-            notes.append(
-                f"scope_honesty: report states {m.group(1)} source(s); {evidence_count} were registered"
-            )
+    if evidence_count:
+        for claimed, noun in _scope_count_claims(body):
+            if abs(claimed - evidence_count) > max(3, evidence_count // 2):
+                sh = min(sh, 2)
+                notes.append(
+                    f"scope_honesty: the report states {claimed} {noun}(s) "
+                    f"were examined; {evidence_count} were registered"
+                )
     if sh < _MAX:
         notes.append("scope_honesty: the report does not say what was and was not examined")
 
@@ -413,7 +533,7 @@ def grade_report(
     case_id: str = "",
 ) -> dict[str, Any]:
     """Grade a rendered report. Pure function: same inputs, same output."""
-    md = markdown or ""
+    md = _strip_appended_sections(markdown or "")
     fs = [f for f in (findings or ()) if isinstance(f, dict)]
     ec = int(evidence_count or 0)
 

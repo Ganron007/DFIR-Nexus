@@ -111,6 +111,130 @@ def test_missing_limitations_caps_the_class_at_c():
     assert g["axes"]["limitations"]["score"] < 5
 
 
+def test_hedged_prove_is_not_an_overclaim():
+    """`prove` in a limiting sentence is the careful statement, not the overclaim.
+
+    Every one of these is real corpus text. Scoring them as overclaims would
+    penalise the report for saying what it could not show.
+    """
+    md = (
+        "## Findings\n\n### LSA registration\n\n"
+        "The current evidence only proves a Winlogon-to-LSA registration occurred.\n\n"
+        "These rows do not by themselves prove data staging or exfiltration.\n\n"
+        "The cluster is insufficient to prove phishing delivery, user interaction, or host-side effects.\n\n"
+        "## Limitations\n\nNothing in these rows supports an outcome claim.\n"
+    )
+    g = grade_report(markdown=md, findings=[_finding(n_art=2, n_audit=2)],
+                     known_audit_ids=AUDIT, evidence_count=2)
+    assert g["axes"]["non_fabrication"]["score"] == 5, g["why_not_higher"]
+
+
+def test_prove_in_methodology_and_general_rules_is_not_an_overclaim():
+    """`prove` is not an overclaim signal at all.
+
+    These are also verbatim corpus text: methodology instruction, a general
+    DMARC rule, and an imperative to the analyst. None of them asserts anything
+    about this case, so none of them is an overclaim. Invented entities and
+    invented counts are L1.1/L1.3's job, not this axis's.
+    """
+    md = (
+        "## Method\n\n"
+        "Systematic event-log examination: inventory the logs present, map the "
+        "hypothesis to the event IDs that prove it, then correlate across channels.\n\n"
+        "## Findings\n\n### Header analysis\n\n"
+        "Failures prove spoofing; passes on a lookalike domain still prove the "
+        "infrastructure used.\n\n"
+        "**Interpretation** Prove what was deleted, when, and by which path.\n\n"
+        "## Scope\n\n2 files were registered as evidence.\n\n"
+        "## Limitations\n\nOther families were not parsed.\n"
+    )
+    g = grade_report(markdown=md, findings=[_finding(n_art=2, n_audit=2)],
+                     known_audit_ids=AUDIT, evidence_count=2)
+    assert g["axes"]["non_fabrication"]["score"] == 5, g["why_not_higher"]
+
+
+def test_unhedged_absolute_still_counts():
+    md = (
+        "## Findings\n\n### Execution\n\n"
+        "The event log **definitely** establishes that the compromise occurred "
+        "and this is the **complete picture** of the intrusion.\n\n"
+        "## Scope\n\n2 files were registered as evidence.\n\n"
+        "## Limitations\n\nOther families were not parsed.\n"
+    )
+    g = grade_report(markdown=md, findings=[_finding(n_art=2, n_audit=2)],
+                     known_audit_ids=AUDIT, evidence_count=2)
+    assert g["axes"]["non_fabrication"]["score"] < 5
+    assert any("overclaiming" in n for n in g["why_not_higher"])
+
+
+def test_event_ids_are_identifiers_not_scope_counts():
+    """`EventID 4611 row` is an identifier. Reading it as a count accused a
+    22-file case of claiming 4611 examined sources."""
+    md = (
+        "## Findings\n\n### LSA registration\n\n"
+        "The EventID 4611 row does not include the registered DLL path.\n\n"
+        "Retrieve the complete EventID 4611 record and compare Event ID 4624 events.\n\n"
+        "## Scope\n\n22 files were registered as evidence.\n\n"
+        "## Limitations\n\nSome families were not parsed.\n"
+    )
+    g = grade_report(markdown=md, findings=[_finding(n_art=2, n_audit=2)],
+                     known_audit_ids=AUDIT, evidence_count=22)
+    assert g["axes"]["scope_honesty"]["score"] == 5, g["why_not_higher"]
+
+
+def test_knowledge_base_statistics_are_not_a_scope_claim():
+    """`1160 capa-YARA rules (50 families)` is a KB figure, not this case's scope.
+
+    Reading it as an evidence-scope count accused a graded report of
+    overstating a scope it never claimed.
+    """
+    md = (
+        "## Findings\n\n### Execution\n\nA prefetch row shows it ran.\n\n"
+        "## Attack knowledge\n\n"
+        "MITRE ATT&CK: 170 techniques / 35 mitigations / 57 case studies.\n"
+        "MITRE MBC: 150 behaviors / 482 methods / 1160 capa-YARA rules (50 families).\n\n"
+        "## Scope\n\n22 files were registered as evidence.\n\n"
+        "## Limitations\n\nSome families were not parsed.\n"
+    )
+    g = grade_report(markdown=md, findings=[_finding(n_art=2, n_audit=2)],
+                     known_audit_ids=AUDIT, evidence_count=22)
+    assert g["axes"]["scope_honesty"]["score"] == 5, g["why_not_higher"]
+    assert not any("50" in n for n in g["why_not_higher"])
+
+
+def test_a_real_scope_mismatch_is_still_caught():
+    md = (
+        "## Findings\n\n### Execution\n\nA row shows it ran.\n\n"
+        "## Scope\n\n3 files were registered as evidence.\n\n"
+        "## Limitations\n\nOther families were not parsed.\n"
+    )
+    g = grade_report(markdown=md, findings=[_finding(n_art=2, n_audit=2)],
+                     known_audit_ids=AUDIT, evidence_count=200)
+    assert g["axes"]["scope_honesty"]["score"] <= 2
+    assert any("200" in n or "3" in n for n in g["why_not_higher"])
+
+
+def test_grading_a_graded_report_is_idempotent():
+    """Acceptance, the hard form: the grader must not read its own output.
+
+    Its own note says "report states 50 source(s); 22 were registered", which a
+    re-grade would otherwise pick up as a scope claim - a self-referential
+    finding that grows on every regeneration.
+    """
+    md = (
+        "## Findings\n\n### Execution\n\nA prefetch row shows it ran.\n\n"
+        "## Scope\n\n22 files were registered as evidence.\n\n"
+        "## Limitations\n\nSome families were not parsed.\n"
+    )
+    first = grade_report(markdown=md, findings=[_finding(n_art=2, n_audit=2)],
+                         known_audit_ids=AUDIT, evidence_count=22)
+    once = f"{md}\n---\n\n{render_grade_markdown(first)}"
+    second = grade_report(markdown=once, findings=[_finding(n_art=2, n_audit=2)],
+                          known_audit_ids=AUDIT, evidence_count=22)
+    assert json.dumps(first, sort_keys=True) == json.dumps(second, sort_keys=True)
+    assert not any("50" in n for n in second["why_not_higher"])
+
+
 def test_scope_count_mismatch_is_penalised():
     md = (
         "## Scope\n\n3 files were registered.\n\n"
