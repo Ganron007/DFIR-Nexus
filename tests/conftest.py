@@ -60,6 +60,23 @@ def _isolated_case_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("NEXUS_ES_URL", "")
     monkeypatch.setenv("NEXUS_ES_AUTOINDEX", "0")
 
+    # The password store is the one directory a test must never reach: it holds
+    # the examiner's real approval credential, and writing to it does not fail -
+    # it silently replaces the credential with whatever the test made up. That
+    # happened: an early draft of `test_examiner_identity_store.py` wrote its
+    # fixture names into `~/.nexus/passwords/` and overwrote `gate-bot.json` with
+    # `{"hash": "h", "salt": "s", "iterations": 1}`, leaving the real examiner
+    # unable to approve anything.
+    #
+    # Redirected here rather than in each test so it cannot be forgotten. A test
+    # that wants to exercise the store patches its own tmp copy on top of this.
+    import nexus.auth as _auth
+
+    _pw_dir = tmp_path / "passwords"
+    _pw_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(_auth, "_PASSWORDS_DIR", _pw_dir)
+    monkeypatch.setattr(_auth, "_LOCKOUT_FILE", tmp_path / "approval_lockout")
+
     # Module-level constants captured the real path at import time.
     for mod_name, attr in (
         ("nexus.cli.case_cmd", "_ACTIVE_CASE_FILE"),
