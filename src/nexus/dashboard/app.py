@@ -7965,6 +7965,19 @@ async def api_mode2_run_status(request):
     results = record.get("results") or []
     candidates = record.get("candidates") or []
     verdicts = record.get("verdicts") or []
+    # Candidates are proposed by workers and pooled by the verifier long before
+    # synthesis assembles the final list; surfacing only `candidates` made a
+    # healthy mid-run state read as "the run found nothing" (D37).
+    candidates_proposed = 0
+    for r in results:
+        parsed = r.get("parsed") or {}
+        candidates_proposed += len(parsed.get("candidate_findings") or [])
+        candidates_proposed += len(parsed.get("findings") or [])
+    verdict_classes: dict[str, int] = {}
+    for v in verdicts:
+        key = str(v.get("class") or "").strip().lower()
+        if key:
+            verdict_classes[key] = verdict_classes.get(key, 0) + 1
     return JSONResponse({
         "run_id": run_id,
         "status": record.get("status"),
@@ -7977,6 +7990,8 @@ async def api_mode2_run_status(request):
         "followup_rounds": record.get("followup_rounds") or 0,
         "results": len(results),
         "candidates": len(candidates),
+        "candidates_proposed": candidates_proposed,
+        "verdict_classes": verdict_classes,
         "gaps": len(record.get("gaps") or []),
         "events": len(events),
         "last_event": events[-1] if events else None,

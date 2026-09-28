@@ -263,6 +263,57 @@ def test_stage_run_candidates_lineage_and_filters(tmp_path):
     assert any(e["event_type"] == "finding.staged" for e in events)
 
 
+def test_backfill_audit_ids_from_matching_titles():
+    verdicts = [
+        {"title": "WMI Consumer Persistence", "class": "confirmed", "audit_ids": []},
+        {"title": "Already has ids", "class": "confirmed", "audit_ids": ["nexus-a"]},
+    ]
+    pool = [
+        {"title": "wmi consumer persistence", "audit_ids": ["nexus-074", "nexus-075"]},
+        {"title": "Already has ids", "audit_ids": ["nexus-b"]},
+    ]
+    assert m3._backfill_audit_ids(verdicts, pool) == 1
+    assert verdicts[0]["audit_ids"] == ["nexus-074", "nexus-075"]
+    assert verdicts[1]["audit_ids"] == ["nexus-a"]
+
+
+def test_backfill_never_invents_ids_for_unmatched_rows():
+    rows = [{"title": "no source for this", "audit_ids": []}]
+    assert m3._backfill_audit_ids(rows, [{"title": "different", "audit_ids": ["x"]}]) == 0
+    assert rows[0]["audit_ids"] == []
+
+
+def test_stage_run_candidates_defaults_severity(tmp_path):
+    """D39: a staged finding must not carry an empty severity.
+
+    The candidate/synthesis schemas named confidence but not severity, so every
+    staged Mode 2 finding had `severity: ""` - sorting and reporting had
+    nothing to read.
+    """
+    case = _case(tmp_path)
+    from nexus.audit import AuditWriter
+
+    audit_id = AuditWriter("nexus", audit_dir=case / "audit").log(
+        tool="es_search", params={"query": "x"}, result_summary={"total": 1},
+        source="portal",
+    )
+    m3._persist_state(case, "M2-sev", {
+        "run_id": "M2-sev", "case_id": case.name, "question": "q",
+        "status": "completed", "orders": [], "order_index": 0, "results": [],
+        "verdicts": [{"title": "Candidate without severity", "class": "confirmed"}],
+        "candidates": [{"title": "Candidate without severity", "observation": "o",
+                        "interpretation": "i", "confidence": "LOW",
+                        "audit_ids": [audit_id]}],
+        "gaps": [],
+    })
+    result = m3.stage_run_candidates(case, "M2-sev")
+    assert result["staged_count"] == 1
+    rows = json.loads((case / "findings.json").read_text(encoding="utf-8"))
+    staged = [f for f in rows if f.get("run_id") == "M2-sev"]
+    assert staged
+    assert str(staged[0].get("severity") or "").strip(), "severity must not be empty"
+
+
 def test_run_work_order_formats_prose_answer(tmp_path):
     case = _case(tmp_path)
     order = m3.WorkOrder(order_id="wo-fmt", role="evidence", task="t")

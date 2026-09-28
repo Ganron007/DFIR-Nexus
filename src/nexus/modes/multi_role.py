@@ -335,6 +335,7 @@ ROLES: dict[str, AgentRole] = {
             '"audit_ids":["..."]}],"entities":["..."],'
             '"candidate_findings":[{"title":"...","observation":"...",'
             '"interpretation":"...","confidence":"LOW|MEDIUM|HIGH",'
+            '"severity":"LOW|MEDIUM|HIGH|CRITICAL",'
             '"audit_ids":["..."]}],"coverage":{"checked":["..."],'
             '"not_checked":["..."]},"next_questions":["..."]}. '
             "Do not invent evidence; a zero-hit search is not negative evidence "
@@ -547,6 +548,46 @@ def _candidate_audit_ids(candidate: dict[str, Any]) -> list[str]:
     return out
 
 
+def _backfill_audit_ids(
+    rows: list[dict[str, Any]], *sources: list[dict[str, Any]] | None,
+) -> int:
+    """Give rows without provenance the audit_ids of their title-matched source.
+
+    The model is asked for ``audit_ids`` on every candidate/verdict/finding and
+    complies intermittently. On the first full Mode 2 run 14 of 17 candidates
+    reached synthesis without ids - FD-001 then (correctly) refused to stage
+    them, but the claims were verified and evidence-backed. This carries ids
+    forward deterministically: a row with no ids inherits them from the source
+    row it names (case-insensitive exact title). Nothing is invented - a row
+    with no title-matched source keeps no ids and stays unstageable.
+    """
+    def _index(items: list[dict[str, Any]] | None) -> dict[str, dict[str, Any]]:
+        out: dict[str, dict[str, Any]] = {}
+        for item in items or []:
+            if not isinstance(item, dict):
+                continue
+            key = str(item.get("title") or "").strip().lower()
+            if key and key not in out:
+                out[key] = item
+        return out
+
+    sources_idx = [_index(s) for s in sources]
+    filled = 0
+    for row in rows or []:
+        if not isinstance(row, dict) or _candidate_audit_ids(row):
+            continue
+        key = str(row.get("title") or "").strip().lower()
+        if not key:
+            continue
+        for idx in sources_idx:
+            ids = _candidate_audit_ids(idx.get(key) or {})
+            if ids:
+                row["audit_ids"] = ids
+                filled += 1
+                break
+    return filled
+
+
 def _normalise_evidence(
     candidate: dict[str, Any], *, source: str = "mode2",
 ) -> list[dict[str, Any]]:
@@ -630,6 +671,11 @@ def stage_run_candidates(
         confidence = str(candidate.get("confidence") or "LOW").upper()
         if confidence not in ("LOW", "MEDIUM", "HIGH", "SPECULATIVE"):
             confidence = "LOW"
+        severity = str(
+            candidate.get("severity") or verdict.get("severity") or "LOW"
+        ).strip().upper()
+        if severity not in ("LOW", "MEDIUM", "HIGH", "CRITICAL", "INFO"):
+            severity = "LOW"
         justification = str(
             candidate.get("confidence_justification") or "").strip() or (
             f"{mode_label} run {run_id} synthesis candidate"
@@ -650,6 +696,7 @@ def stage_run_candidates(
             "interpretation": interpretation,
             "confidence": confidence,
             "confidence_justification": justification,
+            "severity": severity,
             "type": "finding",
             "audit_ids": audit_ids,
             "evidence": _normalise_evidence(candidate, source=run_mode),
@@ -799,6 +846,7 @@ _ROLE_SCHEMAS: dict[str, str] = {
         '"audit_ids":["..."]}],"entities":["..."],'
         '"candidate_findings":[{"title":"...","observation":"...",'
         '"interpretation":"...","confidence":"LOW|MEDIUM|HIGH",'
+        '"severity":"LOW|MEDIUM|HIGH|CRITICAL",'
         '"audit_ids":["..."]}],"coverage":{"checked":["..."],'
         '"not_checked":["..."]},"next_questions":["..."]}'
     ),
@@ -808,6 +856,7 @@ _ROLE_SCHEMAS: dict[str, str] = {
         '"audit_ids":["..."]}],"unexplained":["..."],'
         '"candidate_findings":[{"title":"...","observation":"...",'
         '"interpretation":"...","confidence":"LOW|MEDIUM|HIGH",'
+        '"severity":"LOW|MEDIUM|HIGH|CRITICAL",'
         '"audit_ids":["..."]}],"next_questions":["..."],'
         '"coverage":{"checked":["..."],"not_checked":["..."]}}'
     ),
@@ -816,6 +865,7 @@ _ROLE_SCHEMAS: dict[str, str] = {
         '"evidence":["family/file:line ..."],"audit_ids":["..."]}],'
         '"candidate_findings":[{"title":"...","observation":"...",'
         '"interpretation":"...","confidence":"LOW|MEDIUM|HIGH",'
+        '"severity":"LOW|MEDIUM|HIGH|CRITICAL",'
         '"audit_ids":["..."]}],"caveats":["..."],"next_questions":["..."],'
         '"coverage":{"checked":["..."],"not_checked":["..."]}}'
     ),
@@ -827,6 +877,7 @@ _ROLE_SCHEMAS: dict[str, str] = {
     "synthesis": (
         '{"narrative":"...","findings":[{"title":"...","observation":"...",'
         '"interpretation":"...","confidence":"LOW|MEDIUM|HIGH",'
+        '"severity":"LOW|MEDIUM|HIGH|CRITICAL",'
         '"confidence_justification":"...","audit_ids":["..."],'
         '"attack_ids":["..."],"itm_stage":"...","itm_objects":"..."}],'
         '"gaps":["..."],"coverage":{"checked":["..."],"not_checked":["..."]}}'
@@ -1325,6 +1376,8 @@ def run_mode2(
                     return state
                 state["status"] = "running"
                 state.pop("completed_at", None)
+                # A stale "paused" stop_reason otherwise shows on a running run.
+                state["stop_reason"] = ""
                 state.setdefault("followup_rounds", 0)
                 state.setdefault("followups_limit", _env_int(
                     "NEXUS_MODE2_FOLLOWUPS", 8, low=0, high=24))
@@ -1483,6 +1536,10 @@ def run_mode2(
             if title:
                 merged[title] = verdict
         state["verdicts"] = list(merged.values())
+        # Carry provenance forward: a verdict the model returned without
+        # audit_ids inherits them from the candidate it names, so a confirmed
+        # claim cannot lose its evidence linkage before synthesis.
+        _backfill_audit_ids(list(state.get("verdicts") or []), candidates)
         state["status"] = "verified"
         _persist_state(case_dir, run_id, state)
         sink.emit(new_event(
@@ -1628,6 +1685,14 @@ def run_mode2(
             parsed = result.parsed or {}
             state["narrative"] = str(parsed.get("narrative") or "")
             state["candidates"] = parsed.get("findings") or candidates
+            # Same carry-forward at the last hop: synthesis findings that came
+            # back without audit_ids inherit them from the verifying verdict and
+            # then from the original candidate pool (title-matched only).
+            _backfill_audit_ids(
+                state.get("candidates") or [],
+                state.get("verdicts") or [],
+                candidates,
+            )
 
             # Record which procedures this run actually used. Skills are injected
             # into each work order's prompt, but nothing said which ones - so
