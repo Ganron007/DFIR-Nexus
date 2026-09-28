@@ -136,6 +136,19 @@ Tools/windows/
 Tools/linux/
 !Tools/README.md
 
+# Our own integration wrappers inside the fetched-tools tree ARE source: they are
+# authored in this repo, not downloaded, and they must stay beside the tool they
+# drive (run-deepblue.ps1 resolves DeepBlue.ps1 from its own directory). Git
+# cannot re-include a file under an excluded directory, so the chain is walked
+# level by level.
+!Tools/windows/
+Tools/windows/*
+!Tools/windows/extra/
+Tools/windows/extra/*
+!Tools/windows/extra/deepbluecli/
+Tools/windows/extra/deepbluecli/*
+!Tools/windows/extra/deepbluecli/run-deepblue.ps1
+
 # ── Scratch ─────────────────────────────────────────────────────────
 .session_state.md
 *.bak
