@@ -362,10 +362,19 @@ def schedule_evtx_parsers(
         if z_rules:
             z_out = extractions / "zircolite" / label if many else extractions / "zircolite"
             z_out.mkdir(parents=True, exist_ok=True)
+            # `--csv` (comma delimiter) instead of the default JSON export. That
+            # export is one pretty-printed array at detection level: under the
+            # row-oriented case indexer a single detection becomes ~28 fragment
+            # lines with its Date split away from the record (measured on R1).
+            # The CSV form writes one row per matched EVENT with the event's own
+            # columns - Computer, EventID, SystemTime, User - which is exactly
+            # what the indexer's field extraction reads. `--keepflat` was tried
+            # first; it does not change the JSON output at all.
             add(
                 "zircolite",
                 ["zircolite", "-e", str(evtx_dir), "-r", str(z_rules),
-                 "-o", str(z_out / "zircolite.json")],
+                 "-o", str(z_out / "zircolite.csv"), "--csv",
+                 "--csv-delimiter", ","],
                 f"Zircolite detections {label} ({n} logs)",
                 1800,
             )
@@ -1832,7 +1841,7 @@ def _plan_gap_parsers(
             add(
                 "zircolite",
                 ["zircolite", "-e", str(root), "-f", "evtx", "-r", str(zirc_rules),
-                 "-o", str(d / "zircolite.json")],
+                 "-o", str(d / "zircolite.csv"), "--csv", "--csv-delimiter", ","],
                 "Zircolite Sigma EVTX analysis (merged-high ruleset)",
                 600,
             )
@@ -1845,10 +1854,9 @@ def _plan_gap_parsers(
     if _windows_tool_available("deepbluecli"):
         evtx_files: list[Path] = []
         if root.is_dir():
-            for _evtx in root.rglob("*.evtx"):
-                evtx_files.append(_evtx)
-                if len(evtx_files) >= 25:
-                    break
+            # No cap: a silent skip past the 25th file is a coverage gap the
+            # ledger would not carry. Sorted for a deterministic job order.
+            evtx_files = sorted(root.rglob("*.evtx"))
         if evtx_files:
             d = extractions / "deepbluecli"
             d.mkdir(parents=True, exist_ok=True)
@@ -2877,14 +2885,19 @@ def _produced_expected_output(job: ToolJob) -> bool:
     # whichever job wrote last and false for the one that ran first - which is how
     # a recmd job that had written a 13 KB CSV was marked FAIL while its sibling
     # held the directory.
+    def _flag(value: str) -> str:
+        """Flags are matched case-insensitively: DeepBlueCLI names its target
+        `-Out`, the Zimmerman tools use `--csvf`, zircolite uses `-o`."""
+        return str(value).lower()
+
     named = ""
     for i, arg in enumerate(argv):
-        if arg in ("--csvf", "--jsonf") and i + 1 < len(argv):
+        if _flag(arg) in ("--csvf", "--jsonf") and i + 1 < len(argv):
             named = str(argv[i + 1])
             break
     if named:
         for i, arg in enumerate(argv):
-            if arg in ("--csv", "--json") and i + 1 < len(argv):
+            if _flag(arg) in ("--csv", "--json") and i + 1 < len(argv):
                 cand = Path(argv[i + 1]) / named
                 if cand.is_file():
                     return cand.stat().st_size > 0
@@ -2892,7 +2905,8 @@ def _produced_expected_output(job: ToolJob) -> bool:
 
     produced = False
     for i, arg in enumerate(argv):
-        if arg in ("--csv", "--json", "--jsonl", "--out", "-o") and i + 1 < len(argv):
+        if _flag(arg) in ("--csv", "--json", "--jsonl", "--out", "-out", "-o",
+                          "--output", "-output") and i + 1 < len(argv):
             target = Path(argv[i + 1])
             if target.is_file():
                 return target.stat().st_size > 0
@@ -2918,7 +2932,8 @@ def _produced_expected_output(job: ToolJob) -> bool:
     # the index showed zero docs for those families. The capture is the audit
     # trail, not the extraction.
     named_target = any(
-        a in ("--csv", "--json", "--jsonl", "--out", "-o", "--csvf", "--jsonf")
+        _flag(a) in ("--csv", "--json", "--jsonl", "--out", "-out", "-o",
+                     "--output", "-output", "--csvf", "--jsonf")
         for a in argv
     )
     if named_target:

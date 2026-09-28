@@ -418,10 +418,19 @@ def _l1_9(res, coverage=None, **_kw) -> None:
         _check(res, "L1.9", "unverifiable", "coverage audit has no verdict")
         return
     if overall == "gaps":
-        gaps = [s for s, v in (coverage.get("sections") or {}).items()
+        sections = coverage.get("sections")
+        if not isinstance(sections, dict) or not sections:
+            # Audits written before the `sections` mirror: rebuild the mapping
+            # from the top-level section keys so gaps are still named.
+            sections = {
+                name: coverage.get(name)
+                for name in ("tools", "sources", "needles")
+                if isinstance(coverage.get(name), dict)
+            }
+        gaps = [s for s, v in sections.items()
                 if isinstance(v, dict) and v.get("status") == "gaps"]
         _check(res, "L1.9", "fail", f"coverage reports gaps in: {', '.join(gaps) or 'unknown'}",
-               evidence=coverage.get("sections"))
+               evidence=sections)
         return
     if overall == "unknown":
         _check(res, "L1.9", "unverifiable", "coverage unknown - a missing input is not a pass")

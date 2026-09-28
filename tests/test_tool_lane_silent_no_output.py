@@ -94,3 +94,39 @@ def test_positional_directory_with_csv_counts(tmp_path):
     (out / "result.csv").write_text("h\nv\n", encoding="utf-8")
     job = _job(["tool", "-d", str(out), "input.lnk"])
     assert _produced_expected_output(job) is True
+
+
+def test_dash_out_target_must_have_bytes(tmp_path):
+    """DeepBlueCLI names its target `-Out` (capital O, single dash).
+
+    The check matched flags case-sensitively, so it never looked at the target
+    and accepted the stdout capture instead: the lane recorded OK on a run whose
+    JSON was 0 bytes and whose capture held a Get-WinEvent error.
+    """
+    out = tmp_path / "deepblue.json"
+    out.write_text("", encoding="utf-8")
+    job = _job(["run-deepblue.ps1", "-Evtx", str(tmp_path), "-Out", str(out)])
+    assert _produced_expected_output(job) is False
+
+
+def test_dash_out_target_with_records_is_produced(tmp_path):
+    out = tmp_path / "deepblue.json"
+    out.write_text('[{"EventID": 4625}]', encoding="utf-8")
+    job = _job(["run-deepblue.ps1", "-Evtx", str(tmp_path), "-Out", str(out)])
+    assert _produced_expected_output(job) is True
+
+
+def test_output_flag_is_matched_case_insensitively(tmp_path):
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "a.json").write_text("[]", encoding="utf-8")
+    job = _job(["tool", "--Output", str(out), "input"])
+    assert _produced_expected_output(job) is True
+
+
+def test_output_dir_with_only_empty_files_is_not_produced(tmp_path):
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "a.json").write_text("", encoding="utf-8")
+    job = _job(["tool", "--Output", str(out), "input"])
+    assert _produced_expected_output(job) is False

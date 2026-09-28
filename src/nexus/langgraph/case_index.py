@@ -76,6 +76,8 @@ WILDCARD_IGNORE_ABOVE = 32766
 INDEX_SCHEMA_VERSION = 6
 
 _MAX_INDEX_FIELDS = 24
+# JSON-family artifacts are line records (NDJSON/JSONL), never delimited tables.
+_JSON_RECORD_SUFFIXES = (".json", ".jsonl", ".ndjson")
 _MAX_INDEX_FIELD_VALUE = 300
 
 # ES rejects monolithic term scans ("Query rewrite failed: too many clauses"):
@@ -225,6 +227,39 @@ def _row_fields(line: str, header: list[str] | None) -> dict[str, str]:
     return out
 
 
+def _is_json_records(path: Path) -> bool:
+    """True for JSON/JSONL/NDJSON artifacts (transparent ``.gz``)."""
+    name = path.name.lower()
+    if name.endswith(".gz"):
+        name = name[:-3]
+    return name.endswith(_JSON_RECORD_SUFFIXES)
+
+
+def _record_fields(line: str) -> dict[str, str]:
+    """Top-level scalar fields of one JSON record line ({} when it is not a dict).
+
+    Mirrors ``_row_fields`` for NDJSON artifacts, so ``fields.*`` and the
+    host/user/event extraction work for JSON exactly as they do for CSV.
+    """
+    stripped = line.strip()
+    if not stripped or stripped[0] != "{":
+        return {}
+    try:
+        obj = json.loads(stripped)
+    except ValueError:
+        return {}
+    if not isinstance(obj, dict):
+        return {}
+    out: dict[str, str] = {}
+    for name, value in list(obj.items())[:_MAX_INDEX_FIELDS]:
+        if str(name).startswith("_") or isinstance(value, (dict, list)):
+            continue
+        if value in (None, ""):
+            continue
+        out[str(name)] = str(value)[:_MAX_INDEX_FIELD_VALUE]
+    return out
+
+
 def _pick_field(fields: dict[str, str], keys: tuple[str, ...]) -> str:
     """First non-empty field value whose column name matches (case-insensitive)."""
     wanted = set(keys)
@@ -259,7 +294,16 @@ def _open_text_auto(path: Path):
 
 
 def _index_header(path: Path) -> list[str] | None:
-    """Header columns when line 1 looks like CSV/TSV; else None."""
+    """Header columns when line 1 looks like CSV/TSV; else None.
+
+    JSON/JSONL/NDJSON files are line records, never delimited tables: a JSON
+    object on line 1 contains commas, and treating it as a header consumed the
+    first record and mapped every later record through pseudo-columns built
+    from it (a 198-record DeepBlueCLI file indexed 197 docs, the first
+    detection lost).
+    """
+    if _is_json_records(path):
+        return None
     first = ""
     try:
         with _open_text_auto(path) as fh:
@@ -387,11 +431,12 @@ def iter_index_doc_batches(
                 caps["families_capped"].append(fam)
             continue
         header = _index_header(path)
+        json_records = _is_json_records(path)
         try:
             data_rows = 0
             with _open_text_auto(path) as fh:
                 for i, line in enumerate(fh, start=1):
-                    if i == 1 and ("," in line or "\t" in line):
+                    if i == 1 and header is not None:
                         continue
                     data_rows += 1
                     if _MAX_DOCS and total >= _MAX_DOCS:
@@ -401,7 +446,11 @@ def iter_index_doc_batches(
                     if _MAX_DOCS_PER_FILE and data_rows > _MAX_DOCS_PER_FILE:
                         caps["files_capped"] += 1
                         break
-                    if _add(path, root, fam, i, line, _row_fields(line, header)):
+                    row_fields = (
+                        _record_fields(line) if json_records
+                        else _row_fields(line, header)
+                    )
+                    if _add(path, root, fam, i, line, row_fields):
                         family_counts[fam] = family_counts.get(fam, 0) + 1
                     if len(out) >= batch:
                         yield out

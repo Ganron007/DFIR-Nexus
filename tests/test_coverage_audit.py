@@ -178,6 +178,23 @@ def test_tools_ok_when_everything_ran(monkeypatch, tmp_path):
     assert audit["tools"]["counts"]["ok"] == 1
 
 
+def test_sections_mirror_the_toplevel_keys(monkeypatch, tmp_path):
+    """L1.9 reads `sections`; the spread keys stay for older readers.
+
+    The audit spread its section dicts at the top level only, so L1.9 - which
+    reads `coverage["sections"]` - could never name the section that reported a
+    gap: every case-level gap line read "gaps in: unknown".
+    """
+    case = _case(tmp_path, ledger=[_LEDGER_OK], evidence=[{"file_path": str(tmp_path)}])
+    monkeypatch.setattr(ca, "_artifact_hits", lambda _c: ([], ""))
+    _no_es(monkeypatch, {"hayabusa": 5})
+    _signal_map(case, [("x", 1, "playbook", "yes")])
+    audit = ca.build_coverage_audit(case)
+    assert set(audit["sections"]) == {"tools", "sources", "needles"}
+    for name in ("tools", "sources", "needles"):
+        assert audit["sections"][name] == audit[name]
+
+
 # ── sources section ──────────────────────────────────────────────────────────
 
 

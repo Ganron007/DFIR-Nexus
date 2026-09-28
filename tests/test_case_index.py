@@ -70,6 +70,49 @@ def test_n4_hits_csv_backend(tmp_path: Path):
     assert any("sdelete" in h["text"].lower() for h in hits)
 
 
+def _ndjson_case(tmp_path: Path) -> Path:
+    ext = tmp_path / "extractions" / "deepbluecli"
+    ext.mkdir(parents=True)
+    (ext / "deepblue.json").write_text(
+        '{"Date":"2020-11-16T05:23:51Z","Log":"Security","EventID":4625,'
+        '"Computer":"WS01","Message":"first record"}\n'
+        '{"Date":"2020-11-16T05:23:51Z","Log":"Security","EventID":4625,'
+        '"Computer":"WS01","Message":"second record"}\n'
+        '{"Date":"2020-11-16T05:23:51Z","Log":"Security","EventID":4625,'
+        '"Computer":"WS01","Message":"third record"}\n',
+        encoding="utf-8",
+    )
+    return tmp_path
+
+
+def test_ndjson_first_record_is_not_a_header(tmp_path: Path):
+    """A JSON object with commas on line 1 is not a CSV header.
+
+    The header heuristic consumed the first record and mapped the remaining
+    records through pseudo-columns built from it: a 198-record DeepBlueCLI file
+    indexed 197 docs, the first detection silently lost.
+    """
+    case = _ndjson_case(tmp_path)
+    docs = iter_index_docs(case)
+    assert len(docs) == 3, [d["text"] for d in docs]
+    first = next(d for d in docs if "first record" in d["text"])
+    assert first["fields"]["EventID"] == "4625"
+    assert first["event_id"] == "4625"
+    assert first["host"] == "ws01"
+    assert first["ts"] == "2020-11-16T05:23:51Z"
+
+
+def test_csv_header_is_still_skipped(tmp_path: Path):
+    ext = tmp_path / "extractions" / "hayabusa"
+    ext.mkdir(parents=True)
+    (ext / "timeline.csv").write_text(
+        "Time,EventID\n2020-01-01,1\n", encoding="utf-8"
+    )
+    docs = iter_index_docs(tmp_path)
+    assert len(docs) == 1
+    assert "Time" not in docs[0]["text"]
+
+
 def test_query_index_missing_raises():
     with patch("nexus.langgraph.case_index.es_url", return_value="http://127.0.0.1:9200"), \
             patch("nexus.langgraph.case_index._client") as client_factory:

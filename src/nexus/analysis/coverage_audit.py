@@ -455,6 +455,11 @@ def build_coverage_audit(case_dir: Path | str) -> dict[str, Any]:
         "generated_at": _now(),
         "overall": overall,
         "unavailable": unavailable,
+        # Both shapes on purpose: `sections` is the interface L1.9 reads (and the
+        # tests pass), while the spread keys keep every existing reader working.
+        # Without the mirror, L1.9 could not name the failing section and every
+        # gap report read "gaps in: unknown".
+        "sections": sections,
         **sections,
     }
 

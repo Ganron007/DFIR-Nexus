@@ -94,6 +94,24 @@ def test_a_coverage_gap_does_not_drive_every_claim_to_unsupported():
     assert v2["verdict"] == "UNSUPPORTED"
 
 
+def test_l1_9_names_the_gap_when_sections_key_is_absent():
+    """An audit written before the sections mirror still names its gap.
+
+    L1.9 read `coverage["sections"]`, but the persisted audit spread the section
+    dicts at the top level instead - so the case-level gap line read
+    "coverage reports gaps in: unknown" on a case whose sources section was the
+    one reporting gaps.
+    """
+    legacy = {"overall": "gaps",
+              "tools": {"status": "ok"},
+              "sources": {"status": "gaps"},
+              "needles": {"status": "ok"}}
+    v = verify_claim(_f(), **_good(coverage=legacy))
+    assert v["checks"]["L1.9"]["status"] == "fail"
+    assert "sources" in v["checks"]["L1.9"]["detail"]
+    assert "unknown" not in v["checks"]["L1.9"]["detail"]
+
+
 def test_a_fully_checked_claim_is_proven():
     v = verify_claim(_f(), **_good())
     assert v["verdict"] == "PROVEN", {k: r["status"] for k, r in v["checks"].items()}
