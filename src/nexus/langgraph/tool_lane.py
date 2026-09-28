@@ -2663,6 +2663,21 @@ def _soft_fail_reason(result: dict[str, Any]) -> str:
     return ""
 
 
+# Output-target flags, matched case-insensitively: DeepBlueCLI names its target
+# `-Out`, zircolite uses `-o`, chainsaw `--output`, the Zimmerman tools `--csvf`.
+# A case-sensitive list missed `-Out` entirely, so the named target was never
+# checked and the stdout capture was accepted as the product.
+_OUTPUT_FLAGS = frozenset(
+    {"--csv", "--json", "--jsonl", "--out", "-out", "-o", "--output", "-output"}
+)
+_NAMED_OUTPUT_FLAGS = frozenset({"--csvf", "--jsonf"})
+
+
+def _flag(value: object) -> str:
+    """Lower-cased argv entry for flag comparisons."""
+    return str(value).lower()
+
+
 def _structured_output_present(job: ToolJob) -> bool:
     """True when a job produced something other than its own stdout capture."""
     for path in (job.output_files or []):
@@ -2805,7 +2820,7 @@ def _tool_wrote_structured_output(job: ToolJob) -> bool:
     """
     argv = [str(a) for a in (job.argv or ())]
     for i, arg in enumerate(argv):
-        if arg in ("--csv", "--json", "--jsonl", "--out", "-o") and i + 1 < len(argv):
+        if _flag(arg) in _OUTPUT_FLAGS and i + 1 < len(argv):
             target = Path(argv[i + 1])
             if target.is_dir():
                 try:
@@ -2830,9 +2845,8 @@ def _output_dirs_of(job: ToolJob) -> list[Path]:
     """
     out: list[Path] = []
     argv = [str(a) for a in (job.argv or ())]
-    _out_flags = ("--csv", "--json", "--jsonl", "--out", "-o", "-d")
     for i, arg in enumerate(argv):
-        if arg in _out_flags and i + 1 < len(argv):
+        if (_flag(arg) in _OUTPUT_FLAGS or _flag(arg) == "-d") and i + 1 < len(argv):
             out.append(Path(argv[i + 1]))
     return out
 
@@ -2885,14 +2899,9 @@ def _produced_expected_output(job: ToolJob) -> bool:
     # whichever job wrote last and false for the one that ran first - which is how
     # a recmd job that had written a 13 KB CSV was marked FAIL while its sibling
     # held the directory.
-    def _flag(value: str) -> str:
-        """Flags are matched case-insensitively: DeepBlueCLI names its target
-        `-Out`, the Zimmerman tools use `--csvf`, zircolite uses `-o`."""
-        return str(value).lower()
-
     named = ""
     for i, arg in enumerate(argv):
-        if _flag(arg) in ("--csvf", "--jsonf") and i + 1 < len(argv):
+        if _flag(arg) in _NAMED_OUTPUT_FLAGS and i + 1 < len(argv):
             named = str(argv[i + 1])
             break
     if named:
@@ -2905,8 +2914,7 @@ def _produced_expected_output(job: ToolJob) -> bool:
 
     produced = False
     for i, arg in enumerate(argv):
-        if _flag(arg) in ("--csv", "--json", "--jsonl", "--out", "-out", "-o",
-                          "--output", "-output") and i + 1 < len(argv):
+        if _flag(arg) in _OUTPUT_FLAGS and i + 1 < len(argv):
             target = Path(argv[i + 1])
             if target.is_file():
                 return target.stat().st_size > 0
@@ -2932,8 +2940,7 @@ def _produced_expected_output(job: ToolJob) -> bool:
     # the index showed zero docs for those families. The capture is the audit
     # trail, not the extraction.
     named_target = any(
-        _flag(a) in ("--csv", "--json", "--jsonl", "--out", "-out", "-o",
-                     "--output", "-output", "--csvf", "--jsonf")
+        _flag(a) in _OUTPUT_FLAGS or _flag(a) in _NAMED_OUTPUT_FLAGS
         for a in argv
     )
     if named_target:

@@ -10,8 +10,10 @@ from __future__ import annotations
 
 from nexus.langgraph.tool_lane import (
     ToolJob,
+    _output_dirs_of,
     _produced_expected_output,
     _soft_fail_reason,
+    _tool_wrote_structured_output,
 )
 
 
@@ -130,3 +132,17 @@ def test_output_dir_with_only_empty_files_is_not_produced(tmp_path):
     (out / "a.json").write_text("", encoding="utf-8")
     job = _job(["tool", "--Output", str(out), "input"])
     assert _produced_expected_output(job) is False
+
+
+def test_dash_out_counts_as_structured_output(tmp_path):
+    """The promotion helpers must see `-Out` too, not just the check.
+
+    With a case-sensitive list they judged the DeepBlueCLI run unstructured:
+    the stdout capture was promoted into the run dir as an extra indexed
+    artifact and the real JSON never appeared in the ledger's file list.
+    """
+    out = tmp_path / "deepblue.json"
+    out.write_text('{"EventID": 4625}\n', encoding="utf-8")
+    job = _job(["run-deepblue.ps1", "-Evtx", str(tmp_path), "-Out", str(out)])
+    assert _tool_wrote_structured_output(job) is True
+    assert out in _output_dirs_of(job)
