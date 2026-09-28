@@ -124,3 +124,34 @@ def test_nothing_registered_is_not_an_index_problem():
     """A case with no evidence has genuinely nothing to scan."""
     body = _fn("_scan_had_a_corpus")
     assert "evidence_count <= 0" in body
+
+def test_the_tools_run_indexes_before_publishing_completed():
+    """The origin of the whole "scan had no corpus" class.
+
+    `finalize_run(pipeline_run, "completed")` ran BEFORE `_autoindex_case`, so a
+    poller could see the run as finished while the index was still being written.
+    Seen live: status complete, error empty, no index_state.json on disk, and ES
+    still climbing past 352,000 docs. The same rule the Mode 1 worker states -
+    "publish the terminal status LAST: pollers fire as soon as status is terminal"
+    - was not applied here.
+    """
+    import ast
+
+    src = pathlib.Path("src/nexus/langgraph/llm_pipeline.py").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    checked = 0
+    for fn in [n for n in ast.walk(tree)
+               if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]:
+        body = ast.get_source_segment(src, fn) or ""
+        if "_autoindex_case(" not in body or "finalize_run(" not in body:
+            continue
+        idx_at = body.find("_autoindex_case(case_dir)")
+        fin_at = body.find('finalize_run(pipeline_run, "completed")')
+        if idx_at < 0 or fin_at < 0:
+            continue
+        checked += 1
+        assert idx_at < fin_at, (
+            f"{fn.name}: finalize_run(completed) still precedes _autoindex_case - "
+            f"a run can be read as complete before its index exists"
+        )
+    assert checked, "no function builds an index and finalises a run; did the code move?"

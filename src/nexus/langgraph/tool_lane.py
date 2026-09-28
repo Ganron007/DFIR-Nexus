@@ -368,6 +368,17 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
     name = evidence.name.lower()
     suffix = evidence.suffix.lower()
 
+    # Classes that must be decided before the extension branches. A Recycle Bin
+    # `$I0JIS5M.lnk` ends in `.lnk` and is not a shortcut: the `.lnk` branch
+    # claimed it and LECmd reported target fields that do not exist.
+    _cls = _artifact_class(evidence)
+    if _cls == "recycle":
+        d = out_dir("rbcmd")
+        add("rbcmd", ["rbcmd", "-f", str(evidence), "--csv", str(d),
+                      "--csvf", f"{_stem(evidence)}.csv"],
+            f"Recycle Bin record ({evidence.name})", 300)
+        return jobs
+
     # Per-source CSV names. Several registered artifacts each get their own job
     # (one .pf, one .lnk, one hive), and Zimmerman tools write `--csvf <name>`
     # verbatim — so a fixed name means every job after the first OVERWRITES the
@@ -406,6 +417,71 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
         add("thumbcache_viewer",
             ["thumbcache_viewer_cmd", "-d", str(evidence), "-o", str(reports), "-c"],
             f"Thumbcache entries ({evidence.name})", 300)
+    elif _artifact_class(evidence) == "timeline":
+        d = out_dir("wxtcmd")
+        add("wxtcmd", ["wxtcmd", "-f", str(evidence), "--csv", str(d),
+                       "--csvf", f"{_stem(evidence)}.csv"],
+            "Windows Timeline activities", 600)
+    elif _artifact_class(evidence) == "browser_sqlite":
+        d = out_dir("sqlecmd")
+        add("sqlecmd", ["sqlecmd", "-f", str(evidence), "-d", str(d), "--csv"],
+            f"Browser SQLite ({evidence.name})", 600)
+    elif _artifact_class(evidence) == "bits":
+        d = out_dir("bitsparser")
+        add("bitsparser", ["bitsparser", "-f", str(evidence), "-o", str(d)],
+            f"BITS job queue ({evidence.name})", 600)
+    elif _artifact_class(evidence) == "logfile":
+        d = out_dir("logfileparser")
+        add("logfileparser", ["logfileparser", "-f", str(evidence), "--csv", str(d),
+                              "--csvf", f"{_stem(evidence)}.csv"],
+            "NTFS transaction journal", 1800)
+    elif _artifact_class(evidence) in ("ntfs_meta",):
+        d = out_dir("mftecmd")
+        add("mftecmd", ["mftecmd", "-f", str(evidence), "--csv", str(d),
+                        "--csvf", f"{_stem(evidence)}.csv"],
+            f"NTFS metadata ({evidence.name})", 1800)
+    elif (
+        _artifact_class(evidence) == "registry_hive"
+        # SYSTEM/SOFTWARE/SAM/SECURITY are handled by the branch above, which
+        # also schedules the AppCompatCache parse for SYSTEM. Letting the generic
+        # branch claim them dropped that job silently.
+        and not _has_specific_hive_handler(name)
+    ):
+        # Cut a RECmd batch for this hive by name; the batch path is how recmd
+        # is meant to be driven and a bare -f fails with "One of the following
+        # switches is required".
+        batch = _recmd_batch_for(evidence)
+        d = out_dir("recmd")
+        if not batch:
+            jobs.append(ToolJob(
+                host="windows", tool="recmd", argv=[], status="SKIP",
+                purpose=f"Registry hive ({evidence.name})",
+                reason=f"RECmd .reb batch not found for {evidence.name}",
+            ))
+            return jobs
+        add("recmd", ["recmd", "-f", str(evidence), "--bn", str(batch),
+                      "--csv", str(d), "--csvf", f"{_stem(evidence)}.csv"],
+            f"Registry hive ({evidence.name})")
+    elif _artifact_class(evidence) == "jumplist":
+        d = out_dir("jlecmd")
+        add("jlecmd", ["jlecmd", "-f", str(evidence), "--csv", str(d),
+                       "--csvf", f"{_stem(evidence)}.csv"],
+            f"Jump list ({evidence.name})", 300)
+    elif _is_wmi_repository(name):
+        # Both encodings, because OBJECTS.DATA mixes them and neither pass is a
+        # superset. Measured on the real 31 MB repository:
+        #     plain  -> 14.36 MB, __EventFilter 4x, CommandLineEventConsumer 14x
+        #     -u     ->  0.71 MB, __EventFilter 0x, CommandLineEventConsumer 0x
+        # The class names that carry WMI persistence are ASCII. I first ran only
+        # `-u`, reasoning from the task XML where UTF-16 is right, and it hid
+        # every persistence class the routing was added to surface - while the
+        # ledger said OK and the index held 22,883 rows. Two jobs cost one extra
+        # pass over a local file and remove the guess.
+        d = out_dir("wmi")
+        add("strings", ["strings64", "-nobanner", str(evidence)],
+            f"WMI repository strings, ascii ({evidence.name})", 900)
+        add("strings", ["strings64", "-u", "-nobanner", str(evidence)],
+            f"WMI repository strings, utf16 ({evidence.name})", 900)
     elif _task_xml_kind(evidence) == "task":
         # A task definition is UTF-16 XML. `-u` extracts the wide strings, which
         # is what carries the Exec command, the arguments and the Principal SID
@@ -426,12 +502,13 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
         add("strings", ["strings64", "-nobanner", str(evidence)],
             f"Device install log ({evidence.name})", 300)
     elif name.startswith("cache0") and name.endswith(".bin"):
-        # RDP bitmap cache: plain-text extraction is the dependable path; the
-        # catalog carries no rdp-cache binary, so a shell reader is used instead
-        # of silently routing the evidence nowhere.
+        # bmc-tools (ANSSI) reconstructs the bitmap tiles. I first used strings
+        # here on the assumption the catalogue had no RDP parser; it ships
+        # bmc-tools, so the cache was being keyword-searched instead of
+        # reconstructed and the recovered images were never recoverable.
         d = out_dir("rdp")
-        add("strings", ["strings64", "-n", "6", "-o", str(evidence), "-nobanner"],
-            f"RDP bitmap cache strings ({evidence.name})", 900)
+        add("bmc-tools", ["bmc-tools.py", "-s", str(evidence.parent), "-o", str(d)],
+            f"RDP bitmap cache recovery ({evidence.name})", 1800)
     elif name.startswith("srudb.dat") or name == "sru.db" or "sru" in name:
         # SRUDB.dat is a live ESE database. SrumECmd refuses it in place
         # ("Cannot access file, the file is locked or in use"), so the single-file
@@ -485,6 +562,69 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
                 ["appcompatcacheparser", "-f", str(evidence), "--csv", str(ad), "--csvf", f"{_stem(evidence)}.csv"],
                 "Shimcache / AppCompat", 300)
     return jobs
+
+
+# Artifact classes the pipeline can parse but was not routing. Each entry says
+# what the file IS and which catalogue tool reads it; `_plan_single_artifact`
+# below turns the class into a job.
+#
+# Found by running the recogniser over every class in the corpus rather than by
+# reading the code: Chrome's `History`, a Recycle Bin `$I` record, the Windows
+# Timeline database, a BITS queue and NTFS `$LogFile` were all arriving, none were
+# recognised, and every one has a purpose-built parser already in the catalogue.
+_CHROME_SQLITE = {
+    "history", "history provider cache", "cookies", "login data", "web data",
+    "top sites", "favicons", "network action predictor", "shortcuts",
+    "visited links", "bookmarks",
+}
+_JUMPLIST_SUFFIXES = (".automaticdestinations-ms", ".customdestinations-ms")
+_HIVE_NAMES = {"system", "software", "sam", "security", "default",
+               "ntuser", "usrclass"}
+
+
+def _artifact_class(path: Path) -> str:
+    """The artifact class of a file the extension/name rules do not cover.
+
+    Returns "" when nothing recognises it. Kept as one function so the
+    recogniser and the planner cannot disagree about what a file is - the
+    previous arrangement (name rules in one place, planning in another) is how
+    `$I30` came to be recognised but planned to nothing.
+    """
+    name = path.name.lower()
+    suffix = path.suffix.lower()
+
+    # Recycle Bin: `$I` records carry the original path and deletion time.
+    # `$R` files are the content and are not parsed.
+    if name.startswith("$i") and len(name) >= 3:
+        return "recycle"
+    if name.startswith("$r"):
+        return "recycle_content"
+    # Windows 10/11 Timeline.
+    if name == "activitiescache.db":
+        return "timeline"
+    # Chrome/Edge/Brave History, Cookies, Login Data, Web Data, ...
+    if name in _CHROME_SQLITE and suffix in ("", ".db", ".sqlite"):
+        return "browser_sqlite"
+    # BITS job queue.
+    if name.startswith("qmgr") and suffix in (".db", ".dat"):
+        return "bits"
+    # NTFS metadata files, named without extensions.
+    if name == "$logfile":
+        return "logfile"
+    if name in ("$boot", "$secure_$sds", "$j", "$extend"):
+        return "ntfs_meta"
+    # User and machine hives whose names carry a suffix (NTUSER-fredr.DAT).
+    # Hives are exported with the user in the name: NTUSER-fredr.DAT,
+    # UsrClass-srl-h.dat. A strict equality check on `ntuser.dat` matched only
+    # the bare form, which is not how an examiner exports a hive.
+    if name.endswith((".dat", ".hve", ".hive", "")) and name.split(".")[0].split("-")[0] in _HIVE_NAMES:
+        return "registry_hive"
+    if suffix in _JUMPLIST_SUFFIXES:
+        return "jumplist"
+    # RDP bitmap cache, named Cache0000.bin etc.
+    if name.startswith("cache0") and suffix == ".bin":
+        return "rdp"
+    return ""
 
 
 # Recognised by name, not by extension: `random.txt` must stay unrecognised, or
@@ -568,6 +708,29 @@ def _task_xml_kind(path: Path) -> str:
     return "task"
 
 
+# The WMI repository: OBJECTS.DATA plus its B-tree siblings. Recognised by name
+# because they are raw ESE files with no self-describing header a sniff can use.
+_WMI_REPOSITORY_NAMES = (
+    "objects.data", "index.btr", "mapping1.map", "mapping2.map", "mapping3.map",
+)
+
+
+def _is_wmi_repository(name: str) -> bool:
+    """True for a WMI repository file."""
+    return name.lower() in _WMI_REPOSITORY_NAMES
+
+
+def _has_specific_hive_handler(name: str) -> bool:
+    """True for the hive names that already have a dedicated branch above.
+
+    Kept as a function so the two places cannot drift: the generic hive branch
+    exists for names nobody handled, and claiming a handled name loses whatever
+    extra that branch scheduled.
+    """
+    return name in ("system", "software", "sam", "security", "ntuser.dat",
+                    "usrclass.dat")
+
+
 def is_host_evidence(path: str | Path) -> bool:
     """True when the Windows tool lane can parse this evidence path.
 
@@ -603,6 +766,18 @@ def is_host_evidence(path: str | Path) -> bool:
             or _is_history_text(name)
             # No extension to match on, so the content decides.
             or _task_xml_kind(p) == "task"
+            # Artifacts whose parser we already ship but never invoked. Each was
+            # found by running the recogniser against the real corpus: the tool
+            # sits in the catalogue while the evidence routes nowhere, so the
+            # format parses as nothing and the run still says complete.
+            or _artifact_class(p) != ""
+            # The WMI repository. No parser exists in the catalogue, and its
+            # forensic value is the class instances it holds - __EventFilter,
+            # CommandLineEventConsumer, ActiveScriptEventConsumer - which are the
+            # canonical WMI persistence. Staged as strings so those names and any
+            # command lines reach the index rather than being skipped as an
+            # unrecognised blob.
+            or _is_wmi_repository(name)
         )
     if p.is_dir():
         if (
@@ -619,10 +794,27 @@ def is_host_evidence(path: str | Path) -> bool:
         return p.name.lower() in (
             "automaticdestinations",
             "customdestinations",
+            # Examiners stage jump lists under short folder names. The corpus
+            # holds `jumplists/automatic/` and `jumplists/custom/`, so the long
+            # names matched nothing and the folder registered as unrecognised
+            # even though every file inside it parses.
+            "automatic",
+            "custom",
+            "jumplists",
             "srum",
             "rdp",
             "setupapi",
             "samples",
+            "bits",
+            "defender",
+            "iconcache",
+            "vss",
+            "wer",
+            "wmi",
+            "browser",
+            "email",
+            "drivefs",
+            "activitiescache",
         )
     return False
 
@@ -674,12 +866,22 @@ def plan_windows_triage(
                 argv=[],
                 purpose="locate evidence",
                 status="SKIP",
+                # The list has to match what the recogniser actually accepts. It
+                # had gone stale: task definitions, console/shell history and the
+                # WMI repository are all handled now and none were named, so an
+                # examiner reading this message would go looking for the wrong
+                # thing - or conclude the evidence was unusable when it was not.
                 reason=(
                     f"No recognized evidence shape under {evidence_path}. Accepted: "
                     "a Windows root (Windows/System32), a KAPE/drive tree "
                     "(*/C/Windows/System32), a Stage-0 pack (<pack>/wevtutil/*.evtx), "
-                    "any folder of *.evtx, or a known artifact folder/file "
-                    "(.evtx/.pf/$MFT/SRUDB.dat/Amcache.hve/hive/.lnk/jumplist)."
+                    "any folder of *.evtx, a scheduled-task definition (UTF-16 XML, "
+                    "no extension, in a tasks/ folder), a WMI repository "
+                    "(OBJECTS.DATA and its .BTR/.MAP siblings), console or shell "
+                    "history (*ConsoleHost_history.txt, .bash_history, .zsh_history), "
+                    "or a known artifact file (.evtx/.pf/$MFT/SRUDB.dat/Amcache.hve/"
+                    "hive/.lnk/jumplist/thumbcache/iconcache/RDP Cache*.bin/"
+                    "setupapi*.log/.exe/shellbags)."
                 ),
             ))
         return jobs
@@ -1561,21 +1763,6 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
 
-def _find_recmd_batch() -> Path | None:
-    root = _repo_root()
-    for rel in (
-        # DFIRBatch.reb fails this RECmd build (HiveType 'User' not in enum).
-        "tools/windows/zimmerman/net9/RECmd/BatchExamples/Kroll_Batch.reb",
-        "tools/windows/zimmerman/net9/RECmd/BatchExamples/RECmd_Batch_MC.reb",
-        "tools/windows/kape/Modules/bin/RECmd/RECmd_Batch_MC.reb",
-        "tools/windows/zimmerman/net9/RECmd/BatchExamples/BasicSystemInfo.reb",
-        "tools/windows/zimmerman/net9/RECmd/BatchExamples/DFIRBatch.reb",
-    ):
-        p = root / rel
-        if p.is_file():
-            return p
-    return None
-
 
 def _find_recmd_user_batch() -> Path | None:
     root = _repo_root()
@@ -2064,7 +2251,12 @@ async def run_tool_lane(
         # parses, records OK, and contributes zero rows to the index. Promote the
         # saved stdout to a named artifact so the content is reachable.
         if job.output_saved_to and not _structured_output_present(job):
-            promoted = _promote_stdout(job, str(result.get("output_saved_to") or ""))
+            # Promote into the RUN's extraction dir, which is what the indexer
+            # walks. Beside the source is the case-level dir the MCP tool chose,
+            # and nothing reads that.
+            _dest = _owned_extraction_dir(case_id)
+            promoted = _promote_stdout(job, str(result.get("output_saved_to") or ""),
+                                       dest=_dest)
             if promoted:
                 job.output_files = [*job.output_files, promoted]
         if result.get("success") is False or result.get("error"):
@@ -2299,22 +2491,104 @@ def _structured_output_present(job: ToolJob) -> bool:
     return False
 
 
-def _promote_stdout(job: ToolJob, saved: str) -> str:
-    """Copy a stdout-only capture beside itself under an indexed name.
+def _find_recmd_batch() -> Path | None:
+    root = _repo_root()
+    for rel in (
+        # DFIRBatch.reb fails this RECmd build (HiveType 'User' not in enum).
+        "tools/windows/zimmerman/net9/RECmd/BatchExamples/Kroll_Batch.reb",
+        "tools/windows/zimmerman/net9/RECmd/BatchExamples/RECmd_Batch_MC.reb",
+        "tools/windows/kape/Modules/bin/RECmd/RECmd_Batch_MC.reb",
+        "tools/windows/zimmerman/net9/RECmd/BatchExamples/BasicSystemInfo.reb",
+        "tools/windows/zimmerman/net9/RECmd/BatchExamples/DFIRBatch.reb",
+    ):
+        p = root / rel
+        if p.is_file():
+            return p
+    return None
+
+
+def _find_recmd_user_batch() -> Path | None:
+    root = _repo_root()
+    for rel in (
+        "tools/windows/zimmerman/net9/RECmd/BatchExamples/UserActivity.reb",
+        "tools/windows/kape/Modules/bin/RECmd/BatchExamples/UserActivity.reb",
+        "tools/windows/zimmerman/net9/RECmd/BatchExamples/DFIRBatch.reb",
+    ):
+        p = root / rel
+        if p.is_file():
+            return p
+    return None
+
+
+def _recmd_batch_for(hive: Path) -> Path | None:
+    """The batch for a hive, using the machine and user helpers as written.
+
+    Kept as a selector rather than folded into either helper: both carry a
+    deliberate path order with the reason recorded (`DFIRBatch.reb` fails this
+    RECmd build - HiveType 'User' not in enum), and rewriting that logic to add a
+    hive argument is how working behaviour gets lost.
+    """
+    name = hive.name.lower()
+    if name.startswith("ntuser") or name.startswith("usrclass"):
+        return _find_recmd_user_batch() or _find_recmd_batch()
+    return _find_recmd_batch() or _find_recmd_user_batch()
+
+
+
+def _owned_extraction_dir(case_id: str) -> Path | None:
+    """The extraction root the indexer will actually walk for this case.
+
+    None when it cannot be resolved, in which case the caller falls back to
+    promoting beside the source - visible in the wrong place is better than lost,
+    and the ledger records the path either way.
+    """
+    if not case_id:
+        return None
+    try:
+        from nexus.config import settings
+        from nexus.langgraph.pipeline_runs import resolve_tools_extractions
+
+        case_dir = Path(settings.cases_root) / case_id
+        if not case_dir.is_dir():
+            return None
+        return resolve_tools_extractions(case_dir)
+    except Exception:  # noqa: BLE001 - a resolution failure must not break a run
+        return None
+
+
+def _promote_stdout(job: ToolJob, saved: str, dest: Path | None = None) -> str:
+    """Copy a stdout-only capture under an indexed name, into ``dest``.
 
     Returns the new path, or "" when there is nothing to promote. The copy keeps
     the tool and source in the name so the row's provenance is still readable in
     the index, and the original scratch file is left alone - it is what the audit
     trail points at.
+
+    ``dest`` matters. The MCP command tool saves stdout under the *case* dir
+    (`<case>/extractions/<tool>/`), while the indexer walks the *run* dir
+    (`<case>/runs/RUN-.../extractions/`). Promoting beside the source therefore
+    produced 60 correctly-named task-XML artifacts that nothing ever read: the
+    files existed, the ledger said OK, and the index stayed at 3 files. When the
+    caller knows the run's extraction root it must be used.
     """
     if not saved:
         return ""
     src = Path(saved)
     if not src.is_file() or src.stat().st_size <= 0:
         return ""
-    stem = _stem(Path(str((job.argv or ["artifact"])[-1])))
-    target = src.with_name(f"{job.tool}-{stem}.txt")
+    # Named from the whole argv, not just the source path. Two jobs over one file
+    # are legitimate - the WMI repository is staged in both ASCII and UTF-16
+    # because neither pass is a superset - and a source-derived name made them
+    # collide: the ASCII pass (587,443 lines) was written over by the UTF-16 pass
+    # (22,883 lines) and only the smaller one reached the index. Same defect as
+    # the shared `--csvf` name, one layer down.
+    argv = [str(a) for a in (job.argv or [])]
+    stem = _stem(Path(argv[-1] if argv else "artifact"))
+    digest = hashlib.sha1("\x1f".join(argv).encode("utf-8", "replace")).hexdigest()[:8]
+    name = f"{job.tool}-{stem}-{digest}.txt"
+    target = (Path(dest) / name) if dest else src.with_name(name)
     try:
+        target.parent.mkdir(parents=True, exist_ok=True)
         if target.exists() and target.stat().st_size == src.stat().st_size:
             return str(target)
         shutil.copy2(src, target)

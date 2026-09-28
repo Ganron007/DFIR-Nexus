@@ -49,10 +49,13 @@ def test_iconcache_file_is_recognised(tmp_path):
 
 
 def test_rdp_cache_bin_is_recognised(tmp_path):
+    """bmc-tools reconstructs the bitmap tiles. I first routed this to strings
+    believing the catalogue had no RDP parser; it ships bmc-tools, so the cache
+    was being keyword-searched instead of reconstructed."""
     f = _make(tmp_path, "Cache0000.bin", b"\x00" * 4096)
     assert is_host_evidence(f) is True
     jobs = _plan_single_artifact(f, tmp_path / "extractions")
-    assert [j.tool for j in jobs] == ["strings"]
+    assert [j.tool for j in jobs] == ["bmc-tools"]
 
 
 def test_srum_db_is_recognised(tmp_path):

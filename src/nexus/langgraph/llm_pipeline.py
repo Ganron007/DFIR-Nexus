@@ -1242,11 +1242,17 @@ async def emit_tool_report(state: InvestigationState, tools: dict) -> dict:
         )
 
         if not repo_export_enabled():
-            finalize_run(pipeline_run, "completed")
             step_log.append(
                 "Repo sample-export disabled (set NEXUS_REPO_EXPORT=1 for the examiner copy)"
             )
+        # Build the index BEFORE publishing the terminal status. A poller fires the
+        # moment the status is terminal, and every downstream consumer reads the
+        # index: the Mode 1 needle scan, Modes 2 and 3, the coverage audit. Publishing
+        # `completed` first meant a run could be read as finished while the index was
+        # still being written - seen live, status complete with no index_state.json on
+        # disk and ES still climbing past 352,000 docs.
             step_log.extend(_autoindex_case(case_dir))
+            finalize_run(pipeline_run, "completed")
             return {
                 "report_path": str(out),
                 "step_log": step_log,
@@ -1254,9 +1260,9 @@ async def emit_tool_report(state: InvestigationState, tools: dict) -> dict:
             }
 
         if live_case_is_in_repo(case_dir):
-            finalize_run(pipeline_run, "completed")
             step_log.append("Repo sample-export skipped (live case already in-repo)")
             step_log.extend(_autoindex_case(case_dir))
+            finalize_run(pipeline_run, "completed")
             return {
                 "report_path": str(out),
                 "step_log": step_log,
@@ -1271,8 +1277,8 @@ async def emit_tool_report(state: InvestigationState, tools: dict) -> dict:
         (exported / "reports" / "TOOL-RUN.md").write_text(md, encoding="utf-8")
         report_path = str(exported / "reports" / "TOOL-RUN.md")
         step_log.append(f"Repo export: {exported}")
-        finalize_run(pipeline_run, "completed")
         step_log.extend(_autoindex_case(case_dir))
+        finalize_run(pipeline_run, "completed")
     except Exception as exc:  # noqa: BLE001
         if "pipeline_run" in locals():
             finalize_run(pipeline_run, "failed", str(exc))

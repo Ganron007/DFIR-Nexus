@@ -143,6 +143,37 @@ def test_promotion_is_idempotent(tmp_path):
     assert len(list(tmp_path.glob("strings-*.txt"))) == 1
 
 
+def test_promotion_targets_the_run_dir_when_one_is_known(tmp_path):
+    """The MCP tool saves stdout under the *case* dir; the indexer walks the *run*
+    dir. Promoting beside the source produced 60 correctly-named task-XML
+    artifacts that nothing read - the files existed, the ledger said OK, and the
+    index stayed at 3 files.
+    """
+    src = tmp_path / "case" / "extractions" / "strings"
+    src.mkdir(parents=True)
+    saved = src / "20260928T031606_strings_stdout.txt"
+    saved.write_text("Task SID S-1-5-21-528816539\n", encoding="utf-8")
+    run_ext = tmp_path / "case" / "runs" / "RUN-1" / "extractions"
+    run_ext.mkdir(parents=True)
+
+    promoted = _promote_stdout(_job(), str(saved), dest=run_ext)
+    assert promoted, "nothing promoted"
+    p = Path(promoted)
+    assert run_ext in p.parents, f"promoted outside the run dir: {p}"
+    assert p.is_file()
+    # And the source is left alone - the audit trail points at it.
+    assert saved.is_file()
+
+
+def test_promotion_still_works_with_no_destination(tmp_path):
+    """Without a resolved run dir it falls back to beside the source: visible in
+    the wrong place beats lost."""
+    saved = tmp_path / "strings_stdout.txt"
+    saved.write_text("content\n", encoding="utf-8")
+    promoted = _promote_stdout(_job(), str(saved), dest=None)
+    assert promoted and Path(promoted).is_file()
+
+
 def test_the_promoted_name_is_filesystem_safe(tmp_path):
     saved = tmp_path / "s_stdout.txt"
     saved.write_text("x\n", encoding="utf-8")
