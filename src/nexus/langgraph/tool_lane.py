@@ -567,6 +567,10 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
             ))
             return jobs
         add("recmd", ["recmd", "-f", str(evidence), "--bn", str(batch),
+                      # --nl lets RECmd process a dirty hive whose transaction
+                      # logs are absent; without it it aborts with 0 output
+                      # (found on the DEFAULT hive, CASE-4BA41128, 2026-09-29).
+                      "--nl", "true",
                       "--csv", str(d), "--csvf", f"{_stem(evidence)}.csv"],
             f"Registry hive ({evidence.name})")
         # RegRipper reads the same hive through named plugins. Kept alongside
@@ -669,6 +673,7 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
         else:
             d = out_dir("recmd")
             add("recmd", ["recmd", "-f", str(evidence), "--bn", str(batch),
+                         "--nl", "true",
                          "--csv", str(d), "--csvf", f"{_stem(evidence)}.csv"],
                 f"Registry hive ({evidence.name})")
         # RegRipper applies to every hive, not only the ones the generic branch
@@ -848,19 +853,43 @@ def _is_wmi_repository(name: str) -> bool:
     return name.lower() in _WMI_REPOSITORY_NAMES
 
 
+def _regripper_plugins_dir() -> Path | None:
+    """The RegRipper plugins directory, which holds the extensionless profiles.
+
+    Profiles are files named after the hive (`software`, `ntuser`, `all`, ...).
+    There is no `default` profile, which is why `-f default` on a DEFAULT hive
+    died with a Perl module error and produced 42 bytes (CASE-4BA41128).
+    """
+    base = _repo_root() / "tools" / "windows" / "extra" / "regripper"
+    if not base.is_dir():
+        return None
+    for d in base.rglob("plugins"):
+        if d.is_dir() and (d / "all").is_file():
+            return d
+    return None
+
+
 def _regripper_profile(hive_name: str) -> str:
     """The RegRipper profile for a hive, by name.
 
     `rip -r <hive> -f <profile>`, verified from its usage. Profiles ship with
-    RegRipper and are named after the hive; a hive with no matching profile gets
-    `all`, which runs every plugin rather than failing the job.
+    RegRipper and are named after the hive; a hive whose profile is not shipped
+    gets `all`, which runs every plugin rather than failing the job. The check
+    is on the filesystem because a mapped-but-absent profile is exactly how the
+    DEFAULT hive produced 42 bytes of output and a Perl module error.
     """
     lower = hive_name.lower()
-    for prof in ("system", "software", "sam", "security", "default",
-                 "ntuser", "usrclass"):
+    preferred = ""
+    for prof in ("system", "software", "sam", "security", "ntuser", "usrclass"):
         if lower.startswith(prof):
-            return prof
-    return "all"
+            preferred = prof
+            break
+    plugins = _regripper_plugins_dir()
+    if plugins is None:
+        return preferred or "all"
+    if preferred and (plugins / preferred).is_file():
+        return preferred
+    return "all" if (plugins / "all").is_file() else (preferred or "all")
 
 
 _BROWSER_PROFILE_MARKERS = ("history", "cookies", "preferences", "login data",
@@ -1362,7 +1391,8 @@ def plan_windows_triage(
         d.mkdir(parents=True, exist_ok=True)
         add(
             "recmd",
-            ["recmd", "-d", str(config_dir), "--bn", str(batch), "--csv", str(d)],
+            ["recmd", "-d", str(config_dir), "--bn", str(batch), "--nl", "true",
+             "--csv", str(d)],
             f"Registry batch ({batch.name})",
             900,
         )
@@ -1376,7 +1406,7 @@ def plan_windows_triage(
                     "recmd",
                     [
                         "recmd", "-f", str(ntuser),
-                        "--bn", str(user_batch), "--csv", str(ud),
+                        "--bn", str(user_batch), "--nl", "true", "--csv", str(ud),
                     ],
                     f"NTUSER.DAT ({user.name}, {user_batch.name})",
                     600,
@@ -2718,6 +2748,25 @@ def _find_recmd_user_batch() -> Path | None:
     return None
 
 
+def _find_recmd_dfir_batch() -> Path | None:
+    """DFIRBatch by name: the one batch that parses the DEFAULT hive.
+
+    The machine and user batches all return zero rows on DEFAULT (verified
+    2026-09-29: Kroll, RECmd_Batch_MC, BasicSystemInfo and UserActivity each
+    produced no output). DFIRBatch yields rows, and the 'User' hive-type failure
+    that keeps it out of `_find_recmd_batch()` does not apply to this hive.
+    """
+    root = _repo_root()
+    for rel in (
+        "tools/windows/zimmerman/net9/RECmd/BatchExamples/DFIRBatch.reb",
+        "tools/windows/kape/Modules/bin/RECmd/BatchExamples/DFIRBatch.reb",
+    ):
+        p = root / rel
+        if p.is_file():
+            return p
+    return None
+
+
 def _recmd_batch_for(hive: Path) -> Path | None:
     """The batch for a hive, using the machine and user helpers as written.
 
@@ -2727,6 +2776,9 @@ def _recmd_batch_for(hive: Path) -> Path | None:
     hive argument is how working behaviour gets lost.
     """
     name = hive.name.lower()
+    if name.startswith("default"):
+        return (_find_recmd_dfir_batch() or _find_recmd_batch()
+                or _find_recmd_user_batch())
     if name.startswith("ntuser") or name.startswith("usrclass"):
         return _find_recmd_user_batch() or _find_recmd_batch()
     return _find_recmd_batch() or _find_recmd_user_batch()
