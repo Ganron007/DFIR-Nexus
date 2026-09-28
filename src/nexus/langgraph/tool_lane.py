@@ -345,6 +345,15 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
         return d
 
     if evidence.is_dir():
+        if _looks_like_browser_profile(evidence):
+            # Hindsight takes a profile directory (`-i <dir> -o <name>`, verified
+            # from its usage). It belongs in the directory branch: a profile is a
+            # folder, and the file branch is never reached for one.
+            d = out_dir("hindsight")
+            add("hindsight", [_python_script("hindsight"), "-i", str(evidence),
+                              "-o", str(d / _stem(evidence)), "-f", "jsonl"],
+                f"Browser profile ({evidence.name})", 1800)
+            return jobs
         if next(evidence.glob("*.pf"), None) is not None:
             d = out_dir("pecmd")
             add("pecmd", ["pecmd", "-d", str(evidence), "--csv", str(d), "--csvf", "prefetch.csv"],
@@ -417,6 +426,14 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
         add("thumbcache_viewer",
             ["thumbcache_viewer_cmd", "-d", str(evidence), "-o", str(reports), "-c"],
             f"Thumbcache entries ({evidence.name})", 300)
+    elif name.startswith("usrclass") and suffix in (".dat", ""):
+        # Shellbags live in UsrClass.dat. SBECmd scans a *directory* of hives
+        # (`-d <dir> --csv <dir>`, verified from its own usage), so it is pointed
+        # at the hive's folder rather than the file.
+        d = out_dir("sbecmd")
+        add("sbecmd", ["sbecmd", "-d", str(evidence.parent), "--csv", str(d),
+                       "--csvf", f"{_stem(evidence)}.csv"],
+            f"Shellbags ({evidence.name})", 900)
     elif _artifact_class(evidence) == "timeline":
         d = out_dir("wxtcmd")
         add("wxtcmd", ["wxtcmd", "-f", str(evidence), "--csv", str(d),
@@ -424,18 +441,42 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
             "Windows Timeline activities", 600)
     elif _artifact_class(evidence) == "browser_sqlite":
         d = out_dir("sqlecmd")
-        add("sqlecmd", ["sqlecmd", "-f", str(evidence), "-d", str(d), "--csv"],
-            f"Browser SQLite ({evidence.name})", 600)
+        # SQLECmd as shipped cannot map anything: 7 of its 125 .smap files fail
+        # to load ("Syntax error in ...AddressBook_iOS.smap" and others), and a
+        # direct run on Chrome `History` produced 0 output files even with
+        # `--hunt`. Routing it produces a guaranteed FAIL with no explanation, so
+        # the gap is stated instead - browser SQLite is real evidence and its
+        # absence should be visible rather than silent.
+        jobs.append(ToolJob(
+            host="windows", tool="sqlecmd", argv=[], status="SKIP",
+            purpose=f"Browser SQLite ({evidence.name})",
+            reason=("SQLECmd's map bundle fails to load (7 of 125 .smap files "
+                    "report 'Syntax error'), so it produces no output. Browser "
+                    "SQLite is not parsed; do not read this as absence of browser "
+                    "history evidence."),
+        ))
+        return jobs
     elif _artifact_class(evidence) == "bits":
         d = out_dir("bitsparser")
-        add("bitsparser", ["bitsparser", "-f", str(evidence), "-o", str(d)],
+        add("bitsparser", ["bitsparser", "-i", str(evidence.parent),
+                           "-o", str(d / f"{_stem(evidence)}.json")],
             f"BITS job queue ({evidence.name})", 600)
     elif _artifact_class(evidence) == "logfile":
-        d = out_dir("logfileparser")
-        add("logfileparser", ["logfileparser", "-f", str(evidence), "--csv", str(d),
-                              "--csvf", f"{_stem(evidence)}.csv"],
-            "NTFS transaction journal", 1800)
-    elif _artifact_class(evidence) in ("ntfs_meta",):
+        # No CLI parser. `LogFileParser64.exe` is a GUI application - it takes no
+        # arguments and returns immediately with "Error missing input $LogFile in
+        # /LogFileFile:", so a headless job can never succeed. Routing to it
+        # produced a guaranteed FAIL with no explanation. Reported as an honest
+        # SKIP naming the gap instead, because $LogFile is real evidence and its
+        # absence from the analysis should be visible rather than silent.
+        jobs.append(ToolJob(
+            host="windows", tool="logfileparser", argv=[], status="SKIP",
+            purpose=f"NTFS $LogFile ({evidence.name})",
+            reason=("no command-line $LogFile parser available - LogFileParser64 "
+                    "is GUI-only. $LogFile is not parsed; do not read this as "
+                    "absence of transaction-journal evidence."),
+        ))
+        return jobs
+    elif _artifact_class(evidence) == "ntfs_meta":
         d = out_dir("mftecmd")
         add("mftecmd", ["mftecmd", "-f", str(evidence), "--csv", str(d),
                         "--csvf", f"{_stem(evidence)}.csv"],
@@ -462,6 +503,14 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
         add("recmd", ["recmd", "-f", str(evidence), "--bn", str(batch),
                       "--csv", str(d), "--csvf", f"{_stem(evidence)}.csv"],
             f"Registry hive ({evidence.name})")
+        # RegRipper reads the same hive through named plugins. Kept alongside
+        # RECmd because the ES-Mapping table lists it as its own tool/evidence
+        # pair, and the two disagree on some keys.
+        # rip prints to stdout; the lane's stdout capture carries it, and the
+        # promotion step makes it reachable by the indexer.
+        out_dir("regripper")
+        add("regripper", ["rip", "-r", str(evidence), "-f", _regripper_profile(name)],
+            f"RegRipper plugins ({evidence.name})", 600)
     elif _artifact_class(evidence) == "jumplist":
         d = out_dir("jlecmd")
         add("jlecmd", ["jlecmd", "-f", str(evidence), "--csv", str(d),
@@ -507,7 +556,7 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
         # bmc-tools, so the cache was being keyword-searched instead of
         # reconstructed and the recovered images were never recoverable.
         d = out_dir("rdp")
-        add("bmc-tools", ["bmc-tools.py", "-s", str(evidence.parent), "-o", str(d)],
+        add("bmc-tools", ["bmc-tools.py", "-s", str(evidence.parent), "-d", str(d)],
             f"RDP bitmap cache recovery ({evidence.name})", 1800)
     elif name.startswith("srudb.dat") or name == "sru.db" or "sru" in name:
         # SRUDB.dat is a live ESE database. SrumECmd refuses it in place
@@ -556,6 +605,13 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
             add("recmd", ["recmd", "-f", str(evidence), "--bn", str(batch),
                          "--csv", str(d), "--csvf", f"{_stem(evidence)}.csv"],
                 f"Registry hive ({evidence.name})")
+        # RegRipper applies to every hive, not only the ones the generic branch
+        # handles. SYSTEM/SOFTWARE/SAM/SECURITY take the branch above, so without
+        # this they got RECmd and no RegRipper - and the ES-Mapping table lists
+        # RegRipper as its own tool/evidence pair.
+        out_dir("regripper")
+        add("regripper", ["rip", "-r", str(evidence), "-f", _regripper_profile(name)],
+            f"RegRipper plugins ({evidence.name})", 600)
         if name == "system":
             ad = out_dir("appcompat")
             add("appcompatcacheparser",
@@ -720,6 +776,46 @@ def _is_wmi_repository(name: str) -> bool:
     return name.lower() in _WMI_REPOSITORY_NAMES
 
 
+def _regripper_profile(hive_name: str) -> str:
+    """The RegRipper profile for a hive, by name.
+
+    `rip -r <hive> -f <profile>`, verified from its usage. Profiles ship with
+    RegRipper and are named after the hive; a hive with no matching profile gets
+    `all`, which runs every plugin rather than failing the job.
+    """
+    lower = hive_name.lower()
+    for prof in ("system", "software", "sam", "security", "default",
+                 "ntuser", "usrclass"):
+        if lower.startswith(prof):
+            return prof
+    return "all"
+
+
+_BROWSER_PROFILE_MARKERS = ("history", "cookies", "preferences", "login data",
+                            "places.sqlite", "web data")
+
+
+def _looks_like_browser_profile(d: Path) -> bool:
+    """True for a directory that is a Chromium/Firefox profile.
+
+    Matched on the files a profile contains rather than on its name, because
+    examiners stage profiles under arbitrary folder names.
+    """
+    try:
+        names = {p.name.lower() for p in d.iterdir()}
+    except OSError:
+        return False
+    return len(names & set(_BROWSER_PROFILE_MARKERS)) >= 2
+
+
+def _python_script(tool: str) -> str:
+    """Resolve a Python entry point through the catalogue rather than guessing."""
+    from nexus.tools.windows import _WIN_CATALOG, _find_binary
+
+    name = (_WIN_CATALOG.get(tool) or {}).get("name") or tool
+    return _find_binary(name) or tool
+
+
 def _has_specific_hive_handler(name: str) -> bool:
     """True for the hive names that already have a dedicated branch above.
 
@@ -780,6 +876,8 @@ def is_host_evidence(path: str | Path) -> bool:
             or _is_wmi_repository(name)
         )
     if p.is_dir():
+        if _looks_like_browser_profile(p):
+            return True
         if (
             next(p.glob("*.pf"), None) is not None
             or next(p.glob("*.lnk"), None) is not None
@@ -812,6 +910,10 @@ def is_host_evidence(path: str | Path) -> bool:
             "wer",
             "wmi",
             "browser",
+            "profiles",
+            "chrome-default",
+            "edge-default",
+            "cduserdata",
             "email",
             "drivefs",
             "activitiescache",
@@ -2205,6 +2307,11 @@ async def run_tool_lane(
                 **extra,
             )
 
+        # Snapshot the output dirs before the tool runs, so "did this job write
+        # anything" can be answered by diff rather than by guessing the naming.
+        _out_dirs = _output_dirs_of(job)
+        _before = _snapshot(_out_dirs)
+
         if job.host == "windows":
             if not win_tool:
                 job.reason = "run_windows_command not available on MCP"
@@ -2250,7 +2357,9 @@ async def run_tool_lane(
         # does not: the extraction is then silently unreachable, and the format
         # parses, records OK, and contributes zero rows to the index. Promote the
         # saved stdout to a named artifact so the content is reachable.
-        if job.output_saved_to and not _structured_output_present(job):
+        if job.output_saved_to and not (
+            _structured_output_present(job) or _tool_wrote_structured_output(job)
+        ):
             # Promote into the RUN's extraction dir, which is what the indexer
             # walks. Beside the source is the case-level dir the MCP tool chose,
             # and nothing reads that.
@@ -2280,7 +2389,10 @@ async def run_tool_lane(
             # Zimmerman 1.5 tools print "Administrator privileges not found"
             # whether or not they then write a valid CSV, so a stdout marker
             # would fail a job that actually succeeded.
-            if status == "OK" and not _produced_expected_output(job):
+            _fresh = _new_output_files(_out_dirs, _before)
+            if status == "OK" and _fresh:
+                job.output_files = [*job.output_files, *_fresh]
+            if status == "OK" and not (_fresh or _produced_expected_output(job)):
                 status = "FAIL"
                 job.reason = (
                     f"{job.tool} exited cleanly but produced no output file "
@@ -2597,6 +2709,83 @@ def _promote_stdout(job: ToolJob, saved: str, dest: Path | None = None) -> str:
     return str(target)
 
 
+def _tool_wrote_structured_output(job: ToolJob) -> bool:
+    """True when the tool's own output target holds a real artifact on disk.
+
+    Checked on the filesystem rather than on `job.output_files`, because the
+    ledger's file list is assembled from the tool result and can lag the write.
+    Without this the promotion misfired for jobs that DID produce a CSV: the
+    560 stdout-capture documents in the index - tool version banners and summary
+    lines - were indexed as evidence, 5.3% of a 10,613-doc index.
+    """
+    argv = [str(a) for a in (job.argv or ())]
+    for i, arg in enumerate(argv):
+        if arg in ("--csv", "--json", "--jsonl", "--out", "-o") and i + 1 < len(argv):
+            target = Path(argv[i + 1])
+            if target.is_dir():
+                try:
+                    if any(f.is_file() and f.stat().st_size > 0
+                           for f in target.rglob("*")):
+                        return True
+                except OSError:
+                    continue
+            elif target.is_file() and target.stat().st_size > 0:
+                return True
+    return False
+
+
+def _output_dirs_of(job: ToolJob) -> list[Path]:
+    """Directories this job was told to write into.
+
+    Used to diff before/after, because tools disagree about naming: `recmd` and
+    `mftecmd` honour `--csvf` verbatim, while `wxtcmd` writes
+    `<timestamp>_Activity.csv` and `jlecmd` appends `_AutomaticDestinations`.
+    Requiring the name we passed marks those FAIL even though they wrote the
+    evidence, so the only tool-agnostic question is "did this job create a file".
+    """
+    out: list[Path] = []
+    argv = [str(a) for a in (job.argv or ())]
+    _out_flags = ("--csv", "--json", "--jsonl", "--out", "-o", "-d")
+    for i, arg in enumerate(argv):
+        if arg in _out_flags and i + 1 < len(argv):
+            out.append(Path(argv[i + 1]))
+    return out
+
+
+def _snapshot(dirs: list[Path]) -> set[str]:
+    """Every file currently under these dirs, by path and size."""
+    seen: set[str] = set()
+    for d in dirs:
+        try:
+            if d.is_dir():
+                for f in d.rglob("*"):
+                    if f.is_file():
+                        seen.add(f"{f}|{f.stat().st_size}")
+            elif d.is_file():
+                seen.add(f"{d}|{d.stat().st_size}")
+        except OSError:
+            continue
+    return seen
+
+
+def _new_output_files(dirs: list[Path], before: set[str]) -> list[str]:
+    """Files present now that were not present before, and are non-empty."""
+    fresh: list[str] = []
+    for d in dirs:
+        try:
+            files = [f for f in d.rglob("*") if f.is_file()] if d.is_dir() else ([d] if d.is_file() else [])
+        except OSError:
+            continue
+        for f in files:
+            try:
+                size = f.stat().st_size
+            except OSError:
+                continue
+            if size > 0 and f"{f}|{size}" not in before:
+                fresh.append(str(f))
+    return fresh
+
+
 def _produced_expected_output(job: ToolJob) -> bool:
     """True when a job that named an output path actually wrote one.
 
@@ -2605,6 +2794,25 @@ def _produced_expected_output(job: ToolJob) -> bool:
     is the exact failure class the ledger exists to prevent.
     """
     argv = list(job.argv or ())
+
+    # Honour `--csvf`/`--jsonf` first: it names the one file this job owns. Per-file
+    # jobs share an output directory, so "the directory has files" is true for
+    # whichever job wrote last and false for the one that ran first - which is how
+    # a recmd job that had written a 13 KB CSV was marked FAIL while its sibling
+    # held the directory.
+    named = ""
+    for i, arg in enumerate(argv):
+        if arg in ("--csvf", "--jsonf") and i + 1 < len(argv):
+            named = str(argv[i + 1])
+            break
+    if named:
+        for i, arg in enumerate(argv):
+            if arg in ("--csv", "--json") and i + 1 < len(argv):
+                cand = Path(argv[i + 1]) / named
+                if cand.is_file():
+                    return cand.stat().st_size > 0
+        return False
+
     produced = False
     for i, arg in enumerate(argv):
         if arg in ("--csv", "--json", "--jsonl", "--out", "-o") and i + 1 < len(argv):
@@ -2627,6 +2835,17 @@ def _produced_expected_output(job: ToolJob) -> bool:
             with contextlib.suppress(OSError):
                 if any(f.is_file() and f.stat().st_size > 0 for f in p.rglob("*.csv")):
                     return True
+    # A saved stdout capture is NOT the product when the job named an output
+    # target. Counting it made `sqlecmd` and `logfileparser` report OK while
+    # producing no files at all - the ledger said OK, nothing was written, and
+    # the index showed zero docs for those families. The capture is the audit
+    # trail, not the extraction.
+    named_target = any(
+        a in ("--csv", "--json", "--jsonl", "--out", "-o", "--csvf", "--jsonf")
+        for a in argv
+    )
+    if named_target:
+        return False
     if job.output_saved_to:
         p = Path(job.output_saved_to)
         if p.is_file() and p.stat().st_size > 0:
