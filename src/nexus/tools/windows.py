@@ -193,8 +193,39 @@ def _prefer_binary(paths: list[Path]) -> Path | None:
         return None
     rank = {".exe": 0, ".cmd": 1, ".bat": 1, ".ps1": 3, ".pl": 4, ".py": 4}
 
-    def _key(p: Path) -> tuple[int, str]:
-        return (rank.get(p.suffix.lower(), 2 if not p.suffix else 5), str(p).lower())
+    # Which copy of a tool to run when the tree ships several. This used to be
+    # extension then alphabetical order, which meant `Tools/windows/kape/...`
+    # always won over `Tools/windows/zimmerman/...` purely on the letter "k":
+    # the KAPE bundle is from 2022-10 and the Zimmerman net9 set from 2026-05, so
+    # every Zimmerman parser we ran was four years old.
+    #
+    # Measured consequences: MFTECmd 1.2.2.1 does not accept `$LogFile` (the
+    # current release does, per the vendor's own changelog in our KB), and the
+    # old SQLECmd cannot load the newer `.smap` map files - it reports "Syntax
+    # error" on 7 of 125 and produces no output at all, which is why browser
+    # SQLite was the largest unparsed class in the corpus.
+    #
+    # Preferring by toolset is deliberate rather than by mtime: copy operations
+    # rewrite mtimes, so "newest file" is not a reliable version signal.
+    _TOOLSET_RANK = (
+        "zimmerman\net9", "zimmerman/net9",     # current Zimmerman release
+        "zimmerman",                              # other Zimmerman copies
+        "extra",                                  # curated extras (bmc-tools, hindsight, ...)
+        "sysinternals",
+        "kape",                                   # vendor bundle, oldest
+    )
+
+    def _toolset_rank(p: Path) -> int:
+        low = str(p).lower().replace("/", "\\")
+        for i, prefix in enumerate(_TOOLSET_RANK):
+            if f"\\{prefix.replace('/', chr(92))}" in low:
+                return i
+        return len(_TOOLSET_RANK)
+
+    def _key(p: Path) -> tuple[int, int, str]:
+        return (_toolset_rank(p),
+                rank.get(p.suffix.lower(), 2 if not p.suffix else 5),
+                str(p).lower())
 
     return sorted(paths, key=_key)[0]
 

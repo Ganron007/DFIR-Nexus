@@ -81,7 +81,19 @@ class CSVImporter(Importer):
         # Description
         description = row.get("message") or row.get("Message") or row.get("Description") or row.get("msg") or row.get("Details") or ""
         if not description:
-            description = f"CSV record: {', '.join(str(k) for k in list(row.keys())[:5] if k is not None)}"
+            # Render the row's VALUES, not its column names.
+            #
+            # This fallback used to join `row.keys()`, so every row of a CSV with
+            # no message/Description column produced the identical string - the
+            # header. The values survived in `raw` but `render_ingest_row` only
+            # renders `description`/`details`, so the row was indexed and
+            # unsearchable: an examiner feeding in a manual $LogFile export could
+            # query for the path they had just parsed and get zero hits.
+            #
+            # `key=value` keeps the column context, and empty values are skipped
+            # so a sparse row still reads.
+            pairs = [f"{k}={row[k]}" for k in row if row[k] not in (None, "")]
+            description = "CSV record: " + "; ".join(pairs)
 
         return Artifact(
             id=Artifact.new_id(),

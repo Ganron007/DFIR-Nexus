@@ -224,6 +224,31 @@ def find_evtx_dirs(evidence: Path) -> list[Path]:
     return found
 
 
+def _zircolite_rules() -> Path | None:
+    """Zircolite's bundled Windows ruleset, preferring the high-confidence set.
+
+    Zircolite ships its own compiled rules, so nothing external is required -
+    which is why it can be scheduled without a rule-path precondition the way
+    Chainsaw needs one.
+    """
+    try:
+        from nexus.tools.windows import _find_binary
+
+        exe = _find_binary("zircolite")
+    except Exception:  # noqa: BLE001
+        return None
+    if not exe:
+        return None
+    root = Path(exe).parent
+    for rel in ("rules/rules_windows_generic_high.json",
+                "rules/rules_windows_generic_medium.json",
+                "rules/rules_windows_generic.json"):
+        cand = root / rel
+        if cand.is_file():
+            return cand
+    return None
+
+
 def schedule_evtx_parsers(
     jobs: list[ToolJob],
     evtx_dirs: list[Path],
@@ -316,6 +341,36 @@ def schedule_evtx_parsers(
             f"Parse all EVTX {label} ({n} logs)",
             1800,
         )
+        # DeepBlueCLI: a PowerShell script, which the executor runs through
+        # PowerShell with `-NoProfile -NonInteractive -ExecutionPolicy Bypass
+        # -File` because the script path is catalogue-resolved - no `-Command`,
+        # no metacharacters. Its own wrapper takes -Evtx and -Out, both
+        # mandatory (read from its param block, not guessed).
+        db_out = extractions / "deepbluecli" / label if many else extractions / "deepbluecli"
+        db_out.mkdir(parents=True, exist_ok=True)
+        add(
+            "deepbluecli",
+            ["run-deepblue.ps1", "-Evtx", str(evtx_dir),
+             "-Out", str(db_out / "deepblue.json")],
+            f"DeepBlueCLI detections {label} ({n} logs)",
+            1800,
+        )
+        # Zircolite against its own bundled Windows ruleset - it ships
+        # rules/rules_windows_generic_high.json, so no external rule path is
+        # needed. The ES-Mapping table lists it as its own EVTX pair.
+        z_rules = _zircolite_rules()
+        if z_rules:
+            z_out = extractions / "zircolite" / label if many else extractions / "zircolite"
+            z_out.mkdir(parents=True, exist_ok=True)
+            add(
+                "zircolite",
+                ["zircolite", "-e", str(evtx_dir), "-r", str(z_rules),
+                 "-o", str(z_out / "zircolite.json")],
+                f"Zircolite detections {label} ({n} logs)",
+                1800,
+            )
+        else:
+            skip("zircolite", "bundled Windows ruleset not found under Tools/windows/extra/zircolite")
 
     if not mapping or not sigma:
         skip(
@@ -441,21 +496,14 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
             "Windows Timeline activities", 600)
     elif _artifact_class(evidence) == "browser_sqlite":
         d = out_dir("sqlecmd")
-        # SQLECmd as shipped cannot map anything: 7 of its 125 .smap files fail
-        # to load ("Syntax error in ...AddressBook_iOS.smap" and others), and a
-        # direct run on Chrome `History` produced 0 output files even with
-        # `--hunt`. Routing it produces a guaranteed FAIL with no explanation, so
-        # the gap is stated instead - browser SQLite is real evidence and its
-        # absence should be visible rather than silent.
-        jobs.append(ToolJob(
-            host="windows", tool="sqlecmd", argv=[], status="SKIP",
-            purpose=f"Browser SQLite ({evidence.name})",
-            reason=("SQLECmd's map bundle fails to load (7 of 125 .smap files "
-                    "report 'Syntax error'), so it produces no output. Browser "
-                    "SQLite is not parsed; do not read this as absence of browser "
-                    "history evidence."),
-        ))
-        return jobs
+        # SQLECmd works once the current build is used. The bundle's 2022 copy
+        # reports "Syntax error" on 7 of its 125 .smap maps and produced no output
+        # at all for a Chrome `History` - with the net9 build the same run gives
+        # 0 syntax errors and three CSVs (HistoryVisits 167 rows, KeywordSearches
+        # 13, Downloads 4). The old binary could not read the newer map files.
+        d = out_dir("sqlecmd")
+        add("sqlecmd", ["sqlecmd", "-f", str(evidence), "--csv", str(d)],
+            f"Browser SQLite ({evidence.name})", 900)
     elif _artifact_class(evidence) == "bits":
         d = out_dir("bitsparser")
         add("bitsparser", ["bitsparser", "-i", str(evidence.parent),
@@ -471,9 +519,18 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
         jobs.append(ToolJob(
             host="windows", tool="logfileparser", argv=[], status="SKIP",
             purpose=f"NTFS $LogFile ({evidence.name})",
-            reason=("no command-line $LogFile parser available - LogFileParser64 "
-                    "is GUI-only. $LogFile is not parsed; do not read this as "
-                    "absence of transaction-journal evidence."),
+            reason=(
+                "$LogFile needs examiner action - no working command-line parser "
+                "here. MFTECmd 2026.5.0 does NOT accept it (`-f` lists only "
+                "$MFT|$J|$Boot|$SDS|$I30; a run on the real file exits 0 with no "
+                "output), and LogFileParser64 is GUI-only. TO PARSE IT: run "
+                "LogFileParser64.exe (Tools/windows/extra/logfileparser/) or a "
+                "CLI equivalent, export CSV/JSONL, then feed it back with "
+                "`nexus ingest <exported file> --case <case_id>` so it reaches "
+                "the index - or on SIFT run log2timeline with NEXUS_SIFT_PLASO=1. "
+                "$LogFile is NOT parsed as it stands: do not read its absence "
+                "from the timeline as absence of journal evidence."
+            ),
         ))
         return jobs
     elif _artifact_class(evidence) == "ntfs_meta":
@@ -671,9 +728,15 @@ def _artifact_class(path: Path) -> str:
         return "ntfs_meta"
     # User and machine hives whose names carry a suffix (NTUSER-fredr.DAT).
     # Hives are exported with the user in the name: NTUSER-fredr.DAT,
-    # UsrClass-srl-h.dat. A strict equality check on `ntuser.dat` matched only
-    # the bare form, which is not how an examiner exports a hive.
-    if name.endswith((".dat", ".hve", ".hive", "")) and name.split(".")[0].split("-")[0] in _HIVE_NAMES:
+    # UsrClass-srl-h.dat, or with no extension at all (the live hive names).
+    #
+    # `name.endswith(("", ...))` is ALWAYS true, which made the extension guard a
+    # no-op and let the stem decide: `System.evtx` and `Security.evtx` were both
+    # classified as registry hives, so an EVTX-only case scheduled RECmd and
+    # RegRipper against Windows event logs and recorded `regripper OK` on a log
+    # file - a false OK. Test the actual suffix.
+    if (path.suffix == "" or path.suffix.lower() in (".dat", ".hve", ".hive")) \
+            and name.split(".")[0].split("-")[0] in _HIVE_NAMES:
         return "registry_hive"
     if suffix in _JUMPLIST_SUFFIXES:
         return "jumplist"

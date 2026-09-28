@@ -29,7 +29,13 @@ from starlette.testclient import TestClient
 REPO = Path(__file__).resolve().parent.parent
 EVTX_SRC = REPO / "Evidence-files" / "01-windows" / "evtx" / "504-win10"
 EXAMINER = "flow-e2e"
-PIPELINE_TIMEOUT_SECONDS = 900
+# The lane runs every applicable parser, and the EVTX set now includes
+# DeepBlueCLI and Zircolite alongside hayabusa/chainsaw/evtxecmd - two more
+# full passes over the logs. 900s was tuned before those existed and the lane
+# was still running when it expired, which reads as a failure of the lane
+# rather than of the window. This is a ceiling, not an expectation: the loop
+# exits as soon as the run reports complete.
+PIPELINE_TIMEOUT_SECONDS = 3600
 
 
 def _write_password_entry(tmp_path: Path) -> str:
