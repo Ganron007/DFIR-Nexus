@@ -2426,7 +2426,7 @@ async def run_tool_lane(
             # Promote into the RUN's extraction dir, which is what the indexer
             # walks. Beside the source is the case-level dir the MCP tool chose,
             # and nothing reads that.
-            _dest = _owned_extraction_dir(case_id)
+            _dest = _owned_extraction_dir(case_id, run_id)
             promoted = _promote_stdout(job, str(result.get("output_saved_to") or ""),
                                        dest=_dest)
             if promoted:
@@ -2710,23 +2710,37 @@ def _recmd_batch_for(hive: Path) -> Path | None:
 
 
 
-def _owned_extraction_dir(case_id: str) -> Path | None:
-    """The extraction root the indexer will actually walk for this case.
+def _owned_extraction_dir(case_id: str, run_id: str = "") -> Path | None:
+    """The extraction root of the run that is executing, which is what the
+    indexer walks.
 
-    None when it cannot be resolved, in which case the caller falls back to
-    promoting beside the source - visible in the wrong place is better than lost,
-    and the ledger records the path either way.
+    Resolved from the run record, not from `resolve_tools_extractions`. That
+    helper answers "the newest run that already has parsed data", and mid-run it
+    legitimately falls back to `<case>/extractions` because the run's own CSVs do
+    not exist yet - `strings` runs before any EVTX parser. Promoting there put 62
+    task-XML and WMI artifacts in a directory the indexer never walks, so they
+    were parsed, recorded OK, and invisible: `CommandLineEventConsumer` count=0
+    from a 31 MB WMI repository that had just been read.
+
+    None when it cannot be resolved, in which case the caller promotes beside the
+    source - visible in the wrong place beats lost, and the ledger records it.
     """
     if not case_id:
         return None
     try:
         from nexus.config import settings
-        from nexus.langgraph.pipeline_runs import resolve_tools_extractions
+        from nexus.langgraph.pipeline_runs import resolve_run
 
         case_dir = Path(settings.cases_root) / case_id
         if not case_dir.is_dir():
             return None
-        return resolve_tools_extractions(case_dir)
+        if run_id:
+            run = resolve_run(case_dir, "tools", run_id)
+            if run.extractions.is_dir():
+                return run.extractions
+        if (case_dir / "extractions").is_dir():
+            return case_dir / "extractions"
+        return None
     except Exception:  # noqa: BLE001 - a resolution failure must not break a run
         return None
 
