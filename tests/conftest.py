@@ -97,6 +97,13 @@ def _isolated_case_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     settings.data_root = tmp_path / "data"
     settings.audit_dir = tmp_path / "audit"
 
+    # The RAG index resolves through these at call time; redirect them and
+    # drop any cached index so no in-process path can reach the real bundle.
+    import nexus.tools.rag as _rag
+
+    monkeypatch.setattr(_rag, "_get_index_dir", lambda: tmp_path / "data" / "rag")
+    monkeypatch.setattr(_rag, "_global_index", None)
+
     # Module-level constants captured the real path at import time.
     for mod_name, attr in (
         ("nexus.cli.case_cmd", "_ACTIVE_CASE_FILE"),
