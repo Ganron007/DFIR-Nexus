@@ -14,7 +14,13 @@ import time
 
 from mcp.server.fastmcp import FastMCP
 
-from nexus.app import _CASE_WRITER_TOOLS, apply_tool_offload, create_server
+from nexus.app import (
+    _CASE_WRITER_TOOLS,
+    apply_tool_offload,
+    create_server,
+    in_process_tool,
+    in_process_tools,
+)
 
 
 def _schema(tool) -> object:
@@ -54,6 +60,19 @@ def test_schemas_identical_with_and_without_offload(monkeypatch):
     assert diffs == [], f"offload changed tool schemas: {diffs[:8]}"
     # and the wrapped ones really are async now
     assert inspect.iscoroutinefunction(wrapped_tools[next(iter(wrapped_tools))].fn)
+
+
+def test_in_process_tools_expose_the_sync_originals(monkeypatch):
+    """WO-1 regression: in-process callers must keep the sync functions."""
+    monkeypatch.setenv("NEXUS_RAG_PRELOAD", "0")
+    server = create_server()
+
+    fn = in_process_tool(server, "case_init")
+    assert not inspect.iscoroutinefunction(fn)
+
+    tools = in_process_tools(server)
+    assert set(tools) == set(server._tool_manager._tools)
+    assert not inspect.iscoroutinefunction(tools["case_init"].fn)
 
 
 def test_case_writer_set_covers_the_critical_writers():

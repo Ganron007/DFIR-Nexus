@@ -194,10 +194,10 @@ else:
     rec(False, "Hayabusa dfir-timeline", f"exe={hay.is_file()} evtx_n={len(evtxs)}")
 
 # ── MCP: case + audit trail + DRAFT + leftover tools ──────────────────
-from nexus.app import create_server
+from nexus.app import create_server, in_process_tools
 
 server = create_server()
-tools = server._tool_manager._tools
+tools = in_process_tools(server)
 rec(True, "MCP tool count", str(len(tools)))
 
 pfs = list((EV / "01-windows").rglob("*.pf"))[:1]

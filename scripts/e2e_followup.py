@@ -78,10 +78,10 @@ except Exception as exc:
     rec(False, "M3 heuristic pipeline", f"{type(exc).__name__}: {exc}")
 
 # DRAFT with interpretation
-from nexus.app import create_server
+from nexus.app import create_server, in_process_tools
 
 server = create_server()
-tools = server._tool_manager._tools
+tools = in_process_tools(server)
 r = tools["record_finding"].fn(
     title="Monitor Zeek JSON conn ingested",
     description="Live monitor spool JSON Zeek conn.log",

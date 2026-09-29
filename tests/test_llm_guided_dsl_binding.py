@@ -51,10 +51,10 @@ def backbone(tmp_path, monkeypatch):
     monkeypatch.setenv("NEXUS_CASES_ROOT", str(tmp_path / "cases"))
     monkeypatch.setenv("NEXUS_ACTIVE_CASE_FILE", str(tmp_path / "active_case"))
     (tmp_path / "cases").mkdir(parents=True, exist_ok=True)
-    from nexus.app import create_server
+    from nexus.app import create_server, in_process_tools
 
     server = create_server()
-    tools = server._tool_manager._tools
+    tools = in_process_tools(server)
     r = tools["case_init"].fn("M2 DSL Test", case_id="CASE-M2DSL")
     cid = r["case_id"]
     tools["case_activate"].fn(cid)

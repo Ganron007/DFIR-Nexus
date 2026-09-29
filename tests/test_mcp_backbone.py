@@ -37,10 +37,10 @@ def backbone(tmp_path, monkeypatch):
     monkeypatch.setenv("NEXUS_ACTIVE_CASE_FILE", str(tmp_path / "active_case"))
     monkeypatch.delenv("NEXUS_KB_DIR", raising=False)
     (tmp_path / "cases").mkdir(parents=True, exist_ok=True)
-    from nexus.app import create_server
+    from nexus.app import create_server, in_process_tools
 
     server = create_server()
-    tools = server._tool_manager._tools
+    tools = in_process_tools(server)
     cid = _make_case_dir(tools, tmp_path)
     return tools, cid
 

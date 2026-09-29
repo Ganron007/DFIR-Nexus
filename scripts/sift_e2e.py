@@ -41,10 +41,10 @@ p = sh([sys.executable, "-m", "nexus.cli.main", "setup", "test"])
 rec(p.returncode == 0, "nexus setup test", (p.stdout or p.stderr)[-200:].replace("\n", " "))
 
 # ── MCP Linux tools ───────────────────────────────────────────────────
-from nexus.app import create_server
+from nexus.app import create_server, in_process_tools
 
 server = create_server()
-tools = server._tool_manager._tools
+tools = in_process_tools(server)
 rec("run_command" in tools and "check_tools" in tools, "Linux MCP registered",
     f"n={len(tools)} run_command={'run_command' in tools} check_tools={'check_tools' in tools}")
 

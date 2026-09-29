@@ -71,7 +71,7 @@ def smallest(glob: str, root: Path | None = None) -> Path | None:
 
 
 def tools_map(server) -> dict:
-    return server._tool_manager._tools
+    return in_process_tools(server)
 
 
 def rwc(tools: dict, cmd: str, purpose: str, timeout: int = 300) -> dict:
@@ -652,7 +652,7 @@ def write_report() -> None:
 
 def main() -> int:
     setup_examiner()
-    from nexus.app import create_server
+    from nexus.app import create_server, in_process_tools
     server = create_server()
     tools = tools_map(server)
     rec("BOOT", "MCP tools", len(tools) > 0, f"n={len(tools)}")

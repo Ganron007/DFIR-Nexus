@@ -183,10 +183,10 @@ def lane_windows_tools() -> None:
 
 
 def lane_mcp_and_modes() -> None:
-    from nexus.app import create_server
+    from nexus.app import create_server, in_process_tools
 
     server = create_server()
-    tools = server._tool_manager._tools
+    tools = in_process_tools(server)
     rec("mcp", "create_server", True, f"tools={len(tools)}")
 
     evtx = None
@@ -341,7 +341,7 @@ def lane_case_golden() -> None:
     # DRAFT finding via MCP
     from nexus.app import create_server
     server = create_server()
-    tools = server._tool_manager._tools
+    tools = in_process_tools(server)
     rec_fn = tools.get("record_finding")
     if rec_fn:
         try:

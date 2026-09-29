@@ -507,9 +507,9 @@ def lane_cli(case_id: str | None) -> None:
 
     # reject a DRAFT (allowed) — not approve
     try:
-        from nexus.app import create_server
+        from nexus.app import create_server, in_process_tools
         s = create_server()
-        findings = s._tool_manager._tools["get_findings"].fn()
+        findings = in_process_tools(s)["get_findings"].fn()
         fids = []
         if isinstance(findings, dict):
             fids = [f.get("id") for f in findings.get("findings", []) if f.get("status") == "DRAFT"]
@@ -648,7 +648,7 @@ def main() -> int:
     from nexus.app import create_server
 
     server = create_server()
-    tools = server._tool_manager._tools
+    tools = in_process_tools(server)
     rec("BOOT", "MCP tools registered", len(tools) > 0, f"n={len(tools)}")
 
     print("== importers ==", flush=True)

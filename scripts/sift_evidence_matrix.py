@@ -23,7 +23,7 @@ def rec(ok, name, detail):
 from nexus.app import create_server
 
 s = create_server()
-t = s._tool_manager._tools
+t = in_process_tools(s)
 rc = t["run_command"].fn
 
 auth = EV / "03-linux" / "auth.log"

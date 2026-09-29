@@ -44,10 +44,10 @@ def _mkcase() -> Path:
     root = Path(tempfile.mkdtemp(prefix="m2_accept_"))
     os.environ["NEXUS_CASES_ROOT"] = str(root)
     os.environ["NEXUS_ACTIVE_CASE_FILE"] = str(root / "ptr")
-    from nexus.app import create_server
+    from nexus.app import create_server, in_process_tools
 
     server = create_server()
-    tools = server._tool_manager._tools
+    tools = in_process_tools(server)
     r = tools["case_init"].fn("Mode 2 Acceptance", case_id="CASE-M2ACC")
     cid = r["case_id"]
     tools["case_activate"].fn(cid)

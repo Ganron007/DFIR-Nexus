@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 os.chdir(ROOT)
 sys.path.insert(0, str(ROOT / "src"))
 
-from nexus.app import create_server
+from nexus.app import create_server, in_process_tools
 
 SKIP = {
     "approve_finding", "reject_finding", "case_close", "delete_case",
@@ -75,7 +75,7 @@ DEFAULTS = {
 }
 
 server = create_server()
-tools = server._tool_manager._tools
+tools = in_process_tools(server)
 rows = []
 ok_n = fail_n = skip_n = 0
 for name, spec in sorted(tools.items()):

@@ -8,10 +8,10 @@ import tempfile
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 os.environ["NEXUS_CASES_ROOT"] = tempfile.mkdtemp(prefix="nexus_test_")
 
-from nexus.app import create_server
+from nexus.app import create_server, in_process_tools
 
 server = create_server()
-tools = server._tool_manager._tools
+tools = in_process_tools(server)
 passed = 0
 failed = 0
 

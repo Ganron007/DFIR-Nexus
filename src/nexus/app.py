@@ -141,6 +141,35 @@ def apply_tool_offload(server) -> None:
     server.tool = _tool
 
 
+def in_process_tool(server, name: str):
+    """The original sync callable for a registered tool (WO-1 note).
+
+    MCP transport calls the async offload wrappers; a caller in the same
+    process (a script, a test, a setup route) needs the sync original, which
+    the wrap keeps via ``functools.wraps``. Prefer this over reaching into
+    ``server._tool_manager`` directly.
+    """
+    import inspect
+
+    return inspect.unwrap(server._tool_manager._tools[name].fn)
+
+
+def in_process_tools(server) -> dict:
+    """A tool-manager-shaped mapping whose ``.fn`` attributes are sync."""
+    import inspect
+
+    class _SyncToolProxy:
+        __slots__ = ("fn",)
+
+        def __init__(self, fn):
+            self.fn = fn
+
+    return {
+        name: _SyncToolProxy(inspect.unwrap(tool.fn))
+        for name, tool in server._tool_manager._tools.items()
+    }
+
+
 def create_server(host: str = "127.0.0.1") -> FastMCP:
     """Create the MCP server.
 

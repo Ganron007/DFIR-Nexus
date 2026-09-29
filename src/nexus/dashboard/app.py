@@ -7275,8 +7275,9 @@ async def api_setup_rag(request):
 
             server = FastMCP("setup")
             register_tools(server, AuditWriter("setup"))
-            fn = server._tool_manager._tools["forensic_rag_download"].fn
-            result = fn(tag="latest")
+            from nexus.app import in_process_tool
+
+            result = in_process_tool(server, "forensic_rag_download")(tag="latest")
             _SETUP_TASKS["rag"] = {
                 "status": "done", "detail": str(result)[:300],
                 "finished_at": datetime.now(UTC).isoformat(),
