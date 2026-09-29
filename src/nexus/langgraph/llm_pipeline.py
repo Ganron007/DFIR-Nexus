@@ -586,8 +586,13 @@ def _stdio_mcp_env() -> dict[str, str]:
     LangChain stdio spawn does not reliably inherit the parent environment.
     Without this copy, ``NEXUS_RAG_PRELOAD=0`` is ignored and the child
     reloads the CUDA embedder on every tool call.
+
+    ``NEXUS_MCP_CHILD`` marks this process as a per-call pipeline child: a
+    child must never reap run records (it would mark its own caller's live
+    run ``interrupted`` - the 2026-09-29 flow-test hang).
     """
     env = {str(k): str(v) for k, v in os.environ.items()}
+    env["NEXUS_MCP_CHILD"] = "1"
     raw = env.get("NEXUS_PIPELINE_MODE", "").strip()
     if raw:
         try:

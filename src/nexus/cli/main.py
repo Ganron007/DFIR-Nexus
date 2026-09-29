@@ -474,7 +474,7 @@ def serve(
             n = _debug_autoclean_cases()
             typer.echo(f"  DEBUG AUTOCLEAN: removed {n} case folder(s) + case DB + active pointer")
 
-        _reap_stale_runs()
+        _reap_stale_runs_if_owner()
 
         try:
             warnings = check_required_env(host=host, port=port)
@@ -519,9 +519,25 @@ def serve(
             typer.echo(f"  WARNING: HTTP file logging disabled: {exc}", err=True)
         uvicorn.run(starlette_app, host=host, port=port, log_config=log_config)
     else:
-        _reap_stale_runs()
+        _reap_stale_runs_if_owner()
         typer.echo("Starting DFIR-Nexus in stdio mode...", err=True)
         server.run()
+
+
+def _is_pipeline_child() -> bool:
+    """True for a per-call MCP child spawned by a pipeline (``NEXUS_MCP_CHILD``).
+
+    Such a child shares the caller's case store and is short-lived; it must not
+    reap run records (it would mark its own caller's live run ``interrupted``).
+    """
+    return bool(os.environ.get("NEXUS_MCP_CHILD", "").strip())
+
+
+def _reap_stale_runs_if_owner() -> None:
+    """Reap ghost runs only from a process that owns a case store of its own."""
+    if _is_pipeline_child():
+        return
+    _reap_stale_runs()
 
 
 def _reap_stale_runs() -> None:
