@@ -233,6 +233,19 @@ def _extractions_have_data(extractions: Path) -> bool:
     return False
 
 
+def _run_dir_has_data(run_dir: Path) -> bool:
+    """Parsed output may sit in ``extractions/`` or ``sift/extractions/``.
+
+    SIFT-run cases keep their whole product set under ``sift/extractions``
+    (G7, 2026-09-29: SIFT-only runs were judged data-less, so the indexer
+    walked nothing and reported 0 docs).
+    """
+    run_dir = Path(run_dir)
+    return _extractions_have_data(run_dir / "extractions") or _extractions_have_data(
+        run_dir / "sift" / "extractions"
+    )
+
+
 def resolve_tools_extractions(case_dir: Path, run_id: str = "") -> Path:
     """Extractions of the active tools run, following reuse chains.
 
@@ -251,7 +264,7 @@ def resolve_tools_extractions(case_dir: Path, run_id: str = "") -> Path:
     seen: set[str] = set()
     while run is not None and run.run_id not in seen:
         seen.add(run.run_id)
-        if _extractions_have_data(run.extractions):
+        if _run_dir_has_data(run.path):
             return run.extractions
         manifest = load_manifest(run.path)
         nxt = run.parent_run_id or str(manifest.get("previous_active_run_id") or "")
@@ -265,6 +278,6 @@ def resolve_tools_extractions(case_dir: Path, run_id: str = "") -> Path:
             runs_dir.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True,
         )
         for run_dir in candidates:
-            if _extractions_have_data(run_dir / "extractions"):
+            if _run_dir_has_data(run_dir):
                 return run_dir / "extractions"
     return case_dir / "extractions"

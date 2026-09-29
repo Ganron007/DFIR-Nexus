@@ -48,6 +48,17 @@ _DANGEROUS_FLAGS = {"-e", "--exec", "--command", "-enc", "-encodedcommand",
                     "--script", "--invoke", "exec", "execdir", "delete",
                     "-i", "--in-place", "-o"}
 
+#: Tool-scoped exceptions to the deny-list: SleuthKit's `-o` is a partition
+#: OFFSET, not an in-place/exec flag. G7 (2026-09-29): `fls -o 2048` was
+#: refused as "Dangerous flag blocked: -o" before it ever ran.
+_FLAG_EXCEPTIONS_BY_TOOL: dict[str, set[str]] = {
+    "fls": {"-o"},
+    "icat": {"-o"},
+    "blkls": {"-o"},
+    "fsstat": {"-o"},
+    "mmls": {"-o"},
+}
+
 _SHELL_METACHARS = re.compile(r'[;&|`$(){}\[\]]')
 
 _DEV_PATH_TOOLS = {"mount", "umount", "fls", "icat", "mmls", "blkls",
@@ -244,13 +255,19 @@ def _validate_input_path(path: str) -> None:
 
 
 def _sanitize_extra_args(extra_args: list[str], tool_name: str) -> list[str]:
-    """Block dangerous flags and shell metacharacters."""
+    """Block dangerous flags and shell metacharacters.
+
+    ``tool_name`` scopes the deny-list: flags that collide by name but mean
+    something benign for a specific tool (SleuthKit `-o` = partition offset)
+    are excepted per tool.
+    """
+    excepted = _FLAG_EXCEPTIONS_BY_TOOL.get(str(tool_name or "").strip().lower(), set())
     safe = []
     for arg in extra_args:
         if _SHELL_METACHARS.search(arg):
             raise ValueError(f"Argument contains shell metacharacters: {arg}")
         arg_lower = arg.lower()
-        if arg_lower in _DANGEROUS_FLAGS or arg in _DANGEROUS_FLAGS:
+        if (arg_lower in _DANGEROUS_FLAGS or arg in _DANGEROUS_FLAGS) and arg_lower not in excepted:
             raise ValueError(f"Dangerous flag blocked: {arg}")
         safe.append(arg)
     return safe
