@@ -71,6 +71,78 @@ def _manager():
     return CaseManager(settings.cases_root / "cases.db")
 
 
+def register_remote_evidence(
+    case_dir: Path,
+    remote_path: str,
+    *,
+    sha256: str = "",
+    description: str = "",
+    examiner: str = "system",
+    host: str = "sift",
+) -> dict[str, Any]:
+    """Register evidence hosted on a remote analysis host (SIFT).
+
+    No local read happens — the path is remote by definition. The hash is
+    supplied (computed on the host) or explicitly absent; it is never invented.
+    Idempotent by path.
+    """
+    case_dir = Path(case_dir)
+    remote_path = str(remote_path).strip()
+    if not remote_path:
+        raise ValueError("remote evidence path is required")
+    digest = (sha256 or "").strip().lower()
+
+    mgr = _manager()
+    try:
+        for record in mgr.list_evidence(case_dir.name):
+            if str(record.file_path or "") != remote_path:
+                continue
+            return {
+                "status": "already_registered",
+                "path": remote_path,
+                "sha256": record.file_hash_sha256 or digest,
+                "files": 0,
+                "total_bytes": 0,
+                "registered_at": (
+                    record.collected_at.isoformat() if record.collected_at else ""
+                ),
+                "evidence_id": record.id,
+                "remote": True,
+                "host": host,
+            }
+        if mgr.get_case(case_dir.name) is None:
+            raise ValueError(f"Case not found in registry: {case_dir.name}")
+        record = mgr.add_evidence(
+            case_id=case_dir.name,
+            name=Path(remote_path).name,
+            description=(f"[SIFT-hosted on {host}] {description}".strip())[:500],
+            file_path=remote_path,
+            file_hash_sha256=digest or None,
+            collected_by=examiner,
+            metadata={
+                "kind": "remote",
+                "storage": "sift",
+                "host": host,
+                "remote_path": remote_path,
+            },
+        )
+        return {
+            "status": "registered",
+            "path": remote_path,
+            "sha256": digest,
+            "files": 0,
+            "total_bytes": 0,
+            "registered_at": (
+                record.collected_at.isoformat() if record.collected_at else ""
+            ),
+            "evidence_id": record.id,
+            "remote": True,
+            "host": host,
+        }
+    finally:
+        mgr.close()
+
+
 def list_evidence(case_dir: Path) -> list[dict[str, Any]]:
     """Return registered evidence for a case from the SQLite system of record.
 

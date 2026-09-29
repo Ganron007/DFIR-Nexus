@@ -17,6 +17,7 @@ import Entities from "./pages/Entities";
 import Transparency from "./pages/Transparency";
 import CaseSetup from "./pages/CaseSetup";
 import Iocs from "./pages/Iocs";
+import Ingest from "./pages/Ingest";
 import Todos from "./pages/Todos";
 
 export default function App() {
@@ -41,6 +42,7 @@ export default function App() {
           <Route path="/evidence" element={<RequireCase><Evidence /></RequireCase>} />
           <Route path="/entities" element={<RequireCase><Entities /></RequireCase>} />
           <Route path="/transparency" element={<RequireCase><Transparency /></RequireCase>} />
+          <Route path="/ingest" element={<RequireCase><Ingest /></RequireCase>} />
           <Route path="/iocs" element={<RequireCase><Iocs /></RequireCase>} />
           <Route path="/todos" element={<RequireCase><Todos /></RequireCase>} />
 

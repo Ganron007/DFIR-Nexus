@@ -275,11 +275,23 @@ def _lane_gate_error(case_dir: Path):
     Mode 1 full-run, Mode 2, Mode 3 and the interpret/coverage/design pipeline
     modes until the examiner re-runs the lane (so the item processes) or records
     an audited skip via ``/portal/api/lane/skip``.
+
+    Also carries the **SIFT preflight** (operator 2026-09-29): a case that
+    *selects* the SIFT lane refuses while the SIFT host is unreachable — the
+    same guard, scoped to SIFT only. The tools lane never reaches this helper.
     """
     from nexus.langgraph.lane_gate import gate_message, lane_gate_blocked
 
     gate = lane_gate_blocked(case_dir)
     if not gate:
+        from nexus.case.sift_preflight import sift_preflight_message
+
+        sift_msg = sift_preflight_message(case_dir)
+        if sift_msg:
+            return JSONResponse(
+                {"error": "sift_required_unreachable", "message": sift_msg},
+                status_code=409,
+            )
         return None
     return JSONResponse(
         {
@@ -1282,6 +1294,134 @@ async def api_intake(request):
     return JSONResponse({"ok": True, "intake": written})
 
 
+async def api_sift_ingest(request):
+    """POST /portal/api/sift/ingest — Option B: stage SIFT-produced outputs.
+
+    The examiner ran SIFT tools elsewhere; this stages the outputs (file, dir,
+    or .zip) into ``<case>/sift/extractions/<family>`` and refreshes the index
+    so the rows are immediately queryable with the mapped fields. No SIFT host
+    or MCP is required for this path.
+    """
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+    path = str(body.get("path") or "").strip().strip('"')
+    family = str(body.get("family") or "").strip()
+    if not path:
+        return JSONResponse({"error": "path missing"}, status_code=400)
+
+    from nexus.case.sift_ingest import stage_sift_outputs
+
+    try:
+        staged = await asyncio.to_thread(
+            stage_sift_outputs, case_dir, [Path(path)], family=family
+        )
+    except FileNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except Exception as exc:  # noqa: BLE001 - a bad archive must read as 400
+        return JSONResponse({"error": str(exc)[:300]}, status_code=400)
+
+    _invalidate_briefing_directions(case_dir)
+    index_steps: list[str] = []
+    try:
+        from nexus.langgraph.llm_pipeline import _autoindex_case
+
+        index_steps = await asyncio.to_thread(_autoindex_case, case_dir)
+    except Exception as exc:  # noqa: BLE001 - staging already succeeded
+        index_steps = [f"auto-index unavailable: {exc}"]
+    return JSONResponse({
+        "ok": True,
+        "staged": [str(p.relative_to(case_dir)) for p in staged],
+        "index": index_steps,
+    })
+
+
+async def api_ingest(request):
+    """POST /portal/api/ingest — importer lane on a path (post-N1–N8 stage).
+
+    Auto-detects the format (or accepts ``source``) and imports the file/tree
+    onto the same case index, then refreshes the index so N4–N8 see the rows.
+    SIFT-produced outputs belong on ``/portal/api/sift/ingest`` instead.
+    """
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+    path = str(body.get("path") or "").strip().strip('"')
+    source = str(body.get("source") or "").strip()
+    if not path:
+        return JSONResponse({"error": "path missing"}, status_code=400)
+    if not Path(path).exists():
+        return JSONResponse({"error": f"Path not found: {path}"}, status_code=400)
+
+    from nexus.ingest.detect import ingest_auto
+
+    try:
+        result = await asyncio.to_thread(ingest_auto, Path(path), source or None)
+    except Exception as exc:  # noqa: BLE001 - bad input reads as 400
+        return JSONResponse({"error": str(exc)[:300]}, status_code=400)
+    _invalidate_briefing_directions(case_dir)
+    index_steps: list[str] = []
+    try:
+        from nexus.langgraph.llm_pipeline import _autoindex_case
+
+        index_steps = await asyncio.to_thread(_autoindex_case, case_dir)
+    except Exception as exc:  # noqa: BLE001 - ingest already succeeded
+        index_steps = [f"auto-index unavailable: {exc}"]
+    return JSONResponse({"ok": True, "result": result, "index": index_steps})
+
+
+async def api_sift_select(request):
+    """POST /portal/api/sift/select — set/clear the SIFT lane selection.
+
+    Operator 2026-09-29: the selector is the ONLY switch that can make a case
+    refuse analysis while the SIFT host is unreachable — so selecting runs the
+    online check immediately and reports it, and clearing is a first-class
+    recovery path. Body: ``{case_id?, required: bool}``.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+    case_dir = _resolve_case_dir_for(str(body.get("case_id") or ""), request)
+    if not case_dir:
+        return JSONResponse({"error": "no case specified"}, status_code=400)
+    sealed = _sealed_case_error(case_dir.name)
+    if sealed:
+        return sealed
+
+    from nexus.langgraph.case_intake import clear_case_intake, persist_case_intake
+
+    if bool(body.get("required")):
+        persist_case_intake(case_dir, {"sift_required": "true"})
+        from nexus.case.sift_sync import sift_reachable
+
+        try:
+            ok, msg = await asyncio.to_thread(sift_reachable)
+        except Exception as exc:  # noqa: BLE001 - a failed probe reads as unreachable
+            ok, msg = False, str(exc)
+        _SIFT_PROBE_CACHE["result"] = (time.time(), bool(ok), str(msg)[:140])
+        return JSONResponse(
+            {"ok": True, "required": True, "reachable": bool(ok), "message": str(msg)[:200]}
+        )
+
+    clear_case_intake(case_dir, ("sift_required",))
+    return JSONResponse({"ok": True, "required": False})
+
+
 async def api_register_evidence(request):
     body = await request.json()
     # Strip surrounding quotes — examiners often paste "C:\path with spaces"
@@ -1302,6 +1442,25 @@ async def api_register_evidence(request):
 
     from nexus.audit import resolve_examiner
     from nexus.case import evidence_service
+
+    if bool(body.get("sift_hosted")):
+        # SIFT-hosted evidence (operator 2026-09-29): the path is remote; no
+        # local read happens and the hash is supplied from the host or left
+        # explicitly absent. Registration never refuses - the lane and the
+        # SIFT preflight handle processing, and only a case that SELECTS SIFT
+        # can ever be refused.
+        try:
+            result = evidence_service.register_remote_evidence(
+                case_dir,
+                path,
+                sha256=str(body.get("sha256") or ""),
+                description=str(body.get("description") or "portal register (SIFT-hosted)"),
+                examiner=resolve_examiner(),
+            )
+        except ValueError as exc:
+            return JSONResponse({"ok": False, "error": str(exc)}, status_code=409)
+        _transition_case_status(case_dir.name, "intake", allowed_from={"created", "open"})
+        return JSONResponse({"ok": True, "case_id": case_dir.name, **result})
 
     try:
         # B10: full-tree SHA-256 hashing is blocking IO — off the event loop.
@@ -6895,6 +7054,11 @@ async def api_get_case_mode(request):
     return JSONResponse({"mode": mode})
 
 
+#: SIFT reachability probe cache for the (cheap) health endpoint: selected
+#: cases only, refreshed at most once a minute.
+_SIFT_PROBE_CACHE: dict[str, tuple[float, bool, str]] = {}
+
+
 async def api_system_health(request):
     """GET /portal/api/system/health — cheap backend/ES/RAG/LLM/parser status.
 
@@ -6939,12 +7103,35 @@ async def api_system_health(request):
         health["parser"] = "missing"
         health["parser_error"] = str(exc)[:200]
 
+    # SIFT lane (operator 2026-09-29): reported only for a case that SELECTS
+    # it. The probe is cached for a minute and runs off the event loop so the
+    # cheap health poll stays cheap; unselected cases are never probed.
+    sift_entry: dict[str, Any] = {"selected": False}
+    try:
+        from nexus.case.sift_preflight import sift_required
+
+        case_dir = _get_case_dir(request)
+        if case_dir is not None and sift_required(case_dir):
+            now = time.time()
+            cached = _SIFT_PROBE_CACHE.get("result")
+            if cached is None or now - cached[0] > 60:
+                from nexus.case.sift_sync import sift_reachable
+
+                ok, msg = await asyncio.to_thread(sift_reachable)
+                cached = (now, bool(ok), str(msg)[:140])
+                _SIFT_PROBE_CACHE["result"] = cached
+            sift_entry = {"selected": True, "reachable": cached[1], "message": cached[2]}
+    except Exception:  # noqa: BLE001 - health must never break on this
+        pass
+    health["sift"] = sift_entry
+
     # Actionable detail for the preflight panel — where to fix each item.
     health["fixes"] = {
         "es": "POST /portal/api/setup/env {NEXUS_ES_URL} or `nexus config env NEXUS_ES_URL=...`",
         "rag": "POST /portal/api/setup/rag or `nexus data download-rag`",
         "llm": "POST /portal/api/setup/env {NEXUS_LLM_*} or `nexus config env ...`",
         "parser": "fix the import error shown in parser_error (usually a missing extra)",
+        "sift": "bring the SIFT host up; `nexus sift disable` to clear the selection; or the audited skip",
     }
     if llm_base:
         health["llm"] = {**health["llm"], "base_url": llm_base}
@@ -8508,6 +8695,9 @@ def create_dashboard():
         Route("/portal/api/case/mode", api_case_mode, methods=["POST"]),
         Route("/portal/api/case/mode", api_get_case_mode, methods=["GET"]),
         Route("/portal/api/system/health", api_system_health, methods=["GET"]),
+        Route("/portal/api/sift/ingest", api_sift_ingest, methods=["POST"]),
+        Route("/portal/api/sift/select", api_sift_select, methods=["POST"]),
+        Route("/portal/api/ingest", api_ingest, methods=["POST"]),
         Route("/portal/api/setup/env", api_setup_env, methods=["POST"]),
         Route("/portal/api/setup/rag", api_setup_rag, methods=["POST"]),
         Route("/portal/api/setup/status", api_setup_status, methods=["GET"]),

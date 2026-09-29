@@ -47,6 +47,12 @@ export default function CaseSetup() {
 
   // Step 3 state
   const [mode, setModeState] = useState("");
+  // SIFT lane selection (operator 2026-09-29): optional; selecting runs the
+  // online check and is the only switch that can refuse analysis when the
+  // host is unreachable.
+  const [siftRequired, setSiftRequired] = useState(false);
+  const [siftCheck, setSiftCheck] = useState<{ reachable?: boolean; message?: string } | null>(null);
+  const [siftBusy, setSiftBusy] = useState(false);
 
   // Step 4 state
   const [pipelineRunId, setPipelineRunId] = useState("");
@@ -240,6 +246,26 @@ export default function CaseSetup() {
     } catch (e) {
       setError((e as Error).message);
       setBusy(false);
+    }
+  };
+
+  const toggleSift = async (next: boolean) => {
+    if (!caseId) return;
+    setSiftBusy(true);
+    setSiftCheck(null);
+    setError("");
+    try {
+      const r = await api.siftSelect(next, caseId);
+      if (r.ok) {
+        setSiftRequired(!!r.required);
+        if (r.required) setSiftCheck({ reachable: r.reachable, message: r.message });
+      } else {
+        setError(r.error || "SIFT selection failed");
+      }
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSiftBusy(false);
     }
   };
 
@@ -467,6 +493,44 @@ export default function CaseSetup() {
                 board, and a join sends them back when they disagree. You steer, pause/stop and
                 stage. Agent Run (Investigation Board) is the primary surface.
               </p>
+            </div>
+            <div
+              style={{
+                padding: 14,
+                borderRadius: 8,
+                border: `2px solid ${siftRequired ? "var(--accent)" : "var(--border)"}`,
+                background: siftRequired ? "rgba(37,99,235,0.08)" : "transparent",
+              }}
+            >
+              <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={siftRequired}
+                  disabled={siftBusy}
+                  onChange={(e) => toggleSift(e.target.checked)}
+                />
+                <strong>SIFT lane — required for this case (optional)</strong>
+              </label>
+              <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "6px 0 0" }}>
+                Select when this case is processed on a SIFT workstation (disk/memory on the host,
+                plaso super timeline, SleuthKit, linux Volatility). Selecting runs the online check
+                now; while it is selected and the host is unreachable, analysis refuses — deselect
+                it here (or <code>nexus sift disable</code>) if you do not have SIFT.
+              </p>
+              {siftCheck && (
+                <p
+                  data-testid="sift-check"
+                  style={{
+                    fontSize: 12,
+                    margin: "6px 0 0",
+                    color: siftCheck.reachable ? "var(--success)" : "var(--warning)",
+                  }}
+                >
+                  {siftCheck.reachable
+                    ? "SIFT host reachable."
+                    : `SIFT host UNREACHABLE — analysis will refuse until it is up, the selection is cleared, or an audited skip is recorded.${siftCheck.message ? ` (${siftCheck.message})` : ""}`}
+                </p>
+              )}
             </div>
             <button className="btn btn-primary" onClick={confirmMode} disabled={busy || !mode}>
               {busy ? "Saving..." : "Confirm Mode →"}

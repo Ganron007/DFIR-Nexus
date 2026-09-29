@@ -115,6 +115,12 @@ def run(
     if gated:
         typer.echo(gate_message(gated))
         raise typer.Exit(1)
+    from nexus.case.sift_preflight import sift_preflight_message
+
+    sift_msg = sift_preflight_message(case_dir)
+    if sift_msg:
+        typer.echo(sift_msg)
+        raise typer.Exit(1)
     run_id = run_id.strip()
     typer.echo(f"Mode 2 (multi-role) run on {case_dir.name}"
                + (f" ({run_id})" if run_id else ""))

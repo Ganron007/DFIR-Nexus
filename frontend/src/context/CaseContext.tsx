@@ -25,6 +25,14 @@ export interface EsStatus {
   reachable: boolean;
 }
 
+export interface SiftStatus {
+  /** the case selects the SIFT lane (sift_required) */
+  selected: boolean;
+  /** host reachable — meaningful only when selected */
+  reachable: boolean;
+  message?: string;
+}
+
 interface CaseContextValue {
   cases: string[];
   caseSummaries: Record<string, CaseSummary>;
@@ -35,6 +43,8 @@ interface CaseContextValue {
   health: "ok" | "down" | "checking";
   /** Real Elasticsearch state — NOT implied by backend liveness. */
   es: EsStatus;
+  /** SIFT lane: only a SELECTED case can refuse while the host is down. */
+  sift: SiftStatus;
   stages: Record<string, boolean>;
   setActiveCase: (caseId: string) => Promise<void>;
   setPreviewCase: (caseId: string) => void;
@@ -56,6 +66,7 @@ export function CaseProvider({ children }: { children: ReactNode }) {
   const [mode, setModeState] = useState<string>("");
   const [health, setHealth] = useState<"ok" | "down" | "checking">("checking");
   const [es, setEs] = useState<EsStatus>({ configured: false, reachable: false });
+  const [sift, setSift] = useState<SiftStatus>({ selected: false, reachable: false });
   const [stages, setStages] = useState<Record<string, boolean>>({});
 
   const refreshCases = useCallback(async () => {
@@ -156,10 +167,16 @@ export function CaseProvider({ children }: { children: ReactNode }) {
           configured: r.es?.configured !== false,
           reachable: r.es?.reachable === true,
         });
+        setSift({
+          selected: r.sift?.selected === true,
+          reachable: r.sift?.reachable === true,
+          message: r.sift?.message,
+        });
       })
       .catch(() => {
         setHealth("down");
         setEs({ configured: false, reachable: false });
+        setSift({ selected: false, reachable: false });
       });
   }, [refreshCases]);
 
@@ -189,6 +206,7 @@ export function CaseProvider({ children }: { children: ReactNode }) {
         mode,
         health,
         es,
+        sift,
         stages,
         setActiveCase,
         setPreviewCase,

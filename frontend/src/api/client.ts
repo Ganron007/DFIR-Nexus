@@ -1162,6 +1162,8 @@ export interface SystemHealthResponse {
   llm?: { configured?: boolean; model?: string; base_url?: string };
   parser?: string;
   parser_error?: string;
+  /** SIFT lane (operator 2026-09-29): reported only for a case that SELECTS it. */
+  sift?: { selected?: boolean; reachable?: boolean; message?: string };
   fixes?: Record<string, string>;
 }
 
@@ -1488,6 +1490,21 @@ export const api = {
   getCaseMode: (caseId?: string) =>
     request<CaseModeResponse>(`/case/mode${caseId ? `?case_id=${caseId}` : ""}`),
   systemHealth: () => request<SystemHealthResponse>("/system/health"),
+  siftSelect: (required: boolean, caseId?: string) =>
+    post<{ ok?: boolean; required?: boolean; reachable?: boolean; message?: string; error?: string }>(
+      "/sift/select",
+      { required, case_id: caseId },
+    ),
+  siftIngest: (path: string, family?: string, caseId?: string) =>
+    post<{ ok?: boolean; staged?: string[]; index?: string[]; error?: string }>(
+      "/sift/ingest",
+      { path, family: family || "", case_id: caseId },
+    ),
+  ingest: (path: string, source?: string, caseId?: string) =>
+    post<{ ok?: boolean; result?: Record<string, unknown>; index?: string[]; error?: string }>(
+      "/ingest",
+      { path, source: source || "", case_id: caseId },
+    ),
   setupEnv: (env: Record<string, string>) =>
     post<SetupEnvResponse>("/setup/env", env),
   setupRag: () => post<{ status?: string; task?: SetupTask; error?: string }>("/setup/rag", {}),

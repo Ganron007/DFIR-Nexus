@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
-import { useCase, type EsStatus } from "../context/CaseContext";
+import { useCase, type EsStatus, type SiftStatus } from "../context/CaseContext";
 import LaneGateBanner from "./LaneGateBanner";
 
 /**
@@ -23,6 +23,7 @@ const NAV_SPINE = [
 
 const NAV_UTILITIES = [
   { to: "/entities", label: "Entities", hint: "Entity pivot across hits" },
+  { to: "/ingest", label: "Ingest", hint: "Importers + SIFT outputs onto the same case index (post-N1-N8)" },
   { to: "/iocs", label: "IOCs", hint: "Indicators of compromise from findings" },
   { to: "/todos", label: "TODOs", hint: "Investigation follow-ups" },
   { to: "/transparency", label: "Transparency", hint: "HMAC audit chain verification" },
@@ -91,7 +92,7 @@ function StageStepper({ stages, n5To }: { stages: Record<string, boolean>; n5To:
  *   down     — configured but unreachable (Mode 2/3 processing is blocked)
  *   (green)  — reachable; the N3 index can receive evidence
  */
-function StatusCluster({ health, es }: { health: "ok" | "down" | "checking"; es: EsStatus }) {
+function StatusCluster({ health, es, sift }: { health: "ok" | "down" | "checking"; es: EsStatus; sift: SiftStatus }) {
   const esTitle = !es.configured
     ? "Elasticsearch not configured — Mode 1 searches the CSV pack. Mode 2/3 require NEXUS_ES_URL."
     : es.reachable
@@ -99,6 +100,19 @@ function StatusCluster({ health, es }: { health: "ok" | "down" | "checking"; es:
       : "Elasticsearch configured but UNREACHABLE — Mode 2/3 processing is blocked until ES comes online.";
   const esColor = !es.configured ? "var(--text-muted)" : es.reachable ? "var(--success)" : "var(--danger)";
   const esLabel = !es.configured ? "ES off" : es.reachable ? "ES" : "ES down";
+  const siftColor = !sift.selected
+    ? "var(--text-muted)"
+    : sift.reachable
+      ? "var(--success)"
+      : "var(--danger)";
+  const siftLabel = !sift.selected ? "SIFT off" : sift.reachable ? "SIFT" : "SIFT down";
+  const siftTitle = !sift.selected
+    ? "SIFT lane not selected for this case (`nexus sift enable` to require it)"
+    : sift.reachable
+      ? "SIFT lane selected and reachable"
+      : `SIFT lane selected but UNREACHABLE — analysis will refuse until the host is up, ` +
+        `the selection is cleared (nexus sift disable), or an audited skip is recorded` +
+        (sift.message ? ` (${sift.message})` : "");
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
       <span
@@ -126,6 +140,21 @@ function StatusCluster({ health, es }: { health: "ok" | "down" | "checking"; es:
       >
         {esLabel}
       </span>
+      <span
+        title={siftTitle}
+        style={{
+          fontSize: 9,
+          fontFamily: "monospace",
+          letterSpacing: 0.4,
+          color: siftColor,
+          border: `1px solid ${siftColor}`,
+          borderRadius: 3,
+          padding: "0 3px",
+          lineHeight: 1.4,
+        }}
+      >
+        {siftLabel}
+      </span>
     </span>
   );
 }
@@ -138,6 +167,7 @@ export default function Layout({ children }: { children: ReactNode }) {
     mode,
     health,
     es,
+    sift,
     stages,
     setActiveCase,
     setPreviewCase,
@@ -193,7 +223,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             </div>
           </a>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <StatusCluster health={health} es={es} />
+            <StatusCluster health={health} es={es} sift={sift} />
           </div>
         </header>
         <main className="dashboard-main">
@@ -327,7 +357,7 @@ export default function Layout({ children }: { children: ReactNode }) {
                 Exit
               </button>
             )}
-            <StatusCluster health={health} es={es} />
+            <StatusCluster health={health} es={es} sift={sift} />
           </div>
         </div>
       </aside>
