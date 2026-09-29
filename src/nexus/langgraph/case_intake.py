@@ -41,6 +41,7 @@ INTAKE_KEYS = (
     "sift_memory_file",
     "sift_os",
     "sift_disk_image",
+    "sift_required",
 )
 
 

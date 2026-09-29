@@ -87,9 +87,11 @@ def test_persist_intake_keeps_sift_keys(tmp_path):
         "sift_memory_file": "/ev/mem.raw",
         "sift_disk_image": "/ev/disk.img",
         "sift_os": "linux",
+        "sift_required": "true",
     })
     assert written["sift_evidence_root"] == "/ev"
     assert written["sift_os"] == "linux"
+    assert written["sift_required"] == "true"
     meta = yaml.safe_load((case / "CASE.yaml").read_text(encoding="utf-8"))
     assert meta["intake"]["sift_disk_image"] == "/ev/disk.img"
     assert meta["intake"]["sift_memory_file"] == "/ev/mem.raw"

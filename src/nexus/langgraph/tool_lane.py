@@ -51,11 +51,11 @@ class ToolJob:
     # empty output is a SKIP with a reason, not a failure. The silent-no-output
     # guard stays for every tool that has not opted in.
     optional_output: bool = False
-    # Declared SIFT-hosted evidence (case_context.sift_evidence_root) makes the
-    # SIFT jobs the ONLY path to processing that evidence: when the SIFT MCP is
-    # unreachable they must FAIL (the gate blocks analysis), not SKIP. Roots
-    # that came only from the environment stay SKIP-with-reason so a stale
-    # global default cannot block every case on the machine.
+    # Declared SIFT analysis (case_context.sift_required): the SIFT jobs are
+    # the ONLY path to processing that evidence, so when the SIFT MCP is
+    # unreachable they must FAIL (the gate blocks analysis), not SKIP. This is
+    # the explicit, optional lane selector - a root path or environment
+    # default alone never triggers a refusal.
     critical: bool = False
 
 
@@ -2576,7 +2576,7 @@ async def run_tool_lane(
         memory_file=str(ctx.get("sift_memory_file") or "").strip() or None,
         sift_os=str(ctx.get("sift_os") or "").strip() or None,
         disk_image=str(ctx.get("sift_disk_image") or "").strip() or None,
-        declared=bool(str(ctx.get("sift_evidence_root") or "").strip()),
+        declared=str(ctx.get("sift_required") or "").strip().lower() in ("1", "true", "yes"),
         network_inputs=_net_inputs,
     ))
     audit_ids: list[str] = []
