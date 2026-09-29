@@ -117,6 +117,115 @@ def disable(case: str = typer.Option("", "--case", help="Case id or directory. D
                    "SKIP with reasons (never a refusal).")
 
 
+@app.command("setup")
+def setup(
+    case: str = typer.Option("", "--case", help="Case id or directory to lay out on the SIFT host"),
+):
+    """Verify the SIFT host and wire it up (Phase 5 bootstrap).
+
+    Checks SSH reachability, the SIFT default toolset, the Nexus checkout +
+    venv and free disk; lays out the per-case folders; starts the SIFT-side
+    MCP when it is not already listening; prints the examiner .env block and
+    hands off to `nexus doctor --gate` + `nexus sift enable`.
+    """
+    import os
+    import subprocess
+    from pathlib import Path as _P
+
+    host = os.environ.get("NEXUS_SIFT_SSH_HOST", "192.168.77.135").strip()
+    user = os.environ.get("NEXUS_SIFT_SSH_USER", "sansforensics").strip()
+    key = os.environ.get(
+        "NEXUS_SIFT_SSH_KEY", str(_P.home() / ".ssh" / "cadre-sift-key")
+    ).strip()
+
+    if not _P(key).is_file():
+        typer.echo(f"SSH key missing: {key}", err=True)
+        raise typer.Exit(1)
+
+    def _ssh(remote: str, timeout: int = 60) -> tuple[int, str]:
+        cmd = [
+            "ssh", "-i", key, "-o", "StrictHostKeyChecking=no",
+            "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
+            f"{user}@{host}", remote,
+        ]
+        try:
+            p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return 1, str(exc)
+        return p.returncode, (p.stdout or "") + (p.stderr or "")
+
+    typer.echo(f"SIFT setup — {user}@{host}")
+    rc, out = _ssh("hostname; uname -r")
+    if rc != 0:
+        typer.echo(f"  SSH: FAILED — {out.strip()[:200]}", err=True)
+        raise typer.Exit(1)
+    typer.echo(f"  SSH: OK ({out.strip().splitlines()[0]})")
+
+    rc, out = _ssh(
+        "for t in vol log2timeline.py psort.py fls mmls icat mactime bulk_extractor; do "
+        "command -v $t >/dev/null 2>&1 && echo OK-$t || echo MISS-$t; done"
+    )
+    tools = [ln for ln in out.splitlines() if ln.startswith(("OK-", "MISS-"))]
+    missing = [t.split("-", 1)[1] for t in tools if t.startswith("MISS-")]
+    typer.echo(
+        f"  tools: {sum(1 for t in tools if t.startswith('OK-'))}/{len(tools)} present"
+        + (f" — MISSING: {', '.join(missing)}" if missing else "")
+    )
+
+    rc, out = _ssh(
+        "if [ -x ~/DFIR-Nexus/.venv/bin/python ]; then "
+        "~/DFIR-Nexus/.venv/bin/python -c 'import nexus; print(nexus.__file__)'; "
+        "else echo NO-VENV; fi"
+    )
+    if "NO-VENV" in out or rc != 0:
+        typer.echo("  nexus on SIFT: NOT INSTALLED (expected ~/DFIR-Nexus with .venv)", err=True)
+    else:
+        typer.echo(f"  nexus on SIFT: OK ({out.strip().splitlines()[-1]})")
+
+    rc, out = _ssh("df -h ~ | tail -1 | awk '{print $4}'")
+    typer.echo(f"  disk free: {out.strip() or '?'}")
+
+    if case:
+        name = _P(case).name
+        rc, out = _ssh(
+            f"mkdir -p ~/.nexus/cases/{name}/evidence "
+            f"~/.nexus/cases/{name}/extractions ~/.nexus/cases/{name}/analysis "
+            "&& echo LAYOUT-OK"
+        )
+        if "LAYOUT-OK" in out:
+            typer.echo(f"  layout: ~/.nexus/cases/{name}/{{evidence,extractions,analysis}} ready")
+
+    # SIFT-side MCP: start it when it is not already listening.
+    rc, out = _ssh("ss -ltn 2>/dev/null | grep -q ':4508' && echo MCP-UP || echo MCP-DOWN")
+    if "MCP-UP" in out:
+        typer.echo("  MCP: listening on :4508")
+    else:
+        typer.echo("  MCP: not running — starting it...")
+        start = (
+            "cd ~/DFIR-Nexus && "
+            "[ -f ~/.nexus/sift-mcp.env ] || { SEC=$(openssl rand -hex 32); "
+            "printf 'NEXUS_AUDIT_SECRET=%s\\nNEXUS_PORTAL_PASSWORD=siftmcp-%s\\n"
+            f"NEXUS_MCP_ALLOWED_HOSTS={host}\\n' \"$SEC\" \"$SEC\" > ~/.nexus/sift-mcp.env; "
+            "chmod 600 ~/.nexus/sift-mcp.env; }; "
+            "set -a; . ~/.nexus/sift-mcp.env; set +a; "
+            "setsid nohup .venv/bin/python -m nexus serve --http --host 0.0.0.0 "
+            "--port 4508 < /dev/null > /tmp/nexus-mcp.log 2>&1 & "
+            "sleep 12; ss -ltn 2>/dev/null | grep -q ':4508' && echo MCP-UP || echo MCP-FAILED"
+        )
+        rc, out = _ssh(start, timeout=120)
+        typer.echo(f"  MCP: {'listening on :4508' if 'MCP-UP' in out else 'FAILED — see /tmp/nexus-mcp.log'}")
+
+    typer.echo("")
+    typer.echo("Examiner .env block (or export for the serve session):")
+    typer.echo(f"  NEXUS_SIFT_SSH_HOST={host}")
+    typer.echo(f"  NEXUS_SIFT_SSH_USER={user}")
+    typer.echo(f"  NEXUS_SIFT_SSH_KEY={key}")
+    typer.echo(f"  NEXUS_SIFT_MCP_URL=http://{host}:4508/mcp")
+    typer.echo("Next: `nexus doctor --gate`, then `nexus sift enable --case <case>` "
+               "(evidence itself is copied by the examiner into "
+               "~/.nexus/cases/<case>/evidence/ on the host).")
+
+
 @app.command("ingest")
 def ingest(
     path: str = typer.Argument(..., help="SIFT outputs: a file, a directory, or a .zip"),
