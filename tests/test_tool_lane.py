@@ -200,6 +200,10 @@ def test_gap_parsers_are_practical(tmp_path: Path, monkeypatch):
     lfp = [j for j in jobs if j.tool == "logfileparser"]
     assert lfp, "$LogFile must always get a logfileparser row"
     assert all(j.status in ("PENDING", "SKIP") for j in lfp)
+    # Headroom rule (2026-09-29): a real 41 MB $LogFile took 400 s unloaded but
+    # >1830 s under I/O contention - the job must never be planned with a
+    # timeout so tight that contention turns a working parser into a FAIL.
+    assert all(j.timeout >= 900 or j.status == "SKIP" for j in lfp)
     # Live acq is silent on an image.
     assert "winpmem" not in pending
     assert not any(j.tool == "winpmem" for j in jobs)

@@ -580,6 +580,12 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
         # plus 32 sibling outputs. Running it with NO arguments launches the
         # GUI - that is what the earlier "GUI-only" conclusion mistook, and it
         # is why this evidence was skipped when a working tool sat in the tree.
+        # The tool does NOT create the output dir; out_dir() does that above.
+        # Timing headroom: 400 s unloaded, but one lane run reached only ~55%
+        # of its output by the old 1830 s bound under I/O contention and was
+        # killed. A spurious FAIL on a non-skippable artifact blocks every
+        # analysis stage until the examiner re-runs it, so this deep parser
+        # gets a generous ceiling instead.
         if not _windows_tool_available("logfileparser"):
             jobs.append(ToolJob(
                 host="windows", tool="logfileparser", argv=[], status="SKIP",
@@ -594,7 +600,7 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
                  f"/LogFileFile:{evidence}",
                  f"/OutputPath:{d}"],
                 f"NTFS $LogFile ({evidence.name})",
-                timeout_for_bytes(evidence.stat().st_size, base=600, per_mb=30,
+                timeout_for_bytes(evidence.stat().st_size, base=900, per_mb=60,
                                   cap=3600),
                 optional_output=True)
     elif _artifact_class(evidence) == "ntfs_meta":
