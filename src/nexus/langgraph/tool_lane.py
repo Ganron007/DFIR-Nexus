@@ -485,10 +485,15 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
         # tree into -o, and -c adds the CSV. Without -c it prints its usage
         # banner and exits 0, which is how this format produced ten OK jobs and
         # zero evidence in the first sweep.
+        #
+        # `-t` is the single-file flag. `-d` means "load a DIRECTORY of
+        # databases", so passing a db file with -d made the tool open nothing
+        # and exit 0 with no output (found on iconcache_16.db, CASE-BC13CCC9,
+        # 2026-09-29; `-t` produces report_*.csv plus extracted thumbnails).
         d = out_dir("thumbcache")
         reports = d / _stem(evidence)
         add("thumbcache_viewer",
-            ["thumbcache_viewer_cmd", "-d", str(evidence), "-o", str(reports), "-c"],
+            ["thumbcache_viewer_cmd", "-t", str(evidence), "-o", str(reports), "-c"],
             f"Thumbcache entries ({evidence.name})", 300)
     elif name.startswith("usrclass") and suffix in (".dat", ""):
         # Shellbags live in UsrClass.dat. SBECmd scans a *directory* of hives
@@ -514,8 +519,12 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
         add("sqlecmd", ["sqlecmd", "-f", str(evidence), "--csv", str(d)],
             f"Browser SQLite ({evidence.name})", 900)
     elif _artifact_class(evidence) == "bits":
+        # BitsParser takes the ESE database FILE via -i. Passing its parent
+        # directory made the tool walk every file in the folder (edb*.log,
+        # *.jrs) and write no output at all (found on _manual/bits,
+        # CASE-BC13CCC9, 2026-09-29; the file form writes bits.json).
         d = out_dir("bitsparser")
-        add("bitsparser", ["bitsparser", "-i", str(evidence.parent),
+        add("bitsparser", ["bitsparser", "-i", str(evidence),
                            "-o", str(d / f"{_stem(evidence)}.json")],
             f"BITS job queue ({evidence.name})", 600)
     elif _artifact_class(evidence) == "logfile":
@@ -620,6 +629,19 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
         d = out_dir("setupapi")
         add("strings", ["strings64", "-nobanner", str(evidence)],
             f"Device install log ({evidence.name})", 300)
+    elif _staged_support_dir(evidence):
+        # No parser for these classes: BITS queue ESE companions, Defender
+        # support logs (MPLog/MPDetection/robocopy), WPP trace binaries. Both
+        # encodings because they are binary-ish containers - ASCII carries
+        # URLs/paths, UTF-16 carries job display names and service strings.
+        # The alternative was what happened on CASE-BC13CCC9: the files were
+        # never planned at all and the run still said complete.
+        kind = _staged_support_dir(evidence)
+        d = out_dir("strings")
+        add("strings", ["strings64", "-nobanner", str(evidence)],
+            f"Staged {kind} artifact strings, ascii ({evidence.name[:40]})", 600)
+        add("strings", ["strings64", "-u", "-nobanner", str(evidence)],
+            f"Staged {kind} artifact strings, utf16 ({evidence.name[:40]})", 600)
     elif name.startswith("cache0") and name.endswith(".bin"):
         # bmc-tools (ANSSI) reconstructs the bitmap tiles. I first used strings
         # here on the assumption the catalogue had no RDP parser; it ships
@@ -853,6 +875,26 @@ def _is_wmi_repository(name: str) -> bool:
     return name.lower() in _WMI_REPOSITORY_NAMES
 
 
+_STAGED_SUPPORT_DIRS = (
+    "bits", "defender", "support", "scans-history-service", "vss", "wer",
+)
+
+
+def _staged_support_dir(p: Path) -> str:
+    """Name of a known staged-support parent directory, '' when not one.
+
+    Files staged under bits/defender/vss/wer are the BITS ESE companions
+    (edb*.log/.jrs/.chk, qmgr.jfm/.bak), Defender support logs (MPLog,
+    MPDetection, robocopy) and WPP traces. None has a parser in the catalogue;
+    the lane stages their strings so the content is reachable - and, above all,
+    so they are PLANNED rather than silently dropped. On CASE-BC13CCC9
+    (2026-09-29) 17 of 20 registered files were dropped this way: no job, no
+    SKIP row, nothing read, while the run reported complete.
+    """
+    parent = p.parent.name.lower()
+    return parent if parent in _STAGED_SUPPORT_DIRS else ""
+
+
 def _regripper_plugins_dir() -> Path | None:
     """The RegRipper plugins directory, which holds the extensionless profiles.
 
@@ -975,6 +1017,10 @@ def is_host_evidence(path: str | Path) -> bool:
             # command lines reach the index rather than being skipped as an
             # unrecognised blob.
             or _is_wmi_repository(name)
+            # Staged support artifacts (BITS ESE companions, Defender support
+            # logs, WPP traces) have no parser, but they are evidence the lane
+            # must read rather than drop: see `_staged_support_dir`.
+            or _staged_support_dir(p)
         )
     if p.is_dir():
         if _looks_like_browser_profile(p):
@@ -1084,7 +1130,8 @@ def plan_windows_triage(
                     "history (*ConsoleHost_history.txt, .bash_history, .zsh_history), "
                     "or a known artifact file (.evtx/.pf/$MFT/SRUDB.dat/Amcache.hve/"
                     "hive/.lnk/jumplist/thumbcache/iconcache/RDP Cache*.bin/"
-                    "setupapi*.log/.exe/shellbags)."
+                    "setupapi*.log/.exe/shellbags), or a staged support artifact "
+                    "(BITS ESE companions, Defender support logs, WPP traces)."
                 ),
             ))
         return jobs

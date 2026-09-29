@@ -39,7 +39,53 @@ def test_thumbcache_argv_matches_the_real_tool_interface(tmp_path):
     assert "--csv" not in argv and "--csvf" not in argv
     assert "-o" in argv, "no report directory given"
     assert "-c" in argv, "CSV switch missing — the tool would print usage and exit 0"
-    assert "-d" in argv
+    # `-t` loads a single database file. `-d` loads a DIRECTORY of databases -
+    # passing a file with -d made the tool open nothing and exit 0 with no
+    # output (found on iconcache_16.db, CASE-BC13CCC9, 2026-09-29).
+    assert "-t" in argv, "single-file flag missing - the tool opens nothing with -d"
+    assert "-d" not in argv
+    assert argv[argv.index("-t") + 1] == str(f)
+
+
+def test_defender_support_logs_are_planned_not_dropped(tmp_path):
+    """17 of 20 files on CASE-BC13CCC9 were dropped before this existed.
+
+    Defender support logs, BITS ESE companions and WPP traces had no parser
+    and were not recognised as host evidence, so they were never planned and
+    never read - no job, no SKIP row.
+    """
+    d = tmp_path / "defender" / "Support"
+    d.mkdir(parents=True)
+    log = _make(d, "MPLog-20201020-091428.log", b"defender log line\n")
+    wpp = _make(d, "MpWppTracing-20201111-031319.bin", b"\x00\x01trace")
+    assert is_host_evidence(log) is True
+    assert is_host_evidence(wpp) is True
+    jobs = _plan_single_artifact(log, tmp_path / "extractions")
+    assert jobs and all(j.tool == "strings" for j in jobs)
+    assert any("-u" in j.argv for j in jobs), "utf16 pass missing for binary-ish logs"
+
+
+def test_bits_ese_companions_are_planned_not_dropped(tmp_path):
+    d = tmp_path / "bits"
+    d.mkdir()
+    edb = _make(d, "edb.log", b"\x00\x01ese")
+    jfm = _make(d, "qmgr.jfm", b"\x00\x01")
+    assert is_host_evidence(edb) is True
+    assert is_host_evidence(jfm) is True
+    jobs = _plan_single_artifact(edb, tmp_path / "extractions")
+    assert jobs and all(j.tool == "strings" for j in jobs)
+
+
+def test_bitsparser_receives_the_database_file(tmp_path):
+    """BitsParser -i takes the qmgr.db FILE.
+
+    Passing its parent directory made the tool walk every file in the folder
+    (edb.chk, edb*.log, *.jrs) and write no output at all (CASE-BC13CCC9).
+    """
+    f = _make(tmp_path, "qmgr.db", b"ese" * 32)
+    jobs = _plan_single_artifact(f, tmp_path / "extractions")
+    bp = next(j for j in jobs if j.tool == "bitsparser")
+    assert Path(bp.argv[bp.argv.index("-i") + 1]) == f
 
 
 def test_iconcache_file_is_recognised(tmp_path):
