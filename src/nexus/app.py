@@ -58,6 +58,89 @@ must reference audit_id values from the audit log.
 """
 
 
+# ── WO-1 (D46): sync tools run in worker threads, never on the serving loop ──
+# The MCP SDK invokes sync tool functions inline on the serving event loop
+# (mcp 1.26 func_metadata: `return fn(**args)`) - one slow tool froze the whole
+# portal (measured > 900 s) and silently serialized parallel tool calls.
+import functools as _functools
+import inspect as _inspect
+import threading as _threading
+
+import anyio as _anyio
+
+#: Case-file writers: read-modify-write on flat JSON / CASE.yaml (or their
+#: SQLite mirrors). The blocked loop used to serialize these by accident; once
+#: tools run in worker threads they must keep that serialization explicitly or
+#: two concurrent writers can lose an update. Long exec/read tools
+#: (run_windows_command, run_command, ingest_auto, convert_pcap, forensic_rag_*,
+#: triage checks, TI/web/VR) deliberately do NOT take this lock.
+_CASE_WRITER_TOOLS = frozenset({
+    "record_finding",
+    "record_timeline_event",
+    "add_todo",
+    "update_todo",
+    "complete_todo",
+    "evidence_register",
+    "record_action",
+    "case_init",
+    "case_activate",
+    "case_close",
+    "import_case",
+    "set_case_metadata",
+    "generate_report",
+})
+_case_write_lock = _threading.Lock()
+
+
+def _mcp_offload_tool(fn):
+    """Wrap a sync tool so it executes in a worker thread (WO-1)."""
+    if _inspect.iscoroutinefunction(fn):
+        return fn
+
+    @_functools.wraps(fn)
+    async def _async(*args, **kwargs):
+        call = _functools.partial(fn, *args, **kwargs)
+        if fn.__name__ in _CASE_WRITER_TOOLS:
+
+            def _locked():
+                with _case_write_lock:
+                    return call()
+
+            return await _anyio.to_thread.run_sync(_locked)
+        return await _anyio.to_thread.run_sync(call)
+
+    return _async
+
+
+def apply_tool_offload(server) -> None:
+    """Wrap ``server.tool`` so every sync tool registers off-loop (WO-1/D46).
+
+    Enabled by default; ``NEXUS_MCP_TOOL_OFFLOAD=0`` restores the old inline
+    behaviour (used by tests to compare tool schemas). Signature/docstring are
+    preserved via ``functools.wraps`` (``inspect.signature`` follows
+    ``__wrapped__``), so the SDK builds the same argument model.
+    """
+    import os as _os
+
+    if _os.environ.get("NEXUS_MCP_TOOL_OFFLOAD", "1").strip().lower() in ("0", "false", "no"):
+        return
+
+    orig_tool = server.tool
+
+    def _tool(*args, **kwargs):
+        if len(args) == 1 and callable(args[0]) and not kwargs:
+            # bare `@server.tool` form
+            return orig_tool()(_mcp_offload_tool(args[0]))
+        deco = orig_tool(*args, **kwargs)
+
+        def apply(fn):
+            return deco(_mcp_offload_tool(fn))
+
+        return apply
+
+    server.tool = _tool
+
+
 def create_server(host: str = "127.0.0.1") -> FastMCP:
     """Create the MCP server.
 
@@ -76,6 +159,11 @@ def create_server(host: str = "127.0.0.1") -> FastMCP:
         transport_security=transport_security,
     )
     audit = AuditWriter("nexus")
+
+    # WO-1 (D46): every tool module below registers sync functions; wrap
+    # server.tool first so they run in worker threads instead of blocking the
+    # serving loop (case-file writers keep one shared lock).
+    apply_tool_offload(server)
 
     # ── Universal modules (pure Python, any platform) ──
     from nexus.tools import case, forensic, report
