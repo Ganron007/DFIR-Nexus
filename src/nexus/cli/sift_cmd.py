@@ -76,7 +76,13 @@ def status(case: str = typer.Option("", "--case", help="Case id or directory. De
     import os
 
     mcp = os.environ.get("NEXUS_SIFT_MCP_URL", "").strip()
-    typer.echo(f"SIFT MCP URL: {mcp or '(not set - NEXUS_SIFT_MCP_URL)'}")
+    if mcp:
+        typer.echo(f"SIFT MCP URL: {mcp}")
+    else:
+        typer.echo(
+            "SIFT MCP URL: not set in this shell - the serve session needs "
+            "NEXUS_SIFT_MCP_URL (`nexus sift setup` prints the block)"
+        )
     if required and not ok:
         typer.echo("")
         typer.echo("SIFT is REQUIRED for this case and unreachable - analysis will refuse. "

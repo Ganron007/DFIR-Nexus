@@ -3093,7 +3093,6 @@ async function loadChatHistory() {{
   }} catch (e) {{ /* transcript load is best-effort */ }}
 }}
 document.addEventListener('DOMContentLoaded', loadChatHistory);
-document.addEventListener('DOMContentLoaded', loadChatHistory);
 async function mode1Iterate() {{
   const q = document.getElementById('chat_input').value.trim()
     || (currentHits.length ? 'Corroborate and expand on the current hits' : '');
@@ -5113,7 +5112,6 @@ async def api_mode1_save_answer(request):
     append_chat(
         case_dir, "system", "answer_saved",
         f"Mode 1 answer saved for the report ({len(hits)} cited row(s) bookmarked)",
-        {"entry_ts": entry_ts},
         {"entry_ts": entry_ts},
     )
     return JSONResponse({

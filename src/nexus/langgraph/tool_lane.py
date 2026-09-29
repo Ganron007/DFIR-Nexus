@@ -1312,11 +1312,13 @@ def plan_windows_triage(
             argv=[],
             purpose="Plaso super-timeline",
             status="SKIP",
-            reason="available: set NEXUS_SIFT_PLASO=1 for a full super-timeline (large disk + hours)",
+            reason=("super-timeline: build with plaso on the SIFT host at your own pace "
+                    "and ingest it (`nexus sift ingest`; WIRING-PLAN 5.15). "
+                    "NEXUS_SIFT_PLASO=1 remains a lab-only in-lane shortcut that "
+                    "blocks the lane for hours."),
         ))
 
     users = user_profile_dirs(root)
-    prefetch = root / "Windows/Prefetch"
     prefetch = root / "Windows/Prefetch"
     amcache = root / "Windows/AppCompat/Programs/Amcache.hve"
     system_hive = root / "Windows/System32/config/SYSTEM"
@@ -2272,6 +2274,10 @@ def plan_sift_triage(
 
     Default pack for KAPE triage testing: **Volatility against memory only**.
     Full E01 / ``fls`` is opt-in via explicit ``NEXUS_SIFT_E01`` (not assumed).
+    Super-timelines (plaso) are lab-only in-lane (``NEXUS_SIFT_PLASO=1``); the
+    product design builds them outside the lane and ingests the output
+    (WIRING-PLAN 5.15) — they are hours-to-days jobs that must never block the
+    bounded pass.
     """
     jobs: list[ToolJob] = []
     root = (sift_evidence_root or "").strip().rstrip("/")
