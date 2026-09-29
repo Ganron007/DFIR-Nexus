@@ -48,7 +48,10 @@ def _isolated_case_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     # Child processes (stdio MCP children) read the config loader's names, not
     # the module-level constants the fixture patches in-process.
     monkeypatch.setenv("NEXUS_CASE_DIR", str(active_file))
-    monkeypatch.setenv("NEXUS_AUDIT_DIR", str(tmp_path / "audit"))
+    # NOTE: do NOT export NEXUS_AUDIT_DIR here. AuditWriter._get_audit_dir()
+    # checks that env BEFORE the active case, so it would send a child's lane
+    # audit entries to the session-level sink instead of cases/<id>/audit/ and
+    # break finding citations (FD-001/WP 10.4).
 
     # Point ES at nothing for the duration of the test.
     #
