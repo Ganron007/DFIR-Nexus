@@ -403,12 +403,24 @@ def schedule_evtx_parsers(
         )
 
 
-def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
-    """Schedule the matching parser for a single file / plain artifact folder.
+#: Bound on the per-folder dispatch in ``_plan_single_artifact``: a folder of
+#: one artifact format is planned file-by-file, and a monster tree must not
+#: flood the lane. The overflow is reported as an explicit SKIP row.
+_MAX_FOLDER_DISPATCH = 200
 
+
+def _plan_single_artifact(
+    evidence: Path, extractions: Path, *, out_name: str | None = None
+) -> list[ToolJob]:
+    """Schedule the matching parser for a single file / plain artifact folder.
     Phase 4h: examiners register whatever they have — a lone prefetch file, a
     hive, an MFT, or a folder of artifacts — and the lane must know which tool
     parses it. Commands mirror the host-plan argv.
+
+    ``out_name`` overrides the per-file output stem for tools that write
+    ``--csvf <name>.csv``; the folder dispatch passes a unique name when two
+    files in one folder share a stem (two ``ActivitiesCache.db`` copies), so
+    one file's rows cannot overwrite the other's.
     """
     jobs: list[ToolJob] = []
 
@@ -469,6 +481,57 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
             add("jlecmd", ["jlecmd", "-d", str(evidence), "--csv", str(d), "--csvf", "jlecmd.csv"],
                 "Jump Lists (folder)", 300)
             return jobs
+
+        # Sweep R7-R16 (2026-09-30): a folder of one format (jumplists/,
+        # thumbcache/, srum/, rdp/, setupapi/, samples/, activitiescache/)
+        # matched none of the handlers above and was SKIPped as "no recognized
+        # evidence shape" although the per-file branches parse every one of
+        # them. Dispatch the folder's files through the single-file planner and
+        # dedupe **real jobs** by (tool, argv) - a per-folder invocation
+        # (bmc-tools -s <dir>) is then scheduled once, not once per cache file.
+        # SKIP rows are never deduped: each names its own file.
+        files: list[Path] = []
+        capped = False
+        for p in evidence.rglob("*"):
+            if not p.is_file() or p.name.startswith("."):
+                continue
+            files.append(p)
+            if len(files) > _MAX_FOLDER_DISPATCH:
+                capped = True
+                break
+        if capped:
+            files = files[:_MAX_FOLDER_DISPATCH]
+        if files:
+            stems: dict[str, int] = {}
+            for p in files:
+                stems[p.stem.lower()] = stems.get(p.stem.lower(), 0) + 1
+            used: dict[str, int] = {}
+            dispatched: list[ToolJob] = []
+            seen: set[tuple[str, tuple[str, ...]]] = set()
+            for p in files:
+                name_override = None
+                if stems.get(p.stem.lower(), 0) > 1:
+                    used[p.stem.lower()] = used.get(p.stem.lower(), 0) + 1
+                    name_override = f"{p.stem}_{used[p.stem.lower()]}"
+                for job in _plan_single_artifact(p, extractions, out_name=name_override):
+                    if job.status != "SKIP":
+                        key = (job.tool, tuple(job.argv))
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                    dispatched.append(job)
+            if capped:
+                dispatched.append(ToolJob(
+                    host="windows", tool="(discovery)", argv=[], status="SKIP",
+                    purpose="folder dispatch cap",
+                    reason=(
+                        "more than "
+                        f"{_MAX_FOLDER_DISPATCH} file(s) in this folder were not "
+                        "scheduled - register that part separately"
+                    ),
+                ))
+            if dispatched:
+                return dispatched
         return jobs
 
     if not evidence.is_file():
@@ -484,7 +547,7 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
     if _cls == "recycle":
         d = out_dir("rbcmd")
         add("rbcmd", ["rbcmd", "-f", str(evidence), "--csv", str(d),
-                      "--csvf", f"{_stem(evidence)}.csv"],
+                      "--csvf", f"{(out_name or _stem(evidence))}.csv"],
             f"Recycle Bin record ({evidence.name})", 300)
         return jobs
 
@@ -496,26 +559,31 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
     # must not share an output name.
     if suffix == ".pf":
         d = out_dir("pecmd")
-        add("pecmd", ["pecmd", "-f", str(evidence), "--csv", str(d), "--csvf", f"{_stem(evidence)}.csv"],
+        add("pecmd", ["pecmd", "-f", str(evidence), "--csv", str(d), "--csvf", f"{(out_name or _stem(evidence))}.csv"],
             "Prefetch execution evidence")
     elif suffix == ".lnk":
         d = out_dir("lecmd")
-        add("lecmd", ["lecmd", "-f", str(evidence), "--csv", str(d), "--csvf", f"{_stem(evidence)}.csv"],
+        add("lecmd", ["lecmd", "-f", str(evidence), "--csv", str(d), "--csvf", f"{(out_name or _stem(evidence))}.csv"],
             "LNK target/usage", 300)
     elif name.startswith("$mft") or suffix == ".mft":
         d = out_dir("mftecmd")
-        add("mftecmd", ["mftecmd", "-f", str(evidence), "--csv", str(d), "--csvf", f"{_stem(evidence)}.csv"],
+        add("mftecmd", ["mftecmd", "-f", str(evidence), "--csv", str(d), "--csvf", f"{(out_name or _stem(evidence))}.csv"],
             "MFT file system timeline", 1800)
     elif name.startswith("amcache"):
         d = out_dir("amcache")
         add("amcacheparser",
-            ["amcacheparser", "-f", str(evidence), "--csv", str(d), "--csvf", f"{_stem(evidence)}.csv"],
+            ["amcacheparser", "-f", str(evidence), "--csv", str(d), "--csvf", f"{(out_name or _stem(evidence))}.csv"],
             "Amcache application execution", 300)
     elif suffix == ".exe":
-        # Malware samples / dropped binaries: hash + version + strings.
+        # Malware samples / dropped binaries: hash + version + strings. The
+        # VirusTotal probe (`-vt`) sends the sample hash to a third party and is
+        # therefore opt-in (NEXUS_SIGCHECK_VT=1) - offline-first by default.
         d = out_dir("sigcheck")
-        add("sigcheck", ["sigcheck", "-nobanner", "-a", "-h", "-s", "-vt", str(evidence)],
-            f"File identity ({evidence.name})", 300)
+        argv = ["sigcheck", "-nobanner", "-a", "-h", "-s"]
+        if os.environ.get("NEXUS_SIGCHECK_VT", "").strip().lower() in {"1", "true", "yes"}:
+            argv.append("-vt")
+        argv.append(str(evidence))
+        add("sigcheck", argv, f"File identity ({evidence.name})", 300)
     elif name.startswith(("thumbcache_", "iconcache_")) and suffix == ".db":
         # thumbcache_viewer_cmd is NOT a Zimmerman CSV tool — it writes a report
         # tree into -o, and -c adds the CSV. Without -c it prints its usage
@@ -537,12 +605,16 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
         # at the hive's folder rather than the file.
         d = out_dir("sbecmd")
         add("sbecmd", ["sbecmd", "-d", str(evidence.parent), "--csv", str(d),
-                       "--csvf", f"{_stem(evidence)}.csv"],
+                       "--csvf", f"{(out_name or _stem(evidence))}.csv"],
             f"Shellbags ({evidence.name})", 900)
     elif _artifact_class(evidence) == "timeline":
-        d = out_dir("wxtcmd")
-        add("wxtcmd", ["wxtcmd", "-f", str(evidence), "--csv", str(d),
-                       "--csvf", f"{_stem(evidence)}.csv"],
+        # WxTCmd does NOT accept --csvf (verified 2026-09-30: it exits 0 with
+        # "Unrecognized command or argument '--csvf'" and writes nothing). Two
+        # ActivitiesCache.db copies would collide inside one --csv dir, so each
+        # file gets its own output directory instead.
+        d = out_dir("wxtcmd") / (out_name or _stem(evidence))
+        d.mkdir(parents=True, exist_ok=True)
+        add("wxtcmd", ["wxtcmd", "-f", str(evidence), "--csv", str(d)],
             "Windows Timeline activities", 600)
     elif _artifact_class(evidence) == "browser_sqlite":
         d = out_dir("sqlecmd")
@@ -664,7 +736,7 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
     elif _artifact_class(evidence) == "jumplist":
         d = out_dir("jlecmd")
         add("jlecmd", ["jlecmd", "-f", str(evidence), "--csv", str(d),
-                       "--csvf", f"{_stem(evidence)}.csv"],
+                       "--csvf", f"{(out_name or _stem(evidence))}.csv"],
             f"Jump list ({evidence.name})", 300)
     elif _is_wmi_repository(name):
         # Both encodings, because OBJECTS.DATA mixes them and neither pass is a
@@ -747,11 +819,13 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
         d = out_dir("rdp")
         add("bmc-tools", ["bmc-tools.py", "-s", str(evidence.parent), "-d", str(d)],
             f"RDP bitmap cache recovery ({evidence.name})", 1800)
-    elif name.startswith("srudb.dat") or name == "sru.db" or "sru" in name:
+    elif name.startswith("srudb.dat") or name == "sru.db":
         # SRUDB.dat is a live ESE database. SrumECmd refuses it in place
         # ("Cannot access file, the file is locked or in use"), so the single-file
         # path must stage it on a writable workdir with its log siblings, the
-        # same way the batch path already does.
+        # same way the batch path already does. The old `"sru" in name` also
+        # matched the companions (SRU.log/chk/jrs) and scheduled SrumECmd on
+        # non-databases - the folder dispatch (sweep R12) surfaced it.
         d = out_dir("srum")
         staged = evidence
         try:
@@ -2863,10 +2937,10 @@ async def run_tool_lane(
                 # marked a working `mmls` FAIL ("no output produced") on the
                 # first G7 run while its 502-byte stdout sat on the host.
                 if not _sift_result_has_output(result):
-                    status, job.reason = _empty_output_status(job)
+                    status, job.reason = _empty_output_status(job, result)
                     detail += " (no output produced)" if status == "FAIL" else " (no findings)"
             elif status == "OK" and not (_fresh or _produced_expected_output(job)):
-                status, job.reason = _empty_output_status(job)
+                status, job.reason = _empty_output_status(job, result)
                 detail += " (no output produced)" if status == "FAIL" else " (no findings)"
             _finish(status, detail, reason=job.reason[:300],
                     output=job.output_saved_to, audit_id=aid)
@@ -3459,13 +3533,38 @@ def _promote_sift_pull(sift_dir: Path) -> list[str]:
     return promoted
 
 
-def _empty_output_status(job: ToolJob) -> tuple[str, str]:
+#: Tool stdout markers proving the artifact holds zero entries. An empty cache
+#: is not a parse failure; FAIL would block the evidence gate for nothing
+#: (found by sweep R10: thumbcache_custom_stream.db parses to "There are no
+#: more entries." and writes no report).
+_EMPTY_OUTPUT_MARKERS = {
+    "thumbcache_viewer": "there are no more entries",
+}
+
+
+def _empty_output_status(
+    job: ToolJob, result: dict | None = None
+) -> tuple[str, str]:
     """Decision for a job that ran cleanly but wrote nothing.
 
     Failure is the default: an OK row with no output is a silent coverage gap.
-    A job that opted into `optional_output` (BitsParser on a job-less queue)
-    records SKIP with an honest reason instead.
+    Two explained exceptions exist: a tool whose stdout proves the artifact
+    holds **zero entries** (marker table above) and a job that opted into
+    `optional_output` (BitsParser on a job-less queue) - both record SKIP with
+    an honest reason instead.
     """
+    marker = _EMPTY_OUTPUT_MARKERS.get(job.tool)
+    if marker and result is not None:
+        text = " ".join(
+            str(result.get(key) or "")
+            for key in ("stdout", "captured_text", "output", "text")
+        ).lower()
+        if marker in text:
+            return (
+                "SKIP",
+                f"{job.tool} parsed the artifact and found zero entries "
+                "(empty cache, not unparsed)",
+            )
     if job.optional_output:
         return (
             "SKIP",
