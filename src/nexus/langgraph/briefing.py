@@ -912,6 +912,18 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
         "findings_summary": findings_summary,
     }
 
+    # WO-3 (report-only): the row-reconciliation line rides the briefing so a
+    # source-vs-index mismatch is visible without opening the report.
+    try:
+        from nexus.analysis.reconciliation import load_or_reconcile, summary_line
+
+        out["reconciliation"] = {
+            "summary": summary_line(load_or_reconcile(case_dir)),
+            "report_only": True,
+        }
+    except Exception:  # noqa: BLE001 - the briefing must render with or without it
+        out["reconciliation"] = {}
+
     # WP 4j.5c: persist an offline copy — the briefing and signal map must be
     # reviewable without the UI (DFIR practice: every analysis leaves a file
     # artifact the examiner can open, diff, or attach to notes).
@@ -991,6 +1003,9 @@ def briefing_to_markdown(brief: dict[str, Any]) -> str:
     led = brief.get("ledger") or {}
     lines.append(f"\nParser lane: {led.get('ok', 0)} OK / {led.get('skip', 0)} SKIP / "
                  f"{led.get('fail', 0)} FAIL")
+    rec_line = (brief.get("reconciliation") or {}).get("summary")
+    if rec_line:
+        lines.append(f"- {rec_line}")
     if brief.get("hosts"):
         lines.append(f"Hosts: {', '.join(brief['hosts'][:10])}")
     tr = brief.get("time_range") or {}

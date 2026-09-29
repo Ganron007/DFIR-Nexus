@@ -341,6 +341,9 @@ def iter_index_doc_batches(
     }
     seen: set[str] = set()
     family_counts: dict[str, int] = {}
+    # WO-3: per-file accepted/deduped counts, so the reconciler can compare a
+    # file's own record count with what the index took from it.
+    file_counts: dict[str, dict[str, int]] = {}
     out: list[dict[str, Any]] = []
     total = 0
     stop = False
@@ -366,10 +369,13 @@ def iter_index_doc_batches(
         key = hashlib.sha1(
             f"{fam}\x00{path}\x00{i}\x00{text}".encode("utf-8", "replace")
         ).hexdigest()
+        rel = _index_rel(path, root)
+        rec = file_counts.setdefault(rel, {"docs": 0, "deduped": 0})
         if key in seen:
+            rec["deduped"] += 1
             return False
         seen.add(key)
-        rel = _index_rel(path, root)
+        rec["docs"] += 1
         doc: dict[str, Any] = {
             "case_id": case_dir.name,
             "family": fam,
@@ -491,6 +497,7 @@ def iter_index_doc_batches(
                 yield out
                 out = []
     caps["ts_coverage"] = ts_cov
+    caps["file_counts"] = file_counts
     if stats is not None:
         stats.update(caps)
     if out:
@@ -820,13 +827,23 @@ def index_case(
                 except ValueError:
                     docs_total = prior.get("docs", 0)
         prior_coverage = {}
+        prior_counts: dict[str, Any] = {}
         try:
             prior_meta = json.loads(
                 (out / "es_index.json").read_text(encoding="utf-8")
             )
             prior_coverage = prior_meta.get("ts_coverage") or {}
+            prior_counts = prior_meta.get("file_counts") or {}
         except (OSError, ValueError):
             prior_coverage = {}
+            prior_counts = {}
+        # WO-3: per-file counts survive for untouched files; changed files get
+        # a fresh count and removed files drop out.
+        merged_counts = {
+            rel: entry for rel, entry in prior_counts.items()
+            if rel not in removed and rel not in changed
+        }
+        merged_counts.update(cap_stats.get("file_counts") or {})
         meta = {
             "index": name,
             "docs": docs_total,
@@ -842,6 +859,7 @@ def index_case(
             # keeps the prior full picture rather than replacing it with a
             # partial one (4k.4.3 review fix).
             "ts_coverage": prior_coverage or cap_stats.get("ts_coverage") or {},
+            "file_counts": merged_counts,
             "caps": cap_stats,
             "capped": bool(
                 cap_stats.get("docs_capped")
@@ -907,6 +925,7 @@ def index_case(
             "purge_refused": purge_refused,
             "purge_refused_reason": purge_refused_reason,
             "ts_coverage": cap_stats.get("ts_coverage") or {},
+            "file_counts": cap_stats.get("file_counts") or {},
             "caps": cap_stats,
             "capped": bool(
                 cap_stats.get("docs_capped")

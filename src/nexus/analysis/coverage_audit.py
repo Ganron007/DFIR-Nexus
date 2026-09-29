@@ -448,12 +448,31 @@ def build_coverage_audit(case_dir: Path | str) -> dict[str, Any]:
         except Exception:  # noqa: BLE001
             meta_name = ""
 
+    # WO-3 (report-only): row reconciliation is surfaced but deliberately NOT
+    # part of `overall`/`sections` — a mismatch informs, it does not yet block.
+    reconciliation: dict[str, Any] = {"status": _UNKNOWN, "reason": "not reconciled"}
+    try:
+        from nexus.analysis.reconciliation import load_or_reconcile, summary_line
+
+        rec = load_or_reconcile(case_dir)
+        t = rec.get("totals") or {}
+        reconciliation = {
+            "status": _GAPS if t.get("mismatch") else _OK,
+            "summary": summary_line(rec),
+            "report_only": True,
+            "files": t.get("files", 0),
+            "mismatch": t.get("mismatch", 0),
+        }
+    except Exception as exc:  # noqa: BLE001
+        reconciliation = {"status": _UNKNOWN, "reason": f"reconciliation failed: {exc}"[:300]}
+
     return {
         "schema": SCHEMA_VERSION,
         "case_id": case_dir.name,
         "case_name": meta_name,
         "generated_at": _now(),
         "overall": overall,
+        "reconciliation": reconciliation,
         "unavailable": unavailable,
         # Both shapes on purpose: `sections` is the interface L1.9 reads (and the
         # tests pass), while the spread keys keep every existing reader working.
@@ -538,6 +557,11 @@ def summary_lines(audit: dict[str, Any], *, limit: int = 6) -> list[str]:
 
     if overall == _OK:
         out.append("- Every applicable tool ran, every indexed family is cited, every needle was genuinely scanned.")
+    rec = audit.get("reconciliation") or {}
+    if rec.get("summary"):
+        out.append(f"- {rec['summary']}")
+    elif rec.get("reason"):
+        out.append(f"- Row reconciliation: NOT RUN — {rec['reason']}")
     for note in audit.get("unavailable") or []:
         out.append(f"- unavailable: {note}")
     return out

@@ -7582,6 +7582,15 @@ def _augment_report_with_grade(case_dir, out_file, report_text: str,
             write_consistency(case_dir, result)
         tail.append(render_consistency_markdown(result))
 
+    # WO-3 (report-only): source records vs indexed docs, per file.
+    with contextlib.suppress(Exception):
+        from nexus.analysis.reconciliation import (
+            load_or_reconcile,
+            render_reconciliation_markdown,
+        )
+
+        tail.append(render_reconciliation_markdown(load_or_reconcile(case_dir)))
+
     if not tail:
         return
     section = "\n".join(t for t in tail if t)
