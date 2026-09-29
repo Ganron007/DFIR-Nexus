@@ -1396,6 +1396,24 @@ def run_mode2(
         _persist_state(case_dir, run_id, state)
         return state
 
+    # WO-4 (D40): build the signal map before the graph runs, so the coverage
+    # audit can answer for the needles this run's claims were drawn from
+    # instead of "unknown". Best-effort by design: a briefing failure must
+    # not take the run down.
+    try:
+        from nexus.langgraph.briefing import case_briefing
+
+        brief = case_briefing(case_dir)
+        sink.emit(new_event(
+            run_id, "briefing.ready", actor="system",
+            detail=f"{brief.get('scanned_needles', 0)} needle(s) scanned",
+            data={"signal_map": bool((brief.get("artifacts") or {}).get("signal_map_csv"))},
+        ))
+    except Exception as exc:  # noqa: BLE001
+        sink.emit(new_event(
+            run_id, "briefing.failed", actor="system", detail=str(exc)[:200],
+        ))
+
     sink.emit(new_event(run_id, "run.started", actor="system",
                         detail=question, data={"case_id": case_dir.name}))
 
