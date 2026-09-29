@@ -45,6 +45,12 @@ class ToolJob:
     audit_id: str = ""
     output_saved_to: str = ""
     output_files: list[dict] = field(default_factory=list)
+    # Some tools legitimately find nothing on some evidence (a BITS queue DB can
+    # hold no recoverable jobs; BitsParser writes no JSON at all, even after
+    # esentutl repair - same result as the W1 reference run). For those jobs an
+    # empty output is a SKIP with a reason, not a failure. The silent-no-output
+    # guard stays for every tool that has not opted in.
+    optional_output: bool = False
 
 
 def timeout_for_bytes(
@@ -260,13 +266,15 @@ def schedule_evtx_parsers(
     and no longer ships a local EVTX timeline (found by the Phase 4f flow test).
     """
 
-    def add(tool: str, argv: list[str], purpose: str, timeout: int = 600) -> None:
+    def add(tool: str, argv: list[str], purpose: str, timeout: int = 600,
+            *, optional_output: bool = False) -> None:
         jobs.append(ToolJob(
             host="windows",
             tool=tool,
             argv=argv,
             purpose=purpose,
             timeout=timeout,
+            optional_output=optional_output,
         ))
 
     def skip(tool: str, reason: str) -> None:
@@ -398,9 +406,11 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
     """
     jobs: list[ToolJob] = []
 
-    def add(tool: str, argv: list[str], purpose: str, timeout: int = 600) -> None:
+    def add(tool: str, argv: list[str], purpose: str, timeout: int = 600,
+            *, optional_output: bool = False) -> None:
         jobs.append(ToolJob(
             host="windows", tool=tool, argv=argv, purpose=purpose, timeout=timeout,
+            optional_output=optional_output,
         ))
 
     def out_dir(name: str) -> Path:
@@ -535,7 +545,8 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
                 add("bitsparser", ["bitsparser", "-i", str(staged),
                                    "-o", str(d / f"{_stem(evidence)}.json")],
                     f"BITS job queue ({evidence.name}, repaired copy)",
-                    timeout_for_bytes(staged.stat().st_size))
+                    timeout_for_bytes(staged.stat().st_size),
+                    optional_output=True)
             else:
                 jobs.append(ToolJob(
                     host="windows", tool="bitsparser", argv=[], status="SKIP",
@@ -660,7 +671,17 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
         # text extracts nothing, and recording that empty capture as a failure
         # would be wrong (measured 2026-09-29). Empty files get an honest SKIP.
         kind = _staged_support_dir(evidence)
-        if evidence.stat().st_size < 8:
+        name_l = evidence.name.lower()
+        if name_l == "edb.chk" or name_l.startswith("edbres"):
+            jobs.append(ToolJob(
+                host="windows", tool="strings", argv=[], status="SKIP",
+                purpose=f"Staged {kind} artifact ({evidence.name[:40]})",
+                reason=(
+                    "ESE reserve/checkpoint companion - recovered into the BITS "
+                    "queue by the repaired-copy parse; holds no recoverable strings"
+                ),
+            ))
+        elif evidence.stat().st_size < 8:
             jobs.append(ToolJob(
                 host="windows", tool="strings", argv=[], status="SKIP",
                 purpose=f"Staged {kind} artifact ({evidence.name[:40]})",
@@ -670,7 +691,7 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
             d = out_dir("strings")
             add("strings", ["strings64", "-nobanner", str(evidence)],
                 f"Staged {kind} strings, ascii ({evidence.name[:40]})", 600)
-            if not _is_mostly_text(evidence):
+            if not _is_mostly_text(evidence) and _has_utf16_text(evidence):
                 add("strings", ["strings64", "-u", "-nobanner", str(evidence)],
                     f"Staged {kind} strings, utf16 ({evidence.name[:40]})", 600)
     elif name.startswith("cache0") and name.endswith(".bin"):
@@ -924,6 +945,28 @@ def _staged_support_dir(p: Path) -> str:
     """
     parent = p.parent.name.lower()
     return parent if parent in _STAGED_SUPPORT_DIRS else ""
+
+
+def _has_utf16_text(path: Path, sample: int = 65536) -> bool:
+    """True when the head of the file contains UTF-16-looking text spans.
+
+    A `strings -u` pass is only scheduled when wide characters are actually
+    present: over pure ASCII text or all-null ESE pages it extracts zero bytes,
+    and the honest output check records that empty capture as a failure
+    (measured 2026-09-29 on robocopy-scans.log and qmgr.jfm).
+    """
+    try:
+        head = path.read_bytes()[:sample]
+    except OSError:
+        return False
+    pairs = 0
+    for i in range(0, len(head) - 1, 2):
+        lo, hi = head[i], head[i + 1]
+        if (32 <= lo < 127 and hi == 0) or (lo == 0 and 32 <= hi < 127):
+            pairs += 1
+            if pairs >= 16:
+                return True
+    return False
 
 
 def _is_mostly_text(path: Path, sample: int = 2048) -> bool:
@@ -1216,13 +1259,15 @@ def plan_windows_triage(
     recycle = root / "$Recycle.Bin"
     config_dir = root / "Windows/System32/config"
 
-    def add(tool: str, argv: list[str], purpose: str, timeout: int = 600) -> None:
+    def add(tool: str, argv: list[str], purpose: str, timeout: int = 600,
+            *, optional_output: bool = False) -> None:
         jobs.append(ToolJob(
             host="windows",
             tool=tool,
             argv=argv,
             purpose=purpose,
             timeout=timeout,
+            optional_output=optional_output,
         ))
 
     def skip(tool: str, reason: str) -> None:
@@ -1844,6 +1889,7 @@ def _plan_gap_parsers(
                         ["bitsparser", "-i", str(staged), "-o", str(out / "bits.json")],
                         f"BITS job queue ({qmgr.name}, repaired copy)",
                         timeout_for_bytes(sz),
+                        optional_output=True,
                     )
             except OSError as exc:
                 skip("bitsparser", f"could not stage qmgr: {exc}")
@@ -2592,13 +2638,8 @@ async def run_tool_lane(
             if status == "OK" and _fresh:
                 job.output_files = [*job.output_files, *_fresh]
             if status == "OK" and not (_fresh or _produced_expected_output(job)):
-                status = "FAIL"
-                job.reason = (
-                    f"{job.tool} exited cleanly but produced no output file "
-                    f"(expected a file under the --csv target). Treat this evidence as "
-                    f"unparsed, not clean."
-                )
-                detail += " (no output produced)"
+                status, job.reason = _empty_output_status(job)
+                detail += " (no output produced)" if status == "FAIL" else " (no findings)"
             _finish(status, detail, reason=job.reason[:300],
                     output=job.output_saved_to, audit_id=aid)
         if aid:
@@ -3100,6 +3141,28 @@ def _produced_expected_output(job: ToolJob) -> bool:
         if p.is_file() and p.stat().st_size > 0:
             return True
     return False
+
+
+def _empty_output_status(job: ToolJob) -> tuple[str, str]:
+    """Decision for a job that ran cleanly but wrote nothing.
+
+    Failure is the default: an OK row with no output is a silent coverage gap.
+    A job that opted into `optional_output` (BitsParser on a job-less queue)
+    records SKIP with an honest reason instead.
+    """
+    if job.optional_output:
+        return (
+            "SKIP",
+            f"{job.tool} ran cleanly and found nothing to extract in this evidence",
+        )
+    return (
+        "FAIL",
+        (
+            f"{job.tool} exited cleanly but produced no output file "
+            f"(expected a file under the --csv target). Treat this evidence as "
+            f"unparsed, not clean."
+        ),
+    )
 
 
 def _bridge_remote_audits(case_dir: Path, ledger: list[dict[str, Any]]) -> int:

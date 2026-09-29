@@ -59,7 +59,7 @@ def test_defender_support_logs_are_planned_not_dropped(tmp_path):
     d = tmp_path / "defender" / "Support"
     d.mkdir(parents=True)
     log = _make(d, "MPLog-20201020-091428.log", b"defender log line\n")
-    wpp = _make(d, "MpWppTracing-20201111-031319.bin", b"\x00\x01trace" * 8)
+    wpp = _make(d, "MpWppTracing-20201111-031319.bin", b"W\x00i\x00d\x00e\x00" * 8)
     assert is_host_evidence(log) is True
     assert is_host_evidence(wpp) is True
     text_jobs = _plan_single_artifact(log, tmp_path / "extractions")
@@ -117,6 +117,39 @@ def test_bitsparser_stages_a_repaired_copy_for_a_single_database(tmp_path, monke
     assert "repaired copy" in bp.purpose
     assert called["db_name"] == "qmgr.db"
     assert called["log_bases"] == ("edb", "qmgr")
+    assert bp.optional_output is True, (
+        "BitsParser writes nothing when the queue holds no recoverable jobs - "
+        "that is a SKIP with a reason, not a failure"
+    )
+
+
+def test_ese_reserve_and_checkpoint_are_skip_not_fail(tmp_path):
+    d = tmp_path / "bits"
+    d.mkdir()
+    jrs = _make(d, "edbres00001.jrs", b"\x00" * 64)
+    chk = _make(d, "edb.chk", b"\x00" * 64)
+    for f in (jrs, chk):
+        assert is_host_evidence(f) is True
+        jobs = _plan_single_artifact(f, tmp_path / "extractions")
+        assert jobs and all(j.status == "SKIP" for j in jobs)
+        assert "recoverable strings" in jobs[0].reason
+
+
+def test_utf16_pass_only_when_wide_text_present(tmp_path):
+    """A `-u` pass over data with no wide characters extracts nothing.
+
+    Scheduling it anyway made the honest output check fail jobs that behaved
+    correctly (qmgr.jfm, 2026-09-29). The probe decides from content.
+    """
+    d = tmp_path / "defender" / "Support"
+    d.mkdir(parents=True)
+    wide = _make(d, "MpWppTracing-20201111-031319.bin", b"W\x00i\x00d\x00e\x00" * 8)
+    narrow = _make(d, "MpWppTracing-20201113-000000.bin", b"only ascii text here, no wide chars")
+    narrow.write_bytes(b"\x01\x02\x03" * 40)
+    jobs_wide = _plan_single_artifact(wide, tmp_path / "extractions")
+    assert any("-u" in j.argv for j in jobs_wide)
+    jobs_narrow = _plan_single_artifact(narrow, tmp_path / "extractions")
+    assert jobs_narrow and not any("-u" in j.argv for j in jobs_narrow)
 
 
 def test_iconcache_file_is_recognised(tmp_path):
