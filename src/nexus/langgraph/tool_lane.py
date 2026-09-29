@@ -2379,10 +2379,11 @@ def sift_unavailable_outcome(job: ToolJob) -> tuple[str, str]:
     if job.critical:
         return (
             "FAIL",
-            "SIFT MCP unreachable and this case declares SIFT-hosted evidence - "
-            "the artifact cannot be processed. Start the SIFT host / set "
-            "NEXUS_SIFT_MCP_URL and re-run the lane, or record an examiner skip "
-            "(nexus lane skip).",
+            "SIFT MCP unreachable and this case selects the SIFT lane "
+            "(sift_required) - the SIFT evidence cannot be processed. Bring the "
+            "SIFT host up (NEXUS_SIFT_MCP_URL) and re-run the lane, clear the "
+            "SIFT selection if this case does not need SIFT, or record an "
+            "examiner skip (audited, `nexus lane skip`).",
         )
     return "SKIP", "run_command not available on MCP"
 
