@@ -198,3 +198,30 @@ def test_stage_sift_outputs_family_override(tmp_path):
     staged = stage_sift_outputs(case, [f], family="bulk_extractor")
     assert staged[0].name == "bulk_extractor"
     assert (staged[0] / "whatever.txt").is_file()
+
+
+def test_sift_result_has_output_recognises_remote_evidence():
+    """G7 finding: SIFT outputs are remote; the result itself is the evidence."""
+    from nexus.langgraph.tool_lane import _sift_result_has_output
+
+    assert _sift_result_has_output({"stdout_bytes": 502}) is True
+    assert _sift_result_has_output(
+        {"output_saved_to": "/home/u/.nexus/cases/CASE-x/extractions/mmls/1_stdout.txt"}
+    ) is True
+    assert _sift_result_has_output({"stdout": "hello"}) is True
+    assert _sift_result_has_output({"output_files": [{"path": "x"}]}) is True
+    assert _sift_result_has_output({}) is False
+    assert _sift_result_has_output({"stdout_bytes": 0, "stdout": "  "}) is False
+
+
+def test_disk_offset_reaches_fls(monkeypatch):
+    """A whole-disk image needs `fls -o <offset>` (G7: Linux part at 2048)."""
+    monkeypatch.delenv("NEXUS_SIFT_DISK_OFFSET", raising=False)
+    jobs = plan_sift_triage(
+        "/evidence/608", disk_image="/evidence/608/disk.img", disk_offset="2048"
+    )
+    fls = next(j for j in jobs if j.tool == "fls")
+    assert fls.argv[:4] == ["fls", "-o", "2048", "-r"]
+    assert "2048" in fls.purpose
+    mmls = next(j for j in jobs if j.tool == "mmls")
+    assert mmls.argv == ["mmls", "/evidence/608/disk.img"]

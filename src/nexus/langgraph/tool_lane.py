@@ -2252,6 +2252,7 @@ def plan_sift_triage(
     memory_file: str | None = None,
     sift_os: str | None = None,
     disk_image: str | None = None,
+    disk_offset: str | int | None = None,
 ) -> list[ToolJob]:
     """Build SIFT jobs when a Linux-visible evidence root is configured.
 
@@ -2342,6 +2343,8 @@ def plan_sift_triage(
     # Raw disk image: SleuthKit is the unique solver on SIFT (the Windows lane
     # only ever sees extracted files, never a raw image).
     disk = (disk_image or os.environ.get("NEXUS_SIFT_DISK", "")).strip()
+    offset = str(disk_offset if disk_offset is not None
+                 else os.environ.get("NEXUS_SIFT_DISK_OFFSET", "")).strip()
     if disk:
         jobs.append(ToolJob(
             host="sift",
@@ -2350,11 +2353,17 @@ def plan_sift_triage(
             purpose=f"TSK partition layout (mmls: {disk})",
             timeout=300,
         ))
+        fls_argv = ["fls", "-r", "-p", disk]
+        if offset:
+            # A whole-disk image needs the partition offset: fls on sector 0
+            # answers "Cannot determine file system type" (G7, dmz-www disk:
+            # Linux partition at sector 2048).
+            fls_argv = ["fls", "-o", offset, "-r", "-p", disk]
         jobs.append(ToolJob(
             host="sift",
             tool="fls",
-            argv=["fls", "-r", "-p", disk],
-            purpose=f"TSK recursive file listing (fls -r: {disk})",
+            argv=fls_argv,
+            purpose=f"TSK recursive file listing (fls -r{' -o ' + offset if offset else ''}: {disk})",
             timeout=3600,
         ))
         if os.environ.get("NEXUS_SIFT_BULK", "").strip().lower() in ("1", "true", "yes"):
@@ -2408,6 +2417,7 @@ def sift_jobs_for_lane(
     memory_file: str | None = None,
     sift_os: str | None = None,
     disk_image: str | None = None,
+    disk_offset: str | int | None = None,
     declared: bool = False,
     network_inputs: dict[str, list[str]] | None = None,
 ) -> list[ToolJob]:
@@ -2426,6 +2436,7 @@ def sift_jobs_for_lane(
         memory_file=memory_file,
         sift_os=sift_os,
         disk_image=disk_image,
+        disk_offset=disk_offset,
     )
     # EH-14b: Zeek/Suricata/nfdump for captures visible under the SIFT root.
     # Captures registered on Windows are planned with an honest SKIP row —
@@ -2589,6 +2600,7 @@ async def run_tool_lane(
         memory_file=str(ctx.get("sift_memory_file") or "").strip() or None,
         sift_os=str(ctx.get("sift_os") or "").strip() or None,
         disk_image=str(ctx.get("sift_disk_image") or "").strip() or None,
+        disk_offset=str(ctx.get("sift_disk_offset") or "").strip() or None,
         declared=str(ctx.get("sift_required") or "").strip().lower() in ("1", "true", "yes"),
         network_inputs=_net_inputs,
     ))
@@ -2795,7 +2807,17 @@ async def run_tool_lane(
             _fresh = _new_output_files(_out_dirs, _before)
             if status == "OK" and _fresh:
                 job.output_files = [*job.output_files, *_fresh]
-            if status == "OK" and not (_fresh or _produced_expected_output(job)):
+            if status == "OK" and job.host == "sift":
+                # SIFT outputs live on the SIFT host; the local snapshot can
+                # never see them, so the execution result itself is the
+                # evidence (captured bytes / a saved remote capture / listed
+                # files / captured text). Judging remote jobs by local files
+                # marked a working `mmls` FAIL ("no output produced") on the
+                # first G7 run while its 502-byte stdout sat on the host.
+                if not _sift_result_has_output(result):
+                    status, job.reason = _empty_output_status(job)
+                    detail += " (no output produced)" if status == "FAIL" else " (no findings)"
+            elif status == "OK" and not (_fresh or _produced_expected_output(job)):
                 status, job.reason = _empty_output_status(job)
                 detail += " (no output produced)" if status == "FAIL" else " (no findings)"
             _finish(status, detail, reason=job.reason[:300],
@@ -3324,6 +3346,26 @@ def _produced_expected_output(job: ToolJob) -> bool:
         if p.is_file() and p.stat().st_size > 0:
             return True
     return False
+
+
+def _sift_result_has_output(result: dict) -> bool:
+    """True when a SIFT job's execution result carries output.
+
+    SIFT extraction dirs live on the SIFT host, so the lane's local
+    ``_new_output_files`` snapshot can never see them. The execution result is
+    the evidence: a saved capture path, captured byte count, listed output
+    files, or captured text all count.
+    """
+    if str(result.get("output_saved_to") or "").strip():
+        return True
+    try:
+        if int(result.get("stdout_bytes") or 0) > 0:
+            return True
+    except (TypeError, ValueError):
+        pass
+    if result.get("output_files"):
+        return True
+    return bool(str(result.get("stdout") or result.get("message") or "").strip())
 
 
 def _empty_output_status(job: ToolJob) -> tuple[str, str]:
