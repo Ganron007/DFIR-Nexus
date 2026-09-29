@@ -594,11 +594,30 @@ def _plan_single_artifact(
         # databases", so passing a db file with -d made the tool open nothing
         # and exit 0 with no output (found on iconcache_16.db, CASE-BC13CCC9,
         # 2026-09-29; `-t` produces report_*.csv plus extracted thumbnails).
-        d = out_dir("thumbcache")
-        reports = d / _stem(evidence)
-        add("thumbcache_viewer",
-            ["thumbcache_viewer_cmd", "-t", str(evidence), "-o", str(reports), "-c"],
-            f"Thumbcache entries ({evidence.name})", 300)
+        #
+        # The index/pointer companion is not a thumbnail cache at all:
+        # thumbcache_viewer answers "The file is not a thumbcache database."
+        # and writes nothing (sweep R10 re-run, thumbcache_idx.db -> the only
+        # remaining FAIL row). SKIP at plan time, keyed on the file NAME and
+        # never on that tool message - a truncated real cache prints the same
+        # line, and it must keep failing the gate as unparsed instead of being
+        # masked as "nothing here".
+        if name.endswith("_idx.db"):
+            jobs.append(ToolJob(
+                host="windows", tool="thumbcache_viewer", argv=[], status="SKIP",
+                purpose=f"Thumbcache index ({evidence.name})",
+                reason=(
+                    f"{evidence.name} is the cache index/pointer companion "
+                    f"- no thumbnail entries to extract (the sibling "
+                    f"thumbcache_*.db / iconcache_*.db caches carry the entries)"
+                ),
+            ))
+        else:
+            d = out_dir("thumbcache")
+            reports = d / _stem(evidence)
+            add("thumbcache_viewer",
+                ["thumbcache_viewer_cmd", "-t", str(evidence), "-o", str(reports), "-c"],
+                f"Thumbcache entries ({evidence.name})", 300)
     elif name.startswith("usrclass") and suffix in (".dat", ""):
         # Shellbags live in UsrClass.dat. SBECmd scans a *directory* of hives
         # (`-d <dir> --csv <dir>`, verified from its own usage), so it is pointed

@@ -48,6 +48,35 @@ def test_thumbcache_folder_uses_the_file_flag(tmp_path):
     assert all("-t" in j.argv for j in thumb)
 
 
+def test_thumbcache_idx_companion_skips_without_a_viewer_run(tmp_path):
+    """The index/pointer companion is not a thumbnail cache.
+
+    thumbcache_viewer answers "The file is not a thumbcache database." and
+    writes nothing (sweep R10 re-run). That message is identical for a
+    truncated real cache, so the skip keys on the file NAME - a corrupt cache
+    must keep failing the gate instead of being masked as "no entries".
+    """
+    jobs, _ = _jobs(tmp_path, {
+        "thumbcache_256.db": b"\x01\x02",
+        "thumbcache_idx.db": b"\x03\x04",
+    })
+    dispatched = [j for j in jobs if j.status != "SKIP"]
+    skips = [j for j in jobs if j.status == "SKIP"]
+    assert [j.tool for j in dispatched] == ["thumbcache_viewer"]
+    assert "thumbcache_256.db" in " ".join(dispatched[0].argv)
+    assert len(skips) == 1
+    assert "index/pointer companion" in skips[0].reason
+    assert "thumbcache_idx.db" in skips[0].reason
+
+
+def test_lone_thumbcache_idx_file_skips(tmp_path):
+    p = tmp_path / "thumbcache_idx.db"
+    p.write_bytes(b"\x03\x04")
+    jobs = _plan_single_artifact(p, tmp_path / "ex")
+    assert [(j.tool, j.status) for j in jobs] == [("thumbcache_viewer", "SKIP")]
+    assert "no thumbnail entries" in jobs[0].reason
+
+
 def test_setupapi_folder_stages_strings(tmp_path):
     jobs, _ = _jobs(tmp_path, {"setupapi.dev.log": "device install log line\n"})
     assert [j.tool for j in jobs] == ["strings"]
