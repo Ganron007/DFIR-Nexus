@@ -28,8 +28,9 @@ export interface EsStatus {
 export interface SiftStatus {
   /** the case selects the SIFT lane (sift_required) */
   selected: boolean;
-  /** host reachable — meaningful only when selected */
-  reachable: boolean;
+  /** host reachable; null = not probed yet. A MACHINE-level fact, shown even
+   *  when the case does not select the lane. */
+  reachable: boolean | null;
   message?: string;
 }
 
@@ -66,7 +67,7 @@ export function CaseProvider({ children }: { children: ReactNode }) {
   const [mode, setModeState] = useState<string>("");
   const [health, setHealth] = useState<"ok" | "down" | "checking">("checking");
   const [es, setEs] = useState<EsStatus>({ configured: false, reachable: false });
-  const [sift, setSift] = useState<SiftStatus>({ selected: false, reachable: false });
+  const [sift, setSift] = useState<SiftStatus>({ selected: false, reachable: null });
   const [stages, setStages] = useState<Record<string, boolean>>({});
 
   const refreshCases = useCallback(async () => {
@@ -169,7 +170,8 @@ export function CaseProvider({ children }: { children: ReactNode }) {
         });
         setSift({
           selected: r.sift?.selected === true,
-          reachable: r.sift?.reachable === true,
+          reachable:
+            typeof r.sift?.reachable === "boolean" ? r.sift.reachable : null,
           message: r.sift?.message,
         });
       })

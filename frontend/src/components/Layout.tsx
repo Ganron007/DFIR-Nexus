@@ -100,19 +100,37 @@ function StatusCluster({ health, es, sift }: { health: "ok" | "down" | "checking
       : "Elasticsearch configured but UNREACHABLE — Mode 2/3 processing is blocked until ES comes online.";
   const esColor = !es.configured ? "var(--text-muted)" : es.reachable ? "var(--success)" : "var(--danger)";
   const esLabel = !es.configured ? "ES off" : es.reachable ? "ES" : "ES down";
-  const siftColor = !sift.selected
-    ? "var(--text-muted)"
-    : sift.reachable
+  // `selected` is the case's lane choice; `reachable` is the HOST state and is
+  // shown even when the lane is not selected (a case-level "off" must never
+  // read as "the host is down" - operator report 2026-09-30).
+  const siftColor = sift.selected
+    ? sift.reachable
       ? "var(--success)"
-      : "var(--danger)";
-  const siftLabel = !sift.selected ? "SIFT off" : sift.reachable ? "SIFT" : "SIFT down";
-  const siftTitle = !sift.selected
-    ? "SIFT lane not selected for this case (`nexus sift enable` to require it)"
-    : sift.reachable
+      : "var(--danger)"
+    : sift.reachable === true
+      ? "var(--success)"
+      : "var(--text-muted)";
+  const siftLabel = sift.selected
+    ? sift.reachable
+      ? "SIFT"
+      : "SIFT down"
+    : sift.reachable === true
+      ? "SIFT ready"
+      : sift.reachable === false
+        ? "SIFT off"
+        : "SIFT ?";
+  const siftTitle = sift.selected
+    ? sift.reachable
       ? "SIFT lane selected and reachable"
       : `SIFT lane selected but UNREACHABLE — analysis will refuse until the host is up, ` +
         `the selection is cleared (nexus sift disable), or an audited skip is recorded` +
-        (sift.message ? ` (${sift.message})` : "");
+        (sift.message ? ` (${sift.message})` : "")
+    : sift.reachable === true
+      ? "SIFT host reachable; the lane is not required for this case (`nexus sift enable` to require it)"
+      : sift.reachable === false
+        ? "SIFT host did not answer the last probe, and the lane is not required for this case" +
+          (sift.message ? ` (${sift.message})` : "")
+        : "Checking SIFT host reachability…";
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
       <span

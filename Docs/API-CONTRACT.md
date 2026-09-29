@@ -1980,6 +1980,7 @@ own them. **Request:** `{"path", "source"?}`.
   "rag": {"configured": true, "path": "C:\\...\\data\\rag"},
   "llm": {"configured": true, "model": "openai/gpt-4o", "base_url": "https://..."},
   "parser": "ok",
+  "sift": {"selected": false, "reachable": true, "message": ""},
   "fixes": {"es": "...", "rag": "...", "llm": "...", "parser": "..."}
 }
 ```
@@ -1987,6 +1988,7 @@ own them. **Request:** `{"path", "source"?}`.
 - `rag.configured` reports index presence only (no model load); use `/rag/status` for the full preflight.
 - `llm.configured=false` means heuristic scribe fallback is active (not an error).
 - `parser="missing"` includes `parser_error` with the import failure detail.
+- `sift.selected` is the case's lane choice; `sift.reachable` is the HOST state — probed in the background (cached ≤60 s, `null` until the first probe answers) and shown even when the lane is not selected, so a case-level "off" never reads as "the host is down".
 - `fixes` maps each component to its remediation surface (the `setup/*` endpoints below or the `nexus` CLI equivalents).
 
 ---

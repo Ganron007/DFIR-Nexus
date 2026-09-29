@@ -7140,9 +7140,29 @@ async def api_get_case_mode(request):
     return JSONResponse({"mode": mode})
 
 
-#: SIFT reachability probe cache for the (cheap) health endpoint: selected
-#: cases only, refreshed at most once a minute.
+#: SIFT reachability probe cache for the (cheap) health endpoint. Reachability
+#: is a MACHINE-level fact (is the host up), so the badge can show "host up,
+#: lane not required" — it is not gated on the case selection. The probe runs
+#: in a daemon thread (a slow/absent host must never stall a health poll) and
+#: refreshes at most once a minute; requests return the last known state.
 _SIFT_PROBE_CACHE: dict[str, tuple[float, bool, str]] = {}
+_SIFT_PROBE_LOCK = threading.Lock()
+_SIFT_PROBE_INFLIGHT = False
+
+
+def _refresh_sift_probe() -> None:
+    """One SIFT reachability probe, off the request path (daemon thread)."""
+    global _SIFT_PROBE_INFLIGHT
+    try:
+        from nexus.case.sift_sync import sift_reachable
+
+        ok, msg = sift_reachable()
+        _SIFT_PROBE_CACHE["result"] = (time.time(), bool(ok), str(msg)[:140])
+    except Exception:  # noqa: BLE001 - a probe must never break health
+        _SIFT_PROBE_CACHE["result"] = (time.time(), False, "probe failed")
+    finally:
+        with _SIFT_PROBE_LOCK:
+            _SIFT_PROBE_INFLIGHT = False
 
 
 async def api_system_health(request):
@@ -7189,24 +7209,35 @@ async def api_system_health(request):
         health["parser"] = "missing"
         health["parser_error"] = str(exc)[:200]
 
-    # SIFT lane (operator 2026-09-29): reported only for a case that SELECTS
-    # it. The probe is cached for a minute and runs off the event loop so the
-    # cheap health poll stays cheap; unselected cases are never probed.
-    sift_entry: dict[str, Any] = {"selected": False}
+    # SIFT: `selected` is the case's lane choice; `reachable` is the HOST's
+    # state — a machine-level fact the badge shows even for unselected cases
+    # (operator 2026-09-30: "SIFT off" read as "host down" while the host was
+    # up). The probe is cached for a minute and runs in a daemon thread, so the
+    # health poll never waits on an SSH attempt; `reachable` is null until the
+    # first probe answers.
+    global _SIFT_PROBE_INFLIGHT
+    sift_entry: dict[str, Any] = {"selected": False, "reachable": None}
     try:
         from nexus.case.sift_preflight import sift_required
 
         case_dir = _get_case_dir(request)
-        if case_dir is not None and sift_required(case_dir):
-            now = time.time()
-            cached = _SIFT_PROBE_CACHE.get("result")
-            if cached is None or now - cached[0] > 60:
-                from nexus.case.sift_sync import sift_reachable
-
-                ok, msg = await asyncio.to_thread(sift_reachable)
-                cached = (now, bool(ok), str(msg)[:140])
-                _SIFT_PROBE_CACHE["result"] = cached
-            sift_entry = {"selected": True, "reachable": cached[1], "message": cached[2]}
+        selected = bool(case_dir is not None and sift_required(case_dir))
+        now = time.time()
+        cached = _SIFT_PROBE_CACHE.get("result")
+        if cached is None or now - cached[0] > 60:
+            with _SIFT_PROBE_LOCK:
+                start = not _SIFT_PROBE_INFLIGHT
+                if start:
+                    _SIFT_PROBE_INFLIGHT = True
+            if start:
+                threading.Thread(
+                    target=_refresh_sift_probe, daemon=True, name="sift-probe"
+                ).start()
+        sift_entry = {
+            "selected": selected,
+            "reachable": cached[1] if cached else None,
+            "message": cached[2] if cached else "",
+        }
     except Exception:  # noqa: BLE001 - health must never break on this
         pass
     health["sift"] = sift_entry

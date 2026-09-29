@@ -1169,7 +1169,7 @@ export interface SystemHealthResponse {
   parser?: string;
   parser_error?: string;
   /** SIFT lane (operator 2026-09-29): reported only for a case that SELECTS it. */
-  sift?: { selected?: boolean; reachable?: boolean; message?: string };
+  sift?: { selected?: boolean; reachable?: boolean | null; message?: string };
   fixes?: Record<string, string>;
 }
 
