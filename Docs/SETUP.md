@@ -532,6 +532,65 @@ Super-timeline (FOR508): `log2timeline.py --parsers 'win7,!filestat'` against
 the **mounted triage directory**. It does **not** need an E01. Full-disk E01
 is a different investigation.
 
+**Super-timelines are ingestion-only (design decision 2026-09-29).** They are
+hours-to-days jobs whose output size "can be overwhelming" (FOR508 508.4);
+building them inside the case pipeline would hold the lane and the evidence
+gate for hours and delay every case behind one deep job. The examiner builds
+the super-timeline on SIFT at their own pace
+(`log2timeline.py --storage-file x.plaso <source>` → `psort.py -o l2tcsv -w
+x.csv x.plaso`; raw disks need their partitions mounted first —
+`kpartx -av`/`losetup -P`, `vgchange -ay` for LVM) and **ingests the result**:
+`nexus sift ingest x.csv --as plaso` or the portal **Ingest** page. The
+bounded in-lane SIFT pass stays quick (vol3, `mmls`, `fls -o`, opt-in
+`bulk_extractor`); `NEXUS_SIFT_PLASO=1` remains a lab-only shortcut.
+
+---
+
+### 5c. SIFT lane wiring (integrated or ingest-only — the user's choice)
+
+SIFT is an optional, explicitly selected lane. The user brings the SIFT
+workstation; everything else is ours:
+
+```bash
+# once (verifies SSH + tools, lays out the case dirs, starts the SIFT-side
+# Nexus MCP, prints the env block below)
+nexus sift setup --case CASE-XXXX
+
+# per case: mark SIFT analysis as REQUIRED (runs the online check now)
+nexus sift enable --case CASE-XXXX      # or the "SIFT lane" selector in Case Setup
+nexus sift status --case CASE-XXXX      # selection, remote paths, reachability
+nexus sift disable --case CASE-XXXX     # clear the selection (recovery path)
+```
+
+Env block (examiner `.env` or the serve session):
+
+```
+NEXUS_SIFT_SSH_HOST=<sift-ip>
+NEXUS_SIFT_SSH_USER=sansforensics
+NEXUS_SIFT_SSH_KEY=~/.ssh/cadre-sift-key
+NEXUS_SIFT_MCP_URL=http://<sift-ip>:4508/mcp
+```
+
+**Evidence:** the examiner copies evidence into
+`~/.nexus/cases/<case>/evidence/` on the SIFT host (`nexus sift setup --case`
+creates the layout). The lane never pushes disk/memory images implicitly.
+Evidence already on the host can be registered without a local copy:
+`nexus evidence register /remote/path --sift-hosted --sha256 <hex>`.
+
+**Refusal semantics:** only a case that SELECTS the lane can be refused — and
+only its SIFT jobs. While the host is unreachable the SIFT jobs FAIL, the
+evidence gate blocks analysis (the same 409 semantics as ES-down for Modes
+2/3), and the recoveries are exactly three: bring the host up and re-run,
+clear the selection (`nexus sift disable`), or the examiner's audited skip
+(`nexus lane skip`). Windows evidence on the same case keeps processing.
+
+**Ingest-only (no SIFT host required):** outputs the examiner brings (plaso
+CSV, TSK lists, vol JSON) are staged and indexed:
+
+```bash
+nexus sift ingest /path/to/output.zip --as plaso   # or the portal Ingest page
+```
+
 ---
 
 ## 6. Multi-Machine Wiring

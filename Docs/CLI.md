@@ -105,6 +105,26 @@ nexus lane status                         # Gate + N1-N8 stage states (exit 1 wh
 nexus lane skip --reason "accepted parser limitation"   # Password-verified, audited
 ```
 
+## SIFT lane (optional, explicitly selected)
+
+SIFT is an always-optional lane. Only a case that SELECTS it can be refused —
+and only its SIFT jobs; Windows evidence on the same case is never affected.
+While the host is unreachable the SIFT jobs fail and analysis is refused; the
+recoveries are: bring the host up, clear the selection, or the audited skip.
+
+```bash
+nexus sift setup --case CASE-XXXX         # verify host + start MCP + print env block
+nexus sift enable --case CASE-XXXX        # mark SIFT required (runs the online check)
+nexus sift status --case CASE-XXXX        # selection, paths, reachability (exit 1 when blocked)
+nexus sift disable --case CASE-XXXX       # clear the selection
+nexus sift ingest timeline.csv --as plaso # ingest SIFT outputs (no host required)
+
+nexus evidence register /remote/path --sift-hosted --sha256 <hex>  # evidence on the host
+```
+
+Super-timelines are **ingestion-only** by design (hours-to-days jobs): build
+them on SIFT at your own pace and ingest the CSV — see `Docs/SETUP.md` §5b/§5c.
+
 ## Findings & Approval
 
 ```bash

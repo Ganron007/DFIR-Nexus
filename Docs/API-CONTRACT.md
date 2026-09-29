@@ -1862,6 +1862,26 @@ password/HMAC challenge-response as finding approval (`GET
 "response", "reason"}` — reason mandatory. Recorded in
 `analysis/lane_gate.json` and the case audit log.
 
+### POST /portal/api/sift/select
+**Description:** Set/clear the SIFT lane selection for a case — the only
+switch that can refuse analysis while the SIFT host is unreachable. Selecting
+runs the online check immediately; clearing is a first-class recovery.
+**Request:** `{"required": true|false, "case_id"?: "..."}`.
+**Response:** `{"ok", "required", "reachable"?, "message"?}`.
+
+### POST /portal/api/sift/ingest
+**Description:** Option B — stage SIFT-produced outputs (file, directory or
+`.zip`) into `<case>/sift/extractions/<family>` and refresh the index; no SIFT
+host or MCP required. **Request:** `{"path", "family"?: "plaso|vol|fls|bulk_extractor"}`.
+**Response:** `{"ok", "staged": [...], "index": ["N3 auto-index: ..."]}`.
+
+### POST /portal/api/ingest
+**Description:** The importer lane on a path (post-N1–N8): auto-detects the
+format (or accepts `source`), imports it onto the same case index and
+refreshes it. Raw disk/memory containers are refused — the SIFT/imager lanes
+own them. **Request:** `{"path", "source"?}`.
+**Response:** `{"ok", "result", "index": [...]}`.
+
 ### GET /portal/api/pipeline/status
 **Description:** Poll the status of a pipeline run. State is held in memory and written through to `<case>/analysis/pipeline_runs/<run_id>.json`, so it survives page reload and server restart. Reconciliation only trusts a run manifest created **at/after the record's start time** — a previous run for the same mode can never mark a live run complete.
 
