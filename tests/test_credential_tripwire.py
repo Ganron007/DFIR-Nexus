@@ -30,3 +30,15 @@ def test_tripwire_canary():
         "canary: this file should make the session tripwire fail\n",
         encoding="utf-8",
     )
+
+
+def test_rag_bundle_download_is_blocked_in_tests():
+    """Isolation: no test path may pull the 128 MB GitHub release asset."""
+    from nexus.tools import rag as rag_mod
+
+    with pytest.raises(RuntimeError, match="blocked in tests"):
+        rag_mod._download_asset(
+            "https://example.invalid/rag-index.tar.zst", Path("x")
+        )
+    with pytest.raises(RuntimeError, match="blocked in tests"):
+        rag_mod._fetch_latest_release()

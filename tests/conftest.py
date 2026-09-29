@@ -104,6 +104,19 @@ def _isolated_case_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(_rag, "_get_index_dir", lambda: tmp_path / "data" / "rag")
     monkeypatch.setattr(_rag, "_global_index", None)
 
+    # No test may download the RAG bundle (a 128 MB GitHub release asset). The
+    # index-dir redirect above makes "index missing" the normal test state, and
+    # a route or pipeline path that reacts by downloading must not reach the
+    # network — a stalled asset hung a full-suite run (2026-09-29).
+    def _blocked_asset(url, dest):
+        raise RuntimeError("blocked in tests: RAG bundle download disabled")
+
+    def _blocked_release(*_args, **_kwargs):
+        raise RuntimeError("blocked in tests: RAG release lookup disabled")
+
+    monkeypatch.setattr(_rag, "_download_asset", _blocked_asset)
+    monkeypatch.setattr(_rag, "_fetch_latest_release", _blocked_release)
+
     # Module-level constants captured the real path at import time.
     for mod_name, attr in (
         ("nexus.cli.case_cmd", "_ACTIVE_CASE_FILE"),
