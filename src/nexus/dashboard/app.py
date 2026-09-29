@@ -1273,11 +1273,11 @@ async def api_intake(request):
     sealed = _sealed_case_error(case_dir.name)
     if sealed:
         return sealed
-    from nexus.langgraph.case_intake import persist_case_intake
+    from nexus.langgraph.case_intake import INTAKE_KEYS, persist_case_intake
     written = persist_case_intake(case_dir, {
-        k: str(body.get(k) or "")
-        for k in ("question", "window", "extras", "playbooks", "subjects", "hypothesis", "query_extra")
-        if body.get(k)
+        key: str(body.get(key) or "")
+        for key in INTAKE_KEYS
+        if body.get(key)
     })
     return JSONResponse({"ok": True, "intake": written})
 

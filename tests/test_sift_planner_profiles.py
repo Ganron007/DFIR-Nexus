@@ -64,3 +64,27 @@ def test_no_disk_image_keeps_fls_out(monkeypatch):
     monkeypatch.delenv("NEXUS_SIFT_E01", raising=False)
     pending = {j.tool for j in plan_sift_triage("/evidence/608") if j.status == "PENDING"}
     assert "fls" not in pending and "mmls" not in pending
+
+
+def test_persist_intake_keeps_sift_keys(tmp_path):
+    """The portal intake route must forward ALL intake keys - the hardcoded
+    subset silently dropped sift_evidence_root/sift_os (found 2026-09-29 when
+    the dbg-G7-sift case context came back empty)."""
+    import yaml
+
+    from nexus.langgraph.case_intake import persist_case_intake
+
+    case = tmp_path / "CASE-TEST"
+    case.mkdir()
+    (case / "CASE.yaml").write_text("case_id: CASE-TEST\n", encoding="utf-8")
+    written = persist_case_intake(case, {
+        "sift_evidence_root": "/ev",
+        "sift_memory_file": "/ev/mem.raw",
+        "sift_disk_image": "/ev/disk.img",
+        "sift_os": "linux",
+    })
+    assert written["sift_evidence_root"] == "/ev"
+    assert written["sift_os"] == "linux"
+    meta = yaml.safe_load((case / "CASE.yaml").read_text(encoding="utf-8"))
+    assert meta["intake"]["sift_disk_image"] == "/ev/disk.img"
+    assert meta["intake"]["sift_memory_file"] == "/ev/mem.raw"
