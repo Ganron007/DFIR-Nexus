@@ -107,9 +107,14 @@ def run(
     output: Path = typer.Option(None, "--output", help="Write the run record JSON"),
 ):
     """Run the supervised Mode 2 (multi-role) investigation, streaming agent events."""
+    from nexus.langgraph.lane_gate import gate_message, lane_gate_blocked
     from nexus.modes.multi_role import run_mode2
 
     case_dir = _case_dir(case)
+    gated = lane_gate_blocked(case_dir)
+    if gated:
+        typer.echo(gate_message(gated))
+        raise typer.Exit(1)
     run_id = run_id.strip()
     typer.echo(f"Mode 2 (multi-role) run on {case_dir.name}"
                + (f" ({run_id})" if run_id else ""))

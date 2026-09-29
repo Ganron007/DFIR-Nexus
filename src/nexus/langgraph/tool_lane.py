@@ -2769,6 +2769,24 @@ async def run_tool_lane(
     except OSError as exc:
         log.warning("Could not write tool lane ledger: %s", exc)
 
+    # Evidence gate (operator rule 2026-09-29): N2 finishes every registered
+    # artifact before anything downstream. Unprocessed = FAIL rows; the gate is
+    # written here, surfaced on the portal/CLI, and only a successful re-run or
+    # an audited examiner skip clears it. No analysis stage starts meanwhile.
+    try:
+        from nexus.langgraph.lane_gate import write_lane_gate
+
+        gate = write_lane_gate(case_dir, run_id, ledger)
+        if gate.get("status") == "blocked":
+            summary = (
+                f"{summary} - EVIDENCE GATE BLOCKED: {gate.get('blocked_count')} "
+                f"unprocessed item(s); analysis stages will not start until the "
+                f"examiner re-runs or skips them (audited)"
+            )
+            log.warning(summary)
+    except Exception as exc:  # noqa: BLE001 - never die writing the gate
+        log.warning("lane gate write failed: %s", exc)
+
     try:
         import json as _json
 

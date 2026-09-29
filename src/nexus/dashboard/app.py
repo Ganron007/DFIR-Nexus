@@ -267,6 +267,30 @@ def _wrong_mode_error(case_dir: Path, expected: int):
     )
 
 
+def _lane_gate_error(case_dir: Path):
+    """409 while the evidence gate is blocked (operator rule, 2026-09-29).
+
+    N2 must finish every registered artifact before any analysis stage runs.
+    The lane writes ``analysis/lane_gate.json``; unprocessed FAIL rows block
+    Mode 1 full-run, Mode 2, Mode 3 and the interpret/coverage/design pipeline
+    modes until the examiner re-runs the lane (so the item processes) or records
+    an audited skip via ``/portal/api/lane/skip``.
+    """
+    from nexus.langgraph.lane_gate import gate_message, lane_gate_blocked
+
+    gate = lane_gate_blocked(case_dir)
+    if not gate:
+        return None
+    return JSONResponse(
+        {
+            "error": "evidence gate blocked",
+            "lane_gate": gate,
+            "message": gate_message(gate),
+        },
+        status_code=409,
+    )
+
+
 #: Canonical mode -> the route family that belongs to it. Used by
 #: :func:`_mode_route` so every mode-owned endpoint is guarded at registration
 #: instead of relying on each handler to remember.
@@ -1298,6 +1322,85 @@ async def api_register_evidence(request):
     return JSONResponse({"ok": True, "case_id": case_dir.name, **result})
 
 
+async def api_lane_skip(request):
+    """POST /portal/api/lane/skip - audited examiner skip for unprocessed evidence.
+
+    Clears the evidence gate for the selected unprocessed jobs (or all of them
+    when ``items`` is omitted) through the same HMAC challenge-response path as
+    finding approvals. The rule it serves: never skip evidence processing - a
+    skip is an explicit, attributable examiner decision, never a silent
+    omission. Body: {challenge_id, response, reason, items?}.
+    """
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    examiner = _resolve_examiner(request)
+    if not examiner:
+        return JSONResponse({"error": "No examiner identity"}, status_code=401)
+    lockout_msg = _check_commit_lockout(examiner)
+    if lockout_msg:
+        return JSONResponse({"error": lockout_msg}, status_code=429)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+    challenge_id = body.get("challenge_id")
+    response_hmac = body.get("response")
+    reason = str(body.get("reason") or "").strip()
+    items = body.get("items") or None
+    if not challenge_id or not response_hmac:
+        return JSONResponse({"error": "Missing challenge_id or response"}, status_code=400)
+    if not reason:
+        return JSONResponse(
+            {"error": "reason is required - an evidence skip is an examiner "
+                      "decision and must say why"}, status_code=400)
+    with _challenge_lock:
+        challenge = _challenges.pop(challenge_id, None)
+    if not challenge:
+        return JSONResponse({"error": "Invalid or expired challenge"}, status_code=401)
+    now = time.time()
+    if now - challenge["created_at"] > _CHALLENGE_TTL:
+        return JSONResponse({"error": "Challenge expired"}, status_code=401)
+    if challenge["examiner"] != examiner:
+        return JSONResponse({"error": "Challenge/examiner mismatch"}, status_code=401)
+    entry = _load_password_entry(examiner)
+    if not entry:
+        return JSONResponse({"error": "No password configured"}, status_code=403)
+    try:
+        stored_hash_bytes = bytes.fromhex(entry.get("hash", ""))
+    except ValueError:
+        return JSONResponse({"error": "Corrupted password entry"}, status_code=500)
+    expected = hmac_mod.new(
+        stored_hash_bytes, challenge["nonce"].encode("utf-8"), hashlib.sha256,
+    ).hexdigest()
+    if not hmac_mod.compare_digest(expected, response_hmac):
+        _record_commit_failure(examiner)
+        remaining = _MAX_COMMIT_ATTEMPTS - _commit_failure_count(examiner)
+        msg = (f"Too many failed attempts. Locked for {_COMMIT_LOCKOUT_SECONDS // 60} minutes."
+               if remaining <= 0 else f"Incorrect password. {remaining} attempt(s) remaining.")
+        return JSONResponse({"error": msg}, status_code=401)
+    _clear_commit_failures(examiner)
+
+    from nexus.langgraph.lane_gate import examiner_skip
+
+    out = examiner_skip(case_dir, examiner=examiner, reason=reason, items=items)
+    try:
+        from nexus.audit import AuditWriter
+
+        AuditWriter("nexus", audit_dir=case_dir / "audit").log(
+            tool="lane_gate_skip",
+            params={"examiner": examiner, "reason": reason[:200],
+                    **({"items": items} if items else {"scope": "all"})},
+            result_summary={"added": out.get("added"),
+                            "status": (out.get("gate") or {}).get("status")},
+            source="portal",
+        )
+    except Exception:  # noqa: BLE001 - the skip itself already succeeded
+        pass
+    return JSONResponse({"ok": True, "added": out.get("added"),
+                         "lane_gate": out.get("gate")})
+
+
 async def api_query_rerun(request):
     case_dir = _get_case_dir(request)
     if not case_dir:
@@ -1305,6 +1408,9 @@ async def api_query_rerun(request):
     sealed = _sealed_case_error(case_dir.name)
     if sealed:
         return sealed
+    gated = _lane_gate_error(case_dir)
+    if gated:
+        return gated
     from nexus.langgraph.query_pack import _parse_needles, run_ad_hoc_query, write_query_pack
 
     try:
@@ -1524,6 +1630,14 @@ async def api_summary(request):
     timeline = _load_json("timeline.json", request)
     evidence = _evidence_items(request)
     todos = _load_json("todos.json", request)
+    gate: dict[str, Any] = {}
+    n_stages: list[dict[str, Any]] = []
+    case_dir = _get_case_dir(request)
+    if case_dir is not None:
+        from nexus.langgraph.lane_gate import lane_stages, read_lane_gate
+
+        gate = read_lane_gate(case_dir)
+        n_stages = lane_stages(case_dir)
     return JSONResponse({
         "findings": {"total": len(findings), "draft": sum(1 for f in findings if f.get("status") == "DRAFT"),
                       "approved": sum(1 for f in findings if f.get("status") == "APPROVED"),
@@ -1531,6 +1645,10 @@ async def api_summary(request):
         "timeline": len(timeline),
         "evidence": len(evidence),
         "todos": {"total": len(todos), "open": sum(1 for t in todos if t.get("status") != "completed")},
+        # Evidence gate + N1-N8 stage control (operator rule, 2026-09-29):
+        # an unprocessed artifact is visible here, not only in a log.
+        "lane_gate": gate,
+        "n_stages": n_stages,
     })
 
 
@@ -3632,6 +3750,9 @@ async def api_mode1_full_run(request):
     wrong = _wrong_mode_error(case_dir, 1)
     if wrong:
         return wrong
+    gated = _lane_gate_error(case_dir)
+    if gated:
+        return gated
     # The full run rescans the needle vocabulary; old directions are stale.
     _invalidate_briefing_directions(case_dir)
 
@@ -4111,6 +4232,9 @@ async def api_mode1_chat(request):
     wrong = _wrong_mode_error(case_dir, 1)
     if wrong:
         return wrong
+    gated = _lane_gate_error(case_dir)
+    if gated:
+        return gated
 
     try:
         body = await request.json()
@@ -5052,6 +5176,9 @@ async def api_mode2_plan(request):
     sealed = _sealed_case_error(case_dir.name)
     if sealed:
         return sealed
+    gated = _lane_gate_error(case_dir)
+    if gated:
+        return gated
     from nexus.langgraph.llm_pipeline import get_model
     from nexus.modes.plan_sliver import plan_extras
 
@@ -5076,6 +5203,9 @@ async def api_mode2_execute(request):
     sealed = _sealed_case_error(case_dir.name)
     if sealed:
         return sealed
+    gated = _lane_gate_error(case_dir)
+    if gated:
+        return gated
     try:
         body = await request.json()
     except Exception:
@@ -5220,6 +5350,9 @@ async def api_mode2_orchestrator(request):
     case_dir = _get_case_dir(request)
     if not case_dir:
         return JSONResponse({"error": "No active case"}, status_code=404)
+    gated = _lane_gate_error(case_dir)
+    if gated:
+        return gated
     from nexus.langgraph.llm_pipeline import get_model
     from nexus.langgraph.orchestrator import run_orchestrator
 
@@ -5583,6 +5716,11 @@ async def api_pipeline_run(request):
     sealed = _sealed_case_error(case_id)
     if sealed:
         return sealed
+    # The tools lane itself must always run - it is what clears the gate.
+    if pipeline_mode != "tools":
+        gated = _lane_gate_error(case_dir)
+        if gated:
+            return gated
     # A pipeline run reprocesses/reindexes evidence; directions built from the
     # previous signal map are stale once it starts.
     _invalidate_briefing_directions(case_dir)
@@ -6001,6 +6139,18 @@ async def api_pipeline_status(request):
                     record["stages"] = (record.get("stages") or []) + tool_entries[seen_tool:]
                     record["_tool_stages_loaded"] = len(tool_entries)
             break
+
+    # Evidence gate + N1-N8 stage control (operator rule, 2026-09-29): the
+    # portal renders the blocked gate and the stage states from here, so
+    # unprocessed evidence stops analysis on screen, not only in the log.
+    if case_dir is not None:
+        try:
+            from nexus.langgraph.lane_gate import lane_stages, read_lane_gate
+
+            record["lane_gate"] = read_lane_gate(case_dir)
+            record["n_stages"] = lane_stages(case_dir)
+        except Exception:  # noqa: BLE001 - visibility must not break polling
+            pass
 
     return JSONResponse(record)
 
@@ -7575,6 +7725,9 @@ async def api_mode3_run(request):
     wrong = _wrong_mode_error(case_dir, 3)
     if wrong:
         return wrong
+    gated = _lane_gate_error(case_dir)
+    if gated:
+        return gated
     try:
         body = await request.json()
     except Exception:  # noqa: BLE001
@@ -7861,6 +8014,9 @@ async def api_mode2_run_plan(request):
     wrong = _wrong_mode_error(case_dir, 2)
     if wrong:
         return wrong
+    gated = _lane_gate_error(case_dir)
+    if gated:
+        return gated
     try:
         body = await request.json()
     except Exception:  # noqa: BLE001
@@ -7913,6 +8069,9 @@ async def api_mode2_run(request):
     wrong = _wrong_mode_error(case_dir, 2)
     if wrong:
         return wrong
+    gated = _lane_gate_error(case_dir)
+    if gated:
+        return gated
     try:
         body = await request.json()
     except Exception:  # noqa: BLE001
@@ -8247,6 +8406,7 @@ def create_dashboard():
         Route("/portal/api/commit/challenge", get_commit_challenge, methods=["GET"]),
         Route("/portal/api/commit/status", get_commit_status, methods=["GET"]),
         Route("/portal/api/commit", post_commit, methods=["POST"]),
+        Route("/portal/api/lane/skip", api_lane_skip, methods=["POST"]),
         Route("/portal/api/findings", api_findings, methods=["GET"]),
         Route("/portal/api/timeline", api_timeline, methods=["GET"]),
         Route("/portal/api/evidence", api_evidence, methods=["GET"]),

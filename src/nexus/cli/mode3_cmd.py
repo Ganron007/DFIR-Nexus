@@ -40,10 +40,15 @@ def run(
     as_json: bool = typer.Option(False, "--json"),
 ):
     """Start a concurrent multi-agent run and wait for it to finish."""
+    from nexus.langgraph.lane_gate import gate_message, lane_gate_blocked
     from nexus.langgraph.llm_pipeline import get_model
     from nexus.modes.multi_agent import run_mode3
 
     case_dir = _case_dir(case)
+    gated = lane_gate_blocked(case_dir)
+    if gated:
+        typer.echo(gate_message(gated))
+        raise typer.Exit(1)
     try:
         model = get_model()
     except Exception:  # noqa: BLE001

@@ -61,6 +61,7 @@ from nexus.cli.evidence import app as evidence_app
 from nexus.cli.exec_cmd import app as exec_app
 from nexus.cli.index_cmd import app as index_app
 from nexus.cli.init_cmd import init as init_cmd
+from nexus.cli.lane_cmd import app as lane_app
 from nexus.cli.mode2_cmd import app as mode2_app
 from nexus.cli.mode3_cmd import app as mode3_app
 from nexus.cli.report import app as report_app
@@ -77,6 +78,7 @@ app.add_typer(evidence_app, name="evidence", help="Manage evidence")
 app.add_typer(review_app, name="review", help="Review case state")
 app.add_typer(config_app, name="config", help="Manage examiner configuration")
 app.add_typer(service_app, name="service", help="Manage MCP services")
+app.add_typer(lane_app, name="lane", help="Evidence gate (N2): never skip evidence processing")
 # export/merge registered as DIRECT commands below so the documented
 # `nexus export bundle.json` / `nexus merge bundle.json` forms work
 # (sync_app's own sub-commands would double-nest: `nexus export export`).
