@@ -51,6 +51,12 @@ class ToolJob:
     # empty output is a SKIP with a reason, not a failure. The silent-no-output
     # guard stays for every tool that has not opted in.
     optional_output: bool = False
+    # Declared SIFT-hosted evidence (case_context.sift_evidence_root) makes the
+    # SIFT jobs the ONLY path to processing that evidence: when the SIFT MCP is
+    # unreachable they must FAIL (the gate blocks analysis), not SKIP. Roots
+    # that came only from the environment stay SKIP-with-reason so a stale
+    # global default cannot block every case on the machine.
+    critical: bool = False
 
 
 def timeout_for_bytes(
@@ -2362,6 +2368,25 @@ def plan_sift_triage(
     return jobs
 
 
+def sift_unavailable_outcome(job: ToolJob) -> tuple[str, str]:
+    """(status, reason) when the SIFT MCP is not available.
+
+    Declared SIFT-hosted evidence cannot be processed off-host: that is a
+    **FAIL** which blocks the analysis gate - the same refusal semantics as
+    ES-down for Modes 2/3. Environment-only roots keep the historical honest
+    SKIP, so a stale ``NEXUS_SIFT_EVIDENCE_ROOT`` cannot block every case.
+    """
+    if job.critical:
+        return (
+            "FAIL",
+            "SIFT MCP unreachable and this case declares SIFT-hosted evidence - "
+            "the artifact cannot be processed. Start the SIFT host / set "
+            "NEXUS_SIFT_MCP_URL and re-run the lane, or record an examiner skip "
+            "(nexus lane skip).",
+        )
+    return "SKIP", "run_command not available on MCP"
+
+
 def sift_jobs_for_lane(
     sift_root: str,
     *,
@@ -2370,6 +2395,7 @@ def sift_jobs_for_lane(
     memory_file: str | None = None,
     sift_os: str | None = None,
     disk_image: str | None = None,
+    declared: bool = False,
     network_inputs: dict[str, list[str]] | None = None,
 ) -> list[ToolJob]:
     """Schedule SIFT jobs only when a root is named or a SIFT MCP exists.
@@ -2388,6 +2414,13 @@ def sift_jobs_for_lane(
         sift_os=sift_os,
         disk_image=disk_image,
     )
+    if declared:
+        # These jobs are the processing path for evidence the case explicitly
+        # hosts on SIFT: when SIFT cannot run them, that is unprocessed
+        # evidence, and the gate must say so.
+        for job in jobs:
+            if job.status == "PENDING":
+                job.critical = True
     # EH-14b: Zeek/Suricata/nfdump for captures visible under the SIFT root.
     # Captures registered on Windows are planned with an honest SKIP row —
     # the local flow projection (execute_tool_lane) still guarantees sessions.
@@ -2538,6 +2571,7 @@ async def run_tool_lane(
         memory_file=str(ctx.get("sift_memory_file") or "").strip() or None,
         sift_os=str(ctx.get("sift_os") or "").strip() or None,
         disk_image=str(ctx.get("sift_disk_image") or "").strip() or None,
+        declared=bool(str(ctx.get("sift_evidence_root") or "").strip()),
         network_inputs=_net_inputs,
     ))
     audit_ids: list[str] = []
@@ -2681,8 +2715,9 @@ async def run_tool_lane(
                 return
         else:
             if not sift_tool:
-                job.reason = "run_command not available on MCP"
-                _finish("SKIP", job.reason, reason=job.reason)
+                status, reason = sift_unavailable_outcome(job)
+                job.reason = reason
+                _finish(status, job.reason, reason=job.reason)
                 return
             cmd = " ".join(shlex.quote(a) for a in job.argv)
             try:

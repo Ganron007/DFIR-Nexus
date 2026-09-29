@@ -7,7 +7,12 @@ compatibility with the existing KAPE-triage flow.
 """
 from __future__ import annotations
 
-from nexus.langgraph.tool_lane import plan_sift_triage
+from nexus.langgraph.tool_lane import (
+    ToolJob,
+    plan_sift_triage,
+    sift_jobs_for_lane,
+    sift_unavailable_outcome,
+)
 
 
 def _vol_plugins(jobs: list) -> list[str]:
@@ -88,3 +93,43 @@ def test_persist_intake_keeps_sift_keys(tmp_path):
     meta = yaml.safe_load((case / "CASE.yaml").read_text(encoding="utf-8"))
     assert meta["intake"]["sift_disk_image"] == "/ev/disk.img"
     assert meta["intake"]["sift_memory_file"] == "/ev/mem.raw"
+
+
+def test_declared_sift_evidence_marks_jobs_critical(monkeypatch):
+    monkeypatch.delenv("NEXUS_SIFT_OS", raising=False)
+    jobs = sift_jobs_for_lane(
+        "/evidence/608",
+        has_sift_mcp=True,
+        sift_os="linux",
+        disk_image="/evidence/608/disk.img",
+        declared=True,
+    )
+    pending = [j for j in jobs if j.status == "PENDING"]
+    assert pending
+    assert all(j.critical for j in pending)
+
+
+def test_env_only_root_is_not_critical(monkeypatch):
+    monkeypatch.delenv("NEXUS_SIFT_OS", raising=False)
+    jobs = sift_jobs_for_lane("/evidence/608", has_sift_mcp=True)
+    assert jobs
+    assert all(not j.critical for j in jobs)
+
+
+def test_unavailable_outcome_is_fail_for_declared_evidence():
+    declared = ToolJob(
+        host="sift",
+        tool="vol",
+        argv=["vol", "-f", "mem.raw", "linux.pslist"],
+        purpose="Volatility3 linux.pslist",
+        critical=True,
+    )
+    status, reason = sift_unavailable_outcome(declared)
+    assert status == "FAIL"
+    assert "SIFT MCP unreachable" in reason
+    assert "examiner skip" in reason
+
+    defaulted = ToolJob(host="sift", tool="vol", argv=[], purpose="x")
+    status, reason = sift_unavailable_outcome(defaulted)
+    assert status == "SKIP"
+    assert "not available" in reason
