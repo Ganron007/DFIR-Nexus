@@ -491,6 +491,34 @@ def iter_index_doc_batches(
                 value = record.get(key_name)
                 if value not in (None, "", []):
                     art_fields[key_name] = str(value)[:_MAX_INDEX_FIELD_VALUE]
+            # WO-8: task definitions carry typed fields inside ``raw``; project
+            # the ones the field registry types (keyword / date / boolean) so a
+            # scheduled-task investigation can filter instead of substring-search.
+            raw = record.get("raw") if isinstance(record, dict) else None
+            if isinstance(raw, dict):
+                actions = [a for a in (raw.get("actions") or []) if isinstance(a, dict)]
+                first_action = actions[0] if actions else {}
+                triggers = [t for t in (raw.get("triggers") or []) if isinstance(t, dict)]
+                first_trigger = triggers[0] if triggers else {}
+                for key_name, value in (
+                    ("task_uri", raw.get("uri")),
+                    ("task_author", raw.get("author")),
+                    ("task_registration_date", raw.get("registration_date")),
+                    ("principal_user_id", raw.get("principal_user_id")),
+                    ("run_level", raw.get("run_level")),
+                    ("logon_type", raw.get("logon_type")),
+                    ("task_hidden", raw.get("hidden")),
+                    ("task_enabled", raw.get("enabled")),
+                    ("action_command", first_action.get("command")),
+                    ("action_arguments", first_action.get("arguments")),
+                    ("working_directory", first_action.get("working_directory")),
+                    ("com_handler_class_id", raw.get("com_handler_class_id")),
+                    ("trigger_type", first_trigger.get("type")),
+                    ("trigger_start_boundary", first_trigger.get("start_boundary")),
+                    ("trigger_enabled", first_trigger.get("enabled")),
+                ):
+                    if value not in (None, "", []):
+                        art_fields[key_name] = str(value)[:_MAX_INDEX_FIELD_VALUE]
             if _add(ingest_store, case_dir, fam, n, text, art_fields or None):
                 family_counts[fam] = family_counts.get(fam, 0) + 1
             if len(out) >= batch:

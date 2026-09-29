@@ -419,6 +419,12 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
             optional_output=optional_output,
         ))
 
+    def skip(tool: str, reason: str) -> None:
+        jobs.append(ToolJob(
+            host="windows", tool=tool, argv=[], purpose="",
+            status="SKIP", reason=reason,
+        ))
+
     def out_dir(name: str) -> Path:
         d = extractions / name
         d.mkdir(parents=True, exist_ok=True)
@@ -676,12 +682,18 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
         add("strings", ["strings64", "-u", "-nobanner", str(evidence)],
             f"WMI repository strings, utf16 ({evidence.name})", 900)
     elif _task_xml_kind(evidence) == "task":
-        # A task definition is UTF-16 XML. `-u` extracts the wide strings, which
-        # is what carries the Exec command, the arguments and the Principal SID
-        # into the index - the strings a scheduled-task investigation searches on.
-        d = out_dir("tasks")
-        add("strings", ["strings64", "-u", "-nobanner", str(evidence)],
-            f"Scheduled task definition ({evidence.name[:40]})", 300)
+        # WO-8: a well-formed task definition goes to the I1 importer lane,
+        # which parses the XML into typed fields (uri / author / registration
+        # date / principal / actions / triggers). strings64 is only the
+        # fallback for XML the importer cannot parse — the reason says so.
+        if _task_xml_parses(evidence):
+            skip("strings",
+                 f"Scheduled task XML - parsed by the importer lane ({evidence.name[:40]})")
+        else:
+            d = out_dir("tasks")
+            add("strings", ["strings64", "-u", "-nobanner", str(evidence)],
+                f"Scheduled task XML unparsable - strings fallback ({evidence.name[:40]})",
+                300)
     elif _is_history_text(name):
         # No parser exists, so stage the content verbatim. strings keeps the
         # lines intact and drops binary noise from a UTF-16 history file.
@@ -967,6 +979,34 @@ def _task_xml_kind(path: Path) -> str:
     return "task"
 
 
+def _task_xml_parses(path: Path) -> bool:
+    """True when the task definition is well-formed XML (WO-8).
+
+    A parsable task is handled by the importer lane (typed fields +
+    RegistrationInfo/Date); ``strings64`` is reserved for the unparsable
+    fallback, and the ledger row says so.
+    """
+    from xml.etree import ElementTree as ET
+
+    try:
+        raw = path.read_bytes()
+    except OSError:
+        return False
+    if len(raw) > 512 * 1024:  # far beyond any real task definition
+        return False
+    for encoding in ("utf-16", "utf-16-le", "utf-16-be", "utf-8-sig", "utf-8"):
+        try:
+            text = raw.decode(encoding)
+        except (UnicodeDecodeError, UnicodeError, LookupError):
+            continue
+        try:
+            ET.fromstring(text)
+        except ET.ParseError:
+            continue
+        return True
+    return False
+
+
 # The WMI repository: OBJECTS.DATA plus its B-tree siblings. Recognised by name
 # because they are raw ESE files with no self-describing header a sniff can use.
 _WMI_REPOSITORY_NAMES = (
@@ -1162,8 +1202,10 @@ def is_host_evidence(path: str | Path) -> bool:
             # discovery SKIP means the one artifact that says what happened is
             # the one thing never read.
             or _is_history_text(name)
-            # No extension to match on, so the content decides.
-            or _task_xml_kind(p) == "task"
+            # No extension to match on, so the content decides. A parsable task
+            # definition belongs to the importer lane (WO-8); only XML the
+            # importer cannot parse stays here for the strings fallback.
+            or (_task_xml_kind(p) == "task" and not _task_xml_parses(p))
             # Artifacts whose parser we already ship but never invoked. Each was
             # found by running the recogniser against the real corpus: the tool
             # sits in the catalogue while the evidence routes nowhere, so the

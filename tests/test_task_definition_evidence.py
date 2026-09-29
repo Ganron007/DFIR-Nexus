@@ -11,6 +11,10 @@ recogniser has nothing to match on. The only reliable signal is the document
 itself, which arrives as UTF-16LE XML - every character followed by a NUL, so a
 bytes sniff for `<Task` finds nothing either. Decoding first is what makes the
 artefact visible at all.
+
+WO-8: a *parsable* definition is now handled by the I1 importer lane (typed
+fields; the lane records a SKIP row pointing at it), and `strings64` remains
+the fallback for XML the importer cannot parse. Either way the file is routed.
 """
 from __future__ import annotations
 
@@ -23,6 +27,7 @@ from nexus.langgraph.tool_lane import (
     _decode_head,
     _plan_single_artifact,
     _task_xml_kind,
+    _task_xml_parses,
     is_host_evidence,
 )
 
@@ -75,17 +80,28 @@ def test_a_task_definition_is_recognised_whatever_the_encoding(tmp_path, writer)
     """No extension to key on, so both UTF-16 forms must work."""
     f = writer(tmp_path / "Office Subscription Maintenance", TASK_XML)
     assert _task_xml_kind(f) == "task"
-    assert is_host_evidence(f) is True
+    # WO-8: a parsable definition belongs to the importer lane, not the tool lane.
+    assert _task_xml_parses(f) is True
+    assert is_host_evidence(f) is False
 
 
-def test_a_task_definition_gets_a_job(tmp_path):
+def test_a_parsable_task_definition_is_left_to_the_importer(tmp_path):
     f = _write_utf16(tmp_path / "GoogleUpdateTaskMachineUA", TASK_XML)
     jobs = _plan_single_artifact(f, tmp_path / "ex")
-    assert jobs, "a recognised task definition must be scheduled"
+    assert len(jobs) == 1
+    assert jobs[0].status == "SKIP"
+    assert "importer lane" in jobs[0].reason
+
+
+def test_an_unparsable_task_definition_gets_the_strings_fallback(tmp_path):
+    f = _write_utf16(tmp_path / "BrokenTask", TASK_XML.replace("</Task>", ""))
+    jobs = _plan_single_artifact(f, tmp_path / "ex2")
+    assert jobs, "an unparsable task definition must still be read"
     assert jobs[0].tool == "strings"
     # UTF-16 content needs the wide-string extractor or the Exec command and the
     # SID never make it out of the file.
     assert "-u" in jobs[0].argv, jobs[0].argv
+    assert "fallback" in jobs[0].purpose
 
 
 def test_the_extracted_strings_carry_the_command_and_the_sid(tmp_path):
@@ -127,21 +143,28 @@ def test_a_binary_blob_is_not_a_task_definition(tmp_path):
 
 # ------------------------------------------------ the real corpus artifacts
 
-def test_the_real_corpus_task_files_are_recognised():
+def test_the_real_corpus_task_files_are_routed_somewhere():
     """Run against the actual evidence when it is present, skip otherwise.
 
     This is the artifact the whole plan's provenance argument rests on: the task
     XML carries the machine identity that proves the corpus merges two hosts.
+    WO-8: routing is now "parsable -> importer lane, unparsable -> strings" -
+    every file must land on one of the two, never nowhere.
     """
     root = Path("Evidence-files/ES-Mapping/evidence/tasks")
     if not root.is_dir():
         pytest.skip("corpus not present")
     files = [f for f in root.rglob("*") if f.is_file()]
     assert files, "no task files in the corpus"
-    recognised = [f for f in files if is_host_evidence(f)]
-    assert len(recognised) == len(files), (
-        f"{len(files) - len(recognised)} task file(s) still routed nowhere: "
-        f"{[f.name for f in files if f not in recognised][:5]}"
+    unrouted = [
+        f.name for f in files
+        if _task_xml_kind(f) != "task" and not is_host_evidence(f)
+    ]
+    assert not unrouted, f"task file(s) still routed nowhere: {unrouted[:5]}"
+    parsable = [f for f in files if _task_xml_parses(f)]
+    assert len(parsable) == len(files), (
+        f"{len(files) - len(parsable)} corpus task(s) do not parse and fall back "
+        "to strings - expected all 60 to feed the importer lane"
     )
 
 
