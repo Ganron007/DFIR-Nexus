@@ -899,7 +899,8 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
         elif not is_host_evidence(p):
             ingest_paths.append(p)
     if raw_skipped:
-        steps.append(
+        # Recorded now, appended to the step log once `steps` exists below.
+        result["_raw_skipped_note"] = (
             "I1 skipped raw container(s) (SIFT/imager lane, not importers): "
             + ", ".join(sorted(set(raw_skipped))[:6])
         )
@@ -992,6 +993,9 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
     steps = list(result.get("step_log") or [])
     label = "tools mode" if mode == "tools" else "coverage mode"
     steps.insert(0, f"{label}: deterministic tool lane")
+    raw_note = str(result.pop("_raw_skipped_note", "") or "")
+    if raw_note:
+        steps.append(raw_note)
     result["step_log"] = steps
     try:
         from nexus.config import settings as _set
