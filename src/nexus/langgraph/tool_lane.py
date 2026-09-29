@@ -2232,11 +2232,24 @@ def plan_sift_triage(
     sift_evidence_root: str,
     triage_root: str | None = None,
     memory_file: str | None = None,
+    sift_os: str | None = None,
+    disk_image: str | None = None,
 ) -> list[ToolJob]:
     """Build SIFT jobs when a Linux-visible evidence root is configured.
 
     ``run_command`` denies shells (bash/sh) and shell metacharacters — only
     direct binaries with simple argv are scheduled.
+
+    Memory: Volatility 3 plugins follow the target OS — ``sift_os`` (or
+    ``NEXUS_SIFT_OS``) set to ``linux`` selects ``linux.*`` plugins; the
+    default keeps the Windows profile for backward compatibility.
+
+    Disk: a raw image via ``disk_image`` / ``NEXUS_SIFT_DISK`` schedules the
+    SleuthKit pair the Windows lane cannot do (it only sees extracted files,
+    never a raw image) — ``mmls`` (partition layout) + ``fls -r`` (recursive
+    listing). ``NEXUS_SIFT_BULK=1`` adds bulk_extractor record carving
+    (hours). ``blkls``/``icat`` stay manual: blkls streams GBs to stdout
+    (same pipe-deadlock class as mactime) and icat needs an inode per call.
 
     Default pack for KAPE triage testing: **Volatility against memory only**.
     Full E01 / ``fls`` is opt-in via explicit ``NEXUS_SIFT_E01`` (not assumed).
@@ -2264,11 +2277,21 @@ def plan_sift_triage(
             mem = f"{root}/memory/Rocba-Memory.raw"
         else:
             mem = f"{root}/memory/rd01-memory.img"
-    for plugin, timeout in (
-        ("windows.info", 1800),
-        ("windows.pslist", 3600),
-        ("windows.cmdline", 3600),
-    ):
+    profile = (sift_os or os.environ.get("NEXUS_SIFT_OS", "")).strip().lower()
+    if profile == "linux":
+        plugins = (
+            ("banners", 1800),
+            ("linux.pslist", 3600),
+            ("linux.bash", 3600),
+            ("linux.sockstat", 3600),
+        )
+    else:
+        plugins = (
+            ("windows.info", 1800),
+            ("windows.pslist", 3600),
+            ("windows.cmdline", 3600),
+        )
+    for plugin, timeout in plugins:
         jobs.append(ToolJob(
             host="sift",
             tool="vol",
@@ -2298,6 +2321,33 @@ def plan_sift_triage(
             timeout=3600,
         ))
 
+    # Raw disk image: SleuthKit is the unique solver on SIFT (the Windows lane
+    # only ever sees extracted files, never a raw image).
+    disk = (disk_image or os.environ.get("NEXUS_SIFT_DISK", "")).strip()
+    if disk:
+        jobs.append(ToolJob(
+            host="sift",
+            tool="mmls",
+            argv=["mmls", disk],
+            purpose=f"TSK partition layout (mmls: {disk})",
+            timeout=300,
+        ))
+        jobs.append(ToolJob(
+            host="sift",
+            tool="fls",
+            argv=["fls", "-r", "-p", disk],
+            purpose=f"TSK recursive file listing (fls -r: {disk})",
+            timeout=3600,
+        ))
+        if os.environ.get("NEXUS_SIFT_BULK", "").strip().lower() in ("1", "true", "yes"):
+            jobs.append(ToolJob(
+                host="sift",
+                tool="bulk_extractor",
+                argv=["bulk_extractor", "-o", f"{root}/bulk_extractor", disk],
+                purpose="bulk_extractor record carving (NEXUS_SIFT_BULK=1)",
+                timeout=7200,
+            ))
+
     # E01 / fls only when the operator explicitly points at an image.
     # KAPE triage on Windows (H:\) already covers filesystem artifacts.
     e01 = os.environ.get("NEXUS_SIFT_E01", "").strip()
@@ -2318,6 +2368,8 @@ def sift_jobs_for_lane(
     has_sift_mcp: bool,
     triage_root: str | None = None,
     memory_file: str | None = None,
+    sift_os: str | None = None,
+    disk_image: str | None = None,
     network_inputs: dict[str, list[str]] | None = None,
 ) -> list[ToolJob]:
     """Schedule SIFT jobs only when a root is named or a SIFT MCP exists.
@@ -2333,6 +2385,8 @@ def sift_jobs_for_lane(
         root,
         triage_root=triage_root,
         memory_file=memory_file,
+        sift_os=sift_os,
+        disk_image=disk_image,
     )
     # EH-14b: Zeek/Suricata/nfdump for captures visible under the SIFT root.
     # Captures registered on Windows are planned with an honest SKIP row —
@@ -2482,6 +2536,8 @@ async def run_tool_lane(
         has_sift_mcp=sift_tool is not None,
         triage_root=str(ctx.get("sift_triage_root") or "").strip() or None,
         memory_file=str(ctx.get("sift_memory_file") or "").strip() or None,
+        sift_os=str(ctx.get("sift_os") or "").strip() or None,
+        disk_image=str(ctx.get("sift_disk_image") or "").strip() or None,
         network_inputs=_net_inputs,
     ))
     audit_ids: list[str] = []

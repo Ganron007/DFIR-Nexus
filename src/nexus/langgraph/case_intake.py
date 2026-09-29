@@ -39,6 +39,8 @@ INTAKE_KEYS = (
     "sift_evidence_root",
     "sift_triage_root",
     "sift_memory_file",
+    "sift_os",
+    "sift_disk_image",
 )
 
 
