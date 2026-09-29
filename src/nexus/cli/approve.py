@@ -106,6 +106,8 @@ def approve_finding(
     analyst: str,
     password: str,
     note: str = "",
+    l1_verdict: str = "",
+    override_reason: str = "",
 ) -> dict:
     """Approve a single finding with HMAC signing."""
     findings_path = case_dir / "findings.json"
@@ -137,6 +139,11 @@ def approve_finding(
             f["status"] = "APPROVED"
             f["approved_by"] = analyst
             f["approved_at"] = datetime.now(UTC).isoformat()
+            # WO-2: what the verifier said at the moment of signing (empty
+            # verdict = verification could not run -> recorded UNVERIFIABLE).
+            f["l1_verdict_at_approval"] = l1_verdict or "UNVERIFIABLE"
+            if override_reason:
+                f["override_reason"] = override_reason
             if note:
                 f.setdefault("notes", []).append({"text": note, "author": analyst, "at": f["approved_at"]})
 
@@ -160,6 +167,8 @@ def approve_finding(
                     "content_snapshot": content,
                     "hmac": hmac_val,
                     "salt": salt,
+                    "l1_verdict_at_approval": f["l1_verdict_at_approval"],
+                    "override_reason": override_reason,
                 })
             return {"finding_id": finding_id, "status": "APPROVED", "note": note}
 

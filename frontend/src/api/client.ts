@@ -113,6 +113,12 @@ export interface Finding {
   examiner_selected?: boolean;
   created_at?: string;
   modified_at?: string;
+  /** Approval-desk L1 verdict (WO-2) — attached to DRAFT rows only. */
+  l1?: {
+    verdict: string;
+    counts: Record<string, number>;
+    failing_checks: Array<{ id: string; detail: string }>;
+  };
 }
 
 /** GET /findings → {findings: Finding[], total: number} */
@@ -1431,6 +1437,8 @@ export const api = {
     challenge_id: string;
     response: string;
     examiner?: string;
+    /** WO-2: per-finding reason when the L1 verdict is not PROVEN. */
+    override_reasons?: Record<string, string>;
   }) => post<CommitResponse>("/commit", params),
   rejectFindings: (params: {
     finding_ids: string[];

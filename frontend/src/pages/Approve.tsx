@@ -4,6 +4,14 @@ import { api, type Finding } from "../api/client";
 import { computeApprovalResponse } from "../lib/crypto";
 import { useCase } from "../context/CaseContext";
 
+const L1_COLORS: Record<string, string> = {
+  PROVEN: "#238636",
+  UNSUPPORTED: "#d29922",
+  CONTRADICTED: "#f85149",
+  UNVERIFIABLE: "#8b949e",
+};
+const l1Color = (verdict: string) => L1_COLORS[verdict] ?? "#8b949e";
+
 export default function Approve() {
   const { activeCase, refreshStages } = useCase();
   const navigate = useNavigate();
@@ -20,6 +28,10 @@ export default function Approve() {
   // Rejection state
   const [rejectMode, setRejectMode] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
+
+  // WO-2: a finding the L1 verifier did not prove needs an explicit override
+  // reason, recorded with the approval.
+  const [overrideReason, setOverrideReason] = useState("");
 
   // Readiness probe — which examiner identity will sign, and whether a
   // password is configured at all. Shown up front, not after a failed click.
@@ -59,11 +71,23 @@ export default function Approve() {
   const selectAll = () => setSelected(new Set(findings.map((f) => f.id)));
   const clearSelection = () => setSelected(new Set());
 
+  const verdictOf = (f: Finding) => f.l1?.verdict ?? "UNVERIFIABLE";
+  const needsOverride = findings.filter(
+    (f) => selected.has(f.id) && verdictOf(f) !== "PROVEN"
+  );
+
   const handleApprove = async () => {
     setError("");
     setResult("");
     if (selected.size === 0) {
       setError("Select at least one finding to approve");
+      return;
+    }
+    if (needsOverride.length > 0 && !overrideReason.trim()) {
+      setError(
+        `L1 verdict is not PROVEN for ${needsOverride.length} selected finding(s). ` +
+        "Enter an override reason — it is recorded with the approval."
+      );
       return;
     }
     if (!password) {
@@ -94,6 +118,9 @@ export default function Approve() {
         challenge_id: ch.challenge_id,
         response: responseHmac,
         examiner: examiner.trim() || undefined,
+        override_reasons: Object.fromEntries(
+          needsOverride.map((f) => [f.id, overrideReason.trim()])
+        ),
       });
 
       if (r.errors.length > 0) {
@@ -102,6 +129,7 @@ export default function Approve() {
       if (r.approved.length > 0) {
         setResult(`✓ Successfully approved ${r.approved.length} finding(s): ${r.approved.join(", ")}`);
         setPassword("");
+        setOverrideReason("");
         if (activeCase) refreshStages(activeCase);
         load();
       }
@@ -200,6 +228,7 @@ export default function Approve() {
                 <th>ID</th>
                 <th>Title</th>
                 <th>Confidence</th>
+                <th>L1</th>
                 <th>Source</th>
               </tr>
             </thead>
@@ -224,6 +253,24 @@ export default function Approve() {
                     )}
                   </td>
                   <td><span className={`badge badge-${f.confidence.toLowerCase()}`}>{f.confidence}</span></td>
+                  <td>
+                    <span
+                      className="badge"
+                      style={{ background: l1Color(verdictOf(f)), color: "#fff" }}
+                      title={
+                        f.l1?.failing_checks?.length
+                          ? f.l1.failing_checks.map((c) => `${c.id}: ${c.detail}`).join("\n")
+                          : undefined
+                      }
+                    >
+                      {verdictOf(f)}
+                    </span>
+                    {(f.l1?.failing_checks ?? []).slice(0, 2).map((c) => (
+                      <div key={c.id} style={{ fontSize: 11, color: "var(--danger)", marginTop: 2 }}>
+                        {c.id}: {c.detail.slice(0, 80)}
+                      </div>
+                    ))}
+                  </td>
                   <td>{f.examiner_selected === false ? "LLM-drafted" : "examiner"}</td>
                 </tr>
               ))}
@@ -285,6 +332,23 @@ export default function Approve() {
               />
             </div>
 
+            {needsOverride.length > 0 && (
+              <div>
+                <label style={{ fontSize: 12, color: "var(--danger)", display: "block", marginBottom: 4, fontWeight: 600 }}>
+                  Override Reason (required — L1 not PROVEN for {needsOverride.length} selected)
+                </label>
+                <input
+                  placeholder="e.g. Verifier could not replay the count; examiner confirmed against the raw rows"
+                  value={overrideReason}
+                  onChange={(e) => setOverrideReason(e.target.value)}
+                  disabled={busy}
+                />
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                  {needsOverride.map((f) => `${f.id}: ${verdictOf(f)}`).join(" · ")}
+                </div>
+              </div>
+            )}
+
             {statusMsg && (
               <div style={{ fontSize: 12, color: "var(--accent)" }}>
                 ⚡ {statusMsg}
@@ -295,7 +359,7 @@ export default function Approve() {
               <button
                 className="btn btn-primary"
                 onClick={handleApprove}
-                disabled={busy || selected.size === 0}
+                disabled={busy || selected.size === 0 || (needsOverride.length > 0 && !overrideReason.trim())}
                 title={!password ? "Enter the examiner approval password first — click for details" : undefined}
                 style={{ flex: 1 }}
               >

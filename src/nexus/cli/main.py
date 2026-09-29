@@ -167,6 +167,7 @@ def _resolve_analyst(explicit: str = "") -> str:
 def approve(
     finding_ids: list[str] = typer.Argument(None, help="Finding IDs to approve"),
     note: str = typer.Option("", "--note", help="Examiner note"),
+    reason: str = typer.Option("", "--reason", help="Override reason for findings whose L1 verdict is not PROVEN"),
     interactive: bool = typer.Option(False, "--interactive", "-i", help="Interactive review mode"),
     examiner: str = typer.Option("", "--examiner", "-e", help="Examiner identity (password file name)"),
     clear_lockout: bool = typer.Option(False, "--clear-lockout", help="Clear 15-minute lockout and exit"),
@@ -191,16 +192,49 @@ def approve(
         raise typer.Exit(1)
 
     from nexus.cli.approve import _require_approval_auth, approve_finding
-    password = _require_approval_auth(analyst)
-    if not password:
-        raise typer.Exit(1)
 
     case_dir = _resolve_case()
     if not case_dir:
         raise typer.Exit(1)
 
+    # WO-2: show the L1 verdict before the password prompt; a finding the
+    # verifier did not prove needs an explicit override reason.
+    from nexus.analysis.claim_verification import verify_drafts
+
+    try:
+        verdicts = verify_drafts(case_dir)
+    except Exception:  # noqa: BLE001 - verification informs, never blocks outright
+        verdicts = {}
+    blocked: list[str] = []
     for fid in finding_ids:
-        result = approve_finding(case_dir, fid, analyst, password, note)
+        row = verdicts.get(fid) or {}
+        verdict = str(row.get("verdict") or "UNVERIFIABLE")
+        fails = [k for k, v in (row.get("checks") or {}).items()
+                 if (v or {}).get("status") == "fail"]
+        typer.echo(f"  L1 {verdict}: {fid}" + (f" — failing: {', '.join(fails)}" if fails else ""))
+        if verdict != "PROVEN":
+            blocked.append(fid)
+    if blocked and not reason.strip():
+        typer.echo(
+            f"Refused: {len(blocked)} finding(s) are not L1-PROVEN. "
+            "Pass --reason '<why the examiner accepts them>' to approve anyway:"
+        )
+        for fid in blocked:
+            typer.echo(f"  - {fid}")
+        raise typer.Exit(1)
+
+    password = _require_approval_auth(analyst)
+    if not password:
+        raise typer.Exit(1)
+
+    for fid in finding_ids:
+        row = verdicts.get(fid) or {}
+        verdict = str(row.get("verdict") or "UNVERIFIABLE")
+        result = approve_finding(
+            case_dir, fid, analyst, password, note,
+            l1_verdict=verdict,
+            override_reason=(reason.strip() if verdict != "PROVEN" else ""),
+        )
         if result.get("error"):
             typer.echo(f"  ERROR: {result['error']}")
         else:
@@ -236,15 +270,42 @@ def _interactive_approve(analyst: str):
         typer.echo("No DRAFT findings to review")
         return
 
+    from nexus.analysis.claim_verification import verify_drafts
+
+    try:
+        verdicts = verify_drafts(case_dir)
+    except Exception:  # noqa: BLE001 - verification informs, never blocks outright
+        verdicts = {}
+
     typer.echo(f"\n=== {len(drafts)} DRAFT Findings ===\n")
     for item in drafts:
         fid = item.get("id") or item.get("finding_id", "")
+        row = verdicts.get(fid) or {}
+        verdict = str(row.get("verdict") or "UNVERIFIABLE")
+        fails = [k for k, v in (row.get("checks") or {}).items()
+                 if (v or {}).get("status") == "fail"]
         typer.echo(_display_item(item, "finding"))
+        typer.echo(f"    L1 verdict: {verdict}" + (f" — failing: {', '.join(fails)}" if fails else ""))
+        for key, entry in (row.get("checks") or {}).items():
+            if (entry or {}).get("status") == "fail":
+                typer.echo(f"      {key}: {str(entry.get('detail') or '')[:120]}")
         choice = typer.prompt("  [a]pprove / [r]eject / [s]kip / [q]uit", default="s")
 
         if choice.lower() == "a":
+            override_reason = ""
+            if verdict != "PROVEN":
+                override_reason = typer.prompt(
+                    f"  Override reason (required — L1 {verdict})", default=""
+                ).strip()
+                if not override_reason:
+                    typer.echo("  Not approved: an override reason is required.")
+                    typer.echo()
+                    continue
             note_text = typer.prompt("  Note (optional)", default="")
-            result = approve_finding(case_dir, fid, analyst, password, note_text)
+            result = approve_finding(
+                case_dir, fid, analyst, password, note_text,
+                l1_verdict=verdict, override_reason=override_reason,
+            )
             if result.get("status") == "APPROVED":
                 typer.echo(f"  ✓ APPROVED: {fid}")
         elif choice.lower() == "r":

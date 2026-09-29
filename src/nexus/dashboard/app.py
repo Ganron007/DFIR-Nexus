@@ -593,12 +593,56 @@ async def post_commit(request) -> JSONResponse:
             status_code=400,
         )
 
+    # WO-2: the examiner decides, but signs with the L1 verdict in front of
+    # them. A DRAFT the verifier did not prove needs an explicit override
+    # reason — recorded with the approval, never inferred.
+    override_reasons = body.get("override_reasons") or {}
+    if not isinstance(override_reasons, dict):
+        return JSONResponse({"error": "override_reasons must be an object"}, status_code=400)
+    verdicts: dict = {}
+    with contextlib.suppress(Exception):
+        from nexus.analysis.claim_verification import verify_drafts
+
+        verdicts = verify_drafts(case_dir)
+    missing = [
+        fid for fid in finding_ids
+        if fid in verdicts
+        and str(verdicts[fid].get("verdict") or "") != "PROVEN"
+        and not str(override_reasons.get(fid) or "").strip()
+    ]
+    if missing:
+        return JSONResponse(
+            {
+                "error": (
+                    f"{len(missing)} finding(s) are not L1-PROVEN and need an "
+                    f"override_reason: {', '.join(missing)}"
+                ),
+                "findings": {
+                    fid: {
+                        "verdict": verdicts[fid].get("verdict"),
+                        "failing_checks": [
+                            {"id": key, "detail": (entry or {}).get("detail", "")}
+                            for key, entry in (verdicts[fid].get("checks") or {}).items()
+                            if (entry or {}).get("status") == "fail"
+                        ],
+                    }
+                    for fid in missing
+                },
+            },
+            status_code=400,
+        )
+
     # Approve findings and write HMAC verification ledger
     approved = []
     errors = []
     for fid in finding_ids:
         try:
-            result = _approve_finding(case_dir, fid, examiner, stored_hash_hex, entry.get("salt", ""))
+            row = verdicts.get(fid) or {}
+            result = _approve_finding(
+                case_dir, fid, examiner, stored_hash_hex, entry.get("salt", ""),
+                l1_verdict=str(row.get("verdict") or ""),
+                override_reason=str(override_reasons.get(fid) or ""),
+            )
             if result.get("status") == "APPROVED":
                 approved.append(fid)
             else:
@@ -624,7 +668,16 @@ async def post_commit(request) -> JSONResponse:
     })
 
 
-def _approve_finding(case_dir: Path, finding_id: str, examiner: str, stored_hash_hex: str, salt: str) -> dict:
+def _approve_finding(
+    case_dir: Path,
+    finding_id: str,
+    examiner: str,
+    stored_hash_hex: str,
+    salt: str,
+    *,
+    l1_verdict: str = "",
+    override_reason: str = "",
+) -> dict:
     """Approve a single finding and write HMAC verification ledger entry."""
     findings_path = case_dir / "findings.json"
     if not findings_path.exists():
@@ -637,6 +690,11 @@ def _approve_finding(case_dir: Path, finding_id: str, examiner: str, stored_hash
             f["status"] = "APPROVED"
             f["approved_by"] = examiner
             f["approved_at"] = datetime.now(UTC).isoformat()
+            # WO-2: what the verifier said at the moment of signing (empty
+            # verdict = verification could not run -> recorded UNVERIFIABLE).
+            f["l1_verdict_at_approval"] = l1_verdict or "UNVERIFIABLE"
+            if override_reason:
+                f["override_reason"] = override_reason
             _atomic_write_json(findings_path, findings)
 
             from nexus.auth import (
@@ -659,11 +717,15 @@ def _approve_finding(case_dir: Path, finding_id: str, examiner: str, stored_hash
                 "content_snapshot": content,
                 "hmac": hmac_val,
                 "salt": salt,
+                "l1_verdict_at_approval": f["l1_verdict_at_approval"],
+                "override_reason": override_reason,
             })
             transparency_append(case_id, {
                 "action": "approve",
                 "finding_id": finding_id,
                 "approved_by": examiner,
+                "l1_verdict_at_approval": f["l1_verdict_at_approval"],
+                "override_reason": override_reason,
             })
             return {"finding_id": finding_id, "status": "APPROVED"}
 
@@ -1588,7 +1650,13 @@ async def api_query_rerun(request):
 
 
 async def api_findings(request):
-    """GET /portal/api/findings?status=DRAFT&limit=20"""
+    """GET /portal/api/findings?status=DRAFT&limit=20
+
+    DRAFT rows carry their Level 1 verdict (WO-2) so the approval desk shows
+    which claims hold before the examiner signs. Best-effort: if verification
+    cannot run, the rows are returned without an ``l1`` block and the commit
+    path treats them as UNVERIFIABLE.
+    """
     findings = _load_json("findings.json", request)
     status = request.query_params.get("status")
     limit = int(request.query_params.get("limit", "0"))
@@ -1596,6 +1664,26 @@ async def api_findings(request):
         findings = [f for f in findings if f.get("status", "").upper() == status.upper()]
     if limit > 0:
         findings = findings[:limit]
+    if findings and status and status.upper() == "DRAFT":
+        case_dir = _get_case_dir(request)
+        if case_dir:
+            with contextlib.suppress(Exception):
+                from nexus.analysis.claim_verification import verify_drafts
+
+                verdicts = verify_drafts(case_dir)
+                for f in findings:
+                    row = verdicts.get(str(f.get("id") or ""))
+                    if not row:
+                        continue
+                    f["l1"] = {
+                        "verdict": row.get("verdict"),
+                        "counts": row.get("counts") or {},
+                        "failing_checks": [
+                            {"id": key, "detail": (entry or {}).get("detail", "")}
+                            for key, entry in (row.get("checks") or {}).items()
+                            if (entry or {}).get("status") == "fail"
+                        ],
+                    }
     return JSONResponse({"findings": findings, "total": len(findings)})
 
 

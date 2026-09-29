@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -54,6 +55,7 @@ __all__ = [
     "CHECKS",
     "verify_claim",
     "verify_case",
+    "verify_drafts",
     "render_ledger_markdown",
     "write_ledger",
 ]
@@ -805,6 +807,126 @@ def verify_case(
             else "MIXED"
         ),
     }
+
+
+# --------------------------------------------------------------------------
+# draft verification (WO-2) - verdicts for the approval surface
+# --------------------------------------------------------------------------
+
+#: Per-case cache of DRAFT verdicts: {case_dir: {finding_id: (seal_key, row)}}.
+#: Keyed by the finding's submission seal, so a re-staged draft is re-verified
+#: while an unchanged one does not re-query the index on every render. A
+#: finding staged without a seal is never cached.
+_DRAFT_CACHE: dict[str, dict[str, tuple[str, dict[str, Any]]]] = {}
+_DRAFT_CACHE_LOCK = threading.Lock()
+
+
+def _draft_seal_key(finding: dict[str, Any]) -> str | None:
+    seal = finding.get("seal") or finding.get("content_hash")
+    if not seal:
+        return None
+    try:
+        return json.dumps(seal, sort_keys=True, default=str)
+    except (TypeError, ValueError):
+        return None
+
+
+def _draft_finding_id(finding: dict[str, Any]) -> str:
+    return str(finding.get("id") or finding.get("finding_id") or "")
+
+
+def _verify_draft_rows(case_dir: Path, drafts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Run ``verify_claim`` over DRAFT findings with the shared inputs built once."""
+    from nexus.analysis.coverage_audit import load_coverage_audit
+    from nexus.analysis.cross_mode import check_cross_mode
+
+    known = load_known_audit_ids(case_dir)
+    try:
+        coverage = load_coverage_audit(case_dir)
+    except Exception:  # noqa: BLE001 - a missing audit is unverifiable, not a crash
+        coverage = None
+    try:
+        cross = check_cross_mode(case_dir=case_dir)
+    except Exception:  # noqa: BLE001
+        cross = None
+    technique_ids = _technique_registry()
+    searcher = _es_searcher(case_dir)
+    fam_counter = getattr(searcher, "family_count", None) if searcher else None
+
+    rows: list[dict[str, Any]] = []
+    for f in drafts:
+        try:
+            rows.append(
+                verify_claim(
+                    f, case_dir=case_dir, known_ids=known,
+                    technique_ids=technique_ids, cross_mode=cross,
+                    coverage=coverage, search=searcher, family_count=fam_counter,
+                )
+            )
+        except Exception:  # noqa: BLE001 - a broken check is unknown, never a pass
+            rows.append({
+                "id": _draft_finding_id(f),
+                "title": str(f.get("title") or "")[:160],
+                "status": "DRAFT",
+                "verdict": "UNVERIFIABLE",
+                "checks": {},
+                "counts": {"pass": 0, "fail": 0, "unverifiable": 1, "skipped": 0},
+            })
+    return rows
+
+
+def verify_drafts(case_dir: Path) -> dict[str, dict[str, Any]]:
+    """L1 verdict for every DRAFT finding, keyed by finding id (WO-2).
+
+    The approval desk shows which claims hold before the examiner signs: this
+    builds the shared verification inputs once and verifies DRAFT findings
+    only. Results are cached per case keyed by (finding id, submission seal) -
+    a re-staged finding is re-verified, an untouched one is not re-queried.
+
+    ``UNVERIFIABLE`` means the check could not run (e.g. the index is down);
+    it is never reported as PROVEN.
+    """
+    case_dir = Path(case_dir)
+    findings: list[dict[str, Any]] = []
+    fp = case_dir / "findings.json"
+    if fp.is_file():
+        try:
+            loaded = json.loads(fp.read_text(encoding="utf-8"))
+            if isinstance(loaded, list):
+                findings = [f for f in loaded if isinstance(f, dict)]
+        except (OSError, ValueError):
+            findings = []
+    drafts = [f for f in findings if str(f.get("status") or "").upper() == "DRAFT"]
+
+    case_key = str(case_dir)
+    with _DRAFT_CACHE_LOCK:
+        cached = dict(_DRAFT_CACHE.get(case_key) or {})
+
+    out: dict[str, dict[str, Any]] = {}
+    todo: list[dict[str, Any]] = []
+    for f in drafts:
+        fid = _draft_finding_id(f)
+        key = _draft_seal_key(f)
+        hit = cached.get(fid)
+        if hit is not None and key is not None and hit[0] == key:
+            out[fid] = hit[1]
+        else:
+            todo.append(f)
+
+    if todo:
+        for f, row in zip(todo, _verify_draft_rows(case_dir, todo), strict=True):
+            fid = _draft_finding_id(f)
+            out[fid] = row
+            key = _draft_seal_key(f)
+            if key is not None:
+                cached[fid] = (key, row)
+
+    with _DRAFT_CACHE_LOCK:
+        if out:
+            _DRAFT_CACHE[case_key] = {k: v for k, v in cached.items() if k in out}
+        else:
+            _DRAFT_CACHE.pop(case_key, None)
+    return out
 
 
 def render_ledger_markdown(ledger: dict[str, Any]) -> str:

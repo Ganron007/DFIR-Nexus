@@ -53,6 +53,10 @@ SEAL_EXCLUDE_KEYS = frozenset(
         "hmac_salt",
         "modified_at",
         "notes",
+        # WO-2: approval-time annotations - written with the approval, after
+        # staging, so they must not invalidate the submission seal.
+        "l1_verdict_at_approval",
+        "override_reason",
     }
 )
 
