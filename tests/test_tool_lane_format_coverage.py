@@ -52,17 +52,31 @@ def test_defender_support_logs_are_planned_not_dropped(tmp_path):
 
     Defender support logs, BITS ESE companions and WPP traces had no parser
     and were not recognised as host evidence, so they were never planned and
-    never read - no job, no SKIP row.
+    never read - no job, no SKIP row. Text logs get ONE pass; a `-u` pass over
+    ASCII text extracts nothing and the honest output check would fail it.
+    Binary containers get both encodings.
     """
     d = tmp_path / "defender" / "Support"
     d.mkdir(parents=True)
     log = _make(d, "MPLog-20201020-091428.log", b"defender log line\n")
-    wpp = _make(d, "MpWppTracing-20201111-031319.bin", b"\x00\x01trace")
+    wpp = _make(d, "MpWppTracing-20201111-031319.bin", b"\x00\x01trace" * 8)
     assert is_host_evidence(log) is True
     assert is_host_evidence(wpp) is True
-    jobs = _plan_single_artifact(log, tmp_path / "extractions")
-    assert jobs and all(j.tool == "strings" for j in jobs)
-    assert any("-u" in j.argv for j in jobs), "utf16 pass missing for binary-ish logs"
+    text_jobs = _plan_single_artifact(log, tmp_path / "extractions")
+    assert [j.tool for j in text_jobs] == ["strings"]
+    assert "-u" not in text_jobs[0].argv, "a wide-char pass over ASCII text yields nothing"
+    bin_jobs = _plan_single_artifact(wpp, tmp_path / "extractions")
+    assert [j.tool for j in bin_jobs] == ["strings", "strings"]
+    assert any("-u" in j.argv for j in bin_jobs), "binary container misses the utf16 pass"
+
+
+def test_tiny_staged_artifact_is_skip_not_fail(tmp_path):
+    d = tmp_path / "defender" / "Scans-History-Service"
+    d.mkdir(parents=True)
+    tiny = _make(d, "History.Log", b"\r\n")
+    jobs = _plan_single_artifact(tiny, tmp_path / "extractions")
+    assert jobs and all(j.status == "SKIP" for j in jobs)
+    assert "nothing to extract" in jobs[0].reason
 
 
 def test_bits_ese_companions_are_planned_not_dropped(tmp_path):
@@ -76,16 +90,33 @@ def test_bits_ese_companions_are_planned_not_dropped(tmp_path):
     assert jobs and all(j.tool == "strings" for j in jobs)
 
 
-def test_bitsparser_receives_the_database_file(tmp_path):
-    """BitsParser -i takes the qmgr.db FILE.
+def test_bitsparser_stages_a_repaired_copy_for_a_single_database(tmp_path, monkeypatch):
+    """BitsParser returns 0 bytes on a raw dirty ESE db.
 
-    Passing its parent directory made the tool walk every file in the folder
-    (edb.chk, edb*.log, *.jrs) and write no output at all (CASE-BC13CCC9).
+    The host-scan path already staged a repaired copy; the single-file path
+    handed the tool the raw database (0-byte JSON) and once even the parent
+    DIRECTORY (no output at all). It must stage the same repaired copy.
     """
+    from nexus.langgraph import tool_lane as tl
+
+    called: dict = {}
+
+    def _fake_repair(work, *, db_name, log_bases):
+        called["db_name"] = db_name
+        called["log_bases"] = log_bases
+
+    monkeypatch.setattr(tl, "_esentutl_repair", _fake_repair)
     f = _make(tmp_path, "qmgr.db", b"ese" * 32)
     jobs = _plan_single_artifact(f, tmp_path / "extractions")
     bp = next(j for j in jobs if j.tool == "bitsparser")
-    assert Path(bp.argv[bp.argv.index("-i") + 1]) == f
+    staged = Path(bp.argv[bp.argv.index("-i") + 1])
+    assert staged.name == "qmgr.db"
+    assert staged != f, "the raw database must not be handed to BitsParser"
+    assert any(part.endswith("-workdir") for part in staged.parts)
+    assert staged.is_file()
+    assert "repaired copy" in bp.purpose
+    assert called["db_name"] == "qmgr.db"
+    assert called["log_bases"] == ("edb", "qmgr")
 
 
 def test_iconcache_file_is_recognised(tmp_path):

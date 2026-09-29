@@ -519,14 +519,35 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
         add("sqlecmd", ["sqlecmd", "-f", str(evidence), "--csv", str(d)],
             f"Browser SQLite ({evidence.name})", 900)
     elif _artifact_class(evidence) == "bits":
-        # BitsParser takes the ESE database FILE via -i. Passing its parent
-        # directory made the tool walk every file in the folder (edb*.log,
-        # *.jrs) and write no output at all (found on _manual/bits,
-        # CASE-BC13CCC9, 2026-09-29; the file form writes bits.json).
+        # BitsParser returns EMPTY output on a raw, dirty ESE database - 0
+        # bytes both to stdout and to -o (verified 2026-09-29 on qmgr.db). The
+        # host-scan path already stages a repaired copy with the ESE siblings;
+        # the single-file path must do the same. Passing the parent directory
+        # was worse still: the tool walked every file in the folder and wrote
+        # nothing at all.
         d = out_dir("bitsparser")
-        add("bitsparser", ["bitsparser", "-i", str(evidence),
-                           "-o", str(d / f"{_stem(evidence)}.json")],
-            f"BITS job queue ({evidence.name})", 600)
+        work = d / f"{_stem(evidence)}-workdir"
+        try:
+            _copy_ese_siblings(evidence.parent, work, ("QMGR", "EDB"))
+            _esentutl_repair(work, db_name=evidence.name, log_bases=("edb", "qmgr"))
+            staged = work / evidence.name
+            if staged.is_file():
+                add("bitsparser", ["bitsparser", "-i", str(staged),
+                                   "-o", str(d / f"{_stem(evidence)}.json")],
+                    f"BITS job queue ({evidence.name}, repaired copy)",
+                    timeout_for_bytes(staged.stat().st_size))
+            else:
+                jobs.append(ToolJob(
+                    host="windows", tool="bitsparser", argv=[], status="SKIP",
+                    purpose=f"BITS job queue ({evidence.name})",
+                    reason=f"staged {evidence.name} missing after copy",
+                ))
+        except OSError as exc:
+            jobs.append(ToolJob(
+                host="windows", tool="bitsparser", argv=[], status="SKIP",
+                purpose=f"BITS job queue ({evidence.name})",
+                reason=f"could not stage {evidence.name}: {exc}",
+            ))
     elif _artifact_class(evidence) == "logfile":
         # No CLI parser. `LogFileParser64.exe` is a GUI application - it takes no
         # arguments and returns immediately with "Error missing input $LogFile in
@@ -631,17 +652,27 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
             f"Device install log ({evidence.name})", 300)
     elif _staged_support_dir(evidence):
         # No parser for these classes: BITS queue ESE companions, Defender
-        # support logs (MPLog/MPDetection/robocopy), WPP trace binaries. Both
-        # encodings because they are binary-ish containers - ASCII carries
-        # URLs/paths, UTF-16 carries job display names and service strings.
-        # The alternative was what happened on CASE-BC13CCC9: the files were
-        # never planned at all and the run still said complete.
+        # support logs (MPLog/MPDetection/robocopy), WPP trace binaries. The
+        # alternative was what happened on CASE-BC13CCC9: the files were never
+        # planned at all and the run still said complete.
+        #
+        # Two passes only for binary containers - a `-u` pass over pure ASCII
+        # text extracts nothing, and recording that empty capture as a failure
+        # would be wrong (measured 2026-09-29). Empty files get an honest SKIP.
         kind = _staged_support_dir(evidence)
-        d = out_dir("strings")
-        add("strings", ["strings64", "-nobanner", str(evidence)],
-            f"Staged {kind} artifact strings, ascii ({evidence.name[:40]})", 600)
-        add("strings", ["strings64", "-u", "-nobanner", str(evidence)],
-            f"Staged {kind} artifact strings, utf16 ({evidence.name[:40]})", 600)
+        if evidence.stat().st_size < 8:
+            jobs.append(ToolJob(
+                host="windows", tool="strings", argv=[], status="SKIP",
+                purpose=f"Staged {kind} artifact ({evidence.name[:40]})",
+                reason=f"{evidence.name} is {evidence.stat().st_size} bytes - nothing to extract",
+            ))
+        else:
+            d = out_dir("strings")
+            add("strings", ["strings64", "-nobanner", str(evidence)],
+                f"Staged {kind} strings, ascii ({evidence.name[:40]})", 600)
+            if not _is_mostly_text(evidence):
+                add("strings", ["strings64", "-u", "-nobanner", str(evidence)],
+                    f"Staged {kind} strings, utf16 ({evidence.name[:40]})", 600)
     elif name.startswith("cache0") and name.endswith(".bin"):
         # bmc-tools (ANSSI) reconstructs the bitmap tiles. I first used strings
         # here on the assumption the catalogue had no RDP parser; it ships
@@ -893,6 +924,24 @@ def _staged_support_dir(p: Path) -> str:
     """
     parent = p.parent.name.lower()
     return parent if parent in _STAGED_SUPPORT_DIRS else ""
+
+
+def _is_mostly_text(path: Path, sample: int = 2048) -> bool:
+    """True when the head of the file looks like plain text.
+
+    Drives the staged-support routing: a `strings -u` pass over pure ASCII text
+    yields zero bytes, and the lane's honest output check records that as a
+    failure (measured on robocopy-scans.log: ascii 1403 B, utf16 0 B). Binary
+    containers get both encodings; text gets one.
+    """
+    try:
+        head = path.read_bytes()[:sample]
+    except OSError:
+        return False
+    if not head or b"\x00" in head:
+        return False
+    printable = sum(1 for b in head if 32 <= b < 127 or b in (9, 10, 13))
+    return printable / len(head) >= 0.9
 
 
 def _regripper_plugins_dir() -> Path | None:
