@@ -910,6 +910,18 @@ def _is_history_text(name: str) -> bool:
     return any(n in lowered for n in _HISTORY_TEXT_NAMES)
 
 
+def _read_head(path: Path, n: int) -> bytes:
+    """First ``n`` bytes of a file — never the whole file.
+
+    Evidence can be a 20 GiB disk image; reading it into memory just to inspect
+    its head is a memory bomb. Exposed live 2026-09-29 (G7): the planner sat at
+    25 GB RSS and ~95% CPU while sniffing `dmz-www-disk.img` with
+    ``read_bytes()[:limit]``.
+    """
+    with open(path, "rb") as fh:
+        return fh.read(n)
+
+
 def _decode_head(path: Path, limit: int = 4096) -> str:
     """First bytes of a file as text, handling the UTF-16LE BOM Windows uses.
 
@@ -918,7 +930,7 @@ def _decode_head(path: Path, limit: int = 4096) -> str:
     a NUL. Decoding first is what makes the artefact recognisable at all.
     """
     try:
-        raw = Path(path).read_bytes()[:limit]
+        raw = _read_head(Path(path), limit)
     except OSError:
         return ""
     if raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
@@ -996,7 +1008,7 @@ def _is_all_zero(path: Path, sample: int = 65536) -> bool:
     twin parsed in under a second). Gate it at plan time with an honest SKIP.
     """
     try:
-        head = path.read_bytes()[:sample]
+        head = _read_head(path, sample)
     except OSError:
         return False
     return bool(head) and not any(head)
@@ -1011,7 +1023,7 @@ def _has_utf16_text(path: Path, sample: int = 65536) -> bool:
     (measured 2026-09-29 on robocopy-scans.log and qmgr.jfm).
     """
     try:
-        head = path.read_bytes()[:sample]
+        head = _read_head(path, sample)
     except OSError:
         return False
     pairs = 0
@@ -1033,7 +1045,7 @@ def _is_mostly_text(path: Path, sample: int = 2048) -> bool:
     containers get both encodings; text gets one.
     """
     try:
-        head = path.read_bytes()[:sample]
+        head = _read_head(path, sample)
     except OSError:
         return False
     if not head or b"\x00" in head:
