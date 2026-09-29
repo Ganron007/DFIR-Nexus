@@ -116,6 +116,23 @@ def test_env_only_root_is_not_critical(monkeypatch):
     assert all(not j.critical for j in jobs)
 
 
+def test_declared_sift_marks_sift_root_network_jobs_too(monkeypatch):
+    """Scoping rule: refusal covers every SIFT-pointed job (incl. network),
+    and only SIFT-host jobs - Windows jobs on the same case stay untouched."""
+    monkeypatch.setenv("NEXUS_SIFT_ZEEK", "1")
+    monkeypatch.delenv("NEXUS_SIFT_OS", raising=False)
+    jobs = sift_jobs_for_lane(
+        "/evidence/608",
+        has_sift_mcp=True,
+        declared=True,
+        network_inputs={"pcap": ["/evidence/608/cap.pcap"]},
+    )
+    zeek = [j for j in jobs if j.tool == "zeek" and j.status == "PENDING"]
+    assert zeek, "the SIFT-root capture must get a real Zeek job"
+    assert all(j.critical for j in zeek)
+    assert all(j.host == "sift" for j in jobs if j.critical)
+
+
 def test_unavailable_outcome_is_fail_for_declared_evidence():
     declared = ToolJob(
         host="sift",

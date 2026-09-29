@@ -2414,13 +2414,6 @@ def sift_jobs_for_lane(
         sift_os=sift_os,
         disk_image=disk_image,
     )
-    if declared:
-        # These jobs are the processing path for evidence the case explicitly
-        # hosts on SIFT: when SIFT cannot run them, that is unprocessed
-        # evidence, and the gate must say so.
-        for job in jobs:
-            if job.status == "PENDING":
-                job.critical = True
     # EH-14b: Zeek/Suricata/nfdump for captures visible under the SIFT root.
     # Captures registered on Windows are planned with an honest SKIP row —
     # the local flow projection (execute_tool_lane) still guarantees sessions.
@@ -2433,6 +2426,18 @@ def sift_jobs_for_lane(
             root,
             has_sift_mcp=has_sift_mcp,
         ))
+    if declared:
+        # Scoping rule (operator 2026-09-29): when SIFT is down, ONLY evidence
+        # pointed at SIFT is refused - Windows artifacts on the same case keep
+        # processing normally. Every PENDING SIFT-host job in this list (vol /
+        # TSK / plaso and the SIFT-root network jobs appended above) is the
+        # processing path for evidence the case explicitly hosts on SIFT; when
+        # SIFT cannot run them, that is unprocessed evidence -> FAIL, and the
+        # gate blocks. `declared` comes from case context only, so a stale
+        # environment root can never trigger a refusal.
+        for job in jobs:
+            if job.status == "PENDING" and job.host == "sift":
+                job.critical = True
     return jobs
 
 
