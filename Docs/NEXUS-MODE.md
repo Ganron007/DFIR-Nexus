@@ -715,9 +715,20 @@ The LLM does not grep raw disks. It does not treat RAG snippets as evidence.
 ## Tools vs design (do not skip the lane)
 
 `tools` is the mandatory parser pass for **present** artifacts. FAIL = the
-parser ran and lost (timeout/error). SKIP = artifact absent, or SIFT was never
+parser ran and lost (timeout/error), or declared SIFT-hosted evidence could not
+run because the SIFT host/MCP was unreachable (ES-down semantics: the analysis
+is refused, never silently skipped). SKIP = artifact absent, or SIFT was never
 configured (Windows-only MCP does not fake a SIFT SKIP). The LLM does not
 choose this set.
+
+After the ledger, N2 writes the **evidence gate** (`analysis/lane_gate.json`):
+any unprocessed (`FAIL`) artifact blocks the analysis stages — Mode 1
+full-run/chat, Mode 2 plan/run, Mode 3 run and the interpret/coverage/design
+pipeline answer **409** until the item is re-run or an examiner records a
+password-verified, audited skip (`nexus lane skip`, the same HMAC
+challenge-response as approvals). The gate is visible in
+`GET /portal/api/summary` and `/pipeline/status` (`lane_gate`, `n_stages`), in
+`nexus lane status`, and on the cockpit banner.
 
 `design` (agentic) runs **the same lane first**. ReAct may then add extras
 (carve, extra Volatility plugins). Agentic must not paper over a FAIL by

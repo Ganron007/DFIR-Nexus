@@ -1625,12 +1625,18 @@ in progress, the case is sealed, or the case's stored investigation mode is not
 
 ### GET /portal/api/mode3/run/status
 **Description:** Run state (`run_id` optional → latest): `status`, `stop_reason`,
-`question`, `superstep`, `board`/`disputes`/`candidates` counts, `gaps`.
+`question`, `superstep`, `board`/`disputes`/`candidates` counts, `gaps`, plus
+liveness: `agents_running`, `agents_active[]` (`agent_id`, `role`, `family`,
+`superstep`, `why`, `started_at`), `roles[]`, `skills_used`, `events`, `error`
+(failed runs carry the reason here as well as in `stop_reason`).
 
 ### GET /portal/api/mode3/run/board
 **Description:** The board: entries (`agent_id`, `role`, `family`, `superstep`,
 claims with `audit_ids`, open questions), disputes (entity/kind/seats) and
-settled candidates.
+settled candidates — plus the liveness blocks: `active[]` (seats started but
+not yet reported), `timeline[]` (ordered interaction log: `ts`, `event`,
+`actor`, `agent_id`, `detail`, `tool`, `audit_id`) and `skills_used[]`
+(`skill`, `version`, `role`).
 
 ### GET /portal/api/mode3/run/events
 **Description:** SSE tail of the run stream (`event: agent` frames + ping +
@@ -1842,6 +1848,20 @@ run on the CSV pack.
 
 ---
 
+### GET /portal/api/summary
+**Description:** Case counters (`findings` totals by status, `timeline`,
+`evidence`, `todos`) plus the gate/stage payloads `lane_gate` and `n_stages`
+(same shapes as `/pipeline/status` below).
+
+### POST /portal/api/lane/skip
+**Description:** Examiner-audited skip for unprocessed evidence. The gate is
+**blocked** while any artifact is unprocessed; this endpoint records who
+skipped what and why, then clears the block for those items. Same
+password/HMAC challenge-response as finding approval (`GET
+/portal/api/commit/challenge` first). **Request:** `{"challenge_id",
+"response", "reason"}` — reason mandatory. Recorded in
+`analysis/lane_gate.json` and the case audit log.
+
 ### GET /portal/api/pipeline/status
 **Description:** Poll the status of a pipeline run. State is held in memory and written through to `<case>/analysis/pipeline_runs/<run_id>.json`, so it survives page reload and server restart. Reconciliation only trusts a run manifest created **at/after the record's start time** — a previous run for the same mode can never mark a live run complete.
 
@@ -1862,11 +1882,17 @@ run on the CSV pack.
     {"ts": "...", "stage": "ensure_rag", "status": "done", "detail": "RAG embedder ready (…, 22268 records)"},
     {"ts": "...", "stage": "interpret", "status": "running", "detail": ""}
   ],
-  "progress": {"done": 3, "total": 4, "current": "evtxecmd"}
+  "progress": {"done": 3, "total": 4, "current": "evtxecmd"},
+  "lane_gate": {"status": "clear", "run_id": "RUN-...", "blocked_count": 0, "unprocessed": [], "examiner_skips": []},
+  "n_stages": [{"stage": "N1", "status": "done", "detail": "19 evidence item(s)"}]
 }
 ```
 - `stages`: per-node pipeline events (`stage`/`status`/`detail`/`ts`) written by `run_pipeline`, merged with tool-lane entries (`tool`/`host`/`status`) while the lane runs — dedupe-safe across polls.
 - `progress`: tool-lane counters from `_tool_lane_progress.json` while running.
+- `lane_gate`: evidence-gate state (`blocked` | `clear`) with the unprocessed
+  artifacts (`tool`/`purpose`/`reason`), audited `examiner_skips`, and the lane
+  `run_id`. `blocked` means every analysis stage answers `409`.
+- `n_stages`: N1–N8 stage states (`stage`/`status`/`detail`).
 
 **Response 404:** `{"error": "run_id not found"}`
 

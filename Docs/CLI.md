@@ -93,6 +93,18 @@ nexus evidence lock                       # Make evidence files read-only
 nexus evidence unlock                     # Restore write permissions
 ```
 
+## Evidence gate (N2)
+
+The tools lane must process every registered artifact before analysis starts.
+If anything is unprocessed the gate is **blocked** and every analysis entry
+point refuses until the lane is re-run or the examiner records an audited
+skip.
+
+```bash
+nexus lane status                         # Gate + N1-N8 stage states (exit 1 when blocked)
+nexus lane skip --reason "accepted parser limitation"   # Password-verified, audited
+```
+
 ## Findings & Approval
 
 ```bash
