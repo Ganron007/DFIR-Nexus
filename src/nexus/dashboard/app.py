@@ -7279,7 +7279,12 @@ async def api_setup_rag(request):
 
             result = in_process_tool(server, "forensic_rag_download")(tag="latest")
             _SETUP_TASKS["rag"] = {
-                "status": "done", "detail": str(result)[:300],
+                "status": (
+                    "skipped"
+                    if isinstance(result, dict) and result.get("status") == "skipped"
+                    else "done"
+                ),
+                "detail": str(result)[:300],
                 "finished_at": datetime.now(UTC).isoformat(),
             }
         except Exception as exc:

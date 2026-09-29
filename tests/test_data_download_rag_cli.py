@@ -15,13 +15,14 @@ from typer.testing import CliRunner
 def test_data_download_rag_cli_calls_the_tool_synchronously(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
 
-    called: dict[str, str] = {}
+    called: dict = {}
     import nexus.app as app_mod
 
     def fake_in_process_tool(server, name):
         def _call(**kwargs):
             called["name"] = name
-            return {"status": "ok", "tag": kwargs.get("tag")}
+            called["kwargs"] = kwargs
+            return {"status": "ok", **kwargs}
 
         return _call
 
@@ -32,4 +33,9 @@ def test_data_download_rag_cli_calls_the_tool_synchronously(tmp_path, monkeypatc
     result = CliRunner().invoke(app, ["data", "download-rag"])
     assert result.exit_code == 0, result.output
     assert called.get("name") == "forensic_rag_download"
+    assert called["kwargs"].get("force") is False
     assert "ok" in result.output
+
+    result = CliRunner().invoke(app, ["data", "download-rag", "--force"])
+    assert result.exit_code == 0, result.output
+    assert called["kwargs"].get("force") is True

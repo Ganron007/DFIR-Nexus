@@ -10,10 +10,17 @@ app = typer.Typer(help="Download RAG index, triage baselines, or fixtures")
 
 
 @app.command("download-rag")
-def download_rag(tag: str = typer.Option("latest", "--tag")) -> None:
-    """Download the AppliedIR RAG index into ~/.nexus/data/rag (no-op if present)."""
+def download_rag(
+    tag: str = typer.Option("latest", "--tag"),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Replace an installed index (the local delta is rebuilt after the swap)",
+    ),
+) -> None:
+    """Download the RAG index into ~/.nexus/data/rag (no-op if present; --force replaces)."""
     dest = Path.home() / ".nexus" / "data" / "rag" / "chroma"
-    if dest.is_dir() and any(dest.iterdir()):
+    if dest.is_dir() and any(dest.iterdir()) and not force:
         typer.echo(f"already present: {dest}")
         return
     from mcp.server.fastmcp import FastMCP
@@ -25,7 +32,7 @@ def download_rag(tag: str = typer.Option("latest", "--tag")) -> None:
     register_tools(server, AuditWriter("nexus"))
     from nexus.app import in_process_tool
 
-    result = in_process_tool(server, "forensic_rag_download")(tag=tag)
+    result = in_process_tool(server, "forensic_rag_download")(tag=tag, force=force)
     typer.echo(result)
 
 

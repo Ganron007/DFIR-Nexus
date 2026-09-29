@@ -980,29 +980,54 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         return result
 
     @server.tool()
-    def forensic_rag_download(tag: str = "latest") -> dict:
-        """Download pre-built RAG index from GitHub releases (~50MB).
+    def forensic_rag_download(tag: str = "latest", force: bool = False) -> dict:
+        """Download the pre-built RAG index from GitHub releases.
 
-        Downloads a ChromaDB bundle with 22K+ records from authoritative IR
-        sources. Much faster than building from scratch. Replaces the on-disk
-        bundle: a local registry delta may be dropped by the swap (the result
-        says so) and can be restored with ``forensic_rag_rebuild()``; the
-        loaded index is reset so the next call serves the new bundle.
+        **Non-destructive by default.** If an index is already installed this
+        returns ``skipped`` without touching it or reaching the network; an
+        existing index can only be replaced with ``force=True`` (CLI:
+        ``nexus data download-rag --force``). A forced swap rebuilds the local
+        registry delta from ``sources/local`` afterwards, so a vendor update
+        can never silently drop our 1,832-doc delta again (2026-09-28: a
+        download overlay replaced the Chroma store and lost
+        ``ir_knowledge_extra``).
 
         Args:
-            tag: Release tag (default: 'latest', or specific tag like 'rag-index-v1')
+            tag: Release tag (default: 'latest', or a specific tag).
+            force: Replace an installed index.
         """
         available, msg = _check_rag_available()
         if not available:
             return {"status": "failed", "error": msg}
 
+        dest = _get_index_dir()
+        installed = (dest / "chroma").is_dir() or (dest / "metadata.json").is_file()
+        if installed and not force:
+            existing: dict[str, Any] = {}
+            with contextlib.suppress(Exception):
+                existing = delta_stats(dest)
+            audit.log(
+                tool="forensic_rag_download",
+                params={"tag": tag, "force": False},
+                result_summary={"status": "skipped", "reason": "index present"},
+            )
+            return {
+                "status": "skipped",
+                "reason": "a RAG index is already installed",
+                "index_dir": str(dest),
+                "delta": existing,
+                "hint": (
+                    "force=True replaces the vendor bundle; the local registry "
+                    "delta is rebuilt automatically after a forced swap"
+                ),
+            }
+
         audit.log(
             tool="forensic_rag_download",
-            params={"tag": tag},
+            params={"tag": tag, "force": force},
             result_summary={"status": "downloading"},
         )
 
-        dest = _get_index_dir()
         dest.mkdir(parents=True, exist_ok=True)
         delta_before = delta_stats(dest)
 
@@ -1049,23 +1074,38 @@ def register_tools(server: FastMCP, audit: AuditWriter):
                 return {"status": "failed", "error": "Index verification failed"}
 
             print("RAG index installed successfully.")
-            # The bundle replaced the on-disk index: any local delta may have
-            # been dropped by the swap, and a loaded RAGIndex still points at
-            # the pre-download collection handles. Reset the singleton so the
-            # next call reloads from disk, and report delta state honestly.
+            # The bundle replaced the on-disk index. Rebuild the local registry
+            # delta immediately (from sources/local) so a vendor update never
+            # drops ir_knowledge_extra, then reset the singleton so the next
+            # call serves the new store, and report both honestly.
             global _global_index
             _global_index = None
-            delta_after = delta_stats(dest)
+            rebuild_result: dict[str, Any] = {}
+            if _local_sources_dir(dest).exists():
+                with _REBUILD_LOCK, contextlib.suppress(Exception):
+                    rebuild_result = rebuild_local_index(
+                        dest,
+                        data_dir=None,
+                        collection=DELTA_COLLECTION,
+                        prune=True,
+                    )
             idx = _get_index()
             stats = idx.get_stats()
             result = {"status": "success", "tag": tag_name, **stats}
-            result["delta"] = delta_after
-            if int(delta_before.get("count") or 0) > 0 and int(delta_after.get("count") or 0) == 0:
+            result["delta_before"] = delta_before
+            result["delta"] = delta_stats(dest)
+            if rebuild_result:
+                result["delta_rebuilt"] = {
+                    "status": rebuild_result.get("status"),
+                    "documents": rebuild_result.get("documents"),
+                    "sources": rebuild_result.get("sources"),
+                }
+            if int(delta_before.get("count") or 0) > 0 and int(result["delta"].get("count") or 0) == 0:
                 result["delta_note"] = (
-                    "the local RAG delta was replaced by the downloaded bundle; "
-                    "re-run forensic_rag_rebuild() to restore it"
+                    "the downloaded bundle replaced the on-disk index and the "
+                    "automatic delta rebuild did not restore it; "
+                    "re-run forensic_rag_rebuild()"
                 )
-                result["delta_before"] = delta_before
             return result
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
