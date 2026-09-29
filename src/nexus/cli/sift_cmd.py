@@ -154,7 +154,7 @@ def setup(
             return 1, str(exc)
         return p.returncode, (p.stdout or "") + (p.stderr or "")
 
-    typer.echo(f"SIFT setup — {user}@{host}")
+    typer.echo(f"SIFT setup - {user}@{host}")
     rc, out = _ssh("hostname; uname -r")
     if rc != 0:
         typer.echo(f"  SSH: FAILED — {out.strip()[:200]}", err=True)
