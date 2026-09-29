@@ -225,3 +225,35 @@ def test_disk_offset_reaches_fls(monkeypatch):
     assert "2048" in fls.purpose
     mmls = next(j for j in jobs if j.tool == "mmls")
     assert mmls.argv == ["mmls", "/evidence/608/disk.img"]
+
+
+def test_vol_jobs_use_the_json_renderer(monkeypatch):
+    """vol.yaml maps the JSON renderer; text captures are scratch."""
+    monkeypatch.delenv("NEXUS_SIFT_OS", raising=False)
+    jobs = plan_sift_triage("/evidence/608", sift_os="linux")
+    vol_jobs = [j for j in jobs if j.tool == "vol"]
+    assert vol_jobs
+    for j in vol_jobs:
+        assert "-r" in j.argv
+        assert j.argv[j.argv.index("-r") + 1] == "json"
+
+
+def test_promote_sift_pull_names_outputs_for_the_index(tmp_path):
+    from pathlib import Path as _P
+
+    from nexus.langgraph.tool_lane import _promote_sift_pull
+
+    vol = tmp_path / "vol"
+    vol.mkdir()
+    (vol / "1_vol_stdout.txt").write_text('[{"PID": 1}]', encoding="utf-8")
+    fls = tmp_path / "fls"
+    fls.mkdir()
+    (fls / "2_fls_stdout.txt").write_text("d/d 5:\tUsers\n", encoding="utf-8")
+    (fls / "3_fls_stdout.txt").write_text("", encoding="utf-8")
+
+    promoted = _promote_sift_pull(tmp_path)
+    names = {_P(p).name for p in promoted}
+
+    assert "1_vol_out.json" in names
+    assert "2_fls_out.csv" in names
+    assert not any("3_fls" in n for n in names)

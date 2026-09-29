@@ -2314,7 +2314,7 @@ def plan_sift_triage(
         jobs.append(ToolJob(
             host="sift",
             tool="vol",
-            argv=["vol", "-f", mem, plugin],
+            argv=["vol", "-f", mem, "-r", "json", plugin],
             purpose=f"Volatility3 {plugin}",
             timeout=timeout,
         ))
@@ -2961,7 +2961,10 @@ async def run_tool_lane(
             pipeline_run.path / "sift" / "extractions",
         )
         if pulled:
+            promoted = _promote_sift_pull(Path(pulled))
             summary = f"{summary}; sift_pull={pulled}"
+            if promoted:
+                summary = f"{summary} promoted={len(promoted)}"
     except Exception as exc:  # noqa: BLE001
         log.warning("SIFT pull failed: %s", exc)
         summary = f"{summary}; sift_pull_error={exc}"
@@ -3366,6 +3369,46 @@ def _sift_result_has_output(result: dict) -> bool:
     if result.get("output_files"):
         return True
     return bool(str(result.get("stdout") or result.get("message") or "").strip())
+
+
+def _promote_sift_pull(sift_dir: Path) -> list[str]:
+    """Give pulled SIFT stdout captures indexable names.
+
+    The SIFT side saves every tool capture as ``<ts>_<tool>_stdout.txt`` and
+    the indexer skips ``*_stdout.txt`` as scratch — pulled SIFT outputs
+    therefore reached the case but never the index (0 docs, G7 2026-09-29).
+    Copy each non-empty capture to a sibling with a content-appropriate
+    extension (``.json`` for JSON payloads, ``.csv`` when the head looks
+    columnar, else ``.txt``). Copies, not moves: the capture stays as the
+    audit trail.
+    """
+    promoted: list[str] = []
+    root = Path(sift_dir)
+    if not root.is_dir():
+        return promoted
+    for cap in sorted(root.rglob("*_stdout.txt")):
+        try:
+            if cap.stat().st_size <= 0:
+                continue
+            with open(cap, "rb") as fh:
+                head = fh.read(4096)
+        except OSError:
+            continue
+        text = head.lstrip(b"\xef\xbb\xbf").lstrip()
+        if text[:1] in (b"{", b"["):
+            ext = ".json"
+        elif b"\t" in head[:2048] or (head.count(b",") > 20 and b"\n" in head[:2048]):
+            ext = ".csv"
+        else:
+            ext = ".txt"
+        stem = cap.name[: -len("_stdout.txt")]
+        dest = cap.with_name(stem + "_out" + ext)
+        try:
+            shutil.copy2(cap, dest)
+            promoted.append(str(dest))
+        except OSError:
+            continue
+    return promoted
 
 
 def _empty_output_status(job: ToolJob) -> tuple[str, str]:
