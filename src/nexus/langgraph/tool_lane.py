@@ -1019,8 +1019,10 @@ def is_host_evidence(path: str | Path) -> bool:
             or _is_wmi_repository(name)
             # Staged support artifacts (BITS ESE companions, Defender support
             # logs, WPP traces) have no parser, but they are evidence the lane
-            # must read rather than drop: see `_staged_support_dir`.
-            or _staged_support_dir(p)
+            # must read rather than drop: see `_staged_support_dir`. Wrapped in
+            # bool() so the `or` chain returns a real False, not "" - callers
+            # and tests assert `is False` for unroutable paths.
+            or bool(_staged_support_dir(p))
         )
     if p.is_dir():
         if _looks_like_browser_profile(p):
