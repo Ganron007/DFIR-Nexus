@@ -687,7 +687,39 @@ export interface Mode3RunStatus {
   disputes?: number;
   candidates?: number;
   gaps?: string[];
+  /** How many agents are working right now (0 once the run settles). */
+  agents_running?: number;
+  agents_active?: Mode3ActiveSeat[];
+  roles?: string[];
+  skills_used?: number;
+  events?: number;
   error?: string;
+}
+
+export interface Mode3ActiveSeat {
+  agent_id: string;
+  role: string;
+  family?: string;
+  superstep?: number;
+  why?: string;
+  started_at?: string;
+}
+
+export interface Mode3TimelineRow {
+  ts: string;
+  event: string;
+  actor?: string;
+  agent_id?: string;
+  detail?: string;
+  tool?: string;
+  audit_id?: string;
+  data?: Record<string, unknown>;
+}
+
+export interface Mode3SkillRef {
+  skill: string;
+  version?: string;
+  role?: string;
 }
 
 export interface Mode3BoardResponse {
@@ -695,6 +727,12 @@ export interface Mode3BoardResponse {
   board?: Mode3BoardEntry[];
   disputes?: Mode3Dispute[];
   candidates?: Mode3Candidate[];
+  /** Seats started but not yet reported - the agents running right now. */
+  active?: Mode3ActiveSeat[];
+  /** Ordered log of how the agents interacted, for the board narrative. */
+  timeline?: Mode3TimelineRow[];
+  /** Which documented procedures this run used, with content versions. */
+  skills_used?: Mode3SkillRef[];
 }
 
 export interface Mode3StageResult {

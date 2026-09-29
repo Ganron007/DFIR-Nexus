@@ -64,6 +64,23 @@ export default function MultiAgentBoard() {
   const [error, setError] = useState("");
   const [steerText, setSteerText] = useState("");
   const [stageResult, setStageResult] = useState<Mode3StageResult | null>(null);
+  // Interaction log, from the board payload; falls back to the SSE stream so the
+  // narrative still builds live before the first poll returns a timeline.
+  const timeline = useMemo(() => {
+    const fromBoard = boardData?.timeline ?? [];
+    if (fromBoard.length) return fromBoard;
+    return events
+      .filter((e) => e.event_type)
+      .map((e) => ({
+        ts: e.ts || "",
+        event: e.event_type,
+        actor: e.actor,
+        agent_id: e.agent_id,
+        detail: e.detail,
+        tool: e.tool,
+        audit_id: e.audit_id,
+      }));
+  }, [boardData?.timeline, events]);
   const streamRef = useRef<HTMLDivElement | null>(null);
 
   const running = !!runId && !TERMINAL.has(status?.status || "");
@@ -354,6 +371,79 @@ export default function MultiAgentBoard() {
       )}
 
       <div className="agent-run-grid">
+        <div className="card">
+          <div className="card-header">
+            <span className="card-title">
+              Agents running{" "}
+              <span
+                data-testid="agents-running"
+                style={{
+                  color: (status?.agents_running ?? 0) > 0 ? "var(--accent)" : "var(--text-muted)",
+                }}
+              >
+                {status?.agents_running ?? 0}
+              </span>
+              {status?.agents_active?.length ? " of " : " · "}
+              {(status?.roles ?? []).join(" / ") || "no seats dispatched yet"}
+            </span>
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+              {status?.skills_used ?? 0} procedure(s) applied
+            </span>
+          </div>
+          {(status?.agents_active ?? []).length === 0 ? (
+            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              {status?.status && TERMINAL.has(String(status.status))
+                ? "No agents in flight — the run has settled."
+                : "No seat has started yet."}
+            </div>
+          ) : (
+            <div className="agent-lanes">
+              {(status?.agents_active ?? []).map((seat) => (
+                <div key={seat.agent_id} className="agent-lane">
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <span className="badge draft">{(seat.role || "seat").toUpperCase()}</span>
+                    {seat.family && <span className="badge">{seat.family}</span>}
+                    <span style={{ fontFamily: "monospace", fontSize: 10, color: "var(--text-muted)" }}>
+                      {seat.agent_id}
+                    </span>
+                    {seat.superstep != null && (
+                      <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                        superstep {seat.superstep}
+                      </span>
+                    )}
+                    <span style={{ fontSize: 11, color: "var(--accent)" }}>working…</span>
+                  </div>
+                  {seat.why && (
+                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                      spawned because: {seat.why}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          {Boolean(timeline.length) && (
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>
+                Interaction log ({timeline.length})
+              </div>
+              <div style={{ maxHeight: 180, overflowY: "auto" }}>
+                {timeline.slice(-40).map((row, i) => (
+                  <div
+                    key={`${row.event}-${row.ts}-${i}`}
+                    style={{ fontSize: 11, fontFamily: "monospace", color: "var(--text-muted)" }}
+                  >
+                    {row.event} {row.actor ? `· ${row.actor}` : ""}
+                    {row.agent_id ? ` › ${row.agent_id}` : ""}
+                    {row.detail ? ` · ${row.detail}` : ""}
+                    {row.tool ? ` · tool=${row.tool}` : ""}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
         <div className="card">
           <div className="card-header">
             <span className="card-title">Board — {board.length} seat entr{board.length === 1 ? "y" : "ies"}</span>

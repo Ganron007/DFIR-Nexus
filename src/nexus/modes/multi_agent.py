@@ -998,6 +998,10 @@ def run_mode3(
         stop_reason = (
             f"model unavailable: {len(_seats)} seat(s) returned no claims"
         )
+        # Set `error` as well as `stop_reason`: a consumer reading only `error`
+        # would otherwise see a failed run with no reason on it. Mode 2 sets both
+        # and the two runtimes should not disagree about what a failure looks like.
+        record["error"] = stop_reason
     elif status == "settled":
         status = "completed"
         stop_reason = "settled"
@@ -1033,6 +1037,9 @@ def run_mode3(
     record.update({
         "status": status,
         "stop_reason": stop_reason,
+        # Named here as well so the record always carries the key: a consumer
+        # reading `error` on a failed Mode 3 run must find the reason, not None.
+        "error": str(record.get("error") or (stop_reason if status == "failed" else "")),
         "board": list(final.get("board") or []),
         "disputes": list(final.get("disputes") or []),
         "superstep": int(final.get("superstep") or 0),
