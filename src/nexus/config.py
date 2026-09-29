@@ -38,6 +38,10 @@ class Settings(BaseModel):
             self.case_dir = Path(v)
         if v := os.environ.get("NEXUS_CASES_ROOT"):
             self.cases_root = Path(v)
+        if v := os.environ.get("NEXUS_DATA_ROOT"):
+            self.data_root = Path(v)
+        if v := os.environ.get("NEXUS_AUDIT_DIR"):
+            self.audit_dir = Path(v)
         if v := os.environ.get("NEXUS_COMMAND_TIMEOUT") or os.environ.get("SIFT_TIMEOUT"):
             self.command_timeout = int(v)
         if v := os.environ.get("NEXUS_TOOL_PATHS") or os.environ.get("SIFT_TOOL_PATHS"):

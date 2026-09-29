@@ -724,6 +724,12 @@ def register_tools(server: FastMCP, audit: AuditWriter):
                 encoding="utf-8", errors="replace",
                 timeout=timeout, shell=False,
                 cwd=run_cwd, env=run_env,
+                # Never inherit the caller's stdin: in an MCP stdio server that
+                # handle is the JSON-RPC protocol pipe, and a tool that reads
+                # (or waits on) stdin sits on the protocol stream forever.
+                # Reproduced 2026-09-30: Zircolite.exe blocked 30 min with 0 CPU
+                # inside a stdio child; DEVNULL returns in ~1 s.
+                stdin=subprocess.DEVNULL,
             )
         except FileNotFoundError:
             elapsed = (time.monotonic() - start) * 1000

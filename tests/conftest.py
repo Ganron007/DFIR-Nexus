@@ -45,6 +45,10 @@ def _isolated_case_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
     active_file = tmp_path / "active_case"
     monkeypatch.setenv("NEXUS_ACTIVE_CASE_FILE", str(active_file))
+    # Child processes (stdio MCP children) read the config loader's names, not
+    # the module-level constants the fixture patches in-process.
+    monkeypatch.setenv("NEXUS_CASE_DIR", str(active_file))
+    monkeypatch.setenv("NEXUS_AUDIT_DIR", str(tmp_path / "audit"))
 
     # Point ES at nothing for the duration of the test.
     #
