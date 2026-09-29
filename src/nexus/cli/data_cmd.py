@@ -23,8 +23,9 @@ def download_rag(tag: str = typer.Option("latest", "--tag")) -> None:
 
     server = FastMCP("tmp")
     register_tools(server, AuditWriter("nexus"))
-    fn = server._tool_manager._tools["forensic_rag_download"].fn
-    result = fn(tag=tag)
+    from nexus.app import in_process_tool
+
+    result = in_process_tool(server, "forensic_rag_download")(tag=tag)
     typer.echo(result)
 
 
