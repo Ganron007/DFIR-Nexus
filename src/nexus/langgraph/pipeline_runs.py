@@ -51,6 +51,44 @@ def _atomic_json(path: Path, value: Any) -> None:
         raise
 
 
+def reap_stale_running_runs(cases_root: Path | None = None) -> list[str]:
+    """Mark lane run records a dead process left 'running' as interrupted.
+
+    Tools/mode runs execute as threads inside the server process, so a server
+    restart or crash kills them with no chance to finalize - the status record
+    stays ``running`` and the portal presents a ghost run forever (found
+    2026-09-29: CASE-4EFD5EB2 still said running ~10 h after its server had
+    exited, and it fed the impression of two cases running at once). Called
+    once at server startup, when no lane thread can be alive by construction.
+    """
+    from nexus.config import settings
+
+    root = Path(cases_root) if cases_root is not None else settings.cases_root
+    reaped: list[str] = []
+    if not root.is_dir():
+        return reaped
+    for case_dir in sorted(root.glob("CASE-*")):
+        runs_dir = case_dir / "analysis" / "pipeline_runs"
+        if not runs_dir.is_dir():
+            continue
+        for rec_path in sorted(runs_dir.glob("*.json")):
+            try:
+                record = json.loads(rec_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if not isinstance(record, dict) or record.get("status") != "running":
+                continue
+            record["status"] = "interrupted"
+            record["stop_reason"] = "server restart before the run finished"
+            record["finished_at"] = datetime.now(UTC).isoformat()
+            try:
+                _atomic_json(rec_path, record)
+            except OSError:
+                continue
+            reaped.append(f"{case_dir.name}/{record.get('run_id') or rec_path.stem}")
+    return reaped
+
+
 def _new_run_id(mode: str) -> str:
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
     return f"RUN-{stamp}-{mode}-{uuid4().hex[:8]}"

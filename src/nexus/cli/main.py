@@ -411,6 +411,8 @@ def serve(
             n = _debug_autoclean_cases()
             typer.echo(f"  DEBUG AUTOCLEAN: removed {n} case folder(s) + case DB + active pointer")
 
+        _reap_stale_runs()
+
         try:
             warnings = check_required_env(host=host, port=port)
             for w in warnings:
@@ -454,8 +456,26 @@ def serve(
             typer.echo(f"  WARNING: HTTP file logging disabled: {exc}", err=True)
         uvicorn.run(starlette_app, host=host, port=port, log_config=log_config)
     else:
+        _reap_stale_runs()
         typer.echo("Starting DFIR-Nexus in stdio mode...", err=True)
         server.run()
+
+
+def _reap_stale_runs() -> None:
+    """A restart kills in-process lanes; never leave a ghost 'running' record.
+
+    Lane runs execute as threads in this process, so at startup every record
+    still marked ``running`` belongs to a dead process and can never finish.
+    Marking them ``interrupted`` keeps the portal honest (defect D48).
+    """
+    try:
+        from nexus.langgraph.pipeline_runs import reap_stale_running_runs
+
+        reaped = reap_stale_running_runs()
+        if reaped:
+            typer.echo(f"  Reaped {len(reaped)} stale 'running' run record(s) -> interrupted")
+    except Exception as exc:  # noqa: BLE001 - startup must never block on this
+        typer.echo(f"  WARNING: stale-run reap skipped: {exc}", err=True)
 
 
 def _debug_autoclean_cases() -> int:
