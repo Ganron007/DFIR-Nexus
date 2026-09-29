@@ -77,6 +77,26 @@ def _isolated_case_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(_auth, "_PASSWORDS_DIR", _pw_dir)
     monkeypatch.setattr(_auth, "_LOCKOUT_FILE", tmp_path / "approval_lockout")
 
+    # WO-5: every module-level constant that captured a real home path at
+    # import time (the session tripwire below is the backstop; these are the
+    # redirects).
+    monkeypatch.setattr(_auth, "VERIFICATION_DIR", tmp_path / "verification")
+    import nexus.transparency as _transparency
+
+    monkeypatch.setattr(_transparency, "TRANSPARENCY_DIR", tmp_path / "transparency")
+    from nexus.case import secrets as _secrets
+
+    monkeypatch.setattr(_secrets, "_PERSISTED_SECRET_PATH", tmp_path / "audit_secret")
+    import nexus.dashboard.app as _dash
+
+    monkeypatch.setattr(_dash, "_LOCKOUT_FILE", tmp_path / ".commit_lockout")
+    monkeypatch.setenv("NEXUS_NEEDLE_OVERLAY", str(tmp_path / "needle_overlay.yaml"))
+    monkeypatch.delenv("NEXUS_HTTP_AUDIT_GLOBAL", raising=False)
+    monkeypatch.setenv("NEXUS_HTTP_LOG_DIR", str(tmp_path / "http_logs"))
+    monkeypatch.setenv("NEXUS_DATA_ROOT", str(tmp_path / "data"))
+    settings.data_root = tmp_path / "data"
+    settings.audit_dir = tmp_path / "audit"
+
     # Module-level constants captured the real path at import time.
     for mod_name, attr in (
         ("nexus.cli.case_cmd", "_ACTIVE_CASE_FILE"),
@@ -94,3 +114,63 @@ def _isolated_case_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     yield
 
     settings.cases_root = original_cases_root
+
+
+# ---------------------------------------------------------------------------
+# WO-5 — credential / path tripwire (the real guard)
+# ---------------------------------------------------------------------------
+
+_TRIPWIRE_ROOTS = (Path.home() / ".nexus",)
+
+
+def _protected_snapshot() -> dict[str, tuple[int, int]]:
+    """``(size, mtime_ns)`` for every protected file. Stat only — no reads."""
+    out: dict[str, tuple[int, int]] = {}
+    targets: list[Path] = []
+    for root in _TRIPWIRE_ROOTS:
+        if root.is_dir():
+            targets.extend(root.rglob("*"))
+    targets.append(Path(__file__).resolve().parent.parent / ".env")
+    targets.append(Path.home() / ".claude" / "settings.json")
+    for path in targets:
+        try:
+            if path.is_file():
+                st = path.stat()
+                out[str(path)] = (st.st_size, st.st_mtime_ns)
+        except OSError:
+            continue
+    return out
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _credential_tripwire():
+    """Fail the session if the run wrote anything under the protected paths.
+
+    D25/D26/D27: tests overwrote the real password store, the real LLM key in
+    ``.env`` and leaked ES indexes. The redirects above are the first layer;
+    this snapshot (stat only, a few thousand stats) is the guard that catches
+    whatever they miss.
+
+    Two notes: any writer counts — a live ``nexus serve`` sharing this machine
+    will trip the wire (stop it before a full run); and
+    ``tests/test_credential_tripwire.py`` is the canary that proves it fires.
+    """
+    before = _protected_snapshot()
+    yield
+    after = _protected_snapshot()
+    lines = (
+        [f"+ created  {p}" for p in sorted(set(after) - set(before))]
+        + [f"- deleted  {p}" for p in sorted(set(before) - set(after))]
+        + [
+            f"~ modified {p}"
+            for p in sorted(set(before) & set(after))
+            if before[p] != after[p]
+        ]
+    )
+    if lines:
+        pytest.fail(
+            "credential/path tripwire: the test run touched protected paths:\n  "
+            + "\n  ".join(lines[:40])
+            + (f"\n  ... {len(lines) - 40} more" if len(lines) > 40 else ""),
+            pytrace=False,
+        )
