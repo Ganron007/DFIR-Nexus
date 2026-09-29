@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { useCase, type EsStatus } from "../context/CaseContext";
+import LaneGateBanner from "./LaneGateBanner";
 
 /**
  * Phase 4e: the sidebar follows the N1-N8 investigation spine only when a
@@ -388,6 +389,9 @@ export default function Layout({ children }: { children: ReactNode }) {
         {activeCase && (
           <StageStepper stages={stages} n5To={mode === "2" || mode === "3" ? "/agent-run" : "/steer"} />
         )}
+        {/* Evidence gate (hard rule, 2026-09-29): a blocked gate must be visible
+            here, not discovered as an unexplained 409 on a mode run. */}
+        <LaneGateBanner />
         <div className="content">{children}</div>
       </main>
     </div>

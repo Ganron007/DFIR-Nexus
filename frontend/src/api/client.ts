@@ -155,12 +155,44 @@ export interface TodosResponse {
   total: number;
 }
 
+/** Evidence-gate state (hard rule, 2026-09-29): while any artifact is
+ *  unprocessed the analysis stages answer 409; the banner surfaces it. */
+export interface LaneGateItem {
+  tool?: string;
+  purpose?: string;
+  reason?: string;
+}
+export interface LaneGateSkip {
+  examiner?: string;
+  tool?: string;
+  purpose?: string;
+  reason?: string;
+  ts?: string;
+}
+export interface LaneGate {
+  status?: "blocked" | "clear" | string;
+  run_id?: string;
+  blocked_count?: number;
+  unprocessed?: LaneGateItem[];
+  examiner_skips?: LaneGateSkip[];
+  ts?: string;
+}
+/** N1-N8 stage state as served by the gate's lane_stages(). */
+export interface NStage {
+  stage: string;
+  status?: string;
+  detail?: string;
+}
+
 /** GET /summary → nested counts */
 export interface SummaryResponse {
   findings: { total: number; draft: number; approved: number; rejected: number };
   timeline: number;
   evidence: number;
   todos: { total: number; open: number };
+  /** Evidence gate + N1-N8 stages (present when a case is active). */
+  lane_gate?: LaneGate;
+  n_stages?: NStage[];
 }
 
 /** GET /transparency → transparency_verify result */
