@@ -862,6 +862,7 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
     )
     # Phase 4h: every registered path is planned by the lane; paths the Windows
     # tool lane cannot parse (PCAP/Zeek/Suricata/cloud/syslog) go to importers.
+    from nexus.ingest.detect import is_raw_container
     from nexus.langgraph.tool_lane import is_host_evidence
 
     all_paths = [
@@ -872,6 +873,7 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
     # every non-host file. Bounded so a disk image tree cannot flood ingest.
     _MAX_IMPORTED_FILES = 200
     ingest_paths: list[str] = []
+    raw_skipped: list[str] = []
     for p in all_paths:
         p_path = Path(p)
         if p_path.is_dir():
@@ -883,14 +885,24 @@ async def execute_tool_lane(state: InvestigationState, tools: dict) -> dict:
                         if len(ingest_paths) >= _MAX_IMPORTED_FILES:
                             break
                         fp = str(Path(root_dir) / fname)
+                        if is_raw_container(Path(fp)):
+                            raw_skipped.append(fname)
+                            continue
                         if not is_host_evidence(fp):
                             ingest_paths.append(fp)
                     if len(ingest_paths) >= _MAX_IMPORTED_FILES:
                         break
             except OSError:
                 continue
+        elif is_raw_container(p_path):
+            raw_skipped.append(p_path.name)
         elif not is_host_evidence(p):
             ingest_paths.append(p)
+    if raw_skipped:
+        steps.append(
+            "I1 skipped raw container(s) (SIFT/imager lane, not importers): "
+            + ", ".join(sorted(set(raw_skipped))[:6])
+        )
     if ingest_paths:
         import asyncio as _asyncio
         import threading as _threading

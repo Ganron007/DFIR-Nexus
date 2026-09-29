@@ -21,6 +21,34 @@ log = logging.getLogger(__name__)
 _SNIFF_BYTES = 8192
 
 
+#: Raw disk/memory containers: the SIFT (or imaging) lane's job, never the
+#: importer lane's (D51).
+_RAW_CONTAINER_SUFFIXES = {
+    ".img", ".dd", ".raw", ".vmdk", ".vhd", ".vhdx", ".qcow2",
+    ".e01", ".ex01", ".mem", ".dmp", ".lime", ".avml", ".s01",
+}
+_RAW_CONTAINER_MAGICS = (
+    b"KDMV", b"QFI\xfb", b"conectix", b"vhdx", b"LIME", b"EMiL",
+    b"MDMP", b"PAGEDU64", b"PAGEDUMP",
+)
+
+
+def is_raw_container(path: Path) -> bool:
+    """True for raw disk/memory containers (suffix or bounded magic sniff).
+
+    `detect_format` on the G7 dmz-www image (20 GiB) burned CPU for minutes
+    with no output; the importer lane must refuse these up front.
+    """
+    if path.suffix.lower() in _RAW_CONTAINER_SUFFIXES:
+        return True
+    try:
+        with open(path, "rb") as fh:
+            head = fh.read(16)
+    except OSError:
+        return False
+    return any(head.startswith(m) for m in _RAW_CONTAINER_MAGICS)
+
+
 def detect_format(path: Path) -> ArtifactSource | None:
     """Sniff a file and return the best-matching ArtifactSource.
 
@@ -32,6 +60,13 @@ def detect_format(path: Path) -> ArtifactSource | None:
     Returns None if no importer can handle the file.
     """
     if not path.is_file():
+        return None
+
+    if is_raw_container(path):
+        # Raw disk/memory images belong to the SIFT (or imaging) lane, never to
+        # the importer lane: D51 - `detect_format` on the G7 20 GiB disk image
+        # burned CPU for minutes with no output before the pipeline was
+        # stopped. Say "no importer" instead of chewing the image.
         return None
 
     name_lower = path.name.lower()
