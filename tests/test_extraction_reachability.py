@@ -62,7 +62,7 @@ def _job(**extra) -> ToolJob:
 def test_the_wmi_repository_files_are_recognised(tmp_path):
     for name in WMI:
         f = tmp_path / name
-        f.write_bytes(b"\x00" * 32)
+        f.write_bytes(b"\x0b\xad" * 16)
         assert is_host_evidence(f) is True, name
 
 
@@ -81,7 +81,7 @@ def test_the_wmi_repository_is_staged_in_both_encodings(tmp_path):
     rows. Both jobs cost one extra pass and remove the guess.
     """
     f = tmp_path / "OBJECTS.DATA"
-    f.write_bytes(b"\x00" * 32)
+    f.write_bytes(b"\x0b\xad" * 16)
     jobs = _plan_single_artifact(f, tmp_path / "ex")
     tools = [j.tool for j in jobs]
     assert tools == ["strings", "strings"], tools

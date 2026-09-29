@@ -30,6 +30,16 @@ tools:
     description: "Parse BITS job queues from qmgr.db / qmgr0.dat"
     fk_tool_name: BitsParser
 
+  - name: logfileparser
+    binary: LogFileParser64.exe
+    input_style: switch
+    input_flag: "/LogFileFile:"
+    output_format: csv
+    timeout_seconds: 3600
+    interactive: false
+    description: "Parse NTFS $LogFile transaction records (LogFileParser)"
+    fk_tool_name: LogFileParser
+
   - name: kstrike
     binary: KStrike.py
     input_style: positional

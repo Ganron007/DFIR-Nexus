@@ -238,7 +238,7 @@ def test_an_unrecognised_binary_is_not_claimed_as_host_evidence(tmp_path):
     from nexus.langgraph.tool_lane import _plan_single_artifact, is_host_evidence
 
     f = tmp_path / "mystery.bin"
-    f.write_bytes(b"\x00" * 64)
+    f.write_bytes(b"mystery-bytes" * 6)
     assert is_host_evidence(f) is False
     assert _plan_single_artifact(f, tmp_path / "extractions") == []
 

@@ -418,6 +418,20 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
         d.mkdir(parents=True, exist_ok=True)
         return d
 
+    if evidence.is_file() and _is_all_zero(evidence):
+        # No evidence content exists; never hand it to a parser. MFTECmd loops
+        # forever on an all-zero $I30 and rbcmd/recmd write empty shells whose
+        # OK rows imply a parse happened. One honest row says what is true.
+        jobs.append(ToolJob(
+            host="windows", tool="(empty)", argv=[], status="SKIP",
+            purpose="empty artifact",
+            reason=(
+                f"{evidence.name} is {evidence.stat().st_size} bytes of zeros "
+                f"- nothing to parse"
+            ),
+        ))
+        return jobs
+
     if evidence.is_dir():
         if _looks_like_browser_profile(evidence):
             # Hindsight takes a profile directory (`-i <dir> -o <name>`, verified
@@ -560,29 +574,29 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
                 reason=f"could not stage {evidence.name}: {exc}",
             ))
     elif _artifact_class(evidence) == "logfile":
-        # No CLI parser. `LogFileParser64.exe` is a GUI application - it takes no
-        # arguments and returns immediately with "Error missing input $LogFile in
-        # /LogFileFile:", so a headless job can never succeed. Routing to it
-        # produced a guaranteed FAIL with no explanation. Reported as an honest
-        # SKIP naming the gap instead, because $LogFile is real evidence and its
-        # absence from the analysis should be visible rather than silent.
-        jobs.append(ToolJob(
-            host="windows", tool="logfileparser", argv=[], status="SKIP",
-            purpose=f"NTFS $LogFile ({evidence.name})",
-            reason=(
-                "$LogFile needs examiner action - no working command-line parser "
-                "here. MFTECmd 2026.5.0 does NOT accept it (`-f` lists only "
-                "$MFT|$J|$Boot|$SDS|$I30; a run on the real file exits 0 with no "
-                "output), and LogFileParser64 is GUI-only. TO PARSE IT: run "
-                "LogFileParser64.exe (Tools/windows/extra/logfileparser/) or a "
-                "CLI equivalent, export CSV/JSONL, then feed it back with "
-                "`nexus ingest <exported file> --case <case_id>` so it reaches "
-                "the index - or on SIFT run log2timeline with NEXUS_SIFT_PLASO=1. "
-                "$LogFile is NOT parsed as it stands: do not read its absence "
-                "from the timeline as absence of journal evidence."
-            ),
-        ))
-        return jobs
+        # LogFileParser (jschicht) DOES run headless. Its readme documents the
+        # CLI switches, and the validated W1 run used them: /LogFileFile: +
+        # /OutputPath: -> rc=0, 430 s, LogFile_<ts>/LogFile.csv (139,496 rows)
+        # plus 32 sibling outputs. Running it with NO arguments launches the
+        # GUI - that is what the earlier "GUI-only" conclusion mistook, and it
+        # is why this evidence was skipped when a working tool sat in the tree.
+        if not _windows_tool_available("logfileparser"):
+            jobs.append(ToolJob(
+                host="windows", tool="logfileparser", argv=[], status="SKIP",
+                purpose=f"NTFS $LogFile ({evidence.name})",
+                reason=("logfileparser not installed - run "
+                        "tools/fetch-windows-tools.ps1 then nexus doctor"),
+            ))
+        else:
+            d = out_dir("logfileparser")
+            add("logfileparser",
+                ["logfileparser",
+                 f"/LogFileFile:{evidence}",
+                 f"/OutputPath:{d}"],
+                f"NTFS $LogFile ({evidence.name})",
+                timeout_for_bytes(evidence.stat().st_size, base=600, per_mb=30,
+                                  cap=3600),
+                optional_output=True)
     elif _artifact_class(evidence) == "ntfs_meta":
         d = out_dir("mftecmd")
         # Timeout scales with size but starts short: one specific 4 KB $I30
@@ -959,6 +973,21 @@ def _staged_support_dir(p: Path) -> str:
     """
     parent = p.parent.name.lower()
     return parent if parent in _STAGED_SUPPORT_DIRS else ""
+
+
+def _is_all_zero(path: Path, sample: int = 65536) -> bool:
+    """True when the head of the file is entirely zero bytes.
+
+    An all-zero artifact holds no evidence, and running a parser on it is what
+    sent MFTECmd 2026.5.0 into an infinite loop on a 4,096-byte $I30
+    (CASE-4EFD5EB2, 2026-09-29 - verified 0 non-zero bytes; its 21.9%-non-zero
+    twin parsed in under a second). Gate it at plan time with an honest SKIP.
+    """
+    try:
+        head = path.read_bytes()[:sample]
+    except OSError:
+        return False
+    return bool(head) and not any(head)
 
 
 def _has_utf16_text(path: Path, sample: int = 65536) -> bool:
@@ -3053,6 +3082,13 @@ def _output_dirs_of(job: ToolJob) -> list[Path]:
     for i, arg in enumerate(argv):
         if (_flag(arg) in _OUTPUT_FLAGS or _flag(arg) == "-d") and i + 1 < len(argv):
             out.append(Path(argv[i + 1]))
+        elif re.match(r"^/[A-Za-z]+:(.+)$", arg):
+            # Windows-style switch paths, e.g. LogFileParser's
+            # `/OutputPath:<dir>`. The tool writes a timestamped subdirectory
+            # there, which the before/after diff must see.
+            cand = Path(arg.split(":", 1)[1])
+            if cand.is_dir():
+                out.append(cand)
     return out
 
 

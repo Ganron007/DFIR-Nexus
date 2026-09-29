@@ -126,8 +126,8 @@ def test_bitsparser_stages_a_repaired_copy_for_a_single_database(tmp_path, monke
 def test_ese_reserve_and_checkpoint_are_skip_not_fail(tmp_path):
     d = tmp_path / "bits"
     d.mkdir()
-    jrs = _make(d, "edbres00001.jrs", b"\x00" * 64)
-    chk = _make(d, "edb.chk", b"\x00" * 64)
+    jrs = _make(d, "edbres00001.jrs", b"\x01" + b"\x00" * 63)
+    chk = _make(d, "edb.chk", b"\x01" + b"\x00" * 63)
     for f in (jrs, chk):
         assert is_host_evidence(f) is True
         jobs = _plan_single_artifact(f, tmp_path / "extractions")
@@ -162,7 +162,7 @@ def test_rdp_cache_bin_is_recognised(tmp_path):
     """bmc-tools reconstructs the bitmap tiles. I first routed this to strings
     believing the catalogue had no RDP parser; it ships bmc-tools, so the cache
     was being keyword-searched instead of reconstructed."""
-    f = _make(tmp_path, "Cache0000.bin", b"\x00" * 4096)
+    f = _make(tmp_path, "Cache0000.bin", b"\x01\x02" * 2048)
     assert is_host_evidence(f) is True
     jobs = _plan_single_artifact(f, tmp_path / "extractions")
     assert [j.tool for j in jobs] == ["bmc-tools"]
@@ -175,7 +175,7 @@ def test_i30_routes_to_mftecmd_not_rbcmd(tmp_path):
     rbcmd, wrote header-only CSVs that were recorded OK, and contributed zero
     indexed rows (CASE-4EFD5EB2, 2026-09-29). MFTECmd parses it.
     """
-    f = _make(tmp_path, "$I30", b"\x00" * 64)
+    f = _make(tmp_path, "$I30", b"INDX" + b"\x00" * 60)
     assert is_host_evidence(f) is True
     jobs = _plan_single_artifact(f, tmp_path / "extractions")
     assert [j.tool for j in jobs] == ["mftecmd"]
@@ -185,6 +185,51 @@ def test_recycle_i_records_still_route_to_rbcmd(tmp_path):
     f = _make(tmp_path, "$I2F4A1B.txt", b"\x01\x00" + b"\x00" * 64)
     jobs = _plan_single_artifact(f, tmp_path / "extractions")
     assert [j.tool for j in jobs] == ["rbcmd"]
+
+
+def test_logfile_gets_a_real_job_not_a_skip(tmp_path, monkeypatch):
+    """LogFileParser runs headless - the old "GUI-only" skip was wrong.
+
+    Its readme documents the switches and the validated W1 run used them
+    (/LogFileFile: /OutputPath: -> 139,496-row LogFile.csv). No-arg launches
+    the GUI; that is what the earlier conclusion mistook.
+    """
+    from nexus.langgraph import tool_lane as tl
+
+    monkeypatch.setattr(tl, "_windows_tool_available", lambda key: True)
+    f = _make(tmp_path, "$LogFile", b"RSTR" + b"\x01" * 4096)
+    jobs = _plan_single_artifact(f, tmp_path / "extractions")
+    assert [j.tool for j in jobs] == ["logfileparser"]
+    argv = jobs[0].argv
+    assert any(a.startswith("/LogFileFile:") for a in argv)
+    assert any(a.startswith("/OutputPath:") for a in argv)
+    assert jobs[0].optional_output is True
+
+
+def test_all_zero_artifact_is_skipped_without_running_a_tool(tmp_path):
+    """MFTECmd 2026.5.0 loops forever on an all-zero $I30.
+
+    The file holds no evidence (0 non-zero bytes - verified next to a
+    21.9%-non-zero twin that parses in under a second), so the honest outcome
+    is a plan-time SKIP naming the emptiness. No parser is ever launched.
+    """
+    f = _make(tmp_path, "$I30", b"\x00" * 4096)
+    assert is_host_evidence(f) is True
+    jobs = _plan_single_artifact(f, tmp_path / "extractions")
+    assert jobs and all(j.status == "SKIP" for j in jobs)
+    assert "zeros" in jobs[0].reason
+    assert "mftecmd" not in {j.tool for j in jobs}
+
+
+def test_outputpath_switch_directory_is_tracked(tmp_path):
+    from nexus.langgraph.tool_lane import ToolJob, _output_dirs_of
+
+    d = tmp_path / "out"
+    d.mkdir()
+    job = ToolJob(host="windows", tool="logfileparser",
+                  argv=["logfileparser", "/LogFileFile:x", f"/OutputPath:{d}"],
+                  purpose="p")
+    assert d in _output_dirs_of(job)
 
 
 def test_srum_db_is_recognised(tmp_path):
@@ -265,7 +310,7 @@ def test_thumbcache_folder_is_recognised(tmp_path):
 
 def test_unknown_binary_stays_unrouted(tmp_path):
     """Recognition must stay narrow: a random blob is not host evidence."""
-    f = _make(tmp_path, "mystery.bin", b"\x00" * 32)
+    f = _make(tmp_path, "mystery.bin", b"\x01\x02\x03" * 16)
     assert is_host_evidence(f) is False
     assert _plan_single_artifact(f, tmp_path / "extractions") == []
 

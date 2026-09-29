@@ -195,7 +195,11 @@ def test_gap_parsers_are_practical(tmp_path: Path, monkeypatch):
     assert (extractions / "setupapi" / "setupapi.dev.log").is_file()
     # Unverified CLIs are not forced.
     assert "thumbcache_viewer" not in pending
-    assert "logfileparser" not in pending
+    # LogFileParser runs headless (/LogFileFile: /OutputPath:, verified
+    # 2026-09-29) - $LogFile must get a real job row, never a silent skip.
+    lfp = [j for j in jobs if j.tool == "logfileparser"]
+    assert lfp, "$LogFile must always get a logfileparser row"
+    assert all(j.status in ("PENDING", "SKIP") for j in lfp)
     # Live acq is silent on an image.
     assert "winpmem" not in pending
     assert not any(j.tool == "winpmem" for j in jobs)
