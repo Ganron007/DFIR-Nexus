@@ -585,9 +585,16 @@ def _plan_single_artifact(evidence: Path, extractions: Path) -> list[ToolJob]:
         return jobs
     elif _artifact_class(evidence) == "ntfs_meta":
         d = out_dir("mftecmd")
+        # Timeout scales with size but starts short: one specific 4 KB $I30
+        # (Users\fredr\OneDrive\Screenshots\$I30) sends MFTECmd 2026.5.0 into
+        # an infinite loop at 100% CPU while its identically-sized sibling
+        # parses in under a second (CASE-4EFD5EB2, 2026-09-29). A hang must
+        # cost minutes, not the 30-minute ceiling.
         add("mftecmd", ["mftecmd", "-f", str(evidence), "--csv", str(d),
                         "--csvf", f"{_stem(evidence)}.csv"],
-            f"NTFS metadata ({evidence.name})", 1800)
+            f"NTFS metadata ({evidence.name})",
+            timeout_for_bytes(evidence.stat().st_size, base=240, per_mb=30,
+                              cap=1800))
     elif (
         _artifact_class(evidence) == "registry_hive"
         # SYSTEM/SOFTWARE/SAM/SECURITY are handled by the branch above, which
@@ -1919,7 +1926,7 @@ def _plan_gap_parsers(
                 "mftecmd",
                 ["mftecmd", "-f", str(i30), "--csv", str(out), "--csvf", f"{i30.name}.csv"],
                 f"NTFS $I30 ({i30.name})",
-                600,
+                timeout_for_bytes(i30.stat().st_size, base=240, per_mb=30, cap=1800),
             )
 
     # -----------------------------------------------------------------------
