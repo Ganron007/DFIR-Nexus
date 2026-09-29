@@ -67,6 +67,7 @@ from nexus.cli.mode3_cmd import app as mode3_app
 from nexus.cli.report import app as report_app
 from nexus.cli.review import app as review_app
 from nexus.cli.service import app as service_app
+from nexus.cli.sift_cmd import app as sift_app
 from nexus.cli.todo import app as todo_app
 
 app = typer.Typer(name="nexus", help="DFIR-Nexus — unified DFIR investigation platform")
@@ -79,6 +80,7 @@ app.add_typer(review_app, name="review", help="Review case state")
 app.add_typer(config_app, name="config", help="Manage examiner configuration")
 app.add_typer(service_app, name="service", help="Manage MCP services")
 app.add_typer(lane_app, name="lane", help="Evidence gate (N2): never skip evidence processing")
+app.add_typer(sift_app, name="sift", help="SIFT lane: selection, reachability, and SIFT-output ingest")
 # export/merge registered as DIRECT commands below so the documented
 # `nexus export bundle.json` / `nexus merge bundle.json` forms work
 # (sync_app's own sub-commands would double-nest: `nexus export export`).

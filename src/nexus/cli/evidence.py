@@ -41,6 +41,13 @@ def register(
     path: str = typer.Argument(..., help="Path to evidence file"),
     description: str = typer.Option("", "--description", "-d", help="Evidence description"),
     case_id: str = typer.Option("", "--case", help="Case ID (defaults to active)"),
+    sift_hosted: bool = typer.Option(
+        False, "--sift-hosted",
+        help="Evidence lives on the SIFT host: PATH is the remote path; no local read",
+    ),
+    sha256_hash: str = typer.Option(
+        "", "--sha256", help="Known SHA-256 for --sift-hosted evidence (computed on the SIFT host)"
+    ),
 ):
     """Register an evidence file with SHA-256 hash."""
     if not case_id:
@@ -48,6 +55,28 @@ def register(
     if not case_id:
         typer.echo("No active case. Use 'nexus case activate' first.", err=True)
         raise typer.Exit(1)
+
+    if sift_hosted:
+        # Evidence on the SIFT host: path is remote, the local-existence check
+        # must not apply. The hash is supplied (computed on the host) or left
+        # empty - never invented.
+        digest = sha256_hash.strip().lower()
+        mgr = _get_sqlite_mgr()
+        from nexus.audit import resolve_examiner
+
+        mgr.add_evidence(
+            case_id=case_id,
+            name=Path(path).name,
+            description=(f"[SIFT-hosted] {description}".strip()),
+            file_path=path,
+            file_hash_sha256=digest or None,
+            collected_by=resolve_examiner(),
+            metadata={"storage": "sift", "host": "sift", "remote_path": path},
+        )
+        typer.echo(f"Registered (SIFT-hosted): {Path(path).name}")
+        typer.echo(f"  Remote path: {path}")
+        typer.echo(f"  SHA-256: {digest or 'not provided'}")
+        return
 
     fpath = Path(path)
     if not fpath.exists():

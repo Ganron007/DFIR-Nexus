@@ -152,3 +152,49 @@ def test_unavailable_outcome_is_fail_for_declared_evidence():
     status, reason = sift_unavailable_outcome(defaulted)
     assert status == "SKIP"
     assert "not available" in reason
+
+
+def test_clear_case_intake_removes_the_selection(tmp_path):
+    from nexus.langgraph.case_intake import clear_case_intake, persist_case_intake
+
+    case = tmp_path / "CASE-T"
+    case.mkdir()
+    (case / "CASE.yaml").write_text("case_id: CASE-T\n", encoding="utf-8")
+    persist_case_intake(case, {"sift_required": "true", "sift_evidence_root": "/ev"})
+
+    remaining = clear_case_intake(case, ("sift_required",))
+
+    assert "sift_required" not in remaining
+    assert remaining["sift_evidence_root"] == "/ev"
+
+
+def test_stage_sift_outputs_file_and_zip(tmp_path):
+    import zipfile
+
+    from nexus.case.sift_ingest import stage_sift_outputs
+
+    case = tmp_path / "CASE-T"
+    case.mkdir()
+    csv = tmp_path / "plaso.csv"
+    csv.write_text("date,time\n", encoding="utf-8")
+    z = tmp_path / "volout.zip"
+    with zipfile.ZipFile(z, "w") as zf:
+        zf.writestr("pslist.json", "[]")
+
+    staged = stage_sift_outputs(case, [csv, z])
+
+    assert (case / "sift" / "extractions" / "plaso" / "plaso.csv").is_file()
+    assert (case / "sift" / "extractions" / "volout" / "pslist.json").is_file()
+    assert len(staged) == 2
+
+
+def test_stage_sift_outputs_family_override(tmp_path):
+    from nexus.case.sift_ingest import stage_sift_outputs
+
+    case = tmp_path / "CASE-T"
+    case.mkdir()
+    f = tmp_path / "whatever.txt"
+    f.write_text("x", encoding="utf-8")
+    staged = stage_sift_outputs(case, [f], family="bulk_extractor")
+    assert staged[0].name == "bulk_extractor"
+    assert (staged[0] / "whatever.txt").is_file()

@@ -112,3 +112,28 @@ def persist_case_intake(case_dir: Path, ctx: dict[str, Any] | None) -> dict[str,
     meta_path.parent.mkdir(parents=True, exist_ok=True)
     meta_path.write_text(yaml.dump(meta, default_flow_style=False), encoding="utf-8")
     return intake
+
+
+def clear_case_intake(case_dir: Path, keys: tuple[str, ...]) -> dict[str, str]:
+    """Remove intake keys (e.g. clearing the SIFT lane selection).
+
+    ``persist_case_intake`` only merges non-empty values, so a flag can never
+    be switched off through it - this is the explicit removal path (operator
+    2026-09-29: clearing the SIFT selection is a first-class recovery).
+    """
+    import yaml
+
+    meta_path = case_dir / "CASE.yaml"
+    if not meta_path.is_file():
+        return {}
+    loaded = yaml.safe_load(meta_path.read_text(encoding="utf-8")) or {}
+    if not isinstance(loaded, dict):
+        return {}
+    intake = loaded.get("intake")
+    if not isinstance(intake, dict):
+        return {}
+    for key in keys:
+        intake.pop(key, None)
+    loaded["intake"] = intake
+    meta_path.write_text(yaml.dump(loaded, default_flow_style=False), encoding="utf-8")
+    return {str(k): str(v) for k, v in intake.items() if v is not None}
