@@ -90,6 +90,17 @@ def test_empty_thumbcache_is_a_skip_not_a_fail():
     assert status2 == "FAIL"
 
 
+def test_empty_thumbcache_marker_read_from_saved_capture(tmp_path):
+    """The MCP result carries the capture path, not its text."""
+    from nexus.langgraph.tool_lane import ToolJob, _empty_output_status
+
+    cap = tmp_path / "cap.txt"
+    cap.write_text("End of file reached. There are no more entries.\n", encoding="utf-8")
+    job = ToolJob(host="windows", tool="thumbcache_viewer", argv=[], purpose="t")
+    status, _ = _empty_output_status(job, {"output_saved_to": str(cap)})
+    assert status == "SKIP"
+
+
 def test_srum_folder_plans_the_database_only(tmp_path, monkeypatch):
     import nexus.langgraph.tool_lane as lane
 

@@ -3557,8 +3557,16 @@ def _empty_output_status(
     if marker and result is not None:
         text = " ".join(
             str(result.get(key) or "")
-            for key in ("stdout", "captured_text", "output", "text")
+            for key in ("stdout", "stderr", "captured_text", "output", "text")
         ).lower()
+        if marker not in text:
+            # The MCP tool result carries the capture PATH, not its text.
+            saved = str(result.get("output_saved_to") or "").strip()
+            if saved:
+                with contextlib.suppress(OSError):
+                    text += " " + Path(saved).read_text(
+                        encoding="utf-8", errors="replace"
+                    )[:8192].lower()
         if marker in text:
             return (
                 "SKIP",
