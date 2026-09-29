@@ -168,6 +168,25 @@ def test_rdp_cache_bin_is_recognised(tmp_path):
     assert [j.tool for j in jobs] == ["bmc-tools"]
 
 
+def test_i30_routes_to_mftecmd_not_rbcmd(tmp_path):
+    """`$I30` is an NTFS directory index, not a Recycle Bin record.
+
+    The recycle prefix test (`$i*`) swallowed it: seven $I30 files went to
+    rbcmd, wrote header-only CSVs that were recorded OK, and contributed zero
+    indexed rows (CASE-4EFD5EB2, 2026-09-29). MFTECmd parses it.
+    """
+    f = _make(tmp_path, "$I30", b"\x00" * 64)
+    assert is_host_evidence(f) is True
+    jobs = _plan_single_artifact(f, tmp_path / "extractions")
+    assert [j.tool for j in jobs] == ["mftecmd"]
+
+
+def test_recycle_i_records_still_route_to_rbcmd(tmp_path):
+    f = _make(tmp_path, "$I2F4A1B.txt", b"\x01\x00" + b"\x00" * 64)
+    jobs = _plan_single_artifact(f, tmp_path / "extractions")
+    assert [j.tool for j in jobs] == ["rbcmd"]
+
+
 def test_srum_db_is_recognised(tmp_path):
     f = _make(tmp_path, "SRUDB.dat")
     assert is_host_evidence(f) is True

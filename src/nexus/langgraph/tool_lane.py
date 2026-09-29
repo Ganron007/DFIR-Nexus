@@ -794,6 +794,13 @@ def _artifact_class(path: Path) -> str:
     name = path.name.lower()
     suffix = path.suffix.lower()
 
+    # `$I30` is an NTFS directory-index file, not a Recycle Bin `$I` record.
+    # MFTECmd parses it (`-f` lists $MFT|$J|$Boot|$SDS|$I30). The recycle
+    # prefix test below swallowed it, so seven directory-index files went to
+    # rbcmd, produced header-only CSVs that were recorded OK, and contributed
+    # zero indexed rows (CASE-4EFD5EB2, 2026-09-29).
+    if name == "$i30":
+        return "ntfs_meta"
     # Recycle Bin: `$I` records carry the original path and deletion time.
     # `$R` files are the content and are not parsed.
     if name.startswith("$i") and len(name) >= 3:
