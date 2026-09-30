@@ -228,14 +228,19 @@ def test_disk_offset_reaches_fls(monkeypatch):
 
 
 def test_vol_jobs_use_the_json_renderer(monkeypatch):
-    """vol.yaml maps the JSON renderer; text captures are scratch."""
+    """vol.yaml maps the JSON renderer; text captures are scratch.
+
+    WO-15: the renderer is ``jsonl`` - the ``json`` renderer emits one pretty
+    array whose line fragments the indexer counts as docs (verified on the
+    host: ``vol -h`` lists ``pretty, json, jsonl, arrow, parquet``).
+    """
     monkeypatch.delenv("NEXUS_SIFT_OS", raising=False)
     jobs = plan_sift_triage("/evidence/608", sift_os="linux")
     vol_jobs = [j for j in jobs if j.tool == "vol"]
     assert vol_jobs
     for j in vol_jobs:
         assert "-r" in j.argv
-        assert j.argv[j.argv.index("-r") + 1] == "json"
+        assert j.argv[j.argv.index("-r") + 1] == "jsonl"
 
 
 def test_promote_sift_pull_names_outputs_for_the_index(tmp_path):

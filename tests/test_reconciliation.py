@@ -105,11 +105,11 @@ def test_source_record_count_formats(tmp_path):
 
     array = tmp_path / "array.json"
     array.write_text("[1, 2, 3]", encoding="utf-8")
-    # .json is line-records to the indexer, so it is counted the same way here.
-    assert source_record_count(array) == 1
+    # WO-15: .json is parsed - an array counts its elements, not its lines.
+    assert source_record_count(array) == 3
     pretty = tmp_path / "pretty.json"
     pretty.write_text("[\n  1,\n  2,\n  3\n]\n", encoding="utf-8")
-    assert source_record_count(pretty) == 5
+    assert source_record_count(pretty) == 3
     single = tmp_path / "single.json"
     single.write_text('{"a": 1}', encoding="utf-8")
     assert source_record_count(single) == 1
@@ -129,6 +129,30 @@ def test_unknown_format_is_unreconcilable():
     assert status == "unreconcilable"
     assert delta is None
     assert note
+
+
+def test_json_array_reconciles_by_elements(tmp_path):
+    """WO-15: a pretty array indexed as records is a match (2 elements/2 docs)."""
+    text = '[\n  {"a": 1},\n  {"a": 2}\n]\n'
+    case = _case(tmp_path, {"arr.json": {"docs": 2, "deduped": 0}}, {"arr.json": text})
+    rec = reconcile_case(case)
+    row = _row(rec, "arr.json")
+    assert row["source_records"] == 2
+    assert row["status"] == "match", row
+
+
+def test_fragmented_json_array_is_named_not_silent(tmp_path):
+    """WO-15: docs == the non-empty-line count of a json array -> `fragmented`."""
+    text = '[\n  {"a": 1},\n  {"a": 2}\n]\n'
+    case = _case(tmp_path, {"arr.json": {"docs": 4, "deduped": 0}}, {"arr.json": text})
+    rec = reconcile_case(case)
+    row = _row(rec, "arr.json")
+    assert row["status"] == "fragmented", row
+    assert row["delta"] == -2
+    assert "line" in row["note"]
+    assert rec["totals"]["fragmented"] == 1
+    assert "fragmented" in summary_line(rec)
+    assert "arr.json" in render_reconciliation_markdown(rec)
 
 
 def test_family_override_is_explicit(monkeypatch):

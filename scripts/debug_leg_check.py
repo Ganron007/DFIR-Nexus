@@ -213,6 +213,14 @@ def _reconciliation(case_dir: Path) -> dict[str, Any]:
         "files": t.get("files"),
         "match": t.get("match"),
         "mismatch": t.get("mismatch"),
+        "fragmented": t.get("fragmented"),
+        # WO-15: per-file evidence outlives the case cleanup.
+        "mismatch_files": [
+            {k: f.get(k) for k in ("file", "source_records", "docs", "deduped",
+                                   "delta", "status")}
+            for f in (rec.get("files") or ())
+            if f.get("status") in ("mismatch", "fragmented", "missing", "unreconcilable")
+        ],
     }
 
 

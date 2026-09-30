@@ -70,11 +70,46 @@ def _count_table_rows(path: Path, delimiter: str) -> int:
         return sum(1 for _ in csv.reader(fh, delimiter=delimiter))
 
 
-def _count_json_records(path: Path) -> int:
-    # The indexer treats .json/.jsonl/.ndjson as line-records
-    # (``case_index._JSON_RECORD_SUFFIXES``), so a pretty-printed array counts
-    # its lines on both sides — parity is what makes delta = 0 meaningful.
-    return _count_lines(path)
+def _count_json_records(path: Path) -> int | None:
+    """Records a .json/.jsonl/.ndjson file contains (WO-15).
+
+    .jsonl/.ndjson are line records, the way the indexer reads them. .json is
+    **parsed**: an array counts its elements, an object (or scalar) counts 1.
+    Counting the file's *lines* for .json made this check mirror the reader - a
+    pretty-printed array the indexer fragmented into line-docs reconciled at
+    delta 0 (D36's class), which is exactly what this check exists to catch.
+    ``None`` when the JSON cannot be parsed: unreconcilable, never a silent
+    match.
+    """
+    suffix = _effective_suffix(path)
+    if suffix in (".jsonl", ".ndjson"):
+        return _count_lines(path)
+    from nexus.langgraph.case_index import _open_text_auto
+
+    try:
+        with _open_text_auto(path) as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    if isinstance(data, list):
+        return len(data)
+    return 1
+
+
+def _fragmentation_line_count(path: Path) -> int | None:
+    """Non-empty lines of a .json ARRAY whose element count differs (WO-15).
+
+    A line-fragmenting index produces exactly the non-empty-line count as its
+    doc count; returning it lets the reconciler name that shape instead of
+    reporting a plain short count.
+    """
+    if _effective_suffix(path) != ".json":
+        return None
+    records = _count_json_records(path)
+    if records is None:
+        return None
+    lines = _count_lines(path)
+    return lines if lines != records else None
 
 
 def source_record_count(path: Path) -> int | None:
@@ -177,6 +212,15 @@ def reconcile_case(case_dir: Path | str) -> dict[str, Any]:
             continue
         source = source_record_count(path)
         status, delta, note, override = _classify(family, source, docs, deduped)
+        if status == "mismatch":
+            frag = _fragmentation_line_count(path)
+            if frag is not None and docs == frag:
+                status = "fragmented"
+                note = (
+                    f"{docs} doc(s) look like line fragments of a json array "
+                    f"with {source} element(s) - index the file as records, "
+                    f"not lines (D36 class)"
+                )
         row: dict[str, Any] = {
             "file": rel, "family": family, "docs": docs, "deduped": deduped,
             "source_records": source, "delta": delta, "status": status,
@@ -191,6 +235,7 @@ def reconcile_case(case_dir: Path | str) -> dict[str, Any]:
         "files": len(files),
         "match": sum(1 for f in files if f["status"] == "match"),
         "mismatch": sum(1 for f in files if f["status"] == "mismatch"),
+        "fragmented": sum(1 for f in files if f["status"] == "fragmented"),
         "override": sum(1 for f in files if f["status"] == "override"),
         "unreconcilable": sum(1 for f in files if f["status"] == "unreconcilable"),
         "missing": sum(1 for f in files if f["status"] == "missing"),
@@ -247,7 +292,8 @@ def summary_line(rec: dict[str, Any]) -> str:
     t = rec.get("totals") or {}
     return (
         f"Row reconciliation: {t.get('match', 0)}/{t.get('files', 0)} file(s) match "
-        f"({t.get('mismatch', 0)} mismatch, {t.get('override', 0)} overridden, "
+        f"({t.get('mismatch', 0)} mismatch, {t.get('fragmented', 0)} fragmented, "
+        f"{t.get('override', 0)} overridden, "
         f"{t.get('unreconcilable', 0)} unreconcilable, {t.get('missing', 0)} missing) "
         "— report-only"
     )
@@ -258,7 +304,10 @@ def render_reconciliation_markdown(rec: dict[str, Any], *, limit: int = 25) -> s
     if not rec:
         return ""
     lines = ["## Row reconciliation", "", summary_line(rec), ""]
-    mismatches = [f for f in rec.get("files") or () if f.get("status") == "mismatch"]
+    mismatches = [
+        f for f in rec.get("files") or ()
+        if f.get("status") in ("mismatch", "fragmented")
+    ]
     if mismatches:
         lines += ["| File | family | source | docs | deduped | delta |",
                   "|---|---|---|---|---|---|"]

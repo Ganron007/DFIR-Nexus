@@ -111,7 +111,14 @@ def run_format(fmt: str) -> dict:
         rec = reconcile_case(cdir)
         t = rec.get("totals") or {}
         out["recon"] = {"files": t.get("files"), "match": t.get("match"),
-                        "mismatch": t.get("mismatch")}
+                        "mismatch": t.get("mismatch"),
+                        "fragmented": t.get("fragmented")}
+        out["recon_files"] = [
+            {k: f.get(k) for k in ("file", "source_records", "docs", "deduped",
+                                   "delta", "status")}
+            for f in (rec.get("files") or ())
+            if f.get("status") in ("mismatch", "fragmented", "missing", "unreconcilable")
+        ]
     except Exception as exc:  # noqa: BLE001
         out["recon"] = f"error: {str(exc)[:80]}"
     return out

@@ -2475,7 +2475,7 @@ def plan_sift_triage(
         jobs.append(ToolJob(
             host="sift",
             tool="vol",
-            argv=["vol", "-f", mem, "-r", "json", plugin],
+            argv=["vol", "-f", mem, "-r", "jsonl", plugin],
             purpose=f"Volatility3 {plugin}",
             timeout=timeout,
         ))
