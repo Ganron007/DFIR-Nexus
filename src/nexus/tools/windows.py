@@ -208,7 +208,7 @@ def _prefer_binary(paths: list[Path]) -> Path | None:
     # Preferring by toolset is deliberate rather than by mtime: copy operations
     # rewrite mtimes, so "newest file" is not a reliable version signal.
     _TOOLSET_RANK = (
-        "zimmerman\net9", "zimmerman/net9",     # current Zimmerman release
+        "zimmerman\\net9", "zimmerman/net9",     # current Zimmerman release
         "zimmerman",                              # other Zimmerman copies
         "extra",                                  # curated extras (bmc-tools, hindsight, ...)
         "sysinternals",
