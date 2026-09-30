@@ -34,6 +34,8 @@ from starlette.responses import (
 )
 from starlette.routing import Route
 
+from nexus.case.locks import case_lock, lock_case_writes
+
 logger = logging.getLogger(__name__)
 
 _CHALLENGE_TTL = 300  # 5 minutes
@@ -676,6 +678,7 @@ async def post_commit(request) -> JSONResponse:
     })
 
 
+@lock_case_writes
 def _approve_finding(
     case_dir: Path,
     finding_id: str,
@@ -3487,6 +3490,7 @@ def _mode1_run_record(case_dir: Path) -> dict | None:
     return rec
 
 
+@lock_case_writes
 def _supersede_drafts(case_dir: Path, finding_ids: list[str], *,
                       run_id: str, replaced_by: str) -> list[str]:
     """Retire DRAFT findings superseded by a reprocess re-run.
@@ -5768,14 +5772,15 @@ async def api_case_create(request):
         try:
             case_dir = settings.cases_root / case.id
             case_yaml = case_dir / "CASE.yaml"
-            if case_yaml.is_file():
-                import yaml
-                meta = yaml.safe_load(case_yaml.read_text(encoding="utf-8")) or {}
-                if not isinstance(meta, dict):
-                    meta = {}
-                meta["investigation_mode"] = str(canonical_mode)
-                meta["mode_scheme"] = MODE_SCHEME
-                case_yaml.write_text(yaml.safe_dump(meta, sort_keys=False), encoding="utf-8")
+            with case_lock(case_dir):
+                if case_yaml.is_file():
+                    import yaml
+                    meta = yaml.safe_load(case_yaml.read_text(encoding="utf-8")) or {}
+                    if not isinstance(meta, dict):
+                        meta = {}
+                    meta["investigation_mode"] = str(canonical_mode)
+                    meta["mode_scheme"] = MODE_SCHEME
+                    case_yaml.write_text(yaml.safe_dump(meta, sort_keys=False), encoding="utf-8")
         except Exception:
             pass
 
@@ -7109,14 +7114,15 @@ async def api_case_mode(request):
     import yaml
     case_yaml = case_dir / "CASE.yaml"
     try:
-        meta = {}
-        if case_yaml.is_file():
-            meta = yaml.safe_load(case_yaml.read_text(encoding="utf-8")) or {}
-            if not isinstance(meta, dict):
-                meta = {}
-        meta["investigation_mode"] = str(canonical_mode)
-        meta["mode_scheme"] = MODE_SCHEME
-        case_yaml.write_text(yaml.safe_dump(meta, sort_keys=False), encoding="utf-8")
+        with case_lock(case_dir):
+            meta = {}
+            if case_yaml.is_file():
+                meta = yaml.safe_load(case_yaml.read_text(encoding="utf-8")) or {}
+                if not isinstance(meta, dict):
+                    meta = {}
+            meta["investigation_mode"] = str(canonical_mode)
+            meta["mode_scheme"] = MODE_SCHEME
+            case_yaml.write_text(yaml.safe_dump(meta, sort_keys=False), encoding="utf-8")
     except Exception as exc:
         return JSONResponse({"error": str(exc)}, status_code=500)
 
@@ -7446,17 +7452,23 @@ async def api_findings_reject(request):
             status_code=409)
 
     rejected = []
-    # Update findings.json
+    # Update findings.json. WO-14: re-read under the case lock so a writer
+    # between the prevalidation read and this write cannot lose an update.
     try:
-        for f in findings:
-            fid = f.get("id") or f.get("finding_id", "")
-            if fid in finding_ids:
-                f["status"] = "REJECTED"
-                f["rejected_by"] = examiner
-                f["rejected_at"] = datetime.now(UTC).isoformat()
-                f["rejection_reason"] = reason
-                rejected.append(fid)
-        _atomic_write_json(findings_path, findings)
+        with case_lock(case_dir):
+            findings = (
+                json.loads(findings_path.read_text(encoding="utf-8"))
+                if findings_path.is_file() else []
+            )
+            for f in findings:
+                fid = f.get("id") or f.get("finding_id", "")
+                if fid in finding_ids:
+                    f["status"] = "REJECTED"
+                    f["rejected_by"] = examiner
+                    f["rejected_at"] = datetime.now(UTC).isoformat()
+                    f["rejection_reason"] = reason
+                    rejected.append(fid)
+            _atomic_write_json(findings_path, findings)
     except Exception as exc:
         logger.warning("Failed updating findings.json on reject: %s", exc)
         return JSONResponse(

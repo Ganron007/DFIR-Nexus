@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from nexus.case.locks import lock_case_writes
 from nexus.ingest.schemas import Artifact, ArtifactSource
 from nexus.langgraph.query_pack import _DATE_RE, load_case_intake, parse_intake_window
 
@@ -310,6 +311,7 @@ def _ingest_limit() -> int:
     return raw
 
 
+@lock_case_writes(case_arg=1)
 def ingest_into_case(
     path: Path,
     case_dir: Path,
@@ -456,6 +458,7 @@ def _finding_evidence_events(case_dir: Path) -> list[dict[str, Any]]:
     return events
 
 
+@lock_case_writes
 def rebuild_case_timeline(
     case_dir: Path,
     hits: list[dict[str, str]] | None = None,
@@ -532,7 +535,9 @@ def rebuild_case_timeline(
         or _in_window(e.get("timestamp") or None, start, end)
     ]
     tl_path = case_dir / "timeline.json"
-    tl_path.write_text(json.dumps(scoped, indent=2), encoding="utf-8")
+    from nexus.case.outputs import _atomic_write_json as _atomic
+
+    _atomic(tl_path, scoped)
     analysis = case_dir / "analysis"
     analysis.mkdir(parents=True, exist_ok=True)
     lines = [

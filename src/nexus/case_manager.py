@@ -18,6 +18,7 @@ from typing import Any
 import yaml
 
 from nexus.audit import resolve_examiner
+from nexus.case.locks import lock_case_writes
 from nexus.config import settings
 from nexus.discipline import validate_finding
 
@@ -289,6 +290,7 @@ class CaseManager:
         content = json.dumps(findings, indent=2, default=str)
         _atomic_write(path, content)
 
+    @lock_case_writes
     def record_finding(
         self,
         finding: dict,
@@ -961,6 +963,7 @@ class CaseManager:
         event_id = self._stage_timeline_event(case_dir, event, exam)
         return {"status": "STAGED", "event_id": event_id}
 
+    @lock_case_writes
     def _stage_timeline_event(self, case_dir: Path, event: dict, exam: str) -> str:
         events = self._load_timeline(case_dir)
         seq = _next_seq(events, "id", "T", exam)
@@ -1030,6 +1033,7 @@ class CaseManager:
         content = json.dumps(todos, indent=2, default=str)
         _atomic_write(path, content)
 
+    @lock_case_writes
     def add_todo(self, description: str, assignee: str = "",
                  priority: str = "medium",
                  related_findings: list[str] | None = None,
@@ -1071,6 +1075,7 @@ class CaseManager:
             todos = [t for t in todos if t.get("assignee", "") == assignee]
         return todos
 
+    @lock_case_writes
     def update_todo(self, todo_id: str, status: str = "", note: str = "",
                     assignee: str = "", priority: str = "",
                     examiner_override: str = "",
@@ -1141,6 +1146,7 @@ class CaseManager:
         content = json.dumps(iocs, indent=2, default=str)
         _atomic_write(path, content)
 
+    @lock_case_writes
     def _merge_iocs(self, case_dir: Path, new_iocs: list[dict]) -> None:
         existing = self._load_iocs(case_dir)
         existing_by_value = {}
