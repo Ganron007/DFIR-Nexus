@@ -7593,11 +7593,27 @@ def _augment_report_with_grade(case_dir, out_file, report_text: str,
     # Level 1 first: the ledger is what the grade and the cross-mode check are
     # read against, and a report whose claims are unsupported should not be
     # graded without saying so.
+    ledger = None
     with contextlib.suppress(Exception):
         ledger = verify_case(case_dir, findings=findings)
         with contextlib.suppress(OSError):
             write_ledger(case_dir, ledger)
         tail.append(render_ledger_markdown(ledger))
+
+    # WO-11: the grade consumes the L1 ledger and the live contradiction count,
+    # so compute the consistency result first (rendered after the grade to keep
+    # the ledger -> grade -> consistency order in the document).
+    consistency = None
+    with contextlib.suppress(Exception):
+        consistency = check_cross_mode(case_dir=case_dir)
+        with contextlib.suppress(OSError):
+            write_consistency(case_dir, consistency)
+    contradictions = 0
+    if consistency:
+        counts = consistency.get("counts") or {}
+        contradictions = int(counts.get("contradictions") or 0) + int(
+            counts.get("row_contradictions") or 0
+        )
 
     try:
         known = _case_audit_ids(case_dir)
@@ -7616,16 +7632,15 @@ def _augment_report_with_grade(case_dir, out_file, report_text: str,
             coverage=coverage,
             evidence_count=len(evidence),
             case_id=case_dir.name,
+            l1_ledger=ledger,
+            contradictions=contradictions,
         )
         with contextlib.suppress(OSError):
             write_grade(case_dir, grade)
         tail.append(render_grade_markdown(grade))
 
     with contextlib.suppress(Exception):
-        result = check_cross_mode(case_dir=case_dir)
-        with contextlib.suppress(OSError):
-            write_consistency(case_dir, result)
-        tail.append(render_consistency_markdown(result))
+        tail.append(render_consistency_markdown(consistency))
 
     # WO-3 (report-only): source records vs indexed docs, per file.
     with contextlib.suppress(Exception):

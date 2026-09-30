@@ -45,6 +45,20 @@ The grade is a pure function of its inputs. Grading the same report twice must
 return the same object - that is the acceptance criterion, and it is why
 nothing here calls a model. An LLM grader would grade a report differently on
 every pass, which makes a gate meaningless.
+
+WO-11: the class cannot outrun the L1 ledger or a live contradiction. The caps
+are applied after the axis scores, and the reason is surfaced in the grade
+section and in ``why_not_higher``:
+
+- **A** requires the ledger overall ``PROVEN`` (no ``UNSUPPORTED`` /
+  ``UNVERIFIABLE`` / ``CONTRADICTED`` claim) and **zero** unresolved
+  contradictions.
+- any ``UNSUPPORTED`` or ``UNVERIFIABLE`` claim -> max **B**;
+  ``UNSUPPORTED`` > 25 % of claims -> max **C**.
+- any ``CONTRADICTED`` claim, or an unresolved contradiction -> max **D**
+  (surfaced; an unsurfaced contradiction still grades F via non_fabrication).
+
+Thresholds are a proposal - tune them here, in one place.
 """
 from __future__ import annotations
 
@@ -566,6 +580,58 @@ def _class_for(scores: dict[str, int], *, n_findings: int, coverage: dict[str, A
     return "A"
 
 
+_L1_CAP_ORDER = ("F", "D", "C", "B", "A")  # worst -> best
+
+
+def _cap_with_l1(
+    cls: str, *, ledger: dict[str, Any] | None, contradictions: int
+) -> tuple[str, dict[str, Any] | None]:
+    """WO-11: the class cannot outrun the L1 ledger or a live contradiction.
+
+    Thresholds live in the module docstring; tune them here, in one place.
+    """
+    if not ledger and not contradictions:
+        return cls, None
+    counts = dict((ledger or {}).get("verdict_counts") or {})
+    if not counts:
+        for row in (ledger or {}).get("claims") or ():
+            v = str((row or {}).get("verdict") or "")
+            if v:
+                counts[v] = counts.get(v, 0) + 1
+    unsupported = int(counts.get("UNSUPPORTED") or 0)
+    unverifiable = int(counts.get("UNVERIFIABLE") or 0)
+    contradicted = int(counts.get("CONTRADICTED") or 0)
+    total = sum(int(v or 0) for v in counts.values())
+    overall = str((ledger or {}).get("overall") or "").upper()
+
+    cap = ""
+    reason = ""
+    if contradicted or contradictions:
+        cap = "D"
+        reason = (
+            f"{contradicted} CONTRADICTED claim(s)"
+            if contradicted
+            else f"{contradictions} unresolved contradiction(s)"
+        )
+    elif unsupported and total and unsupported / total > 0.25:
+        cap = "C"
+        reason = f"{unsupported} UNSUPPORTED of {total} claim(s)"
+    elif unsupported or unverifiable:
+        cap = "B"
+        parts = []
+        if unsupported:
+            parts.append(f"{unsupported} UNSUPPORTED")
+        if unverifiable:
+            parts.append(f"{unverifiable} UNVERIFIABLE")
+        reason = f"{' and '.join(parts)} claim(s) of {total or '?'}"
+    elif ledger and overall != "PROVEN":
+        cap = "B"
+        reason = f"L1 overall {overall or 'UNVERIFIABLE'}"
+    if not cap or _L1_CAP_ORDER.index(cap) >= _L1_CAP_ORDER.index(cls):
+        return cls, None
+    return cap, {"cap": cap, "reason": reason}
+
+
 def grade_report(
     *,
     markdown: str,
@@ -574,8 +640,14 @@ def grade_report(
     coverage: dict[str, Any] | None = None,
     evidence_count: int | None = None,
     case_id: str = "",
+    l1_ledger: dict[str, Any] | None = None,
+    contradictions: int = 0,
 ) -> dict[str, Any]:
-    """Grade a rendered report. Pure function: same inputs, same output."""
+    """Grade a rendered report. Pure function: same inputs, same output.
+
+    ``l1_ledger`` (``verify_case`` output) and ``contradictions`` (unresolved
+    cross-mode + row contradictions) cap the class; see the module docstring.
+    """
     md = _strip_appended_sections(markdown or "")
     fs = [f for f in (findings or ()) if isinstance(f, dict)]
     ec = int(evidence_count or 0)
@@ -587,6 +659,11 @@ def grade_report(
     finding_classes = [classify_finding(f, known_audit_ids=known_audit_ids) for f in fs]
     n = len(fs)
     cls = _class_for(scores, n_findings=n, coverage=coverage)
+    cls, l1_cap = _cap_with_l1(cls, ledger=l1_ledger, contradictions=contradictions)
+    if l1_cap:
+        notes.append(
+            f"L1 ledger caps the class at {l1_cap['cap']}: {l1_cap['reason']}"
+        )
 
     total = sum(scores.values())
     by_class: dict[str, int] = {}
@@ -597,6 +674,7 @@ def grade_report(
         "case_id": case_id,
         "report_class": cls,
         "report_class_label": REPORT_CLASSES[cls],
+        "l1_cap": l1_cap,
         "axes": {k: {"label": AXES[k], "score": v, "max": _MAX} for k, v in scores.items()},
         "total": total,
         "max_total": _MAX * len(AXES),
@@ -619,6 +697,14 @@ def render_grade_markdown(grade: dict[str, Any]) -> str:
         f"**Class {cls} - {label}**  "
         f"(total {grade.get('total', 0)}/{grade.get('max_total', 0)} across "
         f"{len(grade.get('axes') or {})} axes)",
+    ]
+    cap = grade.get("l1_cap") or {}
+    if cap:
+        out.append(
+            f"**Capped at {cap.get('cap')}**: {cap.get('reason')} "
+            "(L1 ledger / contradictions)"
+        )
+    out += [
         "",
         "| Axis | Score |",
         "|------|-------|",

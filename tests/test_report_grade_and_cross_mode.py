@@ -54,6 +54,97 @@ def test_grading_is_stable():
     assert a["report_class"] in {"A", "B"}
 
 
+# --------------------------------------------------------------------------
+# WO-11 - the grade consumes the L1 ledger and contradictions
+# --------------------------------------------------------------------------
+
+_A_MD = (
+    "## Scope\n\n"
+    "12 files were registered from evtx and tasks; 40 items were unparsed.\n\n"
+    "## Findings\n\n"
+    "### a.exe executed from a temporary directory\n\n"
+    "Prefetch and the task XML agree, so it executed. Consistent with an earlier LNK row.\n\n"
+    "### archive staging on the endpoint\n\n"
+    "Because the MFT row shows the write, an archive was staged.\n\n"
+    "## Limitations\n\n"
+    "Prefetch deletion means execution counts are a lower bound; no memory image "
+    "was acquired, so injected code is not covered.\n\n"
+    "## Next steps\n\n"
+    "Preserve the endpoint; recommend imaging memory and isolating the host before "
+    "remediation.\n"
+)
+
+
+def _a_grade(**over):
+    return grade_report(
+        markdown=_A_MD,
+        findings=[
+            _finding(fid="F1", n_art=2, n_audit=2),
+            _finding(fid="F2", n_art=2, n_audit=2),
+        ],
+        known_audit_ids=AUDIT,
+        evidence_count=12,
+        **over,
+    )
+
+
+def _ledger(*verdicts: str) -> dict:
+    counts: dict[str, int] = {}
+    for v in verdicts:
+        counts[v] = counts.get(v, 0) + 1
+    return {
+        "claims": [
+            {"finding_id": f"F{i}", "verdict": v} for i, v in enumerate(verdicts, 1)
+        ],
+        "verdict_counts": counts,
+        "overall": (
+            "PROVEN" if verdicts and all(v == "PROVEN" for v in verdicts) else "MIXED"
+        ),
+    }
+
+
+def test_wo11_fixture_grades_a_at_35():
+    base = _a_grade()
+    assert base["total"] == 35, base["why_not_higher"]
+    assert base["report_class"] == "A"
+    assert base["l1_cap"] is None
+
+
+def test_wo11_unsupported_one_of_five_caps_at_b():
+    g = _a_grade(l1_ledger=_ledger("PROVEN", "PROVEN", "PROVEN", "PROVEN", "UNSUPPORTED"))
+    assert g["report_class"] == "B"
+    assert g["l1_cap"] == {"cap": "B", "reason": "1 UNSUPPORTED claim(s) of 5"}
+    assert any("caps the class at B" in n for n in g["why_not_higher"])
+    assert "Capped at B" in render_grade_markdown(g)
+
+    unver = _a_grade(l1_ledger=_ledger("PROVEN", "PROVEN", "UNVERIFIABLE"))
+    assert unver["report_class"] == "B"
+    assert "UNVERIFIABLE" in unver["l1_cap"]["reason"]
+
+
+def test_wo11_unsupported_ratio_caps_at_c():
+    g = _a_grade(
+        l1_ledger=_ledger("UNSUPPORTED", "UNSUPPORTED", "PROVEN", "PROVEN", "PROVEN")
+    )
+    assert g["report_class"] == "C"
+    assert g["l1_cap"]["cap"] == "C"
+
+
+def test_wo11_contradicted_or_live_contradiction_caps_at_d():
+    g = _a_grade(l1_ledger=_ledger("PROVEN", "PROVEN", "CONTRADICTED"))
+    assert g["report_class"] == "D"
+    assert g["l1_cap"]["cap"] == "D"
+    g2 = _a_grade(contradictions=2)
+    assert g2["report_class"] == "D"
+    assert "contradiction" in g2["l1_cap"]["reason"]
+
+
+def test_wo11_all_proven_keeps_a():
+    g = _a_grade(l1_ledger=_ledger("PROVEN", "PROVEN", "PROVEN"))
+    assert g["report_class"] == "A"
+    assert g["l1_cap"] is None
+
+
 def test_seeded_overclaim_drops_the_class():
     """Acceptance: a seeded overclaim drops the class."""
     honest = (
