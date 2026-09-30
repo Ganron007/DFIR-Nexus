@@ -575,13 +575,10 @@ def _hits_from_file(
     weak_n = 0
     skipped_cap = 0
     header = _header_for_file(root, str(path.relative_to(root)).replace("\\", "/"))
-    from nexus.langgraph.case_index import _row_fields
+    from nexus.langgraph.case_index import iter_indexable_rows
 
     with _open_text(path) as fh:
-        for i, line in enumerate(fh, start=1):
-            if i == 1 and ("," in line or "\t" in line):
-                continue
-            raw_fields = _row_fields(line, header) if header else None
+        for i, line, raw_fields in iter_indexable_rows(path, fh, header):
             # Source/provenance columns carry the machine path the parser read:
             # replace them outright, then normalize remaining machine prefixes.
             line = sanitize_row_text(line, raw_fields, case_dir, family=fam)
@@ -1129,7 +1126,7 @@ def _header_for_file(root: Path, file_rel: str) -> list[str]:
         try:
             with _open_text(p) as fh:
                 first = fh.readline().strip()
-            if first:
+            if first and ("," in first or "\t" in first):
                 import csv as _csv
 
                 header = next(_csv.reader([first]), [])
@@ -1628,13 +1625,10 @@ def _iter_matching_rows(
     """
     rel = str(path.relative_to(root)).replace("\\", "/")
     case_dir = _case_dir_for_root(root)
-    from nexus.langgraph.case_index import _row_fields
+    from nexus.langgraph.case_index import iter_indexable_rows
 
     with _open_text(path) as fh:
-        for i, line in enumerate(fh, start=1):
-            if i == 1 and ("," in line or "\t" in line):
-                continue
-            raw_fields = _row_fields(line, header) if header else None
+        for i, line, raw_fields in iter_indexable_rows(path, fh, header):
             # Source/provenance columns carry the machine path the parser read:
             # replace them outright, then normalize remaining machine prefixes.
             line = sanitize_row_text(line, raw_fields, case_dir, family=fam)
@@ -1681,8 +1675,12 @@ def iter_extraction_hits(
     ):
         try:
             rel = str(path.relative_to(root)).replace("\\", "/")
+            from nexus.langgraph.case_index import _is_delimited
+
             header = None
-            if query is not None and getattr(query, "filters", None):
+            if _is_delimited(path) or (
+                query is not None and getattr(query, "filters", None)
+            ):
                 header = _header_for_file(root, rel)
             for i, matched, text in _iter_matching_rows(
                 path, root, fam, needles, start, end,

@@ -73,9 +73,10 @@ WILDCARD_IGNORE_ABOVE = 32766
 # Index schema version. v2 = structured docs (host/user/event_id + parsed
 # columns under fields.*) so DSL filters and aggregations push down to ES.
 # A version mismatch triggers a rebuild on the next index_case()/ensure_index.
-# 7: D56 - blank lines are no longer indexed as documents (doc counts change
-# for blank-line-rich files; the mismatch triggers the same rebuild).
-INDEX_SCHEMA_VERSION = 7
+# 8: WO-17 - delimited files are indexed by CSV record (a quoted newline is
+# one doc; line = the record's starting physical line). Doc counts change for
+# every multi-line-cell CSV; the mismatch triggers the same rebuild.
+INDEX_SCHEMA_VERSION = 8
 
 _MAX_INDEX_FIELDS = 24
 # JSON-family artifacts are line records (NDJSON/JSONL), never delimited tables.
@@ -216,17 +217,104 @@ def _split_row(line: str) -> list[str]:
         return line.split(sep)
 
 
-def _row_fields(line: str, header: list[str] | None) -> dict[str, str]:
-    """Parsed columns for one row (schema v2: indexed under ``fields.*``)."""
-    if not header:
-        return {}
-    values = _split_row(line)
+#: Files read as CSV/TSV records (WO-17). A quoted cell containing newlines is
+#: ONE record; ``.log``/``.txt`` keep the physical-line path on purpose (an
+#: unbalanced quote in a log line must not stop the file).
+_DELIMITED_SUFFIXES = (".csv", ".tsv")
+
+
+def _is_delimited(path: Path) -> bool:
+    """True for .csv/.tsv (transparent ``.gz``)."""
+    name = path.name.lower()
+    if name.endswith(".gz"):
+        name = name[:-3]
+    return name.endswith(_DELIMITED_SUFFIXES)
+
+
+def iter_record_rows(fh, delimiter: str = ","):
+    """Yield ``(start_line, raw_text, cells)`` per CSV/TSV record (WO-17/D63).
+
+    ``start_line`` is the record's first physical line - what the doc's and a
+    hit's ``line`` carry - and ``raw_text`` preserves the original quoting.
+    Streaming: only the current record's physical lines are held. Malformed
+    quoting stops the file (reconciliation then shows the shortfall) rather
+    than letting the reader guess.
+    """
+    import csv
+
+    with contextlib.suppress(OverflowError):  # platform cap
+        csv.field_size_limit(2**31 - 1)
+    kept: list[str] = []
+    pulled = 0
+
+    def _lines():
+        nonlocal pulled
+        for ln in fh:
+            kept.append(ln)
+            pulled += 1
+            yield ln
+
+    reader = csv.reader(_lines(), delimiter=delimiter)
+    prev = 0
+    while True:
+        try:
+            cells = next(reader)
+        except StopIteration:
+            return
+        except csv.Error:
+            return
+        raw = "".join(kept)
+        del kept[:]
+        yield prev + 1, raw, cells
+        prev = pulled
+
+
+def _fields_from_values(header: list[str], values: list[str]) -> dict[str, str]:
     out: dict[str, str] = {}
     for name, value in list(zip(header, values, strict=False))[:_MAX_INDEX_FIELDS]:
         v = str(value).strip()[:_MAX_INDEX_FIELD_VALUE]
         if v and not str(name).startswith("_"):
             out[str(name)] = v
     return out
+
+
+def _row_fields(line: str, header: list[str] | None) -> dict[str, str]:
+    """Parsed columns for one row (schema v2: indexed under ``fields.*``)."""
+    if not header:
+        return {}
+    return _fields_from_values(header, _split_row(line))
+
+
+def iter_indexable_rows(path: Path, fh, header: list[str] | None):
+    """``(line_no, raw_text, row_fields)`` per indexable row of an open file.
+
+    WO-17: delimited files WITH a header (``.csv``/``.tsv``) are read as CSV
+    records - a quoted newline is one row and ``line_no`` is the row's starting
+    physical line; JSON families stay physical-line records; everything else
+    keeps the line-based path. The header row and blank rows are skipped.
+    """
+    is_csv = bool(header) and _is_delimited(path) and not _is_json_records(path)
+    if is_csv:
+        name = path.name.lower()
+        delim = "\t" if (name.endswith(".tsv") or name.endswith(".tsv.gz")) else ","
+        first = True
+        for start, raw, cells in iter_record_rows(fh, delimiter=delim):
+            if first:
+                first = False  # the header record
+                continue
+            if not any(str(c).strip() for c in cells):
+                continue
+            yield start, raw, _fields_from_values(header, cells)
+        return
+    json_records = _is_json_records(path)
+    for i, line in enumerate(fh, start=1):
+        if i == 1 and header is not None:
+            continue
+        if not line.strip():
+            continue
+        yield i, line, (
+            _record_fields(line) if json_records else _row_fields(line, header)
+        )
 
 
 def _is_json_records(path: Path) -> bool:
@@ -439,20 +527,10 @@ def iter_index_doc_batches(
                 caps["families_capped"].append(fam)
             continue
         header = _index_header(path)
-        json_records = _is_json_records(path)
         try:
             data_rows = 0
             with _open_text_auto(path) as fh:
-                for i, line in enumerate(fh, start=1):
-                    if i == 1 and header is not None:
-                        continue
-                    if not line.strip():
-                        # D56: a blank physical line is not a record. Indexing it
-                        # inflated doc counts - reconciliation counts non-blank
-                        # source lines, so every blank line surfaced as a
-                        # mismatch (regripper-software: 45,254 docs vs 31,258
-                        # records). Skip before _add/data_rows.
-                        continue
+                for i, line, row_fields in iter_indexable_rows(path, fh, header):
                     data_rows += 1
                     if _MAX_DOCS and total >= _MAX_DOCS:
                         caps["docs_capped"] = True
@@ -461,10 +539,6 @@ def iter_index_doc_batches(
                     if _MAX_DOCS_PER_FILE and data_rows > _MAX_DOCS_PER_FILE:
                         caps["files_capped"] += 1
                         break
-                    row_fields = (
-                        _record_fields(line) if json_records
-                        else _row_fields(line, header)
-                    )
                     if _add(path, root, fam, i, line, row_fields):
                         family_counts[fam] = family_counts.get(fam, 0) + 1
                     if len(out) >= batch:
