@@ -127,7 +127,8 @@ def approve_finding(
                 seal_ok, seal_reason = verify_seal(f)
             except Exception as exc:  # noqa: BLE001
                 seal_ok, seal_reason = False, f"seal check failed: {exc}"
-            if not seal_ok and (f.get("seal") or f.get("content_hash")):
+            has_seal = bool(f.get("seal") or f.get("content_hash"))
+            if has_seal and not seal_ok:
                 return {
                     "error": (
                         f"Refused: finding {finding_id} failed its submission seal — {seal_reason}. "
@@ -136,12 +137,16 @@ def approve_finding(
                     "finding_id": finding_id,
                     "seal_reason": seal_reason,
                 }
+            # WO-23: a seal-less DRAFT is UNSEALED - L1.6 marks it UNVERIFIABLE
+            # (so an override reason was required) and the state is recorded.
+            seal_state = "verified" if (has_seal and seal_ok) else "absent"
             f["status"] = "APPROVED"
             f["approved_by"] = analyst
             f["approved_at"] = datetime.now(UTC).isoformat()
             # WO-2: what the verifier said at the moment of signing (empty
             # verdict = verification could not run -> recorded UNVERIFIABLE).
             f["l1_verdict_at_approval"] = l1_verdict or "UNVERIFIABLE"
+            f["seal_state"] = seal_state
             if override_reason:
                 f["override_reason"] = override_reason
             if note:
@@ -168,6 +173,7 @@ def approve_finding(
                     "hmac": hmac_val,
                     "salt": salt,
                     "l1_verdict_at_approval": f["l1_verdict_at_approval"],
+                    "seal_state": seal_state,
                     "override_reason": override_reason,
                 })
             return {"finding_id": finding_id, "status": "APPROVED", "note": note}

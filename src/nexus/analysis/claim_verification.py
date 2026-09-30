@@ -315,7 +315,11 @@ def _l1_6(finding, res, **_kw) -> None:
     seal = finding.get("seal")
     has_seal = bool(seal) or bool(finding.get("content_hash"))
     if not has_seal:
-        _check(res, "L1.6", "skipped", "no seal recorded")
+        # WO-23: a seal-less DRAFT is UNVERIFIABLE - the seal was stripped
+        # after staging (tampering) or the finding predates 10.4 (legacy/demo).
+        # The approval paths then require an override reason and record
+        # seal_state; never a pass.
+        _check(res, "L1.6", "unverifiable", "no submission seal - edited or pre-10.4")
         return
     ok, reason = verify_seal(finding)
     if ok:

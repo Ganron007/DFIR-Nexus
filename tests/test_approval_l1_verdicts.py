@@ -444,3 +444,92 @@ def test_portal_commit_refuses_a_broken_seal_even_with_override(l1_env):
     }
     assert entries[fid]["status"] == "DRAFT"
     assert not [row for row in _verification_rows(tmp) if row.get("finding_id") == fid]
+
+
+def test_portal_commit_seal_less_draft_needs_a_reason(l1_env):
+    """WO-23: a seal-less DRAFT is UNSEALED -> UNVERIFIABLE + override + record."""
+    tmp: Path = l1_env["tmp"]
+    client: TestClient = l1_env["client"]
+    stored = _write_portal_password(tmp)
+    case_id, case_dir = _make_case(client, tmp)
+    fid = _stage(case_dir, GOOD)
+    headers = {"X-Nexus-Case": case_id}
+
+    rows = json.loads((case_dir / "findings.json").read_text(encoding="utf-8"))
+    target = next(f for f in rows if f["id"] == fid)
+    target.pop("seal", None)
+    target.pop("content_hash", None)
+    (case_dir / "findings.json").write_text(json.dumps(rows), encoding="utf-8")
+
+    ch, resp = _respond(client, headers, stored)
+    r = client.post(
+        "/portal/api/commit",
+        headers=headers,
+        json={"finding_ids": [fid], "challenge_id": ch, "response": resp},
+    )
+    assert r.status_code == 400, r.text
+    assert r.json()["findings"][fid]["verdict"] == "UNVERIFIABLE"
+
+    ch, resp = _respond(client, headers, stored)
+    r = client.post(
+        "/portal/api/commit",
+        headers=headers,
+        json={
+            "finding_ids": [fid],
+            "challenge_id": ch,
+            "response": resp,
+            "override_reasons": {fid: "pre-10.4 draft; reviewed by examiner"},
+        },
+    )
+    assert r.status_code == 200, r.text
+    assert fid in r.json()["approved"]
+    entries = {
+        f["id"]: f
+        for f in json.loads((case_dir / "findings.json").read_text(encoding="utf-8"))
+    }
+    assert entries[fid]["seal_state"] == "absent"
+    ledger = next(r for r in _verification_rows(tmp) if r.get("finding_id") == fid)
+    assert ledger["seal_state"] == "absent"
+
+
+def test_cli_approve_seal_less_draft_needs_a_reason(l1_env, monkeypatch):
+    """WO-23 CLI twin: unsealed DRAFT -> reason required, seal_state recorded."""
+    tmp: Path = l1_env["tmp"]
+    client: TestClient = l1_env["client"]
+    case_id, case_dir = _make_case(client, tmp)
+    fid = _stage(case_dir, GOOD)
+
+    rows = json.loads((case_dir / "findings.json").read_text(encoding="utf-8"))
+    target = next(f for f in rows if f["id"] == fid)
+    target.pop("seal", None)
+    target.pop("content_hash", None)
+    (case_dir / "findings.json").write_text(json.dumps(rows), encoding="utf-8")
+
+    from nexus.case.outputs import set_active_case_id
+
+    set_active_case_id(case_id)
+
+    from nexus.auth import setup_password
+
+    setup_password(EXAMINER, "l1-cli-pass")
+    monkeypatch.setenv("NEXUS_APPROVAL_PASSWORD", "l1-cli-pass")
+
+    from nexus.cli.main import app as cli_app
+
+    runner = CliRunner()
+    r = runner.invoke(cli_app, ["approve", fid, "--examiner", EXAMINER])
+    assert r.exit_code == 1, r.output
+    assert "UNVERIFIABLE" in r.output
+
+    r = runner.invoke(
+        cli_app,
+        ["approve", fid, "--examiner", EXAMINER, "--reason", "pre-10.4 draft; reviewed"],
+    )
+    assert r.exit_code == 0, r.output
+    entries = {
+        f["id"]: f
+        for f in json.loads((case_dir / "findings.json").read_text(encoding="utf-8"))
+    }
+    assert entries[fid]["seal_state"] == "absent"
+    ledger = next(r for r in _verification_rows(tmp) if r.get("finding_id") == fid)
+    assert ledger["seal_state"] == "absent"

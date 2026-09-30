@@ -43,6 +43,24 @@ def _good(**extra):
     return kw
 
 
+def _sealed(f: dict) -> dict:
+    """The staging seal, exactly as CaseManager.record_finding writes it.
+
+    WO-23: a finding with no seal can never be PROVEN (L1.6 unverifiable), so
+    tests that expect PROVEN must use a sealed finding.
+    """
+    from nexus.analysis.integrity import SEAL_ALGO, seal_digest
+
+    f = dict(f)
+    f["seal"] = {
+        "algo": SEAL_ALGO,
+        "digest": seal_digest(f),
+        "sealed_at": "2026-09-30T00:00:00+00:00",
+        "revision": 1,
+    }
+    return f
+
+
 # --------------------------------------------------------------------------
 # the central property
 # --------------------------------------------------------------------------
@@ -69,7 +87,7 @@ def test_coverage_unknown_is_not_a_pass(tmp_path):
     could not be proven - but folding it into every claim would mark all of them
     UNSUPPORTED and bury the per-claim signal.
     """
-    v = verify_claim(_f(), **_good(coverage={"overall": "unknown", "sections": {}}))
+    v = verify_claim(_sealed(_f()), **_good(coverage={"overall": "unknown", "sections": {}}))
     assert v["checks"]["L1.9"]["status"] == "unverifiable"
     assert v["verdict"] == "PROVEN", "a case-level check must not colour the claim"
 
@@ -85,7 +103,7 @@ def test_a_coverage_gap_does_not_drive_every_claim_to_unsupported():
     under a case-wide gap is how a reviewer stops reading the column.
     """
     gap = {"overall": "gaps", "sections": {"tools": {"status": "gaps"}}}
-    v = verify_claim(_f(), **_good(coverage=gap))
+    v = verify_claim(_sealed(_f()), **_good(coverage=gap))
     assert v["checks"]["L1.9"]["status"] == "fail"
     assert v["verdict"] == "PROVEN"
 
@@ -113,7 +131,7 @@ def test_l1_9_names_the_gap_when_sections_key_is_absent():
 
 
 def test_a_fully_checked_claim_is_proven():
-    v = verify_claim(_f(), **_good())
+    v = verify_claim(_sealed(_f()), **_good())
     assert v["verdict"] == "PROVEN", {k: r["status"] for k, r in v["checks"].items()}
     assert all(r["status"] in {"pass", "skipped"} for r in v["checks"].values())
 
@@ -305,10 +323,14 @@ def test_l1_9_coverage_gaps_fail():
 
 def test_inapplicable_checks_are_skipped_not_passed():
     v = verify_claim(_f(title="something happened"), **_good())
-    # No techniques, no timestamps, no counts, no seal: all skipped.
-    for key in ("L1.4", "L1.5", "L1.6", "L1.7"):
+    # No techniques, no timestamps, no counts: skipped. A missing submission
+    # seal is NOT skipped - WO-23 makes it unverifiable (never a pass) and the
+    # verdict UNVERIFIABLE, which requires an override reason to approve.
+    for key in ("L1.4", "L1.5", "L1.7"):
         assert v["checks"][key]["status"] == "skipped", key
-    assert v["counts"]["skipped"] >= 4
+    assert v["checks"]["L1.6"]["status"] == "unverifiable"
+    assert v["counts"]["skipped"] >= 3
+    assert v["verdict"] == "UNVERIFIABLE"
 
 
 # --------------------------------------------------------------------------

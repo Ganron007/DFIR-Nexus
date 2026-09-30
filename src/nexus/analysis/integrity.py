@@ -57,6 +57,8 @@ SEAL_EXCLUDE_KEYS = frozenset(
         # staging, so they must not invalidate the submission seal.
         "l1_verdict_at_approval",
         "override_reason",
+        # WO-23: recorded at approval (verified/absent), same class.
+        "seal_state",
     }
 )
 
