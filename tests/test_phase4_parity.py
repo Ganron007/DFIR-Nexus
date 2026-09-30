@@ -49,32 +49,42 @@ def test_findings_reject_api(client):
     # Seed case (activate for this legacy active-case flow)
     client.post("/portal/api/case/seed-demo", json={"activate": True})
 
+    # The seeder mints ids through the real staging path, so discover them
+    # by status instead of hardcoding.
+    all_findings = client.get("/portal/api/findings").json().get("findings", [])
+    draft_id = next(f["id"] for f in all_findings if f["status"] == "DRAFT")
+    approved_id = next(f["id"] for f in all_findings if f["status"] == "APPROVED")
+    second_draft_id = next(
+        f["id"] for f in all_findings
+        if f["status"] == "DRAFT" and f["id"] != draft_id
+    )
+
     # Reject without reason fails
-    r_bad = client.post("/portal/api/findings/reject", json={"finding_ids": ["F-DEMO-001"]})
+    r_bad = client.post("/portal/api/findings/reject", json={"finding_ids": [draft_id]})
     assert r_bad.status_code == 400
     assert "reason" in r_bad.json()["error"].lower()
 
     r_shape = client.post("/portal/api/findings/reject", json={
-        "finding_ids": "F-DEMO-002",
+        "finding_ids": draft_id,
         "reason": "not a list",
     })
     assert r_shape.status_code == 400
 
     # Reject with reason succeeds
     r_good = client.post("/portal/api/findings/reject", json={
-        "finding_ids": ["F-DEMO-001"],
+        "finding_ids": [draft_id],
         "reason": "Administrative tool false positive",
         "examiner": "test_examiner",
     })
     assert r_good.status_code == 200
     assert r_good.json()["ok"] is True
-    assert "F-DEMO-001" in r_good.json()["rejected"]
+    assert draft_id in r_good.json()["rejected"]
 
     # Verify status changed in findings list
     f_res = client.get("/portal/api/findings?status=REJECTED")
     assert f_res.status_code == 200
     rejected_ids = [f["id"] for f in f_res.json().get("findings", [])]
-    assert "F-DEMO-001" in rejected_ids
+    assert draft_id in rejected_ids
 
     r_missing = client.post("/portal/api/findings/reject", json={
         "finding_ids": ["F-NOPE"],
@@ -84,24 +94,24 @@ def test_findings_reject_api(client):
     assert "F-NOPE" in r_missing.json()["missing"]
 
     r_appr = client.post("/portal/api/findings/reject", json={
-        "finding_ids": ["F-DEMO-003"],
+        "finding_ids": [approved_id],
         "reason": "must not apply",
     })
     assert r_appr.status_code == 409
     assert any(
-        b["finding_id"] == "F-DEMO-003" and b["status"] == "APPROVED"
+        b["finding_id"] == approved_id and b["status"] == "APPROVED"
         for b in r_appr.json()["blocked"]
     )
 
     r_mix = client.post("/portal/api/findings/reject", json={
-        "finding_ids": ["F-DEMO-002", "F-DEMO-003"],
+        "finding_ids": [second_draft_id, approved_id],
         "reason": "mixed batch",
     })
     assert r_mix.status_code == 409
     appr_ids = [f["id"] for f in client.get("/portal/api/findings?status=APPROVED").json()["findings"]]
-    assert "F-DEMO-003" in appr_ids
+    assert approved_id in appr_ids
     draft_ids = [f["id"] for f in client.get("/portal/api/findings?status=DRAFT").json()["findings"]]
-    assert "F-DEMO-002" in draft_ids
+    assert second_draft_id in draft_ids
 
 
 def test_report_generate_and_view_api(client):

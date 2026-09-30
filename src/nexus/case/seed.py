@@ -47,7 +47,7 @@ def seed_demo_case(
     """
     from nexus.case.manager import CaseManager
     from nexus.case.outputs import set_active_case_id
-    from nexus.case.schemas import ApprovalState, CaseStatus, FindingSeverity
+    from nexus.case.schemas import CaseStatus, FindingSeverity
 
     db_path = settings.cases_root / "cases.db"
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -57,6 +57,15 @@ def seed_demo_case(
     existing = mgr.store.get_case(case_id)
     if existing:
         mgr.delete_case(case_id)
+
+    # The demo case is a generated fixture that this seeder owns: a re-seed
+    # resets its directory so real-path staging never appends into stale
+    # findings from a previous seed.
+    case_dir_stale = settings.cases_root / case_id
+    if case_dir_stale.is_dir():
+        import shutil
+
+        shutil.rmtree(case_dir_stale)
 
     case = mgr.create_case(
         name=case_name,
@@ -219,169 +228,298 @@ def seed_demo_case(
         for u in urls:
             writer.writerow(list(u))
 
-    # 3. Seed Findings (DRAFT, APPROVED, REJECTED)
-    findings_data = [
-        {
-            "id": "F-DEMO-001",
-            "title": "Encoded PowerShell Command Execution on WS01 Beachhead",
-            "status": "DRAFT",
-            "confidence": "HIGH",
-            "severity": FindingSeverity.HIGH,
-            "technique_ids": ["T1059.001"],
-            "observation": "Event ID 4688 records powershell.exe invoked with encoded command containing web download cradle.",
-            "interpretation": "Adversary utilized obfuscated PowerShell to execute initial stage dropper in memory.",
-            "justification": "Corroborated by Event ID 4688 logs and PECmd execution timestamps on volume C:.",
-            "audit_ids": ["audit-evtx-4688-001", "audit-pf-ps-001"],
-            "examiner_selected": True,
-        },
-        {
-            "id": "F-DEMO-002",
-            "title": "Pass-the-Hash / Overpass-the-Hash Kerberos Ticket Requests",
-            "status": "DRAFT",
-            "confidence": "MEDIUM",
-            "severity": FindingSeverity.MEDIUM,
-            "technique_ids": ["T1550.002"],
-            "observation": "Repetitive Kerberos TGS requests observed from analyst_t1 account with RC4-HMAC encryption.",
-            "interpretation": "Adversary requested Kerberos service tickets for lateral movement using extracted NT hashes.",
-            "justification": "Zeek Kerberos connection bursts match Event 4769 audits on dc01.",
-            "audit_ids": ["audit-zeek-krb-002", "audit-evtx-4769-002"],
-            "examiner_selected": False,  # LLM-drafted
-        },
-        {
-            "id": "F-DEMO-003",
-            "title": "Anomalous SMB Lateral Movement from Provisioning Host 192.168.77.60",
-            # Seeded findings are DRAFT. APPROVED is a signed examiner decision
-            # reached through the password-gated commit path; writing it here -
-            # together with a forged approved_by/approved_at - would put an
-            # approval signature on a case that was never approved by anyone.
-            "status": "DRAFT",
-            "demo_approve": True,
-            "demo_note": "demo fixture, approved through the real password-gated path on every seed",
-            "confidence": "HIGH",
-            "severity": FindingSeverity.CRITICAL,
-            "technique_ids": ["T1021.002"],
-            "observation": "High-volume SMB sessions targeting admin$ and c$ shares on member server MBR01 followed by service install.",
-            "interpretation": "Psexec-style lateral movement using compromised domain credentials.",
-            "justification": "Confirmed by Zeek TCP 445 byte volume (1MB+) and System Event 7045 PSEXESVC on MBR01.",
-            "audit_ids": ["audit-zeek-smb-003", "audit-evtx-7045-003"],
-            "examiner_selected": True,
-        },
-        {
-            "id": "F-DEMO-004",
-            "title": "Credential Access via Mimikatz / LSA Secret Extraction",
-            "status": "DRAFT",
-            "demo_approve": True,
-            "demo_note": "demo fixture, approved through the real password-gated path on every seed",
-            "confidence": "HIGH",
-            "severity": FindingSeverity.CRITICAL,
-            "technique_ids": ["T1003.001"],
-            "observation": "Prefetch execution artifact for MIMIKATZ.EXE and SHARPDPAPI.EXE detected on WS01 beachhead.",
-            "interpretation": "Adversary attempted memory credential scraping against LSASS to harvest plaintext passwords.",
-            "justification": "PECmd summary confirms MIMIKATZ.EXE executed 3 times from temp staging path.",
-            "audit_ids": ["audit-pf-mimi-004"],
-            "examiner_selected": True,
-        },
-        {
-            "id": "F-DEMO-005",
-            "title": "Routine Scheduled Task Software Update",
-            "status": "REJECTED",
-            "confidence": "LOW",
-            "severity": FindingSeverity.LOW,
-            "technique_ids": ["T1053.005"],
-            "observation": "Daily task execution for system management agent.",
-            "interpretation": "Baseline enterprise administrative activity.",
-            "justification": "Verified against CADRE lab baseline and vendor hash registry.",
-            "audit_ids": ["audit-task-005"],
-            "examiner_selected": True,
-            "demo_reject": True,
-            "rejected_by": examiner,
-            "rejection_reason": "Legitimate enterprise software management update; verified against baseline.",
-        },
-    ]
+    # 3. Real audit trail: one tool-run entry per parser family, written by the
+    # same AuditWriter the pipeline uses (chain-hashed, per-case dir). The
+    # demo findings cite these ids — FD-001 is satisfied by *real* entries,
+    # not by strings the seeder invented.
+    from nexus.audit import AuditWriter
 
-    # A real approval needs a real password on the case. Set before approving so
-    # the fixture's approval is signed exactly the way an examiner's would be.
-    mgr.set_case_approval_password(case.id, _DEMO_APPROVAL_PASSWORD)
+    audit_writer = AuditWriter("nexus-demo", audit_dir=case_dir / "audit")
 
-    # Save to SQLite and mirror to findings.json
-    flat_findings: list[dict[str, Any]] = []
-    for fd in findings_data:
-        f_obj = mgr.add_finding(
-            case_id=case.id,
-            title=fd["title"],
-            description=fd["observation"],
-            severity=fd["severity"],
-            technique_ids=fd["technique_ids"],
-            created_by=examiner,
-            metadata={
-                "observation": fd["observation"],
-                "interpretation": fd["interpretation"],
-                "confidence": fd["confidence"],
-                "confidence_justification": fd["justification"],
-                "audit_ids": fd["audit_ids"],
-                "examiner_selected": fd["examiner_selected"],
-                "rejection_reason": fd.get("rejection_reason", ""),
-            },
-            initial_state=ApprovalState.DRAFT,
+    def _tool_run(tool: str, purpose: str, extraction: str, rows: int) -> str | None:
+        p = case_dir / "extractions" / extraction
+        return audit_writer.log(
+            tool=tool,
+            params={"purpose": purpose, "target": f"extractions/{extraction}"},
+            result_summary={"rows": rows, "output": f"extractions/{extraction}"},
+            input_files=[str(p)],
+            input_sha256s=[hashlib.sha256(p.read_bytes()).hexdigest()],
         )
-        if f_obj:
-            # Approve through the real password-gated path rather than writing
-            # APPROVED into the flat mirror. Two demos need a genuinely approved
-            # finding so the Approve desk and the report have something to show,
-            # and the SQLite row and findings.json must agree - the report reads
-            # the flat file while approval is signed against the database. Writing
-            # the state directly is how the two drifted apart in the first place.
-            state = str(getattr(f_obj, "approval_state", None)
-                         or getattr(f_obj, "state", None) or "DRAFT")
-            approved_by = fd.get("approved_by")
-            approved_at = fd.get("approved_at")
-            if fd.get("demo_reject") and state.upper() != "REJECTED":
-                rejected = mgr.reject_finding(
-                    f_obj.id, _DEMO_APPROVAL_PASSWORD,
-                    rejected_by=examiner,
-                    reason=fd.get("rejection_reason") or "rejected demo fixture",
-                )
-                if rejected is not None:
-                    state = "REJECTED"
-            if fd.get("demo_approve") and state.upper() != "APPROVED":
-                approved = mgr.approve_finding(
-                    f_obj.id, _DEMO_APPROVAL_PASSWORD, approved_by=examiner,
-                    note="demo fixture approval",
-                )
-                if approved is not None:
-                    state = "APPROVED"
-                    approved_by = examiner
-                    approved_at = getattr(approved, "approved_at", None)
-                    approved_at = (
-                        approved_at.isoformat() if hasattr(approved_at, "isoformat")
-                        else approved_at
-                    )
-            flat_findings.append({
-                "id": fd["id"],
-                "case_id": case.id,
-                "title": fd["title"],
-                "status": state,
-                "confidence": fd["confidence"],
-                "observation": fd["observation"],
-                "interpretation": fd["interpretation"],
-                "confidence_justification": fd["justification"],
-                "audit_ids": fd["audit_ids"],
-                "technique_ids": fd["technique_ids"],
-                "examiner_selected": fd["examiner_selected"],
-                "approved_by": approved_by,
-                "approved_at": approved_at,
-                "rejected_by": fd.get("rejected_by") if state == "REJECTED" else None,
-                "rejection_reason": fd.get("rejection_reason") if state == "REJECTED" else None,
-            })
 
-    (case_dir / "findings.json").write_text(json.dumps(flat_findings, indent=2), encoding="utf-8")
+    aud_evtx = _tool_run("EvtxECmd", "Security/System EVTX timeline", "evtx/evtx-timeline.csv", 150)
+    aud_pf = _tool_run("PECmd", "Prefetch execution summary", "prefetch/prefetch-summary.csv", 8)
+    aud_zeek = _tool_run("zeek_conn_reader", "Zeek connection log", "zeek/conn.csv", 80)
+    aud_browser = _tool_run("browser_history", "Browser history CSV", "browser/history.csv", 4)
+
+    # 4. Findings staged through the REAL staging path — CaseManager
+    # .record_finding validates FD-001..007, enforces citation integrity
+    # against the audit log written above, dual-writes the SQLite projection
+    # and seals the DRAFT (WP 10.4). The seeder never writes findings.json.
+    from nexus.case_manager import CaseManager as FlatCaseManager
+
+    flat = FlatCaseManager()
+
+    def _stage(
+        title: str,
+        observation: str,
+        interpretation: str,
+        technique: str,
+        confidence: str,
+        severity: str,
+        audit_ids: list[str | None],
+        evidence: list[dict[str, str]],
+        examiner_selected: bool = False,
+    ) -> dict[str, Any] | None:
+        """Stage one DRAFT via record_finding; returns the stored entry."""
+        ids = [a for a in audit_ids if a]
+        result = flat.record_finding(
+            {
+                "title": title,
+                "observation": observation,
+                "interpretation": interpretation,
+                "confidence": confidence,
+                "confidence_justification": (
+                    "Demo fixture: corroborated across the cited parser "
+                    "families by the seeded tool runs."
+                ),
+                "type": "execution" if technique.startswith("T1") else "other",
+                "severity": severity,
+                "technique_ids": [technique],
+                "audit_ids": ids,
+                "evidence": evidence,
+                "examiner_selected": examiner_selected,
+                "scribe_source": "demo_seed",
+                "confidence_source": "demo_seed",
+            },
+            examiner_override=examiner,
+            artifacts=[{"type": "audit", "audit_id": a, "value": a, "source": ""} for a in ids],
+            case_dir=case_dir,
+        )
+        if result.get("status") != "STAGED":
+            log.warning("demo finding not staged (%s): %s", title, result.get("error"))
+            return None
+        fid = result["finding_id"]
+        findings = json.loads((case_dir / "findings.json").read_text(encoding="utf-8"))
+        return next((f for f in findings if f["id"] == fid), None)
+
+    staged: list[dict[str, Any]] = []
+
+    staged.append(_stage(
+        title="Encoded PowerShell Command Execution on WS01 Beachhead",
+        observation=(
+            "Event ID 4688 records powershell.exe invoked with an encoded "
+            "command containing a web download cradle, user analyst_t1 on "
+            "host WS01."
+        ),
+        interpretation=(
+            "Obfuscated powershell.exe execution staged the initial dropper "
+            "in memory on WS01 before any file landed on disk."
+        ),
+        technique="T1059.001",
+        confidence="HIGH",
+        severity="high",
+        audit_ids=[aud_evtx, aud_pf],
+        evidence=[
+            {"type": "row", "source": "evtx/evtx-timeline.csv",
+             "detail": "powershell.exe -enc SQBFAFgA ... EventID 4688 on WS01.CADRE.LOCAL"},
+            {"type": "row", "source": "prefetch/prefetch-summary.csv",
+             "detail": "POWERSHELL.EXE run count 42, last run within the incident window"},
+        ],
+        examiner_selected=True,
+    ))
+
+    staged.append(_stage(
+        title="Kerberos Ticket Requests Consistent with Overpass-the-Hash",
+        observation=(
+            "Repetitive Kerberos TGS traffic from 192.168.77.62 toward the "
+            "DC followed failed logons for Administrator."
+        ),
+        interpretation=(
+            "The 192.168.77.62 host requested Kerberos service tickets in a "
+            "pattern consistent with pass-the-hash lateral movement."
+        ),
+        technique="T1550.002",
+        confidence="HIGH",
+        severity="medium",
+        audit_ids=[aud_zeek, aud_evtx],
+        evidence=[
+            {"type": "row", "source": "zeek/conn.csv",
+             "detail": "192.168.77.62 to 192.168.77.10:88 tcp krb service bursts"},
+            {"type": "row", "source": "evtx/evtx-timeline.csv",
+             "detail": "EventID 4625 failed logon on WS01, traffic source 192.168.77.62"},
+        ],
+        examiner_selected=False,
+    ))
+
+    approved_candidates: list[str] = []
+
+    for spec in (
+        {
+            "title": "SMB Lateral Movement from Provisioning Host 192.168.77.60",
+            "observation": (
+                "High-volume SMB sessions from 192.168.77.60 targeting admin$ "
+                "and c$ shares on MBR01, followed by a new service install."
+            ),
+            "interpretation": (
+                "Psexec-style lateral movement from 192.168.77.60: PSEXESVC.exe "
+                "appeared as an installed service on the target host."
+            ),
+            "technique": "T1021.002",
+            "severity": "critical",
+            "audit_ids": [aud_zeek, aud_evtx],
+            "evidence": [
+                {"type": "row", "source": "zeek/conn.csv",
+                 "detail": "192.168.77.60 to 192.168.77.62:445 tcp smb, large transfers"},
+                {"type": "row", "source": "evtx/evtx-timeline.csv",
+                 "detail": "EventID 7045 new service PSEXESVC.exe installed on MBR01.CADRE.LOCAL"},
+            ],
+            "examiner_selected": True,
+            "approve": True,
+        },
+        {
+            "title": "Credential Access via Mimikatz and LSA Secret Extraction",
+            "observation": (
+                "Prefetch shows MIMIKATZ.EXE and SHARPDPAPI.EXE executed on "
+                "WS01; the analyst browsed the mimikatz release page beforehand."
+            ),
+            "interpretation": (
+                "MIMIKATZ.EXE execution on WS01 indicates LSASS memory scraping "
+                "to harvest credentials, staged from the mimikatz release page."
+            ),
+            "technique": "T1003.001",
+            "severity": "critical",
+            "audit_ids": [aud_pf, aud_browser],
+            "evidence": [
+                {"type": "row", "source": "prefetch/prefetch-summary.csv",
+                 "detail": "MIMIKATZ.EXE run count 3 from the staging volume"},
+                {"type": "row", "source": "browser/history.csv",
+                 "detail": "mimikatz release page visited before MIMIKATZ.EXE execution"},
+            ],
+            "examiner_selected": True,
+            "approve": True,
+        },
+    ):
+        entry = _stage(
+            title=spec["title"],
+            observation=spec["observation"],
+            interpretation=spec["interpretation"],
+            technique=spec["technique"],
+            confidence="HIGH",
+            severity=spec["severity"],
+            audit_ids=spec["audit_ids"],
+            evidence=spec["evidence"],
+            examiner_selected=spec["examiner_selected"],
+        )
+        if entry:
+            staged.append(entry)
+            if spec["approve"]:
+                approved_candidates.append(entry["id"])
+
+    # The deliberate UNSUPPORTED example: every citation is real (L1.1 passes)
+    # but the named executable appears in no indexed row, so L1.3 fails and the
+    # verdict is UNSUPPORTED. It stays DRAFT to show the examiner exactly what
+    # an override decision looks like on the Approval Desk.
+    override_example = _stage(
+        title=(
+            "Persistence via DARKKILLCHAIN.EXE Run key "
+            "(override example - L1 verdict UNSUPPORTED)"
+        ),
+        observation=(
+            "A Run key entry allegedly launches DARKKILLCHAIN.EXE from "
+            "C:\\Windows\\Temp on WS01 at user logon."
+        ),
+        interpretation=(
+            "DARKKILLCHAIN.EXE persistence would re-launch the implant at "
+            "every logon on WS01."
+        ),
+        technique="T1547.001",
+        confidence="LOW",
+        severity="medium",
+        audit_ids=[aud_evtx, aud_pf],
+        evidence=[
+            {"type": "row", "source": "evtx/evtx-timeline.csv",
+             "detail": "no row names DARKKILLCHAIN.EXE - the claim has no row"},
+        ],
+        examiner_selected=False,
+    )
+    if override_example:
+        staged.append(override_example)
+
+    # REJECTED demo finding through the real reject path (atomic, audited).
+    rejected = _stage(
+        title="Routine Scheduled Task Software Update",
+        observation="Daily task execution for the enterprise system management agent.",
+        interpretation=(
+            "Baseline enterprise administrative activity on WS01, consistent "
+            "with the deployed management agent."
+        ),
+        technique="T1053.005",
+        confidence="LOW",
+        severity="low",
+        audit_ids=[aud_evtx, aud_pf],
+        evidence=[
+            {"type": "row", "source": "evtx/evtx-timeline.csv",
+             "detail": "routine task execution entries for the management agent"},
+        ],
+        examiner_selected=True,
+    )
+    if rejected:
+        from nexus.cli.main import _reject_finding
+
+        _reject_finding(
+            case_dir, rejected["id"], examiner,
+            "Legitimate enterprise software management; verified against the "
+            "lab baseline.",
+        )
+        rejected["status"] = "REJECTED"
+        staged.append(rejected)
+
+    # Approvals go through the real CLI approval service: seal verification,
+    # L1 verdict at approval, verification-ledger + transparency entries —
+    # the same function `nexus approve` calls after its password gate. The
+    # password is documented (it protects a regenerated fixture), not secret.
+    from nexus.analysis.claim_verification import verify_case
+    from nexus.cli.approve import approve_finding
+
+    # L1 replay against the demo's own indexed rows: the extraction files are
+    # the same rows the CSV fallback (and, after indexing, Elasticsearch)
+    # would answer from, so the verdict is a real replay in every
+    # environment — not an environment-dependent pass.
+    indexed_text = "\n".join(
+        p.read_text(encoding="utf-8", errors="replace")
+        for p in sorted(extractions_dir.rglob("*.csv"))
+    )
+    ledger_rows = verify_case(case_dir, use_index=False, indexed_text=indexed_text)
+    verdicts = {
+        str(row.get("id") or ""): str(row.get("verdict") or "")
+        for row in ledger_rows.get("claims") or []
+    }
+    approved_ids: list[str] = []
+    for fid in approved_candidates:
+        verdict = verdicts.get(fid, "")
+        if verdict != "PROVEN":
+            # Mirror the examiner gate: the demo never signs a non-PROVEN
+            # draft — it stays DRAFT with its verdict visible instead.
+            log.warning(
+                "demo approval skipped for %s (L1 verdict %s, not PROVEN)",
+                fid, verdict or "unknown",
+            )
+            continue
+        result = approve_finding(
+            case_dir, fid, examiner, _DEMO_APPROVAL_PASSWORD,
+            note="demo fixture approval", l1_verdict=verdict,
+        )
+        if result.get("status") != "APPROVED":
+            log.warning("demo approval refused for %s: %s", fid, result)
+        else:
+            approved_ids.append(fid)
 
     # 4. Seed IOCs
     iocs_data = [
         {"type": "ip", "value": "192.168.77.60", "finding_title": "Anomalous SMB Lateral Movement", "severity": "HIGH"},
         {"type": "sha256", "value": "4a7d1ed414474e4033ac29ccb8653d9b002c912efc464efc85e72d4cc98d1a3b", "finding_title": "Credential Access via Mimikatz", "severity": "CRITICAL"},
         {"type": "domain", "value": "raw.githubusercontent.com", "finding_title": "Encoded PowerShell Command Execution", "severity": "MEDIUM"},
-        {"type": "file", "value": "PSEXESVC.exe", "finding_title": "Anomalous SMB Lateral Movement", "severity": "HIGH"},
+        {"type": "file", "value": "PSEXESVC.exe", "finding_title": "SMB Lateral Movement from Provisioning Host", "severity": "HIGH"},
     ]
     (case_dir / "iocs.json").write_text(json.dumps(iocs_data, indent=2), encoding="utf-8")
 
@@ -393,7 +531,23 @@ def seed_demo_case(
     ]
     (case_dir / "todos.json").write_text(json.dumps(todos_data, indent=2), encoding="utf-8")
 
-    # 6. Seed Official Report Preview
+    # 6. Seed Official Report Preview — the approved sections are rendered
+    # from the findings actually staged and approved above, not hardcoded ids.
+    approved_rows: list[str] = []
+    for f in staged:
+        if f["id"] not in approved_ids:
+            continue
+        witnesses = ", ".join(f"`{a}`" for a in f.get("audit_ids") or [])
+        approved_rows.append(
+            f"### {f['id']}: {f['title']}\n"
+            f"- **Severity:** {str(f.get('severity') or '').upper()}\n"
+            f"- **Technique:** MITRE ATT&CK {', '.join(f.get('technique_ids') or [])}\n"
+            f"- **Approved by:** {f.get('approved_by')}\n"
+            f"- **Observation:** {f.get('observation')}\n"
+            f"- **Interpretation:** {f.get('interpretation')}\n"
+            f"- **Audit Witnesses:** {witnesses}\n"
+        )
+
     report_md = f"""# DFIR-Nexus Forensic Investigation Report
 
 **Case ID:** {case_id}  
@@ -421,23 +575,9 @@ An assumed-breach forensic investigation was conducted across target workstation
 
 ---
 
-## 3. Approved Findings (FD-002 Verified)
+## 3. Approved Findings
 
-### F-DEMO-003: Anomalous SMB Lateral Movement from Provisioning Host 192.168.77.60
-- **Severity:** CRITICAL
-- **Technique:** MITRE ATT&CK T1021.002
-- **Approved by:** {examiner}
-- **Observation:** High-volume SMB sessions targeting admin$ and c$ shares on member server MBR01 followed by service install.
-- **Interpretation:** Psexec-style lateral movement using compromised domain credentials.
-- **Audit Witnesses:** `audit-zeek-smb-003`, `audit-evtx-7045-003`
-
-### F-DEMO-004: Credential Access via Mimikatz / LSA Secret Extraction
-- **Severity:** CRITICAL
-- **Technique:** MITRE ATT&CK T1003.001
-- **Approved by:** {examiner}
-- **Observation:** Prefetch execution artifact for MIMIKATZ.EXE and SHARPDPAPI.EXE detected on WS01 beachhead.
-- **Interpretation:** Adversary attempted memory credential scraping against LSASS to harvest plaintext passwords.
-- **Audit Witnesses:** `audit-pf-mimi-004`
+{chr(10).join(approved_rows) if approved_rows else "_No findings approved at seed time._"}
 """
     (reports_dir / "REPORT.md").write_text(report_md, encoding="utf-8")
     (case_dir / "REPORT.md").write_text(report_md, encoding="utf-8")
@@ -450,6 +590,41 @@ An assumed-breach forensic investigation was conducted across target workstation
         encoding="utf-8"
     )
 
+    # 7. Coherent pipeline state: the lane gate, the index state and the
+    # coverage audit are written through the real writers so the gate banner,
+    # the stepper and the L1 checks all read the same truth. Every extraction
+    # family is OK — nothing is unprocessed, so the gate is clear.
+    from nexus.langgraph.case_index import write_index_state
+    from nexus.langgraph.lane_gate import write_lane_gate
+
+    run_id = f"demo-{now.strftime('%Y%m%dT%H%M%S')}"
+    ledger = [
+        {"tool": "EvtxECmd", "purpose": "Security/System EVTX timeline",
+         "status": "OK", "output": "extractions/evtx/evtx-timeline.csv"},
+        {"tool": "PECmd", "purpose": "Prefetch execution summary",
+         "status": "OK", "output": "extractions/prefetch/prefetch-summary.csv"},
+        {"tool": "zeek_conn_reader", "purpose": "Zeek connection log",
+         "status": "OK", "output": "extractions/zeek/conn.csv"},
+        {"tool": "browser_history", "purpose": "Browser history CSV",
+         "status": "OK", "output": "extractions/browser/history.csv"},
+    ]
+    write_lane_gate(case_dir, run_id, ledger)
+    write_index_state(case_dir, {
+        "docs": 150 + 8 + 80 + 4,
+        "index": "",
+        "capped": False,
+        "caps": {},
+    })
+    try:
+        from nexus.analysis.coverage_audit import build_coverage_audit
+
+        coverage = build_coverage_audit(case_dir)
+        (analysis_dir / "coverage_audit.json").write_text(
+            json.dumps(coverage, indent=2), encoding="utf-8"
+        )
+    except Exception as exc:  # noqa: BLE001 - a missing audit is honest, not fatal
+        log.info("demo coverage audit skipped: %s", exc)
+
     # Lifecycle: the demo is fully parsed → ACTIVE. SQLite is the system of
     # record; update_status mirrors the value into CASE.yaml (audit-chained).
     mgr.update_status(case.id, CaseStatus.ACTIVE, actor=examiner)
@@ -460,11 +635,16 @@ An assumed-breach forensic investigation was conducted across target workstation
         set_active_case_id(case.id)
     mgr.close()
 
-    log.info("Successfully seeded demo case %s with %d findings", case.id, len(flat_findings))
+    log.info(
+        "Successfully seeded demo case %s: %d findings staged via the real "
+        "path (%d approved, 1 rejected, 1 UNSUPPORTED override example)",
+        case.id, len(staged), len(approved_ids),
+    )
     return {
         "ok": True,
         "case_id": case.id,
         "evidence_count": len(evidence_items),
-        "findings_count": len(flat_findings),
+        "findings_count": len(staged),
+        "approved_count": len(approved_ids),
         "timeline_count": 150 + 50 + 80 + 4,
     }
