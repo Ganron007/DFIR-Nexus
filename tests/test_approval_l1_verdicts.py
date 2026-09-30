@@ -394,3 +394,53 @@ def test_portal_commit_absent_from_verdict_map_requires_reason(l1_env, monkeypat
         for f in json.loads((case_dir / "findings.json").read_text(encoding="utf-8"))
     }
     assert entries[fid]["l1_verdict_at_approval"] == "UNVERIFIABLE"
+
+
+def test_portal_commit_refuses_a_broken_seal_even_with_override(l1_env):
+    """WO-21: an edited-after-staging finding must not be approvable via the portal."""
+    tmp: Path = l1_env["tmp"]
+    client: TestClient = l1_env["client"]
+    stored = _write_portal_password(tmp)
+    case_id, case_dir = _make_case(client, tmp)
+    fid = _stage(case_dir, GOOD)
+    headers = {"X-Nexus-Case": case_id}
+
+    rows = json.loads((case_dir / "findings.json").read_text(encoding="utf-8"))
+    target = next(f for f in rows if f["id"] == fid)
+    assert target.get("seal") or target.get("content_hash"), (
+        "staging must seal the entry for this test to mean anything"
+    )
+    target["title"] = "edited after staging"
+    (case_dir / "findings.json").write_text(json.dumps(rows), encoding="utf-8")
+
+    # No override: the L1 gate refuses (the edit made the finding non-PROVEN).
+    ch, resp = _respond(client, headers, stored)
+    r = client.post(
+        "/portal/api/commit",
+        headers=headers,
+        json={"finding_ids": [fid], "challenge_id": ch, "response": resp},
+    )
+    assert r.status_code == 400, r.text
+
+    # With an override: the SEAL check still refuses, and nothing is signed.
+    ch, resp = _respond(client, headers, stored)
+    r = client.post(
+        "/portal/api/commit",
+        headers=headers,
+        json={
+            "finding_ids": [fid],
+            "challenge_id": ch,
+            "response": resp,
+            "override_reasons": {fid: "examiner says it is fine"},
+        },
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["approved"] == [], body
+    assert any("seal" in str(e.get("error", "")).lower() for e in body["errors"]), body
+    entries = {
+        f["id"]: f
+        for f in json.loads((case_dir / "findings.json").read_text(encoding="utf-8"))
+    }
+    assert entries[fid]["status"] == "DRAFT"
+    assert not [row for row in _verification_rows(tmp) if row.get("finding_id") == fid]
