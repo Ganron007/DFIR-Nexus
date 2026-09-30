@@ -7629,6 +7629,18 @@ def _augment_report_with_grade(case_dir, out_file, report_text: str,
             counts.get("row_contradictions") or 0
         )
 
+    # WO-18(b): the sibling-group result must cap the grade too - compute it
+    # before grade_report and fold its contradiction counts into the cap.
+    group_result = None
+    with contextlib.suppress(Exception):
+        sibs = sibling_cases(case_dir)
+        if sibs:
+            group_result = check_cross_mode_group([case_dir, *sibs])
+            gcounts = group_result.get("counts") or {}
+            contradictions += int(gcounts.get("contradictions") or 0) + int(
+                gcounts.get("row_contradictions") or 0
+            )
+
     try:
         known = _case_audit_ids(case_dir)
     except Exception:  # noqa: BLE001
@@ -7656,14 +7668,11 @@ def _augment_report_with_grade(case_dir, out_file, report_text: str,
     with contextlib.suppress(Exception):
         tail.append(render_consistency_markdown(consistency))
 
-    # WO-12: sibling cases (identical registered evidence) exist -> compare the
-    # group across their stored modes and surface it in each sibling's report.
+    # WO-12/WO-18: the sibling-group result (computed above so it caps the
+    # grade) is surfaced in each sibling's report.
     with contextlib.suppress(Exception):
-        sibs = sibling_cases(case_dir)
-        if sibs:
-            tail.append(
-                render_consistency_markdown(check_cross_mode_group([case_dir, *sibs]))
-            )
+        if group_result:
+            tail.append(render_consistency_markdown(group_result))
 
     # WO-3 (report-only): source records vs indexed docs, per file.
     with contextlib.suppress(Exception):

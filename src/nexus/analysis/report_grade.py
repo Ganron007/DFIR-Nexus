@@ -591,6 +591,11 @@ def _cap_with_l1(
     Thresholds live in the module docstring; tune them here, in one place.
     """
     if not ledger and not contradictions:
+        # WO-18: no ledger means verification did not run - unknown is never a
+        # pass. (The product caller always passes one; a direct call without it
+        # is exactly the "could not verify" case.)
+        if _L1_CAP_ORDER.index("B") < _L1_CAP_ORDER.index(cls):
+            return "B", {"cap": "B", "reason": "L1 verification did not run"}
         return cls, None
     counts = dict((ledger or {}).get("verdict_counts") or {})
     if not counts:

@@ -106,7 +106,7 @@ def _ledger(*verdicts: str) -> dict:
 
 
 def test_wo11_fixture_grades_a_at_35():
-    base = _a_grade()
+    base = _a_grade(l1_ledger=_ledger("PROVEN", "PROVEN"))
     assert base["total"] == 35, base["why_not_higher"]
     assert base["report_class"] == "A"
     assert base["l1_cap"] is None
@@ -145,6 +145,89 @@ def test_wo11_all_proven_keeps_a():
     g = _a_grade(l1_ledger=_ledger("PROVEN", "PROVEN", "PROVEN"))
     assert g["report_class"] == "A"
     assert g["l1_cap"] is None
+
+
+# --------------------------------------------------------------------------
+# WO-18 - no ledger never passes; sibling contradictions cap the grade
+# --------------------------------------------------------------------------
+
+def test_wo18_missing_ledger_caps_at_b():
+    g = _a_grade()  # no ledger passed = verification did not run
+    assert g["report_class"] == "B"
+    assert g["l1_cap"] == {"cap": "B", "reason": "L1 verification did not run"}
+    assert any("did not run" in n for n in g["why_not_higher"])
+
+
+def _augment(tmp_path, monkeypatch, *, verify_raises=False, group=None):
+    from nexus.dashboard import app as app_mod
+
+    case = tmp_path / "CASE-GRADE0001"
+    case.mkdir(exist_ok=True)
+    (case / "CASE.yaml").write_text(
+        "case_id: CASE-GRADE0001\nstatus: open\n", encoding="utf-8"
+    )
+    (case / "findings.json").write_text("[]", encoding="utf-8")
+    out_file = case / "reports" / "REPORT.md"
+    out_file.parent.mkdir(exist_ok=True)
+
+    import nexus.analysis.claim_verification as cv
+    import nexus.analysis.cross_mode as cm
+
+    if verify_raises:
+        def _boom(*_a, **_k):
+            raise RuntimeError("verifier exploded")
+        monkeypatch.setattr(cv, "verify_case", _boom)
+    else:
+        monkeypatch.setattr(cv, "verify_case", lambda *a, **k: _ledger("PROVEN", "PROVEN"))
+
+    if group is not None:
+        monkeypatch.setattr(
+            cm, "sibling_cases", lambda *a, **k: [tmp_path / "CASE-OTHER0002"]
+        )
+        monkeypatch.setattr(cm, "check_cross_mode_group", lambda *a, **k: dict(group))
+    else:
+        monkeypatch.setattr(cm, "sibling_cases", lambda *a, **k: [])
+
+    app_mod._augment_report_with_grade(
+        case,
+        out_file,
+        _A_MD,
+        [_finding(fid="F1", n_art=2, n_audit=2)],
+        [{"name": f"e{i}"} for i in range(12)],
+    )
+    grade = json.loads(
+        (case / "analysis" / "report_grade.json").read_text(encoding="utf-8")
+    )
+    return grade, out_file.read_text(encoding="utf-8")
+
+
+def test_wo18_verify_case_raise_caps_at_b(tmp_path, monkeypatch):
+    grade, report = _augment(tmp_path, monkeypatch, verify_raises=True)
+    assert grade["report_class"] == "B"
+    assert grade["l1_cap"]["reason"] == "L1 verification did not run"
+    assert "Capped at B" in report
+
+
+def test_wo18_sibling_group_contradiction_caps_at_d(tmp_path, monkeypatch):
+    grade, report = _augment(
+        tmp_path,
+        monkeypatch,
+        group={
+            "scope": "group",
+            "verdict": "contradictory",
+            "counts": {"shared": 0, "contradictions": 1, "row_contradictions": 0},
+            "modes_present": [],
+            "modes_missing": [],
+            "claim_rows": 0,
+            "shared": [],
+            "contradictions": [],
+            "row_contradictions": [],
+            "entity_overlap": {},
+        },
+    )
+    assert grade["report_class"] == "D"
+    assert grade["l1_cap"]["cap"] == "D"
+    assert "Cross-case consistency" in report
 
 
 def test_seeded_overclaim_drops_the_class():
