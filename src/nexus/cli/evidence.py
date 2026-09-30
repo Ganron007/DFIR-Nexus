@@ -192,6 +192,45 @@ def verify(
         typer.echo("All evidence verified OK")
 
 
+@app.command("status")
+def status(
+    case_id: str = typer.Option("", "--case", help="Case ID (defaults to active)"),
+):
+    """Show the captured evidence freshness state (WO-A5).
+
+    Reads ``analysis/evidence_freshness.json`` — written automatically at
+    lane start/end — rather than re-hashing anything; use
+    ``nexus evidence verify`` for an on-demand re-hash.
+    """
+    import json as _json
+
+    from nexus.config import settings
+
+    if not case_id:
+        case_id = _get_active_case_id() or ""
+    if not case_id:
+        typer.echo("No active case. Use 'nexus case activate' first.", err=True)
+        raise typer.Exit(1)
+
+    fp = Path(settings.cases_root) / case_id / "analysis" / "evidence_freshness.json"
+    if not fp.is_file():
+        typer.echo(
+            f"No freshness state for {case_id} yet — it is captured at lane start/end."
+        )
+        return
+    data = _json.loads(fp.read_text(encoding="utf-8"))
+    typer.echo(
+        f"Result: {data.get('result', 'unknown').upper()} "
+        f"(captured {data.get('verified_at', '?')}, phase: {data.get('phase', '?')})"
+    )
+    for item in data.get("items") or []:
+        mark = "OK" if item.get("valid") else "NOT OK"
+        detail = item.get("error") or (
+            "hash matches" if item.get("valid") else "hash mismatch"
+        )
+        typer.echo(f"  {mark} {item.get('name')} — {detail}")
+
+
 @app.command()
 def lock(
     case_id: str = typer.Option("", "--case", help="Case ID (defaults to active)"),

@@ -6,12 +6,23 @@
 import { useEffect, useState, useRef } from "react";
 import { Link } from "react-router-dom";
 import { api, type LedgerRow, type PipelineStageLine, type PipelineStatusResponse } from "../api/client";
+import { useEvidenceFreshness } from "../api/queries/summary";
 import { useCase } from "../context/CaseContext";
+import { StatusPill, type SemanticTone } from "../ui";
 import EvidencePicker from "../components/EvidencePicker";
 import LiveRunFeed from "../components/LiveRunFeed";
 
+/** WO-A5: the freshness word, from the polled summary — never a re-hash. */
+const FRESHNESS_TONES: Record<string, SemanticTone> = {
+  ok: "fresh-ok",
+  modified: "fresh-modified",
+  missing: "fresh-modified",
+  unknown: "fresh-stale",
+};
+
 export default function Evidence() {
   const { activeCase, refreshStages, mode: caseMode, setMode } = useCase();
+  const freshness = useEvidenceFreshness(activeCase);
   const [evidence, setEvidence] = useState<unknown[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -229,6 +240,14 @@ export default function Evidence() {
         <h2>Evidence Registry ({evidence.length})</h2>
         {activeCase && (
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <StatusPill
+              tone={FRESHNESS_TONES[freshness.data?.result ?? "unknown"] ?? "fresh-stale"}
+              label={
+                freshness.data?.result === "ok"
+                  ? "Evidence verified"
+                  : `Evidence ${freshness.data?.result ?? "unknown"}`
+              }
+            />
             <span style={{ fontSize: 12, color: pipelineComplete ? "var(--success)" : "var(--text-muted)" }}>
               {pipelineComplete ? "✓ N2 lane complete" : "N2 lane not run"}
             </span>

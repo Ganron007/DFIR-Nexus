@@ -2668,6 +2668,15 @@ async def run_tool_lane(
     from nexus.langgraph.pipeline_runs import resolve_run
 
     pipeline_run = resolve_run(case_dir, run_id=run_id)
+    # WO-A5: snapshot evidence freshness at lane start — the lane-end capture
+    # diffs against this, so a modification DURING the lane names its item.
+    try:
+        from nexus.analysis.freshness import capture_freshness
+
+        freshness_start = capture_freshness(case_dir, "lane_start")
+    except Exception as exc:  # noqa: BLE001 - never die on a reporting hook
+        freshness_start = {"items": [], "result": "unknown"}
+        log.warning("lane-start freshness capture failed: %s", exc)
     try:
         from nexus.langgraph.query_pack import load_case_intake
 
@@ -3071,6 +3080,27 @@ async def run_tool_lane(
     # artifact before anything downstream. Unprocessed = FAIL rows; the gate is
     # written here, surfaced on the portal/CLI, and only a successful re-run or
     # an audited examiner skip clears it. No analysis stage starts meanwhile.
+    # WO-A5: an input modified DURING the lane is a FAIL row naming the item.
+    try:
+        from nexus.analysis.freshness import capture_freshness, freshness_regressions
+
+        freshness_end = capture_freshness(case_dir, "lane_end")
+        for reg in freshness_regressions(freshness_start, freshness_end):
+            ledger.append({
+                "tool": "evidence_freshness",
+                "purpose": f"evidence integrity: {reg['name']}",
+                "status": "FAIL",
+                "reason": (
+                    f"registered evidence modified or missing after the lane "
+                    f"started (was {reg['was']} at lane start, now {reg['now']})"
+                ),
+            })
+            summary = (
+                f"{summary} - EVIDENCE MODIFIED DURING LANE: {reg['name']}"
+            )
+            log.warning("evidence freshness regression: %s", reg)
+    except Exception as exc:  # noqa: BLE001 - never die on a reporting hook
+        log.warning("lane-end freshness capture failed: %s", exc)
     try:
         from nexus.langgraph.lane_gate import write_lane_gate
 

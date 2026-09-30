@@ -874,19 +874,20 @@ def _chunks(items: list[str], size: int) -> list[list[str]]:
     return [items[i:i + size] for i in range(0, len(items), size)]
 
 
-def _index_file_mtimes(case_dir: Path) -> dict[str, float]:
-    """Doc ``file`` value -> mtime_ns for every indexable file (B6).
+def _index_file_keys(case_dir: Path):
+    """Yield ``(key, path)`` for every indexable file (B6 / WO-A5 digests).
 
     The ingest store is keyed as ``ingest/artifacts.jsonl`` to match the doc
     ``file`` value (a bare ``artifacts.jsonl`` key made incremental indexing
     blind to imported evidence). When the same rel path exists in several
-    roots, the MAX mtime wins so any copy's update still triggers a reindex.
+    roots, the first root that resolves it wins — matching the doc ``file``
+    value the indexer actually wrote.
     """
     from nexus.langgraph.pipeline_runs import resolve_tools_extractions
 
     extractions = resolve_tools_extractions(case_dir)
     roots = [extractions, extractions.parent / "sift" / "extractions", case_dir / "ingest"]
-    out: dict[str, float] = {}
+    seen: dict[str, Path] = {}
     for path in iter_index_files(case_dir):
         for root in roots:
             try:
@@ -895,10 +896,43 @@ def _index_file_mtimes(case_dir: Path) -> dict[str, float]:
                 continue
             if root == case_dir / "ingest":
                 rel = f"ingest/{rel}"
-            with contextlib.suppress(OSError):
-                mtime = float(path.stat().st_mtime_ns)
-                out[rel] = max(out.get(rel, 0.0), mtime)
+            seen.setdefault(rel, path)
             break
+    yield from seen.items()
+
+
+def _index_file_mtimes(case_dir: Path) -> dict[str, float]:
+    """Doc ``file`` value -> mtime_ns for every indexable file (B6).
+
+    When the same rel path exists in several roots, the MAX mtime wins so any
+    copy's update still triggers a reindex.
+    """
+    out: dict[str, float] = {}
+    for rel, path in _index_file_keys(case_dir):
+        with contextlib.suppress(OSError):
+            mtime = float(path.stat().st_mtime_ns)
+            out[rel] = max(out.get(rel, 0.0), mtime)
+    return out
+
+
+def _index_file_digests(case_dir: Path) -> dict[str, str]:
+    """Doc ``file`` value -> SHA-256 for every indexable file (WO-A5).
+
+    Stored with the index state so ``nexus index verify`` can prove the rows
+    in the index still match the files on disk. Large files stream.
+    """
+    import hashlib
+
+    out: dict[str, str] = {}
+    for rel, path in _index_file_keys(case_dir):
+        try:
+            h = hashlib.sha256()
+            with open(path, "rb") as fh:
+                for chunk in iter(lambda: fh.read(1 << 20), b""):
+                    h.update(chunk)
+            out[rel] = h.hexdigest()
+        except OSError as exc:
+            log.warning("index digest failed for %s: %s", rel, exc)
     return out
 
 
@@ -1198,8 +1232,13 @@ def write_index_state(
     meta: dict[str, Any],
     *,
     file_mtimes: dict[str, float] | None = None,
+    file_sha256s: dict[str, str] | None = None,
 ) -> None:
-    """Persist index freshness state for staleness detection + incremental B6."""
+    """Persist index freshness state for staleness detection + incremental B6.
+
+    WO-A5: the SHA-256 of every indexed source file is stored alongside the
+    mtimes so ``nexus index verify`` can prove post-index modification.
+    """
     import json
     from datetime import UTC, datetime
 
@@ -1212,6 +1251,7 @@ def write_index_state(
         "index": meta.get("index", ""),
         "url": es_url(),
         "file_mtimes": file_mtimes if file_mtimes is not None else _index_file_mtimes(case_dir),
+        "file_sha256s": file_sha256s if file_sha256s is not None else _index_file_digests(case_dir),
         "capped": bool(meta.get("capped")),
         "caps": meta.get("caps") or {},
     }

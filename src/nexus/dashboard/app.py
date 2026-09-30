@@ -1492,11 +1492,20 @@ async def api_summary(request):
     gate: dict[str, Any] = {}
     n_stages: list[dict[str, Any]] = []
     case_dir = _get_case_dir(request)
+    freshness: dict[str, Any] = {"verified_at": "", "result": "unknown", "items": []}
     if case_dir is not None:
         from nexus.langgraph.lane_gate import lane_stages, read_lane_gate
 
         gate = read_lane_gate(case_dir)
         n_stages = lane_stages(case_dir)
+        # WO-A5: the freshness word captured at lane start/end (ok / modified
+        # / missing / unknown) — additive, the summary never re-hashes.
+        try:
+            from nexus.analysis.freshness import freshness_brief
+
+            freshness = freshness_brief(case_dir)
+        except Exception:  # noqa: BLE001 - surfaces never break the summary
+            pass
     return JSONResponse({
         "findings": {"total": len(findings), "draft": sum(1 for f in findings if f.get("status") == "DRAFT"),
                       "approved": sum(1 for f in findings if f.get("status") == "APPROVED"),
@@ -1508,6 +1517,11 @@ async def api_summary(request):
         # an unprocessed artifact is visible here, not only in a log.
         "lane_gate": gate,
         "n_stages": n_stages,
+        # WO-A5: evidence freshness for the UI chip.
+        "freshness": {
+            "verified_at": freshness.get("verified_at", ""),
+            "result": freshness.get("result", "unknown"),
+        },
     })
 
 
