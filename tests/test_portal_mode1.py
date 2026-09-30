@@ -44,16 +44,18 @@ def test_nl_to_needles_question():
     assert "sdelete" in result["needles"]
 
 
-def test_ask_page_renders_with_no_case():
+def test_ask_page_redirects_to_spa():
+    """WO-U7: the legacy server-rendered pages are retired — the SPA is the
+    one portal, and legacy URLs redirect to their SPA routes."""
     from starlette.applications import Starlette
     from starlette.testclient import TestClient
 
     from nexus.dashboard.app import create_dashboard
     app = Starlette(routes=create_dashboard())
     client = TestClient(app)
-    resp = client.get("/portal/ask")
-    assert resp.status_code == 200
-    assert b"Mode 1" in resp.content
+    resp = client.get("/portal/ask", follow_redirects=False)
+    assert resp.status_code == 302
+    assert resp.headers["location"] == "/portal/app/steer"
 
 
 @patch("nexus.dashboard.app._get_case_dir")
@@ -139,21 +141,18 @@ def test_api_select_promotes_hits(mock_save, mock_n4, mock_get_dir, tmp_path):
     assert data.get("status") == "DRAFT"
 
 
-@patch("nexus.dashboard.app._get_case_dir")
-def test_explore_page_renders(mock_get_dir, tmp_path):
+def test_explore_page_redirects_to_spa():
+    """WO-U7: legacy page URLs 302 to their SPA routes."""
     from starlette.applications import Starlette
     from starlette.testclient import TestClient
 
     from nexus.dashboard.app import create_dashboard
 
-    case_dir = _make_case_dir(tmp_path)
-    mock_get_dir.return_value = case_dir
-
     app = Starlette(routes=create_dashboard())
     client = TestClient(app)
-    resp = client.get("/portal/explore")
-    assert resp.status_code == 200
-    assert b"Explore Evidence" in resp.content
+    resp = client.get("/portal/explore", follow_redirects=False)
+    assert resp.status_code == 302
+    assert resp.headers["location"] == "/portal/app/explore"
 
 
 @patch("nexus.dashboard.app._get_case_dir")
