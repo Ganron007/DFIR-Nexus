@@ -1,0 +1,23 @@
+.button {
+  background: transparent;
+  border: 1px dashed var(--color-border-default);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+  cursor: copy;
+  color: var(--color-fg-muted);
+}
+
+.button:hover {
+  color: var(--color-fg-default);
+  border-color: var(--color-border-strong);
+}
+
+.button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.hash {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+}

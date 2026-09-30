@@ -1,0 +1,117 @@
+/*
+ * Design tokens (WO-U2, WP 14.2; spec: Docs/internal/UI-FOUNDATION-DESIGN.md).
+ * Dark theme only in v1 (UD6); every token is semantic so a light theme later
+ * swaps values, never names. The only raw hex in the codebase lives here.
+ */
+:root {
+  /* Spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+  --space-9: 96px;
+  --space-10: 128px;
+
+  /* Type scale */
+  --font-size-xs: 12px;
+  --font-size-sm: 13px;
+  --font-size-md: 14px;
+  --font-size-lg: 16px;
+  --font-size-xl: 20px;
+  --font-size-2xl: 24px;
+  --font-mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace;
+
+  /* Radius */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-full: 9999px;
+
+  /* Elevation */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --shadow-3: 0 12px 32px rgba(0, 0, 0, 0.6);
+
+  /* Z-index */
+  --z-base: 0;
+  --z-sticky: 10;
+  --z-drawer: 100;
+  --z-dialog: 200;
+  --z-toast: 300;
+  --z-tooltip: 400;
+
+  /* Focus — the only focus style; every interactive element uses it */
+  --focus-ring: 0 0 0 2px var(--color-accent);
+
+  /* Surfaces */
+  --color-bg-base: #0d1117;
+  --color-bg-raised: #161b22;
+  --color-bg-overlay: #21262d;
+  --color-bg-hover: #30363d;
+  --color-border-default: #30363d;
+  --color-border-strong: #484f58;
+  --color-fg-default: #e6edf3;
+  --color-fg-muted: #8b949e;
+  --color-fg-subtle: #6e7681;
+  --color-accent: #2f81f7;
+  --color-accent-hover: #4493f8;
+
+  /* Accent families (the only raw colours) */
+  --family-red: #f85149;
+  --family-orange: #db6d28;
+  --family-yellow: #d29922;
+  --family-green: #3fb950;
+  --family-blue: #2f81f7;
+  --family-purple: #a371f7;
+  --family-grey: #6e7681;
+
+  /* Severity */
+  --sev-critical: var(--family-red);
+  --sev-high: var(--family-orange);
+  --sev-medium: var(--family-yellow);
+  --sev-low: var(--family-blue);
+  --sev-info: var(--family-grey);
+
+  /* L1 claim verdicts */
+  --l1-proven: var(--family-green);
+  --l1-unsupported: var(--family-red);
+  --l1-unverifiable: var(--family-yellow);
+  --l1-contradicted: var(--family-red);
+
+  /* Verifier verdicts (WO-B3) */
+  --verifier-confirmed: var(--family-green);
+  --verifier-inferred: var(--family-blue);
+  --verifier-refuted: var(--family-red);
+  --verifier-unverified: var(--family-grey);
+
+  /* Finding origin (WO-B3 provenance) */
+  --origin-examiner: var(--family-blue);
+  --origin-llm: var(--family-purple);
+  --origin-agent: var(--family-orange);
+
+  /* Modes: 1 = LLM, 2 = multi-role, 3 = multi-agent */
+  --mode-1: var(--family-blue);
+  --mode-2: var(--family-purple);
+  --mode-3: var(--family-orange);
+
+  /* Submission seal state (WO-21 / WO-23 semantics) */
+  --seal-verified: var(--family-green);
+  --seal-absent: var(--family-yellow);
+  --seal-broken: var(--family-red);
+
+  /* Run states */
+  --run-running: var(--family-blue);
+  --run-complete: var(--family-green);
+  --run-failed: var(--family-red);
+  --run-paused: var(--family-yellow);
+  --run-stopped: var(--family-grey);
+
+  /* Evidence freshness (WO-A5) */
+  --fresh-ok: var(--family-green);
+  --fresh-stale: var(--family-yellow);
+  --fresh-modified: var(--family-red);
+}

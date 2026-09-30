@@ -1,0 +1,15 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: var(--radius-full);
+  border: 1px solid
+    color-mix(in srgb, var(--tone-accent, var(--color-fg-subtle)) 55%, transparent);
+  color: var(--tone-accent, var(--color-fg-muted));
+  background: color-mix(in srgb, var(--tone-accent, var(--color-fg-subtle)) 12%, transparent);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  line-height: 1.6;
+  white-space: nowrap;
+}

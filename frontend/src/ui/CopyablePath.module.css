@@ -1,0 +1,33 @@
+.row {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.path {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-fg-muted);
+  cursor: default;
+}
+
+.copy {
+  background: transparent;
+  border: none;
+  color: var(--color-fg-subtle);
+  font-size: var(--font-size-xs);
+  cursor: copy;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-sm);
+}
+
+.copy:hover {
+  color: var(--color-fg-default);
+  background: var(--color-bg-hover);
+}
+
+.copy:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}

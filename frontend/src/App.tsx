@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { CaseProvider } from "./context/CaseContext";
 import Layout from "./components/Layout";
@@ -20,6 +21,12 @@ import Iocs from "./pages/Iocs";
 import Ingest from "./pages/Ingest";
 import Todos from "./pages/Todos";
 
+// Dev-only kit gallery: import.meta.env.DEV is statically replaced at build,
+// so the dynamic import (and the chunk) never reaches a production bundle.
+const KitGallery = import.meta.env.DEV
+  ? lazy(() => import("./pages/KitGallery"))
+  : null;
+
 export default function App() {
   return (
     <CaseProvider>
@@ -28,6 +35,16 @@ export default function App() {
           {/* Dashboard — case management, no active case required */}
           <Route path="/" element={<Overview />} />
           <Route path="/case-setup" element={<CaseSetup />} />
+          {KitGallery ? (
+            <Route
+              path="/_kit"
+              element={
+                <Suspense fallback={null}>
+                  <KitGallery />
+                </Suspense>
+              }
+            />
+          ) : null}
 
           {/* Cockpit — requires a server-confirmed active case */}
           <Route path="/explore" element={<RequireCase><Explore /></RequireCase>} />
