@@ -108,9 +108,9 @@ def test_audit_tamper_verifier_names_the_exact_record(case_dir):
         shutil.copytree(case_dir / "audit", copy)
         target = copy / "spoliation-test.jsonl"
         rows = [
-            json.loads(l)
-            for l in target.read_text(encoding="utf-8").splitlines()
-            if l.strip()
+            json.loads(line)
+            for line in target.read_text(encoding="utf-8").splitlines()
+            if line.strip()
         ]
         for row in rows:
             if row.get("audit_id") == aid_b:

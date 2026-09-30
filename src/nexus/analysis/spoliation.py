@@ -22,8 +22,9 @@ import json
 import re
 import shutil
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 #: Word-bounded destructive verbs. ``format`` is deliberately absent: the
 #: corpus says "format" almost always means a data format (noun), and the
@@ -304,7 +305,11 @@ def run_spoliation_selftest(case_dir: Path, server=None) -> dict[str, Any]:
         audit_copy = Path(td) / "audit"
         shutil.copytree(case_dir / "audit", audit_copy)
         target_jsonl = audit_copy / "spoliation-selftest.jsonl"
-        rows = [json.loads(l) for l in target_jsonl.read_text(encoding="utf-8").splitlines() if l.strip()]
+        rows = [
+            json.loads(line)
+            for line in target_jsonl.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
         for row in rows:
             if row.get("audit_id") == aid_target:
                 row["tool"] = "forged_after_the_fact"
