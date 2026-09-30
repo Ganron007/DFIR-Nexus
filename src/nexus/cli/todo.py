@@ -49,15 +49,19 @@ def add(
     case_dir = _resolve_case(case_id)
     if not case_dir:
         return
+    from nexus.case.locks import case_lock
+    from nexus.case.outputs import _atomic_write_json
+
     path = case_dir / "todos.json"
-    todos = json.loads(path.read_text()) if path.exists() else []
-    tid = f"TODO-{len(todos)+1:03d}"
-    todos.append({
-        "todo_id": tid, "description": description, "assignee": assignee,
-        "priority": priority, "status": "open",
-        "created_at": datetime.now(UTC).isoformat(),
-    })
-    path.write_text(json.dumps(todos, indent=2, default=str))
+    with case_lock(case_dir):
+        todos = json.loads(path.read_text()) if path.exists() else []
+        tid = f"TODO-{len(todos)+1:03d}"
+        todos.append({
+            "todo_id": tid, "description": description, "assignee": assignee,
+            "priority": priority, "status": "open",
+            "created_at": datetime.now(UTC).isoformat(),
+        })
+        _atomic_write_json(path, todos)
     typer.echo(f"Added: {tid}")
 
 
@@ -71,16 +75,20 @@ def complete(
     case_dir = _resolve_case(case_id)
     if not case_dir:
         return
+    from nexus.case.locks import case_lock
+    from nexus.case.outputs import _atomic_write_json
+
     path = case_dir / "todos.json"
     if not path.exists():
         typer.echo("No TODOs found")
         return
-    todos = json.loads(path.read_text())
-    for t in todos:
-        if t.get("todo_id") == todo_id or t.get("id") == todo_id:
-            t["status"] = "completed"
-            t["completed_at"] = datetime.now(UTC).isoformat()
-            path.write_text(json.dumps(todos, indent=2, default=str))
-            typer.echo(f"Completed: {todo_id}")
-            return
+    with case_lock(case_dir):
+        todos = json.loads(path.read_text())
+        for t in todos:
+            if t.get("todo_id") == todo_id or t.get("id") == todo_id:
+                t["status"] = "completed"
+                t["completed_at"] = datetime.now(UTC).isoformat()
+                _atomic_write_json(path, todos)
+                typer.echo(f"Completed: {todo_id}")
+                return
     typer.echo(f"TODO not found: {todo_id}")

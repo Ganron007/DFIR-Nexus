@@ -51,6 +51,7 @@ from pathlib import Path
 
 import typer
 
+from nexus.case.locks import lock_case_writes
 from nexus.cli.audit_cmd import app as audit_app
 from nexus.cli.backup import app as backup_app
 from nexus.cli.case_cmd import app as case_app
@@ -363,7 +364,10 @@ def reject(
         typer.echo(f"  REJECTED: {fid}{' — ' + reason if reason else ''}")
 
 
+@lock_case_writes
 def _reject_finding(case_dir: Path, finding_id: str, analyst: str, reason: str) -> dict:
+    from nexus.case.outputs import _atomic_write_json
+
     findings_path = case_dir / "findings.json"
     if not findings_path.exists():
         return {"error": "No findings file found"}
@@ -375,7 +379,7 @@ def _reject_finding(case_dir: Path, finding_id: str, analyst: str, reason: str) 
             f["rejected_by"] = analyst
             f["rejected_at"] = datetime.now(UTC).isoformat()
             f["rejection_reason"] = reason
-            findings_path.write_text(json.dumps(findings, indent=2, default=str))
+            _atomic_write_json(findings_path, findings)
             return {"finding_id": finding_id, "status": "REJECTED"}
     return {"error": f"Finding {finding_id} not found or not DRAFT"}
 
