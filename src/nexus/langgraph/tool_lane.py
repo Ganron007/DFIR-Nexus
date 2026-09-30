@@ -403,10 +403,24 @@ def schedule_evtx_parsers(
         )
 
 
-#: Bound on the per-folder dispatch in ``_plan_single_artifact``: a folder of
-#: one artifact format is planned file-by-file, and a monster tree must not
-#: flood the lane. The overflow is reported as an explicit SKIP row.
-_MAX_FOLDER_DISPATCH = 200
+#: Per-folder dispatch bound for ``_plan_single_artifact`` (WO-13): a folder of
+#: one artifact format is planned file-by-file. 0 = unlimited, and that is the
+#: default - lane concurrency already bounds load, and the old implicit 200 cap
+#: meant a real ``Recent\`` LNK or jump-list folder could exceed it silently.
+#: When an examiner sets ``NEXUS_FOLDER_DISPATCH_MAX`` and the folder exceeds
+#: it, the overflow is a FAIL row (critical) so the evidence gate blocks; the
+#: old SKIP left evidence unprocessed with a clear gate, against the hard rule.
+_FOLDER_DISPATCH_DEFAULT = 0
+
+
+def _folder_dispatch_max() -> int:
+    raw = os.environ.get("NEXUS_FOLDER_DISPATCH_MAX", "").strip()
+    if not raw:
+        return _FOLDER_DISPATCH_DEFAULT
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return _FOLDER_DISPATCH_DEFAULT
 
 
 def _plan_single_artifact(
@@ -492,15 +506,16 @@ def _plan_single_artifact(
         # SKIP rows are never deduped: each names its own file.
         files: list[Path] = []
         capped = False
+        cap = _folder_dispatch_max()
         for p in evidence.rglob("*"):
             if not p.is_file() or p.name.startswith("."):
                 continue
             files.append(p)
-            if len(files) > _MAX_FOLDER_DISPATCH:
+            if cap and len(files) > cap:
                 capped = True
                 break
         if capped:
-            files = files[:_MAX_FOLDER_DISPATCH]
+            files = files[:cap]
         if files:
             stems: dict[str, int] = {}
             for p in files:
@@ -521,13 +536,18 @@ def _plan_single_artifact(
                         seen.add(key)
                     dispatched.append(job)
             if capped:
+                # WO-13: with a cap set, the overflow is a FAIL (critical) so the
+                # evidence gate blocks. A SKIP here left unprocessed evidence
+                # behind a clear gate, against the operator hard rule.
                 dispatched.append(ToolJob(
-                    host="windows", tool="(discovery)", argv=[], status="SKIP",
-                    purpose="folder dispatch cap",
+                    host="windows", tool="(discovery)", argv=[], status="FAIL",
+                    purpose="folder dispatch overflow",
+                    critical=True,
                     reason=(
-                        "more than "
-                        f"{_MAX_FOLDER_DISPATCH} file(s) in this folder were not "
-                        "scheduled - register that part separately"
+                        f"more than the configured {cap} file(s) in this folder "
+                        "were not scheduled - raise NEXUS_FOLDER_DISPATCH_MAX or "
+                        "register that part separately; evidence must not be "
+                        "skipped unnoticed"
                     ),
                 ))
             if dispatched:

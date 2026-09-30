@@ -77,6 +77,40 @@ def test_lone_thumbcache_idx_file_skips(tmp_path):
     assert "no thumbnail entries" in jobs[0].reason
 
 
+def test_folder_dispatch_is_unlimited_by_default(tmp_path, monkeypatch):
+    """WO-13: no cap means every file is planned (a real Recent\\ folder)."""
+    monkeypatch.delenv("NEXUS_FOLDER_DISPATCH_MAX", raising=False)
+    files = {f"sample_{i:03d}.exe": b"MZ" for i in range(250)}
+    jobs, _ = _jobs(tmp_path, files)
+    sig = [j for j in jobs if j.tool == "sigcheck"]
+    assert len(sig) == 250
+    assert not [j for j in jobs if j.status == "FAIL"]
+
+
+def test_folder_dispatch_cap_fails_closed(tmp_path, monkeypatch):
+    """WO-13: with a cap, the overflow is a FAIL row and the gate blocks."""
+    from nexus.langgraph.lane_gate import lane_gate_blocked, write_lane_gate
+
+    monkeypatch.setenv("NEXUS_FOLDER_DISPATCH_MAX", "200")
+    files = {f"sample_{i:03d}.exe": b"MZ" for i in range(250)}
+    jobs, _ = _jobs(tmp_path, files)
+    sig = [j for j in jobs if j.tool == "sigcheck"]
+    assert len(sig) == 200
+    fails = [j for j in jobs if j.status == "FAIL"]
+    assert len(fails) == 1
+    assert fails[0].tool == "(discovery)"
+    assert fails[0].critical is True
+    assert "NEXUS_FOLDER_DISPATCH_MAX" in fails[0].reason
+
+    case = tmp_path / "CASE-GATE0001"
+    gate = write_lane_gate(case, "run-test", [
+        {"tool": j.tool, "purpose": j.purpose, "status": j.status, "reason": j.reason}
+        for j in jobs
+    ])
+    assert gate["status"] == "blocked"
+    assert lane_gate_blocked(case)
+
+
 def test_setupapi_folder_stages_strings(tmp_path):
     jobs, _ = _jobs(tmp_path, {"setupapi.dev.log": "device install log line\n"})
     assert [j.tool for j in jobs] == ["strings"]
