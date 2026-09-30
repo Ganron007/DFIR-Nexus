@@ -603,11 +603,14 @@ async def post_commit(request) -> JSONResponse:
     with contextlib.suppress(Exception):
         from nexus.analysis.claim_verification import verify_drafts
 
-        verdicts = verify_drafts(case_dir)
+        verdicts = await asyncio.to_thread(verify_drafts, case_dir)
+    # WO-10: a finding with no verdict row (verification raised, or the id is
+    # absent from the map) is UNVERIFIABLE - the CLI already requires a reason
+    # for that class; the old `fid in verdicts` filter let exactly those
+    # findings approve with no reason while recording the UNVERIFIABLE label.
     missing = [
         fid for fid in finding_ids
-        if fid in verdicts
-        and str(verdicts[fid].get("verdict") or "") != "PROVEN"
+        if str((verdicts.get(fid) or {}).get("verdict") or "") != "PROVEN"
         and not str(override_reasons.get(fid) or "").strip()
     ]
     if missing:
@@ -619,10 +622,14 @@ async def post_commit(request) -> JSONResponse:
                 ),
                 "findings": {
                     fid: {
-                        "verdict": verdicts[fid].get("verdict"),
+                        "verdict": str(
+                            (verdicts.get(fid) or {}).get("verdict") or "UNVERIFIABLE"
+                        ),
                         "failing_checks": [
                             {"id": key, "detail": (entry or {}).get("detail", "")}
-                            for key, entry in (verdicts[fid].get("checks") or {}).items()
+                            for key, entry in (
+                                (verdicts.get(fid) or {}).get("checks") or {}
+                            ).items()
                             if (entry or {}).get("status") == "fail"
                         ],
                     }
@@ -638,7 +645,8 @@ async def post_commit(request) -> JSONResponse:
     for fid in finding_ids:
         try:
             row = verdicts.get(fid) or {}
-            result = _approve_finding(
+            result = await asyncio.to_thread(
+                _approve_finding,
                 case_dir, fid, examiner, stored_hash_hex, entry.get("salt", ""),
                 l1_verdict=str(row.get("verdict") or ""),
                 override_reason=str(override_reasons.get(fid) or ""),
@@ -657,7 +665,7 @@ async def post_commit(request) -> JSONResponse:
         with contextlib.suppress(Exception):
             from nexus.langgraph.timeline_merge import rebuild_case_timeline
 
-            timeline_events = len(rebuild_case_timeline(case_dir))
+            timeline_events = len(await asyncio.to_thread(rebuild_case_timeline, case_dir))
 
     return JSONResponse({
         "status": "committed",
@@ -1670,7 +1678,7 @@ async def api_findings(request):
             with contextlib.suppress(Exception):
                 from nexus.analysis.claim_verification import verify_drafts
 
-                verdicts = verify_drafts(case_dir)
+                verdicts = await asyncio.to_thread(verify_drafts, case_dir)
                 for f in findings:
                     row = verdicts.get(str(f.get("id") or ""))
                     if not row:

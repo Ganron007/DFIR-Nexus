@@ -300,3 +300,97 @@ def test_cli_approve_shows_verdict_and_requires_reason(l1_env, monkeypatch):
     assert ledger["override_reason"] == "Examiner accepted the beacon"
     # the fixture password store is real PBKDF2 material
     assert (tmp / "passwords").exists()
+
+
+def test_portal_commit_verifier_raise_requires_reason(l1_env, monkeypatch):
+    """WO-10: verification that raised must not approve unreasoned."""
+    tmp: Path = l1_env["tmp"]
+    client: TestClient = l1_env["client"]
+    stored = _write_portal_password(tmp)
+    case_id, case_dir = _make_case(client, tmp)
+    fid = _stage(case_dir, GOOD)
+    headers = {"X-Nexus-Case": case_id}
+
+    import nexus.analysis.claim_verification as cv
+
+    def _boom(case_dir):  # noqa: ANN001
+        raise RuntimeError("verifier unavailable")
+
+    monkeypatch.setattr(cv, "verify_drafts", _boom)
+
+    # No reason -> refused, named, and labeled UNVERIFIABLE - not approved.
+    ch, resp = _respond(client, headers, stored)
+    r = client.post(
+        "/portal/api/commit",
+        headers=headers,
+        json={"finding_ids": [fid], "challenge_id": ch, "response": resp},
+    )
+    assert r.status_code == 400, r.text
+    assert r.json()["findings"][fid]["verdict"] == "UNVERIFIABLE"
+    entries = {
+        f["id"]: f
+        for f in json.loads((case_dir / "findings.json").read_text(encoding="utf-8"))
+    }
+    assert entries[fid]["status"] == "DRAFT", "refusal must not approve"
+
+    # With a reason -> approved; the label and the reason are recorded.
+    ch, resp = _respond(client, headers, stored)
+    r = client.post(
+        "/portal/api/commit",
+        headers=headers,
+        json={
+            "finding_ids": [fid],
+            "challenge_id": ch,
+            "response": resp,
+            "override_reasons": {fid: "Verifier down; examiner read the raw rows"},
+        },
+    )
+    assert r.status_code == 200, r.text
+    assert fid in r.json()["approved"]
+    entries = {
+        f["id"]: f
+        for f in json.loads((case_dir / "findings.json").read_text(encoding="utf-8"))
+    }
+    assert entries[fid]["l1_verdict_at_approval"] == "UNVERIFIABLE"
+    assert entries[fid]["override_reason"] == "Verifier down; examiner read the raw rows"
+
+
+def test_portal_commit_absent_from_verdict_map_requires_reason(l1_env, monkeypatch):
+    """WO-10: a verifier run that omitted the id is the same class."""
+    tmp: Path = l1_env["tmp"]
+    client: TestClient = l1_env["client"]
+    stored = _write_portal_password(tmp)
+    case_id, case_dir = _make_case(client, tmp)
+    fid = _stage(case_dir, GOOD)
+    headers = {"X-Nexus-Case": case_id}
+
+    import nexus.analysis.claim_verification as cv
+
+    monkeypatch.setattr(cv, "verify_drafts", lambda case_dir: {})
+
+    ch, resp = _respond(client, headers, stored)
+    r = client.post(
+        "/portal/api/commit",
+        headers=headers,
+        json={"finding_ids": [fid], "challenge_id": ch, "response": resp},
+    )
+    assert r.status_code == 400, r.text
+    assert r.json()["findings"][fid]["verdict"] == "UNVERIFIABLE"
+
+    ch, resp = _respond(client, headers, stored)
+    r = client.post(
+        "/portal/api/commit",
+        headers=headers,
+        json={
+            "finding_ids": [fid],
+            "challenge_id": ch,
+            "response": resp,
+            "override_reasons": {fid: "Verdict map omitted the id; examiner reviewed"},
+        },
+    )
+    assert r.status_code == 200, r.text
+    entries = {
+        f["id"]: f
+        for f in json.loads((case_dir / "findings.json").read_text(encoding="utf-8"))
+    }
+    assert entries[fid]["l1_verdict_at_approval"] == "UNVERIFIABLE"
