@@ -59,7 +59,7 @@ def test_es_property_shapes():
 def test_mapping_body_is_schema_v5_with_explicit_fields():
     from nexus.langgraph.case_index import INDEX_SCHEMA_VERSION, _mapping_body
 
-    assert INDEX_SCHEMA_VERSION == 6  # v6: machine-path normalization in derived text
+    assert INDEX_SCHEMA_VERSION == 7  # v7: D56 - blank lines are not documents
     body = _mapping_body()
     assert body["settings"]["index.mapping.ignore_malformed"] is True
     assert body["settings"]["index.mapping.total_fields.limit"] >= 5000

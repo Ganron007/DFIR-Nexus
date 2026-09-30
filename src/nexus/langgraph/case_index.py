@@ -73,7 +73,9 @@ WILDCARD_IGNORE_ABOVE = 32766
 # Index schema version. v2 = structured docs (host/user/event_id + parsed
 # columns under fields.*) so DSL filters and aggregations push down to ES.
 # A version mismatch triggers a rebuild on the next index_case()/ensure_index.
-INDEX_SCHEMA_VERSION = 6
+# 7: D56 - blank lines are no longer indexed as documents (doc counts change
+# for blank-line-rich files; the mismatch triggers the same rebuild).
+INDEX_SCHEMA_VERSION = 7
 
 _MAX_INDEX_FIELDS = 24
 # JSON-family artifacts are line records (NDJSON/JSONL), never delimited tables.
@@ -443,6 +445,13 @@ def iter_index_doc_batches(
             with _open_text_auto(path) as fh:
                 for i, line in enumerate(fh, start=1):
                     if i == 1 and header is not None:
+                        continue
+                    if not line.strip():
+                        # D56: a blank physical line is not a record. Indexing it
+                        # inflated doc counts - reconciliation counts non-blank
+                        # source lines, so every blank line surfaced as a
+                        # mismatch (regripper-software: 45,254 docs vs 31,258
+                        # records). Skip before _add/data_rows.
                         continue
                     data_rows += 1
                     if _MAX_DOCS and total >= _MAX_DOCS:
