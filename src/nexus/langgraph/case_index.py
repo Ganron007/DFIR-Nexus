@@ -231,27 +231,64 @@ def _is_delimited(path: Path) -> bool:
     return name.endswith(_DELIMITED_SUFFIXES)
 
 
-def iter_record_rows(fh, delimiter: str = ","):
+def _csv_record_caps() -> tuple[int, int]:
+    """``(max_lines, max_bytes)`` one CSV record may span (WO-22). 0 = no cap."""
+    def _int(name: str, default: int) -> int:
+        raw = os.environ.get(name, "").strip()
+        if not raw:
+            return default
+        try:
+            return max(0, int(raw))
+        except ValueError:
+            return default
+
+    return _int("NEXUS_CSV_MAX_RECORD_LINES", 10_000), _int(
+        "NEXUS_CSV_MAX_RECORD_BYTES", 8 * 1024 * 1024
+    )
+
+
+class _CsvRecordTooLarge(Exception):
+    """One record exceeded the configured span cap (WO-22)."""
+
+
+def iter_record_rows(fh, delimiter: str = ",", *, max_lines: int | None = None,
+                     max_bytes: int | None = None, on_fallback=None):
     """Yield ``(start_line, raw_text, cells)`` per CSV/TSV record (WO-17/D63).
 
     ``start_line`` is the record's first physical line - what the doc's and a
     hit's ``line`` carry - and ``raw_text`` preserves the original quoting.
-    Streaming: only the current record's physical lines are held. Malformed
-    quoting stops the file (reconciliation then shows the shortfall) rather
-    than letting the reader guess.
+    Streaming: only the current record's physical lines are held.
+
+    WO-22 (bounded): a record that spans more than ``max_lines`` physical
+    lines or ``max_bytes``, or a ``csv.Error``, must not swallow the file.
+    Past that point CSV parsing stops for the file and the reader falls back
+    to physical-line rows **from that record's start line to EOF** - the
+    already-buffered lines first, then streaming. Cells are ``None`` on
+    fallback rows (no reliable columns). ``on_fallback(start_line, reason)``
+    is called once.
     """
     import csv
 
+    if max_lines is None or max_bytes is None:
+        env_lines, env_bytes = _csv_record_caps()
+        max_lines = env_lines if max_lines is None else max_lines
+        max_bytes = env_bytes if max_bytes is None else max_bytes
     with contextlib.suppress(OverflowError):  # platform cap
         csv.field_size_limit(2**31 - 1)
     kept: list[str] = []
+    kept_bytes = 0
     pulled = 0
 
     def _lines():
-        nonlocal pulled
+        nonlocal kept_bytes, pulled
         for ln in fh:
             kept.append(ln)
+            kept_bytes += len(ln)
             pulled += 1
+            if (max_lines and len(kept) > max_lines) or (
+                max_bytes and kept_bytes > max_bytes
+            ):
+                raise _CsvRecordTooLarge()
             yield ln
 
     reader = csv.reader(_lines(), delimiter=delimiter)
@@ -261,10 +298,26 @@ def iter_record_rows(fh, delimiter: str = ","):
             cells = next(reader)
         except StopIteration:
             return
-        except csv.Error:
+        except (_CsvRecordTooLarge, csv.Error) as exc:
+            reason = (
+                f"record exceeded {max_lines} lines / {max_bytes} bytes"
+                if isinstance(exc, _CsvRecordTooLarge)
+                else f"csv error: {exc}"
+            )
+            start = prev + 1
+            if on_fallback is not None:
+                on_fallback(start, reason)
+            for off, ln in enumerate(kept):
+                yield start + off, ln, None
+            line_no = start + len(kept)
+            kept.clear()
+            for ln in fh:
+                yield line_no, ln, None
+                line_no += 1
             return
         raw = "".join(kept)
         del kept[:]
+        kept_bytes = 0
         yield prev + 1, raw, cells
         prev = pulled
 
@@ -285,22 +338,49 @@ def _row_fields(line: str, header: list[str] | None) -> dict[str, str]:
     return _fields_from_values(header, _split_row(line))
 
 
-def iter_indexable_rows(path: Path, fh, header: list[str] | None):
+def iter_indexable_rows(
+    path: Path,
+    fh,
+    header: list[str] | None,
+    *,
+    stats: dict | None = None,
+    file_label: str = "",
+):
     """``(line_no, raw_text, row_fields)`` per indexable row of an open file.
 
     WO-17: delimited files WITH a header (``.csv``/``.tsv``) are read as CSV
     records - a quoted newline is one row and ``line_no`` is the row's starting
     physical line; JSON families stay physical-line records; everything else
     keeps the line-based path. The header row and blank rows are skipped.
+
+    WO-22: when one record exceeds the caps (or csv errors), the file falls
+    back to physical-line rows and the fallback (file, line, reason) is
+    recorded in ``stats["csv_fallback"]``.
     """
     is_csv = bool(header) and _is_delimited(path) and not _is_json_records(path)
     if is_csv:
         name = path.name.lower()
         delim = "\t" if (name.endswith(".tsv") or name.endswith(".tsv.gz")) else ","
+
+        def _on_fallback(start: int, reason: str) -> None:
+            if stats is not None:
+                stats.setdefault("csv_fallback", []).append({
+                    "file": file_label or path.name,
+                    "line": start,
+                    "reason": reason,
+                })
+
         first = True
-        for start, raw, cells in iter_record_rows(fh, delimiter=delim):
+        for start, raw, cells in iter_record_rows(
+            fh, delimiter=delim, on_fallback=_on_fallback
+        ):
             if first:
                 first = False  # the header record
+                continue
+            if cells is None:  # WO-22 fallback row: no reliable columns
+                if not raw.strip():
+                    continue
+                yield start, raw, _row_fields(raw, header)
                 continue
             if not any(str(c).strip() for c in cells):
                 continue
@@ -530,7 +610,9 @@ def iter_index_doc_batches(
         try:
             data_rows = 0
             with _open_text_auto(path) as fh:
-                for i, line, row_fields in iter_indexable_rows(path, fh, header):
+                for i, line, row_fields in iter_indexable_rows(
+                    path, fh, header, stats=stats, file_label=_index_rel(path, root)
+                ):
                     data_rows += 1
                     if _MAX_DOCS and total >= _MAX_DOCS:
                         caps["docs_capped"] = True

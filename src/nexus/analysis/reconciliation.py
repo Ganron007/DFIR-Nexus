@@ -28,7 +28,6 @@ relaxation may live — nothing is skipped silently.
 from __future__ import annotations
 
 import contextlib
-import csv
 import json
 import os
 from datetime import UTC, datetime
@@ -60,14 +59,34 @@ def _count_lines(path: Path) -> int:
         return sum(1 for line in fh if line.strip())
 
 
-def _count_table_rows(path: Path, delimiter: str) -> int:
-    import gzip
+def _count_table_rows(path: Path, delimiter: str) -> tuple[int, int | None]:
+    """``(rows, malformed_at_line)`` via the shared bounded reader (WO-22).
 
-    if str(path).lower().endswith(".gz"):
-        with gzip.open(path, "rt", encoding="utf-8", errors="replace", newline="") as fh:
-            return sum(1 for _ in csv.reader(fh, delimiter=delimiter))
-    with path.open("r", encoding="utf-8", errors="replace", newline="") as fh:
-        return sum(1 for _ in csv.reader(fh, delimiter=delimiter))
+    CSV records, quoted newlines = one row. ``malformed_at_line`` is set when
+    the file's quoting fell back to line-by-line reading (a record exceeded
+    the caps or the csv parser errored): the row count is then untrustworthy
+    and the reconciler must never report ``match``.
+    """
+    from nexus.langgraph.case_index import _open_text_auto, iter_record_rows
+
+    rows = 0
+    malformed_at: int | None = None
+
+    def _note(start: int, _reason: str) -> None:
+        nonlocal malformed_at
+        if malformed_at is None:
+            malformed_at = start
+
+    with _open_text_auto(path) as fh:
+        for _start, _raw, cells in iter_record_rows(
+            fh, delimiter=delimiter, on_fallback=_note
+        ):
+            if cells is None:
+                continue
+            if not any(str(c).strip() for c in cells):
+                continue
+            rows += 1
+    return rows, malformed_at
 
 
 def _count_json_records(path: Path) -> int | None:
@@ -130,7 +149,10 @@ def source_record_count(path: Path) -> int | None:
     header = _index_header(p) if suffix in _TABLE_SUFFIXES or suffix in _LINE_SUFFIXES else None
     subtract = 1 if header is not None else 0
     if suffix in _TABLE_SUFFIXES:
-        rows = _count_table_rows(p, "\t" if suffix == ".tsv" else ",")
+        rows, malformed_at = _count_table_rows(p, "\t" if suffix == ".tsv" else ",")
+        if malformed_at is not None:
+            # WO-22: malformed quoting - the count is not trustworthy.
+            return None
     elif suffix in _LINE_SUFFIXES:
         rows = _count_lines(p)
     else:
@@ -210,9 +232,30 @@ def reconcile_case(case_dir: Path | str) -> dict[str, Any]:
                 "note": "indexed file no longer resolves on disk",
             })
             continue
-        source = source_record_count(path)
+        suffix = _effective_suffix(path)
+        malformed_at: int | None = None
+        if suffix in _TABLE_SUFFIXES:
+            from nexus.langgraph.case_index import _index_header
+
+            rows, malformed_at = _count_table_rows(
+                path, "\t" if suffix == ".tsv" else ","
+            )
+            header = _index_header(path)
+            source = None if malformed_at is not None else max(
+                0, rows - (1 if header is not None else 0)
+            )
+        else:
+            source = source_record_count(path)
         status, delta, note, override = _classify(family, source, docs, deduped)
-        if status == "mismatch":
+        if malformed_at is not None:
+            # WO-22: malformed quoting is a mismatch class, never a match.
+            status = "malformed_quoting"
+            note = (
+                f"a record starting at line {malformed_at} exceeded the record "
+                "cap or the csv parser errored - the index fell back to line "
+                "rows; row counts are not trustworthy"
+            )
+        elif status == "mismatch":
             frag = _fragmentation_line_count(path)
             if frag is not None and docs == frag:
                 status = "fragmented"
@@ -236,6 +279,9 @@ def reconcile_case(case_dir: Path | str) -> dict[str, Any]:
         "match": sum(1 for f in files if f["status"] == "match"),
         "mismatch": sum(1 for f in files if f["status"] == "mismatch"),
         "fragmented": sum(1 for f in files if f["status"] == "fragmented"),
+        "malformed_quoting": sum(
+            1 for f in files if f["status"] == "malformed_quoting"
+        ),
         "override": sum(1 for f in files if f["status"] == "override"),
         "unreconcilable": sum(1 for f in files if f["status"] == "unreconcilable"),
         "missing": sum(1 for f in files if f["status"] == "missing"),
@@ -251,6 +297,7 @@ def reconcile_case(case_dir: Path | str) -> dict[str, Any]:
         "file_counts_present": bool(counts),
         "index_meta_mtime": meta_mtime,
         "index_meta_docs": meta.get("docs"),
+        "csv_fallbacks": (meta.get("caps") or {}).get("csv_fallback") or [],
         "files": files,
         "totals": totals,
         "overrides": dict(FAMILY_OVERRIDES),
@@ -293,6 +340,7 @@ def summary_line(rec: dict[str, Any]) -> str:
     return (
         f"Row reconciliation: {t.get('match', 0)}/{t.get('files', 0)} file(s) match "
         f"({t.get('mismatch', 0)} mismatch, {t.get('fragmented', 0)} fragmented, "
+        f"{t.get('malformed_quoting', 0)} malformed quoting, "
         f"{t.get('override', 0)} overridden, "
         f"{t.get('unreconcilable', 0)} unreconcilable, {t.get('missing', 0)} missing) "
         "— report-only"
@@ -306,7 +354,7 @@ def render_reconciliation_markdown(rec: dict[str, Any], *, limit: int = 25) -> s
     lines = ["## Row reconciliation", "", summary_line(rec), ""]
     mismatches = [
         f for f in rec.get("files") or ()
-        if f.get("status") in ("mismatch", "fragmented")
+        if f.get("status") in ("mismatch", "fragmented", "malformed_quoting")
     ]
     if mismatches:
         lines += ["| File | family | source | docs | deduped | delta |",
