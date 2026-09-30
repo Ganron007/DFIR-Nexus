@@ -714,6 +714,49 @@ def pipeline(
 
 
 @app.command()
+def selftest(
+    kind: str = typer.Argument("spoliation", help="Which self-test to run"),
+    case_dir: Path = typer.Option(None, "--case", help="Existing case to test (default: a fresh fixture case)"),
+):
+    """Prove the agent cannot delete, overwrite or exfiltrate case evidence.
+
+    WP 10.20 / WO-A6: drives destructive and exfil payloads through the real
+    registered tool surface, scans every tool for destructive verbs outside a
+    reviewed list, re-hashes all evidence after the run, and tampers with a
+    copy of the audit log to prove the verifier names the record. Any probe
+    that is not refused fails the command — it never becomes a skipped check.
+    """
+    if kind != "spoliation":
+        typer.echo(f"Unknown self-test: {kind} (available: spoliation)")
+        raise typer.Exit(2)
+
+    from nexus.analysis.spoliation import (
+        build_fixture_case,
+        render_report,
+        run_spoliation_selftest,
+    )
+
+    fixture_root: Path | None = None
+    if case_dir is None:
+        import tempfile
+
+        fixture_root = Path(tempfile.mkdtemp(prefix="nexus-selftest-"))
+        case_dir = build_fixture_case(fixture_root)
+
+    try:
+        report = run_spoliation_selftest(case_dir)
+    finally:
+        if fixture_root is not None:
+            import shutil
+
+            shutil.rmtree(fixture_root, ignore_errors=True)
+
+    typer.echo(render_report(report))
+    if not report["ok"]:
+        raise typer.Exit(1)
+
+
+@app.command()
 def update(
     check: bool = typer.Option(False, "--check", help="Only check for updates"),
     no_restart: bool = typer.Option(False, "--no-restart", help="Don't restart after update"),
