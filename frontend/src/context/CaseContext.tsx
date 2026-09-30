@@ -5,6 +5,13 @@
  * active-case pointer, and every request carries the case id explicitly
  * (client.ts X-Nexus-Case) so dashboard previews and cockpit operations can
  * never drift onto the wrong case.
+ *
+ * WO-U4: the data-shaped state (cases list, backend/ES/SIFT health) lives in
+ * TanStack Query hooks and is POLLED — the probe-once-at-mount version let a
+ * service come up (or die) after mount and never be noticed. The context
+ * slims toward identity: it keeps only the active-case identity, the
+ * compatibility projections of the polled queries, and the case-scoped
+ * mode/stage refreshes pages still consume (page adoption is U8a/U8b).
  */
 import {
   createContext,
@@ -14,7 +21,11 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { api, setRequestCaseId, type CaseSummary } from "../api/client";
+import { useCases } from "../api/queries/cases";
+import { useSystemHealth } from "../api/queries/system";
+import { invalidateKeys } from "../api/queries/keys";
 
 export type StageStatus = Record<string, boolean>;
 
@@ -59,33 +70,36 @@ interface CaseContextValue {
 const CaseContext = createContext<CaseContextValue | null>(null);
 
 export function CaseProvider({ children }: { children: ReactNode }) {
-  const [cases, setCases] = useState<string[]>([]);
-  const [caseSummaries, setCaseSummaries] = useState<Record<string, CaseSummary>>({});
+  const queryClient = useQueryClient();
   const [activeCase, setActiveCaseState] = useState<string>("");
   const [previewCase, setPreviewCaseState] = useState<string>("");
-  const [booting, setBooting] = useState<boolean>(true);
   const [mode, setModeState] = useState<string>("");
-  const [health, setHealth] = useState<"ok" | "down" | "checking">("checking");
-  const [es, setEs] = useState<EsStatus>({ configured: false, reachable: false });
-  const [sift, setSift] = useState<SiftStatus>({ selected: false, reachable: null });
   const [stages, setStages] = useState<Record<string, boolean>>({});
 
+  // Polled server state (WO-U4): health every 30 s, cases every 30 s.
+  const casesQuery = useCases();
+  const healthQuery = useSystemHealth();
+
+  const cases = casesQuery.data?.cases ?? [];
+  const caseSummaries = casesQuery.data?.details ?? {};
+  const booting = casesQuery.isPending;
+  const health = healthQuery.data
+    ? healthQuery.data.backend
+    : healthQuery.isError
+      ? "down"
+      : "checking";
+  const es: EsStatus = healthQuery.data?.es ?? { configured: false, reachable: false };
+  const sift = healthQuery.data?.sift ?? { selected: false, reachable: null };
+
   const refreshCases = useCallback(async () => {
-    try {
-      const r = await api.cases();
-      setCases(r.cases || []);
-      setCaseSummaries(r.details || {});
-      // Mirror the server pointer — never fabricate an active case.
+    await queryClient.refetchQueries({ queryKey: ["system", "cases"] });
+    // Mirror the server pointer — never fabricate an active case.
+    const r = casesQuery.data;
+    if (r) {
       setActiveCaseState(r.active || "");
-      // Sync the request header synchronously with the state change so child
-      // load effects (which run before parent effects) see the right case.
       setRequestCaseId(r.active || "");
-    } catch {
-      // keep prior state on transient failure
-    } finally {
-      setBooting(false);
     }
-  }, []);
+  }, [queryClient, casesQuery.data]);
 
   const refreshMode = useCallback(async (caseId?: string) => {
     if (!caseId) {
@@ -124,10 +138,12 @@ export function CaseProvider({ children }: { children: ReactNode }) {
       // Synchronous header sync — no window where pages fetch the old case.
       setRequestCaseId(caseId);
       setActiveCaseState(caseId);
+      await invalidateKeys.case(queryClient, caseId, "status");
+      await queryClient.invalidateQueries({ queryKey: ["system", "cases"] });
       await refreshMode(caseId);
       await refreshStages(caseId);
     },
-    [refreshMode, refreshStages],
+    [queryClient, refreshMode, refreshStages],
   );
 
   const setPreviewCase = useCallback((caseId: string) => {
@@ -145,8 +161,8 @@ export function CaseProvider({ children }: { children: ReactNode }) {
     setModeState("");
     setStages({});
     setPreviewCaseState("");
-    await refreshCases();
-  }, [refreshCases]);
+    await queryClient.invalidateQueries({ queryKey: ["system", "cases"] });
+  }, [queryClient]);
 
   const setMode = useCallback(
     async (newMode: string) => {
@@ -157,30 +173,14 @@ export function CaseProvider({ children }: { children: ReactNode }) {
     [activeCase],
   );
 
+  // Mirror the server pointer on first load and on any polled change while
+  // the examiner has not chosen a case explicitly.
   useEffect(() => {
-    refreshCases();
-    // Backend liveness AND Elasticsearch state are separate signals —
-    // a green backend dot must never imply ES is up.
-    api.systemHealth()
-      .then((r) => {
-        setHealth(r.backend === "ok" ? "ok" : "down");
-        setEs({
-          configured: r.es?.configured !== false,
-          reachable: r.es?.reachable === true,
-        });
-        setSift({
-          selected: r.sift?.selected === true,
-          reachable:
-            typeof r.sift?.reachable === "boolean" ? r.sift.reachable : null,
-          message: r.sift?.message,
-        });
-      })
-      .catch(() => {
-        setHealth("down");
-        setEs({ configured: false, reachable: false });
-        setSift({ selected: false, reachable: false });
-      });
-  }, [refreshCases]);
+    if (casesQuery.data && !activeCase) {
+      setActiveCaseState(casesQuery.data.active || "");
+      setRequestCaseId(casesQuery.data.active || "");
+    }
+  }, [casesQuery.data, activeCase]);
 
   // Every API request from now on carries the explicit case identity.
   useEffect(() => {
