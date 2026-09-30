@@ -7579,7 +7579,9 @@ def _augment_report_with_grade(case_dir, out_file, report_text: str,
     )
     from nexus.analysis.cross_mode import (
         check_cross_mode,
+        check_cross_mode_group,
         render_consistency_markdown,
+        sibling_cases,
         write_consistency,
     )
     from nexus.analysis.report_grade import (
@@ -7641,6 +7643,15 @@ def _augment_report_with_grade(case_dir, out_file, report_text: str,
 
     with contextlib.suppress(Exception):
         tail.append(render_consistency_markdown(consistency))
+
+    # WO-12: sibling cases (identical registered evidence) exist -> compare the
+    # group across their stored modes and surface it in each sibling's report.
+    with contextlib.suppress(Exception):
+        sibs = sibling_cases(case_dir)
+        if sibs:
+            tail.append(
+                render_consistency_markdown(check_cross_mode_group([case_dir, *sibs]))
+            )
 
     # WO-3 (report-only): source records vs indexed docs, per file.
     with contextlib.suppress(Exception):
@@ -7735,7 +7746,7 @@ async def api_report_grade(request):
     return JSONResponse({
         "case_id": case_dir.name,
         "grade": grade,
-        "cross_mode": consistency,
+        "intra_case": consistency,
         "reason": reason,
     })
 

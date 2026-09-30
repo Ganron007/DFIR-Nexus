@@ -13,8 +13,10 @@ import json
 
 from nexus.analysis.cross_mode import (
     check_cross_mode,
+    check_cross_mode_group,
     collect_mode_claims,
     render_consistency_markdown,
+    sibling_cases,
     write_consistency,
 )
 from nexus.analysis.report_grade import (
@@ -385,6 +387,111 @@ def _claims(mode, title, polarity="affirm", audit=("nx-audit-0001",)):
         "polarity": polarity, "audit_ids": list(audit), "title": title,
         "confidence": "high",
     }]
+
+
+# --------------------------------------------------------------------------
+# WO-12 - the single-case check is intra-case; siblings are compared as a group
+# --------------------------------------------------------------------------
+
+def _mk_case(root, name, mode, findings):
+    case = root / name
+    case.mkdir(parents=True)
+    (case / "CASE.yaml").write_text(
+        f"investigation_mode: '{mode}'\nmode_scheme: 2\n", encoding="utf-8"
+    )
+    (case / "findings.json").write_text(json.dumps(findings), encoding="utf-8")
+    return case
+
+
+def test_wo12_group_check_compares_siblings(tmp_path, monkeypatch):
+    from nexus.config import settings
+
+    root = tmp_path / "cases"
+    root.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(settings, "cases_root", root)
+
+    ev = tmp_path / "staged-evidence.bin"
+    ev.write_bytes(b"same bytes for all three")
+
+    from nexus.case.compat import get_sqlite_manager
+    from nexus.case.evidence_service import register_evidence
+
+    specs = (
+        ("CASE-AAA0001", "1", {
+            "id": "F1", "title": "beacon to ghosthost.example.com observed",
+            "polarity": "affirm", "audit_ids": ["nx-audit-aaaa0001"],
+        }),
+        ("CASE-BBB0002", "2", {
+            "id": "F2", "title": "host reviewed; no signal row found",
+            "polarity": "deny", "audit_ids": ["nx-audit-bbbb0002"],
+        }),
+        ("CASE-CCC0003", "3", {
+            "id": "F3", "title": "beacon to ghosthost.example.com did not occur",
+            "polarity": "deny", "audit_ids": ["nx-audit-cccc0003"],
+        }),
+    )
+    mgr = get_sqlite_manager()
+    for name, mode, finding in specs:
+        case = root / name
+        case.mkdir(parents=True, exist_ok=True)
+        mgr.create_case(name=name, created_by="t", case_id=name)
+        register_evidence(case, str(ev))
+        # Case files go in AFTER the registry/evidence calls: those sync the
+        # flat mirrors and would blank a findings.json written before them.
+        (case / "CASE.yaml").write_text(
+            f"investigation_mode: '{mode}'\nmode_scheme: 2\n", encoding="utf-8"
+        )
+        (case / "findings.json").write_text(
+            json.dumps([finding]), encoding="utf-8"
+        )
+    a = root / "CASE-AAA0001"
+    b = root / "CASE-BBB0002"
+    c = root / "CASE-CCC0003"
+
+    assert {p.name for p in sibling_cases(a)} == {"CASE-BBB0002", "CASE-CCC0003"}
+
+    r = check_cross_mode_group([a, b, c])
+    assert r["scope"] == "group"
+    assert r["verdict"] == "contradictory"
+    assert len(r["contradictions"]) == 1
+    con = r["contradictions"][0]
+    assert con["key"]["entity_value"] == "ghosthost.example.com"
+    assert [x["audit_ids"] for x in con["affirms"]] == [["nx-audit-aaaa0001"]]
+    assert [x["audit_ids"] for x in con["denials"]] == [["nx-audit-cccc0003"]]
+    assert {x["case_id"] for x in r["cases"]} == {
+        "CASE-AAA0001", "CASE-BBB0002", "CASE-CCC0003"
+    }
+
+    from typer.testing import CliRunner
+
+    from nexus.cli.main import app as cli_app
+
+    r2 = CliRunner().invoke(cli_app, ["cross-mode", str(a), str(c)])
+    assert r2.exit_code == 1, r2.output
+    assert "Cross-case consistency" in r2.output
+
+
+def test_wo12_mode2_findings_are_not_reported_as_mode1(tmp_path):
+    case = _mk_case(tmp_path, "CASE-M2SELF01", "2", [{
+        "id": "F1", "title": "powershell.exe did not execute",
+        "polarity": "deny", "audit_ids": ["nx-audit-1111"],
+    }])
+    runs = case / "analysis" / "mode2_runs"
+    runs.mkdir(parents=True)
+    (runs / "M2-20260930T00.json").write_text(json.dumps({
+        "candidates": [{
+            "id": "C1", "title": "powershell.exe executed from a temp directory",
+            "polarity": "affirm", "audit_ids": ["nx-audit-2222"],
+        }],
+    }), encoding="utf-8")
+
+    claims = collect_mode_claims(case)
+    assert claims["1"] == [], "a Mode 2 case's findings must not be labelled Mode 1"
+    assert claims["2"], claims
+    r = check_cross_mode(case_dir=case)
+    assert r["modes_present"] == ["Mode 2 (multi-role)"]
+    assert r["contradictions"] == []
+    assert r["scope"] == "intra-case"
 
 
 def test_contradiction_is_surfaced_with_both_citations():

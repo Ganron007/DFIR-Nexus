@@ -599,6 +599,44 @@ def portal():
 
 
 @app.command()
+def cross_mode(
+    cases: list[str] = typer.Argument(..., help="Two or more case ids or case directories"),
+):
+    """Compare sibling cases (identical registered evidence) across their stored modes.
+
+    A contradiction exits 1; a comparison with none exits 0.
+    """
+    from pathlib import Path
+
+    from nexus.analysis.cross_mode import (
+        check_cross_mode_group,
+        render_consistency_markdown,
+    )
+    from nexus.config import settings
+
+    dirs = []
+    for c in cases:
+        p = Path(c)
+        if not p.is_dir():
+            p = Path(settings.cases_root) / c
+        if not p.is_dir():
+            typer.echo(f"case not found: {c}", err=True)
+            raise typer.Exit(2)
+        dirs.append(p)
+    if len(dirs) < 2:
+        typer.echo("give at least two cases to compare", err=True)
+        raise typer.Exit(2)
+
+    result = check_cross_mode_group(dirs)
+    typer.echo(render_consistency_markdown(result))
+    counts = result.get("counts") or {}
+    conflicts = int(counts.get("contradictions") or 0) + int(
+        counts.get("row_contradictions") or 0
+    )
+    raise typer.Exit(1 if conflicts else 0)
+
+
+@app.command()
 def pipeline(
     case: str = typer.Option("", "--case", help="Path to evidence directory or file"),
     also: list[str] = typer.Option([], "--also", help="Additional evidence roots on the same case"),

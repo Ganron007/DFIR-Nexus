@@ -36,6 +36,8 @@ __all__ = [
     "MODES",
     "collect_mode_claims",
     "check_cross_mode",
+    "check_cross_mode_group",
+    "sibling_cases",
     "render_consistency_markdown",
     "write_consistency",
 ]
@@ -222,13 +224,39 @@ def _claims_from_run(mode: str, record: dict[str, Any]) -> list[dict[str, Any]]:
     return rows
 
 
+def _stored_mode(case_dir: Path) -> str:
+    """The case's canonical product mode ("1"/"2"/"3"), legacy aliases resolved.
+
+    WO-12: findings.json used to be labelled mode "1" unconditionally, so a
+    Mode 2/3 case compared its own staged findings against its own run records
+    as if two modes disagreed. The stored mode (CASE.yaml) is the truth.
+    """
+    import yaml
+
+    from nexus.langgraph.mode_mapping import resolve_stored_mode
+
+    meta: dict[str, Any] = {}
+    y = case_dir / "CASE.yaml"
+    if y.is_file():
+        try:
+            loaded = yaml.safe_load(y.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                meta = loaded
+        except (OSError, ValueError):
+            meta = {}
+    resolved = resolve_stored_mode(
+        meta.get("investigation_mode"), meta.get("mode_scheme")
+    )
+    return str(resolved) if resolved in (1, 2, 3) else "1"
+
+
 def collect_mode_claims(case_dir: Path) -> dict[str, list[dict[str, Any]]]:
     """Gather claim rows per product mode from a case's own artifacts.
 
     Reads what the case actually produced: ``findings.json`` for the mode the
-    case was created in, and the ``analysis/mode2_runs`` / ``analysis/mode3_runs``
-    records for agent runs. A mode with no artifact contributes nothing and is
-    reported as ``unknown``.
+    case was created in (CASE.yaml; WO-12), and the ``analysis/mode2_runs`` /
+    ``analysis/mode3_runs`` records for agent runs. A mode with no artifact
+    contributes nothing and is reported as ``unknown``.
     """
     case_dir = Path(case_dir)
     by_mode: dict[str, list[dict[str, Any]]] = {"1": [], "2": [], "3": []}
@@ -240,9 +268,10 @@ def collect_mode_claims(case_dir: Path) -> dict[str, list[dict[str, Any]]]:
         except (OSError, ValueError):
             findings = []
         if isinstance(findings, list):
+            stored = _stored_mode(case_dir)
             for f in findings:
                 if isinstance(f, dict):
-                    by_mode["1"].extend(_claim_from_finding("1", f))
+                    by_mode[stored].extend(_claim_from_finding(stored, f))
 
     for mode, sub in (("2", "mode2_runs"), ("3", "mode3_runs")):
         d = case_dir / "analysis" / sub
@@ -408,6 +437,7 @@ def check_cross_mode(
         "modes_present": [MODES.get(m, m) for m in present],
         "modes_missing": [MODES.get(m, m) for m in missing],
         "verdict": verdict,
+        "scope": "intra-case",
         "claim_rows": total,
         "shared_entities": sorted(shared_entities)[:40],
         "entity_overlap": jaccard,
@@ -422,11 +452,100 @@ def check_cross_mode(
     }
 
 
+def _evidence_sha_set(case_dir: Path) -> frozenset[str]:
+    """Registered evidence SHA-256 set for a case (SQLite system of record)."""
+    import contextlib
+
+    from nexus.case.evidence_service import list_evidence
+
+    out: set[str] = set()
+    with contextlib.suppress(Exception):
+        for e in list_evidence(Path(case_dir)):
+            h = str(e.get("sha256") or "").strip().lower()
+            if h:
+                out.add(h)
+    return frozenset(out)
+
+
+def sibling_cases(
+    case_dir: Path | str, *, cases_root: Path | str | None = None
+) -> list[Path]:
+    """Cases whose registered evidence SHA-256 set is identical to this one.
+
+    WO-12: sibling discovery needs no new intake field - a case is a sibling
+    of another when they were registered on the same evidence bytes. An empty
+    evidence set has no siblings (nothing to prove the grouping with).
+    """
+    import contextlib
+
+    from nexus.config import settings
+
+    case_dir = Path(case_dir)
+    target = _evidence_sha_set(case_dir)
+    if not target:
+        return []
+    root = Path(cases_root) if cases_root else Path(settings.cases_root)
+    out: list[Path] = []
+    with contextlib.suppress(OSError):
+        for d in sorted(root.glob("CASE-*")):
+            if (
+                d.is_dir()
+                and d.resolve() != case_dir.resolve()
+                and _evidence_sha_set(d) == target
+            ):
+                out.append(d)
+    return out
+
+
+def check_cross_mode_group(case_dirs: list[Path | str]) -> dict[str, Any]:
+    """Compare sibling cases across their stored modes (WO-12).
+
+    Each case contributes its own claims under the mode that produced them, so
+    a contradiction means two cases disagree - not one case against itself.
+    Same-mode siblings merge into one bucket (their outputs are the same
+    product). The result keeps the dispute-key vocabulary of the single-case
+    check.
+    """
+    dirs = [Path(d) for d in case_dirs]
+    combined: dict[str, list[dict[str, Any]]] = {"1": [], "2": [], "3": []}
+    cases: list[dict[str, str]] = []
+    for d in dirs:
+        stored = _stored_mode(d)
+        cases.append({"case_id": d.name, "mode": stored})
+        for rows in collect_mode_claims(d).values():
+            for r in rows:
+                combined.setdefault(r["mode"], []).append(r)
+    result = check_cross_mode(claims_by_mode=combined)
+    result["scope"] = "group"
+    result["cases"] = cases
+    return result
+
+
 def render_consistency_markdown(result: dict[str, Any]) -> str:
     if not result:
         return ""
     v = str(result.get("verdict") or "unknown").upper()
-    out = ["## Cross-mode consistency", "", f"**Verdict: {v}**", ""]
+    scope = str(result.get("scope") or "intra-case")
+    if scope == "group":
+        out = [
+            "## Cross-case consistency (siblings)",
+            "",
+            f"**Verdict: {v}**",
+            "",
+            "Sibling cases (identical registered evidence) compared across their "
+            "stored modes.",
+            "",
+        ]
+    else:
+        out = [
+            "## Intra-case consistency",
+            "",
+            f"**Verdict: {v}**",
+            "",
+            "This case's own artifacts, compared across the runs it holds; sibling "
+            "cases are compared with `nexus cross-mode CASE-A CASE-B CASE-C`.",
+            "",
+        ]
     if v == "DISJOINT":
         out += [
             "The modes named **no entity in common**, so this comparison establishes "
