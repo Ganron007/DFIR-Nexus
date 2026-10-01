@@ -199,6 +199,25 @@ class LLMRouter:
                 msg_dicts.append(m)
 
         prov = self.get_provider(provider)
+        from nexus.llm.egress import (
+            _active_case_dir,
+            anonymize_text,
+            egress_required,
+            restore_text,
+            restore_tool_calls,
+        )
+
+        case_dir = None
+        if egress_required(getattr(prov, "base_url", "") or ""):
+            case_dir = _active_case_dir()
+        if case_dir is not None:
+            scrubbed: list[dict[str, Any]] = []
+            for message in msg_dicts:
+                content = message.get("content")
+                if isinstance(content, str):
+                    message = {**message, "content": anonymize_text(content, case_dir)}
+                scrubbed.append(message)
+            msg_dicts = scrubbed
         try:
             raw = await prov.chat(
                 messages=msg_dicts,
@@ -215,7 +234,11 @@ class LLMRouter:
             raise LLMRouterError(
                 f"Provider '{prov.name}' failed: {e}"
             ) from e
-        return ChatResponse.from_provider_response(raw)
+        response = ChatResponse.from_provider_response(raw)
+        if case_dir is not None:
+            response.content = restore_text(response.content, case_dir)
+            response.tool_calls = restore_tool_calls(response.tool_calls, case_dir)
+        return response
 
     async def chat_with_retry(
         self,

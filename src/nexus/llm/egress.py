@@ -80,6 +80,28 @@ def anonymize_text(text: str, case_dir: Path | None, allowlist: set[str] | None 
     return rewritten
 
 
+def restore_tool_calls(tool_calls: list[dict], case_dir: Path | None) -> list[dict]:
+    """Put real values back into tool-call argument strings."""
+    restored: list[dict] = []
+    for call in tool_calls or []:
+        if not isinstance(call, dict):
+            restored.append(call)
+            continue
+        function = call.get("function")
+        if not isinstance(function, dict):
+            restored.append(call)
+            continue
+        arguments = function.get("arguments")
+        if not isinstance(arguments, str):
+            restored.append(call)
+            continue
+        restored.append({
+            **call,
+            "function": {**function, "arguments": restore_text(arguments, case_dir)},
+        })
+    return restored
+
+
 def restore_text(text: str, case_dir: Path | None) -> str:
     """Put real values back into a model reply."""
     path = _token_path(case_dir)
@@ -126,6 +148,11 @@ def attach_egress(model):
                 reply = getattr(chunk, "message", None)
                 if reply is not None and isinstance(getattr(reply, "content", None), str):
                     reply.content = restore_text(reply.content, case)
+                calls = getattr(reply, "tool_calls", None) if reply is not None else None
+                if isinstance(calls, list):
+                    for call in calls:
+                        if isinstance(call, dict) and isinstance(call.get("args"), str):
+                            call["args"] = restore_text(call["args"], case)
         return result
 
     model._generate = _generate

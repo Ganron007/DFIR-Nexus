@@ -1,12 +1,14 @@
 """Classify a Mode 1 draft without treating an examiner's own draft as suspect.
 
 Model-staged drafts are checked again. A draft the examiner built is left
-alone. A cited query that now returns no rows is REFUTED. Audit-backed drafts
-whose query is not re-run stay INFERRED.
+alone. A cited query that now returns no rows is REFUTED and recorded as a
+negative-space event. Audit-backed drafts whose query is not re-run stay
+INFERRED. A search that cannot run does not become a refutation.
 """
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 
@@ -56,3 +58,59 @@ def classify_draft(
         "reason": "cited query returned no rows",
         "audit_ids": audits,
     }
+
+
+def cited_terms(draft: dict[str, Any]) -> list[str]:
+    """Needles the draft claims were searched. Empty when none were stored."""
+    raw = draft.get("needles")
+    if raw is None:
+        raw = (draft.get("provenance") or {}).get("needles") or []
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, list):
+        return []
+    return [str(term).strip() for term in raw if str(term).strip()]
+
+
+def _index_hits(case_dir: Path, terms: list[str]) -> list[Any] | None:
+    """Re-run the cited needles. None when the search itself fails."""
+    try:
+        from nexus.langgraph.query_pack import n4_hits
+
+        hits, _backend = n4_hits(Path(case_dir), terms, (None, None))
+    except Exception:  # noqa: BLE001 — a broken search is not a refutation
+        return None
+    return list(hits or [])
+
+
+def apply_verifier(case_dir: Path | str | None, draft: dict[str, Any]) -> dict[str, Any]:
+    """Classify *draft*, re-running its cited needles when they were stored.
+
+    REFUTED stays on the draft. It is also an audited negative-space event
+    and is not deleted.
+    """
+    terms = cited_terms(draft)
+    search: Callable[[dict[str, Any]], list[Any]] | None = None
+    if terms and case_dir is not None:
+        found = _index_hits(Path(case_dir), terms)
+        if found is not None:
+            rows = found
+
+            def search(_draft: dict[str, Any], rows: list[Any] = rows) -> list[Any]:
+                return rows
+
+    verdict = classify_draft(draft, search=search)
+    if verdict.get("verdict") == "REFUTED" and case_dir is not None:
+        try:
+            from nexus.analysis.negative_space import record
+
+            record(
+                case_dir,
+                "refuted",
+                str(draft.get("title") or ", ".join(terms) or "draft"),
+                str(verdict.get("reason") or ""),
+                list(verdict.get("audit_ids") or []),
+            )
+        except Exception:  # noqa: BLE001 — the verdict still stands
+            pass
+    return verdict
