@@ -67,8 +67,8 @@
       "colors": 4
     },
     "pages/Findings.tsx": {
-      "inline": 23,
-      "colors": 1
+      "inline": 0,
+      "colors": 0
     },
     "pages/Ingest.tsx": {
       "inline": 16,
@@ -192,7 +192,7 @@
     }
   },
   "totals": {
-    "inline": 934,
-    "colors": 84
+    "inline": 911,
+    "colors": 83
   }
 }

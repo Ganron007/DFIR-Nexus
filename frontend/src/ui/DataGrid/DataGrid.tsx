@@ -72,9 +72,6 @@ export interface DataGridProps<T> {
 }
 
 const DEFAULT_LAYOUT: ColumnLayout = { widths: {}, visibility: {}, pinned: {} };
-/** TanStack reads `initialRect[...]` on the first render, before it has a
- *  measured element, so it must always be an object - never `undefined`. */
-const NO_RECT = { width: 0, height: 0 };
 
 function cellText<T>(column: DataGridColumn<T>, row: T): string {
   if (column.copyValue) return column.copyValue(row) ?? "";
@@ -235,15 +232,51 @@ export function DataGrid<T>(props: DataGridProps<T>) {
     getScrollElement: () => scrollRef.current,
     estimateSize: () => estimateRowHeight,
     overscan: 8,
-    initialRect: initialViewport ?? NO_RECT,
+    // A grid whose container measures ZERO renders nothing at all - and it
+    // says nothing about why. That happens for real reasons (a collapsed
+    // panel, a hidden tab, a not-yet-laid-out drawer) and in jsdom it is the
+    // default. So the initial rect falls back to the requested height rather
+    // than zero: the window is drawn at the right size and corrected once the
+    // container actually measures itself.
+    initialRect: initialViewport ?? { width: 0, height },
   });
   const virtualItems = rowVirtualizer.getVirtualItems();
-  const lastVirtual = virtualItems[virtualItems.length - 1];
+  /**
+   * A grid whose container measures zero has no window, and renders an empty
+   * table while the examiner stares at a case with data in it. That is the
+   * worst failure this component can have, so when the virtualiser produces
+   * nothing and rows DO exist, draw the first window by hand at the requested
+   * height. It is corrected the moment the container measures itself.
+   */
+  const renderedItems =
+    virtualItems.length === 0 && tableRows.length > 0
+      ? Array.from(
+          {
+            length: Math.max(
+              1,
+              Math.min(tableRows.length, Math.ceil(height / estimateRowHeight)),
+            ),
+          },
+          (_unused, index) => ({
+            key: `fallback-${index}`,
+            index,
+            start: index * estimateRowHeight,
+            size: estimateRowHeight,
+          }),
+        )
+      : virtualItems;
+  /**
+   * A number, not the item object. Depending on the object re-runs the
+   * load-more effect every render, because a freshly built item is a new
+   * identity - and in server mode that effect appends a page, which
+   * re-renders, which fetches again, forever.
+   */
+  const lastVisibleIndex = renderedItems[renderedItems.length - 1]?.index ?? -1;
 
   useEffect(() => {
     if (mode !== "server" || !nextCursor) return;
-    if (lastVirtual && lastVirtual.index >= tableRows.length - 1) void loadMore();
-  }, [lastVirtual, loadMore, mode, nextCursor, tableRows.length]);
+    if (lastVisibleIndex >= 0 && lastVisibleIndex >= tableRows.length - 1) void loadMore();
+  }, [lastVisibleIndex, loadMore, mode, nextCursor, tableRows.length]);
 
   // ---- sort / filter -------------------------------------------------------
   const toggleSort = useCallback(
@@ -506,7 +539,7 @@ export function DataGrid<T>(props: DataGridProps<T>) {
             className={styles.body}
             style={{ height: rowVirtualizer.getTotalSize() }}
           >
-            {virtualItems.map((virtual) => {
+            {renderedItems.map((virtual) => {
               const tableRow = tableRows[virtual.index];
               if (!tableRow) return null;
               const id = getRowId(tableRow.original, virtual.index);

@@ -6,8 +6,7 @@
  * a backend failure must be visible rather than rendering as an absence.
  */
 import "@testing-library/jest-dom/vitest";
-import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -111,7 +110,7 @@ describe("Entities (migrated)", () => {
     // no request until the examiner asks - the old page extracted on mount
     expect(entities).not.toHaveBeenCalled();
 
-    await userEvent.setup().click(screen.getByTestId("entities-extract"));
+    fireEvent.click(screen.getByTestId("entities-extract"));
     await waitFor(() => expect(entities).toHaveBeenCalledTimes(1));
     // busiest first
     const rows = screen.getAllByRole("row").slice(1);
@@ -128,8 +127,8 @@ describe("Entities (migrated)", () => {
     } as never);
     renderPage(<Entities />);
     const input = screen.getByLabelText("Needles");
-    await userEvent.setup().type(input, "sdelete");
-    await userEvent.setup().click(screen.getByTestId("entities-extract"));
+    fireEvent.change(input, { target: { value: "sdelete" } });
+    fireEvent.click(screen.getByTestId("entities-extract"));
     await waitFor(() => expect(entities).toHaveBeenCalledWith({ needles: "sdelete" }));
   });
 
@@ -137,7 +136,7 @@ describe("Entities (migrated)", () => {
     withCase("CASE-ENT0003");
     vi.spyOn(api, "entities").mockRejectedValue(new Error("index missing"));
     renderPage(<Entities />);
-    await userEvent.setup().click(screen.getByTestId("entities-extract"));
+    fireEvent.click(screen.getByTestId("entities-extract"));
     await waitFor(() =>
       expect(screen.getByRole("alert")).toHaveTextContent(/index missing/),
     );
@@ -190,3 +189,7 @@ describe("Transparency (migrated)", () => {
     expect(screen.queryByTestId("chain-verdict")).not.toBeInTheDocument();
   });
 });
+
+// --------------------------------------------------------------------------
+// Findings
+// --------------------------------------------------------------------------
