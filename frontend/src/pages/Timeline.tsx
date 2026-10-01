@@ -1,75 +1,142 @@
 /**
- * WP 4d.1: Timeline — per-family aggregate lanes PLUS a type-aware event
- * panel. Clicking a lane filters events to that family; the brush range
- * filters the event list; events render parsed per-family columns via the
- * shared column picker. "Search in Explore" hands the range to Explore.
+ * Timeline lanes + events, migrated to the kit (WO-U8a).
+ *
+ * The gain beyond the port: **every lane is on one scale**. The old page drew
+ * each family's bars from its own first bucket, so a mark at 03:00 sat at a
+ * different pixel in a lane that started at 09:00 the previous day, and a
+ * brush meant different instants per lane. Lanes that cannot be read across
+ * are decoration, not a timeline. The stack is now U6's `TimeLanes` over a
+ * range spanning every bucket in every lane, so a mark at one instant lines up
+ * vertically and one brush means one instant range for the whole stack.
+ *
+ * A consequence worth naming: U6's model is one tone per lane, so the old
+ * per-bucket severity colouring is gone from the bars. Peak severity is carried
+ * on the lane's tone and its label, and per-event severity still shows in the
+ * event list below - the bars never encoded which event was which anyway.
+ *
+ * The brush is now a real instant range instead of two indices into a
+ * per-lane hour array, which is what let the two disagree.
+ *
+ * Kit: PageHeader + Panel + EmptyState + Button + Field/Input + Badge.
+ * Styles in a CSS module; zero inline style objects. The A10 queryable events
+ * grid is unchanged as the second tab.
  */
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, type TimelineLaneEntry, type N4Hit, type HitInterpretation } from "../api/client";
+
+import {
+  api,
+  type HitInterpretation,
+  type N4Hit,
+  type TimelineLaneEntry,
+} from "../api/client";
 import { pickHitColumns } from "../lib/hitColumns";
 import VirtualTable, { type Column } from "../components/VirtualTable";
-import { useCase } from "../context/CaseContext";
 import TimelineEventsGrid from "../components/TimelineEventsGrid";
+import { useCase } from "../context/CaseContext";
+import {
+  Badge,
+  Button,
+  EmptyState,
+  Field,
+  Input,
+  PageHeader,
+  Panel,
+  TimeLanes,
+  parseUtc,
+  type HistogramBucket,
+  type LaneSeries,
+  type TimeRange,
+} from "@/ui";
+import styles from "./Timeline.module.css";
 
-/** Severity → lane/event color. Mirrors _severity_from_hits on the backend. */
-const SEV_COLORS: Record<string, string> = {
-  critical: "var(--danger)",
-  high: "#f0883e",
-  medium: "var(--warning)",
-  low: "var(--accent)",
-  informational: "var(--text-muted)",
+const SEVERITIES = ["", "medium", "high", "critical"] as const;
+
+/** Rank 0 is the most severe, so a severity floor is a ">" comparison. */
+const SEV_RANK: Record<string, number> = {
+  critical: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+  informational: 4,
 };
-const LEVEL_SEV: Record<string, string> = {
-  crit: "critical", critical: "critical", high: "high", med: "medium",
-  medium: "medium", low: "low", info: "informational", informational: "informational",
-};
-const DETECTION_FAMILIES = new Set(["hayabusa", "chainsaw", "sigma", "suzaku"]);
 
-function hitSeverity(h: N4Hit): string {
-  const fam = (h.family || "").toLowerCase();
-  if (!DETECTION_FAMILIES.has(fam)) return "";
-  const fields = h.fields || {};
-  const raw = (fields.Level || fields.level || fields.Severity || "").toLowerCase().trim();
-  if (LEVEL_SEV[raw]) return LEVEL_SEV[raw];
-  if ((fields.detections || "").trim()) return "medium";
-  return "";
-}
-
-function sevColor(sev: string): string {
-  return SEV_COLORS[sev] || "var(--accent)";
+/** The lane's peak severity, which is what the bars are coloured by. */
+function peakSeverity(lane: TimelineLaneEntry): string {
+  let best = "";
+  for (const severity of Object.values(lane.buckets_sev || {})) {
+    const value = String(severity || "").toLowerCase();
+    if (value && !["low", "informational"].includes(value)) {
+      if (!best || (SEV_RANK[value] ?? 9) < (SEV_RANK[best] ?? 9)) best = value;
+    }
+  }
+  return best;
 }
 
 export default function Timeline() {
   const { activeCase } = useCase();
   const navigate = useNavigate();
+
   const [lanes, setLanes] = useState<TimelineLaneEntry[]>([]);
   const [total, setTotal] = useState(0);
+  const [defaultedNeedles, setDefaultedNeedles] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [brushStart, setBrushStart] = useState<number | null>(null);
-  const [brushEnd, setBrushEnd] = useState<number | null>(null);
+  const [rebuilding, setRebuilding] = useState(false);
+  const [tab, setTab] = useState<"lanes" | "events">("lanes");
+
+  // The brush is an instant range - the same thing for every lane.
+  const [brush, setBrush] = useState<TimeRange | null>(null);
   const [selectedLane, setSelectedLane] = useState<string | null>(null);
-  // WP: type-aware event panel under the lanes
+
   const [events, setEvents] = useState<N4Hit[]>([]);
   const [eventCount, setEventCount] = useState(0);
   const [eventsLoading, setEventsLoading] = useState(false);
   const [eventError, setEventError] = useState("");
-  // Event → interpretation drawer
+  const [filterText, setFilterText] = useState("");
+  const [minSev, setMinSev] = useState("");
+
   const [selected, setSelected] = useState<N4Hit | null>(null);
   const [interp, setInterp] = useState<HitInterpretation | null>(null);
   const [interpLoading, setInterpLoading] = useState(false);
-  // TimelineExplorer-parity: instant text filter + severity floor + persisted view
-  const [filterText, setFilterText] = useState("");
-  const [minSev, setMinSev] = useState("");
-  // Pending brush restore — hour strings resolve to indices once lanes load
-  const [pendingBrush, setPendingBrush] = useState<{ start: string; end: string } | null>(null);
 
   const caseKey = activeCase || "";
-  // WO-A10: which reader this page is showing. "lanes" is the
-  // per-family bucket view; "events" is the queryable event grid.
-  const [tab, setTab] = useState<"lanes" | "events">("lanes");
-  // Restore lane/brush/filter per case (stored as hour strings — stable across reloads)
+  const laneFrameRef = useRef<HTMLDivElement | null>(null);
+  const [laneWidth, setLaneWidth] = useState(960);
+
+  const loadLanes = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const response = await api.timelineLanes({});
+      setLanes(response.families || []);
+      setTotal(response.total);
+      setDefaultedNeedles(response.default_needles || 0);
+    } catch (exc) {
+      setError((exc as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadLanes();
+  }, [activeCase, loadLanes]);
+
+  // The lane stack needs a real width; jsdom has no layout engine, so the
+  // default stands until a ResizeObserver reports otherwise.
+  useEffect(() => {
+    const node = laneFrameRef.current;
+    if (!node || typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver((entries) => {
+      const next = Math.round(entries[0]?.contentRect?.width ?? 0);
+      if (next > 0) setLaneWidth(next);
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  // Restore the view per case. Instants, not hour indices.
   useEffect(() => {
     if (!caseKey) return;
     try {
@@ -77,587 +144,439 @@ export default function Timeline() {
       if (saved.lane) setSelectedLane(saved.lane);
       if (saved.filter) setFilterText(saved.filter);
       if (saved.minSev) setMinSev(saved.minSev);
-      if (saved.startHour) setPendingBrush({ start: saved.startHour, end: saved.endHour || "" });
-    } catch { /* ignore corrupt state */ }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+      const start = parseUtc(saved.startIso);
+      const end = parseUtc(saved.endIso);
+      if (start && end) setBrush({ start, end });
+    } catch {
+      /* a corrupt saved view must not break the page */
+    }
   }, [caseKey]);
 
-  const loadLanes = () => {
-    setLoading(true);
-    api.timelineLanes({})
-      .then((r) => {
-        setLanes(r.families || []);
-        setTotal(r.total);
-        setDefaultedNeedles(r.default_needles || 0);
-      })
-      .catch((e) => setError((e as Error).message))
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => {
-    loadLanes();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeCase]);
-
-  const [defaultedNeedles, setDefaultedNeedles] = useState(0);
-  const [rebuilding, setRebuilding] = useState(false);
-  const rebuildTimeline = () => {
-    setRebuilding(true);
-    api.timelineRebuild()
-      .then(() => loadLanes())
-      .catch((e) => setError((e as Error).message))
-      .finally(() => setRebuilding(false));
-  };
-
-  const laneData = lanes.map((lane) => {
-    const buckets = Object.entries(lane.buckets)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([hour, count]) => ({ hour, count, sev: lane.buckets_sev?.[hour] || "" }));
-    return { family: lane.family, buckets };
-  });
-
-  const maxCount = Math.max(0, ...laneData.flatMap((l) => l.buckets.map((b) => b.count)));
-  const totalEvents = laneData.reduce((s, l) => s + l.buckets.reduce((s2, b) => s2 + b.count, 0), 0);
-
-  const allHours = laneData.length > 0
-    ? [...new Set(laneData.flatMap((l) => l.buckets.map((b) => b.hour)))].sort()
-    : [];
-  const hourToIndex = new Map(allHours.map((h, i) => [h, i]));
-
-  // Resolve a persisted brush once lane hours exist
-  useEffect(() => {
-    if (!pendingBrush || allHours.length === 0) return;
-    const si = hourToIndex.get(pendingBrush.start);
-    if (si !== undefined) {
-      setBrushStart(si);
-      const ei = pendingBrush.end ? hourToIndex.get(pendingBrush.end) : undefined;
-      setBrushEnd(ei !== undefined ? ei : null);
-    }
-    setPendingBrush(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingBrush, lanes]);
-
-  // Persist the current view per case
   useEffect(() => {
     if (!caseKey) return;
-    localStorage.setItem(`tl:${caseKey}`, JSON.stringify({
-      lane: selectedLane,
-      startHour: brushStart !== null ? allHours[brushStart] : "",
-      endHour: brushEnd !== null ? allHours[brushEnd] : "",
-      filter: filterText,
-      minSev,
-    }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [caseKey, selectedLane, brushStart, brushEnd, filterText, minSev]);
+    localStorage.setItem(
+      `tl:${caseKey}`,
+      JSON.stringify({
+        lane: selectedLane,
+        startIso: brush?.start.toISOString() ?? "",
+        endIso: brush?.end.toISOString() ?? "",
+        filter: filterText,
+        minSev,
+      }),
+    );
+  }, [caseKey, selectedLane, brush, filterText, minSev]);
 
-  const handleBarClick = (hour: string) => {
-    const idx = hourToIndex.get(hour) ?? 0;
-    if (brushStart === null) {
-      setBrushStart(idx);
-      setBrushEnd(null);
-    } else if (brushEnd === null) {
-      setBrushEnd(idx);
-    } else {
-      setBrushStart(idx);
-      setBrushEnd(null);
-    }
-  };
+  /**
+   * The shared scale: the span that covers every bucket in every lane. This is
+   * the whole point - one range, so marks line up and a brush means one span.
+   */
+  const series = useMemo<LaneSeries[]>(
+    () =>
+      lanes.map((lane) => {
+        const buckets: HistogramBucket[] = Object.entries(lane.buckets || {})
+          .map(([hour, count]) => {
+            const at = parseUtc(hour);
+            return at ? { t: at.getTime(), count } : null;
+          })
+          .filter((bucket): bucket is HistogramBucket => bucket !== null)
+          .sort((a, b) => a.t - b.t);
+        const severity = peakSeverity(lane);
+        return {
+          id: lane.family,
+          label: severity ? `${lane.family} (max ${severity})` : lane.family,
+          buckets,
+          tone: severity,
+        };
+      }),
+    [lanes],
+  );
 
-  const inBrush = (hour: string): boolean => {
-    const idx = hourToIndex.get(hour);
-    if (idx === undefined || brushStart === null) return false;
-    if (brushEnd === null) return idx === brushStart;
-    return idx >= Math.min(brushStart, brushEnd) && idx <= Math.max(brushStart, brushEnd);
-  };
+  const sharedRange = useMemo<TimeRange | null>(() => {
+    const times = series.flatMap((lane) => lane.buckets.map((bucket) => bucket.t));
+    if (times.length === 0) return null;
+    return {
+      start: new Date(Math.min(...times)),
+      end: new Date(Math.max(...times) + 3600_000),
+    };
+  }, [series]);
 
-  // Brushed range as start/end strings for the event panel + Explore handoff
-  const brushRange = (() => {
-    if (brushStart === null) return { start: "", end: "" };
-    const startIdx = brushEnd !== null ? Math.min(brushStart, brushEnd) : brushStart;
-    const endIdx = brushEnd !== null ? Math.max(brushStart, brushEnd) : brushStart;
-    return { start: allHours[startIdx] || "", end: allHours[endIdx] || "" };
-  })();
+  const totalEvents = useMemo(
+    () => series.reduce((sum, lane) => sum + lane.buckets.reduce((s, b) => s + b.count, 0), 0),
+    [series],
+  );
 
-  // Reload events when the lane or brush changes
+  // Reload the event list when the lane or the brushed range changes.
   useEffect(() => {
-    if (!selectedLane && brushRange.start === "" && brushRange.end === "") {
+    if (!selectedLane && !brush) {
       setEvents([]);
       setEventCount(0);
       return;
     }
     setEventsLoading(true);
+    setEventError("");
     api.search({
       family: selectedLane || undefined,
-      start: brushRange.start || undefined,
-      end: brushRange.end || undefined,
+      start: brush?.start.toISOString(),
+      end: brush?.end.toISOString(),
       limit: 200,
       offset: 0,
       default_needles: true,
     })
-      .then((r) => {
-        setEvents(r.hits);
-        setEventCount(r.count);
+      .then((response) => {
+        setEvents(response.hits);
+        setEventCount(response.count);
       })
-      .catch((e) => setEventError((e as Error).message))
+      .catch((exc) => setEventError((exc as Error).message))
       .finally(() => setEventsLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedLane, brushRange.start, brushRange.end, activeCase]);
+  }, [selectedLane, brush?.start.toISOString(), brush?.end.toISOString(), activeCase]);
 
-  // Event → interpretation drawer: fetch what the row means + next checks.
-  const openEvent = (h: N4Hit) => {
-    setSelected(h);
+  const openEvent = useCallback(async (hit: N4Hit) => {
+    setSelected(hit);
     setInterp(null);
     setInterpLoading(true);
-    api.hitInterpret(h)
-      .then(setInterp)
-      .catch(() => setInterp(null))
-      .finally(() => setInterpLoading(false));
-  };
+    try {
+      setInterp(await api.hitInterpret(hit));
+    } catch {
+      setInterp(null);
+    } finally {
+      setInterpLoading(false);
+    }
+  }, []);
 
-  // WP 4b.10: hand the brushed range to Explore
   const sendToExplore = () => {
-    if (brushStart === null) return;
     const params = new URLSearchParams();
-    if (brushRange.start) params.set("start", brushRange.start);
-    if (brushRange.end) params.set("end", brushRange.end);
+    if (brush) {
+      params.set("start", brush.start.toISOString());
+      params.set("end", brush.end.toISOString());
+    }
     if (selectedLane) params.set("family", selectedLane);
-    navigate(`/explore?${params.toString()}`);
+    navigate(`/case/${encodeURIComponent(caseKey)}/explore?${params.toString()}`);
   };
 
-  if (loading) return <div className="loading">Loading timeline...</div>;
-  if (error) return <div className="error-banner">{error}</div>;
+  const typeColumns = useMemo(() => pickHitColumns(events), [events]);
 
-  const visibleLanes = laneData.filter((lane) => !selectedLane || lane.family === selectedLane);
-  const typeColumns = pickHitColumns(events);
-
-  // Instant filter (TimelineExplorer parity): text across all parsed fields
-  // + raw row, and a minimum-severity floor on detection-family rows.
-  const SEV_RANK: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3, informational: 4 };
-  const q = filterText.trim().toLowerCase();
-  const visibleEvents = events.filter((h) => {
-    if (minSev) {
-      const sev = hitSeverity(h);
-      if (!sev || (SEV_RANK[sev] ?? 9) > (SEV_RANK[minSev] ?? 9)) return false;
-    }
-    if (q) {
-      const blob = `${h.family} ${h.host || ""} ${h.terms || ""} ${h.text || ""} ${Object.values(h.fields || {}).join(" ")}`.toLowerCase();
-      if (!blob.includes(q)) return false;
-    }
-    return true;
-  });
-
-  const eventColumns: Column<N4Hit>[] = [
-    {
-      key: "sev",
-      header: "",
-      width: 26,
-      render: (h) => {
-        const sev = hitSeverity(h);
-        if (!sev) return null;
-        return (
-          <span
-            title={sev}
-            style={{
-              display: "inline-block", width: 8, height: 8, borderRadius: "50%",
-              background: sevColor(sev),
-            }}
-          />
-        );
+  const eventColumns = useMemo<Column<N4Hit>[]>(
+    () => [
+      {
+        key: "sev",
+        header: "",
+        width: 26,
+        render: (hit) => {
+          const severity = String(
+            hit.fields?.Severity ?? hit.fields?.severity ?? "",
+          ).toLowerCase();
+          if (!severity) return null;
+          return (
+            <span
+              title={`severity ${severity}`}
+              className={styles.sevDot}
+              data-sev={severity}
+            />
+          );
+        },
       },
-    },
-    {
-      key: "time",
-      header: "Time",
-      width: 150,
-      render: (h) => {
-        const ft = h.fields?.Timestamp || h.fields?.TimeCreated || h.fields?.timestamp || "";
-        const m = /(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2})?)/.exec(ft || h.text || "");
-        return <span style={{ fontFamily: "monospace", fontSize: 11 }}>{m ? m[1] : "—"}</span>;
+      {
+        key: "time",
+        header: "Time",
+        width: 150,
+        render: (hit) => {
+          const raw =
+            hit.fields?.Timestamp ||
+            hit.fields?.TimeCreated ||
+            hit.fields?.timestamp ||
+            "";
+          const match = /(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2})?)/.exec(
+            raw || hit.text || "",
+          );
+          return (
+            <span className={styles.cellMono}>
+              {match ? match[1] : "—"}
+            </span>
+          );
+        },
       },
-    },
-    {
-      key: "family",
-      header: "Family",
-      width: 90,
-      render: (h) => <span style={{ fontFamily: "monospace", fontSize: 11 }}>{h.family}</span>,
-    },
-    {
-      key: "host",
-      header: "Host",
-      width: 90,
-      render: (h) => <span style={{ fontFamily: "monospace", fontSize: 11, color: "var(--text-secondary)" }}>{h.host || "—"}</span>,
-    },
-    ...typeColumns.map((fieldName) => ({
-      key: `field-${fieldName}`,
-      header: fieldName,
-      width: fieldName.toLowerCase().includes("message") ? undefined : 150,
-      render: (h: N4Hit) => (
-        <span style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", display: "block", whiteSpace: "nowrap" }}>
-          {h.fields?.[fieldName] ?? ""}
-        </span>
-      ),
-    })),
-    {
-      key: "source",
-      header: "Source",
-      width: 150,
-      render: (h) => (
-        <span style={{ fontSize: 10, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", display: "block", whiteSpace: "nowrap" }}>
-          {h.file}:{h.line}
-        </span>
-      ),
-    },
-  ];
+      {
+        key: "family",
+        header: "Family",
+        width: 90,
+        render: (hit) => (
+          <span className={styles.cellMono}>{hit.family}</span>
+        ),
+      },
+      {
+        key: "host",
+        header: "Host",
+        width: 130,
+        render: (hit) => (
+          <span className={styles.cellMono}>{hit.host || "—"}</span>
+        ),
+      },
+      ...typeColumns.map((fieldName) => ({
+        key: `field-${fieldName}`,
+        header: fieldName,
+        width: fieldName.toLowerCase().includes("message") ? undefined : 150,
+        render: (hit: N4Hit) => (
+          <span className={styles.cellTruncate}>
+            {hit.fields?.[fieldName] ?? ""}
+          </span>
+        ),
+      })),
+      {
+        key: "source",
+        header: "Source",
+        width: 150,
+        render: (hit) => (
+          <span className={styles.cellSource}>
+            {hit.file}:{hit.line}
+          </span>
+        ),
+      },
+    ],
+    [typeColumns],
+  );
+
+  const visibleEvents = useMemo(() => {
+    const floor = SEV_RANK[minSev] ?? -1;
+    const needle = filterText.trim().toLowerCase();
+    return events.filter((hit) => {
+      if (minSev) {
+        const severity = String(
+          hit.fields?.Severity ?? hit.fields?.severity ?? "",
+        ).toLowerCase();
+        // An unlabelled row is not a low-severity row: showing it under a
+        // severity floor would assert something the evidence does not say.
+        if (!severity || (SEV_RANK[severity] ?? 9) > floor) return false;
+      }
+      if (!needle) return true;
+      const blob =
+        `${hit.family} ${hit.host || ""} ${hit.terms || ""} ${hit.text || ""} ` +
+        Object.values(hit.fields || {}).join(" ")
+      return blob.toLowerCase().includes(needle);
+    });
+  }, [events, filterText, minSev]);
+
+  const rebuildTimeline = async () => {
+    setRebuilding(true);
+    try {
+      await api.timelineRebuild();
+      await loadLanes();
+    } catch (exc) {
+      setError((exc as Error).message);
+    } finally {
+      setRebuilding(false);
+    }
+  };
 
   return (
-    <div>
-      {/* WO-A10: two readers, one page. "Lanes" buckets hits by family for a
-          first read; "Events" is the queryable per-timestamp grid over the
-          events index. They count different things, so each says what it is. */}
-      <nav className="tl-tabs" role="tablist" aria-label="Timeline view">
+    <div className={styles.page}>
+      <PageHeader
+        title="Timeline"
+        subtitle={
+          loading
+            ? "Loading…"
+            : `${totalEvents.toLocaleString()} bucketed events across ${total.toLocaleString()} hits`
+        }
+        stageCode="N7"
+        actions={
+          <div className={styles.eventBar}>
+            <Button size="sm" onClick={rebuildTimeline} disabled={rebuilding}>
+              {rebuilding ? "Rebuilding…" : "Rebuild timeline.json"}
+            </Button>
+          </div>
+        }
+      />
+
+      <nav className={styles.tabs} role="tablist" aria-label="Timeline view">
         <button
-          role="tab"
           type="button"
+          role="tab"
           aria-selected={tab === "lanes"}
           data-testid="timeline-tab-lanes"
-          className={tab === "lanes" ? "tl-tab active" : "tl-tab"}
+          className={tab === "lanes" ? `${styles.tab} ${styles.tabActive}` : styles.tab}
           onClick={() => setTab("lanes")}
         >
           Lanes
         </button>
         <button
-          role="tab"
           type="button"
+          role="tab"
           aria-selected={tab === "events"}
           data-testid="timeline-tab-events"
-          className={tab === "events" ? "tl-tab active" : "tl-tab"}
+          className={tab === "events" ? `${styles.tab} ${styles.tabActive}` : styles.tab}
           onClick={() => setTab("events")}
         >
           Events
         </button>
       </nav>
-      {tab === "events" ? <TimelineEventsGrid caseId={caseKey} /> : null}
-      <div hidden={tab === "events"}>
-      <h2 style={{ marginBottom: 16 }}>
-        Timeline ({totalEvents.toLocaleString()} events · {total} total hits)
-        <button
-          className="btn btn-sm"
-          style={{ marginLeft: 12, verticalAlign: "middle" }}
-          onClick={rebuildTimeline}
-          disabled={rebuilding}
-          title="Rebuild timeline.json — merges needle hits, finding evidence, bookmarks, and ledger events (N7)"
-        >
-          {rebuilding ? "Rebuilding…" : "Rebuild"}
-        </button>
-      </h2>
-      {defaultedNeedles > 0 && (
-        <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8 }}>
-          Showing rows matched by the case&apos;s needle vocabulary
-          ({defaultedNeedles} needles — full-run scan or playbook terms for
-          this case&apos;s families). Use Explore for arbitrary queries.
+
+      {error ? (
+        <div role="alert" className="error-banner">
+          {error}
         </div>
-      )}
-      {error && <div className="error-banner">{error}</div>}
-      {laneData.length === 0 ? (
-        <div className="empty-state">
-          <h3>No timeline data</h3>
-          <p>Run the N2 processing lane and query evidence to populate timeline lanes.</p>
-        </div>
+      ) : null}
+
+      {tab === "events" ? (
+        <TimelineEventsGrid caseId={caseKey} />
       ) : (
         <>
-          {/* Brush controls */}
-          {brushStart !== null && (
-            <div className="card" style={{ padding: "8px 12px", marginBottom: 8 }}>
-              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                Brush: {allHours[brushStart]}
-                {brushEnd !== null && ` → ${allHours[brushEnd]}`}
+          {defaultedNeedles > 0 ? (
+            <p className={styles.note}>
+              Showing rows matched by the case&apos;s needle vocabulary (
+              {defaultedNeedles} needles — full-run scan or playbook terms for this
+              case&apos;s families). Use Explore for arbitrary queries.
+            </p>
+          ) : null}
+
+          {brush ? (
+            <div className={styles.brushBar} data-testid="timeline-brush">
+              <span>
+                Brushed {brush.start.toISOString()} → {brush.end.toISOString()}
               </span>
-              <button
-                className="btn btn-sm"
-                style={{ marginLeft: 12 }}
-                onClick={() => { setBrushStart(null); setBrushEnd(null); }}
-              >
+              <Button size="sm" onClick={() => setBrush(null)}>
                 Clear
-              </button>
-              <button
-                className="btn btn-sm btn-primary"
-                style={{ marginLeft: 8 }}
-                onClick={sendToExplore}
-              >
+              </Button>
+              <Button variant="primary" size="sm" onClick={sendToExplore}>
                 Search in Explore →
-              </button>
+              </Button>
             </div>
-          )}
+          ) : null}
 
-          {/* Lane filter */}
-          {selectedLane && (
-            <div className="card" style={{ padding: "8px 12px" }}>
-              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                Filtered to lane: <strong>{selectedLane}</strong>
-              </span>
-              <button
-                className="btn btn-sm"
-                style={{ marginLeft: 12 }}
-                onClick={() => setSelectedLane(null)}
-              >
-                Show all
-              </button>
-            </div>
-          )}
-
-          {/* Aggregate lanes */}
-          <div>
-            {visibleLanes.map((lane) => {
-              const laneEvents = lane.buckets.reduce((s, b) => s + b.count, 0);
-              return (
-                <div key={lane.family} className="card" style={{ marginBottom: 12 }}>
-                  <div className="card-header">
-                    <span
-                      className="card-title"
-                      style={{ cursor: "pointer", color: "var(--accent)" }}
-                      onClick={() => setSelectedLane(lane.family === selectedLane ? null : lane.family)}
-                      title="Click to show this family's events below"
-                    >
-                      {lane.family} ({laneEvents.toLocaleString()} events)
-                    </span>
-                    <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                      {lane.buckets.length} time buckets
-                    </span>
-                  </div>
-                  <div style={{ display: "flex", gap: 1, alignItems: "flex-end", height: 80, overflowX: "auto", paddingBottom: 4 }}>
-                    {lane.buckets.map((b, i) => {
-                      const height = maxCount > 0 ? (b.count / maxCount) * 100 : 0;
-                      const highlighted = inBrush(b.hour);
-                      const barColor = highlighted
-                        ? "var(--warning)"
-                        : b.sev && b.sev !== "low" && b.sev !== "informational"
-                          ? sevColor(b.sev)
-                          : "var(--accent)";
-                      return (
-                        <div
-                          key={i}
-                          onClick={() => handleBarClick(b.hour)}
-                          title={`${b.hour} — ${b.count} events${b.sev ? ` · max ${b.sev}` : ""}`}
-                          style={{
-                            flex: "0 0 8px",
-                            height: `${height}%`,
-                            minHeight: b.count > 0 ? 3 : 1,
-                            background: b.count > 0 ? barColor : "var(--bg-tertiary)",
-                            borderRadius: "2px 2px 0 0",
-                            cursor: "pointer",
-                            opacity: brushStart !== null && !highlighted ? 0.4 : 1,
-                            transition: "opacity 0.15s, background 0.15s",
-                          }}
-                        />
-                      );
-                    })}
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
-                    <span>{lane.buckets[0]?.hour}</span>
-                    <span>{lane.buckets[Math.floor(lane.buckets.length / 2)]?.hour}</span>
-                    <span>{lane.buckets[lane.buckets.length - 1]?.hour}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* WP 4d.1: type-aware event list for the selected lane / brush */}
-          <div className="card">
-            <div className="card-header">
-              <span className="card-title">
-                Events{selectedLane ? ` — ${selectedLane}` : ""}
-                {brushRange.start || brushRange.end
-                  ? ` · ${brushRange.start || "…"} → ${brushRange.end || "…"}`
-                  : ""}
-                {` (${eventCount.toLocaleString()})`}
-                {(q || minSev) && ` — ${visibleEvents.length.toLocaleString()} shown`}
-              </span>
-              <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-                <input
-                  type="text"
-                  placeholder="Filter events…"
-                  value={filterText}
-                  onChange={(e) => setFilterText(e.target.value)}
-                  style={{
-                    fontSize: 11, padding: "2px 8px", width: 160,
-                    background: "var(--bg-tertiary)", border: "1px solid var(--border)",
-                    borderRadius: 4, color: "var(--text-primary)",
-                  }}
+          {sharedRange ? (
+            <>
+              <div ref={laneFrameRef} className={styles.laneFrame}>
+                <TimeLanes
+                  lanes={series}
+                  range={sharedRange}
+                  width={laneWidth}
+                  selectedLaneId={selectedLane}
+                  onSelectLane={(id) =>
+                    setSelectedLane((current) => (current === id ? null : id))
+                  }
+                  onRangeChange={setBrush}
+                  ariaLabel="Timeline lanes on one shared UTC scale"
                 />
-                {["", "medium", "high", "critical"].map((s) => (
-                  <button
-                    key={s || "all"}
-                    className="btn btn-sm"
-                    onClick={() => setMinSev(s)}
-                    style={{
-                      fontSize: 10, padding: "1px 7px",
-                      color: s && minSev === s ? "#fff" : s ? sevColor(s) : "var(--text-muted)",
-                      borderColor: minSev === s ? sevColor(s) : "var(--border)",
-                      fontWeight: minSev === s ? 700 : 400,
-                    }}
-                    title={s ? `Show ${s}+ severity only` : "Show all severities"}
-                  >
-                    {s ? `${s}+` : "all"}
-                  </button>
-                ))}
-              </span>
-            </div>
-            {eventsLoading ? (
-              <div className="loading">Loading events...</div>
-            ) : eventError ? (
-              <div className="error-banner">{eventError}</div>
-            ) : events.length === 0 ? (
-              <div className="empty-state">
-                <p>No events in this view. Click a lane or brush a time range above.</p>
               </div>
-            ) : (
-              <VirtualTable
-                rows={visibleEvents}
-                columns={eventColumns}
-                rowKey={(h, i) => `${h.family}:${h.file}:${h.line}:${i}`}
-                maxHeight="45vh"
-                onRowClick={openEvent}
-              />
-            )}
-          </div>
+              <p className={styles.laneCaption} data-testid="timeline-lane-caption">
+                Every lane is drawn against the same UTC range
+                ({sharedRange.start.toISOString()} → {sharedRange.end.toISOString()}),
+                so a mark at one instant lines up across the stack and a brush
+                means the same span everywhere.
+              </p>
+            </>
+          ) : (
+            <EmptyState
+              title="No timeline data"
+              hint="Run the N2 processing lane and query evidence to populate the timeline lanes."
+            />
+          )}
 
-          {/* Legend */}
-          <div className="card" style={{ padding: "8px 12px" }}>
-            <span style={{ fontSize: 11, color: "var(--text-muted)", marginRight: 16 }}>
-              <span style={{ display: "inline-block", width: 10, height: 10, background: "var(--accent)", borderRadius: 2, marginRight: 4, verticalAlign: "middle" }} />
-              Normal
-            </span>
-            {(["critical", "high", "medium"] as const).map((s) => (
-              <span key={s} style={{ fontSize: 11, color: "var(--text-muted)", marginRight: 16 }}>
-                <span style={{ display: "inline-block", width: 10, height: 10, background: sevColor(s), borderRadius: 2, marginRight: 4, verticalAlign: "middle" }} />
-                {s}
-              </span>
-            ))}
-            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-              <span style={{ display: "inline-block", width: 10, height: 10, background: "var(--warning)", borderRadius: 2, marginRight: 4, verticalAlign: "middle" }} />
-              Brushed
-            </span>
-            <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 16 }}>
-              Click a bar to start a range, a second to set the end. Click an event row for interpretation.
-            </span>
-          </div>
-
-          {/* Event → interpretation drawer */}
-          {selected && (
-            <div
-              style={{
-                position: "fixed", top: 0, right: 0, bottom: 0, width: 420,
-                background: "var(--bg-secondary)", borderLeft: "1px solid var(--border)",
-                padding: 16, overflowY: "auto", zIndex: 40,
-                boxShadow: "-8px 0 24px rgba(0,0,0,0.4)",
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                <strong style={{ fontSize: 13 }}>Event interpretation</strong>
-                <span>
-                  <button
-                    className="btn btn-sm"
-                    style={{ marginRight: 6 }}
-                    title="Pivot to Explore with this event's terms"
-                    onClick={() => {
-                      const p = new URLSearchParams();
-                      const pivot =
-                        selected.terms_list?.[0] || selected.terms?.split(",")[0];
-                      if (pivot) p.set("needles", pivot);
-                      if (selected.family) p.set("family", selected.family);
-                      navigate(`/explore?${p.toString()}`);
-                    }}
-                  >
-                    Open in Explore →
-                  </button>
-                  <button className="btn btn-sm" onClick={() => setSelected(null)}>✕</button>
-                </span>
-              </div>
-              {(() => {
-                const sev = hitSeverity(selected);
-                return (
-                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 10, fontFamily: "monospace" }}>
-                    {selected.family}
-                    {sev && (
-                      <span style={{ color: sevColor(sev), marginLeft: 8, fontWeight: 600 }}>
-                        ● {sev}
-                      </span>
-                    )}
-                    <div style={{ marginTop: 4, wordBreak: "break-all" }}>{selected.file}:{selected.line}</div>
-                  </div>
-                );
-              })()}
-              {selected.fields && Object.keys(selected.fields).length > 0 && (
-                <div style={{ marginBottom: 12 }}>
-                  {Object.entries(selected.fields).slice(0, 14).map(([k, v]) => (
-                    <div key={k} style={{ fontSize: 11, marginBottom: 3 }}>
-                      <span style={{ color: "var(--text-muted)" }}>{k}: </span>
-                      <span style={{ wordBreak: "break-all" }}>
-                        {String(v).length > 220 ? String(v).slice(0, 220) + "…" : v}
-                      </span>
-                    </div>
+          <Panel
+            title={`Events${
+              selectedLane ? ` — ${selectedLane}` : ""
+            }${brush ? " — brushed range" : ""} (${eventCount.toLocaleString()})`}
+            actions={
+              <div className={styles.eventBar}>
+                <div className={styles.sevPicker}>
+                  {SEVERITIES.map((severity) => (
+                    <button
+                      key={severity || "all"}
+                      type="button"
+                      data-testid={`timeline-sev-${severity || "all"}`}
+                      className={
+                        minSev === severity
+                          ? `${styles.sevButton} ${styles.sevActive}`
+                          : styles.sevButton
+                      }
+                      data-sev={severity || "all"}
+                      onClick={() => setMinSev(severity)}
+                      title={severity ? `Show ${severity}+ severity only` : "Show all severities"}
+                    >
+                      {severity ? `${severity}+` : "all"}
+                    </button>
                   ))}
                 </div>
-              )}
-              {interpLoading && <div className="loading">Interpreting…</div>}
-              {interp && !interp.error && (
-                <div>
-                  {interp.meaning && (
-                    <p style={{ fontSize: 12, lineHeight: 1.5 }}>{interp.meaning}</p>
+                <Field label="Filter events">
+                  {({ id }) => (
+                    <Input
+                      id={id}
+                      value={filterText}
+                      onChange={(event) => setFilterText(event.target.value)}
+                      placeholder="text contains…"
+                    />
                   )}
-                  {(() => {
-                    const tids = interp.techniques?.length
-                      ? interp.techniques
-                      : [...new Set((interp.skills || []).flatMap((s) => s.mitre || []))];
-                    return tids.length > 0 && (
-                      <div style={{ margin: "8px 0" }}>
-                        {tids.slice(0, 10).map((t) => (
-                          <span key={t} className="badge" style={{ marginRight: 4, fontSize: 10 }}>{t}</span>
-                        ))}
-                      </div>
-                    );
-                  })()}
-                  {interp.look_for?.length > 0 && (
-                    <>
-                      <div style={{ fontSize: 11, fontWeight: 600, marginTop: 10 }}>Look for</div>
-                      <ul style={{ fontSize: 11, paddingLeft: 16, margin: "4px 0" }}>
-                        {interp.look_for.slice(0, 6).map((x, i) => <li key={i}>{x}</li>)}
-                      </ul>
-                    </>
-                  )}
-                  {interp.corroborate?.length > 0 && (
-                    <>
-                      <div style={{ fontSize: 11, fontWeight: 600, marginTop: 10 }}>Corroborate</div>
-                      <ul style={{ fontSize: 11, paddingLeft: 16, margin: "4px 0" }}>
-                        {interp.corroborate.slice(0, 5).map((x, i) => <li key={i}>{x}</li>)}
-                      </ul>
-                    </>
-                  )}
-                  {interp.next_queries?.length > 0 && (
-                    <>
-                      <div style={{ fontSize: 11, fontWeight: 600, marginTop: 10 }}>Next queries</div>
-                      <ul style={{ fontSize: 11, paddingLeft: 16, margin: "4px 0", fontFamily: "monospace" }}>
-                        {interp.next_queries.slice(0, 5).map((x, i) => <li key={i}>{x}</li>)}
-                      </ul>
-                    </>
-                  )}
-                  {interp.caveats?.length > 0 && (
-                    <>
-                      <div style={{ fontSize: 11, fontWeight: 600, marginTop: 10, color: "var(--warning)" }}>Caveats</div>
-                      <ul style={{ fontSize: 11, paddingLeft: 16, margin: "4px 0" }}>
-                        {interp.caveats.slice(0, 4).map((x, i) => <li key={i}>{x}</li>)}
-                      </ul>
-                    </>
-                  )}
-                </div>
-              )}
-              {interp?.error && <div className="error-banner">{interp.error}</div>}
-            </div>
-          )}
+                </Field>
+              </div>
+            }
+          >
+            {eventsLoading ? (
+              <div className="loading">Loading events…</div>
+            ) : eventError ? (
+              <div role="alert" className="error-banner">
+                {eventError}
+              </div>
+            ) : visibleEvents.length === 0 ? (
+              <EmptyState
+                title="No events in this view"
+                hint="Choose a lane, or brush a range across the lanes above."
+              />
+            ) : (
+              <>
+                {filterText || minSev ? (
+                  <p className={styles.note}>
+                    {visibleEvents.length.toLocaleString()} shown of{" "}
+                    {eventCount.toLocaleString()}
+                  </p>
+                ) : null}
+                <VirtualTable
+                  rows={visibleEvents}
+                  columns={eventColumns}
+                  rowKey={(hit, index) => `${hit.family}:${hit.file}:${hit.line}:${index}`}
+                  maxHeight="45vh"
+                  onRowClick={openEvent}
+                />
+                {selected ? (
+                  <div className={styles.interp} data-testid="timeline-interpretation">
+                    <Badge>{selected.family}</Badge>{" "}
+                    <code>{selected.file}:{selected.line}</code>
+                    {interpLoading ? (
+                      <p>Interpreting…</p>
+                    ) : interp ? (
+                      <>
+                        {interp.meaning ? <p>{interp.meaning}</p> : null}
+                        {interp.look_for?.length ? (
+                          <div className={styles.interpSection}>
+                            <strong>Look for</strong>
+                            <ul className={styles.interpList}>
+                              {interp.look_for.slice(0, 6).map((item, index) => (
+                                <li key={index}>{item}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : null}
+                        {interp.corroborate?.length ? (
+                          <div className={styles.interpSection}>
+                            <strong>Corroborate</strong>
+                            <ul className={styles.interpList}>
+                              {interp.corroborate.slice(0, 5).map((item, index) => (
+                                <li key={index}>{item}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : null}
+                      </>
+                    ) : (
+                      <p>
+                        No interpretation for this row. Interpretation is advisory —
+                        it is never examiner-approved.
+                      </p>
+                    )}
+                  </div>
+                ) : null}
+              </>
+            )}
+          </Panel>
         </>
       )}
-    </div>
     </div>
   );
 }

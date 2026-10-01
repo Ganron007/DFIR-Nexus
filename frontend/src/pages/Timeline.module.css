@@ -1,0 +1,153 @@
+/* Timeline page (WO-U8a / WP 14.8) - tokens only, zero inline styles. */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.tabs {
+  display: flex;
+  gap: var(--space-2);
+  border-bottom: 1px solid var(--color-border-default);
+  padding-bottom: var(--space-2);
+}
+
+.tab {
+  border: 1px solid var(--color-border-default);
+  background: transparent;
+  color: var(--color-fg-muted);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  font: inherit;
+}
+
+.tabActive {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--color-fg-default);
+  font-weight: 600;
+}
+
+.note {
+  font-size: var(--font-size-xs);
+  color: var(--color-fg-muted);
+  margin-bottom: var(--space-2);
+}
+
+.brushBar {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: var(--font-size-xs);
+  color: var(--color-fg-muted);
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+/* The lane stack is the reason this page exists; it gets the width it needs
+   and nothing else may squeeze it. */
+.laneFrame {
+  width: 100%;
+  min-height: 2rem;
+  margin-bottom: var(--space-3);
+}
+
+.laneCaption {
+  font-size: var(--font-size-xs);
+  color: var(--color-fg-subtle);
+  margin-top: var(--space-1);
+}
+
+.eventBar {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-end;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.sevPicker {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.sevButton {
+  border: 1px solid var(--color-border-default);
+  background: transparent;
+  color: var(--color-fg-muted);
+  border-radius: var(--radius-sm);
+  padding: 1px var(--space-2);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--font-size-2xs);
+}
+
+.sevActive {
+  border-color: currentColor;
+  font-weight: 700;
+}
+
+.interp {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-default);
+  background: var(--bg-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.interpSection {
+  margin-top: var(--space-3);
+  font-size: var(--font-size-xs);
+}
+
+.interpList {
+  margin: var(--space-1) 0 0 var(--space-5);
+}
+
+/* --- event list -------------------------------------------------------- */
+
+.sevDot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.cellMono {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2xs);
+}
+
+.cellTruncate {
+  display: block;
+  font-size: var(--font-size-2xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cellSource {
+  display: block;
+  font-size: var(--font-size-2xs);
+  color: var(--color-fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Severity is a TOKEN, selected by data attribute - not an inline colour.
+   Keeping the mapping here means a theme change reaches these without a
+   component edit, and the guard can hold this page at zero inline styles. */
+.sevDot[data-sev="critical"] { background: var(--sev-critical); }
+.sevDot[data-sev="high"]     { background: var(--sev-high); }
+.sevDot[data-sev="medium"]   { background: var(--sev-medium); }
+.sevDot[data-sev="low"]      { background: var(--sev-low); }
+
+.sevButton[data-sev="critical"] { color: var(--sev-critical); }
+.sevButton[data-sev="high"]     { color: var(--sev-high); }
+.sevButton[data-sev="medium"]   { color: var(--sev-medium); }
+.sevButton[data-sev="low"]      { color: var(--sev-low); }

@@ -91,8 +91,8 @@
       "colors": 4
     },
     "pages/Timeline.tsx": {
-      "inline": 55,
-      "colors": 3
+      "inline": 0,
+      "colors": 0
     },
     "pages/Todos.tsx": {
       "inline": 0,
@@ -192,7 +192,7 @@
     }
   },
   "totals": {
-    "inline": 816,
-    "colors": 67
+    "inline": 761,
+    "colors": 64
   }
 }
