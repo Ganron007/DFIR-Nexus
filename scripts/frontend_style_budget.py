@@ -10,7 +10,8 @@ Two counts, both of which U8a drives toward zero and U9 refuses to let grow:
   Colour belongs to the token layer too, which is what makes the dark theme a
   single source instead of a per-page decision.
 
-The baseline is ``Docs/internal/frontend-style-budget.json``. This script
+The baseline is ``scripts/frontend_style_budget.json`` (beside this
+script, so it is versioned - ``Docs/internal`` is gitignored). This script
 FAILS when any tracked file's count rises above its baseline, and when a NEW
 tracked file appears with inline styles or hard-coded colours. Lowering a count
 is always allowed - that is the work.
@@ -30,7 +31,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 FRONTEND = ROOT / "frontend" / "src"
-BASELINE_PATH = ROOT / "Docs" / "internal" / "frontend-style-budget.json"
+# The baseline lives beside the script, NOT in Docs/internal: that tree is
+# gitignored, so a baseline there would be missing on a fresh clone and the
+# gate would fail for everyone but the machine that wrote it.
+BASELINE_PATH = Path(__file__).resolve().parent / "frontend_style_budget.json"
 
 #: Directories the guard watches. Every page and component the examiner sees.
 TRACKED_DIRS = ("pages", "components", "features", "ui", "shell")

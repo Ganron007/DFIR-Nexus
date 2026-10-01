@@ -1,0 +1,198 @@
+{
+  "schema_version": 1,
+  "note": "U8a drives these toward zero; U9 fails the build if any count RISES. Regenerate with scripts/frontend_style_budget.py --rebaseline after a migration.",
+  "files": {
+    "components/EvidencePicker.tsx": {
+      "inline": 38,
+      "colors": 7
+    },
+    "components/Histogram.tsx": {
+      "inline": 5,
+      "colors": 0
+    },
+    "components/LaneGateBanner.tsx": {
+      "inline": 10,
+      "colors": 6
+    },
+    "components/Layout.tsx": {
+      "inline": 16,
+      "colors": 18
+    },
+    "components/LiveRunFeed.tsx": {
+      "inline": 8,
+      "colors": 0
+    },
+    "components/MultiAgentBoard.tsx": {
+      "inline": 57,
+      "colors": 0
+    },
+    "components/RequireCase.tsx": {
+      "inline": 0,
+      "colors": 0
+    },
+    "components/TimelineEventsGrid.tsx": {
+      "inline": 0,
+      "colors": 0
+    },
+    "components/VirtualTable.tsx": {
+      "inline": 9,
+      "colors": 0
+    },
+    "pages/AgentRun.tsx": {
+      "inline": 62,
+      "colors": 0
+    },
+    "pages/Approve.tsx": {
+      "inline": 25,
+      "colors": 7
+    },
+    "pages/Briefing.tsx": {
+      "inline": 194,
+      "colors": 3
+    },
+    "pages/CaseSetup.tsx": {
+      "inline": 65,
+      "colors": 6
+    },
+    "pages/Entities.tsx": {
+      "inline": 0,
+      "colors": 0
+    },
+    "pages/Evidence.tsx": {
+      "inline": 31,
+      "colors": 6
+    },
+    "pages/Explore.tsx": {
+      "inline": 86,
+      "colors": 4
+    },
+    "pages/Findings.tsx": {
+      "inline": 23,
+      "colors": 1
+    },
+    "pages/Ingest.tsx": {
+      "inline": 16,
+      "colors": 0
+    },
+    "pages/Iocs.tsx": {
+      "inline": 0,
+      "colors": 0
+    },
+    "pages/Overview.tsx": {
+      "inline": 52,
+      "colors": 6
+    },
+    "pages/Report.tsx": {
+      "inline": 40,
+      "colors": 10
+    },
+    "pages/SteerChat.tsx": {
+      "inline": 83,
+      "colors": 4
+    },
+    "pages/Timeline.tsx": {
+      "inline": 55,
+      "colors": 3
+    },
+    "pages/Todos.tsx": {
+      "inline": 8,
+      "colors": 0
+    },
+    "pages/Transparency.tsx": {
+      "inline": 0,
+      "colors": 0
+    },
+    "pages/Workbench.tsx": {
+      "inline": 31,
+      "colors": 1
+    },
+    "shell/CommandPalette.tsx": {
+      "inline": 8,
+      "colors": 2
+    },
+    "shell/RouteErrorBoundary.tsx": {
+      "inline": 5,
+      "colors": 0
+    },
+    "ui/Badge.tsx": {
+      "inline": 0,
+      "colors": 0
+    },
+    "ui/Button.tsx": {
+      "inline": 0,
+      "colors": 0
+    },
+    "ui/CopyableHash.tsx": {
+      "inline": 0,
+      "colors": 0
+    },
+    "ui/CopyablePath.tsx": {
+      "inline": 0,
+      "colors": 0
+    },
+    "ui/DataGrid/DataGrid.tsx": {
+      "inline": 5,
+      "colors": 0
+    },
+    "ui/Dialog.tsx": {
+      "inline": 0,
+      "colors": 0
+    },
+    "ui/Drawer.tsx": {
+      "inline": 1,
+      "colors": 0
+    },
+    "ui/EmptyState.tsx": {
+      "inline": 0,
+      "colors": 0
+    },
+    "ui/Field.tsx": {
+      "inline": 0,
+      "colors": 0
+    },
+    "ui/KeyValue.tsx": {
+      "inline": 0,
+      "colors": 0
+    },
+    "ui/PageHeader.tsx": {
+      "inline": 0,
+      "colors": 0
+    },
+    "ui/Panel.tsx": {
+      "inline": 0,
+      "colors": 0
+    },
+    "ui/Skeleton.tsx": {
+      "inline": 1,
+      "colors": 0
+    },
+    "ui/StatusPill.tsx": {
+      "inline": 0,
+      "colors": 0
+    },
+    "ui/Tabs.tsx": {
+      "inline": 0,
+      "colors": 0
+    },
+    "ui/TimeAxis/TimeAxis.tsx": {
+      "inline": 0,
+      "colors": 0
+    },
+    "ui/TimeAxis/TimeLanes.tsx": {
+      "inline": 0,
+      "colors": 0
+    },
+    "ui/Toast.tsx": {
+      "inline": 0,
+      "colors": 0
+    },
+    "ui/Tooltip.tsx": {
+      "inline": 0,
+      "colors": 0
+    }
+  },
+  "totals": {
+    "inline": 934,
+    "colors": 84
+  }
+}
