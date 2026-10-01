@@ -229,6 +229,8 @@ def register_evidence(
                 "kind": "file" if evidence_path.is_file() else "directory",
                 "files": file_count,
                 "total_bytes": total_bytes,
+                "recognized_family": recognized_family,
+                "placed_at": placed,
             },
         )
         return {

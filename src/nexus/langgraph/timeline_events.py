@@ -191,8 +191,11 @@ def expand_doc(doc: dict[str, Any]) -> list[dict[str, Any]]:
             # a date is distinguishable from one the registry vouches for.
             emit(column, value, "column-heuristic", "millisecond")
 
-    # the row's own timestamp, when the index resolved a real one
-    if str(doc.get("ts_src") or "") != "synthesized":
+    # the row's own timestamp, when the index resolved a real one.
+    # A plaso row already emitted that instant as its single event.
+    if str(doc.get("ts_src") or "") != "synthesized" and not (
+        family == "plaso" and plaso_stamp is not None
+    ):
         emit("ingest", doc.get("ts_raw") or doc.get("ts"), str(doc.get("ts_src") or "event"),
              str(doc.get("ts_precision") or "second"))
     return events

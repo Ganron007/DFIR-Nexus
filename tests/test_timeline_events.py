@@ -216,6 +216,11 @@ def test_plaso_l2tcsv_row_is_one_event():
     assert events[0]["ts_desc"] == "event"
     assert events[0]["family"] == "plaso"
     assert events[0]["fields"]["MACB"] == "M..."
+    indexed = dict(doc)
+    indexed["ts_src"] = "column"
+    indexed["ts"] = "2020-10-27T03:54:15+00:00"
+    indexed["ts_raw"] = "2020-10-27 03:54:15"
+    assert len(expand_doc(indexed)) == 1
 
 
 def test_no_reparse_evidence(tmp_path, monkeypatch):
