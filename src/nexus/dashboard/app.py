@@ -4640,6 +4640,9 @@ async def api_case_seal(request):
     examiner = str(body.get("examiner") or "") or _resolve_examiner(request)
     if not examiner:
         return JSONResponse({"error": "No examiner identity"}, status_code=401)
+    blocked = _lane_gate_error(case_dir)
+    if blocked:
+        return blocked
 
     # Validate the challenge (same flow as post_commit)
     import hashlib
@@ -6898,6 +6901,9 @@ async def api_report_generate(request):
     sealed = _sealed_case_error(case_dir.name)
     if sealed:
         return sealed
+    blocked = _lane_gate_error(case_dir)
+    if blocked:
+        return blocked
 
     body: dict = {}
     with contextlib.suppress(Exception):
