@@ -66,6 +66,26 @@ def test_apply_verifier_refuted_is_audited_and_kept(tmp_path, monkeypatch):
     assert events and events[0]["kind"] == "refuted"
 
 
+def test_supplied_hits_are_not_a_second_scan(tmp_path, monkeypatch):
+    (tmp_path / "CASE.yaml").write_text("id: t\n", encoding="utf-8")
+
+    def _boom(*_args, **_kwargs):
+        raise AssertionError("index must not be queried when hits were supplied")
+
+    monkeypatch.setattr("nexus.langgraph.query_pack.n4_hits", _boom)
+    out = apply_verifier(
+        tmp_path,
+        {
+            "title": "in hand",
+            "needles": ["sdelete"],
+            "provenance": {"origin": "llm"},
+            "audit_ids": ["a1"],
+        },
+        hits=[{"line": "1"}],
+    )
+    assert out["verdict"] == "CONFIRMED"
+
+
 def test_search_failure_stays_inferred(tmp_path, monkeypatch):
     (tmp_path / "CASE.yaml").write_text("id: t\n", encoding="utf-8")
 

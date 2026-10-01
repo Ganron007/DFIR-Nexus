@@ -3005,7 +3005,7 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
             draft["needles"] = [needle]
             from nexus.modes.mode1_verify import apply_verifier
 
-            draft["verifier"] = apply_verifier(case_dir, draft)
+            draft["verifier"] = apply_verifier(case_dir, draft, hits=hits)
             res = save_draft_finding(case_dir, draft)
             if res.get("status") == "STAGED":
                 d: dict = {

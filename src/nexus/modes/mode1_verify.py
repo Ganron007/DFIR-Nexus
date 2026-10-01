@@ -83,15 +83,26 @@ def _index_hits(case_dir: Path, terms: list[str]) -> list[Any] | None:
     return list(hits or [])
 
 
-def apply_verifier(case_dir: Path | str | None, draft: dict[str, Any]) -> dict[str, Any]:
-    """Classify *draft*, re-running its cited needles when they were stored.
+def apply_verifier(
+    case_dir: Path | str | None,
+    draft: dict[str, Any],
+    *,
+    hits: list[Any] | None = None,
+) -> dict[str, Any]:
+    """Classify *draft*.
 
-    REFUTED stays on the draft. It is also an audited negative-space event
-    and is not deleted.
+    ``hits`` is the row set the caller just retrieved. When it is omitted and
+    the draft stored needles, those needles are re-run against the index.
+    REFUTED stays on the draft, is audited as negative space, and is not deleted.
     """
     terms = cited_terms(draft)
     search: Callable[[dict[str, Any]], list[Any]] | None = None
-    if terms and case_dir is not None:
+    if hits is not None:
+        rows = list(hits)
+
+        def search(_draft: dict[str, Any], rows: list[Any] = rows) -> list[Any]:
+            return rows
+    elif terms and case_dir is not None:
         found = _index_hits(Path(case_dir), terms)
         if found is not None:
             rows = found
