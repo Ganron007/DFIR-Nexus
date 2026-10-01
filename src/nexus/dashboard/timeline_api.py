@@ -196,7 +196,10 @@ class TimelineStore:
         if interval:
             agg["date_histogram"].pop("calendar_interval", None)
             agg["date_histogram"]["fixed_interval"] = interval
-        agg["date_histogram"]["bucket_count"] = max(1, min(2000, int(buckets or 500)))
+            # bucket_count is a hint that only exists alongside an explicit
+            # interval; ES rejects "auto" + bucket_count, and the previous
+            # draft sent both on every windowed call.
+            agg["date_histogram"]["bucket_count"] = max(1, min(2000, int(buckets or 500)))
         if rng:
             agg["date_histogram"]["extended_bounds"] = rng
         payload = self._search({
@@ -244,7 +247,15 @@ class TimelineStore:
             "anchor": source,
             "seconds": window,
             "rows": page["rows"],
-            "capped": page["capped"],
+            # The window is read in ONE page. If more events fall inside it than
+            # fit, say so - a context window that silently truncates reads as
+            # "nothing else happened near this event".
+            "capped": bool(page.get("capped")) or (
+                isinstance(page.get("total"), int) and page["total"] > len(page["rows"])
+            ),
+            "truncated": bool(
+                isinstance(page.get("total"), int) and page["total"] > len(page["rows"])
+            ),
             "total": page["total"],
         }
 

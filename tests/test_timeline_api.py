@@ -21,6 +21,7 @@ from nexus.dashboard.timeline_api import (
     encode_cursor,
     timeline_api_routes,
 )
+from nexus.langgraph.timeline_events import events_index_name
 
 # --------------------------------------------------------------------------
 # a fake Elasticsearch that records what it was asked
@@ -118,6 +119,7 @@ class FakeES:
 
         search_after = body.get("search_after")
         rows = self.rows
+        filtered = False
         # an honest fake applies the filters it is handed, so a range window
         # actually narrows the result the way Elasticsearch would
         for clause in (body.get("query", {}).get("bool", {}).get("filter") or []):
@@ -130,13 +132,20 @@ class FakeES:
                     if (not lo or str(r.get(field, "")) >= lo)
                     and (not hi or str(r.get(field, "")) <= hi)
                 ]
+                filtered = True
+        matched = len(rows)
         if search_after:
             after_id = search_after[1] if len(search_after) > 1 else search_after[0]
             ids = [r.get("event_id") for r in rows]
             if after_id in ids:
                 rows = rows[ids.index(after_id) + 1:]
         size = int(body.get("size") or 10)
-        return _Resp(_page_response(rows[:size], self.total, self.exact))
+        # ES reports the total for the QUERY it ran, so a filtered page's total
+        # is the filtered match count, not the unfiltered corpus size. The
+        # fake used to keep the unfiltered number, which made a correct
+        # `capped` flag look wrong.
+        total = matched if filtered else self.total
+        return _Resp(_page_response(rows[:size], total, self.exact))
 
     def __enter__(self) -> FakeES:
         return self
@@ -504,3 +513,103 @@ def test_build_route_reports_a_down_backend_instead_of_a_fake_build(
     finally:
         import shutil
         shutil.rmtree(case_dir, ignore_errors=True)
+
+# --------------------------------------------------------------------------
+# audit findings (2026-10-01)
+# --------------------------------------------------------------------------
+
+class _NoopES:
+    """A client that accepts everything - nothing is bulked in these cases."""
+
+    def head(self, _path: str) -> _Resp:
+        return _Resp({}, status=200)
+
+    def post(self, *_a, **_kw) -> _Resp:
+        return _Resp({})
+
+    def __enter__(self) -> _NoopES:
+        return self
+
+    def __exit__(self, *_exc) -> None:
+        return None
+
+
+def test_a_failed_build_stays_rebuildable(tmp_path):
+    """The defect that made a down-ES build permanent.
+
+    The failure path used to stamp the CURRENT schema version, so
+    needs_rebuild() answered False forever and the case reported "already
+    built" once Elasticsearch came back - a timeline that never exists.
+    """
+    import nexus.langgraph.case_index as ci
+    import nexus.langgraph.timeline_events as te
+    from nexus.langgraph.timeline_events import needs_rebuild
+
+    case = tmp_path / "CASE-A10FAIL"
+    (case / "analysis").mkdir(parents=True)
+
+    calls = {"n": 0}
+
+    def _ensure(_case_id: str) -> str:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("connection refused")
+        return events_index_name(_case_id)
+
+    monkey = pytest.MonkeyPatch()
+    try:
+        monkey.setattr(te, "ensure_events_index", _ensure)
+        monkey.setattr(ci, "_client", lambda: _NoopES())
+        monkey.setattr(ci, "_bulk_insert", lambda *a, **kw: 0)
+        monkey.setattr(ci, "iter_index_docs", lambda _c: iter(()))
+
+        first = te.build_events(case)
+        assert first["built"] is False
+        assert needs_rebuild(case) is True, "a failed build must still be rebuildable"
+
+        second = te.build_events(case)
+        assert second["built"] is True, (
+            f"the retry must build once ES is back; got {second!r}"
+        )
+    finally:
+        monkey.undo()
+
+
+def test_the_histogram_never_pairs_auto_with_a_bucket_count(monkeypatch):
+    """ES rejects calendar_interval:'auto' together with bucket_count."""
+    import nexus.langgraph.case_index as ci
+
+    fake = FakeES([])
+    monkeypatch.setattr(ci, "_client", lambda: fake)
+    TimelineStore("CASE-A").histogram()  # no interval -> 'auto'
+    agg = fake.requests[-1]["aggs"]["timeline"]["date_histogram"]
+    assert agg["calendar_interval"] == "auto"
+    assert "bucket_count" not in agg, "'auto' + bucket_count is rejected by ES"
+
+    # an explicit interval still carries the hint
+    TimelineStore("CASE-A").histogram(interval="1h")
+    agg = fake.requests[-1]["aggs"]["timeline"]["date_histogram"]
+    assert agg["fixed_interval"] == "1h"
+    assert agg["bucket_count"] == 500
+
+
+def test_a_context_window_that_does_not_fit_reports_the_truncation(monkeypatch):
+    """A window holding more events than one page must not read as complete."""
+    import nexus.langgraph.case_index as ci
+    from nexus.dashboard.timeline_api import MAX_PAGE
+
+    # MAX_PAGE + 5 events inside the window: the page holds MAX_PAGE, so the
+    # window genuinely does not fit and must say so
+    rows = [
+        _event("anchor", "2026-09-29T13:00:00Z"),
+        *[
+            _event(f"e{i}", "2026-09-29T13:00:30Z")
+            for i in range(MAX_PAGE + 5)
+        ],
+    ]
+    monkeypatch.setattr(ci, "_client", lambda: FakeES(rows))
+    out = TimelineStore("CASE-A").context("anchor", seconds=300)
+    assert out["total"] == MAX_PAGE + 6
+    assert len(out["rows"]) == MAX_PAGE, "one page, not the whole window"
+    assert out["truncated"] is True
+    assert out["capped"] is True

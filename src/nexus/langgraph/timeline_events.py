@@ -279,8 +279,12 @@ def build_events(
     try:
         index = ensure_events_index(case_id)
     except Exception as exc:  # noqa: BLE001 - ES down is a state, not a crash
+        # Deliberately NOT stamped with the current schema version: a failed
+        # build must stay rebuildable, or a case whose Elasticsearch was down
+        # at build time would report "already built" forever and never get
+        # its timeline once the backend came back.
         state = {
-            "schema_version": TIMELINE_SCHEMA_VERSION,
+            "schema_version": 0,
             "case_id": case_id,
             "error": f"elasticsearch unavailable: {str(exc)[:200]}",
             "events": total,

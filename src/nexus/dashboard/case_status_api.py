@@ -61,22 +61,29 @@ def _findings(case_dir: Path) -> dict[str, Any]:
 
 
 def _latest_run(case_dir: Path, family: str) -> dict[str, Any]:
-    """The newest Mode 2/3 run record, or {} when the case has none."""
+    """The newest Mode 2/3 run record, or {} when the case has none.
+
+    Ordered by mtime, then by name. Run ids are timestamp-prefixed
+    (``M2-20260925T060304-aacc7b``), so the name breaks an mtime tie the same
+    way the clock would - two runs written inside one filesystem tick must not
+    report whichever the glob happened to yield first.
+    """
     directory = case_dir / "analysis" / f"{family}_runs"
     if not directory.is_dir():
         return {}
     newest: dict[str, Any] = {}
-    newest_mtime = -1.0
-    for path in sorted(directory.glob("*.json")):
+    newest_key: tuple[float, str] = (-1.0, "")
+    for path in directory.glob("*.json"):
         try:
             mtime = path.stat().st_mtime
         except OSError:
             continue
-        if mtime <= newest_mtime:
+        key = (mtime, path.name)
+        if key <= newest_key:
             continue
         data = _read_json(path)
         if data:
-            newest, newest_mtime = data, mtime
+            newest, newest_key = data, key
     return newest
 
 
@@ -198,11 +205,20 @@ def build_case_status(case_dir: Path | str) -> dict[str, Any]:
 def _run_summary(record: dict[str, Any]) -> dict[str, Any]:
     if not record:
         return {"state": "none", "run_id": "", "reason": "no run record"}
+    # Zero is a real answer ("the run staged nothing"); None means the record
+    # does not say. Collapsing 0 into None hides a run that found nothing.
+    for key in ("candidates", "orders"):
+        items = record.get(key)
+        if isinstance(items, list):
+            staged: int | None = len(items)
+            break
+    else:
+        staged = None
     return {
         "state": str(record.get("status") or "unknown"),
         "run_id": str(record.get("run_id") or ""),
         "reason": str(record.get("stop_reason") or record.get("reason") or ""),
-        "staged": len(record.get("candidates") or record.get("orders") or []) or None,
+        "staged": staged,
     }
 
 
@@ -212,20 +228,27 @@ async def api_case_status(request):
 
     params = request.query_params
     case_id = (params.get("case_id") or "").strip()
-    if not case_id:
-        return JSONResponse({"error": "case_id is required"}, status_code=400)
 
     try:
         from nexus.analysis.finding_exhibit import resolve_case_dir
         from nexus.case.outputs import resolve_active_case_dir
 
-        case_dir = resolve_case_dir(case_id) if case_id else None
-        if case_dir is None:
+        if case_id:
+            # An explicit id is a claim about which case. If it does not
+            # resolve, say 404 - falling back to the ACTIVE case here would
+            # answer a question about CASE-9F2A1B with another case's
+            # findings, which is the exact confusion this endpoint exists to
+            # remove (the same defect A7 guards on the negative-space path).
+            case_dir = resolve_case_dir(case_id)
+            if case_dir is None:
+                return JSONResponse(
+                    {"error": f"case not found: {case_id}", "case_id": case_id},
+                    status_code=404,
+                )
+        else:
             case_dir = resolve_active_case_dir()
-        if case_dir is None:
-            return JSONResponse(
-                {"error": f"case not found: {case_id}"}, status_code=404
-            )
+            if case_dir is None:
+                return JSONResponse({"error": "no active case"}, status_code=404)
     except Exception as exc:  # noqa: BLE001
         return JSONResponse({"error": f"case resolution failed: {exc}"}, status_code=500)
 
