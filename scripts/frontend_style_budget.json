@@ -38,6 +38,14 @@
       "inline": 9,
       "colors": 0
     },
+    "components/steer/Cards.tsx": {
+      "inline": 0,
+      "colors": 0
+    },
+    "components/steer/Message.tsx": {
+      "inline": 0,
+      "colors": 0
+    },
     "pages/AgentRun.tsx": {
       "inline": 62,
       "colors": 0
@@ -87,8 +95,8 @@
       "colors": 0
     },
     "pages/SteerChat.tsx": {
-      "inline": 83,
-      "colors": 4
+      "inline": 0,
+      "colors": 0
     },
     "pages/Timeline.tsx": {
       "inline": 0,
@@ -192,7 +200,7 @@
     }
   },
   "totals": {
-    "inline": 761,
-    "colors": 64
+    "inline": 678,
+    "colors": 60
   }
 }

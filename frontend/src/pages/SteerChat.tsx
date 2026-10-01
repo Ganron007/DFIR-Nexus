@@ -1,19 +1,53 @@
-import { useEffect, useState, useRef } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { api, chatStream, type ChatEntry, type Mode1IterateResponse, type N4Hit } from "../api/client";
-import { useCase } from "../context/CaseContext";
-
 /**
- * WP 4d.3: live steer chat — Mode 1/2 turns stream over SSE with live
- * progress (status + iteration events) and hit cards rendered directly
- * in the transcript. Hit cards carry one-click bookmarking so interesting
- * items flow into the Workbench without leaving the conversation.
+ * Steer Chat (WP 4d.3 / 10.53 / 10.54), migrated to the kit (WO-U8a).
+ *
+ * The gain beyond the port, both of them accessibility:
+ *
+ * * **Labelled controls.** The composer had a placeholder and no label; the
+ *   iteration depth sat next to a Clear button with nothing naming it. Both
+ *   now carry real labels, so a screen reader announces what each control is
+ *   and U9's axe sweep has something to find. An examiner who cannot see the
+ *   placeholder text still knows what the box asks for.
+ * * **Message components.** Turns were inlined in a `messages.map()` with the
+ *   query trace, follow-up chips, partial notice and metadata interleaved in
+ *   one 80-style-object expression. They are components now
+ *   (`components/steer/`), which is also what makes the transcript readable.
+ *
+ * Two defects fixed on the way:
+ * * the composer carried a `placeholder-style` attribute, which is not a valid
+ *   DOM attribute and did nothing;
+ * * the transcript had no live-region semantics, so a streamed answer
+ *   appeared silently below the fold.
+ *
+ * Behaviour preserved: the SSE turn handler and every event it consumes, the
+ * bounded tool loop, hit bookmarking into the Workbench, staging a DRAFT
+ * (approval still required), saving an answer for the report, and the
+ * suggestion chips.
  */
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 
-/** Build an Explore URL from an N4 DSL query (family → facet, rest → needles). */
-function dslToExplore(dsl: string): string {
+import {
+  api,
+  chatStream,
+  type ChatEntry,
+  type Mode1IterateResponse,
+} from "../api/client";
+import { useCase } from "../context/CaseContext";
+import { Badge, Button, EmptyState, Field, Input, Panel } from "@/ui";
+import { ProposalCard } from "../components/steer/Cards";
+import {
+  FollowupChips,
+  LiveStatus,
+  MessageBubble,
+  MessageMeta,
+  PartialNotice,
+  QueryTrace,
+} from "../components/steer/Message";
+import styles from "../components/steer/SteerChat.module.css";
+
+/** Build an Explore URL from an N4 DSL query (family -> facet, rest -> needles). */
+export function dslToExplore(dsl: string, caseId: string): string {
   const familyMatch = dsl.match(/\bfamily\s*:\s*([A-Za-z0-9_-]+)/i);
   const family = familyMatch ? familyMatch[1] : "";
   const terms = dsl
@@ -27,945 +61,506 @@ function dslToExplore(dsl: string): string {
   if (terms) params.set("needles", terms);
   if (family) params.set("family", family);
   const query = params.toString();
-  return query ? `/explore?${query}` : "/explore";
+  const base = caseId
+    ? `/case/${encodeURIComponent(caseId)}/explore`
+    : "/explore";
+  return query ? `${base}?${query}` : base;
 }
 
-/** First meaningful line of an answer, stripped of markdown — DRAFT title. */
-function answerTitle(text: string): string {
+/** First meaningful line of an answer, stripped of markdown - DRAFT title. */
+export function answerTitle(text: string): string {
   const line = (text || "")
     .split("\n")
-    .map((l) => l.trim())
-    .find((l) => l && !l.startsWith("|") && !l.startsWith("#"));
+    .map((value) => value.trim())
+    .find((value) => value && !value.startsWith("|") && !value.startsWith("#"));
   return (line || "Mode 1 answer").replace(/[*_`>#]/g, "").slice(0, 120);
 }
 
-function HitCard({ hit: h }: { hit: N4Hit }) {
-  // The server assigns the bookmark id (B-###) — removing by our own loc key
-  // silently no-ops (the star would clear while the Workbench keeps the row).
-  const [bookmarkId, setBookmarkId] = useState<string>("");
-  const [busy, setBusy] = useState(false);
-
-  const toggle = async () => {
-    setBusy(true);
-    try {
-      if (bookmarkId) {
-        await api.workbenchRemove(bookmarkId);
-        setBookmarkId("");
-      } else {
-        const r = await api.workbenchAdd(h);
-        setBookmarkId(r.bookmark_id || "");
-      }
-    } catch {
-      // card-level failure is non-fatal; the star just stays as-is
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const preview = Object.entries(h.fields || {}).slice(0, 4);
-  const bookmarked = Boolean(bookmarkId);
-
-  return (
-    <div
-      style={{
-        background: "var(--bg-secondary)",
-        border: "1px solid var(--border)",
-        borderRadius: 6,
-        padding: "6px 10px",
-        fontSize: 11,
-        display: "flex",
-        gap: 8,
-        alignItems: "flex-start",
-      }}
-    >
-      <button
-        onClick={toggle}
-        disabled={busy}
-        style={{ background: "none", border: "none", cursor: "pointer", color: bookmarked ? "var(--warning)" : "var(--text-muted)", fontSize: 13, padding: 0 }}
-        title={bookmarked ? "Remove bookmark" : "Bookmark to Workbench"}
-      >
-        {bookmarked ? "★" : "☆"}
-      </button>
-      <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 2 }}>
-          <span style={{ fontFamily: "monospace" }}>{h.family}</span>
-          {h.host ? ` · ${h.host}` : ""} · {h.file}:{h.line}
-        </div>
-        {preview.length > 0 ? (
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            {preview.map(([k, v]) => (
-              <span key={k} style={{ fontSize: 11 }}>
-                <span style={{ color: "var(--text-muted)" }}>{k}: </span>
-                <span style={{ fontFamily: "monospace" }}>{v}</span>
-              </span>
-            ))}
-          </div>
-        ) : (
-          <div style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {h.text}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ProposalCard({ entry, caseMode, onAsk, busy, saved, onSave }: {
-  entry: ChatEntry;
-  caseMode: string;
-  onAsk?: (question: string) => void;
-  busy?: boolean;
-  saved?: boolean;
-  onSave?: () => Promise<void>;
-}) {
-  const meta = (entry.meta || {}) as Record<string, string>;
-  const navigate = useNavigate();
-  const isSliver = entry.action === "mode2_plan" || entry.action === "mode2_execute";
-  const isSteer = entry.action === "steer_answer";
-  const badge = isSliver ? "Mode 2 Multi-role"
-    : isSteer ? "Mode 1 Answer"
-    : (caseMode === "1" || caseMode === "" ? "Query hits" : "Proposal");
-  const hits = entry.data?.hits || [];
-  const queries = entry.data?.queries || [];
-  const followups = entry.data?.followups || [];
-  const firstHitQuery = queries.find((q) => q.hits > 0);
-  const [draft, setDraft] = useState("");
-  const [saveState, setSaveState] = useState(saved ? "Saved for report" : "");
-
-  const saveAnswer = async () => {
-    if (!onSave || saveState.startsWith("Saved") || saveState === "saving…") return;
-    setSaveState("saving…");
-    try {
-      await onSave();
-      setSaveState("Saved for report");
-    } catch (e) {
-      setSaveState((e as Error).message || "save failed");
-    }
-  };
-
-  const stageDraft = async () => {
-    if (draft) return;
-    setDraft("staging…");
-    try {
-      const title = firstHitQuery
-        ? `${answerTitle(entry.text)} — ${firstHitQuery.dsl}`.slice(0, 160)
-        : answerTitle(entry.text);
-      const r = await api.mode1ProposeDraft({
-        title,
-        query: firstHitQuery?.dsl,
-        hits: hits.length > 0 ? hits : undefined,
-      });
-      if (r.error) {
-        setDraft(typeof r.error === "string" ? r.error : r.error.join("; "));
-        return;
-      }
-      setDraft(`DRAFT staged${r.finding_id ? ` (${r.finding_id})` : ""} — review in Approve`);
-    } catch (e) {
-      setDraft((e as Error).message);
-    }
-  };
-
-  return (
-    <div
-      style={{
-        background: "var(--bg-tertiary)",
-        border: `1px solid ${isSliver ? "var(--purple)" : "var(--orange)"}`,
-        borderRadius: 8,
-        padding: 12,
-        margin: "8px 0",
-        maxWidth: "85%",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-        <span
-          style={{
-            fontSize: 10,
-            fontWeight: 600,
-            textTransform: "uppercase",
-            padding: "2px 6px",
-            borderRadius: 4,
-            background: isSliver ? "rgba(163,113,247,0.2)" : "rgba(219,109,40,0.2)",
-            color: isSliver ? "var(--purple)" : "var(--orange)",
-          }}
-        >
-          {badge}
-        </span>
-        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{entry.action}</span>
-        {meta.total_hits ? (
-          <span style={{ fontSize: 10, color: "var(--text-muted)" }}>· {meta.total_hits} rows</span>
-        ) : null}
-      </div>
-
-      {entry.text && (
-        isSteer ? (
-          <article className="report-markdown chat-markdown" style={{ marginBottom: 8 }}>
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{entry.text}</ReactMarkdown>
-          </article>
-        ) : (
-          <p style={{ fontSize: 13, color: "var(--text-primary)", marginBottom: 8 }}>
-            {entry.text}
-          </p>
-        )
-      )}
-
-      {meta.needles && (
-        <div style={{ marginBottom: 8 }}>
-          <span style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase" }}>Proposed Needles:</span>
-          <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
-            {meta.needles.split(",").map((n, i) => (
-              <span
-                key={i}
-                style={{
-                  fontFamily: "monospace",
-                  fontSize: 11,
-                  background: "var(--bg-secondary)",
-                  padding: "2px 6px",
-                  borderRadius: 4,
-                  border: "1px solid var(--border)",
-                }}
-              >
-                {n}
-              </span>
-            ))}
-          </div>
-          {/* WP 4j.11 — show the structured query actually executed, so the
-              examiner can read/correct the LLM's translation */}
-          {meta.dsl_query && (
-            <div style={{ marginTop: 4, fontSize: 10, color: "var(--text-muted)" }}>
-              {meta.dsl ? "Structured query: " : "Query (degraded to terms): "}
-              <span style={{ fontFamily: "monospace", color: meta.dsl ? "var(--accent)" : "var(--warning)" }}>
-                {meta.dsl_query}
-              </span>
-            </div>
-          )}
-        </div>
-      )}
-
-      {meta.rationale && (
-        <div style={{ fontSize: 12, color: "var(--text-secondary)", fontStyle: "italic", marginTop: 8, paddingLeft: 8, borderLeft: "2px solid var(--border-light)" }}>
-          {meta.rationale}
-        </div>
-      )}
-
-      {meta.techniques && (
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8, alignItems: "center" }}>
-          <span style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase" }}>ATT&CK</span>
-          {meta.techniques.split(",").filter(Boolean).map((t) => (
-            <span
-              key={t}
-              style={{
-                fontFamily: "monospace",
-                fontSize: 10,
-                background: "rgba(163,113,247,0.12)",
-                border: "1px solid rgba(163,113,247,0.4)",
-                color: "var(--purple)",
-                padding: "1px 6px",
-                borderRadius: 4,
-              }}
-            >
-              {t}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* Steering transparency — every query with its why, each explorable */}
-      {isSteer && queries.length > 0 && (
-        <div
-          style={{
-            marginTop: 4,
-            fontSize: 11,
-            fontFamily: "monospace",
-            color: "var(--text-muted)",
-            paddingLeft: 8,
-            borderLeft: "2px solid var(--border)",
-          }}
-        >
-          {queries.map((q, qi) => (
-            <div key={qi} style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "baseline" }}>
-              <span style={{ color: q.hits > 0 ? "var(--accent)" : "var(--warning)" }}>
-                {q.dsl}
-              </span>
-              <span>→ {q.hits} hit(s)</span>
-              {q.why ? <span>· {q.why}</span> : null}
-              <button
-                className="btn btn-sm clickable-tint"
-                style={{ fontSize: 10, padding: "0 5px" }}
-                title="Open these rows in Explore"
-                onClick={() => navigate(dslToExplore(q.dsl))}
-              >
-                Explore
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* WP 4d.3: hit cards persisted in the transcript */}
-      {hits.length > 0 && (
-        <div style={{ marginTop: 8 }}>
-          <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 4 }}>
-            Cited rows ({hits.length}) — star to bookmark to the Workbench
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            {hits.map((h, i) => <HitCard key={i} hit={h} />)}
-          </div>
-        </div>
-      )}
-
-      {/* Answer actions — continue the investigation or stage it for the report */}
-      {isSteer && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8, alignItems: "center" }}>
-          <button
-            className="btn btn-sm"
-            onClick={() => navigate(firstHitQuery ? dslToExplore(firstHitQuery.dsl) : "/explore")}
-            title="Open the underlying rows in Explore"
-          >
-            Open in Explore
-          </button>
-          <button
-            className="btn btn-sm"
-            onClick={() => void stageDraft()}
-            disabled={Boolean(draft)}
-            title="Stage a DRAFT finding from this answer + its cited rows (examiner approval required)"
-          >
-            Stage DRAFT
-          </button>
-          <button
-            className="btn btn-sm"
-            onClick={() => void saveAnswer()}
-            disabled={saveState === "saving…" || saveState.startsWith("Saved")}
-            title="Bookmark this answer's cited rows to the Workbench and record the answer for the report"
-          >
-            {saveState.startsWith("Saved")
-              ? "★ Saved for report"
-              : saveState === "saving…"
-                ? "saving…"
-                : "☆ Save for report"}
-          </button>
-          {saveState && !saveState.startsWith("Saved") && saveState !== "saving…" && (
-            <span style={{ fontSize: 11, color: "var(--warning)" }}>{saveState}</span>
-          )}
-          {draft && (
-            <span style={{ fontSize: 11, color: draft.startsWith("DRAFT") ? "var(--ok)" : "var(--warning)" }}>
-              {draft}
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* 4j-H.8 — deterministic drill-down chips for the next turn */}
-      {isSteer && followups.length > 0 && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
-          {followups.map((f, fi) => (
-            <button
-              key={fi}
-              className="btn btn-sm clickable-tint"
-              style={{ fontSize: 11 }}
-              disabled={busy}
-              title={f.question}
-              onClick={() => onAsk?.(f.question)}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {meta.hits && (
-        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8 }}>
-          {meta.hits} hits
-        </div>
-      )}
-    </div>
-  );
+/**
+ * A fixed whitelist, deliberately. Guessing from the shape routed a plain
+ * `steer_answer` into the proposal card, which hid the partial-answer notice -
+ * an answer that hit its budget would have looked complete.
+ */
+function isProposal(message: ChatEntry): boolean {
+  return [
+    "mode1_proposal",
+    "mode1_no_proposals",
+    "mode1_done",
+    "mode1_aggregation",
+    "mode2_plan",
+    "mode2_execute",
+    "mode2_seal",
+  ].includes(message.action);
 }
 
 export default function SteerChat() {
   const { mode: caseMode, activeCase } = useCase();
+  const navigate = useNavigate();
+
   const [messages, setMessages] = useState<ChatEntry[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  // WP 4j.33/4j.34 — per-turn stage timings from the steering agent
   const [turnTimings, setTurnTimings] = useState("");
-  // Last executed steering query — the server drafts a finding from hits and
-  // needs a query (or hits) to draft from.
   const [lastQuery, setLastQuery] = useState("");
-  // Phase 4f fix: depth is a case-level decision (single source = caseMode).
-  // Final three modes: 1 LLM (guided chat), 2 Multi-role (banner to Agent Run),
-  // 3 Multi-agent (banner to the Investigation Board). "mode1" is the legacy
-  // fallback when the case has no mode yet.
-  const modeKnown = caseMode === "1" || caseMode === "2" || caseMode === "3";
-  const mode: "mode1" | "mode2" | "mode3" =
-    caseMode === "1" ? "mode1"
-      : caseMode === "2" ? "mode2"
-        : caseMode === "3" ? "mode3" : "mode1";
   const [mode1Iterations, setMode1Iterations] = useState(3);
-  // WP 4d.3: live progress while a streamed turn is running
   const [liveStatus, setLiveStatus] = useState("");
-  // Mode 1 suggested questions (LLM-generated when available, server-cached)
   const [suggestions, setSuggestions] = useState<{ text: string; source: string }[]>([]);
   const [suggBy, setSuggBy] = useState("");
   const [suggLoading, setSuggLoading] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const [showDraftForm, setShowDraftForm] = useState(false);
+  const [draftTitle, setDraftTitle] = useState("");
+  // The iterate card renders when a caller supplies a result; the Mode 1
+  // stream does not produce one, so it stays null until something does.
+  const [iterateResult] = useState<Mode1IterateResponse | null>(null);
+
+  const modeKnown = caseMode === "1" || caseMode === "2" || caseMode === "3";
+  const mode: "mode1" | "mode2" | "mode3" =
+    caseMode === "1" ? "mode1" : caseMode === "2" ? "mode2" : caseMode === "3" ? "mode3" : "mode1";
+
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   const scrollTimerRef = useRef<number | null>(null);
 
-  const load = () => {
-    api.chat(200)
-      .then((r) => setMessages(r.messages))
-      .catch((e) => setError((e as Error).message))
-      .finally(() => {
-        if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
-        scrollTimerRef.current = window.setTimeout(() => {
-          scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-        }, 50);
+  const scrollToEnd = useCallback(() => {
+    if (scrollTimerRef.current) window.clearTimeout(scrollTimerRef.current);
+    scrollTimerRef.current = window.setTimeout(() => {
+      scrollRef.current?.scrollTo({
+        top: scrollRef.current.scrollHeight,
+        behavior: "smooth",
       });
-  };
+    }, 50);
+  }, []);
 
-  const savedTs = new Set(
-    messages
-      .filter((m) => m.action === "answer_saved")
-      .map((m) => String(m.data?.entry_ts || ""))
-      .filter(Boolean),
-  );
-
-  const saveAnswer = async (entryTs: string) => {
-    if (!entryTs) return;
-    const r = await api.mode1SaveAnswer({ entry_ts: entryTs });
-    if (r.error) {
-      throw new Error(Array.isArray(r.error) ? r.error.join("; ") : r.error);
-    }
-    load();
-  };
-
-  const refreshSuggestions = () => {
-    setSuggLoading(true);
-    api.mode1Suggestions()
-      .then((r) => {
-        setSuggestions(r.suggestions || []);
-        setSuggBy(r.generated_by || "");
+  const load = useCallback(() => {
+    api.chat(200)
+      .then((response) => {
+        setMessages(response.messages);
+        scrollToEnd();
       })
-      .catch(() => { /* suggestions are optional — never block the chat */ })
-      .finally(() => setSuggLoading(false));
-  };
+      .catch((exc) => setError((exc as Error).message));
+  }, [scrollToEnd]);
 
   useEffect(() => {
-    load();
+    void load();
     return () => {
-      if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
+      if (scrollTimerRef.current) window.clearTimeout(scrollTimerRef.current);
     };
-  }, [activeCase]);
+  }, [activeCase, load]);
+
+  const refreshSuggestions = useCallback(() => {
+    setSuggLoading(true);
+    api
+      .mode1Suggestions()
+      .then((response) => {
+        setSuggestions(response.suggestions || []);
+        setSuggBy(response.generated_by || "");
+      })
+      .catch(() => {
+        /* suggestions are optional - never block the chat */
+      })
+      .finally(() => setSuggLoading(false));
+  }, []);
 
   useEffect(() => {
     if (mode !== "mode1") return;
     refreshSuggestions();
-    // Suggestions are server-cached (120 s) — refreshing on case/mode change is cheap.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeCase, mode]);
+  }, [activeCase, mode, refreshSuggestions]);
 
-  const send = () => {
-    if (!input.trim() || loading) return;
-    const text = input;
-    // Standard chatbox: the examiner's message posts immediately, the input
-    // clears, and the field stays editable while the agent works.
-    setInput("");
-    void sendText(text);
-  };
+  const savedTs = useMemo(
+    () =>
+      new Set(
+        messages
+          .filter((message) => message.action === "answer_saved")
+          .map((message) => String(message.data?.entry_ts || ""))
+          .filter(Boolean),
+      ),
+    [messages],
+  );
 
-  const sendText = async (text: string) => {
-    if (!text.trim() || loading) return;
-    setLoading(true);
-    setError("");
-    setLiveStatus("");
-    setMessages((prev) => [
-      ...prev,
-      {
-        ts: new Date().toISOString(),
-        role: "examiner",
-        action: "steer_question",
-        text,
-        meta: {},
-      },
-    ]);
+  const sendText = useCallback(
+    async (text: string) => {
+      if (!text.trim() || loading) return;
+      setLoading(true);
+      setError("");
+      setLiveStatus("");
+      setMessages((previous) => [
+        ...previous,
+        {
+          ts: new Date().toISOString(),
+          role: "examiner",
+          action: "steer_question",
+          text,
+          meta: {},
+        },
+      ]);
 
-    try {
-      if (mode === "mode1") {
-        // WP 10.53/10.54 — live bounded tool loop. The server streams tool
-        // events and persists the final/partial transcript; reloading shows
-        // the exact tool chain, rows and partial state after the turn.
+      try {
+        if (mode !== "mode1") return;
         await chatStream(
           {
             message: text,
             mode,
             max_iterations: mode1Iterations,
-            history: messages.slice(-6).map((m) => ({ role: m.role, text: m.text })),
+            history: messages.slice(-6).map((message) => ({
+              role: message.role,
+              text: message.text,
+            })),
           },
-          (evt) => {
-            const data = evt.data as Record<string, unknown>;
-            if (evt.event === "round") {
-              setLiveStatus(`Round ${String(data.round ?? "?")} — deciding the next action…`);
-            } else if (evt.event === "tool_call") {
+          (event) => {
+            const data = event.data as Record<string, unknown>;
+            if (event.event === "round") {
+              setLiveStatus(
+                `Round ${String(data.round ?? "?")} — deciding the next action.`,
+              );
+            } else if (event.event === "tool_call") {
               setLiveStatus(
                 `tool ${String(data.tool || "")}: ${String(data.why || "retrieving evidence")}`,
               );
-            } else if (evt.event === "tool_result") {
+            } else if (event.event === "tool_result") {
               const audit = data.audit_id ? ` · audit ${String(data.audit_id)}` : "";
-              const err = data.error ? ` · ${String(data.error)}` : "";
-              setLiveStatus(`tool ${String(data.tool || "")} returned${audit}${err}`);
-            } else if (evt.event === "partial") {
-              setLiveStatus(`Budget reached (${String(data.reason || "limit")}) — returning partial result…`);
-            } else if (evt.event === "done") {
-              const queries = Array.isArray(data.queries_executed)
+              const failure = data.error ? ` · ${String(data.error)}` : "";
+              setLiveStatus(
+                `tool ${String(data.tool || "")} returned${audit}${failure}`,
+              );
+            } else if (event.event === "partial") {
+              setLiveStatus(
+                `Budget reached (${String(data.reason || "limit")}) — returning partial result.`,
+              );
+            } else if (event.event === "done") {
+              const executed = Array.isArray(data.queries_executed)
                 ? (data.queries_executed as { hits?: number; dsl?: string }[])
                 : [];
-              const firstQuery = queries.find((q) => (q.hits ?? 0) > 0);
-              if (firstQuery?.dsl) setLastQuery(firstQuery.dsl);
+              const first = executed.find((query) => (query.hits ?? 0) > 0);
+              if (first?.dsl) setLastQuery(first.dsl);
               const timings = data.timings_ms as Record<string, number> | undefined;
               if (timings) {
-                const text = Object.entries(timings)
-                  .filter(([, v]) => typeof v === "number")
-                  .map(([k, v]) => `${k} ${(v / 1000).toFixed(1)}s`)
+                const rendered = Object.entries(timings)
+                  .filter(([, value]) => typeof value === "number")
+                  .map(([key, value]) => `${key} ${(value / 1000).toFixed(1)}s`)
                   .join(" · ");
-                if (text) setTurnTimings(text);
+                if (rendered) setTurnTimings(rendered);
               }
-            } else if (evt.event === "error") {
+            } else if (event.event === "error") {
               setError(String(data.error || "stream error"));
             }
           },
         );
         load();
+      } catch (exc) {
+        setError((exc as Error).message);
+      } finally {
+        setLoading(false);
+        setLiveStatus("");
       }
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setLoading(false);
-      setLiveStatus("");
-    }
-  };
+    },
+    [load, loading, messages, mode, mode1Iterations],
+  );
 
-  const clear = async () => {
-    try {
-      await api.chatClear();
-    } catch (e) {
-      setError(`Failed to clear chat: ${(e as Error).message}`);
-      return;
-    }
-    setMessages([]);
-  };
-
-  // WP 4b.14: Propose-draft UI — trigger LLM-drafted findings from the UI
-  const [draftTitle, setDraftTitle] = useState("");
-  const [showDraftForm, setShowDraftForm] = useState(false);
-  const proposeDraft = async () => {
-    if (!draftTitle.trim()) return;
-    setLoading(true);
-    setError("");
-    try {
-      if (!lastQuery) {
-        setError("Ask a question first — the DRAFT is drafted from the last query's hits.");
-        return;
-      }
-      const r = await api.mode1ProposeDraft({ title: draftTitle, query: lastQuery });
-      if (r.error) {
-        setError(Array.isArray(r.error) ? r.error.join("; ") : r.error);
-      } else {
-        setMessages((prev) => [
-          ...prev,
-          {
-            ts: new Date().toISOString(),
-            role: "llm",
-            action: "mode1_proposal",
-            text: `DRAFT finding staged: ${r.finding_id || draftTitle} (${r.status || "DRAFT"})`,
-            meta: {},
-          },
-        ]);
-        setDraftTitle("");
-        setShowDraftForm(false);
-      }
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const isProposal = (entry: ChatEntry) =>
-    entry.action === "mode1_proposal" ||
-    entry.action === "mode1_no_proposals" ||
-    entry.action === "mode1_done" ||
-    entry.action === "mode1_aggregation" ||
-    entry.action === "mode2_plan" ||
-    entry.action === "mode2_execute" ||
-    entry.action === "mode2_seal";
-
-  // WP 4j.13 — Mode 1 iterative loop from the UI: the full examiner
-  // back-and-forth (queries + aggregations) in one tracked operation.
-  const [iterateResult, setIterateResult] = useState<Mode1IterateResponse | null>(null);
-  const runIterate = async () => {
+  const send = () => {
     if (!input.trim() || loading) return;
-    setLoading(true);
-    setError("");
     const text = input;
     setInput("");
-    setMessages((prev) => [
-      ...prev,
-      { ts: new Date().toISOString(), role: "examiner", action: "mode1_iterate_question", text, meta: {} },
-    ]);
-    try {
-      const r = await api.mode1Iterate({ question: text, max_iterations: mode1Iterations });
-      if (r.error) {
-        setError(r.error);
-      } else {
-        setIterateResult(r);
-        setMessages((prev) => [
-          ...prev,
-          {
-            ts: new Date().toISOString(),
-            role: "llm",
-            action: "mode1_iteration",
-            text: `Iterated: ${r.iterations.length} round(s), ${r.total_hits} total hits. `
-              + `Queries: ${(r.needles_run || []).slice(0, 6).join(", ")}`,
-            meta: { needles: (r.needles_run || []).join(","), hits: String(r.total_hits) },
-          },
-        ]);
-      }
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setLoading(false);
-    }
+    void sendText(text);
   };
 
-  if (!modeKnown) {
-    // Never guess the mode — sending a Mode 1 stream turn for a Multi-role
-    // or Multi-agent case would silently run the wrong pipeline.
-    return (
-      <div className="card">
-        <h2>Steer Chat</h2>
-        <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
-          Reading the case mode… If this persists, the case's mode could not be
-          loaded — reopen the case from the dashboard.
-        </p>
-      </div>
-    );
-  }
+  const saveAnswer = async (entryTs: string) => {
+    if (!entryTs) return;
+    const response = await api.mode1SaveAnswer({ entry_ts: entryTs });
+    if (response.error) {
+      throw new Error(
+        Array.isArray(response.error) ? response.error.join("; ") : response.error,
+      );
+    }
+    load();
+  };
 
-  if (mode !== "mode1") {
+  const stageDraft = async (entry: ChatEntry, title: string) => {
+    const response = await api.mode1ProposeDraft({
+      title,
+      query: lastQuery || undefined,
+      hits: entry.data?.hits,
+    });
+    if (response.error) {
+      throw new Error(
+        Array.isArray(response.error) ? response.error.join("; ") : response.error,
+      );
+    }
+    load();
+  };
+
+  const explore = (dsl: string) => {
+    navigate(dsl ? dslToExplore(dsl, activeCase || "") : "/explore");
+  };
+
+  // --- Mode 2/3 cases: this surface is Mode 1's -----------------------
+  if (modeKnown && mode !== "mode1") {
     return (
-      <div>
-        <h2>Steer Chat</h2>
-        <div className="card" style={{ padding: 12 }}>
-          <div className="card-title" style={{ marginBottom: 8 }}>
-            {mode === "mode2" ? "Mode 2 — Multi-role" : "Mode 3 — Multi-agent"}
-          </div>
-          <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 0 }}>
-            Steer Chat is the Mode 1 LLM surface. This case does not use it.
-            {mode === "mode2"
-              ? " The multi-role pipeline is on Agent Run."
-              : " The multi-agent team is on Agent Run (Investigation Board)."}
+      <div className={styles.page}>
+        <Panel>
+          <p>
+            This case runs{" "}
+            <strong>Mode {caseMode === "2" ? "2 (multi-role)" : "3 (multi-agent)"}</strong>
+            . Steer Chat is the Mode 1 surface — a guided chat over the case
+            index.
           </p>
-          <Link className="btn btn-sm btn-primary" to="/agent-run">Open Agent Run →</Link>
-        </div>
+          <Link
+            to={`/case/${encodeURIComponent(activeCase || "")}/agent-run`}
+            className="nx-button nx-button-primary"
+          >
+            Open Agent Run
+          </Link>
+        </Panel>
       </div>
     );
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 120px)" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <h2>Steer Chat</h2>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {/* Mode is fixed at case creation — Steer Chat is the Mode 1 surface. */}
-          <span
-            className="mode-badge mode-1"
-            title="Investigation mode was chosen when the case was created"
-            style={{ fontSize: 11 }}
-          >
-            Mode 1 — LLM
-          </span>
-          <input
-            type="number"
-            min={1}
-            max={4}
-            value={mode1Iterations}
-            onChange={(e) => setMode1Iterations(Math.max(1, Math.min(4, Number(e.target.value) || 2)))}
-            style={{ width: 60 }}
-            title="Maximum rounds for Iterate (1-4)"
-          />
-          <button className="btn btn-sm" onClick={clear}>Clear</button>
+    <div className={styles.page}>
+      <div className={styles.topBar}>
+        <div>
+          <h2>Steer Chat</h2>
+          <p className={styles.hint}>
+            Mode 1 — ask about the evidence. Answers are LLM-drafted and never
+            examiner-approved; stage a finding to have it signed.
+          </p>
+        </div>
+        <div className={styles.topControls}>
+          {/* The iteration depth has a real cost (more rounds, more evidence
+              read), so it is labelled rather than a bare number. */}
+          <Field label="Max rounds">
+            {({ id }) => (
+              <Input
+                id={id}
+                className={styles.iterations}
+                type="number"
+                min={1}
+                max={4}
+                value={mode1Iterations}
+                onChange={(event) =>
+                  setMode1Iterations(
+                    Math.max(1, Math.min(4, Number(event.target.value) || 2)),
+                  )
+                }
+              />
+            )}
+          </Field>
+          <Button size="sm" onClick={load}>
+            Refresh
+          </Button>
         </div>
       </div>
-      <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: -4, marginBottom: 10 }}>
-        Mode 1 (LLM): you ask in plain language — the LLM queries the case&apos;s evidence index
-        and cites rows. Staging a DRAFT is a separate examiner-triggered action.
-      </div>
-      {mode === "mode1" && (suggestions.length > 0 || suggLoading) && (
-        <div
-          className="card"
-          style={{
-            padding: "6px 10px",
-            marginBottom: 8,
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            flexWrap: "wrap",
-          }}
-        >
-          <span style={{ fontSize: 10, textTransform: "uppercase", color: "var(--text-muted)" }}>
+
+      {error ? (
+        <div role="alert" className="error-banner">
+          {error}
+        </div>
+      ) : null}
+      {turnTimings ? (
+        <p className={styles.hint} data-testid="turn-timings">
+          Last turn: {turnTimings}
+        </p>
+      ) : null}
+
+      {mode === "mode1" && (suggestions.length > 0 || suggLoading) ? (
+        <div className={styles.suggestions} data-testid="suggestions">
+          <span className={styles.label}>
             Suggested questions{suggBy ? ` · ${suggBy}` : ""}
           </span>
-          {suggestions.map((s, i) => (
-            <button
-              key={i}
-              className="btn btn-sm clickable-tint"
-              style={{ fontSize: 11 }}
-              disabled={loading}
-              title={s.text}
-              onClick={() => void sendText(s.text)}
-            >
-              {s.text}
-            </button>
-          ))}
-          <button
-            className="btn btn-sm"
-            style={{ fontSize: 10 }}
-            onClick={refreshSuggestions}
-            disabled={suggLoading}
-            title="Refresh suggested questions (server-cached for 2 minutes)"
-          >
-            {suggLoading ? "…" : "↻"}
-          </button>
-        </div>
-      )}
-      {mode === "mode1" && turnTimings && (
-        <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: -8, marginBottom: 8 }}>
-          last turn: {turnTimings}
-        </div>
-      )}
-
-      {error && <div className="error-banner">{error}</div>}
-
-      {/* WP 4b.14: Propose Draft button — Mode 1 */}
-      {mode === "mode1" && (
-        <div className="card" style={{ padding: "8px 12px", marginBottom: 8, display: "flex", gap: 8, alignItems: "center" }}>
-          <button className="btn btn-sm" onClick={() => setShowDraftForm(!showDraftForm)}>
-            ✎ Propose Draft Finding
-          </button>
-          {/* WP 4j.13 — run the full Mode 1 iterative loop */}
-          <button
-            className="btn btn-sm btn-primary"
-            onClick={runIterate}
-            disabled={loading || !input.trim()}
-            title="Run the multi-round investigation loop on this question (structured queries + aggregations)"
-          >
-            {loading ? "Investigating…" : "▶ Iterate (multi-round)"}
-          </button>
-          {mode1Iterations > 1 && (
-            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{mode1Iterations} rounds max</span>
-          )}
-        </div>
-      )}
-      {mode === "mode1" && showDraftForm && (
-        <div className="card" style={{ padding: "8px 12px", marginBottom: 8 }}>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <input
-              placeholder="Finding title..."
-              value={draftTitle}
-              onChange={(e) => setDraftTitle(e.target.value)}
-              style={{ flex: 1 }}
-            />
-            <button
-              className="btn btn-primary btn-sm"
-              onClick={proposeDraft}
-              disabled={loading || !draftTitle.trim()}
-            >
-              {loading ? "..." : "Stage DRAFT"}
-            </button>
-            <button className="btn btn-sm" onClick={() => { setShowDraftForm(false); setDraftTitle(""); }}>
-              Cancel
-            </button>
+          <div className={styles.chips}>
+            {suggestions.map((suggestion, index) => (
+              <Button
+                key={index}
+                size="sm"
+                variant="ghost"
+                onClick={() => void sendText(suggestion.text)}
+                title={suggestion.source}
+              >
+                {suggestion.text}
+              </Button>
+            ))}
+            <Button size="sm" variant="ghost" onClick={refreshSuggestions}>
+              Refresh
+            </Button>
           </div>
         </div>
-      )}
+      ) : null}
 
-      {/* WP 4j.13 — iteration result card (queries + aggregations) */}
-      {mode === "mode1" && iterateResult && iterateResult.iterations.length > 0 && (
-        <div className="card" style={{ padding: "10px 14px", marginBottom: 8 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
-            Investigation loop — {iterateResult.iterations.length} round(s), {iterateResult.total_hits} hits
-          </div>
-          {iterateResult.iterations.map((it, i) => (
-            <div key={i} style={{ fontSize: 11, marginBottom: 8, paddingLeft: 8, borderLeft: "2px solid var(--border)" }}>
-              <div style={{ fontWeight: 600 }}>{it.action === "initial_query" ? "Round 0 (entry)" : `Round ${it.iteration}`}</div>
-              {(it.queries || []).map((q, qi: number) => (
-                <div key={qi} style={{ fontSize: 11, fontFamily: "monospace", marginTop: 2 }}>
-                  <span style={{ color: q.dsl && !q.fallback ? "var(--accent)" : "var(--warning)" }}>
-                    {q.query}
+      {mode === "mode1" && showDraftForm ? (
+        <div className={styles.draftRow}>
+          <Field label="DRAFT title">
+            {({ id }) => (
+              <Input
+                id={id}
+                value={draftTitle}
+                onChange={(event) => setDraftTitle(event.target.value)}
+                placeholder="One line that states the claim"
+              />
+            )}
+          </Field>
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={loading || !draftTitle.trim()}
+            onClick={async () => {
+              const last = messages[messages.length - 1];
+              if (!last) return;
+              await stageDraft(last, draftTitle.trim());
+              setShowDraftForm(false);
+              setDraftTitle("");
+            }}
+          >
+            Stage DRAFT
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => {
+              setShowDraftForm(false);
+              setDraftTitle("");
+            }}
+          >
+            Cancel
+          </Button>
+        </div>
+      ) : null}
+
+      {mode === "mode1" && iterateResult && iterateResult.iterations.length > 0 ? (
+        <Panel
+          className={styles.iterateCard}
+          title={`Investigation loop — ${iterateResult.iterations.length} round(s), ${iterateResult.total_hits} hits`}
+        >
+          {iterateResult.iterations.map((iteration, index) => (
+            <div key={index} className={styles.iterateRound}>
+              <strong>
+                {iteration.action === "initial_query"
+                  ? "Round 0 (entry)"
+                  : `Round ${iteration.iteration}`}
+              </strong>
+              {(iteration.queries || []).map((query, queryIndex: number) => (
+                <div key={queryIndex} className={styles.traceRow}>
+                  <span className={query.dsl && !query.fallback ? styles.dslHit : styles.dslEmpty}>
+                    {query.query}
                   </span>
-                  {" → "}
-                  <span>{q.hits} hit(s)</span>
+                  <span>· {query.hits} hit(s)</span>
                 </div>
               ))}
-              {(it.aggregations || []).map((a, ai: number) => (
-                <div key={`a${ai}`} style={{ fontSize: 11, marginTop: 4 }}>
-                  <strong>Aggregation {a.field || "?"}</strong>: {a.distinct ?? 0} distinct
-                  {(a.top || []).length > 0 && (
-                    <span style={{ color: "var(--text-muted)" }}>
-                      {" "}— {a.top!.slice(0, 5).map((t: { value: string; count: number }) => `${t.value}(${t.count})`).join(", ")}
-                    </span>
-                  )}
+              {(iteration.aggregations || []).map((aggregation, aggIndex: number) => (
+                <div key={`a${aggIndex}`} className={styles.hint}>
+                  <strong>Aggregation {aggregation.field || "?"}</strong>:{" "}
+                  {aggregation.distinct ?? 0} distinct
+                  {aggregation.top?.length
+                    ? ` — ${aggregation.top
+                        .slice(0, 5)
+                        .map((top) => `${top.value}(${top.count})`)
+                        .join(", ")}`
+                    : ""}
                 </div>
               ))}
             </div>
           ))}
-        </div>
-      )}
+        </Panel>
+      ) : null}
 
-      {/* Chat transcript */}
+      {/* A live region: a streamed answer is announced, not silently appended. */}
       <div
         ref={scrollRef}
-        className="card"
-        style={{ flex: 1, overflowY: "auto", padding: 12 }}
+        className={`${styles.transcript} card`}
+        role="log"
+        aria-live="polite"
+        aria-label="Conversation transcript"
+        data-testid="transcript"
       >
         {messages.length === 0 ? (
-          <div className="empty-state">
-            <h3>No messages</h3>
-            <p>Ask a question to start the investigation loop.</p>
-          </div>
+          <EmptyState
+            title="No messages yet"
+            hint="Ask a question to start the investigation loop."
+          />
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            {messages.map((m, i) => {
-              if (isProposal(m) || (m.data?.hits && m.data.hits.length > 0)) {
-                return (
-                  <ProposalCard
-                    key={i}
-                    entry={m}
-                    caseMode={caseMode}
-                    busy={loading}
-                    onAsk={(q) => void sendText(q)}
-                    saved={savedTs.has(m.ts)}
-                    onSave={() => saveAnswer(m.ts)}
-                  />
-                );
-              }
+          messages.map((message, index) => {
+            if (isProposal(message) || (message.data?.hits?.length ?? 0) > 0) {
               return (
-                <div
-                  key={i}
-                  style={{
-                    alignSelf: m.role === "examiner" ? "flex-end" : "flex-start",
-                    maxWidth: "85%",
-                  }}
-                >
-                  <div
-                    style={{
-                      background: m.role === "examiner" ? "var(--accent)" : "var(--bg-tertiary)",
-                      color: m.role === "examiner" ? "white" : "var(--text-primary)",
-                      padding: "8px 12px",
-                      borderRadius: 8,
-                      fontSize: 13,
-                      whiteSpace: m.role === "examiner" ? "pre-wrap" : "normal",
-                    }}
-                  >
-                    {m.role === "examiner" ? (
-                      m.text
-                    ) : (
-                      <article className="report-markdown chat-markdown">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>
-                      </article>
-                    )}
-                  </div>
-                  {/* WP 4j.13 — the queries the agent actually ran (structured,
-                      not a raw JSON blob), with the plan rationale */}
-                  {m.role !== "examiner" && (m.data?.queries?.length ?? 0) > 0 && (
-                    <div
-                      style={{
-                        marginTop: 4,
-                        fontSize: 11,
-                        fontFamily: "monospace",
-                        color: "var(--text-muted)",
-                        paddingLeft: 8,
-                        borderLeft: "2px solid var(--border)",
-                      }}
-                    >
-                      {m.data!.queries!.map((q, qi) => (
-                        <div key={qi}>
-                          <span style={{ color: q.hits > 0 ? "var(--accent)" : "var(--warning)" }}>
-                            {q.dsl}
-                          </span>
-                          {" → "}
-                          <span>{q.hits} hit(s)</span>
-                          {q.why ? <span> · {q.why}</span> : null}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {/* 4j-H.8 — deterministic drill-down chips for the next turn */}
-                  {m.role !== "examiner" && (m.data?.followups?.length ?? 0) > 0 && (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6 }}>
-                      {m.data!.followups!.map((f, fi) => (
-                        <button
-                          key={fi}
-                          className="btn btn-sm clickable-tint"
-                          style={{ fontSize: 11 }}
-                          disabled={loading}
-                          title={f.question}
-                          onClick={() => void sendText(f.question)}
-                        >
-                          {f.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {m.data?.partial && (
-                    <div style={{ fontSize: 11, color: "var(--warning)", marginTop: 4 }}>
-                      Partial answer — the budget was reached before completion;
-                      the rows retrieved so far are shown above.
-                    </div>
-                  )}
-                  <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2, textAlign: m.role === "examiner" ? "right" : "left" }}>
-                    {m.role} · {m.action}{m.ts ? ` · ${m.ts.slice(0, 19)}` : ""}
-                    {m.meta?.total_hits ? ` · ${m.meta.total_hits} rows` : ""}
-                    {m.meta?.timings ? ` · ${m.meta.timings}` : ""}
-                  </div>
-                </div>
+                <ProposalCard
+                  key={message.ts || index}
+                  entry={message}
+                  caseMode={caseMode}
+                  busy={loading}
+                  saved={savedTs.has(message.ts)}
+                  onAsk={(question) => void sendText(question)}
+                  onExplore={explore}
+                  onSave={() => saveAnswer(message.ts)}
+                  onStage={(title) => stageDraft(message, title)}
+                />
               );
-            })}
-            {/* WP 4d.3: live progress while streaming */}
-            {loading && (
-              <div style={{ alignSelf: "flex-start", padding: "4px 12px" }}>
-                {liveStatus && (
-                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{liveStatus}</div>
-                )}
-                {!liveStatus && (
-                  <div style={{ color: "var(--text-muted)", fontSize: 13 }}>
-                    <span className="pulse-dots">●●●</span>
-                  </div>
-                )}
+            }
+            return (
+              <div key={message.ts || index}>
+                <MessageBubble role={message.role} text={message.text}>
+                  {message.role !== "examiner" &&
+                  (message.data?.queries?.length ?? 0) > 0 ? (
+                    <QueryTrace
+                      queries={message.data?.queries || []}
+                      onExplore={explore}
+                    />
+                  ) : null}
+                  {message.data?.partial ? <PartialNotice /> : null}
+                  <FollowupChips
+                    followups={message.data?.followups || []}
+                    disabled={loading}
+                    onAsk={(question) => void sendText(question)}
+                  />
+                  <MessageMeta
+                    role={message.role}
+                    action={message.action}
+                    ts={message.ts}
+                    totalHits={Number(message.meta?.total_hits ?? 0) || undefined}
+                    timings={message.meta?.timings}
+                  />
+                </MessageBubble>
               </div>
-            )}
-          </div>
+            );
+          })
         )}
+        {loading ? (
+          liveStatus ? (
+            <LiveStatus status={liveStatus} />
+          ) : (
+            <LiveStatus status="Working…" />
+          )
+        ) : null}
       </div>
 
-      {/* Input bar — Steer Chat is the Mode 1 surface; Mode 2/3 cases render
-          the Agent Run banner above, so the mode branches are gone here. */}
-      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-        <input
-          placeholder="Ask about the evidence..."
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && !loading && send()}
-          placeholder-style={{ color: loading ? "var(--text-muted)" : undefined }}
-        />
-        <button
-          className="btn btn-primary"
-          onClick={send}
-          disabled={loading}
-        >
+      <div className={styles.composer}>
+        <div className={styles.composerInput}>
+          <Field label="Ask about the evidence">
+            {({ id }) => (
+              <Input
+                id={id}
+                placeholder="e.g. what ran on WS01 between 03:00 and 04:00?"
+                value={input}
+                disabled={loading}
+                onChange={(event) => setInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !loading) send();
+                }}
+              />
+            )}
+          </Field>
+        </div>
+        <Button variant="primary" onClick={send} disabled={loading} data-testid="send">
           {loading ? "Working…" : "Send"}
-        </button>
+        </Button>
       </div>
+
+      {messages.length > 0 ? (
+        <div className={styles.actions}>
+          <Button size="sm" onClick={() => explore(lastQuery)}>
+            Open the last query in Explore
+          </Button>
+          <Button size="sm" onClick={() => setShowDraftForm((open) => !open)}>
+            Stage a DRAFT from the last answer
+          </Button>
+          <Badge tone="origin-llm">LLM output is never examiner-approved</Badge>
+        </div>
+      ) : null}
     </div>
   );
 }
