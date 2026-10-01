@@ -76,24 +76,88 @@ class TestBlocker2BrowserCrypto:
 # Blocker #3 — Stored XSS
 # ---------------------------------------------------------------------------
 class TestBlocker3XSS:
-    """All case-controlled data must be HTML-escaped in portal output."""
+    """All case-controlled data must be HTML-escaped wherever HTML is built.
 
-    def test_escape_helper(self) -> None:
-        from nexus.dashboard.app import _e
-        assert "&lt;script&gt;" in _e("<script>alert(1)</script>")
-        assert "&amp;" in _e("a&b")
-        assert "&quot;" in _e('"quoted"')
+    WO-U7 retired the server-rendered portal and deleted its inline HTML/CSS/JS
+    and the page-only helpers (``_e``, ``_status_tag``, ``_badge``). These three
+    tests still imported the deleted helpers, so they had been failing on
+    ImportError since that commit - a dead test that only proves a symbol is
+    gone. The guarantee itself did not move with the code: the SPA escapes by
+    construction (React) and the remaining HTML surface is the case-export
+    report, so the check lives there now.
+    """
 
-    def test_status_tag_escaped(self) -> None:
-        from nexus.dashboard.app import _status_tag
-        result = _status_tag('<img src=x onerror="alert(1)">')
-        assert "<img" not in result
-        assert "&lt;img" in result
+    @staticmethod
+    def _bundle(case_name: str, title: str) -> dict:
+        from nexus.case import Case, CaseStatus, Finding, FindingSeverity
 
-    def test_badge_escaped(self) -> None:
-        from nexus.dashboard.app import _badge
-        result = _badge('<script>alert("x")</script>')
-        assert "<script>" not in result
+        case = Case(
+            id="CASE-XSS0001",
+            name=case_name,
+            description='<script>alert("desc")</script>',
+            severity=FindingSeverity.HIGH,
+            status=CaseStatus.OPEN,
+            created_at=datetime(2026, 10, 1, tzinfo=UTC),
+            created_by="examiner",
+            tags=['<script>alert("tag")</script>'],
+        )
+        finding = Finding(
+            id="F-xss",
+            case_id="CASE-XSS0001",
+            title=title,
+            description='<img src=x onerror="alert(1)">',
+            severity=FindingSeverity.HIGH,
+            artifact_id="A-1",
+            technique_ids=["T1059.001"],
+            created_at=datetime(2026, 10, 1, tzinfo=UTC),
+            created_by="examiner",
+        )
+        # export_to_html reads all four lists; empty lists are honest fixtures
+        return {
+            "case": case,
+            "findings": [finding],
+            "evidence": [],
+            "audit_log": [],
+        }
+
+    def test_retired_portal_helpers_are_gone(self) -> None:
+        """The portal really does no longer build HTML - by decision, not drift."""
+        from nexus.dashboard import app as app_mod
+
+        for removed in ("_e", "_status_tag", "_badge"):
+            assert not hasattr(app_mod, removed), (
+                f"{removed} came back: the legacy portal was retired (WO-U7)"
+            )
+
+    def test_case_export_html_escapes_case_controlled_data(self) -> None:
+        from nexus.integration.case_export import export_to_html
+
+        html = export_to_html(
+            self._bundle(
+                'Campaign A&B <script>alert("name")</script>', "benign title"
+            )
+        )
+        # the raw payloads must be gone; the escaped forms must be present
+        assert '<script>alert("name")' not in html
+        assert "&lt;script&gt;" in html
+        assert '<img src=x onerror="alert(1)">' not in html
+        assert "&lt;img src=x" in html
+        assert '&quot;' in html  # quotes escaped too, not just angle brackets
+        assert "&amp;" in html
+
+    def test_case_export_html_escapes_finding_text(self) -> None:
+        from nexus.integration.case_export import export_to_html
+
+        html = export_to_html(
+            self._bundle(
+                "benign case",
+                '<script>alert("title")</script>',
+            )
+        )
+        assert '<script>alert("title")' not in html
+        assert "&lt;script&gt;alert(&quot;title&quot;)&lt;/script&gt;" in html
+        assert '<img src=x onerror="alert(1)">' not in html
+        assert "&lt;img" in html
 
 
 # ---------------------------------------------------------------------------
