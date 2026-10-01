@@ -40,5 +40,23 @@ export {
   type SelectionState,
   type SortDir,
 } from "./DataGrid";
+export { TimeAxis, TimeLanes } from "./TimeAxis";
+export {
+  createUtcScale,
+  formatForSpan,
+  niceUtcRange,
+  parseUtc,
+  useBrush,
+  utcTicks,
+  zoomRange,
+  type BrushOptions,
+  type BrushState,
+  type HistogramBucket,
+  type LaneSeries,
+  type TimeAxisProps,
+  type TimeLanesProps,
+  type TimeRange,
+  type UtcScale,
+} from "./TimeAxis";
 export { SEMANTIC_TONES, toneVar, isSemanticTone, type SemanticTone } from "./semantic";
 export { cx } from "./cx";

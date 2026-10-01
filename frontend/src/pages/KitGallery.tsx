@@ -19,11 +19,15 @@ import {
   StatusPill,
   Tabs,
   Textarea,
+  TimeAxis,
+  TimeLanes,
   ToastProvider,
   useToast,
   type DataGridColumn,
   type GridQuery,
+  type LaneSeries,
   type SemanticTone,
+  type TimeRange,
 } from "@/ui";
 import { SEMANTIC_TONES } from "@/ui";
 import styles from "./KitGallery.module.css";
@@ -62,6 +66,53 @@ function demoRows(count: number): DemoRow[] {
     family: DEMO_FAMILIES[i % DEMO_FAMILIES.length],
     severity: DEMO_SEVERITIES[i % DEMO_SEVERITIES.length],
   }));
+}
+
+function TimeAxisDemo() {
+  const [range, setRange] = useState<TimeRange>({
+    start: new Date("2026-01-01T00:00:00Z"),
+    end: new Date("2026-01-02T00:00:00Z"),
+  });
+  const lanes: LaneSeries[] = useMemo(
+    () => [
+      {
+        id: "evtx",
+        label: "evtx (a whole day)",
+        buckets: [
+          { t: Date.parse("2026-01-01T00:00:00Z"), count: 12 },
+          { t: Date.parse("2026-01-01T12:00:00Z"), count: 48 },
+          { t: Date.parse("2026-01-01T23:00:00Z"), count: 7 },
+        ],
+      },
+      {
+        id: "prefetch",
+        label: "prefetch (three minutes)",
+        buckets: [
+          { t: Date.parse("2026-01-01T11:57:00Z"), count: 3 },
+          { t: Date.parse("2026-01-01T12:00:00Z"), count: 9 },
+        ],
+      },
+    ],
+    [],
+  );
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+      <TimeAxis
+        range={range}
+        width={720}
+        histogram={[
+          { t: Date.parse("2026-01-01T01:00:00Z"), count: 4 },
+          { t: Date.parse("2026-01-01T06:00:00Z"), count: 9 },
+          { t: Date.parse("2026-01-01T12:00:00Z"), count: 14 },
+        ]}
+        onRangeChange={setRange}
+      />
+      <TimeLanes lanes={lanes} range={range} width={720} onRangeChange={setRange} />
+      <p style={{ fontFamily: "var(--font-mono)", fontSize: "var(--font-size-xs)" }}>
+        {range.start.toISOString()} → {range.end.toISOString()}
+      </p>
+    </div>
+  );
 }
 
 function DataGridDemo() {
@@ -223,6 +274,11 @@ function Gallery() {
             <Textarea id={id} aria-describedby={describedBy} />
           )}
         </Field>
+      </section>
+
+      <section className={styles.section}>
+        <h2>Time axis — two lanes, one UTC scale</h2>
+        <TimeAxisDemo />
       </section>
 
       <section className={styles.section}>

@@ -1,0 +1,94 @@
+/* TimeAxis + TimeLanes (WO-U6 / WP 14.6) - tokens only, dark-first. */
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.controls button {
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-sm, 0.25rem);
+  background: var(--color-bg-secondary);
+  color: var(--color-fg-default);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.readout {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-fg-subtle);
+}
+
+.svg {
+  display: block;
+  background: var(--color-bg-raised);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.axisLine {
+  stroke: var(--color-border-strong);
+  stroke-width: 1;
+}
+
+.gridline {
+  stroke: var(--color-border-light);
+  stroke-width: 1;
+}
+
+.tick {
+  stroke: var(--color-border-default);
+  stroke-width: 1;
+}
+
+.tickLabel,
+.laneLabel {
+  fill: var(--color-fg-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.laneLabel {
+  fill: var(--color-fg-subtle);
+}
+
+.lane {
+  cursor: pointer;
+}
+
+.laneBand {
+  fill: var(--color-bg-tertiary);
+  opacity: 0.5;
+}
+
+.laneBand[data-selected="true"] {
+  fill: var(--bg-hover);
+  opacity: 1;
+}
+
+.laneMark,
+.histogramBar {
+  fill: var(--color-accent);
+}
+
+.histogramBar {
+  opacity: 0.45;
+}
+
+.brush {
+  fill: var(--color-accent);
+  opacity: 0.2;
+  pointer-events: none;
+}
