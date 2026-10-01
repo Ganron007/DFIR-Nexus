@@ -323,19 +323,43 @@ def test_d6_create_and_seed_do_not_activate(client, tmp_path):
 
 
 def test_d7_cockpit_pages_depend_on_active_case():
+    """Every cockpit page must re-read its data when the active case changes.
+
+    The GUARANTEE is what matters: after a case switch, no page may still be
+    showing the previous case's data. There are now two legitimate mechanisms,
+    and this test asserts the guarantee rather than one implementation:
+
+    * the original - a ``useEffect`` whose dependency array includes
+      ``activeCase``;
+    * the U4 layer - a case-scoped query hook. Switching case changes the query
+      KEY, so the previous case's result cannot survive it. That is strictly
+      stronger than a refetch: a refetch can paint the previous case's rows
+      while the request is in flight; a key change cannot.
+
+    A page with neither mechanism still fails.
+    """
     pages = [
         "Explore", "Timeline", "Findings", "SteerChat", "Workbench",
         "Approve", "Report", "Entities", "Evidence", "Iocs", "Todos",
         "Transparency",
     ]
-    pattern = re.compile(r"\[[^\]]*activeCase[^\]]*\]", re.DOTALL)
+    effect_pattern = re.compile(r"\[[^\]]*activeCase[^\]]*\]", re.DOTALL)
+    hook_pattern = re.compile(
+        r"use[A-Z]\w*\(\s*activeCase\b"
+        r"|caseKey\(\s*activeCase\b",
+        re.DOTALL,
+    )
     for page in pages:
         source = (FRONTEND_PAGES / f"{page}.tsx").read_text(encoding="utf-8")
         assert "activeCase" in source, f"{page}: does not use activeCase"
-        assert pattern.search(source), (
-            f"{page}: no useEffect dependency array includes activeCase — "
-            "the page will show the previous case after a switch"
+        has_effect = bool(effect_pattern.search(source))
+        has_case_keyed_query = bool(hook_pattern.search(source))
+        assert has_effect or has_case_keyed_query, (
+            f"{page}: nothing ties its reads to the active case - neither a "
+            "useEffect dependency array nor a case-keyed query - so the page "
+            "will still show the previous case after a switch"
         )
+
 
 
 # ---------------------------------------------------------------------------
