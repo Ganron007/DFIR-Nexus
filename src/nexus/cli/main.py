@@ -71,6 +71,7 @@ from nexus.cli.report import app as report_app
 from nexus.cli.review import app as review_app
 from nexus.cli.service import app as service_app
 from nexus.cli.sift_cmd import app as sift_app
+from nexus.cli.timeline_cmd import app as timeline_app
 from nexus.cli.todo import app as todo_app
 
 app = typer.Typer(name="nexus", help="DFIR-Nexus — unified DFIR investigation platform")
@@ -101,6 +102,8 @@ app.add_typer(mode3_app, name="mode3",
               help="Mode 3 — Multi-agent team")
 app.add_typer(todo_app, name="todo", help="Manage TODO items")
 app.add_typer(data_app, name="data", help="Download RAG / triage / fixtures")
+app.add_typer(timeline_app, name="timeline",
+               help="Queryable timeline on Elasticsearch (build|query|export)")
 app.add_typer(index_app, name="index", help="Rebuild the per-case ES index (schema v2)")
 app.add_typer(collect_app, name="collect", help="Stage 0 IR orchestrator — live collect with auth")
 # Registered as a direct command (not a sub-group) so the documented
