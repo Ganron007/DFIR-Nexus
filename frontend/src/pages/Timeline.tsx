@@ -10,6 +10,7 @@ import { api, type TimelineLaneEntry, type N4Hit, type HitInterpretation } from 
 import { pickHitColumns } from "../lib/hitColumns";
 import VirtualTable, { type Column } from "../components/VirtualTable";
 import { useCase } from "../context/CaseContext";
+import TimelineEventsGrid from "../components/TimelineEventsGrid";
 
 /** Severity → lane/event color. Mirrors _severity_from_hits on the backend. */
 const SEV_COLORS: Record<string, string> = {
@@ -65,6 +66,9 @@ export default function Timeline() {
   const [pendingBrush, setPendingBrush] = useState<{ start: string; end: string } | null>(null);
 
   const caseKey = activeCase || "";
+  // WO-A10: which reader this page is showing. "lanes" is the
+  // per-family bucket view; "events" is the queryable event grid.
+  const [tab, setTab] = useState<"lanes" | "events">("lanes");
   // Restore lane/brush/filter per case (stored as hour strings — stable across reloads)
   useEffect(() => {
     if (!caseKey) return;
@@ -307,6 +311,33 @@ export default function Timeline() {
 
   return (
     <div>
+      {/* WO-A10: two readers, one page. "Lanes" buckets hits by family for a
+          first read; "Events" is the queryable per-timestamp grid over the
+          events index. They count different things, so each says what it is. */}
+      <nav className="tl-tabs" role="tablist" aria-label="Timeline view">
+        <button
+          role="tab"
+          type="button"
+          aria-selected={tab === "lanes"}
+          data-testid="timeline-tab-lanes"
+          className={tab === "lanes" ? "tl-tab active" : "tl-tab"}
+          onClick={() => setTab("lanes")}
+        >
+          Lanes
+        </button>
+        <button
+          role="tab"
+          type="button"
+          aria-selected={tab === "events"}
+          data-testid="timeline-tab-events"
+          className={tab === "events" ? "tl-tab active" : "tl-tab"}
+          onClick={() => setTab("events")}
+        >
+          Events
+        </button>
+      </nav>
+      {tab === "events" ? <TimelineEventsGrid caseId={caseKey} /> : null}
+      <div hidden={tab === "events"}>
       <h2 style={{ marginBottom: 16 }}>
         Timeline ({totalEvents.toLocaleString()} events · {total} total hits)
         <button
@@ -626,6 +657,7 @@ export default function Timeline() {
           )}
         </>
       )}
+    </div>
     </div>
   );
 }

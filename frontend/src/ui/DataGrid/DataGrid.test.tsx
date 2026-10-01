@@ -221,6 +221,58 @@ describe("DataGrid", () => {
     expect(fetchPage.mock.calls[1][0].query).toEqual({ filters: { host: "WEB-01" }, sort: null });
   });
 
+  it("renders the rows a server page returned", async () => {
+    // Server mode resolves AFTER mount, so the rows arrive into a virtualiser
+    // that has already re-measured. Without a measurable scroll element the
+    // page is fetched and silently renders nothing - this asserts it renders.
+    const rect = {
+      width: VIEWPORT.width,
+      height: VIEWPORT.height,
+      top: 0,
+      left: 0,
+      bottom: VIEWPORT.height,
+      right: VIEWPORT.width,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect;
+    HTMLElement.prototype.getBoundingClientRect = function getRect() {
+      return rect;
+    };
+    for (const prop of ["clientHeight", "offsetHeight", "scrollHeight"]) {
+      Object.defineProperty(HTMLElement.prototype, prop, {
+        configurable: true,
+        get: () => VIEWPORT.height,
+      });
+    }
+    for (const prop of ["clientWidth", "offsetWidth", "scrollWidth"]) {
+      Object.defineProperty(HTMLElement.prototype, prop, {
+        configurable: true,
+        get: () => VIEWPORT.width,
+      });
+    }
+
+    const fetchPage = vi.fn(
+      async (_req: GridFetchRequest): Promise<GridPage<Row>> => ({
+        rows: ROWS,
+        nextCursor: null,
+        total: 3,
+      }),
+    );
+    render(
+      <DataGrid
+        mode="server"
+        fetchPage={fetchPage}
+        columns={COLUMNS}
+        getRowId={(row) => row.id}
+        initialViewport={VIEWPORT}
+      />,
+    );
+    await waitFor(() => expect(screen.getAllByTestId("grid-row")).toHaveLength(ROWS.length));
+    expect(screen.getByText("WEB-01")).toBeInTheDocument();
+    expect(screen.getByTestId("row-count")).toHaveTextContent("3");
+  });
+
   it("fetches the next page on scroll", async () => {
     const first = rows(30, "P1");
     const second = rows(5, "P2");

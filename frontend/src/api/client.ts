@@ -1140,12 +1140,16 @@ import { reportApi } from "./domains/report";
 import { runsApi } from "./domains/runs";
 import { searchApi } from "./domains/search";
 import { systemApi } from "./domains/system";
+import { timelineApi } from "./domains/timeline";
 
 /**
  * The API facade (WO-U4): the same members as before, now grouped by domain
  * module behind this one object — callers do not change.
  */
 export const api = {
+  // WO-A10: namespaced on purpose - a spread would shadow the existing
+  // api.histogram/searchApi methods with the timeline's.
+  timeline: timelineApi,
   ...casesApi,
   ...evidenceApi,
   ...findingsApi,

@@ -54,6 +54,10 @@ export async function request<T>(
   return body as T;
 }
 
+export function get<T>(path: string, options: RequestInit = {}): Promise<T> {
+  return request<T>(path, { ...options, method: "GET" });
+}
+
 export function post<T>(path: string, data?: unknown): Promise<T> {
   return request<T>(path, {
     method: "POST",
