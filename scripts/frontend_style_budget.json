@@ -83,8 +83,8 @@
       "colors": 6
     },
     "pages/Report.tsx": {
-      "inline": 40,
-      "colors": 10
+      "inline": 0,
+      "colors": 0
     },
     "pages/SteerChat.tsx": {
       "inline": 83,
@@ -192,7 +192,7 @@
     }
   },
   "totals": {
-    "inline": 856,
-    "colors": 77
+    "inline": 816,
+    "colors": 67
   }
 }

@@ -1,0 +1,279 @@
+/* Report page (WO-U8a / WP 14.8) - tokens only, zero inline styles. */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.success {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  background: color-mix(in srgb, var(--sev-low) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--sev-low) 40%, transparent);
+  color: var(--sev-low);
+}
+
+/* --- steer panel ------------------------------------------------------- */
+
+.steer {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border-default);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.steerRow {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.steerScope {
+  flex: 0 1 16rem;
+  min-width: 0;
+}
+
+.steerText {
+  flex: 1 1 24rem;
+  min-width: 0;
+}
+
+.hint {
+  font-size: var(--font-size-xs);
+  color: var(--color-fg-muted);
+  margin-top: var(--space-2);
+}
+
+.rounds {
+  margin-top: var(--space-3);
+  font-size: var(--font-size-xs);
+  color: var(--color-fg-muted);
+}
+
+.roundRow {
+  padding: var(--space-1) 0;
+}
+
+.roundTag {
+  color: var(--accent);
+  font-family: var(--font-mono);
+}
+
+.dim {
+  opacity: 0.65;
+}
+
+/* --- report body ------------------------------------------------------- */
+
+.body {
+  padding: var(--space-4);
+}
+
+.markdown {
+  max-width: 54rem;
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
+  color: var(--color-fg-default);
+  overflow-x: auto;
+}
+
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4 {
+  margin: var(--space-5) 0 var(--space-2);
+  padding-bottom: var(--space-1);
+  border-bottom: 1px solid var(--color-border-default);
+  color: var(--color-fg-default);
+}
+
+.markdown h1 {
+  font-size: var(--font-size-xl);
+}
+.markdown h2 {
+  font-size: var(--font-size-lg);
+}
+.markdown h3 {
+  font-size: var(--font-size-md);
+}
+.markdown h4 {
+  font-size: var(--font-size-sm);
+}
+
+.markdown p {
+  margin: var(--space-2) 0;
+}
+
+.markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--space-3) 0;
+  font-size: var(--font-size-xs);
+}
+
+.markdown th,
+.markdown td {
+  border: 1px solid var(--color-border-default);
+  padding: var(--space-2);
+  text-align: left;
+}
+
+.markdown code {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2xs);
+  background: var(--bg-tertiary);
+  padding: 1px var(--space-1);
+  border-radius: var(--radius-sm);
+}
+
+.markdown blockquote {
+  margin: var(--space-3) 0;
+  padding-left: var(--space-3);
+  border-left: 3px solid var(--color-border-default);
+  color: var(--color-fg-muted);
+}
+
+/* --- approved findings ------------------------------------------------- */
+
+.finding {
+  margin-bottom: var(--space-6);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.finding:last-child {
+  border-bottom: 0;
+}
+
+.findingMeta {
+  font-size: var(--font-size-xs);
+  color: var(--color-fg-muted);
+  margin-bottom: var(--space-2);
+}
+
+.findingBody {
+  font-size: var(--font-size-sm);
+  margin-bottom: var(--space-2);
+}
+
+/* --- seal -------------------------------------------------------------- */
+
+.sealRow {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.sealCopy {
+  font-size: var(--font-size-sm);
+  color: var(--color-fg-muted);
+  flex: 1 1 20rem;
+}
+
+.sealPassword {
+  width: 16rem;
+}
+
+/* ==========================================================================
+   PRINT (the WO-U8a gain for this page)
+   --------------------------------------------------------------------------
+   The cockpit is dark. Printing a dark page wastes toner, bleeds, and is
+   unreadable in a case file that is photocopied. So the print rules invert to
+   ink-on-paper, drop the chrome, and keep only the document.
+
+   Two things must survive onto paper: the provenance header (which case, how
+   many approved findings, when compiled) and the document itself. A printed
+   report with no provenance is not evidence.
+   ========================================================================== */
+
+@media print {
+  .page {
+    gap: 0;
+  }
+
+  /* chrome that has no business on paper */
+  .actions,
+  .steer,
+  .sealRow,
+  .noPrint {
+    display: none !important;
+  }
+
+  .body {
+    padding: 0;
+  }
+
+  .markdown,
+  .markdown p,
+  .markdown li,
+  .markdown td,
+  .markdown th,
+  .findingBody,
+  .findingMeta {
+    color: #000 !important;
+    background: transparent !important;
+  }
+
+  .markdown h1,
+  .markdown h2,
+  .markdown h3,
+  .markdown h4 {
+    color: #000 !important;
+    border-bottom: 1px solid #000 !important;
+    /* a heading is never orphaned at the foot of a page */
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  .markdown table,
+  .markdown pre,
+  .markdown blockquote {
+    border-color: #000 !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* a finding is one unit: never split across a page boundary */
+  .finding {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .markdown code {
+    background: transparent !important;
+    border: 1px solid #999;
+  }
+
+  a[href]::after {
+    content: " (" attr(href) ")";
+    font-size: 9pt;
+    color: #444;
+  }
+}
+
+/* The provenance block: shown on screen, and forced onto paper. */
+.provenance {
+  font-size: var(--font-size-2xs);
+  color: var(--color-fg-subtle);
+  border-bottom: 1px solid var(--color-border-subtle);
+  padding-bottom: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+@media print {
+  .provenance {
+    color: #000 !important;
+    border-bottom: 1px solid #000 !important;
+  }
+}

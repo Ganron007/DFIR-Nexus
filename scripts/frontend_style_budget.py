@@ -137,6 +137,46 @@ def _report(measured: dict[str, dict[str, int]], baseline: dict[str, dict[str, i
     )
 
 
+#: Pages that must ship a print stylesheet (WO-U8a names it for the report).
+#: A case file gets printed and photocopied; a dark page is neither legible
+#: nor cheap.
+PRINT_REQUIRED = ("pages/Report.tsx",)
+
+#: Any page that declares print rules must invert them. These are the tokens a
+#: print block must set; without them the dark cockpit prints as a dark page.
+_PRINT_INK = ("#000", "color: #000", "background: #fff")
+
+
+def print_audit() -> list[str]:
+    """Print rules: present where required, and never the dark theme."""
+    problems: list[str] = []
+    stylesheets = sorted(FRONTEND.rglob("*.css"))
+    declared: set[str] = set()
+
+    for sheet in stylesheets:
+        text = sheet.read_text(encoding="utf-8", errors="replace")
+        if "@media print" not in text:
+            continue
+        relative = str(sheet.relative_to(FRONTEND)).replace("\\", "/")
+        declared.add(relative)
+        block = text[text.index("@media print") :]
+        if not any(token in block for token in _PRINT_INK):
+            problems.append(
+                f"{relative}: @media print does not invert to ink-on-paper - "
+                "printing the dark cockpit wastes toner and is unreadable in a "
+                "case file (set an explicit black/white)"
+            )
+
+    for page in PRINT_REQUIRED:
+        module = page.replace(".tsx", ".module.css")
+        if module not in declared:
+            problems.append(
+                f"{page}: no @media print anywhere for this page - it must "
+                f"print ({module} is where it belongs)"
+            )
+    return problems
+
+
 def verify(measured: dict[str, dict[str, int]], baseline: dict[str, dict[str, int]]) -> list[str]:
     """Every way this can get worse. Lowering a count is never a failure."""
     problems: list[str] = []
@@ -146,6 +186,7 @@ def verify(measured: dict[str, dict[str, int]], baseline: dict[str, dict[str, in
             "run with --rebaseline to create one"
         )
         return problems
+    problems.extend(print_audit())
 
     for name, value in measured.items():
         previous = baseline.get(name)
