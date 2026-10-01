@@ -12,6 +12,7 @@
  * and this page are two surfaces over one runtime.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
+import styles from "./AgentRun.module.css";
 import { useSearchParams } from "react-router-dom";
 import {
   ApiError,
@@ -43,20 +44,27 @@ function num(value: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-function statusColor(status?: string): string {
+function statusClass(status?: string): string {
   const s = (status || "").toLowerCase();
-  if (s === "completed" || s === "ok") return "var(--success)";
-  if (s === "running" || s === "fallback" || s === "paused") return "var(--warning)";
-  if (s === "failed" || s === "error" || s === "unparsed") return "var(--danger)";
-  return "var(--text-muted)";
+  if (s === "completed" || s === "ok") return styles.statusOk;
+  if (s === "running" || s === "fallback" || s === "paused") return styles.statusRun;
+  if (s === "failed" || s === "error" || s === "unparsed") return styles.statusBad;
+  return styles.statusMuted;
 }
 
-function verdictColor(cls?: string): string {
+function verdictClass(cls?: string): string {
   const c = (cls || "").toLowerCase();
-  if (c === "confirmed") return "var(--success)";
-  if (c === "inferred") return "var(--warning)";
-  if (c === "refuted") return "var(--danger)";
-  return "var(--text-muted)";
+  if (c === "confirmed") return styles.statusOk;
+  if (c === "inferred") return styles.statusRun;
+  if (c === "refuted") return styles.statusBad;
+  return styles.statusMuted;
+}
+
+function typeClass(kind: string): string {
+  if (kind.startsWith("tool.")) return styles.typeTool;
+  if (kind.startsWith("work_order") || kind.startsWith("agent")) return styles.typeAgent;
+  if (kind.startsWith("run") || kind.startsWith("plan")) return styles.typeRun;
+  return styles.typeMuted;
 }
 
 interface Lane {
@@ -159,26 +167,8 @@ function buildLanes(events: AgentRunEvent[]): Lane[] {
 }
 
 function TypeBadge({ kind }: { kind: string }) {
-  const color =
-    kind.startsWith("tool.")
-      ? "var(--accent)"
-      : kind.startsWith("work_order") || kind.startsWith("agent")
-        ? "var(--success)"
-        : kind.startsWith("run") || kind.startsWith("plan")
-          ? "var(--warning)"
-          : "var(--text-muted)";
   return (
-    <span
-      style={{
-        color,
-        border: `1px solid ${color}`,
-        borderRadius: 3,
-        padding: "0 4px",
-        fontSize: 10,
-        fontFamily: "monospace",
-        whiteSpace: "nowrap",
-      }}
-    >
+    <span className={typeClass(kind)}>
       {kind}
     </span>
   );
@@ -199,7 +189,7 @@ export default function AgentRun() {
       <div className="card-header">
         <span className="card-title">Agent Run is not part of this case</span>
       </div>
-      <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
+      <p className={styles.s1}>
         This case is Mode 1 — LLM. Interpretation is Briefing and Steer Chat.
         Agent Run is only on a Mode 2 (multi-role) or Mode 3 (multi-agent) case,
         and that choice is fixed when the case is created.
@@ -465,32 +455,23 @@ function MultiRoleAgentRun() {
 
   return (
     <div className="agent-run">
-      <div className="card" style={{ marginBottom: 12 }}>
+      <div className={`card ${styles.s2}`}>
         <div className="card-header">
           <span className="card-title">Agent Run — Mode 2</span>
-          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+          <span className={styles.s3}>
             Supervised multi-role pipeline · read-only tools · every call audited · DRAFT-only
           </span>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div className={styles.s4}>
           <textarea
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             placeholder="Examiner question / task (blank uses the case intake question)"
             rows={2}
-            style={{
-              width: "100%",
-              background: "var(--bg-tertiary)",
-              color: "var(--text-primary)",
-              border: "1px solid var(--border)",
-              borderRadius: 6,
-              padding: "8px 10px",
-              fontSize: 12,
-              resize: "vertical",
-            }}
+            className={styles.s5}
           />
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <label style={{ fontSize: 11, color: "var(--text-muted)" }}>
+          <div className={styles.s6}>
+            <label className={styles.s3}>
               Max work orders
               <input
                 type="number"
@@ -498,16 +479,7 @@ function MultiRoleAgentRun() {
                 max={12}
                 value={maxOrders}
                 onChange={(e) => setMaxOrders(Math.max(1, Math.min(12, num(e.target.value) || 6)))}
-                style={{
-                  width: 56,
-                  marginLeft: 6,
-                  background: "var(--bg-tertiary)",
-                  color: "var(--text-primary)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 4,
-                  padding: "3px 6px",
-                  fontSize: 12,
-                }}
+                className={styles.s7}
               />
             </label>
             <button className="btn btn-sm" onClick={handlePreview} disabled={!!busy}>
@@ -516,24 +488,14 @@ function MultiRoleAgentRun() {
             <button className="btn btn-sm btn-primary" onClick={handleStart} disabled={!!busy}>
               {busy === "run" ? "Starting…" : "Approve plan & run"}
             </button>
-            <span style={{ flex: 1 }} />
-            <label style={{ fontSize: 11, color: "var(--text-muted)" }}>
+            <span className={styles.s8} />
+            <label className={styles.s3}>
               Attach run
               <input
                 value={attachId}
                 onChange={(e) => setAttachId(e.target.value)}
                 placeholder="M3-…"
-                style={{
-                  width: 210,
-                  marginLeft: 6,
-                  background: "var(--bg-tertiary)",
-                  color: "var(--text-primary)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 4,
-                  padding: "3px 6px",
-                  fontSize: 11,
-                  fontFamily: "monospace",
-                }}
+                className={styles.s9}
               />
             </label>
             <button
@@ -547,31 +509,31 @@ function MultiRoleAgentRun() {
               Attach
             </button>
           </div>
-          {error && <div style={{ color: "var(--danger)", fontSize: 12 }}>{error}</div>}
+          {error && <div className={styles.s10}>{error}</div>}
         </div>
       </div>
 
       {plan && (
-        <div className="card" style={{ marginBottom: 12 }}>
+        <div className={`card ${styles.s2}`}>
           <div className="card-header">
             <span className="card-title">Plan preview — {plan.length} work order(s)</span>
-            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+            <span className={styles.s3}>
               “Approve plan &amp; run” executes these with the previewed question
             </span>
           </div>
           <div className="agent-plan-list">
             {plan.map((order) => (
               <div key={order.order_id} className="agent-plan-item">
-                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <div className={styles.s6}>
                   <span className="badge draft">{(order.role || "?").toUpperCase()}</span>
                   {order.family && <span className="badge">{order.family}</span>}
-                  <span style={{ fontFamily: "monospace", fontSize: 10, color: "var(--text-muted)" }}>
+                  <span className={styles.s11}>
                     {order.order_id}
                   </span>
                 </div>
-                <div style={{ fontSize: 12, marginTop: 4 }}>{order.task}</div>
+                <div className={styles.s12}>{order.task}</div>
                 {order.skill_refs && order.skill_refs.length > 0 && (
-                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
+                  <div className={styles.s13}>
                     skills:{" "}
                     {order.skill_refs
                       .map((s) => `${s.skill} v${s.version || "?"}`)
@@ -579,7 +541,7 @@ function MultiRoleAgentRun() {
                   </div>
                 )}
                 {order.why && (
-                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                  <div className={styles.s14}>
                     why: {order.why}
                   </div>
                 )}
@@ -590,17 +552,17 @@ function MultiRoleAgentRun() {
       )}
 
       {runId && (
-        <div className="card" style={{ marginBottom: 12 }}>
+        <div className={`card ${styles.s2}`}>
           <div className="card-header">
-            <span className="card-title" style={{ fontFamily: "monospace" }}>
+            <span className={`card-title ${styles.s15}`}>
               {runId}
             </span>
-            <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <span className="badge" style={{ color: statusColor(status), borderColor: statusColor(status) }}>
+            <span className={styles.s16}>
+              <span className={`badge ${statusClass(status)}`}>
                 {status || "attached"}
               </span>
               {record?.stop_reason && (
-                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                <span className={styles.s3}>
                   stop: {record.stop_reason}
                 </span>
               )}
@@ -626,7 +588,7 @@ function MultiRoleAgentRun() {
               verdicts <strong>{record?.verdicts?.length ?? 0}</strong>
             </span>
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
+          <div className={styles.s17}>
             <button className="btn btn-sm" onClick={handlePauseToggle} disabled={!!busy || (!running && !record?.pause_requested)}>
               {record?.pause_requested ? "Resume" : "Pause"}
             </button>
@@ -642,16 +604,7 @@ function MultiRoleAgentRun() {
               value={steerText}
               onChange={(e) => setSteerText(e.target.value)}
               placeholder="Steer the next work order (examiner directive)"
-              style={{
-                flex: 1,
-                minWidth: 240,
-                background: "var(--bg-tertiary)",
-                color: "var(--text-primary)",
-                border: "1px solid var(--border)",
-                borderRadius: 4,
-                padding: "5px 8px",
-                fontSize: 12,
-              }}
+              className={styles.s18}
               onKeyDown={(e) => {
                 if (e.key === "Enter") void handleSteer();
               }}
@@ -677,23 +630,23 @@ function MultiRoleAgentRun() {
             </button>
           </div>
           {stageResult && (
-            <div style={{ marginTop: 8, fontSize: 12 }}>
-              <div style={{ color: "var(--success)" }}>
+            <div className={styles.s19}>
+              <div className={styles.s20}>
                 Staged {stageResult.staged_count ?? 0} DRAFT finding(s); skipped{" "}
                 {stageResult.skipped_count ?? 0}.
               </div>
               {(stageResult.staged || []).map((s) => (
-                <div key={s.finding_id || s.title} style={{ color: "var(--text-muted)" }}>
+                <div key={s.finding_id || s.title} className={styles.s21}>
                   {s.finding_id} — {s.title}
                   {s.verifier_class ? ` (verifier: ${s.verifier_class})` : ""}
                 </div>
               ))}
               {(stageResult.skipped || []).map((s) => (
-                <div key={s.title} style={{ color: "var(--warning)" }}>
+                <div key={s.title} className={styles.s22}>
                   skipped {s.title}: {s.reason}
                 </div>
               ))}
-              <div style={{ color: "var(--text-muted)", marginTop: 2 }}>
+              <div className={styles.s23}>
                 DRAFT only — approval stays in the Approve desk.
               </div>
             </div>
@@ -705,31 +658,31 @@ function MultiRoleAgentRun() {
         <div className="card">
           <div className="card-header">
             <span className="card-title">Agents</span>
-            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+            <span className={styles.s3}>
               {lanes.length} lane(s) — scoped read-only tools
             </span>
           </div>
           {lanes.length === 0 && (
-            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+            <div className={styles.s24}>
               No agent activity yet. Preview a plan and run it, or attach an existing run.
             </div>
           )}
           <div className="agent-lanes">
             {lanes.map((lane) => (
               <div key={lane.agentId} className="agent-lane">
-                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <div className={styles.s6}>
                   <span className="badge draft">{(lane.role || "AGENT").toUpperCase()}</span>
-                  <span style={{ fontFamily: "monospace", fontSize: 10, color: "var(--text-muted)" }}>
+                  <span className={styles.s11}>
                     {lane.agentId}
                   </span>
-                  <span style={{ color: statusColor(lane.status), fontSize: 11 }}>{lane.status}</span>
+                  <span className={statusClass(lane.status)}>{lane.status}</span>
                   {lane.partial && (
-                    <span className="badge" style={{ color: "var(--warning)", borderColor: "var(--warning)" }}>
+                    <span className={`badge ${styles.s25}`}>
                       partial
                     </span>
                   )}
                 </div>
-                <div className="agent-meters" style={{ marginTop: 4 }}>
+                <div className={`agent-meters ${styles.s26}`}>
                   <span>
                     rounds <strong>{lane.rounds}</strong>
                     {lane.maxRounds ? `/${lane.maxRounds}` : lane.budget ? `/${lane.budget.rounds}` : ""}
@@ -743,18 +696,13 @@ function MultiRoleAgentRun() {
                   </span>
                 </div>
                 {lane.skills.length > 0 && (
-                  <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>
+                  <div className={styles.s27}>
                     skills: {lane.skills.join(", ")}
                   </div>
                 )}
                 {lane.lastDetail && (
                   <div
-                    style={{
-                      fontSize: 11,
-                      color: "var(--text-muted)",
-                      marginTop: 3,
-                      overflowWrap: "anywhere",
-                    }}
+                    className={styles.s28}
                   >
                     {lane.lastDetail}
                   </div>
@@ -767,7 +715,7 @@ function MultiRoleAgentRun() {
         <div className="card">
           <div className="card-header">
             <span className="card-title">Live event stream</span>
-            <span style={{ display: "flex", gap: 10, alignItems: "center", fontSize: 11 }}>
+            <span className={styles.s29}>
               {(
                 [
                   ["tool", "tools"],
@@ -775,7 +723,7 @@ function MultiRoleAgentRun() {
                   ["lifecycle", "lifecycle"],
                 ] as const
               ).map(([key, label]) => (
-                <label key={key} style={{ color: "var(--text-muted)" }}>
+                <label key={key} className={styles.s21}>
                   <input
                     type="checkbox"
                     checked={filters[key]}
@@ -784,7 +732,7 @@ function MultiRoleAgentRun() {
                   {label}
                 </label>
               ))}
-              <label style={{ color: "var(--text-muted)" }}>
+              <label className={styles.s21}>
                 <input
                   type="checkbox"
                   checked={autoscroll}
@@ -796,27 +744,27 @@ function MultiRoleAgentRun() {
           </div>
           <div className="agent-stream" ref={streamRef}>
             {shownEvents.length === 0 && (
-              <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
+              <div className={styles.s30}>
                 Waiting for events…
               </div>
             )}
             {shownEvents.map((e) => (
               <div key={e.event_id} className="agent-stream-line">
-                <span style={{ color: "var(--text-muted)" }}>{fmtTs(e.ts)}</span>{" "}
+                <span className={styles.s21}>{fmtTs(e.ts)}</span>{" "}
                 <TypeBadge kind={e.event_type} />{" "}
                 {e.agent_id && (
-                  <span style={{ color: "var(--text-muted)" }}>{e.agent_id}</span>
+                  <span className={styles.s21}>{e.agent_id}</span>
                 )}{" "}
                 {e.tool && <strong>{e.tool}</strong>}{" "}
-                {e.why && <span style={{ color: "var(--text-muted)" }}>· {e.why}</span>}{" "}
+                {e.why && <span className={styles.s21}>· {e.why}</span>}{" "}
                 {e.audit_id && (
-                  <span style={{ color: "var(--accent)", fontFamily: "monospace" }}>
+                  <span className={styles.s31}>
                     audit={e.audit_id}
                   </span>
                 )}{" "}
                 {e.detail && <span>— {e.detail}</span>}
                 {e.status && e.status !== "ok" && (
-                  <span style={{ color: statusColor(e.status) }}> [{e.status}]</span>
+                  <span className={statusClass(e.status)}> [{e.status}]</span>
                 )}
               </div>
             ))}
@@ -826,27 +774,27 @@ function MultiRoleAgentRun() {
         <div className="card">
           <div className="card-header">
             <span className="card-title">Hypotheses &amp; DRAFT candidates</span>
-            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+            <span className={styles.s3}>
               verifier: confirmed / inferred / refuted
             </span>
           </div>
           {(record?.verdicts || []).length > 0 && (
-            <div style={{ marginBottom: 10 }}>
+            <div className={styles.s32}>
               {(record?.verdicts || []).map((v) => (
-                <div key={v.title || Math.random()} style={{ fontSize: 12, marginBottom: 4 }}>
-                  <span style={{ color: verdictColor(v.class), fontWeight: 600 }}>
+                <div key={v.title || Math.random()} className={styles.s33}>
+                  <span className={verdictClass(v.class)}>
                     {(v.class || "?").toUpperCase()}
                   </span>{" "}
                   <strong>{v.title}</strong>
                   {v.basis && (
-                    <span style={{ color: "var(--text-muted)" }}> — {v.basis}</span>
+                    <span className={styles.s21}> — {v.basis}</span>
                   )}
                 </div>
               ))}
             </div>
           )}
           {(record?.candidate_findings || []).length === 0 && (
-            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+            <div className={styles.s24}>
               No candidate findings yet. Candidates appear after verification + synthesis.
             </div>
           )}
@@ -854,34 +802,28 @@ function MultiRoleAgentRun() {
             const verdict = verdictFor(c.title);
             return (
               <div key={c.title || Math.random()} className="agent-candidate">
-                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                  <strong style={{ fontSize: 12 }}>{c.title}</strong>
+                <div className={styles.s6}>
+                  <strong className={styles.s34}>{c.title}</strong>
                   <span className={`badge ${(c.confidence || "low").toLowerCase()}`}>
                     {c.confidence || "LOW"}
                   </span>
                   {verdict?.class && (
-                    <span style={{ color: verdictColor(verdict.class), fontSize: 11 }}>
+                    <span className={verdictClass(verdict.class)}>
                       verifier: {verdict.class}
                     </span>
                   )}
                 </div>
                 {c.observation && (
-                  <div style={{ fontSize: 12, marginTop: 3 }}>{c.observation}</div>
+                  <div className={styles.s35}>{c.observation}</div>
                 )}
                 {c.interpretation && (
-                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                  <div className={styles.s14}>
                     {c.interpretation}
                   </div>
                 )}
                 {(c.audit_ids || []).length > 0 && (
                   <div
-                    style={{
-                      fontFamily: "monospace",
-                      fontSize: 10,
-                      color: "var(--accent)",
-                      marginTop: 4,
-                      overflowWrap: "anywhere",
-                    }}
+                    className={styles.s36}
                   >
                     lineage: {(c.audit_ids || []).join(", ")}
                   </div>

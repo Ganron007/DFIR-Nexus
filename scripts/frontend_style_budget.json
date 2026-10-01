@@ -47,16 +47,16 @@
       "colors": 0
     },
     "pages/AgentRun.tsx": {
-      "inline": 62,
+      "inline": 0,
       "colors": 0
     },
     "pages/Approve.tsx": {
-      "inline": 25,
-      "colors": 7
+      "inline": 0,
+      "colors": 0
     },
     "pages/Briefing.tsx": {
-      "inline": 194,
-      "colors": 3
+      "inline": 0,
+      "colors": 0
     },
     "pages/CaseSetup.tsx": {
       "inline": 65,

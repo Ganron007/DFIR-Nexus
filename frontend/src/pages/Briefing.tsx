@@ -7,6 +7,7 @@
  * LLM required. Clicking a needle drops into Explore with that needle set.
  */
 import { useEffect, useRef, useState } from "react";
+import styles from "./Briefing.module.css";
 import { useNavigate, Link } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -289,12 +290,11 @@ export default function Briefing() {
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 4, flexWrap: "wrap" }}>
-        <h2 style={{ marginBottom: 0 }}>Case Briefing</h2>
+      <div className={styles.s1}>
+        <h2 className={styles.s2}>Case Briefing</h2>
         {mode === "1" && (
         <button
-          className="btn btn-sm"
-          style={{ marginLeft: "auto", fontWeight: 600 }}
+          className={`btn btn-sm ${styles.s3}`}
           disabled={fullRunRunning || scan.length === 0}
           title={
             fullRunRunning
@@ -309,25 +309,25 @@ export default function Briefing() {
         </button>
         )}
         {mode === "1" && hasPriorRun && !fullRunRunning && (
-          <label style={{ fontSize: 12, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4 }}
+          <label className={styles.s4}
             title="Supersede open DRAFT findings for hit needles and stage fresh ones. APPROVED findings stay signed — a fresh DRAFT revision is staged alongside them for comparison and approval.">
             <input type="checkbox" checked={reprocess} onChange={(e) => setReprocess(e.target.checked)} />
             reprocess (refresh drafts / revise approved)
           </label>
         )}
       </div>
-      <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16 }}>
+      <p className={styles.s5}>
         Auto-generated after processing — what was collected, what the signatures
         already caught, and where to start digging.
       </p>
 
       {/* Mode 1 (LLM) — question-driven interpretation run with the live feed */}
       {mode === "1" && (
-        <div className="card" style={{ borderLeft: "3px solid var(--purple)" }}>
-          <div className="card-title" style={{ marginBottom: 6 }}>
+        <div className={`card ${styles.s6}`}>
+          <div className={`card-title ${styles.s7}`}>
             Mode 1 — LLM interpretation run (coverage)
           </div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>
+          <div className={styles.s8}>
             The deterministic lane parses and indexes, then the LLM interprets every entity
             against RAG methodology and threat intel, and stages DRAFT findings for your approval.
           </div>
@@ -336,33 +336,33 @@ export default function Briefing() {
             onChange={(e) => setModeQuestion(e.target.value)}
             placeholder="Examiner question for the interpretation (e.g. 'What did D:\\m.exe do and is it malicious?') — drives the LLM analysis"
             rows={2}
-            style={{ width: "100%", marginBottom: 8, fontSize: 12 }}
+            className={styles.s9}
             disabled={modeRunStatus === "running"}
           />
-          <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}>
-            <label style={{ fontSize: 11, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4 }}
+          <div className={styles.s10}>
+            <label className={styles.s11}
               title="Interpretation rounds: how many orient → verify → reconcile passes the LLM loop runs (1–5).">
               rounds
               <input
                 type="number" min={1} max={5} value={interpretRounds}
                 onChange={(e) => setInterpretRounds(Math.max(1, Math.min(5, Number(e.target.value) || 3)))}
                 disabled={modeRunStatus === "running"}
-                style={{ width: 52, fontSize: 11 }}
+                className={styles.s12}
               />
             </label>
-            <label style={{ fontSize: 11, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4 }}
+            <label className={styles.s11}
               title="Your model's max context window (tokens). The context allocator packs window × 0.7 so interpretation sees as much of the case as the model can hold.">
               context window
               <input
                 type="number" min={8000} step={100000} value={contextWindow}
                 onChange={(e) => setContextWindow(Math.max(8000, Number(e.target.value) || 1_000_000))}
                 disabled={modeRunStatus === "running"}
-                style={{ width: 110, fontSize: 11 }}
+                className={styles.s13}
               />
               tokens
             </label>
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div className={styles.s14}>
             <button
               className="btn btn-primary btn-sm"
               onClick={runModePipeline}
@@ -373,17 +373,17 @@ export default function Briefing() {
                 : "▶ Run LLM interpretation"}
             </button>
             {modeRunStatus === "complete" && (
-              <span style={{ fontSize: 12, color: "var(--ok)" }}>
+              <span className={styles.s15}>
                 Complete — DRAFT findings staged (review in Approve)
               </span>
             )}
-            {modeRunError && <span style={{ fontSize: 12, color: "var(--danger)" }}>{modeRunError}</span>}
+            {modeRunError && <span className={styles.s16}>{modeRunError}</span>}
           </div>
           {modeStages.length > 0 && (
-            <div style={{ marginTop: 10, fontSize: 11, fontFamily: "monospace", color: "var(--text-muted)" }}>
+            <div className={styles.s17}>
               {modeStages.slice(-14).map((s, i) => (
                 <div key={i}>
-                  <span style={{ color: s.status === "error" ? "var(--danger)" : s.status === "running" ? "var(--accent)" : "var(--text-secondary)" }}>
+                  <span className={s.status === "error" ? styles.stageError : s.status === "running" ? styles.stageRunning : styles.stageIdle}>
                     [{s.stage || s.tool || "?"}]
                   </span>{" "}
                   {s.status || ""}{s.detail ? ` — ${s.detail}` : ""}
@@ -392,7 +392,7 @@ export default function Briefing() {
             </div>
           )}
           {modeRunId && (
-            <div style={{ marginTop: 6, fontSize: 10, color: "var(--text-muted)" }}>
+            <div className={styles.s18}>
               run {modeRunId}
             </div>
           )}
@@ -401,11 +401,11 @@ export default function Briefing() {
 
       {/* Mode 2/3 — the depths run from Agent Run; the lane is the prerequisite */}
       {(mode === "2" || mode === "3") && (
-        <div className="card" style={{ borderLeft: "3px solid var(--purple)", marginBottom: 12 }}>
-          <div className="card-title" style={{ marginBottom: 6 }}>
+        <div className={`card ${styles.s19}`}>
+          <div className={`card-title ${styles.s7}`}>
             {mode === "2" ? "Mode 2 — Multi-role runs from Agent Run" : "Mode 3 — Multi-agent runs from Agent Run"}
           </div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>
+          <div className={styles.s8}>
             {mode === "2"
               ? "The deterministic lane is the prerequisite. Start the supervised multi-role run on Agent Run (plan → run → verify → stage); you steer, pause/stop and stage."
               : "The deterministic lane is the prerequisite. Start the concurrent multi-agent team on Agent Run (Investigation Board): simultaneous seats, a shared claim board, disputes and join decisions."}
@@ -418,16 +418,16 @@ export default function Briefing() {
 
       {/* GATE-A — deterministic Case Digest: every fact the interpretation must reconcile */}
       {(mode === "1" || mode === "2" || mode === "3") && (
-        <div className="card" style={{ borderLeft: "3px solid var(--purple)" }}>
-          <div className="card-title" style={{ marginBottom: 6 }}>
+        <div className={`card ${styles.s6}`}>
+          <div className={`card-title ${styles.s7}`}>
             Case Digest{" "}
-            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
+            <span className={styles.s20}>
               (deterministic — everything the interpretation must reconcile)
             </span>
           </div>
-          {digestError && <div style={{ fontSize: 12, color: "var(--danger)" }}>{digestError}</div>}
+          {digestError && <div className={styles.s16}>{digestError}</div>}
           {!digest && !digestError && (
-            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Building digest…</span>
+            <span className={styles.s21}>Building digest…</span>
           )}
           {digest && (() => {
             const d = digest.digest;
@@ -436,7 +436,7 @@ export default function Briefing() {
             const zeroHits = d.signal_map?.zero_hit?.length ?? 0;
             return (
               <>
-                <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 6 }}>
+                <div className={styles.s22}>
                   {Math.max(0, (d.signal_map?.scanned ?? 0) - (d.signal_map?.unscanned?.length ?? 0))} needles scanned
                   {d.signal_map?.unscanned?.length ? ` (${d.signal_map.unscanned.length} NOT scanned)` : ""} · {withHits} with hits ·{" "}
                   {zeroHits} checked-absent (negative evidence) · {(d.alerts || []).length} high/critical alert(s) ·{" "}
@@ -444,29 +444,29 @@ export default function Briefing() {
                   timeline: {d.timeline?.source || "n/a"}
                 </div>
                 {digestTruncated && (
-                  <div style={{ fontSize: 11, color: "var(--warning)", marginBottom: 6 }}>
+                  <div className={styles.s23}>
                     LOWER BOUNDS — the briefing scan was truncated (
                     {(d.scan_stats?.truncated_reasons || []).join("; ") || "cap reached"}).
                     Counts below are minimums.
                   </div>
                 )}
                 {(d.scope?.explicitly_absent?.length ?? 0) > 0 && (
-                  <div style={{ fontSize: 11, color: "var(--warning)", marginBottom: 6 }}>
+                  <div className={styles.s23}>
                     Scope — NOT in evidence (stated as scope, never as “no compromise”):{" "}
                     {d.scope.explicitly_absent.join("; ")}
                   </div>
                 )}
                 {(d.scope?.evidence_classes_present?.length ?? 0) > 0 && (
-                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6 }}>
+                  <div className={styles.s24}>
                     In evidence: {d.scope.evidence_classes_present.join(", ")}
                   </div>
                 )}
                 {digest.markdown && (
                   <details>
-                    <summary style={{ fontSize: 11, cursor: "pointer", color: "var(--accent)" }}>
+                    <summary className={styles.s25}>
                       Full digest (what the LLM was given)
                     </summary>
-                    <div style={{ marginTop: 8, maxHeight: 420, overflow: "auto" }}>
+                    <div className={styles.s26}>
                       <article className="report-markdown">
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>{digest.markdown}</ReactMarkdown>
                       </article>
@@ -481,14 +481,14 @@ export default function Briefing() {
 
       {/* GATE-B — interpret round log (Mode 2/3): Orient → Verify → Reconcile */}
       {(mode === "2" || mode === "3") && rounds?.summary && (
-        <div className="card" style={{ borderLeft: "3px solid var(--purple)" }}>
-          <div className="card-title" style={{ marginBottom: 6 }}>
+        <div className={`card ${styles.s6}`}>
+          <div className={`card-title ${styles.s7}`}>
             Interpretation rounds{" "}
-            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>
+            <span className={styles.s20}>
               (Orient → Verify → Reconcile — replay of how the LLM got there)
             </span>
           </div>
-          <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 6 }}>
+          <div className={styles.s22}>
             {rounds.summary.rounds_run}/{rounds.summary.rounds_requested} verify round(s)
             {" · stop: "}{rounds.summary.stop_reason}
             {" · "}{rounds.summary.hypotheses.length} hypothesis/es
@@ -499,46 +499,46 @@ export default function Briefing() {
               ` / ${rounds.summary.reconciliation.unaddressed.length} unaddressed`}
           </div>
           {rounds.summary.hypotheses.length > 0 && (
-            <ul style={{ fontSize: 12, margin: "0 0 8px 18px", padding: 0 }}>
+            <ul className={styles.s27}>
               {rounds.summary.hypotheses.map((h) => (
                 <li key={h.id}>
                   <b>{h.id}</b>: {h.statement}
-                  {h.why ? <span style={{ color: "var(--text-muted)" }}> — {h.why}</span> : null}
+                  {h.why ? <span className={styles.s28}> — {h.why}</span> : null}
                 </li>
               ))}
             </ul>
           )}
           {rounds.summary.reconciliation.unaddressed.length > 0 && (
-            <div style={{ fontSize: 11, color: "var(--warning)", marginBottom: 8 }}>
+            <div className={styles.s29}>
               Still unaddressed (verdict must state these as open):{" "}
               {rounds.summary.reconciliation.unaddressed.map((u) => `[${u.kind}] ${u.value}`).join("; ")}
             </div>
           )}
           <details>
-            <summary style={{ fontSize: 11, cursor: "pointer", color: "var(--accent)" }}>
+            <summary className={styles.s25}>
               Round detail ({rounds.rounds.length} artifact(s))
             </summary>
-            <div style={{ marginTop: 8 }}>
+            <div className={styles.s30}>
               {rounds.rounds.map((r) => (
-                <div key={`${r.round}-${r.kind}`} style={{ marginBottom: 10 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600 }}>
+                <div key={`${r.round}-${r.kind}`} className={styles.s31}>
+                  <div className={styles.s32}>
                     Round {r.round} — {r.kind}
                   </div>
                   {r.entries && r.entries.length > 0 && (
-                    <ul style={{ fontSize: 11, margin: "4px 0 0 18px", padding: 0 }}>
+                    <ul className={styles.s33}>
                       {r.entries.map((e, i) => (
                         <li key={i}>
-                          <span style={{ fontFamily: "monospace" }}>{e.kind}</span>:{" "}
+                          <span className={styles.s34}>{e.kind}</span>:{" "}
                           {String((e.params?.dsl as string) || e.params?.value || "")}
                           {e.error ? ` — ERROR: ${e.error}` : ` — ${e.count ?? 0} row(s)`}
-                          {e.why ? <span style={{ color: "var(--text-muted)" }}> ({e.why})</span> : null}
-                          {e.audit_id ? <span style={{ color: "var(--text-muted)" }}> [{e.audit_id}]</span> : null}
+                          {e.why ? <span className={styles.s28}> ({e.why})</span> : null}
+                          {e.audit_id ? <span className={styles.s28}> [{e.audit_id}]</span> : null}
                         </li>
                       ))}
                     </ul>
                   )}
                   {r.notes && r.notes.length > 0 && (
-                    <ul style={{ fontSize: 11, margin: "4px 0 0 18px", padding: 0 }}>
+                    <ul className={styles.s33}>
                       {r.notes.map((n, i) => (
                         <li key={i}>
                           {n.hypothesis} → <b>{n.status}</b>: {n.evidence}
@@ -555,8 +555,8 @@ export default function Briefing() {
 
       {/* Mode 2 — LLM interpretation verdict (from analysis/interpretation.md) */}
       {(mode === "2" || mode === "3") && brief.mode_interpretation && (
-        <div className="card" style={{ borderLeft: "3px solid var(--purple)" }}>
-          <div className="card-title" style={{ marginBottom: 6 }}>Mode 2 Interpretation (LLM)</div>
+        <div className={`card ${styles.s6}`}>
+          <div className={`card-title ${styles.s7}`}>Mode 2 Interpretation (LLM)</div>
           <article className="report-markdown">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{brief.mode_interpretation}</ReactMarkdown>
           </article>
@@ -564,10 +564,10 @@ export default function Briefing() {
       )}
       {(mode === "2" || mode === "3") && !brief.mode_interpretation && (brief.findings_summary?.count ?? 0) > 0 && (
         <div className="card">
-          <div className="card-title" style={{ marginBottom: 6 }}>
+          <div className={`card-title ${styles.s7}`}>
             Staged findings ({brief.findings_summary?.count} · {brief.findings_summary?.drafts} DRAFT)
           </div>
-          <ul style={{ fontSize: 12, margin: "0 0 0 18px", padding: 0 }}>
+          <ul className={styles.s35}>
             {(brief.findings_summary?.top || []).map((f) => (
               <li key={f.id}>
                 [{f.severity}/{f.confidence}] {f.title}
@@ -578,7 +578,7 @@ export default function Briefing() {
       )}
       {(mode === "2" || mode === "3") && !brief.mode_interpretation && brief.ti_context && (
         <div className="card">
-          <div className="card-title" style={{ marginBottom: 6 }}>Threat intel (context)</div>
+          <div className={`card-title ${styles.s7}`}>Threat intel (context)</div>
           <article className="report-markdown">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{brief.ti_context}</ReactMarkdown>
           </article>
@@ -588,35 +588,35 @@ export default function Briefing() {
       {/* WP 4j.5d — tracked full run: live progress, then per-stage summary */}
       {mode === "1" && fullRunError && <div className="error-banner">{fullRunError}</div>}
       {mode === "1" && fullRunRunning && (
-        <div className="card" style={{ borderLeft: "3px solid var(--accent)" }}>
-          <div className="card-title" style={{ marginBottom: 6 }}>
+        <div className={`card ${styles.s36}`}>
+          <div className={`card-title ${styles.s7}`}>
             Full run in progress — {fullRunResult?.stage || "starting"}
           </div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>
+          <div className={styles.s8}>
             Needle {fullRunResult?.needles_done ?? 0}/{fullRunResult?.needles_total ?? 0}
             {fullRunResult?.current && ` — ${fullRunResult.current}`}
             {" · "}{fullRunResult?.drafts.length ?? 0} draft(s) staged
             {" · "}{fullRunResult?.bookmarks_added ?? 0} bookmark(s) added
           </div>
-          <div style={{ height: 6, background: "var(--bg-tertiary)", borderRadius: 3, overflow: "hidden" }}>
-            <div style={{
-              height: "100%",
-              width: `${fullRunResult?.needles_total ? Math.round(((fullRunResult.needles_done ?? 0) / fullRunResult.needles_total) * 100) : 0}%`,
-              background: "var(--accent)", transition: "width 0.5s",
-            }} />
+          <div className={styles.s37}>
+            <progress
+              className={styles.barFill}
+              value={fullRunResult?.needles_done ?? 0}
+              max={fullRunResult?.needles_total || 1}
+            />
           </div>
         </div>
       )}
       {mode === "1" && fullRunResult && !fullRunRunning && (
-        <div className="card" style={{ borderLeft: `3px solid ${fullRunResult.status === "complete" ? "var(--ok)" : "var(--danger)"}` }}>
-          <div className="card-title" style={{ marginBottom: 6 }}>
+        <div className={`card ${fullRunResult.status === "complete" ? styles.edgeOk : styles.edgeBad}`}>
+          <div className={`card-title ${styles.s7}`}>
             {fullRunResult.status === "complete"
               ? `Full run complete — ${fullRunResult.drafts_staged ?? fullRunResult.drafts.length} DRAFT finding(s) staged`
               : fullRunResult.status === "interrupted"
                 ? "Full run interrupted — server restarted mid-run; safe to re-run"
                 : `Full run failed — ${fullRunResult.error || "unknown error"}`}
           </div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>
+          <div className={styles.s8}>
             {fullRunResult.needles_scanned} needles scanned · {fullRunResult.needles_hit_total ?? fullRunResult.needles_total ?? 0} with hits
             {(fullRunResult.needles_capped ?? 0) > 0 && ` (${fullRunResult.needles_capped} more hit — raise max_needles to include)`}
             {fullRunResult.scan_truncated && " · counts are lower bounds (scan truncated)"}
@@ -625,12 +625,12 @@ export default function Briefing() {
             {(fullRunResult.revised_approved?.length ?? 0) > 0 && ` · ${fullRunResult.revised_approved!.length} approved signal(s) revised (fresh DRAFT staged)`}
           </div>
           {fullRunResult.drafts.length > 0 && (
-            <ul style={{ fontSize: 12, margin: "0 0 8px 18px", padding: 0 }}>
+            <ul className={styles.s27}>
               {fullRunResult.drafts.map((d) => (
                 <li key={d.finding_id || d.title}>
                   {d.title}
                   {d.confidence_adjusted?.length ? (
-                    <span style={{ color: "var(--warn)", fontSize: 11 }} title={d.confidence_adjusted.join("\n")}>
+                    <span className={styles.s38} title={d.confidence_adjusted.join("\n")}>
                       {" "}· confidence capped → LOW (needs corroboration)
                     </span>
                   ) : null}
@@ -639,11 +639,11 @@ export default function Briefing() {
             </ul>
           )}
           {fullRunResult.skipped.length > 0 && (
-            <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8 }}>
+            <div className={styles.s39}>
               Skipped: {fullRunResult.skipped.map((s) => `${s.needle || "?"} (${s.reason})`).join(" · ")}
             </div>
           )}
-          <div style={{ fontSize: 12 }}>
+          <div className={styles.s40}>
             {fullRunResult.next}{" "}
             <button className="btn btn-sm" onClick={() => navigate("/approve")}>
               Review in Approve →
@@ -654,59 +654,52 @@ export default function Briefing() {
 
       {/* WP 4j.3 — guided first pass: the walkthrough an examiner follows (Mode 1) */}
       {mode === "1" && walkthrough.length > 0 && (
-        <div className="card" style={{ borderLeft: "3px solid var(--accent)" }}>
-          <div className="card-title" style={{ marginBottom: 4 }}>
+        <div className={`card ${styles.s36}`}>
+          <div className={`card-title ${styles.s41}`}>
             Guided First Pass
-            <span style={{ fontSize: 10, color: "var(--text-muted)", marginLeft: 8 }}>
+            <span className={styles.s42}>
               {Object.values(doneSteps).filter(Boolean).length}/{walkthrough.length} steps done
             </span>
           </div>
-          <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 10px" }}>
+          <p className={styles.s43}>
             Work top-down: triage what the signatures caught, map who/where,
             read the signal clusters, then run the starting points.
           </p>
           {walkthrough.map((st) => {
             const done = !!doneSteps[st.key];
             return (
-              <div key={st.key} style={{
-                display: "flex", gap: 10, padding: "8px 0",
-                borderTop: "1px solid var(--border)", opacity: done ? 0.55 : 1,
-              }}>
+              <div key={st.key} className={done ? styles.stepDone : styles.step}>
                 <input
                   type="checkbox"
                   checked={done}
                   onChange={() => toggleStep(st.key)}
-                  style={{ width: "auto", alignSelf: "flex-start", marginTop: 3, flexShrink: 0, cursor: "pointer" }}
+                  className={styles.s44}
                 />
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>
+                <div className={styles.s45}>
+                  <div className={styles.s46}>
                     {st.order}. {st.title}
-                    <span className="badge" style={{ fontSize: 9, marginLeft: 8 }}>{st.count}</span>
-                    {done && <span style={{ fontSize: 10, color: "var(--success)", marginLeft: 8 }}>done</span>}
+                    <span className={`badge ${styles.s47}`}>{st.count}</span>
+                    {done && <span className={styles.s48}>done</span>}
                   </div>
-                  <div style={{ fontSize: 11, color: "var(--text-muted)", margin: "2px 0 6px" }}>{st.why}</div>
+                  <div className={styles.s49}>{st.why}</div>
                   {st.learn && (st.learn.headline || st.learn.why_matters.length > 0) && (
-                    <div style={{
-                      fontSize: 11, marginBottom: 6, padding: "6px 8px",
-                      background: "var(--bg-tertiary)", borderRadius: 4,
-                    }}>
+                    <div className={styles.s50}>
                       {st.learn.headline && (
-                        <div style={{ fontWeight: 600, marginBottom: 2 }}>Why this matters: {st.learn.headline}</div>
+                        <div className={styles.s51}>Why this matters: {st.learn.headline}</div>
                       )}
                       {st.learn.why_matters.length > 0 && (
-                        <ul style={{ margin: "2px 0 0 16px", padding: 0, color: "var(--text-muted)" }}>
+                        <ul className={styles.s52}>
                           {st.learn.why_matters.map((w, wi) => <li key={wi}>{w}</li>)}
                         </ul>
                       )}
                     </div>
                   )}
                   {st.actions.length > 0 && (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                    <div className={styles.s53}>
                       {st.actions.map((a, ai) => (
                         <button
                           key={ai}
-                          className="btn btn-sm clickable-tint"
-                          style={{ fontFamily: "monospace", fontSize: 10 }}
+                          className={`btn btn-sm clickable-tint ${styles.s54}`}
                           title={a.label}
                           onClick={() => searchNeedle(a.needle, a.family || undefined)}
                         >
@@ -720,7 +713,7 @@ export default function Briefing() {
               </div>
             );
           })}
-          <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8, marginBottom: 0 }}>
+          <p className={styles.s55}>
             When the steps stop being obvious, switch to Steer Chat and ask your
             own questions — you are the driver.
           </p>
@@ -729,35 +722,34 @@ export default function Briefing() {
 
       {/* Intake echo — what the examiner said they were looking for */}
       {(intake.question || intake.subjects || intake.hypothesis) && (
-        <div className="card" style={{ borderLeft: "3px solid var(--accent)" }}>
-          <div className="card-title" style={{ marginBottom: 8 }}>Investigation Focus</div>
-          {intake.question && <div style={{ fontSize: 13, marginBottom: 4 }}><strong>Question:</strong> {intake.question}</div>}
-          {intake.subjects && <div style={{ fontSize: 13, marginBottom: 4 }}><strong>Subjects:</strong> {intake.subjects}</div>}
-          {intake.hypothesis && <div style={{ fontSize: 13 }}><strong>Hypothesis:</strong> {intake.hypothesis}</div>}
+        <div className={`card ${styles.s36}`}>
+          <div className={`card-title ${styles.s56}`}>Investigation Focus</div>
+          {intake.question && <div className={styles.s57}><strong>Question:</strong> {intake.question}</div>}
+          {intake.subjects && <div className={styles.s57}><strong>Subjects:</strong> {intake.subjects}</div>}
+          {intake.hypothesis && <div className={styles.s58}><strong>Hypothesis:</strong> {intake.hypothesis}</div>}
         </div>
       )}
 
       {/* WP 4i.5 — LLM investigation directions grounded in the deterministic numbers (Mode 1) */}
       {mode === "1" && directions === null && (
-        <div className="card" style={{ borderLeft: "3px solid var(--warning)", padding: "8px 12px" }}>
-          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Generating LLM directions…</span>
+        <div className={`card ${styles.s59}`}>
+          <span className={styles.s21}>Generating LLM directions…</span>
         </div>
       )}
       {mode === "1" && directions !== null && directions.length > 0 && (
-        <div className="card" style={{ borderLeft: "3px solid var(--warning)" }}>
-          <div className="card-title" style={{ marginBottom: 8 }}>
-            Suggested Directions <span style={{ fontSize: 10, color: "var(--text-muted)" }}>(LLM — grounded in the numbers below)</span>
+        <div className={`card ${styles.s60}`}>
+          <div className={`card-title ${styles.s56}`}>
+            Suggested Directions <span className={styles.s20}>(LLM — grounded in the numbers below)</span>
           </div>
           {directions.map((d, i) => (
-            <div key={i} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: i < directions.length - 1 ? "1px solid var(--border)" : "none" }}>
-              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>{i + 1}. {d.title}</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}>{d.why}</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+            <div key={i} className={i < directions.length - 1 ? styles.direction : styles.directionLast}>
+              <div className={styles.s61}>{i + 1}. {d.title}</div>
+              <div className={styles.s62}>{d.why}</div>
+              <div className={styles.s53}>
                 {(d.needles || []).map((n) => (
                   <button
                     key={n}
-                    className="btn btn-sm clickable-tint"
-                    style={{ fontFamily: "monospace", fontSize: 10 }}
+                    className={`btn btn-sm clickable-tint ${styles.s54}`}
                     onClick={() => searchNeedle(n, d.family || undefined)}
                   >
                     {n}
@@ -770,112 +762,101 @@ export default function Briefing() {
       )}
 
       {/* Top-line stats */}
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 4 }}>
-        <div className="card" style={{ flex: 1, minWidth: 140 }}>
-          <div style={{ fontSize: 22, fontWeight: 700 }}>{brief.total_files}</div>
-          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>parsed files</div>
+      <div className={styles.s63}>
+        <div className={`card ${styles.s64}`}>
+          <div className={styles.s65}>{brief.total_files}</div>
+          <div className={styles.s21}>parsed files</div>
         </div>
-        <div className="card" style={{ flex: 1, minWidth: 140 }}>
-          <div style={{ fontSize: 22, fontWeight: 700 }}>{(brief.total_rows || 0).toLocaleString()}</div>
-          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>evidence rows</div>
+        <div className={`card ${styles.s64}`}>
+          <div className={styles.s65}>{(brief.total_rows || 0).toLocaleString()}</div>
+          <div className={styles.s21}>evidence rows</div>
         </div>
-        <div className="card" style={{ flex: 1, minWidth: 140 }}>
-          <div style={{ fontSize: 22, fontWeight: 700, color: alerts.length ? "var(--danger)" : undefined }}>
+        <div className={`card ${styles.s64}`}>
+          <div className={alerts.length ? styles.alertHot : styles.alertQuiet}>
             {brief.alert_count}
           </div>
-          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>crit/high alerts</div>
+          <div className={styles.s21}>crit/high alerts</div>
         </div>
-        <div className="card" style={{ flex: 1, minWidth: 140 }}>
-          <div style={{ fontSize: 22, fontWeight: 700 }}>{scan.length}</div>
-          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>needles with hits</div>
+        <div className={`card ${styles.s64}`}>
+          <div className={styles.s65}>{scan.length}</div>
+          <div className={styles.s21}>needles with hits</div>
         </div>
-        <div className="card" style={{ flex: 1, minWidth: 140 }}>
-          <div style={{ fontSize: 22, fontWeight: 700 }}>{brief.hosts?.length || 0}</div>
-          <div style={{ fontSize: 11, color: "var(--text-muted)" }}>hosts</div>
+        <div className={`card ${styles.s64}`}>
+          <div className={styles.s65}>{brief.hosts?.length || 0}</div>
+          <div className={styles.s21}>hosts</div>
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-start" }}>
-        <div style={{ flex: "2 1 420px", minWidth: 320 }}>
+      <div className={styles.s66}>
+        <div className={styles.s67}>
           {/* Alerts — what the signatures already caught */}
           <div className="card">
-            <div className="card-title" style={{ marginBottom: 8 }}>
-              Alert Surface <span style={{ fontSize: 10, color: "var(--text-muted)" }}>(Hayabusa / Sigma severity)</span>
+            <div className={`card-title ${styles.s56}`}>
+              Alert Surface <span className={styles.s20}>(Hayabusa / Sigma severity)</span>
             </div>
             {alerts.length === 0 ? (
-              <p style={{ fontSize: 12, color: "var(--text-muted)" }}>No critical/high severity rows in the scanned hits.</p>
+              <p className={styles.s68}>No critical/high severity rows in the scanned hits.</p>
             ) : (
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <table className={styles.s69}>
                 <tbody>
                   {alerts.slice(0, 20).map((a, i) => {
                     const it = a.interpret;
                     const open = openAlert === i;
                     return (
-                      <tr key={i} style={{ borderBottom: "1px solid var(--border)", verticalAlign: "top" }}>
-                        <td colSpan={3} style={{ padding: 0 }}>
+                      <tr key={i} className={styles.s70}>
+                        <td colSpan={3} className={styles.s71}>
                           <div
-                            style={{ display: "flex", cursor: "pointer", padding: "4px 6px" }}
+                            className={styles.s72}
                             onClick={() => setOpenAlert(open ? null : i)}
                             title={it ? "click for what this means + what to check next" : "click to search this alert"}
                           >
-                            <span className={`badge ${a.level === "critical" ? "danger" : "draft"}`}
-                                  style={{ fontSize: 9, width: 54, flexShrink: 0 }}>
+                            <span className={`badge ${a.level === "critical" ? "danger" : "draft"} ${styles.s73}`}>
                               {a.level.toUpperCase()}
                             </span>
-                            <span style={{ fontSize: 11, flex: 1, padding: "0 6px" }}>
+                            <span className={styles.s74}>
                               {a.title || "(untitled rule)"}
                             </span>
-                            <span style={{ fontSize: 10, color: "var(--text-muted)", width: 150, flexShrink: 0 }}>
+                            <span className={styles.s75}>
                               {a.host} · {a.time.slice(0, 19)}
                             </span>
-                            <span style={{ fontSize: 10, color: "var(--text-muted)", width: 14 }}>{open ? "▾" : "▸"}</span>
+                            <span className={styles.s76}>{open ? "▾" : "▸"}</span>
                           </div>
                           {open && (
-                            <div style={{
-                              padding: "6px 10px 8px 66px", fontSize: 11,
-                              borderTop: "1px dashed var(--border)",
-                            }}>
-                              {it?.meaning && <div style={{ marginBottom: 4 }}>{it.meaning}</div>}
+                            <div className={styles.s77}>
+                              {it?.meaning && <div className={styles.s41}>{it.meaning}</div>}
                               {it?.learn && it.learn.why_matters.length > 0 && (
-                                <div style={{
-                                  marginBottom: 6, padding: "6px 8px",
-                                  background: "var(--bg-tertiary)", borderRadius: 4,
-                                }}>
-                                  <strong style={{ color: "var(--text-secondary)" }}>Why this matters:</strong>{" "}
+                                <div className={styles.s78}>
+                                  <strong className={styles.s79}>Why this matters:</strong>{" "}
                                   <span>{it.learn.headline}</span>
-                                  <ul style={{ margin: "2px 0 0 16px", padding: 0, color: "var(--text-muted)" }}>
+                                  <ul className={styles.s52}>
                                     {it.learn.why_matters.slice(0, 3).map((w, wi) => <li key={wi}>{w}</li>)}
                                   </ul>
                                 </div>
                               )}
                               {it && (it.skills || []).length > 0 && (
-                                <div style={{ marginBottom: 6 }}>
-                                  <strong style={{ color: "var(--text-secondary)" }}>Guided steps:</strong>
+                                <div className={styles.s7}>
+                                  <strong className={styles.s79}>Guided steps:</strong>
                                   {(it.skills || []).map((sk, si) => (
-                                    <div key={si} style={{
-                                      margin: "4px 0 0 0", padding: "4px 8px",
-                                      borderLeft: "2px solid var(--accent)", background: "var(--bg-subtle, transparent)",
-                                    }}>
-                                      <div style={{ fontSize: 11, fontWeight: 600 }}>
+                                    <div key={si} className={styles.s80}>
+                                      <div className={styles.s81}>
                                         {sk.title || sk.name}
                                         {sk.mitre?.length > 0 && (
-                                          <span style={{ fontSize: 9, color: "var(--text-muted)", marginLeft: 6 }}>
+                                          <span className={styles.s82}>
                                             {sk.mitre.join(", ")}
                                           </span>
                                         )}
                                       </div>
                                       {sk.why && sk.why.length > 0 && (
-                                        <div style={{ fontSize: 10, color: "var(--text-muted)" }}>
+                                        <div className={styles.s20}>
                                           matched: {sk.why.join(" · ")}
                                         </div>
                                       )}
                                       {(sk.confirm || []).slice(0, 3).map((c, ci) => (
-                                        <div key={ci} style={{ fontSize: 10, marginTop: 2 }}>
-                                          <span style={{ color: "var(--success, #2f9e44)" }}>confirm:</span>{" "}
+                                        <div key={ci} className={styles.s83}>
+                                          <span className={styles.s84}>confirm:</span>{" "}
                                           {c.look_for || c.corroborate}
                                           {c.query && (
-                                            <button className="btn btn-sm clickable-tint"
-                                                    style={{ fontFamily: "monospace", fontSize: 9, marginLeft: 4, padding: "0 4px" }}
+                                            <button className={`btn btn-sm clickable-tint ${styles.s85}`}
                                                     onClick={(e) => { e.stopPropagation(); searchNeedle(c.query, a.family); }}>
                                               {c.query.length > 32 ? c.query.slice(0, 32) + "…" : c.query}
                                             </button>
@@ -883,9 +864,9 @@ export default function Briefing() {
                                         </div>
                                       ))}
                                       {sk.refute && (
-                                        <div style={{ fontSize: 10, marginTop: 2 }}>
-                                          <span style={{ color: "var(--text-muted)" }}>refute:</span>{" "}
-                                          <span style={{ color: "var(--text-muted)" }}>{sk.refute}</span>
+                                        <div className={styles.s83}>
+                                          <span className={styles.s28}>refute:</span>{" "}
+                                          <span className={styles.s28}>{sk.refute}</span>
                                         </div>
                                       )}
                                     </div>
@@ -893,19 +874,18 @@ export default function Briefing() {
                                 </div>
                               )}
                               {it && it.look_for.length > 0 && (
-                                <div style={{ marginBottom: 4 }}>
-                                  <strong style={{ color: "var(--text-secondary)" }}>Check next:</strong>
-                                  <ul style={{ margin: "2px 0 0 16px", padding: 0 }}>
+                                <div className={styles.s41}>
+                                  <strong className={styles.s79}>Check next:</strong>
+                                  <ul className={styles.s86}>
                                     {it.look_for.slice(0, 4).map((lf, j) => <li key={j}>{lf}</li>)}
                                   </ul>
                                 </div>
                               )}
                               {it && it.next_queries.length > 0 && (
-                                <div style={{ marginBottom: 4 }}>
-                                  <strong style={{ color: "var(--text-secondary)" }}>Run:</strong>{" "}
+                                <div className={styles.s41}>
+                                  <strong className={styles.s79}>Run:</strong>{" "}
                                   {it.next_queries.slice(0, 4).map((q) => (
-                                    <button key={q} className="btn btn-sm clickable-tint"
-                                            style={{ fontFamily: "monospace", fontSize: 10, marginRight: 4 }}
+                                    <button key={q} className={`btn btn-sm clickable-tint ${styles.s87}`}
                                             onClick={(e) => { e.stopPropagation(); searchNeedle(q, a.family); }}>
                                       {q.length > 40 ? q.slice(0, 40) + "." : q}
                                     </button>
@@ -913,12 +893,12 @@ export default function Briefing() {
                                 </div>
                               )}
                               {it && it.caveats.length > 0 && (
-                                <div style={{ fontSize: 10, color: "var(--warning)" }}>
+                                <div className={styles.s88}>
                                   {it.caveats.slice(0, 3).map((c, j) => <div key={j}>⚠ {c}</div>)}
                                 </div>
                               )}
                               {!it && (
-                                <button className="btn btn-sm clickable-tint" style={{ fontSize: 10 }}
+                                <button className={`btn btn-sm clickable-tint ${styles.s89}`}
                                         onClick={(e) => { e.stopPropagation(); searchNeedle(a.title || a.family, a.family); }}>
                                   Search this alert in Explore 
                                 </button>
@@ -936,21 +916,20 @@ export default function Briefing() {
 
           {/* Signal map — playbook auto-scan needle → hit count */}
           <div className="card">
-            <div className="card-title" style={{ marginBottom: 8 }}>
-              Signal Map <span style={{ fontSize: 10, color: "var(--text-muted)" }}>({brief.scanned_needles} playbook/ATT&CK/Sigma needles scanned)</span>
+            <div className={`card-title ${styles.s56}`}>
+              Signal Map <span className={styles.s20}>({brief.scanned_needles} playbook/ATT&CK/Sigma needles scanned)</span>
             </div>
             {scan.length === 0 ? (
-              <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              <p className={styles.s68}>
                 No playbook needles matched. Try the Explore page with your own terms.
               </p>
             ) : (
               <>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                <div className={styles.s53}>
                   {signalScan.slice(0, 60).map((s) => (
                     <button
                       key={s.needle}
-                      className="btn btn-sm clickable-tint"
-                      style={{ fontFamily: "monospace", fontSize: 11 }}
+                      className={`btn btn-sm clickable-tint ${styles.s90}`}
                       title={`${s.hits}${brief.scan_truncated ? "+" : ""} hits — ${s.source} — click to open in Explore`}
                       onClick={() => searchNeedle(s.needle)}
                     >
@@ -959,7 +938,7 @@ export default function Briefing() {
                   ))}
                 </div>
                 {brief.scan_truncated && (
-                  <div style={{ fontSize: 10, color: "var(--warning)", marginTop: 6 }}>
+                  <div className={styles.s91}>
                     Counts are LOWER BOUNDS
                     {truncReasons.length > 0 && ` — ${truncReasons.join("; ")}`}
                     {truncReasons.length === 0 && " — the scan stopped at the briefing window"}
@@ -969,18 +948,18 @@ export default function Briefing() {
               </>
             )}
             {facts.length > 0 && (
-              <div style={{ marginTop: 10, borderTop: "1px solid rgba(128,128,128,0.3)", paddingTop: 8 }}>
+              <div className={styles.s92}>
                 <div
-                  style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}
+                  className={styles.s93}
                   title="Keyword matches on id/label columns (EventId, RecordNumber, Provider, Level...). They show the value exists in the evidence — useful pivots, never suspicious signal or findings."
                 >
                   Field facts — id/label column matches (not signal)
                 </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                <div className={styles.s94}>
                   {facts.slice(0, 40).map((f) => (
                     <span
                       key={`${f.needle}:${f.field || ""}`}
-                      style={{ fontFamily: "monospace", fontSize: 11, color: "var(--text-muted)" }}
+                      className={styles.s95}
                       title={`${f.hits} row(s) matched ${f.field || "a field"} (${f.class || "fact"}) — the value exists in the evidence, it is not evidence of behaviour`}
                     >
                       {f.needle}
@@ -991,22 +970,18 @@ export default function Briefing() {
               </div>
             )}
             {itmCoverage.length > 0 && (
-              <div style={{ marginTop: 10, borderTop: "1px solid rgba(128,128,128,0.3)", paddingTop: 8 }}>
+              <div className={styles.s92}>
                 <div
-                  style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 4 }}
+                  className={styles.s93}
                   title="Insider Threat Matrix packs relevant to this case's families. 0 hits is negative evidence for those artifacts, not absence of risk — caveats apply."
                 >
                   Insider Threat Matrix coverage — pack hits (not evidence)
                 </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                <div className={styles.s94}>
                   {itmCoverage.slice(0, 10).map((r) => (
                     <span
                       key={r.itm}
-                      style={{
-                        fontFamily: "monospace",
-                        fontSize: 11,
-                        color: r.hits ? "var(--text)" : "var(--text-muted)",
-                      }}
+                      className={r.hits ? styles.itmHit : styles.itmMiss}
                       title={`${r.name}${r.caveat ? ` — ${r.caveat}` : ""}`}
                     >
                       {r.itm} {r.name} <strong>{r.hits}</strong>
@@ -1018,7 +993,7 @@ export default function Briefing() {
             )}
             {backgroundTerms.length > 0 && (
               <div
-                style={{ marginTop: 8, fontSize: 10, color: "var(--text-muted)" }}
+                className={styles.s96}
                 title={`Terms matching >= ${brief.ubiquity_floor || 0} rows of this case — background noise, ranked last and never staged as findings.`}
               >
                 Background terms (ubiquitous):{" "}
@@ -1031,17 +1006,17 @@ export default function Briefing() {
           </div>
         </div>
 
-        <div style={{ flex: "1 1 300px", minWidth: 260 }}>
+        <div className={styles.s97}>
           {/* Evidence inventory */}
           <div className="card">
-            <div className="card-title" style={{ marginBottom: 8 }}>Evidence Inventory</div>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <div className={`card-title ${styles.s56}`}>Evidence Inventory</div>
+            <table className={styles.s69}>
               <tbody>
                 {Object.entries(inv).sort((a, b) => b[1].rows - a[1].rows).map(([fam, e]) => (
-                  <tr key={fam} className="vt-clickable-row" style={{ borderBottom: "1px solid var(--border)", cursor: "pointer" }}
+                  <tr key={fam} className={`vt-clickable-row ${styles.s98}`}
                       onClick={() => navigate(`/explore?family=${fam}`)}>
-                    <td style={{ padding: "4px 6px", fontFamily: "monospace", fontSize: 11 }}>{fam}</td>
-                    <td style={{ padding: "4px 6px", fontSize: 11, textAlign: "right" }}>
+                    <td className={styles.s99}>{fam}</td>
+                    <td className={styles.s100}>
                       {e.rows.toLocaleString()}{e.capped ? "+" : ""} rows · {e.files} files
                     </td>
                   </tr>
@@ -1049,12 +1024,12 @@ export default function Briefing() {
               </tbody>
             </table>
             {brief.hosts && brief.hosts.length > 0 && (
-              <div style={{ marginTop: 8, fontSize: 11, color: "var(--text-muted)" }}>
+              <div className={styles.s101}>
                 Hosts: {brief.hosts.slice(0, 10).join(", ")}
               </div>
             )}
             {brief.time_range?.start && (
-              <div style={{ marginTop: 4, fontSize: 11, color: "var(--text-muted)" }}>
+              <div className={styles.s102}>
                 {brief.time_range.start.slice(0, 19)} → {brief.time_range.end?.slice(0, 19)}
               </div>
             )}
@@ -1062,20 +1037,17 @@ export default function Briefing() {
 
           {/* Parser ledger */}
           <div className="card">
-            <div className="card-title" style={{ marginBottom: 8 }}>
-              Parser Lane <span style={{ fontSize: 10, color: "var(--text-muted)" }}>{ledger.ok} OK · {ledger.skip} skip · {ledger.fail} fail</span>
+            <div className={`card-title ${styles.s56}`}>
+              Parser Lane <span className={styles.s20}>{ledger.ok} OK · {ledger.skip} skip · {ledger.fail} fail</span>
             </div>
-            <div style={{ maxHeight: 200, overflowY: "auto" }}>
+            <div className={styles.s103}>
               {ledger.entries.slice(0, 30).map((e, i) => (
-                <div key={i} style={{ fontSize: 10, padding: "2px 0", display: "flex", gap: 6 }}>
-                  <span style={{
-                    color: e.status === "OK" ? "var(--success)" : e.status.startsWith("SKIP") ? "var(--text-muted)" : "var(--danger)",
-                    width: 40, flexShrink: 0, fontFamily: "monospace",
-                  }}>
+                <div key={i} className={styles.s104}>
+                  <span className={e.status === "OK" ? styles.laneOk : e.status.startsWith("SKIP") ? styles.laneSkip : styles.laneFail}>
                     {e.status}
                   </span>
-                  <span style={{ fontFamily: "monospace" }}>{e.tool}</span>
-                  {e.reason && <span style={{ color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.reason}</span>}
+                  <span className={styles.s34}>{e.tool}</span>
+                  {e.reason && <span className={styles.s105}>{e.reason}</span>}
                 </div>
               ))}
             </div>
@@ -1084,16 +1056,15 @@ export default function Briefing() {
           {/* Top entities */}
           {Object.keys(entities).length > 0 && (
             <div className="card">
-              <div className="card-title" style={{ marginBottom: 8 }}>Top Entities</div>
+              <div className={`card-title ${styles.s56}`}>Top Entities</div>
               {Object.entries(entities).map(([etype, list]) => (
-                <div key={etype} style={{ marginBottom: 6 }}>
-                  <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase" }}>{etype}</div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 3, marginTop: 2 }}>
+                <div key={etype} className={styles.s7}>
+                  <div className={styles.s106}>{etype}</div>
+                  <div className={styles.s107}>
                     {list.slice(0, 6).map((e) => (
                       <button
                         key={e.value}
-                        className="btn btn-sm clickable-tint"
-                        style={{ fontFamily: "monospace", fontSize: 10, padding: "1px 6px" }}
+                        className={`btn btn-sm clickable-tint ${styles.s108}`}
                         title={`${e.hits} hits across ${(e.families || []).join(", ")}${e.source_file ? ` — e.g. ${e.source_file}` : ""}`}
                         onClick={() => searchNeedle(e.value)}
                       >
@@ -1104,7 +1075,7 @@ export default function Briefing() {
                 </div>
               ))}
               {brief.paths_summary && brief.paths_summary.distinct > 0 && (
-                <div style={{ marginTop: 8, fontSize: 10, color: "var(--text-muted)" }}>
+                <div className={styles.s96}>
                   Host filesystem paths inside evidence content:{" "}
                   <strong>{brief.paths_summary.distinct}</strong> distinct
                   {brief.paths_summary.families?.length
@@ -1121,19 +1092,19 @@ export default function Briefing() {
         </div>
       </div>
 
-      <div style={{ marginTop: 12, fontSize: 12, color: "var(--text-muted)" }}>
+      <div className={styles.s109}>
         Backend: {brief.backend || "csv"} · {brief.hits_examined} hits examined ·{" "}
-        <Link to="/explore" style={{ color: "var(--accent)" }}>Open Explore →</Link>
+        <Link to="/explore" className={styles.s110}>Open Explore →</Link>
       </div>
 
       {/* WP 4j.5c — offline copies: the briefing + full signal map persist to the
           case dir on every render so the examiner can review them without the UI. */}
       {brief.artifacts?.briefing_md && (
-        <div style={{ marginTop: 6, fontSize: 11, color: "var(--text-muted)" }}>
+        <div className={styles.s111}>
           Offline copies (rebuilt each view — open these if the UI misbehaves):{" "}
-          <code style={{ color: "var(--text-primary)" }}>{brief.artifacts.briefing_md}</code>
+          <code className={styles.s112}>{brief.artifacts.briefing_md}</code>
           {brief.artifacts.signal_map_csv && (
-            <>{" · "}<code style={{ color: "var(--text-primary)" }}>{brief.artifacts.signal_map_csv}</code></>
+            <>{" · "}<code className={styles.s112}>{brief.artifacts.signal_map_csv}</code></>
           )}
         </div>
       )}

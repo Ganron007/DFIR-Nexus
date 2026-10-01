@@ -1,16 +1,22 @@
 import { useEffect, useState } from "react";
+import styles from "./Approve.module.css";
 import { useNavigate } from "react-router-dom";
 import { api, type Finding } from "../api/client";
 import { computeApprovalResponse } from "../lib/crypto";
 import { useCase } from "../context/CaseContext";
 
-const L1_COLORS: Record<string, string> = {
-  PROVEN: "#238636",
-  UNSUPPORTED: "#d29922",
-  CONTRADICTED: "#f85149",
-  UNVERIFIABLE: "#8b949e",
-};
-const l1Color = (verdict: string) => L1_COLORS[verdict] ?? "#8b949e";
+function l1Class(verdict: string): string {
+  switch (verdict.toUpperCase()) {
+    case "PROVEN":
+      return styles.l1Proven;
+    case "UNSUPPORTED":
+      return styles.l1Unsupported;
+    case "CONTRADICTED":
+      return styles.l1Contradicted;
+    default:
+      return styles.l1Unverifiable;
+  }
+}
 
 export default function Approve() {
   const { activeCase, refreshStages } = useCase();
@@ -183,10 +189,10 @@ export default function Approve() {
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+      <div className={styles.s1}>
         <h2>Approval Desk (N6)</h2>
         {findings.length > 0 && (
-          <div style={{ display: "flex", gap: 8 }}>
+          <div className={styles.s2}>
             <button className="btn btn-sm" onClick={selectAll}>Select All</button>
             <button className="btn btn-sm" onClick={clearSelection}>Clear</button>
           </div>
@@ -195,14 +201,13 @@ export default function Approve() {
 
       {error && <div className="error-banner">{error}</div>}
       {result && (
-        <div style={{ background: "rgba(63,185,80,0.1)", border: "1px solid var(--success)", borderRadius: 6, padding: 10, marginBottom: 16, color: "var(--success)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+        <div className={styles.s3}>
           <span>{result}</span>
           {result.startsWith("✓") && (
             <button
-              className="btn btn-sm"
+              className={`btn btn-sm ${styles.s4}`}
               onClick={() => navigate("/timeline")}
               title="N7 — review the unified case timeline before generating the report"
-              style={{ whiteSpace: "nowrap" }}
             >
               Next: Review Timeline →
             </button>
@@ -210,10 +215,10 @@ export default function Approve() {
         </div>
       )}
 
-      <div className="card" style={{ marginBottom: 16 }}>
+      <div className={`card ${styles.s5}`}>
         <div className="card-header">
           <span className="card-title">DRAFT Findings ({findings.length})</span>
-          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{selected.size} selected</span>
+          <span className={styles.s6}>{selected.size} selected</span>
         </div>
         {findings.length === 0 ? (
           <div className="empty-state">
@@ -224,7 +229,7 @@ export default function Approve() {
           <table>
             <thead>
               <tr>
-                <th style={{ width: 30 }}></th>
+                <th className={styles.s7}></th>
                 <th>ID</th>
                 <th>Title</th>
                 <th>Confidence</th>
@@ -240,14 +245,14 @@ export default function Approve() {
                       type="checkbox"
                       checked={selected.has(f.id)}
                       onChange={() => toggle(f.id)}
-                      style={{ width: "auto", cursor: "pointer" }}
+                      className={styles.s8}
                     />
                   </td>
-                  <td style={{ fontFamily: "monospace", fontSize: 11 }}>{f.id}</td>
+                  <td className={styles.s9}>{f.id}</td>
                   <td>
                     <strong>{f.title}</strong>
                     {f.observation && (
-                      <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>
+                      <div className={styles.s10}>
                         {f.observation.slice(0, 100)}...
                       </div>
                     )}
@@ -255,8 +260,7 @@ export default function Approve() {
                   <td><span className={`badge badge-${f.confidence.toLowerCase()}`}>{f.confidence}</span></td>
                   <td>
                     <span
-                      className="badge"
-                      style={{ background: l1Color(verdictOf(f)), color: "#fff" }}
+                      className={`badge ${l1Class(verdictOf(f))}`}
                       title={
                         f.l1?.failing_checks?.length
                           ? f.l1.failing_checks.map((c) => `${c.id}: ${c.detail}`).join("\n")
@@ -266,7 +270,7 @@ export default function Approve() {
                       {verdictOf(f)}
                     </span>
                     {(f.l1?.failing_checks ?? []).slice(0, 2).map((c) => (
-                      <div key={c.id} style={{ fontSize: 11, color: "var(--danger)", marginTop: 2 }}>
+                      <div key={c.id} className={styles.s11}>
                         {c.id}: {c.detail.slice(0, 80)}
                       </div>
                     ))}
@@ -284,8 +288,8 @@ export default function Approve() {
           <div className="card-header">
             <span className="card-title">Cryptographic Human Approval (FD-002)</span>
           </div>
-          <div style={{ maxWidth: 440, display: "flex", flexDirection: "column", gap: 12 }}>
-            <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: 0 }}>
+          <div className={styles.s12}>
+            <p className={styles.s13}>
               Approving signs a PBKDF2-HMAC-SHA256 entry to the immutable ledger.
               Enter the <strong>examiner approval password</strong>
               {examinerIdentity ? ` for identity '${examinerIdentity}'` : ""} — the one
@@ -295,7 +299,7 @@ export default function Approve() {
             </p>
 
             {passwordConfigured === false && (
-              <div className="error-banner" style={{ margin: 0 }}>
+              <div className={`error-banner ${styles.s14}`}>
                 No approval password is configured
                 {examinerIdentity ? ` for '${examinerIdentity}'` : ""} — approving will
                 fail. Set one first: <code>{setupHint || "nexus config --setup-password"}</code>
@@ -303,7 +307,7 @@ export default function Approve() {
             )}
 
             <div>
-              <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
+              <label className={styles.s15}>
                 Examiner Identity (optional override)
               </label>
               <input
@@ -315,7 +319,7 @@ export default function Approve() {
             </div>
 
             <div>
-              <label style={{ fontSize: 12, color: "var(--text-muted)", display: "block", marginBottom: 4 }}>
+              <label className={styles.s15}>
                 Approval Password
               </label>
               <input
@@ -334,7 +338,7 @@ export default function Approve() {
 
             {needsOverride.length > 0 && (
               <div>
-                <label style={{ fontSize: 12, color: "var(--danger)", display: "block", marginBottom: 4, fontWeight: 600 }}>
+                <label className={styles.s16}>
                   Override Reason (required — L1 not PROVEN for {needsOverride.length} selected)
                 </label>
                 <input
@@ -343,25 +347,24 @@ export default function Approve() {
                   onChange={(e) => setOverrideReason(e.target.value)}
                   disabled={busy}
                 />
-                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                <div className={styles.s17}>
                   {needsOverride.map((f) => `${f.id}: ${verdictOf(f)}`).join(" · ")}
                 </div>
               </div>
             )}
 
             {statusMsg && (
-              <div style={{ fontSize: 12, color: "var(--accent)" }}>
+              <div className={styles.s18}>
                 ⚡ {statusMsg}
               </div>
             )}
 
-            <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+            <div className={styles.s19}>
               <button
-                className="btn btn-primary"
+                className={`btn btn-primary ${styles.s20}`}
                 onClick={handleApprove}
                 disabled={busy || selected.size === 0 || (needsOverride.length > 0 && !overrideReason.trim())}
                 title={!password ? "Enter the examiner approval password first — click for details" : undefined}
-                style={{ flex: 1 }}
               >
                 {busy ? "Signing..." : `Approve ${selected.size} Finding(s)`}
               </button>
@@ -375,15 +378,15 @@ export default function Approve() {
             </div>
 
             {rejectMode && (
-              <div style={{ marginTop: 8, padding: 12, border: "1px solid var(--border)", borderRadius: 6, background: "var(--bg-secondary)" }}>
-                <label style={{ fontSize: 12, color: "var(--danger)", display: "block", marginBottom: 4, fontWeight: 600 }}>
+              <div className={styles.s21}>
+                <label className={styles.s16}>
                   Reason for Rejection (required by FD-001)
                 </label>
                 <input
                   placeholder="e.g. Legitimate administrative activity, baseline software"
                   value={rejectReason}
                   onChange={(e) => setRejectReason(e.target.value)}
-                  style={{ marginBottom: 8 }}
+                  className={styles.s22}
                 />
                 <button
                   className="btn btn-danger btn-sm"
