@@ -2407,6 +2407,22 @@ def apply_prior_ok(jobs: list[ToolJob], case_dir: Path) -> int:
     return reused
 
 
+def mark_missing_vol_plugins(jobs: list[ToolJob], available: set[str]) -> list[ToolJob]:
+    """WO-A9: a plugin the host does not have is SKIP, not FAIL.
+
+    ``available`` is the set of plugin names the host listed (for example
+    ``windows.pslist``). Jobs that are not Volatility are left alone.
+    """
+    for job in jobs:
+        if job.tool != "vol" or job.status != "PENDING" or not job.argv:
+            continue
+        plugin = job.argv[-1]
+        if plugin not in available:
+            job.status = "SKIP"
+            job.reason = f"plugin {plugin} is not installed on this SIFT host"
+    return jobs
+
+
 def plan_sift_triage(
     sift_evidence_root: str,
     triage_root: str | None = None,
@@ -2470,10 +2486,22 @@ def plan_sift_triage(
             ("linux.sockstat", 3600),
         )
     else:
+        # WO-A9 triage pack. Timeouts are the small-image floor; a multi-GB
+        # image scales them in ``_memory_timeout``.
         plugins = (
             ("windows.info", 1800),
             ("windows.pslist", 3600),
+            ("windows.pstree", 3600),
+            ("windows.psscan", 3600),
             ("windows.cmdline", 3600),
+            ("windows.dlllist", 7200),
+            ("windows.handles", 7200),
+            ("windows.envars", 3600),
+            ("windows.netscan", 7200),
+            ("windows.registry.printkey", 3600),
+            ("windows.malfind", 7200),
+            ("windows.ldrmodules", 7200),
+            ("windows.psxview", 7200),
         )
     for plugin, timeout in plugins:
         jobs.append(ToolJob(

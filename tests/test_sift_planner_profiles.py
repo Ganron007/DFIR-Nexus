@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from nexus.langgraph.tool_lane import (
     ToolJob,
+    mark_missing_vol_plugins,
     plan_sift_triage,
     sift_jobs_for_lane,
     sift_unavailable_outcome,
@@ -33,6 +34,24 @@ def test_default_profile_stays_windows(monkeypatch):
     monkeypatch.delenv("NEXUS_SIFT_OS", raising=False)
     plugins = _vol_plugins(plan_sift_triage("/evidence/pack"))
     assert plugins and all(p.startswith("windows.") for p in plugins)
+    for required in (
+        "windows.pstree", "windows.psscan", "windows.dlllist",
+        "windows.handles", "windows.envars", "windows.netscan",
+        "windows.registry.printkey", "windows.malfind", "windows.ldrmodules",
+        "windows.psxview",
+    ):
+        assert required in plugins
+
+
+def test_missing_vol_plugin_is_skip_not_fail(monkeypatch):
+    monkeypatch.delenv("NEXUS_SIFT_OS", raising=False)
+    jobs = plan_sift_triage("/evidence/pack")
+    mark_missing_vol_plugins(jobs, {"windows.info", "windows.pslist"})
+    skipped = [j for j in jobs if j.tool == "vol" and j.status == "SKIP"]
+    assert skipped
+    assert all("not installed" in j.reason for j in skipped)
+    assert any(j.argv[-1] == "windows.malfind" and j.status == "SKIP" for j in jobs)
+    assert any(j.argv[-1] == "windows.pslist" and j.status == "PENDING" for j in jobs)
 
 
 def test_env_profile_is_read_when_param_absent(monkeypatch):

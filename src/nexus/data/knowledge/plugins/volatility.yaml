@@ -63,7 +63,7 @@ tiers:
   - tier: registry
     when: "Persistence enumeration"
     plugins:
-      - plugin: windows.printkey
+      - plugin: windows.registry.printkey
         purpose: "Registry keys/values — Run/RunOnce, services, scheduled tasks"
         when_to_run: persistence sweep (Run/RunOnce/services/RunOnceEx)
         mitre: [T1547.001, T1543.003]
