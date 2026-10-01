@@ -178,6 +178,28 @@ def test_report_tail_renders_and_grade_is_untouched(case_dir: Path):
     assert len(read_events(case_dir)) == before
 
 
+def test_a_stray_directory_is_not_a_case(case_dir: Path, tmp_path: Path):
+    """An event with case_id "" belongs to no case and verifies against none.
+
+    It would also litter whatever folder a caller passed. Refused, and the
+    refusal is visible (no audit directory appears).
+    """
+    from nexus.analysis.negative_space import read_events, record, render_markdown
+
+    stray = tmp_path / "not-a-case"
+    stray.mkdir()
+
+    assert record(stray, "refuted", "F-1", "x") is None
+    assert record(case_dir.parent / "CASE-missing", "refuted", "F-1", "x") is None
+    assert not (stray / "audit").exists()
+    assert read_events(stray) == []
+    assert render_markdown(stray) == ""
+
+    # the real case still records normally (the guard must never eat an event)
+    assert record(case_dir, "refuted", "F-1", "x")
+    assert len(read_events(case_dir)) == 1
+
+
 def test_read_events_skips_a_malformed_audit_line(case_dir: Path):
     """A torn audit line must not resurrect the previous event or crash."""
     from nexus.analysis.negative_space import read_events, record

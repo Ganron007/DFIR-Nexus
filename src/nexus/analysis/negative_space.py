@@ -32,6 +32,27 @@ KINDS = frozenset({
 })
 
 
+def _case_dir(case_dir: Path | str) -> Path | None:
+    """The case directory, or None when this is not a case at all.
+
+    A negative-space event is an audit record of a case. Written against a
+    directory that is not a case it lands with ``case_id: ""`` in whatever
+    folder the caller happened to pass - an entry that belongs to no case and
+    cannot be verified against one. Every real case directory carries its
+    identity (``materialize_case_dir`` writes CASE.yaml + findings.json), so
+    this refuses only stray paths, never a real case.
+    """
+    path = Path(case_dir)
+    try:
+        if not path.is_dir():
+            return None
+        if not (path / "CASE.yaml").is_file() and not (path / "findings.json").is_file():
+            return None
+    except OSError:
+        return None
+    return path
+
+
 def record(
     case_dir: Path | str,
     kind: str,
@@ -47,10 +68,17 @@ def record(
     if kind not in KINDS:
         log.warning("negative_space: unknown kind %r — not recorded", kind)
         return None
+    target = _case_dir(case_dir)
+    if target is None:
+        log.warning(
+            "negative_space: %s is not a case directory — %r not recorded",
+            case_dir, kind,
+        )
+        return None
     try:
         from nexus.audit import AuditWriter
 
-        writer = AuditWriter(TOOL_NAME, audit_dir=Path(case_dir) / "audit")
+        writer = AuditWriter(TOOL_NAME, audit_dir=target / "audit")
         return writer.log(
             tool=TOOL_NAME,
             params={"kind": kind, "subject": str(subject)[:200]},
