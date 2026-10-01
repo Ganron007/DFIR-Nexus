@@ -57,6 +57,10 @@ class ToolJob:
     # the explicit, optional lane selector - a root path or environment
     # default alone never triggers a refusal.
     critical: bool = False
+    # WO-A4: which build of which tool produced this row (binary sha256 +
+    # version + version_source). Carried through so the ledger - the surface an
+    # exhibit is built from - can say what ran, not just OK/FAIL.
+    lineage: dict = field(default_factory=dict)
 
 
 def timeout_for_bytes(
@@ -2936,6 +2940,10 @@ async def run_tool_lane(
         job.audit_id = aid
         job.output_saved_to = str(result.get("output_saved_to") or "")
         job.output_files = list(result.get("output_files") or [])
+        # WO-A4: copy the tool's own lineage onto the ledger row. A remote tool
+        # that declares no version says "undeclared" - we never guess a build.
+        if isinstance(result.get("tool_lineage"), dict):
+            job.lineage = dict(result["tool_lineage"])
         # A tool whose only product is stdout - strings, sigcheck - writes
         # `<tool>_stdout.txt`, and the indexer skips `*_stdout.txt` as scratch.
         # That is correct when a structured CSV sits beside it and wrong when it

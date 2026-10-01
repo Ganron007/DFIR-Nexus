@@ -697,6 +697,22 @@ def register_tools(server: FastMCP, audit: AuditWriter):
                 except (OSError, FileNotFoundError):
                     input_sha256s.append("")
 
+        # WO-A4: the tool's own version flag, where it has one, cached per host
+        # session. A tool that declares no version is "undeclared" - never
+        # guessed from its file name or its output banner.
+        try:
+            from nexus.tools.lineage import tool_version_lineage
+
+            def _probe(probe_command: str) -> str:
+                proc = _execute(shlex.split(probe_command), timeout=20)
+                return f"{proc.get('stdout', '')}{proc.get('stderr', '')}"
+
+            tool_lineage = tool_version_lineage(base_binary, runner=_probe)
+        except Exception:  # noqa: BLE001 - lineage must never fail a run
+            tool_lineage = {
+                "tool": base_binary, "file_version": "", "version_source": "undeclared",
+            }
+
         audit_id = audit.log(
             tool="run_command",
             params={"command": command[:500], "purpose": purpose[:200]},
@@ -708,7 +724,10 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             },
             input_files=input_files,
             input_sha256s=input_sha256s or None,
-            extra={"output_file": output_file} if output_file else None,
+            extra={
+                **({"output_file": output_file} if output_file else {}),
+                "tool_lineage": tool_lineage,
+            },
         )
 
         # FK-enriched response (caveats, advisories, corroboration)
@@ -716,6 +735,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         response["data"] = result.get("stdout", "")
         response["stderr"] = result.get("stderr", "")[:2000] or ""
         response["output_files"] = output_files
+        response["tool_lineage"] = tool_lineage
         if output_file:
             response["output_saved_to"] = output_file
         if persisted.get("warning"):

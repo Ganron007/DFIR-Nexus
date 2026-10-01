@@ -61,6 +61,7 @@ from nexus.cli.config_cmd import app as config_app
 from nexus.cli.data_cmd import app as data_app
 from nexus.cli.evidence import app as evidence_app
 from nexus.cli.exec_cmd import app as exec_app
+from nexus.cli.finding_cmd import app as finding_app
 from nexus.cli.index_cmd import app as index_app
 from nexus.cli.init_cmd import init as init_cmd
 from nexus.cli.lane_cmd import app as lane_app
@@ -78,6 +79,7 @@ app.add_typer(report_app, name="report", help="Generate investigation reports")
 app.add_typer(backup_app, name="backup", help="Backup and restore cases")
 app.add_typer(case_app, name="case", help="Manage investigation cases")
 app.add_typer(evidence_app, name="evidence", help="Manage evidence")
+app.add_typer(finding_app, name="finding", help="Inspect findings (exhibit bundle)")
 app.add_typer(review_app, name="review", help="Review case state")
 app.add_typer(config_app, name="config", help="Manage examiner configuration")
 app.add_typer(service_app, name="service", help="Manage MCP services")

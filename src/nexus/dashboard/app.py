@@ -34,6 +34,7 @@ from starlette.responses import (
 from starlette.routing import Route
 
 from nexus.case.locks import case_lock, lock_case_writes
+from nexus.dashboard.exhibit_api import api_finding_exhibit
 
 logger = logging.getLogger(__name__)
 
@@ -8004,6 +8005,8 @@ def create_dashboard():
         Route("/portal/api/report/grade", api_report_grade, methods=["GET"]),
         Route("/portal/api/report/claims", api_report_claims, methods=["GET"]),
         Route("/portal/api/evidence/verify", api_evidence_verify, methods=["POST"]),
+        # WO-A4: the reproducibility bundle for an approved finding
+        Route("/portal/api/finding/exhibit", api_finding_exhibit, methods=["GET"]),
         # Phase 4: React SPA (served after API + legacy HTML routes)
         Route("/portal/app/assets/{path:path}", spa_asset),
         Route("/portal/app/logo.svg", logo),
