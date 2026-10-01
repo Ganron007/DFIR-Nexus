@@ -150,7 +150,7 @@ describe("Explore page (WP 4j.5)", () => {
   it("rotates the needle only via the drawer's explicit search-this-value control", async () => {
     renderExplore("/explore?needles=rundll32");
     await waitFor(() => screen.getByText("4688"));
-    fireEvent.click(document.querySelector("tbody tr")!);
+    fireEvent.click(screen.getByText("4688"));
     const btns = await screen.findAllByTitle(/Search this value/i);
     fireEvent.click(btns[0]);
     await waitFor(() =>
@@ -162,10 +162,8 @@ describe("Explore page (WP 4j.5)", () => {
 
   it("shows a fallback note when a hit has no skill coverage", async () => {
     renderExplore("/explore?needles=rundll32");
-    await waitFor(() => screen.getByText("evtx"));
-    const row = document.querySelector("tbody tr");
-    expect(row).toBeTruthy();
-    fireEvent.click(row!);
+    await waitFor(() => screen.getByText("4688"));
+    fireEvent.click(screen.getByText("4688"));
     await screen.findByText(/No skill procedure covers this row yet/i);
   });
 
@@ -186,8 +184,8 @@ describe("Explore page (WP 4j.5)", () => {
   it("shows an honest note when interpretation fails outright", async () => {
     mockApi.hitInterpret.mockRejectedValue(new Error("backend 500"));
     renderExplore("/explore?needles=rundll32");
-    await waitFor(() => screen.getByText("evtx"));
-    fireEvent.click(document.querySelector("tbody tr")!);
+    await waitFor(() => screen.getByText("4688"));
+    fireEvent.click(screen.getByText("4688"));
     await screen.findByText(/Interpretation unavailable for this row/i);
   });
 });

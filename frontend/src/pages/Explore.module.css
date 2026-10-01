@@ -1,0 +1,259 @@
+/* Explore (WO-U8a) — tokens only, zero inline styles. */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.searchRow {
+  display: flex;
+  gap: var(--space-2);
+  align-items: end;
+}
+
+.needleField {
+  flex: 1;
+}
+
+.familyField {
+  width: 10rem;
+}
+
+.hint {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.suggestions {
+  margin-top: var(--space-2);
+  padding: var(--space-3);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md, 8px);
+}
+
+.kicker {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: var(--space-2);
+}
+
+.feedback {
+  font-size: var(--font-size-xs);
+  color: var(--success);
+  margin-bottom: var(--space-2);
+}
+
+.playbook {
+  margin-bottom: var(--space-2);
+}
+
+.playbookTitle {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-fg-default, var(--text-secondary));
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  margin-bottom: var(--space-1, 4px);
+}
+
+.source[data-source="mitre"] {
+  color: var(--purple);
+}
+
+.source[data-source="sigma"] {
+  color: var(--warning);
+}
+
+.source[data-source="overlay"] {
+  color: var(--success);
+}
+
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1, 4px);
+  align-items: center;
+  margin-bottom: var(--space-2);
+}
+
+.chipOn {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.needleStrong {
+  border-color: var(--accent);
+}
+
+.mono {
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+
+.caveat {
+  font-size: var(--font-size-xs);
+  color: var(--warning);
+  margin-top: var(--space-1, 4px);
+}
+
+.bound {
+  color: var(--warning);
+}
+
+.exact {
+  color: var(--text-muted);
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.note {
+  font-size: var(--font-size-xs);
+  color: var(--warning);
+}
+
+.note a {
+  color: var(--accent);
+}
+
+.loading {
+  padding: var(--space-4);
+  color: var(--text-muted);
+}
+
+.star {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  padding: 0;
+  color: var(--text-muted);
+}
+
+.star[data-on="true"] {
+  color: var(--warning);
+}
+
+.scroller {
+  overflow: auto;
+  max-height: 28rem;
+}
+
+.results {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.results th,
+.results td {
+  text-align: left;
+  padding: var(--space-1, 4px) var(--space-2);
+  font-size: var(--font-size-xs);
+  border-bottom: 1px solid var(--color-border-subtle, var(--border));
+  white-space: nowrap;
+}
+
+.results tbody tr {
+  cursor: pointer;
+}
+
+.cell {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-xs);
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.interp {
+  margin-bottom: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md, 8px);
+  border-left: 3px solid var(--accent);
+}
+
+.interpMuted {
+  border-left-color: var(--text-muted);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.learn {
+  font-size: var(--font-size-xs);
+  margin-bottom: var(--space-2);
+  padding: var(--space-2);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm, 4px);
+}
+
+.learn ul,
+.checkList {
+  margin: var(--space-1, 4px) 0 0 var(--space-4);
+  padding: 0;
+}
+
+.badgeRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1, 4px);
+  margin-bottom: var(--space-2);
+}
+
+.block {
+  font-size: var(--font-size-xs);
+  margin-bottom: var(--space-1, 4px);
+}
+
+.fields {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.fields tr {
+  border-bottom: 1px solid var(--color-border-subtle, var(--border));
+}
+
+.fieldName,
+.fieldValue {
+  padding: var(--space-1, 4px) var(--space-2);
+  font-size: var(--font-size-xs);
+  vertical-align: top;
+}
+
+.fieldName {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  color: var(--text-muted);
+  width: 12rem;
+}
+
+.fieldValue {
+  word-break: break-all;
+}
+
+.raw {
+  font-size: var(--font-size-xs);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.method {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  margin-top: var(--space-1, 4px);
+}
+
+.method body,
+.method div {
+  white-space: pre-wrap;
+  margin-top: var(--space-1, 4px);
+}

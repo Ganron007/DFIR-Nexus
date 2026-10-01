@@ -1,16 +1,29 @@
+/**
+ * Explore (N4), migrated to the kit (WO-U8a).
+ *
+ * The result list is a table and the hit explanation is a Drawer. A cell
+ * click opens the row. It does not rotate the needle — that only happens
+ * from a suggestion chip or the drawer's search control.
+ */
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api, type N4Hit, type HistogramResponse, type PlaybookSuggestion, type HitInterpretation } from "../api/client";
 import { useCase } from "../context/CaseContext";
 import { allHitColumns } from "../lib/hitColumns";
-import VirtualTable, { type Column } from "../components/VirtualTable";
 import Histogram from "../components/Histogram";
+import {
+  Badge,
+  Button,
+  Drawer,
+  EmptyState,
+  Input,
+  PageHeader,
+  Panel,
+} from "@/ui";
+import styles from "./Explore.module.css";
 
 const PAGE_SIZE = 200;
 
-// WP 4j.5: interpretation payloads can arrive partial (older backend, RAG
-// failure, family-less row) — fill defaults so the drawer never dereferences
-// an undefined list, and distinguish "no interpretation" from "still loading".
 const normalizeInterp = (r: HitInterpretation): HitInterpretation => ({
   meaning: r?.meaning || "",
   learn: r?.learn
@@ -35,6 +48,7 @@ const normalizeInterp = (r: HitInterpretation): HitInterpretation => ({
   negative: r?.negative || [],
   caveats: r?.caveats || [],
   confidence_rules: r?.confidence_rules || {},
+  det: r?.det,
   methodology: r?.methodology,
   sources: r?.sources || [],
   error: r?.error,
@@ -54,9 +68,36 @@ const hasInterpContent = (i: HitInterpretation): boolean =>
     (i.learn && i.learn.why_matters.length)
   );
 
+interface SearchOverrides {
+  needles?: string;
+  family?: string;
+  host?: string;
+  start?: string;
+  end?: string;
+}
+
+const sourceLabel = (s?: string) =>
+  s === "mitre" ? "ATT&CK" : s === "sigma" ? "Sigma" : s === "overlay" ? "yours" : "playbook";
+
+function queryString(values: {
+  needles: string;
+  family: string;
+  host: string;
+  start: string;
+  end: string;
+}): string {
+  const next = new URLSearchParams();
+  if (values.needles) next.set("needles", values.needles);
+  if (values.family) next.set("family", values.family);
+  if (values.host) next.set("host", values.host);
+  if (values.start) next.set("start", values.start);
+  if (values.end) next.set("end", values.end);
+  return next.toString();
+}
+
 export default function Explore() {
   const { activeCase } = useCase();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [needles, setNeedles] = useState("");
   const [family, setFamily] = useState("");
   const [hostFilter, setHostFilter] = useState("");
@@ -80,21 +121,15 @@ export default function Explore() {
   const [showPlaybookHelp, setShowPlaybookHelp] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState("");
   const [timeRange, setTimeRange] = useState<{ start: string; end: string }>({ start: "", end: "" });
-  // WP 4i.3: full-field rendering — column picker, sorting, detail drawer, pivot
   const [visibleFields, setVisibleFields] = useState<string[]>([]);
   const [showColPicker, setShowColPicker] = useState(false);
-  const [sortKey, setSortKey] = useState("");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [selected, setSelected] = useState<N4Hit | null>(null);
-  // WP 4j.1: hit interpretation — meaning + what to check next, from skills/playbooks/RAG
   const [interp, setInterp] = useState<HitInterpretation | null>(null);
   const [interpLoading, setInterpLoading] = useState(false);
   const [interpReady, setInterpReady] = useState(false);
   const reqIdRef = useRef(0);
+  const skipUrlEffect = useRef(false);
 
-  // Load family/host aggregates and workbench bookmarks on mount.
-  // Hits belong to the case that produced them. Leaving them on screen
-  // across a case switch showed the previous case's rows under the new name.
   useEffect(() => {
     setHits([]);
     setCount(0);
@@ -109,8 +144,6 @@ export default function Explore() {
       .catch(() => setHostAgg({}));
     api.workbench()
       .then((r) => {
-        // Star state is keyed family:file:line (same as the row check);
-        // bookmarkIds keeps the B-### ids so un-starring removes correctly.
         const ids = new Set<string>();
         const idMap = new Map<string, string>();
         for (const b of r.bookmarks) {
@@ -124,15 +157,11 @@ export default function Explore() {
       .catch((e) => setError(`Bookmark state load failed: ${(e as Error).message}`));
   }, [activeCase]);
 
-  // Phase 4g: suggestions are case-aware — static playbooks PLUS ATT&CK packs
-  // matched to the evidence families actually present, refreshing when the
-  // family aggregate changes.
   useEffect(() => {
     const fams = Object.keys(familyAgg).join(",");
     api.playbookNeedles(fams || undefined)
       .then((r) => setPlaybookSuggestions(r.suggestions || []))
       .catch((e) => setError(`Needle suggestions load failed: ${(e as Error).message}`));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [familyAgg]);
 
   const needleFeedback = async (
@@ -140,10 +169,10 @@ export default function Explore() {
     verdict: "accept" | "reject" | "promote",
   ) => {
     try {
-      const family = Object.keys(familyAgg)[0] || "";
+      const fam = Object.keys(familyAgg)[0] || "";
       await api.needleFeedback({
         needles: pb.needles,
-        family,
+        family: fam,
         source: pb.source || "playbook",
         verdict,
       });
@@ -157,55 +186,11 @@ export default function Explore() {
     }
   };
 
-  const sourceLabel = (s?: string) =>
-    s === "mitre" ? "ATT&CK" : s === "sigma" ? "Sigma" : s === "overlay" ? "yours" : "playbook";
-  const sourceColor = (s?: string) =>
-    s === "mitre"
-      ? "var(--purple)"
-      : s === "sigma"
-        ? "var(--orange)"
-        : s === "overlay"
-          ? "var(--success)"
-          : undefined;
-
-  // WP 4b.10: Read URL params from Timeline brush navigation / Briefing pivots.
-  // Any single param (incl. a needles-only link) re-arms the search; values are
-  // passed to doSearch explicitly so the fetch never sees stale state.
-  useEffect(() => {
-    const start = searchParams.get("start");
-    const end = searchParams.get("end");
-    const fam = searchParams.get("family");
-    const host = searchParams.get("host");
-    const n = searchParams.get("needles");
-    if (start === null && end === null && fam === null && host === null && n === null) return;
-    setFamily(fam || "");
-    setHostFilter(host || "");
-    setNeedles(n || "");
-    setTimeRange({ start: start || "", end: end || "" });
-    setSelected(null);
-    doSearch(0, {
-      needles: n || "",
-      family: fam || "",
-      host: host || "",
-      start: start || "",
-      end: end || "",
-    });
-    // A case switch must re-run the same URL. searchParams alone does not
-    // change, and the previous case's rows would stay on screen.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, activeCase]);
-
-  // Explicit overrides beat component state — callers that just changed a value
-  // pass it here instead of relying on a setTimeout against a stale closure.
-  interface SearchOverrides {
-    needles?: string;
-    family?: string;
-    host?: string;
-    start?: string;
-    end?: string;
-  }
-
-  const doSearch = useCallback(async (targetOffset: number, overrides: SearchOverrides = {}) => {
+  const doSearch = useCallback(async (
+    targetOffset: number,
+    overrides: SearchOverrides = {},
+    fromUrl = false,
+  ) => {
     const reqId = ++reqIdRef.current;
     setLoading(true);
     setHits([]);
@@ -215,6 +200,19 @@ export default function Explore() {
     const hostValue = overrides.host !== undefined ? overrides.host : hostFilter;
     const startValue = overrides.start !== undefined ? overrides.start : timeRange.start;
     const endValue = overrides.end !== undefined ? overrides.end : timeRange.end;
+    if (!fromUrl) {
+      const next = queryString({
+        needles: needleValue,
+        family: famValue,
+        host: hostValue,
+        start: startValue,
+        end: endValue,
+      });
+      if (next !== searchParams.toString()) {
+        skipUrlEffect.current = true;
+        setSearchParams(new URLSearchParams(next), { replace: true });
+      }
+    }
     try {
       const [searchResult, histResult] = await Promise.all([
         api.search({
@@ -241,8 +239,6 @@ export default function Explore() {
       setCapReasons(searchResult.capped_reasons || []);
       setOffset(targetOffset);
       setHistogram(histResult.buckets || {});
-      // WP 4i.3: default visible columns = first 6 fields (priority-ordered);
-      // the picker can show every parsed field. Keep prior selection if still valid.
       const all = allHitColumns(searchResult.hits);
       setVisibleFields((prev) => {
         const stillValid = prev.filter((f) => all.includes(f));
@@ -256,7 +252,34 @@ export default function Explore() {
     } finally {
       if (reqIdRef.current === reqId) setLoading(false);
     }
-  }, [needles, family, hostFilter, timeRange, activeCase]);
+  }, [needles, family, hostFilter, timeRange, activeCase, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (skipUrlEffect.current) {
+      skipUrlEffect.current = false;
+      return;
+    }
+    const start = searchParams.get("start");
+    const end = searchParams.get("end");
+    const fam = searchParams.get("family");
+    const host = searchParams.get("host");
+    const n = searchParams.get("needles");
+    if (start === null && end === null && fam === null && host === null && n === null) return;
+    setFamily(fam || "");
+    setHostFilter(host || "");
+    setNeedles(n || "");
+    setTimeRange({ start: start || "", end: end || "" });
+    setSelected(null);
+    doSearch(0, {
+      needles: n || "",
+      family: fam || "",
+      host: host || "",
+      start: start || "",
+      end: end || "",
+    }, true);
+    // doSearch identity changes when the box changes; this effect is the URL.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, activeCase]);
 
   const search = (resetOffset = true) => {
     doSearch(resetOffset ? 0 : offset);
@@ -274,8 +297,10 @@ export default function Explore() {
     doSearch(0, { host: newHost });
   };
 
+  const hitKey = (hit: N4Hit) => `${hit.family}:${hit.file}:${hit.line}`;
+
   const toggleBookmark = (hit: N4Hit) => {
-    const key = `${hit.family}:${hit.file}:${hit.line}`;
+    const key = hitKey(hit);
     const next = new Set(bookmarked);
     if (next.has(key)) {
       const bid = bookmarkIds.get(key);
@@ -298,8 +323,6 @@ export default function Explore() {
     setBookmarked(next);
   };
 
-  // WP 4j.5c: bookmark the ENTIRE current result set — the server re-runs the
-  // same N4 query so "all" means every matching row, not just the 80 rendered.
   const bookmarkAll = async () => {
     setBookmarking(true);
     setBookmarkNote("");
@@ -317,7 +340,6 @@ export default function Explore() {
           (r.truncated ? ` — capped at 5000 of ${r.matched.toLocaleString()} matched` : "") +
           ` — workbench holds ${r.total}`,
       );
-      // refresh star state so the table reflects the new bookmarks
       const wb = await api.workbench();
       const ids = new Set<string>();
       const idMap = new Map<string, string>();
@@ -337,18 +359,12 @@ export default function Explore() {
 
   const pages = Math.ceil(count / PAGE_SIZE);
   const currentPage = Math.floor(offset / PAGE_SIZE) + 1;
-
   const familyEntries = Object.entries(familyAgg).sort((a, b) => b[1] - a[1]);
   const hostEntries = Object.entries(hostAgg)
     .filter(([k]) => k && k !== "(unknown host)")
     .sort((a, b) => b[1] - a[1]);
-
-  // WP 4i.3: all parsed fields present in this hit set (priority-ordered)
   const allFields = allHitColumns(hits);
 
-  // WP 4i.3: click a field value → rotate the active needle to that value.
-  // The needle box shows exactly what is being searched; clicking a new value
-  // replaces it rather than piling terms into an unmatchable string.
   const pivotOnValue = (value: string) => {
     const v = value.trim();
     if (!v) return;
@@ -357,7 +373,6 @@ export default function Explore() {
     doSearch(0, { needles: v });
   };
 
-  // WP 4j.1: fetch interpretation when a hit is selected for the drawer
   useEffect(() => {
     if (!selected) {
       setInterp(null);
@@ -376,643 +391,447 @@ export default function Explore() {
     return () => { stale = true; };
   }, [selected]);
 
-  // WP 4i.3: client-side sort of the current page
-  const sortedHits = (() => {
-    if (!sortKey) return hits;
-    const val = (h: N4Hit): string => {
-      if (sortKey === "family") return h.family || "";
-      if (sortKey === "host") return h.host || "";
-      if (sortKey === "file") return `${h.file}:${h.line}`;
-      if (sortKey === "terms") return h.terms || "";
-      return h.fields?.[sortKey] ?? "";
-    };
-    const sorted = [...hits].sort((a, b) => val(a).localeCompare(val(b), undefined, { numeric: true }));
-    return sortDir === "desc" ? sorted.reverse() : sorted;
-  })();
-
-  const onSort = (key: string) => {
-    if (sortKey === key) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortKey(key);
-      setSortDir("asc");
-    }
+  const moveField = (fieldName: string, delta: number) => {
+    setVisibleFields((prev) => {
+      const i = prev.indexOf(fieldName);
+      const j = i + delta;
+      if (i < 0 || j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
   };
 
-  // WP 4j.5c: cells render plainly — clicking a row opens the event detail,
-  // it must NEVER rotate the needle out from under the examiner. Pivoting is
-  // deliberate-only: briefing chips, Run-query buttons, or the ⌕ control in
-  // the drawer field table.
-  const typeColumns: Column<N4Hit>[] = visibleFields.map((fieldName) => ({
-    key: fieldName,
-    header: fieldName,
-    width: fieldName.toLowerCase().includes("message") || fieldName.toLowerCase().includes("text") || fieldName.toLowerCase().includes("commandline") ? undefined : 150,
-    render: (h: N4Hit) => {
-      const v = h.fields?.[fieldName] ?? "";
-      return (
-        <span
-          style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", display: "block", whiteSpace: "nowrap" }}
-          title={v || undefined}
-        >
-          {v}
-        </span>
-      );
-    },
-  }));
+  const exportAll = () => {
+    const p = new URLSearchParams();
+    if (activeCase) p.set("case_id", activeCase);
+    if (needles) p.set("needles", needles);
+    if (family) p.set("family", family);
+    if (hostFilter) p.set("host", hostFilter);
+    if (timeRange.start) p.set("start", timeRange.start);
+    if (timeRange.end) p.set("end", timeRange.end);
+    p.set("format", "csv");
+    window.open(`/portal/api/case/export?${p.toString()}`, "_blank");
+  };
 
-  const columns: Column<N4Hit>[] = [
-    {
-      key: "bookmark",
-      header: "★",
-      width: 30,
-      render: (h) => {
-        const key = `${h.family}:${h.file}:${h.line}`;
-        return (
-          <button
-            onClick={(e) => { e.stopPropagation(); toggleBookmark(h); }}
-            style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              color: bookmarked.has(key) ? "var(--warning)" : "var(--text-muted)",
-              fontSize: 14,
-              padding: 0,
-            }}
-          >
-            {bookmarked.has(key) ? "★" : "☆"}
-          </button>
-        );
-      },
-    },
-    {
-      key: "family",
-      header: "Family",
-      width: 100,
-      render: (h) => <span style={{ fontFamily: "monospace", fontSize: 11 }}>{h.family}</span>,
-    },
-    {
-      key: "host",
-      header: "Host",
-      width: 90,
-      render: (h) => (
-        <span style={{ fontFamily: "monospace", fontSize: 11, color: "var(--text-secondary)" }}>
-          {h.host || "—"}
-        </span>
-      ),
-    },
-    ...typeColumns,
-    {
-      key: "file",
-      header: "Source",
-      width: 170,
-      render: (h) => (
-        <span style={{ fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", display: "block", whiteSpace: "nowrap", color: "var(--text-muted)" }}>
-          {h.file}:{h.line}
-        </span>
-      ),
-    },
-    {
-      key: "terms",
-      header: "Terms",
-      width: 110,
-      render: (h) => <span style={{ fontSize: 10, fontFamily: "monospace", color: "var(--text-muted)" }}>{h.terms}</span>,
-    },
-  ];
+  const hitTitle = countLowerBound
+    ? `Hits (≥${count.toLocaleString()}${count > PAGE_SIZE ? ` — page ${currentPage}/${pages}` : ""})`
+    : `Hits (${count.toLocaleString()}${count > PAGE_SIZE ? ` — page ${currentPage}/${pages}` : ""})`;
 
   return (
-    <div>
-      <h2 style={{ marginBottom: 16 }}>Explore</h2>
-      {error && <div className="error-banner">{error}</div>}
+    <div className={styles.page}>
+      <PageHeader title="Explore" subtitle="Search the active case index" stageCode="N4" />
+      {error ? <div role="alert" className="error-banner">{error}</div> : null}
 
-      {/* WP 4b.10: Active time-range filter from Timeline brush */}
-      {(timeRange.start || timeRange.end) && (
-        <div className="card" style={{ padding: "8px 12px", marginBottom: 8 }}>
-          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-            Time filter: <strong>{timeRange.start || "…"}</strong> → <strong>{timeRange.end || "…"}</strong>
-          </span>
-          <button
-            className="btn btn-sm"
-            style={{ marginLeft: 12 }}
-            onClick={() => { setTimeRange({ start: "", end: "" }); doSearch(0, { start: "", end: "" }); }}
-          >
-            Clear time filter
-          </button>
-        </div>
-      )}
+      {(timeRange.start || timeRange.end) ? (
+        <Panel
+          title={`Time filter: ${timeRange.start || "…"} → ${timeRange.end || "…"}`}
+          actions={(
+            <Button
+              size="sm"
+              onClick={() => { setTimeRange({ start: "", end: "" }); doSearch(0, { start: "", end: "" }); }}
+            >
+              Clear time filter
+            </Button>
+          )}
+        >
+          <span className={styles.hint}>From the timeline brush or a briefing link.</span>
+        </Panel>
+      ) : null}
 
-      {/* Search bar */}
-      <div className="card">
-        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-          <input
-            placeholder="Needles (e.g. sdelete, powershell, 1102)"
-            value={needles}
-            onChange={(e) => setNeedles(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && search()}
-            style={{ flex: 1 }}
-          />
-          <input
-            placeholder="Family"
-            value={family}
-            onChange={(e) => setFamily(e.target.value)}
-            style={{ width: 120 }}
-            list="family-list"
-          />
+      <Panel>
+        <div className={styles.searchRow}>
+          <div className={styles.needleField}>
+            <Input
+              aria-label="Needles"
+              placeholder="Needles (e.g. sdelete, powershell, 1102)"
+              value={needles}
+              onChange={(e) => setNeedles(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && search()}
+            />
+          </div>
+          <div className={styles.familyField}>
+            <Input
+              aria-label="Family"
+              placeholder="Family"
+              value={family}
+              onChange={(e) => setFamily(e.target.value)}
+              list="family-list"
+            />
+          </div>
           <datalist id="family-list">
             {familyEntries.map(([key, cnt]) => (
               <option key={key} value={key}>{key} ({cnt})</option>
             ))}
           </datalist>
-          <button className="btn btn-primary" onClick={() => search()}>Search</button>
+          <Button variant="primary" onClick={() => search()}>Search</Button>
         </div>
 
-        {/* WP 4b.5: Needle explanation */}
-        <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>
+        <p className={styles.hint}>
           <strong>Needles</strong> are search terms — IOCs, technique names, file names, event IDs —
           that the N4 query engine searches for across parsed evidence.
           Clicking a briefing chip, field value, or suggested needle replaces this box —
           it always shows exactly what was last searched.
           {" "}
-          <button
-            onClick={() => setShowPlaybookHelp(!showPlaybookHelp)}
-            style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", fontSize: 12 }}
-          >
+          <Button size="sm" variant="ghost" onClick={() => setShowPlaybookHelp(!showPlaybookHelp)}>
             {showPlaybookHelp ? "Hide suggestions" : `Show playbook suggestions (${playbookSuggestions.length})`}
-          </button>
-        </div>
+          </Button>
+        </p>
 
-        {/* WP 4b.5: Playbook needle suggestions */}
-        {showPlaybookHelp && playbookSuggestions.length > 0 && (
-          <div style={{ marginTop: 8, padding: 12, background: "var(--bg-tertiary)", borderRadius: 8 }}>
-            <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8, textTransform: "uppercase" }}>
-              Suggested Needles — Playbooks · MITRE ATT&CK · Sigma · Yours
-            </div>
-            {feedbackMsg && (
-              <div style={{ fontSize: 11, color: "var(--success)", marginBottom: 8 }}>{feedbackMsg}</div>
-            )}
+        {showPlaybookHelp && playbookSuggestions.length > 0 ? (
+          <div className={styles.suggestions}>
+            <div className={styles.kicker}>Suggested Needles — Playbooks · MITRE ATT&CK · Sigma · Yours</div>
+            {feedbackMsg ? <div className={styles.feedback}>{feedbackMsg}</div> : null}
             {playbookSuggestions.slice(0, 8).map((pb) => (
-              <div key={pb.slug} style={{ marginBottom: 8 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 4 }}>
-                  <span
-                    className="badge draft"
-                    style={{
-                      fontSize: 9,
-                      marginRight: 6,
-                      background: pb.source === "mitre" ? "rgba(163,113,247,0.15)" : undefined,
-                      color: sourceColor(pb.source),
-                    }}
-                  >
-                    {sourceLabel(pb.source)}
+              <div key={pb.slug} className={styles.playbook}>
+                <div className={styles.playbookTitle}>
+                  <span className={styles.source} data-source={pb.source || "playbook"}>
+                    <Badge>{sourceLabel(pb.source)}</Badge>
                   </span>
                   {pb.playbook}
                 </div>
-                <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                <div className={styles.chipRow}>
                   {[
                     ...(pb.strong_needles || []),
                     ...pb.needles.filter((n) => !(pb.strong_needles || []).includes(n)),
-                  ]
-                    .slice(0, 10)
-                    .map((n) => (
-                      <button
-                        key={n}
-                        className="btn btn-sm"
-                        style={{
-                          fontFamily: "monospace",
-                          fontSize: 11,
-                          padding: "2px 8px",
-                          borderColor: (pb.strong_needles || []).includes(n) ? "var(--accent)" : undefined,
-                        }}
-                        title={(pb.strong_needles || []).includes(n) ? "high-signal" : ""}
-                        onClick={() => { setNeedles(n); doSearch(0, { needles: n }); }}
-                      >
-                        {n}
-                      </button>
-                    ))}
+                  ].slice(0, 10).map((n) => (
+                    <Button
+                      key={n}
+                      size="sm"
+                      className={(pb.strong_needles || []).includes(n) ? styles.needleStrong : undefined}
+                      title={(pb.strong_needles || []).includes(n) ? "high-signal" : undefined}
+                      onClick={() => { setNeedles(n); doSearch(0, { needles: n }); }}
+                    >
+                      {n}
+                    </Button>
+                  ))}
                 </div>
-                <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
-                  <button className="btn btn-sm" style={{ fontSize: 10 }} onClick={() => needleFeedback(pb, "accept")} title="Mark this suggestion as useful">
-                    ✓ used
-                  </button>
-                  <button className="btn btn-sm" style={{ fontSize: 10 }} onClick={() => needleFeedback(pb, "reject")} title="Reject this suggestion">
-                    ✗ reject
-                  </button>
-                  <button className="btn btn-sm" style={{ fontSize: 10 }} onClick={() => needleFeedback(pb, "promote")} title="Promote to my local overlay (never the repo)">
-                    ★ promote
-                  </button>
+                <div className={styles.chipRow}>
+                  <Button size="sm" onClick={() => needleFeedback(pb, "accept")} title="Mark this suggestion as useful">used</Button>
+                  <Button size="sm" onClick={() => needleFeedback(pb, "reject")} title="Reject this suggestion">reject</Button>
+                  <Button size="sm" onClick={() => needleFeedback(pb, "promote")} title="Promote to my local overlay (never the repo)">promote</Button>
                 </div>
-                {pb.caveats.length > 0 && (
-                  <div style={{ fontSize: 10, color: "var(--warning)", marginTop: 4 }}>
-                    ⚠ {pb.caveats[0]}
-                  </div>
-                )}
+                {pb.caveats.length > 0 ? <div className={styles.caveat}>{pb.caveats[0]}</div> : null}
               </div>
             ))}
           </div>
-        )}
+        ) : null}
 
-        {/* Family facet chips */}
-        {familyEntries.length > 0 && (
-          <div style={{ marginBottom: 8 }}>
-            <span style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", marginRight: 8 }}>Family:</span>
+        {familyEntries.length > 0 ? (
+          <div className={styles.chipRow}>
+            <span className={styles.kicker}>Family</span>
             {familyEntries.slice(0, 20).map(([key, cnt]) => (
-              <button
+              <Button
                 key={key}
-                className="btn btn-sm"
+                size="sm"
+                className={family === key ? styles.chipOn : undefined}
+                aria-pressed={family === key}
                 onClick={() => toggleFamilyChip(key)}
-                style={{
-                  margin: 2,
-                  borderColor: family === key ? "var(--accent)" : undefined,
-                  background: family === key ? "rgba(47,129,247,0.15)" : undefined,
-                }}
               >
                 {key} ({cnt})
-              </button>
+              </Button>
             ))}
           </div>
-        )}
+        ) : null}
 
-        {/* WP 4d.2: Host facet chips */}
-        {hostEntries.length > 0 && (
-          <div style={{ marginBottom: 8 }}>
-            <span style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", marginRight: 8 }}>Host:</span>
+        {hostEntries.length > 0 ? (
+          <div className={styles.chipRow}>
+            <span className={styles.kicker}>Host</span>
             {hostEntries.slice(0, 12).map(([key, cnt]) => (
-              <button
+              <Button
                 key={key}
-                className="btn btn-sm"
+                size="sm"
+                className={hostFilter === key ? styles.chipOn : undefined}
+                aria-pressed={hostFilter === key}
                 onClick={() => toggleHostChip(key)}
-                style={{
-                  margin: 2,
-                  borderColor: hostFilter === key ? "var(--accent)" : undefined,
-                  background: hostFilter === key ? "rgba(47,129,247,0.15)" : undefined,
-                }}
               >
                 {key} ({cnt})
-              </button>
+              </Button>
             ))}
           </div>
-        )}
-      </div>
+        ) : null}
+      </Panel>
 
-      {/* Histogram */}
-      {showHistogram && Object.keys(histogram).length > 0 && (
-        <div className="card">
-          <div className="card-header">
-            <span className="card-title">Event Timeline</span>
-            <button className="btn btn-sm" onClick={() => setShowHistogram(false)}>Hide</button>
-          </div>
+      {showHistogram && Object.keys(histogram).length > 0 ? (
+        <Panel
+          title="Event timeline"
+          actions={<Button size="sm" onClick={() => setShowHistogram(false)}>Hide</Button>}
+        >
           <Histogram buckets={histogram} />
-        </div>
-      )}
+        </Panel>
+      ) : null}
 
-      {/* Hits table */}
-      <div className="card">
-        <div className="card-header">
-          <span
-            className="card-title"
-            title={countLowerBound
-              ? `Counts are LOWER BOUNDS — ${capReasons.join("; ") || "a cap was reached"}`
-              : undefined}
-          >
-            Hits ({countLowerBound ? "≥" : ""}{count.toLocaleString()}{count > PAGE_SIZE && ` — page ${currentPage}/${pages}`})
-            {countLowerBound && (
-              <span style={{ fontSize: 10, color: "var(--warning)", marginLeft: 6 }}>
-                lower bound{capReasons.length > 0 ? ` — ${capReasons.join("; ")}` : ""}
-              </span>
-            )}
-            {countExact && count > PAGE_SIZE && (
-              <span style={{ fontSize: 10, color: "var(--text-muted)", marginLeft: 6 }}>
-                exact total — Export all for every row
-              </span>
-            )}
-          </span>
-          <div style={{ display: "flex", gap: 8 }}>
-            {/* WP 4i.3: column picker — examiner chooses which parsed fields show */}
-            {allFields.length > 0 && (
-              <button className="btn btn-sm" onClick={() => setShowColPicker((v) => !v)}>
+      <Panel
+        title={hitTitle}
+        actions={(
+          <div className={styles.actions}>
+            {allFields.length > 0 ? (
+              <Button size="sm" onClick={() => setShowColPicker((v) => !v)}>
                 Columns ({visibleFields.length}/{allFields.length})
-              </button>
-            )}
-            {count > 0 && (
-              <button
-                className="btn btn-sm"
-                title="Download EVERY matching row as CSV — no result caps (exhaustive enumeration)"
-                onClick={() => {
-                  const p = new URLSearchParams();
-                  if (activeCase) p.set("case_id", activeCase);
-                  if (needles) p.set("needles", needles);
-                  if (family) p.set("family", family);
-                  if (hostFilter) p.set("host", hostFilter);
-                  if (timeRange.start) p.set("start", timeRange.start);
-                  if (timeRange.end) p.set("end", timeRange.end);
-                  p.set("format", "csv");
-                  window.open(`/portal/api/case/export?${p.toString()}`, "_blank");
-                }}
-              >
-                ⭳ Export all
-              </button>
-            )}
-            {count > 0 && (
-              <button
-                className="btn btn-sm"
+              </Button>
+            ) : null}
+            {count > 0 ? (
+              <Button size="sm" title="Download EVERY matching row as CSV — no result caps" onClick={exportAll}>
+                Export all
+              </Button>
+            ) : null}
+            {count > 0 ? (
+              <Button
+                size="sm"
                 disabled={bookmarking || loading}
                 title="Bookmark EVERY hit matching the current search — the full result set, not just this page"
                 onClick={bookmarkAll}
               >
-                {bookmarking ? "Bookmarking…" : `☆ Bookmark all ${count.toLocaleString()}`}
-              </button>
-            )}
-            <button
-              className="btn btn-sm"
-              disabled={offset === 0 || loading}
-              onClick={() => doSearch(Math.max(0, offset - PAGE_SIZE))}
-            >
-              Prev
-            </button>
-            <button
-              className="btn btn-sm"
-              disabled={offset + PAGE_SIZE >= count || loading}
-              onClick={() => doSearch(offset + PAGE_SIZE)}
-            >
-              Next
-            </button>
-          </div>
-        </div>
-
-        {bookmarkNote && (
-          <div style={{ fontSize: 11, color: "var(--warning)", padding: "4px 2px 8px" }}>
-            {bookmarkNote} — <Link to="/workbench" style={{ color: "var(--accent)" }}>open Workbench →</Link>
+                {bookmarking ? "Bookmarking…" : `Bookmark all ${count.toLocaleString()}`}
+              </Button>
+            ) : null}
+            <Button size="sm" disabled={offset === 0 || loading} onClick={() => doSearch(Math.max(0, offset - PAGE_SIZE))}>Prev</Button>
+            <Button size="sm" disabled={offset + PAGE_SIZE >= count || loading} onClick={() => doSearch(offset + PAGE_SIZE)}>Next</Button>
           </div>
         )}
+      >
+        {countLowerBound ? (
+          <p className={styles.bound} title={capReasons.join("; ") || "a cap was reached"}>
+            lower bound{capReasons.length > 0 ? ` — ${capReasons.join("; ")}` : ""}
+          </p>
+        ) : null}
+        {countExact && count > PAGE_SIZE ? (
+          <p className={styles.exact}>exact total — Export all for every row</p>
+        ) : null}
+        {bookmarkNote ? (
+          <p className={styles.note}>
+            {bookmarkNote} — <Link to="/workbench">open Workbench</Link>
+          </p>
+        ) : null}
 
-        {/* WP 4i.3: column picker panel */}
-        {showColPicker && allFields.length > 0 && (
-          <div style={{ padding: "8px 12px", background: "var(--bg-tertiary)", borderRadius: 6, marginBottom: 8 }}>
-            <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6, textTransform: "uppercase" }}>
-              Parsed fields — check to show; arrows reorder
-            </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {showColPicker && allFields.length > 0 ? (
+          <div className={styles.suggestions}>
+            <div className={styles.kicker}>Parsed fields — check to show</div>
+            <div className={styles.chipRow}>
               {allFields.map((f) => {
                 const on = visibleFields.includes(f);
                 return (
-                  <span key={f} style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
-                    <button
-                      className="btn btn-sm"
-                      style={{
-                        fontFamily: "monospace",
-                        fontSize: 11,
-                        borderColor: on ? "var(--accent)" : undefined,
-                        background: on ? "rgba(47,129,247,0.15)" : undefined,
-                      }}
-                      onClick={() =>
-                        setVisibleFields((prev) =>
-                          on ? prev.filter((x) => x !== f) : [...prev, f],
-                        )
-                      }
+                  <span key={f} className={styles.chipRow}>
+                    <Button
+                      size="sm"
+                      className={on ? styles.chipOn : undefined}
+                      aria-pressed={on}
+                      onClick={() => setVisibleFields((prev) => (on ? prev.filter((x) => x !== f) : [...prev, f]))}
                     >
                       {f}
-                    </button>
-                    {on && (
+                    </Button>
+                    {on ? (
                       <>
-                        <button
-                          className="btn btn-sm"
-                          style={{ padding: "0 4px", fontSize: 10 }}
-                          title="Move left"
-                          onClick={() =>
-                            setVisibleFields((prev) => {
-                              const i = prev.indexOf(f);
-                              if (i <= 0) return prev;
-                              const next = [...prev];
-                              [next[i - 1], next[i]] = [next[i], next[i - 1]];
-                              return next;
-                            })
-                          }
-                        >
-                          ◀
-                        </button>
-                        <button
-                          className="btn btn-sm"
-                          style={{ padding: "0 4px", fontSize: 10 }}
-                          title="Move right"
-                          onClick={() =>
-                            setVisibleFields((prev) => {
-                              const i = prev.indexOf(f);
-                              if (i < 0 || i >= prev.length - 1) return prev;
-                              const next = [...prev];
-                              [next[i + 1], next[i]] = [next[i], next[i + 1]];
-                              return next;
-                            })
-                          }
-                        >
-                          ▶
-                        </button>
+                        <Button size="sm" title="Move left" onClick={() => moveField(f, -1)}>◀</Button>
+                        <Button size="sm" title="Move right" onClick={() => moveField(f, 1)}>▶</Button>
                       </>
-                    )}
+                    ) : null}
                   </span>
                 );
               })}
             </div>
           </div>
-        )}
+        ) : null}
 
         {loading ? (
-          <div className="loading">Searching...</div>
+          <p className={styles.loading}>Searching...</p>
         ) : hits.length === 0 ? (
-          <div className="empty-state">
-            <h3>No hits</h3>
-            {!activeCase ? (
-              <>
-                <p>No active case — Explore searches the active case's N3 index.</p>
-                <Link to="/case-setup" className="btn btn-primary" style={{ marginTop: 12, display: "inline-block" }}>
-                  Go to Case Setup (N1)
-                </Link>
-              </>
-            ) : (
-              <>
-                <p>Enter needles above and click Search.</p>
-                <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                  If the index is empty, register evidence and run the N2 processing lane first (Case Setup, steps 2 and 4).
-                </p>
-              </>
-            )}
-          </div>
-        ) : (
-          <VirtualTable
-            rows={sortedHits}
-            columns={columns}
-            rowKey={(h, i) => `${h.family}:${h.file}:${h.line}:${i}`}
-            maxHeight="60vh"
-            sortKey={sortKey}
-            sortDir={sortDir}
-            onSort={onSort}
-            onRowClick={(h) => setSelected(h)}
+          <EmptyState
+            title="No hits"
+            hint={activeCase
+              ? "Enter needles above and click Search. If the index is empty, register evidence and run the N2 processing lane first."
+              : "No active case — Explore searches the active case's N3 index."}
+            action={!activeCase ? <Link to="/case-setup">Go to Case Setup (N1)</Link> : undefined}
           />
-        )}
-      </div>
-
-      {/* WP 4i.3: hit detail drawer — every parsed field + raw row + provenance */}
-      {selected && (
-        <div className="card" style={{ position: "sticky", bottom: 0, maxHeight: "45vh", overflowY: "auto" }}>
-          <div className="card-header">
-            <span className="card-title">
-              Hit detail — {selected.family} · {selected.host || "unknown host"}
-            </span>
-            <button className="btn btn-sm" onClick={() => setSelected(null)}>Close</button>
-          </div>
-          <div style={{ padding: "8px 12px" }}>
-            <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8 }}>
-              {selected.file}:{selected.line} · terms: {selected.terms || "—"}
-            </div>
-
-            {/* WP 4j.1: what this means + what to check next. The panel always
-                resolves — a row with no skill coverage gets an honest note
-                instead of a silent gap. */}
-            {interpLoading && (
-              <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 8 }}>
-                Interpreting…
-              </div>
-            )}
-            {!interpLoading && interpReady && !interp && (
-              <div style={{
-                marginBottom: 10, padding: "8px 10px", fontSize: 11,
-                background: "var(--bg-tertiary)", borderRadius: 6,
-                borderLeft: "3px solid var(--text-muted)", color: "var(--text-muted)",
-              }}>
-                Interpretation unavailable for this row — the source fields are below;
-                use ⌕ search on a value to keep digging.
-              </div>
-            )}
-            {interp && (
-              <div style={{
-                marginBottom: 10, padding: "8px 10px",
-                background: "var(--bg-tertiary)", borderRadius: 6,
-                borderLeft: "3px solid var(--accent)",
-              }}>
-                {!hasInterpContent(interp) && (
-                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                    No skill procedure covers this row yet — use ⌕ search on a
-                    field value below or open the source file for context.
-                  </div>
-                )}
-                {interp.meaning && (
-                  <div style={{ fontSize: 12, marginBottom: 6 }}>{interp.meaning}</div>
-                )}
-                {interp.learn && interp.learn.why_matters.length > 0 && (
-                  <div style={{
-                    fontSize: 11, marginBottom: 6, padding: "6px 8px",
-                    background: "var(--bg-tertiary)", borderRadius: 4,
-                  }}>
-                    <strong style={{ color: "var(--text-secondary)" }}>Why this matters:</strong>{" "}
-                    <span>{interp.learn.headline}</span>
-                    <ul style={{ margin: "2px 0 0 16px", padding: 0, color: "var(--text-muted)" }}>
-                      {interp.learn.why_matters.slice(0, 3).map((w, wi) => <li key={wi}>{w}</li>)}
-                    </ul>
-                  </div>
-                )}
-                {interp.skills.length > 0 && (
-                  <div style={{ marginBottom: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
-                    {interp.skills.map((s) => (
-                      <span key={s.name} className="badge draft" style={{ fontSize: 9 }}
-                            title={s.title}>
-                        {s.name}{s.mitre.length ? ` · ${s.mitre.join(",")}` : ""}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                {interp.det && interp.det.length > 0 && (
-                  <div style={{ marginBottom: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
-                    {interp.det.map((d) => (
-                      <span key={d.id} className="badge" style={{ fontSize: 9 }}
-                            title={`DET · ${d.platform} · ${(d.techniques || []).join(", ")}`}>
-                        {d.name}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                {interp.look_for.length > 0 && (
-                  <div style={{ fontSize: 11, marginBottom: 4 }}>
-                    <strong style={{ color: "var(--text-secondary)" }}>Check next:</strong>
-                    <ul style={{ margin: "2px 0 0 16px", padding: 0 }}>
-                      {interp.look_for.map((lf, i) => <li key={i}>{lf}</li>)}
-                    </ul>
-                  </div>
-                )}
-                {interp.next_queries.length > 0 && (
-                  <div style={{ fontSize: 11, marginBottom: 4 }}>
-                    <strong style={{ color: "var(--text-secondary)" }}>Run:</strong>{" "}
-                    {interp.next_queries.map((q) => (
-                      <button key={q} className="btn btn-sm"
-                              style={{ fontFamily: "monospace", fontSize: 10, marginRight: 4 }}
-                              title="Search this query"
-                              onClick={() => { setNeedles(q); setSelected(null); doSearch(0, { needles: q }); }}>
-                        {q.length > 40 ? q.slice(0, 40) + "…" : q}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {interp.pivots.length > 0 && (
-                  <div style={{ fontSize: 11, marginBottom: 4 }}>
-                    <strong style={{ color: "var(--text-secondary)" }}>Pivot on:</strong>{" "}
-                    <span style={{ fontFamily: "monospace" }}>{interp.pivots.join(", ")}</span>
-                  </div>
-                )}
-                {interp.corroborate.length > 0 && (
-                  <div style={{ fontSize: 11, marginBottom: 4 }}>
-                    <strong style={{ color: "var(--text-secondary)" }}>Corroborate:</strong>
-                    <ul style={{ margin: "2px 0 0 16px", padding: 0 }}>
-                      {interp.corroborate.map((c, i) => <li key={i}>{c}</li>)}
-                    </ul>
-                  </div>
-                )}
-                {interp.negative.length > 0 && (
-                  <div style={{ fontSize: 11, marginBottom: 4, color: "var(--text-muted)" }}>
-                    <strong>If absent:</strong> {interp.negative.join(" ")}
-                  </div>
-                )}
-                {interp.caveats.length > 0 && (
-                  <div style={{ fontSize: 10, color: "var(--warning)" }}>
-                    {interp.caveats.map((c, i) => <div key={i}>⚠ {c}</div>)}
-                  </div>
-                )}
-                {interp.methodology && (
-                  <details style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 4 }}>
-                    <summary style={{ cursor: "pointer" }} title="Text excerpt retrieved from the knowledge base — not generated by an LLM">
-                      Methodology (KB retrieval — not LLM-generated)
-                    </summary>
-                    <div style={{ whiteSpace: "pre-wrap", marginTop: 4 }}>{interp.methodology}</div>
-                  </details>
-                )}
-              </div>
-            )}
-
-            {selected.fields && Object.keys(selected.fields).length > 0 ? (
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <tbody>
-                  {Object.entries(selected.fields).map(([k, v]) => (
-                    <tr key={k} style={{ borderBottom: "1px solid var(--border)" }}>
-                      <td style={{ padding: "4px 8px", fontFamily: "monospace", fontSize: 11, color: "var(--text-muted)", width: 200, verticalAlign: "top" }}>
-                        {k}
+        ) : (
+          <div className={styles.scroller}>
+            <table className={styles.results}>
+              <thead>
+                <tr>
+                  <th>Saved</th>
+                  <th>Family</th>
+                  <th>Host</th>
+                  {visibleFields.map((fieldName) => <th key={fieldName}>{fieldName}</th>)}
+                  <th>Source</th>
+                  <th>Terms</th>
+                </tr>
+              </thead>
+              <tbody>
+                {hits.map((hit, index) => {
+                  const on = bookmarked.has(hitKey(hit));
+                  return (
+                    <tr key={`${hit.family}:${hit.file}:${hit.line}:${index}`} onClick={() => setSelected(hit)}>
+                      <td>
+                        <button
+                          type="button"
+                          className={styles.star}
+                          data-on={on ? "true" : "false"}
+                          aria-pressed={on}
+                          aria-label={on ? "Remove bookmark" : "Bookmark hit"}
+                          onClick={(e) => { e.stopPropagation(); toggleBookmark(hit); }}
+                        >
+                          {on ? "★" : "☆"}
+                        </button>
                       </td>
-                      <td style={{ padding: "4px 8px", fontSize: 11, wordBreak: "break-all" }}>
-                        {v}
-                        {v && (
-                          <button
-                            className="btn btn-sm"
-                            style={{ marginLeft: 8, padding: "0 5px", fontSize: 10, lineHeight: 1.4 }}
-                            title={`Search this value (rotates the needle to "${v.slice(0, 60)}")`}
-                            onClick={() => pivotOnValue(v)}
-                          >
-                            ⌕ search
-                          </button>
-                        )}
-                      </td>
+                      <td className={styles.mono}>{hit.family}</td>
+                      <td className={`${styles.mono} ${styles.muted}`}>{hit.host || "—"}</td>
+                      {visibleFields.map((fieldName) => (
+                        <td key={fieldName} className={styles.cell}>{hit.fields?.[fieldName] ?? ""}</td>
+                      ))}
+                      <td className={styles.muted}>{hit.file}:{hit.line}</td>
+                      <td className={`${styles.mono} ${styles.muted}`}>{hit.terms}</td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              <pre style={{ fontSize: 11, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>{selected.text}</pre>
-            )}
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
+        )}
+      </Panel>
+
+      <Drawer
+        open={Boolean(selected)}
+        onOpenChange={(next) => { if (!next) setSelected(null); }}
+        title={selected ? `Hit detail — ${selected.family} · ${selected.host || "unknown host"}` : "Hit detail"}
+        width={640}
+      >
+        {selected ? (
+          <HitDetail
+            hit={selected}
+            interp={interp}
+            interpLoading={interpLoading}
+            interpReady={interpReady}
+            onPivot={pivotOnValue}
+            onRunQuery={(q) => { setNeedles(q); setSelected(null); doSearch(0, { needles: q }); }}
+          />
+        ) : null}
+      </Drawer>
+    </div>
+  );
+}
+
+function HitDetail({
+  hit,
+  interp,
+  interpLoading,
+  interpReady,
+  onPivot,
+  onRunQuery,
+}: {
+  hit: N4Hit;
+  interp: HitInterpretation | null;
+  interpLoading: boolean;
+  interpReady: boolean;
+  onPivot: (value: string) => void;
+  onRunQuery: (query: string) => void;
+}) {
+  return (
+    <div>
+      <p className={styles.hint}>{hit.file}:{hit.line} · terms: {hit.terms || "—"}</p>
+      {interpLoading ? <p className={styles.hint}>Interpreting…</p> : null}
+      {!interpLoading && interpReady && !interp ? (
+        <div className={`${styles.interp} ${styles.interpMuted}`}>
+          Interpretation unavailable for this row — the source fields are below;
+          use search on a value to keep digging.
         </div>
+      ) : null}
+      {interp ? (
+        <div className={styles.interp}>
+          {!hasInterpContent(interp) ? (
+            <p className={styles.hint}>
+              No skill procedure covers this row yet — use search on a
+              field value below or open the source file for context.
+            </p>
+          ) : null}
+          {interp.meaning ? <p>{interp.meaning}</p> : null}
+          {interp.learn && interp.learn.why_matters.length > 0 ? (
+            <div className={styles.learn}>
+              <strong>Why this matters:</strong> {interp.learn.headline}
+              <ul>
+                {interp.learn.why_matters.slice(0, 3).map((w, wi) => <li key={wi}>{w}</li>)}
+              </ul>
+            </div>
+          ) : null}
+          {interp.skills.length > 0 ? (
+            <div className={styles.badgeRow}>
+              {interp.skills.map((s) => (
+                <Badge key={s.name}>{s.name}{s.mitre.length ? ` · ${s.mitre.join(",")}` : ""}</Badge>
+              ))}
+            </div>
+          ) : null}
+          {interp.det && interp.det.length > 0 ? (
+            <div className={styles.badgeRow}>
+              {interp.det.map((d) => (
+                <Badge key={d.id}>{d.name}</Badge>
+              ))}
+            </div>
+          ) : null}
+          {interp.look_for.length > 0 ? (
+            <div className={styles.block}>
+              <strong>Check next:</strong>
+              <ul className={styles.checkList}>{interp.look_for.map((lf, i) => <li key={i}>{lf}</li>)}</ul>
+            </div>
+          ) : null}
+          {interp.next_queries.length > 0 ? (
+            <div className={styles.block}>
+              <strong>Run:</strong>{" "}
+              {interp.next_queries.map((q) => (
+                <Button key={q} size="sm" title="Search this query" onClick={() => onRunQuery(q)}>
+                  {q.length > 40 ? `${q.slice(0, 40)}…` : q}
+                </Button>
+              ))}
+            </div>
+          ) : null}
+          {interp.pivots.length > 0 ? (
+            <p className={styles.block}><strong>Pivot on:</strong> <span className={styles.mono}>{interp.pivots.join(", ")}</span></p>
+          ) : null}
+          {interp.corroborate.length > 0 ? (
+            <div className={styles.block}>
+              <strong>Corroborate:</strong>
+              <ul className={styles.checkList}>{interp.corroborate.map((c, i) => <li key={i}>{c}</li>)}</ul>
+            </div>
+          ) : null}
+          {interp.negative.length > 0 ? (
+            <p className={`${styles.block} ${styles.muted}`}><strong>If absent:</strong> {interp.negative.join(" ")}</p>
+          ) : null}
+          {interp.caveats.length > 0 ? (
+            <div className={styles.caveat}>{interp.caveats.map((c, i) => <div key={i}>{c}</div>)}</div>
+          ) : null}
+          {interp.methodology ? (
+            <details className={styles.method}>
+              <summary title="Text excerpt retrieved from the knowledge base — not generated by an LLM">
+                Methodology (KB retrieval — not LLM-generated)
+              </summary>
+              <div>{interp.methodology}</div>
+            </details>
+          ) : null}
+        </div>
+      ) : null}
+
+      {hit.fields && Object.keys(hit.fields).length > 0 ? (
+        <table className={styles.fields}>
+          <tbody>
+            {Object.entries(hit.fields).map(([k, v]) => (
+              <tr key={k}>
+                <td className={styles.fieldName}>{k}</td>
+                <td className={styles.fieldValue}>
+                  {v}
+                  {v ? (
+                    <Button
+                      size="sm"
+                      title={`Search this value (rotates the needle to "${v.slice(0, 60)}")`}
+                      onClick={() => onPivot(v)}
+                    >
+                      search
+                    </Button>
+                  ) : null}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <pre className={styles.raw}>{hit.text}</pre>
       )}
     </div>
   );
