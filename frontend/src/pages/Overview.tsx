@@ -187,11 +187,10 @@ export default function Overview() {
         <h2>Case Dashboard</h2>
         <div style={{ display: "flex", gap: 8 }}>
           <button
-            className="btn btn-sm"
+            className="btn btn-sm btn-seed"
             onClick={handleSeedDemo}
             disabled={seeding}
             title="Create a pre-populated test case (does not switch the active case)"
-            style={{ background: "rgba(47, 129, 247, 0.15)", border: "1px solid rgba(47, 129, 247, 0.4)", color: "var(--accent)" }}
           >
             {seeding ? "Seeding..." : "⚡ Seed Demo Investigation"}
           </button>

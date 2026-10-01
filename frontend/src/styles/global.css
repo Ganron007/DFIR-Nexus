@@ -9,7 +9,7 @@
   --border-light: #484f58;
   --text-primary: #e6edf3;
   --text-secondary: #8b949e;
-  --text-muted: #6e7681;
+  --text-muted: #8b949e;
   --accent: #2f81f7;
   --accent-hover: #4493f8;
   --success: #3fb950;
@@ -324,9 +324,10 @@ body {
 }
 
 .btn-primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: white;
+  /* Darker than --accent so white label text clears WCAG on a 12px button. */
+  background: #0d4ea6;
+  border-color: #0d4ea6;
+  color: #fff;
 }
 
 .btn-primary:hover {
@@ -337,6 +338,12 @@ body {
   background: var(--danger);
   border-color: var(--danger);
   color: white;
+}
+
+.btn-seed {
+  background: #0d4ea6;
+  border: 1px solid #0d4ea6;
+  color: #fff;
 }
 
 .btn-sm {
