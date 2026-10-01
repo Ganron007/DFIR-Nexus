@@ -1,0 +1,43 @@
+/* Ingest page (WO-U8a / WP 14.8) - tokens only, zero inline styles. */
+
+.pathRow {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.pathRow > * {
+  flex: 2 1 20rem;
+  min-width: 0;
+}
+
+.pathRow > :last-child {
+  flex: 0 0 auto;
+}
+
+.hint {
+  font-size: var(--font-size-xs);
+  color: var(--color-fg-muted);
+  margin: 0 0 var(--space-3);
+}
+
+.hint code {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2xs);
+  padding: 1px var(--space-1);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+}
+
+/* Tool output is shown verbatim - it names the files it touched, and an
+   examiner needs to see exactly what the tool said. */
+.output {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2xs);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: var(--space-3) 0 0;
+  max-height: 18rem;
+  overflow-y: auto;
+}

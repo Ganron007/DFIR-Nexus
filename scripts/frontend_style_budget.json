@@ -71,7 +71,7 @@
       "colors": 0
     },
     "pages/Ingest.tsx": {
-      "inline": 16,
+      "inline": 0,
       "colors": 0
     },
     "pages/Iocs.tsx": {
@@ -95,7 +95,7 @@
       "colors": 3
     },
     "pages/Todos.tsx": {
-      "inline": 8,
+      "inline": 0,
       "colors": 0
     },
     "pages/Transparency.tsx": {
@@ -192,7 +192,7 @@
     }
   },
   "totals": {
-    "inline": 911,
+    "inline": 887,
     "colors": 83
   }
 }

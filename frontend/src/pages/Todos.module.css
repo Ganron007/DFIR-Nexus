@@ -1,0 +1,25 @@
+/* TODOs page (WO-U8a / WP 14.8) - tokens only, zero inline styles. */
+
+.addRow {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.addRow > * {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.addRow > :last-child {
+  flex: 0 0 auto;
+}
+
+/* A completed follow-up stays readable and stays in the list - striking it
+   through says "done", not "gone", so an examiner reviewing the case can still
+   see what was chased and closed. */
+.done {
+  text-decoration: line-through;
+  opacity: 0.7;
+}

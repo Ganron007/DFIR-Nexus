@@ -1,19 +1,27 @@
 /**
- * Ingest — the post-N1–N8 stage (operator 2026-09-29).
+ * Ingest — the post-N1–N8 stage, migrated to the kit (WO-U8a).
  *
  * Two paths on one page:
- *   1. Importers — bring logs/artifacts (Zeek, Suricata, SIEM, cloud, PCAP,
- *      …) onto the same case index via the auto-detect importer registry.
+ *   1. Importers — logs/artifacts (Zeek, Suricata, SIEM, cloud, PCAP, …) onto
+ *      the same case index via the auto-detect importer registry.
  *   2. SIFT outputs (Option B) — the examiner ran SIFT elsewhere; the outputs
- *      are staged into sift/extractions where the indexer + field mappings
- *      pick them up. No SIFT host or MCP is required for this path.
+ *      are staged where the indexer and field mappings pick them up. No SIFT
+ *      host or MCP required.
  *
- * Everything lands on the same case index, so the normal N4–N8 surfaces see
- * it immediately after the index refresh that both actions trigger.
+ * Kit: PageHeader + Panel + Field/Input/Button, styles in a CSS module, zero
+ * inline style objects.
+ *
+ * One behaviour kept deliberately: both endpoints answer HTTP 200 with an
+ * `ok: false` body rather than failing, so the old code checked `r.ok` and
+ * surfaced `r.error`. The mutations keep that check — treating a 200 with
+ * `ok: false` as success would report an ingest that never happened.
  */
 import { useState } from "react";
-import { api } from "../api/client";
+
 import { useCase } from "../context/CaseContext";
+import { api } from "../api/client";
+import { Button, Field, Input, PageHeader, Panel } from "@/ui";
+import styles from "./Ingest.module.css";
 
 export default function Ingest() {
   const { activeCase } = useCase();
@@ -33,15 +41,21 @@ export default function Ingest() {
     setError("");
     setImpResult("");
     try {
-      const r = await api.ingest(impPath.trim(), impSource.trim() || undefined, activeCase);
-      if (r.ok) {
-        const res = r.result ? JSON.stringify(r.result) : "";
-        setImpResult(`Ingested.${res ? ` ${res.slice(0, 400)}` : ""}\n${(r.index || []).join("\n")}`);
+      const response = await api.ingest(
+        impPath.trim(),
+        impSource.trim() || undefined,
+        activeCase,
+      );
+      if (response.ok) {
+        const detail = response.result ? JSON.stringify(response.result) : "";
+        setImpResult(
+          `Ingested.${detail ? ` ${detail.slice(0, 400)}` : ""}\n${(response.index || []).join("\n")}`,
+        );
       } else {
-        setError(r.error || "ingest failed");
+        setError(response.error || "ingest failed");
       }
-    } catch (e) {
-      setError((e as Error).message);
+    } catch (exc) {
+      setError((exc as Error).message);
     } finally {
       setImpBusy(false);
     }
@@ -53,95 +67,130 @@ export default function Ingest() {
     setError("");
     setSiftResult("");
     try {
-      const r = await api.siftIngest(siftPath.trim(), siftFamily.trim() || undefined, activeCase);
-      if (r.ok) {
+      const response = await api.siftIngest(
+        siftPath.trim(),
+        siftFamily.trim() || undefined,
+        activeCase,
+      );
+      if (response.ok) {
         setSiftResult(
-          `Staged: ${(r.staged || []).join(", ")}\n${(r.index || []).join("\n")}`,
+          `Staged: ${(response.staged || []).join(", ")}\n${(response.index || []).join("\n")}`,
         );
       } else {
-        setError(r.error || "SIFT ingest failed");
+        setError(response.error || "SIFT ingest failed");
       }
-    } catch (e) {
-      setError((e as Error).message);
+    } catch (exc) {
+      setError((exc as Error).message);
     } finally {
       setSiftBusy(false);
     }
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <h2 style={{ margin: 0 }}>Ingest</h2>
-      <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)" }}>
-        Bring later-arriving evidence onto the same case index. Ingested rows join the normal
-        N4–N8 surfaces (Explore, Briefing, Modes) after the index refresh.
-      </p>
-      {error && (
-        <div className="card" style={{ borderColor: "var(--danger)", color: "var(--danger)", fontSize: 13 }}>
+    <div className={styles.page}>
+      <PageHeader
+        title="Ingest"
+        subtitle="Bring later-arriving evidence onto the same case index. Ingested rows join the normal N4–N8 surfaces (Explore, Briefing, Modes) after the index refresh."
+        stageCode="N2"
+      />
+
+      {error ? (
+        <div role="alert" className="error-banner">
           {error}
         </div>
-      )}
+      ) : null}
 
-      <div className="card">
-        <h3 style={{ marginTop: 0 }}>Importers — logs &amp; artifacts</h3>
-        <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
-          Auto-detect and import Zeek/Suricata/SIEM exports, cloud logs, PCAP (flow projection),
-          mailboxes and more. Leave “source” empty to let the sniffer decide.
+      <Panel title="Importers — logs & artifacts">
+        <p className={styles.hint}>
+          Auto-detect and import Zeek/Suricata/SIEM exports, cloud logs, PCAP
+          (flow projection), mailboxes and more. Leave “source” empty to let the
+          sniffer decide.
         </p>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <input
-            className="input"
-            style={{ flex: "2 1 340px" }}
-            placeholder="Path to file or directory (e.g. D:\evidence\conn.log)"
-            value={impPath}
-            onChange={(e) => setImpPath(e.target.value)}
-          />
-          <input
-            className="input"
-            style={{ flex: "1 1 140px" }}
-            placeholder="source (optional)"
-            value={impSource}
-            onChange={(e) => setImpSource(e.target.value)}
-          />
-          <button className="btn btn-primary" onClick={runImporter} disabled={impBusy || !impPath.trim()}>
+        <div className={styles.pathRow}>
+          <Field label="Path">
+            {({ id }) => (
+              <Input
+                id={id}
+                placeholder="Path to file or directory (e.g. D:\evidence\conn.log)"
+                value={impPath}
+                disabled={impBusy}
+                onChange={(event) => setImpPath(event.target.value)}
+              />
+            )}
+          </Field>
+          <Field label="Source (optional)">
+            {({ id }) => (
+              <Input
+                id={id}
+                placeholder="source"
+                value={impSource}
+                disabled={impBusy}
+                onChange={(event) => setImpSource(event.target.value)}
+              />
+            )}
+          </Field>
+          <Button
+            variant="primary"
+            onClick={runImporter}
+            disabled={impBusy || !impPath.trim()}
+            data-testid="ingest-run"
+          >
             {impBusy ? "Ingesting…" : "Ingest"}
-          </button>
+          </Button>
         </div>
-        {impResult && (
-          <pre style={{ fontSize: 11, marginTop: 10, whiteSpace: "pre-wrap" }}>{impResult}</pre>
-        )}
-      </div>
+        {impResult ? (
+          <pre className={styles.output} data-testid="ingest-result">
+            {impResult}
+          </pre>
+        ) : null}
+      </Panel>
 
-      <div className="card">
-        <h3 style={{ marginTop: 0 }}>SIFT outputs — Option B (no SIFT host required)</h3>
-        <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
-          Ran SIFT yourself (plaso, vol3, SleuthKit, bulk_extractor)? Stage the outputs here as a
-          file, directory, or .zip. Name the family (<code>plaso</code>, <code>vol</code>,{" "}
-          <code>fls</code>, <code>bulk_extractor</code>) so the field mappings apply — or leave it
+      <Panel title="SIFT outputs — Option B (no SIFT host required)">
+        <p className={styles.hint}>
+          Ran SIFT yourself (plaso, vol3, SleuthKit, bulk_extractor)? Stage the
+          outputs here as a file, directory, or .zip. Name the family (
+          <code>plaso</code>, <code>vol</code>, <code>fls</code>,{" "}
+          <code>bulk_extractor</code>) so the field mappings apply — or leave it
           empty to use the file/folder name.
         </p>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <input
-            className="input"
-            style={{ flex: "2 1 340px" }}
-            placeholder="Path to SIFT output (file / dir / .zip)"
-            value={siftPath}
-            onChange={(e) => setSiftPath(e.target.value)}
-          />
-          <input
-            className="input"
-            style={{ flex: "1 1 140px" }}
-            placeholder="family (optional)"
-            value={siftFamily}
-            onChange={(e) => setSiftFamily(e.target.value)}
-          />
-          <button className="btn btn-primary" onClick={runSiftIngest} disabled={siftBusy || !siftPath.trim()}>
+        <div className={styles.pathRow}>
+          <Field label="Path">
+            {({ id }) => (
+              <Input
+                id={id}
+                placeholder="Path to SIFT output (file / dir / .zip)"
+                value={siftPath}
+                disabled={siftBusy}
+                onChange={(event) => setSiftPath(event.target.value)}
+              />
+            )}
+          </Field>
+          <Field label="Family (optional)">
+            {({ id }) => (
+              <Input
+                id={id}
+                placeholder="family"
+                value={siftFamily}
+                disabled={siftBusy}
+                onChange={(event) => setSiftFamily(event.target.value)}
+              />
+            )}
+          </Field>
+          <Button
+            variant="primary"
+            onClick={runSiftIngest}
+            disabled={siftBusy || !siftPath.trim()}
+            data-testid="sift-ingest-run"
+          >
             {siftBusy ? "Staging…" : "Stage & index"}
-          </button>
+          </Button>
         </div>
-        {siftResult && (
-          <pre style={{ fontSize: 11, marginTop: 10, whiteSpace: "pre-wrap" }}>{siftResult}</pre>
-        )}
-      </div>
+        {siftResult ? (
+          <pre className={styles.output} data-testid="sift-ingest-result">
+            {siftResult}
+          </pre>
+        ) : null}
+      </Panel>
     </div>
   );
 }

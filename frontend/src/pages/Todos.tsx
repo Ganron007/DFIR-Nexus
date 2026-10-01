@@ -1,175 +1,238 @@
 /**
- * WP 4d.4: TODOs page — investigation follow-ups from the case TODO list.
- * 4j.5n: examiner add/complete via the portal (was CLI-only before).
+ * TODOs — investigation follow-ups (WP 4d.4 / 4j.5n), migrated to the kit
+ * (WO-U8a).
+ *
+ * Kit: PageHeader + Panel + EmptyState + Badge + Button/Field/Select, styles in
+ * a CSS module, zero inline style objects.
+ * Data: two case-scoped queries. The old page re-fetched through a component
+ * -local `load()` after every write, with no cache to invalidate — a write on
+ * one screen left another reading stale TODOs. The mutations now invalidate the
+ * list they belong to.
+ *
+ * A sealed case still shows its TODOs and still allows reading them; it simply
+ * refuses new writes, the same rule the old page applied.
  */
-import { useEffect, useState } from "react";
-import { api, type Todo } from "../api/client";
+import { useState } from "react";
+
 import { useCase } from "../context/CaseContext";
+import { isDone, todoId, useTodoMutations, useTodos } from "../api/queries/todos";
+import {
+  Badge,
+  Button,
+  EmptyState,
+  Field,
+  Input,
+  PageHeader,
+  Panel,
+  Select,
+} from "@/ui";
+import type { SemanticTone } from "@/ui";
+import styles from "./Page.module.css";
+import pageStyles from "./Todos.module.css";
+
+function priorityTone(priority: string | undefined): SemanticTone | undefined {
+  switch ((priority || "medium").toLowerCase()) {
+    case "high":
+      return "sev-high";
+    case "medium":
+      return "sev-medium";
+    case "low":
+      return "sev-low";
+    default:
+      return undefined;
+  }
+}
 
 export default function Todos() {
   const { activeCase, caseSummaries } = useCase();
-  const [todos, setTodos] = useState<Todo[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [desc, setDesc] = useState("");
   const [priority, setPriority] = useState("medium");
   const [assignee, setAssignee] = useState("");
-  const [adding, setAdding] = useState(false);
-  const [busyId, setBusyId] = useState("");
+
+  const { data, isLoading, error } = useTodos(activeCase, statusFilter);
+  const { add, setStatus } = useTodoMutations(activeCase, statusFilter);
 
   const caseStatus = activeCase ? caseSummaries[activeCase]?.status || "" : "";
-  const isLocked = caseStatus === "sealed" || caseStatus === "closed" || caseStatus === "archived";
+  const isLocked = ["sealed", "closed", "archived"].includes(caseStatus);
 
-  const load = () => {
-    if (!activeCase) {
-      setTodos([]);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setError("");
-    api.todos(statusFilter || undefined)
-      .then((r) => setTodos(r.todos))
-      .catch((e) => setError((e as Error).message))
-      .finally(() => setLoading(false));
+  const todos = data?.todos ?? [];
+  const busy = add.isPending || setStatus.isPending;
+  const failure =
+    (error as Error | null)?.message ||
+    (add.error as Error | null)?.message ||
+    (setStatus.error as Error | null)?.message ||
+    "";
+
+  const submit = () => {
+    if (!desc.trim() || isLocked) return;
+    add.mutate(
+      { description: desc.trim(), priority, assignee: assignee.trim() || undefined },
+      {
+        onSuccess: () => {
+          setDesc("");
+          setAssignee("");
+        },
+      },
+    );
   };
-
-  useEffect(load, [activeCase, statusFilter]);
-
-  const add = async () => {
-    if (!desc.trim()) return;
-    setAdding(true);
-    setError("");
-    try {
-      const r = await api.addTodo({
-        description: desc.trim(),
-        priority,
-        assignee: assignee.trim() || undefined,
-      });
-      if (r.error) throw new Error(r.error);
-      setDesc("");
-      setAssignee("");
-      load();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setAdding(false);
-    }
-  };
-
-  const setStatus = async (t: Todo, status: string) => {
-    const id = String(t.todo_id || t.id || "");
-    if (!id) return;
-    setBusyId(id);
-    setError("");
-    try {
-      const r = await api.updateTodo({ todo_id: id, status });
-      if (r.error) throw new Error(r.error);
-      load();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusyId("");
-    }
-  };
-
-  if (loading) return <div className="loading">Loading TODOs...</div>;
 
   return (
-    <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <h2>TODOs ({todos.length})</h2>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          style={{ width: "auto" }}
-        >
-          <option value="">All</option>
-          <option value="open">Open</option>
-          <option value="in_progress">In progress</option>
-          <option value="completed">Completed</option>
-        </select>
-      </div>
-      {error && <div className="error-banner">{error}</div>}
+    <div className={styles.page}>
+      <PageHeader
+        title="TODOs"
+        subtitle={
+          isLoading
+            ? "Loading…"
+            : `${todos.length} follow-up${todos.length === 1 ? "" : "s"} — persisted in the case file and audit-chained`
+        }
+        stageCode="N7"
+        actions={
+          <Field label="Status">
+            {({ id }) => (
+              <Select
+                id={id}
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value)}
+              >
+                <option value="">All</option>
+                <option value="open">Open</option>
+                <option value="in_progress">In progress</option>
+                <option value="completed">Completed</option>
+              </Select>
+            )}
+          </Field>
+        }
+      />
 
-      {!isLocked && (
-        <div className="card" style={{ marginBottom: 16 }}>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <input
-              placeholder="Follow-up — e.g. verify lateral movement to HOST2, pull SIFT twin"
-              value={desc}
-              onChange={(e) => setDesc(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && add()}
-              disabled={adding}
-              style={{ flex: 1, minWidth: 260 }}
-            />
-            <select value={priority} onChange={(e) => setPriority(e.target.value)} style={{ width: "auto" }} disabled={adding}>
-              <option value="high">high</option>
-              <option value="medium">medium</option>
-              <option value="low">low</option>
-            </select>
-            <input
-              placeholder="Assignee (optional)"
-              value={assignee}
-              onChange={(e) => setAssignee(e.target.value)}
-              disabled={adding}
-              style={{ width: 160 }}
-            />
-            <button className="btn btn-primary" onClick={add} disabled={adding || !desc.trim()}>
-              {adding ? "Adding…" : "Add TODO"}
-            </button>
+      {failure ? (
+        <div role="alert" className="error-banner">
+          {failure}
+        </div>
+      ) : null}
+
+      {isLocked ? (
+        <p data-testid="todos-locked">
+          This case is <strong>{caseStatus}</strong> — its TODOs stay readable,
+          but new follow-ups cannot be recorded.
+        </p>
+      ) : null}
+
+      {!isLocked ? (
+        <Panel>
+          <div className={pageStyles.addRow}>
+            <Field label="Follow-up">
+              {({ id }) => (
+                <Input
+                  id={id}
+                  placeholder="Verify lateral movement to HOST2, pull SIFT twin…"
+                  value={desc}
+                  disabled={busy}
+                  onChange={(event) => setDesc(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") submit();
+                  }}
+                />
+              )}
+            </Field>
+            <Field label="Priority">
+              {({ id }) => (
+                <Select
+                  id={id}
+                  value={priority}
+                  disabled={busy}
+                  onChange={(event) => setPriority(event.target.value)}
+                >
+                  <option value="high">high</option>
+                  <option value="medium">medium</option>
+                  <option value="low">low</option>
+                </Select>
+              )}
+            </Field>
+            <Field label="Assignee">
+              {({ id }) => (
+                <Input
+                  id={id}
+                  placeholder="optional"
+                  value={assignee}
+                  disabled={busy}
+                  onChange={(event) => setAssignee(event.target.value)}
+                />
+              )}
+            </Field>
+            <Button
+              variant="primary"
+              onClick={submit}
+              disabled={busy || !desc.trim()}
+              data-testid="todo-add"
+            >
+              {add.isPending ? "Adding…" : "Add TODO"}
+            </Button>
           </div>
-        </div>
-      )}
+        </Panel>
+      ) : null}
 
-      {todos.length === 0 ? (
-        <div className="empty-state">
-          <h3>No TODOs</h3>
-          <p>Record investigation follow-ups here — they persist in the case file and are audit-chained.</p>
-        </div>
-      ) : (
-        <div className="card">
-          <table>
+      {todos.length === 0 && !isLoading ? (
+        <EmptyState
+          title="No TODOs"
+          hint="Record investigation follow-ups here — they persist in the case file and are audit-chained."
+        />
+      ) : todos.length > 0 ? (
+        <Panel>
+          <table className={styles.table}>
+            <caption className="visually-hidden">Investigation follow-ups</caption>
             <thead>
               <tr>
-                <th>ID</th>
-                <th>Description</th>
-                <th>Priority</th>
-                <th>Status</th>
-                <th>Assignee</th>
-                <th></th>
+                <th scope="col">ID</th>
+                <th scope="col">Description</th>
+                <th scope="col">Priority</th>
+                <th scope="col">Status</th>
+                <th scope="col">Assignee</th>
+                <th scope="col">
+                  <span className="visually-hidden">Action</span>
+                </th>
               </tr>
             </thead>
             <tbody>
-              {todos.map((t, i) => {
-                const id = String(t.todo_id || t.id || `#${i + 1}`);
-                const done = (t.status || "open") === "completed";
+              {todos.map((todo, index) => {
+                const id = todoId(todo, index);
+                const done = isDone(todo);
                 return (
                   <tr key={id}>
-                    <td style={{ fontFamily: "monospace", fontSize: 11 }}>{id}</td>
-                    <td style={done ? { textDecoration: "line-through", opacity: 0.7 } : undefined}>{t.description}</td>
-                    <td>{t.priority || "medium"}</td>
-                    <td>{t.status || "open"}</td>
-                    <td>{t.assignee || "—"}</td>
+                    <td className={styles.mono}>{id}</td>
+                    <td className={done ? pageStyles.done : undefined}>
+                      {todo.description}
+                    </td>
                     <td>
-                      {!isLocked && (
-                        <button
-                          className="btn btn-sm"
-                          onClick={() => setStatus(t, done ? "open" : "completed")}
-                          disabled={busyId === id}
+                      <Badge tone={priorityTone(todo.priority)}>
+                        {todo.priority || "medium"}
+                      </Badge>
+                    </td>
+                    <td>{todo.status || "open"}</td>
+                    <td>{todo.assignee || "—"}</td>
+                    <td>
+                      {!isLocked ? (
+                        <Button
+                          size="sm"
+                          disabled={setStatus.isPending}
+                          onClick={() =>
+                            setStatus.mutate({
+                              todo_id: id,
+                              status: done ? "open" : "completed",
+                            })
+                          }
                         >
-                          {busyId === id ? "…" : done ? "Reopen" : "Complete"}
-                        </button>
-                      )}
+                          {done ? "Reopen" : "Complete"}
+                        </Button>
+                      ) : null}
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-        </div>
-      )}
+        </Panel>
+      ) : null}
     </div>
   );
 }
