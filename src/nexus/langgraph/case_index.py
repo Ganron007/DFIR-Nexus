@@ -715,14 +715,22 @@ def iter_index_docs(
     return docs
 
 
-def _bulk_ndjson(index: str, docs: list[dict[str, Any]]) -> str:
+def _bulk_ndjson(
+    index: str,
+    docs: list[dict[str, Any]],
+    *,
+    id_field: str = "",
+) -> str:
     lines: list[str] = []
     import json
 
     for doc in docs:
         # Full-text hash (EH-8): a prefix would let rows differing only after
-        # char 80 share an _id and overwrite each other.
-        _id = hashlib.sha1(
+        # char 80 share an _id and overwrite each other. Callers that already
+        # have a unique id (timeline event_id) pass it; the hash ignores
+        # fields those docs do not carry, so every event would collapse to one.
+        explicit = str(doc.get(id_field) or "") if id_field else ""
+        _id = explicit or hashlib.sha1(
             f"{doc.get('family')}\x00{doc.get('file')}\x00{doc.get('line')}\x00"
             f"{doc.get('text', '')}".encode()
         ).hexdigest()
@@ -936,11 +944,18 @@ def _index_file_digests(case_dir: Path) -> dict[str, str]:
     return out
 
 
-def _bulk_insert(client, name: str, docs: list[dict[str, Any]], chunk: int = 2000) -> int:
+def _bulk_insert(
+    client,
+    name: str,
+    docs: list[dict[str, Any]],
+    chunk: int = 2000,
+    *,
+    id_field: str = "",
+) -> int:
     """Bulk-index docs; returns the number of item-level errors."""
     errors = 0
     for i in range(0, len(docs), chunk):
-        body = _bulk_ndjson(name, docs[i:i + chunk])
+        body = _bulk_ndjson(name, docs[i:i + chunk], id_field=id_field)
         r = client.post("/_bulk", content=body, headers={"Content-Type": "application/x-ndjson"})
         if r.status_code >= 400:
             raise RuntimeError(f"bulk failed: {r.status_code} {r.text[:300]}")

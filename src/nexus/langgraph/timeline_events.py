@@ -302,7 +302,7 @@ def build_events(
         if not pending:
             return
         with _client() as client:
-            errors += _bulk_insert(client, index, pending, chunk=chunk)
+            errors += _bulk_insert(client, index, pending, chunk=chunk, id_field="event_id")
         total += len(pending)
         pending = []
 

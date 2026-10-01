@@ -136,6 +136,20 @@ def test_bulk_ndjson_roundtrip():
     assert "sdelete" in json.loads(lines[1])["text"]
 
 
+def test_bulk_ndjson_uses_explicit_event_id():
+    docs = [
+        {"family": "mftecmd", "file": "mft.csv", "event_id": "e1", "ts_desc": "Created0x10"},
+        {"family": "mftecmd", "file": "mft.csv", "event_id": "e2", "ts_desc": "Created0x30"},
+    ]
+    body = _bulk_ndjson("nexus-case-x-events", docs, id_field="event_id")
+    ids = [
+        json.loads(line)["index"]["_id"]
+        for line in body.strip().splitlines()
+        if line.startswith('{"index"')
+    ]
+    assert ids == ["e1", "e2"]
+
+
 def test_empty_rebuild_clears_stale_index_documents(tmp_path: Path):
     from nexus.langgraph import case_index
 
