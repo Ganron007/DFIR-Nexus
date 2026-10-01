@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Badge,
   Button,
   ConfirmDialog,
   CopyableHash,
   CopyablePath,
+  DataGrid,
   Dialog,
   Drawer,
   EmptyState,
@@ -20,12 +21,76 @@ import {
   Textarea,
   ToastProvider,
   useToast,
+  type DataGridColumn,
+  type GridQuery,
   type SemanticTone,
 } from "@/ui";
 import { SEMANTIC_TONES } from "@/ui";
 import styles from "./KitGallery.module.css";
 
 const TONES = Object.keys(SEMANTIC_TONES) as SemanticTone[];
+
+interface DemoRow {
+  id: string;
+  host: string;
+  family: string;
+  severity: string;
+}
+
+const DEMO_COLUMNS: DataGridColumn<DemoRow>[] = [
+  {
+    id: "id",
+    header: "ID",
+    accessorFn: (row) => row.id,
+    filterable: true,
+    pinnable: true,
+    width: 160,
+  },
+  { id: "host", header: "Host", accessorFn: (row) => row.host, filterable: true, width: 160 },
+  { id: "family", header: "Family", accessorFn: (row) => row.family, width: 140 },
+  { id: "severity", header: "Severity", accessorFn: (row) => row.severity, width: 120 },
+];
+
+const DEMO_FAMILIES = ["evtx", "mft", "prefetch", "lnk", "registry", "browser", "tasks", "vss"];
+const DEMO_SEVERITIES = ["LOW", "MEDIUM", "HIGH"];
+
+/** 100k synthetic rows: the grid must stay smooth where a naive table dies. */
+function demoRows(count: number): DemoRow[] {
+  return Array.from({ length: count }, (_, i) => ({
+    id: `F-${String(i + 1).padStart(6, "0")}`,
+    host: `HOST-${String((i % 24) + 1).padStart(2, "0")}`,
+    family: DEMO_FAMILIES[i % DEMO_FAMILIES.length],
+    severity: DEMO_SEVERITIES[i % DEMO_SEVERITIES.length],
+  }));
+}
+
+function DataGridDemo() {
+  const [query, setQuery] = useState<GridQuery>({ filters: {}, sort: null });
+  const [detail, setDetail] = useState<DemoRow | null>(null);
+  const rows = useMemo(() => demoRows(100_000), []);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+      <p style={{ fontFamily: "var(--font-mono)", fontSize: "var(--font-size-xs)" }}>
+        query: {JSON.stringify(query)}
+      </p>
+      <DataGrid
+        columns={DEMO_COLUMNS}
+        rows={rows}
+        getRowId={(row) => row.id}
+        viewId="kit-gallery"
+        onQueryChange={setQuery}
+        onOpenRow={setDetail}
+        ariaLabel="Kit gallery synthetic rows"
+      />
+      {detail ? (
+        <p>
+          opened <code>{detail.id}</code> on {detail.host} — the real page opens its
+          detail Drawer here.
+        </p>
+      ) : null}
+    </div>
+  );
+}
 
 function ToastDemo() {
   const { push } = useToast();
@@ -158,6 +223,11 @@ function Gallery() {
             <Textarea id={id} aria-describedby={describedBy} />
           )}
         </Field>
+      </section>
+
+      <section className={styles.section}>
+        <h2>DataGrid — 100k rows, virtualised</h2>
+        <DataGridDemo />
       </section>
 
       <Drawer open={drawerOpen} onOpenChange={setDrawerOpen} title="Finding detail">

@@ -18,5 +18,27 @@ export { KeyValue, type KeyValueItem } from "./KeyValue";
 export { CopyableHash, copyText } from "./CopyableHash";
 export { CopyablePath, middleEllipsis } from "./CopyablePath";
 export { Field, Input, Select, Textarea, type FieldProps } from "./Field";
+export {
+  DataGrid,
+  buildQuery,
+  emptyQuery,
+  layoutKey,
+  loadLayout,
+  saveLayout,
+  useColumnLayout,
+  useFacetPanel,
+  type ColumnLayout,
+  type DataGridColumn,
+  type DataGridProps,
+  type Facet,
+  type FacetValue,
+  type FacetPanelOptions,
+  type FetchPage,
+  type GridFetchRequest,
+  type GridPage,
+  type GridQuery,
+  type SelectionState,
+  type SortDir,
+} from "./DataGrid";
 export { SEMANTIC_TONES, toneVar, isSemanticTone, type SemanticTone } from "./semantic";
 export { cx } from "./cx";

@@ -1,0 +1,180 @@
+/* DataGrid (WO-U5 / WP 14.5) - tokens only, dark-first like the rest of the kit. */
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.columnMenu summary {
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  color: var(--color-fg-muted);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-1) var(--space-2);
+}
+
+.columnMenuBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-overlay);
+}
+
+.columnMenuItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-fg-default);
+}
+
+.count {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-fg-subtle);
+}
+
+.scroller {
+  overflow: auto;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-raised);
+}
+
+.grid:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--color-bg-raised);
+  border-bottom: 1px solid var(--color-border-strong);
+}
+
+.row {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+}
+
+.body {
+  position: relative;
+  width: 100%;
+}
+
+.body .row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  align-items: center;
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.body .row:hover {
+  background: var(--color-bg-hover);
+}
+
+.body .row[data-active="true"] {
+  background: var(--bg-hover);
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
+
+.cell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-fg-default);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.cell[data-pinned="true"] {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--color-bg-raised);
+  border-right: 1px solid var(--color-border-default);
+}
+
+.cell[data-active="true"] {
+  outline: 1px solid var(--color-accent);
+  outline-offset: -1px;
+}
+
+.headerButton {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--color-fg-default);
+  cursor: pointer;
+}
+
+.pinButton {
+  background: none;
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-2xs, 0.625rem);
+  color: var(--color-fg-subtle);
+  cursor: pointer;
+  padding: 0 var(--space-1);
+}
+
+.filterInput {
+  width: 100%;
+  min-width: 0;
+  background: var(--color-bg-base);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-sm, 0.25rem);
+  color: var(--color-fg-default);
+  font: inherit;
+  font-size: var(--font-size-xs);
+  padding: 0 var(--space-1);
+}
+
+.resizer {
+  cursor: col-resize;
+  width: 4px;
+  align-self: stretch;
+  background: transparent;
+}
+
+.resizer:hover {
+  background: var(--color-accent);
+}
+
+.empty {
+  padding: var(--space-4);
+  color: var(--color-fg-muted);
+  font-size: var(--font-size-sm);
+}
+
+.loadMore {
+  margin: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-border-default);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+  color: var(--color-fg-default);
+  cursor: pointer;
+}
