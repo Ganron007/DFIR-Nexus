@@ -167,8 +167,13 @@ def expand_doc(doc: dict[str, Any]) -> list[dict[str, Any]]:
         })
 
     for column, value in fields.items():
-        if column in date_columns or _looks_like_date_column(column):
+        if column in date_columns:
             emit(column, value, "column", "millisecond")
+        elif _looks_like_date_column(column):
+            # Not registry-typed. Kept - a timestamp the registry forgot is
+            # still evidence - but marked, so a column that merely looks like
+            # a date is distinguishable from one the registry vouches for.
+            emit(column, value, "column-heuristic", "millisecond")
 
     # the row's own timestamp, when the index resolved a real one
     if str(doc.get("ts_src") or "") != "synthesized":

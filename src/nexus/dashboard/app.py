@@ -36,6 +36,7 @@ from starlette.routing import Route
 from nexus.case.locks import case_lock, lock_case_writes
 from nexus.dashboard.case_status_api import api_case_status
 from nexus.dashboard.exhibit_api import api_finding_exhibit
+from nexus.dashboard.timeline_api import timeline_api_routes
 
 logger = logging.getLogger(__name__)
 
@@ -8011,6 +8012,9 @@ def create_dashboard():
         # WO-U3: the single status source for the stepper, the gate banner
         # and every page header - three readers, one answer.
         Route("/portal/api/case/status", api_case_status, methods=["GET"]),
+        # WO-A10: the queryable timeline - paged events, facets, histogram,
+        # +/-N-second context, findings link and a streamed CSV export.
+        *timeline_api_routes(),
         # Phase 4: React SPA (served after API + legacy HTML routes)
         Route("/portal/app/assets/{path:path}", spa_asset),
         Route("/portal/app/logo.svg", logo),
