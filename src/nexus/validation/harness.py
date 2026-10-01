@@ -234,3 +234,147 @@ def run_validation(case_dir: str | Path, answer_key: dict[str, Any] | str | Path
         "precision": round(overall.precision, 4),
         "f1": round(overall.f1, 4),
     }
+
+
+# --------------------------------------------------------------------------
+# findings dimension (WO-A1 / WP 10.3)
+# --------------------------------------------------------------------------
+#
+# `gather_found` above scores what the SKILL LAYER's queries could retrieve.
+# That is not the same question as "did the investigation find it": this
+# dimension reads what the case actually staged, per producing mode, so GATE-H
+# gets a measurement instead of a pass/fail.
+
+FINDING_STATUSES = ("DRAFT", "APPROVED")
+
+
+def case_findings(case_dir: Path | str) -> list[dict[str, Any]]:
+    """The case's findings (empty when there is no file yet)."""
+    import json
+
+    path = Path(case_dir) / "findings.json"
+    if not path.is_file():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    if not isinstance(data, list):
+        return []
+    return [f for f in data if isinstance(f, dict)]
+
+
+def case_mode(case_dir: Path | str) -> int | None:
+    """The case's stored mode. After B2 a finding's own provenance.mode wins."""
+    base = Path(case_dir)
+    for name in ("CASE.yaml", "case.yaml"):
+        candidate = base / name
+        if not candidate.is_file():
+            continue
+        try:
+            data = yaml.safe_load(candidate.read_text(encoding="utf-8"))
+        except (OSError, yaml.YAMLError):
+            continue
+        if isinstance(data, dict):
+            raw = data.get("investigation_mode", data.get("mode"))
+            try:
+                return int(raw)  # type: ignore[arg-type]
+            except (TypeError, ValueError):
+                continue
+    return None
+
+
+def finding_mode(finding: dict[str, Any], fallback: int | None) -> int | None:
+    """A finding's own producing mode, or the case's when it has none."""
+    provenance = finding.get("provenance")
+    if isinstance(provenance, dict) and provenance.get("mode") is not None:
+        try:
+            return int(provenance["mode"])
+        except (TypeError, ValueError):
+            pass
+    raw = finding.get("investigation_mode", finding.get("mode"))
+    if raw is not None:
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            pass
+    return fallback
+
+
+def finding_techniques(finding: dict[str, Any]) -> set[str]:
+    out: set[str] = set()
+    for key in ("technique_ids", "mitre_techniques"):
+        for value in finding.get(key) or []:
+            text = str(value).strip().upper()
+            if text:
+                out.add(text)
+    return out
+
+
+def finding_entities(finding: dict[str, Any]) -> set[str]:
+    out: set[str] = set()
+    for key in ("entity_mentions", "entities"):
+        for item in finding.get(key) or []:
+            value = item
+            if isinstance(item, dict):
+                value = (
+                    item.get("value")
+                    or item.get("entity_value")
+                    or item.get("entity")
+                    or item.get("name")
+                )
+            text = str(value or "").strip()
+            if text:
+                out.add(text)
+    return out
+
+
+def findings_dimension(
+    case_dir: Path | str,
+    key: Any,
+    *,
+    dimension: str = "techniques",
+    mode: int | None | str = "all",
+    statuses: tuple[str, ...] = FINDING_STATUSES,
+) -> dict[str, Any]:
+    """Precision / recall of what the case staged, per producing mode.
+
+    ``key`` is an `AnswerKey` (or anything with `.expected(dimension)`). The
+    result carries `missed` as well as `missing` so the report reads the way
+    the work order words it, and `mode: all` means "every mode together".
+    """
+    case_dir = Path(case_dir)
+    stored_mode = case_mode(case_dir)
+    wanted: int | None = None if mode in (None, "all") else int(mode)  # type: ignore[arg-type]
+
+    scored: list[dict[str, Any]] = []
+    for finding in case_findings(case_dir):
+        status = str(finding.get("status") or "DRAFT").upper()
+        if status not in statuses:
+            continue
+        if wanted is not None and finding_mode(finding, stored_mode) != wanted:
+            continue
+        scored.append(finding)
+
+    found: set[str] = set()
+    for finding in scored:
+        found |= (
+            finding_techniques(finding)
+            if dimension == "techniques"
+            else finding_entities(finding)
+        )
+
+    expected: set[str] = set()
+    if hasattr(key, "expected"):
+        expected = set(key.expected(dimension))
+    elif isinstance(key, dict):
+        expected = {str(v).upper() for v in (key.get(dimension) or [])}
+
+    name = f"findings:{dimension}" + ("" if wanted is None else f":mode{wanted}")
+    scored_dimension = Dimension(name, expected, found)
+    out = scored_dimension.to_dict()
+    out["missed"] = out["missing"]
+    out["mode"] = "all" if wanted is None else wanted
+    out["findings_scored"] = len(scored)
+    out["statuses"] = list(statuses)
+    return out
