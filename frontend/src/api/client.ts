@@ -50,6 +50,9 @@ export interface Finding {
   approved_by?: string;
   approved_at?: string;
   examiner_selected?: boolean;
+  provenance?: { mode?: number; origin?: string; path?: string };
+  /** Mode 1 re-check of a model draft. Examiner drafts are "skipped". */
+  verifier?: { verdict?: string; reason?: string; audit_ids?: string[] };
   created_at?: string;
   modified_at?: string;
   /** Approval-desk L1 verdict (WO-2) — attached to DRAFT rows only. */

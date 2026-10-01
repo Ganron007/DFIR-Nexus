@@ -36,6 +36,7 @@ import { computeApprovalResponse } from "../lib/crypto";
 import { api } from "../api/client";
 import { useCase } from "../context/CaseContext";
 import {
+  Badge,
   Button,
   EmptyState,
   Field,
@@ -46,6 +47,7 @@ import {
   Tabs,
 } from "@/ui";
 import type { Finding } from "../api/client";
+import { originMark, verifierMark } from "../lib/draftMarks";
 import styles from "./Report.module.css";
 
 const STATUS_LABEL_SEALED: Record<string, string> = {
@@ -390,6 +392,11 @@ export default function Report() {
                 {findings.map((finding) => (
                   <article key={finding.id} className={styles.finding}>
                     <h3>{finding.title}</h3>
+                    <p className={styles.findingMeta}>
+                      <Badge tone={originMark(finding).tone}>{originMark(finding).label}</Badge>
+                      {" "}
+                      <Badge tone={verifierMark(finding).tone}>{verifierMark(finding).label}</Badge>
+                    </p>
                     <p className={styles.findingMeta}>
                       {finding.id} · confidence {finding.confidence} · approved by{" "}
                       {finding.approved_by || "N/A"}

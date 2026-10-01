@@ -4,6 +4,8 @@ import { useNavigate } from "react-router-dom";
 import { api, type Finding } from "../api/client";
 import { computeApprovalResponse } from "../lib/crypto";
 import { useCase } from "../context/CaseContext";
+import { originMark, verifierMark } from "../lib/draftMarks";
+import { Badge } from "@/ui";
 
 function l1Class(verdict: string): string {
   switch (verdict.toUpperCase()) {
@@ -234,7 +236,8 @@ export default function Approve() {
                 <th>Title</th>
                 <th>Confidence</th>
                 <th>L1</th>
-                <th>Source</th>
+                <th>Origin</th>
+                <th>Verifier</th>
               </tr>
             </thead>
             <tbody>
@@ -275,7 +278,14 @@ export default function Approve() {
                       </div>
                     ))}
                   </td>
-                  <td>{f.examiner_selected === false ? "LLM-drafted" : "examiner"}</td>
+                  <td>
+                    <Badge tone={originMark(f).tone}>{originMark(f).label}</Badge>
+                  </td>
+                  <td>
+                    <span title={f.verifier?.reason}>
+                      <Badge tone={verifierMark(f).tone}>{verifierMark(f).label}</Badge>
+                    </span>
+                  </td>
                 </tr>
               ))}
             </tbody>
