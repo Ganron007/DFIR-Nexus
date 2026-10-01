@@ -123,6 +123,41 @@ class TestPromoteHitsToDraft:
         assert draft["confidence"] == "LOW"
         assert draft["type"] == "finding"
 
+    def test_full_run_origin_is_not_examiner_selected(self, tmp_path: Path):
+        from nexus.audit import AuditWriter
+        from nexus.modes.llm_desk import save_draft_finding
+
+        case = tmp_path / "CASE-FR"
+        case.mkdir()
+        (case / "CASE.yaml").write_text("name: fr\nstatus: active\n", encoding="utf-8")
+        (case / "audit").mkdir()
+        aid = AuditWriter("nexus", audit_dir=case / "audit").log(
+            tool="es_search",
+            params={"family": "evtx", "file": "a.csv", "query": "sdelete"},
+            result_summary={"total": 1},
+            source="portal",
+        )
+        hits = [{
+            "family": "evtx",
+            "file": "a.csv",
+            "line": "1",
+            "text": "sdelete.exe",
+            "terms": "sdelete",
+        }]
+        draft = promote_hits_to_draft(
+            case, hits=hits, title="needle sdelete", examiner="t",
+            examiner_selected=False,
+        )
+        draft = _heuristic_scribe(draft, hits, case_dir=case)
+        draft["provenance"] = {"mode": 1, "origin": "llm", "path": "full_run"}
+        draft["audit_ids"] = [aid]
+        draft["artifacts"] = [{"audit_id": aid, "type": "scan"}]
+        saved = save_draft_finding(case, draft)
+        assert saved.get("status") == "STAGED"
+        rows = json.loads((case / "findings.json").read_text(encoding="utf-8"))
+        assert rows[0]["examiner_selected"] is False
+        assert rows[0]["provenance"]["path"] == "full_run"
+
     def test_empty_hits(self, tmp_path: Path):
         draft = promote_hits_to_draft(
             tmp_path,

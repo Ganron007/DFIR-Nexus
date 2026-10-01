@@ -2956,11 +2956,19 @@ def _mode1_full_run_worker(case_dir: Path, record_path: Path, record: dict,
                 hits=hits,
                 title=title,
                 examiner=examiner,
+                examiner_selected=False,
                 interpretation_hint=(
                     f"Needle '{needle}' ({s.get('source', 'playbook')}) matched "
                     f"{len(hits)} row(s) — candidate signal pending examiner review."
                 ),
             )
+            # The needle scan stages without an examiner picking the rows.
+            # Label it as LLM/scan origin so it is not shown as examiner-selected.
+            draft["provenance"] = {
+                "mode": 1,
+                "origin": "llm",
+                "path": "full_run",
+            }
             # FD-001 provenance: linked tool-lane audits when they exist,
             # otherwise the audited scan that produced these rows.
             scan_aid = scan_aid_by_needle.get(needle_key)

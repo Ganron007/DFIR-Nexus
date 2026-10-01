@@ -95,6 +95,13 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             finding_data["itm_objects"] = itm_objects
         if evidence:
             finding_data["evidence"] = evidence[:12]
+        # Interpret-loop staging is the model, not an examiner selection.
+        finding_data.setdefault("examiner_selected", False)
+        finding_data.setdefault("provenance", {
+            "mode": 1,
+            "origin": "llm",
+            "path": "interpret",
+        })
 
         try:
             result = manager.record_finding(
