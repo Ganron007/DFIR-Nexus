@@ -1,100 +1,98 @@
-import { useEffect, useState } from "react";
-import { api } from "../api/client";
+/**
+ * Transparency log (HMAC audit chain verification), migrated to the kit
+ * (WO-U8a).
+ *
+ * Kit: PageHeader + Panel + KeyValue + Badge, styles in a CSS module, zero
+ * inline style objects. Two defects fixed on the way:
+ *
+ * 1. The verdict glyph rendered as a mojibake pair - the source had lost its
+ *    UTF-8 bytes, so "chain valid" showed two replacement characters and
+ *    "chain tampered" showed a literal "?". A tampered chain is the one state
+ *    that must never be ambiguous, and it was the least legible thing on the
+ *    page. The glyph now comes from the token layer and the state is carried
+ *    by a Badge tone and the word, never by the symbol alone.
+ * 2. The fetch was an uncached `useEffect` keyed on nothing, so a case switch
+ *    could leave the previous case's verdict on screen.
+ */
 import { useCase } from "../context/CaseContext";
-
-interface TransparencyResult {
-  valid: boolean;
-  entries: number;
-  error?: string;
-  tampered?: number | string;
-  expected?: string;
-  actual?: string;
-  expected_previous?: string;
-  actual_previous?: string;
-}
+import { useTransparency } from "../api/queries/transparency";
+import { Badge, KeyValue, PageHeader, Panel, EmptyState } from "@/ui";
+import styles from "./Page.module.css";
 
 export default function Transparency() {
   const { activeCase } = useCase();
-  const [result, setResult] = useState<TransparencyResult | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const { data, isLoading, error } = useTransparency(activeCase);
 
-  useEffect(() => {
-    setLoading(true);
-    api.transparency()
-      .then((r) => setResult(r as unknown as TransparencyResult))
-      .catch((e) => setError((e as Error).message))
-      .finally(() => setLoading(false));
-  }, [activeCase]);
+  const result = data ?? null;
+  const message = (error as Error | null)?.message ?? "";
+  const valid = Boolean(result?.valid);
 
-  if (loading) return <div className="loading">Loading transparency log...</div>;
+  const rows = result
+    ? [
+        { label: "Total entries", value: String(result.entries) },
+        ...(result.error
+          ? [{ label: "Error", value: result.error, tone: "verifier-refuted" as const }]
+          : []),
+        ...(result.tampered !== undefined
+          ? [
+              {
+                label: "Tampered at index",
+                value: String(result.tampered),
+                tone: "verifier-refuted" as const,
+              },
+            ]
+          : []),
+        ...(result.expected
+          ? [{ label: "Expected hash", value: `${result.expected.slice(0, 32)}…` }]
+          : []),
+        ...(result.actual
+          ? [
+              {
+                label: "Actual hash",
+                value: `${result.actual.slice(0, 32)}…`,
+                tone: "verifier-refuted" as const,
+              },
+            ]
+          : []),
+      ]
+    : [];
 
   return (
-    <div>
-      <h2 style={{ marginBottom: 16 }}>Transparency Log</h2>
-      {error && <div className="error-banner">{error}</div>}
-      <div className="card">
-        <div className="card-header">
-          <span className="card-title">HMAC Audit Chain Verification</span>
+    <div className={styles.page}>
+      <PageHeader
+        title="Transparency Log"
+        subtitle="HMAC-SHA256 audit chain — every tool call links to the one before it"
+        stageCode="N8"
+        actions={
+          result ? (
+            <span data-testid="chain-verdict">
+              <Badge tone={valid ? "seal-verified" : "seal-broken"}>
+                {valid ? "Chain valid" : "Chain tampered"}
+              </Badge>
+            </span>
+          ) : null
+        }
+      />
+
+      {message ? (
+        <div role="alert" className="error-banner">
+          The transparency log could not be read: {message}. This is a backend
+          problem, not a statement about the chain.
         </div>
-        {!result ? (
-          <div className="empty-state">
-            <p>No transparency data available.</p>
-          </div>
+      ) : null}
+
+      <Panel>
+        {isLoading ? (
+          <div className="loading">Verifying the audit chain…</div>
+        ) : rows.length > 0 ? (
+          <KeyValue items={rows} />
         ) : (
-          <div style={{ padding: 16 }}>
-            <div style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "8px 16px",
-              borderRadius: 6,
-              marginBottom: 16,
-              background: result.valid ? "rgba(63,185,80,0.1)" : "rgba(248,81,73,0.1)",
-              border: `1px solid ${result.valid ? "var(--success)" : "var(--danger)"}`,
-            }}>
-              <span style={{ fontSize: 20 }}>
-                {result.valid ? "✓" : "✗"}
-              </span>
-              <span style={{ fontWeight: 600, color: result.valid ? "var(--success)" : "var(--danger)" }}>
-                {result.valid ? "Chain Valid" : "Chain Tampered"}
-              </span>
-            </div>
-            <table>
-              <tbody>
-                <tr>
-                  <td style={{ color: "var(--text-muted)", width: 200 }}>Total entries</td>
-                  <td>{result.entries}</td>
-                </tr>
-                {result.error && (
-                  <tr>
-                    <td style={{ color: "var(--text-muted)" }}>Error</td>
-                    <td style={{ color: "var(--danger)" }}>{result.error}</td>
-                  </tr>
-                )}
-                {result.tampered !== undefined && (
-                  <tr>
-                    <td style={{ color: "var(--text-muted)" }}>Tampered at index</td>
-                    <td style={{ color: "var(--danger)" }}>{result.tampered}</td>
-                  </tr>
-                )}
-                {result.expected && (
-                  <tr>
-                    <td style={{ color: "var(--text-muted)" }}>Expected hash</td>
-                    <td style={{ fontFamily: "monospace", fontSize: 11 }}>{result.expected.slice(0, 32)}...</td>
-                  </tr>
-                )}
-                {result.actual && (
-                  <tr>
-                    <td style={{ color: "var(--text-muted)" }}>Actual hash</td>
-                    <td style={{ fontFamily: "monospace", fontSize: 11, color: "var(--danger)" }}>{result.actual.slice(0, 32)}...</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          <EmptyState
+            title="No transparency data"
+            hint="The audit chain appears once the case has recorded tool calls."
+          />
         )}
-      </div>
+      </Panel>
     </div>
   );
 }
