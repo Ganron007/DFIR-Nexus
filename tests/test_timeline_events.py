@@ -161,8 +161,33 @@ def test_build_reports_a_down_backend_instead_of_raising(tmp_path, monkeypatch):
 def test_supported_families_is_an_explicit_short_list():
     """'why is prefetch missing from my timeline' must have an answer."""
     assert "evtx" in SUPPORTED_FAMILIES
+    assert "evtxecmd" in SUPPORTED_FAMILIES
     assert "mftecmd" in SUPPORTED_FAMILIES
     assert len(SUPPORTED_FAMILIES) <= 6, "the list must stay explicit, not a guess"
+
+
+def test_evtxecmd_timecreated_becomes_an_event():
+    """EZ-tool output lives under family evtxecmd. The registry types TimeCreated there."""
+    doc = {
+        "family": "evtxecmd",
+        "file": "evtxecmd/EvtxECmd_Output.csv",
+        "line": 12,
+        "host": "WS01",
+        "user": "",
+        "ts_src": "column",
+        "ts": "2020-10-27T03:54:15+00:00",
+        "fields": {
+            "TimeCreated": "2020-10-27 03:54:15.000",
+            "EventId": "4688",
+            "MapDescription": "Process start",
+        },
+    }
+    events = expand_doc(doc)
+    created = [event for event in events if event["ts_desc"] == "TimeCreated"]
+    assert created
+    assert created[0]["family"] == "evtxecmd"
+    assert created[0]["ts_src"] == "column"
+    assert created[0]["fields"]["EventId"] == "4688"
 
 
 def test_no_reparse_evidence(tmp_path, monkeypatch):

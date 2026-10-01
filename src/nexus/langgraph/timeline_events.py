@@ -34,7 +34,7 @@ EVENTS_SUFFIX = "-events"
 
 #: Families this slice writes events for. Explicit, so "why is prefetch missing
 #: from my timeline" has an answer instead of a shrug. Extended in Tier 2.
-SUPPORTED_FAMILIES = ("evtx", "mftecmd", "mftecmd-i30", "tasks", "wxtcmd")
+SUPPORTED_FAMILIES = ("evtx", "evtxecmd", "mftecmd", "mftecmd-i30", "tasks", "wxtcmd")
 
 _STATE_FILENAME = "timeline_events.json"
 
