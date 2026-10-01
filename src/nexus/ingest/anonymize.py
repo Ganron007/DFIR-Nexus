@@ -102,25 +102,16 @@ class Anonymizer:
         key = f"{kind}:{original}"
         return self._token_dict.get(key) or self._make_token(kind, original)
 
-    def anonymize(self, text: str) -> tuple[str, dict[str, str]]:
+    def anonymize(self, text: str, *, reset: bool = True) -> tuple[str, dict[str, str]]:
         """Anonymize *text*, returning the tokenized version and the dictionary.
 
-        Parameters
-        ----------
-        text:
-            Raw text containing sensitive identifiers.
-
-        Returns
-        -------
-        tuple[str, dict[str, str]]
-            ``(tokenized_text, token_dict)`` where *token_dict* maps
-            original values to their tokens (e.g.
-            ``{"10.0.0.1": "{{IP_1}}"}``).
+        ``reset=False`` keeps tokens already loaded, so the same value keeps
+        the same token across turns.
         """
-        # Reset per-call state
-        self._token_dict.clear()
-        self._reverse_dict.clear()
-        self._counters.clear()
+        if reset:
+            self._token_dict.clear()
+            self._reverse_dict.clear()
+            self._counters.clear()
 
         result = text
 

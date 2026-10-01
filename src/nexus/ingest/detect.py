@@ -449,6 +449,13 @@ def _detect_csv_format(head: str, name: str) -> ArtifactSource | None:
         return ArtifactSource.SPLUNK
     if "timestamp" in first_line and "source" in first_line and "host" in first_line:
         return ArtifactSource.PLASO
+    from nexus.ingest.fingerprint import family_for_csv_header
+
+    family = family_for_csv_header(head)
+    if family == "evtxecmd":
+        return ArtifactSource.EVTX
+    if family == "plaso":
+        return ArtifactSource.PLASO
     # nfdump -o csv NetFlow export (EH-14b): distinctive header even when the
     # file is just called flows.csv — never let it fall into generic_csv.
     try:

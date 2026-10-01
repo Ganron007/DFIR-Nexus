@@ -500,7 +500,12 @@ def get_model(model_name: str = ""):
         )
         if openai_like:
             kwargs["extra_body"] = {"reasoning_effort": reasoning}
-    return ChatOpenAI(**kwargs)
+    model = ChatOpenAI(**kwargs)
+    from nexus.llm.egress import attach_egress, egress_required
+
+    if egress_required(base_url):
+        return attach_egress(model)
+    return model
 
 
 # ---------------------------------------------------------------------------
