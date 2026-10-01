@@ -8,9 +8,13 @@ import type {
   SetupTask,
   SystemHealthResponse,
 } from "../client";
+import type { CaseStatusResponse } from "../caseStatus";
 
 export const systemApi = {
   systemHealth: () => request<SystemHealthResponse>("/system/health"),
+  /** WO-U3: the single case status source (stepper, gate banner, headers). */
+  caseStatus: (caseId: string) =>
+    request<CaseStatusResponse>(`/case/status?case_id=${encodeURIComponent(caseId)}`),
   setupEnv: (env: Record<string, string>) =>
     post<SetupEnvResponse>("/setup/env", env),
   setupRag: () => post<{ status?: string; task?: SetupTask; error?: string }>("/setup/rag", {}),

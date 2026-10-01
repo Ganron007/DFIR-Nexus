@@ -1,8 +1,13 @@
-import type { ReactNode } from "react";
+// WO-U3: case-scoped URLs, one status source, Ctrl+K, Findings in the nav.
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { useCase, type EsStatus, type SiftStatus } from "../context/CaseContext";
 import LaneGateBanner from "./LaneGateBanner";
+import { CommandPalette, type PaletteCommand } from "../shell/CommandPalette";
+import { caseIdFromPath, casePath, pageFor, pageFromPath } from "../shell/caseScope";
+import { useCaseStatus } from "../api/queries/caseStatus";
+import { caseStateLabel } from "../api/caseStatus";
 
 /**
  * Phase 4e: the sidebar follows the N1-N8 investigation spine only when a
@@ -16,6 +21,7 @@ const NAV_SPINE = [
   { to: "/steer", label: "Steer Chat", stage: "N5", hint: "Interpretation — scribe, iterative, or agentic" },
   { to: "/agent-run", label: "Agent Run", stage: "N5", hint: "Mode 2 — multi-role Agent Run; Mode 3 — multi-agent Investigation Board" },
   { to: "/workbench", label: "Workbench", stage: "N5", hint: "Build DRAFT findings from bookmarked hits" },
+  { to: "/findings", label: "Findings", stage: "N6", hint: "Every finding, its verdict and its lineage" },
   { to: "/approve", label: "Approve", stage: "N6", hint: "HMAC challenge-response approval desk" },
   { to: "/timeline", label: "Timeline", stage: "N7", hint: "Per-family event lanes and brush" },
   { to: "/report", label: "Report", stage: "N8", hint: "Approved findings export" },
@@ -195,6 +201,66 @@ export default function Layout({ children }: { children: ReactNode }) {
   const location = useLocation();
   const navigate = useNavigate();
 
+  // WO-U3 (UD8): the URL names the case; a legacy path falls back to the
+  // server's active case. One helper for both, so nav and redirects agree.
+  const scopedCaseId = caseIdFromPath(location.pathname) || activeCase;
+  const scopeTo = (legacyPath: string) =>
+    casePath(scopedCaseId, pageFor(legacyPath) ?? legacyPath);
+
+  // WO-U3: the one status source for the stepper, the banner and the header.
+  const { data: caseStatus } = useCaseStatus(scopedCaseId);
+  const statusStages = useMemo(() => {
+    const fromStatus = (caseStatus?.stages ?? [])
+      .filter((s) => ["complete", "done", "ok"].includes(String(s.status).toLowerCase()))
+      .map((s) => s.stage);
+    const map: Record<string, boolean> = {};
+    for (const id of ["N1", "N2", "N3", "N4", "N5", "N6", "N7", "N8"]) {
+      map[id] = fromStatus.includes(id);
+    }
+    // status unreachable: the context's own view, unchanged rather than blank
+    if (!caseStatus) return stages;
+    return map;
+  }, [caseStatus, stages]);
+
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setPaletteOpen((open) => !open);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const paletteCommands = useMemo<PaletteCommand[]>(() => {
+    const commands: PaletteCommand[] = [...NAV_SPINE, ...NAV_UTILITIES].map(
+      (item) => ({
+        id: item.to,
+        label: item.label,
+        group: "Go to" as const,
+        hint: item.hint,
+        run: () => navigate(scopeTo(item.to)),
+      }),
+    );
+    commands.push({
+      id: "findings-search",
+      label: "Find a finding by id",
+      group: "Finding",
+      hint: "type F-... and press Enter",
+      run: () => navigate(scopeTo("/findings")),
+    });
+    commands.push({
+      id: "explore-search",
+      label: "Search the case index",
+      group: "Search",
+      hint: "type terms and press Enter",
+      run: () => navigate(scopeTo("/explore")),
+    });
+    return commands;
+  }, [navigate, scopedCaseId]);
+
   const activeStatus = activeCase ? caseSummaries[activeCase]?.status || "" : "";
   const isSealed = activeStatus === "sealed";
 
@@ -218,8 +284,10 @@ export default function Layout({ children }: { children: ReactNode }) {
     navigate("/");
   };
 
+  const currentPage = pageFromPath(location.pathname) ?? pageFor(location.pathname);
   const currentLabel =
-    [...NAV_SPINE, ...NAV_UTILITIES].find((n) => n.to === location.pathname)?.label || "Dashboard";
+    [...NAV_SPINE, ...NAV_UTILITIES].find((n) => pageFor(n.to) === currentPage)
+      ?.label || "Dashboard";
 
   // WP 4.8: Landing page is a clean case dashboard — no cockpit sidebar.
   // The cockpit sidebar only appears on investigation pages (requires active case).
@@ -435,8 +503,33 @@ export default function Layout({ children }: { children: ReactNode }) {
         )}
         {/* WP 4b.4: N1-N8 stage stepper — only inside an investigation */}
         {activeCase && (
-          <StageStepper stages={stages} n5To={mode === "2" || mode === "3" ? "/agent-run" : "/steer"} />
+          <StageStepper
+            stages={statusStages}
+            n5To={scopeTo(mode === "2" || mode === "3" ? "/agent-run" : "/steer")}
+          />
         )}
+        {activeCase ? (
+          <span className="version" data-testid="case-state">
+            {caseStateLabel(caseStatus)}
+            <button
+              type="button"
+              className="btn btn-sm"
+              data-testid="open-command-palette"
+              onClick={() => setPaletteOpen(true)}
+            >
+              Ctrl+K
+            </button>
+          </span>
+        ) : null}
+        <CommandPalette
+          commands={paletteCommands}
+          open={paletteOpen}
+          onOpenChange={setPaletteOpen}
+          onResolveFinding={(id) =>
+            navigate(`${scopeTo("/findings")}?id=${encodeURIComponent(id)}`)
+          }
+          onSearch={(q) => navigate(`${scopeTo("/explore")}?q=${encodeURIComponent(q)}`)}
+        />
         {/* Evidence gate (hard rule, 2026-09-29): a blocked gate must be visible
             here, not discovered as an unexplained 409 on a mode run. */}
         <LaneGateBanner />
