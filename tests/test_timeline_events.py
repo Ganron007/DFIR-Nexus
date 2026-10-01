@@ -160,10 +160,15 @@ def test_build_reports_a_down_backend_instead_of_raising(tmp_path, monkeypatch):
 
 def test_supported_families_is_an_explicit_short_list():
     """'why is prefetch missing from my timeline' must have an answer."""
-    assert "evtx" in SUPPORTED_FAMILIES
-    assert "evtxecmd" in SUPPORTED_FAMILIES
-    assert "mftecmd" in SUPPORTED_FAMILIES
-    assert len(SUPPORTED_FAMILIES) <= 6, "the list must stay explicit, not a guess"
+    assert set(SUPPORTED_FAMILIES) == {
+        "evtx",
+        "evtxecmd",
+        "mftecmd",
+        "mftecmd-i30",
+        "tasks",
+        "wxtcmd",
+        "plaso",
+    }
 
 
 def test_evtxecmd_timecreated_becomes_an_event():
@@ -188,6 +193,29 @@ def test_evtxecmd_timecreated_becomes_an_event():
     assert created[0]["family"] == "evtxecmd"
     assert created[0]["ts_src"] == "column"
     assert created[0]["fields"]["EventId"] == "4688"
+
+
+def test_plaso_l2tcsv_row_is_one_event():
+    """date and time are one super-timeline event. MACB stays a label."""
+    doc = {
+        "family": "plaso",
+        "file": "plaso/plaso.csv",
+        "line": 4,
+        "host": "WS01",
+        "ts_src": "synthesized",
+        "fields": {
+            "date": "2020-10-27",
+            "time": "03:54:15",
+            "MACB": "M...",
+            "source": "FILE",
+            "sourcetype": "NTFS $MFT",
+        },
+    }
+    events = expand_doc(doc)
+    assert len(events) == 1
+    assert events[0]["ts_desc"] == "event"
+    assert events[0]["family"] == "plaso"
+    assert events[0]["fields"]["MACB"] == "M..."
 
 
 def test_no_reparse_evidence(tmp_path, monkeypatch):

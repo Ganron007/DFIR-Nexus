@@ -227,18 +227,26 @@ export function DataGrid<T>(props: DataGridProps<T>) {
   const tableRows = table.getRowModel().rows;
   const visibleColumns = table.getVisibleLeafColumns();
 
+  const estimateSize = useCallback(() => estimateRowHeight, [estimateRowHeight]);
+  const initialRect = useMemo(
+    () => ({
+      width: initialViewport?.width ?? 0,
+      height: initialViewport?.height ?? height,
+    }),
+    [initialViewport?.width, initialViewport?.height, height],
+  );
   const rowVirtualizer = useVirtualizer({
     count: tableRows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => estimateRowHeight,
+    estimateSize,
     overscan: 8,
-    // A grid whose container measures ZERO renders nothing at all - and it
-    // says nothing about why. That happens for real reasons (a collapsed
-    // panel, a hidden tab, a not-yet-laid-out drawer) and in jsdom it is the
-    // default. So the initial rect falls back to the requested height rather
-    // than zero: the window is drawn at the right size and corrected once the
-    // container actually measures itself.
-    initialRect: initialViewport ?? { width: 0, height },
+    // Nested flushSync during a row click re-enters this grid and never
+    // returns under jsdom. Updates still commit on the same turn.
+    useFlushSync: false,
+    // A grid whose container measures ZERO renders nothing at all. jsdom
+    // reports 0, so the initial rect is the requested height and is corrected
+    // once the container measures itself.
+    initialRect,
   });
   const virtualItems = rowVirtualizer.getVirtualItems();
   /**
@@ -553,7 +561,10 @@ export function DataGrid<T>(props: DataGridProps<T>) {
                   data-testid="grid-row"
                   data-rowindex={virtual.index}
                   data-active={activeRow === virtual.index ? "true" : undefined}
-                  onClick={() => setActiveRow(virtual.index)}
+                  onClick={() => {
+                    setActiveRow(virtual.index);
+                    onOpenRow?.(tableRow.original);
+                  }}
                   style={{
                     height: virtual.size,
                     transform: `translateY(${virtual.start}px)`,

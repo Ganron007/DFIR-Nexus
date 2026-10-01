@@ -231,6 +231,43 @@ def status(
         typer.echo(f"  {mark} {item.get('name')} — {detail}")
 
 
+@app.command("pair")
+def pair(
+    raw_name: str = typer.Argument(..., help="Raw artifact name"),
+    output_name: str = typer.Argument(..., help="Pre-processed output file name"),
+    output_sha256: str = typer.Option(..., "--sha256", help="SHA-256 of the pre-processed output"),
+    confirm: bool = typer.Option(False, "--confirm", help="Record the audited pairing"),
+    case_id: str = typer.Option("", "--case", help="Case ID (defaults to active)"),
+):
+    """Pair a raw artifact with a pre-processed output the examiner accepts."""
+    from nexus.config import settings
+    from nexus.langgraph.lane_gate import confirm_preprocessed_pair
+
+    if not case_id:
+        case_id = _get_active_case_id() or ""
+    if not case_id:
+        typer.echo("No active case. Use 'nexus case activate' first.", err=True)
+        raise typer.Exit(1)
+    if not confirm:
+        typer.echo(
+            f"Proposed: {raw_name} covered by {output_name} ({output_sha256}). "
+            "Re-run with --confirm to record it."
+        )
+        return
+    from nexus.audit import resolve_examiner
+
+    gate = confirm_preprocessed_pair(
+        Path(settings.cases_root) / case_id,
+        raw_name=raw_name,
+        output_name=output_name,
+        output_sha256=output_sha256.strip().lower(),
+        examiner=resolve_examiner(),
+    )
+    typer.echo(
+        f"Paired {raw_name} -> {output_name}. Gate status: {gate.get('status', 'recorded')}."
+    )
+
+
 @app.command()
 def lock(
     case_id: str = typer.Option("", "--case", help="Case ID (defaults to active)"),

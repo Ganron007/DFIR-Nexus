@@ -732,7 +732,9 @@ def _approve_finding(
             f["seal_state"] = seal_state
             if override_reason:
                 f["override_reason"] = override_reason
-            _atomic_write_json(findings_path, findings)
+            from nexus.case.records import save_findings
+
+            save_findings(case_dir, findings)
 
             from nexus.auth import (
                 SIGNING_PURPOSE,
@@ -2664,7 +2666,9 @@ def _supersede_drafts(case_dir: Path, finding_ids: list[str], *,
                 done.append(fid)
                 changed = True
         if changed:
-            _atomic_write_json(findings_path, findings)
+            from nexus.case.records import save_findings
+
+            save_findings(case_dir, findings)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed superseding drafts in findings.json: %s", exc)
     # Best-effort SQLite sync — same dual-store pattern as the reject endpoint
@@ -6571,7 +6575,9 @@ async def api_findings_reject(request):
                     f["rejected_at"] = datetime.now(UTC).isoformat()
                     f["rejection_reason"] = reason
                     rejected.append(fid)
-            _atomic_write_json(findings_path, findings)
+            from nexus.case.records import save_findings
+
+            save_findings(case_dir, findings)
             # WO-A7: each dismissal is an audited negative-space event.
             with contextlib.suppress(Exception):
                 from nexus.analysis.negative_space import record

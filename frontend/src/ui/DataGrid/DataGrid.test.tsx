@@ -121,6 +121,22 @@ describe("DataGrid", () => {
     expect(screen.getByTestId("header-severity")).toHaveAttribute("aria-sort", "none");
   });
 
+  it("opens the row from a click without re-entering the virtualizer", () => {
+    const onOpenRow = vi.fn();
+    render(
+      <DataGrid
+        columns={COLUMNS}
+        rows={ROWS}
+        getRowId={(row) => row.id}
+        initialViewport={VIEWPORT}
+        onOpenRow={onOpenRow}
+      />,
+    );
+    fireEvent.click(screen.getAllByTestId("grid-row")[0]);
+    expect(onOpenRow).toHaveBeenCalledTimes(1);
+    expect(onOpenRow).toHaveBeenCalledWith(ROWS[0]);
+  });
+
   it("moves the cursor, opens the row and copies the cell from the keyboard", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {

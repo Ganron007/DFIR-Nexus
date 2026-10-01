@@ -156,6 +156,46 @@ def examiner_skip(
     return {"gate": gate, "added": added}
 
 
+def confirm_preprocessed_pair(
+    case_dir: Path | str,
+    *,
+    raw_name: str,
+    output_name: str,
+    output_sha256: str,
+    examiner: str,
+) -> dict[str, Any]:
+    """Record that a pre-processed output stands in for its raw artifact.
+
+    The raw job is an audited skip only when it is still on the unprocessed
+    list. The pairing itself is always stored.
+    """
+    gate = dict(read_lane_gate(case_dir))
+    if not gate:
+        gate = {"schema": 1, "unprocessed": [], "examiner_skips": []}
+    reason = f"pre-processed output supplied: {output_name} {output_sha256}"
+    pairs = list(gate.get("pairs") or [])
+    pairs.append({
+        "raw": raw_name,
+        "output": output_name,
+        "output_sha256": output_sha256,
+        "examiner": examiner,
+        "reason": reason[:300],
+        "ts": _now(),
+    })
+    gate["pairs"] = pairs
+    _atomic_write(gate_path(case_dir), gate)
+    skipped = examiner_skip(
+        case_dir,
+        examiner=examiner,
+        reason=reason,
+        items=[{"tool": raw_name, "purpose": raw_name}],
+    )
+    gate = skipped["gate"]
+    gate["pairs"] = pairs
+    _atomic_write(gate_path(case_dir), gate)
+    return gate
+
+
 def lane_gate_blocked(case_dir: Path | str) -> dict[str, Any]:
     """The gate when it is blocking, {} otherwise."""
     gate = read_lane_gate(case_dir)

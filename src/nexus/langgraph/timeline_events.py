@@ -34,7 +34,17 @@ EVENTS_SUFFIX = "-events"
 
 #: Families this slice writes events for. Explicit, so "why is prefetch missing
 #: from my timeline" has an answer instead of a shrug. Extended in Tier 2.
-SUPPORTED_FAMILIES = ("evtx", "evtxecmd", "mftecmd", "mftecmd-i30", "tasks", "wxtcmd")
+#: Plaso l2tcsv is the super-timeline: one already-merged event per row.
+#: The other names are single-artifact timestamp expansions.
+SUPPORTED_FAMILIES = (
+    "evtx",
+    "evtxecmd",
+    "mftecmd",
+    "mftecmd-i30",
+    "tasks",
+    "wxtcmd",
+    "plaso",
+)
 
 _STATE_FILENAME = "timeline_events.json"
 
@@ -137,6 +147,7 @@ def expand_doc(doc: dict[str, Any]) -> list[dict[str, Any]]:
 
     date_columns = date_columns_for(family)
     events: list[dict[str, Any]] = []
+    plaso_stamp = _plaso_event_time(fields) if family == "plaso" else None
 
     def emit(ts_desc: str, raw: Any, ts_src: str, precision: str) -> None:
         parsed = _parse_ts(raw)
@@ -166,7 +177,12 @@ def expand_doc(doc: dict[str, Any]) -> list[dict[str, Any]]:
             "host_clock_skew": None,
         })
 
+    if plaso_stamp is not None:
+        # date and time are one event. MACB is a label on that event.
+        emit("event", plaso_stamp, "column", "second")
     for column, value in fields.items():
+        if family == "plaso" and str(column).lower() in {"date", "time", "timezone", "datetime", "timestamp"}:
+            continue
         if column in date_columns:
             emit(column, value, "column", "millisecond")
         elif _looks_like_date_column(column):
@@ -180,6 +196,20 @@ def expand_doc(doc: dict[str, Any]) -> list[dict[str, Any]]:
         emit("ingest", doc.get("ts_raw") or doc.get("ts"), str(doc.get("ts_src") or "event"),
              str(doc.get("ts_precision") or "second"))
     return events
+
+
+def _plaso_event_time(fields: dict[str, Any]) -> str | None:
+    """One timestamp for an l2tcsv row: datetime, or date plus time."""
+    direct = fields.get("datetime") or fields.get("timestamp")
+    if direct not in (None, ""):
+        return str(direct)
+    date = str(fields.get("date") or "").strip()
+    clock = str(fields.get("time") or "").strip()
+    if date and clock:
+        return f"{date} {clock}"
+    if date:
+        return date
+    return None
 
 
 def _looks_like_date_column(name: str) -> bool:

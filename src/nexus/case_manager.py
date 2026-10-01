@@ -286,9 +286,9 @@ class CaseManager:
         return data if isinstance(data, list) else data.get("findings", [])
 
     def _save_findings(self, case_dir: Path, findings: list[dict]) -> None:
-        path = case_dir / "findings.json"
-        content = json.dumps(findings, indent=2, default=str)
-        _atomic_write(path, content)
+        from nexus.case.records import save_findings
+
+        save_findings(case_dir, findings)
 
     @lock_case_writes
     def record_finding(
