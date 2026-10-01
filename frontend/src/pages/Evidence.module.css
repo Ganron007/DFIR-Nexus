@@ -1,0 +1,96 @@
+/* Evidence page (WO-U8a / WP 14.8) - tokens only, zero inline styles. */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.stateRow {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: var(--font-size-xs);
+  color: var(--color-fg-muted);
+}
+
+/* The integrity verdict is the one thing on this page that must never be
+   ambiguous: all-verified and mismatch use the tone, the word AND the glyph,
+   because a colour alone fails a colour-blind examiner and a glyph alone
+   fails a screen reader. */
+.verdict {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  border: 1px solid transparent;
+}
+
+.verdictOk {
+  background: color-mix(in srgb, var(--sev-low) 12%, transparent);
+  border-color: color-mix(in srgb, var(--sev-low) 40%, transparent);
+  color: var(--sev-low);
+}
+
+.verdictBad {
+  background: color-mix(in srgb, var(--sev-critical) 12%, transparent);
+  border-color: color-mix(in srgb, var(--sev-critical) 40%, transparent);
+  color: var(--sev-critical);
+}
+
+.runLine {
+  font-size: var(--font-size-xs);
+  color: var(--color-fg-muted);
+  padding: var(--space-2) var(--space-3);
+}
+
+.runFeed {
+  margin-top: var(--space-2);
+}
+
+.scrollBox {
+  max-height: 20rem;
+  overflow-y: auto;
+}
+
+.evidenceList {
+  padding: var(--space-2) var(--space-4) 0;
+  font-size: var(--font-size-2xs);
+  color: var(--color-fg-muted);
+}
+
+.coverage {
+  padding: var(--space-2) var(--space-4) var(--space-3);
+  font-size: var(--font-size-sm);
+}
+
+.coverageRow {
+  margin-bottom: var(--space-1);
+}
+
+.noTimes {
+  color: var(--sev-medium);
+}
+
+.truncate {
+  max-width: 20rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reason {
+  font-size: var(--font-size-xs);
+  color: var(--color-fg-muted);
+}

@@ -59,8 +59,8 @@
       "colors": 0
     },
     "pages/Evidence.tsx": {
-      "inline": 31,
-      "colors": 6
+      "inline": 0,
+      "colors": 0
     },
     "pages/Explore.tsx": {
       "inline": 86,
@@ -192,7 +192,7 @@
     }
   },
   "totals": {
-    "inline": 887,
-    "colors": 83
+    "inline": 856,
+    "colors": 77
   }
 }
