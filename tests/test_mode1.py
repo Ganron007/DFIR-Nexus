@@ -152,11 +152,15 @@ class TestPromoteHitsToDraft:
         draft["provenance"] = {"mode": 1, "origin": "llm", "path": "full_run"}
         draft["audit_ids"] = [aid]
         draft["artifacts"] = [{"audit_id": aid, "type": "scan"}]
+        from nexus.modes.mode1_verify import classify_draft
+
+        draft["verifier"] = classify_draft(draft)
         saved = save_draft_finding(case, draft)
         assert saved.get("status") == "STAGED"
         rows = json.loads((case / "findings.json").read_text(encoding="utf-8"))
         assert rows[0]["examiner_selected"] is False
         assert rows[0]["provenance"]["path"] == "full_run"
+        assert rows[0]["verifier"]["verdict"] == "INFERRED"
 
     def test_empty_hits(self, tmp_path: Path):
         draft = promote_hits_to_draft(
