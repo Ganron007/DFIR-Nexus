@@ -364,6 +364,18 @@ def doctor(
             typer.echo(f"  [FAIL] RAG preflight crashed: {exc}")
             golden_fail = True
 
+    egress = os.environ.get("NEXUS_LLM_EGRESS", "").strip().lower()
+    if egress == "raw":
+        typer.echo(
+            "  [note] LLM egress: raw — victim identifiers are sent to the "
+            "model (NEXUS_LLM_EGRESS=raw)"
+        )
+    else:
+        typer.echo(
+            "  [note] LLM egress: anonymize victim identifiers when the model "
+            "endpoint is not loopback"
+        )
+
     # Parked / gated surfaces (informational — not golden-path failures).
     typer.echo("parked / gated surfaces (not required to ship):")
     typer.echo("  [park] OpenCTI (11 tools): parked — needs OPENCTI_URL/TOKEN; org CTI graph, not findings search")

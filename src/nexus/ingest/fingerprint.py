@@ -6,6 +6,8 @@ family. A generic spreadsheet stays unrecognized.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 
 def _columns(header: str) -> set[str]:
     return {part.strip().lower().strip('"') for part in header.split(",") if part.strip()}
@@ -22,6 +24,40 @@ def family_for_csv_header(header: str) -> str | None:
         "logfile" in cols and "currentlsn" in cols
     ):
         return "logfileparser"
+    if {"executablename", "runcount", "lastrun"} <= cols:
+        return "pecmd"
+    if {"hivepath", "keypath", "valuename"} <= cols:
+        return "recmd"
     if {"date", "time", "timezone", "macb", "source", "sourcetype"} <= cols:
         return "plaso"
     return None
+
+
+def place_recognized_csv(source: Path, extraction_root: Path) -> Path | None:
+    """Copy a recognized CSV under ``<extraction_root>/<family>/``.
+
+    The examiner's original stays where it was registered. The copy is what
+    the tool lane's folder-name family rule reads.
+    """
+    source = Path(source)
+    if not source.is_file() or source.suffix.lower() != ".csv":
+        return None
+    try:
+        lines = source.read_text(encoding="utf-8", errors="replace").splitlines()
+        header = lines[0] if lines else ""
+    except OSError:
+        return None
+    family = family_for_csv_header(header)
+    if not family:
+        return None
+    dest_dir = Path(extraction_root) / family
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        source.resolve().relative_to(dest_dir.resolve())
+        return source
+    except ValueError:
+        pass
+    dest = dest_dir / source.name
+    if source.resolve() != dest.resolve():
+        dest.write_bytes(source.read_bytes())
+    return dest

@@ -152,10 +152,9 @@ def approve_finding(
             if note:
                 f.setdefault("notes", []).append({"text": note, "author": analyst, "at": f["approved_at"]})
 
-            # Atomic write — matches the Portal path; a plain write_text can
-            # race a concurrent Portal approval and corrupt findings.json.
-            from nexus.case_manager import _atomic_write
-            _atomic_write(findings_path, json.dumps(findings, indent=2, default=str))
+            from nexus.case.records import save_findings
+
+            save_findings(case_dir, findings)
 
             hmac_key = _hmac_signing_key(password, analyst)
             if hmac_key:
@@ -164,7 +163,7 @@ def approve_finding(
                 from nexus.auth import _load_password_entry
                 entry = _load_password_entry(analyst)
                 salt = entry.get("salt", "") if entry else ""
-                write_verification_entry(f.get("case_id", "unknown"), {
+                write_verification_entry(case_dir.name, {
                     "finding_id": finding_id,
                     "type": "finding",
                     "approved_by": analyst,
@@ -176,6 +175,15 @@ def approve_finding(
                     "seal_state": seal_state,
                     "override_reason": override_reason,
                 })
+            from nexus.transparency import transparency_append
+
+            transparency_append(case_dir.name, {
+                "action": "approve",
+                "finding_id": finding_id,
+                "approved_by": analyst,
+                "l1_verdict_at_approval": f["l1_verdict_at_approval"],
+                "override_reason": override_reason,
+            })
             return {"finding_id": finding_id, "status": "APPROVED", "note": note}
 
     return {"error": f"Finding {finding_id} not found or not DRAFT"}
@@ -199,8 +207,9 @@ def approve_timeline_event(
             e["status"] = "APPROVED"
             e["approved_by"] = analyst
             e["approved_at"] = datetime.now(UTC).isoformat()
-            from nexus.case_manager import _atomic_write
-            _atomic_write(tl_path, json.dumps(events, indent=2, default=str))
+            from nexus.case.records import save_timeline
+
+            save_timeline(case_dir, events)
             return {"event_id": event_id, "status": "APPROVED"}
     return {"error": f"Event {event_id} not found or not DRAFT"}
 

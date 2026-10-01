@@ -64,7 +64,13 @@ def save_records(
             (case_id, kind),
         )
         for position, doc in enumerate(records):
-            record_id = str(doc.get(id_field) or doc.get("finding_id") or position)
+            record_id = str(
+                doc.get(id_field)
+                or doc.get("finding_id")
+                or doc.get("event_id")
+                or doc.get("id")
+                or position
+            )
             conn.execute(
                 """
                 INSERT INTO case_records
@@ -130,5 +136,53 @@ def save_findings(
         "finding",
         findings,
         mirror_name="findings.json",
+        db_path=db_path,
+    )
+
+
+def save_timeline(
+    case_dir: Path | str,
+    events: list[dict[str, Any]],
+    *,
+    db_path: Path | None = None,
+) -> None:
+    save_records(
+        case_dir,
+        "timeline_event",
+        events,
+        mirror_name="timeline.json",
+        id_field="event_id",
+        db_path=db_path,
+    )
+
+
+def save_todos(
+    case_dir: Path | str,
+    todos: list[dict[str, Any]],
+    *,
+    db_path: Path | None = None,
+) -> None:
+    save_records(
+        case_dir,
+        "todo",
+        todos,
+        mirror_name="todos.json",
+        id_field="id",
+        db_path=db_path,
+    )
+
+
+def save_iocs(
+    case_dir: Path | str,
+    iocs: list[dict[str, Any]],
+    *,
+    db_path: Path | None = None,
+) -> None:
+    save_records(
+        case_dir,
+        "ioc",
+        iocs,
+        mirror_name="iocs.json",
+        id_field="id",
         db_path=db_path,
     )

@@ -81,6 +81,104 @@ def _atomic_write(path: Path, payload: dict[str, Any]) -> None:
     tmp.replace(path)
 
 
+def _job_state(status: str) -> str:
+    mapped = {
+        "OK": "processed",
+        "PASS": "processed",
+        "FAIL": "failed",
+        "ERROR": "failed",
+        "RUNNING": "running",
+        "SKIP": "skipped",
+        "SKIPPED": "skipped",
+    }
+    return mapped.get(str(status or "").upper(), "unknown")
+
+
+def _jobs_from_ledger(ledger: list[dict[str, Any]]) -> list[dict[str, str]]:
+    jobs: list[dict[str, str]] = []
+    for row in ledger:
+        jobs.append({
+            "tool": str(row.get("tool") or ""),
+            "purpose": str(row.get("purpose") or ""),
+            "family": str(row.get("family") or ""),
+            "state": _job_state(str(row.get("status") or "")),
+        })
+    return jobs
+
+
+def coverage_snapshot(case_dir: Path | str) -> dict[str, Any]:
+    """Counts from the last gate, for a run record or a model prompt."""
+    gate = read_lane_gate(case_dir)
+    jobs = list(gate.get("jobs") or [])
+    counts = {"processed": 0, "failed": 0, "running": 0, "skipped": 0, "unknown": 0}
+    pending: list[str] = []
+    for job in jobs:
+        state = str(job.get("state") or "unknown")
+        counts[state] = counts.get(state, 0) + 1
+        if state in ("failed", "running", "unknown"):
+            name = str(job.get("family") or job.get("purpose") or job.get("tool") or "")
+            if name:
+                pending.append(name)
+    for item in gate.get("unprocessed") or []:
+        name = str(item.get("purpose") or item.get("tool") or "")
+        if name:
+            pending.append(name)
+    return {
+        "status": gate.get("status") or "absent",
+        "counts": counts,
+        "pending": list(dict.fromkeys(pending)),
+    }
+
+
+def pending_family_notice(case_dir: Path | str) -> str:
+    """One line for a model prompt. Empty when nothing is still outstanding."""
+    pending = coverage_snapshot(case_dir)["pending"]
+    if not pending:
+        return ""
+    shown = ", ".join(pending[:12])
+    return (
+        "PENDING EVIDENCE (not yet in the index): "
+        f"{shown}. Do not claim these families are absent.\n"
+    )
+
+
+def _announce_processed(case_dir: Path | str, jobs: list[dict[str, str]]) -> None:
+    """Tell a running Mode 2 or Mode 3 run that a family finished."""
+    landed = [
+        str(job.get("family") or job.get("purpose") or job.get("tool") or "")
+        for job in jobs
+        if job.get("state") == "processed"
+    ]
+    names = [name for name in dict.fromkeys(landed) if name]
+    if not names:
+        return
+    text = "Evidence landed: " + ", ".join(names)
+    root = Path(case_dir)
+    targets = (
+        ("analysis/mode2_runs", "nexus.modes.multi_role", "append_steering"),
+        ("analysis/mode3_runs", "nexus.modes.multi_agent", "append_mode3_steering"),
+    )
+    for folder, module_name, fn_name in targets:
+        directory = root / folder
+        if not directory.is_dir():
+            continue
+        for path in directory.glob("*.json"):
+            try:
+                state = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if not isinstance(state, dict) or str(state.get("status") or "") != "running":
+                continue
+            run_id = str(state.get("run_id") or path.stem)
+            try:
+                import importlib
+
+                module = importlib.import_module(module_name)
+                getattr(module, fn_name)(root, run_id, text)
+            except Exception:  # noqa: BLE001 — a notice must not fail the gate
+                continue
+
+
 def write_lane_gate(
     case_dir: Path | str,
     run_id: str,
@@ -106,6 +204,7 @@ def write_lane_gate(
     ]
     still_bad = {_key(u) for u in unprocessed}
     skips = [s for s in (prior.get("examiner_skips") or []) if _key(s) in still_bad]
+    jobs = _jobs_from_ledger(ledger)
     gate: dict[str, Any] = {
         "schema": 1,
         "run_id": str(run_id or ""),
@@ -113,9 +212,11 @@ def write_lane_gate(
         "rule": "never skip evidence processing (operator, 2026-09-29)",
         "unprocessed": unprocessed,
         "examiner_skips": skips,
+        "jobs": jobs,
     }
     _recompute(gate)
     _atomic_write(gate_path(case_dir), gate)
+    _announce_processed(case_dir, jobs)
     return gate
 
 

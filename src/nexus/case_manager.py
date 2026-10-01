@@ -954,9 +954,9 @@ class CaseManager:
         return data if isinstance(data, list) else data.get("events", [])
 
     def _save_timeline(self, case_dir: Path, events: list[dict]) -> None:
-        path = case_dir / "timeline.json"
-        content = json.dumps(events, indent=2, default=str)
-        _atomic_write(path, content)
+        from nexus.case.records import save_timeline
+
+        save_timeline(case_dir, events)
 
     def record_timeline_event(self, event: dict, examiner_override: str = "") -> dict:
         case_dir = self.require_active_case()
@@ -1032,9 +1032,9 @@ class CaseManager:
         return data if isinstance(data, list) else data.get("todos", [])
 
     def _save_todos(self, case_dir: Path, todos: list[dict]) -> None:
-        path = case_dir / "todos.json"
-        content = json.dumps(todos, indent=2, default=str)
-        _atomic_write(path, content)
+        from nexus.case.records import save_todos
+
+        save_todos(case_dir, todos)
 
     @lock_case_writes
     def add_todo(self, description: str, assignee: str = "",
@@ -1145,9 +1145,9 @@ class CaseManager:
         return []
 
     def _save_iocs(self, case_dir: Path, iocs: list[dict]) -> None:
-        path = case_dir / "iocs.json"
-        content = json.dumps(iocs, indent=2, default=str)
-        _atomic_write(path, content)
+        from nexus.case.records import save_iocs
+
+        save_iocs(case_dir, iocs)
 
     @lock_case_writes
     def _merge_iocs(self, case_dir: Path, new_iocs: list[dict]) -> None:

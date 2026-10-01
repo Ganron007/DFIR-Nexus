@@ -13,6 +13,7 @@ from nexus.langgraph.lane_gate import (
     gate_message,
     lane_gate_blocked,
     lane_stages,
+    pending_family_notice,
     read_lane_gate,
     write_lane_gate,
 )
@@ -29,6 +30,7 @@ def test_fail_row_blocks_and_skip_clears(tmp_path: Path):
     gate = write_lane_gate(tmp_path, "RUN-1", [_FAIL_ROW], ts="2026-09-29T00:00:00Z")
     assert gate["status"] == "blocked"
     assert gate["blocked_count"] == 1
+    assert gate["jobs"][0]["state"] == "failed"
     assert lane_gate_blocked(tmp_path)
 
     out = examiner_skip(tmp_path, examiner="gate_bot", reason="known tool loop")
@@ -85,3 +87,28 @@ def test_lane_gate_error_helper_blocks_and_clears(tmp_path: Path):
 
     examiner_skip(tmp_path, examiner="gate_bot", reason="accepted")
     assert _lane_gate_error(tmp_path) is None
+
+
+def test_processed_family_is_announced_to_a_running_mode(tmp_path: Path):
+    run_dir = tmp_path / "analysis" / "mode2_runs"
+    run_dir.mkdir(parents=True)
+    (run_dir / "M2-test.json").write_text(
+        '{"run_id": "M2-test", "status": "running"}',
+        encoding="utf-8",
+    )
+    write_lane_gate(tmp_path, "RUN-1", [{
+        "tool": "evtxecmd",
+        "purpose": "Security.evtx",
+        "family": "evtxecmd",
+        "status": "OK",
+    }])
+    notice = (run_dir / "M2-test.steering.jsonl").read_text(encoding="utf-8")
+    assert "evtxecmd" in notice
+    assert pending_family_notice(tmp_path) == ""
+
+
+def test_failed_job_is_named_as_pending(tmp_path: Path):
+    write_lane_gate(tmp_path, "RUN-1", [_FAIL_ROW])
+    notice = pending_family_notice(tmp_path)
+    assert "NTFS metadata" in notice
+    assert "absent" in notice

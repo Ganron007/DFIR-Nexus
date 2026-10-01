@@ -656,9 +656,13 @@ def run_context_loop(
             + ", ".join(allowed_tools)
             + ". Any other tool is rejected by the runtime.\n"
         )
+    from nexus.langgraph.lane_gate import pending_family_notice
+
+    pending_line = pending_family_notice(case_dir)
     base_system = (
         f"ACTIVE CASE: {case_id}\n"
-        "The runtime injects case_id into every evidence tool; you do NOT need "
+        + pending_line
+        + "The runtime injects case_id into every evidence tool; you do NOT need "
         "to supply it and you must never ask the examiner for it.\n"
         + allow_line
         + "\n" + (system_prompt.strip() or DEFAULT_SYSTEM)

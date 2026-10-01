@@ -205,6 +205,19 @@ def register_evidence(
         if mgr.get_case(case_dir.name) is None:
             raise ValueError(f"Case not found in registry: {case_dir.name}")
 
+        placed = ""
+        recognized_family = ""
+        if evidence_path.is_file() and evidence_path.suffix.lower() == ".csv":
+            try:
+                from nexus.ingest.fingerprint import place_recognized_csv
+
+                copied = place_recognized_csv(evidence_path, case_dir / "ingest")
+                if copied is not None:
+                    placed = str(copied)
+                    recognized_family = copied.parent.name
+            except OSError:
+                placed = ""
+
         record = mgr.add_evidence(
             case_id=case_dir.name,
             name=evidence_path.name,
@@ -228,6 +241,8 @@ def register_evidence(
             "registered_at": (
                 record.collected_at.isoformat() if record and record.collected_at else ""
             ),
+            "recognized_family": recognized_family,
+            "placed_at": placed,
         }
     finally:
         mgr.close()

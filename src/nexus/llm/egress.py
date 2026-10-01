@@ -80,25 +80,33 @@ def anonymize_text(text: str, case_dir: Path | None, allowlist: set[str] | None 
     return rewritten
 
 
+def _restore_obj(value, case_dir: Path | None):
+    if isinstance(value, str):
+        return restore_text(value, case_dir)
+    if isinstance(value, dict):
+        return {str(key): _restore_obj(item, case_dir) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_restore_obj(item, case_dir) for item in value]
+    return value
+
+
 def restore_tool_calls(tool_calls: list[dict], case_dir: Path | None) -> list[dict]:
-    """Put real values back into tool-call argument strings."""
+    """Put real values back into tool-call arguments (strings or objects)."""
     restored: list[dict] = []
     for call in tool_calls or []:
         if not isinstance(call, dict):
             restored.append(call)
             continue
-        function = call.get("function")
-        if not isinstance(function, dict):
-            restored.append(call)
-            continue
-        arguments = function.get("arguments")
-        if not isinstance(arguments, str):
-            restored.append(call)
-            continue
-        restored.append({
-            **call,
-            "function": {**function, "arguments": restore_text(arguments, case_dir)},
-        })
+        updated = dict(call)
+        if "args" in updated:
+            updated["args"] = _restore_obj(updated["args"], case_dir)
+        function = updated.get("function")
+        if isinstance(function, dict) and "arguments" in function:
+            updated["function"] = {
+                **function,
+                "arguments": _restore_obj(function.get("arguments"), case_dir),
+            }
+        restored.append(updated)
     return restored
 
 
@@ -151,8 +159,8 @@ def attach_egress(model):
                 calls = getattr(reply, "tool_calls", None) if reply is not None else None
                 if isinstance(calls, list):
                     for call in calls:
-                        if isinstance(call, dict) and isinstance(call.get("args"), str):
-                            call["args"] = restore_text(call["args"], case)
+                        if isinstance(call, dict) and "args" in call:
+                            call["args"] = _restore_obj(call["args"], case)
         return result
 
     model._generate = _generate

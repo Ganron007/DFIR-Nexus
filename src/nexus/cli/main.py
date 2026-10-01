@@ -372,8 +372,6 @@ def reject(
 
 @lock_case_writes
 def _reject_finding(case_dir: Path, finding_id: str, analyst: str, reason: str) -> dict:
-    from nexus.case.outputs import _atomic_write_json
-
     findings_path = case_dir / "findings.json"
     if not findings_path.exists():
         return {"error": "No findings file found"}
@@ -390,7 +388,9 @@ def _reject_finding(case_dir: Path, finding_id: str, analyst: str, reason: str) 
                 from nexus.analysis.negative_space import record
 
                 record(case_dir, "false_positive_dismissed", fid, reason, refs=[fid])
-            _atomic_write_json(findings_path, findings)
+            from nexus.case.records import save_findings
+
+            save_findings(case_dir, findings)
             return {"finding_id": finding_id, "status": "REJECTED"}
     return {"error": f"Finding {finding_id} not found or not DRAFT"}
 
