@@ -96,6 +96,22 @@ describe("Explore page (WP 4j.5)", () => {
     setup();
   });
 
+  it("searches again when the active case changes under the same URL", async () => {
+    function Harness() {
+      return (
+        <MemoryRouter initialEntries={["/explore?needles=rundll32"]}>
+          <Explore />
+        </MemoryRouter>
+      );
+    }
+    const view = render(<Harness />);
+    await waitFor(() => screen.getByText("4688"));
+    const calls = mockApi.search.mock.calls.length;
+    mockUseCase.mockReturnValue({ activeCase: "CASE-U" });
+    view.rerender(<Harness />);
+    await waitFor(() => expect(mockApi.search.mock.calls.length).toBeGreaterThan(calls));
+  });
+
   it("fires a search for a needles-only briefing link", async () => {
     renderExplore("/explore?needles=rundll32");
     await waitFor(() =>

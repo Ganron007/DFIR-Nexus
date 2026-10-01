@@ -92,8 +92,15 @@ export default function Explore() {
   const [interpReady, setInterpReady] = useState(false);
   const reqIdRef = useRef(0);
 
-  // Load family/host aggregates and workbench bookmarks on mount
+  // Load family/host aggregates and workbench bookmarks on mount.
+  // Hits belong to the case that produced them. Leaving them on screen
+  // across a case switch showed the previous case's rows under the new name.
   useEffect(() => {
+    setHits([]);
+    setCount(0);
+    setSelected(null);
+    setInterp(null);
+    setInterpReady(false);
     api.aggregate({ group_by: "family" })
       .then((r) => setFamilyAgg(r.buckets || {}))
       .catch((e) => setError(`Facet load failed: ${(e as Error).message}`));
@@ -183,8 +190,10 @@ export default function Explore() {
       start: start || "",
       end: end || "",
     });
+    // A case switch must re-run the same URL. searchParams alone does not
+    // change, and the previous case's rows would stay on screen.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
+  }, [searchParams, activeCase]);
 
   // Explicit overrides beat component state — callers that just changed a value
   // pass it here instead of relying on a setTimeout against a stale closure.
@@ -199,6 +208,7 @@ export default function Explore() {
   const doSearch = useCallback(async (targetOffset: number, overrides: SearchOverrides = {}) => {
     const reqId = ++reqIdRef.current;
     setLoading(true);
+    setHits([]);
     setError("");
     const needleValue = overrides.needles !== undefined ? overrides.needles : needles;
     const famValue = overrides.family !== undefined ? overrides.family : family;
