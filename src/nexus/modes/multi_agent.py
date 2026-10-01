@@ -12,6 +12,7 @@ A new multi-agent case stores ``investigation_mode: 3``.
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -299,12 +300,19 @@ def accept_claim(claim: dict[str, Any]) -> str:
 def settled_candidates(
     board: list[dict[str, Any]],
     disputes: list[dict[str, Any]],
+    *,
+    case_dir: Path | None = None,
 ) -> tuple[list[dict[str, Any]], list[str]]:
     """DRAFT-shaped candidates from settled claims.
 
     Staging requires observation and interpretation. A claim that passes
     ``accept_claim`` already has a justification; that text is the
     interpretation so the examiner stage step does not skip the row.
+
+    WO-A7: a claim the board **disputed** is the Mode 3 refutation - it is
+    excluded from staging and, when ``case_dir`` is given, recorded as a
+    negative-space event (an audited non-finding). Without ``case_dir`` this
+    stays a pure function.
     """
     open_keys = {
         (d["entity_type"], d["entity_value"], d["claim_kind"]) for d in disputes
@@ -321,6 +329,20 @@ def settled_candidates(
                 continue
             key = _claim_key(claim)
             if key in open_keys:
+                # WO-A7: the board contradicted this claim, so it never
+                # becomes a finding - record the refutation (audit ids as refs).
+                if case_dir is not None:
+                    with contextlib.suppress(Exception):
+                        from nexus.analysis.negative_space import record
+
+                        record(
+                            case_dir, "refuted",
+                            f"{claim.get('entity_value') or '?'} "
+                            f"{claim.get('claim_kind') or '?'}",
+                            "the Mode 3 board disputed this claim; "
+                            "it was excluded from staging",
+                            refs=list(_audit_ids(claim)),
+                        )
                 continue
             justification = str(claim.get("confidence_justification") or "").strip()
             value = str(claim.get("value") or "").strip()
@@ -963,7 +985,7 @@ def run_mode3(
     def synthesize(state: Mode3State) -> dict[str, Any]:
         disputes = find_disputes(list(state.get("board") or []))
         candidates, _gaps = settled_candidates(
-            list(state.get("board") or []), list(disputes),
+            list(state.get("board") or []), list(disputes), case_dir=case_dir,
         )
         sink.emit(new_event(
             run_id, "synthesis.candidates", actor="synthesis",

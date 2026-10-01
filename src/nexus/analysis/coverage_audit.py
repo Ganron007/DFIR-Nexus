@@ -30,6 +30,7 @@ Persisted to ``analysis/coverage_audit.json`` (schema 1).
 
 from __future__ import annotations
 
+import contextlib
 import csv
 import json
 from datetime import UTC, datetime
@@ -491,6 +492,11 @@ def write_coverage_audit(case_dir: Path | str) -> tuple[Path, dict[str, Any]]:
     analysis.mkdir(parents=True, exist_ok=True)
     path = analysis / AUDIT_FILENAME
     path.write_text(json.dumps(audit, indent=2, sort_keys=True), encoding="utf-8")
+    # WO-A7: coverage gaps are negative-space (missing-evidence) events.
+    with contextlib.suppress(Exception):
+        from nexus.analysis.negative_space import record_missing_evidence
+
+        record_missing_evidence(case_dir, audit)
     return path, audit
 
 

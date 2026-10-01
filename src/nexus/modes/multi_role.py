@@ -23,6 +23,7 @@ decisions and outputs only.
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -1648,6 +1649,11 @@ def run_mode2(
         state["followup_rounds"] = used + 1
         state["status"] = "assessed"
         _persist_state(case_dir, run_id, state)
+        # WO-A7: each refuted verdict is an audited negative-space event.
+        with contextlib.suppress(Exception):
+            from nexus.analysis.negative_space import record_refuted_verdicts
+
+            record_refuted_verdicts(case_dir, run_id, list(refuted))
         sink.emit(new_event(
             run_id, "plan.work_order", actor="director",
             detail=order.task,

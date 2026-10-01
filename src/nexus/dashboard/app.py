@@ -6554,6 +6554,13 @@ async def api_findings_reject(request):
                     f["rejection_reason"] = reason
                     rejected.append(fid)
             _atomic_write_json(findings_path, findings)
+            # WO-A7: each dismissal is an audited negative-space event.
+            with contextlib.suppress(Exception):
+                from nexus.analysis.negative_space import record
+
+                for fid in rejected:
+                    record(case_dir, "false_positive_dismissed", fid, reason,
+                           refs=[fid])
     except Exception as exc:
         logger.warning("Failed updating findings.json on reject: %s", exc)
         return JSONResponse(
@@ -6697,6 +6704,13 @@ def _augment_report_with_grade(case_dir, out_file, report_text: str,
         ledger = verify_case(case_dir, findings=findings)
         with contextlib.suppress(OSError):
             write_ledger(case_dir, ledger)
+        # WO-A7: UNVERIFIABLE claims and invented-entity failures become
+        # negative-space events (reads the ledger; verification semantics
+        # untouched).
+        with contextlib.suppress(Exception):
+            from nexus.analysis.negative_space import record_ledger_flags
+
+            record_ledger_flags(case_dir, ledger)
         tail.append(render_ledger_markdown(ledger))
 
     # WO-11: the grade consumes the L1 ledger and the live contradiction count,
@@ -6749,6 +6763,14 @@ def _augment_report_with_grade(case_dir, out_file, report_text: str,
         with contextlib.suppress(OSError):
             write_grade(case_dir, grade)
         tail.append(render_grade_markdown(grade))
+        # WO-A7: the negative-space tail renders after the grade — the grade
+        # never reads it, and nothing is appended when there are no events.
+        with contextlib.suppress(Exception):
+            from nexus.analysis.negative_space import render_markdown
+
+            section = render_markdown(case_dir)
+            if section:
+                tail.append(section)
 
     with contextlib.suppress(Exception):
         tail.append(render_consistency_markdown(consistency))

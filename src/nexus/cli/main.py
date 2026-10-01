@@ -44,6 +44,7 @@ Usage:
     nexus update                           Pull latest code
 """
 
+import contextlib
 import os
 import subprocess
 import sys
@@ -379,6 +380,11 @@ def _reject_finding(case_dir: Path, finding_id: str, analyst: str, reason: str) 
             f["rejected_by"] = analyst
             f["rejected_at"] = datetime.now(UTC).isoformat()
             f["rejection_reason"] = reason
+            # WO-A7: the examiner's "no" is an audit event, not a finding.
+            with contextlib.suppress(Exception):
+                from nexus.analysis.negative_space import record
+
+                record(case_dir, "false_positive_dismissed", fid, reason, refs=[fid])
             _atomic_write_json(findings_path, findings)
             return {"finding_id": finding_id, "status": "REJECTED"}
     return {"error": f"Finding {finding_id} not found or not DRAFT"}
