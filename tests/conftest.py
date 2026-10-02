@@ -202,9 +202,13 @@ def _credential_tripwire():
     this snapshot (stat only, a few thousand stats) is the guard that catches
     whatever they miss.
 
-    Two notes: any writer counts — a live ``nexus serve`` sharing this machine
-    will trip the wire (stop it before a full run); and
-    ``tests/test_credential_tripwire.py`` is the canary that proves it fires.
+    Three notes: any writer counts — a live ``nexus serve`` sharing this machine
+    will trip the wire (stop it before a full run); the agent's own IDE session
+    can rewrite ``~/.claude/settings.json`` mid-run, which is a false positive by
+    construction (register D21: proven 2026-10-02, when the file's mtime fell
+    inside the run window while nothing under ``~/.nexus`` changed and no test or
+    ``src/`` file references it); and ``tests/test_credential_tripwire.py`` is
+    the canary that proves it fires.
     """
     before = _protected_snapshot()
     yield
@@ -222,9 +226,36 @@ def _credential_tripwire():
         pytest.fail(
             "credential/path tripwire: the test run touched protected paths:\n  "
             + "\n  ".join(lines[:40])
-            + (f"\n  ... {len(lines) - 40} more" if len(lines) > 40 else ""),
+            + (f"\n  ... {len(lines) - 40} more" if len(lines) > 40 else "")
+            + "\n\n"
+            + _tripwire_hint(lines),
             pytrace=False,
         )
+
+
+#: What each protected path is, so a failure says whether it is a real
+#: credential incident or the agent's own IDE session (register D21). Matched
+#: on the path as the snapshot records it — absolute, so no `~` prefix.
+_TRIPWIRE_CLASSES = (
+    (".nexus", "case/credential store", "real incident"),
+    (".claude", "IDE-agent file", "likely a false positive — no test writes it"),
+    (".env", "LLM key / endpoint", "real incident if a test wrote it"),
+)
+
+
+def _tripwire_hint(lines: list[str]) -> str:
+    """Classify the touched paths so the reader knows what they are looking at."""
+    out = ["What was touched:"]
+    for fragment, label, meaning in _TRIPWIRE_CLASSES:
+        hits = [line for line in lines if fragment in line]
+        if hits:
+            out.append(f"  - {label}: {len(hits)} path(s) — {meaning}")
+    out.append(
+        "  A path that is neither protected case state nor the LLM config is "
+        "not case data and not a credential: compare its mtime with the run "
+        "window before treating this as a test failure (register D21)."
+    )
+    return "\n".join(out)
 
 
 # ---------------------------------------------------------------------------
