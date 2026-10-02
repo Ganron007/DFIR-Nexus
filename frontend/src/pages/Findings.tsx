@@ -13,7 +13,7 @@
  * * the Drawer is a Radix dialog, so focus is trapped, Esc closes it and focus
  *   returns to the row that opened it.
  */
-import { useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 
 import { useCase } from "../context/CaseContext";
 import {
@@ -205,6 +205,28 @@ function FindingDetail({ finding }: { finding: Finding }) {
   );
 }
 
+const FindingsGrid = memo(function FindingsGrid({
+  rows,
+  onOpen,
+}: {
+  rows: Finding[];
+  onOpen: (row: Finding) => void;
+}) {
+  return (
+    <DataGrid<Finding>
+      mode="client"
+      columns={COLUMNS}
+      rows={rows}
+      getRowId={(row) => row.id}
+      viewId="findings"
+      height={520}
+      ariaLabel="Findings"
+      emptyMessage="No findings yet."
+      onOpenRow={onOpen}
+    />
+  );
+});
+
 export default function Findings() {
   const { activeCase } = useCase();
   const { data, isLoading, error } = useFindings(activeCase);
@@ -212,6 +234,12 @@ export default function Findings() {
 
   const findings = useMemo(() => data?.findings ?? [], [data]);
   const selected = findings.find((finding) => finding.id === openId) ?? null;
+  const openFinding = useCallback((row: Finding) => {
+    const id = row.id;
+    // Open after the click returns. A dialog mounted inside the click, while
+    // the virtualizer is still measuring, re-enters the grid and the page stops.
+    window.setTimeout(() => setOpenId(id), 0);
+  }, []);
 
   return (
     <div className={styles.page}>
@@ -237,17 +265,7 @@ export default function Findings() {
           hint="Use Explore and Workbench to promote matching hits into DRAFT findings."
         />
       ) : (
-        <DataGrid<Finding>
-          mode="client"
-          columns={COLUMNS}
-          rows={findings}
-          getRowId={(row) => row.id}
-          viewId="findings"
-          height={520}
-          ariaLabel="Findings"
-          emptyMessage="No findings yet."
-          onOpenRow={(row) => setOpenId(row.id)}
-        />
+        <FindingsGrid rows={findings} onOpen={openFinding} />
       )}
 
       <Drawer

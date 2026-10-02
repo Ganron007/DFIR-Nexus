@@ -61,3 +61,23 @@ def place_recognized_csv(source: Path, extraction_root: Path) -> Path | None:
     if source.resolve() != dest.resolve():
         dest.write_bytes(source.read_bytes())
     return dest
+
+
+def place_loose_csvs(root: Path) -> list[Path]:
+    """Copy recognized CSVs that sit in ``root`` itself into ``root/<family>/``.
+
+    Tool output that is already inside a subfolder is left where the lane
+    wrote it. Only a file dropped at the root of ingest or extractions needs
+    a family folder so the indexer can name it.
+    """
+    root = Path(root)
+    if not root.is_dir():
+        return []
+    placed: list[Path] = []
+    for source in list(root.glob("*.csv")):
+        dest = place_recognized_csv(source, root)
+        if dest is None or dest.resolve() == source.resolve():
+            continue
+        source.unlink()
+        placed.append(dest)
+    return placed

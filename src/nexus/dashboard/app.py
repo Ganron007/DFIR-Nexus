@@ -691,85 +691,25 @@ def _approve_finding(
     l1_verdict: str = "",
     override_reason: str = "",
 ) -> dict:
-    """Approve a single finding and write HMAC verification ledger entry."""
-    findings_path = case_dir / "findings.json"
-    if not findings_path.exists():
-        return {"status": "error", "message": "No findings file"}
+    """Approve one finding through the shared examiner service."""
+    from nexus.case.approval_service import commit_approval, signing_key_from_stored_hash
 
-    findings = json.loads(findings_path.read_text())
-    for f in findings:
-        fid = f.get("id") or f.get("finding_id", "")
-        if fid == finding_id and f.get("status") == "DRAFT":
-            # WO-21/WP 10.4: the seal must still verify at approval time. The
-            # portal must refuse an edited-after-staging finding exactly as the
-            # CLI does - an override reason must NOT bypass a broken seal.
-            try:
-                from nexus.analysis.integrity import verify_seal
-
-                seal_ok, seal_reason = verify_seal(f)
-            except Exception as exc:  # noqa: BLE001
-                seal_ok, seal_reason = False, f"seal check failed: {exc}"
-            has_seal = bool(f.get("seal") or f.get("content_hash"))
-            if has_seal and not seal_ok:
-                return {
-                    "status": "error",
-                    "message": (
-                        f"Refused: finding {finding_id} failed its submission seal — "
-                        f"{seal_reason}. It was edited after staging; re-stage it so "
-                        "the digest matches the content."
-                    ),
-                    "seal_reason": seal_reason,
-                }
-            # WO-23: a seal-less DRAFT is UNSEALED - L1.6 marks it UNVERIFIABLE
-            # (so an override reason was required) and the state is recorded.
-            seal_state = "verified" if (has_seal and seal_ok) else "absent"
-            f["status"] = "APPROVED"
-            f["approved_by"] = examiner
-            f["approved_at"] = datetime.now(UTC).isoformat()
-            # WO-2: what the verifier said at the moment of signing (empty
-            # verdict = verification could not run -> recorded UNVERIFIABLE).
-            f["l1_verdict_at_approval"] = l1_verdict or "UNVERIFIABLE"
-            f["seal_state"] = seal_state
-            if override_reason:
-                f["override_reason"] = override_reason
-            from nexus.case.records import save_findings
-
-            save_findings(case_dir, findings)
-
-            from nexus.auth import (
-                SIGNING_PURPOSE,
-                compute_hmac,
-                derive_purpose_key,
-                write_verification_entry,
-            )
-            from nexus.transparency import transparency_append
-            base_key = bytes.fromhex(stored_hash_hex)
-            derived_key = derive_purpose_key(base_key, SIGNING_PURPOSE)
-            content = json.dumps(f, sort_keys=True, default=str)
-            hmac_val = compute_hmac(derived_key, content)
-            case_id = case_dir.name
-            write_verification_entry(case_id, {
-                "finding_id": finding_id,
-                "type": "finding",
-                "approved_by": examiner,
-                "approved_at": f["approved_at"],
-                "content_snapshot": content,
-                "hmac": hmac_val,
-                "salt": salt,
-                "l1_verdict_at_approval": f["l1_verdict_at_approval"],
-                "seal_state": seal_state,
-                "override_reason": override_reason,
-            })
-            transparency_append(case_id, {
-                "action": "approve",
-                "finding_id": finding_id,
-                "approved_by": examiner,
-                "l1_verdict_at_approval": f["l1_verdict_at_approval"],
-                "override_reason": override_reason,
-            })
-            return {"finding_id": finding_id, "status": "APPROVED"}
-
-    return {"status": "error", "message": f"Finding {finding_id} not found or not DRAFT"}
+    result = commit_approval(
+        case_dir,
+        finding_id,
+        examiner,
+        l1_verdict=l1_verdict,
+        override_reason=override_reason,
+        signing_key=signing_key_from_stored_hash(stored_hash_hex),
+        salt=salt,
+    )
+    if result.get("status") != "APPROVED":
+        return {
+            "status": "error",
+            "message": result.get("message") or result.get("error") or "Unknown error",
+            "seal_reason": result.get("seal_reason"),
+        }
+    return result
 
 
 # =============================================================================
@@ -6563,28 +6503,12 @@ async def api_findings_reject(request):
     # between the prevalidation read and this write cannot lose an update.
     try:
         with case_lock(case_dir):
-            findings = (
-                json.loads(findings_path.read_text(encoding="utf-8"))
-                if findings_path.is_file() else []
-            )
-            for f in findings:
-                fid = f.get("id") or f.get("finding_id", "")
-                if fid in finding_ids:
-                    f["status"] = "REJECTED"
-                    f["rejected_by"] = examiner
-                    f["rejected_at"] = datetime.now(UTC).isoformat()
-                    f["rejection_reason"] = reason
+            from nexus.case.approval_service import commit_rejection
+
+            for fid in finding_ids:
+                result = commit_rejection(case_dir, fid, examiner, reason)
+                if result.get("status") == "REJECTED":
                     rejected.append(fid)
-            from nexus.case.records import save_findings
-
-            save_findings(case_dir, findings)
-            # WO-A7: each dismissal is an audited negative-space event.
-            with contextlib.suppress(Exception):
-                from nexus.analysis.negative_space import record
-
-                for fid in rejected:
-                    record(case_dir, "false_positive_dismissed", fid, reason,
-                           refs=[fid])
     except Exception as exc:
         logger.warning("Failed updating findings.json on reject: %s", exc)
         return JSONResponse(

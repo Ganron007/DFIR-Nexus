@@ -984,6 +984,16 @@ def index_case(
     that is a resolver/run-pointer failure, not deleted evidence.
     """
     case_dir = Path(case_dir)
+    from nexus.ingest.fingerprint import place_loose_csvs
+    from nexus.langgraph.pipeline_runs import resolve_tools_extractions
+
+    place_loose_csvs(case_dir / "ingest")
+    try:
+        extractions = resolve_tools_extractions(case_dir)
+    except Exception:  # noqa: BLE001 — placement must not block the index
+        extractions = None
+    if extractions is not None and extractions.is_dir():
+        place_loose_csvs(extractions)
     name = ensure_index(case_dir.name)
     import json
 

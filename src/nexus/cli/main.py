@@ -44,7 +44,6 @@ Usage:
     nexus update                           Pull latest code
 """
 
-import contextlib
 import os
 import subprocess
 import sys
@@ -325,7 +324,6 @@ def _interactive_approve(analyst: str):
 
 
 import json
-from datetime import UTC
 
 
 @app.command()
@@ -372,30 +370,9 @@ def reject(
 
 @lock_case_writes
 def _reject_finding(case_dir: Path, finding_id: str, analyst: str, reason: str) -> dict:
-    findings_path = case_dir / "findings.json"
-    if not findings_path.exists():
-        return {"error": "No findings file found"}
-    findings = json.loads(findings_path.read_text())
-    for f in findings:
-        fid = f.get("id") or f.get("finding_id", "")
-        if fid == finding_id and f.get("status") == "DRAFT":
-            f["status"] = "REJECTED"
-            f["rejected_by"] = analyst
-            f["rejected_at"] = datetime.now(UTC).isoformat()
-            f["rejection_reason"] = reason
-            # WO-A7: the examiner's "no" is an audit event, not a finding.
-            with contextlib.suppress(Exception):
-                from nexus.analysis.negative_space import record
+    from nexus.case.approval_service import commit_rejection
 
-                record(case_dir, "false_positive_dismissed", fid, reason, refs=[fid])
-            from nexus.case.records import save_findings
-
-            save_findings(case_dir, findings)
-            return {"finding_id": finding_id, "status": "REJECTED"}
-    return {"error": f"Finding {finding_id} not found or not DRAFT"}
-
-
-from datetime import datetime
+    return commit_rejection(case_dir, finding_id, analyst, reason)
 
 
 def build_http_app(server, host: str = "127.0.0.1", port: int = 4508):

@@ -16,12 +16,10 @@ from nexus.auth import (
     SIGNING_PURPOSE,
     check_lockout,
     clear_failures,
-    compute_hmac,
     derive_purpose_key,
     has_password,
     record_failure,
     verify_password,
-    write_verification_entry,
 )
 
 
@@ -109,84 +107,22 @@ def approve_finding(
     l1_verdict: str = "",
     override_reason: str = "",
 ) -> dict:
-    """Approve a single finding with HMAC signing."""
-    findings_path = case_dir / "findings.json"
-    if not findings_path.exists():
-        return {"error": "No findings file found"}
+    """Approve a single finding. The mutation lives in the approval service."""
+    from nexus.auth import _load_password_entry
+    from nexus.case.approval_service import commit_approval
 
-    findings = json.loads(findings_path.read_text())
-    for f in findings:
-        fid = f.get("id") or f.get("finding_id", "")
-        if fid == finding_id and f.get("status") == "DRAFT":
-            # WP 10.4: the seal must still verify at approval time. Approval is
-            # the last moment a staged finding becomes official, so a mismatch
-            # here is refused rather than signed.
-            try:
-                from nexus.analysis.integrity import verify_seal
-
-                seal_ok, seal_reason = verify_seal(f)
-            except Exception as exc:  # noqa: BLE001
-                seal_ok, seal_reason = False, f"seal check failed: {exc}"
-            has_seal = bool(f.get("seal") or f.get("content_hash"))
-            if has_seal and not seal_ok:
-                return {
-                    "error": (
-                        f"Refused: finding {finding_id} failed its submission seal — {seal_reason}. "
-                        "It was edited after staging; re-stage it so the digest matches the content."
-                    ),
-                    "finding_id": finding_id,
-                    "seal_reason": seal_reason,
-                }
-            # WO-23: a seal-less DRAFT is UNSEALED - L1.6 marks it UNVERIFIABLE
-            # (so an override reason was required) and the state is recorded.
-            seal_state = "verified" if (has_seal and seal_ok) else "absent"
-            f["status"] = "APPROVED"
-            f["approved_by"] = analyst
-            f["approved_at"] = datetime.now(UTC).isoformat()
-            # WO-2: what the verifier said at the moment of signing (empty
-            # verdict = verification could not run -> recorded UNVERIFIABLE).
-            f["l1_verdict_at_approval"] = l1_verdict or "UNVERIFIABLE"
-            f["seal_state"] = seal_state
-            if override_reason:
-                f["override_reason"] = override_reason
-            if note:
-                f.setdefault("notes", []).append({"text": note, "author": analyst, "at": f["approved_at"]})
-
-            from nexus.case.records import save_findings
-
-            save_findings(case_dir, findings)
-
-            hmac_key = _hmac_signing_key(password, analyst)
-            if hmac_key:
-                content = json.dumps(f, sort_keys=True, default=str)
-                hmac_val = compute_hmac(hmac_key, content)
-                from nexus.auth import _load_password_entry
-                entry = _load_password_entry(analyst)
-                salt = entry.get("salt", "") if entry else ""
-                write_verification_entry(case_dir.name, {
-                    "finding_id": finding_id,
-                    "type": "finding",
-                    "approved_by": analyst,
-                    "approved_at": f["approved_at"],
-                    "content_snapshot": content,
-                    "hmac": hmac_val,
-                    "salt": salt,
-                    "l1_verdict_at_approval": f["l1_verdict_at_approval"],
-                    "seal_state": seal_state,
-                    "override_reason": override_reason,
-                })
-            from nexus.transparency import transparency_append
-
-            transparency_append(case_dir.name, {
-                "action": "approve",
-                "finding_id": finding_id,
-                "approved_by": analyst,
-                "l1_verdict_at_approval": f["l1_verdict_at_approval"],
-                "override_reason": override_reason,
-            })
-            return {"finding_id": finding_id, "status": "APPROVED", "note": note}
-
-    return {"error": f"Finding {finding_id} not found or not DRAFT"}
+    entry = _load_password_entry(analyst)
+    salt = entry.get("salt", "") if entry else ""
+    return commit_approval(
+        case_dir,
+        finding_id,
+        analyst,
+        l1_verdict=l1_verdict,
+        override_reason=override_reason,
+        note=note,
+        signing_key=_hmac_signing_key(password, analyst),
+        salt=salt,
+    )
 
 
 def approve_timeline_event(
