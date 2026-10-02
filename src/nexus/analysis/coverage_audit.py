@@ -588,10 +588,17 @@ def report_section(audit: dict[str, Any], case_dir: Path | str | None = None) ->
         with contextlib.suppress(Exception):
             from nexus.analysis.negative_space import read_events
 
-            gaps = [
+            recorded = [
                 e for e in read_events(case_dir)
                 if str(e.get("kind") or "") == "coverage_gap"
             ]
+            # One line per subject, latest wins: the events accumulate per run,
+            # so a case re-processed twice would otherwise list every gap twice
+            # (register D19).
+            latest: dict[str, dict[str, Any]] = {}
+            for event in recorded:
+                latest[str(event.get("subject") or "")] = event
+            gaps = list(latest.values())
     if not audit and not gaps:
         return []
     lines = ["## Coverage audit", ""]

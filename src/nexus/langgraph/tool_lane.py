@@ -2440,6 +2440,14 @@ PROCESS_LIST_PLUGINS = frozenset({
 
 PSScan_PLUGINS = ("windows.psscan", "linux.psscan")
 
+#: Plugins that read the registry through the kernel's module/hive list, so a
+#: broken list walk empties them too (register D18). An empty key is legitimate
+#: on its own, so these are only reported when this run proved the list is
+#: unreadable.
+REGISTRY_PLUGINS = frozenset({
+    "windows.registry.printkey",
+})
+
 
 #: The reason `_empty_output_status` writes when a tool exited cleanly and
 #: produced nothing. Shared, so the memory-pack reconciliation recognises that
@@ -2504,18 +2512,32 @@ def reconcile_process_list_coverage(
     jobs: list[ToolJob],
     case_dir: Path | str,
     ledger: list[dict[str, Any]] | None = None,
+    run_id: str = "",
 ) -> list[ToolJob]:
-    """WO-V6: a list-walk plugin with no rows while psscan saw processes.
+    """WO-V6: a plugin that needs the kernel module list, with no rows.
 
     The job becomes **WARN** (not FAIL — the pack is still usable, it is the
     *absence claim* that would be wrong), a ``coverage_gap`` negative-space
     event is recorded, and the ledger row is updated so it no longer reads
     "no findings".
 
-    A list-walk that produced nothing arrives as either OK (something saved,
-    zero rows) or the empty-output FAIL ("exited cleanly but produced no output
-    file"). Both are the same fact, so both are reconciled — but a FAIL for any
-    *other* reason (truncated capture, non-zero exit, tool error) is left alone.
+    Two families depend on that list, and they are treated differently because
+    the evidence differs (WO-V6, then register D18):
+
+    * **Process-list walk** (`pslist`/`pstree`/`dlllist`/`handles`/`envars`/
+      `cmdline`/`malfind`/`ldrmodules`). If ``psscan`` saw processes and one of
+      these returned nothing, the walk failed — always a coverage gap. The row
+      may arrive as OK (something saved, zero rows) or as the empty-output FAIL
+      ("exited cleanly but produced no output file"); both are the same fact. A
+      FAIL for any *other* reason (truncated capture, non-zero exit, tool error)
+      is left alone.
+    * **Registry keys** (`windows.registry.printkey`). An empty key is a
+      legitimate result, so emptiness alone proves nothing. It is a gap only
+      when the same run has *already* shown the module list is unreadable — a
+      broken list walk in this run — which is the shared prerequisite. On the
+      A9 image the three printkey jobs were empty with no "key not found"
+      message and ``psxview``'s pslist column was False for all 130 processes,
+      so the keys could not be read rather than being absent.
     """
     vol_jobs = [job for job in jobs if job.tool == "vol" and job.argv]
     rows = {
@@ -2530,22 +2552,37 @@ def reconcile_process_list_coverage(
     warned: list[ToolJob] = []
     if scan <= 0:
         return warned
+
+    def _empty(job: ToolJob, plugin: str) -> bool:
+        if job.status == "OK":
+            return rows.get(plugin, 0) == 0
+        return job.status == "FAIL" and EMPTY_OUTPUT_FAIL_MARKER in job.reason
+
+    # Is the module list reachable in this run? Any process-list walk that
+    # produced nothing while psscan saw processes says no.
+    list_walk_broken = any(
+        plugin in PROCESS_LIST_PLUGINS and _empty(job, plugin)
+        for job in vol_jobs
+        for plugin in (vol_plugin_name(job.argv),)
+    )
+
     for job in vol_jobs:
         plugin = vol_plugin_name(job.argv)
-        if plugin not in PROCESS_LIST_PLUGINS:
-            continue
-        if job.status == "OK":
-            empty = rows.get(plugin, 0) == 0
-        elif job.status == "FAIL" and EMPTY_OUTPUT_FAIL_MARKER in job.reason:
-            empty = True
+        if plugin in PROCESS_LIST_PLUGINS:
+            what = "process-list walk"
+        elif plugin in REGISTRY_PLUGINS:
+            # Only a gap when this run proved the list is unreadable.
+            if not list_walk_broken:
+                continue
+            what = "registry read"
         else:
             continue
-        if not empty:
+        if not _empty(job, plugin):
             continue
         job.status = "WARN"
         job.reason = (
-            f"process-list walk returned nothing while psscan saw {scan} "
-            "process(es) — a coverage gap, not evidence of absence"
+            f"{what} returned nothing while psscan saw {scan} process(es) "
+            "— a coverage gap, not evidence of absence"
         )
         warned.append(job)
         if ledger is not None:
@@ -2557,12 +2594,18 @@ def reconcile_process_list_coverage(
         try:
             from nexus.analysis.negative_space import record
 
+            # The run id travels with the event: without it two runs on one
+            # case are indistinguishable and the report can repeat a gap from
+            # an earlier run (register D19).
+            refs = [f"psscan:{scan}"]
+            if run_id:
+                refs.append(f"run:{run_id}")
             record(
                 case_dir,
                 "coverage_gap",
                 plugin,
                 job.reason,
-                refs=[f"psscan:{scan}"],
+                refs=refs,
             )
         except Exception:  # noqa: BLE001 — the lane must not die on an audit
             log.debug("coverage_gap event failed", exc_info=True)
@@ -3380,7 +3423,9 @@ async def run_tool_lane(
             log.warning("volatility plugin probe skipped: %s", exc)
     await _run_bounded(sift_jobs)
     _index_after_batch(sift_jobs)
-    coverage_warned = reconcile_process_list_coverage(sift_jobs, case_dir, ledger)
+    coverage_warned = reconcile_process_list_coverage(
+        sift_jobs, case_dir, ledger, run_id=run_id
+    )
 
     ok = sum(1 for j in ledger if j.get("status") == "OK")
     fail = sum(1 for j in ledger if j.get("status") == "FAIL")

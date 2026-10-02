@@ -339,6 +339,62 @@ def test_a_warned_remote_job_audit_id_is_still_citable(tmp_path):
     assert _bridge_remote_audits(case, ledger) == 0
 
 
+def test_a_registry_read_is_a_gap_only_when_the_list_walk_is_broken(tmp_path):
+    """Register D18: an empty key is legitimate; an unreadable hive is not.
+
+    On the A9 image the three printkey jobs were empty with no "key not found"
+    message while `psxview`'s pslist column was False for all 130 processes —
+    the keys could not be read. Gating on a broken list walk is what separates
+    that from a genuinely empty Run key on a healthy image.
+    """
+    # Broken list walk (dlllist empty) + empty printkey -> both are gaps.
+    case = _case(tmp_path)
+    printkey = _sift_job("windows.registry.printkey", 0)
+    jobs = [_sift_job("windows.psscan", 134), _sift_job("windows.dlllist", 0), printkey]
+    warned = reconcile_process_list_coverage(jobs, case, [])
+    assert sorted(j.purpose for j in warned) == [
+        "Volatility3 windows.dlllist",
+        "Volatility3 windows.registry.printkey",
+    ]
+    assert "registry read" in printkey.reason
+
+    # Healthy list walk + empty printkey -> the key is simply empty. No claim.
+    case2 = _case(tmp_path / "healthy")
+    printkey2 = _sift_job("windows.registry.printkey", 0)
+    jobs2 = [_sift_job("windows.psscan", 134), _sift_job("windows.dlllist", 900), printkey2]
+    assert reconcile_process_list_coverage(jobs2, case2, []) == []
+    assert printkey2.status == "OK"
+
+
+def test_the_coverage_gap_event_names_the_run(tmp_path):
+    """Register D19: two runs on one case must be distinguishable."""
+    case = _case(tmp_path)
+    jobs = [_sift_job("windows.psscan", 134), _sift_job("windows.dlllist", 0)]
+    reconcile_process_list_coverage(jobs, case, [], run_id="RUN-ABC")
+
+    events = [e for e in read_events(case) if e.get("kind") == "coverage_gap"]
+    assert len(events) == 1
+    refs = [str(r) for r in (events[0].get("refs") or [])]
+    assert "psscan:134" in refs
+    assert "run:RUN-ABC" in refs
+
+
+def test_the_report_lists_each_gap_once_across_runs(tmp_path):
+    """Register D19: a case re-processed twice must not list every gap twice."""
+    from nexus.analysis.coverage_audit import report_section
+
+    case = _case(tmp_path)
+    for run in ("RUN-1", "RUN-2"):
+        jobs = [_sift_job("windows.psscan", 134), _sift_job("windows.dlllist", 0)]
+        reconcile_process_list_coverage(jobs, case, [], run_id=run)
+
+    recorded = [e for e in read_events(case) if e.get("kind") == "coverage_gap"]
+    assert len(recorded) == 2, "the fixture must record the gap twice"
+
+    section = "\n".join(report_section({}, case_dir=case))
+    assert section.count("windows.dlllist") == 1, section
+
+
 def test_the_report_coverage_section_carries_the_gap(tmp_path):
     """WO-V6 item 1: the gap is visible in the report's coverage section."""
     from nexus.analysis.coverage_audit import report_section

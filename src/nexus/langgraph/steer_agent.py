@@ -1027,6 +1027,12 @@ def run_steer_agent(
             "total_hits": 0, "aggregations": [], "turns": 2,
             "confidence": "low", "stages": stages, "followups": followups,
             "timings_ms": {s["stage"]: s["ms"] for s in stages},
+            # No model means no interpretation: say so, as the context-loop
+            # path does with the same value. Without it a client cannot tell a
+            # deterministic reply from a model answer (register D20 finding).
+            "finish_reason": "model_error" if llm is None else "",
+            "partial": llm is None,
+            "partial_reason": "no model configured" if llm is None else "",
         }
 
     reply = ""
@@ -1069,8 +1075,14 @@ def run_steer_agent(
         "aggregations": aggregations,
         "hits": all_hits[:20],
         "turns": 2,
-        "confidence": "medium",
+        # The deterministic fallback formats the rows itself; that is a low
+        # confidence result, not a medium one, and with no model it must not
+        # present itself as an interpretation at all (register D20 finding).
+        "confidence": "low" if llm is None else "medium",
         "stages": stages,
         "followups": followups,
         "timings_ms": {s["stage"]: s["ms"] for s in stages},
+        "finish_reason": "model_error" if llm is None else "",
+        "partial": llm is None,
+        "partial_reason": "no model configured" if llm is None else "",
     }

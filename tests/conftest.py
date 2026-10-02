@@ -67,6 +67,30 @@ def _isolated_case_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("NEXUS_ES_URL", "")
     monkeypatch.setenv("NEXUS_ES_AUTOINDEX", "0")
 
+    # Point the LLM at nothing too, for the same reason as ES: `nexus/__init__`
+    # loads the developer's `.env`, so without this a test that reaches a model
+    # makes a REAL call to the hosted provider. That is not a test, it is a
+    # network dependency: the suite's wall time became the provider's latency
+    # (2308 s / 2674 s / 2683 s for one tree; a stack dump during a "slow" run
+    # showed the main thread waiting on an established connection to the
+    # provider on :443), and a provider outage reads as a test failure. It also
+    # defeated the point of tests written for the deterministic path — the
+    # suggestions test's own docstring says "with no model configured".
+    #
+    # Empty but PRESENT, because `_load_dotenv` only fills keys that are absent
+    # ("existing vars win") and `get_model` re-loads `.env` on every call; a
+    # deleted variable would simply be refilled from the file.
+    #
+    # Opt back in when the live provider path is what is under test:
+    # NEXUS_TESTS_LIVE_LLM=1.
+    if os.environ.get("NEXUS_TESTS_LIVE_LLM") != "1":
+        for _key in ("NEXUS_LLM_MODEL", "NEXUS_MODEL", "NEXUS_LLM_BASE_URL",
+                     "NEXUS_LLM_API_KEY", "NEXUS_LLM_PROVIDER"):
+            monkeypatch.setenv(_key, "")
+
+    # The egress anonymizer must not fire on a TestClient loopback either.
+    monkeypatch.delenv("NEXUS_BEARER_TOKEN", raising=False)
+
     # The password store is the one directory a test must never reach: it holds
     # the examiner's real approval credential, and writing to it does not fail -
     # it silently replaces the credential with whatever the test made up. That
