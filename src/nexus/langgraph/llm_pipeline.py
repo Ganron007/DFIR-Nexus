@@ -1146,6 +1146,7 @@ def _format_tool_run_markdown(state: InvestigationState) -> str:
     ledger = list(state.get("tool_run_ledger") or [])
     case_id = state.get("case_id") or "unknown"
     ok = [r for r in ledger if r.get("status") == "OK"]
+    warn = [r for r in ledger if r.get("status") == "WARN"]
     fail = [r for r in ledger if r.get("status") == "FAIL"]
     skip = [r for r in ledger if r.get("status") == "SKIP"]
     lines = [
@@ -1156,8 +1157,11 @@ def _format_tool_run_markdown(state: InvestigationState) -> str:
         f"**Generated:** {datetime.now(UTC).strftime('%Y-%m-%d %H:%M UTC')}",
         f"**Evidence:** `{state.get('evidence_path') or ''}`",
         "",
-        f"Summary: **{len(ok)} OK** · **{len(fail)} FAIL** · **{len(skip)} SKIP** "
-        f"(total {len(ledger)})",
+        # WARN belongs in the summary: it is a row that ran and needs reading,
+        # and leaving it out made the arithmetic look like rows had vanished
+        # (7 OK / 0 FAIL / 0 SKIP out of 15).
+        f"Summary: **{len(ok)} OK** · **{len(warn)} WARN** · **{len(fail)} FAIL** "
+        f"· **{len(skip)} SKIP** (total {len(ledger)})",
         "",
         "> This is **not** an IR findings report. It proves MCP tools ran "
         "(or failed) against the mapped evidence. See "

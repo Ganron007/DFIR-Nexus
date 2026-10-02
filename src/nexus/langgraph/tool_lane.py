@@ -2471,6 +2471,12 @@ def _job_row_count(job: ToolJob) -> int:
         counted = _count_rows(text)
         if counted is not None:
             return counted
+    candidate = job.result.get("stdout_lines")
+    if candidate is not None:
+        try:
+            return int(candidate)
+        except (TypeError, ValueError):
+            pass
     # Remote (or unreadable) output: use what the job returned.
     body = str(job.result.get("data") or job.result.get("output") or "")
     counted = _count_rows(body)
@@ -3342,11 +3348,18 @@ async def run_tool_lane(
                 "command": "vol -h",
                 "purpose": "Volatility plugin list",
                 "timeout": 120,
+                # A usage banner is not case evidence: persisting it put a
+                # 522-row `vol -h` capture in the case on the D12 lane run.
+                "save_output": False,
             })
             parsed = parse_result(raw)
+            # ``data`` is the reply body run_command returns; the other keys are
+            # accepted for other tools' shapes. Reading only ("stdout",
+            # "output", ...) meant this probe never saw the list, so a missing
+            # plugin was never marked SKIP.
             text = " ".join(
                 str(parsed.get(key) or "")
-                for key in ("stdout", "output", "text", "result")
+                for key in ("data", "stdout", "output", "text", "result")
             )
             listed = parse_vol_plugin_names(text or str(parsed))
             if listed:

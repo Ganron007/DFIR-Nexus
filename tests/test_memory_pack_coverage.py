@@ -135,6 +135,27 @@ def test_a_remote_job_is_judged_from_its_result_not_a_local_file(tmp_path):
     assert len(events) == 2, events
 
 
+def test_a_remote_job_reports_the_capture_row_count_not_the_slice(tmp_path):
+    """The ledger's number is evidence: psscan saw 134, not the slice's 40.
+
+    The first SIFT-aware version counted rows in the 10 KB reply body, so the
+    lane wrote "psscan saw 40 process(es)" for a 134-row output. The tool now
+    reports the capture's line count and the check prefers it.
+    """
+    case = _case(tmp_path)
+    slice_body = "\n".join(
+        json.dumps({"PID": i, "ImageFileName": f"p{i}.exe"}) for i in range(40)
+    )
+    psscan = _sift_job("windows.psscan", 0)
+    psscan.result = {"data": slice_body, "stdout_lines": 134, "audit_id": "a-2"}
+    jobs = [psscan, _sift_job("windows.dlllist", 0)]
+
+    warned = reconcile_process_list_coverage(jobs, case, [])
+
+    assert len(warned) == 1
+    assert "psscan saw 134" in warned[0].reason, warned[0].reason
+
+
 def test_a_remote_job_with_rows_is_left_alone(tmp_path):
     case = _case(tmp_path)
     jobs = [_sift_job("windows.psscan", 134), _sift_job("windows.dlllist", 900)]
@@ -184,6 +205,41 @@ def test_a_truncated_capture_stays_failed(tmp_path):
     jobs = [_sift_job("windows.psscan", 134), truncated]
     assert reconcile_process_list_coverage(jobs, case, []) == []
     assert truncated.status == "FAIL"
+
+
+def test_the_report_coverage_section_renders_without_an_audit(tmp_path):
+    """A `--mode tools` run writes no coverage audit, so gaps must still render.
+
+    On the D12 lane run the audit was absent and the coverage section was
+    dropped entirely, so the gaps had no line there.
+    """
+    from nexus.analysis.coverage_audit import report_section
+
+    case = _case(tmp_path)
+    jobs = [_sift_job("windows.psscan", 134), _sift_job("windows.dlllist", 0)]
+    reconcile_process_list_coverage(jobs, case, [])
+
+    section = "\n".join(report_section({}, case_dir=case))
+    assert "Coverage gap" in section
+    assert "windows.dlllist" in section
+    # With neither an audit nor gaps there is genuinely nothing to show.
+    assert report_section({}, case_dir=_case(tmp_path / "other")) == []
+
+
+def test_the_tool_run_summary_counts_warn():
+    """7 OK / 0 FAIL / 0 SKIP out of 15 read as if 8 rows had vanished."""
+    from nexus.langgraph.llm_pipeline import _format_tool_run_markdown
+
+    ledger = (
+        [{"status": "OK", "host": "sift", "tool": "vol", "purpose": "p", "audit_id": "a"}]
+        * 7
+        + [{"status": "WARN", "host": "sift", "tool": "vol", "purpose": "w", "audit_id": "b"}]
+        * 8
+    )
+    md = _format_tool_run_markdown({"case_id": "CASE-X", "tool_run_ledger": ledger})
+    assert "7 OK" in md
+    assert "8 WARN" in md
+    assert "(total 15)" in md
 
 
 def test_the_report_coverage_section_carries_the_gap(tmp_path):

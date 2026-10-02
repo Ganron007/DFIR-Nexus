@@ -574,17 +574,16 @@ def summary_lines(audit: dict[str, Any], *, limit: int = 6) -> list[str]:
 
 
 def report_section(audit: dict[str, Any], case_dir: Path | str | None = None) -> list[str]:
-    """Markdown block for REPORT.md (empty when there is no audit yet).
+    """Markdown block for REPORT.md (empty when there is nothing to say).
 
     With ``case_dir`` the section also carries the recorded coverage gaps — a
     prerequisite that was empty is a gap in coverage, and it belongs beside the
     tools/needles accounting rather than only in the negative-space tail
-    (WO-V6 item 1).
+    (WO-V6 item 1). The gaps render even when no coverage audit was written,
+    which is the normal state for a `--mode tools` run: on the D12 lane run the
+    audit was absent, so the gaps had no coverage line at all.
     """
-    if not audit:
-        return []
-    lines = ["## Coverage audit", ""]
-    lines.extend(summary_lines(audit, limit=10))
+    gaps: list[dict[str, Any]] = []
     if case_dir is not None:
         with contextlib.suppress(Exception):
             from nexus.analysis.negative_space import read_events
@@ -593,9 +592,14 @@ def report_section(audit: dict[str, Any], case_dir: Path | str | None = None) ->
                 e for e in read_events(case_dir)
                 if str(e.get("kind") or "") == "coverage_gap"
             ]
-            for event in gaps[:10]:
-                lines.append(
-                    f"- Coverage gap — `{event.get('subject')}`: {event.get('detail')}"
-                )
+    if not audit and not gaps:
+        return []
+    lines = ["## Coverage audit", ""]
+    if audit:
+        lines.extend(summary_lines(audit, limit=10))
+    for event in gaps[:10]:
+        lines.append(
+            f"- Coverage gap — `{event.get('subject')}`: {event.get('detail')}"
+        )
     lines.append("")
     return lines

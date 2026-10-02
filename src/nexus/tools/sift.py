@@ -605,6 +605,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         timeout: int = 0,
         input_files: list[str] | None = None,
         preview_lines: int = 50,
+        save_output: bool = True,
     ) -> dict:
         """Run a forensic tool on the SIFT workstation.
 
@@ -624,6 +625,8 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             timeout: Override default timeout (seconds).
             input_files: Files this command reads (for provenance chain).
             preview_lines: Lines of output to return (0 = all).
+            save_output: Persist the capture into the active case. False for a
+                probe (a tool-usage banner is not evidence).
         """
         start_time = time.time()
         cmd_timeout = timeout if timeout > 0 else settings.command_timeout
@@ -687,8 +690,15 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             cmd_list = [resolved] + safe_args
         result = _execute(cmd_list, timeout=cmd_timeout, cwd=exec_cwd)
 
-        # Design contract: always persist tool output into the active case
-        from nexus.case.outputs import persist_tool_output, resolve_active_case_dir
+        # Design contract: always persist tool output into the active case,
+        # unless the caller marks the call as a probe. A tool-usage banner (the
+        # `vol -h` plugin discovery the lane runs before the pack) is not case
+        # evidence: it was landing in `extractions/vol/` as a 522-row capture
+        # and reaching the index (observed on the D12 lane run).
+        persisted: dict = {}
+        output_files: list[dict] = []
+        if save_output:
+            from nexus.case.outputs import persist_tool_output, resolve_active_case_dir
 
         # Persist the CAPTURE, not the reply slice: the case file is the
         # evidence, and the response budget is a transport detail. Writing the
@@ -696,20 +706,22 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         full_stdout = result.get("stdout_full")
         if not isinstance(full_stdout, str):
             full_stdout = result.get("stdout", "") or ""
-        persisted = persist_tool_output(
-            tool_key=base_binary,
-            stdout=full_stdout,
-            stderr=result.get("stderr", "") or "",
-            command=command,
-            purpose=purpose,
-            case_dir=resolve_active_case_dir(),
-            register_evidence=True,
-        )
-        output_files = persisted.get("output_files") or []
-        output_file = next(
-            (f["path"] for f in output_files if f.get("kind") == "stdout"),
-            None,
-        )
+        output_file = None
+        if save_output:
+            persisted = persist_tool_output(
+                tool_key=base_binary,
+                stdout=full_stdout,
+                stderr=result.get("stderr", "") or "",
+                command=command,
+                purpose=purpose,
+                case_dir=resolve_active_case_dir(),
+                register_evidence=True,
+            )
+            output_files = persisted.get("output_files") or []
+            output_file = next(
+                (f["path"] for f in output_files if f.get("kind") == "stdout"),
+                None,
+            )
 
         # Audit log
         input_sha256s = []
@@ -766,6 +778,13 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         response["output_files"] = output_files
         response["tool_lineage"] = tool_lineage
         response["persist_truncated"] = bool(result.get("persist_truncated"))
+        # Rows in the capture. The reply body (`data`) is the 10 KB slice, so a
+        # consumer that counts rows in it understates a large result — the
+        # memory-pack coverage check reported "psscan saw 40" for a 134-row
+        # output. Expose the real count, computed from the capture.
+        response["stdout_lines"] = sum(
+            1 for line in full_stdout.splitlines() if line.strip()
+        )
         if result.get("persist_truncated"):
             response["persist_truncation_note"] = (
                 f"The command outran the {settings.max_output_bytes}-byte capture cap, "
