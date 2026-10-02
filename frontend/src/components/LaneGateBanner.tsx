@@ -68,6 +68,12 @@ export default function LaneGateBanner() {
 
   const items = gate?.unprocessed ?? [];
   const skips = gate?.examiner_skips ?? [];
+  const outstanding = (gate?.jobs ?? []).filter((job) =>
+    job.state === "failed" || job.state === "running" || job.state === "unknown",
+  );
+  const outstandingNames = outstanding
+    .map((job) => job.family || job.purpose || job.tool || "")
+    .filter(Boolean);
   const tone = blocked ? "danger" : clear ? "success" : "muted";
   const border = {
     danger: "rgba(248,81,73,0.55)",
@@ -109,6 +115,13 @@ export default function LaneGateBanner() {
             <span style={{ color: "var(--text-muted)", fontSize: 11 }}>run {gate.run_id}</span>
           )}
         </div>
+
+        {outstandingNames.length > 0 && (
+          <div data-testid="lane-gate-outstanding">
+            Still outstanding: {outstandingNames.slice(0, 8).join(", ")}
+            {outstandingNames.length > 8 ? ` +${outstandingNames.length - 8}` : ""}
+          </div>
+        )}
 
         {blocked && items.length > 0 && (
           <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>

@@ -117,12 +117,19 @@ export interface LaneGateSkip {
   reason?: string;
   ts?: string;
 }
+export interface LaneGateJob {
+  tool?: string;
+  purpose?: string;
+  family?: string;
+  state?: string;
+}
 export interface LaneGate {
   status?: "blocked" | "clear" | string;
   run_id?: string;
   blocked_count?: number;
   unprocessed?: LaneGateItem[];
   examiner_skips?: LaneGateSkip[];
+  jobs?: LaneGateJob[];
   ts?: string;
 }
 /** N1-N8 stage state as served by the gate's lane_stages(). */

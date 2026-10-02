@@ -68,6 +68,27 @@ describe("evidence gate banner", () => {
     expect(screen.getByTestId("nstage-N2").textContent).toContain("blocked");
   });
 
+  it("names jobs the lane has not finished", async () => {
+    (api.summary as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...counts,
+      lane_gate: {
+        status: "blocked",
+        blocked_count: 1,
+        unprocessed: [{ tool: "mftecmd", purpose: "NTFS metadata ($I30)", reason: "timeout" }],
+        jobs: [
+          { tool: "mftecmd", purpose: "NTFS metadata ($I30)", state: "failed" },
+          { tool: "evtxecmd", family: "evtxecmd", state: "processed" },
+        ],
+      },
+      n_stages: stages,
+    });
+    await renderBanner();
+    expect((await screen.findByTestId("lane-gate-outstanding")).textContent).toContain(
+      "NTFS metadata ($I30)",
+    );
+    expect(screen.getByTestId("lane-gate-outstanding").textContent).not.toContain("evtxecmd");
+  });
+
   it("renders a slim clear line with the recorded examiner skips", async () => {
     (api.summary as ReturnType<typeof vi.fn>).mockResolvedValue({
       ...counts,
