@@ -395,6 +395,59 @@ def test_the_report_lists_each_gap_once_across_runs(tmp_path):
     assert section.count("windows.dlllist") == 1, section
 
 
+def test_the_lane_aligns_the_remote_active_case():
+    """run_command persists into the SIFT host's ACTIVE case; the pull reads ours.
+
+    When they disagree every SIFT output is written where the pull never looks
+    and the lane still reports OK — a silent loss of the whole pack. The host's
+    active case drifted to a test case on 2026-10-02, so this is a real check.
+    """
+    import asyncio
+    import json
+
+    from nexus.langgraph.tool_lane import _align_remote_active_case
+
+    calls: list[dict] = []
+
+    class _Tool:
+        async def ainvoke(self, payload):
+            calls.append(payload)
+            return [{"type": "text", "text": json.dumps(
+                {"status": "activated", "case_id": payload.get("case_id")}
+            )}]
+
+    status = asyncio.run(_align_remote_active_case(_Tool(), "CASE-X"))
+    assert status == "activated"
+    assert calls == [{"case_id": "CASE-X"}], calls
+
+
+def test_a_failed_alignment_never_fails_the_lane():
+    """Best-effort: the jobs still run; only the pull is at risk."""
+    import asyncio
+
+    from nexus.langgraph.tool_lane import _align_remote_active_case
+
+    class _Boom:
+        async def ainvoke(self, _payload):
+            raise RuntimeError("no such tool")
+
+    assert asyncio.run(_align_remote_active_case(_Boom(), "CASE-X")) == ""
+
+
+def test_an_unexpected_alignment_reply_is_reported_not_assumed():
+    """No "activated" means the pull is at risk, and the log must say so."""
+    import asyncio
+    import json
+
+    from nexus.langgraph.tool_lane import _align_remote_active_case
+
+    class _Tool:
+        async def ainvoke(self, _payload):
+            return [{"type": "text", "text": json.dumps({"status": "error"})}]
+
+    assert asyncio.run(_align_remote_active_case(_Tool(), "CASE-X")) == "error"
+
+
 def test_the_report_coverage_section_carries_the_gap(tmp_path):
     """WO-V6 item 1: the gap is visible in the report's coverage section."""
     from nexus.analysis.coverage_audit import report_section

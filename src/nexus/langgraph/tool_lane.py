@@ -2413,6 +2413,49 @@ def apply_prior_ok(jobs: list[ToolJob], case_dir: Path) -> int:
     return reused
 
 
+async def _align_remote_active_case(sift_tool, case_id: str) -> str:
+    """Point the SIFT host's active case at this case before its jobs run.
+
+    ``run_command`` persists into the remote host's **active** case, and
+    ``pull_sift_extractions`` reads ``<remote_cases_root>/<case_id>/extractions``.
+    When the two disagree — the host's active case drifts whenever anyone runs a
+    command for another case, including the leaked-env test run on 2026-10-02 —
+    every SIFT output is written where the pull never looks, and the lane still
+    reports OK. That is a silent loss of the whole pack.
+
+    ``case_activate`` is an MCP tool, so this uses the product's own mechanism.
+    Best-effort: a host without the tool, or a failed call, is logged and never
+    fails the lane (the jobs still run; only the pull is at risk).
+    """
+    try:
+        raw = await sift_tool.ainvoke({"case_id": case_id})
+        # MCP returns a content list; the payload is JSON in its text part.
+        payload = raw
+        if isinstance(payload, list):
+            first = payload[0] if payload else {}
+            payload = first.get("text") if isinstance(first, dict) else first
+        if isinstance(payload, str):
+            import json as _json
+
+            try:
+                payload = _json.loads(payload)
+            except ValueError:
+                payload = {}
+        status = str((payload or {}).get("status") or "")
+        if status == "activated":
+            log.info("tool_lane: SIFT active case set to %s", case_id)
+            return "activated"
+        log.warning(
+            "tool_lane: could not confirm the SIFT active case (%s) — the pull "
+            "reads %s/extractions, so check the host before trusting sift_pull",
+            status or "no status", case_id,
+        )
+        return status
+    except Exception as exc:  # noqa: BLE001 — never fail the lane on this
+        log.warning("tool_lane: SIFT active-case alignment skipped: %s", exc)
+        return ""
+
+
 def persist_truncation_reason(result: dict[str, Any]) -> str:
     """Why a capture that hit the byte cap is not OK, or "" when it is whole.
 
@@ -3421,6 +3464,8 @@ async def run_tool_lane(
                 mark_missing_vol_plugins(sift_jobs, listed)
         except Exception as exc:  # noqa: BLE001 — a failed probe must not skip the pack
             log.warning("volatility plugin probe skipped: %s", exc)
+    if sift_tool is not None and sift_jobs:
+        await _align_remote_active_case(sift_tool, case_id)
     await _run_bounded(sift_jobs)
     _index_after_batch(sift_jobs)
     coverage_warned = reconcile_process_list_coverage(
