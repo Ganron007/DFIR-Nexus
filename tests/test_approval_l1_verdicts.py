@@ -19,6 +19,8 @@ from starlette.applications import Starlette
 from starlette.testclient import TestClient
 from typer.testing import CliRunner
 
+from nexus.case.records import save_findings
+
 EXAMINER = "l1-verdict-examiner"
 AUDIT_ID = "mftecmd-l1verdict-20260929-0001"
 GOOD = "cmd.exe executed from a temporary directory"
@@ -411,7 +413,11 @@ def test_portal_commit_refuses_a_broken_seal_even_with_override(l1_env):
         "staging must seal the entry for this test to mean anything"
     )
     target["title"] = "edited after staging"
-    (case_dir / "findings.json").write_text(json.dumps(rows), encoding="utf-8")
+    # Edit through the case store, not the flat file: findings.json is a
+    # generated mirror, so a mirror-only edit is refused as drift before the
+    # seal is ever checked. Writing the store keeps the two in step and leaves
+    # the stale seal, which is what this test is about.
+    save_findings(case_dir, rows)
 
     # No override: the L1 gate refuses (the edit made the finding non-PROVEN).
     ch, resp = _respond(client, headers, stored)
@@ -459,7 +465,11 @@ def test_portal_commit_seal_less_draft_needs_a_reason(l1_env):
     target = next(f for f in rows if f["id"] == fid)
     target.pop("seal", None)
     target.pop("content_hash", None)
-    (case_dir / "findings.json").write_text(json.dumps(rows), encoding="utf-8")
+    # Edit through the case store, not the flat file: findings.json is a
+    # generated mirror, so a mirror-only edit is refused as drift before the
+    # seal is ever checked. Writing the store keeps the two in step and leaves
+    # the stale seal, which is what this test is about.
+    save_findings(case_dir, rows)
 
     ch, resp = _respond(client, headers, stored)
     r = client.post(
@@ -503,7 +513,11 @@ def test_cli_approve_seal_less_draft_needs_a_reason(l1_env, monkeypatch):
     target = next(f for f in rows if f["id"] == fid)
     target.pop("seal", None)
     target.pop("content_hash", None)
-    (case_dir / "findings.json").write_text(json.dumps(rows), encoding="utf-8")
+    # Edit through the case store, not the flat file: findings.json is a
+    # generated mirror, so a mirror-only edit is refused as drift before the
+    # seal is ever checked. Writing the store keeps the two in step and leaves
+    # the stale seal, which is what this test is about.
+    save_findings(case_dir, rows)
 
     from nexus.case.outputs import set_active_case_id
 
