@@ -2407,6 +2407,21 @@ def apply_prior_ok(jobs: list[ToolJob], case_dir: Path) -> int:
     return reused
 
 
+def persist_truncation_reason(result: dict[str, Any]) -> str:
+    """Why a capture that hit the byte cap is not OK, or "" when it is whole.
+
+    A tool whose output was cut mid-stream produced an incomplete artifact; the
+    lane must not record that as processed, or the evidence gate clears on a
+    half-parsed file and the index carries partial rows as if they were all.
+    """
+    if result.get("persist_truncated"):
+        return (
+            "captured output hit the byte cap, so the saved output is "
+            "incomplete — treat this evidence as unparsed, not clean"
+        )
+    return ""
+
+
 def vol_plugin_name(argv: list[str]) -> str:
     """The plugin token in a vol argv, which is not always the last argument."""
     for arg in argv:
@@ -3046,7 +3061,15 @@ async def run_tool_lane(
                                        dest=_dest)
             if promoted:
                 job.output_files = [*job.output_files, promoted]
-        if result.get("success") is False or result.get("error"):
+        persist_reason = persist_truncation_reason(result)
+        if persist_reason:
+            # The capture hit the byte cap, so what was saved is incomplete.
+            # Marking it OK would let a half-parsed artifact pass the evidence
+            # gate and index as if it were whole (WO-V5).
+            job.reason = persist_reason
+            _finish("FAIL", job.reason[:300], reason=job.reason,
+                    output=job.output_saved_to, audit_id=aid)
+        elif result.get("success") is False or result.get("error"):
             job.reason = str(result.get("error") or result.get("stderr") or "tool failed")[:500]
             _finish("FAIL", job.reason[:300], reason=job.reason,
                     output=job.output_saved_to, audit_id=aid)

@@ -338,11 +338,15 @@ def _execute(cmd_list: list[str], timeout: int = 600,
             shell=False,
         )
     except FileNotFoundError:
-        return {"exit_code": -1, "stdout": "", "stderr": f"Command not found: {cmd_list[0]}",
-                "elapsed_seconds": 0, "command": " ".join(cmd_list), "truncated": False}
+        return {"exit_code": -1, "stdout": "", "stdout_full": "", "stdout_full_length": 0,
+                "stderr": f"Command not found: {cmd_list[0]}",
+                "elapsed_seconds": 0, "command": " ".join(cmd_list),
+                "truncated": False, "persist_truncated": False}
     except PermissionError:
-        return {"exit_code": -1, "stdout": "", "stderr": f"Permission denied: {cmd_list[0]}",
-                "elapsed_seconds": 0, "command": " ".join(cmd_list), "truncated": False}
+        return {"exit_code": -1, "stdout": "", "stdout_full": "", "stdout_full_length": 0,
+                "stderr": f"Permission denied: {cmd_list[0]}",
+                "elapsed_seconds": 0, "command": " ".join(cmd_list),
+                "truncated": False, "persist_truncated": False}
 
     def _reader(stream, chunks, total, truncated_flag, limit):
         try:
@@ -389,16 +393,20 @@ def _execute(cmd_list: list[str], timeout: int = 600,
                 proc.wait()
                 stdout_thread.join(timeout=2)
                 stderr_thread.join(timeout=2)
+                captured = b"".join(stdout_chunks).decode("utf-8", errors="replace")
                 return {
                     "exit_code": -9,
-                    "stdout": b"".join(stdout_chunks).decode("utf-8", errors="replace")[:response_budget],
+                    "stdout": captured[:response_budget],
+                    "stdout_full": captured,
+                    "stdout_full_length": len(captured),
                     "stderr": (
                         f"TRUNCATED: output exceeded cap ({max_bytes} bytes); "
                         "process killed to avoid pipe deadlock"
                     ),
                     "elapsed_seconds": round(time.time() - start_time, 1),
                     "command": " ".join(cmd_list),
-                    "truncated": True,
+                    "truncated": len(captured) > response_budget,
+                    "persist_truncated": True,
                 }
             try:
                 proc.wait(timeout=min(1.0, max(remaining, 0.05)))
@@ -411,13 +419,17 @@ def _execute(cmd_list: list[str], timeout: int = 600,
         elapsed = time.time() - start_time
         stdout_thread.join(timeout=2)
         stderr_thread.join(timeout=2)
+        captured = b"".join(stdout_chunks).decode("utf-8", errors="replace")
         return {
             "exit_code": -9,
-            "stdout": b"".join(stdout_chunks).decode("utf-8", errors="replace")[:response_budget],
+            "stdout": captured[:response_budget],
+            "stdout_full": captured,
+            "stdout_full_length": len(captured),
             "stderr": f"TIMEOUT: Process killed after {elapsed}s",
             "elapsed_seconds": round(elapsed, 1),
             "command": " ".join(cmd_list),
-            "truncated": True,
+            "truncated": len(captured) > response_budget,
+            "persist_truncated": False,
         }
 
     elapsed = time.time() - start_time
@@ -427,20 +439,29 @@ def _execute(cmd_list: list[str], timeout: int = 600,
     stdout_text = b"".join(stdout_chunks).decode("utf-8", errors="replace")
     stderr_text = b"".join(stderr_chunks).decode("utf-8", errors="replace")
 
-    # Truncate output for response (keep full for audit)
-    truncated = stdout_truncated_arr[0] or stderr_truncated_arr[0]
+    # Two different cuts, and they must not be conflated:
+    #   * the response slice — the MCP reply has a byte budget;
+    #   * the capture itself — the command outran max_output_bytes.
+    # The capture is what gets persisted, so a small reply must never shrink the
+    # case file. It did: every SIFT tool that writes to stdout was stored as a
+    # 10 KB slice while the audit recorded the full length, and the comment
+    # claiming the full text was kept "for audit" was simply false.
+    persist_truncated = stdout_truncated_arr[0] or stderr_truncated_arr[0]
+    response_truncated = len(stdout_text) > response_budget
     response_stdout = stdout_text[:response_budget]
-    if len(stdout_text) > response_budget:
+    if response_truncated:
         response_stdout += f"\n... ({len(stdout_text) - response_budget} more bytes truncated)"
 
     return {
         "exit_code": proc.returncode,
         "stdout": response_stdout,
+        "stdout_full": stdout_text,
         "stdout_full_length": len(stdout_text),
         "stderr": stderr_text[:5000],
         "elapsed_seconds": round(elapsed, 1),
         "command": " ".join(cmd_list),
-        "truncated": truncated,
+        "truncated": response_truncated,
+        "persist_truncated": persist_truncated,
     }
 
 
@@ -669,9 +690,15 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         # Design contract: always persist tool output into the active case
         from nexus.case.outputs import persist_tool_output, resolve_active_case_dir
 
+        # Persist the CAPTURE, not the reply slice: the case file is the
+        # evidence, and the response budget is a transport detail. Writing the
+        # slice here cut every SIFT tool's output at 10 KB on disk.
+        full_stdout = result.get("stdout_full")
+        if not isinstance(full_stdout, str):
+            full_stdout = result.get("stdout", "") or ""
         persisted = persist_tool_output(
             tool_key=base_binary,
-            stdout=result.get("stdout", "") or "",
+            stdout=full_stdout,
             stderr=result.get("stderr", "") or "",
             command=command,
             purpose=purpose,
@@ -719,7 +746,9 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             result_summary={
                 "exit_code": result.get("exit_code"),
                 "elapsed_seconds": result.get("elapsed_seconds"),
-                "stdout_bytes": result.get("stdout_full_length", len(result.get("stdout", ""))),
+                # Equals the persisted file's length: both are the capture.
+                "stdout_bytes": len(full_stdout),
+                "persist_truncated": bool(result.get("persist_truncated")),
                 "output_files": output_files,
             },
             input_files=input_files,
@@ -736,6 +765,12 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         response["stderr"] = result.get("stderr", "")[:2000] or ""
         response["output_files"] = output_files
         response["tool_lineage"] = tool_lineage
+        response["persist_truncated"] = bool(result.get("persist_truncated"))
+        if result.get("persist_truncated"):
+            response["persist_truncation_note"] = (
+                f"The command outran the {settings.max_output_bytes}-byte capture cap, "
+                "so the saved output is incomplete. Treat this evidence as unparsed."
+            )
         if output_file:
             response["output_saved_to"] = output_file
         if persisted.get("warning"):
