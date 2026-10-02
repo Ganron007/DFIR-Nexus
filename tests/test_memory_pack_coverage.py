@@ -305,6 +305,40 @@ def test_the_host_list_is_fully_qualified_and_matching_is_by_prefix():
     assert jobs[3].reason.endswith("is not installed on this SIFT host")
 
 
+def test_a_warned_remote_job_audit_id_is_still_citable(tmp_path):
+    """A WARN row ran on the host; its audit_id must exist in the case log.
+
+    V6 reclassified zero-row list walks from OK to WARN, and the bridge wrote
+    only OK rows — so the ledger advertised an audit_id the case log did not
+    have and the flow e2e's citation-integrity check refused the finding.
+    """
+    import json
+
+    from nexus.langgraph.tool_lane import _bridge_remote_audits
+
+    case = _case(tmp_path)
+    ledger = [
+        {"host": "sift", "tool": "vol", "status": "OK", "audit_id": "a-ok",
+         "purpose": "info", "output_saved_to": "/r/ok.txt"},
+        {"host": "sift", "tool": "vol", "status": "WARN", "audit_id": "a-warn",
+         "purpose": "dlllist", "output_saved_to": "/r/warn.txt"},
+        {"host": "sift", "tool": "vol", "status": "FAIL", "audit_id": "a-fail",
+         "purpose": "malfind", "output_saved_to": "/r/fail.txt"},
+        {"host": "windows", "tool": "pecmd", "status": "OK", "audit_id": "a-win",
+         "purpose": "prefetch", "output_saved_to": "C:/x.csv"},
+    ]
+    assert _bridge_remote_audits(case, ledger) == 2
+
+    written = {
+        json.loads(line)["audit_id"]
+        for line in (case / "audit" / "nexus.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    }
+    assert written == {"a-ok", "a-warn"}
+    # Re-bridging must not duplicate a row.
+    assert _bridge_remote_audits(case, ledger) == 0
+
+
 def test_the_report_coverage_section_carries_the_gap(tmp_path):
     """WO-V6 item 1: the gap is visible in the report's coverage section."""
     from nexus.analysis.coverage_audit import report_section

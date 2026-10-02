@@ -4015,7 +4015,13 @@ def _bridge_remote_audits(case_dir: Path, ledger: list[dict[str, Any]]) -> int:
     try:
         with audit_path.open("a", encoding="utf-8") as fh:
             for row in ledger:
-                if row.get("host") != "sift" or row.get("status") != "OK":
+                # OK and WARN both executed on the host and returned an output;
+                # only WARN says the *result* needs reading. Bridging OK alone
+                # meant the moment WO-V6 reclassified a zero-row list walk from
+                # OK to WARN, its audit_id stopped existing in the case log
+                # while the ledger still advertised it - the flow e2e then cited
+                # it and citation integrity refused the finding.
+                if row.get("host") != "sift" or row.get("status") not in ("OK", "WARN"):
                     continue
                 aid = str(row.get("audit_id") or "")
                 if not aid or aid in existing:
