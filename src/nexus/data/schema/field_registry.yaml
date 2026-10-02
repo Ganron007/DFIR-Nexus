@@ -7,7 +7,7 @@ policy: 'one case index holds all families: int-only->long; int+double->double; 
   any other mix->text so the column stays searchable everywhere'
 counts:
   families: 61
-  columns: 718
+  columns: 719
   conflicts: 12
 columns:
   ADS Filename:
