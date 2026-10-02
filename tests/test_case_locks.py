@@ -93,7 +93,10 @@ def test_concurrent_stage_and_approve_keep_every_update(tmp_path, monkeypatch):
 
     def approver(fid: str) -> None:
         try:
-            result = _approve_finding(case_dir, fid, "lock-examiner", "ab" * 32, "salt")
+            result = _approve_finding(
+                case_dir, fid, "lock-examiner", "ab" * 32, "salt",
+                override_reason="concurrency test: the draft is not L1-proven",
+            )
             with stage_lock:
                 if result.get("status") == "APPROVED":
                     approved.append(fid)

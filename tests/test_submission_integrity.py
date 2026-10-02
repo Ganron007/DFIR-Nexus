@@ -308,7 +308,12 @@ def test_approval_refuses_a_finding_edited_after_staging(tmp_path, monkeypatch):
 
     out = approve_finding(case_dir, fid, analyst="examiner", password="irrelevant-no-key")
     assert "error" in out
-    assert "seal" in out["error"].lower()
+    # Two independent integrity gates can catch a post-staging edit: the
+    # submission seal (the content changed) and the record-store mirror check
+    # (the flat file no longer matches the canonical record). Either refusal is
+    # correct — the point is that the edited finding is not approvable.
+    reason = str(out["error"]).lower()
+    assert "seal" in reason or "mirror differs" in reason, out
 
 
 def test_report_flags_a_broken_seal(tmp_path, monkeypatch):

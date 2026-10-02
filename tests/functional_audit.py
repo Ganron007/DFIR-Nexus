@@ -129,7 +129,10 @@ mgr2 = CaseManager(db2, secret_key=b"audit-test")
 case2 = mgr2.create_case(name="APPROVAL-TEST")
 finding2 = mgr2.add_finding(case2.id, "LSASS dump", severity=FindingSeverity.HIGH)
 
-approved = mgr2.approve_finding(finding2.id, "audit-password", approved_by="auditor")
+approved = mgr2.approve_finding(
+    finding2.id, "audit-password", approved_by="auditor",
+    override_reason="audit fixture: the finding is not L1-proven",
+)
 check("approve_finding", approved is not None and approved.approval_state == ApprovalState.APPROVED)
 check("approval ledger entry written", bool(_auth.read_verification_ledger(case2.id)))
 

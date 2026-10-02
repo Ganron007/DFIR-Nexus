@@ -30,6 +30,21 @@ from nexus.ingest.schemas import Artifact
 log = logging.getLogger(__name__)
 
 
+def _l1_verdict_for(case_dir: Path, finding_id: str) -> str:
+    """The L1 verdict for one finding, computed the way the CLI computes it.
+
+    ``verify_drafts`` is the same function ``nexus approve`` reads, so a
+    programmatic approval is gated on the same verdict the examiner sees.
+    """
+    try:
+        from nexus.analysis.claim_verification import verify_drafts
+
+        row = (verify_drafts(case_dir) or {}).get(finding_id) or {}
+        return str(row.get("verdict") or "")
+    except Exception:  # noqa: BLE001 — the service treats empty as UNVERIFIABLE
+        return ""
+
+
 def materialize_case_dir(case: Case) -> Path:
     """Create the on-disk case directory + CASE.yaml for a SQLite case.
 
@@ -319,11 +334,16 @@ class CaseManager:
         password: str,
         approved_by: str = "system",
         note: str = "",
+        override_reason: str = "",
     ) -> Finding | None:
         """Approve a DRAFT finding. One path: the examiner approval service.
 
         The password is the examiner's HMAC password — the same one the CLI and
         the portal check — not a per-case password. There is one approval model.
+
+        The L1 verdict is computed here the same way the CLI computes it, and
+        the service refuses a non-PROVEN verdict with no ``override_reason``, so
+        a programmatic approval cannot skip the rule by passing nothing.
         """
         finding = self.store.get_finding(finding_id)
         if finding is None:
@@ -340,6 +360,8 @@ class CaseManager:
             case_dir,
             finding_id,
             approved_by,
+            l1_verdict=_l1_verdict_for(case_dir, finding_id),
+            override_reason=override_reason,
             note=note,
             signing_key=svc.signing_key_from_stored_hash(str(entry.get("hash") or "")),
             salt=str(entry.get("salt") or ""),

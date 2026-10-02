@@ -263,6 +263,7 @@ def main() -> int:
             f = mgr.approve_finding(
                 fid, APPROVE_PW, approved_by=EXAMINER,
                 note="Rocba showcase auto-approve (operator authorized)",
+                override_reason="operator-authorized showcase run: drafts are lane staged, not L1-proven",
             )
             ok = f is not None and f.approval_state == ApprovalState.APPROVED
             rec(ok, f"hitl.approve:{fid}", f"state={getattr(f.approval_state, 'value', None)}")

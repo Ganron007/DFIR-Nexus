@@ -349,7 +349,7 @@ def main() -> int:
     approved = []
     for fid in draft_ids:
         try:
-            f = mgr.approve_finding(fid, APPROVE_PW, approved_by=EXAMINER, note="Orchestrator E2E auto-approve (operator authorized)")
+            f = mgr.approve_finding(fid, APPROVE_PW, approved_by=EXAMINER, note="Orchestrator E2E auto-approve (operator authorized)", override_reason="operator-authorized e2e run: drafts are lane staged, not L1-proven")
             ok = f is not None and f.approval_state == ApprovalState.APPROVED
             rec(ok, f"hitl.approve:{fid}", f"state={getattr(getattr(f, 'approval_state', None), 'value', None)} hmac={bool(getattr(f, 'hmac_signature', None))}")
             if ok:

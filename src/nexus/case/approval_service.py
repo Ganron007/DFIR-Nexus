@@ -116,6 +116,65 @@ def cited_event_ids(finding: dict[str, Any]) -> list[str]:
     return list(dict.fromkeys(found))
 
 
+def _canonical(doc: dict[str, Any]) -> str:
+    return json.dumps(doc, sort_keys=True, default=str)
+
+
+def _authoritative(case_dir: Path) -> tuple[list[dict[str, Any]] | None, str]:
+    """The findings to act on, and a refusal when the mirror has drifted.
+
+    D3 = B made the ``case_records`` document canonical and ``findings.json`` a
+    generated mirror, but only the sync path ever read the store — approvals
+    still worked off the mirror, so a hand-edited flat file was approved as if
+    it were the record. The store wins when it holds anything for this case; a
+    mirror that does not match it exactly is a tamper signal, not something to
+    quietly overwrite.
+    """
+    recorded: list[dict[str, Any]] = []
+    try:
+        from nexus.case.records import load_records
+
+        recorded = [
+            doc for doc in load_records(case_dir, "finding") if isinstance(doc, dict)
+        ]
+    except Exception:  # noqa: BLE001 — fall back to the mirror
+        recorded = []
+
+    mirrored = _load(case_dir)
+    if not recorded:
+        return mirrored, ""
+    if mirrored is None:
+        return recorded, ""
+
+    by_id = {_finding_id(doc): doc for doc in recorded if _finding_id(doc)}
+    mirror_ids = {_finding_id(doc) for doc in mirrored if _finding_id(doc)}
+    if set(by_id) != mirror_ids:
+        return None, (
+            "mirror differs from the record store: the flat file and the case "
+            "record list different findings. findings.json is a generated "
+            "mirror, so a difference means it was edited outside the case store."
+        )
+    for doc in mirrored:
+        fid = _finding_id(doc)
+        if _canonical(doc) != _canonical(by_id[fid]):
+            return None, (
+                f"mirror differs from the record store for finding {fid}: "
+                "findings.json is a generated mirror, so a difference means it "
+                "was edited outside the case store."
+            )
+    return recorded, ""
+
+
+def _refusal(finding_id: str, message: str, **extra: Any) -> dict[str, Any]:
+    return {
+        "finding_id": finding_id,
+        "status": "error",
+        "error": message,
+        "message": message,
+        **extra,
+    }
+
+
 def commit_approval(
     case_dir: Path | str,
     finding_id: str,
@@ -127,11 +186,20 @@ def commit_approval(
     signing_key: bytes | None = None,
     salt: str = "",
 ) -> dict[str, Any]:
-    """Approve one DRAFT. A broken seal is refused and the file is unchanged."""
+    """Approve one DRAFT.
+
+    Three refusals live here rather than in the callers, so the CLI, the portal
+    and ``CaseManager`` cannot diverge: a broken seal, a mirror that disagrees
+    with the record store, and a non-PROVEN verdict without an override reason.
+    """
     case_dir = Path(case_dir)
-    findings = _load(case_dir)
+    findings, refusal = _authoritative(case_dir)
+    if refusal:
+        return _refusal(finding_id, refusal)
     if findings is None:
-        return {"finding_id": finding_id, "status": "error", "error": "No findings file found", "message": "No findings file"}
+        return _refusal(finding_id, "No findings file found")
+
+    verdict = str(l1_verdict or "UNVERIFIABLE").strip().upper() or "UNVERIFIABLE"
 
     for finding in findings:
         if _finding_id(finding) != finding_id or finding.get("status") != "DRAFT":
@@ -156,10 +224,25 @@ def commit_approval(
                 "seal_reason": seal_reason,
             }
         seal_state = "verified" if (has_seal and seal_ok) else "absent"
+        # Tier 1's rule: every approved claim is verified or explicitly
+        # overridden. The callers enforced it; the service now does, so a
+        # programmatic approval cannot bypass it by passing nothing. Checked
+        # after the seal, so integrity is what a tampered finding is refused for.
+        if verdict != "PROVEN" and not str(override_reason).strip():
+            return _refusal(
+                finding_id,
+                (
+                    f"Refused: finding {finding_id} is L1 {verdict} and has no "
+                    "override_reason. An approved claim is either verified or "
+                    "explicitly overridden — record why the examiner accepts it."
+                ),
+                l1_verdict=verdict,
+                needs_override_reason=True,
+            )
         finding["status"] = "APPROVED"
         finding["approved_by"] = examiner
         finding["approved_at"] = datetime.now(UTC).isoformat()
-        finding["l1_verdict_at_approval"] = l1_verdict or "UNVERIFIABLE"
+        finding["l1_verdict_at_approval"] = verdict
         finding["seal_state"] = seal_state
         if override_reason:
             finding["override_reason"] = override_reason
@@ -210,12 +293,11 @@ def commit_approval(
             "status": "APPROVED",
             "note": note,
             "seal_state": seal_state,
+            "l1_verdict": verdict,
         }
 
     message = f"Finding {finding_id} not found or not DRAFT"
-    return {"finding_id": finding_id, "status": "error", "error": message, "message": message}
-
-
+    return _refusal(finding_id, message)
 def commit_rejection(
     case_dir: Path | str,
     finding_id: str,
@@ -224,9 +306,11 @@ def commit_rejection(
 ) -> dict[str, Any]:
     """Reject one DRAFT and record the dismissal."""
     case_dir = Path(case_dir)
-    findings = _load(case_dir)
+    findings, refusal = _authoritative(case_dir)
+    if refusal:
+        return _refusal(finding_id, refusal)
     if findings is None:
-        return {"finding_id": finding_id, "status": "error", "error": "No findings file found", "message": "No findings file"}
+        return _refusal(finding_id, "No findings file found")
 
     for finding in findings:
         if _finding_id(finding) != finding_id or finding.get("status") != "DRAFT":

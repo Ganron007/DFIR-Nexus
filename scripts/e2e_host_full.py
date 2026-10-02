@@ -460,7 +460,7 @@ def lane_case(tools: dict, audit_ids: list[str]) -> str | None:
                     cand = Path(nx_settings.cases_root) / cid
                     if cand.is_dir():
                         case_dir = cand
-            result = approve_finding(case_dir, fid, EXAMINER, APPROVE_PW, note="E2E host auto-approve (operator authorized)")
+            result = approve_finding(case_dir, fid, EXAMINER, APPROVE_PW, note="E2E host auto-approve (operator authorized)", override_reason="operator-authorized e2e run: drafts are lane staged, not L1-proven")
             rec("HITL", f"approve {fid}", result.get("status") == "APPROVED" or "error" not in result,
                 json.dumps(result, default=str)[:300])
         except Exception as exc:

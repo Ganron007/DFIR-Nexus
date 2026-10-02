@@ -121,7 +121,10 @@ class TestCaseManager:
         case = mgr.create_case(name="INC-APP")
         finding = mgr.add_finding(case.id, "Suspicious login")
         assert finding is not None
-        approved = mgr.approve_finding(finding.id, examiner, approved_by=EXAMINER)
+        approved = mgr.approve_finding(
+            finding.id, examiner, approved_by=EXAMINER,
+            override_reason="lab approval: staged by the seeder, not L1-proven",
+        )
         assert approved is not None
         assert approved.approval_state == ApprovalState.APPROVED
 
@@ -177,7 +180,10 @@ class TestCaseManager:
         case = mgr.create_case(name="INC-AUD")
         finding = mgr.add_finding(case.id, "Suspicious login")
         assert finding is not None
-        mgr.approve_finding(finding.id, examiner, approved_by=EXAMINER)
+        mgr.approve_finding(
+            finding.id, examiner, approved_by=EXAMINER,
+            override_reason="lab approval: staged by the seeder, not L1-proven",
+        )
         log = mgr.get_audit_log(case.id)
         actions = [e.action.value for e in log]
         assert "case_created" in actions

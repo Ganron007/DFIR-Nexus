@@ -261,6 +261,7 @@ async def main() -> int:
             f = mgr.approve_finding(
                 fid, APPROVE_PW, approved_by=EXAMINER,
                 note="Operator HITL approve — Rocba pack",
+                override_reason="operator-authorized lab run: DRAFTs are lane staged, not L1-proven",
             )
             if f and f.approval_state == ApprovalState.APPROVED:
                 approved.append(fid)

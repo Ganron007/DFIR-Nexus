@@ -431,7 +431,7 @@ def main() -> int:
 
     approved = []
     for fid in draft_ids:
-        f = mgr.approve_finding(fid, APPROVE_PW, approved_by=EXAMINER, note="Operator-authorized golden tool run")
+        f = mgr.approve_finding(fid, APPROVE_PW, approved_by=EXAMINER, note="Operator-authorized golden tool run", override_reason="operator-authorized lab run: drafts are tool staged, not L1-proven")
         if f and f.approval_state == ApprovalState.APPROVED:
             approved.append(fid)
 

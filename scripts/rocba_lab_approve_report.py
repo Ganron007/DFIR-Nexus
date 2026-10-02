@@ -48,6 +48,7 @@ async def main() -> int:
             APPROVE_PW,
             approved_by=EXAMINER,
             note="Lab auto-approve — Rocba test run (not 12-pass HITL)",
+            override_reason="operator-authorized lab run: DRAFTs are seeder/lane staged, not L1-proven",
         )
         if f and f.approval_state == ApprovalState.APPROVED:
             approved.append(fid)

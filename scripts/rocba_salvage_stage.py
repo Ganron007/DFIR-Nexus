@@ -121,6 +121,7 @@ async def main() -> int:
         f = mgr.approve_finding(
             fid, APPROVE_PW, approved_by=EXAMINER,
             note="Operator HITL — salvage after coverage tool lane",
+            override_reason="operator-authorized lab run: drafts are lane staged, not L1-proven",
         )
         if f and f.approval_state == ApprovalState.APPROVED:
             approved.append(fid)
