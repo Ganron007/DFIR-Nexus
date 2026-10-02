@@ -3117,7 +3117,30 @@ async def run_tool_lane(
 
         await _asyncio.gather(*(_one(j) for j in job_list))
 
+    def _index_after_batch(batch: list[ToolJob]) -> None:
+        """WO-B4: index what a batch just produced, so exploration can open
+        before the lane ends. Batched, not per job: one incremental pass per
+        host batch keeps the lane deterministic and the bulk traffic bounded.
+        ES is optional here - a CSV-pack case has nothing to index into."""
+        if not any(job.status == "OK" for job in batch):
+            return
+        if not (os.environ.get("NEXUS_ES_URL") or "").strip():
+            return
+        try:
+            from nexus.langgraph.case_index import es_available, index_case
+
+            if not es_available():
+                return
+            meta = index_case(Path(case_dir), incremental=True)
+            _emit(
+                "INDEXED", batch[-1],
+                f"N3 incremental after batch: {int((meta or {}).get('docs') or 0)} docs",
+            )
+        except Exception as exc:  # noqa: BLE001 - indexing must not fail the lane
+            log.warning("incremental index after batch failed: %s", exc)
+
     await _run_bounded(win_jobs)
+    _index_after_batch(win_jobs)
 
     bodyfiles = sorted(extractions.rglob("*.body"))
     if bodyfiles and sift_tool:
@@ -3166,6 +3189,7 @@ async def run_tool_lane(
         except Exception as exc:  # noqa: BLE001 — a failed probe must not skip the pack
             log.warning("volatility plugin probe skipped: %s", exc)
     await _run_bounded(sift_jobs)
+    _index_after_batch(sift_jobs)
 
     ok = sum(1 for j in ledger if j.get("status") == "OK")
     fail = sum(1 for j in ledger if j.get("status") == "FAIL")
