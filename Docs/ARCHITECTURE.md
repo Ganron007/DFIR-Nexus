@@ -191,11 +191,11 @@ flowchart TD
 │                                                                             │
 └────────────────────────────────────────────────────────────────────────────┘
 
-### Ledger & approval architecture (4 ledgers, 2 approval stacks)
+### Ledger & approval architecture (4 ledgers, 1 approval path)
 
-DFIR-Nexus maintains **4 separate ledgers** and **2 approval stacks**. They are
-intentionally distinct — each serves a different audit purpose. They are **not**
-one unified chain.
+DFIR-Nexus maintains **4 separate ledgers** and **one approval path**. The
+ledgers are intentionally distinct — each serves a different audit purpose. They
+are **not** one unified chain.
 
 **Ledgers:**
 
@@ -204,21 +204,23 @@ one unified chain.
 | **Audit JSONL** | `{case_dir}/audit/{mcp_name}.jsonl` | JSONL + `audit_id` | Per-tool-call audit trail. Every MCP tool execution gets a unique `audit_id`. Findings must reference real `audit_id`s (fabricated IDs are rejected by discipline rules). |
 | **Transparency chain** | `{case_dir}/transparency.jsonl` | HMAC-chained JSONL | Hash-chained log of every approval commit. Each entry links to the previous entry's hash — tampering breaks the chain. |
 | **Verification ledger** | `{case_dir}/verification.jsonl` | HMAC entries | PBKDF2/HMAC password verification records. `auth.py:reset_password` re-HMACs all entries when the password changes. Used by the challenge-response approval flow. |
-| **Case SQLite store** | `{cases_root}/cases.db` | SQLite tables | Structured case state: findings, evidence, timeline, IOCs, TODOs. Dual-write: JSON files on disk + SQLite for query. |
+| **Case records store** | `{cases_root}/cases.db` | SQLite `case_records` | **Canonical** for findings, timeline events, todos and IOCs, holding the whole record document. The flat JSON files are generated mirrors; the typed `findings` table is a projection. |
 
-**Approval stacks:**
+**Approval — one path:**
 
-| Stack | Location | Used by | Status |
-|-------|----------|---------|--------|
-| **Dashboard HMAC flow** | `auth.py` + `dashboard/app.py` | Portal `/portal/api/commit/challenge` + `/commit` + `/case/seal` | **Active** — the primary examiner approval path. Challenge-response: server issues nonce → examiner computes `HMAC-SHA256(PBKDF2(password, salt, 600000), nonce)` → server verifies. |
-| **Approval (one path)** | `case/approval_service.py` | CLI `nexus approve`, the Portal `/commit`, and the programmatic `CaseManager.approve_finding` | **The only approval implementation.** Seal check → record write → verification-ledger entry → transparency entry, plus `require_examiner()` for the shared password + lockout. The examiner's HMAC password is the one credential; there is no per-case approval password. |
+| Piece | Location | Used by |
+|-------|----------|---------|
+| **Challenge-response** | `auth.py` + `dashboard/app.py` | Portal `/portal/api/commit/challenge` + `/commit` + `/case/seal`. The server issues a nonce; the examiner computes `HMAC-SHA256(PBKDF2(password, salt, 600000), nonce)`; the server verifies. The password never leaves the browser. |
+| **Approval service** | `case/approval_service.py` | CLI `nexus approve`, the Portal `/commit`, and the programmatic `CaseManager.approve_finding`. **The only approval implementation:** seal check → record write → verification-ledger entry → transparency entry, plus `require_examiner()` for the shared password + lockout. |
 
-**Design note:** The two approval stacks share the same PBKDF2-HMAC-SHA256
-cryptographic primitives but maintain separate code paths. The Portal dashboard
-uses `auth.py` directly (challenge-response, never sends password). The
-`case/approval.py` workflow wraps the same crypto in a class-based API for
-programmatic consumers. They are **not** the same chain — the transparency log
-chains approval commits, not password verifications.
+**Design note:** There is **one** approval model and **one** credential — the
+examiner's HMAC password, checked with the same PBKDF2-HMAC-SHA256 primitives
+and the same 3-strike lockout on every surface. Whether the caller is the CLI,
+the Portal or `CaseManager`, it calls `approval_service`; the old class-based
+`case/approval.py` workflow (and its per-case approval password) was deleted
+2026-10-02. The verification ledger is the proof of an approval: it holds the
+finding's HMAC entry, and `verify_approval_signatures()` reads that ledger
+rather than a signature stored on the record.
                            │
            ┌───────────────┴───────────────┐
            │ Stdio transport               │ HTTP transport
