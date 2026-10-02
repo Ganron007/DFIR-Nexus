@@ -2,8 +2,6 @@
 $LogFile; the pairing is offered, confirming it clears the raw job, and the
 report gate follows the gate.
 """
-import json
-
 from nexus.case import evidence_service
 from nexus.case.compat import get_sqlite_manager
 
