@@ -1258,8 +1258,44 @@ async def api_timeline(request):
 
 async def api_evidence(request):
     """GET /portal/api/evidence"""
+    from nexus.ingest.fingerprint import propose_pairs
+
     ev = _evidence_items(request)
-    return JSONResponse({"evidence": ev, "total": len(ev)})
+    return JSONResponse({
+        "evidence": ev,
+        "total": len(ev),
+        "pair_proposals": propose_pairs(ev),
+    })
+
+
+async def api_evidence_pair(request):
+    """POST /portal/api/evidence/pair — confirm a pre-processed output covers a raw artifact."""
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+    raw_name = str(body.get("raw_name") or "").strip()
+    output_name = str(body.get("output_name") or "").strip()
+    output_sha256 = str(body.get("output_sha256") or "").strip().lower()
+    if not raw_name or not output_name or not output_sha256:
+        return JSONResponse(
+            {"error": "raw_name, output_name, and output_sha256 are required"},
+            status_code=400,
+        )
+    from nexus.audit import resolve_examiner
+    from nexus.langgraph.lane_gate import confirm_preprocessed_pair
+
+    gate = confirm_preprocessed_pair(
+        case_dir,
+        raw_name=raw_name,
+        output_name=output_name,
+        output_sha256=output_sha256,
+        examiner=resolve_examiner(),
+    )
+    return JSONResponse({"status": gate.get("status", "recorded"), "gate": gate})
 
 
 async def api_iocs(request):
@@ -7842,6 +7878,7 @@ def create_dashboard():
         Route("/portal/api/findings", api_findings, methods=["GET"]),
         Route("/portal/api/timeline", api_timeline, methods=["GET"]),
         Route("/portal/api/evidence", api_evidence, methods=["GET"]),
+        Route("/portal/api/evidence/pair", api_evidence_pair, methods=["POST"]),
         Route("/portal/api/evidence", api_register_evidence, methods=["POST"]),
         Route("/portal/api/iocs", api_iocs, methods=["GET"]),
         Route("/portal/api/todos", api_todos, methods=["GET"]),

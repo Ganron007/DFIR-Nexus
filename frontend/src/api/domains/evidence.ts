@@ -20,6 +20,11 @@ export const evidenceApi = {
       error?: string;
     }>("/evidence", { path, case_id: caseId, description }),
   evidence: () => request<EvidenceResponse>("/evidence"),
+  pairEvidence: (proposal: {
+    raw_name: string;
+    output_name: string;
+    output_sha256: string;
+  }) => post<{ status?: string; error?: string }>("/evidence/pair", proposal),
   iocs: () => request<IocsResponse>("/iocs"),
   todos: (status?: string) =>
     request<TodosResponse>(`/todos${status ? `?status=${status}` : ""}`),

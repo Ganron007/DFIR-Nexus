@@ -70,9 +70,16 @@ export interface FindingsResponse {
 }
 
 /** GET /evidence → {evidence: dict[], total: number} */
+export interface EvidencePairProposal {
+  raw_name: string;
+  output_name: string;
+  output_sha256: string;
+  family: string;
+}
 export interface EvidenceResponse {
   evidence: Record<string, unknown>[];
   total: number;
+  pair_proposals?: EvidencePairProposal[];
 }
 
 /** GET /iocs → IOCs extracted from findings */

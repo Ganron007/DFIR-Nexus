@@ -63,6 +63,42 @@ def place_recognized_csv(source: Path, extraction_root: Path) -> Path | None:
     return dest
 
 
+_RAW_HINTS: dict[str, tuple[str, ...]] = {
+    "logfileparser": ("$logfile",),
+    "mftecmd": ("$mft",),
+    "evtxecmd": (".evtx",),
+    "pecmd": (".pf",),
+    "recmd": (".hiv", "ntuser.dat"),
+}
+
+
+def propose_pairs(items: list[dict]) -> list[dict]:
+    """A pre-processed CSV and the raw artifact it can stand in for.
+
+    Both must already be registered. The examiner still confirms the pair.
+    """
+    proposals: list[dict] = []
+    for output in items:
+        family = str(output.get("recognized_family") or "")
+        digest = str(output.get("sha256") or "")
+        hints = _RAW_HINTS.get(family, ())
+        if not family or not digest or not hints:
+            continue
+        for raw in items:
+            if raw is output:
+                continue
+            name = str(raw.get("name") or "").lower()
+            if not any(hint in name for hint in hints):
+                continue
+            proposals.append({
+                "raw_name": raw.get("name") or "",
+                "output_name": output.get("name") or "",
+                "output_sha256": digest,
+                "family": family,
+            })
+    return proposals
+
+
 def place_loose_csvs(root: Path) -> list[Path]:
     """Copy recognized CSVs that sit in ``root`` itself into ``root/<family>/``.
 

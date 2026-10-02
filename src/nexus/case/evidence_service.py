@@ -310,6 +310,8 @@ def _serialize(record) -> dict[str, Any]:
         "dest_ip": meta.get("dest_ip") or "",
         "process_name": meta.get("process_name") or "",
         "technique_ids": meta.get("technique_ids") or [],
+        "recognized_family": str(meta.get("recognized_family") or ""),
+        "placed_at": str(meta.get("placed_at") or ""),
     }
 
 

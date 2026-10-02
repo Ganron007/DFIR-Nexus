@@ -15,6 +15,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../client";
 import { caseKey } from "./keys";
 
+export interface EvidencePairProposal {
+  raw_name: string;
+  output_name: string;
+  output_sha256: string;
+  family: string;
+}
 export interface EvidenceRow {
   path?: string;
   name?: string;
@@ -22,11 +28,12 @@ export interface EvidenceRow {
   description?: string;
   status?: string;
   registered_at?: string;
+  recognized_family?: string;
 }
 
 /** The registry itself. */
 export function useEvidenceRegistry(caseId: string | null | undefined) {
-  return useQuery<{ evidence: EvidenceRow[] }>({
+  return useQuery<{ evidence: EvidenceRow[]; pair_proposals?: EvidencePairProposal[] }>({
     queryKey: caseKey(caseId, "evidence"),
     enabled: Boolean(caseId),
     staleTime: 15_000,

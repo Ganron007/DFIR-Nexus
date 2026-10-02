@@ -91,6 +91,7 @@ export default function Evidence() {
   const tsCoverage = useTsCoverage(activeCase, { enabled: coverageNonce >= 0 });
 
   const evidence = registry.data?.evidence ?? [];
+  const pairProposals = registry.data?.pair_proposals ?? [];
   const ledger = ledgerQuery.data?.ledger ?? [];
   const ledgerEvidence = ledgerQuery.data?.evidence_paths ?? [];
   const coverage = tsCoverage.data ?? {};
@@ -295,6 +296,28 @@ export default function Evidence() {
         stageCode="N2"
         actions={headerActions}
       />
+
+      {pairProposals.length > 0 ? (
+        <Panel title="Pre-processed output">
+          {pairProposals.map((proposal) => (
+            <div key={`${proposal.raw_name}-${proposal.output_name}`}>
+              <span>
+                {proposal.output_name} can stand in for {proposal.raw_name}.
+              </span>
+              <Button
+                size="sm"
+                onClick={() => {
+                  api.pairEvidence(proposal)
+                    .then(() => registry.refetch())
+                    .catch((exc) => setLocalError((exc as Error).message));
+                }}
+              >
+                Confirm pairing
+              </Button>
+            </div>
+          ))}
+        </Panel>
+      ) : null}
 
       {error ? (
         <div role="alert" className="error-banner">

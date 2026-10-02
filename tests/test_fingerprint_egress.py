@@ -1,7 +1,12 @@
 """Pre-processed CSV headers and stable LLM tokens."""
 from __future__ import annotations
 
-from nexus.ingest.fingerprint import family_for_csv_header, place_loose_csvs, place_recognized_csv
+from nexus.ingest.fingerprint import (
+    family_for_csv_header,
+    place_loose_csvs,
+    place_recognized_csv,
+    propose_pairs,
+)
 from nexus.llm.egress import anonymize_text, restore_text, restore_tool_calls
 
 
@@ -28,6 +33,21 @@ def test_recognized_csv_is_copied_under_its_family(tmp_path):
     assert placed.parent.name == "pecmd"
     assert source.is_file()
     assert "powershell.exe" in placed.read_text(encoding="utf-8")
+
+
+def test_a_preprocessed_csv_proposes_its_raw_artifact():
+    proposals = propose_pairs([
+        {"name": "$LogFile", "sha256": "aa"},
+        {"name": "LogFile.csv", "sha256": "bb", "recognized_family": "logfileparser"},
+        {"name": "notes.csv", "sha256": "cc"},
+    ])
+    assert proposals == [{
+        "raw_name": "$LogFile",
+        "output_name": "LogFile.csv",
+        "output_sha256": "bb",
+        "family": "logfileparser",
+    }]
+    assert propose_pairs([{"name": "notes.csv", "sha256": "cc"}]) == []
 
 
 def test_a_csv_dropped_at_the_ingest_root_is_placed_by_family(tmp_path):
