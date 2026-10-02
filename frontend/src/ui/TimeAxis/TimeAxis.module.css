@@ -83,6 +83,13 @@
   fill: var(--color-accent);
 }
 
+/* Per-bucket severity on the marks (WO-D1): the lane keeps its peak tone, and
+   a bucket that reached a higher severity than the lane average says so. */
+.laneMark[data-sev="critical"] { fill: var(--sev-critical); }
+.laneMark[data-sev="high"]     { fill: var(--sev-high); }
+.laneMark[data-sev="medium"]   { fill: var(--sev-medium); }
+.laneMark[data-sev="low"]      { fill: var(--sev-low); }
+
 .histogramBar {
   opacity: 0.45;
 }

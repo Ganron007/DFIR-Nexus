@@ -90,7 +90,8 @@ describe("Steer Chat (migrated)", () => {
     const rounds = await screen.findByLabelText("Max rounds");
     expect(rounds).toHaveAttribute("type", "number");
     expect(rounds).toHaveAttribute("min", "1");
-    expect(rounds).toHaveAttribute("max", "4");
+    // The control reaches the loop's own ceiling (D9), not an arbitrary 4.
+    expect(rounds).toHaveAttribute("max", "8");
   });
 
   it("makes the transcript a live region so a streamed answer is announced", async () => {

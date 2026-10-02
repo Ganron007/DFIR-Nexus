@@ -24,7 +24,7 @@ import os
 import re
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -97,9 +97,14 @@ def _env_float(name: str, default: float, *, low: float, high: float) -> float:
     return max(low, min(value, high))
 
 
-def load_loop_budget() -> LoopBudget:
-    """Read the live-acceptance defaults (8 rounds / 16 calls / 360 s)."""
-    return LoopBudget(
+def load_loop_budget(rounds: int = 0) -> LoopBudget:
+    """Read the live-acceptance defaults (8 rounds / 16 calls / 360 s).
+
+    ``rounds`` overrides the round count for one turn when the examiner set a
+    depth control. It is clamped to the same range the env var uses, so the
+    control can never exceed the ceiling.
+    """
+    budget = LoopBudget(
         rounds=_env_int("NEXUS_CONTEXT_LOOP_ROUNDS", 8, low=1, high=30),
         seconds=_env_float("NEXUS_CONTEXT_LOOP_SECONDS", 360.0, low=5.0, high=3600.0),
         calls=_env_int("NEXUS_CONTEXT_LOOP_CALLS", 16, low=1, high=100),
@@ -108,6 +113,9 @@ def load_loop_budget() -> LoopBudget:
             low=2_000, high=1_000_000,
         ),
     )
+    if rounds and int(rounds) > 0:
+        budget = replace(budget, rounds=max(1, min(int(rounds), 30)))
+    return budget
 
 
 def _call_model(model: Any, messages: list[dict[str, str]]) -> str:

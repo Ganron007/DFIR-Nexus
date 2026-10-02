@@ -173,13 +173,18 @@ export default function Timeline() {
   const series = useMemo<LaneSeries[]>(
     () =>
       lanes.map((lane) => {
-        const buckets: HistogramBucket[] = Object.entries(lane.buckets || {})
-          .map(([hour, count]) => {
-            const at = parseUtc(hour);
-            return at ? { t: at.getTime(), count } : null;
-          })
-          .filter((bucket): bucket is HistogramBucket => bucket !== null)
-          .sort((a, b) => a.t - b.t);
+        const buckets: HistogramBucket[] = [];
+        for (const [hour, count] of Object.entries(lane.buckets || {})) {
+          const at = parseUtc(hour);
+          if (!at) continue;
+          const bucketTone = String((lane.buckets_sev || {})[hour] || "").toLowerCase();
+          buckets.push({
+            t: at.getTime(),
+            count,
+            tone: bucketTone && bucketTone in SEV_RANK ? bucketTone : undefined,
+          });
+        }
+        buckets.sort((a, b) => a.t - b.t);
         const severity = peakSeverity(lane);
         return {
           id: lane.family,

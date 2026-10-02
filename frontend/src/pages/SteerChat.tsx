@@ -334,11 +334,11 @@ export default function SteerChat() {
                 className={styles.iterations}
                 type="number"
                 min={1}
-                max={4}
+                max={8}
                 value={mode1Iterations}
                 onChange={(event) =>
                   setMode1Iterations(
-                    Math.max(1, Math.min(4, Number(event.target.value) || 2)),
+                    Math.max(1, Math.min(8, Number(event.target.value) || 2)),
                   )
                 }
               />

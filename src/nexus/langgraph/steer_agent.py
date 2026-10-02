@@ -814,6 +814,7 @@ def _run_context_loop_turn(
     history: list[dict[str, str]] | None,
     case_dir: Path,
     on_event: Any = None,
+    max_rounds: int = 0,
 ) -> dict[str, Any]:
     """The WP 10.53/10.54 path: bounded, audited, model-driven tool loop.
 
@@ -844,7 +845,7 @@ def _run_context_loop_turn(
         task="mode2-steer",
         history=history,
         on_event=on_event,
-        budget=load_loop_budget(),
+        budget=load_loop_budget(max_rounds),
         audit=audit,
     )
     tool_calls = result.get("tool_calls") or []
@@ -894,7 +895,7 @@ def run_steer_agent(
     question: str,
     model: Any = None,
     history: list[dict[str, str]] | None = None,
-    max_turns: int = 0,  # kept for call compatibility; the loop is bounded by budget
+    max_turns: int = 0,  # the round cap for this turn; 0 = the env default
     on_event: Any = None,
 ) -> dict[str, Any]:
     """Conversational Mode 2 agent: NL → plan → execute → answer.
@@ -959,6 +960,7 @@ def run_steer_agent(
         try:
             loop_result = _run_context_loop_turn(
                 question, llm, history, case_dir, on_event=on_event,
+                max_rounds=max_turns,
             )
             if loop_result.get("reply"):
                 return loop_result

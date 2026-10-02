@@ -17,6 +17,12 @@ export interface HistogramBucket {
   /** epoch milliseconds (UTC) */
   t: number;
   count: number;
+  /**
+   * Optional severity tone for THIS bucket (critical|high|medium|low).
+   * A lane's own `tone` is its peak; this restores per-bucket severity on the
+   * marks, which one tone per lane otherwise loses.
+   */
+  tone?: string;
 }
 
 export interface LaneSeries {

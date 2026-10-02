@@ -102,6 +102,7 @@ export function TimeLanes(props: TimeLanesProps) {
                     className={styles.laneMark}
                     data-testid={`lane-mark-${lane.id}`}
                     data-t={bucket.t}
+                    data-sev={bucket.tone || undefined}
                   />
                 );
               })}

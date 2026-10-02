@@ -3684,9 +3684,12 @@ async def api_chat_stream(request):
         return JSONResponse({"error": "Empty message"}, status_code=400)
     if mode not in ("mode1", "mode1-ask", "ask", "mode2"):
         return JSONResponse({"error": f"Unsupported stream mode: {mode}"}, status_code=400)
-    # ``max_iterations`` is accepted for API compatibility; the new tool loop
-    # is bounded by NEXUS_CONTEXT_LOOP_* instead.
-    _ = body.get("max_iterations")
+    # ``max_iterations`` bounds this turn's tool loop. Absent or invalid, the
+    # env default applies (NEXUS_CONTEXT_LOOP_ROUNDS).
+    try:
+        max_rounds = max(1, min(int(body.get("max_iterations") or 0), 30))
+    except (TypeError, ValueError):
+        max_rounds = 0
 
     import queue as _queue
 
@@ -3834,6 +3837,7 @@ async def api_chat_stream(request):
 
                         return run_steer_agent(
                             case_dir, message, history=history,
+                            max_turns=max_rounds,
                             on_event=lambda event: q.put(
                                 (str(event.get("event") or "context"), event)),
                         )
@@ -4296,7 +4300,7 @@ async def api_mode1_save_answer(request):
 async def api_mode1_iterate(request):
     """POST /portal/api/mode1/iterate - Mode 1 iterative loop (logged).
 
-    Body: {question, max_iterations? (default 2, hard cap 4), limit?}
+    Body: {question, max_iterations? (default 2, hard cap 8), limit?}
     Every iteration is logged to chat.jsonl. Returns the iteration log;
     the examiner reviews proposals - nothing is auto-staged.
     """
@@ -4311,7 +4315,7 @@ async def api_mode1_iterate(request):
     if not question:
         return JSONResponse({"error": "Missing question"}, status_code=400)
     try:
-        max_iterations = max(1, min(int(body.get("max_iterations") or 2), 4))
+        max_iterations = max(1, min(int(body.get("max_iterations") or 2), 8))
     except (TypeError, ValueError):
         return JSONResponse({"error": "max_iterations must be an integer"}, status_code=400)
     try:

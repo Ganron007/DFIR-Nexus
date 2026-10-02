@@ -176,4 +176,28 @@ describe("TimeLanes", () => {
     expect(onSelectLane).toHaveBeenCalledWith("prefetch");
     expect(screen.getByTestId("lane-evtx")).toHaveAttribute("data-selected", "true");
   });
+
+  it("carries the per-bucket severity onto the mark (WO-D1)", () => {
+    const noon = at("2026-01-01T12:00:00Z");
+    render(
+      <TimeLanes
+        lanes={[
+          {
+            id: "evtx",
+            label: "evtx",
+            tone: "medium",
+            buckets: [
+              { t: noon, count: 5, tone: "critical" },
+              { t: noon + 3600_000, count: 1 },
+            ],
+          },
+        ]}
+        range={DAY}
+        width={800}
+      />,
+    );
+    const marks = screen.getByTestId("lane-evtx").querySelectorAll("[data-testid^='lane-mark-']");
+    expect(marks[0]).toHaveAttribute("data-sev", "critical");
+    expect(marks[1]).not.toHaveAttribute("data-sev");
+  });
 });
