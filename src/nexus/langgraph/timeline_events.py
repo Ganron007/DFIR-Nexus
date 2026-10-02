@@ -261,6 +261,34 @@ EVENTS_MAPPING: dict[str, Any] = {
 }
 
 
+def delete_events_index(case_id: str) -> dict[str, Any]:
+    """Best-effort delete of a case's events index (cleanup path).
+
+    The events index is a separate index from the document index, so a cleanup
+    that only removed the document index left it behind — an orphan across
+    every case a debug matrix builds. Never raises, like ``delete_index``.
+    """
+    from nexus.langgraph.case_index import _client, es_url
+
+    name = events_index_name(case_id)
+    if not es_url():
+        return {"index": name, "deleted": False, "reason": "NEXUS_ES_URL unset"}
+    try:
+        with _client() as client:
+            response = client.delete(f"/{name}")
+            if response.status_code == 404:
+                return {"index": name, "deleted": False, "reason": "index absent"}
+            if response.status_code >= 400:
+                return {
+                    "index": name,
+                    "deleted": False,
+                    "reason": f"{response.status_code} {response.text[:120]}",
+                }
+            return {"index": name, "deleted": True}
+    except Exception as exc:  # noqa: BLE001 — cleanup must never block
+        return {"index": name, "deleted": False, "reason": str(exc)[:120]}
+
+
 def ensure_events_index(case_id: str) -> str:
     """Create the events index if needed; returns its name."""
     from nexus.langgraph.case_index import _client

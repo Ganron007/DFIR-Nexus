@@ -223,6 +223,19 @@ def test_plaso_l2tcsv_row_is_one_event():
     assert len(expand_doc(indexed)) == 1
 
 
+def test_delete_events_index_targets_the_events_index(monkeypatch):
+    """Cleanup must remove the events index too (A10), or it orphans per case."""
+    import nexus.langgraph.case_index as ci
+    import nexus.langgraph.timeline_events as te
+
+    monkeypatch.setattr(ci, "es_url", lambda: "")
+    out = te.delete_events_index("CASE-X")
+    assert out["index"] == te.events_index_name("CASE-X")
+    assert out["index"] == "nexus-case-case-x-events"
+    assert out["deleted"] is False
+    assert out["reason"] == "NEXUS_ES_URL unset"
+
+
 def test_task_xml_registration_time_is_registry_typed():
     """WO-A10/D6: the task family's own timestamp column is vouched for, so the
     timeline emits it as a registry-typed event rather than a heuristic one."""

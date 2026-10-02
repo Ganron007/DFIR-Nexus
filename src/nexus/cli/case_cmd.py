@@ -184,8 +184,17 @@ def _delete_case_indexes(case_ids: list[str]) -> str:
             return "ES indexes skipped (NEXUS_ES_URL unset)"
         deleted = 0
         for cid in case_ids:
+            # Both indexes belong to the case: the document index and the
+            # timeline events index (A10). Removing only the document index
+            # left the events index behind on every cleaned case.
             if delete_index(cid).get("deleted"):
                 deleted += 1
+            try:
+                from nexus.langgraph.timeline_events import delete_events_index
+
+                delete_events_index(cid)
+            except Exception:  # noqa: BLE001 — never block cleanup on events
+                pass
         return f"{deleted}/{len(case_ids)} ES index(es) removed"
     except Exception as exc:  # noqa: BLE001 — cleanup must never block
         return f"ES index cleanup skipped ({type(exc).__name__})"
