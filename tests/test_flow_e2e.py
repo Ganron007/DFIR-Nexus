@@ -195,6 +195,21 @@ def test_full_loop_design_flow(flow_env, monkeypatch):
     parse_csvs = [p for p in run.extractions.rglob("*.csv") if p.stat().st_size > 0]
     assert parse_csvs, "lane completed but produced no parser CSV"
 
+    # The evidence gate (operator rule) refuses analysis while any artifact is
+    # unprocessed, so a tool that exited without an output file is the
+    # examiner's call to skip. Record it exactly as the portal would, or the
+    # later analysis steps are refused (409) by design.
+    from nexus.langgraph.lane_gate import examiner_skip, lane_gate_blocked
+
+    blocked = lane_gate_blocked(case_dir)
+    if blocked:
+        examiner_skip(
+            case_dir,
+            examiner=EXAMINER,
+            reason="flow e2e: tool exited without an output file",
+            items=blocked.get("unprocessed"),
+        )
+
     # 5. N4 search through the real route
     r = client.post("/portal/api/explore/search", headers=headers, json={"needles": "Application"})
     assert r.status_code == 200, r.text
