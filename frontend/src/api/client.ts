@@ -606,6 +606,8 @@ export interface Mode2RunStatusResponse {
   narrative?: string;
   created_at?: string;
   completed_at?: string;
+  evidence_coverage?: { status?: string; pending?: string[]; counts?: Record<string, number> };
+  late_evidence?: { count?: number; families?: string[]; since?: string };
   error?: string;
 }
 

@@ -7567,6 +7567,34 @@ async def api_mode2_run(request):
                          "question": question}, status_code=202)
 
 
+def late_evidence(case_dir: Path, record: dict) -> dict:
+    """WO-B4: families this run saw as pending that the lane has since processed.
+
+    An empty answer is honest twice over: a run that started with nothing
+    pending has no delta, and a run recorded before coverage snapshots existed
+    cannot claim one.
+    """
+    pending = {
+        str(name)
+        for name in (record.get("evidence_coverage") or {}).get("pending") or []
+        if str(name)
+    }
+    if not pending:
+        return {}
+    from nexus.langgraph.lane_gate import read_lane_gate
+
+    gate = read_lane_gate(case_dir)
+    processed = {
+        str(job.get("family") or job.get("purpose") or job.get("tool") or "")
+        for job in (gate.get("jobs") or [])
+        if job.get("state") == "processed"
+    }
+    arrived = sorted(pending & processed)
+    if not arrived:
+        return {}
+    return {"count": len(arrived), "families": arrived, "since": record.get("created_at") or ""}
+
+
 async def api_mode2_run_status(request):
     """GET /portal/api/mode2/run/status?run_id= — run record + counters."""
     case_dir = _get_case_dir(request)
@@ -7627,6 +7655,8 @@ async def api_mode2_run_status(request):
         "narrative": str(record.get("narrative") or "")[:4000],
         "created_at": record.get("created_at"),
         "completed_at": record.get("completed_at"),
+        "evidence_coverage": record.get("evidence_coverage") or {},
+        "late_evidence": late_evidence(case_dir, record),
     })
 
 

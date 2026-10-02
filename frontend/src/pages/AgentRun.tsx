@@ -588,6 +588,11 @@ function MultiRoleAgentRun() {
               verdicts <strong>{record?.verdicts?.length ?? 0}</strong>
             </span>
           </div>
+          {record?.late_evidence?.count ? (
+            <div role="status" className="notice-line">
+              {(record.late_evidence.families ?? []).join(", ")} arrived after this run — re-run or extend
+            </div>
+          ) : null}
           <div className={styles.s17}>
             <button className="btn btn-sm" onClick={handlePauseToggle} disabled={!!busy || (!running && !record?.pause_requested)}>
               {record?.pause_requested ? "Resume" : "Pause"}
