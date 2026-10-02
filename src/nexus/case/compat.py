@@ -116,6 +116,36 @@ def sync_sqlite_to_flat(
                 "hmac_signature": bool(f.hmac_signature),
             })
 
+        # D3 = B: the record store is canonical, so its document wins for any
+        # finding it holds. The typed rebuild is the fallback, and a finding
+        # that exists in only one of the two is kept rather than dropped —
+        # regenerating findings.json from the typed projection alone used to
+        # discard the seal, the L1 verdict and the override reason.
+        try:
+            from nexus.case.records import load_records
+
+            recorded = load_records(dest, "finding", db_path=mgr.store.db_path)
+        except Exception:  # noqa: BLE001 — the fallback is the typed rebuild
+            recorded = []
+        if recorded:
+            by_id = {
+                str(doc.get("id") or doc.get("finding_id") or ""): doc
+                for doc in recorded
+                if isinstance(doc, dict)
+            }
+            merged: list[dict[str, Any]] = []
+            seen: set[str] = set()
+            for row in findings_out:
+                rid = str(row.get("id") or "")
+                doc = by_id.get(rid)
+                merged.append(doc if doc is not None else row)
+                if doc is not None:
+                    seen.add(rid)
+            merged.extend(
+                doc for rid, doc in by_id.items() if rid and rid not in seen
+            )
+            findings_out = merged
+
         evidence_out: list[dict[str, Any]] = []
         timeline_out: list[dict[str, Any]] = []
         # Canonical IOC schema = list of records (same as _merge_iocs).

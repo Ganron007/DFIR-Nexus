@@ -39,7 +39,7 @@ MODULES = [
     ("nexus", ["__version__"]),
     ("nexus.case", ["CaseManager", "Case", "Finding", "EvidenceRecord", "AuditEntry",
                     "CaseStatus", "FindingSeverity", "ApprovalState", "AuditAction",
-                    "SQLiteStore", "AuditChain", "ApprovalWorkflow", "get_audit_secret",
+                    "SQLiteStore", "AuditChain", "get_audit_secret",
                     "ApprovalError", "get_sqlite_manager", "LegacyJsonImporter"]),
     ("nexus.llm", ["LLMRouter", "LLMProvider", "ChatMessage", "ChatResponse",
                    "ProviderNotFoundError", "OpenAICompatProvider"]),
@@ -74,7 +74,7 @@ for mod_name, symbols in MODULES:
 # 2. Case stack — create case, finding, evidence, audit chain
 # ──────────────────────────────────────────────
 print("\n=== 2. Case stack (SQLite) ===")
-from nexus.case import ApprovalState, ApprovalWorkflow, CaseManager, CaseStatus, FindingSeverity
+from nexus.case import ApprovalState, CaseManager, CaseStatus, FindingSeverity
 
 db = Path(tempfile.gettempdir()) / f"audit_{os.getpid()}.db"
 mgr = CaseManager(db, secret_key=b"audit-test")
@@ -108,37 +108,43 @@ db.unlink(missing_ok=True)
 # ──────────────────────────────────────────────
 # 3. Approval workflow — set password, approve, verify signature
 # ──────────────────────────────────────────────
-print("\n=== 3. Approval workflow ===")
-from nexus.case import ApprovalPasswordError
+print("\n=== 3. Approval workflow — examiner password, approve, ledger ===")
+from nexus.auth import setup_password
+
+# Approval is one path now: the examiner's HMAC password. Point the examiner
+# stores at the audit temp dir so the check is self-contained.
+_audit_home = _audit_cases_root / "auth"
+(_audit_home / "passwords").mkdir(parents=True, exist_ok=True)
+(_audit_home / "verification").mkdir(parents=True, exist_ok=True)
+import nexus.auth as _auth
+
+_auth._PASSWORDS_DIR = _audit_home / "passwords"
+_auth._LOCKOUT_FILE = _audit_home / "approval_lockout"
+_auth.VERIFICATION_DIR = _audit_home / "verification"
+setup_password("auditor", "audit-password")
 
 db2 = Path(tempfile.gettempdir()) / f"approval_{os.getpid()}.db"
 mgr2 = CaseManager(db2, secret_key=b"audit-test")
 
 case2 = mgr2.create_case(name="APPROVAL-TEST")
-mgr2.set_case_approval_password(case2.id, "hunter2")
-case2 = mgr2.get_case(case2.id)  # reload to get updated password fields
 finding2 = mgr2.add_finding(case2.id, "LSASS dump", severity=FindingSeverity.HIGH)
 
-check("password_hash set", bool(case2.approval_password_hash) if case2 else False)
-check("password_salt set", bool(case2.approval_password_salt) if case2 else False)
-
-approved = mgr2.approve_finding(finding2.id, "hunter2", approved_by="auditor")
+approved = mgr2.approve_finding(finding2.id, "audit-password", approved_by="auditor")
 check("approve_finding", approved is not None and approved.approval_state == ApprovalState.APPROVED)
-check("hmac_signature present", bool(approved.hmac_signature) if approved else False)
-check("hmac_salt present", bool(approved.hmac_salt) if approved else False)
+check("approval ledger entry written", bool(_auth.read_verification_ledger(case2.id)))
 
-# Verify signature
-ok, errors = mgr2.verify_approval_signatures(case2.id, "hunter2")
+# Verify against the ledger
+ok, errors = mgr2.verify_approval_signatures(case2.id)
 check("verify_approval_signatures OK", ok, "; ".join(errors) if errors else "")
 
 # Wrong password
-wf = ApprovalWorkflow()
-workflow_finding = mgr2.add_finding(case2.id, "Another finding")
-case_from_db = mgr2.get_case(case2.id)
+from nexus.case import ApprovalPasswordError
+
+another = mgr2.add_finding(case2.id, "Another finding")
 try:
-    wf.approve(case_from_db, workflow_finding, "wrong")
+    mgr2.approve_finding(another.id, "wrong-password", approved_by="auditor")
     check("wrong password rejected", False, "should have raised")
-except (ApprovalPasswordError, Exception):
+except ApprovalPasswordError:
     check("wrong password rejected", True)
 
 mgr2.close()

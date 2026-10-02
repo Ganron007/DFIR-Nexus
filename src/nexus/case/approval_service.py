@@ -12,6 +12,70 @@ from pathlib import Path
 from typing import Any
 
 
+class ApprovalError(RuntimeError):
+    """An approval or rejection could not be performed."""
+
+
+class ApprovalPasswordError(ApprovalError):
+    """The examiner password did not match."""
+
+
+class ApprovalLockedError(ApprovalError):
+    """Too many failed attempts for this examiner."""
+
+
+def require_examiner(examiner: str, password: str) -> dict[str, Any]:
+    """Verify the examiner password with the shared lockout.
+
+    Returns that examiner's password entry, so the caller can derive the
+    signing key. This is the one place a password is checked for an approval
+    performed outside the CLI or the portal.
+    """
+    from nexus.auth import (
+        _load_password_entry,
+        check_lockout,
+        clear_failures,
+        record_failure,
+        verify_password,
+    )
+
+    if check_lockout(examiner):
+        raise ApprovalLockedError(
+            f"{examiner} is locked out after too many failed attempts"
+        )
+    if not verify_password(examiner, password):
+        record_failure(examiner)
+        raise ApprovalPasswordError("Invalid approval password")
+    clear_failures(examiner)
+    return _load_password_entry(examiner) or {}
+
+
+def approval_ledger_status(case_dir: Path | str) -> tuple[bool, list[str]]:
+    """Every APPROVED finding must have a verification-ledger entry.
+
+    The signature lives in the ledger, not on the finding, so this is what
+    replaces verifying an HMAC stored on the record.
+    """
+    from nexus.auth import read_verification_ledger
+
+    case_dir = Path(case_dir)
+    findings = _load(case_dir) or []
+    ledger = read_verification_ledger(case_dir.name)
+    logged = {
+        str(entry.get("finding_id") or "")
+        for entry in ledger
+        if str(entry.get("type") or "") == "finding"
+    }
+    errors: list[str] = []
+    for finding in findings:
+        if str(finding.get("status") or "").upper() != "APPROVED":
+            continue
+        fid = _finding_id(finding)
+        if fid and fid not in logged:
+            errors.append(f"Finding {fid} approved but has no verification-ledger entry")
+    return (not errors, errors)
+
+
 def signing_key_from_stored_hash(stored_hash_hex: str) -> bytes | None:
     """The same purpose key the portal derives after a successful challenge."""
     if not str(stored_hash_hex or "").strip():

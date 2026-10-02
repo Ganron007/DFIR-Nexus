@@ -84,7 +84,7 @@ A: `nexus evidence register /path/to/file`. Computes SHA-256, stores metadata. `
 A: Every action (tool run, finding record, approval) is appended to an HMAC-SHA256 chain. Each entry links to the previous one via its hash. Tampering with any entry breaks the chain — detected on `nexus review verify`.
 
 **Q: Can I prove my findings haven't been tampered with?**
-A: Yes. The audit chain + per-finding HMAC signatures provide cryptographic proof. Run `nexus review verify` and `verify_approval_signatures()`.
+A: Yes. The audit chain plus the per-finding HMAC entry in the verification ledger provide cryptographic proof. Run `nexus review verify` and `verify_approval_signatures()`.
 
 ---
 

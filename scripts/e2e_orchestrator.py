@@ -157,7 +157,9 @@ def main() -> int:
         created_by=EXAMINER,
         tags=["orchestrator", "e2e", "rocba", "fredr"],
     )
-    mgr.set_case_approval_password(case.id, APPROVE_PW)
+    from nexus.auth import setup_password
+
+    setup_password(EXAMINER, APPROVE_PW)  # one approval path: the examiner password
     rec(True, "case.create", f"id={case.id} name={case.name}")
 
     registered = 0

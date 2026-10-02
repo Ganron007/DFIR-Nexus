@@ -6,12 +6,12 @@ appended to the audit chain automatically.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from nexus.case.approval import get_default_workflow
 from nexus.case.audit import AuditChain
 from nexus.case.schemas import (
     ApprovalState,
@@ -110,17 +110,21 @@ class CaseManager:
     def __init__(self, db_path: Path | str, secret_key: bytes | None = None) -> None:
         self.store = SQLiteStore(db_path)
         self._secret_key = secret_key if secret_key is not None else get_audit_secret()
-        self._approval = get_default_workflow()
 
     def close(self) -> None:
         """Close the underlying database."""
         self.store.close()
 
-    def _sync_flat(self, case_id: str) -> None:
-        """Best-effort mirror SQLite → flat JSON (portal + MCP generate_report)."""
+    def _sync_flat(self, case_id: str, case_dir: Path | None = None) -> None:
+        """Best-effort mirror SQLite → flat JSON (portal + MCP generate_report).
+
+        ``case_dir`` defaults to the store's own directory, so a store opened
+        outside the configured cases root never writes into it.
+        """
         try:
             from nexus.case.compat import sync_sqlite_to_flat
-            sync_sqlite_to_flat(case_id, mgr=self)
+
+            sync_sqlite_to_flat(case_id, mgr=self, case_dir=case_dir)
         except Exception as exc:
             log.warning("flat-JSON sync failed for %s: %s", case_id, exc)
 
@@ -309,17 +313,6 @@ class CaseManager:
     # DRAFT / HITL approval workflow
     # =============================================================
 
-    def set_case_approval_password(
-        self, case_id: str, password: str
-    ) -> Case | None:
-        """Set or change the approval password for a case."""
-        case = self.store.get_case(case_id)
-        if case is None:
-            return None
-        self._approval.set_case_password(case, password)
-        self.store.save_case(case)
-        return case
-
     def approve_finding(
         self,
         finding_id: str,
@@ -327,29 +320,48 @@ class CaseManager:
         approved_by: str = "system",
         note: str = "",
     ) -> Finding | None:
-        """Approve a finding with password-gated HMAC signing."""
+        """Approve a DRAFT finding. One path: the examiner approval service.
+
+        The password is the examiner's HMAC password — the same one the CLI and
+        the portal check — not a per-case password. There is one approval model.
+        """
         finding = self.store.get_finding(finding_id)
         if finding is None:
             return None
-        case = self.store.get_case(finding.case_id)
-        if case is None:
-            return None
-        finding = self._approval.approve(case, finding, password, approved_by, note)
-        self.store.save_finding(finding)
-        chain = self._load_audit_chain(case.id)
+        from nexus.case import approval_service as svc
+
+        case_id = finding.case_id
+        case_dir = self.store.db_path.parent / case_id
+        # The record document is what the service approves; the typed table is
+        # its projection, so it must exist before the approval lands.
+        self._sync_flat(case_id, case_dir)
+        entry = svc.require_examiner(approved_by, password)
+        result = svc.commit_approval(
+            case_dir,
+            finding_id,
+            approved_by,
+            note=note,
+            signing_key=svc.signing_key_from_stored_hash(str(entry.get("hash") or "")),
+            salt=str(entry.get("salt") or ""),
+        )
+        if result.get("status") != "APPROVED":
+            raise svc.ApprovalError(
+                result.get("message") or result.get("error") or "approval refused"
+            )
+        self._project_flat(case_id, case_dir)
+        chain = self._load_audit_chain(case_id)
         chain.append(
             AuditAction.FINDING_APPROVED,
             actor=approved_by,
             payload={
-                "finding_id": finding.id,
-                "case_id": case.id,
+                "finding_id": finding_id,
+                "case_id": case_id,
                 "approved_by": approved_by,
                 "note": note,
             },
         )
         self._save_audit_chain(chain)
-        self._sync_flat(case.id)
-        return finding
+        return self.store.get_finding(finding_id)
 
     def reject_finding(
         self,
@@ -358,29 +370,72 @@ class CaseManager:
         rejected_by: str = "system",
         reason: str = "",
     ) -> Finding | None:
-        """Reject a finding with password verification."""
+        """Reject a DRAFT finding through the same examiner service."""
         finding = self.store.get_finding(finding_id)
         if finding is None:
             return None
-        case = self.store.get_case(finding.case_id)
-        if case is None:
-            return None
-        finding = self._approval.reject(case, finding, password, rejected_by, reason)
-        self.store.save_finding(finding)
-        chain = self._load_audit_chain(case.id)
+        from nexus.case import approval_service as svc
+
+        case_id = finding.case_id
+        case_dir = self.store.db_path.parent / case_id
+        self._sync_flat(case_id, case_dir)
+        svc.require_examiner(rejected_by, password)
+        result = svc.commit_rejection(case_dir, finding_id, rejected_by, reason)
+        if result.get("status") != "REJECTED":
+            raise svc.ApprovalError(
+                result.get("message") or result.get("error") or "rejection refused"
+            )
+        self._project_flat(case_id, case_dir)
+        chain = self._load_audit_chain(case_id)
         chain.append(
             AuditAction.FINDING_REJECTED,
             actor=rejected_by,
             payload={
-                "finding_id": finding.id,
-                "case_id": case.id,
+                "finding_id": finding_id,
+                "case_id": case_id,
                 "rejected_by": rejected_by,
                 "reason": reason,
             },
         )
         self._save_audit_chain(chain)
-        self._sync_flat(case.id)
-        return finding
+        return self.store.get_finding(finding_id)
+
+    def _project_flat(self, case_id: str, case_dir: Path | None = None) -> None:
+        """Typed ``findings`` table := projection of the record document.
+
+        The record store is canonical (D3 = B); the typed table exists so the
+        SQLite readers keep working, so it is rebuilt from the document rather
+        than being a second source of truth.
+        """
+        import json as _json
+
+        directory = Path(case_dir) if case_dir else self.store.db_path.parent / case_id
+        path = directory / "findings.json"
+        if not path.is_file():
+            return
+        try:
+            records = _json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return
+        if not isinstance(records, list):
+            return
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            fid = str(record.get("id") or record.get("finding_id") or "")
+            if not fid:
+                continue
+            typed = self.store.get_finding(fid, case_id=case_id)
+            if typed is None:
+                continue
+            with contextlib.suppress(ValueError):
+                typed.approval_state = ApprovalState(
+                    str(record.get("status") or "").lower()
+                )
+            typed.approved_by = record.get("approved_by") or None
+            typed.rejected_by = record.get("rejected_by") or None
+            typed.rejection_reason = record.get("rejection_reason") or None
+            self.store.save_finding(typed)
 
     def list_review_queue(
         self, case_id: str | None = None
@@ -398,22 +453,20 @@ class CaseManager:
         ]
 
     def verify_approval_signatures(
-        self, case_id: str, password: str
+        self, case_id: str, password: str = ""
     ) -> tuple[bool, list[str]]:
-        """Verify HMAC signatures on all approved findings in a case."""
+        """Verify the approval ledger for every APPROVED finding.
+
+        The HMAC lives in the verification ledger, so the proof is the ledger
+        entry, not a signature on the record. ``password`` is accepted for
+        call compatibility and is no longer used.
+        """
+        from nexus.case import approval_service as svc
+
         case = self.store.get_case(case_id)
         if case is None:
             return False, [f"Case not found: {case_id}"]
-        errors: list[str] = []
-        for finding in self.store.list_findings(case_id):
-            if finding.approval_state != ApprovalState.APPROVED:
-                continue
-            if not finding.hmac_signature:
-                errors.append(f"Finding {finding.id} approved but has no signature")
-                continue
-            if not self._approval.verify_finding_signature(case, finding, password):
-                errors.append(f"Finding {finding.id} signature verification failed")
-        return (len(errors) == 0, errors)
+        return svc.approval_ledger_status(self.store.db_path.parent / case_id)
 
     # =============================================================
     # Evidence operations

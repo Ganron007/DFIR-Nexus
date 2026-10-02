@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from nexus.auth import setup_password
 from nexus.case import (
     ApprovalLockedError,
     ApprovalPasswordError,
@@ -17,6 +18,9 @@ from nexus.case import (
     FindingSeverity,
 )
 from nexus.ingest.schemas import Artifact, ArtifactSource, ArtifactType, Severity
+
+EXAMINER = "lead"
+EXAMINER_PW = "test-password"
 
 
 @pytest.fixture
@@ -29,6 +33,20 @@ def mgr(tmp_db: Path) -> Generator[CaseManager, None, None]:
     manager = CaseManager(tmp_db, secret_key=b"test-secret")
     yield manager
     manager.close()
+
+
+@pytest.fixture
+def examiner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
+    """An examiner whose password store, lockout and ledger live in tmp.
+
+    Approval is the examiner's HMAC password now (the case-password model is
+    gone), so the approval tests need a real password entry.
+    """
+    monkeypatch.setattr("nexus.auth._PASSWORDS_DIR", tmp_path / "passwords")
+    monkeypatch.setattr("nexus.auth._LOCKOUT_FILE", tmp_path / "approval_lockout")
+    monkeypatch.setattr("nexus.auth.VERIFICATION_DIR", tmp_path / "verification")
+    setup_password(EXAMINER, EXAMINER_PW)
+    return EXAMINER_PW
 
 
 class TestCaseManager:
@@ -99,50 +117,47 @@ class TestCaseManager:
         assert finding.approval_state == ApprovalState.DRAFT
         assert finding.metadata.get("auto_approve_blocked") is True
 
-    def test_approve_finding_persists(self, mgr: CaseManager) -> None:
+    def test_approve_finding_persists(self, mgr: CaseManager, examiner: str) -> None:
         case = mgr.create_case(name="INC-APP")
-        mgr.set_case_approval_password(case.id, "secret")
         finding = mgr.add_finding(case.id, "Suspicious login")
         assert finding is not None
-        approved = mgr.approve_finding(finding.id, "secret", approved_by="lead")
+        approved = mgr.approve_finding(finding.id, examiner, approved_by=EXAMINER)
         assert approved is not None
         assert approved.approval_state == ApprovalState.APPROVED
-        assert approved.hmac_signature is not None
 
-        # Reopen manager and verify persistence
+        # Reopen manager and verify persistence + the approval ledger
         mgr2 = CaseManager(mgr.store.db_path, secret_key=b"test-secret")
         finding2 = mgr2.get_finding(finding.id)
         assert finding2 is not None
         assert finding2.approval_state == ApprovalState.APPROVED
-        ok, errors = mgr2.verify_approval_signatures(case.id, "secret")
+        ok, errors = mgr2.verify_approval_signatures(case.id)
         assert ok, errors
         mgr2.close()
 
-    def test_wrong_password_via_manager(self, mgr: CaseManager) -> None:
+    def test_wrong_password_via_manager(self, mgr: CaseManager, examiner: str) -> None:
         case = mgr.create_case(name="INC-WRG")
-        mgr.set_case_approval_password(case.id, "secret")
         finding = mgr.add_finding(case.id, "Suspicious login")
         assert finding is not None
         with pytest.raises(ApprovalPasswordError):
-            mgr.approve_finding(finding.id, "wrong")
+            mgr.approve_finding(finding.id, "wrong-password", approved_by=EXAMINER)
 
-    def test_approve_lockout_via_manager(self, mgr: CaseManager) -> None:
+    def test_approve_lockout_via_manager(self, mgr: CaseManager, examiner: str) -> None:
         case = mgr.create_case(name="INC-LOCK")
-        mgr.set_case_approval_password(case.id, "secret")
         finding = mgr.add_finding(case.id, "Suspicious login")
         assert finding is not None
         for _ in range(3):
             with pytest.raises(ApprovalPasswordError):
-                mgr.approve_finding(finding.id, "wrong")
+                mgr.approve_finding(finding.id, "wrong-password", approved_by=EXAMINER)
         with pytest.raises(ApprovalLockedError):
-            mgr.approve_finding(finding.id, "wrong")
+            mgr.approve_finding(finding.id, "wrong-password", approved_by=EXAMINER)
 
-    def test_reject_finding(self, mgr: CaseManager) -> None:
+    def test_reject_finding(self, mgr: CaseManager, examiner: str) -> None:
         case = mgr.create_case(name="INC-REJ")
-        mgr.set_case_approval_password(case.id, "secret")
         finding = mgr.add_finding(case.id, "Maybe bad")
         assert finding is not None
-        rejected = mgr.reject_finding(finding.id, "secret", reason="False positive")
+        rejected = mgr.reject_finding(
+            finding.id, examiner, rejected_by=EXAMINER, reason="False positive"
+        )
         assert rejected is not None
         assert rejected.approval_state == ApprovalState.REJECTED
         assert rejected.rejection_reason == "False positive"
@@ -158,12 +173,11 @@ class TestCaseManager:
         assert len(queue) == 3
         assert {f.id for f in queue} == {f1.id, f2.id, f3.id}
 
-    def test_audit_log_includes_approval(self, mgr: CaseManager) -> None:
+    def test_audit_log_includes_approval(self, mgr: CaseManager, examiner: str) -> None:
         case = mgr.create_case(name="INC-AUD")
-        mgr.set_case_approval_password(case.id, "secret")
         finding = mgr.add_finding(case.id, "Suspicious login")
         assert finding is not None
-        mgr.approve_finding(finding.id, "secret", approved_by="lead")
+        mgr.approve_finding(finding.id, examiner, approved_by=EXAMINER)
         log = mgr.get_audit_log(case.id)
         actions = [e.action.value for e in log]
         assert "case_created" in actions
@@ -224,4 +238,4 @@ class TestCaseManager:
         assert mgr.add_finding("CASE-MISSING", "F1") is None
 
     def test_approve_missing_finding_returns_none(self, mgr: CaseManager) -> None:
-        assert mgr.approve_finding("FIND-MISSING", "secret") is None
+        assert mgr.approve_finding("FIND-MISSING", "test-password") is None

@@ -211,7 +211,7 @@ one unified chain.
 | Stack | Location | Used by | Status |
 |-------|----------|---------|--------|
 | **Dashboard HMAC flow** | `auth.py` + `dashboard/app.py` | Portal `/portal/api/commit/challenge` + `/commit` + `/case/seal` | **Active** — the primary examiner approval path. Challenge-response: server issues nonce → examiner computes `HMAC-SHA256(PBKDF2(password, salt, 600000), nonce)` → server verifies. |
-| **Case module ApprovalWorkflow** | `case/approval.py:ApprovalWorkflow` | `case/` module internals only | **Legacy** — not wired into the Portal dashboard. Retained for CLI-path and programmatic API use. `get_default_workflow()` returns a singleton with process-level lockout. |
+| **Approval (one path)** | `case/approval_service.py` | CLI `nexus approve`, the Portal `/commit`, and the programmatic `CaseManager.approve_finding` | **The only approval implementation.** Seal check → record write → verification-ledger entry → transparency entry, plus `require_examiner()` for the shared password + lockout. The examiner's HMAC password is the one credential; there is no per-case approval password. |
 
 **Design note:** The two approval stacks share the same PBKDF2-HMAC-SHA256
 cryptographic primitives but maintain separate code paths. The Portal dashboard

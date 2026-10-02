@@ -108,7 +108,9 @@ def main() -> int:
         created_by=EXAMINER,
         tags=["showcase", "rocba", "tools", "H-mount"],
     )
-    mgr.set_case_approval_password(case.id, APPROVE_PW)
+    from nexus.auth import setup_password
+
+    setup_password(EXAMINER, APPROVE_PW)  # one approval path: the examiner password
     case_dir = materialize_case_dir(case)
     active = Path.home() / ".nexus" / "active_case"
     active.write_text(case.id, encoding="utf-8")

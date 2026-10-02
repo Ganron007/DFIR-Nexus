@@ -113,7 +113,9 @@ async def main() -> int:
     from nexus.integration.dfir_report import build_dfir_markdown
 
     mgr = get_sqlite_manager()
-    mgr.set_case_approval_password(CASE_ID, APPROVE_PW)
+    from nexus.auth import setup_password
+
+    setup_password(EXAMINER, APPROVE_PW)  # one approval path: the examiner password
     approved = []
     for fid in draft_ids:
         f = mgr.approve_finding(

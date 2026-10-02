@@ -33,7 +33,9 @@ async def main() -> int:
     )
 
     mgr = get_sqlite_manager()
-    mgr.set_case_approval_password(CASE_ID, APPROVE_PW)
+    from nexus.auth import setup_password
+
+    setup_password(EXAMINER, APPROVE_PW)  # one approval path: the examiner password
     drafts = [
         f.id for f in mgr.list_findings(CASE_ID)
         if f.approval_state == ApprovalState.DRAFT

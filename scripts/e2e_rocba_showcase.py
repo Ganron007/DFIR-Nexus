@@ -174,7 +174,9 @@ def main() -> int:
         created_by=EXAMINER,
         tags=["showcase", "rocba", "fredr", "for500"],
     )
-    mgr.set_case_approval_password(case.id, APPROVE_PW)
+    from nexus.auth import setup_password
+
+    setup_password(EXAMINER, APPROVE_PW)  # one approval path: the examiner password
     rec(True, "case.create", f"id={case.id}")
 
     # Register real files (chain of custody) — paths from pack
