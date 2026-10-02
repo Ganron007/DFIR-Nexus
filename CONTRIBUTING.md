@@ -34,20 +34,19 @@ pip install -e .[all]
 
 **Counts here lag.** Trust the README badge and a local `pytest` / script run.
 
-### Pytest suite (155 tests)
+### Pytest suite (2326 tests)
 ```bash
 pytest
 ```
 
-### Script-based tests (219 tests)
+### Script-based tests (209 tests)
 ```bash
-python tests/test_knowledge.py         # 51 tests — knowledge loader
-python tests/test_hunt_parser.py       # 31 tests — hunt output parser
+python tests/test_knowledge.py         # 56 tests — knowledge loader
+python tests/test_hunt_parser.py       # 33 tests — hunt output parser
 python tests/test_integration.py       # 41 tests — MCP tool E2E
 python tests/test_detection.py         # 21 tests — Sigma rule detection
 python tests/test_ti.py                # 26 tests — threat intel providers
 python tests/test_ingest.py            # 14 tests — ingest importers
-python tests/test_push.py              # 17 tests — push server
 python tests/test_portal.py            # 18 tests — portal middleware
 ```
 

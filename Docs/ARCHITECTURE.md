@@ -75,7 +75,7 @@ flowchart TB
 | **Detection** | Optional drafts after an APPROVED story. Not N5. |
 | **Examiner Portal + MCP** | Investigation UI for Register, N1–N8, ingest, detection, HMAC. Collect does not move into the Portal. |
 | **HTTP audit (4k.3)** | Every `/portal/api/*` (mutating always; reads at `NEXUS_HTTP_AUDIT=all`) and every `/mcp` call is recorded twice: rotating `logs/nexus-http-YYYYMMDD.log` and a hash-chained case entry in `audit/http.jsonl` (method/path/redacted query/status/duration/case). Failed ES tool calls are audited with their error. |
-| **LLM** | Optional. Narrates **N4 hits** only. Cannot approve. Mode 2 adds a supervised multi-role pipeline (scoped read-only tools, one work order at a time — see below); Mode 3 adds the concurrent multi-agent board. Neither stages or approves; DRAFT staging is an examiner action. |
+| **LLM** | Optional. Narrates **N4 hits** only. Cannot approve. Mode 2 adds a supervised multi-role pipeline (scoped read-only tools, one work order at a time — see below); Mode 3 adds the concurrent multi-agent board. Neither stages or approves; DRAFT staging is an examiner action. **Egress:** when the endpoint is not loopback, victim identifiers are tokenized before the request and restored in the reply — on **all four** model entry points (sync/async × generate/stream), and including the tool-call arguments of earlier turns. `NEXUS_LLM_EGRESS=raw` disables it. |
 
 ## Design Principle
 
@@ -221,6 +221,20 @@ the Portal or `CaseManager`, it calls `approval_service`; the old class-based
 2026-10-02. The verification ledger is the proof of an approval: it holds the
 finding's HMAC entry, and `verify_approval_signatures()` reads that ledger
 rather than a signature stored on the record.
+
+**The service also owns two refusals**, so no surface can skip them:
+
+- **The L1 rule.** An approved claim is either verified or explicitly
+  overridden: a finding whose L1 verdict is not `PROVEN` is refused unless an
+  `override_reason` is supplied. The programmatic path computes the verdict with
+  the same `verify_drafts` the CLI reads, so it cannot pass "no verdict" and
+  have the approval stamped `UNVERIFIABLE` (the WO-23 bypass, closed on the
+  third surface).
+- **Mirror drift.** `findings.json` is a generated mirror of the record store,
+  so a mirror that does not match `case_records` exactly is refused rather than
+  approved or quietly overwritten — an edit outside the store is a tamper
+  signal. Refusal order is mirror → seal → L1, so a tampered finding is refused
+  for its integrity, not for its verdict.
                            │
            ┌───────────────┴───────────────┐
            │ Stdio transport               │ HTTP transport

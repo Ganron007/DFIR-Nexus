@@ -94,9 +94,20 @@
 {
   "challenge_id": "string (required — from GET /portal/api/commit/challenge)",
   "response": "string (required — HMAC-SHA256 hex of the nonce)",
-  "finding_ids": ["string"] (required — list of finding IDs to approve; must be non-empty)
+  "finding_ids": ["string"] (required — list of finding IDs to approve; must be non-empty),
+  "override_reason": "string (required when a finding is not L1 PROVEN)"
 }
 ```
+
+**The L1 rule (enforced in the service, not the caller).** An approved claim is
+either verified or explicitly overridden: `commit_approval` refuses a finding
+whose L1 verdict is not `PROVEN` unless `override_reason` is non-empty, and it
+refuses a `findings.json` that does not match the canonical `case_records`
+document. Both refusals apply on every surface — CLI, portal and the
+programmatic `CaseManager.approve_finding` — because they live in the one
+service. A refusal returns `200` with a per-finding entry in `errors`
+(`needs_override_reason: true` on the L1 case), leaves the record untouched, and
+never writes a ledger entry.
 
 **Response 200:**
 ```json

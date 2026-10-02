@@ -87,6 +87,28 @@ If SIFT MCP is connected but no root is set, the ledger records one honest SKIP.
 - **No** full-tree `log2timeline` / plaso (disk cannot hold a multi-GB store)
 - `mactime` after MFTECmd bodyfile is pushed (`NEXUS_SIFT_MACTIME=1`)
 
+### Reading a SIFT ledger row
+
+| Status | Means |
+|---|---|
+| `OK` | Ran and produced output |
+| `WARN` | Ran and produced output, but a prerequisite was empty — a **coverage gap, not a finding of absence**. The reason names the population it was compared against, and a `coverage_gap` note is recorded in the report's coverage section. |
+| `FAIL` | Did not produce usable output, or its saved output is incomplete (a capture over `NEXUS_MAX_OUTPUT_BYTES`). The evidence gate blocks analysis until the examiner re-runs or records an audited skip. |
+| `SKIP` | Never scheduled, with a reason (no root, plugin absent from the host, non-Windows plugin on a Linux image, …) |
+
+Two collection behaviours belong to the lane rather than the examiner:
+
+- **The saved output is the whole capture**, not the reply slice the MCP returns,
+  so a large `vol -r jsonl` result reaches the case intact.
+- **The lane aligns the host's active case** to this case before its jobs
+  (`case_activate`), because `run_command` persists into the host's active case
+  while the pull reads `<case_id>/extractions`. Without that the outputs land
+  where the pull never looks and the row still reads `OK`.
+
+A WARN is never a substitute for a FAIL: a job that exited non-zero, or whose
+capture was capped, stays FAIL. The two are separate on purpose — one is missing
+evidence, the other is evidence that must not be trusted.
+
 ## Evidence availability — local pack (`Evidence-files/`, scanned 2026-09-20)
 
 Read-only file listing; **no tools were run**. This is what the T3 Tool × Evidence

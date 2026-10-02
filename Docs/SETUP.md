@@ -113,6 +113,7 @@ NEXUS_LLM_REASONING=high                 # optional reasoning passthrough
 | `NEXUS_KB_DIR` | unset | Path to your local KB (the folder containing `kb/kb.py`, e.g. `G:\doc_extract`). Enables `kb_search`/`kb_read` and the LLM-mode KB context block. |
 | `NEXUS_RAG_DEVICE` | `auto` | Embedding device: `cpu` \| `cuda` \| `cuda:0` — `auto` picks CUDA when the installed torch build has it (the log line reports the device). |
 | `NEXUS_LLM_TIMEOUT` | `180` | Seconds per LLM request; raise it (e.g. `600`) for slow long-context providers — a stalled provider can never hang a turn. |
+| `NEXUS_LLM_EGRESS` | unset | `raw` disables the egress anonymizer. By default, when the endpoint is **not** loopback, victim identifiers (hostnames, private IPs) are replaced with stable per-case tokens (`{{HOST_1}}`) before the request and restored in the reply — including on the async and streaming paths. Tokens persist in `analysis/egress_tokens.json` so the same host keeps the same token across turns. Adversary IOCs are meant to be preserved; the anonymizer's current allowlist gaps are tracked in the register (the token file is the audit trail of what was masked). |
 | `NEXUS_MODE1_TURN_TIMEOUT` | `900` | Outer steering-turn budget (seconds); must stay above `NEXUS_CONTEXT_LOOP_SECONDS` (default 360). The bounded tool loop returns a partial result before this ceiling. Legacy alias `NEXUS_MODE2_TURN_TIMEOUT` is still read. |
 | `NEXUS_MODE2_FOLLOWUPS` | `8` | Max follow-up corroboration rounds the Mode 2 (multi-role) supervisor may add (0–24). Each round is a new work order for inferred or refuted candidates. The run stops early on `converged_no_new_evidence`, and immediately on examiner stop. |
 | `NEXUS_MODE2_{ROUNDS,CALLS,SECONDS}` | `24`/`48`/`1800` | Per-agent tool budget inside one Mode 2 (multi-role) work order (highs 80 / 200 / 7200). The character ceiling is the context window, not a fixed slice. |
@@ -576,6 +577,24 @@ NEXUS_SIFT_MCP_URL=http://<sift-ip>:4508/mcp
 creates the layout). The lane never pushes disk/memory images implicitly.
 Evidence already on the host can be registered without a local copy:
 `nexus evidence register /remote/path --sift-hosted --sha256 <hex>`.
+
+**Reading a SIFT run.** Three behaviours matter when you read the ledger:
+
+- **The lane sets the host's active case for you.** `run_command` persists into
+  the SIFT host's *active* case, while the pull reads
+  `<remote_cases_root>/<case_id>/extractions`; if the two disagree, every output
+  is written where the pull never looks while the run still reports OK. The lane
+  aligns the host to this case with `case_activate` before its jobs, so a host
+  left on another case by hand is corrected on the next run.
+- **A saved output is the whole capture**, not the reply slice the MCP returns.
+  If the capture exceeds `NEXUS_MAX_OUTPUT_BYTES` the job is **FAIL** — "the
+  saved output is incomplete, treat as unparsed" — because a half-parsed
+  artifact must never clear the evidence gate.
+- **A row can be `WARN`.** The job ran and returned an output, but a
+  prerequisite was empty: a process-list plugin with `psscan` > 0, or a registry
+  key read when the module list is unreadable. A `WARN` is a **coverage gap, not
+  a finding of absence** — it records a `coverage_gap` note that renders in the
+  report's coverage section.
 
 **Refusal semantics:** only a case that SELECTS the lane can be refused — and
 only its SIFT jobs. While the host is unreachable the SIFT jobs FAIL, the

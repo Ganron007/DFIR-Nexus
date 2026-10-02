@@ -91,7 +91,7 @@ A: Yes. The audit chain plus the per-finding HMAC entry in the verification ledg
 ## Tools & Data
 
 **Q: What forensic tools does DFIR-Nexus support?**
-A: It wraps your existing tools — NOT replaces them. Supported: SIFT workstation tools, Zimmerman tools, Sysinternals, KAPE, YARA, Volatility 3, Plaso, Hayabusa (N2 parser, not live collect), Velociraptor, Suricata, Zeek, Elastic, and more. 115 MCP tools (Windows) / 112 (Linux).
+A: It wraps your existing tools — NOT replaces them. Supported: SIFT workstation tools, Zimmerman tools, Sysinternals, KAPE, YARA, Volatility 3, Plaso, Hayabusa (N2 parser, not live collect), Velociraptor, Suricata, Zeek, Elastic, and more. 135 MCP tools (Windows) / 132 (Linux).
 
 **Q: Does live collect run Hayabusa / Suzaku / Chainsaw?**
 A: No. `nexus collect` is acquire-only (KAPE, wevtutil, Sysinternals, PersistenceSniper, optional Kansa/ORC/memory). Parsers run at **N2** after you register the pack: `nexus pipeline --mode tools`. Collect must not create empty `hayabusa` / `suzaku` / `chainsaw` directories on the target.
@@ -104,6 +104,12 @@ A: No. Register is SHA-256 custody (`nexus case init` + `nexus evidence register
 
 **Q: Do I need to install the forensic tools separately?**
 A: Yes. DFIR-Nexus discovers tools on your PATH or at configured paths. If SIFT tools are on a VM, point `nexus setup client --sift <ip>:4508`.
+
+**Q: The SIFT lane says the host is unreachable / `:4508` is not listening. Do I restart the VM?**
+A: No. `nexus sift setup --case <case>` verifies the host, lays out the case folders **and starts the SIFT-side MCP when `:4508` is not listening** — that is the one command for a stopped server. Restarting the VM is not needed. Check the current state with `nexus sift status --case <case>`; it reports the selection, the evidence paths and reachability.
+
+**Q: Why did a SIFT job come back `WARN` instead of `OK` or `FAIL`?**
+A: `WARN` means the job ran and produced output, but a prerequisite was empty — for example a process-list plugin (`malfind`, `dlllist`) when `psscan` saw processes, or a registry key read when the kernel module list is unreadable. That is a **coverage gap, not a finding of absence**: the reason names the population it was compared against, and a `coverage_gap` note is added to the report's coverage section. `FAIL` is still used for a job that exited non-zero or whose saved output was capped — missing evidence is kept separate from evidence you must not trust.
 
 **Q: What's RAG knowledge search?**
 A: Semantic search over ~22K curated forensic records (downloaded on first use, ~600 MB). Search for techniques, artifacts, or tools and get relevant SANS/MITRE/Sigma/KAPE knowledge back.

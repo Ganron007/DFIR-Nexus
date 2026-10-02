@@ -1,14 +1,48 @@
 # Tests
 
+## The pytest suite (the main suite)
+
+Most of the project is covered by the pytest suite at the repository root
+(`pytest -q`, ~2.3k tests, the current count is in `AGENTS.md`). The three
+script suites below are the older, dependency-free ones and still run.
+
+**The suite is hermetic — it makes no external calls.** `tests/conftest.py`
+redirects the case store, the password store, the audit secret and the RAG
+index into a per-test temp dir, points `NEXUS_ES_URL` at nothing, and — since
+register D20 — points the **LLM config** at nothing as well. That last one
+matters: `nexus/__init__` loads the developer's `.env`, so before D20 a test
+that reached a model made a real call to the hosted provider. The suite's wall
+time became the provider's latency, a provider outage read as a test failure,
+and tests written for the deterministic path silently exercised the model
+instead.
+
+- **Opting back in:** `NEXUS_TESTS_LIVE_LLM=1` restores the real LLM config when
+  the live provider path is what you are testing.
+- **Clear the lane variables before a run:** `NEXUS_SIFT_MCP_URL`,
+  `NEXUS_WINDOWS_MCP_URL` and the other `NEXUS_SIFT_*` values persist from a
+  live SIFT lane run into the next shell invocation, which makes the suite
+  schedule real volatility jobs on the SIFT host.
+- **Watch a run it in the log, not the pipe.** `-q` output redirected to a file
+  (`python -m pytest -q > run.log`) is pollable; piping through a line-limiting
+  filter buffers everything until exit. With the provider in the loop a short
+  CPU sample could read ~0 % while the suite was working normally.
+
+A session-wide tripwire also fails the run if it touches the protected paths it
+cannot redirect — the case/credential store (`~/.nexus`) and `.env`. It names
+which of the two was touched. `tests/test_credential_tripwire.py` is the canary
+that proves it fires (`NEXUS_TRIPWIRE_CANARY=1`); it writes a file by design.
+
+## The script suites
+
 Three suites, all runnable as plain Python scripts. No pytest required.
 
 | Suite | Covers | Count |
 |-------|--------|------:|
-| `test_knowledge.py` | YAML knowledge base loading, schema, playbook validation, discipline tools | 51 |
+| `test_knowledge.py` | YAML knowledge base loading, schema, playbook validation, discipline tools | 56 |
 | `test_integration.py` | Every MCP tool module end-to-end against a temp case dir | 41 |
-| `test_hunt_parser.py` | LangGraph hunt-agent output parser (happy path + fallback + adversarial) | 31 |
+| `test_hunt_parser.py` | LangGraph hunt-agent output parser (happy path + fallback + adversarial) | 33 |
 
-**Expected total: 123 passing.**
+**Expected total: 130 passing.**
 
 ## Running
 
@@ -31,7 +65,7 @@ USERPROFILE="$PWD/.testhome" python tests/test_hunt_parser.py
 Expected output:
 
 - `=== 51 PASSED, 0 FAILED ===`
-- `=== 41 PASSED, 0 FAILED ===  Total tools registered: 91` (Windows or Linux; macOS shows fewer because both platform-gated modules sit out).
+- `=== 41 PASSED, 0 FAILED ===  Total tools registered: 135` (Windows; Linux registers the SIFT lane and skips the Windows-gated tools, so it reports fewer).
 - `=== 31 PASSED, 0 FAILED ===`
 
 ## Why `USERPROFILE`?
