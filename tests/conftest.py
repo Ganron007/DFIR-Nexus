@@ -201,3 +201,148 @@ def _credential_tripwire():
             + (f"\n  ... {len(lines) - 40} more" if len(lines) > 40 else ""),
             pytrace=False,
         )
+
+
+# ---------------------------------------------------------------------------
+# WO-V2 (D27) — Elasticsearch index tripwire
+# ---------------------------------------------------------------------------
+#
+# The case store and the password store are redirected per test. Elasticsearch
+# is not: it is a shared service on the operator's machine, and a test - or a
+# thread it left running past teardown - that points at the cluster creates a
+# real `nexus-case-*` index there. Nothing else notices, and one such index
+# made `n4_hits` take the ES path against another run's leftovers and return a
+# confident zero while the CSV pack beside it was full.
+#
+# Cheap by design: two `_cat/indices` calls for the whole session, whatever the
+# suite size. `NEXUS_ES_LEAK_PROBE=1` additionally checks after every test and
+# prints the nodeid that caused a change, which is how the culprit is found.
+# The probe disables itself the moment the cluster does not answer, so a
+# stopped Docker engine cannot turn the suite into thousands of timeouts.
+
+_ES_PROBE_TIMEOUT = 1.5
+
+
+def _env_file_es_url() -> str:
+    """``NEXUS_ES_URL`` as ``.env`` defines it — the operator's real cluster.
+
+    Read from the file, not ``os.environ``: the session fixtures may run before
+    anything imports ``nexus`` (which is what loads ``.env``), and the
+    function-scoped fixture deliberately empties the variable per test.
+    """
+    env_file = Path(__file__).resolve().parent.parent / ".env"
+    try:
+        text = env_file.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith("NEXUS_ES_URL="):
+            raw = line.partition("=")[2].strip().strip('"').strip("'")
+            return raw.rstrip("/")
+    return ""
+
+
+def _es_answers(url: str) -> bool:
+    if not url:
+        return False
+    try:
+        import httpx
+
+        with httpx.Client(timeout=_ES_PROBE_TIMEOUT) as client:
+            return client.get(f"{url}/").status_code == 200
+    except Exception:  # noqa: BLE001 — an unreachable cluster disables the probe
+        return False
+
+
+def _case_indexes(url: str) -> set[str]:
+    """``nexus-case-*`` index names on ``url``; empty when unreachable."""
+    if not url:
+        return set()
+    try:
+        import httpx
+
+        with httpx.Client(timeout=_ES_PROBE_TIMEOUT) as client:
+            response = client.get(f"{url}/_cat/indices/nexus-case-*?h=index")
+    except Exception:  # noqa: BLE001
+        return set()
+    if response.status_code != 200:
+        return set()
+    return {line.strip() for line in response.text.splitlines() if line.strip()}
+
+
+_ES_PROBE_URL = ""
+_ES_PROBE_LIVE = False
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _es_index_tripwire():
+    """Fail the session if the run created or removed a ``nexus-case-*`` index.
+
+    Also keeps the real ``NEXUS_ES_URL`` out of the environment for the whole
+    session. The per-test fixture empties it inside a test, but ``monkeypatch``
+    restores the real value at teardown — so a thread, a session fixture or an
+    MCP child that outlives its test would read the operator's cluster. This is
+    the backstop for everything outside a test's window.
+    """
+    global _ES_PROBE_URL, _ES_PROBE_LIVE
+    _ES_PROBE_URL = _env_file_es_url()
+    before: set[str] = set()
+    if _ES_PROBE_URL and _es_answers(_ES_PROBE_URL):
+        _ES_PROBE_LIVE = True
+        before = _case_indexes(_ES_PROBE_URL)
+    else:
+        print(
+            "\n[es-tripwire] skipped: no NEXUS_ES_URL in .env, or the cluster "
+            "did not answer",
+            flush=True,
+        )
+    saved_env = {
+        key: os.environ.pop(key, None)
+        for key in ("NEXUS_ES_URL", "NEXUS_ES_AUTOINDEX")
+    }
+    yield
+    for key, value in saved_env.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
+    if not _ES_PROBE_LIVE:
+        return
+    after = _case_indexes(_ES_PROBE_URL)
+    created = sorted(after - before)
+    removed = sorted(before - after)
+    if created or removed:
+        detail = [f"+ created  {name}" for name in created]
+        detail += [f"- removed  {name}" for name in removed]
+        pytest.fail(
+            "Elasticsearch tripwire: the test run changed the operator's "
+            "cluster:\n  " + "\n  ".join(detail[:40]) +
+            "\n  A test must not create or delete an index on a shared ES. "
+            "Point the test at a fake URL, or delete what it made "
+            "(`nexus-case-test-*` naming) in a fixture teardown.",
+            pytrace=False,
+        )
+
+
+@pytest.fixture(autouse=True)
+def _es_index_probe(request):
+    """Name the test that changes the ES index set. Opt-in, and self-disabling.
+
+    Set ``NEXUS_ES_LEAK_PROBE=1`` and run the suite to find a leak: the nodeid
+    is printed as soon as a test's net change to the cluster is non-zero. It is
+    off by default because it costs one HTTP call per test.
+    """
+    if not (_ES_PROBE_LIVE and os.environ.get("NEXUS_ES_LEAK_PROBE") == "1"):
+        yield
+        return
+    before = _case_indexes(_ES_PROBE_URL)
+    yield
+    after = _case_indexes(_ES_PROBE_URL)
+    if before != after:
+        print(
+            f"\n[es-leak] {request.node.nodeid}"
+            f"  created={sorted(after - before)}"
+            f"  removed={sorted(before - after)}",
+            flush=True,
+        )
