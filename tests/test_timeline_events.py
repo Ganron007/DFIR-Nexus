@@ -248,7 +248,7 @@ def test_no_reparse_evidence(tmp_path, monkeypatch):
     monkeypatch.setattr(ci, "iter_index_docs", _docs)
     monkeypatch.setattr(te, "ensure_events_index", lambda cid: events_index_name(cid))
     monkeypatch.setattr(ci, "_client", _fake_client)
-    monkeypatch.setattr(ci, "_bulk_insert", lambda client, index, docs, chunk=2000: 0)
+    monkeypatch.setattr(ci, "_bulk_insert", lambda client, index, docs, chunk=2000, **kw: 0)
 
     result = te.build_events(case, force=True)
     assert result["built"] is True
