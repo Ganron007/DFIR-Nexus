@@ -24,14 +24,14 @@
 }
 
 .primary {
-  background: var(--color-accent);
-  border-color: var(--color-accent);
+  background: var(--color-accent-strong);
+  border-color: var(--color-accent-strong);
   color: #ffffff;
 }
 
 .primary:hover:not(:disabled) {
-  background: var(--color-accent-hover);
-  border-color: var(--color-accent-hover);
+  background: var(--color-accent);
+  border-color: var(--color-accent);
 }
 
 .secondary:hover:not(:disabled) {

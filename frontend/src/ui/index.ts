@@ -7,7 +7,7 @@ export { Badge, type BadgeProps } from "./Badge";
 export { StatusPill, type StatusPillProps } from "./StatusPill";
 export { Panel, type PanelProps } from "./Panel";
 export { PageHeader, type PageHeaderProps } from "./PageHeader";
-export { Tabs, type TabItem, type TabsProps } from "./Tabs";
+export { Tabs, TabPanel, type TabItem, type TabsProps } from "./Tabs";
 export { Drawer, type DrawerProps } from "./Drawer";
 export { Dialog, ConfirmDialog, type DialogProps, type ConfirmDialogProps } from "./Dialog";
 export { ToastProvider, useToast, type ToastOptions } from "./Toast";

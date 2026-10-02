@@ -445,19 +445,19 @@ tr:hover td {
 .badge-critical, .badge.critical {
   background: rgba(163, 113, 247, 0.2);
   border: 1px solid rgba(163, 113, 247, 0.35);
-  color: var(--purple);
+  color: #d2a8ff;
 }
 
 .badge-high, .badge.high {
   background: rgba(248, 81, 73, 0.15);
   border: 1px solid rgba(248, 81, 73, 0.3);
-  color: var(--danger);
+  color: #ff7b72;
 }
 
 .badge-medium, .badge.medium {
   background: rgba(210, 153, 34, 0.15);
   border: 1px solid rgba(210, 153, 34, 0.3);
-  color: var(--warning);
+  color: #e3b341;
 }
 
 .badge-low, .badge.low {
@@ -593,27 +593,27 @@ tr:hover td {
 
 .mode-1 {
   background: rgba(47, 129, 247, 0.15);
-  color: var(--accent);
+  color: #79c0ff;
 }
 
 .mode-2 {
   background: rgba(210, 153, 34, 0.15);
-  color: var(--warning);
+  color: #e3b341;
 }
 
 .mode-3 {
   background: rgba(163, 113, 247, 0.15);
-  color: var(--purple);
+  color: #d2a8ff;
 }
 
 .badge-medium {
   background: rgba(210, 153, 34, 0.15);
-  color: var(--warning);
+  color: #e3b341;
 }
 
 .badge-high {
   background: rgba(248, 81, 73, 0.15);
-  color: var(--danger);
+  color: #ff7b72;
 }
 
 .empty-state {

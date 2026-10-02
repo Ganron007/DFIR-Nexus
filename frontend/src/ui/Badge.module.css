@@ -6,7 +6,7 @@
   border-radius: var(--radius-full);
   border: 1px solid
     color-mix(in srgb, var(--tone-accent, var(--color-fg-subtle)) 55%, transparent);
-  color: var(--tone-accent, var(--color-fg-muted));
+  color: color-mix(in srgb, var(--tone-accent, var(--color-fg-muted)) 75%, white);
   background: color-mix(in srgb, var(--tone-accent, var(--color-fg-subtle)) 12%, transparent);
   font-size: var(--font-size-xs);
   font-weight: 500;

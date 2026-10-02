@@ -55,10 +55,13 @@
   --color-border-default: #30363d;
   --color-border-strong: #484f58;
   --color-fg-default: #e6edf3;
-  --color-fg-muted: #8b949e;
-  --color-fg-subtle: #6e7681;
+  --color-fg-muted: #9aa4b2;
+  --color-fg-subtle: #8b949e;
   --color-accent: #2f81f7;
   --color-accent-hover: #4493f8;
+  /* Filled controls need a darker field than the link/focus accent so white
+     12px text clears WCAG on the button itself. */
+  --color-accent-strong: #0d4ea6;
 
   /* Accent families (the only raw colours) */
   --family-red: #f85149;

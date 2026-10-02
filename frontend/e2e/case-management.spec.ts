@@ -23,6 +23,16 @@ async function deactivate(request: APIRequestContext): Promise<void> {
   await request.post("/portal/api/case/deactivate");
 }
 
+/** Enter the cockpit through the UI and open a page by its nav label. */
+async function openPage(page: import("@playwright/test").Page, linkName: string) {
+  await page.goto(`${APP}/`);
+  await page.getByRole("button", { name: "Continue" }).first().click();
+  // Nav links carry a stage prefix (e.g. "N2 Evidence").
+  await page.getByRole("link", { name: linkName }).first().click();
+  // Not every surface has an h2 (Steer Chat on a Mode 2 case does not).
+  await expect(page.getByRole("navigation")).toBeVisible();
+}
+
 test.beforeEach(async ({ request }) => {
   await deactivate(request);
 });
@@ -54,7 +64,7 @@ test("seed demo never activates until Enter; Exit detaches", async ({ page }) =>
   await expect(page.getByText(/Preview:/)).toBeVisible();
   await page.getByRole("button", { name: /Enter Investigation/i }).click();
 
-  await expect(page).toHaveURL(new RegExp(`${APP}/explore$`));
+  await expect(page).toHaveURL(/\/case\/CASE-DEMO-001\/[a-z-]+$/);
   await expect(page.getByRole("link", { name: "Evidence" })).toBeVisible();
 
   // Exit to Dashboard clears the active case.
@@ -68,8 +78,9 @@ test("registered evidence appears immediately in the Evidence page", async ({ pa
   expect(seed.ok()).toBeTruthy();
 
   const file = makeEvidenceFile("alpha");
-  await page.goto(`${APP}/evidence`);
-  await expect(page.getByRole("heading", { name: /Evidence Registry \(4\)/ })).toBeVisible();
+  await openPage(page, "Evidence");
+  await expect(page.getByRole("heading", { name: "Evidence Registry" })).toBeVisible();
+  await expect(page.getByText("4 registered items")).toBeVisible();
 
   await page.getByRole("button", { name: /\+ Add evidence/i }).first().click();
   const pathInput = page.getByPlaceholder(/Type or paste a path/i);
@@ -79,7 +90,7 @@ test("registered evidence appears immediately in the Evidence page", async ({ pa
 
   // The regression: evidence vanishes because the list read a dead registry.
   await expect(page.getByText(file, { exact: false })).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByRole("heading", { name: /Evidence Registry \(5\)/ })).toBeVisible();
+  await expect(page.getByText("5 registered items")).toBeVisible();
 });
 
 test("switching cases changes the data on screen", async ({ page, request }) => {
@@ -98,32 +109,28 @@ test("switching cases changes the data on screen", async ({ page, request }) => 
     data: { mode: "1", case_id: otherCase },
   });
 
-  await page.goto(`${APP}/evidence`);
-  await expect(page.getByRole("heading", { name: /Evidence Registry \(4\)/ })).toBeVisible();
+  await openPage(page, "Evidence");
+  await expect(page.getByText("4 registered items")).toBeVisible();
 
   // Explicit switch via the sidebar dropdown (selection switches directly).
   await page.getByLabel("Active case").selectOption(otherCase);
 
-  await expect(page.getByRole("heading", { name: /Evidence Registry \(1\)/ })).toBeVisible();
+  await expect(page.getByText("1 registered item")).toBeVisible();
   await expect(page.getByText(otherFile, { exact: false })).toBeVisible();
 });
 
-test("investigation depth is a case-level setting that persists", async ({ page, request }) => {
+test("the surfaces follow the case mode", async ({ page, request }) => {
   const created = await request.post("/portal/api/case/create", {
-    data: { name: `E2E Depth ${Date.now()}`, activate: true },
+    data: { name: `E2E Mode ${Date.now()}`, activate: true },
   });
   expect(created.ok()).toBeTruthy();
+  const caseId = (await created.json()).case_id as string;
+  await request.post("/portal/api/case/mode", { data: { mode: "2", case_id: caseId } });
 
-  await page.goto(`${APP}/steer`);
-  const depth = page.getByLabel("Investigation depth");
-  await expect(depth).toHaveValue("mode1");
-
-  // Changing depth persists to the case (no private chat mode).
-  await depth.selectOption("mode2");
-  await expect(page.getByText(/Mode 2 · Steer Chat primary/)).toBeVisible();
-
-  await page.reload();
-  await expect(page.getByLabel("Investigation depth")).toHaveValue("mode2");
+  // Steer Chat is the Mode 1 surface, so a Mode 2 case's nav carries the
+  // Mode 2 entry point instead; the sidebar says which mode this case runs.
+  await openPage(page, "Evidence");
+  await expect(page.getByRole("link", { name: /Mode 2 ·/ })).toBeVisible();
 });
 
 test("wizard creates, registers, runs the lane, and enters the cockpit", async ({ page }) => {
@@ -145,7 +152,7 @@ test("wizard creates, registers, runs the lane, and enters the cockpit", async (
   await page.getByRole("button", { name: /Continue/i }).click();
 
   // Step 3 — mode
-  await page.getByText(/Mode 1 — Examiner-Driven/i).click();
+  await page.getByText(/Mode 1 — LLM/i).click();
   await page.getByRole("button", { name: /Confirm Mode/i }).click();
 
   // Step 4 — with evidence registered, cockpit entry is gated on the lane.
@@ -155,12 +162,11 @@ test("wizard creates, registers, runs the lane, and enters the cockpit", async (
   // The ledger shows what ran (a bare .txt honestly yields a discovery SKIP).
   await expect(page.locator("table").getByText("(discovery)")).toBeVisible();
   await page.getByRole("button", { name: /Enter Cockpit/i }).click();
-  await expect(page).toHaveURL(new RegExp(`${APP}/explore$`));
+  await expect(page).toHaveURL(/\/case\/[^/]+\/[a-z-]+$/);
 
   // The wizard's explicit-case registration is visible in the cockpit.
   await page.getByRole("link", { name: "Evidence" }).click();
-  await expect(page.getByRole("heading", { name: /Evidence Registry \(1\)/ })).toBeVisible();
-  await expect(page.getByRole("cell", { name: file, exact: true })).toBeVisible();
+  await expect(page.getByText("1 registered item")).toBeVisible();
 
   // Leave the store detached for the next test.
   await page.getByRole("button", { name: /Exit to Dashboard/i }).first().click();

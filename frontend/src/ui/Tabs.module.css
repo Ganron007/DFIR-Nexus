@@ -34,3 +34,10 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+.panel {
+  outline: none;
+}
+.panel[hidden] {
+  display: none;
+}

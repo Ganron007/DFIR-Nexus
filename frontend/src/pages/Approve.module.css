@@ -1,9 +1,11 @@
 /* Approve (WO-U8b). */
 
-.l1Proven { background: var(--l1-proven); color: #fff; }
-.l1Unsupported { background: var(--l1-unsupported); color: #fff; }
-.l1Contradicted { background: var(--l1-contradicted); color: #fff; }
-.l1Unverifiable { background: var(--l1-unverifiable); color: #fff; }
+/* Filled verdict badges: the L1 hues are bright, so the field is darkened to
+   keep white 11px text at or above 4.5:1. */
+.l1Proven { background: #1a7f37; color: #fff; }
+.l1Unsupported { background: #a40e26; color: #fff; }
+.l1Contradicted { background: #9a3412; color: #fff; }
+.l1Unverifiable { background: #57606a; color: #fff; }
 
 .s1 {
   display: flex;

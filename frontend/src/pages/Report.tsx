@@ -45,6 +45,7 @@ import {
   Panel,
   Select,
   Tabs,
+  TabPanel,
 } from "@/ui";
 import type { Finding } from "../api/client";
 import { originMark, verifierMark } from "../lib/draftMarks";
@@ -248,9 +249,8 @@ export default function Report() {
           },
           { value: "findings", label: `Approved findings (${findings.length})` },
         ]}
-      />
-
-      {tab === "official" ? (
+      >
+        <TabPanel value="official">
         <Panel
           title="reports/REPORT.md"
           actions={
@@ -373,7 +373,8 @@ export default function Report() {
             />
           )}
         </Panel>
-      ) : (
+        </TabPanel>
+        <TabPanel value="findings">
         <Panel title={`Approved findings (${findings.length})`}>
           <div className={styles.body}>
             {findings.length === 0 ? (
@@ -429,7 +430,8 @@ export default function Report() {
             )}
           </div>
         </Panel>
-      )}
+        </TabPanel>
+      </Tabs>
 
       <Panel title="Close the investigation" className="noPrint">
         <div className={styles.body}>

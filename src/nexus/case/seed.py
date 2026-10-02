@@ -64,8 +64,19 @@ def seed_demo_case(
     case_dir_stale = settings.cases_root / case_id
     if case_dir_stale.is_dir():
         import shutil
+        import time
 
-        shutil.rmtree(case_dir_stale)
+        # Windows refuses to delete a file another process still has open
+        # (an indexer or parser reading the previous seed). A re-seed is
+        # routine, so retry briefly instead of failing the whole seed.
+        for attempt in range(5):
+            try:
+                shutil.rmtree(case_dir_stale)
+                break
+            except PermissionError:
+                if attempt == 4:
+                    raise
+                time.sleep(0.4 * (attempt + 1))
 
     case = mgr.create_case(
         name=case_name,

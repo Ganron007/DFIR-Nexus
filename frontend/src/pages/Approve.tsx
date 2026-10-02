@@ -249,6 +249,7 @@ export default function Approve() {
                       checked={selected.has(f.id)}
                       onChange={() => toggle(f.id)}
                       className={styles.s8}
+                      aria-label={`Select ${f.title || f.id}`}
                     />
                   </td>
                   <td className={styles.s9}>{f.id}</td>
