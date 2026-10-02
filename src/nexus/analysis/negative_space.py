@@ -29,6 +29,10 @@ KINDS = frozenset({
     "human_review_recommended",
     "hallucination_suspected",
     "refuted",
+    # WO-V6: a family that produced nothing because its prerequisite was empty.
+    # "psscan saw 134 processes and malfind returned no rows" is not evidence
+    # of a clean image; it is a gap in coverage.
+    "coverage_gap",
 })
 
 

@@ -2422,6 +2422,107 @@ def persist_truncation_reason(result: dict[str, Any]) -> str:
     return ""
 
 
+#: Plugins that walk the process list. A zero-row result from one of these is
+#: not "the system had nothing to show": with a populated psscan it means the
+#: walk produced nothing, which is a coverage gap (WO-V6). ``malfind`` and
+#: ``ldrmodules`` iterate the same list, so they inherit the same blind spot.
+PROCESS_LIST_PLUGINS = frozenset({
+    "windows.pslist", "windows.pstree", "windows.dlllist", "windows.handles",
+    "windows.envars", "windows.cmdline", "windows.malfind", "windows.ldrmodules",
+    "linux.pslist",
+})
+
+PSScan_PLUGINS = ("windows.psscan", "linux.psscan")
+
+
+def _job_row_count(job: ToolJob) -> int:
+    """Rows in a completed job's saved output. 0 when nothing is readable."""
+    import json
+
+    candidates = [job.output_saved_to, *list(job.output_files or [])]
+    for candidate in candidates:
+        value = candidate.get("path") if isinstance(candidate, dict) else candidate
+        if not value:
+            continue
+        path = Path(str(value))
+        try:
+            if not path.is_file():
+                continue
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        stripped = text.strip()
+        if not stripped:
+            return 0
+        if stripped.startswith("["):
+            try:
+                loaded = json.loads(stripped)
+            except ValueError:
+                loaded = None
+            if isinstance(loaded, list):
+                return len(loaded)
+        return sum(1 for line in stripped.splitlines() if line.strip())
+    return 0
+
+
+def reconcile_process_list_coverage(
+    jobs: list[ToolJob],
+    case_dir: Path | str,
+    ledger: list[dict[str, Any]] | None = None,
+) -> list[ToolJob]:
+    """WO-V6: a list-walk plugin with no rows while psscan saw processes.
+
+    Marks the job ``WARN`` (not FAIL — the run is still usable, it is the
+    *absence claim* that would be wrong), records a ``coverage_gap``
+    negative-space event, and updates the ledger row so the ledger does not
+    keep the old "no findings" wording. Returns the jobs it marked.
+    """
+    vol_jobs = [job for job in jobs if job.tool == "vol" and job.argv]
+    rows = {
+        vol_plugin_name(job.argv): _job_row_count(job)
+        for job in vol_jobs
+        if job.status == "OK"
+    }
+    scan = max(
+        (rows.get(plugin, 0) for plugin in PSScan_PLUGINS),
+        default=0,
+    )
+    warned: list[ToolJob] = []
+    if scan <= 0:
+        return warned
+    for job in vol_jobs:
+        plugin = vol_plugin_name(job.argv)
+        if plugin not in PROCESS_LIST_PLUGINS or job.status != "OK":
+            continue
+        if rows.get(plugin, 0) > 0:
+            continue
+        job.status = "WARN"
+        job.reason = (
+            f"process-list walk returned nothing while psscan saw {scan} "
+            "process(es) — a coverage gap, not evidence of absence"
+        )
+        warned.append(job)
+        if ledger is not None:
+            for row in ledger:
+                if (row.get("tool"), row.get("purpose")) == (job.tool, job.purpose):
+                    row["status"] = "WARN"
+                    row["reason"] = job.reason
+                    break
+        try:
+            from nexus.analysis.negative_space import record
+
+            record(
+                case_dir,
+                "coverage_gap",
+                plugin,
+                job.reason,
+                refs=[f"psscan:{scan}"],
+            )
+        except Exception:  # noqa: BLE001 — the lane must not die on an audit
+            log.debug("coverage_gap event failed", exc_info=True)
+    return warned
+
+
 def vol_plugin_name(argv: list[str]) -> str:
     """The plugin token in a vol argv, which is not always the last argument."""
     for arg in argv:
@@ -3213,11 +3314,17 @@ async def run_tool_lane(
             log.warning("volatility plugin probe skipped: %s", exc)
     await _run_bounded(sift_jobs)
     _index_after_batch(sift_jobs)
+    coverage_warned = reconcile_process_list_coverage(sift_jobs, case_dir, ledger)
 
     ok = sum(1 for j in ledger if j.get("status") == "OK")
     fail = sum(1 for j in ledger if j.get("status") == "FAIL")
     skip = sum(1 for j in ledger if j.get("status") == "SKIP")
     summary = f"Tool lane complete: OK={ok} FAIL={fail} SKIP={skip} (case={case_id})"
+    if coverage_warned:
+        summary = (
+            f"{summary} - {len(coverage_warned)} process-list plugin(s) WARN: "
+            "zero rows while psscan saw processes (coverage gap)"
+        )
     log.info(summary)
 
     # Dual-MCP: SIFT audit_ids live on the SIFT host. Bridge them into the
