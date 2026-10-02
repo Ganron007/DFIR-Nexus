@@ -278,6 +278,33 @@ def test_a_plugin_the_host_lacks_becomes_a_skip():
     assert jobs2[0].status == "PENDING"
 
 
+def test_the_host_list_is_fully_qualified_and_matching_is_by_prefix():
+    """`vol -h` prints windows.pslist.PsList, jobs ask for windows.pslist.
+
+    Exact membership marked every plugin absent and skipped the whole pack —
+    a false "not installed" claim for plugins that had just run (D12 run 3).
+    """
+    from nexus.langgraph.tool_lane import mark_missing_vol_plugins
+
+    listed = {
+        "windows.pslist.PsList",
+        "windows.psscan.PsScan",
+        "windows.registry.printkey.PrintKey",
+        "windows.malfind.Malfind",
+    }
+    jobs = [
+        _sift_job("windows.pslist", 0, status="PENDING"),
+        _sift_job("windows.psscan", 0, status="PENDING"),
+        _sift_job("windows.malfind", 0, status="PENDING"),
+        _sift_job("windows.nosuchplugin", 0, status="PENDING"),
+    ]
+    jobs[2].argv = ["vol", "-f", "m.raw", "-r", "jsonl", "windows.registry.printkey"]
+    mark_missing_vol_plugins(jobs, listed)
+
+    assert [j.status for j in jobs] == ["PENDING", "PENDING", "PENDING", "SKIP"]
+    assert jobs[3].reason.endswith("is not installed on this SIFT host")
+
+
 def test_the_report_coverage_section_carries_the_gap(tmp_path):
     """WO-V6 item 1: the gap is visible in the report's coverage section."""
     from nexus.analysis.coverage_audit import report_section

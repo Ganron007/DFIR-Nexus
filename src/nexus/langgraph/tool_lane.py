@@ -2609,18 +2609,26 @@ def scale_memory_timeout(floor: int, image_bytes: int | None) -> int:
 def mark_missing_vol_plugins(jobs: list[ToolJob], available: set[str]) -> list[ToolJob]:
     """WO-A9: a plugin the host does not have is SKIP, not FAIL.
 
-    ``available`` is the set of plugin names the host listed (for example
-    ``windows.pslist``). An empty set is a failed probe and changes nothing.
-    Jobs that are not Volatility are left alone.
+    ``available`` is the set of names the host listed. ``vol -h`` prints the
+    fully-qualified module path (``windows.pslist.PsList``) while a job asks for
+    the module (``windows.pslist``), so the match is by prefix, not equality:
+    exact matching marked every plugin "not installed on this SIFT host" and
+    skipped the entire pack (found on the D12 lane re-run once the probe could
+    actually see the list). An empty set is a failed probe and changes nothing.
     """
     if not available:
         return jobs
     known = {name.lower() for name in available}
+
+    def _present(plugin: str) -> bool:
+        plugin = plugin.lower()
+        return plugin in known or any(k.startswith(plugin + ".") for k in known)
+
     for job in jobs:
         if job.tool != "vol" or job.status != "PENDING" or not job.argv:
             continue
         plugin = vol_plugin_name(job.argv)
-        if plugin.lower() not in known:
+        if not _present(plugin):
             job.status = "SKIP"
             job.reason = f"plugin {plugin} is not installed on this SIFT host"
     return jobs
