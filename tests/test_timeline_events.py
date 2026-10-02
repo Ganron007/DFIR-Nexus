@@ -223,6 +223,14 @@ def test_plaso_l2tcsv_row_is_one_event():
     assert len(expand_doc(indexed)) == 1
 
 
+def test_task_xml_registration_time_is_registry_typed():
+    """WO-A10/D6: the task family's own timestamp column is vouched for, so the
+    timeline emits it as a registry-typed event rather than a heuristic one."""
+    columns = date_columns_for("tasks")
+    assert "registration_date" in columns
+    assert "task_registration_date" in columns
+
+
 def test_no_reparse_evidence(tmp_path, monkeypatch):
     """The build reads the index, never an importer."""
     import nexus.langgraph.case_index as ci

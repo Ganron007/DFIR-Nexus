@@ -3605,6 +3605,12 @@ columns:
     type: date
     families:
     - ingest-scheduled_tasks
+    - tasks
+  registration_date:
+    type: date
+    families:
+    - ingest-scheduled_tasks
+    - tasks
   task_uri:
     type: text
     families:
