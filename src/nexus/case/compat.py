@@ -237,10 +237,13 @@ def sync_sqlite_to_flat(
                         "source": "evidence", "source_findings": [],
                     })
 
-        _atomic_json(dest / "findings.json", findings_out)
+        from nexus.case.records import save_findings, save_iocs, save_timeline
+
+        record_db = mgr.store.db_path
+        save_findings(dest, findings_out, db_path=record_db)
+        save_timeline(dest, timeline_out, db_path=record_db)
+        save_iocs(dest, iocs, db_path=record_db)
         _atomic_json(dest / "evidence.json", evidence_out)
-        _atomic_json(dest / "timeline.json", timeline_out)
-        _atomic_json(dest / "iocs.json", iocs)
         if not (dest / "todos.json").exists():
             _atomic_json(dest / "todos.json", [])
         return dest
