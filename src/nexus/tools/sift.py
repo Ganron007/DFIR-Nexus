@@ -606,6 +606,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         input_files: list[str] | None = None,
         preview_lines: int = 50,
         save_output: bool = True,
+        full_output: bool = False,
     ) -> dict:
         """Run a forensic tool on the SIFT workstation.
 
@@ -627,6 +628,10 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             preview_lines: Lines of output to return (0 = all).
             save_output: Persist the capture into the active case. False for a
                 probe (a tool-usage banner is not evidence).
+            full_output: Return the whole capture instead of the reply-budget
+                slice. For a machine consumer that must read past the budget —
+                `vol -h` lists plugins after 21 KB, so a slice-only probe sees
+                the usage banner and never the plugin list.
         """
         start_time = time.time()
         cmd_timeout = timeout if timeout > 0 else settings.command_timeout
@@ -773,7 +778,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
 
         # FK-enriched response (caveats, advisories, corroboration)
         response = _build_response(base_binary, result, audit_id, purpose)
-        response["data"] = result.get("stdout", "")
+        response["data"] = full_stdout if full_output else result.get("stdout", "")
         response["stderr"] = result.get("stderr", "")[:2000] or ""
         response["output_files"] = output_files
         response["tool_lineage"] = tool_lineage

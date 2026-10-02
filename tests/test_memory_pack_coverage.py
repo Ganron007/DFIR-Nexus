@@ -242,6 +242,42 @@ def test_the_tool_run_summary_counts_warn():
     assert "(total 15)" in md
 
 
+def test_the_plugin_list_sits_past_the_reply_slice():
+    """`vol -h` lists plugins after ~21 KB, so a slice-only probe sees nothing.
+
+    Measured on the D12 lane run: the first `windows.*` name is at byte 21,411
+    of a 26,973-byte banner. The probe therefore has to ask for the whole
+    capture (``full_output``); reading the 10 KB slice returned an empty set and
+    the "missing plugin is SKIP" behaviour never ran.
+    """
+    from nexus.langgraph.tool_lane import parse_vol_plugin_names
+
+    banner = ("usage: vol [-h] ...\n" + " " * 21000
+              + "\n  windows.info\n  windows.pslist\n  windows.psscan\n")
+    assert parse_vol_plugin_names(banner) >= {"windows.info", "windows.pslist",
+                                             "windows.psscan"}
+    # The slice the reply used to carry: the banner only, no plugin names.
+    assert parse_vol_plugin_names(banner[:10240]) == set()
+
+
+def test_a_plugin_the_host_lacks_becomes_a_skip():
+    from nexus.langgraph.tool_lane import mark_missing_vol_plugins
+
+    jobs = [
+        _sift_job("windows.pslist", 0, status="PENDING"),
+        _sift_job("windows.nosuchplugin", 0, status="PENDING"),
+    ]
+    mark_missing_vol_plugins(jobs, {"windows.pslist", "windows.psscan"})
+    assert jobs[0].status == "PENDING"
+    assert jobs[1].status == "SKIP"
+    assert "not installed on this SIFT host" in jobs[1].reason
+
+    # An empty probe result changes nothing (a failed probe is not a claim).
+    jobs2 = [_sift_job("windows.nosuchplugin", 0, status="PENDING")]
+    mark_missing_vol_plugins(jobs2, set())
+    assert jobs2[0].status == "PENDING"
+
+
 def test_the_report_coverage_section_carries_the_gap(tmp_path):
     """WO-V6 item 1: the gap is visible in the report's coverage section."""
     from nexus.analysis.coverage_audit import report_section

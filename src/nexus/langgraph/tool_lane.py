@@ -3351,6 +3351,10 @@ async def run_tool_lane(
                 # A usage banner is not case evidence: persisting it put a
                 # 522-row `vol -h` capture in the case on the D12 lane run.
                 "save_output": False,
+                # The plugin list starts at ~21 KB, past the 10 KB reply slice,
+                # so a slice-only probe reads the banner and never the list
+                # (measured on the D12 lane run).
+                "full_output": True,
             })
             parsed = parse_result(raw)
             # ``data`` is the reply body run_command returns; the other keys are
