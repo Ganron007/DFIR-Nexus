@@ -705,6 +705,8 @@ def run_mode3(
     # One writer per run (locked decision): seats share it, no seat builds one.
     run_audit = AuditWriter("nexus", audit_dir=case_dir / "audit")
     ready = elasticsearch_ready() if es_ok is None else bool(es_ok)
+    from nexus.langgraph.lane_gate import coverage_snapshot
+
     record: dict[str, Any] = {
         "run_id": run_id,
         "case_id": case_dir.name,
@@ -719,6 +721,7 @@ def run_mode3(
         "narrative": "",
         "superstep": 0,
         "product_mode": "multi-agent",
+        "evidence_coverage": coverage_snapshot(case_dir),
     }
     if resume_state is not None:
         existing = read_run_record(case_dir, run_id)

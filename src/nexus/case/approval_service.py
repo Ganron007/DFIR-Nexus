@@ -35,6 +35,23 @@ def _finding_id(doc: dict[str, Any]) -> str:
     return str(doc.get("id") or doc.get("finding_id") or "")
 
 
+def cited_event_ids(finding: dict[str, Any]) -> list[str]:
+    """Timeline event ids this finding names. Empty when it cites none."""
+    found: list[str] = []
+    for key in ("event_id", "event_ids"):
+        value = finding.get(key)
+        if isinstance(value, str) and value.strip():
+            found.append(value.strip())
+        elif isinstance(value, list):
+            found.extend(str(item).strip() for item in value if str(item).strip())
+    for artifact in finding.get("artifacts") or []:
+        if isinstance(artifact, dict):
+            event_id = str(artifact.get("event_id") or "").strip()
+            if event_id:
+                found.append(event_id)
+    return list(dict.fromkeys(found))
+
+
 def commit_approval(
     case_dir: Path | str,
     finding_id: str,
@@ -90,6 +107,14 @@ def commit_approval(
         from nexus.case.records import save_findings
 
         save_findings(case_dir, findings)
+        cited = cited_event_ids(finding)
+        if cited:
+            try:
+                from nexus.dashboard.timeline_api import TimelineStore
+
+                TimelineStore(case_dir.name).link_finding(finding_id, cited)
+            except Exception:  # noqa: BLE001 - approval stands if the index is down
+                pass
 
         if signing_key is not None:
             from nexus.auth import compute_hmac, write_verification_entry

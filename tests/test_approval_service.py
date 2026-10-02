@@ -1,7 +1,7 @@
 """CLI and portal approve through one function."""
 import json
 
-from nexus.case.approval_service import commit_approval, commit_rejection
+from nexus.case.approval_service import cited_event_ids, commit_approval, commit_rejection
 from nexus.case.records import load_records
 
 
@@ -15,6 +15,14 @@ def _case(tmp_path, finding):
 def _isolate_store(monkeypatch, tmp_path):
     monkeypatch.setattr("nexus.case.records.records_db_path", lambda: tmp_path / "cases.db")
     monkeypatch.setattr("nexus.transparency.TRANSPARENCY_DIR", tmp_path / "transparency")
+
+
+def test_cited_event_ids_come_from_the_finding_and_its_artifacts():
+    assert cited_event_ids({
+        "event_ids": ["e1", "e1"],
+        "artifacts": [{"event_id": "e2"}, {"path": "x"}],
+    }) == ["e1", "e2"]
+    assert cited_event_ids({"title": "no events"}) == []
 
 
 def test_approval_writes_the_record_and_refuses_a_broken_seal(tmp_path, monkeypatch):

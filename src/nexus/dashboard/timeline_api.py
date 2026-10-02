@@ -260,6 +260,29 @@ class TimelineStore:
         }
 
     # -- findings link ---------------------------------------------------
+    def link_finding(self, finding_id: str, event_ids: list[str]) -> int:
+        """Append a finding id onto the events it cites. Missing events are skipped."""
+        script = {
+            "source": (
+                "if (ctx._source.finding_ids == null) { ctx._source.finding_ids = new ArrayList(); } "
+                "if (!ctx._source.finding_ids.contains(params.fid)) { ctx._source.finding_ids.add(params.fid); }"
+            ),
+            "params": {"fid": finding_id},
+        }
+        linked = 0
+        try:
+            with self._client() as client:
+                for event_id in event_ids:
+                    response = client.post(
+                        f"/{self.index}/_update/{event_id}",
+                        json={"script": script},
+                    )
+                    if response.status_code < 300:
+                        linked += 1
+        except Exception:  # noqa: BLE001 - a missing index must not fail approval
+            return linked
+        return linked
+
     def findings_for(self, event_id: str) -> dict[str, Any]:
         payload = self._search({
             "size": 1,

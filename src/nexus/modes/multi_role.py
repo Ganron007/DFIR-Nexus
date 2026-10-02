@@ -1337,6 +1337,8 @@ def run_mode2(
     case_dir = Path(case_dir)
     run_id = run_id or f"M2-{datetime.now(UTC).strftime('%Y%m%dT%H%M%S')}-{uuid4().hex[:6]}"
     sink = EventSink(case_dir, run_id, callback=on_event)
+    from nexus.langgraph.lane_gate import coverage_snapshot
+
     state: dict[str, Any] = {
         "run_id": run_id,
         "case_id": case_dir.name,
@@ -1352,6 +1354,7 @@ def run_mode2(
         "candidates": [],
         "gaps": [],
         "coverage": {},
+        "evidence_coverage": coverage_snapshot(case_dir),
         "steering": [],
         "stop_reason": "",
         "max_orders": max_orders,
