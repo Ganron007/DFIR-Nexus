@@ -1,0 +1,15 @@
+{
+  // Tests may touch the filesystem (the print-guarantee test reads a
+  // stylesheet), so Node types are enabled here and nowhere else. `tsc` for the
+  // app runs with `tsconfig.json`, which sets `types: []`; a `node:*` import in
+  // app code fails the app typecheck instead of breaking at runtime.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // node: tests read files from disk. vite/client: the CSS-module and
+    // ?raw declarations live there, and this config does not include
+    // src/vite-env.d.ts, so it must opt in.
+    "types": ["node", "vite/client"]
+  },
+  "include": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/test-setup.ts"],
+  "exclude": []
+}
