@@ -888,6 +888,7 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
         "total_files": sum(v["files"] for v in inventory.values()),
         "total_rows": sum(v["rows"] for v in inventory.values()),
         "ledger": _parser_ledger(case_dir),
+        "coverage": _coverage(case_dir),
         "hosts": hosts,
         "time_range": time_range,
         "alerts": alerts[:60],
@@ -988,6 +989,16 @@ def _write_briefing_artifacts(
             "field_facts_csv": str(facts_path),
         }
     except Exception:  # noqa: BLE001
+        return {}
+
+
+def _coverage(case_dir: Path) -> dict[str, Any]:
+    """WO-B4: what the lane has not processed, so the briefing can say so."""
+    try:
+        from nexus.langgraph.lane_gate import coverage_snapshot
+
+        return coverage_snapshot(case_dir)
+    except Exception:  # noqa: BLE001 - the briefing must render without a gate
         return {}
 
 
@@ -1106,6 +1117,13 @@ def briefing_to_markdown(brief: dict[str, Any]) -> str:
             "Mode 2/3 analysis requires ES; restart ES and rebuild the index."
         )
     failed_terms = scan_stats.get("terms_failed") or []
+    pending_families = (brief.get("coverage") or {}).get("pending") or []
+    if pending_families:
+        lines.append(
+            f"\n> PENDING EVIDENCE: {len(pending_families)} item(s) the lane has "
+            f"not processed ({', '.join(str(p) for p in pending_families[:10])}). "
+            "No absence claim may be made about these."
+        )
     if failed_terms:
         lines.append(
             f"\n> WARNING: {len(failed_terms)} needle(s) could NOT be queried "

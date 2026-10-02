@@ -90,3 +90,22 @@ def test_confirming_the_pairing_clears_the_raw_job(tmp_path):
     assert len(skips) == 1
     assert len(stored["pairs"]) == 1
     assert "pre-processed output supplied" in skips[0]["reason"]
+
+
+def test_the_briefing_names_pending_evidence():
+    from nexus.langgraph.briefing import briefing_to_markdown
+
+    markdown = briefing_to_markdown({
+        "inventory": {},
+        "total_files": 0,
+        "total_rows": 0,
+        "coverage": {"status": "blocked", "pending": ["mftecmd $I30"]},
+    })
+    assert "PENDING EVIDENCE" in markdown
+    assert "no absence claim" in markdown.lower()
+    assert "mftecmd $I30" in markdown
+
+    clean = briefing_to_markdown({
+        "inventory": {}, "total_files": 0, "total_rows": 0, "coverage": {},
+    })
+    assert "PENDING EVIDENCE" not in clean
