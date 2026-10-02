@@ -1567,7 +1567,7 @@ def build_dfir_markdown(
     try:
         from nexus.analysis.coverage_audit import load_coverage_audit, report_section
 
-        coverage_lines = report_section(load_coverage_audit(case_dir))
+        coverage_lines = report_section(load_coverage_audit(case_dir), case_dir=case_dir)
     except Exception:  # noqa: BLE001 - a missing audit must not break the report
         coverage_lines = []
     if coverage_lines:

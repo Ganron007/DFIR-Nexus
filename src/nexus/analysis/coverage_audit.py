@@ -573,11 +573,29 @@ def summary_lines(audit: dict[str, Any], *, limit: int = 6) -> list[str]:
     return out
 
 
-def report_section(audit: dict[str, Any]) -> list[str]:
-    """Markdown block for REPORT.md (empty when there is no audit yet)."""
+def report_section(audit: dict[str, Any], case_dir: Path | str | None = None) -> list[str]:
+    """Markdown block for REPORT.md (empty when there is no audit yet).
+
+    With ``case_dir`` the section also carries the recorded coverage gaps — a
+    prerequisite that was empty is a gap in coverage, and it belongs beside the
+    tools/needles accounting rather than only in the negative-space tail
+    (WO-V6 item 1).
+    """
     if not audit:
         return []
     lines = ["## Coverage audit", ""]
     lines.extend(summary_lines(audit, limit=10))
+    if case_dir is not None:
+        with contextlib.suppress(Exception):
+            from nexus.analysis.negative_space import read_events
+
+            gaps = [
+                e for e in read_events(case_dir)
+                if str(e.get("kind") or "") == "coverage_gap"
+            ]
+            for event in gaps[:10]:
+                lines.append(
+                    f"- Coverage gap — `{event.get('subject')}`: {event.get('detail')}"
+                )
     lines.append("")
     return lines

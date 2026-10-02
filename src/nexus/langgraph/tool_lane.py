@@ -61,6 +61,12 @@ class ToolJob:
     # version + version_source). Carried through so the ledger - the surface an
     # exhibit is built from - can say what ran, not just OK/FAIL.
     lineage: dict = field(default_factory=dict)
+    # WO-V6: the execution result, kept on the job so the memory-pack
+    # reconciliation can tell "zero rows" from "never ran". Needed because a
+    # SIFT job's output file is on the SIFT host: the local read the first
+    # version used returns 0 for every remote job, so the check never fired
+    # where it was needed (found during the D12 lane re-run).
+    result: dict = field(default_factory=dict)
 
 
 def timeout_for_bytes(
@@ -2435,10 +2441,21 @@ PROCESS_LIST_PLUGINS = frozenset({
 PSScan_PLUGINS = ("windows.psscan", "linux.psscan")
 
 
-def _job_row_count(job: ToolJob) -> int:
-    """Rows in a completed job's saved output. 0 when nothing is readable."""
-    import json
+#: The reason `_empty_output_status` writes when a tool exited cleanly and
+#: produced nothing. Shared, so the memory-pack reconciliation recognises that
+#: specific failure instead of matching on prose.
+EMPTY_OUTPUT_FAIL_MARKER = "exited cleanly but produced no output file"
 
+
+def _job_row_count(job: ToolJob) -> int:
+    """Rows in a completed job's output. 0 when nothing is readable.
+
+    Two sources, in order, because a SIFT job's output file lives on the SIFT
+    host: the local file (Windows jobs, and pulled SIFT outputs), then the
+    execution result the MCP returned. For a ``vol -r jsonl`` job the reply
+    body carries the rows, so an empty body means zero rows — which is the
+    signal WO-V6 needs.
+    """
     candidates = [job.output_saved_to, *list(job.output_files or [])]
     for candidate in candidates:
         value = candidate.get("path") if isinstance(candidate, dict) else candidate
@@ -2451,18 +2468,30 @@ def _job_row_count(job: ToolJob) -> int:
             text = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        stripped = text.strip()
-        if not stripped:
-            return 0
-        if stripped.startswith("["):
-            try:
-                loaded = json.loads(stripped)
-            except ValueError:
-                loaded = None
-            if isinstance(loaded, list):
-                return len(loaded)
-        return sum(1 for line in stripped.splitlines() if line.strip())
-    return 0
+        counted = _count_rows(text)
+        if counted is not None:
+            return counted
+    # Remote (or unreadable) output: use what the job returned.
+    body = str(job.result.get("data") or job.result.get("output") or "")
+    counted = _count_rows(body)
+    return counted if counted is not None else 0
+
+
+def _count_rows(text: str) -> int | None:
+    """Rows in a capture: a JSON array's length, else non-empty lines."""
+    import json
+
+    stripped = (text or "").strip()
+    if not stripped:
+        return 0
+    if stripped.startswith("["):
+        try:
+            loaded = json.loads(stripped)
+        except ValueError:
+            loaded = None
+        if isinstance(loaded, list):
+            return len(loaded)
+    return sum(1 for line in stripped.splitlines() if line.strip())
 
 
 def reconcile_process_list_coverage(
@@ -2472,10 +2501,15 @@ def reconcile_process_list_coverage(
 ) -> list[ToolJob]:
     """WO-V6: a list-walk plugin with no rows while psscan saw processes.
 
-    Marks the job ``WARN`` (not FAIL — the run is still usable, it is the
-    *absence claim* that would be wrong), records a ``coverage_gap``
-    negative-space event, and updates the ledger row so the ledger does not
-    keep the old "no findings" wording. Returns the jobs it marked.
+    The job becomes **WARN** (not FAIL — the pack is still usable, it is the
+    *absence claim* that would be wrong), a ``coverage_gap`` negative-space
+    event is recorded, and the ledger row is updated so it no longer reads
+    "no findings".
+
+    A list-walk that produced nothing arrives as either OK (something saved,
+    zero rows) or the empty-output FAIL ("exited cleanly but produced no output
+    file"). Both are the same fact, so both are reconciled — but a FAIL for any
+    *other* reason (truncated capture, non-zero exit, tool error) is left alone.
     """
     vol_jobs = [job for job in jobs if job.tool == "vol" and job.argv]
     rows = {
@@ -2492,9 +2526,15 @@ def reconcile_process_list_coverage(
         return warned
     for job in vol_jobs:
         plugin = vol_plugin_name(job.argv)
-        if plugin not in PROCESS_LIST_PLUGINS or job.status != "OK":
+        if plugin not in PROCESS_LIST_PLUGINS:
             continue
-        if rows.get(plugin, 0) > 0:
+        if job.status == "OK":
+            empty = rows.get(plugin, 0) == 0
+        elif job.status == "FAIL" and EMPTY_OUTPUT_FAIL_MARKER in job.reason:
+            empty = True
+        else:
+            continue
+        if not empty:
             continue
         job.status = "WARN"
         job.reason = (
@@ -3141,6 +3181,7 @@ async def run_tool_lane(
         job.audit_id = aid
         job.output_saved_to = str(result.get("output_saved_to") or "")
         job.output_files = list(result.get("output_files") or [])
+        job.result = dict(result or {})
         # WO-A4: copy the tool's own lineage onto the ledger row. A remote tool
         # that declares no version says "undeclared" - we never guess a build.
         if isinstance(result.get("tool_lineage"), dict):
@@ -3915,12 +3956,11 @@ def _empty_output_status(
     return (
         "FAIL",
         (
-            f"{job.tool} exited cleanly but produced no output file "
+            f"{job.tool} {EMPTY_OUTPUT_FAIL_MARKER} "
             f"(expected a file under the --csv target). Treat this evidence as "
             f"unparsed, not clean."
         ),
     )
-
 
 def _bridge_remote_audits(case_dir: Path, ledger: list[dict[str, Any]]) -> int:
     """Write remote (SIFT) audit_id rows into the examiner case audit jsonl."""
