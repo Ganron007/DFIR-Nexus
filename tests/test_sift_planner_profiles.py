@@ -10,14 +10,21 @@ from __future__ import annotations
 from nexus.langgraph.tool_lane import (
     ToolJob,
     mark_missing_vol_plugins,
+    parse_vol_plugin_names,
     plan_sift_triage,
+    scale_memory_timeout,
     sift_jobs_for_lane,
     sift_unavailable_outcome,
+    vol_plugin_name,
 )
 
 
 def _vol_plugins(jobs: list) -> list[str]:
-    return [j.argv[-1] for j in jobs if j.tool == "vol" and j.status == "PENDING"]
+    return [
+        vol_plugin_name(j.argv)
+        for j in jobs
+        if j.tool == "vol" and j.status == "PENDING"
+    ]
 
 
 def test_linux_profile_selects_linux_plugins(monkeypatch):
@@ -43,6 +50,29 @@ def test_default_profile_stays_windows(monkeypatch):
         assert required in plugins
 
 
+def test_memory_timeout_scales_with_image_size(tmp_path, monkeypatch):
+    monkeypatch.delenv("NEXUS_SIFT_OS", raising=False)
+    image = tmp_path / "mem.raw"
+    image.write_bytes(b"x" * 64)
+    small = plan_sift_triage(str(tmp_path), memory_file=str(image))
+    pslist = next(j for j in small if vol_plugin_name(j.argv) == "windows.pslist")
+    assert pslist.timeout == 3600
+    assert scale_memory_timeout(3600, 4 * (1 << 30)) == 14400
+    keys = [
+        j for j in small
+        if vol_plugin_name(j.argv) == "windows.registry.printkey"
+    ]
+    assert {label for label in ("Run", "RunOnce", "Services") if any(label in j.purpose for j in keys)} == {
+        "Run", "RunOnce", "Services",
+    }
+    assert all("--key" in j.argv for j in keys)
+    listed = parse_vol_plugin_names("plugins: windows.pslist windows.malfind linux.bash")
+    assert listed == {"windows.pslist", "windows.malfind", "linux.bash"}
+    untouched = plan_sift_triage("/evidence/pack")
+    mark_missing_vol_plugins(untouched, set())
+    assert all(j.status == "PENDING" for j in untouched if j.tool == "vol")
+
+
 def test_missing_vol_plugin_is_skip_not_fail(monkeypatch):
     monkeypatch.delenv("NEXUS_SIFT_OS", raising=False)
     jobs = plan_sift_triage("/evidence/pack")
@@ -50,8 +80,8 @@ def test_missing_vol_plugin_is_skip_not_fail(monkeypatch):
     skipped = [j for j in jobs if j.tool == "vol" and j.status == "SKIP"]
     assert skipped
     assert all("not installed" in j.reason for j in skipped)
-    assert any(j.argv[-1] == "windows.malfind" and j.status == "SKIP" for j in jobs)
-    assert any(j.argv[-1] == "windows.pslist" and j.status == "PENDING" for j in jobs)
+    assert any(vol_plugin_name(j.argv) == "windows.malfind" and j.status == "SKIP" for j in jobs)
+    assert any(vol_plugin_name(j.argv) == "windows.pslist" and j.status == "PENDING" for j in jobs)
 
 
 def test_env_profile_is_read_when_param_absent(monkeypatch):

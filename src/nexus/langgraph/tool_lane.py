@@ -2407,17 +2407,58 @@ def apply_prior_ok(jobs: list[ToolJob], case_dir: Path) -> int:
     return reused
 
 
+def vol_plugin_name(argv: list[str]) -> str:
+    """The plugin token in a vol argv, which is not always the last argument."""
+    for arg in argv:
+        if arg.startswith(("windows.", "linux.", "mac.")):
+            return arg
+    return argv[-1] if argv else ""
+
+
+def parse_vol_plugin_names(text: str) -> set[str]:
+    """Plugin names from ``vol -h``. An empty parse means the probe failed."""
+    return {
+        match.group(1).lower()
+        for match in re.finditer(
+            r"\b((?:windows|linux|mac)\.[A-Za-z0-9_.]+)\b",
+            text or "",
+        )
+    }
+
+
+def _local_file_bytes(path: str) -> int | None:
+    """Size when the memory image is on this machine. A remote path stays unknown."""
+    try:
+        size = Path(path).stat().st_size
+    except OSError:
+        return None
+    return size if size > 0 else None
+
+
+def scale_memory_timeout(floor: int, image_bytes: int | None) -> int:
+    """WO-A9: one times the floor per GiB, never below the floor, never above 8x."""
+    if not image_bytes or image_bytes <= 0:
+        return floor
+    gib = image_bytes / float(1 << 30)
+    scale = min(8.0, max(1.0, gib))
+    return int(floor * scale)
+
+
 def mark_missing_vol_plugins(jobs: list[ToolJob], available: set[str]) -> list[ToolJob]:
     """WO-A9: a plugin the host does not have is SKIP, not FAIL.
 
     ``available`` is the set of plugin names the host listed (for example
-    ``windows.pslist``). Jobs that are not Volatility are left alone.
+    ``windows.pslist``). An empty set is a failed probe and changes nothing.
+    Jobs that are not Volatility are left alone.
     """
+    if not available:
+        return jobs
+    known = {name.lower() for name in available}
     for job in jobs:
         if job.tool != "vol" or job.status != "PENDING" or not job.argv:
             continue
-        plugin = job.argv[-1]
-        if plugin not in available:
+        plugin = vol_plugin_name(job.argv)
+        if plugin.lower() not in known:
             job.status = "SKIP"
             job.reason = f"plugin {plugin} is not installed on this SIFT host"
     return jobs
@@ -2498,19 +2539,35 @@ def plan_sift_triage(
             ("windows.handles", 7200),
             ("windows.envars", 3600),
             ("windows.netscan", 7200),
-            ("windows.registry.printkey", 3600),
             ("windows.malfind", 7200),
             ("windows.ldrmodules", 7200),
             ("windows.psxview", 7200),
         )
-    for plugin, timeout in plugins:
+    image_bytes = _local_file_bytes(mem)
+    for plugin, floor in plugins:
         jobs.append(ToolJob(
             host="sift",
             tool="vol",
             argv=["vol", "-f", mem, "-r", "jsonl", plugin],
             purpose=f"Volatility3 {plugin}",
-            timeout=timeout,
+            timeout=scale_memory_timeout(floor, image_bytes),
         ))
+    if profile != "linux":
+        for key, label in (
+            (r"Software\Microsoft\Windows\CurrentVersion\Run", "Run"),
+            (r"Software\Microsoft\Windows\CurrentVersion\RunOnce", "RunOnce"),
+            (r"System\CurrentControlSet\Services", "Services"),
+        ):
+            jobs.append(ToolJob(
+                host="sift",
+                tool="vol",
+                argv=[
+                    "vol", "-f", mem, "-r", "jsonl",
+                    "windows.registry.printkey", "--key", key,
+                ],
+                purpose=f"Volatility3 registry.printkey {label}",
+                timeout=scale_memory_timeout(3600, image_bytes),
+            ))
 
     # Filesystem timeline: MFTECmd --body (Windows) → TSK mactime (SIFT),
     # injected in run_tool_lane after the bodyfile is pushed. Full-tree
@@ -3090,6 +3147,24 @@ async def run_tool_lane(
             log.warning("NEXUS_SIFT_MACTIME=1 but bodyfile push failed; not FAIL")
 
     win_total[0] = len(win_jobs) + len(sift_jobs)
+    pending_vol = [j for j in sift_jobs if j.tool == "vol" and j.status == "PENDING"]
+    if pending_vol and sift_tool:
+        try:
+            raw = await sift_tool.ainvoke({
+                "command": "vol -h",
+                "purpose": "Volatility plugin list",
+                "timeout": 120,
+            })
+            parsed = parse_result(raw)
+            text = " ".join(
+                str(parsed.get(key) or "")
+                for key in ("stdout", "output", "text", "result")
+            )
+            listed = parse_vol_plugin_names(text or str(parsed))
+            if listed:
+                mark_missing_vol_plugins(sift_jobs, listed)
+        except Exception as exc:  # noqa: BLE001 — a failed probe must not skip the pack
+            log.warning("volatility plugin probe skipped: %s", exc)
     await _run_bounded(sift_jobs)
 
     ok = sum(1 for j in ledger if j.get("status") == "OK")

@@ -294,14 +294,25 @@ class TimelineStore:
             cursor = None
             written = 0
             while written < limit:
-                page = self.paged(cursor=cursor, size=MAX_PAGE, filters=filters)
+                page = self.paged(
+                    cursor=cursor,
+                    size=min(MAX_PAGE, limit - written),
+                    filters=filters,
+                )
                 for row in page["rows"]:
+                    if written >= limit:
+                        break
                     writer.writerow([row.get(c, "") for c in columns])
                     written += 1
+                    if written % MAX_PAGE == 0:
+                        yield buffer.getvalue()
+                        buffer.seek(0)
+                        buffer.truncate(0)
                 cursor = page.get("next_cursor")
-                if not cursor or not page["rows"]:
+                if written >= limit or not cursor or not page["rows"]:
                     break
-            yield buffer.getvalue()
+            if buffer.tell():
+                yield buffer.getvalue()
 
         return _rows()
 
