@@ -175,14 +175,20 @@ _TRIPWIRE_ROOTS = (Path.home() / ".nexus",)
 
 
 def _protected_snapshot() -> dict[str, tuple[int, int]]:
-    """``(size, mtime_ns)`` for every protected file. Stat only — no reads."""
+    """``(size, mtime_ns)`` for every protected file. Stat only — no reads.
+
+    Scope set by the operator 2026-10-03 (register D21): the protected set is
+    the D25–D27 rationale — the case/credential store and the LLM config. An
+    IDE-agent file (``~/.claude/settings.json``) was dropped from it: no test
+    and no ``src/`` file writes it, and the agent's own session rewrites it
+    mid-run, so guarding it manufactured a false error in agent-driven runs.
+    """
     out: dict[str, tuple[int, int]] = {}
     targets: list[Path] = []
     for root in _TRIPWIRE_ROOTS:
         if root.is_dir():
             targets.extend(root.rglob("*"))
     targets.append(Path(__file__).resolve().parent.parent / ".env")
-    targets.append(Path.home() / ".claude" / "settings.json")
     for path in targets:
         try:
             if path.is_file():
@@ -203,11 +209,10 @@ def _credential_tripwire():
     whatever they miss.
 
     Three notes: any writer counts — a live ``nexus serve`` sharing this machine
-    will trip the wire (stop it before a full run); the agent's own IDE session
-    can rewrite ``~/.claude/settings.json`` mid-run, which is a false positive by
-    construction (register D21: proven 2026-10-02, when the file's mtime fell
-    inside the run window while nothing under ``~/.nexus`` changed and no test or
-    ``src/`` file references it); and ``tests/test_credential_tripwire.py`` is
+    will trip the wire (stop it before a full run); the protected set is
+    deliberately the D25–D27 rationale only (case/credential store + LLM config)
+    after register D21 removed the IDE-agent file, which no test writes and the
+    agent's own session rewrites; and ``tests/test_credential_tripwire.py`` is
     the canary that proves it fires.
     """
     before = _protected_snapshot()
@@ -234,11 +239,10 @@ def _credential_tripwire():
 
 
 #: What each protected path is, so a failure says whether it is a real
-#: credential incident or the agent's own IDE session (register D21). Matched
-#: on the path as the snapshot records it — absolute, so no `~` prefix.
+#: credential incident or the LLM config. Matched on the path as the snapshot
+#: records it — absolute, so no `~` prefix.
 _TRIPWIRE_CLASSES = (
     (".nexus", "case/credential store", "real incident"),
-    (".claude", "IDE-agent file", "likely a false positive — no test writes it"),
     (".env", "LLM key / endpoint", "real incident if a test wrote it"),
 )
 
