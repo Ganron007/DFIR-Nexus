@@ -390,6 +390,7 @@ def build_http_app(server, host: str = "127.0.0.1", port: int = 4508):
     from starlette.routing import Mount
 
     from nexus.dashboard.app import create_dashboard
+    from nexus.mcp_security import McpBearerAuthMiddleware, bearer_token, is_remote_bind
     from nexus.portal import PortalRateLimitMiddleware, SecurityHeadersMiddleware
     from nexus.portal.http_audit import HttpAuditMiddleware
 
@@ -415,24 +416,31 @@ def build_http_app(server, host: str = "127.0.0.1", port: int = 4508):
     except AttributeError:
         routes.append(Mount("/mcp", app=server.sse_app()))
         typer.echo(f"  MCP: http://{host}:{port}/mcp (SSE fallback)")
+    # D28: the MCP endpoint executes host binaries, so a bind that reaches
+    # beyond this machine must carry a bearer token. Loopback stays as it was.
+    middleware_list = [
+        # 4k.3: transport audit runs FIRST so even rate-limited/401
+        # requests are recorded with their real status.
+        Middleware(HttpAuditMiddleware),
+        Middleware(
+            PortalRateLimitMiddleware,
+            path_prefix="/portal",
+            auth_path_prefix="/portal/api/commit",
+        ),
+        Middleware(
+            SecurityHeadersMiddleware,
+            path_prefix="/portal",
+            headers=dashboard_security_headers,
+        ),
+    ]
+    if is_remote_bind(host):
+        middleware_list.append(
+            Middleware(McpBearerAuthMiddleware, token=bearer_token())
+        )
     return Starlette(
         routes=routes,
         lifespan=lifespan,
-        middleware=[
-            # 4k.3: transport audit runs FIRST so even rate-limited/401
-            # requests are recorded with their real status.
-            Middleware(HttpAuditMiddleware),
-            Middleware(
-                PortalRateLimitMiddleware,
-                path_prefix="/portal",
-                auth_path_prefix="/portal/api/commit",
-            ),
-            Middleware(
-                SecurityHeadersMiddleware,
-                path_prefix="/portal",
-                headers=dashboard_security_headers,
-            ),
-        ],
+        middleware=middleware_list,
     )
 
 
@@ -496,6 +504,13 @@ def serve(
         allowed = build_allowed_hosts(host)
         typer.echo(f"  MCP Host allowlist: {', '.join(allowed[:8])}{'…' if len(allowed) > 8 else ''}")
         typer.echo("  (extra hosts: NEXUS_MCP_ALLOWED_HOSTS=ip1,ip2)")
+        from nexus.mcp_security import is_remote_bind
+
+        typer.echo(
+            "  MCP auth: bearer token REQUIRED (non-loopback bind)"
+            if is_remote_bind(host)
+            else "  MCP auth: none (loopback bind — not reachable off this machine)"
+        )
         log_config = None
         try:
             from nexus.portal.http_audit import http_log_config, http_logging_enabled

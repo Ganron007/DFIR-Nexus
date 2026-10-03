@@ -32,11 +32,15 @@ def test_check_required_env_loopback_returns_missing() -> None:
     missing = check_required_env(host="127.0.0.1", port=8000)
     assert ENV_AUDIT_SECRET in missing
     assert ENV_PORTAL_PASSWORD in missing
+    # The MCP endpoint executes host binaries, so its token is required too
+    # (register D28).
+    assert "NEXUS_BEARER_TOKEN" in missing
 
 
 def test_check_required_env_loopback_no_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(ENV_AUDIT_SECRET, "x")
     monkeypatch.setenv(ENV_PORTAL_PASSWORD, "y")
+    monkeypatch.setenv("NEXUS_BEARER_TOKEN", "z")
     assert check_required_env(host="127.0.0.1") == []
 
 
@@ -49,7 +53,22 @@ def test_check_required_env_non_loopback_raises() -> None:
 def test_check_required_env_non_loopback_passes(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(ENV_AUDIT_SECRET, "x")
     monkeypatch.setenv(ENV_PORTAL_PASSWORD, "y")
+    monkeypatch.setenv("NEXUS_BEARER_TOKEN", "z")
     assert check_required_env(host="0.0.0.0") == []
+
+
+def test_a_remote_bind_without_the_mcp_token_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    """D28: the token is what stands between the network and host execution.
+
+    A remote bind missing only the token must still be refused — otherwise the
+    documented protection is absent, which is how this was found.
+    """
+    monkeypatch.setenv(ENV_AUDIT_SECRET, "x")
+    monkeypatch.setenv(ENV_PORTAL_PASSWORD, "y")
+    monkeypatch.delenv("NEXUS_BEARER_TOKEN", raising=False)
+    with pytest.raises(MissingProductionEnvError) as exc_info:
+        check_required_env(host="0.0.0.0", port=4508)
+    assert exc_info.value.missing == ["NEXUS_BEARER_TOKEN"]
 
 
 def test_warn_loopback_env() -> None:

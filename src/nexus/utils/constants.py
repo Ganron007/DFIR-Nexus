@@ -188,8 +188,15 @@ ENV_SMTP_TO = "NEXUS_SMTP_TO"
 REQUIRED_FOR_PROD: tuple[str, ...] = (
     ENV_AUDIT_SECRET,
     ENV_PORTAL_PASSWORD,
+    "NEXUS_BEARER_TOKEN",
 )
-"""Env vars that MUST be set when DFIR-Nexus is reachable beyond loopback."""
+"""Env vars that MUST be set when DFIR-Nexus is reachable beyond loopback.
+
+``NEXUS_BEARER_TOKEN`` is here because the MCP endpoint executes host binaries:
+without it a network bind was unauthenticated while the setup guide said to
+configure a token (register D28). A remote bind with no token now refuses to
+start rather than exposing an unauthenticated execution surface.
+"""
 
 
 # ============================================================================
