@@ -124,12 +124,20 @@ class AnswerKey:
     unlabelled: list[Unlabelled] = field(default_factory=list)
     ignored: list[dict[str, str]] = field(default_factory=list)
     matched: int = 0
+    #: Hashes the operator declared clean (`role: benign`). Used by the K1
+    #: false-positive metric to attribute a finding's cited rows to benign
+    #: evidence (WO-K1).
+    benign: list[str] = field(default_factory=list)
 
     def techniques(self) -> set[str]:
         return {e.technique for e in self.entries if e.technique}
 
     def entities(self) -> set[str]:
         return {e.entity for e in self.entries if e.entity}
+
+    def benign_hashes(self) -> set[str]:
+        """Hashes the operator declared clean (`role: benign`)."""
+        return {str(h).strip().lower() for h in self.benign if str(h).strip()}
 
     def expected(self, dimension: str = "techniques") -> set[str]:
         return self.techniques() if dimension == "techniques" else self.entities()
@@ -147,6 +155,7 @@ class AnswerKey:
                 "matched": self.matched,
                 "unlabelled": len(self.unlabelled),
                 "ignored": len(self.ignored),
+                "benign": len(self.benign_hashes()),
             },
             "entries": [e.to_dict() for e in self.entries],
             "excluded": [x.to_dict() for x in self.excluded],
@@ -217,6 +226,14 @@ class AnswerKey:
                 str(t).strip().upper() for t in (item.get("techniques") or []) if str(t).strip()
             ]
             entities = [str(e).strip() for e in (item.get("entities") or []) if str(e).strip()]
+            role = str(item.get("role") or "").strip().lower()
+            if role == "benign":
+                # A file the operator declares clean. It contributes no expected
+                # technique, but it must be listed so the false-positive metric
+                # can attribute a finding's cited rows to benign evidence
+                # (WO-K1: "DRAFTs whose cited rows come only from benign files").
+                key.benign.append(digest)
+                continue
             if not techniques and not entities:
                 key.excluded.append(
                     Excluded(
@@ -256,6 +273,8 @@ class AnswerKey:
             manifest=self.manifest,
             case=case_dir.name,
             excluded=list(self.excluded),
+            # Only benign files actually registered in this case count.
+            benign=[h for h in self.benign if h in registered],
         )
         covered: set[str] = set()
         ignored: set[str] = set()
