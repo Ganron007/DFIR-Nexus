@@ -302,8 +302,16 @@ def finding_mode(finding: dict[str, Any], fallback: int | None) -> int | None:
 
 
 def finding_techniques(finding: dict[str, Any]) -> set[str]:
+    """ATT&CK techniques on a finding, across the field names in use.
+
+    The staging path writes `attack_ids`; older/other writers use
+    `technique_ids`, and `mitre_techniques` is the registry's own field. Reading
+    only `technique_ids` scored every finding as untagged - a technique recall of
+    zero for findings that carried a correct, specific label set. Read the union;
+    a scorer must not invent a miss from a field-name mismatch.
+    """
     out: set[str] = set()
-    for key in ("technique_ids", "mitre_techniques"):
+    for key in ("technique_ids", "attack_ids", "mitre_techniques"):
         for value in finding.get(key) or []:
             text = str(value).strip().upper()
             if text:

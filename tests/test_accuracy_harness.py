@@ -162,3 +162,26 @@ def test_case_mode_and_finding_provenance(tmp_path):
     assert finding_mode({}, None) is None
     assert case_mode(tmp_path / "nope") is None
     assert case_findings(tmp_path / "nope") == []
+
+
+def test_techniques_are_read_from_every_field_the_product_writes():
+    """A field-name mismatch must not invent a miss.
+
+    The staging path writes `attack_ids`; `technique_ids` and `mitre_techniques`
+    are the other names in use. Reading only one of them scored a correctly
+    tagged finding set as recall 0 - measured on the first real K-run, where 11
+    findings carried specific labels (`T1543.003`, `T1003.001`, ...) under
+    `attack_ids` while the scorer looked at `technique_ids` and saw nothing.
+    """
+    from nexus.validation.harness import finding_techniques
+
+    assert finding_techniques({"attack_ids": ["T1059.001"]}) == {"T1059.001"}
+    assert finding_techniques({"technique_ids": ["t1053.005"]}) == {"T1053.005"}
+    assert finding_techniques({"mitre_techniques": ["T1003.001"]}) == {"T1003.001"}
+    # The union, deduped and upper-cased, with blanks ignored.
+    assert finding_techniques({
+        "attack_ids": ["T1059.001", " "],
+        "technique_ids": ["T1059.001", "T1140"],
+        "mitre_techniques": [],
+    }) == {"T1059.001", "T1140"}
+    assert finding_techniques({}) == set()
