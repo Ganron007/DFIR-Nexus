@@ -336,6 +336,76 @@ def test_two_k_runs_both_survive_in_the_report(ev, tmp_path):
     assert [r["label"] for r in runs] == ["K-run 0 baseline", "K-run 1 after WO-K2"]
 
 
+def test_a_case_set_resolves_relative_paths_against_its_own_file(ev, tmp_path):
+    """A case set describes several cases; relative paths hang off the JSON."""
+    # Not `cases/`: conftest points the case store at tmp_path/cases.
+    (tmp_path / "setdata").mkdir()
+    (tmp_path / "setdata" / "m1.json").write_text(
+        json.dumps({"entries": [{"sha256": ATTACK, "techniques": ["T1059.001"]}]}),
+        encoding="utf-8",
+    )
+    (tmp_path / "setdata" / "ev1").mkdir()
+    (tmp_path / "case-set.json").write_text(json.dumps({"cases": [
+        {"name": "alpha", "set_dir": "setdata/ev1", "manifest": "setdata/m1.json"},
+        {"name": "beta", "set_dir": "setdata/ev1", "manifest": "setdata/m1.json"},
+    ]}), encoding="utf-8")
+
+    targets = ev._load_targets("", "", str(tmp_path / "case-set.json"))
+    assert [t["name"] for t in targets] == ["alpha", "beta"]
+    for target in targets:
+        assert Path(target["set_dir"]).is_absolute(), target
+        assert Path(target["manifest"]).is_file(), target
+        assert str(tmp_path) in target["manifest"]
+
+
+def test_a_bare_list_case_set_is_accepted(ev, tmp_path):
+    (tmp_path / "m.json").write_text(json.dumps({"entries": []}), encoding="utf-8")
+    (tmp_path / "s.json").write_text(
+        json.dumps([{"name": "only", "manifest": "m.json"}]), encoding="utf-8"
+    )
+    targets = ev._load_targets("", "", str(tmp_path / "s.json"))
+    assert len(targets) == 1 and targets[0]["name"] == "only"
+
+
+def test_a_single_manifest_is_one_target_named_case(ev, tmp_path):
+    manifest = _manifest(tmp_path, [{"sha256": ATTACK, "techniques": ["T1059.001"]}])
+    targets = ev._load_targets(str(tmp_path), str(manifest), "")
+    assert len(targets) == 1
+    assert targets[0]["name"] == "case"
+    assert targets[0]["manifest"] == str(manifest)
+
+
+def test_every_repeat_gets_its_own_case_so_runs_are_independent(ev, tmp_path, monkeypatch):
+    """Repeats must not share a case, or the second run scores the first's output."""
+    (tmp_path / "ev").mkdir()
+    (tmp_path / "ev" / "a.evtx").write_text("x", encoding="utf-8")
+    manifest = _manifest(tmp_path, [{"sha256": ATTACK, "techniques": ["T1059.001"]}])
+    monkeypatch.setattr(ev, "run_mode", lambda *a, **k: {"rc": 0, "wall_s": 0.0})
+
+    created: list[str] = []
+
+    def _fake_run(cmd, *, timeout):
+        if "case" in cmd and "init" in cmd:
+            case_id = cmd[cmd.index("--case-id") + 1]
+            created.append(case_id)
+            (Path(ev.cases_root()) / case_id).mkdir(parents=True, exist_ok=True)
+        return 0, "", 0.0
+
+    monkeypatch.setattr(ev, "_run", _fake_run)
+
+    rc = ev.main([
+        "--set-dir", str(tmp_path / "ev"), "--manifest", str(manifest),
+        "--modes", "1", "--repeats", "3",
+        "--json-out", str(tmp_path / "a.json"), "--md-out", str(tmp_path / "A.md"),
+    ])
+    assert rc == 0
+    assert len(created) == 3, created
+    assert len(set(created)) == 3, "each repeat needs its own case"
+    record = json.loads((tmp_path / "a.json").read_text(encoding="utf-8"))["k_runs"][0]
+    assert record["repeats"] == 3
+    assert [c["repeat"] for c in record["cases"]] == [1, 2, 3]
+
+
 def test_the_run_record_names_the_baseline_and_the_knowledge_versions(ev, tmp_path):
     """K-run 0 must be reproducible: HEAD, label and knowledge versions recorded."""
     case = _case(tmp_path, [_finding("F-1", ["T1059.001"], AUDIT_ATTACK)])

@@ -38,6 +38,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import sys
 from collections import Counter
@@ -194,6 +195,83 @@ def techniques_for_steps(steps: set[str]) -> tuple[set[str], list[str]]:
     return techniques, unmapped
 
 
+#: `T1003-Credential dumping` / `T1059.001-PowerShell` / `T1110.xxx-Brut force`.
+_TECHNIQUE_DIR = re.compile(r"^(T\d{4})(?:\.(\d{3}))?(?:[^0-9]|$)")
+
+
+def technique_from_dir(name: str) -> str:
+    """The ATT&CK technique a sample directory names, or "".
+
+    The Yamato `EVTX-to-MITRE-Attack` tree labels each sample by DIRECTORY:
+    ``TA0006-Credential Access/T1003-Credential dumping/*.evtx``. The tactic is
+    the parent, the technique the leaf. A sub-technique is kept only when it is
+    numeric - ``T1110.xxx-Brut force`` is the technique T1110, because `.xxx` is
+    prose in the ID slot, not a sub-technique.
+    """
+    match = _TECHNIQUE_DIR.match(str(name).strip())
+    if not match:
+        return ""
+    base, sub = match.group(1), match.group(2)
+    return f"{base}.{sub}" if sub else base
+
+
+def build_evtx_mitre(testbed: Path, stage: Path, group: str) -> dict:
+    """A case from the Yamato EVTX-to-MITRE tree, one tactic group at a time.
+
+    *testbed* is the ``EVTX-to-MITRE-Attack`` directory. *group* selects a tactic
+    folder (``TA0006-Credential Access``) or "" for every tactic. Evidence is
+    ``role: attack`` with the technique taken from its own directory, so the
+    ground truth is a property of the pack rather than a hand-written claim.
+    """
+    if not testbed.is_dir():
+        raise SystemExit(f"no EVTX-to-MITRE-Attack tree at {testbed}")
+    roots = [testbed] if not group else [testbed / group]
+    for root in roots:
+        if not root.is_dir():
+            available = sorted(p.name for p in testbed.iterdir() if p.is_dir())
+            raise SystemExit(f"no group {group!r}; available: {', '.join(available)}")
+
+    evidence_dir = stage / "evidence"
+    entries: list[dict] = []
+    counts = Counter()
+    total = 0
+    unmapped_dirs: list[str] = []
+
+    for root in roots:
+        for src in sorted(root.rglob("*")):
+            if not src.is_file() or src.suffix.lower() != ".evtx":
+                continue
+            # The technique is the sample's own directory, under the tactic.
+            technique = technique_from_dir(src.parent.name)
+            if not technique:
+                unmapped_dirs.append(str(src.parent.relative_to(testbed)))
+            rel = str(src.relative_to(testbed)).replace("\\", "/")
+            stage_file(src, evidence_dir / rel)
+            counts["staged"] += 1
+            total += src.stat().st_size
+            entries.append({
+                "sha256": sha256_file(src),
+                "role": "attack" if technique else "unlabelled",
+                "host": root.name,
+                "path": rel,
+                "bytes": src.stat().st_size,
+                "labels": [src.parent.name],
+                "techniques": [technique] if technique else [],
+                "label_basis": "content",
+            })
+
+    return {
+        "kind": "evtx-mitre",
+        "testbed": str(testbed),
+        "group": group,
+        "entries": entries,
+        "counts": dict(counts),
+        "unmapped_labels": sorted(set(unmapped_dirs)),
+        "staged_bytes": total,
+        "labelled_hosts": [r.name for r in roots],
+    }
+
+
 def stage_file(src: Path, dest: Path) -> str:
     """Hardlink when possible (same volume, no copy cost), else copy.
 
@@ -344,9 +422,11 @@ def build_flat(testbed: Path, stage: Path) -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--kind", choices=("aitlds", "flat"), required=True)
+    parser.add_argument("--kind", choices=("aitlds", "flat", "evtx-mitre"), required=True)
     parser.add_argument("--testbed", required=True)
     parser.add_argument("--stage", required=True)
+    parser.add_argument("--group", default="",
+                        help="evtx-mitre: one tactic folder, e.g. 'TA0006-Credential Access'")
     parser.add_argument("--max-file-mb", type=float, default=50.0,
                         help="cap for UNLABELLED files (labelled evidence is never capped)")
     parser.add_argument("--all-hosts", action="store_true",
@@ -361,16 +441,18 @@ def main(argv: list[str] | None = None) -> int:
         print(f"stage {stage} is not empty - remove it or choose another", file=sys.stderr)
         return 2
 
-    report = (
-        build_aitlds(testbed, stage, args.max_file_mb, args.all_hosts)
-        if args.kind == "aitlds"
-        else build_flat(testbed, stage)
-    )
+    if args.kind == "aitlds":
+        report = build_aitlds(testbed, stage, args.max_file_mb, args.all_hosts)
+    elif args.kind == "evtx-mitre":
+        report = build_evtx_mitre(testbed, stage, args.group)
+    else:
+        report = build_flat(testbed, stage)
 
     manifest = {
         "version": 1,
         "kind": report["kind"],
         "testbed": report["testbed"],
+        **({"group": report["group"]} if report.get("group") else {}),
         # `from_manifest` reads this key; `role` per entry decides benign.
         "entries": report["entries"],
         "counts": report["counts"],

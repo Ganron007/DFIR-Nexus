@@ -409,11 +409,18 @@ def _render_run_md(report: dict) -> str:
         f"- When: {report['at']}",
         f"- HEAD: `{report['head']}`",
         f"- Question: {report['question']!r} (the only examiner input)",
-        f"- Manifest: `{report['manifest']}` (read only by the scorer)",
-        f"- Evidence files: {len(report['evidence'])} registered; "
-        f"{len(report['truth_skipped'])} truth file(s) skipped",
+        f"- Modes: {report.get('modes')} · repeats: {report.get('repeats', 1)}",
         "",
     ]
+    for target in report.get("targets", []):
+        counts = target.get("key_counts", {})
+        lines.append(
+            f"- `{target['name']}`: {target['evidence']} evidence file(s), "
+            f"{counts.get('techniques', 0)} expected technique(s), "
+            f"{target['truth_skipped']} truth file(s) skipped — "
+            f"manifest `{Path(target['manifest']).name}` (read only by the scorer)"
+        )
+    lines.append("")
     if report["truth_leak_checks"]:
         lines.append("- manifest-leak guard:")
         for check in report["truth_leak_checks"]:
@@ -421,9 +428,9 @@ def _render_run_md(report: dict) -> str:
             lines.append(f"  - `{check['case_id']}`: {state}")
         lines.append("")
     lines += [
-        "| Mode | rc | Findings | Techniques P | R | F1 | Entities F1 | "
-        "Benign-only FP | First true lead | Wall s |",
-        "|---|---|---|---|---|---|---|---|---|---|",
+        "| Case | Rep | Mode | rc | Findings | Techniques P | R | F1 | "
+        "Entities F1 | Benign-only FP | First true lead | Wall s |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for case in report["cases"]:
         tech = case.get("dimensions", {}).get("techniques", {})
@@ -436,7 +443,8 @@ def _render_run_md(report: dict) -> str:
             return "n/a" if value is None else format(value, ".3f")
 
         lines.append(
-            f"| {case['mode']} | {case['run'].get('rc')} | {case.get('findings', 0)} | "
+            f"| {case.get('target', '-')} | {case.get('repeat', 1)} | {case['mode']} | "
+            f"{case['run'].get('rc')} | {case.get('findings', 0)} | "
             f"{_num(tech.get('precision'))} | {_num(tech.get('recall'))} | "
             f"{_num(tech.get('f1'))} | {_num(ent.get('f1'))} | "
             f"{fp.get('benign_only', 0)}/{fp.get('findings', 0)} | "
@@ -457,10 +465,48 @@ def _k_runs_section(runs: list[dict]) -> str:
     return f"## K-runs\n\n{K_RUN_LEGEND}\n\n{body}\n"
 
 
+def _load_targets(set_dir: str, manifest: str, case_set: str) -> list[dict]:
+    """The cases to run: one, or a set, each with its own evidence and manifest.
+
+    A manifest is per-case (a set of files has its own ground truth), so the key
+    is loaded per target rather than once - and only ever here.
+    """
+    if case_set:
+        path = Path(case_set)
+        if not path.is_file():
+            raise SystemExit(f"case set not found: {path}")
+        data = json.loads(path.read_text(encoding="utf-8"))
+        cases = data.get("cases") if isinstance(data, dict) else data
+        if not isinstance(cases, list) or not cases:
+            raise SystemExit(f"{path}: expected {{'cases': [...]}}")
+        out: list[dict] = []
+        for i, item in enumerate(cases, 1):
+            if not isinstance(item, dict):
+                raise SystemExit(f"{path}: case {i} is not an object")
+            name = str(item.get("name") or f"case{i}")
+            root = path.parent
+            set_dir_i = str(item.get("set_dir") or "")
+            manifest_i = str(item.get("manifest") or "")
+            if set_dir_i and not Path(set_dir_i).is_absolute():
+                set_dir_i = str(root / set_dir_i)
+            if manifest_i and not Path(manifest_i).is_absolute():
+                manifest_i = str(root / manifest_i)
+            out.append({"name": name, "set_dir": set_dir_i, "manifest": manifest_i})
+        return out
+
+    if not manifest or not str(manifest):
+        raise SystemExit("--manifest is required (or use --case-set)")
+    return [{"name": "case", "set_dir": set_dir, "manifest": str(manifest)}]
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--set-dir", default="", help="evidence directory for K1")
-    parser.add_argument("--manifest", required=True, help="operator manifest (read only here)")
+    parser.add_argument("--manifest", default="", help="operator manifest (read only here)")
+    parser.add_argument("--case-set", default="",
+                        help="JSON listing several cases: {cases:[{name,set_dir,manifest}]}")
+    parser.add_argument("--repeats", type=int, default=1,
+                        help="run the whole set this many times (independent cases)")
     parser.add_argument("--modes", default="1,2,3")
     parser.add_argument("--label", default="", help="K-run name, e.g. 'K-run 0 baseline'")
     parser.add_argument("--question", default=NEUTRAL_QUESTION)
@@ -472,89 +518,118 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--md-out", default=str(DEFAULT_MD))
     args = parser.parse_args(argv)
 
-    manifest_path = Path(args.manifest)
-    if not manifest_path.is_file():
-        print(f"manifest not found: {manifest_path}", file=sys.stderr)
-        return 2
-    key = AnswerKey.from_manifest(manifest_path)  # the ONLY reader of the manifest
-
     modes = [int(m) for m in args.modes.split(",") if m.strip()]
+    repeats = max(1, int(args.repeats))
+    targets = _load_targets(args.set_dir, args.manifest, args.case_set)
+    for target in targets:
+        if not Path(target["manifest"]).is_file():
+            print(f"manifest not found: {target['manifest']}", file=sys.stderr)
+            return 2
+
     report: dict = {
         "label": args.label or datetime.now(UTC).strftime("K-run %Y-%m-%dT%H:%MZ"),
         "at": datetime.now(UTC).isoformat(),
         "head": _git_head(),
         "question": args.question,
-        "manifest": str(manifest_path),
+        "modes": modes,
+        "repeats": repeats,
         "knowledge": _knowledge_versions(),
+        "targets": [],
         "cases": [],
-        "evidence": [],
-        "truth_skipped": [],
         "truth_leak_checks": [],
-        "key_counts": key.to_dict()["counts"],
     }
 
-    evidence: list[Path] = []
-    if args.set_dir:
-        evidence, skipped = discover_evidence(Path(args.set_dir))
-        report["evidence"] = [str(p) for p in evidence]
-        report["truth_skipped"] = [str(p) for p in skipped]
-        print(f"evidence: {len(evidence)} file(s); skipped {len(skipped)} truth file(s)")
+    for target in targets:
+        set_dir = target["set_dir"]
+        tmanifest = Path(target["manifest"])
+        # The ONLY reader of a manifest. It is never passed to a prompt, a tool,
+        # a child process argument or the child environment.
+        tkey = AnswerKey.from_manifest(tmanifest)
+        evidence: list[Path] = []
+        skipped: list[Path] = []
+        if set_dir:
+            evidence, skipped = discover_evidence(Path(set_dir))
+        entry = {
+            "name": target["name"],
+            "manifest": str(tmanifest),
+            "set_dir": str(set_dir or ""),
+            "evidence": len(evidence),
+            "truth_skipped": len(skipped),
+            "key_counts": tkey.to_dict()["counts"],
+        }
+        report["targets"].append(entry)
+        print(
+            f"\n=== {target['name']}: {len(evidence)} evidence file(s), "
+            f"{entry['key_counts']['techniques']} expected technique(s), "
+            f"{repeats} repeat(s)"
+        )
         if skipped:
-            print("  (truth files are never registered - they are the answer)")
+            print(f"  skipped {len(skipped)} truth file(s) - they are the answer")
 
-    if not args.score_only:
-        if not evidence:
-            print("--set-dir is required unless --score-only", file=sys.stderr)
-            return 2
-        case_ids = {}
-        for mode in modes:
-            case_id = f"CASE-K1-M{mode}-{datetime.now(UTC).strftime('%H%M%S')}"
-            rc, out, _ = _run(
-                [sys.executable, "-m", "nexus", "case", "init",
-                 f"K1 {report['label']} mode {mode}", "--case-id", case_id],
-                timeout=300,
-            )
-            if rc != 0:
-                print(f"case init failed for mode {mode}: {out[-300:]}", file=sys.stderr)
-                return 1
-            case_ids[mode] = case_id
-            for path in evidence:
-                _run(
-                    [sys.executable, "-m", "nexus", "evidence", "register", str(path),
-                     "--case", case_id, "-d", f"K1 {path.name}"],
-                    timeout=1800,
-                )
-            print(f"mode {mode}: case {case_id} ready ({len(evidence)} evidence file(s))")
-        report["case_ids"] = case_ids
-    else:
-        if not args.cases:
-            print("--score-only needs --cases", file=sys.stderr)
-            return 2
-        given = [c.strip() for c in args.cases.split(",") if c.strip()]
-        report["case_ids"] = {int(m): c for m, c in zip(modes, given, strict=False)}
+        for rep in range(repeats):
+            if not args.score_only:
+                if not evidence:
+                    print("--set-dir (or --case-set) is required unless --score-only",
+                          file=sys.stderr)
+                    return 2
+                case_ids = {}
+                stamp = datetime.now(UTC).strftime("%H%M%S")
+                for mode in modes:
+                    case_id = f"CASE-K1-{target['name']}-m{mode}-r{rep + 1}-{stamp}"
+                    rc, out, _ = _run(
+                        [sys.executable, "-m", "nexus", "case", "init",
+                         f"K1 {report['label']} {target['name']} mode {mode} rep {rep + 1}",
+                         "--case-id", case_id],
+                        timeout=300,
+                    )
+                    if rc != 0:
+                        print(f"case init failed: {out[-300:]}", file=sys.stderr)
+                        return 1
+                    case_ids[mode] = case_id
+                    for path in evidence:
+                        _run(
+                            [sys.executable, "-m", "nexus", "evidence", "register", str(path),
+                             "--case", case_id, "-d", f"K1 {path.name}"],
+                            timeout=1800,
+                        )
+                print(f"  rep {rep + 1}: {len(case_ids)} case(s) ready "
+                      f"({len(evidence)} evidence file(s) each)")
+            else:
+                if not args.cases:
+                    print("--score-only needs --cases", file=sys.stderr)
+                    return 2
+                given = [c.strip() for c in args.cases.split(",") if c.strip()]
+                case_ids = {int(m): c for m, c in zip(modes, given, strict=False)}
 
-    for mode in modes:
-        case_id = report["case_ids"][mode]
-        case_dir = cases_root() / case_id
-        if not case_dir.is_dir():
-            print(f"case dir missing: {case_dir}", file=sys.stderr)
-            return 1
+            for mode in modes:
+                case_id = case_ids[mode]
+                case_dir = cases_root() / case_id
+                if not case_dir.is_dir():
+                    print(f"case dir missing: {case_dir}", file=sys.stderr)
+                    return 1
 
-        hits = leak_guard(case_dir, manifest_path)
-        report["truth_leak_checks"].append({"case_id": case_id, "hits": hits})
+                hits = leak_guard(case_dir, tmanifest)
+                report["truth_leak_checks"].append({
+                    "case_id": case_id, "target": target["name"], "hits": hits,
+                })
 
-        started = time.time()
-        run = {"rc": "skipped", "wall_s": 0.0}
-        if not args.score_only and not args.no_run:
-            run = run_mode(mode, case_id, args.question, args.timeout)
-            print(f"mode {mode}: rc={run['rc']} wall={run['wall_s']}s")
+                started = time.time()
+                run = {"rc": "skipped", "wall_s": 0.0}
+                if not args.score_only and not args.no_run:
+                    run = run_mode(mode, case_id, args.question, args.timeout)
+                    print(f"  rep {rep + 1} mode {mode}: rc={run['rc']} "
+                          f"wall={run['wall_s']}s")
 
-        scored = score_case(case_dir, key, started_at=started)
-        scored["mode"] = mode
-        scored["run"] = run
-        report["cases"].append(scored)
-        if hits:
-            print(f"LEAK in {case_id}: {hits[:3]}", file=sys.stderr)
+                scored = score_case(case_dir, tkey, started_at=started)
+                scored.update({
+                    "mode": mode,
+                    "target": target["name"],
+                    "repeat": rep + 1,
+                    "run": run,
+                })
+                report["cases"].append(scored)
+                if hits:
+                    print(f"  LEAK in {case_id}: {hits[:3]}", file=sys.stderr)
 
     report["leak_ok"] = all(not c["hits"] for c in report["truth_leak_checks"])
 
@@ -582,10 +657,15 @@ def main(argv: list[str] | None = None) -> int:
     print(f"\n{report['label']}: leak guard {'CLEAN' if report['leak_ok'] else 'FAILED'}")
     for case in report["cases"]:
         tech = case["dimensions"]["techniques"]
+        fp = case["false_positive"]
+
+        def _num(value: str | float | None) -> str:
+            return "n/a" if value is None else format(value, ".3f")
+
         print(
-            f"  mode {case['mode']}: techniques P={tech['precision']:.3f} "
-            f"R={tech['recall']:.3f} F1={tech['f1']:.3f}, "
-            f"benign-only FP={case['false_positive']['benign_only']}/{case['false_positive']['findings']}"
+            f"  mode {case['mode']}: techniques P={_num(tech['precision'])} "
+            f"R={_num(tech['recall'])} F1={_num(tech['f1'])}, "
+            f"benign-only FP={fp['benign_only']}/{fp['findings']}"
         )
     print(f"wrote {json_out.name} and {md_out.name}")
     return 0 if report["leak_ok"] else 1
