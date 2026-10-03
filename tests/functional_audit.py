@@ -23,13 +23,30 @@ def check(label, condition, detail=""):
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 os.chdir(Path(__file__).resolve().parent)
 
+# Guard + redirect the operator's store. These scripts run outside pytest, so
+# no conftest fixture redirects them: this one appended fixture approvals to the
+# real `~/.nexus/transparency/` (76 files there match no case in the store), and
+# `create_server`'s RAG preload opened the real Chroma SQLite (register D25/V9).
+from _nexus_guard import nexus_guard_end, nexus_snapshot  # noqa: E402
+
+_nexus_before = nexus_snapshot()
+
 # Test isolation: never materialize audit cases into the examiner's real store.
 from nexus.config import settings as _settings  # noqa: E402
+import nexus.transparency as _transparency  # noqa: E402
 
 _audit_cases_root = Path(tempfile.gettempdir()) / f"nexus_audit_cases_{os.getpid()}"
 _audit_cases_root.mkdir(parents=True, exist_ok=True)
 _settings.cases_root = _audit_cases_root
 os.environ["NEXUS_ACTIVE_CASE_FILE"] = str(_audit_cases_root / "active_case")
+# `data_root` is where the RAG index (and its Chroma SQLite) lives.
+_audit_data_root = _audit_cases_root / "data"
+_audit_data_root.mkdir(parents=True, exist_ok=True)
+os.environ["NEXUS_DATA_ROOT"] = str(_audit_data_root)
+_settings.data_root = _audit_data_root
+# Approvals append here. The script already redirects the password and
+# verification dirs; transparency was the one it missed.
+_transparency.TRANSPARENCY_DIR = _audit_cases_root / "transparency"
 
 # ──────────────────────────────────────────────
 # 1. Package imports — are all modules loadable?
@@ -364,4 +381,7 @@ check("merge_verdicts confidence", merged.confidence == "high")
 print(f"\n{'='*50}")
 print(f"RESULTS: {passed} passed, {failed} failed")
 print(f"{'='*50}")
+
+# Leave the operator's store exactly as it was found (register D25/V9).
+nexus_guard_end(_nexus_before, "functional_audit")
 sys.exit(0 if failed <= THRESHOLD else 1)

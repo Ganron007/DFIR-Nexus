@@ -4,11 +4,33 @@ import os
 import shutil
 import sys
 import tempfile
+from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
-os.environ["NEXUS_CASES_ROOT"] = tempfile.mkdtemp(prefix="nexus_test_")
 
-from nexus.app import create_server, in_process_tools
+# Guard + redirect before importing anything that captures a path.
+# Running outside pytest there is no conftest fixture to do this, so the real
+# store was written: `case_init` left `~/.nexus/active_case` pointing at this
+# temp `TEST-001` (deleted at exit), and `create_server`'s RAG preload opened
+# `~/.nexus/data/rag/chroma/chroma.sqlite3` (register D25/V9).
+from _nexus_guard import nexus_guard_end, nexus_snapshot  # noqa: E402
+
+_nexus_before = nexus_snapshot()
+
+_tmp_root = tempfile.mkdtemp(prefix="nexus_test_")
+os.environ["NEXUS_CASES_ROOT"] = os.path.join(_tmp_root, "cases")
+# The active-case pointer is separate from the cases root and defaults to the
+# real `~/.nexus/active_case`; `case_init` writes it.
+os.environ["NEXUS_ACTIVE_CASE_FILE"] = os.path.join(_tmp_root, "active_case")
+# `data_root` is where the RAG index (and its Chroma SQLite) lives.
+os.environ["NEXUS_DATA_ROOT"] = os.path.join(_tmp_root, "data")
+
+from nexus.app import create_server, in_process_tools  # noqa: E402
+from nexus.config import settings as _settings  # noqa: E402
+
+# The env var is read at settings construction, but `~/.nexus/config.yaml` can
+# also set `data_root`, so pin it explicitly before anything opens the index.
+_settings.data_root = Path(_tmp_root) / "data"
 
 server = create_server()
 tools = in_process_tools(server)
@@ -220,3 +242,8 @@ shutil.rmtree(os.environ["NEXUS_CASES_ROOT"], ignore_errors=True)
 print()
 print(f"=== {passed} PASSED, {failed} FAILED (out of {passed + failed}) ===")
 print(f"Total tools registered: {len(tools)}")
+
+# Leave the operator's store exactly as it was found (register D25/V9).
+nexus_guard_end(_nexus_before, "test_integration")
+if failed:
+    raise SystemExit(1)
