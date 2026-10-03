@@ -2715,6 +2715,47 @@ async def _load_mcp_tools(config: dict[str, dict]) -> dict[str, Any]:
     return tools_by_name
 
 
+def _case_evidence_paths(case_id: str) -> list[str]:
+    """Local evidence paths registered on an existing case.
+
+    A tools/interpret run that is given a case but no evidence paths must
+    inherit the case's evidence. Without this the Windows planner is handed no
+    paths, so EVTX is never scheduled (EvtxECmd / Hayabusa / Chainsaw all sit
+    unused), the discovery job SKIPs, and the pass reports clean over evidence
+    it never read.
+
+    Only paths that exist on THIS machine are returned. SIFT-hosted evidence is
+    registered as ``/evidence/<name>`` - a path on the SIFT host - and is left
+    to the SIFT lane rather than handed to the local planner.
+    """
+    from nexus.config import settings
+
+    path = Path(str(settings.cases_root)) / str(case_id or "").strip() / "evidence.json"
+    if not path.is_file():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    items = data if isinstance(data, list) else (data.get("evidence") or [])
+    if not isinstance(items, list):
+        return []
+    out: list[str] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        raw = str(item.get("path") or "").strip()
+        if not raw:
+            continue
+        try:
+            local = Path(raw)
+            if local.exists() and str(local) not in out:
+                out.append(str(local))
+        except OSError:
+            continue
+    return out
+
+
 async def run_pipeline(
     evidence_path: str = "",
     resume: bool = False,
@@ -2797,6 +2838,27 @@ async def run_pipeline(
         else:
             log.warning("No approved findings to resume with")
         return
+
+    # A tools/interpret run on an EXISTING case must inherit that case's
+    # registered evidence. Without this the Windows planner is handed no paths,
+    # EVTX is never scheduled, and the lane reports a clean pass over evidence
+    # it never read.
+    if pipeline_mode in {"tools", "interpret"} and from_case and not (
+        evidence_path or evidence_paths
+    ):
+        inherited = _case_evidence_paths(from_case)
+        if inherited:
+            evidence_paths = inherited
+            log.info(
+                "tools lane inherits %d evidence path(s) from case %s",
+                len(inherited), from_case,
+            )
+        else:
+            log.warning(
+                "tools lane has no evidence paths for case %s: none supplied and "
+                "none of the registered paths exist on this machine",
+                from_case,
+            )
 
     initial = make_initial_state(
         evidence_path=evidence_path,

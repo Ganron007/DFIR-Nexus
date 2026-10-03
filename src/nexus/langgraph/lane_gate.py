@@ -66,11 +66,57 @@ def _key(item: dict[str, Any]) -> tuple[str, str]:
     return (str(item.get("tool") or ""), str(item.get("purpose") or ""))
 
 
+def _is_sift_row(row: dict[str, Any]) -> bool:
+    """A SIFT-host row.
+
+    SIFT is the **one** exception to "never skip evidence" (operator rule): when
+    the SIFT host is unavailable, SIFT-relevant evidence *waits* for it and the
+    examiner is shown it as evidence to add. Every other lane must process its
+    evidence - late is allowed, skipped is not.
+    """
+    return str(row.get("host") or "").strip().lower() == "sift"
+
+
+def _pending_entry(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "tool": str(row.get("tool") or ""),
+        "purpose": str(row.get("purpose") or ""),
+        "reason": str(row.get("reason") or "")[:300],
+    }
+
+
 def _recompute(gate: dict[str, Any]) -> dict[str, Any]:
     skipped = {_key(s) for s in (gate.get("examiner_skips") or [])}
     pending = [u for u in (gate.get("unprocessed") or []) if _key(u) not in skipped]
-    gate["status"] = "blocked" if pending else "clear"
+    waiting = [w for w in (gate.get("waiting_sift") or []) if _key(w) not in skipped]
+    # A pass that processed nothing has not examined the evidence, which is not a
+    # clean result either. A SKIP row (e.g. discovery skipped because no evidence
+    # root was set) used to leave `unprocessed` empty, so the gate reported
+    # `clear` while nothing had run and a no-op read as a clean case.
+    processed = sum(
+        1 for job in (gate.get("jobs") or []) if str(job.get("state") or "") == "processed"
+    )
+    # An audited examiner skip is a decision, not a no-op, so it clears the
+    # nothing-processed case too (the examiner has accounted for the items).
+    no_evidence_processed = processed == 0 and not skipped
+
+    if pending:
+        status = "blocked"
+    elif waiting:
+        # SIFT work is deferred, not skipped: the evidence waits for the host and
+        # the examiner is shown it. It is not "clear" (that work has not run) and
+        # it is not "blocked" (no examiner decision is required to continue).
+        status = "waiting"
+    elif no_evidence_processed:
+        status = "blocked"
+    else:
+        status = "clear"
+
+    gate["status"] = status
     gate["blocked_count"] = len(pending)
+    gate["waiting_count"] = len(waiting)
+    gate["processed_count"] = processed
+    gate["no_evidence_processed"] = no_evidence_processed
     return gate
 
 
@@ -123,10 +169,19 @@ def coverage_snapshot(case_dir: Path | str) -> dict[str, Any]:
         name = str(item.get("purpose") or item.get("tool") or "")
         if name:
             pending.append(name)
+    # Waiting-on-SIFT work is not processed either, so a model must no more claim
+    # those families absent than it may claim a failed one absent.
+    waiting: list[str] = []
+    for item in gate.get("waiting_sift") or []:
+        name = str(item.get("purpose") or item.get("tool") or "")
+        if name:
+            waiting.append(name)
+            pending.append(name)
     return {
         "status": gate.get("status") or "absent",
         "counts": counts,
         "pending": list(dict.fromkeys(pending)),
+        "waiting_sift": list(dict.fromkeys(waiting)),
     }
 
 
@@ -193,16 +248,37 @@ def write_lane_gate(
     unprocessed list and any stale skip for it is dropped.
     """
     prior = read_lane_gate(case_dir)
-    unprocessed = [
-        {
-            "tool": str(row.get("tool") or ""),
-            "purpose": str(row.get("purpose") or ""),
-            "reason": str(row.get("reason") or "")[:300],
-        }
-        for row in ledger
-        if str(row.get("status")) == "FAIL"
-    ]
-    still_bad = {_key(u) for u in unprocessed}
+    # Rows that mean the *evidence* was not examined. Two kinds, kept apart:
+    #
+    # * FAIL - a tool that should have parsed this evidence did not.
+    # * SKIP on the SIFT lane - SIFT work waits for the host (the one exception
+    #   to "never skip evidence"); it is surfaced, not dropped.
+    #
+    # A SKIP from any other lane is a tool that does not apply to this evidence
+    # (Suzaku 2.x is cloud-log only; prefetch is absent; Plaso is opt-in). That is
+    # not evidence being skipped, so it must not block - it stays visible in
+    # `jobs`. What guards "evidence was skipped" is a pass that processed
+    # *nothing*, which `_recompute` blocks.
+    unprocessed: list[dict[str, Any]] = []
+    waiting_sift: list[dict[str, Any]] = []
+    not_applicable: list[dict[str, Any]] = []
+    for row in ledger:
+        state = _job_state(str(row.get("status") or ""))
+        if _is_sift_row(row):
+            if state in {"failed", "skipped"}:
+                waiting_sift.append(_pending_entry(row))
+            continue
+        if state == "failed":
+            unprocessed.append(_pending_entry(row))
+        elif state == "skipped":
+            not_applicable.append(_pending_entry(row))
+    # `not_applicable` is listed so the examiner can see it and, if the pass
+    # processed nothing, settle the gate deliberately rather than hit a dead end.
+    still_bad = (
+        {_key(u) for u in unprocessed}
+        | {_key(w) for w in waiting_sift}
+        | {_key(n) for n in not_applicable}
+    )
     skips = [s for s in (prior.get("examiner_skips") or []) if _key(s) in still_bad]
     jobs = _jobs_from_ledger(ledger)
     gate: dict[str, Any] = {
@@ -211,6 +287,8 @@ def write_lane_gate(
         "ts": ts or _now(),
         "rule": "never skip evidence processing (operator, 2026-09-29)",
         "unprocessed": unprocessed,
+        "waiting_sift": waiting_sift,
+        "not_applicable": not_applicable,
         "examiner_skips": skips,
         "jobs": jobs,
     }
@@ -238,7 +316,16 @@ def examiner_skip(
     skips = list(gate.get("examiner_skips") or [])
     wanted = {_key(i) for i in items} if items else None
     added = 0
-    for unproc in gate.get("unprocessed") or []:
+    # Waiting-on-SIFT items are includable: an examiner may decide this evidence
+    # genuinely has nothing for SIFT (e.g. no memory image), which is a different
+    # call from "wait for the host". Not-applicable rows are includable too, so a
+    # pass that processed nothing is not a dead end.
+    candidates = (
+        list(gate.get("unprocessed") or [])
+        + list(gate.get("waiting_sift") or [])
+        + list(gate.get("not_applicable") or [])
+    )
+    for unproc in candidates:
         key = _key(unproc)
         if wanted is not None and key not in wanted:
             continue
@@ -323,6 +410,21 @@ def gate_message(gate: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def sift_waiting_message(gate: dict[str, Any]) -> str:
+    """One line for the examiner: SIFT work is queued, not skipped."""
+    waiting = gate.get("waiting_sift") or []
+    if not waiting:
+        return ""
+    shown = ", ".join(
+        str(w.get("purpose") or w.get("tool") or "") for w in waiting[:8]
+    )
+    return (
+        f"WAITING ON SIFT - {len(waiting)} item(s) queued for the SIFT host "
+        f"(nothing skipped): {shown}. They process when the host is available; "
+        "add the missing evidence if that is the cause."
+    )
+
+
 def lane_stages(case_dir: Path | str) -> list[dict[str, Any]]:
     """N1-N8 stage states derived from case artifacts (no invented states)."""
     case_dir = Path(case_dir)
@@ -358,9 +460,11 @@ def lane_stages(case_dir: Path | str) -> list[dict[str, Any]]:
     gate = read_lane_gate(case_dir)
     ledger = sorted(case_dir.rglob("runs/*/extractions/_tool_lane_ledger.json"))
     if gate:
-        blocked = gate.get("status") == "blocked"
-        add("N2", "blocked" if blocked else "done",
+        status = str(gate.get("status") or "")
+        n2 = "blocked" if status == "blocked" else ("waiting" if status == "waiting" else "done")
+        add("N2", n2,
             f"run {gate.get('run_id')}: {len(gate.get('unprocessed') or [])} unprocessed, "
+            f"{len(gate.get('waiting_sift') or [])} waiting on SIFT, "
             f"{len(gate.get('examiner_skips') or [])} examiner skip(s)")
     elif ledger:
         add("N2", "done", f"ledger present ({ledger[-1].parent.parent.parent.name})")
