@@ -156,6 +156,42 @@ def _surfaceable(
     return len(fams & declared) >= 2
 
 
+def _ranked_skills(
+    families: set[str] | list[str] | None = None,
+    keywords: set[str] | list[str] | None = None,
+    techniques: set[str] | list[str] | None = None,
+) -> list[tuple[int, dict[str, Any], list[str]]]:
+    """**The one ranking path.** Platform-filtered and surface-gated, then ranked.
+
+    Both :func:`skills_for` (interpret + briefing) and :func:`retrieve_skills`
+    (Mode 2 work orders + the validation harness) call this, so a skill can never
+    be handed to an agent on one path and correctly withheld on the other. The
+    filter used to live in ``skills_for`` alone, so Mode 2 work orders carried
+    procedures for evidence they did not have — `email_phishing`,
+    `browser_artifact_analysis`, `mobile_forensics` and `c2_beaconing` on an
+    EVTX-only case (V11/D26).
+
+    Returns ``(score, skill, why)`` sorted by score descending; the caller
+    truncates, so both surfaces agree on the top-N as well as on the filter.
+    """
+    fams, kws, techs = _context(families, keywords, techniques)
+    case_platforms = infer_case_platform(fams)
+    scored: list[tuple[int, dict[str, Any], list[str]]] = []
+    for skill in get_skills():
+        if validate_skill(skill):
+            continue
+        # A skill scoped to another platform never fires. Without this,
+        # `mobile_forensics` surfaced on a Windows EVTX case because its
+        # trigger listed csv/jsonl - output formats every case has.
+        if not platform_compatible(skill, case_platforms):
+            continue
+        score, why = _score_skill(skill, fams, kws, techs)
+        if score > 0 and _surfaceable(skill, score, kws, techs, fams):
+            scored.append((score, skill, why))
+    scored.sort(key=lambda t: -t[0])
+    return scored
+
+
 def skills_for(
     families: set[str] | list[str] | None = None,
     keywords: set[str] | list[str] | None = None,
@@ -166,24 +202,12 @@ def skills_for(
 
     Ranking: each technique match +3, each keyword match +2, each family
     match +1. A skill with NO trigger hits is never returned — agents only
-    run procedures that are relevant to the evidence and suspicion.
+    run procedures that are relevant to the evidence and suspicion. Platform
+    and surfacing filters are applied by :func:`_ranked_skills`, shared with
+    :func:`retrieve_skills`.
     """
-    fams, kws, techs = _context(families, keywords, techniques)
-    case_platforms = infer_case_platform(fams)
-    scored: list[tuple[int, dict[str, Any]]] = []
-    for skill in get_skills():
-        if validate_skill(skill):
-            continue
-        # A skill scoped to another platform never fires. Without this,
-        # `mobile_forensics` surfaced on a Windows EVTX case because its
-        # trigger listed csv/jsonl - output formats every case has.
-        if not platform_compatible(skill, case_platforms):
-            continue
-        score, _why = _score_skill(skill, fams, kws, techs)
-        if score > 0 and _surfaceable(skill, score, kws, techs, fams):
-            scored.append((score, skill))
-    scored.sort(key=lambda t: -t[0])
-    return [s for _score, s in scored[: max(1, limit)]]
+    ranked = _ranked_skills(families, keywords, techniques)
+    return [skill for _score, skill, _why in ranked[: max(1, limit)]]
 
 
 def skill_version(skill: dict[str, Any]) -> str:
@@ -226,23 +250,17 @@ def retrieve_skills(
 ) -> list[dict[str, Any]]:
     """Runtime skill retrieval for spawned agents (WP 9.5).
 
-    Same ranking as :func:`skills_for`, but returns ranked entries with the
-    match reasons, content version, and KB citations — so an agent run records
-    *why* a procedure was selected and *which* version/citation it came from:
+    The SAME ranking as :func:`skills_for` — literally the same helper
+    (:func:`_ranked_skills`), so the two cannot diverge — with the match
+    reasons, content version and KB citations added on top, so an agent run
+    records *why* a procedure was selected and *which* version/citation it came
+    from:
 
         [{skill, title, version, score, why, citations, mitre}]
     """
-    fams, kws, techs = _context(families, keywords, techniques)
-    scored: list[tuple[int, dict[str, Any], list[str]]] = []
-    for skill in get_skills():
-        if validate_skill(skill):
-            continue
-        score, why = _score_skill(skill, fams, kws, techs)
-        if score > 0:
-            scored.append((score, skill, why))
-    scored.sort(key=lambda t: -t[0])
+    ranked = _ranked_skills(families, keywords, techniques)
     out: list[dict[str, Any]] = []
-    for score, skill, why in scored[: max(1, limit)]:
+    for score, skill, why in ranked[: max(1, limit)]:
         prov = skill_provenance(skill)
         out.append({
             "skill": prov["skill"],

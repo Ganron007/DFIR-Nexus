@@ -30,6 +30,61 @@ def test_retrieve_skills_returns_ranked_metadata():
     assert scores == sorted(scores, reverse=True)
 
 
+def test_skills_for_and_retrieve_skills_are_one_path():
+    """V11/D26: the two retrieval surfaces must agree, on filter AND on top-N.
+
+    They diverged because the platform + surfacing filters lived in `skills_for`
+    alone: `retrieve_skills` — which Mode 2 work orders and the validation
+    harness call — returned up to the limit for any context, so an EVTX-only
+    case carried `email_phishing`, `browser_artifact_analysis`, `mobile_forensics`
+    and `c2_beaconing`, and could even *omit* a skill `skills_for` ranked first.
+    Both now call `_ranked_skills`, so this compares the whole ordered list, not
+    just membership.
+    """
+    contexts = [
+        {"families": {"evtx", "csv", "jsonl"}},
+        {"families": {"evtx"}},
+        {"families": {"prefetch", "lnk", "browser"}},
+        {"families": {"recmd", "registry", "setupapi"}},
+        {"families": {"evtx"}, "keywords": {"lsass"}},
+        {"families": {"evtx", "hayabusa"}, "keywords": {"lsass"}, "techniques": {"T1003.001"}},
+        {"techniques": {"T1003"}},
+        {"families": {"nonexistent_family"}, "keywords": {"nonexistentword"}},
+    ]
+    for ctx in contexts:
+        a = [str(s.get("skill")) for s in skills_for(limit=20, **ctx)]
+        b = [str(s.get("skill")) for s in retrieve_skills(limit=20, **ctx)]
+        assert a == b, f"{ctx}: skills_for={a} retrieve_skills={b}"
+
+
+def test_a_mode2_work_order_on_an_evtx_only_case_carries_no_off_platform_skill():
+    """The Mode 2 path, through the helper it actually calls.
+
+    Exercised via `multi_role._retrieve_skill_refs` rather than `retrieve_skills`
+    directly, so the test fails if the Mode 2 wiring ever stops using the shared
+    path — which is the shape of the original defect.
+    """
+    from nexus.modes.multi_role import _retrieve_skill_refs
+
+    refs = _retrieve_skill_refs(
+        families={"evtx"}, keywords=set(), limit=20
+    )
+    ids = {str(r.get("skill") or "") for r in refs}
+    assert refs, "expected at least the event-log methodology skill"
+    forbidden = {
+        "email_phishing", "browser_artifact_analysis", "mobile_forensics",
+        "macos_forensics", "c2_beaconing",
+    }
+    assert not (ids & forbidden), f"off-platform skills reached a Mode 2 order: {ids & forbidden}"
+    assert "windows_event_log_analysis" in ids, (
+        f"the event-log skill must reach an EVTX case, got {sorted(ids)}"
+    )
+    # Every ref carries provenance and a role, which is what Mode 2 records.
+    for ref in refs:
+        assert ref.get("version"), ref
+        assert "role" in ref, ref
+
+
 def test_skill_version_stable_and_content_sensitive():
     skill = next(s for s in get_skills() if s.get("skill") == "persistence")
     v1 = skill_version(skill)
