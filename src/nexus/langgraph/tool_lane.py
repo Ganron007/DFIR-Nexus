@@ -2583,30 +2583,40 @@ def reconcile_process_list_coverage(
       so the keys could not be read rather than being absent.
     """
     vol_jobs = [job for job in jobs if job.tool == "vol" and job.argv]
-    rows = {
-        vol_plugin_name(job.argv): _job_row_count(job)
-        for job in vol_jobs
-        if job.status == "OK"
-    }
+    # Count per JOB, not per plugin. The pack schedules three
+    # `windows.registry.printkey` jobs (Run, RunOnce, Services), so a
+    # plugin-keyed map collapses them to whichever ran last: an empty key could
+    # stay OK because a sibling key had rows, and a key that *did* have rows
+    # could be marked WARN "returned nothing" (register D24/V8). `id(job)` is
+    # the identity here — the jobs live for the whole call, and the same holds
+    # for any future plugin scheduled more than once (e.g. `handles --pid`).
+    counts = {id(job): _job_row_count(job) for job in vol_jobs if job.status == "OK"}
+
+    def _count(job: ToolJob) -> int:
+        return counts.get(id(job), 0)
+
     scan = max(
-        (rows.get(plugin, 0) for plugin in PSScan_PLUGINS),
+        (
+            _count(job)
+            for job in vol_jobs
+            if vol_plugin_name(job.argv) in PSScan_PLUGINS
+        ),
         default=0,
     )
     warned: list[ToolJob] = []
     if scan <= 0:
         return warned
 
-    def _empty(job: ToolJob, plugin: str) -> bool:
+    def _empty(job: ToolJob) -> bool:
         if job.status == "OK":
-            return rows.get(plugin, 0) == 0
+            return _count(job) == 0
         return job.status == "FAIL" and EMPTY_OUTPUT_FAIL_MARKER in job.reason
 
     # Is the module list reachable in this run? Any process-list walk that
     # produced nothing while psscan saw processes says no.
     list_walk_broken = any(
-        plugin in PROCESS_LIST_PLUGINS and _empty(job, plugin)
+        vol_plugin_name(job.argv) in PROCESS_LIST_PLUGINS and _empty(job)
         for job in vol_jobs
-        for plugin in (vol_plugin_name(job.argv),)
     )
 
     for job in vol_jobs:
@@ -2620,7 +2630,7 @@ def reconcile_process_list_coverage(
             what = "registry read"
         else:
             continue
-        if not _empty(job, plugin):
+        if not _empty(job):
             continue
         job.status = "WARN"
         job.reason = (

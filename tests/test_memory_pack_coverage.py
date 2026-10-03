@@ -72,6 +72,28 @@ def _sift_job(plugin: str, rows: int, status: str = "OK") -> ToolJob:
     )
 
 
+def _registry_job(label: str, rows: int, status: str = "OK") -> ToolJob:
+    """One `windows.registry.printkey --key ...` job, as the pack schedules it.
+
+    The plugin token is identical across the three, which is exactly why a
+    plugin-keyed count collapses them (D24/V8). The `purpose` differs.
+    """
+    body = "\n".join(
+        json.dumps({"Key": f"k{i}", "Name": f"v{i}", "Data": "x"}) for i in range(rows)
+    )
+    return ToolJob(
+        host="sift",
+        tool="vol",
+        argv=[
+            "vol", "-f", "/host/mem.raw", "-r", "jsonl",
+            "windows.registry.printkey", "--key", rf"Software\...\{label}",
+        ],
+        purpose=f"Volatility3 registry.printkey {label}",
+        status=status,
+        result={"data": body, "audit_id": f"a-{label}"},
+    )
+
+
 def test_a_list_walk_with_no_rows_is_a_warn_and_a_coverage_gap(tmp_path):
     case = _case(tmp_path)
     jobs = [
@@ -446,6 +468,68 @@ def test_an_unexpected_alignment_reply_is_reported_not_assumed():
             return [{"type": "text", "text": json.dumps({"status": "error"})}]
 
     assert asyncio.run(_align_remote_active_case(_Tool(), "CASE-X")) == "error"
+
+
+def test_registry_keys_are_judged_one_by_one_not_as_one_plugin(tmp_path):
+    """D24/V8: the three printkey jobs are separate jobs, not one collapsed key.
+
+    The pack schedules `windows.registry.printkey` three times (Run, RunOnce,
+    Services). A plugin-keyed count collapses them to whichever ran last, so an
+    empty key could stay OK because a sibling key had rows — and a key that had
+    rows could be marked WARN "returned nothing". Counts are per job now.
+    """
+    case = _case(tmp_path)
+    run = _registry_job("Run", rows=0)
+    runonce = _registry_job("RunOnce", rows=0)
+    services = _registry_job("Services", rows=7)
+    jobs = [
+        _sift_job("windows.psscan", 134),
+        _sift_job("windows.dlllist", 0),  # the list walk is broken
+        run,
+        runonce,
+        services,
+    ]
+
+    warned = reconcile_process_list_coverage(jobs, case, [])
+
+    assert run.status == "WARN", "an empty key must not ride on a sibling's rows"
+    assert runonce.status == "WARN"
+    assert services.status == "OK", "a key WITH rows must not be warned"
+    assert services not in warned
+    # And the warning is the registry reason, not invented fabrication.
+    assert "registry read" in run.reason
+
+
+def test_the_registry_verdict_mirrors_when_the_rows_move(tmp_path):
+    """Swapping which key has rows gives the mirror result."""
+    case = _case(tmp_path)
+    run = _registry_job("Run", rows=5)
+    runonce = _registry_job("RunOnce", rows=0)
+    jobs = [
+        _sift_job("windows.psscan", 134),
+        _sift_job("windows.dlllist", 0),
+        run,
+        runonce,
+    ]
+
+    reconcile_process_list_coverage(jobs, case, [])
+
+    assert run.status == "OK"
+    assert runonce.status == "WARN"
+
+
+def test_a_duplicate_plugin_process_list_job_is_judged_on_its_own_rows(tmp_path):
+    """The same holds for any plugin scheduled twice (e.g. `handles --pid`)."""
+    case = _case(tmp_path)
+    first = _sift_job("windows.handles", 42)
+    second = _sift_job("windows.handles", 0)
+    jobs = [_sift_job("windows.psscan", 134), first, second]
+
+    warned = reconcile_process_list_coverage(jobs, case, [])
+
+    assert first.status == "OK", "a populated job must not inherit an empty sibling"
+    assert second.status == "WARN"
+    assert warned == [second]
 
 
 def test_the_report_coverage_section_carries_the_gap(tmp_path):
