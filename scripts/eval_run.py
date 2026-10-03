@@ -555,6 +555,7 @@ def main(argv: list[str] | None = None) -> int:
         report["void"] = True
         report["void_reason"] = args.void
 
+    prepared: list[dict] = []
     for target in targets:
         set_dir = target["set_dir"]
         tmanifest = Path(target["manifest"])
@@ -581,8 +582,21 @@ def main(argv: list[str] | None = None) -> int:
         )
         if skipped:
             print(f"  skipped {len(skipped)} truth file(s) - they are the answer")
+        prepared.append({
+            "target": target, "tmanifest": tmanifest, "tkey": tkey,
+            "evidence": evidence,
+        })
 
-        for rep in range(repeats):
+    # Repeat-major, NOT target-major: every target completes r1 before any target
+    # starts r2, so a complete baseline exists as early as possible. Target-major
+    # spends hours finishing one case's repeats before touching the next case -
+    # which is the wrong shape when the batch may be read (or stopped) part-way.
+    for rep in range(repeats):
+        for item in prepared:
+            target = item["target"]
+            tmanifest = item["tmanifest"]
+            tkey = item["tkey"]
+            evidence = item["evidence"]
             if not args.score_only:
                 if not evidence:
                     print("--set-dir (or --case-set) is required unless --score-only",

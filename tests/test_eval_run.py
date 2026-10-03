@@ -442,6 +442,52 @@ def test_a_void_run_says_so_in_the_report(ev, tmp_path):
     assert "a void run" in md and "a real run" in md
 
 
+def test_repeats_are_major_so_a_full_baseline_exists_early(ev, tmp_path, monkeypatch):
+    """Every target finishes r1 before any target starts r2.
+
+    Target-major would spend hours completing one case's repeats before touching
+    the next, so a batch read or stopped part-way would have no complete pass.
+    """
+    (tmp_path / "setdata").mkdir()
+    for name in ("alpha", "beta"):
+        d = tmp_path / "setdata" / name
+        d.mkdir()
+        (d / "a.evtx").write_text("x", encoding="utf-8")
+        (tmp_path / "setdata" / f"{name}.json").write_text(
+            json.dumps({"entries": [{"sha256": ATTACK, "techniques": ["T1059.001"]}]}),
+            encoding="utf-8",
+        )
+    (tmp_path / "case-set.json").write_text(json.dumps({"cases": [
+        {"name": "alpha", "set_dir": "setdata/alpha", "manifest": "setdata/alpha.json"},
+        {"name": "beta", "set_dir": "setdata/beta", "manifest": "setdata/beta.json"},
+    ]}), encoding="utf-8")
+
+    order: list[str] = []
+
+    def _fake_run(cmd, *, timeout):
+        if "case" in cmd and "init" in cmd:
+            case_id = cmd[cmd.index("--case-id") + 1]
+            (Path(ev.cases_root()) / case_id).mkdir(parents=True, exist_ok=True)
+            # CASE-K1-<target>-m<mode>-r<rep>-<stamp>
+            order.append(case_id.split("-")[2])
+        return 0, "", 0.0
+
+    monkeypatch.setattr(ev, "_run", _fake_run)
+    monkeypatch.setattr(ev, "run_mode", lambda *a, **k: {"rc": 0, "wall_s": 0.0})
+
+    rc = ev.main([
+        "--case-set", str(tmp_path / "case-set.json"),
+        "--modes", "1", "--repeats", "2",
+        "--json-out", str(tmp_path / "a.json"), "--md-out", str(tmp_path / "A.md"),
+    ])
+    assert rc == 0
+    assert order == ["alpha", "beta", "alpha", "beta"], order
+    record = json.loads((tmp_path / "a.json").read_text(encoding="utf-8"))["k_runs"][0]
+    assert [(c["target"], c["repeat"]) for c in record["cases"]] == [
+        ("alpha", 1), ("beta", 1), ("alpha", 2), ("beta", 2),
+    ]
+
+
 def test_the_run_record_names_the_baseline_and_the_knowledge_versions(ev, tmp_path):
     """K-run 0 must be reproducible: HEAD, label and knowledge versions recorded."""
     case = _case(tmp_path, [_finding("F-1", ["T1059.001"], AUDIT_ATTACK)])
