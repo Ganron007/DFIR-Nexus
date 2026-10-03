@@ -406,6 +406,17 @@ def _render_run_md(report: dict) -> str:
     lines = [
         f"### {report['label']}",
         "",
+    ]
+    if report.get("void"):
+        # A void run must never be read as a result. The section is regenerated
+        # from the JSON records, so this has to be rendered - a hand-edit to the
+        # Markdown would be wiped on the next run.
+        lines += [
+            "> **VOID — do not read as a result.** "
+            + str(report.get("void_reason") or "marked void by the operator"),
+            "",
+        ]
+    lines += [
         f"- When: {report['at']}",
         f"- HEAD: `{report['head']}`",
         f"- Question: {report['question']!r} (the only examiner input)",
@@ -505,6 +516,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--manifest", default="", help="operator manifest (read only here)")
     parser.add_argument("--case-set", default="",
                         help="JSON listing several cases: {cases:[{name,set_dir,manifest}]}")
+    parser.add_argument("--void", default="",
+                        help="mark this run VOID with a reason (excluded from use as a result)")
     parser.add_argument("--repeats", type=int, default=1,
                         help="run the whole set this many times (independent cases)")
     parser.add_argument("--modes", default="1,2,3")
@@ -538,6 +551,9 @@ def main(argv: list[str] | None = None) -> int:
         "cases": [],
         "truth_leak_checks": [],
     }
+    if args.void:
+        report["void"] = True
+        report["void_reason"] = args.void
 
     for target in targets:
         set_dir = target["set_dir"]
