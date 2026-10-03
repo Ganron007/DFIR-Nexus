@@ -189,6 +189,38 @@ ES-native tools in the guided chat. Modes 2/3 agents use **ES-native tools**
 (`es_fields`/`es_search`/`es_aggregate`/`es_sample`) — Elasticsearch is
 required, there is no CSV fallback for agent analysis.
 
+### 2d-3. Where the data lives
+
+Everything persistent lives under `~/.nexus` (override the root by pointing the
+individual variables below):
+
+```
+~/.nexus/
+  active_case          the active-case pointer (one line: the case id)
+  config.yaml          examiner config, tool paths
+  cases/<case-id>/     the case: evidence/, extractions/, analysis/, audit/,
+                       findings.json, timeline.json, transparency.jsonl, ...
+  cases/cases.db       the canonical record store (SQLite)
+  data/rag/            RAG index + its Chroma database
+  data/triage/         triage baselines
+  passwords/           examiner password hashes (PBKDF2-SHA256)
+  audit_secret         the per-install audit-chain secret
+  transparency/        the hash-chained approval log
+```
+
+Every path is relocatable, and the test suite relocates all of them:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `NEXUS_CASES_ROOT` | `~/.nexus/cases` | The case store: case folders and `cases.db` |
+| `NEXUS_DATA_ROOT` | `~/.nexus/data` | RAG index and triage baselines (including the Chroma database) |
+| `NEXUS_ACTIVE_CASE_FILE` | `~/.nexus/active_case` | The active-case pointer |
+| `NEXUS_AUDIT_DIR` | `~/.nexus/audit` | Audit output when no case resolves |
+
+The pytest suite and the script suites redirect the paths they touch to a temp
+directory and refuse to write your real store, so a test run never needs
+`USERPROFILE` redirected. See [`../tests/README.md`](../tests/README.md).
+
 ### 2e. RAG index and triage baselines
 
 Both knowledge stores are looked for locally first (`~/.nexus/data/rag`,

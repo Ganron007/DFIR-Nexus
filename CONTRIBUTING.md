@@ -34,7 +34,7 @@ pip install -e .[all]
 
 **Counts here lag.** Trust the README badge and a local `pytest` / script run.
 
-### Pytest suite (2326 tests)
+### Pytest suite (2332 tests)
 ```bash
 pytest
 ```
@@ -55,16 +55,14 @@ python tests/test_portal.py            # 18 tests — portal middleware
 python tests/functional_audit.py       # End-to-end wiring verification
 ```
 
-The integration suite writes a case directory under `~/.nexus/`. To
-keep it out of your real home directory, redirect `USERPROFILE`:
-```bash
-# Windows (PowerShell)
-$env:USERPROFILE = "$PWD/.testhome"
-python tests/test_integration.py
-
-# macOS / Linux
-USERPROFILE="$PWD/.testhome" python tests/test_integration.py
-```
+The script suites look after their own isolation: each redirects the `~/.nexus`
+paths it touches (cases root, active-case pointer, transparency store, and the
+RAG index's `data_root`) to a temp directory, and `test_integration.py` plus
+`functional_audit.py` end with `nexus_guard_end()`, which **fails the script** if
+anything under `~/.nexus` changed. So a script run does not need `USERPROFILE`
+redirected, and it will say so if it ever writes your real store. The pytest
+suite is isolated the same way by `tests/conftest.py`. A new script suite should
+follow the same pattern — see [`tests/README.md`](tests/README.md).
 
 ## Pull-request checklist
 
