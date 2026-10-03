@@ -57,6 +57,62 @@ def _lsass_hit() -> dict:
     }
 
 
+def test_a_path_cannot_name_a_technique():
+    """V10: a technique id inside a PATH is the key, not the evidence.
+
+    Measured before the fix: the parser's source-path column
+    (``…\\TA0002-Execution\\T1059.001-PowerShell\\sample.evtx``) made
+    ``powershell_abuse`` match this row — a PowerShell deobfuscation procedure
+    carried into an EVTX row whose *content* shows no PowerShell behaviour. Only
+    the folder name said "PowerShell", which is exactly the leak GATE-H's
+    randomly-named samples would trigger.
+    """
+    from nexus.langgraph.interpret import interpret_hit
+
+    hit = {
+        "family": "evtxecmd",
+        "terms": "",
+        "text": (
+            r"source=C:\evidence\TA0002-Execution"
+            r"\T1059.001-PowerShell\sample.evtx 4624 logon success"
+        ),
+        "fields": {},
+    }
+    out = interpret_hit(None, hit)
+    names = [str(s.get("name") or "") for s in (out.get("skills") or [])]
+    assert "powershell_abuse" not in names, f"a path named the technique: {names}"
+    assert "windows_event_log_analysis" in names, names
+    assert "T1059.001" not in json.dumps(out)
+
+
+def test_a_rule_file_path_cannot_name_a_technique():
+    """The hit's `RuleFile` is a path too, so it must not name a technique."""
+    from nexus.langgraph.interpret import interpret_hit
+
+    out = interpret_hit(None, {
+        "family": "evtxecmd",
+        "terms": "logon success",
+        "text": "4624 An account was successfully logged on",
+        "fields": {"RuleFile": "rules/windows/builtin/T1003_lsass_dump.yml"},
+    })
+    names = [str(s.get("name") or "") for s in (out.get("skills") or [])]
+    assert "lsass_credential_access" not in names, names
+
+
+def test_a_technique_named_in_prose_still_matches():
+    """Do not over-fix: the strip is for paths, not for the examiner's words."""
+    from nexus.langgraph.interpret import interpret_hit
+
+    out = interpret_hit(None, {
+        "family": "evtxecmd",
+        "terms": "T1059.001 powershell encoded command",
+        "text": "powershell -enc observed",
+        "fields": {},
+    })
+    names = [str(s.get("name") or "") for s in (out.get("skills") or [])]
+    assert "powershell_abuse" in names, names
+
+
 def test_interpret_hit_matches_lsass_skill():
     """A hayabusa LSASS-access alert interprets against the lsass skill."""
     from nexus.langgraph.interpret import interpret_hit

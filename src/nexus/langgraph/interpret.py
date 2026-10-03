@@ -37,6 +37,39 @@ _TITLE_FIELDS = (
     "MitreTags", "MitreTechniques", "Detection", "RuleFile",
 )
 
+#: A token carrying a path separator, or ending in a file extension. Used to
+#: strip path segments before TECHNIQUE extraction only (see
+#: :func:`_hit_technique_text`). The extension alternative requires letters, so
+#: a sub-technique id (`T1059.001`) is never mistaken for a filename.
+_PATH_TOKEN_RE = re.compile(r"[\\/]")
+_FILE_TOKEN_RE = re.compile(r"\.[A-Za-z]{1,5}$")
+
+
+def _strip_path_tokens(text: str) -> str:
+    """Drop path-like tokens, keeping ordinary prose.
+
+    A technique id inside a *path* is the answer key leaking into the case, not
+    the analyst finding it: GATE-H's random samples often arrive named after
+    what they are, and a parser's source-path column carries the folder name
+    into the row (`source=C:\\evidence\\TA0002-Execution\\T1059.001-PowerShell\\x.evtx`).
+    Verified 2026-10-03: that row text yielded `T1059.001` as a "technique
+    mentioned" while its content showed no PowerShell behaviour (V10).
+    """
+    return " ".join(
+        tok for tok in (text or "").split()
+        if not (_PATH_TOKEN_RE.search(tok) or _FILE_TOKEN_RE.search(tok))
+    )
+
+
+def _hit_technique_text(hit: dict[str, Any]) -> str:
+    """The hit text used for TECHNIQUE extraction — prose, never a path.
+
+    Keyword matching still reads paths on purpose (a process path legitimately
+    names a process: `C:\\Windows\\svchost.exe` should match the `svchost`
+    keyword), so the strip applies here rather than to :func:`_hit_blob`.
+    """
+    return _strip_path_tokens(_hit_blob(hit))
+
 
 def _hit_blob(hit: dict[str, Any]) -> str:
     """Text blob for matching: terms + title-ish fields + raw text (bounded)."""
@@ -298,8 +331,9 @@ def interpret_hit(
     """
     hit = hit if isinstance(hit, dict) else {}
     family = str(hit.get("family") or "").lower().strip()
-    blob = _hit_blob(hit)
-    techniques = extract_techniques(blob)
+    # Technique extraction never reads a path segment (V10): a folder or file
+    # name is the key, not evidence.
+    techniques = extract_techniques(_hit_technique_text(hit))
     keywords = _hit_keywords(hit)
 
     matched = skills_for(
