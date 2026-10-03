@@ -592,6 +592,16 @@ def main(argv: list[str] | None = None) -> int:
                              "--case", case_id, "-d", f"K1 {path.name}"],
                             timeout=1800,
                         )
+                    # K1 allows exactly one examiner input: a neutral question. It
+                    # must be set as case intake, because the interpret stages read
+                    # the question from the case - without it the lane parses
+                    # everything and then produces a generic host-triage pass with
+                    # no findings, which would score as recall 0 for no good reason.
+                    _run(
+                        [sys.executable, "-m", "nexus", "case", "intake",
+                         "--case", case_id, "--question", args.question],
+                        timeout=300,
+                    )
                 print(f"  rep {rep + 1}: {len(case_ids)} case(s) ready "
                       f"({len(evidence)} evidence file(s) each)")
             else:

@@ -2756,6 +2756,26 @@ def _case_evidence_paths(case_id: str) -> list[str]:
     return out
 
 
+def inherit_evidence_paths(
+    case_id: str,
+    evidence_path: str,
+    evidence_paths: list[str] | None,
+) -> list[str] | None:
+    """The evidence paths a case-based run should use.
+
+    Returns what the caller supplied when it supplied anything, otherwise the
+    case's own registered local paths. **No mode parameter, deliberately**: every
+    mode that runs the lane (tools, coverage, design, interpret) needs these, and
+    scoping an earlier version of this to `tools`/`interpret` left `coverage`
+    - which is what Mode 1 runs - planning an empty lane.
+    """
+    if evidence_path or evidence_paths:
+        return evidence_paths
+    if not str(case_id or "").strip():
+        return evidence_paths
+    return _case_evidence_paths(case_id) or evidence_paths
+
+
 async def run_pipeline(
     evidence_path: str = "",
     resume: bool = False,
@@ -2839,25 +2859,22 @@ async def run_pipeline(
             log.warning("No approved findings to resume with")
         return
 
-    # A tools/interpret run on an EXISTING case must inherit that case's
-    # registered evidence. Without this the Windows planner is handed no paths,
-    # EVTX is never scheduled, and the lane reports a clean pass over evidence
-    # it never read.
-    if pipeline_mode in {"tools", "interpret"} and from_case and not (
-        evidence_path or evidence_paths
-    ):
-        inherited = _case_evidence_paths(from_case)
+    # A run on an EXISTING case must inherit that case's registered evidence.
+    # Without this the Windows planner is handed no paths, EVTX is never
+    # scheduled, and the lane reports a clean pass over evidence it never read.
+    if from_case and not (evidence_path or evidence_paths):
+        inherited = inherit_evidence_paths(from_case, evidence_path, evidence_paths)
         if inherited:
             evidence_paths = inherited
             log.info(
-                "tools lane inherits %d evidence path(s) from case %s",
-                len(inherited), from_case,
+                "%s run inherits %d evidence path(s) from case %s",
+                pipeline_mode, len(inherited), from_case,
             )
         else:
             log.warning(
-                "tools lane has no evidence paths for case %s: none supplied and "
+                "%s run has no evidence paths for case %s: none supplied and "
                 "none of the registered paths exist on this machine",
-                from_case,
+                pipeline_mode, from_case,
             )
 
     initial = make_initial_state(
