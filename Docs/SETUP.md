@@ -604,11 +604,40 @@ NEXUS_SIFT_SSH_KEY=~/.ssh/cadre-sift-key
 NEXUS_SIFT_MCP_URL=http://<sift-ip>:4508/mcp
 ```
 
-**Evidence:** the examiner copies evidence into
+**Evidence:** the examiner stages it into
 `~/.nexus/cases/<case>/evidence/` on the SIFT host (`nexus sift setup --case`
 creates the layout). The lane never pushes disk/memory images implicitly.
 Evidence already on the host can be registered without a local copy:
 `nexus evidence register /remote/path --sift-hosted --sha256 <hex>`.
+
+`scripts/stage-sift-evidence.ps1` is the repeatable version of that step — run it
+whenever a case needs SIFT, since nothing is kept on the host between cases:
+
+```powershell
+# transfer the compact archive, extract on the host, verify by hash
+./scripts/stage-sift-evidence.ps1 -CaseId CASE-XXXX `
+    -Evidence  "Evidence-files\_staging\608-sift\dmz-www-disk.img,
+                Evidence-files\_staging\608-sift\mem.raw" `
+    -Archive   "Evidence-files\03-linux\608-sift\dmz-www\dmz-www-disk.7z" `
+    -Extract -Verify
+
+# see the plan without transferring
+./scripts/stage-sift-evidence.ps1 -CaseId CASE-XXXX -Evidence path\to\mem.raw -WhatIf
+```
+
+Two habits it encodes:
+
+- **Transfer the archive, extract on the host.** The 608-sift disk ships as a
+  996 MB `.7z` containing the 20 GiB image, so staging that pair moves **4.2 GB
+  instead of 24.7 GB**. Pass the archive with `-Archive`; the script sends it in
+  place of the plain file and runs `7z x` on the host.
+- **Verify, do not assume.** It compares sizes and hashes after the copy and
+  fails on a mismatch; for an extracted archive it checks the file against the
+  `.md5` the archive carries rather than re-reading 20 GiB.
+
+It then prints the case-intake keys to set — `sift_required`,
+`sift_evidence_root`, `sift_memory_file` and `sift_os` (match the **image**, not
+the host) — so the lane can find the evidence.
 
 **Reading a SIFT run.** Three behaviours matter when you read the ledger:
 

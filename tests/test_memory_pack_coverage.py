@@ -532,6 +532,42 @@ def test_a_duplicate_plugin_process_list_job_is_judged_on_its_own_rows(tmp_path)
     assert warned == [second]
 
 
+def test_the_alignment_is_handed_case_activate_not_run_command():
+    """The first version passed `run_command`, so it activated nothing.
+
+    `_align_remote_active_case(run_command, case_id)` sends
+    `run_command(case_id=…)` — a request with no `command` argument — so the
+    call cannot activate a case and the helper only logs a warning. The jobs
+    then persist nowhere unless something else set the host's active case, which
+    is why a fresh `sift setup` + staged evidence produced 15/15 FAIL
+    "produced no output file" (found 2026-10-03).
+
+    Pinned by source, because the defect is the *argument*, not the helper's
+    logic — the helper's own tests stub the tool and pass either way.
+    """
+    import inspect
+
+    from nexus.langgraph import tool_lane
+
+    src = inspect.getsource(tool_lane.run_tool_lane)
+    assert '_align_remote_active_case(tools.get("case_activate")' in src, (
+        "the lane must hand the alignment `case_activate`; passing run_command "
+        "silently activates nothing"
+    )
+    assert "_align_remote_active_case(sift_tool" not in src, (
+        "`sift_tool` is run_command — passing it here is the bug this pins"
+    )
+
+
+def test_the_alignment_without_the_tool_warns_and_returns_empty():
+    """A host that does not expose case_activate must not crash the lane."""
+    import asyncio
+
+    from nexus.langgraph.tool_lane import _align_remote_active_case
+
+    assert asyncio.run(_align_remote_active_case(None, "CASE-X")) == ""
+
+
 def test_the_report_coverage_section_carries_the_gap(tmp_path):
     """WO-V6 item 1: the gap is visible in the report's coverage section."""
     from nexus.analysis.coverage_audit import report_section

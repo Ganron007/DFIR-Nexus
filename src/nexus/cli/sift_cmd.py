@@ -201,6 +201,33 @@ def setup(
         if "LAYOUT-OK" in out:
             typer.echo(f"  layout: ~/.nexus/cases/{name}/{{evidence,extractions,analysis}} ready")
 
+        # The layout is not a CASE. `run_command` persists tool output into the
+        # remote ACTIVE case, and `case_activate` needs a case record
+        # (CASE.yaml); with only directories, the active case stays unset and
+        # every SIFT job writes nothing and FAILs "produced no output file".
+        # Found 2026-10-03 by re-running the staging flow on a fresh case.
+        rc, out = _ssh(
+            f"if [ -f ~/.nexus/cases/{name}/CASE.yaml ]; then echo CASE-EXISTS; "
+            "else cd ~/DFIR-Nexus && .venv/bin/python -m nexus case init "
+            f"'SIFT lane {name}' --case-id {name} >/dev/null 2>&1 "
+            "&& echo CASE-CREATED || echo CASE-FAILED; fi"
+        )
+        if "CASE-CREATED" in out:
+            typer.echo(
+                "  case: created on the host and set ACTIVE "
+                "(the lane persists its captures there)"
+            )
+        elif "CASE-EXISTS" in out:
+            typer.echo("  case: already present on the host")
+        else:
+            typer.echo(
+                "  case: could NOT be created on the host — SIFT jobs will FAIL "
+                "with 'produced no output file' because there is no active case "
+                "to persist into. Run on the host: "
+                f"cd ~/DFIR-Nexus && .venv/bin/python -m nexus case init --case-id {name}",
+                err=True,
+            )
+
     # The MCP binds 0.0.0.0 and executes host binaries, so it needs a bearer
     # token (D28). ENSURE one first - creating the file, or adding the key to an
     # older file that predates the requirement - and only then decide whether to

@@ -2413,22 +2413,30 @@ def apply_prior_ok(jobs: list[ToolJob], case_dir: Path) -> int:
     return reused
 
 
-async def _align_remote_active_case(sift_tool, case_id: str) -> str:
+async def _align_remote_active_case(activate_tool, case_id: str) -> str:
     """Point the SIFT host's active case at this case before its jobs run.
 
     ``run_command`` persists into the remote host's **active** case, and
     ``pull_sift_extractions`` reads ``<remote_cases_root>/<case_id>/extractions``.
     When the two disagree — the host's active case drifts whenever anyone runs a
-    command for another case, including the leaked-env test run on 2026-10-02 —
-    every SIFT output is written where the pull never looks, and the lane still
-    reports OK. That is a silent loss of the whole pack.
+    command for another case — every SIFT output is written where the pull never
+    looks, and the lane still reports OK. That is a silent loss of the whole pack.
 
-    ``case_activate`` is an MCP tool, so this uses the product's own mechanism.
-    Best-effort: a host without the tool, or a failed call, is logged and never
-    fails the lane (the jobs still run; only the pull is at risk).
+    ``activate_tool`` must be the MCP's **``case_activate``** tool. Passing
+    ``run_command`` here (the first version did) calls
+    ``run_command(case_id=…)`` — a request with no ``command`` — so nothing is
+    activated and the helper merely warns. Found 2026-10-03 by clearing the
+    remote active case and re-running the lane: the alignment did not restore it.
     """
+    if activate_tool is None:
+        log.warning(
+            "tool_lane: no case_activate tool on the SIFT MCP — cannot align the "
+            "remote active case; the pull reads %s/extractions, so check the host",
+            case_id,
+        )
+        return ""
     try:
-        raw = await sift_tool.ainvoke({"case_id": case_id})
+        raw = await activate_tool.ainvoke({"case_id": case_id})
         # MCP returns a content list; the payload is JSON in its text part.
         payload = raw
         if isinstance(payload, list):
@@ -3474,8 +3482,10 @@ async def run_tool_lane(
                 mark_missing_vol_plugins(sift_jobs, listed)
         except Exception as exc:  # noqa: BLE001 — a failed probe must not skip the pack
             log.warning("volatility plugin probe skipped: %s", exc)
-    if sift_tool is not None and sift_jobs:
-        await _align_remote_active_case(sift_tool, case_id)
+    if sift_jobs:
+        # case_activate, NOT run_command: the first version passed the wrong
+        # tool, so this called run_command(case_id=...) and activated nothing.
+        await _align_remote_active_case(tools.get("case_activate"), case_id)
     await _run_bounded(sift_jobs)
     _index_after_batch(sift_jobs)
     coverage_warned = reconcile_process_list_coverage(
