@@ -32,6 +32,33 @@ cannot redirect — the case/credential store (`~/.nexus`) and `.env`. It names
 which of the two was touched. `tests/test_credential_tripwire.py` is the canary
 that proves it fires (`NEXUS_TRIPWIRE_CANARY=1`); it writes a file by design.
 
+### Keeping the script suites out of the operator's store
+
+The script suites below run **outside pytest**, so they import no fixture and
+nothing redirects them. Two of them used to write the real `~/.nexus` (a
+dangling `active_case`; fixture approvals appended to `transparency/`), and a
+third path went unnoticed until a guard caught it: `create_server()` preloads
+the RAG index, which opens the real Chroma SQLite under `data_root`.
+
+Both fixed scripts now redirect every path they touch (`NEXUS_ACTIVE_CASE_FILE`,
+`NEXUS_DATA_ROOT` + `settings.data_root`, and
+`transparency.TRANSPARENCY_DIR`) and end with `nexus_guard_end()`, which exits
+non-zero if anything under `~/.nexus` changed. The guard lives in
+`tests/_nexus_guard.py` and uses the same `(size, mtime_ns)` shape as the pytest
+tripwire, so the two agree on what "changed" means — and when it fires it names
+the path to redirect.
+
+A new script suite should take the same snapshot before importing anything that
+captures a path:
+
+```python
+from _nexus_guard import nexus_guard_end, nexus_snapshot
+
+_before = nexus_snapshot()
+# ... the script ...
+nexus_guard_end(_before, "my_script")
+```
+
 ## The script suites
 
 Three suites, all runnable as plain Python scripts. No pytest required.
