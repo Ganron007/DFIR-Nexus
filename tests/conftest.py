@@ -356,10 +356,19 @@ def _es_index_tripwire():
             "did not answer",
             flush=True,
         )
+    # Present-but-empty, NOT popped: `llm_pipeline._load_dotenv()` runs on every
+    # `get_model` call and fills any ABSENT key, so a popped URL is refilled from
+    # the developer's `.env` on the first model call made outside a test's own
+    # window — a thread, a teardown, a session fixture. From then on every
+    # per-test `monkeypatch` restores the real URL at teardown, and the tripwire
+    # below detects a leak at session end instead of preventing one (D23/WO-V7).
+    # Present-but-empty survives the reload, which is why the LLM keys use it too.
     saved_env = {
-        key: os.environ.pop(key, None)
+        key: os.environ.get(key)
         for key in ("NEXUS_ES_URL", "NEXUS_ES_AUTOINDEX")
     }
+    for key in saved_env:
+        os.environ[key] = ""
     yield
     for key, value in saved_env.items():
         if value is None:
