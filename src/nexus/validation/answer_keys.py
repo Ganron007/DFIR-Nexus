@@ -22,6 +22,7 @@ exclusion. Two keys ship:
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
@@ -31,6 +32,7 @@ from typing import Any
 
 TECHNIQUE_RE = re.compile(r"^(T\d{4}(?:\.\d{3})?)\s*[-_]\s*(.*)$")
 TACTIC_RE = re.compile(r"^(TA\d{4})\s*[-_]\s*(.*)$")
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 # PECmd/Prefetch names: <EXE>-<hash>-<runs>.pf, <EXE>-<runs>.pf or <runs>-<EXE>.pf
 PREFETCH_RE = re.compile(
     r"^(?:"
@@ -54,6 +56,7 @@ class KeyEntry:
     technique: str = ""
     label: str = ""
     entity: str = ""
+    window: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {"file": self.file}
@@ -67,6 +70,8 @@ class KeyEntry:
             out["label"] = self.label
         if self.entity:
             out["entity"] = self.entity
+        if self.window:
+            out["window"] = self.window
         return out
 
 
@@ -86,12 +91,39 @@ class Excluded:
 
 
 @dataclass
+class Unlabelled:
+    """A file registered in the case that the key does not label.
+
+    Reported rather than dropped: a registered file with no manifest entry is
+    evidence the scoring run could not use, and saying so is the difference
+    between "recall is low" and "recall is unmeasured for part of the case".
+    """
+
+    sha256: str
+    names: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        out: dict[str, Any] = {"sha256": self.sha256}
+        if self.names:
+            out["names"] = list(self.names)
+        return out
+
+
+@dataclass
 class AnswerKey:
     kind: str
     root: str
     entries: list[KeyEntry] = field(default_factory=list)
     excluded: list[Excluded] = field(default_factory=list)
     built_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+    #: Where an operator manifest was read from (provenance), if any.
+    manifest: str = ""
+    #: Case id this key was scoped to by :meth:`restrict_to`, if any.
+    case: str = ""
+    #: Registered files with no entry, and manifest entries not in the case.
+    unlabelled: list[Unlabelled] = field(default_factory=list)
+    ignored: list[dict[str, str]] = field(default_factory=list)
+    matched: int = 0
 
     def techniques(self) -> set[str]:
         return {e.technique for e in self.entries if e.technique}
@@ -103,7 +135,7 @@ class AnswerKey:
         return self.techniques() if dimension == "techniques" else self.entities()
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "kind": self.kind,
             "root": self.root,
             "built_at": self.built_at,
@@ -112,10 +144,173 @@ class AnswerKey:
                 "techniques": len(self.techniques()),
                 "entities": len(self.entities()),
                 "excluded": len(self.excluded),
+                "matched": self.matched,
+                "unlabelled": len(self.unlabelled),
+                "ignored": len(self.ignored),
             },
             "entries": [e.to_dict() for e in self.entries],
             "excluded": [x.to_dict() for x in self.excluded],
         }
+        if self.manifest:
+            out["manifest"] = self.manifest
+        if self.case:
+            out["case"] = self.case
+        if self.unlabelled:
+            out["unlabelled"] = [u.to_dict() for u in self.unlabelled]
+        if self.ignored:
+            out["ignored"] = [dict(i) for i in self.ignored]
+        return out
+
+    @classmethod
+    def from_manifest(cls, manifest_path: str | Path) -> AnswerKey:
+        """Ground truth the operator writes and keeps **outside the case**.
+
+        YAML or JSON::
+
+            entries:
+              - sha256: <64 hex>
+                techniques: [T1059.001, T1003]   # optional
+                entities: [powershell.exe]        # optional
+                window: "2026-09-01..2026-09-02"  # optional
+                notes: "Campaign H step 3"        # optional
+
+        Matching is by content hash, so the evidence may be renamed freely —
+        that is the point. A random sample often arrives named after what it is,
+        and a key that read names would put the answer inside the case (V10).
+
+        Malformed entries are reported in ``excluded`` rather than dropped: the
+        same rule this module states for its file-derived keys.
+        """
+        path = Path(manifest_path)
+        if not path.is_file():
+            raise FileNotFoundError(f"manifest not found: {path}")
+        raw = path.read_text(encoding="utf-8")
+        loaded: Any = None
+        try:
+            loaded = json.loads(raw)
+        except ValueError:
+            try:
+                import yaml
+
+                loaded = yaml.safe_load(raw)
+            except Exception:  # noqa: BLE001 — a bad manifest must say so
+                loaded = None
+        if not isinstance(loaded, dict):
+            raise ValueError(f"manifest must be a mapping with an 'entries' list: {path}")
+        raw_entries = loaded.get("entries")
+        if not isinstance(raw_entries, list):
+            raise ValueError(f"manifest has no 'entries' list: {path}")
+
+        key = cls(kind="operator-manifest", root=str(path), manifest=str(path))
+        for index, item in enumerate(raw_entries):
+            where = f"entries[{index}]"
+            if not isinstance(item, dict):
+                key.excluded.append(Excluded(file=where, reason="entry is not a mapping"))
+                continue
+            digest = str(item.get("sha256") or "").strip().lower()
+            if not _SHA256_RE.match(digest):
+                key.excluded.append(
+                    Excluded(file=where, reason="missing or malformed sha256 (need 64 hex)")
+                )
+                continue
+            techniques = [
+                str(t).strip().upper() for t in (item.get("techniques") or []) if str(t).strip()
+            ]
+            entities = [str(e).strip() for e in (item.get("entities") or []) if str(e).strip()]
+            if not techniques and not entities:
+                key.excluded.append(
+                    Excluded(
+                        file=where,
+                        reason="no techniques and no entities — nothing to score",
+                        sha256=digest,
+                    )
+                )
+                continue
+            label = str(item.get("notes") or "").strip()
+            window = str(item.get("window") or "").strip()
+            for technique in techniques:
+                key.entries.append(
+                    KeyEntry(file=digest, sha256=digest, technique=technique,
+                             label=label, window=window)
+                )
+            for entity in entities:
+                key.entries.append(
+                    KeyEntry(file=digest, sha256=digest, entity=entity,
+                             label=label, window=window)
+                )
+        return key
+
+    def restrict_to(self, case_dir: str | Path) -> AnswerKey:
+        """Scope the key to the files actually registered in this case, by hash.
+
+        Registered files with no entry become ``unlabelled``; manifest entries
+        that are not registered are ``ignored``. Both are reported, so a scoring
+        run states which of its inputs it could use rather than quietly scoring
+        a subset. Returns a new key; the receiver is unchanged.
+        """
+        case_dir = Path(case_dir)
+        registered = _registered_hashes(case_dir)
+        scoped = AnswerKey(
+            kind=self.kind,
+            root=self.root,
+            manifest=self.manifest,
+            case=case_dir.name,
+            excluded=list(self.excluded),
+        )
+        covered: set[str] = set()
+        ignored: set[str] = set()
+        for entry in self.entries:
+            digest = (entry.sha256 or "").strip().lower()
+            if not digest:
+                # Nothing to match on; keep it rather than silently discarding.
+                scoped.entries.append(entry)
+                continue
+            if digest in registered:
+                scoped.entries.append(entry)
+                covered.add(digest)
+            elif digest not in ignored:
+                ignored.add(digest)
+                scoped.ignored.append(
+                    {"sha256": digest, "reason": "not registered in this case"}
+                )
+        for digest, names in sorted(registered.items()):
+            if digest not in covered:
+                scoped.unlabelled.append(Unlabelled(sha256=digest, names=names))
+        scoped.matched = len(covered)
+        return scoped
+
+    def entries_for_sha(self, sha256: str) -> list[KeyEntry]:
+        """Entries labelled for one file hash."""
+        wanted = (sha256 or "").strip().lower()
+        return [e for e in self.entries if (e.sha256 or "").lower() == wanted]
+
+
+def _registered_hashes(case_dir: Path) -> dict[str, list[str]]:
+    """``sha256 -> names`` from a case's evidence registry. Absent file is empty."""
+    path = Path(case_dir) / "evidence.json"
+    if not path.is_file():
+        return {}
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    items = loaded if isinstance(loaded, list) else (loaded.get("evidence") or [])
+    if not isinstance(items, list):
+        return {}
+    out: dict[str, list[str]] = {}
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        digest = str(
+            item.get("sha256") or item.get("file_hash_sha256") or ""
+        ).strip().lower()
+        if not digest:
+            continue
+        names = out.setdefault(digest, [])
+        name = str(item.get("name") or item.get("path") or "").strip()
+        if name and name not in names:
+            names.append(name)
+    return out
 
 
 def _sha256(path: Path) -> str:

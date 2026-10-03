@@ -83,27 +83,50 @@ def _pct(value: float) -> str:
     return f"{value * 100:.1f}%"
 
 
-def score_cases(key: AnswerKey, cases: list[tuple[str, Path]], dimension: str) -> dict:
-    """Per-case and per-mode dimensions, plus the mode roll-up."""
+def score_cases(
+    key: AnswerKey,
+    cases: list[tuple[str, Path]],
+    dimension: str,
+    *,
+    scope_per_case: bool = False,
+) -> dict:
+    """Per-case and per-mode dimensions, plus the mode roll-up.
+
+    ``scope_per_case`` restricts the key to each case's registered files by hash
+    — the operator-manifest path (V10). The scoping result is recorded per case,
+    so the run says how much of its key it could apply.
+    """
     per_case = []
     by_mode: dict[str, dict] = {}
+    scope = {"matched": 0, "unlabelled": 0, "ignored": 0}
     for case_id, case_dir in cases:
+        case_key = key.restrict_to(case_dir) if scope_per_case else key
+        if scope_per_case:
+            scope["matched"] += case_key.matched
+            scope["unlabelled"] += len(case_key.unlabelled)
+            scope["ignored"] += len(case_key.ignored)
         modes_present: list[int] = []
         rows = {}
         for mode in MODES:
-            scored = findings_dimension(case_dir, key, dimension=dimension, mode=mode)
+            scored = findings_dimension(case_dir, case_key, dimension=dimension, mode=mode)
             if scored["findings_scored"]:
                 modes_present.append(mode)
             rows[f"mode{mode}"] = scored
-        rows["all"] = findings_dimension(case_dir, key, dimension=dimension, mode="all")
-        per_case.append(
-            {
-                "case_id": case_id,
-                "case_dir": str(case_dir),
-                "modes_present": modes_present,
-                "dimensions": rows,
+        rows["all"] = findings_dimension(case_dir, case_key, dimension=dimension, mode="all")
+        record = {
+            "case_id": case_id,
+            "case_dir": str(case_dir),
+            "modes_present": modes_present,
+            "dimensions": rows,
+        }
+        if scope_per_case:
+            record["key_scope"] = {
+                "matched": case_key.matched,
+                "unlabelled": [u.to_dict() for u in case_key.unlabelled],
+                "ignored": [dict(i) for i in case_key.ignored],
+                "excluded": [x.to_dict() for x in case_key.excluded],
             }
-        )
+        per_case.append(record)
         for mode in MODES:
             if mode not in modes_present:
                 continue
@@ -136,7 +159,8 @@ def score_cases(key: AnswerKey, cases: list[tuple[str, Path]], dimension: str) -
             "precision": round(precision, 4),
             "f1": round(f1, 4),
         }
-    return {"dimension": dimension, "per_case": per_case, "by_mode": rollup}
+    return {"dimension": dimension, "per_case": per_case, "by_mode": rollup,
+            "key_scope": scope if scope_per_case else {}}
 
 
 def render_markdown(report: dict) -> str:
@@ -212,6 +236,19 @@ def render_markdown(report: dict) -> str:
     return "\n".join(lines)
 
 
+def _display(path: Path) -> str:
+    """Repo-relative when possible; the absolute path otherwise.
+
+    The scorer accepts `--json-out` outside the repo (a GATE-H run may keep its
+    report elsewhere), and `relative_to` raises for a path outside the tree —
+    which turned a successful run into rc=1.
+    """
+    try:
+        return str(path.relative_to(REPO))
+    except ValueError:
+        return str(path)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("case_ids", nargs="+", help="case ids to score")
@@ -226,15 +263,30 @@ def main(argv: list[str] | None = None) -> int:
         help="evidence root for --kind self-describing",
     )
     parser.add_argument("--dimension", default="techniques", choices=("techniques", "entities"))
+    parser.add_argument(
+        "--manifest",
+        default="",
+        help=(
+            "operator-written answer key (YAML/JSON, kept outside the case): "
+            "entries of {sha256, techniques, entities, window?, notes?}. "
+            "Scoped per case by hash, so evidence may be renamed freely. "
+            "Overrides --kind."
+        ),
+    )
     parser.add_argument("--cases-root", default=None)
     parser.add_argument("--json-out", default=str(DEFAULT_JSON))
     parser.add_argument("--md-out", default=str(DEFAULT_MD))
     args = parser.parse_args(argv)
 
-    if args.kind == "evtx-to-mitre":
+    if args.manifest:
+        key = AnswerKey.from_manifest(args.manifest)
+        scope_per_case = True
+    elif args.kind == "evtx-to-mitre":
         key = evtx_to_mitre_key(args.key_root)
+        scope_per_case = False
     else:
         key = self_describing_key(args.evidence_root)
+        scope_per_case = False
 
     cases_root = Path(args.cases_root) if args.cases_root else _cases_root()
     cases: list[tuple[str, Path]] = []
@@ -256,7 +308,7 @@ def main(argv: list[str] | None = None) -> int:
         "cases_root": str(cases_root),
         "missing_cases": missing,
     }
-    report.update(score_cases(key, cases, args.dimension))
+    report.update(score_cases(key, cases, args.dimension, scope_per_case=scope_per_case))
 
     json_out, md_out = Path(args.json_out), Path(args.md_out)
     # read-only promise, enforced: never write inside a case directory
@@ -274,6 +326,12 @@ def main(argv: list[str] | None = None) -> int:
     md_out.write_text(render_markdown(report), encoding="utf-8")
 
     print(f"key: {key.kind} — {len(key.entries)} item(s), {len(key.excluded)} excluded")
+    if args.manifest:
+        scope = report.get("key_scope") or {}
+        print(
+            f"manifest scoping: matched {scope.get('matched', 0)} file(s), "
+            f"unlabelled {scope.get('unlabelled', 0)}, ignored {scope.get('ignored', 0)}"
+        )
     if not report["by_mode"]:
         print("no case produced a scorable finding for this dimension")
     for name in sorted(report["by_mode"]):
@@ -284,7 +342,7 @@ def main(argv: list[str] | None = None) -> int:
             f"(cases {row['cases']}, findings {row['findings_scored']}, "
             f"expected {len(row['expected'])}, missed {len(row['missed'])})"
         )
-    print(f"wrote {json_out.relative_to(REPO)} and {md_out.relative_to(REPO)}")
+    print(f"wrote {_display(json_out)} and {_display(md_out)}")
     return 0
 
 
