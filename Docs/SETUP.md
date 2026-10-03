@@ -646,7 +646,12 @@ nexus sift ingest /path/to/output.zip --as plaso   # or the portal Ingest page
 
 ## 6. Multi-Machine Wiring
 
-For network security, always configure a bearer token before exposing DFIR-Nexus over the network.
+**For network security, configure a bearer token before exposing DFIR-Nexus over the network.** The MCP endpoint runs host binaries (`run_command` on Linux, `run_windows_command` on Windows), so reaching it means executing code as that server's user. What is enforced, precisely:
+
+- **Non-loopback bind ⇒ the token is required.** `nexus serve --http --host 0.0.0.0` (or any non-loopback address) **refuses to start** without `NEXUS_BEARER_TOKEN`, alongside `NEXUS_AUDIT_SECRET` and `NEXUS_PORTAL_PASSWORD`. That is deliberate: fail closed rather than expose execution.
+- **The token gates `/mcp` only.** A request to the MCP endpoint without `Authorization: Bearer <token>` gets `401`. The **portal is not gated by it** — it keeps its own password, rate limit and security headers — because a browser cannot send a bearer header on a navigation.
+- **A loopback bind needs no token.** `nexus serve --http --host 127.0.0.1` is not reachable off the machine and behaves as before.
+- **Both sides must match.** The client sends `NEXUS_BEARER_TOKEN` from its own environment as `Authorization: Bearer …`. If the two differ, every MCP call returns `401`.
 
 ### Step 1: Start servers with Bearer Authentication
 Run these commands on their respective VM hosts.
@@ -663,13 +668,16 @@ $env:NEXUS_BEARER_TOKEN = "secure-passphrase-token-windows"
 nexus serve --http --host 0.0.0.0 --port 4508
 ```
 
+> **The SIFT lane does this for you.** `nexus sift setup --case <case>` generates the token into `~/.nexus/sift-mcp.env` on the SIFT host (creating the file, or adding the key to an older one that predates the requirement) and **prints it in the env block** — put that value in your examiner `.env` as `NEXUS_BEARER_TOKEN`. Server and client then match by construction.
+
 ### Step 2: Generate the Client configuration
 On your examiner/client host (running Claude Code or Cursor), configure the client to communicate with both servers:
 ```bash
 nexus setup client --sift 192.0.2.41:4508 --windows 192.0.2.42:4508
 ```
 If the servers require a bearer token (`NEXUS_BEARER_TOKEN` set on the server),
-add an `Authorization: Bearer <token>` header to each server entry in the
+the client sends `Authorization: Bearer <token>` automatically from its own
+`NEXUS_BEARER_TOKEN`. The two values must be identical.
 generated `.mcp.json` (or global configuration file) manually.
 
 ---

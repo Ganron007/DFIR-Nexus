@@ -201,25 +201,59 @@ def setup(
         if "LAYOUT-OK" in out:
             typer.echo(f"  layout: ~/.nexus/cases/{name}/{{evidence,extractions,analysis}} ready")
 
-    # SIFT-side MCP: start it when it is not already listening.
-    rc, out = _ssh("ss -ltn 2>/dev/null | grep -q ':4508' && echo MCP-UP || echo MCP-DOWN")
-    if "MCP-UP" in out:
-        typer.echo("  MCP: listening on :4508")
+    # The MCP binds 0.0.0.0 and executes host binaries, so it needs a bearer
+    # token (D28). ENSURE one first - creating the file, or adding the key to an
+    # older file that predates the requirement - and only then decide whether to
+    # (re)start: a token added to an already-running server would be ignored
+    # until it restarts, which left the first version of this fix provisioning
+    # nothing when the server happened to be up.
+    ensure = (
+        "ENVF=~/.nexus/sift-mcp.env; "
+        "if [ ! -f \"$ENVF\" ]; then SEC=$(openssl rand -hex 32); "
+        "printf 'NEXUS_AUDIT_SECRET=%s\\nNEXUS_PORTAL_PASSWORD=siftmcp-%s\\n"
+        f"NEXUS_MCP_ALLOWED_HOSTS={host}\\nNEXUS_BEARER_TOKEN=%s\\n' "
+        "\"$SEC\" \"$SEC\" \"$SEC\" > \"$ENVF\"; chmod 600 \"$ENVF\"; echo TOKEN-ADDED; "
+        "elif ! grep -q '^NEXUS_BEARER_TOKEN=' \"$ENVF\"; then "
+        "SEC=$(openssl rand -hex 32); printf 'NEXUS_BEARER_TOKEN=%s\\n' \"$SEC\" >> \"$ENVF\"; "
+        "echo TOKEN-ADDED; "
+        "else echo TOKEN-PRESENT; fi"
+    )
+    rc, out = _ssh(ensure)
+    token_added = "TOKEN-ADDED" in out
+
+    rc, listening = _ssh("ss -ltn 2>/dev/null | grep -q ':4508' && echo MCP-UP || echo MCP-DOWN")
+    rc, token = _ssh(
+        "grep '^NEXUS_BEARER_TOKEN=' ~/.nexus/sift-mcp.env 2>/dev/null | cut -d= -f2-"
+    )
+    token = (token or "").strip().splitlines()[0].strip() if (token or "").strip() else ""
+
+    if "MCP-UP" in listening and not token_added:
+        typer.echo("  MCP: listening on :4508 (bearer token already in place)")
     else:
-        typer.echo("  MCP: not running — starting it...")
+        if "MCP-UP" in listening and token_added:
+            typer.echo("  MCP: restarting so the new bearer token takes effect...")
+        else:
+            typer.echo("  MCP: not running — starting it...")
         start = (
             "cd ~/DFIR-Nexus && "
-            "[ -f ~/.nexus/sift-mcp.env ] || { SEC=$(openssl rand -hex 32); "
-            "printf 'NEXUS_AUDIT_SECRET=%s\\nNEXUS_PORTAL_PASSWORD=siftmcp-%s\\n"
-            f"NEXUS_MCP_ALLOWED_HOSTS={host}\\n' \"$SEC\" \"$SEC\" > ~/.nexus/sift-mcp.env; "
-            "chmod 600 ~/.nexus/sift-mcp.env; }; "
             "set -a; . ~/.nexus/sift-mcp.env; set +a; "
+            # Kill ONLY the process listening on 4508. Never `pkill -f
+            # 'nexus serve --http'`: the launching shell's command line contains
+            # that very string, so pkill kills the script before it can start
+            # the server (observed 2026-10-03 - the old server exited and the
+            # new one never launched).
+            "PID=$(ss -ltnp 2>/dev/null | grep ':4508' | grep -oP 'pid=\\K[0-9]+' | head -1); "
+            "[ -n \"$PID\" ] && { kill \"$PID\" 2>/dev/null; sleep 2; }; "
             "setsid nohup .venv/bin/python -m nexus serve --http --host 0.0.0.0 "
             "--port 4508 < /dev/null > /tmp/nexus-mcp.log 2>&1 & "
             "sleep 12; ss -ltn 2>/dev/null | grep -q ':4508' && echo MCP-UP || echo MCP-FAILED"
         )
-        rc, out = _ssh(start, timeout=120)
-        typer.echo(f"  MCP: {'listening on :4508' if 'MCP-UP' in out else 'FAILED — see /tmp/nexus-mcp.log'}")
+        rc, out = _ssh(start, timeout=150)
+        typer.echo(
+            "  MCP: "
+            + ("listening on :4508 (bearer auth on)" if "MCP-UP" in out
+               else "FAILED — see /tmp/nexus-mcp.log")
+        )
 
     typer.echo("")
     typer.echo("Examiner .env block (or export for the serve session):")
@@ -227,6 +261,14 @@ def setup(
     typer.echo(f"  NEXUS_SIFT_SSH_USER={user}")
     typer.echo(f"  NEXUS_SIFT_SSH_KEY={key}")
     typer.echo(f"  NEXUS_SIFT_MCP_URL=http://{host}:4508/mcp")
+    if token:
+        typer.echo(f"  NEXUS_BEARER_TOKEN={token}")
+    else:
+        typer.echo(
+            "  NEXUS_BEARER_TOKEN=<could not read ~/.nexus/sift-mcp.env on the host>"
+        )
+    typer.echo("  (the MCP requires this token on every /mcp call for a non-loopback "
+               "bind — if it does not match, calls return 401)")
     typer.echo("Next: `nexus doctor --gate`, then `nexus sift enable --case <case>` "
                "(evidence itself is copied by the examiner into "
                "~/.nexus/cases/<case>/evidence/ on the host).")
