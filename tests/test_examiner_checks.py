@@ -211,6 +211,33 @@ def test_every_advertised_tool_is_actually_callable():
     assert set(ec.EXAMINER_CHECK_TOOLS) <= advertised
 
 
+def test_the_director_attaches_skill_refs_to_its_orders(monkeypatch):
+    """The K5 -> K6 chain: an order with no refs records no steps.
+
+    Measured 2026-10-04: `_record_skill_steps` returns [] when an order carries no
+    `skill_refs`, so if the director stopped attaching them K6 would go silent
+    without failing anything - the same shape as the K2 defect, one link earlier.
+    Asserted through `plan_work_orders` with retrieval stubbed, so it fails if the
+    wiring drops the refs rather than if retrieval returns none.
+    """
+    from pathlib import Path
+
+    import nexus.modes.multi_role as mr
+
+    ref = {"skill": "windows_event_log_analysis", "version": "1",
+           "citations": ["d_x:c1"], "role": "evidence"}
+    monkeypatch.setattr(mr, "_retrieve_skill_refs", lambda *a, **k: [dict(ref)])
+
+    class _Sink:
+        def emit(self, *_a, **_k):
+            return None
+
+    orders = mr.plan_work_orders(Path("."), "q", run_id="r", sink=_Sink(), max_orders=2)
+    assert orders, "the director produced no orders"
+    for order in orders:
+        assert order.skill_refs, f"{order.role} order carries no skill_refs"
+
+
 def test_the_two_surfaces_share_one_implementation(monkeypatch):
     """The loop must not become a second, drifted baseline check.
 
