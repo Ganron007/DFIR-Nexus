@@ -990,28 +990,25 @@ def _record_skill_steps(
         return []
     if not order.skill_refs:
         return []
-    try:
-        budget = int(os.environ.get("NEXUS_SKILL_STEP_QUERIES", "") or max_queries)
-    except ValueError:
-        budget = max_queries
+    # Mode 2/3 use ES directly; the typed DSL is Mode 1 only (backbone 4k.5.5:
+    # "the Mode 2/3 agent surface is ES-only. The typed DSL lives in the MCP tools
+    # for Mode 1 / deterministic paths - never here"). A step's `dsl:` is therefore
+    # a Mode 1 artefact and must not be handed to `es_search`, which takes ES query
+    # JSON: an earlier version did exactly that, the searcher swallowed the
+    # ESQueryError and returned 0, and EVERY step was recorded `none` ("ran, found
+    # nothing") - nine false negatives on a nine-step skill.
+    #
+    # So each step is recorded `not_applicable` with the reason, which is honest and
+    # cheap. Per-step execution on this surface would need a step form authored as an
+    # ES query for that purpose, not a translation of Mode 1's DSL.
 
     from nexus.analysis.skill_steps import run_skill_steps
 
+    reason = (
+        "the step's query is Mode 1 DSL; this mode queries Elasticsearch directly "
+        "(backbone 4k.5.5), so the step is not run here"
+    )
     by_id = _skill_lookup()
-    spent = {"n": 0}
-
-    def searcher(dsl: str, limit: int) -> dict[str, Any]:
-        if spent["n"] >= budget:
-            raise RuntimeError("skill-step query budget reached")
-        spent["n"] += 1
-        from nexus.langgraph.backbone import backbone_call
-
-        out = backbone_call("es_search", query=dsl, size=int(limit)) or {}
-        count = out.get("count")
-        if count is None:
-            count = len(out.get("hits") or [])
-        return {"count": int(count or 0)}
-
     out: list[dict[str, Any]] = []
     for ref in order.skill_refs:
         skill_id = str(ref.get("skill") or "")
@@ -1020,15 +1017,14 @@ def _record_skill_steps(
             continue
         try:
             record = run_skill_steps(
-                skill, es_search=searcher, case_families=case_families, limit=5,
+                skill, es_search=None, case_families=case_families,
+                no_search_reason=reason,
             )
         except Exception as exc:  # noqa: BLE001 - a skill must not fail the order
             record = {"skill": skill_id, "steps": [], "summary": {},
                       "error": f"{type(exc).__name__}: {exc}"[:200]}
         record["version"] = ref.get("version") or ""
         out.append(record)
-        if spent["n"] >= budget:
-            break
     return out
 
 

@@ -359,3 +359,50 @@ def test_an_examiner_check_result_cannot_be_staged_without_an_audit_id():
     assert ec.is_examiner_check("check_lolbin")
     assert not ec.is_examiner_check("es_search")
     assert not ec.is_examiner_check("")
+
+
+def test_mode2_records_steps_not_applicable_rather_than_false_none():
+    """K6: a Mode 2/3 worker must never report a Mode 1 DSL step as `none`.
+
+    Backbone 4k.5.5: "the Mode 2/3 agent surface is ES-only. The typed DSL lives in
+    the MCP tools for Mode 1 / deterministic paths - never here." An earlier version
+    handed the step's `dsl:` to `es_search`, which takes ES query JSON; the searcher
+    swallowed the `ESQueryError` and returned 0, so **every step was recorded
+    `none`** - nine false "ran, found nothing" on a nine-step skill.
+
+    Asserted through the real `_record_skill_steps`, so it fails on the wiring.
+    """
+    from pathlib import Path
+
+    from nexus.modes.multi_role import WorkOrder, _record_skill_steps
+
+    order = WorkOrder(
+        order_id="wo-k6", role="evidence", task="t", skill_refs=[
+            {"skill": "windows_event_log_analysis", "version": "1"},
+        ],
+    )
+    records = _record_skill_steps(order, Path("."))
+    assert records, "no skill record was produced"
+    for record in records:
+        summary = record.get("summary") or {}
+        assert summary.get("none", 0) == 0, (
+            f"steps recorded as `none` in a Mode 2/3 run: {summary}")
+        assert summary.get("not_applicable", 0) > 0, summary
+        for step in record.get("steps") or []:
+            assert step["result"] == "not_applicable"
+            # The reason must name the separation, not just "no searcher".
+            assert "Mode 1 DSL" in step["reason"], step["reason"]
+            assert "Elasticsearch directly" in step["reason"], step["reason"]
+
+
+def test_the_skill_step_searcher_contract_is_the_surface_language():
+    """`run_skill_steps` takes a searcher in the SURFACE's own query form.
+
+    Documented, because the bug was passing a Mode 1 DSL string to an ES-native
+    searcher. The docstring must keep saying so.
+    """
+    from nexus.analysis.skill_steps import run_skill_steps
+
+    doc = run_skill_steps.__doc__ or ""
+    assert "ES query JSON" in doc
+    assert "Mode 1" in doc and "Mode 2/3" in doc

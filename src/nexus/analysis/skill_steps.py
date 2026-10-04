@@ -366,12 +366,19 @@ def run_skill_steps(
     available: Iterable[str] | None = None,
     case_families: Iterable[str] | None = None,
     case_lanes: Iterable[str] | None = None,
+    no_search_reason: str = "no searcher was provided",
     limit: int = 5,
 ) -> dict[str, Any]:
     """Run each applicable step and record hit / none / not applicable.
 
-    ``es_search`` is the seam: a callable ``(dsl, limit) -> {"count": n, ...}``.
-    With no searcher every step is recorded `not_applicable` with the reason -
+    ``es_search`` is the seam: a callable ``(query, limit) -> {"count": n}`` taking
+    a **query in the surface's own form** — ES query JSON on the Mode 2/3 agent
+    surface, which is ES-only (backbone 4k.5.5). A step's ``dsl:`` is the **Mode 1**
+    query language, so a Mode 2/3 caller must pass no searcher and say why through
+    ``no_search_reason``; passing a DSL string to an ES-native searcher is a
+    category error that records every step ``none`` ("ran, found nothing").
+
+    With no searcher every step is recorded `not_applicable` with that reason -
     never `none`, which would read as "the step ran and found nothing".
     """
     if methodology_only(skill, case_families, case_lanes):
@@ -393,7 +400,7 @@ def run_skill_steps(
             continue
         if es_search is None:
             results.append({**record, "result": "not_applicable",
-                            "reason": "no searcher was provided"})
+                            "reason": no_search_reason})
             continue
         try:
             outcome = es_search(record["dsl"], limit) or {}
