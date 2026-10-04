@@ -530,6 +530,65 @@ def test_every_target_repeat_and_mode_becomes_one_unit():
     assert len({(u["target"]["name"], u["rep"], u["mode"]) for u in units}) == 12
 
 
+def test_modes_2_and_3_prepare_the_index_before_they_run(ev, monkeypatch):
+    """WO-K1: modes 2/3 READ the index and never build it.
+
+    Measured 2026-10-04: without this, a mode 2 case ran against an empty index
+    and reported `status=completed, candidates: 0` - a zero that reads as a real
+    result. The lane and the N3 index must be built first, as mode 1 does.
+    """
+    er = ev
+    calls: list[list[str]] = []
+
+    def _fake_run(cmd, *, timeout):
+        calls.append(list(cmd))
+        return 0, "", 0.0
+
+    monkeypatch.setattr(er, "_run", _fake_run)
+
+    for mode in (2, 3):
+        calls.clear()
+        er.run_mode(mode, "CASE-X", "q", 60)
+        joined = [" ".join(c) for c in calls]
+        assert any("pipeline" in c and "--mode tools" in c for c in joined), (
+            f"mode {mode} did not build the lane: {joined}")
+        assert any("case index" in c for c in joined), (
+            f"mode {mode} did not index: {joined}")
+        # And the order is lane -> index -> the mode itself.
+        lane_at = next(i for i, c in enumerate(joined) if "--mode tools" in c)
+        index_at = next(i for i, c in enumerate(joined) if "case index" in c)
+        run_at = next(i for i, c in enumerate(joined) if f"mode{mode}" in c)
+        assert lane_at < index_at < run_at, joined
+
+
+def test_mode_1_does_not_double_build_the_lane(ev, monkeypatch):
+    """Mode 1's `coverage` runs the lane itself; preparing it again is waste."""
+    er = ev
+    calls: list[list[str]] = []
+    monkeypatch.setattr(er, "_run", lambda cmd, *, timeout: (calls.append(list(cmd)), 0, "", 0.0)[1:])
+    er.run_mode(1, "CASE-X", "q", 60)
+    joined = [" ".join(c) for c in calls]
+    assert not any("case index" in c for c in joined), joined
+    assert any("--mode coverage" in c for c in joined), joined
+
+
+def test_a_failed_index_prep_stops_before_the_mode_runs(ev, monkeypatch):
+    """Running a mode 2/3 on an unindexed case is the defect; do not proceed."""
+    er = ev
+    seen: list[str] = []
+
+    def _fake_run(cmd, *, timeout):
+        seen.append(" ".join(cmd))
+        if "--mode tools" in " ".join(cmd):
+            return 1, "lane failed", 0.0
+        return 0, "", 0.0
+
+    monkeypatch.setattr(er, "_run", _fake_run)
+    out = er.run_mode(2, "CASE-X", "q", 60)
+    assert out["rc"] == 1
+    assert not any("mode2" in s for s in seen), seen
+
+
 def test_a_down_elasticsearch_refuses_the_run_before_creating_anything(ev, tmp_path, monkeypatch):
     """ES down must abort, not produce a sweep of zeros.
 
