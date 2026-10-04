@@ -241,3 +241,61 @@ def test_the_cli_check_runs_clean_end_to_end():
         cwd=str(REPO), capture_output=True, text=True, timeout=120, check=False,
     )
     assert proc.returncode == 0, (proc.stdout + proc.stderr)[-500:]
+
+
+# ---------------------------------------------------------------------------
+# WO-KL2 - a needle must not fire on benign data
+# ---------------------------------------------------------------------------
+
+#: The measurement WO-KL2 asks for: every term scored against clean event logs
+#: (Nextron evtx-baseline) with the product's own matcher. `-before` is the pack
+#: as it was, kept so the improvement is auditable rather than asserted.
+FP_REPORT = REPO / "devtools" / "knowledge" / "needle-fp-report.json"
+#: A term above this share of clean files does not distinguish an intrusion from
+#: an ordinary day. The report is generated at this threshold.
+FP_MAX_FILE_RATE = 0.05
+
+
+def test_no_shipped_term_is_one_the_measurement_called_noisy(gen):
+    """The generator's denylist and the pack must agree, or the pack was hand-edited."""
+    terms = _pack().get("terms") or []
+    offenders = [t["term"] for t in terms if t["term"].lower() in gen._MEASURED_NOISE_LOWER]
+    assert offenders == [], f"measured-noisy terms are in the pack: {offenders[:10]}"
+
+
+def test_a_command_fragment_too_short_to_distinguish_is_not_a_needle(gen):
+    """The root cause of the noise: the shape rule had a maximum but no minimum.
+
+    The pack carried 94 `lolbin_arg` terms of three characters or fewer. Measured
+    on 1026 clean event logs, `al` matched 25.5% of them, `/o` 18.8%, `-a` 18.3%.
+    """
+    terms = _pack().get("terms") or []
+    offenders = [
+        t["term"] for t in terms
+        if t.get("kind") == "lolbin_arg" and len(t["term"]) < gen.MIN_NEEDLE_CHARS
+    ]
+    assert offenders == [], f"sub-{gen.MIN_NEEDLE_CHARS}-character fragments: {offenders[:10]}"
+
+
+@pytest.mark.skipif(not FP_REPORT.is_file(),
+                    reason="no needle FP report - run devtools/knowledge/measure_needle_fp.py")
+def test_no_signal_bearing_term_fires_on_benign_data():
+    """The acceptance check, against the measurement rather than an opinion.
+
+    Event ids are excluded on purpose: the product's match-site classifier records
+    them as **facts**, not signals, so a high raw match rate on a benign log is
+    expected and is not the defect this guards.
+    """
+    import json
+
+    report = json.loads(FP_REPORT.read_text(encoding="utf-8"))
+    assert report["files_scanned"] >= 100, (
+        f"the report covers only {report['files_scanned']} files - re-measure")
+    noisy = [
+        r for r in report["terms"]
+        if r["file_rate"] > FP_MAX_FILE_RATE and r.get("kind") != "event_id"
+    ]
+    assert noisy == [], (
+        "these terms match benign data and are not clues:\n"
+        + "\n".join(f"  {r['file_rate']:.1%}  {r['term']!r} ({r['kind']})" for r in noisy[:15])
+    )

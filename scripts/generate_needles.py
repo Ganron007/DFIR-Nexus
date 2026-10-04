@@ -79,6 +79,40 @@ def source_date(name: str) -> str:
 #: needles: nothing searches for `$token = [System.Security.Principal...`.
 MAX_NEEDLE_CHARS = 60
 MAX_NEEDLE_WORDS = 6
+
+#: A command-derived fragment must be at least this long to be a search term
+#: (WO-KL2). The pack had **94** `lolbin_arg` terms of three characters or fewer -
+#: bare flags and two-letter fragments such as `/o`, `-a`, `al`, `el`, `im`, `gp`.
+#: Measured against 1026 clean event logs (Nextron evtx-baseline) with the
+#: product's own matcher, several matched a quarter of them: `al` 25.5%, `/o`
+#: 18.8%, `-a` 18.3%. A term that matches benign data that often is a clue for
+#: nothing, and it costs a real query on every scan.
+#:
+#: This is the structural guard, so regeneration cannot reintroduce them. It
+#: applies to `lolbin_arg` only: a short `event_id` (`1`, `3`) is a fact to the
+#: product's match-site classifier, not a signal, and must survive.
+MIN_NEEDLE_CHARS = 3
+
+#: Terms measured to fire on benign data (WO-KL2). Source of record:
+#: ``devtools/knowledge/needle-fp-report.json``, produced by
+#: ``devtools/knowledge/measure_needle_fp.py``. Every term here matched more than
+#: 5% of 1026 clean event logs, so it does not distinguish an intrusion from a
+#: normal day. They are dropped rather than demoted because a needle has no
+#: strength field to demote into, and a term that matches one clean file in
+#: twenty has no evidential value at any strength.
+#:
+#: ``event_id`` terms are deliberately absent: the product records them as facts.
+#: Re-measure before editing this set - do not add a term by eye.
+_MEASURED_NOISE = frozenset({
+    "windows", "3", "106", "200", ".exe", "use", "set", "file", "user",
+    "start", "config", "shell", "time", "id", "um", "gi", "gp", "im", "cl",
+    "el", "al", "o", "a", "e", "d", "c", "s", "v", "p",
+})
+#: The measured set stores bare tokens; flags arrive with their dash or slash.
+_MEASURED_NOISE_LOWER = _MEASURED_NOISE | {
+    f"{sigil}{t}" for t in _MEASURED_NOISE for sigil in ("-", "/")
+}
+
 #: Shell syntax that does not survive into a parsed field. A bare `$` is NOT
 #: here: `ADMIN$` and `ipc$` are real share names that do appear in parsed
 #: output, and an over-broad filter would have dropped them as prose (measured -
@@ -149,6 +183,14 @@ def _needle_terms() -> tuple[list[dict[str, Any]], dict[str, dict[str, str]]]:
             techniques: list[str] | None = None) -> None:
         term = str(term or "").strip()
         if not term:
+            return
+        low = term.lower()
+        # WO-KL2: a term measured to fire on benign data is not a clue (see
+        # _MEASURED_NOISE), and a sub-3-character command fragment cannot
+        # distinguish anything (see MIN_NEEDLE_CHARS).
+        if low in _MEASURED_NOISE_LOWER:
+            return
+        if kind == "lolbin_arg" and len(term) < MIN_NEEDLE_CHARS:
             return
         terms.append({
             "term": term,
