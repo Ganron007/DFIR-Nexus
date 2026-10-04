@@ -85,13 +85,14 @@ confidence_rules:
   low: autostart/uninstall entries matching known-good software
 mitre: [T1112, T1547.001, T1078]
 source:
-  - "d_183bb6de66c9"
-  - "d_e1fcbdf969e6"
-  - "d_254169eb2052"
-  - "d_346b1e448071"
-  - "d_ebe960efd5d4"
-  - "d_4a6fccf5183f"
-  - "d_770cab5a1915"
+  - chunk_id: d_2a1597dc6187:c0116
+    rel_path: SANS/SANS 500 v2024/FOR500 2024CyberSecCommunity_unlocked/FOR500 2024CyberSecCommunity_unlocked.md
+    lines: 3147-3174
+    citation: d_183bb6de66c9
+  - chunk_id: d_a6386766ceb6:c0003
+    rel_path: SANS/SANS 500 v2024/Book FOR500.2/Book FOR500.2.md
+    lines: 130-183
+    citation: d_e1fcbdf969e6
 caveats:
   - "Check ControlSet selection: use SYSTEM\\Select\\Current — LastKnownGood copies duplicate stale values across ControlSet00N trees (13Cubed WE 9)."
   - "Key last-write is the key's, not the value's — a new value inside an old key keeps the old timestamp."

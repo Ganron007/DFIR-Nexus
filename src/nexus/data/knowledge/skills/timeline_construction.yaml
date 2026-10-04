@@ -77,9 +77,18 @@ confidence_rules:
   low: timing coincidence only — no artifact linkage
 mitre: [T1070]
 source:
-  - "d_ccca31a521af:c0076"
-  - "d_ccca31a521af:c0086"
-  - "d_ccca31a521af:c0083"
+  - chunk_id: d_8e291788e33f:c0159
+    rel_path: EBOOKS/Books_2026/A_Practical_Approach_to_OSINT/A_Practical_Approach_to_OSINT.md
+    lines: 5338-5375
+    citation: d_ccca31a521af:c0076
+  - chunk_id: d_59cc12c10723:c0009
+    rel_path: DFRWS EU 2026/DroPTC--Sentence-level-drone-flight-log-foren_2026_Forensic-Science-Internat/DroPTC--Sentence-level-drone-flight-log-foren_2026_Forensic-Science-Internat.md
+    lines: 210-240
+    citation: d_ccca31a521af:c0086
+  - chunk_id: d_c562f92e0e73:c0320
+    rel_path: EBOOKS/Books_2026/Advanced_Network_Forensics_A_Cyber_Behavioral_Science_Approach_Marshall/Advanced_Network_Forensics_A_Cyber_Behavioral_Science_Approach_Marshall.md
+    lines: 10746-10774
+    citation: d_ccca31a521af:c0083
 caveats:
   - "Normalize EVERYTHING to UTC before merging — setupapi is local-time, browsers are µs-epochs, evtx is UTC; mixed zones silently corrupt sequence."
   - "A timestamp is only as meaningful as its type — file-created vs file-modified vs entry-created mean different things; read the 'type'/'desc' columns, not just the time."

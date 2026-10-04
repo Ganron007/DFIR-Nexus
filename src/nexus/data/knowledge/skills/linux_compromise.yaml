@@ -75,8 +75,18 @@ confidence_rules:
   low: single odd login (legitimate remote admin plausible)
 mitre: [T1053.003, T1543.002, T1078, T1059.004]
 source:
-  - "d_8081577ff5db"
-  - "d_ff8a3b9b0042"
+  - chunk_id: d_54ab32a6dcb8:c0138
+    rel_path: EBOOKS/eBooks/Practical-Red-Teaming/Practical-Red-Teaming.md
+    lines: 4821-4858
+    citation: d_8081577ff5db
+  - chunk_id: d_6c33dd160862:c0000
+    rel_path: LinuxForensics/Exercises/index/index.md
+    lines: 8-61
+    citation: d_ff8a3b9b0042
+  - chunk_id: d_a025afec538b:c0020
+    rel_path: Volatility - Malware & Memory Training/Part5/Part5.md
+    lines: 1141-1213
+    citation: d_8081577ff5db
 caveats:
   - "Shell history is unreliable by design — flushed only on shell exit, easily cleared, ordering not guaranteed. Never claim 'no commands ran' from empty history."
   - "utmp/wtmp/btmp are binary databases — strings/grep corrupts interpretation; use last/lastb/utmpdump."

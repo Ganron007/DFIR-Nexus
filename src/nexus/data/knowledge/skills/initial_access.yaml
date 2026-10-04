@@ -62,7 +62,18 @@ confidence_rules:
   low: single unsigned exec — corroborate delivery + persistence
 mitre: [T1204, T1566.001, T1204.001, T1204.002]
 source:
-  - "d_ae743ea2444d:c0082"
+  - chunk_id: d_6aa7ffe9cde2:c0046
+    rel_path: EBOOKS/Books_2026/dissecting-the-dark-web/dissecting-the-dark-web.md
+    lines: 1530-1561
+    citation: d_ae743ea2444d:c0082
+  - chunk_id: d_f0a856066eda:c0078
+    rel_path: SANS/SANS 560 v2022/SEC560 - Book 2/SEC560 - Book 2.md
+    lines: 2535-2595
+    citation: d_ae743ea2444d:c0082
+  - chunk_id: d_5673d7c1e6e4:c0207
+    rel_path: SANS/SANS 560 v2022/SEC560_Book/SEC560_Book.md
+    lines: 6328-6388
+    citation: d_ae743ea2444d:c0082
 caveats:
   - "Users legitimately run MSIs and macros — the delivery chain (download → MOTW → exec) is what matters."
   - "LNK files are everywhere; focus on recent ones in download/desktop/temp paths."

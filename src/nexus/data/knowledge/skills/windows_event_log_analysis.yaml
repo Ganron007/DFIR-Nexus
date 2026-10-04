@@ -92,9 +92,18 @@ confidence_rules:
   low: event plausible in routine admin activity — needs host context
 mitre: [T1070, T1078, T1021, T1059, T1562]
 source:
-  - "d_4ea0cb762d91"
-  - "d_05d2b1a9b00c"
-  - "d_6e150c2cd3ed"
+  - chunk_id: d_a8e2938143e3:c0129
+    rel_path: SANS/SANS 500 v2024/Book FOR500.W S3-5/Book FOR500.W S3-5.md
+    lines: 5795-5827
+    citation: d_4ea0cb762d91
+  - chunk_id: d_2a1597dc6187:c1087
+    rel_path: SANS/SANS 500 v2024/FOR500 2024CyberSecCommunity_unlocked/FOR500 2024CyberSecCommunity_unlocked.md
+    lines: 37139-37171
+    citation: d_05d2b1a9b00c
+  - chunk_id: d_b12a876cf1e9:c0119
+    rel_path: SANS/SANS 508 v2025/Workbook and Labs Section 3-5/Workbook and Labs Section 3-5.md
+    lines: 4215-4235
+    citation: d_6e150c2cd3ed
 caveats:
   - "Security 4688 and Sysmon are config-dependent — absence of process rows is a coverage gap before it is evidence of absence (FD-004 analogue)."
   - "Event IDs mean different things by channel and version — a 4625 on the DC (4776 path) differs from a workstation lockout; always read LogonType/Status subcodes."

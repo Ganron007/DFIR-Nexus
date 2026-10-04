@@ -80,8 +80,18 @@ confidence_rules:
   low: legitimate installer service creations (signed, Program Files path)
 mitre: [T1547.001, T1543.003, T1053.005, T1546.003, T1053]
 source:
-  - "d_3edf38e74d31:c0082"
-  - "d_0d8eeaa8ab62:c0396"
+  - chunk_id: d_5e18878c26d5:c0004
+    rel_path: Kaspersky/Kaspersky Malware Analysis and Reverse Engineering course/1383_056/1383_056.md
+    lines: 264-320
+    citation: d_3edf38e74d31:c0082
+  - chunk_id: d_c55e3c3d8f7e:c0460
+    rel_path: SANS/SANS 599 v2023/SEC599 2023 - Clear/SEC599 2023 - Clear.md
+    lines: 14752-14804
+    citation: d_0d8eeaa8ab62:c0396
+  - chunk_id: d_01b61024ae53:c0460
+    rel_path: SANS/SANS 599 v2023/SEC599 2023 - No watermark/SEC599 2023 - No watermark.md
+    lines: 14752-14804
+    citation: d_3edf38e74d31:c0082
 caveats:
   - "Installers constantly create services/tasks — filter by signer and path before flagging."
   - "Run-key writes by AV/management tools are normal — check the value target, not just the key."

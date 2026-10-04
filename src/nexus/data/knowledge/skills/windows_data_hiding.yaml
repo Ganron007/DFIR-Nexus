@@ -81,10 +81,18 @@ confidence_rules:
   low: a lone ADS (Zone.Identifier from normal downloads) or a benign deletion (FD-004)
 mitre: [T1070.004, T1070.006, T1564.004, T1485, T1490]
 source:
-  - "d_5313a9a6ca8d:c0363"
-  - "d_8beaf108808f:c0318"
-  - "d_dc3b13fade46:c0055"
-  - "d_03c2a24fc8ff:c0071"
+  - chunk_id: d_2987c0399e6c:c0524
+    rel_path: SANS/SANS 585 v2022/FOR585 H01_01 2022 hide01.ir/FOR585 H01_01 2022 hide01.ir.md
+    lines: 19896-19989
+    citation: d_5313a9a6ca8d:c0363
+  - chunk_id: d_641ebbbd7339:c0671
+    rel_path: SANS/SANS 585 v2022/FOR585 Book_nosec/FOR585 Book_nosec.md
+    lines: 68516-68606
+    citation: d_8beaf108808f:c0318
+  - chunk_id: d_2987c0399e6c:c0574
+    rel_path: SANS/SANS 585 v2022/FOR585 H01_01 2022 hide01.ir/FOR585 H01_01 2022 hide01.ir.md
+    lines: 21932-21991
+    citation: d_dc3b13fade46:c0055
 caveats:
   - "Shadow copies age out or are deleted (vssadmin delete shadows is a common ransom tactic) — their absence is a gap, and a deleted shadow store is itself suspicious."
   - "Zone.Identifier ADS is created by every browser download — benign ADSton; require a hidden payload, not the marker alone (FD-004)."

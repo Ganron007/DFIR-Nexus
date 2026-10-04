@@ -86,9 +86,18 @@ confidence_rules:
   low: third-party launch item in a standard path — legitimate admin tooling is common (FD-004)
 mitre: [T1543.001, T1547.015, T1059.002, T1555.001]
 source:
-  - "d_c202c9615730:c0394"
-  - "d_72571fb78011:c0203"
-  - "d_f841fdaaa378:c0043"
+  - chunk_id: d_ef6d559bf716:c0046
+    rel_path: EBOOKS/Books_2026/IntelTechniques - OSINT 11 2025.04.02/IntelTechniques - OSINT 11 2025.04.02.md
+    lines: 824-844
+    citation: d_c202c9615730:c0394
+  - chunk_id: d_ef6d559bf716:c0037
+    rel_path: EBOOKS/Books_2026/IntelTechniques - OSINT 11 2025.04.02/IntelTechniques - OSINT 11 2025.04.02.md
+    lines: 671-686
+    citation: d_72571fb78011:c0203
+  - chunk_id: d_ef6d559bf716:c0055
+    rel_path: EBOOKS/Books_2026/IntelTechniques - OSINT 11 2025.04.02/IntelTechniques - OSINT 11 2025.04.02.md
+    lines: 1002-1020
+    citation: d_f841fdaaa378:c0043
 caveats:
   - "Unified log retention is limited (days-to-weeks and rotates) — if the window predates retention, that is a coverage gap; say so rather than implying clean."
   - "macOS ships many legitimate launch daemons and app agents — verify the signer and path (user-writable/temp is the tell), not merely the presence of a plist (FD-004)."

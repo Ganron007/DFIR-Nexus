@@ -77,8 +77,18 @@ confidence_rules:
   low: a single unusual sign-in that also matches the user's known travel/VPN (FD-004)
 mitre: [T1078.004, T1098.001, T1098.003, T1530, T1567.002, T1556.006]
 source:
-  - "d_762a214e1f4a:c0041"
-  - "d_0d8eeaa8ab62:c0396"
+  - chunk_id: d_9e7d8809d38a:c0018
+    rel_path: Vendor-Research/Unit42/spring-ring-an-inside-look-at-voice-phishing-campaigns-in-microsoft-teams.md
+    lines: 172-174
+    citation: d_762a214e1f4a:c0041
+  - chunk_id: d_4ec0a1e59ec5:c0001
+    rel_path: Vendor-Research/Microsoft-Security/passkey-themed-social-engineering-leads-to-identity-and-cloud-compromise.md
+    lines: 36-37
+    citation: d_0d8eeaa8ab62:c0396
+  - chunk_id: d_ce08abadfbcb:c0028
+    rel_path: SANS/SANS 509 v2022/FOR509 2022/FOR509 2022.md
+    lines: 2101-2193
+    citation: d_762a214e1f4a:c0041
 caveats:
   - "Cloud audit logs have retention limits and latency (M365/Azure events can lag 15-30+ min) — a quiet window may be a retention/latency gap, not absence of activity."
   - "A single ISP/VPN IP is shared by many users — corroborate with user-agent, device, and the subsequent action, never IP alone (FD-004)."

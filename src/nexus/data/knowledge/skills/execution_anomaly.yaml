@@ -60,7 +60,21 @@ confidence_rules:
   low: single unsigned exec in a developer/build context
 mitre: [T1218, T1059.005, T1106]
 source:
-  - "CCD M5 (execution-artifact stack — Prefetch/ShimCache/AmCache/BAM/ UserAssist/SRUM cross-validation), 13C WE 5 (execution analysis), FOR508.5 (timestomp/anti-forensic distortion of exec artifacts)"
+  - chunk_id: d_8beaf108808f:c0008
+    rel_path: EBOOKS/NoStarchPress/Evasive_malware_-_Kyle/Evasive_malware_-_Kyle.md
+    lines: 327-352
+    citation: CCD M5 (execution-artifact stack — Prefetch/ShimCache/AmCache/BAM/ UserAssist/SRUM cross-validation),
+      13C WE 5 (execution analysis), FOR508.5 (timestomp/anti-forensic distortion of exec artifacts)
+  - chunk_id: d_b3ea50f785b6:c0076
+    rel_path: SANS/SANS 699 v2021/PDF/SEC699 - Book 1 (2021)/SEC699 - Book 1 (2021).md
+    lines: 2764-2804
+    citation: CCD M5 (execution-artifact stack — Prefetch/ShimCache/AmCache/BAM/ UserAssist/SRUM cross-validation),
+      13C WE 5 (execution analysis), FOR508.5 (timestomp/anti-forensic distortion of exec artifacts)
+  - chunk_id: d_0d8eeaa8ab62:c0076
+    rel_path: SANS/SANS 699 v2021/PDF/SEC699_merge/SEC699_merge.md
+    lines: 2764-2804
+    citation: CCD M5 (execution-artifact stack — Prefetch/ShimCache/AmCache/BAM/ UserAssist/SRUM cross-validation),
+      13C WE 5 (execution analysis), FOR508.5 (timestomp/anti-forensic distortion of exec artifacts)
 caveats:
   - "Developers and IT tools run unsigned binaries — check signer and path context before flagging."
   - "Prefetch only proves execution, not intent — corroborate with CommandLine or network evidence."

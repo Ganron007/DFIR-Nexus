@@ -60,8 +60,18 @@ confidence_rules:
   low: isolated vssadmin (admin maintenance possible)
 mitre: [T1490, T1486, T1489]
 source:
-  - "d_ae743ea2444d:c0082"
-  - "d_40fd028860ee:c0360"
+  - chunk_id: d_8f38107a0283:c0063
+    rel_path: SANS/SANS 565 v2022/PDF/SEC565 - Book 5 (2022)/SEC565 - Book 5 (2022).md
+    lines: 2686-2718
+    citation: d_ae743ea2444d:c0082
+  - chunk_id: d_74a305847bc0:c0444
+    rel_path: SANS/SANS 565 v2022/PDF/SEC565_merge/SEC565_merge.md
+    lines: 18176-18208
+    citation: d_40fd028860ee:c0360
+  - chunk_id: d_24a6b445a0b3:c0020
+    rel_path: Conferences-main/Black Hat Asia 2023 slides/AS-23-Wu-When-Knowledge-Graph-Meets-TTPs-wp/AS-23-Wu-When-Knowledge-Graph-Meets-TTPs-wp.md
+    lines: 773-803
+    citation: d_ae743ea2444d:c0082
 caveats:
   - "Backup software legitimately manages shadows — check the account and schedule context."
   - "Some ransomware skips vss delete if it can encrypt directly — check for mass file writes instead."

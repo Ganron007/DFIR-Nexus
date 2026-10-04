@@ -56,7 +56,18 @@ confidence_rules:
   low: single EDR service stop (may be maintenance)
 mitre: [T1562.001, T1036, T1055, T1070.006]
 source:
-  - "d_a1d3c2f01b9b:c0047"
+  - chunk_id: d_95dc839c4ed9:c0088
+    rel_path: EBOOKS/eBooks/Practical_Threat_Intelligence/Practical_Threat_Intelligence.md
+    lines: 2862-2887
+    citation: d_a1d3c2f01b9b:c0047
+  - chunk_id: d_24a6b445a0b3:c0101
+    rel_path: Conferences-main/Black Hat Asia 2023 slides/AS-23-Wu-When-Knowledge-Graph-Meets-TTPs-wp/AS-23-Wu-When-Knowledge-Graph-Meets-TTPs-wp.md
+    lines: 5799-5966
+    citation: d_a1d3c2f01b9b:c0047
+  - chunk_id: d_24a6b445a0b3:c0094
+    rel_path: Conferences-main/Black Hat Asia 2023 slides/AS-23-Wu-When-Knowledge-Graph-Meets-TTPs-wp/AS-23-Wu-When-Knowledge-Graph-Meets-TTPs-wp.md
+    lines: 5049-5216
+    citation: d_a1d3c2f01b9b:c0047
 caveats:
   - "Windows updates legitimately restart Defender — check window and account context."
   - "Masquerading needs path+parentage analysis, not just the process name."

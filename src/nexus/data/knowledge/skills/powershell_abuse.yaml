@@ -55,7 +55,21 @@ confidence_rules:
   low: admin script with bypass flags (may be legit tooling)
 mitre: [T1059.001, T1027]
 source:
-  - "SpecterOps (offensive PowerShell tradecraft → detection inversion), 13C WE (PowerShell logging/transcription artifacts), EIR (PowerShell abuse in investigation scenarios)"
+  - chunk_id: d_586fb1a2f63c:c0093
+    rel_path: EBOOKS/eBooks/Threat Hunting with Elastic Stack/Threat Hunting with Elastic Stack.md
+    lines: 3486-3536
+    citation: SpecterOps (offensive PowerShell tradecraft → detection inversion), 13C WE (PowerShell logging/transcription
+      artifacts), EIR (PowerShell abuse in investigation scenarios)
+  - chunk_id: d_c5af799e4a00:c0093
+    rel_path: SANS/Posters/Threat Hunting with Elastic Stack/Threat Hunting with Elastic Stack.md
+    lines: 3486-3536
+    citation: SpecterOps (offensive PowerShell tradecraft → detection inversion), 13C WE (PowerShell logging/transcription
+      artifacts), EIR (PowerShell abuse in investigation scenarios)
+  - chunk_id: d_4b55969cf1dd:c0012
+    rel_path: SANS/SANS 565 v2022/PDF/SEC565 - Book 3 (2022)/SEC565 - Book 3 (2022).md
+    lines: 448-471
+    citation: SpecterOps (offensive PowerShell tradecraft → detection inversion), 13C WE (PowerShell logging/transcription
+      artifacts), EIR (PowerShell abuse in investigation scenarios)
 caveats:
   - "Legitimate admin scripts use -enc for credentials — decode before judging."
   - "4104 volume is huge — filter by HostName/Path of the script block, not just keyword."

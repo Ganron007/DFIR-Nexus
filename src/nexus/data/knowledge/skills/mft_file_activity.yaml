@@ -78,7 +78,22 @@ confidence_rules:
   low: single MFT row anomalies with plausible sync/AV explanation
 mitre: [T1070.006, T1036, T1564.004]
 source:
-  - "d_a1d3c2f01b9b:c0027"
+  - chunk_id: d_8a9f22e58850:c0000
+    rel_path: Certified CyberDefender (CCD) Blue Team Training 2025/07. Module 5 - Disk Forensics - [ @redblock_team
+      ]/25. Topic 5 - Collecting File and Folder Activity - [ @redblock_team ]/25. Topic 5 - Collecting
+      File and Folder Activity - [ @redblock_team ].md
+    lines: 8-36
+    citation: d_a1d3c2f01b9b:c0027
+  - chunk_id: d_8d7170660ce3:c1986
+    rel_path: EBOOKS/eBooks/Windows Internals, Part 2. 7th Edition - 2021/Windows Internals, Part 2. 7th
+      Edition - 2021.md
+    lines: 33464-33563
+    citation: d_a1d3c2f01b9b:c0027
+  - chunk_id: d_8d7170660ce3:c1705
+    rel_path: EBOOKS/eBooks/Windows Internals, Part 2. 7th Edition - 2021/Windows Internals, Part 2. 7th
+      Edition - 2021.md
+    lines: 26963-26983
+    citation: d_a1d3c2f01b9b:c0027
 caveats:
   - "MFT record reuse destroys the old record — cite $I30 slack and $LogFile for what the MFT itself no longer shows."
   - "USN journal rolls over by size, not time — short retention on busy volumes; note the covered window before claiming gaps."

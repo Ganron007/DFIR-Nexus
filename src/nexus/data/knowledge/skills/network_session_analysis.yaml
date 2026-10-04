@@ -69,7 +69,21 @@ confidence_rules:
   low: rare external connections (could be legitimate SaaS)
 mitre: [T1071, T1041, T1571]
 source:
-  - "d_db0d91434fd6"
+  - chunk_id: d_62baf517fbcd:c0070
+    rel_path: SpecterOps/Specterops - Tradecraft Analysis 2022/Adversary Tactics_ Tradecraft Analysis/Adversary
+      Tactics_ Tradecraft Analysis.md
+    lines: 8887-9003
+    citation: d_db0d91434fd6
+  - chunk_id: d_c45cc28b4bdd:c0069
+    rel_path: Mandiant Enterprise Incident Response/FIREEYE - ENTERPRISE INCIDENT RESPONSE/FIREEYE - ENTERPRISE
+      INCIDENT RESPONSE.md
+    lines: 4378-4414
+    citation: d_db0d91434fd6
+  - chunk_id: d_c45cc28b4bdd:c0106
+    rel_path: Mandiant Enterprise Incident Response/FIREEYE - ENTERPRISE INCIDENT RESPONSE/FIREEYE - ENTERPRISE
+      INCIDENT RESPONSE.md
+    lines: 6079-6119
+    citation: d_db0d91434fd6
 caveats:
   - "Netflow/conn logs show metadata not content — a 'clean' flow record says nothing about what was inside it."
   - "NAT and proxies collapse source attribution — resolve the true client via load-balancer/proxy logs before blaming a host."

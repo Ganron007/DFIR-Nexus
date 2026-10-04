@@ -75,10 +75,18 @@ confidence_rules:
   low: an app artifact consistent with the question from a backup-tier acquisition (limited completeness)
 mitre: [T1533, T1636, T1430, T1005]
 source:
-  - "d_641ebbbd7339:c0124"
-  - "d_2987c0399e6c:c0098"
-  - "d_f841fdaaa378:c0043"
-  - "d_493c2342db56:c0041"
+  - chunk_id: d_ef6d559bf716:c1127
+    rel_path: EBOOKS/Books_2026/IntelTechniques - OSINT 11 2025.04.02/IntelTechniques - OSINT 11 2025.04.02.md
+    lines: 22511-22522
+    citation: d_641ebbbd7339:c0124
+  - chunk_id: d_fb42e0bd9f00:c0921
+    rel_path: EBOOKS/eBooks/Open_Source_Intelligence_Techniques_Resources_for_Searching_and/Open_Source_Intelligence_Techniques_Resources_for_Searching_and.md
+    lines: 20813-20826
+    citation: d_2987c0399e6c:c0098
+  - chunk_id: d_fb42e0bd9f00:c0920
+    rel_path: EBOOKS/eBooks/Open_Source_Intelligence_Techniques_Resources_for_Searching_and/Open_Source_Intelligence_Techniques_Resources_for_Searching_and.md
+    lines: 20799-20812
+    citation: d_f841fdaaa378:c0043
 caveats:
   - "Acquisition method caps the evidence: a logical/iTunes/ADB backup does not capture deleted data or unallocated space — never present it as complete (FD-004)."
   - "Encrypted iOS backups and some Android app data require decryption keys/passcodes — a locked or un-decrypted backup is a documented gap."

@@ -56,7 +56,18 @@ confidence_rules:
   low: admin tools run by admins during maintenance
 mitre: [T1033, T1082, T1087, T1018, T1069]
 source:
-  - "d_c45cc28b4bdd:c0004"
+  - chunk_id: d_01929e155e30:c0296
+    rel_path: SANS/SANS 588 v2023/SEC588 I01_07 2023 hide01.ir/SEC588 I01_07 2023 hide01.ir.md
+    lines: 10428-10489
+    citation: d_c45cc28b4bdd:c0004
+  - chunk_id: d_b4cdc7ca8de9:c0296
+    rel_path: SANS/SANS 588 v2023/SEC588 Videos 2023/SEC588 I01_07 2023 hide01.ir/SEC588 I01_07 2023 hide01.ir.md
+    lines: 10428-10489
+    citation: d_c45cc28b4bdd:c0004
+  - chunk_id: d_9f084f9a1e3e:c0095
+    rel_path: EBOOKS/Books_2026/ad-pentest-oscp/ad-pentest-oscp.md
+    lines: 3074-3118
+    citation: d_c45cc28b4bdd:c0004
 caveats:
   - "Sysadmins run these commands daily — correlate with non-admin context and unusual parentage."
   - "Discovery may run inside a C2 implant (no shell commands) — check network artifacts instead."

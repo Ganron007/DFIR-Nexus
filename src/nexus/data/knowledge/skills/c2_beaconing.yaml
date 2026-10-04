@@ -60,7 +60,22 @@ confidence_rules:
   low: single external connection (normal traffic)
 mitre: [T1071, T1105]
 source:
-  - "d_db0d91434fd6:c0035"
+  - chunk_id: d_d691d3ecc368:c0000
+    rel_path: Certified CyberDefender (CCD) Blue Team Training 2025/04. Module 2 - Incident Response - [
+      @redblock_team ]/33. Lab - C2 traffic detection with Real Intelligence Threat Analytics (RITA) - [
+      @redblock_team ]/33. Lab - C2 traffic detection with Real Intelligence Threat Analytics (RITA) - [
+      @redblock_team ].md
+    lines: 8-22
+    citation: d_db0d91434fd6:c0035
+  - chunk_id: d_815ea04346a2:c0421
+    rel_path: SANS/SANS 504 v2023/SEC504 2025 - merge/SEC504 2025 - merge.md
+    lines: 14096-14133
+    citation: d_db0d91434fd6:c0035
+  - chunk_id: d_a67474069363:c0421
+    rel_path: SANS/SANS 504 v2023/SEC504 PDF 2025/SEC504 2025 - Books 1-5 hide01.ir/SEC504 2025 - Books
+      1-5 hide01.ir.md
+    lines: 14096-14133
+    citation: d_db0d91434fd6:c0035
 caveats:
   - "Some beacons use sleep/jitter to evade periodic detection — look at variance, not just regularity."
   - "Legitimate telemetry (Windows, AV, update services) creates periodic traffic — filter by destination."

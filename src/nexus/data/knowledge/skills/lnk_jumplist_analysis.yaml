@@ -69,10 +69,22 @@ confidence_rules:
   low: jumplist entries consistent with ordinary app use
 mitre: [T1204.002, T1547.001, T1078]
 source:
-  - "d_ce0f58efb073"
-  - "d_3c693ade50e1"
-  - "d_260233cb3d09"
-  - "d_03a600f22bc9"
+  - chunk_id: d_3c693ade50e1:c0001
+    rel_path: Certified CyberDefender (CCD) Blue Team Training 2025/07. Module 5 - Disk Forensics - [ @redblock_team
+      ]/46. Exploring JumpLists - Files, Associations, and Interactions - [ @redblock_team ]/46. Exploring
+      JumpLists - Files, Associations, and Interactions - [ @redblock_team ].md
+    lines: 36-53
+    citation: d_ce0f58efb073
+  - chunk_id: d_3c693ade50e1:c0000
+    rel_path: Certified CyberDefender (CCD) Blue Team Training 2025/07. Module 5 - Disk Forensics - [ @redblock_team
+      ]/46. Exploring JumpLists - Files, Associations, and Interactions - [ @redblock_team ]/46. Exploring
+      JumpLists - Files, Associations, and Interactions - [ @redblock_team ].md
+    lines: 8-36
+    citation: d_3c693ade50e1
+  - chunk_id: d_770cab5a1915:c0035
+    rel_path: SANS/SANS 500 v2024/Book FOR500.3/Book FOR500.3.md
+    lines: 1101-1144
+    citation: d_260233cb3d09
 caveats:
   - "LNK creation is user-driven — files opened by services, tasks, or scripts leave no LNK; absence proves nothing about machine actions."
   - "A LNK proves the file was OPENED at least once — not that it was created on this host nor that it still exists."

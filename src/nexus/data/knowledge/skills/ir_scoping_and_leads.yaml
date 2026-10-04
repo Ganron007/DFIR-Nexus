@@ -74,8 +74,18 @@ confidence_rules:
   low: lead unproven; only circumstantial timing
 mitre: [T1566, T1190, T1078]
 source:
-  - "d_b9e9fc66fd35"
-  - "d_42d0d007ee2c"
+  - chunk_id: d_01929e155e30:c0016
+    rel_path: SANS/SANS 588 v2023/SEC588 I01_07 2023 hide01.ir/SEC588 I01_07 2023 hide01.ir.md
+    lines: 583-622
+    citation: d_b9e9fc66fd35
+  - chunk_id: d_b4cdc7ca8de9:c0016
+    rel_path: SANS/SANS 588 v2023/SEC588 Videos 2023/SEC588 I01_07 2023 hide01.ir/SEC588 I01_07 2023 hide01.ir.md
+    lines: 583-622
+    citation: d_42d0d007ee2c
+  - chunk_id: d_815ea04346a2:c0028
+    rel_path: SANS/SANS 504 v2023/SEC504 2025 - merge/SEC504 2025 - merge.md
+    lines: 878-910
+    citation: d_b9e9fc66fd35
 caveats:
   - "Complex incidents rarely have a linear trail — multiple patient zeros and long dwell times are the norm in advanced threats (EIR L3)."
   - "Do not anchor on the first patient-zero story: systems can be compromised through multiple vectors in the same campaign."
