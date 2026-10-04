@@ -975,15 +975,16 @@ def _record_skill_steps(
     case_families: list[str] | None = None,
     max_queries: int = 12,
 ) -> list[dict[str, Any]]:
-    """WO-K6: run each applicable step and record hit / none / not applicable.
+    """WO-K6: record each applicable step's disposition for the run record.
 
     The work order asks a worker that carries skill refs to **run** each
     applicable step and record the outcome, so a step that could not run is never
     read as a step that found nothing.
 
-    Bounded on purpose: queries are capped per order (`NEXUS_SKILL_STEP_QUERIES`,
-    default 12) because a worker can carry eight skills of up to seven steps each,
-    and an unbounded version would multiply every order's cost. Set
+    On **this** surface (Mode 2/3, ES-only) no step is run, and each is recorded
+    `not_applicable` with the reason — a step's `dsl:` is Mode 1's query language,
+    which this surface does not speak (backbone 4k.5.5). See the block below.
+    `max_queries` is retained only so the signature is unchanged. Set
     `NEXUS_SKILL_STEP_RECORD=0` to skip recording entirely.
     """
     if os.environ.get("NEXUS_SKILL_STEP_RECORD", "1").strip().lower() in ("0", "false", "no"):
