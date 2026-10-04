@@ -61,6 +61,18 @@ _TOOL_ARGS: dict[str, set[str]] = {
     "kb_cite": {"chunk_id"},
     "rag_search": {"query", "top_k", "source", "source_ids", "technique", "platform"},
     "run_record": set(),
+    # WO-K2: the examiner toolkit, validated in the same table as every other
+    # loop tool. Read-only checks against the triage baselines.
+    "check_file": {"path", "hash"},
+    "check_process_tree": {"process_name", "parent_name", "path", "user"},
+    "check_service": {"service_name", "binary_path"},
+    "check_hash": {"hash_value"},
+    "check_autorun": {"key_path", "value_name"},
+    "check_registry": {"key_path", "value_name", "hive"},
+    "analyze_filename_triage": {"filename"},
+    "check_lolbin": {"filename"},
+    "check_hijackable_dll": {"dll_name"},
+    "deobfuscate_command": {"command"},
 }
 
 
@@ -199,6 +211,17 @@ _REQUIRED_ARGS: dict[str, tuple[str, ...]] = {
     "ti_fanout": ("value",),
     "web_search": ("query",),
     "web_fetch": ("url",),
+    # WO-K2: the check's own subject is mandatory; an optional filter is not.
+    "check_file": ("path",),
+    "check_process_tree": ("process_name", "parent_name"),
+    "check_service": ("service_name",),
+    "check_hash": ("hash_value",),
+    "check_autorun": ("key_path",),
+    "check_registry": ("key_path",),
+    "analyze_filename_triage": ("filename",),
+    "check_lolbin": ("filename",),
+    "check_hijackable_dll": ("dll_name",),
+    "deobfuscate_command": ("command",),
 }
 
 _STRING_FIELDS_BY_TOOL: dict[str, tuple[str, ...]] = {
@@ -211,6 +234,17 @@ _STRING_FIELDS_BY_TOOL: dict[str, tuple[str, ...]] = {
     "web_search": ("query",),
     "web_fetch": ("url",),
     "sample_rows": ("family", "field", "value"),
+    # WO-K2: every examiner-check argument is a string.
+    "check_file": ("path", "hash"),
+    "check_process_tree": ("process_name", "parent_name", "path", "user"),
+    "check_service": ("service_name", "binary_path"),
+    "check_hash": ("hash_value",),
+    "check_autorun": ("key_path", "value_name"),
+    "check_registry": ("key_path", "value_name", "hive"),
+    "analyze_filename_triage": ("filename",),
+    "check_lolbin": ("filename",),
+    "check_hijackable_dll": ("dll_name",),
+    "deobfuscate_command": ("command",),
 }
 
 

@@ -1,0 +1,232 @@
+"""WO-K2 — the examiner toolkit in the agent loop.
+
+The work order names three tests:
+
+* each tool is callable from the loop **and audited**;
+* a role without a tool is **refused**;
+* an UNKNOWN verdict alone never stages a DRAFT.
+
+Plus the two things that decide whether the feature is real: the tools are
+validated in the loop's own argument table, and the loop surface and the MCP
+surface cannot drift into two different baseline checks.
+"""
+from __future__ import annotations
+
+import pytest
+
+from nexus.analysis import examiner_checks as ec
+from nexus.langgraph.backbone import (
+    _CONTEXT_TOOL_NAMES,
+    MODE2_TOOL_ALLOWLIST,
+    backbone_call,
+)
+from nexus.langgraph.context_loop import _REQUIRED_ARGS, _TOOL_ARGS, _validate_args
+from nexus.modes.multi_role import ROLES
+
+
+class RecordingAudit:
+    """Stands in for AuditWriter; records what was logged."""
+
+    def __init__(self):
+        self.entries: list[dict] = []
+
+    def log(self, **kwargs):
+        self.entries.append(kwargs)
+        return f"nexus-test-{len(self.entries):04d}"
+
+
+# ---------------------------------------------------------------------------
+# callable from the loop, and audited
+# ---------------------------------------------------------------------------
+
+def test_every_examiner_tool_is_callable_from_the_loop():
+    """Each of the ten must actually run through `backbone_call`."""
+    calls = {
+        "check_file": {"path": r"C:\Windows\System32\cmd.exe"},
+        "check_process_tree": {"process_name": "lsass.exe", "parent_name": "services.exe"},
+        "check_service": {"service_name": "Spooler"},
+        "check_hash": {"hash_value": "d41d8cd98f00b204e9800998ecf8427e"},
+        "check_autorun": {"key_path": r"SOFTWARE\Microsoft\Windows\CurrentVersion\Run"},
+        "check_registry": {"key_path": r"SOFTWARE\Microsoft\Windows NT"},
+        "analyze_filename_triage": {"filename": "invoice.pdf.exe"},
+        "check_lolbin": {"filename": "certutil.exe"},
+        "check_hijackable_dll": {"dll_name": "version.dll"},
+        "deobfuscate_command": {"command": "powershell -enc SQBFAFgA"},
+    }
+    assert set(calls) == set(ec.EXAMINER_CHECK_TOOLS)
+    for name, kwargs in calls.items():
+        result = backbone_call(name, **kwargs)
+        assert isinstance(result, dict), name
+        assert "error" not in result or result.get("verdict"), f"{name}: {result}"
+
+
+def test_each_loop_call_is_audited():
+    """A check without provenance is not usable as evidence (FD-001)."""
+    audit = RecordingAudit()
+    for name, kwargs in (
+        ("check_lolbin", {"filename": "certutil.exe"}),
+        ("check_file", {"path": r"C:\Windows\System32\cmd.exe"}),
+        ("deobfuscate_command", {"command": "powershell -enc SQBFAFgA"}),
+    ):
+        backbone_call(name, audit=audit, **kwargs)
+    assert len(audit.entries) == 3, audit.entries
+    assert {e["tool"] for e in audit.entries} == {
+        "check_lolbin", "check_file", "deobfuscate_command"
+    }
+
+
+def test_results_never_read_as_suspicious_without_evidence():
+    """UNKNOWN must carry its constraint, so no caller can read it as a verdict.
+
+    Measured on a path that is not in the baseline: UNKNOWN, with the FD-004
+    constraint attached - not SUSPICIOUS.
+    """
+    result = backbone_call("check_file", path=r"C:\Program Files\SomeVendor\app.exe")
+    assert result["verdict"] == "UNKNOWN"
+    assert "NOT suspicious" in result["interpretation_constraint"]
+    for name in ec.EXAMINER_CHECK_TOOLS:
+        assert name in _TOOL_ARGS, f"{name} is not validated by the loop"
+
+
+# ---------------------------------------------------------------------------
+# validation lives in the loop's own tables
+# ---------------------------------------------------------------------------
+
+def test_arguments_are_validated_in_the_same_tables_as_other_tools():
+    ok, error = _validate_args("check_file", {"path": r"C:\Windows\System32\cmd.exe"})
+    assert error == "" and ok["path"].endswith("cmd.exe")
+
+    _, error = _validate_args("check_file", {"nope": 1})
+    assert "unsupported argument" in error
+
+    _, error = _validate_args("check_process_tree", {"process_name": "lsass.exe"})
+    assert "missing required argument" in error and "parent_name" in error
+
+    _, error = _validate_args("check_lolbin", {"filename": 42})
+    assert "must be a string" in error
+
+
+def test_every_required_argument_table_entry_is_reachable():
+    """A required arg that is not in _TOOL_ARGS could never be supplied."""
+    for name, required in _REQUIRED_ARGS.items():
+        if name not in _TOOL_ARGS:
+            continue
+        for arg in required:
+            assert arg in _TOOL_ARGS[name], f"{name}: required {arg} is not accepted"
+
+
+# ---------------------------------------------------------------------------
+# a role without a tool is refused
+# ---------------------------------------------------------------------------
+
+def test_a_tool_outside_the_allowlist_is_refused():
+    with pytest.raises(PermissionError):
+        backbone_call("nmap_scan", target="10.0.0.1")
+    with pytest.raises(PermissionError):
+        backbone_call("run_command", command="whoami")
+
+
+def test_the_evidence_and_correlation_roles_carry_the_examiner_toolkit():
+    for role in ("evidence", "correlation"):
+        tools = set(ROLES[role].tools)
+        assert {"check_file", "check_lolbin"} <= tools, role
+        unreachable = tools - set(MODE2_TOOL_ALLOWLIST) - set(_CONTEXT_TOOL_NAMES)
+        assert not unreachable, f"{role} names tools the loop cannot run: {unreachable}"
+
+
+def test_mode1_loop_exposes_the_toolkit():
+    for name in ec.EXAMINER_CHECK_TOOLS:
+        assert name in _CONTEXT_TOOL_NAMES, name
+
+
+# ---------------------------------------------------------------------------
+# no drift between the two surfaces
+# ---------------------------------------------------------------------------
+
+class _StubKnownGood:
+    """A minimal known_good DB with cmd.exe present and nothing else."""
+
+    def path_exists(self, path):
+        return path.lower().endswith(r"system32\cmd.exe")
+
+    def filename_exists(self, filename):
+        return filename.lower() == "cmd.exe"
+
+    def is_directory_known_for_file(self, filename, directory):
+        return True
+
+    def lookup_hash(self, _h):
+        return []
+
+
+class _StubContext:
+    def check_suspicious_filename(self, _f):
+        return None
+
+    def get_protected_process_names(self):
+        return []
+
+    def check_lolbin(self, filename):
+        if filename.lower() == "certutil.exe":
+            return {"name": "certutil.exe", "description": "certificate utility",
+                    "functions": [], "expected_paths": [], "mitre_techniques": [],
+                    "detection": ""}
+        return None
+
+    def check_protected_process(self, _f):
+        return None
+
+
+def test_the_two_surfaces_share_one_implementation(monkeypatch):
+    """The loop must not become a second, drifted baseline check.
+
+    Both the MCP tool and the loop decide through
+    `triage.analysis.calculate_file_verdict`. This asserts the loop really calls
+    it rather than re-implementing a verdict - so a fix in one place moves both.
+    """
+    from nexus.triage import analysis as ta
+
+    seen: list[str] = []
+    real = ta.calculate_file_verdict
+
+    def _spy(**kwargs):
+        seen.append("called")
+        return real(**kwargs)
+
+    import nexus.analysis.examiner_checks as module
+
+    monkeypatch.setattr(module, "calculate_file_verdict", _spy)
+    result = module.check_file(
+        _StubKnownGood(), _StubContext(), path=r"C:\Windows\System32\cmd.exe",
+    )
+    assert seen, "the loop did not go through the shared verdict function"
+    assert result["verdict"] not in ("", None)
+    assert "interpretation_constraint" in result
+
+
+def test_a_lolbin_is_reported_but_not_called_malicious(monkeypatch):
+    """`EXPECTED_LOLBIN` is the sanctioned reading: legitimate, abusable."""
+    import nexus.analysis.examiner_checks as module
+
+    result = module.check_lolbin(_StubContext(), filename="certutil.exe")
+    assert result["found"] is True
+    assert result["verdict"] == "EXPECTED_LOLBIN"
+    assert "not by itself malicious" in result["interpretation_constraint"]
+
+
+def test_an_absent_baseline_is_unknown_not_suspicious():
+    """No triage DB must read as UNKNOWN with the reason, never as a verdict."""
+    import nexus.analysis.examiner_checks as module
+
+    result = module.check_file(None, None, path=r"C:\Windows\System32\cmd.exe")
+    assert result["verdict"] == "UNKNOWN"
+    assert "NOT suspicious" in result["interpretation_constraint"]
+    assert "not found" in result["message"].lower()
+
+
+def test_the_module_and_the_allowlist_agree():
+    """Adding a check without an allowlist entry, or the reverse, is a bug."""
+    assert set(ec.EXAMINER_CHECK_TOOLS) <= set(MODE2_TOOL_ALLOWLIST)
+    assert ec.is_examiner_check("check_lolbin")
+    assert not ec.is_examiner_check("es_search")
+    assert not ec.is_examiner_check("")

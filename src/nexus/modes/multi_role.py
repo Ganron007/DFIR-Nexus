@@ -323,10 +323,13 @@ class AgentRole:
 
 
 ROLES: dict[str, AgentRole] = {
-    "evidence": AgentRole(
-        name="evidence",
-        description="Family-scoped evidence retrieval and hypothesis testing.",
-        tools=("es_mappings", "es_search", "es_aggregate", "sample_rows", "run_record"),
+      "evidence": AgentRole(
+          name="evidence",
+          description="Family-scoped evidence retrieval and hypothesis testing.",
+          tools=("es_mappings", "es_search", "es_aggregate", "sample_rows", "run_record",
+                 "check_file", "check_process_tree", "check_service", "check_hash",
+                 "check_autorun", "check_registry", "analyze_filename_triage",
+                 "check_lolbin", "check_hijackable_dll", "deobfuscate_command"),
         system_prompt=(
             "You are an evidence agent. Answer the work order using ONLY the "
             "read-only tools for this case. Start from the assigned family, "
@@ -343,10 +346,13 @@ ROLES: dict[str, AgentRole] = {
             "until run_record shows the parser ran."
         ),
     ),
-    "correlation": AgentRole(
-        name="correlation",
-        description="Cross-family entity/temporal corroboration.",
-        tools=("es_search", "es_aggregate", "sample_rows", "run_record"),
+      "correlation": AgentRole(
+          name="correlation",
+          description="Cross-family entity/temporal corroboration.",
+          tools=("es_search", "es_aggregate", "sample_rows", "run_record",
+                 "check_file", "check_process_tree", "check_service", "check_hash",
+                 "check_autorun", "analyze_filename_triage", "check_lolbin",
+                 "deobfuscate_command"),
         system_prompt=(
             "You are the correlation agent. Given the evidence notes, identify "
             "entities that appear across families and temporal chains worth "

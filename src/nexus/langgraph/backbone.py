@@ -56,6 +56,20 @@ MODE2_TOOL_ALLOWLIST: dict[str, str] = {
     "web_search": "web",
     "web_fetch": "web",
     "web_status": "web",
+    # WO-K2: the examiner toolkit as read-only loop tools. Each is audited in
+    # `backbone_call` exactly like `es_search`, and every one delegates to the
+    # single implementation in `analysis/examiner_checks.py` - a forked copy of a
+    # baseline check would drift, and a drifted check is worse than none.
+    "check_file": "evidence",
+    "check_process_tree": "evidence",
+    "check_service": "evidence",
+    "check_hash": "evidence",
+    "check_autorun": "evidence",
+    "check_registry": "evidence",
+    "analyze_filename_triage": "evidence",
+    "check_lolbin": "evidence",
+    "check_hijackable_dll": "evidence",
+    "deobfuscate_command": "evidence",
 }
 
 # Confirmed routing (WIRING-PLAN 10.53, Option B):
@@ -75,6 +89,11 @@ TOOL_ALIASES: dict[str, str] = {
 _CONTEXT_TOOL_NAMES: tuple[str, ...] = (
     "es_mappings", "es_search", "es_aggregate", "sample_rows",
     "kb_query", "rag_search", "run_record",
+    # WO-K2: Mode 1's loop gets the examiner toolkit too, so a hit can be
+    # checked against the baseline in the same turn that raises it.
+    "check_file", "check_process_tree", "check_service", "check_hash",
+    "check_autorun", "check_registry", "analyze_filename_triage",
+    "check_lolbin", "check_hijackable_dll", "deobfuscate_command",
 )
 
 # Mode 3 agents bind the same read-only set (4j-D) — defined here so there is
@@ -177,6 +196,126 @@ def _resolve_tool(name: str) -> str:
     return TOOL_ALIASES.get(name, name)
 
 
+#: WO-K2 examiner tools, importable without pulling the triage package.
+EXAMINER_CHECK_TOOL_SET: frozenset[str] = frozenset({
+    "check_file", "check_process_tree", "check_service", "check_hash",
+    "check_autorun", "check_registry", "analyze_filename_triage",
+    "check_lolbin", "check_hijackable_dll", "deobfuscate_command",
+})
+
+#: Argument names the examiner checks accept, for the audit record.
+_EXAMINER_ARG_KEYS: frozenset[str] = frozenset({
+    "path", "hash", "hash_value", "process_name", "parent_name", "user",
+    "service_name", "binary_path", "key_path", "value_name", "hive",
+    "os_version", "filename", "dll_name", "command",
+})
+
+
+def _open_examiner_dbs():
+    """The triage baselines the examiner checks read. Read-only, always."""
+    from nexus.config import settings
+    from nexus.triage.db import ContextDB, KnownGoodDB
+
+    db_dir = settings.data_root / "triage"
+    known_good = context = None
+    if (db_dir / "known_good.db").exists():
+        known_good = KnownGoodDB(db_dir / "known_good.db", read_only=True)
+        known_good.connect()
+    if (db_dir / "context.db").exists():
+        context = ContextDB(db_dir / "context.db", read_only=True)
+        context.connect()
+    return known_good, context
+
+
+def _open_registry_baseline():
+    """The optional registry baseline, or None when it is not installed."""
+    from nexus.config import settings
+    from nexus.triage.db import RegistryDB
+
+    path = settings.data_root / "triage" / "known_good_registry.db"
+    if not path.exists():
+        return None
+    db = RegistryDB(path, read_only=True)
+    if not db.is_available():
+        db.close()
+        return None
+    return db
+
+
+def _examiner_call(
+    name: str, audit: AuditWriter | None = None, **kwargs: Any
+) -> dict[str, Any]:
+    """Route one WO-K2 examiner check to its single implementation.
+
+    Read-only by construction: every task in `analysis.examiner_checks` reads a
+    baseline and returns a verdict. `deobfuscate_command` is the only one that
+    touches no database at all.
+
+    The call is **audited on success here**, not by `_guarded` (which only logs
+    on failure) - `es_search` audits inside `_es_call` for the same reason, and
+    a check with no provenance cannot be used as evidence (FD-001).
+    """
+    from nexus.analysis import examiner_checks as ec
+
+    def _s(key: str) -> str:
+        return str(kwargs.get(key) or "")
+
+    if name == "deobfuscate_command":
+        return ec.deobfuscate_command(command=_s("command"))
+    if name == "analyze_filename_triage":
+        _, context = _open_examiner_dbs()
+        return ec.analyze_filename_triage(context, filename=_s("filename"))
+
+    known_good, context = _open_examiner_dbs()
+    if name == "check_file":
+        return ec.check_file(known_good, context, path=_s("path"),
+                             path_hash=_s("hash") or _s("hash_value"))
+    if name == "check_process_tree":
+        return ec.check_process_tree(
+            context, process_name=_s("process_name"), parent_name=_s("parent_name"),
+            path=_s("path"), user=_s("user"),
+        )
+    if name == "check_service":
+        return ec.check_service(known_good, context, service_name=_s("service_name"),
+                                binary_path=_s("binary_path"))
+    if name == "check_hash":
+        return ec.check_hash(known_good, hash_value=_s("hash_value") or _s("hash"))
+    if name == "check_autorun":
+        return ec.check_autorun(known_good, context, key_path=_s("key_path"),
+                                value_name=_s("value_name"))
+    if name == "check_registry":
+        return ec.check_registry(
+            _open_registry_baseline(), key_path=_s("key_path"),
+            value_name=_s("value_name"), hive=_s("hive"), os_version=_s("os_version"),
+        )
+    if name == "check_lolbin":
+        return ec.check_lolbin(context, filename=_s("filename"))
+    if name == "check_hijackable_dll":
+        return ec.check_hijackable_dll(context, dll_name=_s("dll_name"))
+    raise PermissionError(f"unknown examiner check {name!r}")
+
+
+def _audited_examiner_call(
+    name: str, audit: AuditWriter | None, kwargs: dict[str, Any]
+) -> dict[str, Any]:
+    """`_examiner_call` with a success audit entry, so the call has provenance."""
+    import time as _time
+
+    started = _time.monotonic()
+    result = _examiner_call(name, **kwargs)
+    if audit is not None:
+        with contextlib.suppress(Exception):
+            verdict = str((result or {}).get("verdict") or "")
+            audit.log(
+                tool=name,
+                params={k: str(v)[:120] for k, v in kwargs.items()
+                        if k in _EXAMINER_ARG_KEYS},
+                result_summary={"verdict": verdict} if verdict else {"status": "checked"},
+                elapsed_ms=round((_time.monotonic() - started) * 1000, 1),
+            )
+    return result
+
+
 def _guarded(
     name: str,
     audit: AuditWriter | None,
@@ -248,6 +387,14 @@ def backbone_call(name: str, audit: AuditWriter | None = None, **kwargs: Any) ->
         return _guarded(name, audit,
                         lambda: _run_record_call(audit=audit, **kwargs),
                         params={"case_id": kwargs.get("case_id", "")})
+    if name in EXAMINER_CHECK_TOOL_SET:
+        # WO-K2: the examiner toolkit. Audited on success (like `es_search`) so a
+        # check has provenance, and read-only by construction - no task in the
+        # module mutates anything.
+        return _guarded(name, audit,
+                        lambda: _audited_examiner_call(name, audit, kwargs),
+                        params={k: str(v)[:120] for k, v in kwargs.items()
+                                if k in _EXAMINER_ARG_KEYS})
     if name == "kb_read":
         return _guarded("kb_read", audit,
                         lambda: kb_tools.do_kb_read(audit=audit, **kwargs),
