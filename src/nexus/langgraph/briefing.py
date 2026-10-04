@@ -925,6 +925,24 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
     except Exception:  # noqa: BLE001 - the briefing must render with or without it
         out["reconciliation"] = {}
 
+    # WO-K3: anomaly leads. Deterministic, written to analysis/leads.jsonl, and
+    # surfaced here next to the needles so a briefing carries the questions worth
+    # asking - rarity, an unexpected parent, a first sighting, a volume burst -
+    # not only the rows a keyword happened to match. A lead is not a finding and
+    # stages nothing.
+    try:
+        from nexus.analysis.leads import build_leads
+
+        leads = build_leads(case_dir)
+        out["leads"] = [lead.to_dict() for lead in leads[:60]]
+        by_kind: dict[str, int] = {}
+        for lead in leads:
+            by_kind[lead.kind] = by_kind.get(lead.kind, 0) + 1
+        out["lead_counts"] = {"total": len(leads), "by_kind": by_kind}
+    except Exception as exc:  # noqa: BLE001 - the briefing must render regardless
+        out["leads"] = []
+        out["lead_counts"] = {"total": 0, "by_kind": {}, "error": str(exc)[:200]}
+
     # WP 4j.5c: persist an offline copy — the briefing and signal map must be
     # reviewable without the UI (DFIR practice: every analysis leaves a file
     # artifact the examiner can open, diff, or attach to notes).
