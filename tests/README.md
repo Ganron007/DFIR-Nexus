@@ -92,7 +92,7 @@ USERPROFILE="$PWD/.testhome" python tests/test_hunt_parser.py
 Expected output:
 
 - `=== 51 PASSED, 0 FAILED ===`
-- `=== 41 PASSED, 0 FAILED ===  Total tools registered: 135` (Windows; Linux registers the SIFT lane and skips the Windows-gated tools, so it reports fewer).
+- `=== 41 PASSED, 0 FAILED ===  Total tools registered: 128` (Windows; Linux registers the SIFT lane and skips the Windows-gated tools, so it reports fewer).
 - `=== 31 PASSED, 0 FAILED ===`
 
 ## Why `USERPROFILE`?

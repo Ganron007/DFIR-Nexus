@@ -83,9 +83,6 @@ def _fake_backbone(monkeypatch, calls: list[dict[str, Any]]):
                                    "reason": "", "purpose": "evtx",
                                    "output": "timeline.csv", "audit_id": "hay-1"}],
                       "total": 1}
-        elif name == "kb_query":
-            result = {"available": True,
-                      "hits": [{"title": "anti-forensics", "snippet": "check sdelete"}]}
         elif name == "rag_search":
             result = {"status": "ok",
                       "results": [{"id": "sigma-1", "score": 0.91,
@@ -430,7 +427,7 @@ def test_loop_accepts_every_contract_listed_tool():
 
     listed = {
         "es_mappings", "es_search", "es_aggregate", "sample_rows",
-        "kb_query", "kb_read", "kb_cite", "rag_search", "run_record",
+        "rag_search", "run_record",
     }
     assert listed <= set(_TOOL_ARGS)
     # External TI/web tools stay out of the bounded loop by design; the
@@ -438,18 +435,15 @@ def test_loop_accepts_every_contract_listed_tool():
     assert {"ti_lookup", "ti_fanout", "web_search", "web_fetch"} & set(_TOOL_ARGS) == set()
 
 
-def test_result_summary_carries_kb_read_content():
+def test_result_summary_carries_rag_content():
     from nexus.langgraph.context_loop import _result_summary
 
-    summary = _result_summary("kb_read", {
-        "chunk_id": "d_abc:c0001",
-        "citation": "doc.md:10-20",
-        "doc_title": "Procedure",
-        "text": "run reg save HKLM\\SAM",
+    summary = _result_summary("rag_search", {
+        "status": "ok",
+        "results": [{"text": "run reg save HKLM\\SAM", "source": "test"}],
     })
-    assert summary["chunk_id"] == "d_abc:c0001"
-    assert "reg save" in summary["text"]
-    assert summary["citation"] == "doc.md:10-20"
+    assert summary["status"] == "ok"
+    assert "reg save" in summary["results"][0]["text"]
 
 
 def test_force_answer_rejects_empty_json():
@@ -698,7 +692,6 @@ def test_alias_routing_is_read_only_and_documented():
 
     expected = {
         "es_mappings": "es_fields",
-        "kb_query": "kb_search",
         "sample_rows": "es_sample",
         "rag_search": "forensic_rag_search",
         "run_record": "run_record",

@@ -178,7 +178,7 @@ def _scan_needles(
             needles.setdefault(t.lower(), "itm-strong")
         for t in itm_needles_for(fams):
             needles.setdefault(t.lower(), "itm")
-    except Exception:  # noqa: BLE001 — KB is optional
+    except Exception:  # noqa: BLE001 — optional needles
         pass
 
     # External-threat hard artifacts (ATT&CK-grounded packs).
@@ -192,7 +192,7 @@ def _scan_needles(
             needles.setdefault(t.lower(), "external-strong")
         for t in external_needles_for(fams):
             needles.setdefault(t.lower(), "external")
-    except Exception:  # noqa: BLE001 — KB is optional
+    except Exception:  # noqa: BLE001 — optional needles
         pass
 
     # Intake extras + question terms the examiner already named
@@ -1292,7 +1292,7 @@ def llm_directions(
     """Optional LLM layer over the deterministic briefing.
 
     WP 10.53: directions get the read-only tool loop (schema discovery, run
-    record, sample rows, KB/RAG on demand) before falling back to the original
+    record, sample rows, RAG on demand) before falling back to the original
     one-shot directions prompt. Returns a list grounded in the briefing's real
     numbers. Empty list when no model is configured.
     """
@@ -1354,7 +1354,7 @@ def llm_directions(
                 "You are a senior DFIR examiner writing investigation directions "
                 "for a peer. You may call the read-only tools to inspect the real "
                 "schema (es_mappings), what actually ran (run_record), sample rows "
-                "(sample_rows) and methodology (kb_query/rag_search). Ground every "
+                "(sample_rows) and methodology (rag_search). Ground every "
                 "direction in real case data. Return your FINAL answer through "
                 'the tool protocol answer envelope: {"answer":"<a JSON string '
                 'containing {\\"directions\\":[{\\"title\\":\\"...\\",'

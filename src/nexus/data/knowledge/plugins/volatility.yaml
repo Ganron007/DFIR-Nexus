@@ -12,7 +12,7 @@ description: >-
   when-to-run, output family, MITRE mapping, and the FD-004 caveat that a
   senior applies. The tool lane consumes this as data (capability probe +
   dispatch), so adding a plugin is a YAML edit, not code.
-source: "13Cubed Windows Memory + Volexity Volatility training + SANS FOR508.3/FOR526 + CCD M6 (G:/doc_extract)"
+source: "13Cubed Windows Memory + Volexity Volatility training + SANS FOR508.3/FOR526 + CCD M6"
 tiers:
   - tier: triage
     when: "Every memory case — always first"

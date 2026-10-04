@@ -1,4 +1,4 @@
-"""Skill distillation pipeline — WP 9.2.
+"""Skill distillation pipeline — WP 9.2 (design-time tool).
 
 Turns a KB selection into a schema-valid, fully-cited skill DRAFT for review.
 
@@ -26,7 +26,7 @@ from nexus.knowledge.loader import det_for, skill_sources, validate_skill
 from nexus.langgraph.query_dsl import parse_query
 
 _KB_DEFAULT = r"G:\doc_extract\kb\kb.py"
-_REPO = Path(__file__).resolve().parents[3]
+_REPO = Path(__file__).resolve().parents[2]
 _DEFAULT_OUT = _REPO / "Docs" / "internal" / "skill-drafts"
 _SKILLS_DIR = _REPO / "src" / "nexus" / "data" / "knowledge" / "skills"
 _CITE_RE = re.compile(r"^d_[0-9a-f]{4,}:[cu]?[0-9a-f]{1,12}$")

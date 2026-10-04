@@ -1,9 +1,9 @@
-"""Migrate `# kb:` comment provenance into machine-readable `source:` fields.
+"""Migrate `# kb:` comment provenance into machine-readable `source:` fields (design-time tool).
 
 WP 9.1 completion — makes skill→KB citations machine-readable for every
 shipped skill so that:
   - `skill_provenance()` carries real chunk citations (agent→skill→KB chain),
-  - `kb verify-cites` can validate every shipped skill,
+  - citation verification can validate every shipped skill,
   - the distillation pipeline's `source:` schema is uniform.
 
 The edit is a surgical text insertion after the ``mitre:`` line — the file is
@@ -20,11 +20,10 @@ from pathlib import Path
 with contextlib.suppress(Exception, AttributeError):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
 
-REPO = Path(__file__).resolve().parents[1]
+REPO = Path(__file__).resolve().parents[2]
 SKILLS = REPO / "src" / "nexus" / "data" / "knowledge" / "skills"
 # Resolvable chunk citations (d_xxx:cNNNN) plus doc-level pointers (d_xxx).
-# Doc-level ids are documentation pointers — resolvable via `kb card <doc_id>`
-# and ignored by `kb verify-cites` (which only matches chunk ids).
+# Doc-level ids are documentation pointers.
 _ID_RE = re.compile(r"\bd_[0-9a-f]{4,}(?::c[0-9a-f]{1,8})?\b")
 
 

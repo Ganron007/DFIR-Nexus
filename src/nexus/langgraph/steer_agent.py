@@ -482,16 +482,15 @@ def _execute_queries(queries: list[dict[str, str]], case_id: str, audit: AuditWr
 
 
 def _gather_helper_context(question: str, audit: AuditWriter,
-                           case_dir: Path | None = None) -> tuple[str, str, str]:
-    """RAG methodology + custom-KB + TI context for the answer step.
+                           case_dir: Path | None = None) -> tuple[str, str]:
+    """RAG methodology + TI context for the answer step.
 
     Helpers only — evidence comes from the ES index (es_search/es_aggregate).
-    RAG gives methodology, the KB gives examiner-curated notes, TI gives
-    provider verdicts for IOCs mentioned in the question or already swept
-    into the case's analysis/ti_context.md. Never case evidence (FD-001).
+    RAG gives methodology, TI gives provider verdicts for IOCs mentioned in
+    the question or already swept into the case's analysis/ti_context.md.
+    Never case evidence (FD-001).
     """
     rag_block = ""
-    kb_block = ""
     ti_block = ""
     try:
         from nexus.tools.rag import _get_index
@@ -508,18 +507,6 @@ def _gather_helper_context(question: str, audit: AuditWriter,
         rag_block = "\n".join(lines)
     except Exception as exc:  # noqa: BLE001 — helper is optional by design
         log.debug("RAG helper unavailable: %s", exc)
-    try:
-        from nexus.langgraph.backbone import backbone_call
-
-        kb = backbone_call("kb_search", audit=audit, query=question[:200], limit=5)
-        lines = []
-        for h in (kb.get("hits") or [])[:5]:
-            title = h.get("title") or h.get("path") or h.get("id") or "kb"
-            snippet = re.sub(r"\s+", " ", str(h.get("snippet") or h.get("text") or ""))[:500]
-            lines.append(f"[KB {title}] {snippet}")
-        kb_block = "\n".join(lines)
-    except Exception as exc:  # noqa: BLE001 — KB is optional (NEXUS_KB_DIR)
-        log.debug("KB helper unavailable: %s", exc)
     try:
         from nexus.langgraph.backbone import backbone_call
         from nexus.langgraph.ti_context import extract_iocs
@@ -544,13 +531,13 @@ def _gather_helper_context(question: str, audit: AuditWriter,
         ti_block = "\n".join(lines)
     except Exception as exc:  # noqa: BLE001 — TI is optional context
         log.debug("TI helper unavailable: %s", exc)
-    return rag_block, kb_block, ti_block
+    return rag_block, ti_block
 
 
 def _formulate_answer(question: str, model: Any, hits: list[dict[str, Any]],
                       aggregations: list[dict[str, Any]],
                       queries_executed: list[dict[str, Any]],
-                      rag_block: str = "", kb_block: str = "",
+                      rag_block: str = "",
                       ti_block: str = "", history_block: str = "",
                       case_dir: Path | None = None) -> str:
     """Step 3: LLM reads the actual evidence rows and answers the question.
@@ -600,9 +587,9 @@ def _formulate_answer(question: str, model: Any, hits: list[dict[str, Any]],
         "- When an authoritative extraction or aggregation is provided, USE it "
         "and enumerate its values (e.g. list every executable).\n"
         "- Cite specifics: family, timestamp, hostname, key fields.\n"
-        "- Methodology context (RAG) and examiner notes (KB) are provided as "
-        "HELPERS — use them for interpretation and caveats, never as evidence. "
-        "If you lean on them, name the source (e.g. 'per RAG: <source>').\n"
+        "- Methodology context (RAG) is provided as "
+        "HELPERS — use it for interpretation and caveats, never as evidence. "
+        "If you lean on it, name the source (e.g. 'per RAG: <source>').\n"
         "- End with a one-line `Sources:` note naming the families/files the "
         "answer is based on.\n"
         "- If there are NO results, say so honestly.\n"
@@ -612,8 +599,6 @@ def _formulate_answer(question: str, model: Any, hits: list[dict[str, Any]],
     helper_block = ""
     if rag_block:
         helper_block += f"\nMethodology context (RAG — helper, not evidence):\n{rag_block}\n"
-    if kb_block:
-        helper_block += f"\nExaminer-curated KB notes (helper, not evidence):\n{kb_block}\n"
     if ti_block:
         helper_block += f"\nThreat-intel context (helper, not evidence):\n{ti_block}\n"
 
@@ -633,8 +618,7 @@ def _formulate_answer(question: str, model: Any, hits: list[dict[str, Any]],
              f"{agg_block}{exe_block}{user_block}".strip()),
             (2, "threat_intel", ti_block),
             (3, "methodology_rag", rag_block),
-            (4, "examiner_kb", kb_block),
-            (5, "conversation_history", history_block),
+            (4, "conversation_history", history_block),
         ]
         window = case_window(case_dir) if case_dir is not None else None
         packed, report = pack_sections(sections, window=window)
@@ -832,7 +816,7 @@ def _run_context_loop_turn(
         "question needs field knowledge; use es_search for rows, es_aggregate "
         "for counts/distributions, sample_rows to inspect row texture, "
         "run_record before claiming evidence is absent (distinguish never-parsed "
-        "from not-found), and kb_query/rag_search only for methodology. "
+        "from not-found), and rag_search only for methodology. "
         "Answer in compact markdown; for 3+ rows use a markdown table; end with "
         "a Sources line naming the families/files cited. Never invent facts."
     )
@@ -952,7 +936,7 @@ def run_steer_agent(
     history_context = _history_block(history)
 
     # ── WP 10.53/10.54: model-driven bounded tool loop ──
-    # The model discovers the schema, pulls schema/ledger/KB/RAG/rows on
+    # The model discovers the schema, pulls schema/ledger/RAG/rows on
     # demand and returns a partial result on budget expiry. The legacy
     # 3-step pipeline below remains the deterministic fallback (no model or
     # a loop failure), never the primary path.
@@ -1037,17 +1021,16 @@ def run_steer_agent(
 
     reply = ""
     rag_block = ""
-    kb_block = ""
     ti_block = ""
     if llm is not None:
         t0 = _time.monotonic()
-        rag_block, kb_block, ti_block = _gather_helper_context(question, audit, case_dir)
+        rag_block, ti_block = _gather_helper_context(question, audit, case_dir)
         _stage("helpers", t0,
-               f"rag={len(rag_block)} kb={len(kb_block)} ti={len(ti_block)} chars")
+               f"rag={len(rag_block)} ti={len(ti_block)} chars")
         t0 = _time.monotonic()
         reply = _formulate_answer(
             question, llm, all_hits, aggregations, queries_executed,
-            rag_block, kb_block, ti_block, history_context, case_dir,
+            rag_block, ti_block, history_context, case_dir,
         )
         _stage("answer", t0, f"{len(reply)} chars")
     if not reply:

@@ -354,7 +354,7 @@ Examiner question / case intake
 Director plans work orders  (families + correlation + pattern; KB skills; examiner feedback)
     |
     v
-Workers run read-only tools (es_*, rag_search, kb_query, run_record, sample_rows) — every call audited
+Workers run read-only tools (es_*, rag_search, run_record, sample_rows) — every call audited
     |                              ^
     |                              |  steer / pause / resume / stop  (examiner, at any work-order boundary)
     v

@@ -2,9 +2,7 @@
 
 Every shipped skill must carry provenance: either a ``# kb:`` comment
 (human-readable, the 4j format) or a machine-readable ``source:`` list.
-Operator machines additionally resolve those citations with
-``python G:\\doc_extract\\kb\\kb.py verify-cites <skill.yaml>`` (not run in
-CI — the KB lives outside the repo).
+Operator machines verify citations at design time via devtools/knowledge.
 """
 from __future__ import annotations
 

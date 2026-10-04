@@ -177,7 +177,7 @@ async def write_interpretation_summary(
             "- Base every claim on the staged findings and evidence "
             "below; no invented facts.\n"
             "You may call the read-only tools (run_record, es_aggregate, "
-            "kb_search, forensic_rag_search) to verify coverage before "
+            "forensic_rag_search) to verify coverage before "
             "answering."
         )
         verdict_user = (

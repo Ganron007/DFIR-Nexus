@@ -331,7 +331,7 @@ def _registry_context_block(state: InvestigationState | dict, cap: int = 900) ->
         if not parts:
             return ""
         return ("Framework registry matches (ATLAS/MBC):\n" + "\n".join(parts))[:cap]
-    except Exception:  # noqa: BLE001 — KB is optional
+    except Exception:  # noqa: BLE001 — optional registries
         return ""
 
 
@@ -1495,7 +1495,7 @@ def _n5_query_payload(case_dir, ledger: list, output_dir: Path | None = None) ->
     return "(query pack missing)"
 
 
-# Mode 2 interpret toolset — RAG + evidence (own ES queries) + KB + TI.
+# Mode 2 interpret toolset — RAG + evidence (own ES queries) + TI.
 # All read-only; the evidence/knowledge tools are the same case-gated MCP
 # tools the examiner sees (n4_* require the active case's case_id).
 INTERPRET_TOOL_NAMES = (
@@ -1514,10 +1514,6 @@ INTERPRET_TOOL_NAMES = (
     # WP 10.53: the tool-lane ledger is part of the interpret surface so the
     # loop can distinguish never-parsed from not-found.
     "run_record",
-    # examiner-curated KB (procedures/caveats/terminology)
-    "kb_search",
-    "kb_read",
-    "kb_cite",
     # threat intel (keyed providers auto-included)
     "ti_lookup",
     "ti_fanout",
@@ -1535,7 +1531,7 @@ INTERPRET_TOOL_NAMES = (
 
 
 async def interpret(state: InvestigationState, tools: dict, model) -> dict:
-    """Coverage/interpret: LLM + RAG + KB + TI on N4 query-pack hits."""
+    """Coverage/interpret: LLM + RAG + TI on N4 query-pack hits."""
     try:
         from langgraph.prebuilt import create_react_agent
     except ImportError:
@@ -1564,7 +1560,6 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
     case_id = state.get("case_id") or ""
     ti_block = ""
     inv_md = ""
-    kb_block = ""
     playbook_block = ""
     digest_md = ""
     digest: dict[str, Any] = {}
@@ -1624,40 +1619,23 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
             inv_md = render_inventory_markdown(inv)
         except Exception as exc:  # noqa: BLE001 — inventory is best-effort
             log.warning("entity inventory build failed: %s", exc)
-        # Examiner-curated KB context (question + families + top entities) and
-        # playbook caveats/identification steps for the case's families.
+        # Playbook caveats/identification steps for the case's families.
         try:
             from nexus.langgraph.briefing import _family_inventory
-            from nexus.langgraph.kb_context import (
-                build_kb_context,
-                render_kb_markdown,
-                write_kb_context,
-            )
 
             # Reuse the digest's inventory (already computed above) instead of
             # walking the extraction tree again for family names.
             families = sorted((digest.get("inventory") or {}).keys())
             if not families:
                 families = sorted(_family_inventory(settings.cases_root / case_id))
-            top_entities = [
-                str(item.get("value") or "")
-                for item in (inv.get("processes") or [])[:4]
-            ]
-            kb_ctx = build_kb_context(
-                question=str((state.get("case_context") or {}).get("question") or ""),
-                families=families,
-                entities=top_entities,
-            )
-            write_kb_context(settings.cases_root / case_id, kb_ctx)
-            kb_block = render_kb_markdown(kb_ctx)
             try:
                 from nexus.modes.llm_guided import _playbook_context_for_families
 
                 playbook_block = _playbook_context_for_families(set(families))[:3000]
             except Exception as exc:  # noqa: BLE001
                 log.debug("playbook context unavailable: %s", exc)
-        except Exception as exc:  # noqa: BLE001 — KB is optional (NEXUS_KB_DIR)
-            log.warning("KB context build failed: %s", exc)
+        except Exception as exc:  # noqa: BLE001 — playbooks best-effort
+            log.warning("playbook context build failed: %s", exc)
 
     from nexus.langgraph.itm import itm_prompt_block
 
@@ -1678,9 +1656,8 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
         (2, "entity_inventory", inv_md),
         (3, "threat_intel_context", ti_block),
         (4, "playbook_guidance", playbook_block),
-        (5, "examiner_kb_notes", kb_block),
-        (6, "run_ledger", ledger_block),
-        (7, "prior_rag_notes", rag_prior),
+        (5, "run_ledger", ledger_block),
+        (6, "prior_rag_notes", rag_prior),
     ]
 
     case_dir_for_ctx: Path | None = None
@@ -1793,8 +1770,6 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
             "Use es_fields/es_search/es_aggregate/es_sample (pass the "
             "case_id) to pull rows beyond the digest when a claim needs "
             "evidence — the same case-gated index the examiner uses. "
-            "Use kb_search/kb_read for procedures, caveats and terminology "
-            "from the examiner's KB; cite the page titles you rely on. "
             "THEN emit findings JSON, reconciling EVERY digest item. "
             "Use ti_lookup/ti_fanout for every IOC in the THREAT INTEL block "
             "and for hashes/IPs/domains you see in QUERY PACK hits — say what "
@@ -1818,9 +1793,8 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
         (2, "entity_inventory", inv_md),
         (3, "threat_intel_context", ti_block),
         (4, "playbook_guidance", playbook_block),
-        (5, "examiner_kb_notes", kb_block),
-        (6, "run_ledger", ledger_block),
-        (7, "prior_rag_notes", rag_prior),
+        (5, "run_ledger", ledger_block),
+        (6, "prior_rag_notes", rag_prior),
     ]
     packed, pack_report = pack_sections(sections)
     pack_excerpt = (

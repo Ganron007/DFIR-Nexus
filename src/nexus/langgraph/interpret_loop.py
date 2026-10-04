@@ -37,12 +37,9 @@ _MAX_ROW_CHARS = 300
 _MAX_PERSIST_ROWS = 50
 _DEFAULT_ROUNDS = 3
 # WP 10.53: extra read-only tools the interpret loop may call directly —
-# the same audited MCP surface the examiner uses (run record + KB + RAG).
+# the same audited MCP surface the examiner uses (run record + RAG).
 _EXTRA_TOOL_NAMES = (
     "run_record",
-    "kb_search",
-    "kb_read",
-    "kb_cite",
     "forensic_rag_search",
 )
 
@@ -357,7 +354,7 @@ async def run_interpret_loop(
         '"queries":[{"es":{"query":{"bool":{...}}},"why":"..."}],'
         '"aggregates":[{"aggs":{"by_host":{"terms":{"field":"host"}}},"query":{},"why":"..."}],'
         '"samples":[{"family":"","field":"","value":"","n":8,"why":""}],'
-        '"tools":[{"tool":"run_record|kb_search|forensic_rag_search",'
+        '"tools":[{"tool":"run_record|forensic_rag_search",'
         '"args":{},"why":"..."}]}\n'
         "RULES:\n"
         "- Max 6 query/aggregate/sample items total; only families and fields "
@@ -474,7 +471,7 @@ async def run_interpret_loop(
             '{"notes":[{"hypothesis":"H1","status":"confirmed|refuted|unknown|partial",'
             '"evidence":"one sentence naming the rows (family/host/ts/needle)","family":"..."}],'
             '"next":[{"es":{"query":{...}},"why":"..."},'
-            '{"tool":"run_record|kb_search|forensic_rag_search","args":{},"why":"..."}]}\n'
+            '{"tool":"run_record|forensic_rag_search","args":{},"why":"..."}]}\n'
             "RULES: one note per hypothesis. Plan `next` ONLY for unresolved "
             "hypotheses where new evidence could resolve them (max 4 items). "
             "If everything is settled, next = []. No prose outside the JSON."

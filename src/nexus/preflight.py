@@ -42,7 +42,6 @@ _FIX_INDEX = "nexus index rebuild --case <case-dir>"
 _FIX_LLM = "set NEXUS_LLM_BASE_URL / NEXUS_LLM_MODEL / NEXUS_LLM_API_KEY in .env"
 _FIX_RAG = "nexus data rag-download (or accept the deterministic fallback)"
 _FIX_CASE = "nexus case init \"<name>\" then nexus case activate <id>"
-_FIX_KB = "set NEXUS_KB_DIR (optional — the KB is inert without it and never leaves the host)"
 
 
 @dataclass
@@ -224,13 +223,7 @@ def _knowledge_probe() -> tuple[bool, str]:
     return True, f"{len(feeds)} feed(s), {total} entries"
 
 
-def _kb_probe() -> tuple[bool, str]:
-    from nexus.tools.kb import _kb_py, kb_root
 
-    kb = _kb_py()
-    if not kb or not kb_root():
-        return False, "KB not configured (NEXUS_KB_DIR unset and default KB absent)"
-    return True, f"{kb}"
 
 
 def _mcp_probe() -> tuple[bool, str]:
@@ -409,7 +402,7 @@ def run_gate(
             fix="python scripts/sync_knowledge_sources.py --apply",
             severity=WARN,
         )
-    _guard(report, "kb configured", _kb_probe, fix=_FIX_KB, severity=WARN)
+
 
     # ── optional ──
     _guard(report, "triage baseline", _triage_probe, fix="nexus data triage-download", severity=WARN)

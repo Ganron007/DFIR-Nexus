@@ -11,7 +11,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/Tests-1345%20passed-success.svg" alt="Tests: 1345 passed / 3 skipped">
-  <img src="https://img.shields.io/badge/MCP%20Tools-135%20Win%20%7C%20132%20Linux-blue.svg" alt="MCP Tools: 135 Win | 132 Linux">
+  <img src="https://img.shields.io/badge/MCP%20Tools-128%20Win%20%7C%20125%20Linux-blue.svg" alt="MCP Tools: 128 Win | 125 Linux">
   <img src="https://img.shields.io/badge/Status-v2%20in%20development-yellow.svg" alt="Status: v2 in development">
 </p>
 

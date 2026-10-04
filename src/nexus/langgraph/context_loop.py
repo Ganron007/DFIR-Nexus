@@ -56,9 +56,6 @@ _TOOL_ARGS: dict[str, set[str]] = {
     "es_search": {"query", "size", "sort", "search_after"},
     "es_aggregate": {"aggs", "query"},
     "sample_rows": {"family", "field", "value", "n"},
-    "kb_query": {"query", "folder", "signal", "limit"},
-    "kb_read": {"chunk_id"},
-    "kb_cite": {"chunk_id"},
     "rag_search": {"query", "top_k", "source", "source_ids", "technique", "platform"},
     "run_record": set(),
     # WO-K2: the examiner toolkit, validated in the same table as every other
@@ -203,9 +200,6 @@ def _normalize_tool_calls(parsed: dict[str, Any]) -> list[dict[str, Any]]:
 _REQUIRED_ARGS: dict[str, tuple[str, ...]] = {
     "es_search": ("query",),
     "es_aggregate": ("aggs",),
-    "kb_query": ("query",),
-    "kb_read": ("chunk_id",),
-    "kb_cite": ("chunk_id",),
     "rag_search": ("query",),
     "ti_lookup": ("value",),
     "ti_fanout": ("value",),
@@ -225,9 +219,6 @@ _REQUIRED_ARGS: dict[str, tuple[str, ...]] = {
 }
 
 _STRING_FIELDS_BY_TOOL: dict[str, tuple[str, ...]] = {
-    "kb_query": ("query", "folder", "signal"),
-    "kb_read": ("chunk_id",),
-    "kb_cite": ("chunk_id",),
     "rag_search": ("query", "source", "technique", "platform"),
     "ti_lookup": ("value", "ioc_type"),
     "ti_fanout": ("value", "ioc_type"),
@@ -290,11 +281,6 @@ def _validate_args(tool: str, args: dict[str, Any]) -> tuple[dict[str, Any], str
         except (TypeError, ValueError):
             return {}, "sample_rows: n must be an integer"
         clean["n"] = max(1, min(n, 60))
-    if tool == "kb_query":
-        try:
-            clean["limit"] = max(1, min(int(clean.get("limit") or 5), 20))
-        except (TypeError, ValueError):
-            clean["limit"] = 5
     if tool == "rag_search":
         try:
             clean["top_k"] = max(1, min(int(clean.get("top_k") or 8), 50))
@@ -377,35 +363,6 @@ def _result_summary(name: str, result: dict[str, Any]) -> dict[str, Any]:
                 for e in (result.get("entries") or [])[:40]
             ],
             "total": result.get("total"),
-        }
-    if name == "kb_query":
-        hits = result.get("hits") or []
-        return {
-            "available": result.get("available"),
-            "hits": [
-                {
-                    "title": (h.get("title") or h.get("rel_path") or h.get("path")
-                              or h.get("id") or h.get("chunk_id")),
-                    "chunk_id": h.get("chunk_id") or h.get("id"),
-                    "snippet": str(h.get("snippet") or h.get("text") or "")[:400],
-                }
-                for h in hits[:8] if isinstance(h, dict)
-            ],
-        }
-    if name == "kb_read":
-        return {
-            "chunk_id": result.get("chunk_id") or result.get("id"),
-            "citation": result.get("citation"),
-            "doc_title": result.get("doc_title"),
-            "text": str(result.get("text") or "")[:60_000],
-        }
-    if name == "kb_cite":
-        return {
-            "chunk_id": result.get("chunk_id") or result.get("id"),
-            "citation": result.get("citation"),
-            "rel_path": result.get("rel_path"),
-            "lines": result.get("lines"),
-            "resolved": bool(result.get("chunk_id") or result.get("citation")),
         }
     if name == "rag_search":
         results = result.get("results") or []

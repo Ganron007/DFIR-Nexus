@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""WO-K6 — upgrade skill citations from documents to chunks.
+"""WO-K6 — upgrade skill citations from documents to chunks (design-time tool).
 
 Measured before this: **all 37 skills** cited bare document names ("EIR CH4-1",
 "FOR526 memory forensics"). A document name points at a whole book, so a step's
@@ -10,14 +10,13 @@ This resolves each skill to real chunks in the local KB (`G:\\doc_extract`) -
 `kb find` returns `chunk_id`, the document path and the line range, which is
 exactly the `{chunk_id, rel_path, lines}` shape the loader already accepts.
 
-    python scripts/upgrade_skill_citations.py            # upgrade in place
-    python scripts/upgrade_skill_citations.py --check     # fail if not all chunk-grade
-    python scripts/upgrade_skill_citations.py --dry-run   # print what would change
+    python devtools/knowledge/upgrade_skill_citations.py            # upgrade in place
+    python devtools/knowledge/upgrade_skill_citations.py --check     # fail if not all chunk-grade
+    python devtools/knowledge/upgrade_skill_citations.py --dry-run   # print what would change
 
 The original document names are **kept** in each entry (`citation`), so nothing
 is lost: a reviewer can still see which book the skill was drawn from, and the
-chunk says where in it. Nothing here is derived from a K1 or GATE-H sample - the
-KB is an external corpus, and the query is built from the skill's own trigger.
+chunk says where in it.
 """
 from __future__ import annotations
 
@@ -30,7 +29,8 @@ from typing import Any
 
 import yaml
 
-REPO = Path(__file__).resolve().parent.parent
+REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO / "src"))
 SKILLS = REPO / "src" / "nexus" / "data" / "knowledge" / "skills"
 KB_ROOT = Path("G:/doc_extract")
 KB_PY = KB_ROOT / "kb" / "kb.py"
@@ -76,16 +76,7 @@ def find_chunks(query: str, *, limit: int = 40, timeout: float = 180.0) -> list[
 
 
 def queries_for_skill(skill: dict[str, Any]) -> list[str]:
-    """KB queries for a skill, most specific first.
-
-    `kb find` matches on the terms it is given, so a long query (title plus six
-    keywords) matches **nothing** - measured: a 9-term query for the LSASS skill
-    returned 0 hits while its 3-word title returned 2. So the candidates get
-    shorter, and the first that resolves wins.
-
-    Built from the skill's OWN title and trigger - the KB is an external corpus
-    and nothing about the K1 set enters here.
-    """
+    """KB queries for a skill, most specific first."""
     title = " ".join(str(skill.get("title") or "").split())
     keywords = [str(k) for k in ((skill.get("trigger") or {}).get("keywords") or [])]
     words = title.split()
@@ -105,11 +96,7 @@ def queries_for_skill(skill: dict[str, Any]) -> list[str]:
 
 
 def rewrite_source(skill: dict[str, Any], chunks: list[dict[str, Any]]) -> list[dict[str, Any]] | None:
-    """The new `source:` list, or None when there is nothing to change.
-
-    Each entry keeps the original document name in `citation` so the book a
-    skill came from is still visible next to the passage that supports it.
-    """
+    """The new `source:` list, or None when there is nothing to change."""
     existing = skill.get("source")
     if isinstance(existing, str):
         existing = [existing]
@@ -157,8 +144,7 @@ def upgrade_skill(path: Path, *, dry_run: bool = False) -> tuple[str, int]:
         return (ident, len(new_source))
 
     # Rewrite only the `source:` block, preserving every comment and the rest of
-    # the file (a full safe_dump would drop the `# kb:` provenance comments at
-    # the top of each skill file).
+    # the file.
     text = path.read_text(encoding="utf-8")
     lines = text.splitlines()
     start = next((i for i, line in enumerate(lines)
@@ -166,8 +152,6 @@ def upgrade_skill(path: Path, *, dry_run: bool = False) -> tuple[str, int]:
     rendered = yaml.safe_dump(
         {"source": new_source}, sort_keys=False, allow_unicode=True, width=100,
     ).splitlines()
-    # `safe_dump` indents nested lists under the key; re-indent by two so the
-    # block sits inside the skill mapping.
     block = ["source:"] + ["  " + line for line in rendered[1:] if line.strip()]
 
     if start is None:
@@ -188,10 +172,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
 
-    if not kb_available():
-        print(f"KB not available at {KB_PY} - cannot resolve chunks", file=sys.stderr)
-        return 2
-
     from nexus.analysis.skill_steps import verify_citations
 
     if args.check:
@@ -209,6 +189,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"all {len(skills)} skills are chunk-grade")
         return 0
 
+    if not kb_available():
+        print(f"KB not available at {KB_PY} - cannot resolve chunks", file=sys.stderr)
+        return 2
+
     upgraded = 0
     total_chunks = 0
     for path in sorted(SKILLS.glob("*.yaml")):
@@ -220,7 +204,6 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {ident}: {verb} {count} chunk(s)")
     print(f"\n{upgraded} skill(s), {total_chunks} chunk(s)")
     if not args.dry_run and upgraded:
-        # Re-read and report the resulting grade honestly.
         skills = []
         for path in sorted(SKILLS.glob("*.yaml")):
             data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}

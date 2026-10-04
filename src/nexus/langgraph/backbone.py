@@ -6,7 +6,7 @@ the enforcement point — the allowlist is structural, not advisory:
 
   evidence : es_fields, es_search, es_aggregate, es_sample, index_mappings,
              family_fields
-  knowledge: kb_search, kb_read, kb_cite
+  knowledge: rag_search
 
 Mutating tools (approve, case_delete, evidence_register, ...) are NOT in
 any LLM allowlist — the examiner disposes (FD-002).
@@ -23,7 +23,6 @@ from typing import Any
 
 from nexus.audit import AuditWriter
 from nexus.tools import evidence_index
-from nexus.tools import kb as kb_tools
 from nexus.tools import web as web_tools
 
 log = logging.getLogger(__name__)
@@ -39,14 +38,10 @@ MODE2_TOOL_ALLOWLIST: dict[str, str] = {
     "es_sample": "evidence",
     "index_mappings": "evidence",
     "family_fields": "evidence",
-    "kb_search": "knowledge",
-    "kb_read": "knowledge",
-    "kb_cite": "knowledge",
     # WP 10.53: model-facing context-engineering aliases (Option B). The
     # canonical implementations above stay exactly as audited; the alias is
     # transport only and can never map to a mutating tool.
     "es_mappings": "evidence",
-    "kb_query": "knowledge",
     "sample_rows": "evidence",
     "rag_search": "knowledge",
     "run_record": "evidence",
@@ -73,14 +68,13 @@ MODE2_TOOL_ALLOWLIST: dict[str, str] = {
 }
 
 # Confirmed routing (WIRING-PLAN 10.53, Option B):
-#   es_mappings -> es_fields   kb_query -> kb_search
+#   es_mappings -> es_fields
 #   sample_rows -> es_sample   rag_search -> forensic_rag_search core
 #   run_record  -> tool-lane ledger reader (new core)
 # The LLM sees the left-hand names; every alias resolves to the already
 # audited canonical implementation. No mutating tool gains an alias.
 TOOL_ALIASES: dict[str, str] = {
     "es_mappings": "es_fields",
-    "kb_query": "kb_search",
     "sample_rows": "es_sample",
     "rag_search": "forensic_rag_search",
     "run_record": "run_record",
@@ -88,7 +82,7 @@ TOOL_ALIASES: dict[str, str] = {
 
 _CONTEXT_TOOL_NAMES: tuple[str, ...] = (
     "es_mappings", "es_search", "es_aggregate", "sample_rows",
-    "kb_query", "rag_search", "run_record",
+    "rag_search", "run_record",
     # WO-K2: Mode 1's loop gets the examiner toolkit too, so a hit can be
     # checked against the baseline in the same turn that raises it.
     "check_file", "check_process_tree", "check_service", "check_hash",
@@ -104,8 +98,8 @@ MODE3_TOOL_ALLOWLIST: dict[str, str] = dict(MODE2_TOOL_ALLOWLIST)
 def tool_contracts_block(mode: int = 2, *, include_external: bool = True) -> str:
     """Prompt block: the backbone tools the LLM may call + their contracts.
 
-    WP 10.53: the model-facing names are the seven context-engineering tools
-    (``es_mappings`` / ``es_search`` / ``es_aggregate`` / ``kb_query`` /
+    WP 10.53: the model-facing names are the context-engineering tools
+    (``es_mappings`` / ``es_search`` / ``es_aggregate`` /
     ``rag_search`` / ``run_record`` / ``sample_rows``). The canonical
     implementations and audit names remain the existing ones (Option B).
 
@@ -119,11 +113,9 @@ def tool_contracts_block(mode: int = 2, *, include_external: bool = True) -> str
         "- es_search(case_id, query, size, sort, search_after) — allowlisted Elasticsearch query JSON (bool/term/terms/range/match/match_phrase/multi_match/wildcard/exists/prefix/match_all); exact total + next_search_after for full enumeration; use a range clause on ts for time filters and fields.<Name>/fields.<Name>.kw for parsed columns.",
         "- es_aggregate(case_id, aggs, query) — terms/date_histogram/cardinality/composite/min/max/avg; composite returns `next_after_key` for complete bucket enumeration. Use it for counts, distributions and completeness checks.",
         "- sample_rows(case_id, family, field, value, n) — representative raw rows spread over time; context, never evidence.",
-        "- kb_query(query, folder, signal, limit) — examiner-curated KB procedures + citations; methodology, never evidence.",
         "- rag_search(query, top_k, source, technique, platform) — semantic methodology/detection knowledge; methodology, never evidence.",
         "- run_record(case_id) — the tool-lane ledger: which parser/tool ran, status (OK/SKIP/FAIL), reason, output file, command, audit_id. Use this before claiming evidence is absent — distinguish 'not parsed' from 'not found'.",
-            "- kb_read(chunk_id) / kb_cite(chunk_id) — read/cite a KB chunk returned by kb_query.",
-            "",
+        "",
             "Examiner checks (read-only, against the triage baselines). Use one to TEST a "
             "suspicion before writing it down — a row that looks odd is not yet a finding:",
             "- check_file(path, hash) — is this path/hash in the Windows baseline? verdict "
@@ -394,14 +386,7 @@ def backbone_call(name: str, audit: AuditWriter | None = None, **kwargs: Any) ->
                         lambda: evidence_index.do_family_fields(
                             audit=audit, **kwargs),
                         params={"family": kwargs.get("family", "")})
-    if canonical == "kb_search":
-        kwargs.setdefault("query", "")
-        return _guarded(name, audit,
-                        lambda: kb_tools.do_kb_search(
-                            audit=audit,
-                            alias=name if name != canonical else "",
-                            **kwargs),
-                        params={"query": str(kwargs.get("query") or "")[:200]})
+
     if canonical == "forensic_rag_search":
         return _guarded(name, audit,
                         lambda: _rag_call(audit=audit, alias=name, **kwargs),
@@ -418,14 +403,7 @@ def backbone_call(name: str, audit: AuditWriter | None = None, **kwargs: Any) ->
                         lambda: _audited_examiner_call(name, audit, kwargs),
                         params={k: str(v)[:120] for k, v in kwargs.items()
                                 if k in _EXAMINER_ARG_KEYS})
-    if name == "kb_read":
-        return _guarded("kb_read", audit,
-                        lambda: kb_tools.do_kb_read(audit=audit, **kwargs),
-                        params={"chunk_id": str(kwargs.get("chunk_id") or "")[:80]})
-    if name == "kb_cite":
-        return _guarded("kb_cite", audit,
-                        lambda: kb_tools.do_kb_cite(audit=audit, **kwargs),
-                        params={"chunk_id": str(kwargs.get("chunk_id") or "")[:80]})
+
     if name == "ti_lookup":
         return _guarded("ti_lookup", audit,
                         lambda: _ti_call("lookup", audit=audit, **kwargs),

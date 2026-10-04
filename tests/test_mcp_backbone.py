@@ -1,8 +1,7 @@
-"""WP 9.10/9.11 — MCP backbone tool tests (evidence plane + knowledge plane).
+"""WP 9.10/9.11 — MCP backbone tool tests (evidence plane).
 
 The LLM reaches a case's evidence ONLY through the case-gated MCP tools;
-the KB tools are inert without the KB and case-gated tools refuse a
-case_id that is not the active case.
+case-gated tools refuse a case_id that is not the active case.
 """
 from __future__ import annotations
 
@@ -47,10 +46,11 @@ def backbone(tmp_path, monkeypatch):
 
 def test_backbone_tools_registered(backbone):
     tools, _cid = backbone
-    for name in ("n4_query", "n4_aggregate", "index_mappings",
-                 "kb_search", "kb_read", "kb_cite", "kb_verify_cites",
-                 "kb_topics", "kb_coverage_map", "kb_list_packs"):
+    for name in ("n4_query", "n4_aggregate", "index_mappings"):
         assert name in tools, f"missing backbone tool {name}"
+    for name in ("kb_search", "kb_read", "kb_cite", "kb_verify_cites",
+                 "kb_topics", "kb_coverage_map", "kb_list_packs"):
+        assert name not in tools, f"KB tool {name} must not be registered"
 
 
 def test_n4_query_gated_to_active_case(backbone):
@@ -126,36 +126,6 @@ def test_cached_index_mappings_get_fresh_audit_provenance(backbone):
     assert first["provenance"]["audit_id"] != second["provenance"]["audit_id"]
 
 
-def test_kb_tools_inert_without_kb(backbone, monkeypatch):
-    from nexus.knowledge import kb_bridge
-
-    monkeypatch.setattr(kb_bridge, "_DEFAULT_ROOT", Path("Z:/definitely-not-here"))
-    tools, _cid = backbone
-    r = tools["kb_search"].fn(query="lsass")
-    assert r.get("available") is False and "error" in r
-    assert tools["kb_read"].fn(chunk_id="d_abc:c0001").get("available") is False
-    assert tools["kb_list_packs"].fn().get("available") is False
-
-
-@pytest.mark.skipif(
-    not (Path(os.environ.get("NEXUS_KB_DIR", r"G:\doc_extract")) / "kb" / "kb.py").is_file(),
-    reason="operator KB not present")
-def test_kb_search_live(backbone):
-    tools, _cid = backbone
-    r = tools["kb_search"].fn(query="lsass", limit=2)
-    assert r.get("available") is True
-    assert r.get("hits"), "expected KB hits on the operator KB"
-
-
-@pytest.mark.skipif(
-    not (Path(os.environ.get("NEXUS_KB_DIR", r"G:\doc_extract")) / "kb" / "kb.py").is_file(),
-    reason="operator KB not present")
-def test_kb_verify_cites_on_installed_skill(backbone):
-    tools, _cid = backbone
-    r = tools["kb_verify_cites"].fn(skill="memory_process_analysis")
-    assert "error" not in r, r
-
-
 def test_every_allowlisted_tool_has_a_binding(backbone):
     """Structural guard: a name in MODE2_TOOL_ALLOWLIST without a binding
     raises PermissionError('no binding') — web_search/web_fetch were
@@ -171,9 +141,6 @@ def test_every_allowlisted_tool_has_a_binding(backbone):
         "es_sample": {"case_id": cid, "family": "hayabusa", "n": 2},
         "index_mappings": {"case_id": cid},
         "family_fields": {"family": "hayabusa"},
-        "kb_search": {"query": "sdelete"},
-        "kb_read": {"chunk_id": "x"},
-        "kb_cite": {"chunk_id": "x"},
         "ti_lookup": {"value": "127.0.0.1"},
         "ti_fanout": {"value": "127.0.0.1"},
         "ti_list_providers": {},

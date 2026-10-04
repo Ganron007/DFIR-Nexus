@@ -131,7 +131,7 @@ nexus evidence verify     # re-hash and check for tampering
 
 DFIR-Nexus wraps your existing forensic tools as MCP tools. Every tool run is audited and returns an `audit_id`. **This is the key concept — every action gets a unique audit_id that findings must reference:**
 
-**Tools available (135 on Windows / 132 on Linux):**
+**Tools available (128 on Windows / 125 on Linux):**
 
 | Category | Tools | When to use |
 |----------|-------|-------------|

@@ -15,7 +15,7 @@ description: >-
   field targets are grounded. Unknown parsers are covered by schema-on-read:
   every hit carries its own parsed columns, and free-text/regex search needs
   no column names.
-source: "Our parser lane outputs + OSSEM Common Schema + Eric Zimmerman tool docs (G:/doc_extract Tool-Docs)"
+source: "Our parser lane outputs + OSSEM Common Schema + Eric Zimmerman tool docs (Tool-Docs)"
 profiles:
   - family: hayabusa
     fields: [Timestamp, Computer, Channel, EventID, Level, RuleTitle, Details, ExtraFieldInfo, MitreTags]

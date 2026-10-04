@@ -91,7 +91,7 @@ A: Yes. The audit chain plus the per-finding HMAC entry in the verification ledg
 ## Tools & Data
 
 **Q: What forensic tools does DFIR-Nexus support?**
-A: It wraps your existing tools — NOT replaces them. Supported: SIFT workstation tools, Zimmerman tools, Sysinternals, KAPE, YARA, Volatility 3, Plaso, Hayabusa (N2 parser, not live collect), Velociraptor, Suricata, Zeek, Elastic, and more. 135 MCP tools (Windows) / 132 (Linux).
+A: It wraps your existing tools — NOT replaces them. Supported: SIFT workstation tools, Zimmerman tools, Sysinternals, KAPE, YARA, Volatility 3, Plaso, Hayabusa (N2 parser, not live collect), Velociraptor, Suricata, Zeek, Elastic, and more. 128 MCP tools (Windows) / 125 (Linux).
 
 **Q: Does live collect run Hayabusa / Suzaku / Chainsaw?**
 A: No. `nexus collect` is acquire-only (KAPE, wevtutil, Sysinternals, PersistenceSniper, optional Kansa/ORC/memory). Parsers run at **N2** after you register the pack: `nexus pipeline --mode tools`. Collect must not create empty `hayabusa` / `suzaku` / `chainsaw` directories on the target.

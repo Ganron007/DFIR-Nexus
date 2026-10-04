@@ -1,9 +1,9 @@
-"""Distill a KB selection into a schema-valid, cited skill DRAFT (WP 9.2).
+"""Distill a KB selection into a schema-valid, cited skill DRAFT (WP 9.2, design-time).
 
 Examples:
-    python scripts\\distill_skill.py --folder "DFIR-Report" --name dfir_intrusion_flow
-    python scripts\\distill_skill.py --folder "13Cubed" --llm --out Docs\\internal\\skill-drafts
-    python scripts\\distill_skill.py --from-yaml draft.yaml --install   # promote after review
+    python devtools/knowledge/distill_skill.py --folder "DFIR-Report" --name dfir_intrusion_flow
+    python devtools/knowledge/distill_skill.py --folder "13Cubed" --llm --out Docs/internal/skill-drafts
+    python devtools/knowledge/distill_skill.py --from-yaml draft.yaml --install   # promote after review
 
 Exit 0 when the draft passes every gate, 1 otherwise. Drafts are written to a
 review dir by default; --install writes to the shipped skills dir (needs gates
@@ -16,7 +16,9 @@ import json
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+_REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_REPO))
+sys.path.insert(0, str(_REPO / "src"))
 
 
 def main() -> int:
@@ -31,7 +33,7 @@ def main() -> int:
     ap.add_argument("--kb", default=None, help="path to kb.py (default G:\\doc_extract\\kb\\kb.py)")
     args = ap.parse_args()
 
-    from nexus.knowledge.distill import distill
+    from devtools.knowledge.distill import distill
 
     try:
         report = distill(
@@ -44,20 +46,12 @@ def main() -> int:
             install=args.install,
             force=args.force,
         )
+        print(json.dumps(report, indent=2))
+        return 0 if not report["gate"] else 1
     except Exception as exc:  # noqa: BLE001
         print(f"distill failed: {exc}", file=sys.stderr)
         return 2
 
-    print(json.dumps(report, indent=2))
-    if report["gate"]:
-        print("\nGATE FAILURES (draft written for review, not installed):", file=sys.stderr)
-        for p in report["gate"]:
-            print(f"  - {p}", file=sys.stderr)
-        return 1
-    print(f"\ngates passed — {report['steps']} steps, {report['citations']} citations, "
-          f"refined_by={report['refined_by']}")
-    return 0
-
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    sys.exit(main())

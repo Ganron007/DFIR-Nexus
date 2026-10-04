@@ -5,7 +5,7 @@ description: >
   MFTECmd / browser). Technique ids allow selection from the case intake;
   families map to evidence actually present in the case. Caveats are FD-004
   false-positive guards the scribe must respect.
-source: "MITRE ATT&CK Enterprise + SANS FOR500/FOR508 & 13Cubed methodology (G:/doc_extract corpus)"
+source: "MITRE ATT&CK Enterprise + SANS FOR500/FOR508 & 13Cubed methodology"
 packs:
   - technique: "T1059.001"
     name: "PowerShell"

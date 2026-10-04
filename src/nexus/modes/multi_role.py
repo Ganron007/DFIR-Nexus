@@ -121,7 +121,7 @@ def _question_keywords(question: str, limit: int = 12) -> list[str]:
 
 
 def _skill_lookup() -> dict[str, dict[str, Any]]:
-    """All registered skills by id; {} when the KB is unavailable."""
+    """All registered skills by id; {} when unavailable."""
     try:
         from nexus.knowledge.loader import get_skills
 
@@ -194,7 +194,7 @@ def _retrieve_skill_refs(
     """Ranked skill provenance for a work order (M3.2).
 
     Returns ``[{skill, title, version, score, why, citations, mitre}]`` —
-    the exact procedure version an agent may follow. A failure to load the KB
+    the exact procedure version an agent may follow. A failure to load skills
     degrades to no skills, never to invented steps.
     """
     try:
@@ -364,11 +364,11 @@ ROLES: dict[str, AgentRole] = {
     "pattern": AgentRole(
         name="pattern",
         description="ITM/ATT&CK/ATLAS/MBC pattern matching.",
-        tools=("es_search", "es_aggregate", "run_record", "kb_query", "rag_search"),
+        tools=("es_search", "es_aggregate", "run_record", "rag_search"),
         system_prompt=(
             "You are the pattern agent. Match the evidence against the case's "
-            "framework registries (ITM/ATT&CK/ATLAS/MBC) through rag_search and "
-            "kb_query, and verify the required evidence rows exist with "
+            "framework registries (ITM/ATT&CK/ATLAS/MBC) through rag_search, "
+            "and verify the required evidence rows exist with "
             "es_search/es_aggregate. Return JSON with keys: patterns, evidence, "
             "caveats, next_questions, coverage. Do not force a pattern when the "
             "required evidence is missing."
@@ -378,7 +378,7 @@ ROLES: dict[str, AgentRole] = {
         name="verifier",
         description="Adversarial refutation of candidate findings.",
         tools=("es_search", "es_aggregate", "sample_rows", "run_record",
-               "kb_query", "rag_search"),
+               "rag_search"),
         system_prompt=(
             "You are the verifier. For EACH candidate finding, re-check its "
             "cited claims with tools and classify it confirmed, inferred or "
@@ -391,7 +391,7 @@ ROLES: dict[str, AgentRole] = {
     "synthesis": AgentRole(
         name="synthesis",
         description="Case narrative + DRAFT candidate findings.",
-        tools=("es_aggregate", "sample_rows", "run_record", "kb_query", "rag_search"),
+        tools=("es_aggregate", "sample_rows", "run_record", "rag_search"),
         system_prompt=(
             "You are the synthesis agent. Build the investigation narrative "
             "from the verified notes only, and propose DRAFT candidate findings "
@@ -407,7 +407,7 @@ ROLES: dict[str, AgentRole] = {
     "reporter": AgentRole(
         name="reporter",
         description="Report-ready narrative from verified findings.",
-        tools=("run_record", "kb_query", "rag_search"),
+        tools=("run_record", "rag_search"),
         system_prompt=(
             "You are the report agent. Write a compact examiner-ready summary "
             "of the verified findings, their evidence, confidence and the "
@@ -1030,10 +1030,10 @@ def _record_skill_steps(
 
 
 def _skill_procedure_block(order: WorkOrder) -> str:
-    """Render the KB-cited procedures attached to a work order (M3.2).
+    """Render the procedure steps attached to a work order (M3.2).
 
-    Steps are copied from the KB skill, never invented; each block carries the
-    skill id, content version and KB chunk citations so an agent (and later a
+    Steps are copied from the skill, never invented; each block carries the
+    skill id, content version and chunk citations so an agent (and later a
     staged finding) can be traced to the exact procedure version.
     """
     if not order.skill_refs:
@@ -1048,7 +1048,7 @@ def _skill_procedure_block(order: WorkOrder) -> str:
         cites = ", ".join(str(c) for c in (ref.get("citations") or [])) or "none"
         lines.append(
             f"- {skill_id} v{ref.get('version') or '?'} "
-            f"role={ref.get('role') or ''} (KB {cites}): "
+            f"role={ref.get('role') or ''} (citations: {cites}): "
             f"{ref.get('title') or skill.get('title') or ''}"
         )
         for step in (skill.get("steps") or []):
@@ -1079,7 +1079,7 @@ def _skill_procedure_block(order: WorkOrder) -> str:
     if not lines:
         return ""
     return (
-        "KB-CITED PROCEDURES (follow the step queries; keep the skill id + "
+        "PROCEDURES (follow the step queries; keep the skill id + "
         "version + citations for anything you use):\n" + "\n".join(lines) + "\n"
     )
 
@@ -1343,7 +1343,7 @@ def plan_work_orders(
         task=(f"Match the evidence against ITM/ATT&CK/ATLAS/MBC patterns for: "
               f"{question or '(no examiner question)'}"),
         why="Framework-grounded pattern check after correlation",
-        priority_tools=("rag_search", "kb_query", "es_search", "es_aggregate"),
+        priority_tools=("rag_search", "es_search", "es_aggregate"),
         acceptance="patterns with required evidence rows, or explicit no-match",
         skill_refs=_retrieve_skill_refs(all_families, keywords, limit=8),
     ))
@@ -1862,7 +1862,7 @@ def run_mode2(
             # into each work order's prompt, but nothing said which ones - so
             # whether an agent followed a documented method or improvised could
             # not be answered from the case afterwards, and skill usage could not
-            # be measured. Refs carry skill id, content version and KB citations,
+            # be measured. Refs carry skill id, content version and citations,
             # so a staged finding traces to the exact procedure text behind it.
             used: list[dict[str, Any]] = []
             seen_skills: set[tuple[str, str]] = set()

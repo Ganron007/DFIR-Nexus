@@ -4,7 +4,7 @@ platform: ics_ot
 description: >-
   ICS/OT detection dictionary (WP 9.7) — protocol operations and control-system
   technique indicators that feed `look_for` + `caveats` on hits. Source: SANS
-  ICS515 (Books 1–5 + workbook, `G:\doc_extract\SANS\SANS 515 v2022`).
+  ICS515 (Books 1–5 + workbook).
 source: "SANS ICS515 v2022"
 entries:
   - id: modbus_write
