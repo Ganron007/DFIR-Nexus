@@ -319,6 +319,30 @@ def _run(cmd: list[str], *, timeout: int) -> tuple[int, str, float]:
     return rc, out[-4000:], round(time.monotonic() - started, 1)
 
 
+def _prepare_index(py: str, case_id: str, timeout: int) -> dict[str, Any]:
+    """Build the lane and the N3 index a Mode 2/3 run reads. Idempotent.
+
+    `pipeline --mode tools` parses the evidence into the run's extractions;
+    `case index` then indexes those into Elasticsearch. Mode 2/3 do neither, and
+    without them a run reports `candidates: 0` from an empty index - the silent
+    zero this exists to prevent. An already-indexed case returns quickly.
+    """
+    started = time.monotonic()
+    rc, out, _ = _run(
+        [py, "-m", "nexus", "pipeline", "--from-case", case_id, "--mode", "tools"],
+        timeout=timeout,
+    )
+    if rc != 0:
+        return {"rc": rc, "wall_s": round(time.monotonic() - started, 1), "tail": out,
+                "step": "lane"}
+    rc2, out2, _ = _run(
+        [py, "-m", "nexus", "case", "index", case_id],
+        timeout=timeout,
+    )
+    return {"rc": rc2, "wall_s": round(time.monotonic() - started, 1), "tail": out2,
+            "step": "index"}
+
+
 def run_mode(mode: int, case_id: str, question: str, timeout: int) -> dict:
     """Run one mode on an existing case. No examiner input beyond *question*."""
     py = sys.executable
@@ -330,32 +354,40 @@ def run_mode(mode: int, case_id: str, question: str, timeout: int) -> dict:
         )
         return {"mode": 1, "rc": rc, "wall_s": secs, "tail": out}
 
-    if mode == 2:
-        rc, out, secs = _run(
-            [py, "-m", "nexus", "mode2", "run", "-q", question, "--case", case_id],
-            timeout=timeout,
-        )
+    if mode in (2, 3):
+        # Modes 2 and 3 read the N3 index; neither builds it. Measured 2026-10-04:
+        # `run_mode2` calls no index or lane function, so a case that has only been
+        # registered (my harness's sequence) ran with an empty index and reported
+        # `status=completed, candidates: 0` - a zero that reads as a real result.
+        # The earlier smoke only worked because it ran on an m1 case that the
+        # pipeline had already indexed. So the lane and the index are built here
+        # first, exactly as mode 1 does.
+        pre = _prepare_index(py, case_id, timeout)
+        if pre.get("rc") not in (0, "skipped"):
+            return {"mode": mode, "rc": pre.get("rc"), "wall_s": pre.get("wall_s", 0.0),
+                    "tail": pre.get("tail", ""), "prep": pre}
+        if mode == 2:
+            rc, out, secs = _run(
+                [py, "-m", "nexus", "mode2", "run", "-q", question, "--case", case_id],
+                timeout=timeout,
+            )
+            stage_cmd = ["mode2", "stage"]
+        else:
+            rc, out, secs = _run(
+                [py, "-m", "nexus", "mode3", "run", "-q", question, "--case", case_id,
+                 "--json"],
+                timeout=timeout,
+            )
+            stage_cmd = ["mode3", "stage"]
         staged = {"rc": None}
         if rc == 0:
             src, sout, ssecs = _run(
-                [py, "-m", "nexus", "mode2", "stage", "--case", case_id],
+                [py, "-m", "nexus", *stage_cmd, "--case", case_id],
                 timeout=min(timeout, 900),
             )
             staged = {"rc": src, "wall_s": ssecs, "tail": sout}
-        return {"mode": 2, "rc": rc, "wall_s": secs, "tail": out, "stage": staged}
-
-    rc, out, secs = _run(
-        [py, "-m", "nexus", "mode3", "run", "-q", question, "--case", case_id, "--json"],
-        timeout=timeout,
-    )
-    staged = {"rc": None}
-    if rc == 0:
-        src, sout, ssecs = _run(
-            [py, "-m", "nexus", "mode3", "stage", "--case", case_id],
-            timeout=min(timeout, 900),
-        )
-        staged = {"rc": src, "wall_s": ssecs, "tail": sout}
-    return {"mode": 3, "rc": rc, "wall_s": secs, "tail": out, "stage": staged}
+        return {"mode": mode, "rc": rc, "wall_s": secs, "tail": out,
+                "stage": staged, "prep": pre}
 
 
 # ---------------------------------------------------------------------------
@@ -522,30 +554,45 @@ def _load_targets(set_dir: str, manifest: str, case_set: str) -> list[dict]:
 
 
 def latest_run_status(case_dir: Path) -> str:
-    """The status of the case's newest pipeline run ("", "running", "completed").
+    """The status of the case's newest run, across all three run stores.
 
     A case can be scored while its run is still in flight - measured
     2026-10-03: `CASE-K1-ta0002-m1-r1-215904` was scored with status `running`
     and contributed 5 partial findings, which reads as a product result. A
     partial run is not a measurement.
+
+    Modes 2 and 3 keep their records elsewhere (`analysis/mode2_runs/M2-*.json`,
+    `analysis/mode3_runs/*`), so reading only `runs/` reported `""` for them and
+    an empty-index mode 2 run that produced nothing looked like a legitimate zero.
     """
     runs = case_dir / "runs"
-    if not runs.is_dir():
-        return ""
-    newest = ""
-    newest_name = ""
-    for child in runs.iterdir():
-        if child.is_dir() and child.name > newest_name:
+    newest_name, status = "", ""
+    if runs.is_dir():
+        for child in runs.iterdir():
             manifest = child / "manifest.json"
-            if manifest.is_file():
+            if child.is_dir() and child.name > newest_name and manifest.is_file():
                 newest_name = child.name
                 try:
-                    newest = str(json.loads(
+                    status = str(json.loads(
                         manifest.read_text(encoding="utf-8")
                     ).get("status") or "")
                 except (OSError, ValueError):
-                    newest = ""
-    return newest
+                    status = ""
+    if status:
+        return status
+
+    # Mode 2/3 stores: newest record wins.
+    for pattern in ("analysis/mode2_runs/M2-*.json", "analysis/mode3_runs/*.json"):
+        for path in sorted(case_dir.glob(pattern)):
+            if path.name.endswith(".steering.json") or path.name.endswith(".control.json"):
+                continue
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if isinstance(data, dict) and data.get("status"):
+                status = str(data["status"])
+    return status
 
 
 def es_unreachable() -> str:
