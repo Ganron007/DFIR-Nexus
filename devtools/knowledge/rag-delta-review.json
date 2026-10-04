@@ -1,0 +1,273 @@
+{
+  "build": {
+    "by_source": {
+      "attack_detections": 918,
+      "itm": 615,
+      "mbc_capa": 94,
+      "mitre_atlas_mitigations": 35,
+      "mitre_atlas_techniques": 170
+    },
+    "case_contamination": [],
+    "case_contamination_count": 0,
+    "delta_count": 1832,
+    "delta_space": "cosine",
+    "doc_len_max": 1445,
+    "doc_len_median": 471,
+    "doc_len_min": 89,
+    "duplicate_docs": 0,
+    "empty_docs": 0,
+    "provenance": {
+      "has_id_or_url": 1123,
+      "has_source": 1832,
+      "has_technique_id": 1123,
+      "has_version_or_build": 1832,
+      "total": 1832
+    },
+    "short_docs_under_80_chars": 0,
+    "vendor_count": 22268,
+    "vendor_space": "cosine"
+  },
+  "conflict": {
+    "compared": 5,
+    "delta_rank_1": 4,
+    "nearer_delta": 0,
+    "nearer_vendor": 5,
+    "rows": [
+      {
+        "delta_distance": 0.3012040853500366,
+        "delta_rank": 1,
+        "delta_source": "attack_detections",
+        "name": "OS Credential Dumping",
+        "nearer": "vendor",
+        "technique": "T1003",
+        "vendor_distance": 0.27838027477264404,
+        "vendor_rank": 1,
+        "vendor_source": "mitre_attack"
+      },
+      {
+        "delta_distance": 0.2937002182006836,
+        "delta_rank": 1,
+        "delta_source": "mbc_capa",
+        "name": "Process Injection",
+        "nearer": "vendor",
+        "technique": "T1055",
+        "vendor_distance": 0.23540335893630981,
+        "vendor_rank": 1,
+        "vendor_source": "atomic"
+      },
+      {
+        "delta_distance": 0.34540921449661255,
+        "delta_rank": 1,
+        "delta_source": "attack_detections",
+        "name": "PowerShell",
+        "nearer": "vendor",
+        "technique": "T1059.001",
+        "vendor_distance": 0.3344953656196594,
+        "vendor_rank": 8,
+        "vendor_source": "splunk_security"
+      },
+      {
+        "delta_distance": 0.2760666012763977,
+        "delta_rank": 1,
+        "delta_source": "attack_detections",
+        "name": "Registry Run Keys",
+        "nearer": "vendor",
+        "technique": "T1547.001",
+        "vendor_distance": 0.2421168088912964,
+        "vendor_rank": 4,
+        "vendor_source": "atomic"
+      },
+      {
+        "delta_distance": null,
+        "delta_rank": null,
+        "delta_source": "",
+        "name": "SMB Admin Shares",
+        "nearer": "vendor",
+        "technique": "T1021.002",
+        "vendor_distance": 0.29954659938812256,
+        "vendor_rank": 2,
+        "vendor_source": "mitre_attack"
+      }
+    ],
+    "vendor_rank_1": 2
+  },
+  "retrieval": {
+    "questions": 20,
+    "rows": [
+      {
+        "expects": "T1003",
+        "question": "detection strategy for OS credential dumping",
+        "rank_with_delta": 1,
+        "source": "attack_detections",
+        "vendor_top5": false,
+        "with_delta_top5": true
+      },
+      {
+        "expects": "T1055",
+        "question": "detection of process injection via remote thread",
+        "rank_with_delta": 6,
+        "source": "attack_detections",
+        "vendor_top5": false,
+        "with_delta_top5": false
+      },
+      {
+        "expects": "T1053",
+        "question": "detection strategy for scheduled task persistence",
+        "rank_with_delta": 1,
+        "source": "attack_detections",
+        "vendor_top5": false,
+        "with_delta_top5": true
+      },
+      {
+        "expects": "T1059.001",
+        "question": "detection of PowerShell script block abuse",
+        "rank_with_delta": 3,
+        "source": "attack_detections",
+        "vendor_top5": false,
+        "with_delta_top5": true
+      },
+      {
+        "expects": "T1087",
+        "question": "detection of account discovery enumeration",
+        "rank_with_delta": 1,
+        "source": "attack_detections",
+        "vendor_top5": false,
+        "with_delta_top5": true
+      },
+      {
+        "expects": "T1547.001",
+        "question": "detection of registry run key persistence",
+        "rank_with_delta": 2,
+        "source": "attack_detections",
+        "vendor_top5": false,
+        "with_delta_top5": true
+      },
+      {
+        "expects": "T1021.002",
+        "question": "detection of lateral movement over SMB admin shares",
+        "rank_with_delta": 1,
+        "source": "attack_detections",
+        "vendor_top5": false,
+        "with_delta_top5": true
+      },
+      {
+        "expects": "T1558.003",
+        "question": "detection of kerberoasting",
+        "rank_with_delta": 1,
+        "source": "attack_detections",
+        "vendor_top5": false,
+        "with_delta_top5": true
+      },
+      {
+        "expects": "T1003.001",
+        "question": "detection of LSASS memory access",
+        "rank_with_delta": 1,
+        "source": "attack_detections",
+        "vendor_top5": false,
+        "with_delta_top5": true
+      },
+      {
+        "expects": "T1047",
+        "question": "detection of WMI execution",
+        "rank_with_delta": 1,
+        "source": "attack_detections",
+        "vendor_top5": false,
+        "with_delta_top5": true
+      },
+      {
+        "expects": "AML.T0000",
+        "question": "ATLAS technique for search open technical databases",
+        "rank_with_delta": 3,
+        "source": "mitre_atlas_techniques",
+        "vendor_top5": false,
+        "with_delta_top5": true
+      },
+      {
+        "expects": "AML.T0016",
+        "question": "ATLAS technique for obtaining capabilities",
+        "rank_with_delta": 1,
+        "source": "mitre_atlas_techniques",
+        "vendor_top5": false,
+        "with_delta_top5": true
+      },
+      {
+        "expects": "AML.M0001",
+        "question": "ATLAS mitigation for limiting model artifact release",
+        "rank_with_delta": 1,
+        "source": "mitre_atlas_mitigations",
+        "vendor_top5": false,
+        "with_delta_top5": true
+      },
+      {
+        "expects": "AML.M0002",
+        "question": "mitigation for passive AI output obfuscation",
+        "rank_with_delta": 1,
+        "source": "mitre_atlas_mitigations",
+        "vendor_top5": false,
+        "with_delta_top5": true
+      },
+      {
+        "expects": "B0001",
+        "question": "MBC behaviour for debugger detection",
+        "rank_with_delta": 2,
+        "source": "mbc_capa",
+        "vendor_top5": true,
+        "with_delta_top5": true
+      },
+      {
+        "expects": "B0002",
+        "question": "MBC behaviour for debugger evasion",
+        "rank_with_delta": 1,
+        "source": "mbc_capa",
+        "vendor_top5": true,
+        "with_delta_top5": true
+      },
+      {
+        "expects": "B0003",
+        "question": "MBC behaviour for dynamic analysis evasion",
+        "rank_with_delta": 1,
+        "source": "mbc_capa",
+        "vendor_top5": true,
+        "with_delta_top5": true
+      },
+      {
+        "expects": "MT012",
+        "question": "insider threat matrix section for coercion",
+        "rank_with_delta": 1,
+        "source": "itm",
+        "vendor_top5": false,
+        "with_delta_top5": true
+      },
+      {
+        "expects": "MT022",
+        "question": "insider threat matrix boundary testing",
+        "rank_with_delta": 4,
+        "source": "itm",
+        "vendor_top5": false,
+        "with_delta_top5": true
+      },
+      {
+        "expects": "MT012.004",
+        "question": "insider threat emotional vulnerability",
+        "rank_with_delta": 1,
+        "source": "itm",
+        "vendor_top5": false,
+        "with_delta_top5": true
+      }
+    ],
+    "vendor_hit_at_5": 3,
+    "vendor_rate": 0.15,
+    "with_delta_hit_at_5": 19,
+    "with_delta_rate": 0.95
+  },
+  "version": {
+    "has_built_at": 300,
+    "naming_a_version": 2,
+    "sampled": 300,
+    "sources": {
+      "attack_detections": 95,
+      "mitre_atlas_mitigations": 35,
+      "mitre_atlas_techniques": 170
+    }
+  }
+}
