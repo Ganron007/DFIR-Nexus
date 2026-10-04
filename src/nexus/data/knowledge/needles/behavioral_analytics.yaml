@@ -1,0 +1,278 @@
+# WO-K4: behavioural analytics - typed DSL over registry fields.
+#
+# Why this exists: `sigma_needles.yaml` and the other needle packs are keyword
+# digests, and `sources/sigma_rules.yaml` is metadata only - the real Sigma runs
+# inside Hayabusa and Chainsaw, in the lane. That leaves the families the rule
+# engines do NOT cover (prefetch, Amcache, tasks, services, Run keys, MFT,
+# Sysmon/4688) with no detection logic at all, only strings.
+#
+# Each analytic is a `dsl:` query against the field registry (see
+# `data/schema/field_registry.yaml`), and **cites its source**: a CAR analytic id
+# we already hold in `needles/car_analytics.yaml`, or an ATT&CK technique. An
+# analytic without a citation is a guess, and guesses do not belong in a pack an
+# examiner will be asked to trust.
+#
+# Every entry must pass `parse_query` and reference fields that exist. Both are
+# enforced by `nexus.analysis.behavioural_analytics.validate_pack` and pinned by
+# tests - a stale field name would make the analytic silently match nothing,
+# which reads as "no such behaviour" rather than "broken analytic".
+version: 1
+description: >
+  Behavioural analytics for the artifact families the rule engines do not cover.
+  Typed queries over registry columns, each citing a CAR analytic or ATT&CK
+  technique, so a lead can travel from a hit back to published detection logic.
+source: "MITRE CAR (car.mitre.org) as held in needles/car_analytics.yaml; ATT&CK Enterprise"
+
+packs:
+  # --- execution ---------------------------------------------------------
+  - id: ba-exec-user-writable
+    name: "Execution from a user-writable path"
+    families: [evtxecmd, hayabusa, security, sysmon, prefetch, pecmd, amcache]
+    dsl: 'file_path:AppData'
+    citation: {type: car, id: CAR-2014-11-004, ref: "https://car.mitre.org/analytics/CAR-2014-11-004/"}
+    techniques: [T1204.002, T1059]
+    rationale: "User-writable locations are where a downloaded payload lands. The DSL has NO typed-field negation (`not path:\\Windows` parses as a POSITIVE filter, so it would invert the analytic), so this is deliberately a single positive term and the system-tree exclusion is the examiner's next filter."
+
+  - id: ba-exec-temp
+    name: "Execution from a temporary directory"
+    families: [prefetch, pecmd, amcache, evtxecmd, sysmon]
+    dsl: 'file_path:Temp'
+    citation: {type: car, id: CAR-2014-11-003, ref: "https://car.mitre.org/analytics/CAR-2014-11-003/"}
+    techniques: [T1059, T1204.002]
+    rationale: "A binary whose first execution is from a temp path had no install step."
+
+  - id: ba-exec-programdata
+    name: "Execution from ProgramData"
+    families: [prefetch, pecmd, amcache, sysmon]
+    dsl: 'file_path:ProgramData'
+    citation: {type: car, id: CAR-2014-11-003, ref: "https://car.mitre.org/analytics/CAR-2014-11-003/"}
+    techniques: [T1059]
+    rationale: "ProgramData is world-writable and survives cleanup, so it is a common staging root."
+
+  - id: ba-exec-script-host
+    name: "Script host executing a script"
+    families: [evtxecmd, hayabusa, security, sysmon, prefetch]
+    dsl: 'process_name:in:(wscript.exe,cscript.exe,mshta.exe) and command_line:.js'
+    citation: {type: car, id: CAR-2014-11-004, ref: "https://car.mitre.org/analytics/CAR-2014-11-004/"}
+    techniques: [T1059.005, T1218.005]
+    rationale: "A script host is normal; a script host pointed at a loose file is the interesting shape."
+
+  - id: ba-exec-encoded-command
+    name: "Encoded or hidden command line"
+    families: [evtxecmd, hayabusa, security, sysmon]
+    dsl: 'command_line:in:(-enc,-EncodedCommand,-nop,-noprofile)'
+    citation: {type: car, id: CAR-2016-04-012, ref: "https://car.mitre.org/analytics/CAR-2016-04-012/"}
+    techniques: [T1059.001, T1027]
+    rationale: "Encoding exists to defeat string inspection; pair with the decoded text, not the flag alone."
+
+  - id: ba-exec-lolbin-download
+    name: "LOLBin used to fetch a remote payload"
+    families: [evtxecmd, hayabusa, security, sysmon]
+    dsl: 'process_name:in:(certutil.exe,bitsadmin.exe,curl.exe,msiexec.exe) and command_line:http'
+    citation: {type: car, id: CAR-2014-11-004, ref: "https://car.mitre.org/analytics/CAR-2014-11-004/"}
+    techniques: [T1105, T1218]
+    rationale: "A signed system binary reaching the network is the canonical ingress primitive."
+
+  # --- persistence -------------------------------------------------------
+  - id: ba-persist-service-temp
+    name: "Service binary in a user-writable path"
+    families: [registry, recmd, evtxecmd, hayabusa, security]
+    dsl: 'registry_key:Services and file_path:AppData'
+    citation: {type: car, id: CAR-2014-11-001, ref: "https://car.mitre.org/analytics/CAR-2014-11-001/"}
+    techniques: [T1543.003]
+    rationale: "A service is the strongest persistence on Windows; its ImagePath should be a system or Program Files path."
+
+  - id: ba-persist-service-new
+    name: "Service created or its ImagePath changed"
+    families: [evtxecmd, hayabusa, security, registry, recmd]
+    dsl: 'eventid:in:(7045,4697)'
+    citation: {type: car, id: CAR-2014-11-001, ref: "https://car.mitre.org/analytics/CAR-2014-11-001/"}
+    techniques: [T1543.003]
+    rationale: "7045 and 4697 are the service-install records; the path and signer decide whether it matters."
+
+  - id: ba-persist-run-usbable
+    name: "Run key pointing at a user-writable path"
+    families: [registry, recmd, NTUSER, evtxecmd]
+    dsl: 'registry_key:Run and file_path:AppData'
+    citation: {type: car, id: CAR-2014-11-002, ref: "https://car.mitre.org/analytics/CAR-2014-11-002/"}
+    techniques: [T1547.001]
+    rationale: "The Run key is expected; a Run value whose target lives under AppData is the anomaly."
+
+  - id: ba-persist-runonce
+    name: "RunOnce key written"
+    families: [registry, recmd, NTUSER, evtxecmd]
+    dsl: 'registry_key:RunOnce'
+    citation: {type: car, id: CAR-2014-11-002, ref: "https://car.mitre.org/analytics/CAR-2014-11-002/"}
+    techniques: [T1547.001]
+    rationale: "RunOnce is usually installer traffic; correlate with the writing process."
+
+  - id: ba-persist-task-script-host
+    name: "Scheduled task running a script host or encoded command"
+    families: [tasks, evtxecmd, hayabusa, security]
+    dsl: 'exists:task_uri and command_line:in:(powershell,wscript,cscript,mshta,-enc)'
+    citation: {type: car, id: CAR-2016-04-009, ref: "https://car.mitre.org/analytics/CAR-2016-04-009/"}
+    techniques: [T1053.005, T1059.001]
+    rationale: "A task is the cheapest durable execution; the action it runs is what distinguishes it from Windows' own."
+
+  - id: ba-persist-task-hidden
+    name: "Scheduled task hidden or authored out of band"
+    families: [tasks]
+    dsl: 'registry_key:TaskCache'
+    citation: {type: car, id: CAR-2016-04-009, ref: "https://car.mitre.org/analytics/CAR-2016-04-009/"}
+    techniques: [T1053.005]
+    rationale: "Hidden tasks do not appear in the console - a deliberate choice by whoever made them."
+
+  - id: ba-persist-wmi-subscription
+    name: "WMI event subscription persistence"
+    families: [wmi, evtxecmd, hayabusa, sysmon, registry]
+    dsl: 'registry_key:Subscription'
+    citation: {type: car, id: CAR-2016-04-008, ref: "https://car.mitre.org/analytics/CAR-2016-04-008/"}
+    techniques: [T1546.003]
+    rationale: "WMI subscriptions survive reboot, leave no task, and are fileless."
+
+  - id: ba-persist-startup-folder
+    name: "Startup folder executable"
+    families: [lnk, lecmd, evtxecmd]
+    dsl: 'file_path:Startup'
+    citation: {type: car, id: CAR-2014-11-003, ref: "https://car.mitre.org/analytics/CAR-2014-11-003/"}
+    techniques: [T1547.001]
+    rationale: "Anything in Startup runs at logon; the folder is user-writable by design."
+
+  # --- credential / logon ------------------------------------------------
+  - id: ba-cred-lsass-nonsystem
+    name: "Non-system process accessing lsass"
+    families: [evtxecmd, hayabusa, security, sysmon]
+    dsl: 'command_line:lsass'
+    citation: {type: car, id: CAR-2014-11-008, ref: "https://car.mitre.org/analytics/CAR-2014-11-008/"}
+    techniques: [T1003.001]
+    rationale: "lsass is protected; any process referring to it outside the system image is worth a look. Kept as a positive term because the DSL does not negate typed fields - the non-system narrowing is a follow-on filter, not part of this query."
+
+  - id: ba-cred-lsass-path
+    name: "lsass referenced from a user-writable path"
+    families: [evtxecmd, hayabusa, security, sysmon, prefetch]
+    dsl: 'command_line:lsass and file_path:AppData'
+    citation: {type: car, id: CAR-2016-04-002, ref: "https://car.mitre.org/analytics/CAR-2016-04-002/"}
+    techniques: [T1003.001]
+    rationale: "Credential-dump tooling runs from staging directories; the reference is the tell, not the tool name."
+
+  - id: ba-cred-dcsync-nondc
+    name: "Replication rights used off a domain controller"
+    families: [security, evtxecmd, hayabusa]
+    dsl: 'eventid:4662 and exists:user'
+    citation: {type: car, id: CAR-2016-04-015, ref: "https://car.mitre.org/analytics/CAR-2016-04-015/"}
+    techniques: [T1003.006]
+    rationale: "4662 with the replication GUID from a non-DC subject is the canonical DCSync shape."
+
+  - id: ba-cred-new-local-admin
+    name: "Account added to the local administrators group"
+    families: [security, evtxecmd, hayabusa]
+    dsl: 'eventid:4732 and command_line:Administrators'
+    citation: {type: car, id: CAR-2016-04-004, ref: "https://car.mitre.org/analytics/CAR-2016-04-004/"}
+    techniques: [T1098, T1078.003]
+    rationale: "Privilege that did not exist before; compare against a change record."
+
+  - id: ba-cred-logon-type3
+    name: "Network logon to a workstation"
+    families: [security, evtxecmd, hayabusa, evtx]
+    dsl: 'eventid:4624 and logon_type:3'
+    citation: {type: car, id: CAR-2016-04-003, ref: "https://car.mitre.org/analytics/CAR-2016-04-003/"}
+    techniques: [T1021, T1078]
+    rationale: "Type 3 is normal for admin work and for lateral movement; the source decides."
+
+  - id: ba-cred-rdp-firstseen
+    name: "RDP session from a source not seen before"
+    families: [security, evtxecmd, hayabusa, evtx]
+    dsl: 'eventid:in:(4624,4778) and logon_type:10 and exists:source_ip'
+    citation: {type: car, id: CAR-2016-04-003, ref: "https://car.mitre.org/analytics/CAR-2016-04-003/"}
+    techniques: [T1021.001]
+    rationale: "The first sighting of a source is the anomaly; the session itself may be routine."
+
+  - id: ba-cred-kerberoast
+    name: "Service ticket requested with RC4"
+    families: [security, evtxecmd, hayabusa, evtx]
+    dsl: 'eventid:4769 and command_line:0x17'
+    citation: {type: car, id: CAR-2016-04-015, ref: "https://car.mitre.org/analytics/CAR-2016-04-015/"}
+    techniques: [T1558.003]
+    rationale: "RC4 service-ticket encryption is the roastable default; one request is noise, many are not."
+
+  # --- defence evasion ---------------------------------------------------
+  - id: ba-eva-log-cleared
+    name: "Security log cleared"
+    families: [security, evtxecmd, hayabusa, evtx]
+    dsl: 'eventid:1102'
+    citation: {type: car, id: CAR-2014-11-005, ref: "https://car.mitre.org/analytics/CAR-2014-11-005/"}
+    techniques: [T1070.001]
+    rationale: "1102 is never routine on a server; it is the single highest-signal event in this pack."
+
+  - id: ba-eva-audit-policy
+    name: "Audit policy changed"
+    families: [security, evtxecmd, hayabusa, evtx]
+    dsl: 'eventid:4719'
+    citation: {type: car, id: CAR-2014-11-005, ref: "https://car.mitre.org/analytics/CAR-2014-11-005/"}
+    techniques: [T1562.002]
+    rationale: "Turning auditing down is how a cleared log is made to stay quiet."
+
+  - id: ba-eva-defender-exclusion
+    name: "Defender protection disabled or exclusions added"
+    families: [evtxecmd, hayabusa, security, registry, recmd]
+    dsl: 'registry_key:Windows Defender'
+    citation: {type: car, id: CAR-2014-11-005, ref: "https://car.mitre.org/analytics/CAR-2014-11-005/"}
+    techniques: [T1562.001]
+    rationale: "Exclusions are the tidier version of disabling: the product still runs and still reports healthy."
+
+  - id: ba-eva-service-stopped
+    name: "Security service stopped"
+    families: [system, evtxecmd, hayabusa, evtx]
+    dsl: 'eventid:7036 and command_line:stopped'
+    citation: {type: car, id: CAR-2014-11-001, ref: "https://car.mitre.org/analytics/CAR-2014-11-001/"}
+    techniques: [T1562.001]
+    rationale: "Services stop for patching too - the reason and the timing matter."
+
+  - id: ba-eva-timestomp
+    name: "File timestamps inconsistent with the directory"
+    families: [mft, mftecmd, ntfs]
+    dsl: 'exists:file_path and exists:targetmodified'
+    citation: {type: car, id: CAR-2014-11-003, ref: "https://car.mitre.org/analytics/CAR-2014-11-003/"}
+    techniques: [T1070.006]
+    rationale: "A payload older than the directory that contains it was back-dated."
+
+  # --- lateral / collection ----------------------------------------------
+  - id: ba-lat-smb-admin-share
+    name: "Administrative share accessed remotely"
+    families: [evtxecmd, hayabusa, security, sysmon]
+    dsl: 'command_line:ADMIN$'
+    citation: {type: car, id: CAR-2016-04-014, ref: "https://car.mitre.org/analytics/CAR-2016-04-014/"}
+    techniques: [T1021.002]
+    rationale: "Admin shares are the lateral-movement transport; normal for management tooling."
+
+  - id: ba-lat-remote-service-create
+    name: "Service created by a remote logon"
+    families: [system, evtxecmd, hayabusa, evtx]
+    dsl: 'eventid:7045 and logon_type:3'
+    citation: {type: car, id: CAR-2014-11-001, ref: "https://car.mitre.org/analytics/CAR-2014-11-001/"}
+    techniques: [T1021.002, T1543.003]
+    rationale: "psexec-shaped lateral movement: a service installed by something that is not a patch cycle."
+
+  - id: ba-lat-wmi-exec
+    name: "WMI used to start a process"
+    families: [evtxecmd, hayabusa, security, sysmon]
+    dsl: 'parent_process:wmiprvse.exe'
+    citation: {type: car, id: CAR-2016-04-008, ref: "https://car.mitre.org/analytics/CAR-2016-04-008/"}
+    techniques: [T1047]
+    rationale: "wmiprvse spawns children legitimately; the command line of the child is what to read."
+
+  - id: ba-col-powershell-transcript
+    name: "PowerShell script block logging with a download or exec"
+    families: [evtxecmd, hayabusa, security, sysmon]
+    dsl: 'eventid:4104 and command_line:in:(DownloadString,IEX,FromBase64String)'
+    citation: {type: car, id: CAR-2016-04-012, ref: "https://car.mitre.org/analytics/CAR-2016-04-012/"}
+    techniques: [T1059.001, T1105]
+    rationale: "4104 carries the deobfuscated text, so this is often the clearest view of intent."
+
+  - id: ba-col-archive-staging
+    name: "Archive created in a staging directory"
+    families: [mft, mftecmd, ntfs, evtxecmd]
+    dsl: 'file_path:in:(.zip,.7z,.rar)'
+    citation: {type: car, id: CAR-2014-11-003, ref: "https://car.mitre.org/analytics/CAR-2014-11-003/"}
+    techniques: [T1560.001]
+    rationale: "Collection ends in an archive. Positive only: the DSL parses `not path:` as a positive filter, so a system-tree exclusion here would have done the reverse of its intent."
