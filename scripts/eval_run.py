@@ -784,12 +784,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-run", action="store_true", help="create + register only")
     parser.add_argument("--timeout", type=int, default=5400, help="per-mode seconds")
     parser.add_argument("--concurrency", type=int, default=1,
-                        help="how many cases to run at once. Each case is dominated by "
-                             "~9 sequential LLM calls (measured: 60 tool calls / 40.9 min, "
-                             "9 gaps >60s, max 748s) and nothing in the pipeline "
-                             "parallelises them, so the wall time is the sum. Cases are "
-                             "independent processes; the ceiling is the provider's rate "
-                             "limit, not this harness. Start at 2-3 and watch for 429s.")
+                        help="how many cases to run at once. Default 1 is the ONLY "
+                             "supported value: measured 2026-10-04, concurrency >=2 "
+                             "hangs the tool lane (two lanes at once stop at the same "
+                             "point, ~424k reads, 0 CPU, no lane ledger, indefinite), "
+                             "with or without NEXUS_RAG_PRELOAD=0, while both a single "
+                             "lane and a serial sweep of the same cases complete "
+                             "normally. Kept for the experiment; do not use it for a "
+                             "real sweep until the hang is diagnosed.")
     parser.add_argument("--json-out", default=str(DEFAULT_JSON))
     parser.add_argument("--md-out", default=str(DEFAULT_MD))
     return parser
