@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 import pytest
@@ -50,6 +51,40 @@ def test_src_nexus_has_no_kb_references():
     assert not violations, "Forbidden KB references found in src/nexus:\n" + "\n".join(violations)
 
 
+def _identifier_in(content: str, cid: str) -> bool:
+    """Whether `cid` occurs as a **token**, not inside a longer word.
+
+    A plain substring test makes the guard cry wolf on shipped knowledge: the
+    ATT&CK description of password spraying carries ``'Password01'``, which
+    contains the token ``rd01``. Measured 2026-10-04 - with ``rd01`` in the
+    quarantine list the guard failed on
+    ``knowledge/attack/attack_registry.yaml`` for a reason that is not
+    contamination at all. A guard that fires on correct data gets weakened or
+    removed, which is worse than not having it, so the boundary is the point.
+
+    Alphanumeric boundaries on both sides: ``rd01`` no longer matches
+    ``Password01``, while a real ``rd01`` token, a path segment or
+    ``base-rd-01`` still matches.
+    """
+    return re.search(rf"(?<![a-z0-9]){re.escape(cid)}(?![a-z0-9])", content,
+                     re.IGNORECASE) is not None
+
+
+def test_the_contamination_guard_does_not_cry_wolf_on_real_knowledge():
+    """The reproduction, so the guard cannot regress to a substring test.
+
+    `rd01` is a real development-set token (§3Z) and `Password01` is real ATT&CK
+    prose. A substring guard cannot tell them apart.
+    """
+    attck_text = "Password spraying uses one password (e.g. 'Password01')"
+    assert _identifier_in(attck_text, "rd01") is False
+    assert _identifier_in(attck_text, "Password01") is True
+    # A genuine token still matches, at a boundary and in a path.
+    assert _identifier_in("case base-rd-01 was imaged", "base-rd-01") is True
+    assert _identifier_in(r"path\to\rd01-memory.img", "rd01") is True
+    assert _identifier_in("the host rd01 logged on", "rd01") is True
+
+
 def test_case_quarantine_contamination_guard():
     """Contamination guard: asserts no shipped knowledge file or RAG doc contains case identifiers."""
     quarantine_file = os.environ.get("NEXUS_CASE_QUARANTINE_FILE")
@@ -76,7 +111,7 @@ def test_case_quarantine_contamination_guard():
             except Exception:
                 continue
             for cid in identifiers:
-                if cid in content:
+                if _identifier_in(content, cid):
                     contaminated.append(f"{path.name} contains quarantined case identifier {cid}")
 
     assert not contaminated, "Shipped knowledge files contaminated with case data:\n" + "\n".join(contaminated)
