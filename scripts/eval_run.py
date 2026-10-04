@@ -671,7 +671,46 @@ def _ablation_table(runs: list[dict], baseline_label: str) -> str:
     return "\n".join(lines)
 
 
-def main(argv: list[str] | None = None) -> int:
+def _child_argv(args: argparse.Namespace) -> list[str]:
+    """The argv for an ablated child run, rebuilt from the parsed arguments.
+
+    Deliberately **not** a filter over raw `argv`: `--label x` and
+    `--ablate-layers rules,rag` are two tokens each, so dropping only the flag
+    leaves the value behind as a stray positional and every child invocation
+    fails with "unrecognized arguments". Measured 2026-10-04 while auditing the
+    path - the bug would only have surfaced after a ~70 h ablation sweep.
+    """
+    out: list[str] = []
+    if args.case_set:
+        out += ["--case-set", args.case_set]
+    elif args.set_dir:
+        out += ["--set-dir", args.set_dir]
+        if args.manifest:
+            out += ["--manifest", args.manifest]
+    elif args.manifest:
+        out += ["--manifest", args.manifest]
+    if args.modes:
+        out += ["--modes", str(args.modes)]
+    out += ["--repeats", str(args.repeats)]
+    if args.question:
+        out += ["--question", args.question]
+    if args.timeout:
+        out += ["--timeout", str(args.timeout)]
+    if args.json_out:
+        out += ["--json-out", str(args.json_out)]
+    if args.md_out:
+        out += ["--md-out", str(args.md_out)]
+    if args.score_only:
+        out.append("--score-only")
+    if args.no_run:
+        out.append("--no-run")
+    # Never propagate the ablation switches: the child is the ordinary run, and
+    # the layer is removed through the environment variable instead.
+    return out
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """The CLI parser, extracted so tests can round-trip the child argv."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--set-dir", default="", help="evidence directory for K1")
     parser.add_argument("--manifest", default="", help="operator manifest (read only here)")
@@ -697,7 +736,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--timeout", type=int, default=5400, help="per-mode seconds")
     parser.add_argument("--json-out", default=str(DEFAULT_JSON))
     parser.add_argument("--md-out", default=str(DEFAULT_MD))
-    args = parser.parse_args(argv)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
 
     modes = [int(m) for m in args.modes.split(",") if m.strip()]
     repeats = max(1, int(args.repeats))
@@ -716,11 +759,7 @@ def main(argv: list[str] | None = None) -> int:
             env = dict(os.environ)
             var = ENV_LEADS_DISABLE if layer in _LS else ENV_KNOWLEDGE_DISABLE
             env[var] = layer
-            argv_child = [a for a in (argv or sys.argv[1:])
-                          if a not in ("--ablate",)
-                          and not str(a).startswith("--ablate-layers")
-                          and not str(a).startswith("--label")]
-            argv_child += ["--label", f"ablate:{layer}"]
+            argv_child = _child_argv(args) + ["--label", f"ablate:{layer}"]
             print(f"  -- ablating {layer} ({var}={layer})")
             subprocess.run(
                 [sys.executable, str(Path(__file__).resolve()), *argv_child],

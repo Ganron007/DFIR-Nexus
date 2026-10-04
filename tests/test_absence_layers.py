@@ -270,7 +270,44 @@ def test_ablate_refuses_an_unknown_layer():
     assert "unknown layer" in str(exc.value)
 
 
-def test_the_ablation_table_reports_a_delta_per_layer():
+def test_the_ablation_child_argv_has_no_stray_positionals():
+    """`--label x` is two tokens; filtering the flag leaves `x` as a positional.
+
+    Measured 2026-10-04 while auditing the path: the old filter-only construction
+    produced a child argv ending in a bare value, so every ablated run would have
+    died with "unrecognized arguments" - after a ~70 h sweep.
+    """
+    er = _eval_run_module()
+    parsed = er.build_parser().parse_args([
+        "--case-set", "cases.json", "--modes", "1,2", "--repeats", "2",
+        "--label", "some label with spaces", "--ablate",
+        "--ablate-layers", "rules,rag", "--json-out", "a.json", "--md-out", "A.md",
+    ])
+    argv = er._child_argv(parsed)
+    assert "--ablate" not in argv, "the ablation switch must not propagate"
+    assert "--ablate-layers" not in argv
+    assert "rules,rag" not in argv, "a stray optarg would be read as a positional"
+    assert "some label with spaces" not in argv, "the old label must not ride along"
+    # Every token is either a known option or the value of one.
+    flags = {a for a in argv if a.startswith("--")}
+    assert flags <= {
+        "--case-set", "--set-dir", "--manifest", "--modes", "--repeats",
+        "--question", "--timeout", "--json-out", "--md-out", "--score-only", "--no-run",
+    }, flags
+    assert argv[0] == "--case-set" and argv[1] == "cases.json"
+
+
+def test_the_child_argv_round_trips_through_the_real_parser():
+    """If the child argv does not parse, every ablation run fails."""
+    er = _eval_run_module()
+    parsed = er.build_parser().parse_args([
+        "--set-dir", "ev", "--manifest", "m.json", "--modes", "1", "--label", "x",
+    ])
+    reparsed = er.build_parser().parse_args(er._child_argv(parsed))
+    assert reparsed.set_dir == "ev"
+    assert reparsed.manifest == "m.json"
+    assert reparsed.modes == "1"
+    assert reparsed.ablate is False
     """A layer's removal must be visible as a recall/precision/FP delta."""
     er = _eval_run_module()
 
