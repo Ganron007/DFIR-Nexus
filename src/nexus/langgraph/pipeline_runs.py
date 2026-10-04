@@ -141,6 +141,16 @@ def create_run(
     ):
         parent_run_id = previous_active
     now = datetime.now(UTC).isoformat()
+    # WO-K8: a toggle must be asserted ON THE RUN RECORD, not only in the process
+    # environment. `layer_status()` is a read-only snapshot of the two ablation
+    # switches, so an ablation number can be read against what was actually
+    # active when the run was created.
+    try:
+        from nexus.analysis.layers import layer_status
+
+        layers = layer_status()
+    except Exception:  # noqa: BLE001 - a run must not fail to record a niceity
+        layers = {}
     _atomic_json(run_dir / "manifest.json", {
         "run_id": rid,
         "case_id": case_dir.name,
@@ -151,6 +161,7 @@ def create_run(
         "created_at": now,
         "completed_at": "",
         "previous_active_run_id": previous_active,
+        "layers": layers,
     })
     pointers[mode] = rid
     pointers[pointer_key] = rid
@@ -162,6 +173,14 @@ def finalize_run(run: PipelineRun, status: str, error: str = "") -> None:
     manifest = load_manifest(run.path)
     manifest["status"] = status
     manifest["completed_at"] = datetime.now(UTC).isoformat()
+    # WO-K7: the run record carries what the run could and could not observe, so
+    # a zero-finding run is not read as "nothing happened".
+    try:
+        from nexus.analysis.absence import record as _absence_record
+
+        manifest["absence"] = _absence_record(run.path.parent.parent)
+    except Exception:  # noqa: BLE001 - never fail a finalize on a report nicety
+        manifest["absence"] = {}
     if error:
         manifest["error"] = error[:2000]
     _atomic_json(run.path / "manifest.json", manifest)

@@ -203,6 +203,42 @@ def test_the_run_record_carries_the_statement(tmp_path: Path, monkeypatch):
     assert "disabled for this run" in block["statement"]
 
 
+def test_the_pipeline_run_manifest_carries_the_layers(tmp_path: Path, monkeypatch):
+    """The WO says a toggle must be asserted ON THE RUN RECORD.
+
+    Asserted through the real writer, so this fails if the wiring stops recording
+    it - not merely if `layer_status()` returns the wrong thing.
+    """
+    from nexus.langgraph.pipeline_runs import create_run, finalize_run, load_manifest
+
+    monkeypatch.setenv(ENV_LEADS_DISABLE, "rules")
+    case = tmp_path / "CASE-RUNRECORD"
+    case.mkdir()
+    run = create_run(case, "tools", [])
+    manifest = load_manifest(run.path)
+
+    assert "layers" in manifest, "the run record does not carry the layer state"
+    assert manifest["layers"]["leads"]["rules"]["enabled"] is False
+    assert manifest["layers"]["leads"]["rules"]["reason"]
+    assert manifest["layers"]["leads"]["needles"]["enabled"] is True
+
+    finalize_run(run, "completed")
+    finalized = load_manifest(run.path)
+    assert "absence" in finalized, "the finished run must say what it could observe"
+    assert finalized["absence"]["disabled"], finalized["absence"]
+
+
+def test_a_run_with_no_toggles_records_every_layer_enabled(tmp_path: Path):
+    from nexus.langgraph.pipeline_runs import create_run, load_manifest
+
+    case = tmp_path / "CASE-RUNCLEAN"
+    case.mkdir()
+    manifest = load_manifest(create_run(case, "tools", []).path)
+    assert manifest["layers"]["leads"]["rules"]["enabled"] is True
+    assert manifest["layers"]["knowledge"]["rag"]["enabled"] is True
+    assert manifest["layers"]["unknown_toggles"] == {"leads": [], "knowledge": []}
+
+
 # ---------------------------------------------------------------------------
 # K8: --ablate
 # ---------------------------------------------------------------------------
