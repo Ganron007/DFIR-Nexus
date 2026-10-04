@@ -392,6 +392,7 @@ def test_every_repeat_gets_its_own_case_so_runs_are_independent(ev, tmp_path, mo
         return 0, "", 0.0
 
     monkeypatch.setattr(ev, "_run", _fake_run)
+    monkeypatch.setattr(ev, "es_unreachable", lambda: "")
 
     rc = ev.main([
         "--set-dir", str(tmp_path / "ev"), "--manifest", str(manifest),
@@ -474,6 +475,7 @@ def test_repeats_are_major_so_a_full_baseline_exists_early(ev, tmp_path, monkeyp
 
     monkeypatch.setattr(ev, "_run", _fake_run)
     monkeypatch.setattr(ev, "run_mode", lambda *a, **k: {"rc": 0, "wall_s": 0.0})
+    monkeypatch.setattr(ev, "es_unreachable", lambda: "")
 
     rc = ev.main([
         "--case-set", str(tmp_path / "case-set.json"),
@@ -486,6 +488,145 @@ def test_repeats_are_major_so_a_full_baseline_exists_early(ev, tmp_path, monkeyp
     assert [(c["target"], c["repeat"]) for c in record["cases"]] == [
         ("alpha", 1), ("beta", 1), ("alpha", 2), ("beta", 2),
     ]
+
+
+def test_a_down_elasticsearch_refuses_the_run_before_creating_anything(ev, tmp_path, monkeypatch):
+    """ES down must abort, not produce a sweep of zeros.
+
+    Measured 2026-10-03/04: ES (container `nexus-es`) exited at 23:12, and 16 of
+    18 cases then ran to completion reporting 0 findings - which read as a
+    product miss rather than a missing backend.
+    """
+    monkeypatch.setenv("NEXUS_ES_URL", "http://127.0.0.1:1")  # nothing listens
+    (tmp_path / "ev").mkdir()
+    (tmp_path / "ev" / "a.evtx").write_text("x", encoding="utf-8")
+    manifest = _manifest(tmp_path, [{"sha256": ATTACK, "techniques": ["T1059.001"]}])
+
+    def _must_not_run(*_a, **_k):
+        raise AssertionError("no case may be created when ES is down")
+
+    monkeypatch.setattr(ev, "_run", _must_not_run)
+
+    rc = ev.main([
+        "--set-dir", str(tmp_path / "ev"), "--manifest", str(manifest),
+        "--modes", "1", "--json-out", str(tmp_path / "a.json"),
+        "--md-out", str(tmp_path / "A.md"),
+    ])
+    assert rc == 3, "ES down is its own exit code, not a failed run"
+    assert not (tmp_path / "a.json").exists(), "nothing may be recorded"
+
+
+def test_the_preflight_passes_when_elasticsearch_answers(ev, monkeypatch):
+    monkeypatch.setenv("NEXUS_ES_URL", "http://es.test:9200")
+
+    class _Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_a):
+            return False
+
+        def read(self):
+            return b'{"status": "green"}'
+
+    monkeypatch.setattr("urllib.request.urlopen", lambda *a, **k: _Response())
+    assert ev.es_unreachable() == ""
+
+
+def test_a_red_cluster_is_treated_as_unusable(ev, monkeypatch):
+    monkeypatch.setenv("NEXUS_ES_URL", "http://es.test:9200")
+
+    class _Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_a):
+            return False
+
+        def read(self):
+            return b'{"status": "red"}'
+
+    monkeypatch.setattr("urllib.request.urlopen", lambda *a, **k: _Response())
+    assert "red" in ev.es_unreachable()
+
+
+def test_a_mid_sweep_es_loss_aborts_instead_of_scoring_zeros(ev, tmp_path, monkeypatch):
+    """The sweep must stop at the first case after ES goes away."""
+    (tmp_path / "setdata").mkdir()
+    for name in ("alpha", "beta"):
+        d = tmp_path / "setdata" / name
+        d.mkdir()
+        (d / "a.evtx").write_text("x", encoding="utf-8")
+        (tmp_path / "setdata" / f"{name}.json").write_text(
+            json.dumps({"entries": [{"sha256": ATTACK, "techniques": ["T1059.001"]}]}),
+            encoding="utf-8",
+        )
+    (tmp_path / "case-set.json").write_text(json.dumps({"cases": [
+        {"name": "alpha", "set_dir": "setdata/alpha", "manifest": "setdata/alpha.json"},
+        {"name": "beta", "set_dir": "setdata/beta", "manifest": "setdata/beta.json"},
+    ]}), encoding="utf-8")
+
+    checks = {"n": 0}
+
+    def _flaky():
+        # Call 1 is the sweep preflight, call 2 the first case's guard; ES is up
+        # for both, then goes away - so exactly one target runs.
+        checks["n"] += 1
+        return "" if checks["n"] <= 2 else "connection refused"
+
+    monkeypatch.setattr(ev, "es_unreachable", _flaky)
+    monkeypatch.setattr(ev, "run_mode", lambda *a, **k: {"rc": 0, "wall_s": 0.0})
+
+    created: list[str] = []
+
+    def _fake_run(cmd, *, timeout):
+        if "case" in cmd and "init" in cmd:
+            case_id = cmd[cmd.index("--case-id") + 1]
+            created.append(case_id)
+            (Path(ev.cases_root()) / case_id).mkdir(parents=True, exist_ok=True)
+        return 0, "", 0.0
+
+    monkeypatch.setattr(ev, "_run", _fake_run)
+
+    rc = ev.main([
+        "--case-set", str(tmp_path / "case-set.json"), "--modes", "1", "--repeats", "1",
+        "--json-out", str(tmp_path / "a.json"), "--md-out", str(tmp_path / "A.md"),
+    ])
+    assert rc == 0
+    assert len(created) == 1, f"only the first target may run: {created}"
+    record = json.loads((tmp_path / "a.json").read_text(encoding="utf-8"))["k_runs"][0]
+    assert "connection refused" in record["aborted"]
+    assert "SWEEP ABORTED" in (tmp_path / "A.md").read_text(encoding="utf-8")
+
+
+def test_a_case_scored_while_its_run_is_in_flight_is_marked_incomplete(ev, tmp_path):
+    """A partial run is not a measurement.
+
+    Measured 2026-10-03: `CASE-K1-ta0002-m1-r1-215904` was scored with run
+    status `running` and contributed 5 untagged partial findings, which read as
+    a product result and depressed recall.
+    """
+    case = _case(tmp_path, [_finding("F-1", ["T1059.001"], AUDIT_ATTACK)])
+    run_dir = case / "runs" / "RUN-20261003T220631563971Z-coverage-511000b1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text(
+        json.dumps({"run_id": run_dir.name, "status": "running"}), encoding="utf-8"
+    )
+    assert ev.latest_run_status(case) == "running"
+
+    (run_dir / "manifest.json").write_text(
+        json.dumps({"run_id": run_dir.name, "status": "completed"}), encoding="utf-8"
+    )
+    assert ev.latest_run_status(case) == "completed"
+
+    # And the newest run wins when a case has several.
+    older = case / "runs" / "RUN-20261003T200000000000Z-coverage-aaaaaaaa"
+    older.mkdir(parents=True)
+    (older / "manifest.json").write_text(
+        json.dumps({"status": "running"}), encoding="utf-8"
+    )
+    assert ev.latest_run_status(case) == "completed", "the NEWEST run is the one scored"
+    assert ev.latest_run_status(tmp_path / "nope") == ""
 
 
 def test_the_run_record_names_the_baseline_and_the_knowledge_versions(ev, tmp_path):

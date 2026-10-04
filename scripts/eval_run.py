@@ -34,6 +34,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import subprocess
 import sys
 import time
@@ -416,6 +417,13 @@ def _render_run_md(report: dict) -> str:
             + str(report.get("void_reason") or "marked void by the operator"),
             "",
         ]
+    if report.get("aborted"):
+        lines += [
+            f"> **SWEEP ABORTED — {report['aborted']}**",
+            ">",
+            "> Cases completed before the abort are recorded below; the rest never ran.",
+            "",
+        ]
     lines += [
         f"- When: {report['at']}",
         f"- HEAD: `{report['head']}`",
@@ -439,9 +447,9 @@ def _render_run_md(report: dict) -> str:
             lines.append(f"  - `{check['case_id']}`: {state}")
         lines.append("")
     lines += [
-        "| Case | Rep | Mode | rc | Findings | Techniques P | R | F1 | "
+        "| Case | Rep | Mode | rc | Run status | Findings | Techniques P | R | F1 | "
         "Entities F1 | Benign-only FP | First true lead | Wall s |",
-        "|---|---|---|---|---|---|---|---|---|---|---|---|",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for case in report["cases"]:
         tech = case.get("dimensions", {}).get("techniques", {})
@@ -455,7 +463,8 @@ def _render_run_md(report: dict) -> str:
 
         lines.append(
             f"| {case.get('target', '-')} | {case.get('repeat', 1)} | {case['mode']} | "
-            f"{case['run'].get('rc')} | {case.get('findings', 0)} | "
+            f"{case['run'].get('rc')} | {'INCOMPLETE' if case.get('incomplete') else case.get('run_status') or '-'} | "
+            f"{case.get('findings', 0)} | "
             f"{_num(tech.get('precision'))} | {_num(tech.get('recall'))} | "
             f"{_num(tech.get('f1'))} | {_num(ent.get('f1'))} | "
             f"{fp.get('benign_only', 0)}/{fp.get('findings', 0)} | "
@@ -510,6 +519,65 @@ def _load_targets(set_dir: str, manifest: str, case_set: str) -> list[dict]:
     return [{"name": "case", "set_dir": set_dir, "manifest": str(manifest)}]
 
 
+def latest_run_status(case_dir: Path) -> str:
+    """The status of the case's newest pipeline run ("", "running", "completed").
+
+    A case can be scored while its run is still in flight - measured
+    2026-10-03: `CASE-K1-ta0002-m1-r1-215904` was scored with status `running`
+    and contributed 5 partial findings, which reads as a product result. A
+    partial run is not a measurement.
+    """
+    runs = case_dir / "runs"
+    if not runs.is_dir():
+        return ""
+    newest = ""
+    newest_name = ""
+    for child in runs.iterdir():
+        if child.is_dir() and child.name > newest_name:
+            manifest = child / "manifest.json"
+            if manifest.is_file():
+                newest_name = child.name
+                try:
+                    newest = str(json.loads(
+                        manifest.read_text(encoding="utf-8")
+                    ).get("status") or "")
+                except (OSError, ValueError):
+                    newest = ""
+    return newest
+
+
+def es_unreachable() -> str:
+    """Why ES is unusable, or "" when it is up.
+
+    Interpret refuses without ES (by design, no salvage), so every case run
+    without it produces zero findings. A sweep that scores those zeros reports a
+    product failure that did not happen. This is the preflight that refuses to.
+    """
+    url = (os.environ.get("NEXUS_ES_URL") or "").strip()
+    if not url:
+        try:
+            from nexus.config import settings
+            url = str(getattr(settings, "es_url", "") or "")
+        except Exception:  # noqa: BLE001
+            url = ""
+    if not url:
+        return "NEXUS_ES_URL is not set"
+    import urllib.error
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(
+            url.rstrip("/") + "/_cluster/health", timeout=8
+        ) as response:
+            body = json.loads(response.read().decode("utf-8", "replace"))
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        return f"{url} unreachable: {type(exc).__name__}: {exc}"
+    status = str(body.get("status") or "")
+    if status in ("red", "unavailable"):
+        return f"{url} cluster status is {status!r}"
+    return ""
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--set-dir", default="", help="evidence directory for K1")
@@ -555,6 +623,21 @@ def main(argv: list[str] | None = None) -> int:
         report["void"] = True
         report["void_reason"] = args.void
 
+    # Refuse before creating anything: a case run without ES yields zero findings
+    # and scores as a product miss that never happened. Measured 2026-10-03/04:
+    # ES exited at 23:12 and 16 of 18 cases ran to completion reporting 0 findings.
+    if not args.score_only:
+        why = es_unreachable()
+        if why:
+            print(f"refusing to run: {why}", file=sys.stderr)
+            print(
+                "Interpret refuses without Elasticsearch (no salvage), so every case "
+                "would score zero findings. Start ES (the lab container is `nexus-es`) "
+                "and re-run. Nothing was created or scored.",
+                file=sys.stderr,
+            )
+            return 3
+
     prepared: list[dict] = []
     for target in targets:
         set_dir = target["set_dir"]
@@ -591,12 +674,23 @@ def main(argv: list[str] | None = None) -> int:
     # starts r2, so a complete baseline exists as early as possible. Target-major
     # spends hours finishing one case's repeats before touching the next case -
     # which is the wrong shape when the batch may be read (or stopped) part-way.
+    abort_reason = ""
     for rep in range(repeats):
         for item in prepared:
             target = item["target"]
             tmanifest = item["tmanifest"]
             tkey = item["tkey"]
             evidence = item["evidence"]
+            if abort_reason:
+                break
+            if not args.score_only:
+                # ES can die mid-sweep. Stop rather than accumulate cases that
+                # measure nothing and report them as scores.
+                why = es_unreachable()
+                if why:
+                    abort_reason = f"{why} (rep {rep + 1}, target {target['name']})"
+                    print(f"\nABORTING THE SWEEP: {abort_reason}", file=sys.stderr)
+                    break
             if not args.score_only:
                 if not evidence:
                     print("--set-dir (or --case-set) is required unless --score-only",
@@ -661,17 +755,30 @@ def main(argv: list[str] | None = None) -> int:
                           f"wall={run['wall_s']}s")
 
                 scored = score_case(case_dir, tkey, started_at=started)
+                status = latest_run_status(case_dir)
                 scored.update({
                     "mode": mode,
                     "target": target["name"],
                     "repeat": rep + 1,
                     "run": run,
+                    "run_status": status,
+                    # A run that never completed is not a measurement.
+                    "incomplete": bool(status) and status != "completed",
                 })
                 report["cases"].append(scored)
+                if scored["incomplete"]:
+                    print(f"  WARNING: run status {status!r} - this case is not a "
+                          f"measurement (recorded as incomplete)", file=sys.stderr)
                 if hits:
                     print(f"  LEAK in {case_id}: {hits[:3]}", file=sys.stderr)
 
     report["leak_ok"] = all(not c["hits"] for c in report["truth_leak_checks"])
+    if abort_reason:
+        report["aborted"] = abort_reason
+        print(
+            f"sweep aborted after {len(report['cases'])} case(s): {abort_reason}",
+            file=sys.stderr,
+        )
 
     json_out, md_out = Path(args.json_out), Path(args.md_out)
     json_out.parent.mkdir(parents=True, exist_ok=True)
