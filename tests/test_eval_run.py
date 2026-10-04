@@ -748,3 +748,23 @@ def test_the_run_record_names_the_baseline_and_the_knowledge_versions(ev, tmp_pa
     assert record["leak_ok"] is True
     md = (tmp_path / "A.md").read_text(encoding="utf-8")
     assert "## K-runs" in md and "K-run 0 baseline" in md
+
+
+def test_eval_run_without_manifest_exits_with_error(ev):
+    """WO-KR1: eval_run.py without --manifest exits with an error."""
+    with pytest.raises(SystemExit) as exc_info:
+        ev.main([])
+    assert exc_info.value.code != 0
+
+
+def test_no_file_under_scripts_or_src_writes_a_manifest():
+    """WO-KR1: The agent must not generate ground truth; no script or src writes a manifest."""
+    assert not (REPO / "scripts" / "k1_manifest.py").exists(), "scripts/k1_manifest.py must be deleted"
+    # Scan all python files in scripts/ and src/
+    for folder in (REPO / "scripts", REPO / "src"):
+        for py_file in folder.rglob("*.py"):
+            assert py_file.name != "k1_manifest.py"
+            content = py_file.read_text(encoding="utf-8", errors="replace")
+            # Verify no ground-truth manifest generation code
+            assert "k1_manifest" not in content.lower()
+

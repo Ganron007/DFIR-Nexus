@@ -1,23 +1,22 @@
 <#
 .SYNOPSIS
-  Fetch the K1 sample datasets into Evidence-files\_k1-datasets.
+  Download helper for sample datasets into Evidence-files\_k1-datasets.
 
 .DESCRIPTION
   Downloads with resume, verifies the size, extracts, and writes the hash table
   in README.md. Repeatable: an already-complete file is skipped.
 
-  Roles are fixed by §3Y (see README.md): dev / heldout / benign. Keep dev and
-  heldout on DIFFERENT AIT testbeds, and never change a file's role - K2-K7 are
-  re-measured on dev, and GATE-H scores against heldout.
+  WO-KR1: No set is pre-selected as development or GATE-H. GATE-H samples are the operator's.
 
 .EXAMPLE
-  pwsh -File scripts\fetch-k1-datasets.ps1            # all roles
-  pwsh -File scripts\fetch-k1-datasets.ps1 -Role dev  # one role
+  pwsh -File scripts\fetch-k1-datasets.ps1 -Name 'win2022-ad.tgz'
+  pwsh -File scripts\fetch-k1-datasets.ps1 -Role benign
   pwsh -File scripts\fetch-k1-datasets.ps1 -WhatIf
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('all', 'dev', 'heldout', 'benign')][string] $Role = 'all',
+    [string] $Name = '',
+    [ValidateSet('', 'all', 'corpus', 'benign')][string] $Role = '',
     [switch] $WhatIf,
     [switch] $KeepArchives
 )
@@ -36,13 +35,14 @@ $ZEN = 'https://zenodo.org/api/records/19483937/files'
 $NR = 'https://github.com/NextronSystems/evtx-baseline/releases/download/v0.8.3'
 
 # name, role, url, expected bytes, extract-into
+# Note: no dataset is pre-selected as development or GATE-H (GATE-H samples are the operator's).
 $Manifest = @(
-    @{ Name = 'russellmitchell_no-pcaps.zip'; Role = 'dev';
+    @{ Name = 'russellmitchell_no-pcaps.zip'; Role = 'corpus';
        Url = "$ZEN/russellmitchell_no-pcaps.zip/content"; Bytes = 522084364
-       Into = 'dev'; Format = 'zip' }
-    @{ Name = 'santos_no-pcaps.zip'; Role = 'heldout';
+       Into = 'corpus/russellmitchell'; Format = 'zip' }
+    @{ Name = 'santos_no-pcaps.zip'; Role = 'corpus';
        Url = "$ZEN/santos_no-pcaps.zip/content"; Bytes = 576734274
-       Into = 'heldout'; Format = 'zip' }
+       Into = 'corpus/santos'; Format = 'zip' }
     @{ Name = 'win2022-ad.tgz'; Role = 'benign';
        Url = "$NR/win2022-ad.tgz"; Bytes = 65991035
        Into = 'benign/win2022-ad'; Format = 'tgz' }
@@ -51,8 +51,18 @@ $Manifest = @(
        Into = 'benign/win10-client'; Format = 'tgz' }
 )
 
-$wanted = $Manifest | Where-Object { $Role -eq 'all' -or $_.Role -eq $Role }
-Write-Host "K1 datasets -> $Root"
+if (-not $Name -and -not $Role) {
+    Write-Host "No dataset pre-selected. Specify -Name or -Role. Available datasets:"
+    $Manifest | ForEach-Object { Write-Host ("  - {0} [{1}]" -f $_.Name, $_.Role) }
+    return
+}
+
+$wanted = $Manifest | Where-Object {
+    ($Name -and $_.Name -eq $Name) -or
+    ($Role -eq 'all') -or
+    ($Role -and $_.Role -eq $Role)
+}
+Write-Host "Sample datasets -> $Root"
 Write-Host ("Roles: {0}" -f (($wanted | Select-Object -ExpandProperty Role -Unique) -join ', '))
 $totalGB = ($wanted | Measure-Object -Property Bytes -Sum).Sum / 1GB
 Write-Host ("Total: {0:N2} GB across {1} file(s)`n" -f $totalGB, $wanted.Count)
