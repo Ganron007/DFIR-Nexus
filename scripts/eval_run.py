@@ -41,6 +41,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "src"))
@@ -747,6 +748,104 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _mode_aggregate(run: dict) -> dict[int, dict[str, Any]]:
+    """Per-mode means over a run's cases: recall, precision, benign-only FP."""
+    out: dict[int, dict[str, Any]] = {}
+    for case in run.get("cases", []):
+        mode = int(case.get("mode") or 0)
+        tech = case.get("dimensions", {}).get("techniques", {})
+        fp = case.get("false_positive", {})
+        bucket = out.setdefault(mode, {
+            "cases": 0, "_recalls": [], "_precisions": [], "benign_only": 0,
+            "findings": 0, "targets": [],
+        })
+        bucket["cases"] += 1
+        bucket["benign_only"] += int(fp.get("benign_only") or 0)
+        bucket["findings"] += int(case.get("findings") or 0)
+        bucket["targets"].append(str(case.get("target")))
+        if tech.get("recall") is not None:
+            bucket["_recalls"].append(float(tech["recall"]))
+        if tech.get("precision") is not None:
+            bucket["_precisions"].append(float(tech["precision"]))
+    for bucket in out.values():
+        recalls, precisions = bucket.pop("_recalls"), bucket.pop("_precisions")
+        bucket["recall"] = round(sum(recalls) / len(recalls), 4) if recalls else None
+        bucket["precision"] = round(sum(precisions) / len(precisions), 4) if precisions else None
+    return out
+
+
+def _delta_block(runs: list[dict], run: dict, baseline_label: str) -> str:
+    """Per-mode delta against a named baseline run, or an explicit "none".
+
+    The work order's 2K exit is "every mode beats K-run 0 on recall **and**
+    false-positive rate". A mode with no baseline cannot be evaluated, and
+    saying so is the honest result - measured 2026-10-04, the only pre-K point on
+    record was mode 1, so modes 2 and 3 have nothing to beat.
+    """
+    base = None
+    for candidate in runs:
+        if candidate is run or candidate.get("void"):
+            continue
+        if baseline_label and str(candidate.get("label")) == baseline_label:
+            base = candidate
+    if base is None and baseline_label:
+        return (f"\n### Delta vs `{baseline_label}`\n\n"
+                f"No such run is on record, so no delta can be computed.\n")
+
+    now = _mode_aggregate(run)
+    before = _mode_aggregate(base) if base else {}
+    lines = [
+        "",
+        f"### Delta vs {('`' + str(base.get('label')) + '`') if base else '(no baseline on record)'}",
+        "",
+    ]
+    if not base:
+        lines.append("No baseline run is on record, so this run stands alone.")
+        lines.append("")
+    lines += [
+        "| Mode | Cases | Recall | Δ vs baseline | Precision | Benign-only FP | Δ vs baseline |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    for mode in sorted(now):
+        n = now[mode]
+        b = before.get(mode)
+        if b is None:
+            lines.append(
+                f"| {mode} | {n['cases']} | {_fmt(n['recall'])} | **no baseline for this mode** | "
+                f"{_fmt(n['precision'])} | {n['benign_only']} | **no baseline for this mode** |"
+            )
+            continue
+
+        def _delta(new_v: Any, old_v: Any) -> str:
+            if new_v is None or old_v is None:
+                return "n/a"
+            return f"{new_v - old_v:+.3f}"
+
+        # The exit criterion asks for a rise in recall and a FALL in FP count.
+        recall_ok = n["recall"] is not None and b["recall"] is not None and n["recall"] > b["recall"]
+        fp_ok = n["benign_only"] <= b["benign_only"]
+        verdict = "beats" if (recall_ok and fp_ok) else "does not beat"
+        lines.append(
+            f"| {mode} | {n['cases']} | {_fmt(n['recall'])} | {_delta(n['recall'], b['recall'])} "
+            f"| {_fmt(n['precision'])} | {n['benign_only']} "
+            f"| {_delta(n['benign_only'], b['benign_only'])} ({verdict} baseline) |"
+        )
+    lines.append("")
+    missing = sorted(set(now) - set(before))
+    if missing:
+        lines.append(
+            f"Modes {', '.join(str(m) for m in missing)} have **no pre-K measurement on record**, "
+            "so 'beats K-run 0' cannot be evaluated for them - this run is their first "
+            "measurement, not a delta."
+        )
+        lines.append("")
+    return "\n".join(lines)
+
+
+def _fmt(value: Any) -> str:
+    return "n/a" if value is None else f"{float(value):.3f}"
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
@@ -1018,7 +1117,12 @@ def main(argv: list[str] | None = None) -> int:
     marker = "## K-runs"
     if marker in md:
         md = md[: md.index(marker)].rstrip()
-    md_out.write_text((md + "\n\n" + _k_runs_section(runs)).lstrip("\n"), encoding="utf-8")
+    # The delta is computed from the run records, so it is regenerated with the
+    # section rather than appended (an append would accumulate a block per run).
+    delta = _delta_block(runs, report, args.baseline_label)
+    md_out.write_text(
+        (md + "\n\n" + _k_runs_section(runs) + delta).lstrip("\n"), encoding="utf-8"
+    )
 
     print(f"\n{report['label']}: leak guard {'CLEAN' if report['leak_ok'] else 'FAILED'}")
     for case in report["cases"]:
