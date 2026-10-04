@@ -5549,6 +5549,35 @@ async def api_pipeline_ledger(request):
     })
 
 
+async def api_case_absence(request):
+    """GET /portal/api/case/absence — WO-K7 absence honesty.
+
+    Replaces "no findings" with what actually happened: which lead sources ran
+    with their counts, which are disabled for this run, and which families were
+    not examined. The work order requires this in the run record, the report and
+    the API; this is the API surface.
+    """
+    case_dir = _get_case_dir(request)
+    if not case_dir:
+        return JSONResponse({"error": "No active case"}, status_code=404)
+    try:
+        from nexus.analysis.absence import absence_statement
+
+        families = None
+        try:
+            from nexus.langgraph.briefing import case_briefing
+
+            brief = await asyncio.to_thread(case_briefing, case_dir)
+            families = sorted((brief.get("family_rows") or {}).keys())
+        except Exception:  # noqa: BLE001 - families are a nicety, not required
+            families = None
+        payload = await asyncio.to_thread(absence_statement, case_dir, families=families)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("absence statement failed")
+        return JSONResponse({"error": f"absence failed: {exc}"}, status_code=500)
+    return JSONResponse(payload)
+
+
 async def api_case_briefing(request):
     """GET /portal/api/case/briefing — WP 4i.1 deterministic case briefing.
 
@@ -8000,6 +8029,9 @@ def create_dashboard():
         Route("/portal/api/pipeline/status", api_pipeline_status, methods=["GET"]),
         Route("/portal/api/pipeline/ledger", api_pipeline_ledger, methods=["GET"]),
         Route("/portal/api/case/briefing", api_case_briefing, methods=["GET"]),
+        # WO-K7: absence honesty - what ran, what is disabled, what was not examined.
+        Route("/portal/api/case/absence", api_case_absence, methods=["GET"]),
+        Route("/portal/api/case/{case_id}/absence", api_case_absence, methods=["GET"]),
         Route("/portal/api/case/digest", api_case_digest, methods=["GET"]),
         Route("/portal/api/case/export", api_case_export, methods=["GET"]),
         Route("/portal/api/case/rounds", api_case_rounds, methods=["GET"]),

@@ -578,12 +578,112 @@ def es_unreachable() -> str:
     return ""
 
 
+def ablations_to_run(args_layers: str, ablate: bool) -> list[str]:
+    """The layers a `--ablate` invocation should disable, one run each."""
+    from nexus.analysis.layers import KNOWLEDGE_LAYERS, LEAD_SOURCES
+
+    if args_layers.strip():
+        wanted = [t.strip().lower() for t in args_layers.split(",") if t.strip()]
+        known = set(LEAD_SOURCES) | set(KNOWLEDGE_LAYERS)
+        unknown = [w for w in wanted if w not in known]
+        if unknown:
+            raise SystemExit(
+                f"unknown layer(s) {', '.join(unknown)}; "
+                f"known: {', '.join(sorted(known))}"
+            )
+        return wanted
+    if ablate:
+        return list(LEAD_SOURCES) + list(KNOWLEDGE_LAYERS)
+    return []
+
+
+def _ablation_table(runs: list[dict], baseline_label: str) -> str:
+    """A per-layer delta against a named baseline run.
+
+    The operator decides the cuts, so the table states recall and the
+    false-positive number for the baseline and for each disabled layer, and the
+    delta. A layer whose removal does not move recall has not earned its place.
+    """
+    from nexus.analysis.layers import KNOWLEDGE_LAYERS, LEAD_SOURCES
+
+    base = None
+    for run in runs:
+        if baseline_label and run.get("label") == baseline_label:
+            base = run
+            break
+    if base is None:
+        for run in reversed(runs):
+            if not str(run.get("label") or "").startswith("ablate:"):
+                base = run
+                break
+    by_layer: dict[str, dict] = {}
+    for run in runs:
+        label = str(run.get("label") or "")
+        if label.startswith("ablate:"):
+            by_layer[label.split(":", 1)[1].strip()] = run
+
+    # A baseline is required to compute a delta. With no baselines at all there
+    # is nothing to compare, so no table - but a baseline with no ablations still
+    # gets one, listing every layer as not run, which is the honest reading.
+    if base is None:
+        return ""
+
+    def _agg(run: dict) -> tuple[float, float, int]:
+        recalls = [c["dimensions"]["techniques"]["recall"]
+                   for c in run.get("cases", [])
+                   if c["dimensions"]["techniques"].get("recall") is not None]
+        precs = [c["dimensions"]["techniques"]["precision"]
+                 for c in run.get("cases", [])]
+        fp = sum(c["false_positive"]["benign_only"] for c in run.get("cases", []))
+        return (
+            sum(recalls) / len(recalls) if recalls else 0.0,
+            sum(precs) / len(precs) if precs else 0.0,
+            fp,
+        )
+
+    base_r, base_p, base_fp = _agg(base)
+    lines = [
+        "",
+        "### Ablation (WO-K8)",
+        "",
+        f"Baseline: **{base.get('label')}** (recall {base_r:.3f}, precision "
+        f"{base_p:.3f}, benign-only FP {base_fp}).",
+        "",
+        "| Layer disabled | Recall | Δ recall | Precision | Δ precision | Benign-only FP |",
+        "|---|---|---|---|---|---|",
+    ]
+    for layer in list(LEAD_SOURCES) + list(KNOWLEDGE_LAYERS):
+        run = by_layer.get(layer)
+        if run is None:
+            lines.append(f"| {layer} | _(not run)_ | | | | |")
+            continue
+        recall, precision, fp = _agg(run)
+        lines.append(
+            f"| {layer} | {recall:.3f} | {recall - base_r:+.3f} | "
+            f"{precision:.3f} | {precision - base_p:+.3f} | {fp} |"
+        )
+    lines.append("")
+    lines.append(
+        "A layer whose removal does not move recall or the false-positive number "
+        "has not earned its place. **The operator decides the cuts.**"
+    )
+    lines.append("")
+    return "\n".join(lines)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--set-dir", default="", help="evidence directory for K1")
     parser.add_argument("--manifest", default="", help="operator manifest (read only here)")
     parser.add_argument("--case-set", default="",
                         help="JSON listing several cases: {cases:[{name,set_dir,manifest}]}")
+    parser.add_argument("--ablate", action="store_true",
+                        help="run the set once per layer with that layer disabled, then "
+                             "write the deltas (WO-K8)")
+    parser.add_argument("--ablate-layers", default="",
+                        help="comma list to ablate instead of every layer")
+    parser.add_argument("--baseline-label", default="",
+                        help="K-run label the ablation deltas compare against")
     parser.add_argument("--void", default="",
                         help="mark this run VOID with a reason (excluded from use as a result)")
     parser.add_argument("--repeats", type=int, default=1,
@@ -602,6 +702,42 @@ def main(argv: list[str] | None = None) -> int:
     modes = [int(m) for m in args.modes.split(",") if m.strip()]
     repeats = max(1, int(args.repeats))
     targets = _load_targets(args.set_dir, args.manifest, args.case_set)
+
+    # WO-K8: an ablation is the same set run once per disabled layer. Each is a
+    # full sweep, so it runs as a child of this command with the toggle set -
+    # that reuses the exact measurement path rather than a parallel one.
+    ablations = ablations_to_run(args.ablate_layers, args.ablate)
+    if ablations:
+        from nexus.analysis.layers import ENV_KNOWLEDGE_DISABLE, ENV_LEADS_DISABLE
+        from nexus.analysis.layers import LEAD_SOURCES as _LS
+
+        print(f"ablation: {len(ablations)} layer(s) x the whole set")
+        for layer in ablations:
+            env = dict(os.environ)
+            var = ENV_LEADS_DISABLE if layer in _LS else ENV_KNOWLEDGE_DISABLE
+            env[var] = layer
+            argv_child = [a for a in (argv or sys.argv[1:])
+                          if a not in ("--ablate",)
+                          and not str(a).startswith("--ablate-layers")
+                          and not str(a).startswith("--label")]
+            argv_child += ["--label", f"ablate:{layer}"]
+            print(f"  -- ablating {layer} ({var}={layer})")
+            subprocess.run(
+                [sys.executable, str(Path(__file__).resolve()), *argv_child],
+                env=env, check=False,
+            )
+        # Then write the deltas for everything recorded so far.
+        if Path(args.json_out).is_file():
+            existing = json.loads(Path(args.json_out).read_text(encoding="utf-8"))
+            runs = existing.get("k_runs") or []
+            table = _ablation_table(runs, args.baseline_label)
+            if table:
+                md_path = Path(args.md_out)
+                md = md_path.read_text(encoding="utf-8") if md_path.is_file() else ""
+                md = md.replace("### Ablation (WO-K8)", "", 1)
+                md_path.write_text(md.rstrip() + "\n" + table, encoding="utf-8")
+                print(f"wrote the ablation table to {md_path.name}")
+        return 0
     for target in targets:
         if not Path(target["manifest"]).is_file():
             print(f"manifest not found: {target['manifest']}", file=sys.stderr)

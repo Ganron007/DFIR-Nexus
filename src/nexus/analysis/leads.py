@@ -450,16 +450,24 @@ def build_leads(
 
     leads: list[Lead] = []
     failed: list[str] = []
-    for builder in (
-        lambda: rarity_leads(probe, known, case_dir),
-        lambda: ancestry_leads(probe, known, case_dir),
-        lambda: first_seen_leads(probe, known, case_dir, window),
-        lambda: burst_leads(probe, known, case_dir),
-        # WO-K4 part 1: the rule engines' own detections. They already run in the
-        # lane; without this their output never reached a lead, so a critical and
-        # an informational hit were equally invisible.
-        lambda: _rule_engine_leads(case_dir),
-    ):
+    # WO-K8: honour the ablation toggles, so a disabled layer is genuinely
+    # absent rather than merely flagged. `layer_status()` reports this into the
+    # run record; the builder list is filtered here.
+    from nexus.analysis.layers import layer_status
+
+    active = layer_status()["leads"]
+    builders = []
+    if active["anomaly"]["enabled"]:
+        builders.extend([
+            lambda: rarity_leads(probe, known, case_dir),
+            lambda: ancestry_leads(probe, known, case_dir),
+            lambda: first_seen_leads(probe, known, case_dir, window),
+            lambda: burst_leads(probe, known, case_dir),
+        ])
+    if active["rules"]["enabled"]:
+        builders.append(lambda: _rule_engine_leads(case_dir))
+
+    for builder in builders:
         try:
             leads.extend(builder())
         except Exception as exc:  # noqa: BLE001 - one broken kind must not lose the rest

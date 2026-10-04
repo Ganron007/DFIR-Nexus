@@ -943,6 +943,18 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
         out["leads"] = []
         out["lead_counts"] = {"total": 0, "by_kind": {}, "error": str(exc)[:200]}
 
+    # WO-K7: absence honesty. "No findings" collapses three different situations
+    # into one sentence; the briefing carries the honest form instead - which
+    # sources ran with counts, which are disabled for this ablation, and which
+    # families were not examined.
+    try:
+        from nexus.analysis.absence import absence_statement
+
+        families = sorted((out.get("family_rows") or {}).keys())
+        out["absence"] = absence_statement(case_dir, families=families)
+    except Exception as exc:  # noqa: BLE001 - the briefing must render regardless
+        out["absence"] = {"statement": "", "error": str(exc)[:200]}
+
     # WP 4j.5c: persist an offline copy — the briefing and signal map must be
     # reviewable without the UI (DFIR practice: every analysis leaves a file
     # artifact the examiner can open, diff, or attach to notes).
