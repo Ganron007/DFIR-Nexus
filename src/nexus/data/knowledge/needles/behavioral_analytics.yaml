@@ -661,3 +661,155 @@ packs:
     of its intent.'
   es:
     match_all: {}
+- id: ba-lat-wmi-process-create
+  name: Process creation via WMI command execution
+  families:
+  - evtxecmd
+  - hayabusa
+  - security
+  - sysmon
+  citation:
+    type: car
+    id: CAR-2014-11-004
+    ref: https://car.mitre.org/analytics/CAR-2014-11-004/
+  techniques:
+  - T1047
+  rationale: WMI process creation via wmic.exe process call create or WMI Win32_Process.Create;
+    telemetry follows CAR-2014-11-004 (process creation with command line) - the WMI-spawned child is a process-creation record carrying the WMI command line.
+  es:
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: "*wmic*process*create*"
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: "*Win32_Process*Create*"
+            case_insensitive: true
+      minimum_should_match: 1
+- id: ba-pers-schtask-reg-mod
+  name: Scheduled task creation or modification via registry or schtasks
+  families:
+  - evtxecmd
+  - hayabusa
+  - security
+  - sysmon
+  citation:
+    type: car
+    id: CAR-2016-04-009
+    ref: https://car.mitre.org/analytics/CAR-2016-04-009/
+  techniques:
+  - T1053.005
+  rationale: Scheduled task persistence via schtasks.exe /create or modifications under Tree/Tasks registry;
+    telemetry follows CAR-2016-04-009 (scheduled task), the same technique T1053.005.
+  es:
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: "*schtasks*/create*"
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: "*Software\\Microsoft\\Windows NT\\CurrentVersion\\Schedule\\TaskCache*"
+            case_insensitive: true
+      minimum_should_match: 1
+- id: ba-c2-living-off-trusted-sites
+  name: C2 and payload transfer via living off trusted sites
+  families:
+  - evtxecmd
+  - sysmon
+  - hayabusa
+  citation:
+    type: sigma
+    id: sigma-c2-trusted-sites
+    ref: https://github.com/SigmaHQ/sigma/blob/master/rules/web/web_c2_discord_telegram.yml
+  techniques:
+  - T1102.002
+  - T1105
+  rationale: Network connections or command lines referencing trusted sites abused for C2 or payload transfer.
+  es:
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: "*discordapp.com*"
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: "*api.telegram.org*"
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: "*webhook.site*"
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: "*ngrok*"
+            case_insensitive: true
+      minimum_should_match: 1
+- id: ba-priv-printspooler-exploit
+  name: Print Spooler driver exploitation (PrintNightmare)
+  families:
+  - evtxecmd
+  - hayabusa
+  - security
+  - sysmon
+  citation:
+    type: car
+    id: CAR-2016-04-006
+    ref: https://car.mitre.org/analytics/CAR-2016-04-006/
+  techniques:
+  - T1068
+  - T1547.012
+  rationale: spoolsv.exe loading unexpected drivers from spool\drivers or spawning cmd/powershell;
+    telemetry follows CAR-2016-04-006 (driver load), the same technique T1068.
+  es:
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: "*spoolsv*cmd.exe*"
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: "*spoolsv*powershell.exe*"
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: "*spool\\drivers*kernelbase.dll*"
+            case_insensitive: true
+      minimum_should_match: 1
+- id: ba-cred-lsass-minidump-write
+  name: LSASS memory dumping via MiniDumpWriteDump or comsvcs
+  families:
+  - evtxecmd
+  - sysmon
+  - hayabusa
+  - security
+  citation:
+    type: car
+    id: CAR-2014-11-008
+    ref: https://car.mitre.org/analytics/CAR-2014-11-008/
+  techniques:
+  - T1003.001
+  rationale: LSASS process memory dump via comsvcs.dll MiniDump, procdump, or rundll32;
+    telemetry follows CAR-2014-11-008 (process access), the parent technique T1003.
+  es:
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: "*comsvcs*MiniDump*"
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: "*MiniDumpWriteDump*lsass*"
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: "*procdump*lsass*"
+            case_insensitive: true
+      minimum_should_match: 1
+

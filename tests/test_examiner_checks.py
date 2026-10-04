@@ -52,6 +52,9 @@ def test_every_examiner_tool_is_callable_from_the_loop():
         "check_lolbin": {"filename": "certutil.exe"},
         "check_hijackable_dll": {"dll_name": "version.dll"},
         "deobfuscate_command": {"command": "powershell -enc SQBFAFgA"},
+        "check_driver": {"driver_name": "gdrv.sys"},
+        "check_lots_domain": {"domain": "discordapp.com"},
+        "check_loobin": {"binary_name": "osascript"},
     }
     assert set(calls) == set(ec.EXAMINER_CHECK_TOOLS)
     for name, kwargs in calls.items():

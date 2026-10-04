@@ -70,6 +70,9 @@ _TOOL_ARGS: dict[str, set[str]] = {
     "check_lolbin": {"filename"},
     "check_hijackable_dll": {"dll_name"},
     "deobfuscate_command": {"command"},
+    "check_driver": {"driver_name", "hash_value", "hash"},
+    "check_lots_domain": {"domain"},
+    "check_loobin": {"binary_name"},
 }
 
 
@@ -216,6 +219,8 @@ _REQUIRED_ARGS: dict[str, tuple[str, ...]] = {
     "check_lolbin": ("filename",),
     "check_hijackable_dll": ("dll_name",),
     "deobfuscate_command": ("command",),
+    "check_lots_domain": ("domain",),
+    "check_loobin": ("binary_name",),
 }
 
 _STRING_FIELDS_BY_TOOL: dict[str, tuple[str, ...]] = {
@@ -236,6 +241,9 @@ _STRING_FIELDS_BY_TOOL: dict[str, tuple[str, ...]] = {
     "check_lolbin": ("filename",),
     "check_hijackable_dll": ("dll_name",),
     "deobfuscate_command": ("command",),
+    "check_driver": ("driver_name", "hash_value", "hash"),
+    "check_lots_domain": ("domain",),
+    "check_loobin": ("binary_name",),
 }
 
 

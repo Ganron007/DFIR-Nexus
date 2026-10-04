@@ -503,8 +503,11 @@ def calculate_service_verdict(service_in_baseline, binary_path_matches, binary_f
     return VerdictResult(Verdict.UNKNOWN, reasons, "low")
 
 
-def calculate_hash_verdict(is_vulnerable_driver=False, driver_info=None, is_lolbin=False, lolbin_info=None):
+def calculate_hash_verdict(matches=None, is_vulnerable_driver=False, driver_info=None, is_lolbin=False, lolbin_info=None):
     reasons = []
+    if matches:
+        reasons.append(f"Hash matches Windows baseline ({len(matches)} files)")
+        return VerdictResult(Verdict.EXPECTED, reasons, "high")
     if is_vulnerable_driver and driver_info:
         reasons.append(f"Vulnerable driver: {driver_info.get('product', 'unknown')}")
         if driver_info.get("cve"):

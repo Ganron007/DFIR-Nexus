@@ -154,12 +154,13 @@ def check_process_tree(
         protected = context.get_protected_process_names()
         findings.extend(check_process_name_spoofing(process_name, protected))
 
-    if expected and expected.get("never_spawns_children", 0):
+    parent_expected = context.get_expected_process(parent_name) if context else None
+    if parent_expected and parent_expected.get("never_spawns_children", 0):
         findings.append({
             "type": "never_spawns_children",
             "severity": "critical",
             "description": (
-                f"{process_name} should never spawn children — possible process injection"
+                f"{parent_name} should never spawn children — spawned {process_name} (possible process injection)"
             ),
         })
 
@@ -168,7 +169,7 @@ def check_process_tree(
         valid_paths = expected.get("valid_paths")
         if valid_paths:
             norm = normalize_path(path)
-            path_valid = any(norm.startswith(vp.lower()) for vp in valid_paths)
+            path_valid = any(norm.startswith(normalize_path(vp)) or norm == normalize_path(vp) for vp in valid_paths)
 
     user_valid: bool | None = None
     if user and expected:
@@ -280,13 +281,13 @@ def check_service(
     }
 
 
-def check_hash(known_good: Any, *, hash_value: str) -> dict[str, Any]:
-    """A file hash against the baseline (body of `check_hash`)."""
-    if not known_good:
+def check_hash(known_good: Any, context: Any = None, *, hash_value: str) -> dict[str, Any]:
+    """A file hash against the baseline and known vulnerable drivers (body of `check_hash`)."""
+    if not known_good and not context:
         return {
             "hash": hash_value,
             "verdict": "UNKNOWN",
-            "message": "Baseline database not available",
+            "message": "Baseline and context databases not available",
             "interpretation_constraint": UNKNOWN_CONSTRAINT,
         }
     algorithm = detect_hash_algorithm(hash_value)
@@ -298,8 +299,16 @@ def check_hash(known_good: Any, *, hash_value: str) -> dict[str, Any]:
             "interpretation_constraint": UNKNOWN_CONSTRAINT,
         }
     normalized = normalize_hash(hash_value)
-    matches = known_good.lookup_hash(normalized)
-    verdict = calculate_hash_verdict(matches=matches)
+    matches = known_good.lookup_hash(normalized) if known_good else []
+    driver_info = None
+    if context:
+        driver_info = context.check_vulnerable_driver(normalized, algorithm)
+    if matches:
+        verdict = calculate_hash_verdict(matches=matches)
+    elif driver_info:
+        verdict = calculate_hash_verdict(is_vulnerable_driver=True, driver_info=driver_info)
+    else:
+        verdict = calculate_hash_verdict()
     return {
         "hash": hash_value,
         "normalized_hash": normalized,
@@ -308,6 +317,7 @@ def check_hash(known_good: Any, *, hash_value: str) -> dict[str, Any]:
         "reasons": verdict.reasons,
         "confidence": verdict.confidence,
         "matches": matches or [],
+        "driver_info": driver_info,
         "interpretation_constraint": UNKNOWN_CONSTRAINT,
     }
 
@@ -553,6 +563,123 @@ def deobfuscate_command(*, command: str) -> dict[str, Any]:
     return out
 
 
+def check_driver(
+    context: Any,
+    *,
+    driver_name: str = "",
+    hash_value: str = "",
+    hash: str = "",
+) -> dict[str, Any]:
+    """Check a driver name or hash against known vulnerable BYOVD drivers (LOLDrivers)."""
+    target_hash = hash_value or hash
+    if not context:
+        return {
+            "driver_name": driver_name,
+            "hash": target_hash,
+            "found": False,
+            "verdict": "UNKNOWN",
+            "message": "Context database not available",
+            "interpretation_constraint": UNKNOWN_CONSTRAINT,
+        }
+    entry = None
+    if target_hash:
+        algo = detect_hash_algorithm(target_hash)
+        if algo:
+            entry = context.check_vulnerable_driver(normalize_hash(target_hash), algo)
+    if not entry and driver_name:
+        entry = context.check_driver_by_name(driver_name)
+    if entry:
+        cve = entry.get("cve") or ""
+        product = entry.get("product") or entry.get("filename_lower") or "Vulnerable driver"
+        return {
+            "driver_name": driver_name or entry.get("filename_lower", ""),
+            "hash": target_hash,
+            "found": True,
+            "verdict": "SUSPICIOUS_VULNERABLE_DRIVER",
+            "cve": cve,
+            "product": product,
+            "vendor": entry.get("vendor", ""),
+            "vulnerability_type": entry.get("vulnerability_type", ""),
+            "description": entry.get("description", ""),
+            "interpretation_constraint": (
+                "known vulnerable BYOVD driver - presence suggests privilege escalation or defense evasion"
+            ),
+        }
+    return {
+        "driver_name": driver_name,
+        "hash": target_hash,
+        "found": False,
+        "verdict": "UNKNOWN",
+        "interpretation_constraint": UNKNOWN_CONSTRAINT,
+    }
+
+
+def check_lots_domain(context: Any, *, domain: str) -> dict[str, Any]:
+    """Check whether a domain is a known living-off-trusted-sites (LOTS) domain."""
+    if not context:
+        return {
+            "domain": domain,
+            "found": False,
+            "verdict": "UNKNOWN",
+            "message": "Context database not available",
+            "interpretation_constraint": UNKNOWN_CONSTRAINT,
+        }
+    entry = context.check_lots_domain(domain)
+    if entry:
+        return {
+            "domain": domain,
+            "found": True,
+            "verdict": "SUSPICIOUS_LOTS_DOMAIN",
+            "category": entry.get("category", ""),
+            "description": entry.get("description", ""),
+            "mitre_technique": entry.get("mitre_technique", ""),
+            "source_url": entry.get("source_url", ""),
+            "interpretation_constraint": (
+                "living off trusted sites - legitimate domain abused for C2 or exfiltration"
+            ),
+        }
+    return {
+        "domain": domain,
+        "found": False,
+        "verdict": "UNKNOWN",
+        "interpretation_constraint": UNKNOWN_CONSTRAINT,
+    }
+
+
+def check_loobin(context: Any, *, binary_name: str) -> dict[str, Any]:
+    """Check whether a binary is a macOS living-off-the-land binary (LOOBin)."""
+    if not context:
+        return {
+            "binary_name": binary_name,
+            "found": False,
+            "verdict": "UNKNOWN",
+            "message": "Context database not available",
+            "interpretation_constraint": UNKNOWN_CONSTRAINT,
+        }
+    entry = context.check_loobin(binary_name)
+    if entry:
+        return {
+            "binary_name": binary_name,
+            "found": True,
+            "verdict": "EXPECTED_LOOBIN",
+            "description": entry.get("description", ""),
+            "paths": entry.get("paths", []),
+            "functions": entry.get("functions", []),
+            "mitre_techniques": entry.get("mitre_techniques", []),
+            "detection": entry.get("detection", ""),
+            "source_url": entry.get("source_url", ""),
+            "interpretation_constraint": (
+                "legitimate macOS binary abusable for living-off-the-land techniques"
+            ),
+        }
+    return {
+        "binary_name": binary_name,
+        "found": False,
+        "verdict": "UNKNOWN",
+        "interpretation_constraint": UNKNOWN_CONSTRAINT,
+    }
+
+
 #: Tools this module implements. Kept here so the backbone allowlist and the
 #: loop's argument table cannot disagree with the code.
 EXAMINER_CHECK_TOOLS: tuple[str, ...] = (
@@ -566,9 +693,13 @@ EXAMINER_CHECK_TOOLS: tuple[str, ...] = (
     "check_lolbin",
     "check_hijackable_dll",
     "deobfuscate_command",
+    "check_driver",
+    "check_lots_domain",
+    "check_loobin",
 )
 
 
 def is_examiner_check(name: str) -> bool:
     """Whether *name* is one of this module's checks."""
     return str(name or "").strip() in EXAMINER_CHECK_TOOLS
+

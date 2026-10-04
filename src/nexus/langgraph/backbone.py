@@ -65,6 +65,9 @@ MODE2_TOOL_ALLOWLIST: dict[str, str] = {
     "check_lolbin": "evidence",
     "check_hijackable_dll": "evidence",
     "deobfuscate_command": "evidence",
+    "check_driver": "evidence",
+    "check_lots_domain": "evidence",
+    "check_loobin": "evidence",
 }
 
 # Confirmed routing (WIRING-PLAN 10.53, Option B):
@@ -88,6 +91,7 @@ _CONTEXT_TOOL_NAMES: tuple[str, ...] = (
     "check_file", "check_process_tree", "check_service", "check_hash",
     "check_autorun", "check_registry", "analyze_filename_triage",
     "check_lolbin", "check_hijackable_dll", "deobfuscate_command",
+    "check_driver", "check_lots_domain", "check_loobin",
 )
 
 # Mode 3 agents bind the same read-only set (4j-D) — defined here so there is
@@ -134,6 +138,9 @@ def tool_contracts_block(mode: int = 2, *, include_external: bool = True) -> str
             "- check_hijackable_dll(dll_name) — is this DLL vulnerable to search-order hijacking?",
             "- deobfuscate_command(command) — decode an obfuscated command line (base64, "
             "compression, string building) and read the decoded text.",
+            "- check_driver(driver_name, hash_value) — is this a known vulnerable BYOVD driver (LOLDrivers)?",
+            "- check_lots_domain(domain) — is this domain a living-off-trusted-sites C2/exfil domain (LOTS)?",
+            "- check_loobin(binary_name) — is this a known macOS living-off-the-land binary (LOOBin)?",
             "  CONSTRAINT (FD-004): UNKNOWN means 'not in the database', NOT suspicious — never "
             "escalate an UNKNOWN on its own, corroborate it with evidence rows. A LOLBin is "
             "legitimate-but-abusable, so a LOLBin alone is not malicious either. A check result "
@@ -216,6 +223,7 @@ EXAMINER_CHECK_TOOL_SET: frozenset[str] = frozenset({
     "check_file", "check_process_tree", "check_service", "check_hash",
     "check_autorun", "check_registry", "analyze_filename_triage",
     "check_lolbin", "check_hijackable_dll", "deobfuscate_command",
+    "check_driver", "check_lots_domain", "check_loobin",
 })
 
 #: Argument names the examiner checks accept, for the audit record.
@@ -223,6 +231,7 @@ _EXAMINER_ARG_KEYS: frozenset[str] = frozenset({
     "path", "hash", "hash_value", "process_name", "parent_name", "user",
     "service_name", "binary_path", "key_path", "value_name", "hive",
     "os_version", "filename", "dll_name", "command",
+    "driver_name", "domain", "binary_name",
 })
 
 
@@ -294,7 +303,7 @@ def _examiner_call(
         return ec.check_service(known_good, context, service_name=_s("service_name"),
                                 binary_path=_s("binary_path"))
     if name == "check_hash":
-        return ec.check_hash(known_good, hash_value=_s("hash_value") or _s("hash"))
+        return ec.check_hash(known_good, context, hash_value=_s("hash_value") or _s("hash"))
     if name == "check_autorun":
         return ec.check_autorun(known_good, context, key_path=_s("key_path"),
                                 value_name=_s("value_name"))
@@ -307,6 +316,13 @@ def _examiner_call(
         return ec.check_lolbin(context, filename=_s("filename"))
     if name == "check_hijackable_dll":
         return ec.check_hijackable_dll(context, dll_name=_s("dll_name"))
+    if name == "check_driver":
+        return ec.check_driver(context, driver_name=_s("driver_name"),
+                               hash_value=_s("hash_value") or _s("hash"))
+    if name == "check_lots_domain":
+        return ec.check_lots_domain(context, domain=_s("domain"))
+    if name == "check_loobin":
+        return ec.check_loobin(context, binary_name=_s("binary_name"))
     raise PermissionError(f"unknown examiner check {name!r}")
 
 

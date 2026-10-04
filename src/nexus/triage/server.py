@@ -195,12 +195,13 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             spoofing = check_process_name_spoofing(process_name, protected)
             findings.extend(spoofing)
 
-        if exp:
-            never_spawns = exp.get("never_spawns_children", 0)
+        parent_exp = context.get_expected_process(parent_name)
+        if parent_exp:
+            never_spawns = parent_exp.get("never_spawns_children", 0)
             if never_spawns:
                 findings.append({
                     "type": "never_spawns_children", "severity": "critical",
-                    "description": f"{process_name} should never spawn children — possible process injection",
+                    "description": f"{parent_name} should never spawn children — spawned {process_name}",
                 })
 
         path_valid = None
@@ -208,7 +209,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             valid_paths = exp.get("valid_paths")
             if valid_paths:
                 norm = normalize_path(path)
-                path_valid = any(norm.startswith(vp.lower()) for vp in valid_paths)
+                path_valid = any(norm.startswith(normalize_path(vp)) or norm == normalize_path(vp) for vp in valid_paths)
 
         user_valid = None
         if user and exp:
