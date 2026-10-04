@@ -417,6 +417,17 @@ def burst_leads(probe: Any, known: set[str], case_dir: Path) -> list[Lead]:
 # entry point
 # ---------------------------------------------------------------------------
 
+def _rule_engine_leads(case_dir: Path) -> list[Lead]:
+    """Rule-engine detections, imported lazily.
+
+    `rule_leads` imports `Lead` from this module, so a top-level import here
+    would be circular. The import is deliberately inside the function.
+    """
+    from nexus.analysis.rule_leads import rule_engine_leads
+
+    return rule_engine_leads(case_dir)
+
+
 def build_leads(
     case_dir: Path | str,
     *,
@@ -438,16 +449,26 @@ def build_leads(
     known = registry_fields(case_dir) if known_fields is None else set(known_fields)
 
     leads: list[Lead] = []
+    failed: list[str] = []
     for builder in (
         lambda: rarity_leads(probe, known, case_dir),
         lambda: ancestry_leads(probe, known, case_dir),
         lambda: first_seen_leads(probe, known, case_dir, window),
         lambda: burst_leads(probe, known, case_dir),
+        # WO-K4 part 1: the rule engines' own detections. They already run in the
+        # lane; without this their output never reached a lead, so a critical and
+        # an informational hit were equally invisible.
+        lambda: _rule_engine_leads(case_dir),
     ):
         try:
             leads.extend(builder())
         except Exception as exc:  # noqa: BLE001 - one broken kind must not lose the rest
-            log.warning("lead builder failed: %s", exc)
+            # ERROR, not warning: a builder that raises on every run is a bug in
+            # this module, not a data condition. Logged quietly it reads as "that
+            # lead kind found nothing" - measured 2026-10-04, when a missing
+            # import dropped 656 rule-engine leads behind a WARNING line.
+            log.error("lead builder failed: %s: %s", type(exc).__name__, exc)
+            failed.append(f"{type(exc).__name__}: {exc}")
 
     # Stable order: strongest first, then by kind and subject so two runs over
     # the same index produce byte-identical output.
@@ -456,9 +477,40 @@ def build_leads(
     if write:
         try:
             _write_leads(case_dir, leads)
+            _write_build_errors(case_dir, failed)
         except OSError as exc:
             log.warning("could not write leads: %s", exc)
     return leads
+
+
+def _write_build_errors(case_dir: Path, failed: list[str]) -> None:
+    """Record which lead kinds failed, so a silent drop is visible in the case.
+
+    A builder that raises on every run means that lead kind contributes nothing -
+    indistinguishable from "there was nothing to find" unless it is written down.
+    """
+    path = case_dir / "analysis" / "leads_errors.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not failed:
+        if path.exists():
+            path.unlink()
+        return
+    path.write_text(
+        json.dumps({"builders_failed": failed}, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+
+
+def build_errors(case_dir: Path | str) -> list[str]:
+    """Lead builders that failed on the last build (empty when all succeeded)."""
+    path = Path(case_dir) / "analysis" / "leads_errors.json"
+    if not path.is_file():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    return [str(v) for v in (data.get("builders_failed") or [])]
 
 
 def _write_leads(case_dir: Path, leads: Iterable[Lead]) -> Path:
