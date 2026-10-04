@@ -354,17 +354,33 @@ def get_ossem_events() -> list[dict]:
     return []
 
 
-def get_evtx_attack_samples() -> list[dict]:
-    """EVTX-ATTACK-SAMPLES — real event log entries per ATT&CK technique.
+def get_generated_needles() -> list[dict]:
+    """Generated needle packs — per-technique terms with a source and a date.
 
-    File: ``needles/evtx_attack_samples.yaml`` — technique ID -> event
-    IDs, fields, values, detection guidance.
+    File: ``needles/generated_needles.yaml`` — rebuilt from the synced structured
+    sources by ``scripts/generate_needles.py``. Replaces
+    ``needles/evtx_attack_samples.yaml`` (WO-K4), which was built from an outdated
+    sample corpus and carried no per-term provenance.
+
+    Shape matches the retired pack so consumers keep working: ``name``,
+    ``technique``, ``events[].fields{}`` — plus ``source`` and ``date`` per term
+    in the file's ``terms`` list.
     """
-    data = _load_yaml("needles/evtx_attack_samples.yaml")
+    data = _load_yaml("needles/generated_needles.yaml")
     if isinstance(data, dict):
         packs = data.get("packs")
         if isinstance(packs, list):
             return [p for p in packs if isinstance(p, dict)]
+    return []
+
+
+def get_generated_needle_terms() -> list[dict]:
+    """The generated pack's per-term table: term, kind, source, date."""
+    data = _load_yaml("needles/generated_needles.yaml")
+    if isinstance(data, dict):
+        terms = data.get("terms")
+        if isinstance(terms, list):
+            return [t for t in terms if isinstance(t, dict)]
     return []
 
 

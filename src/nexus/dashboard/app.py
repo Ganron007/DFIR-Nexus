@@ -1773,7 +1773,7 @@ def _mode1_ask_context(case_dir: Path, question: str) -> dict[str, Any]:
     try:
         from nexus.knowledge.loader import (
             get_car_analytics,
-            get_evtx_attack_samples,
+              get_generated_needles,
             get_ossem_events,
         )
 
@@ -1810,23 +1810,23 @@ def _mode1_ask_context(case_dir: Path, question: str) -> dict[str, Any]:
                     for e in relevant_ossem[:4]
                 )
                 context["sources"].append("ossem")
-        evtx_packs = get_evtx_attack_samples()
-        if evtx_packs:
-            relevant_evtx = [
-                p for p in evtx_packs
-                if any(t.lower() in (p.get("technique") or "").lower() for t in techniques)
-            ]
-            if relevant_evtx:
-                context["evtx_needles"] = [
-                    str(v) for p in relevant_evtx[:6]
-                    for e in (p.get("events") or [])
-                    for v in (e.get("fields") or {}).values()
-                ]
-                context["evtx_context"] = "\n".join(
-                    f"- {p.get('name', '')}: {p.get('technique', '')}"
-                    for p in relevant_evtx[:4]
-                )
-                context["sources"].append("evtx-attack-samples")
+                evtx_packs = get_generated_needles()
+                if evtx_packs:
+                    relevant_evtx = [
+                        p for p in evtx_packs
+                        if any(t.lower() in (p.get("technique") or "").lower() for t in techniques)
+                    ]
+                    if relevant_evtx:
+                        context["evtx_needles"] = [
+                            str(v) for p in relevant_evtx[:6]
+                            for e in (p.get("events") or [])
+                            for v in (e.get("fields") or {}).values()
+                        ]
+                        context["evtx_context"] = "\n".join(
+                            f"- {p.get('name', '')}: {p.get('technique', '')}"
+                            for p in relevant_evtx[:4]
+                        )
+                        context["sources"].append("generated-needles")
     except Exception as exc:  # noqa: BLE001
         logger.debug("car/ossem/evtx context skipped: %s", exc)
 

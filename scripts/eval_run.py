@@ -384,7 +384,7 @@ def _knowledge_versions() -> dict:
         out["skills_error"] = str(exc)[:200]
     for name, rel in (
         ("needles_sigma", "src/nexus/data/knowledge/needles/sigma_needles.yaml"),
-        ("needles_evtx", "src/nexus/data/knowledge/needles/evtx_attack_samples.yaml"),
+        ("needles_generated", "src/nexus/data/knowledge/needles/generated_needles.yaml"),
         ("attack_needles", "src/nexus/data/knowledge/attack/attack_needles.yaml"),
     ):
         path = REPO / rel
