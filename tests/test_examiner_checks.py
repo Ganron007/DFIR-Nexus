@@ -224,7 +224,75 @@ def test_an_absent_baseline_is_unknown_not_suspicious():
     assert "not found" in result["message"].lower()
 
 
-def test_the_module_and_the_allowlist_agree():
+def test_an_unknown_verdict_alone_never_stages_a_draft():
+    """The work order's journey test, asserted structurally.
+
+    A DRAFT needs a title and at least one technique id (and an audit_id, FD-001).
+    No examiner check may emit those from an UNKNOWN: it returns a verdict and a
+    constraint, never a finding-shaped payload. So an UNKNOWN alone cannot become
+    a staged finding, whatever a caller does with it.
+    """
+    finding_keys = {"title", "technique_ids", "observation", "interpretation"}
+    unknown_calls = {
+        "check_file": {"path": r"C:\Program Files\Vendor\app.exe"},
+        "check_process_tree": {"process_name": "app.exe", "parent_name": "explorer.exe"},
+        "check_service": {"service_name": "SomeVendorService"},
+        "check_hash": {"hash_value": "d41d8cd98f00b204e9800998ecf8427e"},
+        "check_autorun": {"key_path": r"SOFTWARE\Vendor\Run"},
+        "check_registry": {"key_path": r"SOFTWARE\Vendor"},
+        "analyze_filename_triage": {"filename": "ordinary.txt"},
+        "check_lolbin": {"filename": "notalolbin.exe"},
+        "check_hijackable_dll": {"dll_name": "notahijackable.dll"},
+    }
+    for name, kwargs in unknown_calls.items():
+        result = backbone_call(name, **kwargs)
+        assert isinstance(result, dict), name
+        leaked = finding_keys & set(result)
+        assert not leaked, f"{name} returned finding-shaped keys {leaked}"
+        verdict = str(result.get("verdict") or "").upper()
+        if verdict == "UNKNOWN":
+            assert "NOT suspicious" in str(result.get("interpretation_constraint")), (
+                f"{name} returned UNKNOWN without the FD-004 constraint"
+            )
+        # A tool that says "not found" must not read as malicious either.
+        assert verdict not in ("SUSPICIOUS", "MALICIOUS"), f"{name}: {verdict}"
+
+
+def test_an_examiner_check_result_cannot_be_staged_without_an_audit_id():
+    """A check's result is evidence only with the audit id the loop attaches.
+
+    This is the other half of the journey: the tool returns a verdict, the loop
+    audits the call, and the finding cites that audit id. Without the audit the
+    finding is refused (FD-001).
+    """
+    from nexus.discipline import validate_finding
+
+    report = validate_finding({
+        "title": "lsass access by an unsigned binary",
+        "technique_ids": ["T1003.001"],
+        "observation": "Sysmon 10 on lsass.exe from a temp path",
+        "interpretation": "credential dumping",
+        "confidence": "MEDIUM",
+        "confidence_justification": "unsigned SourceImage + dump artifact",
+        "audit_ids": [],
+    })
+    assert report.get("valid") is False, report
+    errors = " ".join(str(e) for e in (report.get("errors") or []))
+    assert "audit" in errors.lower(), report
+
+    # And the same finding WITH enough corroboration is accepted, so the test is
+    # not passing merely because something else is missing. FD-007 requires two
+    # independent audit_ids to escalate above LOW, so this is LOW with one.
+    ok = validate_finding({
+        "title": "lsass access by an unsigned binary",
+        "technique_ids": ["T1003.001"],
+        "observation": "Sysmon 10 on lsass.exe from a temp path",
+        "interpretation": "credential dumping",
+        "confidence": "LOW",
+        "confidence_justification": "single sysmon source, unconfirmed",
+        "audit_ids": ["nexus-gate-bot-20261004-001"],
+    })
+    assert ok.get("valid") is True, ok
     """Adding a check without an allowlist entry, or the reverse, is a bug."""
     assert set(ec.EXAMINER_CHECK_TOOLS) <= set(MODE2_TOOL_ALLOWLIST)
     assert ec.is_examiner_check("check_lolbin")
