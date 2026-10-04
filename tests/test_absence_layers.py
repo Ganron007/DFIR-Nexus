@@ -203,6 +203,53 @@ def test_the_run_record_carries_the_statement(tmp_path: Path, monkeypatch):
     assert "disabled for this run" in block["statement"]
 
 
+def test_the_mode2_run_record_carries_the_layers_and_absence(tmp_path: Path, monkeypatch):
+    """D30: the Mode 2/3 store carries what the pipeline record carries.
+
+    Asserted through the real helpers the Mode 2 state uses, so this fails if the
+    wiring stops recording it rather than merely if `layer_status()` is wrong.
+    """
+    from nexus.modes.multi_role import _absence_record, _layer_status
+
+    monkeypatch.setenv(ENV_LEADS_DISABLE, "rules")
+    case = tmp_path / "CASE-M2"
+    case.mkdir()
+
+    layers = _layer_status()
+    assert layers["leads"]["rules"]["enabled"] is False
+    assert layers["leads"]["rules"]["reason"]
+
+    absence = _absence_record(case)
+    assert "statement" in absence
+    assert "disabled" in absence
+
+
+def test_the_mode3_record_helpers_exist_and_agree_with_mode2(tmp_path: Path, monkeypatch):
+    """Both modes must record the same two fields, or an ablation is unreadable
+    for one of them."""
+    from nexus.modes.multi_agent import _absence_for_record, _layer_status_for_record
+    from nexus.modes.multi_role import _layer_status
+
+    monkeypatch.setenv(ENV_LEADS_DISABLE, "analytics")
+    case = tmp_path / "CASE-M3"
+    case.mkdir()
+    assert _layer_status_for_record()["leads"]["analytics"]["enabled"] is False
+    assert _layer_status()["leads"]["analytics"]["enabled"] is False
+    assert "statement" in _absence_for_record(case)
+
+
+def test_a_broken_helper_never_fails_a_run(tmp_path: Path, monkeypatch):
+    """Both are best-effort: a run must not die over a reporting nicety."""
+    import nexus.analysis.layers as layers_mod
+    from nexus.modes.multi_role import _layer_status
+
+    def _boom():
+        raise RuntimeError("no layers")
+
+    monkeypatch.setattr(layers_mod, "layer_status", _boom)
+    assert _layer_status() == {}
+
+
 def test_the_pipeline_run_manifest_carries_the_layers(tmp_path: Path, monkeypatch):
     """The WO says a toggle must be asserted ON THE RUN RECORD.
 

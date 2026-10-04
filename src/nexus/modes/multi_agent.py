@@ -719,6 +719,26 @@ class _LockedSink:
             self.inner.emit(event)
 
 
+def _layer_status_for_record() -> dict[str, Any]:
+    """The ablation toggle state, for the run record (WO-K8). Best-effort."""
+    try:
+        from nexus.analysis.layers import layer_status
+
+        return layer_status()
+    except Exception:  # noqa: BLE001 - never fail a run over a reporting nicety
+        return {}
+
+
+def _absence_for_record(case_dir: Path) -> dict[str, Any]:
+    """The absence statement, for the run record (WO-K7). Best-effort."""
+    try:
+        from nexus.analysis.absence import record
+
+        return record(case_dir)
+    except Exception:  # noqa: BLE001
+        return {}
+
+
 def run_mode3(
     case_dir: Path,
     question: str,
@@ -756,6 +776,11 @@ def run_mode3(
         "superstep": 0,
         "product_mode": "multi-agent",
         "evidence_coverage": coverage_snapshot(case_dir),
+        # WO-K8/WO-K7: the Mode 3 record carries the layer state and the absence
+        # statement too (D30), so an ablation number can be read against what was
+        # active and a zero-finding run can say what it observed.
+        "layers": _layer_status_for_record(),
+        "absence": _absence_for_record(case_dir),
     }
     if resume_state is not None:
         existing = read_run_record(case_dir, run_id)

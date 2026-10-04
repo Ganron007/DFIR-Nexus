@@ -1416,6 +1416,26 @@ def plan_work_orders(
 # ---------------------------------------------------------------------------
 
 
+def _layer_status() -> dict[str, Any]:
+    """The ablation toggle state, for the run record (WO-K8). Best-effort."""
+    try:
+        from nexus.analysis.layers import layer_status
+
+        return layer_status()
+    except Exception:  # noqa: BLE001 - a run must not fail over a reporting nicety
+        return {}
+
+
+def _absence_record(case_dir: Path) -> dict[str, Any]:
+    """The absence statement, for the run record (WO-K7). Best-effort."""
+    try:
+        from nexus.analysis.absence import record
+
+        return record(case_dir)
+    except Exception:  # noqa: BLE001
+        return {}
+
+
 class Mode3State(dict):
     """Typed-ish state; LangGraph accepts a plain dict subclass here."""
 
@@ -1469,6 +1489,12 @@ def run_mode2(
         "gaps": [],
         "coverage": {},
         "evidence_coverage": coverage_snapshot(case_dir),
+        # WO-K8/WO-K7: the Mode 2 record carries the same layer state and absence
+        # statement the pipeline run record does (D30). Without them an ablation
+        # number could not be read against what was active, and a zero-finding
+        # Mode 2 run could not say what it observed.
+        "layers": _layer_status(),
+        "absence": _absence_record(case_dir),
         "steering": [],
         "stop_reason": "",
         "max_orders": max_orders,
