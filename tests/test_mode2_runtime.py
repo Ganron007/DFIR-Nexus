@@ -150,6 +150,12 @@ def test_plan_work_orders_attaches_kb_skill_refs(tmp_path):
 
 
 def test_skill_procedure_block_reports_version_and_citations():
+    """WO-KR2: the worker prompt shows the step, never the query.
+
+    The skill carries a legacy `query` string on purpose, so the test fails if a
+    prompt ever renders it again - the prompt must show the step name, `look_for`,
+    `corroborate` and the result, and no query text in either form.
+    """
     fake_skill = {
         "skill": "evtx-logon",
         "title": "Logon analysis",
@@ -165,10 +171,15 @@ def test_skill_procedure_block_reports_version_and_citations():
     )
     with patch.object(m3, "_skill_lookup", return_value={"evtx-logon": fake_skill}):
         block = m3._skill_procedure_block(order)
+    # Provenance and the procedure itself are present.
     assert "evtx-logon vabc123" in block
     assert "kb-1" in block
-    assert "terms event_id 4624" in block
+    assert "4624" in block
+    assert "look_for: logons" in block
     assert "no logons means check parsing first" in block
+    # WO-KR2: never the query text, in either form.
+    assert "terms event_id 4624" not in block
+    assert "| run:" not in block
 
 
 def test_supervisor_followup_then_converges(tmp_path):

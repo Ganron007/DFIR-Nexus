@@ -153,7 +153,7 @@ def test_steer_agent_legacy_path_when_loop_disabled(tmp_path, monkeypatch):
     ])
     with patch("nexus.langgraph.llm_pipeline.get_model", return_value=fake), \
          patch("nexus.langgraph.steer_agent._gather_helper_context",
-               return_value=("", "", "")):
+               return_value=("", "")):
         result = run_steer_agent(case, "Did someone use sdelete?")
     assert result["queries_executed"], "legacy path must still execute queries"
     assert "Legacy pipeline answer" in result["reply"]

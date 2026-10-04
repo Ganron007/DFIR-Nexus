@@ -50,7 +50,6 @@ def _offline(monkeypatch):
         preflight, "_mcp_probe", lambda: (True, ""), raising=False
     )
     monkeypatch.setattr(preflight, "_triage_probe", lambda: (True, "present"))
-    monkeypatch.setattr(preflight, "_kb_probe", lambda: (True, "kb.py"))
     monkeypatch.setattr(preflight, "_knowledge_probe", lambda: (True, "8 feeds, 7430 entries"))
     monkeypatch.setattr(preflight, "_rag_probe", lambda: (True, "bge via hf_hub_cache", True))
 
