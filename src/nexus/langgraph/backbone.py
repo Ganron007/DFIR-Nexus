@@ -122,8 +122,31 @@ def tool_contracts_block(mode: int = 2, *, include_external: bool = True) -> str
         "- kb_query(query, folder, signal, limit) — examiner-curated KB procedures + citations; methodology, never evidence.",
         "- rag_search(query, top_k, source, technique, platform) — semantic methodology/detection knowledge; methodology, never evidence.",
         "- run_record(case_id) — the tool-lane ledger: which parser/tool ran, status (OK/SKIP/FAIL), reason, output file, command, audit_id. Use this before claiming evidence is absent — distinguish 'not parsed' from 'not found'.",
-        "- kb_read(chunk_id) / kb_cite(chunk_id) — read/cite a KB chunk returned by kb_query.",
-    ]
+            "- kb_read(chunk_id) / kb_cite(chunk_id) — read/cite a KB chunk returned by kb_query.",
+            "",
+            "Examiner checks (read-only, against the triage baselines). Use one to TEST a "
+            "suspicion before writing it down — a row that looks odd is not yet a finding:",
+            "- check_file(path, hash) — is this path/hash in the Windows baseline? verdict "
+            "EXPECTED / EXPECTED_LOLBIN / SUSPICIOUS / UNKNOWN, plus whether the filename is a "
+            "known tool or a LOLBin.",
+            "- check_process_tree(process_name, parent_name, path, user) — does this "
+            "parent/child/path/user combination match the baseline?",
+            "- check_service(service_name, binary_path) — is this service expected, and does its "
+            "binary sit where the baseline says it should?",
+            "- check_hash(hash_value) — baseline lookup for a file hash.",
+            "- check_autorun(key_path, value_name) — is this persistence key/value expected?",
+            "- check_registry(key_path, value_name, hive) — registry baseline lookup.",
+            "- analyze_filename_triage(filename) — deception analysis: Unicode evasion, "
+            "typosquatting, double extensions, known tools.",
+            "- check_lolbin(filename) — is this a known LOLBin, and how is it abused?",
+            "- check_hijackable_dll(dll_name) — is this DLL vulnerable to search-order hijacking?",
+            "- deobfuscate_command(command) — decode an obfuscated command line (base64, "
+            "compression, string building) and read the decoded text.",
+            "  CONSTRAINT (FD-004): UNKNOWN means 'not in the database', NOT suspicious — never "
+            "escalate an UNKNOWN on its own, corroborate it with evidence rows. A LOLBin is "
+            "legitimate-but-abusable, so a LOLBin alone is not malicious either. A check result "
+            "is context for a finding, never the finding itself.",
+        ]
     if include_external:
         lines.extend([
             "- ti_lookup(value) / ti_fanout(value) / ti_list_providers() — threat-intel context, never evidence.",

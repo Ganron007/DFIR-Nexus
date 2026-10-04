@@ -177,6 +177,40 @@ class _StubContext:
         return None
 
 
+def test_the_prompt_advertises_every_examiner_check():
+    """K2: an agent can only call what the prompt tells it exists.
+
+    Measured 2026-10-04: the checks were wired, allowlisted and role-scoped, but
+    ABSENT from `tool_contracts_block` - and **zero** of the ten appeared in any
+    case audit across the whole store. A tool the model is never told about is
+    never used, which made K2 inert however correct its plumbing was.
+    """
+    from nexus.langgraph.backbone import tool_contracts_block
+
+    for include_external in (True, False):
+        block = tool_contracts_block(2, include_external=include_external)
+        missing = sorted(t for t in ec.EXAMINER_CHECK_TOOLS if t not in block)
+        assert missing == [], f"not advertised (include_external={include_external}): {missing}"
+    block = tool_contracts_block(2)
+    # FD-004 must travel with them, or the model escalates an UNKNOWN.
+    assert "UNKNOWN means" in block and "NOT suspicious" in block
+
+
+def test_every_advertised_tool_is_actually_callable():
+    """No prompt-only tools: a name in the contract that is not in the allowlist
+    would fail at call time, which the model reads as the tool being broken."""
+    import re
+
+    from nexus.langgraph.backbone import tool_contracts_block
+
+    advertised = set(re.findall(r"^- (\w+)\(", tool_contracts_block(2), re.M))
+    assert advertised, "the contract block advertises nothing"
+    unavailable = sorted(advertised - set(MODE2_TOOL_ALLOWLIST))
+    assert unavailable == [], f"advertised but not callable: {unavailable}"
+    # And the checks specifically are among them.
+    assert set(ec.EXAMINER_CHECK_TOOLS) <= advertised
+
+
 def test_the_two_surfaces_share_one_implementation(monkeypatch):
     """The loop must not become a second, drifted baseline check.
 
