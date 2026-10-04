@@ -968,6 +968,70 @@ def _fallback_result(order: WorkOrder, reason: str) -> AgentResult:
     )
 
 
+def _record_skill_steps(
+    order: WorkOrder,
+    case_dir: Path,
+    *,
+    case_families: list[str] | None = None,
+    max_queries: int = 12,
+) -> list[dict[str, Any]]:
+    """WO-K6: run each applicable step and record hit / none / not applicable.
+
+    The work order asks a worker that carries skill refs to **run** each
+    applicable step and record the outcome, so a step that could not run is never
+    read as a step that found nothing.
+
+    Bounded on purpose: queries are capped per order (`NEXUS_SKILL_STEP_QUERIES`,
+    default 12) because a worker can carry eight skills of up to seven steps each,
+    and an unbounded version would multiply every order's cost. Set
+    `NEXUS_SKILL_STEP_RECORD=0` to skip recording entirely.
+    """
+    if os.environ.get("NEXUS_SKILL_STEP_RECORD", "1").strip().lower() in ("0", "false", "no"):
+        return []
+    if not order.skill_refs:
+        return []
+    try:
+        budget = int(os.environ.get("NEXUS_SKILL_STEP_QUERIES", "") or max_queries)
+    except ValueError:
+        budget = max_queries
+
+    from nexus.analysis.skill_steps import run_skill_steps
+
+    by_id = _skill_lookup()
+    spent = {"n": 0}
+
+    def searcher(dsl: str, limit: int) -> dict[str, Any]:
+        if spent["n"] >= budget:
+            raise RuntimeError("skill-step query budget reached")
+        spent["n"] += 1
+        from nexus.langgraph.backbone import backbone_call
+
+        out = backbone_call("es_search", query=dsl, size=int(limit)) or {}
+        count = out.get("count")
+        if count is None:
+            count = len(out.get("hits") or [])
+        return {"count": int(count or 0)}
+
+    out: list[dict[str, Any]] = []
+    for ref in order.skill_refs:
+        skill_id = str(ref.get("skill") or "")
+        skill = by_id.get(skill_id)
+        if not skill:
+            continue
+        try:
+            record = run_skill_steps(
+                skill, es_search=searcher, case_families=case_families, limit=5,
+            )
+        except Exception as exc:  # noqa: BLE001 - a skill must not fail the order
+            record = {"skill": skill_id, "steps": [], "summary": {},
+                      "error": f"{type(exc).__name__}: {exc}"[:200]}
+        record["version"] = ref.get("version") or ""
+        out.append(record)
+        if spent["n"] >= budget:
+            break
+    return out
+
+
 def _skill_procedure_block(order: WorkOrder) -> str:
     """Render the KB-cited procedures attached to a work order (M3.2).
 
@@ -996,8 +1060,17 @@ def _skill_procedure_block(order: WorkOrder) -> str:
             name = str(step.get("name") or "")
             query = str(step.get("query") or "")
             look = str(step.get("look_for") or "")
+            # WO-K6: the typed query is what the agent can actually run; the
+            # free-text `query` stays for a human reading the procedure.
+            try:
+                from nexus.analysis.skill_steps import dsl_for_step
+
+                dsl = dsl_for_step(step)
+            except Exception:  # noqa: BLE001
+                dsl = ""
             lines.append(
                 f"    * {name}: {query}"
+                + (f" | run: {dsl}" if dsl else " | run: (no typed query)")
                 + (f" | look_for: {look}" if look else "")
             )
         caveats = [str(c) for c in (skill.get("caveats") or [])]
@@ -1172,6 +1245,9 @@ def run_work_order(
         "candidates": len((parsed.get("candidate_findings") or []) if isinstance(parsed, dict) else []),
         "audit_id": result.audit_id,
         "partial": result.partial,
+        # WO-K6: what each skill step did (hit / none / not applicable), so the
+        # run record shows whether a skill was actually exercised.
+        "skill_steps": _record_skill_steps(order, case_dir),
     }
     sink.emit(new_event(
         run_id, "work_order.completed", actor="agent", turn_id=turn_id,
