@@ -72,7 +72,76 @@ def source_date(name: str) -> str:
         return ""
 
 
-def _terms() -> tuple[list[dict[str, Any]], dict[str, dict[str, str]]]:
+#: A needle must be a term that would actually appear in parsed output - never a
+#: snippet or prose sentence (WO-K4). Measured on the first generated pack: 17 of
+#: 44 `command` terms were whole command lines, including a 100-character
+#: PowerShell one-liner assigning to a variable. Those are test commands, not
+#: needles: nothing searches for `$token = [System.Security.Principal...`.
+MAX_NEEDLE_CHARS = 60
+MAX_NEEDLE_WORDS = 6
+#: Shell syntax that does not survive into a parsed field. A bare `$` is NOT
+#: here: `ADMIN$` and `ipc$` are real share names that do appear in parsed
+#: output, and an over-broad filter would have dropped them as prose (measured -
+#: the first version did exactly that). Only a token that *starts* with `$` is a
+#: variable assignment.
+_SHELL_SYNTAX = ("|", "&&", "||", ">>", "= \"", "=[", "(`", "')")
+
+
+def is_needle_shaped(term: str) -> bool:
+    """Whether a term is a plausible needle rather than a snippet of a command.
+
+    Rejects the shapes that are not search terms: a command line long enough that
+    nothing would match it verbatim, one carrying shell syntax (a pipe, a loop),
+    and one containing a variable reference (`$token`) - but not `ADMIN$`, which
+    is a share name.
+    """
+    text = str(term or "").strip()
+    if not text:
+        return False
+    if len(text) > MAX_NEEDLE_CHARS or len(text.split()) > MAX_NEEDLE_WORDS:
+        return False
+    if any(marker in text for marker in _SHELL_SYNTAX):
+        return False
+    # A variable reference, quoted or not: `"$token` and `$true` are prose.
+    # `ADMIN$`/`ipc$` are share names and must survive.
+    return not any(token.lstrip("\"'").startswith("$") for token in text.split())
+
+
+def needles_from_command(command: str) -> list[str]:
+    """The needles inside a test command, instead of the whole command.
+
+    A command is a good source - it names the tool, the flag and the target - but
+    only its distinctive pieces are search terms. Long commands are reduced to
+    their flags and their binary/API names, which is what a parsed field would
+    actually contain.
+    """
+    text = str(command or "").strip()
+    if not text:
+        return []
+    if is_needle_shaped(text):
+        return [text]
+
+    out: list[str] = []
+    for token in text.replace('"', " ").replace("'", " ").split():
+        token = token.strip(",;(){}[]")
+        if not token:
+            continue
+        low = token.lower()
+        if (
+            (token.startswith("-") and len(token) > 2)
+            or low.endswith(".exe")
+            or low.endswith(".dll")
+        ):
+            out.append(token)
+        elif "-" in token and token[0].isalpha() and not token.startswith("\\\\"):
+            # a PowerShell cmdlet (Set-MpPreference) or a Windows API name
+            out.append(token)
+        if len(out) >= 3:
+            break
+    return [t for t in out if is_needle_shaped(t)]
+
+
+def _needle_terms() -> tuple[list[dict[str, Any]], dict[str, dict[str, str]]]:
     terms: list[dict[str, Any]] = []
     sources: dict[str, dict[str, str]] = {}
 
@@ -117,8 +186,10 @@ def _terms() -> tuple[list[dict[str, Any]], dict[str, dict[str, str]]]:
             for artifact in test.get("artifacts") or []:
                 add(artifact, "artifact", subject, aurl, adate, [technique])
             command = str(test.get("command") or "").strip()
-            if command:
-                add(command, "command", subject, aurl, adate, [technique])
+            # WO-K4: a command is a source, not a needle - only its distinctive
+            # pieces are search terms.
+            for needle in needles_from_command(command):
+                add(needle, "command", subject, aurl, adate, [technique])
 
     kev = _load("cisa_kev.yaml")
     kurl = str(kev.get("source") or "")
@@ -172,7 +243,7 @@ def _terms() -> tuple[list[dict[str, Any]], dict[str, dict[str, str]]]:
 
 
 def build_payload() -> dict[str, Any]:
-    terms, sources = _terms()
+    terms, sources = _needle_terms()
     generated = datetime.now(UTC).replace(microsecond=0).isoformat()
     return {
         "version": 1,

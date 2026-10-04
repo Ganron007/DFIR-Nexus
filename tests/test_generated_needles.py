@@ -78,6 +78,50 @@ def test_it_is_generated_and_says_so():
     assert "do not edit" in str(body.get("note") or "").lower()
 
 
+def test_no_generated_term_is_a_prose_sentence_or_snippet(gen):
+    """WO-K4: "a needle must be a term that would actually appear in parsed
+    output - never a snippet or prose sentence".
+
+    Measured on the first generated pack: 17 of 44 `command` terms were whole
+    command lines, including a 100-character PowerShell one-liner assigning to a
+    variable - nothing searches for that.
+    """
+    terms = _pack().get("terms") or []
+    assert terms
+    too_long = [t["term"] for t in terms if len(t["term"]) > gen.MAX_NEEDLE_CHARS]
+    too_wordy = [t["term"] for t in terms if len(t["term"].split()) > gen.MAX_NEEDLE_WORDS]
+    assert too_long == [], too_long[:5]
+    assert too_wordy == [], too_wordy[:5]
+
+
+def test_the_shape_filter_rejects_shell_syntax(gen):
+    assert gen.is_needle_shaped("anydesk.exe --install") is True
+    assert gen.is_needle_shaped("cmd.exe /c whoami") is True
+    # A variable assignment, a pipe, a loop counter: not in a parsed field.
+    assert gen.is_needle_shaped('powershell.exe -c "$token = [System.Security') is False
+    assert gen.is_needle_shaped("cmd /c a | b") is False
+    assert gen.is_needle_shaped("for /l %i in (1,1,100) do net use") is False
+    assert gen.is_needle_shaped("") is False
+    # A share name is not a variable - an over-broad `$` rule dropped these.
+    assert gen.is_needle_shaped("ADMIN$") is True
+    assert gen.is_needle_shaped("\\\\host\\IPC$") is True
+
+
+def test_a_long_command_is_reduced_to_its_needles_not_kept_whole(gen):
+    """The signal is kept: the flags and the cmdlet name, not the sentence."""
+    needles = gen.needles_from_command(
+        'powershell.exe -c "Set-MpPreference -DisableRealtimeMonitoring $true"'
+    )
+    assert "Set-MpPreference" in needles or "-DisableRealtimeMonitoring" in needles, needles
+    assert all(gen.is_needle_shaped(n) for n in needles)
+    # A command with nothing searchable yields nothing rather than junk.
+    assert gen.needles_from_command("for /l %i in (1,1,100) do net use \\\\t\\ipc$") == []
+
+
+def test_a_short_command_is_kept_as_written(gen):
+    assert gen.needles_from_command("anydesk.exe --install") == ["anydesk.exe --install"]
+
+
 def test_the_pack_is_technique_keyed_for_its_consumers():
     """Shaped like the retired pack so consumers keep working."""
     packs = _pack().get("packs") or []
