@@ -38,6 +38,7 @@ import os
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -734,6 +735,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--score-only", action="store_true")
     parser.add_argument("--no-run", action="store_true", help="create + register only")
     parser.add_argument("--timeout", type=int, default=5400, help="per-mode seconds")
+    parser.add_argument("--concurrency", type=int, default=1,
+                        help="how many cases to run at once. Each case is dominated by "
+                             "~9 sequential LLM calls (measured: 60 tool calls / 40.9 min, "
+                             "9 gaps >60s, max 748s) and nothing in the pipeline "
+                             "parallelises them, so the wall time is the sum. Cases are "
+                             "independent processes; the ceiling is the provider's rate "
+                             "limit, not this harness. Start at 2-3 and watch for 429s.")
     parser.add_argument("--json-out", default=str(DEFAULT_JSON))
     parser.add_argument("--md-out", default=str(DEFAULT_MD))
     return parser
@@ -846,106 +854,142 @@ def main(argv: list[str] | None = None) -> int:
         })
 
     # Repeat-major, NOT target-major: every target completes r1 before any target
-    # starts r2, so a complete baseline exists as early as possible. Target-major
-    # spends hours finishing one case's repeats before touching the next case -
-    # which is the wrong shape when the batch may be read (or stopped) part-way.
+    # starts r2, so a complete baseline exists as early as possible - the right
+    # shape when the batch may be read (or stopped) part-way.
     abort_reason = ""
-    for rep in range(repeats):
-        for item in prepared:
-            target = item["target"]
-            tmanifest = item["tmanifest"]
-            tkey = item["tkey"]
-            evidence = item["evidence"]
-            if abort_reason:
-                break
-            if not args.score_only:
-                # ES can die mid-sweep. Stop rather than accumulate cases that
-                # measure nothing and report them as scores.
-                why = es_unreachable()
-                if why:
-                    abort_reason = f"{why} (rep {rep + 1}, target {target['name']})"
-                    print(f"\nABORTING THE SWEEP: {abort_reason}", file=sys.stderr)
-                    break
-            if not args.score_only:
-                if not evidence:
-                    print("--set-dir (or --case-set) is required unless --score-only",
-                          file=sys.stderr)
-                    return 2
-                case_ids = {}
-                stamp = datetime.now(UTC).strftime("%H%M%S")
-                for mode in modes:
-                    case_id = f"CASE-K1-{target['name']}-m{mode}-r{rep + 1}-{stamp}"
-                    rc, out, _ = _run(
-                        [sys.executable, "-m", "nexus", "case", "init",
-                         f"K1 {report['label']} {target['name']} mode {mode} rep {rep + 1}",
-                         "--case-id", case_id],
-                        timeout=300,
-                    )
-                    if rc != 0:
-                        print(f"case init failed: {out[-300:]}", file=sys.stderr)
-                        return 1
-                    case_ids[mode] = case_id
-                    for path in evidence:
-                        _run(
-                            [sys.executable, "-m", "nexus", "evidence", "register", str(path),
-                             "--case", case_id, "-d", f"K1 {path.name}"],
-                            timeout=1800,
-                        )
-                    # K1 allows exactly one examiner input: a neutral question. It
-                    # must be set as case intake, because the interpret stages read
-                    # the question from the case - without it the lane parses
-                    # everything and then produces a generic host-triage pass with
-                    # no findings, which would score as recall 0 for no good reason.
-                    _run(
-                        [sys.executable, "-m", "nexus", "case", "intake",
-                         "--case", case_id, "--question", args.question],
-                        timeout=300,
-                    )
-                print(f"  rep {rep + 1}: {len(case_ids)} case(s) ready "
-                      f"({len(evidence)} evidence file(s) each)")
-            else:
-                if not args.cases:
-                    print("--score-only needs --cases", file=sys.stderr)
-                    return 2
-                given = [c.strip() for c in args.cases.split(",") if c.strip()]
-                case_ids = {int(m): c for m, c in zip(modes, given, strict=False)}
 
+    def _run_unit(unit: dict) -> dict:
+        """Create, run and score one (target, repeat, mode). Returns a result dict.
+
+        Self-contained so it can run in a worker thread: it touches no shared
+        mutable state, only its own case directory and this process's argv.
+        """
+        target = unit["target"]
+        mode = unit["mode"]
+        rep = unit["rep"]
+        out: dict = {"target": target["name"], "repeat": rep, "mode": mode,
+                     "case_id": "", "leak": [], "scored": None,
+                     "abort": "", "error": ""}
+        if args.score_only:
+            case_id = unit["case_id"]
+        else:
+            why = es_unreachable()
+            if why:
+                out["abort"] = f"{why} (rep {rep}, target {target['name']})"
+                return out
+            if not unit["evidence"]:
+                out["error"] = "--set-dir (or --case-set) is required unless --score-only"
+                return out
+            stamp = unit["stamp"]
+            case_id = f"CASE-K1-{target['name']}-m{mode}-r{rep}-{stamp}"
+            rc, msg, _ = _run(
+                [sys.executable, "-m", "nexus", "case", "init",
+                 f"K1 {report['label']} {target['name']} mode {mode} rep {rep}",
+                 "--case-id", case_id],
+                timeout=300,
+            )
+            if rc != 0:
+                out["error"] = f"case init failed: {msg[-300:]}"
+                return out
+            for path in unit["evidence"]:
+                _run(
+                    [sys.executable, "-m", "nexus", "evidence", "register", str(path),
+                     "--case", case_id, "-d", f"K1 {path.name}"],
+                    timeout=1800,
+                )
+            # K1 allows exactly one examiner input: a neutral question. It must be
+            # case intake, because the interpret stages read the question from the
+            # case - without it the lane parses everything and then produces a
+            # generic host-triage pass with no findings, scoring recall 0 for no
+            # good reason.
+            _run(
+                [sys.executable, "-m", "nexus", "case", "intake",
+                 "--case", case_id, "--question", args.question],
+                timeout=300,
+            )
+        out["case_id"] = case_id
+
+        case_dir = cases_root() / case_id
+        if not case_dir.is_dir():
+            out["error"] = f"case dir missing: {case_dir}"
+            return out
+
+        out["leak"] = leak_guard(case_dir, unit["tmanifest"])
+        started = time.time()
+        run = {"rc": "skipped", "wall_s": 0.0}
+        if not args.score_only and not args.no_run:
+            run = run_mode(mode, case_id, args.question, args.timeout)
+            print(f"  {target['name']} r{rep} m{mode}: rc={run['rc']} "
+                  f"wall={run['wall_s']}s", flush=True)
+
+        scored = score_case(case_dir, unit["tkey"], started_at=started)
+        status = latest_run_status(case_dir)
+        scored.update({
+            "mode": mode,
+            "target": target["name"],
+            "repeat": rep,
+            "run": run,
+            "run_status": status,
+            # A run that never completed is not a measurement.
+            "incomplete": bool(status) and status != "completed",
+        })
+        out["scored"] = scored
+        return out
+
+    units: list[dict] = []
+    if args.score_only:
+        given = [c.strip() for c in args.cases.split(",") if c.strip()]
+        if not given:
+            print("--score-only needs --cases", file=sys.stderr)
+            return 2
+        for item, case_id in zip(prepared, given, strict=False):
             for mode in modes:
-                case_id = case_ids[mode]
-                case_dir = cases_root() / case_id
-                if not case_dir.is_dir():
-                    print(f"case dir missing: {case_dir}", file=sys.stderr)
-                    return 1
+                units.append({**item, "mode": mode, "rep": 1, "case_id": case_id,
+                              "stamp": ""})
+    else:
+        # One stamp per repeat keeps the case ids of a repeat together and makes
+        # a second run's ids distinct.
+        for rep in range(1, repeats + 1):
+            stamp = datetime.now(UTC).strftime("%H%M%S")
+            for item in prepared:
+                for mode in modes:
+                    units.append({**item, "mode": mode, "rep": rep, "stamp": stamp,
+                                  "case_id": ""})
 
-                hits = leak_guard(case_dir, tmanifest)
-                report["truth_leak_checks"].append({
-                    "case_id": case_id, "target": target["name"], "hits": hits,
-                })
+    workers = max(1, int(args.concurrency))
+    if workers == 1 or len(units) <= 1:
+        results = [_run_unit(unit) for unit in units]
+    else:
+        print(f"concurrency {workers}: {len(units)} case(s) queued, "
+              f"{workers} running at a time", flush=True)
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = [pool.submit(_run_unit, unit) for unit in units]
+            results = [f.result() for f in as_completed(futures)]
 
-                started = time.time()
-                run = {"rc": "skipped", "wall_s": 0.0}
-                if not args.score_only and not args.no_run:
-                    run = run_mode(mode, case_id, args.question, args.timeout)
-                    print(f"  rep {rep + 1} mode {mode}: rc={run['rc']} "
-                          f"wall={run['wall_s']}s")
-
-                scored = score_case(case_dir, tkey, started_at=started)
-                status = latest_run_status(case_dir)
-                scored.update({
-                    "mode": mode,
-                    "target": target["name"],
-                    "repeat": rep + 1,
-                    "run": run,
-                    "run_status": status,
-                    # A run that never completed is not a measurement.
-                    "incomplete": bool(status) and status != "completed",
-                })
-                report["cases"].append(scored)
-                if scored["incomplete"]:
-                    print(f"  WARNING: run status {status!r} - this case is not a "
-                          f"measurement (recorded as incomplete)", file=sys.stderr)
-                if hits:
-                    print(f"  LEAK in {case_id}: {hits[:3]}", file=sys.stderr)
+    # Deterministic order regardless of completion order, and repeat-major so the
+    # record has the same shape as the dispatch: every target's r1 before r2. A
+    # target-major sort here would silently reverse that.
+    results.sort(key=lambda r: (r["repeat"], r["target"], r["mode"]))
+    for result in results:
+        if result["error"]:
+            print(f"ERROR {result['target']} r{result['repeat']} m{result['mode']}: "
+                  f"{result['error']}", file=sys.stderr)
+            return 1
+        if result["case_id"]:
+            report["truth_leak_checks"].append({
+                "case_id": result["case_id"], "target": result["target"],
+                "hits": result["leak"],
+            })
+        if result["scored"]:
+            report["cases"].append(result["scored"])
+            if result["scored"]["incomplete"]:
+                print(f"  WARNING: run status {result['scored']['run_status']!r} - this "
+                      f"case is not a measurement (recorded as incomplete)", file=sys.stderr)
+        if result["leak"]:
+            print(f"  LEAK in {result['case_id']}: {result['leak'][:3]}", file=sys.stderr)
+        if result["abort"] and not abort_reason:
+            abort_reason = result["abort"]
+            print(f"\nABORTING THE SWEEP: {abort_reason}", file=sys.stderr)
 
     report["leak_ok"] = all(not c["hits"] for c in report["truth_leak_checks"])
     if abort_reason:

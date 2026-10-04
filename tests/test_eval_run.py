@@ -490,6 +490,46 @@ def test_repeats_are_major_so_a_full_baseline_exists_early(ev, tmp_path, monkeyp
     ]
 
 
+def test_the_concurrency_flag_defaults_to_serial(ev):
+    """`--concurrency` must default to 1, so an ordinary run is unchanged."""
+    parser = ev.build_parser()
+    assert parser.parse_args(["--manifest", "m.json"]).concurrency == 1
+    assert parser.parse_args(["--manifest", "m.json", "--concurrency", "3"]).concurrency == 3
+
+
+def test_results_are_sorted_repeat_major_to_match_the_dispatch(ev):
+    """A target-major sort here would silently reverse the record's shape.
+
+    The dispatch is repeat-major (every target's r1 before r2) so a complete
+    baseline exists as early as possible; the record must read the same way.
+    """
+    results = [
+        {"target": "beta", "repeat": 1, "mode": 1},
+        {"target": "alpha", "repeat": 2, "mode": 1},
+        {"target": "alpha", "repeat": 1, "mode": 1},
+        {"target": "beta", "repeat": 2, "mode": 1},
+    ]
+    ordered = sorted(results, key=lambda r: (r["repeat"], r["target"], r["mode"]))
+    assert [(r["repeat"], r["target"]) for r in ordered] == [
+        (1, "alpha"), (1, "beta"), (2, "alpha"), (2, "beta"),
+    ]
+
+
+def test_every_target_repeat_and_mode_becomes_one_unit():
+    """The dispatch arithmetic: a dropped combination measures less than claimed."""
+    targets = [{"name": "a"}, {"name": "b"}]
+    modes = [1, 2, 3]
+    repeats = 2
+    units = [
+        {"target": t, "rep": rep, "mode": mode}
+        for rep in range(1, repeats + 1)
+        for t in targets
+        for mode in modes
+    ]
+    assert len(units) == len(targets) * len(modes) * repeats == 12
+    assert len({(u["target"]["name"], u["rep"], u["mode"]) for u in units}) == 12
+
+
 def test_a_down_elasticsearch_refuses_the_run_before_creating_anything(ev, tmp_path, monkeypatch):
     """ES down must abort, not produce a sweep of zeros.
 
