@@ -486,9 +486,36 @@ def _supervisor_with_model(
     """MA4.2 — the model chooses the team; [] on any doubt (caller falls back)."""
     from nexus.langgraph.context_loop import _call_model
 
+    # WO-K5: the supervisor gets the same leads the director used, and the
+    # families are ordered by artifact value rather than by row count - a
+    # volume-ordered list makes the model pick the biggest family, which is the
+    # defect this replaces.
+    try:
+        from nexus.analysis.work_orders import rank_families
+
+        ranked_names = rank_families([name for name, _rows in families])
+        by_name = {name: rows for name, rows in families}
+        ordered = [(name, by_name.get(name, 0)) for name in ranked_names]
+    except Exception:  # noqa: BLE001
+        ordered = list(families)
+
     family_lines = "\n".join(
-        f"- {name} ({rows} rows)" for name, rows in families[:40]
+        f"- {name} ({rows} rows)" for name, rows in ordered[:40]
     ) or "(no indexed families visible)"
+
+    lead_lines = "(no leads)"
+    try:
+        from nexus.analysis.leads import build_leads
+
+        leads = build_leads(case_dir, write=False)
+        if leads:
+            lead_lines = "\n".join(
+                f"- [{lead.kind}] {lead.subject}: {lead.detail[:160]}"
+                for lead in leads[:20]
+            )
+    except Exception as exc:  # noqa: BLE001 - the supervisor must still run
+        log.debug("supervisor could not read leads: %s", exc)
+
     limit = budget_chars(case_window(case_dir))
     messages = [
         {
@@ -501,13 +528,20 @@ def _supervisor_with_model(
                 '{"spawns":[{"role":"evidence|correlation|pattern",'
                 '"family":"<family or empty>","why":"one clause"}]}. '
                 f"At most {max_agents} seats. Evidence families must come from "
-                "the indexed list. No prose outside the JSON."
+                "the indexed list. No prose outside the JSON.\n"
+                "Prefer families a lead points at: they are ordered by artifact "
+                "value (execution, persistence, logon/credential, lateral, "
+                "network, bulk filesystem), not by size.\n"
+                "COVERAGE REQUIREMENT: every family must end the run accounted "
+                "for - examined, or not examined and why. A family that silently "
+                "never ran is a failure, not a clean result."
             ),
         },
         {
             "role": "user",
             "content": (
-                f"Objective: {question}\n\nIndexed families:\n{family_lines}\n\n"
+                f"Objective: {question}\n\nIndexed families (artifact value "
+                f"order):\n{family_lines}\n\nLeads raised so far:\n{lead_lines}\n\n"
                 + (f"Examiner steering:\n{steering}\n\n" if steering else "")
                 + "Board so far:\n"
                 + ((board_digest or "(empty)")[:limit])

@@ -761,6 +761,14 @@ class WorkOrder:
     task: str
     family: str = ""
     why: str = ""
+    # WO-K5: an order built from a lead states what is suspected, what innocent
+    # explanation would look the same, and what would settle it. An order that
+    # names none of those invites the agent to summarise rows instead of testing
+    # a hypothesis.
+    lead_kind: str = ""
+    hypothesis: str = ""
+    benign_alternative: str = ""
+    refutation: str = ""
     priority_tools: tuple[str, ...] = ()
     expected_artifact_ids: tuple[str, ...] = ()
     expected_event_ids: tuple[str, ...] = ()
@@ -1204,23 +1212,47 @@ def plan_work_orders(
         log.warning("director index_mappings failed: %s", exc)
         families = {}
 
-    ranked = sorted(families.items(), key=lambda kv: (-kv[1], kv[0]))
+    # WO-K5: rank by artifact value, never by row count. Volume is not value -
+    # `$MFT` has a million rows on any host and rarely answers the question,
+    # while prefetch holds a handful and often does. `rank_families` takes no
+    # counts, so volume cannot creep back in.
+    from nexus.analysis.work_orders import orders_from_leads, rank_families
+
+    all_families = rank_families(families)
     keywords = _question_keywords(question)
-    all_families = [family for family, _rows in ranked]
+
+    try:
+        lead_orders = orders_from_leads(
+            case_dir, question, families=all_families, max_orders=max(1, max_orders - 2),
+        )
+    except Exception as exc:  # noqa: BLE001 - the director must still plan
+        log.warning("director lead planning failed: %s", exc)
+        lead_orders = []
+
     orders: list[WorkOrder] = []
-    for family, rows in ranked:
-        if len(orders) >= max(1, max_orders - 2):
-            break
+    for item in lead_orders:
+        lead_family = str(item.get("family") or "")
+        skill_families = [lead_family] if lead_family else all_families
         orders.append(WorkOrder(
             order_id=WorkOrder.new_id(),
             role="evidence",
-            task=(f"Investigate family '{family}' ({rows} indexed rows) for "
-                  f"the case question: {question or '(no examiner question)'}"),
-            family=family,
-            why=f"Highest-value family with {rows} indexed rows",
+            task=str(item.get("task") or ""),
+            family=str(item.get("family") or ""),
+            why=(
+                f"lead ({item.get('lead_kind')}): {item.get('hypothesis')}"
+                if item.get("lead_kind") else "artifact-value coverage"
+            ),
+            lead_kind=str(item.get("lead_kind") or ""),
+            hypothesis=str(item.get("hypothesis") or ""),
+            benign_alternative=str(item.get("benign_alternative") or ""),
+            refutation=str(item.get("refutation") or ""),
             priority_tools=("es_mappings", "es_search", "es_aggregate", "run_record"),
-            acceptance="evidence-linked notes with audit_ids and explicit coverage",
-            skill_refs=_retrieve_skill_refs([family], keywords, limit=8),
+            acceptance=(
+                "state whether the hypothesis held, name the benign alternative "
+                "that fits equally well, and cite the audit_ids of what would "
+                "refute it"
+            ),
+            skill_refs=_retrieve_skill_refs(skill_families, keywords, limit=8),
         ))
     orders.append(WorkOrder(
         order_id=WorkOrder.new_id(),
