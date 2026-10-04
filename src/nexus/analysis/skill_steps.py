@@ -231,16 +231,58 @@ def step_records(
         if not isinstance(step, dict):
             continue
         dsl = dsl_for_step(step, available)
+        es_query = step.get("es")
         out.append({
             "index": index,
             "name": str(step.get("name") or f"step{index + 1}"),
             "query": str(step.get("query") or ""),
             "dsl": dsl,
             "has_dsl": bool(dsl),
+            "es": es_query,
+            "has_es": isinstance(es_query, dict) and bool(es_query),
             "pivot": str(step.get("pivot") or ""),
             "look_for": str(step.get("look_for") or ""),
         })
     return out
+
+
+def validate_skill_steps(
+    skill: dict[str, Any],
+    available: Iterable[str] | None = None,
+) -> list[str]:
+    """Validate stored ES queries in a skill using the stored query validator."""
+    from nexus.knowledge.query_validation import validate_stored_query
+
+    problems: list[str] = []
+    skill_req = declared_requires(skill)
+    skill_fams = skill_req.get("families") or []
+
+    cites: list[str] = []
+    for src in (skill or {}).get("source") or []:
+        if isinstance(src, dict) and src.get("chunk_id"):
+            cites.append(str(src["chunk_id"]))
+        elif isinstance(src, str):
+            cites.append(src)
+    if not cites:
+        cites.append(str((skill or {}).get("skill") or "unknown"))
+
+    steps = (skill or {}).get("steps") or []
+    for index, step in enumerate(steps):
+        if not isinstance(step, dict):
+            continue
+        name = str(step.get("name") or f"step{index + 1}")
+        if "es" in step:
+            es = step["es"]
+            if not isinstance(es, dict):
+                problems.append(f"{name}: es must be an ES query dict, got {type(es).__name__}")
+                continue
+            step_req = step.get("requires") or {}
+            step_fams = step_req.get("families") or skill_fams
+            step_cites = list(cites)
+            errs = validate_stored_query(es, declared_families=step_fams, citation=step_cites)
+            for err in errs:
+                problems.append(f"{name}: {err}")
+    return problems
 
 
 def validate_skill_dsl(
@@ -250,31 +292,33 @@ def validate_skill_dsl(
     """Every problem with a skill's step queries (empty == all usable)."""
     from nexus.langgraph.query_dsl import QuerySyntaxError, parse_query
 
+    problems = list(validate_skill_steps(skill, available))
+
     known = {_norm(c): str(c) for c in (available or [])} or None
-    problems: list[str] = []
     for record in step_records(skill, available):
-        if not record["has_dsl"]:
+        if not record["has_dsl"] and not record["has_es"]:
             problems.append(
                 f"{record['name']}: no typed query - pivot "
                 f"{record['pivot']!r} is not a known field, or the query has no value"
             )
             continue
-        try:
-            parsed = parse_query(record["dsl"])
-        except QuerySyntaxError as exc:
-            problems.append(f"{record['name']}: dsl does not parse: {exc}")
-            continue
-        if known is not None:
-            for filt in parsed.filters:
-                if str(filt.get("op") or "") == "exists":
-                    named = _norm(filt.get("value")) or ""
-                else:
-                    named = _norm(filt.get("name")) or ""
-                if named and named not in known:
-                    problems.append(
-                        f"{record['name']}: field {filt.get('name') or filt.get('value')!r} "
-                        "is not in the registry"
-                    )
+        if record["has_dsl"]:
+            try:
+                parsed = parse_query(record["dsl"])
+            except QuerySyntaxError as exc:
+                problems.append(f"{record['name']}: dsl does not parse: {exc}")
+                continue
+            if known is not None:
+                for filt in parsed.filters:
+                    if str(filt.get("op") or "") == "exists":
+                        named = _norm(filt.get("value")) or ""
+                    else:
+                        named = _norm(filt.get("name")) or ""
+                    if named and named not in known:
+                        problems.append(
+                            f"{record['name']}: field {filt.get('name') or filt.get('value')!r} "
+                            "is not in the registry"
+                        )
     return problems
 
 
@@ -295,6 +339,13 @@ def derive_requires(skill: dict[str, Any]) -> dict[str, list[str]]:
         text = str(family).strip()
         if text and text not in families:
             families.append(text)
+
+    for step in (skill or {}).get("steps") or []:
+        if isinstance(step, dict):
+            for family in ((step.get("requires") or {}).get("families") or []):
+                text = str(family).strip()
+                if text and text not in families:
+                    families.append(text)
 
     memory = False
     for step in (skill or {}).get("steps") or []:
@@ -394,7 +445,9 @@ def run_skill_steps(
 
     results: list[dict[str, Any]] = []
     for record in step_records(skill, available):
-        if not record["has_dsl"]:
+        query_payload = record.get("es") if record.get("has_es") else record.get("dsl")
+        has_query = bool(record.get("has_es") or record.get("has_dsl"))
+        if not has_query:
             results.append({**record, "result": "not_applicable",
                             "reason": "no typed query for this step"})
             continue
@@ -403,7 +456,7 @@ def run_skill_steps(
                             "reason": no_search_reason})
             continue
         try:
-            outcome = es_search(record["dsl"], limit) or {}
+            outcome = es_search(query_payload, limit) or {}
         except Exception as exc:  # noqa: BLE001 - one step must not lose the run
             results.append({**record, "result": "not_applicable",
                             "reason": f"search failed: {type(exc).__name__}: {exc}"})

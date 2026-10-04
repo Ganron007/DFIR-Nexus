@@ -4,76 +4,163 @@
 #      CCD M5 (execution-artifact corroboration chain)
 skill: initial_access
 title: Initial access — LNK / MSI / CHM / HTML smuggling / macro
-description: >-
-  Detect user-execution initial-access payloads — shortcut files, MSI
-  installers, compiled help files, HTML smuggling, office macros.
+description: Detect user-execution initial-access payloads — shortcut files, MSI installers,
+  compiled help files, HTML smuggling, office macros.
 trigger:
-  families: [lnk, mft, usn, prefetch, evtx, sysmon, amcache, jumplist, browser]
-  keywords: [lnk, msi, chm, iso, smuggl, macro, invoice, attachment, download]
-  techniques: [T1204.001, T1204.002, T1204, T1566.001]
+  families:
+  - lnk
+  - mft
+  - usn
+  - prefetch
+  - evtx
+  - sysmon
+  - amcache
+  - jumplist
+  - browser
+  keywords:
+  - lnk
+  - msi
+  - chm
+  - iso
+  - smuggl
+  - macro
+  - invoice
+  - attachment
+  - download
+  techniques:
+  - T1204.001
+  - T1204.002
+  - T1204
+  - T1566.001
 steps:
-  - name: lnk_artifacts
-    query: ".lnk invoice document shortcut"
-    look_for: >-
-      LNK files in Downloads/Desktop/Temp with recent creation; check the
-      LNK target (cmd/powershell/mshta/rundll32 children).
-    pivot: LocalPath
-  - name: msi_execution
-    query: "msiexec /i OR .msi MsiInstaller"
-    look_for: >-
-      msiexec executions of unsigned/downloaded MSIs; MsiInstaller events
-      11707 (install success) near the suspected window.
-    pivot: CommandLine
-  - name: chm_execution
-    query: "hh.exe OR .chm"
-    look_for: hh.exe spawning cmd/powershell — CHM Shortcut-object abuse.
-    pivot: ParentImage
-  - name: html_smuggling_download
-    query: ".html blob: download FromCache OR browser"
-    look_for: Browser download of an HTML file followed by a new .exe/.dll write.
-    pivot: URL
-  - name: motw_mark
-    query: "Zone.Identifier Mark-of-the-Web OR ZoneId=3"
-    look_for: Zone.Identifier ADS on downloaded files (ZoneId=3 = internet).
-    pivot: FileName
-  - name: office_spawns
-    query: "winword.exe OR excel.exe OR powerpnt.exe cmd.exe powershell.exe"
-    look_for: Office binaries spawning script interpreters — macro execution.
-    pivot: ParentImage
-  - name: child_process_anomaly
-    query: "explorer.exe cmd.exe OR explorer.exe powershell.exe OR explorer.exe mshta.exe"
-    look_for: Script interpreters parented by explorer.exe near payload arrival.
-    pivot: CommandLine
-  - name: iab_vector_check
-    query: "rdp OR 4625 OR edge OR vpn OR exchange"
-    look_for: >-
-      If no user-execution artifact explains entry, check the four dominant
-      IAB vectors: exposed internet-facing RDP (most common ransomware/
-      intrusion entry — external 4624 type-10), border-device/VPN exploit,
-      phishing delivery, and purchased credentials (valid-account logon
-      with no payload artifact at all).
-    corroborate: external-IP logon preceding first malicious activity by hours/days
-negative: >-
-  No LNK/MSI/CHM artifacts and no office-spawn chains → initial access likely
+- name: lnk_artifacts
+  query: .lnk invoice document shortcut
+  look_for: LNK files in Downloads/Desktop/Temp with recent creation; check the LNK
+    target (cmd/powershell/mshta/rundll32 children).
+  pivot: LocalPath
+  es:
+    wildcard:
+      fields.LocalPath.kw:
+        value: '*.lnk*'
+        case_insensitive: true
+  requires:
+    families: &id001
+    - lnk
+    - mft
+    - usn
+    - prefetch
+    - evtx
+    - sysmon
+    - amcache
+    - jumplist
+    - browser
+- name: msi_execution
+  query: msiexec /i OR .msi MsiInstaller
+  look_for: msiexec executions of unsigned/downloaded MSIs; MsiInstaller events 11707
+    (install success) near the suspected window.
+  pivot: CommandLine
+  es:
+    wildcard:
+      fields.command_line.kw:
+        value: '*/i*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: chm_execution
+  query: hh.exe OR .chm
+  look_for: hh.exe spawning cmd/powershell — CHM Shortcut-object abuse.
+  pivot: ParentImage
+  es:
+    wildcard:
+      fields.parent_process.kw:
+        value: '*hh.exe*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: html_smuggling_download
+  query: '.html blob: download FromCache OR browser'
+  look_for: Browser download of an HTML file followed by a new .exe/.dll write.
+  pivot: URL
+  es:
+    wildcard:
+      text.wc:
+        value: '*.html*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: motw_mark
+  query: Zone.Identifier Mark-of-the-Web OR ZoneId=3
+  look_for: Zone.Identifier ADS on downloaded files (ZoneId=3 = internet).
+  pivot: FileName
+  es:
+    wildcard:
+      fields.FileName.kw:
+        value: '*Zone.Identifier*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: office_spawns
+  query: winword.exe OR excel.exe OR powerpnt.exe cmd.exe powershell.exe
+  look_for: Office binaries spawning script interpreters — macro execution.
+  pivot: ParentImage
+  es:
+    wildcard:
+      fields.parent_process.kw:
+        value: '*winword.exe*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: child_process_anomaly
+  query: explorer.exe cmd.exe OR explorer.exe powershell.exe OR explorer.exe mshta.exe
+  look_for: Script interpreters parented by explorer.exe near payload arrival.
+  pivot: CommandLine
+  es:
+    wildcard:
+      fields.command_line.kw:
+        value: '*explorer.exe*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: iab_vector_check
+  query: rdp OR 4625 OR edge OR vpn OR exchange
+  look_for: 'If no user-execution artifact explains entry, check the four dominant
+    IAB vectors: exposed internet-facing RDP (most common ransomware/ intrusion entry
+    — external 4624 type-10), border-device/VPN exploit, phishing delivery, and purchased
+    credentials (valid-account logon with no payload artifact at all).'
+  corroborate: external-IP logon preceding first malicious activity by hours/days
+  es:
+    wildcard:
+      text.wc:
+        value: '*rdp*'
+        case_insensitive: true
+  requires:
+    families: *id001
+negative: No LNK/MSI/CHM artifacts and no office-spawn chains → initial access likely
   arrived through a different vector (exposed service, creds, drive-by).
 confidence_rules:
-  high: downloaded artifact (Zone.Identifier) + exec artifact (prefetch/amcache) + child-process chain
+  high: downloaded artifact (Zone.Identifier) + exec artifact (prefetch/amcache) +
+    child-process chain
   medium: payload exec artifact without clear delivery vector
   low: single unsigned exec — corroborate delivery + persistence
-mitre: [T1204, T1566.001, T1204.001, T1204.002]
+mitre:
+- T1204
+- T1566.001
+- T1204.001
+- T1204.002
 source:
-  - chunk_id: d_6aa7ffe9cde2:c0046
-    rel_path: EBOOKS/Books_2026/dissecting-the-dark-web/dissecting-the-dark-web.md
-    lines: 1530-1561
-    citation: d_ae743ea2444d:c0082
-  - chunk_id: d_f0a856066eda:c0078
-    rel_path: SANS/SANS 560 v2022/SEC560 - Book 2/SEC560 - Book 2.md
-    lines: 2535-2595
-    citation: d_ae743ea2444d:c0082
-  - chunk_id: d_5673d7c1e6e4:c0207
-    rel_path: SANS/SANS 560 v2022/SEC560_Book/SEC560_Book.md
-    lines: 6328-6388
-    citation: d_ae743ea2444d:c0082
+- chunk_id: d_6aa7ffe9cde2:c0046
+  rel_path: EBOOKS/Books_2026/dissecting-the-dark-web/dissecting-the-dark-web.md
+  lines: 1530-1561
+  citation: d_ae743ea2444d:c0082
+- chunk_id: d_f0a856066eda:c0078
+  rel_path: SANS/SANS 560 v2022/SEC560 - Book 2/SEC560 - Book 2.md
+  lines: 2535-2595
+  citation: d_ae743ea2444d:c0082
+- chunk_id: d_5673d7c1e6e4:c0207
+  rel_path: SANS/SANS 560 v2022/SEC560_Book/SEC560_Book.md
+  lines: 6328-6388
+  citation: d_ae743ea2444d:c0082
 caveats:
-  - "Users legitimately run MSIs and macros — the delivery chain (download → MOTW → exec) is what matters."
-  - "LNK files are everywhere; focus on recent ones in download/desktop/temp paths."
+- Users legitimately run MSIs and macros — the delivery chain (download → MOTW → exec)
+  is what matters.
+- LNK files are everywhere; focus on recent ones in download/desktop/temp paths.

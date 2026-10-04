@@ -3,75 +3,158 @@
 #      HTB DefSec (beacon vs bulk-transfer distinction)
 skill: exfiltration
 title: Exfiltration — staging archives, cloud uploads, DNS tunneling
-description: >-
-  Detect data theft — archive creation, staging directories, cloud upload,
+description: Detect data theft — archive creation, staging directories, cloud upload,
   DNS tunneling, large outbound transfers.
 trigger:
-  families: [evtx, sysmon, browser, netstat, powershell, prefetch, mft]
-  keywords: [exfil, steal, upload, archive, rar, 7z, mega, dropbox, webhook]
-  techniques: [T1041, T1567, T1071.004, T1560.001]
+  families:
+  - evtx
+  - sysmon
+  - browser
+  - netstat
+  - powershell
+  - prefetch
+  - mft
+  keywords:
+  - exfil
+  - steal
+  - upload
+  - archive
+  - rar
+  - 7z
+  - mega
+  - dropbox
+  - webhook
+  techniques:
+  - T1041
+  - T1567
+  - T1071.004
+  - T1560.001
 steps:
-  - name: archive_creation
-    query: "rar.exe OR 7z.exe OR Compress-Archive OR .rar OR .7z"
-    look_for: Archive tool runs with staging paths; large new archives in mft/usn.
-    pivot: CommandLine
-  - name: staging_dirs
-    query: "staging OR exfil OR collect OR loot"
-    look_for: New directories under %TEMP%/%ProgramData% collecting files.
-    pivot: Path
-  - name: cloud_upload
-    query: "mega.nz OR dropbox OR drive.google OR pastebin OR transfer.sh"
-    look_for: Browser hits / netstat flows to upload-friendly services.
-    pivot: URL
-  - name: dns_tunneling
-    query: "nslookup OR dig OR TXT record OR dns"
-    look_for: High-volume DNS queries with long/random subdomains.
-    pivot: QueryName
-  - name: large_outbound
-    query: "netstat -an OR BytesSent"
-    look_for: SRUM/netstat showing large BytesSent from unusual processes.
-    pivot: AppName
-  - name: ftp_exfil
-    query: "ftp.exe OR sftp OR scp.exe OR pscp"
-    look_for: FTP/SFTP command-line transfers to external IPs.
-    pivot: CommandLine
-  - name: bitsadmin_transfer
-    query: "bitsadmin OR Start-BitsTransfer"
-    look_for: >-
-      BITS transfers to external URLs — living-off-the-land exfil that
-      bypasses many proxy controls and survives reboots.
-    pivot: CommandLine
-  - name: theft_sequence
-    query: "rar OR 7z OR zip OR copy"
-    look_for: >-
-      Answer "did the attacker steal data" as a SEQUENCE, not a single
-      event: collection (files copied to staging) → archive (rar/7z in
-      prefetch + new archive in MFT/USN) → transfer (large outbound flow,
-      browser upload, BITS). Missing one stage narrows the claim — archive
-      without transfer may mean interrupted exfil.
-    corroborate: archive creation timestamp vs outbound-flow window vs last file access times
-negative: >-
-  No archive creation, staging dirs, or large outbound flows → exfiltration
+- name: archive_creation
+  query: rar.exe OR 7z.exe OR Compress-Archive OR .rar OR .7z
+  look_for: Archive tool runs with staging paths; large new archives in mft/usn.
+  pivot: CommandLine
+  es:
+    wildcard:
+      fields.command_line.kw:
+        value: '*rar.exe*'
+        case_insensitive: true
+  requires:
+    families: &id001
+    - evtx
+    - sysmon
+    - browser
+    - netstat
+    - powershell
+    - prefetch
+    - mft
+- name: staging_dirs
+  query: staging OR exfil OR collect OR loot
+  look_for: New directories under %TEMP%/%ProgramData% collecting files.
+  pivot: Path
+  es:
+    wildcard:
+      fields.path.kw:
+        value: '*staging*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: cloud_upload
+  query: mega.nz OR dropbox OR drive.google OR pastebin OR transfer.sh
+  look_for: Browser hits / netstat flows to upload-friendly services.
+  pivot: URL
+  es:
+    wildcard:
+      text.wc:
+        value: '*mega.nz*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: dns_tunneling
+  query: nslookup OR dig OR TXT record OR dns
+  look_for: High-volume DNS queries with long/random subdomains.
+  pivot: QueryName
+  es:
+    wildcard:
+      text.wc:
+        value: '*nslookup*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: large_outbound
+  query: netstat -an OR BytesSent
+  look_for: SRUM/netstat showing large BytesSent from unusual processes.
+  pivot: AppName
+  es:
+    wildcard:
+      fields.name.kw:
+        value: '*BytesSent*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: ftp_exfil
+  query: ftp.exe OR sftp OR scp.exe OR pscp
+  look_for: FTP/SFTP command-line transfers to external IPs.
+  pivot: CommandLine
+  es:
+    wildcard:
+      fields.command_line.kw:
+        value: '*ftp.exe*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: bitsadmin_transfer
+  query: bitsadmin OR Start-BitsTransfer
+  look_for: BITS transfers to external URLs — living-off-the-land exfil that bypasses
+    many proxy controls and survives reboots.
+  pivot: CommandLine
+  es:
+    wildcard:
+      fields.command_line.kw:
+        value: '*bitsadmin*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: theft_sequence
+  query: rar OR 7z OR zip OR copy
+  look_for: 'Answer "did the attacker steal data" as a SEQUENCE, not a single event:
+    collection (files copied to staging) → archive (rar/7z in prefetch + new archive
+    in MFT/USN) → transfer (large outbound flow, browser upload, BITS). Missing one
+    stage narrows the claim — archive without transfer may mean interrupted exfil.'
+  corroborate: archive creation timestamp vs outbound-flow window vs last file access
+    times
+  es:
+    wildcard:
+      text.wc:
+        value: '*rar*'
+        case_insensitive: true
+  requires:
+    families: *id001
+negative: No archive creation, staging dirs, or large outbound flows → exfiltration
   not evident; check for in-place destruction (ransomware) instead.
 confidence_rules:
   high: archive + staging dir + upload flow to external service
   medium: archive + external connection without confirmed transfer
   low: single cloud-service browse (user activity plausible)
-mitre: [T1041, T1567, T1071.004, T1560.001]
+mitre:
+- T1041
+- T1567
+- T1071.004
+- T1560.001
 source:
-  - chunk_id: d_67d94f24a891:c0016
-    rel_path: EBOOKS/Books_2026/scattered_spider_redteam_manual/scattered_spider_redteam_manual.md
-    lines: 779-826
-    citation: EIR (Theft of Data lesson — staging/archive/transfer procedure chain)
-  - chunk_id: d_67d94f24a891:c0015
-    rel_path: EBOOKS/Books_2026/scattered_spider_redteam_manual/scattered_spider_redteam_manual.md
-    lines: 740-778
-    citation: CCD M2 (network analysis — long-duration/large-byte flows, RITA), HTB DefSec (beacon vs bulk-transfer
-      distinction)
-  - chunk_id: d_cfb47d8627f9:c0125
-    rel_path: EBOOKS/Books_2026/Evasion_Engineering_Building_Custom_Red_Team_Tools_for_Modern_Defenses/Evasion_Engineering_Building_Custom_Red_Team_Tools_for_Modern_Defenses.md
-    lines: 6305-6361
-    citation: EIR (Theft of Data lesson — staging/archive/transfer procedure chain)
+- chunk_id: d_67d94f24a891:c0016
+  rel_path: EBOOKS/Books_2026/scattered_spider_redteam_manual/scattered_spider_redteam_manual.md
+  lines: 779-826
+  citation: EIR (Theft of Data lesson — staging/archive/transfer procedure chain)
+- chunk_id: d_67d94f24a891:c0015
+  rel_path: EBOOKS/Books_2026/scattered_spider_redteam_manual/scattered_spider_redteam_manual.md
+  lines: 740-778
+  citation: CCD M2 (network analysis — long-duration/large-byte flows, RITA), HTB
+    DefSec (beacon vs bulk-transfer distinction)
+- chunk_id: d_cfb47d8627f9:c0125
+  rel_path: EBOOKS/Books_2026/Evasion_Engineering_Building_Custom_Red_Team_Tools_for_Modern_Defenses/Evasion_Engineering_Building_Custom_Red_Team_Tools_for_Modern_Defenses.md
+  lines: 6305-6361
+  citation: EIR (Theft of Data lesson — staging/archive/transfer procedure chain)
 caveats:
-  - "Users legitimately upload to cloud storage — check account context and data volume."
-  - "SRUM/network counters are cumulative — a single large number isn't a transfer timestamp."
+- Users legitimately upload to cloud storage — check account context and data volume.
+- SRUM/network counters are cumulative — a single large number isn't a transfer timestamp.

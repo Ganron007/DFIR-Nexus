@@ -1,27 +1,29 @@
-"""WO-K4 — behavioural analytics: loader and validator.
+"""WO-KR2 — behavioural analytics: loader and validator.
 
-`needles/behavioral_analytics.yaml` carries typed `dsl:` analytics for the
+`needles/behavioral_analytics.yaml` carries stored ES query JSON (`es:`) for the
 families the rule engines do not cover. This module loads them, resolves which
 apply to a case's families, and **validates** them.
 
 The validation is the point. A stale field name in an analytic does not raise -
 it matches nothing - and "matched nothing" is indistinguishable from "the
 behaviour was absent". That failure mode would be read as a clean result, so
-every analytic is checked two ways before it is offered:
+every analytic is checked:
 
-* it must **parse** under the N4 DSL (`parse_query`);
-* every field it names must be a real registry column;
-* it must **cite a source** - a CAR analytic id we actually hold, or an ATT&CK
-  technique - because an uncited analytic is a guess.
+* it must pass `nexus.knowledge.query_validation.validate_stored_query`:
+  - (a) passes `langgraph.es_native.validate_query` (allowlisted clauses only);
+  - (b) references only fields that exist in `field_registry.yaml` for declared families;
+  - (c) cites a source (e.g. CAR analytic id or ATT&CK technique).
 
-Nothing here is derived from a sample: the citations are external, and
-`PROVENANCE` records that. `tests/test_behavioural_analytics.py` pins it.
+An item that fails validation is **not loaded**, and the failure is logged.
+A failing item is never silently skipped.
 """
 from __future__ import annotations
 
 import logging
 from pathlib import Path
 from typing import Any
+
+from nexus.knowledge.query_validation import validate_stored_query
 
 log = logging.getLogger(__name__)
 
@@ -58,26 +60,38 @@ def load_pack(path: Path | str | None = None) -> dict[str, Any]:
 
 
 def analytics(path: Path | str | None = None) -> list[dict[str, Any]]:
-    """Every analytic, in file order."""
-    return [a for a in (load_pack(path).get("packs") or []) if isinstance(a, dict)]
+    """Every valid analytic, in file order.
+
+    Failing items are not loaded and the rejection is logged.
+    """
+    raw_items = [a for a in (load_pack(path).get("packs") or []) if isinstance(a, dict)]
+    valid: list[dict[str, Any]] = []
+    for item in raw_items:
+        ident = str(item.get("id") or "").strip()
+        es = item.get("es")
+        fams = item.get("families") or []
+        cite = item.get("citation")
+        if not isinstance(es, dict) or not es:
+            log.warning("Analytic %s rejected: missing or non-dict 'es' query", ident)
+            continue
+        problems = validate_stored_query(es, declared_families=fams, citation=cite)
+        if problems:
+            log.warning("Analytic %s rejected: %s", ident, "; ".join(problems))
+            continue
+        valid.append(item)
+    return valid
 
 
 def catalog_fields(path: Path | str | None = None) -> set[str]:
-    """Registry column names plus the core envelope, lowercased.
-
-    Lowercased because that is how `parse_query` matches a catalog key.
-    """
+    """Registry column names plus the core envelope, lowercased."""
     from nexus.analysis.leads import registry_fields
 
     names = {str(c).strip().lower() for c in registry_fields(Path(".")) if str(c).strip()}
-    # Core envelope columns are typed-filterable on every case.
-    names |= {"family", "file", "host", "user", "event", "eventid", "event_id", "line",
-              "computer", "machine"}
+    names |= {
+        "family", "file", "host", "user", "event", "eventid", "event_id", "line",
+        "computer", "machine",
+    }
     return names
-
-
-def _catalog(names: set[str]) -> dict[str, Any]:
-    return {name: {} for name in names}
 
 
 def validate_pack(
@@ -89,11 +103,7 @@ def validate_pack(
     Never raises: a caller deciding whether to offer a pack needs the list, not
     an exception.
     """
-    from nexus.langgraph.query_dsl import QuerySyntaxError, parse_query
-
     items = (pack or load_pack()).get("packs") or []
-    known = fields if fields is not None else catalog_fields()
-    catalog = _catalog(known)
     car_ids = car_citation_ids()
 
     problems: list[str] = []
@@ -117,38 +127,28 @@ def validate_pack(
         if not isinstance(families, list) or not families:
             problems.append(f"{where}: no families - the analytic would never be offered")
 
-        dsl = str(item.get("dsl") or "").strip()
-        if not dsl:
-            problems.append(f"{where}: missing dsl")
-        else:
-            # The DSL does not negate a typed filter: `not path:\Windows` is
-            # parsed as a POSITIVE filter on `path`, so it asserts the opposite
-            # of what it reads as. Measured 2026-10-03 - three analytics written
-            # that way would have inverted. Refuse it rather than trust it.
-            from nexus.analysis.behavioural_analytics import negation_is_honoured
+        es = item.get("es")
+        if es is None:
+            # Fallback check if legacy dsl was passed in test
+            if "dsl" in item:
+                from nexus.analysis.behavioural_analytics import negation_is_honoured
 
-            if not negation_is_honoured(dsl):
-                problems.append(
-                    f"{where}: uses `not field:value`, which the DSL parses as a "
-                    "POSITIVE filter - the analytic would assert the opposite; "
-                    "express the exclusion as a follow-on filter instead"
-                )
-            try:
-                parsed = parse_query(dsl, catalog)
-                for filt in parsed.filters:
-                    if str(filt.get("op") or "") == "exists":
-                        # `exists:<field>` names the field in the VALUE, not the
-                        # filter name - checking the name would flag every
-                        # existence test as an unknown column.
-                        named = str(filt.get("value") or "").lower()
-                    else:
-                        named = str(filt.get("name") or "").lower()
-                    if named and named not in known:
-                        problems.append(
-                            f"{where}: field {named!r} is not a registry column"
-                        )
-            except QuerySyntaxError as exc:
-                problems.append(f"{where}: dsl does not parse: {exc}")
+                dsl = str(item.get("dsl") or "")
+                if not negation_is_honoured(dsl):
+                    problems.append(
+                        f"{where}: uses `not field:value`, which the DSL parses as a "
+                        "POSITIVE filter - the analytic would assert the opposite; "
+                        "express the exclusion as a follow-on filter instead"
+                    )
+                problems.append(f"{where}: missing es (has legacy dsl)")
+            else:
+                problems.append(f"{where}: missing es")
+        else:
+            es_problems = validate_stored_query(
+                es, declared_families=families, citation=item.get("citation")
+            )
+            for prob in es_problems:
+                problems.append(f"{where}: {prob}")
 
         citation = item.get("citation") or {}
         if not isinstance(citation, dict):
@@ -189,25 +189,116 @@ def car_citation_ids(path: Path | str | None = None) -> set[str]:
     return out
 
 
+def _es_clause_matches(clause: dict[str, Any], record: dict[str, Any]) -> bool:
+    """Evaluate whether an in-memory record matches an ES query clause."""
+    import fnmatch
+
+    if not isinstance(clause, dict) or not clause:
+        return True
+
+    def _norm(name: str) -> str:
+        return str(name or "").replace("_", "").replace("-", "").replace(" ", "").lower()
+
+    lowered = {_norm(k): v for k, v in record.items()}
+    all_text = " ".join(str(v) for v in record.values()).lower()
+
+    for op, spec in clause.items():
+        if op == "match_all":
+            return True
+        if op == "match_none":
+            return False
+        if op in ("term", "match", "match_phrase", "wildcard", "prefix"):
+            if not isinstance(spec, dict):
+                return False
+            for fpath, val_spec in spec.items():
+                if fpath in ("text", "text.wc"):
+                    target_val = all_text
+                else:
+                    raw_name = fpath.removeprefix("fields.")
+                    if raw_name.endswith(".kw"):
+                        raw_name = raw_name[:-3]
+                    target_val = str(lowered.get(_norm(raw_name)) or "")
+
+                val = val_spec.get("value") if isinstance(val_spec, dict) else val_spec
+                val_str = str(val or "").strip().lower()
+
+                if op == "wildcard":
+                    if not fnmatch.fnmatch(target_val.lower(), val_str):
+                        return False
+                elif op in ("match", "match_phrase"):
+                    if val_str not in target_val.lower():
+                        return False
+                elif op == "prefix":
+                    if not target_val.lower().startswith(val_str):
+                        return False
+                else:  # term
+                    if target_val.lower() != val_str and val_str not in target_val.lower():
+                        return False
+            return True
+        if op == "terms":
+            if not isinstance(spec, dict):
+                return False
+            for fpath, vals in spec.items():
+                if fpath in ("text", "text.wc"):
+                    target_val = all_text
+                else:
+                    raw_name = fpath.removeprefix("fields.")
+                    if raw_name.endswith(".kw"):
+                        raw_name = raw_name[:-3]
+                    target_val = str(lowered.get(_norm(raw_name)) or "").lower()
+                val_set = {str(v).strip().lower() for v in vals}
+                if target_val not in val_set:
+                    return False
+            return True
+        if op == "exists":
+            fpath = str(spec.get("field") or "") if isinstance(spec, dict) else ""
+            raw_name = fpath.removeprefix("fields.")
+            if raw_name.endswith(".kw"):
+                raw_name = raw_name[:-3]
+            v = lowered.get(_norm(raw_name))
+            return v is not None and str(v).strip() != ""
+        if op == "bool":
+            if not isinstance(spec, dict):
+                return False
+            for must_c in spec.get("must") or []:
+                if not _es_clause_matches(must_c, record):
+                    return False
+            for filt_c in spec.get("filter") or []:
+                if not _es_clause_matches(filt_c, record):
+                    return False
+            for not_c in spec.get("must_not") or []:
+                if _es_clause_matches(not_c, record):
+                    return False
+            shoulds = spec.get("should") or []
+            if shoulds:
+                matched_should = sum(1 for sc in shoulds if _es_clause_matches(sc, record))
+                min_match = int(
+                    spec.get("minimum_should_match")
+                    or (0 if (spec.get("must") or spec.get("filter")) else 1)
+                )
+                if min_match > 0 and matched_should < min_match:
+                    return False
+            return True
+    return True
+
+
 def matches_record(analytic: dict[str, Any], record: dict[str, Any]) -> bool:
-    """Whether *record* satisfies *analytic*'s filter set.
+    """Whether *record* satisfies *analytic*'s query.
 
-    A minimal evaluator for the ops this pack uses (`contains`, `in`, `exists`)
-    so an analytic can be proven **behaviour-keyed** rather than asserted to be:
-    a record carrying the behaviour but never the tool's name must match. Field
-    lookup is case-insensitive because the registry is.
+    Evaluates the stored ES query (`es:`) against the in-memory record.
     """
-    from nexus.langgraph.query_dsl import parse_query
+    es = (analytic or {}).get("es")
+    if isinstance(es, dict) and es:
+        return _es_clause_matches(es, record)
 
+    # Legacy dsl fallback
     dsl = str((analytic or {}).get("dsl") or "").strip()
     if not dsl or not record:
         return False
+    from nexus.langgraph.query_dsl import parse_query
+
     parsed = parse_query(dsl)
 
-    # Registry columns are snake_case (`command_line`) while a real row is
-    # usually PascalCase (`CommandLine`), so compare on a case- and
-    # separator-insensitive key. Without this an analytic would match nothing on
-    # the very rows it was written for.
     def _norm(name: str) -> str:
         return str(name or "").replace("_", "").replace(" ", "").lower()
 
@@ -246,13 +337,7 @@ def matches_record(analytic: dict[str, Any], record: dict[str, Any]) -> bool:
 
 
 def negation_is_honoured(dsl: str) -> bool:
-    """Whether *dsl* contains a `not field:` term the parser will ignore.
-
-    The DSL folds `and not field:value` into a **positive** filter, so such a
-    term asserts the opposite of how it reads. Exposed so a caller can refuse
-    one instead of running an analytic that inverts itself.
-    """
-
+    """Whether *dsl* contains a `not field:` term the parser will ignore."""
     return _re_negated(dsl) is None
 
 

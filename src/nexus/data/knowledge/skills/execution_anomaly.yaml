@@ -3,78 +3,154 @@
 #      FOR508.5 (timestomp/anti-forensic distortion of exec artifacts)
 skill: execution_anomaly
 title: Execution anomalies — suspicious parentage, unsigned binaries, LOLBins
-description: >-
-  Detect anomalous execution — unsigned binaries, suspicious parent-child
+description: Detect anomalous execution — unsigned binaries, suspicious parent-child
   chains, LOLBin abuse, and process lineage analysis.
 trigger:
-  families: [prefetch, amcache, evtx, sysmon, pecmd, mft, appcompat]
-  keywords: [unsigned, anomaly, lolbin, rundll32, mshta, hollowing, spawn]
-  techniques: [T1218, T1059.005, T1106, T1055.001]
+  families:
+  - prefetch
+  - amcache
+  - evtx
+  - sysmon
+  - pecmd
+  - mft
+  - appcompat
+  keywords:
+  - unsigned
+  - anomaly
+  - lolbin
+  - rundll32
+  - mshta
+  - hollowing
+  - spawn
+  techniques:
+  - T1218
+  - T1059.005
+  - T1106
+  - T1055.001
 steps:
-  - name: unsigned_execution
-    query: "prefetch amcache unsigned OR .exe"
-    look_for: >-
-      Executables in prefetch/amcache without a signed counterpart —
-      unsigned binaries in user-writable paths.
-    pivot: ExecutableName
-  - name: lolbin_abuse
-    query: "rundll32 regsvr32 mshta wscript cscript msbuild installutil regasm"
-    look_for: >-
-      LOLBin execution with unexpected arguments or parents — rundll32
-      with unusual DLLs, mshta running remote scripts.
-    pivot: CommandLine
-  - name: suspicious_parentage
-    query: "winword.exe cmd.exe OR excel.exe powershell.exe OR wscript.exe"
-    look_for: >-
-      Office/browser binaries spawning cmd/powershell/wscript — macro or
-      exploit child-process chains.
-    pivot: ParentImage
-  - name: temp_exec
-    query: "\\Temp\\ OR \\AppData\\Local\\Temp\\ OR \\Downloads\\"
-    look_for: Executables running from temp/download paths — dropper pattern.
-    pivot: Image
-  - name: process_injection_indicators
-    query: "CreateRemoteThread OR QueueUserAPC OR SetThreadContext"
-    look_for: Injection API sequences in process-access events.
-    pivot: SourceImage
-  - name: renamed_system_binary
-    query: "svchost OR smss OR csrss OR wininit"
-    look_for: System process names executing from non-System32 paths.
-    corroborate: prefetch/amcache entry in user-writable path
-  - name: artifact_cross_validation
-    query: "prefetch OR shimcache OR amcache OR bam OR userassist OR srum"
-    look_for: >-
-      No single artifact is proof — cross-validate execution claims across
-      the stack: Prefetch (first/last run + count), AmCache (full path +
-      SHA1 + first-seen), ShimCache (path + mod time, proves presence not
-      exec), BAM (per-user exec + timestamp), UserAssist (GUI exec + run
-      count, ROT13 values), SRUM (process runtime + network bytes). An exec
-      claim backed by 2+ artifacts is far stronger than one.
-    corroborate: same binary appearing in prefetch AND amcache AND bam = robust execution evidence
-negative: >-
-  No unsigned binaries or suspicious parentage → execution was clean;
-  the compromise may be living-off-the-land only or in memory.
+- name: unsigned_execution
+  query: prefetch amcache unsigned OR .exe
+  look_for: Executables in prefetch/amcache without a signed counterpart — unsigned
+    binaries in user-writable paths.
+  pivot: ExecutableName
+  es:
+    wildcard:
+      fields.ExecutableName.kw:
+        value: '*.exe*'
+        case_insensitive: true
+  requires:
+    families: &id001
+    - prefetch
+    - amcache
+    - evtx
+    - sysmon
+    - pecmd
+    - mft
+    - appcompat
+- name: lolbin_abuse
+  query: rundll32 regsvr32 mshta wscript cscript msbuild installutil regasm
+  look_for: LOLBin execution with unexpected arguments or parents — rundll32 with
+    unusual DLLs, mshta running remote scripts.
+  pivot: CommandLine
+  es:
+    wildcard:
+      fields.command_line.kw:
+        value: '*installutil*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: suspicious_parentage
+  query: winword.exe cmd.exe OR excel.exe powershell.exe OR wscript.exe
+  look_for: Office/browser binaries spawning cmd/powershell/wscript — macro or exploit
+    child-process chains.
+  pivot: ParentImage
+  es:
+    wildcard:
+      fields.parent_process.kw:
+        value: '*winword.exe*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: temp_exec
+  query: \Temp\ OR \AppData\Local\Temp\ OR \Downloads\
+  look_for: Executables running from temp/download paths — dropper pattern.
+  pivot: Image
+  es:
+    wildcard:
+      text.wc:
+        value: '*\Temp\*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: process_injection_indicators
+  query: CreateRemoteThread OR QueueUserAPC OR SetThreadContext
+  look_for: Injection API sequences in process-access events.
+  pivot: SourceImage
+  es:
+    wildcard:
+      fields.process_name.kw:
+        value: '*CreateRemoteThread*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: renamed_system_binary
+  query: svchost OR smss OR csrss OR wininit
+  look_for: System process names executing from non-System32 paths.
+  corroborate: prefetch/amcache entry in user-writable path
+  es:
+    wildcard:
+      text.wc:
+        value: '*svchost*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: artifact_cross_validation
+  query: prefetch OR shimcache OR amcache OR bam OR userassist OR srum
+  look_for: 'No single artifact is proof — cross-validate execution claims across
+    the stack: Prefetch (first/last run + count), AmCache (full path + SHA1 + first-seen),
+    ShimCache (path + mod time, proves presence not exec), BAM (per-user exec + timestamp),
+    UserAssist (GUI exec + run count, ROT13 values), SRUM (process runtime + network
+    bytes). An exec claim backed by 2+ artifacts is far stronger than one.'
+  corroborate: same binary appearing in prefetch AND amcache AND bam = robust execution
+    evidence
+  es:
+    wildcard:
+      text.wc:
+        value: '*shimcache*'
+        case_insensitive: true
+  requires:
+    families: *id001
+negative: No unsigned binaries or suspicious parentage → execution was clean; the
+  compromise may be living-off-the-land only or in memory.
 confidence_rules:
   high: unsigned binary + suspicious parent + network artifact
   medium: LOLBin with unusual args or temp-path exec
   low: single unsigned exec in a developer/build context
-mitre: [T1218, T1059.005, T1106]
+mitre:
+- T1218
+- T1059.005
+- T1106
 source:
-  - chunk_id: d_8beaf108808f:c0008
-    rel_path: EBOOKS/NoStarchPress/Evasive_malware_-_Kyle/Evasive_malware_-_Kyle.md
-    lines: 327-352
-    citation: CCD M5 (execution-artifact stack — Prefetch/ShimCache/AmCache/BAM/ UserAssist/SRUM cross-validation),
-      13C WE 5 (execution analysis), FOR508.5 (timestomp/anti-forensic distortion of exec artifacts)
-  - chunk_id: d_b3ea50f785b6:c0076
-    rel_path: SANS/SANS 699 v2021/PDF/SEC699 - Book 1 (2021)/SEC699 - Book 1 (2021).md
-    lines: 2764-2804
-    citation: CCD M5 (execution-artifact stack — Prefetch/ShimCache/AmCache/BAM/ UserAssist/SRUM cross-validation),
-      13C WE 5 (execution analysis), FOR508.5 (timestomp/anti-forensic distortion of exec artifacts)
-  - chunk_id: d_0d8eeaa8ab62:c0076
-    rel_path: SANS/SANS 699 v2021/PDF/SEC699_merge/SEC699_merge.md
-    lines: 2764-2804
-    citation: CCD M5 (execution-artifact stack — Prefetch/ShimCache/AmCache/BAM/ UserAssist/SRUM cross-validation),
-      13C WE 5 (execution analysis), FOR508.5 (timestomp/anti-forensic distortion of exec artifacts)
+- chunk_id: d_8beaf108808f:c0008
+  rel_path: EBOOKS/NoStarchPress/Evasive_malware_-_Kyle/Evasive_malware_-_Kyle.md
+  lines: 327-352
+  citation: CCD M5 (execution-artifact stack — Prefetch/ShimCache/AmCache/BAM/ UserAssist/SRUM
+    cross-validation), 13C WE 5 (execution analysis), FOR508.5 (timestomp/anti-forensic
+    distortion of exec artifacts)
+- chunk_id: d_b3ea50f785b6:c0076
+  rel_path: SANS/SANS 699 v2021/PDF/SEC699 - Book 1 (2021)/SEC699 - Book 1 (2021).md
+  lines: 2764-2804
+  citation: CCD M5 (execution-artifact stack — Prefetch/ShimCache/AmCache/BAM/ UserAssist/SRUM
+    cross-validation), 13C WE 5 (execution analysis), FOR508.5 (timestomp/anti-forensic
+    distortion of exec artifacts)
+- chunk_id: d_0d8eeaa8ab62:c0076
+  rel_path: SANS/SANS 699 v2021/PDF/SEC699_merge/SEC699_merge.md
+  lines: 2764-2804
+  citation: CCD M5 (execution-artifact stack — Prefetch/ShimCache/AmCache/BAM/ UserAssist/SRUM
+    cross-validation), 13C WE 5 (execution analysis), FOR508.5 (timestomp/anti-forensic
+    distortion of exec artifacts)
 caveats:
-  - "Developers and IT tools run unsigned binaries — check signer and path context before flagging."
-  - "Prefetch only proves execution, not intent — corroborate with CommandLine or network evidence."
+- Developers and IT tools run unsigned binaries — check signer and path context before
+  flagging.
+- Prefetch only proves execution, not intent — corroborate with CommandLine or network
+  evidence.

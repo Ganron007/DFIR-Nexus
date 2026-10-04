@@ -522,8 +522,10 @@ def dsl_prompt_block(cap: int = 12) -> str:
     if examples:
         lines.append("Examples (natural language -> N4 query):")
         for ex in examples[:cap]:
-            if isinstance(ex, dict) and ex.get("dsl"):
-                lines.append(f'  "{ex.get("nl", "")}" -> {ex["dsl"]}')
+            if isinstance(ex, dict):
+                q_text = ex.get("query") or ex.get("dsl")
+                if q_text:
+                    lines.append(f'  "{ex.get("nl", "")}" -> {q_text}')
     return "\n".join(lines)
 
 

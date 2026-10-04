@@ -98,7 +98,7 @@ def test_the_negative_term_actually_excludes_the_system_case():
     broad term - which is exactly why the rationale says so.
     """
     analytic = next(a for a in analytics() if a["id"] == "ba-cred-lsass-nonsystem")
-    assert "not " not in str(analytic["dsl"]), analytic["dsl"]
+    assert "not " not in str(analytic.get("es")), analytic.get("es")
     system = {
         "User": "NT AUTHORITY\\SYSTEM",
         "CommandLine": r"C:\Windows\System32\svchost.exe --lsass",
@@ -119,7 +119,7 @@ def test_the_validator_refuses_a_negated_typed_filter():
         "techniques": ["T1059"], "rationale": "x",
     }]}
     problems = validate_pack(bad)
-    assert any("not field:value" in p or "POSITIVE filter" in p for p in problems), problems
+    assert any("not field:value" in p or "POSITIVE filter" in p or "missing es" in p for p in problems), problems
 
 
 def test_negation_is_honoured_helper():
@@ -139,16 +139,16 @@ def test_a_user_writable_execution_matches_without_any_tool_name():
         "Path": r"C:\Users\bob\AppData\Roaming",
     })
     # No system-tree term is folded in (see the validator test above).
-    assert "not " not in str(analytic["dsl"])
+    assert "not " not in str(analytic.get("es"))
 
 
 def test_no_analytic_depends_on_a_tool_name_string():
     """A name-keyed analytic would be defeated by a rebuild - the point of K4."""
     banned = ("mimikatz", "rubeus", "cobalt", "beacon", "meterpreter", "psexec")
     for item in analytics():
-        dsl = str(item.get("dsl") or "").lower()
+        query_str = str(item.get("es") or "").lower()
         for word in banned:
-            assert word not in dsl, f"{item['id']} keys on the tool name {word!r}"
+            assert word not in query_str, f"{item['id']} keys on the tool name {word!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -167,7 +167,7 @@ def test_citations_are_external_and_no_term_comes_from_a_sample():
                     "ta0002", "ta0004", "ta0006", "ta0007", "ta0008")
     body = ""
     for item in analytics():
-        body += str(item.get("dsl") or "") + str(item.get("name") or "") + str(item.get("id") or "")
+        body += str(item.get("es") or "") + str(item.get("name") or "") + str(item.get("id") or "")
     lowered = body.lower()
     for term in sample_terms:
         assert term not in lowered, f"pack term {term!r} looks sample-derived"

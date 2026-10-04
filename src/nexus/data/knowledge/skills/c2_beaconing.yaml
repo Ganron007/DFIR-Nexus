@@ -4,78 +4,149 @@
 # kb: CCD M2 (RITA beacon scoring), EIR C2 methodology
 skill: c2_beaconing
 title: C2 beaconing — periodic callbacks, beacon intervals, DGA
-description: >-
-  Detect command-and-control traffic — periodic connections, beacon jitter,
+description: Detect command-and-control traffic — periodic connections, beacon jitter,
   domain-generation algorithms, and proxy artifacts.
 trigger:
-  families: [netstat, dns, browser, evtx, sysmon, powershell]
-  keywords: [c2, beacon, callback, botnet, implant, cobalt, meterpreter, sliver]
-  techniques: [T1071, T1071.001, T1071.004, T1105]
+  families:
+  - netstat
+  - dns
+  - browser
+  - evtx
+  - sysmon
+  - powershell
+  keywords:
+  - c2
+  - beacon
+  - callback
+  - botnet
+  - implant
+  - cobalt
+  - meterpreter
+  - sliver
+  techniques:
+  - T1071
+  - T1071.001
+  - T1071.004
+  - T1105
 steps:
-  - name: periodic_connections
-    query: "netstat OR ESTABLISHED"
-    look_for: >-
-      Repeated connections to the same external IP/domain at regular
-      intervals — classic beacon signature. Classify the interval:
-      FIXED (exact cadence), JITTERED (varied slightly around a base
-      period — common evasion), or COMPLEX-SCHEDULE (malware-defined
-      timing). Small uniform payloads at near-fixed intervals are the
-      strongest signal.
-    pivot: RemoteAddress
-    corroborate: connection-size uniformity + interval variance analysis
-  - name: cobalt_beacon
-    query: "cobaltstrike OR beacon OR beacon.dll"
-    look_for: Cobalt Strike artifacts — beacon.dll in process, known C2 IPs.
-    pivot: Image
-  - name: dga_domains
-    query: "dns QueryName OR nslookup"
-    look_for: Long random subdomains, non-standard TLDs, high-entropy names.
-    pivot: QueryName
-  - name: dnscat_tunneling
-    query: "dnscat OR iodine OR dns2tcp"
-    look_for: DNS tunneling tool execution or TXT-record exfil patterns.
-    pivot: CommandLine
-  - name: proxy_pac
-    query: "proxy OR pac file OR ProxyServer"
-    look_for: Proxy settings that redirect traffic through attacker infra.
-    pivot: ValueName
-  - name: smb_beacon
-    query: "\\\\.\\pipe\\ OR named pipe"
-    look_for: Named-pipe creation/connection for SMB-beacon implants.
-    pivot: PipeName
-  - name: carrier_protocols
-    query: "dns TXT OR icmp OR http POST"
-    look_for: >-
-      Beacon carriers beyond HTTP/S: DNS TXT/NULL queries at intervals,
-      ICMP echo payloads, or HTTPS POSTs of uniform small size. Cobalt
-      Strike default profile uses HTTP GET metadata + POST tasking —
-      profile request-size asymmetry, not just destination.
-    pivot: QueryName
-negative: >-
-  No periodic external connections or C2 artifacts → implant likely dormant,
+- name: periodic_connections
+  query: netstat OR ESTABLISHED
+  look_for: 'Repeated connections to the same external IP/domain at regular intervals
+    — classic beacon signature. Classify the interval: FIXED (exact cadence), JITTERED
+    (varied slightly around a base period — common evasion), or COMPLEX-SCHEDULE (malware-defined
+    timing). Small uniform payloads at near-fixed intervals are the strongest signal.'
+  pivot: RemoteAddress
+  corroborate: connection-size uniformity + interval variance analysis
+  es:
+    wildcard:
+      fields.source_ip.kw:
+        value: '*ESTABLISHED*'
+        case_insensitive: true
+  requires:
+    families: &id001
+    - netstat
+    - dns
+    - browser
+    - evtx
+    - sysmon
+    - powershell
+- name: cobalt_beacon
+  query: cobaltstrike OR beacon OR beacon.dll
+  look_for: Cobalt Strike artifacts — beacon.dll in process, known C2 IPs.
+  pivot: Image
+  es:
+    wildcard:
+      text.wc:
+        value: '*cobaltstrike*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: dga_domains
+  query: dns QueryName OR nslookup
+  look_for: Long random subdomains, non-standard TLDs, high-entropy names.
+  pivot: QueryName
+  es:
+    wildcard:
+      text.wc:
+        value: '*QueryName*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: dnscat_tunneling
+  query: dnscat OR iodine OR dns2tcp
+  look_for: DNS tunneling tool execution or TXT-record exfil patterns.
+  pivot: CommandLine
+  es:
+    wildcard:
+      fields.command_line.kw:
+        value: '*dnscat*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: proxy_pac
+  query: proxy OR pac file OR ProxyServer
+  look_for: Proxy settings that redirect traffic through attacker infra.
+  pivot: ValueName
+  es:
+    wildcard:
+      fields.registry_value.kw:
+        value: '*ProxyServer*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: smb_beacon
+  query: \\.\pipe\ OR named pipe
+  look_for: Named-pipe creation/connection for SMB-beacon implants.
+  pivot: PipeName
+  es:
+    wildcard:
+      text.wc:
+        value: '*\\.\pipe\*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: carrier_protocols
+  query: dns TXT OR icmp OR http POST
+  look_for: 'Beacon carriers beyond HTTP/S: DNS TXT/NULL queries at intervals, ICMP
+    echo payloads, or HTTPS POSTs of uniform small size. Cobalt Strike default profile
+    uses HTTP GET metadata + POST tasking — profile request-size asymmetry, not just
+    destination.'
+  pivot: QueryName
+  es:
+    wildcard:
+      text.wc:
+        value: '*dns*'
+        case_insensitive: true
+  requires:
+    families: *id001
+negative: No periodic external connections or C2 artifacts → implant likely dormant,
   destroyed, or using encrypted/unobserved channels.
 confidence_rules:
   high: regular-interval connections + named-pipe/beacon artifact
   medium: periodic DNS to suspicious domain without confirmed payload
   low: single external connection (normal traffic)
-mitre: [T1071, T1105]
+mitre:
+- T1071
+- T1105
 source:
-  - chunk_id: d_d691d3ecc368:c0000
-    rel_path: Certified CyberDefender (CCD) Blue Team Training 2025/04. Module 2 - Incident Response - [
-      @redblock_team ]/33. Lab - C2 traffic detection with Real Intelligence Threat Analytics (RITA) - [
-      @redblock_team ]/33. Lab - C2 traffic detection with Real Intelligence Threat Analytics (RITA) - [
-      @redblock_team ].md
-    lines: 8-22
-    citation: d_db0d91434fd6:c0035
-  - chunk_id: d_815ea04346a2:c0421
-    rel_path: SANS/SANS 504 v2023/SEC504 2025 - merge/SEC504 2025 - merge.md
-    lines: 14096-14133
-    citation: d_db0d91434fd6:c0035
-  - chunk_id: d_a67474069363:c0421
-    rel_path: SANS/SANS 504 v2023/SEC504 PDF 2025/SEC504 2025 - Books 1-5 hide01.ir/SEC504 2025 - Books
-      1-5 hide01.ir.md
-    lines: 14096-14133
-    citation: d_db0d91434fd6:c0035
+- chunk_id: d_d691d3ecc368:c0000
+  rel_path: Certified CyberDefender (CCD) Blue Team Training 2025/04. Module 2 - Incident
+    Response - [ @redblock_team ]/33. Lab - C2 traffic detection with Real Intelligence
+    Threat Analytics (RITA) - [ @redblock_team ]/33. Lab - C2 traffic detection with
+    Real Intelligence Threat Analytics (RITA) - [ @redblock_team ].md
+  lines: 8-22
+  citation: d_db0d91434fd6:c0035
+- chunk_id: d_815ea04346a2:c0421
+  rel_path: SANS/SANS 504 v2023/SEC504 2025 - merge/SEC504 2025 - merge.md
+  lines: 14096-14133
+  citation: d_db0d91434fd6:c0035
+- chunk_id: d_a67474069363:c0421
+  rel_path: SANS/SANS 504 v2023/SEC504 PDF 2025/SEC504 2025 - Books 1-5 hide01.ir/SEC504
+    2025 - Books 1-5 hide01.ir.md
+  lines: 14096-14133
+  citation: d_db0d91434fd6:c0035
 caveats:
-  - "Some beacons use sleep/jitter to evade periodic detection — look at variance, not just regularity."
-  - "Legitimate telemetry (Windows, AV, update services) creates periodic traffic — filter by destination."
+- Some beacons use sleep/jitter to evade periodic detection — look at variance, not
+  just regularity.
+- Legitimate telemetry (Windows, AV, update services) creates periodic traffic — filter
+  by destination.

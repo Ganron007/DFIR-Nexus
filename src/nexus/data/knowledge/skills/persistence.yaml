@@ -6,92 +6,168 @@
 # kb: CCD M5 (registry/service/task artifact procedures), EIR persistence
 skill: persistence
 title: Persistence — registry run keys, services, scheduled tasks, WMI
-description: >-
-  Detect mechanisms that survive reboot — autostart registry keys, new
+description: Detect mechanisms that survive reboot — autostart registry keys, new
   services, scheduled tasks, WMI event subscriptions.
 trigger:
-  families: [registry, evtx, sysmon, services, scheduled_tasks, security]
-  keywords: [persist, autostart, schtasks, subscription, runkey, reg add, startup]
-  techniques: [T1547.001, T1543.003, T1053.005, T1546.003]
+  families:
+  - registry
+  - evtx
+  - sysmon
+  - services
+  - scheduled_tasks
+  - security
+  keywords:
+  - persist
+  - autostart
+  - schtasks
+  - subscription
+  - runkey
+  - reg add
+  - startup
+  techniques:
+  - T1547.001
+  - T1543.003
+  - T1053.005
+  - T1546.003
 steps:
-  - name: run_keys
-    query: "\\Run OR \\RunOnce OR \\RunOnceEx CurrentVersion\\Run"
-    look_for: >-
-      Writes to HKLM/HKCU Run/RunOnce keys, especially values pointing into
-      user-writable or temp paths.
-    pivot: ValueName
-  - name: new_services
-    query: "7045 OR sc create OR sc.exe create"
-    look_for: >-
-      Service installs with ImagePath under %TEMP%, %APPDATA%, %ProgramData%,
-      or with non-standard binaries.
-    pivot: ImagePath
-  - name: scheduled_tasks
-    query: "schtasks /create OR 106 OR TaskScheduler"
-    look_for: >-
-      Task registrations running as SYSTEM or on logon, especially with
-      remote or hidden actions.
-    pivot: TaskName
-  - name: wmi_subscription
-    query: "EventFilter CommandLineEventConsumer wmi"
-    look_for: >-
-      WMI permanent event subscriptions: a __EventFilter + a consumer class
-      bound by __FilterToConsumerBinding. The consumer is the payload —
-      CommandLineEventConsumer runs a command, ActiveScriptEventConsumer runs
-      script, and both fire on the filter's trigger (often a timer or logon).
-      Sysmon Events 19/20/21 (WmiEventFilter/WmiEventConsumer/
-      WmiEventConsumerToFilter) and the case's WMI-subscription artifacts
-      capture the chain; Autoruns' WMI tab shows it in one view.
-    pivot: CommandLine
-    corroborate: the consumer's command/script path also appears in prefetch/MFT or Sysmon process-create
-  - name: image_file_execution_options
-    query: "Image File Execution Options OR IFEO OR SilentProcessExit"
-    look_for: Debugger hijacks on common binaries (sethc, utilman, osk).
-    pivot: KeyPath
-  - name: startup_folder_lnk
-    query: "Startup OR Start Menu\\Programs\\Startup .lnk"
-    look_for: LNK files dropped into Startup folders (lnk family + mft/usn).
-    pivot: FileName
-  - name: dll_hijack
-    query: "fxsst.dll OR ntshrui.dll OR side-loading OR WinSxS"
-    look_for: >-
-      DLL-hijack persistence classes: search-order hijack (malicious DLL
-      ahead in load order — classic ntshrui.dll beside explorer.exe);
-      phantom DLL (app loads a name that doesn't exist — e.g. Fax Service
-      fxsst.dll); side-loading via WinSxS (PlugX, NetTraveler, Sakula,
-      Poison Ivy); relative-path hijack (susceptible exe + bad dll copied
-      together to an attacker-chosen dir).
-    pivot: ImagePath
-    corroborate: unsigned DLL beside a signed exe, or exe+dll pair in a non-standard dir
-  - name: task_persistence_case
-    query: "schtasks OR at.exe OR TaskScheduler"
-    look_for: >-
-      Scheduled-task persistence stays dominant even in advanced intrusions —
-      SolarWinds SUNSPOT ran via a boot-time scheduled task. Autoruns-class
-      enumeration + TaskScheduler operational logs catch what registry-only
-      sweeps miss.
-    pivot: TaskName
-negative: >-
-  No autostart writes, service installs, or task registrations → the attacker
+- name: run_keys
+  query: \Run OR \RunOnce OR \RunOnceEx CurrentVersion\Run
+  look_for: Writes to HKLM/HKCU Run/RunOnce keys, especially values pointing into
+    user-writable or temp paths.
+  pivot: ValueName
+  es:
+    wildcard:
+      fields.ValueName.kw:
+        value: '*\Run*'
+        case_insensitive: true
+  requires:
+    families: &id001
+    - registry
+    - evtx
+    - sysmon
+    - services
+    - scheduled_tasks
+    - security
+- name: new_services
+  query: 7045 OR sc create OR sc.exe create
+  look_for: Service installs with ImagePath under %TEMP%, %APPDATA%, %ProgramData%,
+    or with non-standard binaries.
+  pivot: ImagePath
+  es:
+    wildcard:
+      text.wc:
+        value: '*sc.exe*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: scheduled_tasks
+  query: schtasks /create OR 106 OR TaskScheduler
+  look_for: Task registrations running as SYSTEM or on logon, especially with remote
+    or hidden actions.
+  pivot: TaskName
+  es:
+    wildcard:
+      text.wc:
+        value: '*/create*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: wmi_subscription
+  query: EventFilter CommandLineEventConsumer wmi
+  look_for: 'WMI permanent event subscriptions: a __EventFilter + a consumer class
+    bound by __FilterToConsumerBinding. The consumer is the payload — CommandLineEventConsumer
+    runs a command, ActiveScriptEventConsumer runs script, and both fire on the filter''s
+    trigger (often a timer or logon). Sysmon Events 19/20/21 (WmiEventFilter/WmiEventConsumer/
+    WmiEventConsumerToFilter) and the case''s WMI-subscription artifacts capture the
+    chain; Autoruns'' WMI tab shows it in one view.'
+  pivot: CommandLine
+  corroborate: the consumer's command/script path also appears in prefetch/MFT or
+    Sysmon process-create
+  es:
+    wildcard:
+      fields.command_line.kw:
+        value: '*EventFilter*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: image_file_execution_options
+  query: Image File Execution Options OR IFEO OR SilentProcessExit
+  look_for: Debugger hijacks on common binaries (sethc, utilman, osk).
+  pivot: KeyPath
+  es:
+    wildcard:
+      fields.KeyPath.kw:
+        value: '*Execution*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: startup_folder_lnk
+  query: Startup OR Start Menu\Programs\Startup .lnk
+  look_for: LNK files dropped into Startup folders (lnk family + mft/usn).
+  pivot: FileName
+  es:
+    wildcard:
+      fields.file_path.kw:
+        value: '*Menu\Programs\Startup*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: dll_hijack
+  query: fxsst.dll OR ntshrui.dll OR side-loading OR WinSxS
+  look_for: 'DLL-hijack persistence classes: search-order hijack (malicious DLL ahead
+    in load order — classic ntshrui.dll beside explorer.exe); phantom DLL (app loads
+    a name that doesn''t exist — e.g. Fax Service fxsst.dll); side-loading via WinSxS
+    (PlugX, NetTraveler, Sakula, Poison Ivy); relative-path hijack (susceptible exe
+    + bad dll copied together to an attacker-chosen dir).'
+  pivot: ImagePath
+  corroborate: unsigned DLL beside a signed exe, or exe+dll pair in a non-standard
+    dir
+  es:
+    wildcard:
+      text.wc:
+        value: '*fxsst.dll*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: task_persistence_case
+  query: schtasks OR at.exe OR TaskScheduler
+  look_for: Scheduled-task persistence stays dominant even in advanced intrusions
+    — SolarWinds SUNSPOT ran via a boot-time scheduled task. Autoruns-class enumeration
+    + TaskScheduler operational logs catch what registry-only sweeps miss.
+  pivot: TaskName
+  es:
+    wildcard:
+      text.wc:
+        value: '*at.exe*'
+        case_insensitive: true
+  requires:
+    families: *id001
+negative: No autostart writes, service installs, or task registrations → the attacker
   may rely on existing persistence or volatile-only presence.
 confidence_rules:
   high: new autostart entry + the referenced binary present in prefetch/mft
   medium: autostart write without execution artifact (may be pre-trigger)
   low: legitimate installer service creations (signed, Program Files path)
-mitre: [T1547.001, T1543.003, T1053.005, T1546.003, T1053]
+mitre:
+- T1547.001
+- T1543.003
+- T1053.005
+- T1546.003
+- T1053
 source:
-  - chunk_id: d_5e18878c26d5:c0004
-    rel_path: Kaspersky/Kaspersky Malware Analysis and Reverse Engineering course/1383_056/1383_056.md
-    lines: 264-320
-    citation: d_3edf38e74d31:c0082
-  - chunk_id: d_c55e3c3d8f7e:c0460
-    rel_path: SANS/SANS 599 v2023/SEC599 2023 - Clear/SEC599 2023 - Clear.md
-    lines: 14752-14804
-    citation: d_0d8eeaa8ab62:c0396
-  - chunk_id: d_01b61024ae53:c0460
-    rel_path: SANS/SANS 599 v2023/SEC599 2023 - No watermark/SEC599 2023 - No watermark.md
-    lines: 14752-14804
-    citation: d_3edf38e74d31:c0082
+- chunk_id: d_5e18878c26d5:c0004
+  rel_path: Kaspersky/Kaspersky Malware Analysis and Reverse Engineering course/1383_056/1383_056.md
+  lines: 264-320
+  citation: d_3edf38e74d31:c0082
+- chunk_id: d_c55e3c3d8f7e:c0460
+  rel_path: SANS/SANS 599 v2023/SEC599 2023 - Clear/SEC599 2023 - Clear.md
+  lines: 14752-14804
+  citation: d_0d8eeaa8ab62:c0396
+- chunk_id: d_01b61024ae53:c0460
+  rel_path: SANS/SANS 599 v2023/SEC599 2023 - No watermark/SEC599 2023 - No watermark.md
+  lines: 14752-14804
+  citation: d_3edf38e74d31:c0082
 caveats:
-  - "Installers constantly create services/tasks — filter by signer and path before flagging."
-  - "Run-key writes by AV/management tools are normal — check the value target, not just the key."
+- Installers constantly create services/tasks — filter by signer and path before flagging.
+- Run-key writes by AV/management tools are normal — check the value target, not just
+  the key.

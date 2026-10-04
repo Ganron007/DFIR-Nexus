@@ -4,67 +4,138 @@
 # kb: CCD M5 T-EventLogs (1102/104 analysis, gap profiling)
 skill: log_clearing
 title: Event log clearing and audit tampering
-description: >-
-  Detect clearing of Security/System/Application logs, audit-policy changes,
+description: Detect clearing of Security/System/Application logs, audit-policy changes,
   and Sysmon service tampering — anti-forensics.
 trigger:
-  families: [evtx, sysmon, security, hayabusa, services]
-  keywords: [clear, wevtutil, auditpol, tamper, anti-forensic, sysmon]
-  techniques: [T1070.001, T1070, T1562.002]
+  families:
+  - evtx
+  - sysmon
+  - security
+  - hayabusa
+  - services
+  keywords:
+  - clear
+  - wevtutil
+  - auditpol
+  - tamper
+  - anti-forensic
+  - sysmon
+  techniques:
+  - T1070.001
+  - T1070
+  - T1562.002
 steps:
-  - name: security_log_cleared
-    query: "1102"
-    look_for: >-
-      Security EventID 1102 (audit log cleared) — check SubjectUserName and
-      the gap in preceding events.
-    pivot: SubjectUserName
-  - name: system_log_cleared
-    query: "104"
-    look_for: System EventID 104 (event log cleared) by an interactive user.
-    pivot: SubjectUserName
-  - name: wevtutil_execution
-    query: "wevtutil cl OR wevtutil clear-log"
-    look_for: wevtutil cl <log> executions in process creation / prefetch.
-    pivot: CommandLine
-  - name: audit_policy_change
-    query: "auditpol /clear OR auditpol /set OR 4719"
-    look_for: auditpol clearing or 4719 audit-policy change events.
-    pivot: CommandLine
-  - name: sysmon_tamper
-    query: "Sysmon service stopped OR sysmon.exe delete OR sc stop sysmon"
-    look_for: Sysmon service stop/delete — blinds telemetry collection.
-    corroborate: gap in Sysmon event sequence
-  - name: usn_journal_delete
-    query: "fsutil usn deletejournal OR usn delete"
-    look_for: USN journal deletion (destroys file-change history).
-  - name: surviving_artifacts
-    query: "prefetch OR shimcache OR amcache OR $LogFile"
-    look_for: >-
-      Anti-forensics cannot fully destroy all references — after a log
-      clear, execution evidence survives in prefetch, ShimCache, AmCache,
-      BAM, $LogFile/$UsnJrnl residue, SRUM, and memory. A single surviving
-      artifact still proves the compromise happened.
-    corroborate: activity window visible in surviving artifacts but absent from cleared logs = targeted clearing
-    pivot: FileName
-negative: >-
-  No 1102/104 events and no wevtutil/auditpol execution → logs were not
-  cleared on this host; look for logging-gap explanations instead (service
-  stop, forwarding failure).
+- name: security_log_cleared
+  query: '1102'
+  look_for: Security EventID 1102 (audit log cleared) — check SubjectUserName and
+    the gap in preceding events.
+  pivot: SubjectUserName
+  es:
+    wildcard:
+      fields.user.kw:
+        value: '*1102*'
+        case_insensitive: true
+  requires:
+    families: &id001
+    - evtx
+    - sysmon
+    - security
+    - hayabusa
+    - services
+- name: system_log_cleared
+  query: '104'
+  look_for: System EventID 104 (event log cleared) by an interactive user.
+  pivot: SubjectUserName
+  es:
+    wildcard:
+      fields.user.kw:
+        value: '*104*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: wevtutil_execution
+  query: wevtutil cl OR wevtutil clear-log
+  look_for: wevtutil cl <log> executions in process creation / prefetch.
+  pivot: CommandLine
+  es:
+    wildcard:
+      fields.command_line.kw:
+        value: '*clear-log*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: audit_policy_change
+  query: auditpol /clear OR auditpol /set OR 4719
+  look_for: auditpol clearing or 4719 audit-policy change events.
+  pivot: CommandLine
+  es:
+    wildcard:
+      fields.command_line.kw:
+        value: '*/clear*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: sysmon_tamper
+  query: Sysmon service stopped OR sysmon.exe delete OR sc stop sysmon
+  look_for: Sysmon service stop/delete — blinds telemetry collection.
+  corroborate: gap in Sysmon event sequence
+  es:
+    wildcard:
+      text.wc:
+        value: '*sysmon.exe*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: usn_journal_delete
+  query: fsutil usn deletejournal OR usn delete
+  look_for: USN journal deletion (destroys file-change history).
+  es:
+    wildcard:
+      text.wc:
+        value: '*deletejournal*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: surviving_artifacts
+  query: prefetch OR shimcache OR amcache OR $LogFile
+  look_for: Anti-forensics cannot fully destroy all references — after a log clear,
+    execution evidence survives in prefetch, ShimCache, AmCache, BAM, $LogFile/$UsnJrnl
+    residue, SRUM, and memory. A single surviving artifact still proves the compromise
+    happened.
+  corroborate: activity window visible in surviving artifacts but absent from cleared
+    logs = targeted clearing
+  pivot: FileName
+  es:
+    wildcard:
+      fields.file_path.kw:
+        value: '*shimcache*'
+        case_insensitive: true
+  requires:
+    families: *id001
+negative: No 1102/104 events and no wevtutil/auditpol execution → logs were not cleared
+  on this host; look for logging-gap explanations instead (service stop, forwarding
+  failure).
 confidence_rules:
   high: 1102 + wevtutil cl execution + preceding log gap
   medium: single log-clear event with non-system subject
   low: auditpol /set during patch windows (check maintenance context)
-mitre: [T1070.001, T1562.002]
+mitre:
+- T1070.001
+- T1562.002
 source:
-  - chunk_id: d_a1d3c2f01b9b:c0128
-    rel_path: SANS/SANS 508 v2023/Book FOR508.5/Book FOR508.5.md
-    lines: 3394-3422
-    citation: d_a1d3c2f01b9b:c0004
-  - chunk_id: d_3edf38e74d31:c0744
-    rel_path: SANS/SANS 508 v2023/FOR508 I01_01 2023/FOR508 I01_01 2023.md
-    lines: 21754-21782
-    citation: d_a1d3c2f01b9b:c0004
+- chunk_id: d_a1d3c2f01b9b:c0128
+  rel_path: SANS/SANS 508 v2023/Book FOR508.5/Book FOR508.5.md
+  lines: 3394-3422
+  citation: d_a1d3c2f01b9b:c0004
+- chunk_id: d_3edf38e74d31:c0744
+  rel_path: SANS/SANS 508 v2023/FOR508 I01_01 2023/FOR508 I01_01 2023.md
+  lines: 21754-21782
+  citation: d_a1d3c2f01b9b:c0004
 caveats:
-  - "Some SOCs clear logs during maintenance — check SubjectUserName against admin accounts and change windows."
-  - "A missing Sysmon sequence may mean the service was never running — check install state before claiming tamper."
-  - "Anti-forensics effectiveness is a race against response time — months-old intrusions may be fully covered; hours-old rarely are. Check residual artifact stores before concluding 'wiped clean'."
+- Some SOCs clear logs during maintenance — check SubjectUserName against admin accounts
+  and change windows.
+- A missing Sysmon sequence may mean the service was never running — check install
+  state before claiming tamper.
+- Anti-forensics effectiveness is a race against response time — months-old intrusions
+  may be fully covered; hours-old rarely are. Check residual artifact stores before
+  concluding 'wiped clean'.

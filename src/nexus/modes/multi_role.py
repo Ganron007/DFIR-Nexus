@@ -1055,21 +1055,17 @@ def _skill_procedure_block(order: WorkOrder) -> str:
             if not isinstance(step, dict):
                 continue
             name = str(step.get("name") or "")
-            query = str(step.get("query") or "")
             look = str(step.get("look_for") or "")
-            # WO-K6: the typed query is what the agent can actually run; the
-            # free-text `query` stays for a human reading the procedure.
-            try:
-                from nexus.analysis.skill_steps import dsl_for_step
-
-                dsl = dsl_for_step(step)
-            except Exception:  # noqa: BLE001
-                dsl = ""
-            lines.append(
-                f"    * {name}: {query}"
-                + (f" | run: {dsl}" if dsl else " | run: (no typed query)")
-                + (f" | look_for: {look}" if look else "")
-            )
+            corrob = str(step.get("corroborate") or "")
+            result = str(step.get("result") or "")
+            parts = [f"    * {name}"]
+            if look:
+                parts.append(f"look_for: {look}")
+            if corrob:
+                parts.append(f"corroborate: {corrob}")
+            if result:
+                parts.append(f"result: {result}")
+            lines.append(" | ".join(parts))
         caveats = [str(c) for c in (skill.get("caveats") or [])]
         negative = str(skill.get("negative") or "")
         if caveats:
@@ -1079,7 +1075,7 @@ def _skill_procedure_block(order: WorkOrder) -> str:
     if not lines:
         return ""
     return (
-        "PROCEDURES (follow the step queries; keep the skill id + "
+        "PROCEDURES (follow the steps; keep the skill id + "
         "version + citations for anything you use):\n" + "\n".join(lines) + "\n"
     )
 

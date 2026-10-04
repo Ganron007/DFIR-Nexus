@@ -4,70 +4,137 @@
 # kb: FOR508.5 (anti-forensics limits), SpecterOps (evasion TTPs)
 skill: defense_evasion
 title: Defense evasion — AV disable, timestomp, masquerading, process injection
-description: >-
-  Detect defense-evasion techniques — disabling security tools, timestomping,
+description: Detect defense-evasion techniques — disabling security tools, timestomping,
   masquerading binaries, process injection, AMSI/ETW tampering.
 trigger:
-  families: [evtx, sysmon, powershell, prefetch, mft, registry]
-  keywords: [defender, disable, timestomp, masquerade, inject, etw, amsi, evade]
-  techniques: [T1562.001, T1070.006, T1036, T1055, T1562.006]
+  families:
+  - evtx
+  - sysmon
+  - powershell
+  - prefetch
+  - mft
+  - registry
+  keywords:
+  - defender
+  - disable
+  - timestomp
+  - masquerade
+  - inject
+  - etw
+  - amsi
+  - evade
+  techniques:
+  - T1562.001
+  - T1070.006
+  - T1036
+  - T1055
+  - T1562.006
 steps:
-  - name: defender_disable
-    query: "Set-MpPreference -DisableRealtimeMonitoring OR sc stop windefend OR DisableAntiSpyware"
-    look_for: >-
-      Defender real-time monitoring disabled via cmdlet, service stop, or
-      registry DisableAntiSpyware.
-    pivot: CommandLine
-  - name: timestomp
-    query: "timestomp OR -M \" OR Copy-Item -Destination"
-    look_for: >-
-      Timestomp tool runs or timestamp manipulation — detect via the
-      FOR508 4-check method on the suspect file: (1) $SI creation time
-      EARLIER than $FN creation time (copied timestamps only hit $SI);
-      (2) all-zero fractional seconds on $SI times (manual stamps lack
-      sub-second precision); (3) PE compile time AFTER file creation/mod
-      times; (4) ShimCache last-modified AFTER file mod time.
-    pivot: FileName
-    corroborate: MFT record number far outside the range of legitimate same-dir files (masqueraded files get created later → distant record numbers — sort MFTECmd output by record number, not just time)
-  - name: masquerading
-    query: "svchost.exe OR smss.exe OR csrss.exe OR lsass.exe"
-    look_for: >-
-      System process names in non-standard paths (%TEMP%, user dirs,
-      wrong parentage) — masquerading.
-    pivot: Image
-  - name: process_injection
-    query: "CreateRemoteThread OR VirtualAllocEx OR WriteProcessMemory OR inject"
-    look_for: Cross-process memory/thread APIs in Sysmon 8 (CreateRemoteThread).
-    pivot: SourceImage
-  - name: etw_tamper
-    query: "EtwEventWrite OR EtwUnregister OR logman delete"
-    look_for: ETW provider tampering — unregister/delete or patch.
-    pivot: CommandLine
-  - name: amsi_patch
-    query: "amsi.dll patch OR AmsiScanBuffer OR amsiInitFailed"
-    look_for: In-memory AMSI patching — patch bytes in PowerShell process memory.
-    corroborate: suspicious script block follows
-negative: >-
-  No security-tool tampering or masquerading → defense evasion not evident;
+- name: defender_disable
+  query: Set-MpPreference -DisableRealtimeMonitoring OR sc stop windefend OR DisableAntiSpyware
+  look_for: Defender real-time monitoring disabled via cmdlet, service stop, or registry
+    DisableAntiSpyware.
+  pivot: CommandLine
+  es:
+    wildcard:
+      fields.command_line.kw:
+        value: '*Set-MpPreference*'
+        case_insensitive: true
+  requires:
+    families: &id001
+    - evtx
+    - sysmon
+    - powershell
+    - prefetch
+    - mft
+    - registry
+- name: timestomp
+  query: timestomp OR -M " OR Copy-Item -Destination
+  look_for: 'Timestomp tool runs or timestamp manipulation — detect via the FOR508
+    4-check method on the suspect file: (1) $SI creation time EARLIER than $FN creation
+    time (copied timestamps only hit $SI); (2) all-zero fractional seconds on $SI
+    times (manual stamps lack sub-second precision); (3) PE compile time AFTER file
+    creation/mod times; (4) ShimCache last-modified AFTER file mod time.'
+  pivot: FileName
+  corroborate: MFT record number far outside the range of legitimate same-dir files
+    (masqueraded files get created later → distant record numbers — sort MFTECmd output
+    by record number, not just time)
+  es:
+    wildcard:
+      fields.FileName.kw:
+        value: '*timestomp*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: masquerading
+  query: svchost.exe OR smss.exe OR csrss.exe OR lsass.exe
+  look_for: System process names in non-standard paths (%TEMP%, user dirs, wrong parentage)
+    — masquerading.
+  pivot: Image
+  es:
+    wildcard:
+      text.wc:
+        value: '*svchost.exe*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: process_injection
+  query: CreateRemoteThread OR VirtualAllocEx OR WriteProcessMemory OR inject
+  look_for: Cross-process memory/thread APIs in Sysmon 8 (CreateRemoteThread).
+  pivot: SourceImage
+  es:
+    wildcard:
+      fields.process_name.kw:
+        value: '*CreateRemoteThread*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: etw_tamper
+  query: EtwEventWrite OR EtwUnregister OR logman delete
+  look_for: ETW provider tampering — unregister/delete or patch.
+  pivot: CommandLine
+  es:
+    wildcard:
+      fields.command_line.kw:
+        value: '*EtwEventWrite*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: amsi_patch
+  query: amsi.dll patch OR AmsiScanBuffer OR amsiInitFailed
+  look_for: In-memory AMSI patching — patch bytes in PowerShell process memory.
+  corroborate: suspicious script block follows
+  es:
+    wildcard:
+      text.wc:
+        value: '*amsi.dll*'
+        case_insensitive: true
+  requires:
+    families: *id001
+negative: No security-tool tampering or masquerading → defense evasion not evident;
   check for LOLBin-only approach or signed-tool abuse.
 confidence_rules:
   high: Defender disabled + injection artifact + suspicious process tree
   medium: masquerading binary in non-standard path
   low: single EDR service stop (may be maintenance)
-mitre: [T1562.001, T1036, T1055, T1070.006]
+mitre:
+- T1562.001
+- T1036
+- T1055
+- T1070.006
 source:
-  - chunk_id: d_95dc839c4ed9:c0088
-    rel_path: EBOOKS/eBooks/Practical_Threat_Intelligence/Practical_Threat_Intelligence.md
-    lines: 2862-2887
-    citation: d_a1d3c2f01b9b:c0047
-  - chunk_id: d_24a6b445a0b3:c0101
-    rel_path: Conferences-main/Black Hat Asia 2023 slides/AS-23-Wu-When-Knowledge-Graph-Meets-TTPs-wp/AS-23-Wu-When-Knowledge-Graph-Meets-TTPs-wp.md
-    lines: 5799-5966
-    citation: d_a1d3c2f01b9b:c0047
-  - chunk_id: d_24a6b445a0b3:c0094
-    rel_path: Conferences-main/Black Hat Asia 2023 slides/AS-23-Wu-When-Knowledge-Graph-Meets-TTPs-wp/AS-23-Wu-When-Knowledge-Graph-Meets-TTPs-wp.md
-    lines: 5049-5216
-    citation: d_a1d3c2f01b9b:c0047
+- chunk_id: d_95dc839c4ed9:c0088
+  rel_path: EBOOKS/eBooks/Practical_Threat_Intelligence/Practical_Threat_Intelligence.md
+  lines: 2862-2887
+  citation: d_a1d3c2f01b9b:c0047
+- chunk_id: d_24a6b445a0b3:c0101
+  rel_path: Conferences-main/Black Hat Asia 2023 slides/AS-23-Wu-When-Knowledge-Graph-Meets-TTPs-wp/AS-23-Wu-When-Knowledge-Graph-Meets-TTPs-wp.md
+  lines: 5799-5966
+  citation: d_a1d3c2f01b9b:c0047
+- chunk_id: d_24a6b445a0b3:c0094
+  rel_path: Conferences-main/Black Hat Asia 2023 slides/AS-23-Wu-When-Knowledge-Graph-Meets-TTPs-wp/AS-23-Wu-When-Knowledge-Graph-Meets-TTPs-wp.md
+  lines: 5049-5216
+  citation: d_a1d3c2f01b9b:c0047
 caveats:
-  - "Windows updates legitimately restart Defender — check window and account context."
-  - "Masquerading needs path+parentage analysis, not just the process name."
+- Windows updates legitimately restart Defender — check window and account context.
+- Masquerading needs path+parentage analysis, not just the process name.

@@ -4,88 +4,170 @@
 # kb: d_a1d3c2f01b9b (FOR508.5 — anti-forensics; residual artifacts survive)
 skill: lateral_movement
 title: Lateral movement (SMB / WinRM / RDP / psexec)
-description: >-
-  Detect movement between hosts — remote logons, admin share access, remote
+description: Detect movement between hosts — remote logons, admin share access, remote
   service creation, remote execution tooling.
 trigger:
-  families: [evtx, sysmon, security, hayabusa, services, scheduled_tasks]
-  keywords: [lateral, movement, psexec, wmi, winrm, rdp, admin$, smb, remote]
-  techniques: [T1021, T1021.001, T1021.002, T1021.006, T1569.002, T1047]
+  families:
+  - evtx
+  - sysmon
+  - security
+  - hayabusa
+  - services
+  - scheduled_tasks
+  keywords:
+  - lateral
+  - movement
+  - psexec
+  - wmi
+  - winrm
+  - rdp
+  - admin$
+  - smb
+  - remote
+  techniques:
+  - T1021
+  - T1021.001
+  - T1021.002
+  - T1021.006
+  - T1569.002
+  - T1047
 steps:
-  - name: remote_logons
-    query: "4624 10 OR 4648"
-    look_for: >-
-      Type-3/10 network logons from a source host to this host —
-      4624 with a remote IpAddress; 4648 explicit-credential use.
-    pivot: IpAddress
-  - name: admin_share_access
-    query: "ADMIN$ OR C$ OR IPC$"
-    look_for: 5140/5145 share access to ADMIN$/C$/IPC$ from a non-admin host.
-    pivot: SourceAddress
-  - name: remote_service_create
-    query: "7045 OR psexesvc OR remcom"
-    look_for: >-
-      Service Control Manager 7045 service installs (psexesvc, remcom,
-      random 8-char names) — remote exec via service.
-    pivot: ServiceName
-  - name: winrm_execution
-    query: "winrm 5985 OR 5986 OR wsman"
-    look_for: WinRM listener traffic / process spawns under wsmprovhost.exe.
-    pivot: ParentImage
-  - name: rdp_sessions
-    query: "4778 OR 4779 OR TerminalServices"
-    look_for: >-
-      RDP session connect/reconnect events with foreign source hosts. The
-      TerminalServices-LocalSessionManager / RemoteConnectionManager /
-      RdpClientTS logs form per-scenario chains (successful logon, failed
-      logon, disconnect-with-close vs start-disconnect, reconnect, logoff) —
-      profile the whole chain, not one ID.
-    pivot: IpAddress
-  - name: ual_client_access
-    query: "current.mdb OR user access logging OR sum.mdb"
-    look_for: >-
-      User Access Logging (Windows Server 2012+ default;
-      C:\Windows\System32\LogFiles\SUM\current.mdb + GUID-named ESE dbs) —
-      the TARGET-side ledger: which client IPs + authenticated identities
-      connected to which server roles, first/last seen. Profiles lateral
-      movement inbound to this server even when EVTX is thin.
-    pivot: ClientIP
-    corroborate: UAL identity ↔ 4624 TargetUserName from the same client IP
-  - name: interactive_artifacts
-    query: "user profile OR C:\\Users\\ OR ProfileImagePath"
-    look_for: >-
-      Interactive-access artifacts that outlive log events: a new user
-      profile directory / ProfileList entry proves an interactive logon
-      happened even if event evidence was cleared; LNK + RecycleBin +
-      registry MRU under that profile prove hands-on activity.
-    corroborate: profile-creation timestamp vs 4624/log-clearing window
-  - name: remote_scheduled_task
-    query: "schtasks /s OR 106 OR 140"
-    look_for: Remote scheduled task registration (SchRpc 106) or schtasks /s.
-    pivot: TaskName
-negative: >-
-  No remote-logon/share/service/task artifacts from other hosts → this host
+- name: remote_logons
+  query: 4624 10 OR 4648
+  look_for: Type-3/10 network logons from a source host to this host — 4624 with a
+    remote IpAddress; 4648 explicit-credential use.
+  pivot: IpAddress
+  es:
+    wildcard:
+      text.wc:
+        value: '*4624*'
+        case_insensitive: true
+  requires:
+    families: &id001
+    - evtx
+    - sysmon
+    - security
+    - hayabusa
+    - services
+    - scheduled_tasks
+- name: admin_share_access
+  query: ADMIN$ OR C$ OR IPC$
+  look_for: 5140/5145 share access to ADMIN$/C$/IPC$ from a non-admin host.
+  pivot: SourceAddress
+  es:
+    wildcard:
+      text.wc:
+        value: '*ADMIN$*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: remote_service_create
+  query: 7045 OR psexesvc OR remcom
+  look_for: Service Control Manager 7045 service installs (psexesvc, remcom, random
+    8-char names) — remote exec via service.
+  pivot: ServiceName
+  es:
+    wildcard:
+      text.wc:
+        value: '*7045*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: winrm_execution
+  query: winrm 5985 OR 5986 OR wsman
+  look_for: WinRM listener traffic / process spawns under wsmprovhost.exe.
+  pivot: ParentImage
+  es:
+    wildcard:
+      fields.parent_process.kw:
+        value: '*winrm*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: rdp_sessions
+  query: 4778 OR 4779 OR TerminalServices
+  look_for: RDP session connect/reconnect events with foreign source hosts. The TerminalServices-LocalSessionManager
+    / RemoteConnectionManager / RdpClientTS logs form per-scenario chains (successful
+    logon, failed logon, disconnect-with-close vs start-disconnect, reconnect, logoff)
+    — profile the whole chain, not one ID.
+  pivot: IpAddress
+  es:
+    wildcard:
+      text.wc:
+        value: '*TerminalServices*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: ual_client_access
+  query: current.mdb OR user access logging OR sum.mdb
+  look_for: 'User Access Logging (Windows Server 2012+ default; C:\Windows\System32\LogFiles\SUM\current.mdb
+    + GUID-named ESE dbs) — the TARGET-side ledger: which client IPs + authenticated
+    identities connected to which server roles, first/last seen. Profiles lateral
+    movement inbound to this server even when EVTX is thin.'
+  pivot: ClientIP
+  corroborate: UAL identity ↔ 4624 TargetUserName from the same client IP
+  es:
+    wildcard:
+      text.wc:
+        value: '*current.mdb*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: interactive_artifacts
+  query: user profile OR C:\Users\ OR ProfileImagePath
+  look_for: 'Interactive-access artifacts that outlive log events: a new user profile
+    directory / ProfileList entry proves an interactive logon happened even if event
+    evidence was cleared; LNK + RecycleBin + registry MRU under that profile prove
+    hands-on activity.'
+  corroborate: profile-creation timestamp vs 4624/log-clearing window
+  es:
+    wildcard:
+      text.wc:
+        value: '*ProfileImagePath*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: remote_scheduled_task
+  query: schtasks /s OR 106 OR 140
+  look_for: Remote scheduled task registration (SchRpc 106) or schtasks /s.
+  pivot: TaskName
+  es:
+    wildcard:
+      text.wc:
+        value: '*/s*'
+        case_insensitive: true
+  requires:
+    families: *id001
+negative: No remote-logon/share/service/task artifacts from other hosts → this host
   was not a lateral-movement target in the window (or telemetry gap).
 confidence_rules:
   high: new service + admin-share access + remote logon from same source host
   medium: remote logon + task creation without service install
   low: isolated 4624 type-3 events (may be normal admin/file share traffic)
-mitre: [T1021, T1569.002, T1047]
+mitre:
+- T1021
+- T1569.002
+- T1047
 source:
-  - chunk_id: d_9f084f9a1e3e:c0068
-    rel_path: EBOOKS/Books_2026/ad-pentest-oscp/ad-pentest-oscp.md
-    lines: 1958-2009
-    citation: d_25b6cf33456b
-  - chunk_id: d_d79fe6681932:c0082
-    rel_path: SANS/SANS 528 v2022/PDF/FOR528_H02_04_1642775 [129-263]/FOR528_H02_04_1642775 [129-263].md
-    lines: 2610-2650
-    citation: d_2703d82b642c
-  - chunk_id: d_40fd028860ee:c0167
-    rel_path: SANS/SANS 528 v2022/PDF/FOR528_H02_04_1642775/FOR528_H02_04_1642775.md
-    lines: 4565-4605
-    citation: d_a1d3c2f01b9b
+- chunk_id: d_9f084f9a1e3e:c0068
+  rel_path: EBOOKS/Books_2026/ad-pentest-oscp/ad-pentest-oscp.md
+  lines: 1958-2009
+  citation: d_25b6cf33456b
+- chunk_id: d_d79fe6681932:c0082
+  rel_path: SANS/SANS 528 v2022/PDF/FOR528_H02_04_1642775 [129-263]/FOR528_H02_04_1642775
+    [129-263].md
+  lines: 2610-2650
+  citation: d_2703d82b642c
+- chunk_id: d_40fd028860ee:c0167
+  rel_path: SANS/SANS 528 v2022/PDF/FOR528_H02_04_1642775/FOR528_H02_04_1642775.md
+  lines: 4565-4605
+  citation: d_a1d3c2f01b9b
 caveats:
-  - "File-server and admin activity legitimately produces 4624 type-3 — corroborate with share/service/task artifacts."
-  - "psexesvc can be renamed — look for unsigned/random service names, not just the literal string."
-  - "UAL is server-only (2012+) and role-granular — it names the role accessed, not the command run; absent UAL data is not absent movement."
-  - "Cleared Security.evtx does not erase interactive-access artifacts — check profile creation, LNKs, and registry MRU before calling 'no hands-on'."
+- File-server and admin activity legitimately produces 4624 type-3 — corroborate with
+  share/service/task artifacts.
+- psexesvc can be renamed — look for unsigned/random service names, not just the literal
+  string.
+- UAL is server-only (2012+) and role-granular — it names the role accessed, not the
+  command run; absent UAL data is not absent movement.
+- Cleared Security.evtx does not erase interactive-access artifacts — check profile
+  creation, LNKs, and registry MRU before calling 'no hands-on'.

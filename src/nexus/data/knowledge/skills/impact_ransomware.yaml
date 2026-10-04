@@ -5,73 +5,145 @@
 # kb: SANS ransomware poster (detonation phases), CCD M5 (artifact evidence)
 skill: impact_ransomware
 title: Impact — ransomware, backup destruction, disk encryption
-description: >-
-  Detect ransomware and destructive impact — shadow deletion, backup
-  removal, mass file encryption, ransom notes.
+description: Detect ransomware and destructive impact — shadow deletion, backup removal,
+  mass file encryption, ransom notes.
 trigger:
-  families: [evtx, sysmon, mft, usn, prefetch, services]
-  keywords: [ransom, encrypt, vssadmin, bcdedit, backup, shadow, wannacry, lockbit]
-  techniques: [T1490, T1486, T1489, T1491]
+  families:
+  - evtx
+  - sysmon
+  - mft
+  - usn
+  - prefetch
+  - services
+  keywords:
+  - ransom
+  - encrypt
+  - vssadmin
+  - bcdedit
+  - backup
+  - shadow
+  - wannacry
+  - lockbit
+  techniques:
+  - T1490
+  - T1486
+  - T1489
+  - T1491
 steps:
-  - name: shadow_delete
-    query: "vssadmin delete shadows OR vssadmin resize shadowstorage OR wmic shadowcopy delete"
-    look_for: >-
-      Shadow-copy deletion — the canonical ransomware anti-recovery move.
-    pivot: CommandLine
-  - name: bcdedit_recovery
-    query: "bcdedit /set OR bootstatuspolicy OR recoveryenabled no"
-    look_for: >-
-      bcdedit disabling recovery/bootstatus — prevents safe-mode recovery.
-    pivot: CommandLine
-  - name: backup_kill
-    query: "wbadmin delete catalog OR backup delete"
-    look_for: wbadmin catalog deletion — removes backup inventory.
-    pivot: CommandLine
-  - name: mass_encryption
-    query: ".encrypted OR .locked OR .crypt OR readme OR ransom"
-    look_for: >-
-      Mass file renames to ransom extensions; readme/ransom-note files in
-      mft/usn with high write rates.
-    pivot: FileName
-  - name: service_stop
-    query: "sc stop OR net stop OR service stop"
-    look_for: Mass service stops (database, backup, AV) before encryption.
-    pivot: ServiceName
-  - name: crypto_process
-    query: "cipher /w OR diskcryptor OR vboxdrv"
-    look_for: Disk-encryption tool execution or crypto-loop patterns.
-    pivot: ProcessName
-  - name: backward_analysis
-    query: "rdp OR 4624 OR msiexec OR phish"
-    look_for: >-
-      Work BACKWARD from impact: ransomware investigations begin at the
-      ransomed/highest-activity hosts, then trace back to entry. Most
-      common IAB vectors to hunt: exposed internet-facing RDP (the most
-      common ransomware entry — hunt illegitimate external RDP), border-
-      device exploit, phishing, purchased credentials/access.
-    corroborate: first ransom-note write time → work backward through lateral movement → initial access on the earliest-affected host
-    pivot: IpAddress
-negative: >-
-  No shadow deletion, recovery disable, or mass-encryption artifacts →
-  impact phase not reached or aborted.
+- name: shadow_delete
+  query: vssadmin delete shadows OR vssadmin resize shadowstorage OR wmic shadowcopy
+    delete
+  look_for: Shadow-copy deletion — the canonical ransomware anti-recovery move.
+  pivot: CommandLine
+  es:
+    wildcard:
+      fields.command_line.kw:
+        value: '*shadowstorage*'
+        case_insensitive: true
+  requires:
+    families: &id001
+    - evtx
+    - sysmon
+    - mft
+    - usn
+    - prefetch
+    - services
+- name: bcdedit_recovery
+  query: bcdedit /set OR bootstatuspolicy OR recoveryenabled no
+  look_for: bcdedit disabling recovery/bootstatus — prevents safe-mode recovery.
+  pivot: CommandLine
+  es:
+    wildcard:
+      fields.command_line.kw:
+        value: '*/set*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: backup_kill
+  query: wbadmin delete catalog OR backup delete
+  look_for: wbadmin catalog deletion — removes backup inventory.
+  pivot: CommandLine
+  es:
+    wildcard:
+      fields.command_line.kw:
+        value: '*wbadmin*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: mass_encryption
+  query: .encrypted OR .locked OR .crypt OR readme OR ransom
+  look_for: Mass file renames to ransom extensions; readme/ransom-note files in mft/usn
+    with high write rates.
+  pivot: FileName
+  es:
+    wildcard:
+      fields.FileName.kw:
+        value: '*.encrypted*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: service_stop
+  query: sc stop OR net stop OR service stop
+  look_for: Mass service stops (database, backup, AV) before encryption.
+  pivot: ServiceName
+  es:
+    wildcard:
+      text.wc:
+        value: '*sc*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: crypto_process
+  query: cipher /w OR diskcryptor OR vboxdrv
+  look_for: Disk-encryption tool execution or crypto-loop patterns.
+  pivot: ProcessName
+  es:
+    wildcard:
+      fields.process_name.kw:
+        value: '*/w*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: backward_analysis
+  query: rdp OR 4624 OR msiexec OR phish
+  look_for: 'Work BACKWARD from impact: ransomware investigations begin at the ransomed/highest-activity
+    hosts, then trace back to entry. Most common IAB vectors to hunt: exposed internet-facing
+    RDP (the most common ransomware entry — hunt illegitimate external RDP), border-
+    device exploit, phishing, purchased credentials/access.'
+  corroborate: first ransom-note write time → work backward through lateral movement
+    → initial access on the earliest-affected host
+  pivot: IpAddress
+  es:
+    wildcard:
+      text.wc:
+        value: '*rdp*'
+        case_insensitive: true
+  requires:
+    families: *id001
+negative: No shadow deletion, recovery disable, or mass-encryption artifacts → impact
+  phase not reached or aborted.
 confidence_rules:
   high: vss delete + bcdedit recovery-off + mass rename/encrypt + ransom note
   medium: shadow deletion + backup kill without confirmed encryption
   low: isolated vssadmin (admin maintenance possible)
-mitre: [T1490, T1486, T1489]
+mitre:
+- T1490
+- T1486
+- T1489
 source:
-  - chunk_id: d_8f38107a0283:c0063
-    rel_path: SANS/SANS 565 v2022/PDF/SEC565 - Book 5 (2022)/SEC565 - Book 5 (2022).md
-    lines: 2686-2718
-    citation: d_ae743ea2444d:c0082
-  - chunk_id: d_74a305847bc0:c0444
-    rel_path: SANS/SANS 565 v2022/PDF/SEC565_merge/SEC565_merge.md
-    lines: 18176-18208
-    citation: d_40fd028860ee:c0360
-  - chunk_id: d_24a6b445a0b3:c0020
-    rel_path: Conferences-main/Black Hat Asia 2023 slides/AS-23-Wu-When-Knowledge-Graph-Meets-TTPs-wp/AS-23-Wu-When-Knowledge-Graph-Meets-TTPs-wp.md
-    lines: 773-803
-    citation: d_ae743ea2444d:c0082
+- chunk_id: d_8f38107a0283:c0063
+  rel_path: SANS/SANS 565 v2022/PDF/SEC565 - Book 5 (2022)/SEC565 - Book 5 (2022).md
+  lines: 2686-2718
+  citation: d_ae743ea2444d:c0082
+- chunk_id: d_74a305847bc0:c0444
+  rel_path: SANS/SANS 565 v2022/PDF/SEC565_merge/SEC565_merge.md
+  lines: 18176-18208
+  citation: d_40fd028860ee:c0360
+- chunk_id: d_24a6b445a0b3:c0020
+  rel_path: Conferences-main/Black Hat Asia 2023 slides/AS-23-Wu-When-Knowledge-Graph-Meets-TTPs-wp/AS-23-Wu-When-Knowledge-Graph-Meets-TTPs-wp.md
+  lines: 773-803
+  citation: d_ae743ea2444d:c0082
 caveats:
-  - "Backup software legitimately manages shadows — check the account and schedule context."
-  - "Some ransomware skips vss delete if it can encrypt directly — check for mass file writes instead."
+- Backup software legitimately manages shadows — check the account and schedule context.
+- Some ransomware skips vss delete if it can encrypt directly — check for mass file
+  writes instead.

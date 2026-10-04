@@ -18,7 +18,7 @@ def test_every_example_parses():
     """Every few-shot DSL query must pass the real N4 parser."""
     failures = []
     for ex in get_query_examples().get("examples") or []:
-        dsl = str((ex or {}).get("dsl") or "")
+        dsl = str((ex or {}).get("query") or (ex or {}).get("dsl") or "")
         nl = str((ex or {}).get("nl") or "")
         try:
             q = parse_query(dsl)
@@ -30,7 +30,7 @@ def test_every_example_parses():
 
 def test_examples_cover_all_fields():
     blob = " ".join(
-        str((ex or {}).get("dsl") or "")
+        str((ex or {}).get("query") or (ex or {}).get("dsl") or "")
         for ex in get_query_examples().get("examples") or []
     ).lower()
     for field in ("family:", "event:", "host:", "user:", "file:", "regex:"):

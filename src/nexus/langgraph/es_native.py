@@ -91,7 +91,8 @@ def validate_query(body: Any, depth: int = 0) -> None:
         if not isinstance(value, dict) or len(value) != 1:
             raise ESQueryError(f"{key} takes exactly one field")
         (field, spec), = value.items()
-        if "." in field and "script" in str(spec).lower():
+        low_field = field.lower()
+        if low_field in ("script", "_script") or low_field.startswith(("script.", "_script.")) or low_field.endswith((".script", "._script")):
             raise ESQueryError("field names cannot contain scripts")
         if isinstance(spec, dict):
             unknown = set(spec) - _TERM_BODY_KEYS

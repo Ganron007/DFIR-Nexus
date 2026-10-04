@@ -5,89 +5,161 @@
 #      EIR (phishing initial-compromise scenarios)
 skill: email_phishing
 title: Phishing email analysis — headers, auth checks, payload chain
-description: >-
-  Analyze a suspected phishing email: authenticate the sender
-  (SPF/DKIM/DMARC + Received-chain), extract and defang URLs/attachments,
-  then pivot to host-side delivery and execution artifacts — the email is
-  the vector, the host is the scene.
+description: 'Analyze a suspected phishing email: authenticate the sender (SPF/DKIM/DMARC
+  + Received-chain), extract and defang URLs/attachments, then pivot to host-side
+  delivery and execution artifacts — the email is the vector, the host is the scene.'
 trigger:
-  families: [email, eml, headers, evtx, sysmon, prefetch, lnk, mft]
-  keywords: [phish, email, eml, attachment, link, spoof, dkim, spf, dmarc, invoice, lure]
-  techniques: [T1566.001, T1566.002, T1204.001, T1204.002]
+  families:
+  - email
+  - eml
+  - headers
+  - evtx
+  - sysmon
+  - prefetch
+  - lnk
+  - mft
+  keywords:
+  - phish
+  - email
+  - eml
+  - attachment
+  - link
+  - spoof
+  - dkim
+  - spf
+  - dmarc
+  - invoice
+  - lure
+  techniques:
+  - T1566.001
+  - T1566.002
+  - T1204.001
+  - T1204.002
 steps:
-  - name: sender_authentication
-    query: "spf OR dkim OR dmarc OR received OR return-path"
-    look_for: >-
-      Authenticate first: SPF pass/fail on the connecting IP, DKIM
-      signature validity, DMARC alignment between From: and
-      Return-Path/SPF domains. Failures prove spoofing; passes on a
-      lookalike/compromised domain still prove the infrastructure used.
-    pivot: Received
-  - name: header_chain
-    query: "Received: OR X-Originating OR message-id"
-    look_for: >-
-      Walk the Received: chain bottom-up (originating MTA → hops → your
-      gateway) — the first untrusted hop reveals the true source IP.
-      X-Originating-IP and mismatched HELO/hostnames expose relays.
-    pivot: Received
-  - name: url_extraction
-    query: "http OR https OR click OR link"
-    look_for: >-
-      Extract every URL — display text vs href mismatches, punycode/
-      homoglyph domains, URL shorteners, credential-harvest pages. The
-      URL is evidence even when the payload is gone.
-    pivot: URL
-  - name: attachment_triage
-    query: "attachment OR .iso OR .lnk OR .docm OR .html OR .zip"
-    look_for: >-
-      Attachment class decides the risk: ISO/IMG (MOTW bypass → mounts
-      as drive), LNK (double-click execution), Office macros (.docm/
-      .xlsm), HTML smuggling (.html that writes the payload locally),
-      archived EXEs. Hash the attachment, check VT/defang, record the
-      payload chain.
-    pivot: FileName
-  - name: delivery_artifact
-    query: "Zone.Identifier OR downloads OR attachment"
-    look_for: >-
-      Host-side proof of delivery: Zone.Identifier ADS on the dropped
-      file (ZoneId=3 internet; note ISO/zip children may not inherit
-      MOTW — the bypass), file in Downloads/Temp/AppData via MFT/USN,
-      Outlook temp-attachment paths.
-    pivot: FileName
-    corroborate: email-received time ↔ file-write time ↔ execution time = complete delivery chain
-  - name: execution_chain
-    query: "explorer.exe OR mshta OR rundll32 OR powershell"
-    look_for: >-
-      Did the user execute it? Child processes of explorer.exe (double-
-      click) or OUTLOOK.EXE/winword (attachment open) → script
-      interpreters → payload. Prefetch/AmCache confirm the binary ran.
-    pivot: ParentImage
-negative: >-
-  No delivery artifact and no exec chain → the phish likely wasn't opened,
-  was filtered, or the payload was blocked — a delivered-but-unopened phish
-  is still reportable (user-awareness finding, not compromise).
+- name: sender_authentication
+  query: spf OR dkim OR dmarc OR received OR return-path
+  look_for: 'Authenticate first: SPF pass/fail on the connecting IP, DKIM signature
+    validity, DMARC alignment between From: and Return-Path/SPF domains. Failures
+    prove spoofing; passes on a lookalike/compromised domain still prove the infrastructure
+    used.'
+  pivot: Received
+  es:
+    wildcard:
+      text.wc:
+        value: '*return-path*'
+        case_insensitive: true
+  requires:
+    families: &id001
+    - email
+    - eml
+    - headers
+    - evtx
+    - sysmon
+    - prefetch
+    - lnk
+    - mft
+- name: header_chain
+  query: 'Received: OR X-Originating OR message-id'
+  look_for: 'Walk the Received: chain bottom-up (originating MTA → hops → your gateway)
+    — the first untrusted hop reveals the true source IP. X-Originating-IP and mismatched
+    HELO/hostnames expose relays.'
+  pivot: Received
+  es:
+    wildcard:
+      text.wc:
+        value: '*X-Originating*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: url_extraction
+  query: http OR https OR click OR link
+  look_for: Extract every URL — display text vs href mismatches, punycode/ homoglyph
+    domains, URL shorteners, credential-harvest pages. The URL is evidence even when
+    the payload is gone.
+  pivot: URL
+  es:
+    wildcard:
+      text.wc:
+        value: '*http*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: attachment_triage
+  query: attachment OR .iso OR .lnk OR .docm OR .html OR .zip
+  look_for: 'Attachment class decides the risk: ISO/IMG (MOTW bypass → mounts as drive),
+    LNK (double-click execution), Office macros (.docm/ .xlsm), HTML smuggling (.html
+    that writes the payload locally), archived EXEs. Hash the attachment, check VT/defang,
+    record the payload chain.'
+  pivot: FileName
+  es:
+    wildcard:
+      fields.FileName.kw:
+        value: '*attachment*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: delivery_artifact
+  query: Zone.Identifier OR downloads OR attachment
+  look_for: 'Host-side proof of delivery: Zone.Identifier ADS on the dropped file
+    (ZoneId=3 internet; note ISO/zip children may not inherit MOTW — the bypass),
+    file in Downloads/Temp/AppData via MFT/USN, Outlook temp-attachment paths.'
+  pivot: FileName
+  corroborate: email-received time ↔ file-write time ↔ execution time = complete delivery
+    chain
+  es:
+    wildcard:
+      fields.FileName.kw:
+        value: '*Zone.Identifier*'
+        case_insensitive: true
+  requires:
+    families: *id001
+- name: execution_chain
+  query: explorer.exe OR mshta OR rundll32 OR powershell
+  look_for: Did the user execute it? Child processes of explorer.exe (double- click)
+    or OUTLOOK.EXE/winword (attachment open) → script interpreters → payload. Prefetch/AmCache
+    confirm the binary ran.
+  pivot: ParentImage
+  es:
+    wildcard:
+      fields.parent_process.kw:
+        value: '*explorer.exe*'
+        case_insensitive: true
+  requires:
+    families: *id001
+negative: No delivery artifact and no exec chain → the phish likely wasn't opened,
+  was filtered, or the payload was blocked — a delivered-but-unopened phish is still
+  reportable (user-awareness finding, not compromise).
 confidence_rules:
-  high: auth-fail or lookalike + payload attachment + MOTW/delivery artifact + exec chain
+  high: auth-fail or lookalike + payload attachment + MOTW/delivery artifact + exec
+    chain
   medium: authenticated-but-malicious link + click evidence without exec proof
   low: suspicious email with no delivery artifact (filtered/quarantined)
-mitre: [T1566.001, T1566.002, T1204]
+mitre:
+- T1566.001
+- T1566.002
+- T1204
 source:
-  - chunk_id: d_68a5f40b7a85:c0000
-    rel_path: Blue Team Level 1 - 2026.07/3. Phishing Analysis/34. Section Introduction/34. Section Introduction.md
-    lines: 8-38
-    citation: d_ae743ea2444d
-  - chunk_id: d_6b9fc406f9ae:c0000
-    rel_path: Blue Team Level 1 - 2026.07/3. Phishing Analysis/63. Reactive Immediate Response Process/63.
-      Reactive Immediate Response Process.md
-    lines: 8-44
-    citation: d_ae743ea2444d
-  - chunk_id: d_75bdfe209206:c0000
-    rel_path: Blue Team Level 1 - 2026.07/3. Phishing Analysis/77. Video) Phishing Response Walkthrough/77.
-      Video) Phishing Response Walkthrough.md
-    lines: 8-40
-    citation: d_ae743ea2444d
+- chunk_id: d_68a5f40b7a85:c0000
+  rel_path: Blue Team Level 1 - 2026.07/3. Phishing Analysis/34. Section Introduction/34.
+    Section Introduction.md
+  lines: 8-38
+  citation: d_ae743ea2444d
+- chunk_id: d_6b9fc406f9ae:c0000
+  rel_path: Blue Team Level 1 - 2026.07/3. Phishing Analysis/63. Reactive Immediate
+    Response Process/63. Reactive Immediate Response Process.md
+  lines: 8-44
+  citation: d_ae743ea2444d
+- chunk_id: d_75bdfe209206:c0000
+  rel_path: Blue Team Level 1 - 2026.07/3. Phishing Analysis/77. Video) Phishing Response
+    Walkthrough/77. Video) Phishing Response Walkthrough.md
+  lines: 8-40
+  citation: d_ae743ea2444d
 caveats:
-  - "SPF/DKIM pass does NOT mean legitimate — attackers own domains and infrastructure; it means the mail came from where it claims."
-  - "ISO/IMG/container attachments defeat MOTW — the outer file may lack Zone.Identifier while contents execute; check the mount/child artifacts."
-  - "A deleted email isn't gone — recover from OST/PST, mailbox dumpster, gateway quarantine, or journaling before concluding 'not found'."
-  - "Report 'delivered but unopened' separately from 'executed' — they are different findings with different response actions."
+- SPF/DKIM pass does NOT mean legitimate — attackers own domains and infrastructure;
+  it means the mail came from where it claims.
+- ISO/IMG/container attachments defeat MOTW — the outer file may lack Zone.Identifier
+  while contents execute; check the mount/child artifacts.
+- A deleted email isn't gone — recover from OST/PST, mailbox dumpster, gateway quarantine,
+  or journaling before concluding 'not found'.
+- Report 'delivered but unopened' separately from 'executed' — they are different
+  findings with different response actions.
