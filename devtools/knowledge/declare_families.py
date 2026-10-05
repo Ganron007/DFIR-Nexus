@@ -41,15 +41,21 @@ PLAN: dict[str, list[str]] = {
     "timeline_construction": ["mactime"],
     # NetFlow (`nfdump`) and tshark flow exports are the same session data.
     "network_session_analysis": ["nfdump", "tshark-flows"],
-    # Scanning/marking a sample: capabilities, entropy, rules.
-    "malware_analysis_triage": ["capa", "densityscout", "yara"],
+    # Scanning/marking a sample: entropy and rules. `capa` is NOT here: no step in
+    # this skill investigates behavioural capabilities, and declaring it would claim
+    # coverage the skill does not have (it stays uncovered and visible, below).
+    "malware_analysis_triage": ["densityscout", "yara"],
     # USB device history.
     "usb_device_intrusion": ["usbdeview"],
 }
 
-#: Deliberately NOT declared. `logfileparser` is a generic log parser with no
-#: artefact-specific skill to attach it to, so it stays uncovered and visible.
-UNCOVERED = {"logfileparser": "generic log parser; no skill analyses the family itself"}
+#: Deliberately NOT declared - a family with no step that investigates it. Declaring
+#: one would be the "made to look good" pattern R0 warned about.
+UNCOVERED = {
+    "logfileparser": "generic log parser; no skill analyses the family itself",
+    "capa": "no skill investigates behavioural capabilities (malware_analysis_triage "
+            "covers entropy and rules, not capabilities) - a step is owed, not assumed",
+}
 
 
 def _insert(path: Path, families: list[str]) -> tuple[bool, list[str]]:
