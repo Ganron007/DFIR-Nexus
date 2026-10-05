@@ -291,3 +291,9 @@ caveats:
   change roles — identify the workload identity before calling it malicious.
 - Provider log verbosity varies (metadata by default) — missing request bodies/parameters
   is a coverage limit to state explicitly.
+primary_families:
+- cloudtrail
+- azure
+- m365
+- elastic
+- splunk

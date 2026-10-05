@@ -263,3 +263,8 @@ caveats:
   and destination ownership first.
 - Jittered beacons defeat interval-only detection — use variance analysis and byte-size
   uniformity together.
+primary_families:
+- zeek
+- netstat
+- tshark-flows
+- nfdump

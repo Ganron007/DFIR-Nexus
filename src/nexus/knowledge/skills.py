@@ -52,6 +52,88 @@ _LINUX_FAMILIES = frozenset({
     "sysdig", "audit", "wtmp", "btmp", "lastlog", "cron",
 })
 
+# ---------------------------------------------------------------------------
+# WO-KL2e 1: ONE family-name alias table.
+#
+# The reviewer's finding: the registry spells the importer lanes `ingest-*`
+# (`ingest-authlog`, `ingest-zeek`), while `iter_ingest_records` indexes
+# `record.source` and the index therefore emits the runtime's own names
+# (`authlog`, `zeek`). A skill declaring `ingest-*` can never match a real
+# case, and every place that compared families had its own idea of the mapping.
+#
+# This is that one table. It lives next to the selection code that needs it, so
+# `expand_families` (query validation), the skill matcher and the coverage test
+# all resolve a name the same way.
+# ---------------------------------------------------------------------------
+FAMILY_ALIASES: dict[str, tuple[str, ...]] = {
+    # runtime name -> the registry's ingest-* spelling(s)
+    "authlog": ("ingest-authlog",),
+    "syslog": ("ingest-syslog",),
+    "auditd": ("ingest-auditd",),
+    "audit": ("ingest-auditd", "auditd"),
+    "bash_history": ("ingest-bash_history",),
+    "cloudtrail": ("ingest-cloudtrail",),
+    "azure": ("ingest-azure",),
+    "m365": ("ingest-m365",),
+    "sentinel": ("ingest-sentinel",),
+    "elastic": ("ingest-elastic",),
+    "splunk": ("ingest-splunk",),
+    "zeek": ("ingest-zeek",),
+    "suricata": ("ingest-suricata",),
+    "netflow": ("ingest-netflow",),
+    "wireshark": ("ingest-wireshark",),
+    "tshark": ("ingest-wireshark", "tshark-flows"),
+    "nfdump": ("ingest-netflow",),
+    "amcache": ("ingest-amcache",),
+    "scheduled_tasks": ("ingest-scheduled_tasks", "tasks"),
+    "windows_registry": ("ingest-windows_registry", "registry", "recmd"),
+    "windows_services": ("ingest-windows_services", "services"),
+    "velociraptor": ("ingest-velociraptor",),
+    "volatility": ("ingest-volatility", "vol", "memory"),
+    "vol": ("ingest-volatility", "volatility", "memory"),
+    "memory": ("vol", "volatility", "ingest-volatility"),
+    "plaso": ("ingest-plaso",),
+    "kape": ("ingest-kape",),
+    "mftecmd": ("ingest-mftecmd", "mft"),
+    "prefetch": ("ingest-prefetch", "pecmd"),
+    "cybertriage": ("ingest-cybertriage",),
+    "security_onion": ("ingest-security_onion",),
+    "lnk": ("ingest-lnk", "lecmd", "jlecmd"),
+    "powershell": ("ingest-powershell",),
+}
+
+
+def family_names(family: str) -> set[str]:
+    """Every spelling that names the same evidence, for one family.
+
+    The runtime's name and the registry's `ingest-*` spelling resolve to the same
+    set, so a comparison on either side agrees. Unknown names pass through as
+    themselves, so a new family never silently loses its own name.
+    """
+    low = str(family or "").lower().strip()
+    if not low:
+        return set()
+    out = {low}
+    out.update(FAMILY_ALIASES.get(low, ()))
+    return out
+
+
+def families_intersect(case_fams: set[str], declared: set[str]) -> set[str]:
+    """The declared families the case's families actually name, alias-aware.
+
+    A case from `iter_ingest_records` carries `authlog`; a skill that names
+    `ingest-authlog` still matches, which is what the reviewer's probe
+    "CloudTrail-only -> the cloud skill" needs.
+    """
+    case_wide: set[str] = set()
+    for f in case_fams:
+        case_wide |= family_names(f)
+    hit: set[str] = set()
+    for d in declared:
+        if family_names(d) & case_wide:
+            hit.add(str(d))
+    return hit
+
 
 def skill_platforms(skill: dict[str, Any]) -> set[str]:
     """The platforms a skill applies to. Absent or unrecognised means ``any``."""
@@ -104,8 +186,10 @@ def _score_skill(
         why.extend(f"keyword {k}" for k in sorted(hit))
     if fams:
         declared = {str(f).lower() for f in (trig.get("families") or [])}
-        # A generic output format is not evidence of a hypothesis.
-        hit = (fams & declared) - _NON_DISCRIMINATIVE_FAMILIES
+        # A generic output format is not evidence of a hypothesis. Aliases are
+        # resolved through the one table (KL2e 1), so a case whose index emitted
+        # the runtime name still scores a skill that names the registry spelling.
+        hit = families_intersect(fams, declared) - _NON_DISCRIMINATIVE_FAMILIES
         score += _FAM_WEIGHT * len(hit)
         why.extend(f"family {f}" for f in sorted(hit))
     return score, why[:6]
@@ -134,7 +218,7 @@ def _surfaceable(
     A single family hit is weak: a skill whose trigger lists eight Windows
     families - USB, timeline, event-log methodology - matches *any* EVTX case, so
     every hypothesis surfaced on every case and the analyst got noise instead of
-    a lead. Two rules close that:
+    a lead. Three rules close that:
 
     * A skill explicitly marked ``kind: methodology`` is satisfied by one family,
       because the artifact type *is* its subject - "how to read event logs" is
@@ -144,6 +228,14 @@ def _surfaceable(
       the signal: LNK + prefetch + browser artifacts together are the
       initial-access signature, while a single `evtx` hit should not hand an
       analyst a USB hypothesis.
+    * **WO-KL2e 2:** one hit on a skill's **primary family** is enough. The two
+      -family rule exists to stop an EVTX-only case surfacing every skill that
+      merely *tolerates* event logs; it also stops the opposite and worse case -
+      a CloudTrail-only case surfacing no cloud skill, a Zeek-only case no
+      network skill, a `vol`-only case no memory skill. A primary family is one
+      the skill's SUBJECT is about, so a single hit is the signal, not noise.
+      Aliases are resolved through the one table, so `ingest-cloudtrail` and
+      `cloudtrail` are the same evidence on either side.
     """
     if str(skill.get("kind") or "").lower() == "methodology":
         return True
@@ -152,8 +244,11 @@ def _surfaceable(
         return True
     if techs & {str(x).upper() for x in (trig.get("techniques") or [])}:
         return True
+    primary = {str(f).lower() for f in (skill.get("primary_families") or [])}
+    if primary and families_intersect(fams, primary):
+        return True
     declared = {str(f).lower() for f in (trig.get("families") or [])} - _NON_DISCRIMINATIVE_FAMILIES
-    return len(fams & declared) >= 2
+    return len(families_intersect(fams, declared)) >= 2
 
 
 def _ranked_skills(

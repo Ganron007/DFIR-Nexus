@@ -256,3 +256,5 @@ caveats:
   flagging.
 - Prefetch only proves execution, not intent — corroborate with CommandLine or network
   evidence.
+primary_families:
+- amcache

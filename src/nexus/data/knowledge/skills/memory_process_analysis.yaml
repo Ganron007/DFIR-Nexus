@@ -245,3 +245,7 @@ caveats:
   across two enumeration methods before flagging.
 - malfind fires on JIT'd browsers and .NET legitimately — check process context, not
   just the VAD flag.
+primary_families:
+- vol
+- volatility
+- memory

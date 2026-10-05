@@ -1,0 +1,770 @@
+{
+  "counts": {
+    "no_skill": 13,
+    "selected": 21
+  },
+  "excluded_feeds": {
+    "abuseipdb": "TI feed",
+    "greynoise": "TI feed",
+    "misp": "TI feed",
+    "otx": "TI feed",
+    "shodan": "TI feed",
+    "thehive": "case-management platform export, not evidence",
+    "threatfox": "TI feed",
+    "virustotal": "TI feed: no host evidence, and an IoC lookup is not a hypothesis"
+  },
+  "excluded_platformexports": {
+    "csv": "an output format shared by every tool - KL2e keeps it non-discriminative so it cannot surface a skill on its own",
+    "generic_csv": "same as generic_jsonl",
+    "generic_jsonl": "a generic container; the family comes from the importer's own classification, not the file extension",
+    "json": "an output format, not evidence",
+    "jsonl": "an output format, not evidence",
+    "tsv": "an output format, not evidence",
+    "unknown": "the fallback when a source is unclassified"
+  },
+  "importer_families": [
+    {
+      "family": "amcache",
+      "retrieve_skills": [
+        "execution_anomaly"
+      ],
+      "skills": [
+        "execution_anomaly",
+        "execution_artifact_analysis",
+        "initial_access"
+      ],
+      "skills_for": [
+        "execution_anomaly"
+      ],
+      "status": "selected"
+    },
+    {
+      "family": "auditd",
+      "reason": "no skill names this family as its subject; the evidence is indexed and full-text searchable, and a skill can be added when its methodology is written",
+      "retrieve_skills": [],
+      "skills_for": [],
+      "status": "no_skill"
+    },
+    {
+      "family": "authlog",
+      "retrieve_skills": [],
+      "skills": [
+        "linux_compromise"
+      ],
+      "skills_for": [],
+      "status": "selected"
+    },
+    {
+      "family": "azure",
+      "retrieve_skills": [
+        "cloud_identity_forensics"
+      ],
+      "skills": [
+        "cloud_identity_forensics"
+      ],
+      "skills_for": [
+        "cloud_identity_forensics"
+      ],
+      "status": "selected"
+    },
+    {
+      "family": "bash_history",
+      "reason": "no skill names this family as its subject; the evidence is indexed and full-text searchable, and a skill can be added when its methodology is written",
+      "retrieve_skills": [],
+      "skills_for": [],
+      "status": "no_skill"
+    },
+    {
+      "family": "browser_history",
+      "reason": "no skill names this family as its subject; the evidence is indexed and full-text searchable, and a skill can be added when its methodology is written",
+      "retrieve_skills": [],
+      "skills_for": [],
+      "status": "no_skill"
+    },
+    {
+      "family": "carbon_black",
+      "reason": "no skill names this family as its subject; the evidence is indexed and full-text searchable, and a skill can be added when its methodology is written",
+      "retrieve_skills": [],
+      "skills_for": [],
+      "status": "no_skill"
+    },
+    {
+      "family": "cloudtrail",
+      "retrieve_skills": [
+        "cloud_identity_forensics"
+      ],
+      "skills": [
+        "cloud_identity_forensics"
+      ],
+      "skills_for": [
+        "cloud_identity_forensics"
+      ],
+      "status": "selected"
+    },
+    {
+      "family": "crowdstrike",
+      "reason": "no skill names this family as its subject; the evidence is indexed and full-text searchable, and a skill can be added when its methodology is written",
+      "retrieve_skills": [],
+      "skills_for": [],
+      "status": "no_skill"
+    },
+    {
+      "family": "cybertriage",
+      "reason": "no skill names this family as its subject; the evidence is indexed and full-text searchable, and a skill can be added when its methodology is written",
+      "retrieve_skills": [],
+      "skills_for": [],
+      "status": "no_skill"
+    },
+    {
+      "family": "defender",
+      "reason": "no skill names this family as its subject; the evidence is indexed and full-text searchable, and a skill can be added when its methodology is written",
+      "retrieve_skills": [],
+      "skills_for": [],
+      "status": "no_skill"
+    },
+    {
+      "family": "elastic",
+      "retrieve_skills": [
+        "cloud_identity_forensics"
+      ],
+      "skills": [
+        "cloud_identity_forensics"
+      ],
+      "skills_for": [
+        "cloud_identity_forensics"
+      ],
+      "status": "selected"
+    },
+    {
+      "family": "evtx",
+      "retrieve_skills": [
+        "windows_event_log_analysis"
+      ],
+      "skills": [
+        "ad_credential_attacks",
+        "browser_artifact_analysis",
+        "c2_beaconing",
+        "defense_evasion",
+        "discovery_recon",
+        "email_phishing"
+      ],
+      "skills_for": [
+        "windows_event_log_analysis"
+      ],
+      "status": "selected"
+    },
+    {
+      "family": "gcp",
+      "reason": "no skill names this family as its subject; the evidence is indexed and full-text searchable, and a skill can be added when its methodology is written",
+      "retrieve_skills": [],
+      "skills_for": [],
+      "status": "no_skill"
+    },
+    {
+      "family": "hayabusa",
+      "retrieve_skills": [
+        "windows_event_log_analysis"
+      ],
+      "skills": [
+        "ad_credential_attacks",
+        "ir_scoping_and_leads",
+        "lateral_movement",
+        "log_clearing",
+        "lsass_credential_access",
+        "powershell_abuse"
+      ],
+      "skills_for": [
+        "windows_event_log_analysis"
+      ],
+      "status": "selected"
+    },
+    {
+      "family": "kape",
+      "retrieve_skills": [
+        "evidence_acquisition_handling"
+      ],
+      "skills": [
+        "evidence_acquisition_handling"
+      ],
+      "skills_for": [
+        "evidence_acquisition_handling"
+      ],
+      "status": "selected"
+    },
+    {
+      "family": "lnk",
+      "retrieve_skills": [
+        "lnk_jumplist_analysis"
+      ],
+      "skills": [
+        "browser_artifact_analysis",
+        "email_phishing",
+        "initial_access",
+        "lnk_jumplist_analysis"
+      ],
+      "skills_for": [
+        "lnk_jumplist_analysis"
+      ],
+      "status": "selected"
+    },
+    {
+      "family": "netflow",
+      "retrieve_skills": [
+        "network_session_analysis"
+      ],
+      "skills": [
+        "network_session_analysis"
+      ],
+      "skills_for": [
+        "network_session_analysis"
+      ],
+      "status": "selected"
+    },
+    {
+      "family": "plaso",
+      "retrieve_skills": [],
+      "skills": [
+        "macos_forensics",
+        "mft_file_activity",
+        "timeline_construction"
+      ],
+      "skills_for": [],
+      "status": "selected"
+    },
+    {
+      "family": "prefetch",
+      "retrieve_skills": [
+        "execution_anomaly",
+        "execution_artifact_analysis"
+      ],
+      "skills": [
+        "defense_evasion",
+        "discovery_recon",
+        "email_phishing",
+        "execution_artifact_analysis",
+        "exfiltration",
+        "impact_ransomware"
+      ],
+      "skills_for": [
+        "execution_anomaly",
+        "execution_artifact_analysis"
+      ],
+      "status": "selected"
+    },
+    {
+      "family": "scheduled_tasks",
+      "retrieve_skills": [],
+      "skills": [
+        "lateral_movement",
+        "persistence"
+      ],
+      "skills_for": [],
+      "status": "selected"
+    },
+    {
+      "family": "security_onion",
+      "reason": "no skill names this family as its subject; the evidence is indexed and full-text searchable, and a skill can be added when its methodology is written",
+      "retrieve_skills": [],
+      "skills_for": [],
+      "status": "no_skill"
+    },
+    {
+      "family": "sentinel",
+      "reason": "no skill names this family as its subject; the evidence is indexed and full-text searchable, and a skill can be added when its methodology is written",
+      "retrieve_skills": [],
+      "skills_for": [],
+      "status": "no_skill"
+    },
+    {
+      "family": "splunk",
+      "retrieve_skills": [
+        "cloud_identity_forensics"
+      ],
+      "skills": [
+        "cloud_identity_forensics"
+      ],
+      "skills_for": [
+        "cloud_identity_forensics"
+      ],
+      "status": "selected"
+    },
+    {
+      "family": "suricata",
+      "retrieve_skills": [],
+      "skills": [
+        "ics_ot_forensics"
+      ],
+      "skills_for": [],
+      "status": "selected"
+    },
+    {
+      "family": "syslog",
+      "retrieve_skills": [],
+      "skills": [
+        "container_forensics",
+        "ics_ot_forensics",
+        "linux_compromise",
+        "macos_forensics",
+        "mobile_forensics"
+      ],
+      "skills_for": [],
+      "status": "selected"
+    },
+    {
+      "family": "velociraptor",
+      "reason": "no skill names this family as its subject; the evidence is indexed and full-text searchable, and a skill can be added when its methodology is written",
+      "retrieve_skills": [],
+      "skills_for": [],
+      "status": "no_skill"
+    },
+    {
+      "family": "volatility",
+      "retrieve_skills": [
+        "memory_process_analysis",
+        "evidence_acquisition_handling"
+      ],
+      "skills": [
+        "evidence_acquisition_handling",
+        "linux_compromise",
+        "macos_forensics",
+        "malware_analysis_triage",
+        "memory_process_analysis",
+        "webshell_investigation"
+      ],
+      "skills_for": [
+        "memory_process_analysis",
+        "evidence_acquisition_handling"
+      ],
+      "status": "selected"
+    },
+    {
+      "family": "windows_registry",
+      "retrieve_skills": [
+        "deleted_file_recovery",
+        "registry_artifact_analysis",
+        "usb_device_intrusion"
+      ],
+      "skills": [
+        "defense_evasion",
+        "deleted_file_recovery",
+        "execution_artifact_analysis",
+        "ir_scoping_and_leads",
+        "persistence",
+        "registry_artifact_analysis"
+      ],
+      "skills_for": [
+        "deleted_file_recovery",
+        "registry_artifact_analysis",
+        "usb_device_intrusion"
+      ],
+      "status": "selected"
+    },
+    {
+      "family": "windows_services",
+      "retrieve_skills": [],
+      "skills": [
+        "impact_ransomware",
+        "lateral_movement",
+        "log_clearing",
+        "persistence"
+      ],
+      "skills_for": [],
+      "status": "selected"
+    },
+    {
+      "family": "wireshark",
+      "retrieve_skills": [],
+      "skills": [
+        "ics_ot_forensics"
+      ],
+      "skills_for": [],
+      "status": "selected"
+    },
+    {
+      "family": "wmi_subscriptions",
+      "reason": "no skill names this family as its subject; the evidence is indexed and full-text searchable, and a skill can be added when its methodology is written",
+      "retrieve_skills": [],
+      "skills_for": [],
+      "status": "no_skill"
+    },
+    {
+      "family": "zeek",
+      "retrieve_skills": [
+        "network_session_analysis"
+      ],
+      "skills": [
+        "ics_ot_forensics",
+        "network_session_analysis"
+      ],
+      "skills_for": [
+        "network_session_analysis"
+      ],
+      "status": "selected"
+    }
+  ],
+  "note": "KL2e: coverage measured as RUNTIME SELECTION. For each real family, `skills_for` and `retrieve_skills` are called with that family alone, and the skills whose SUBJECT it is are recorded. A family with no skill is listed with a reason rather than counted as covered, which is the R0' defect: a coverage number built from declarations would have claimed a family is covered while the runtime selected nothing.",
+  "tool_families": [
+    {
+      "family": "appcompat",
+      "retrieve_skills": [],
+      "skills": [
+        "execution_artifact_analysis"
+      ],
+      "skills_for": [],
+      "status": "selected"
+    },
+    {
+      "family": "capa",
+      "retrieve_skills": [],
+      "skills": [
+        "malware_analysis_triage"
+      ],
+      "skills_for": [],
+      "status": "selected"
+    },
+    {
+      "family": "chainsaw",
+      "retrieve_skills": [
+        "windows_event_log_analysis"
+      ],
+      "skills": [
+        "windows_event_log_analysis"
+      ],
+      "skills_for": [
+        "windows_event_log_analysis"
+      ],
+      "status": "selected"
+    },
+    {
+      "family": "deepbluecli",
+      "retrieve_skills": [
+        "windows_event_log_analysis"
+      ],
+      "skills": [
+        "windows_event_log_analysis"
+      ],
+      "skills_for": [
+        "windows_event_log_analysis"
+      ],
+      "status": "selected"
+    },
+    {
+      "family": "densityscout",
+      "retrieve_skills": [],
+      "skills": [
+        "malware_analysis_triage"
+      ],
+      "skills_for": [],
+      "status": "selected"
+    },
+    {
+      "family": "evtxecmd",
+      "retrieve_skills": [
+        "windows_event_log_analysis"
+      ],
+      "skills": [
+        "timeline_construction",
+        "usb_device_intrusion",
+        "windows_event_log_analysis"
+      ],
+      "skills_for": [
+        "windows_event_log_analysis"
+      ],
+      "status": "selected"
+    },
+    {
+      "family": "fls",
+      "retrieve_skills": [],
+      "skills": [
+        "deleted_file_recovery",
+        "mft_file_activity",
+        "timeline_construction",
+        "windows_data_hiding"
+      ],
+      "skills_for": [],
+      "status": "selected"
+    },
+    {
+      "family": "hindsight",
+      "retrieve_skills": [],
+      "skills": [
+        "browser_artifact_analysis"
+      ],
+      "skills_for": [],
+      "status": "selected"
+    },
+    {
+      "family": "jlecmd",
+      "retrieve_skills": [
+        "lnk_jumplist_analysis"
+      ],
+      "skills": [
+        "email_phishing",
+        "initial_access",
+        "lnk_jumplist_analysis"
+      ],
+      "skills_for": [
+        "lnk_jumplist_analysis"
+      ],
+      "status": "selected"
+    },
+    {
+      "family": "lecmd",
+      "retrieve_skills": [
+        "lnk_jumplist_analysis"
+      ],
+      "skills": [
+        "browser_artifact_analysis",
+        "email_phishing",
+        "initial_access",
+        "lnk_jumplist_analysis"
+      ],
+      "skills_for": [
+        "lnk_jumplist_analysis"
+      ],
+      "status": "selected"
+    },
+    {
+      "family": "logfileparser",
+      "retrieve_skills": [],
+      "skills": [],
+      "skills_for": [],
+      "status": "no_skill"
+    },
+    {
+      "family": "mactime",
+      "retrieve_skills": [],
+      "skills": [
+        "timeline_construction"
+      ],
+      "skills_for": [],
+      "status": "selected"
+    },
+    {
+      "family": "mftecmd",
+      "retrieve_skills": [
+        "deleted_file_recovery",
+        "mft_file_activity",
+        "timeline_construction",
+        "usb_device_intrusion",
+        "windows_data_hiding"
+      ],
+      "skills": [
+        "browser_artifact_analysis",
+        "defense_evasion",
+        "deleted_file_recovery",
+        "email_phishing",
+        "exfiltration"
+      ],
+      "skills_for": [
+        "deleted_file_recovery",
+        "mft_file_activity",
+        "timeline_construction",
+        "usb_device_intrusion",
+        "windows_data_hiding"
+      ],
+      "status": "selected"
+    },
+    {
+      "family": "mftecmd-i30",
+      "retrieve_skills": [],
+      "skills": [
+        "mft_file_activity"
+      ],
+      "skills_for": [],
+      "status": "selected"
+    },
+    {
+      "family": "mftecmd-usn",
+      "retrieve_skills": [],
+      "skills": [
+        "mft_file_activity"
+      ],
+      "skills_for": [],
+      "status": "selected"
+    },
+    {
+      "family": "nfdump",
+      "retrieve_skills": [
+        "network_session_analysis"
+      ],
+      "skills": [
+        "network_session_analysis"
+      ],
+      "skills_for": [
+        "network_session_analysis"
+      ],
+      "status": "selected"
+    },
+    {
+      "family": "pecmd",
+      "retrieve_skills": [
+        "execution_anomaly",
+        "execution_artifact_analysis"
+      ],
+      "skills": [
+        "defense_evasion",
+        "discovery_recon",
+        "email_phishing",
+        "execution_artifact_analysis",
+        "exfiltration"
+      ],
+      "skills_for": [
+        "execution_anomaly",
+        "execution_artifact_analysis"
+      ],
+      "status": "selected"
+    },
+    {
+      "family": "rbcmd",
+      "retrieve_skills": [],
+      "skills": [
+        "deleted_file_recovery"
+      ],
+      "skills_for": [],
+      "status": "selected"
+    },
+    {
+      "family": "recmd",
+      "retrieve_skills": [
+        "registry_artifact_analysis"
+      ],
+      "skills": [
+        "deleted_file_recovery",
+        "execution_artifact_analysis",
+        "registry_artifact_analysis",
+        "usb_device_intrusion"
+      ],
+      "skills_for": [
+        "registry_artifact_analysis"
+      ],
+      "status": "selected"
+    },
+    {
+      "family": "sbecmd",
+      "retrieve_skills": [
+        "registry_artifact_analysis"
+      ],
+      "skills": [
+        "registry_artifact_analysis"
+      ],
+      "skills_for": [
+        "registry_artifact_analysis"
+      ],
+      "status": "selected"
+    },
+    {
+      "family": "sqlecmd",
+      "retrieve_skills": [],
+      "skills": [
+        "browser_artifact_analysis"
+      ],
+      "skills_for": [],
+      "status": "selected"
+    },
+    {
+      "family": "srumecmd",
+      "retrieve_skills": [],
+      "skills": [
+        "execution_artifact_analysis"
+      ],
+      "skills_for": [],
+      "status": "selected"
+    },
+    {
+      "family": "suzaku",
+      "retrieve_skills": [
+        "windows_event_log_analysis"
+      ],
+      "skills": [
+        "windows_event_log_analysis"
+      ],
+      "skills_for": [
+        "windows_event_log_analysis"
+      ],
+      "status": "selected"
+    },
+    {
+      "family": "thumbcache",
+      "retrieve_skills": [],
+      "skills": [
+        "browser_artifact_analysis"
+      ],
+      "skills_for": [],
+      "status": "selected"
+    },
+    {
+      "family": "tshark-flows",
+      "retrieve_skills": [
+        "network_session_analysis"
+      ],
+      "skills": [
+        "network_session_analysis"
+      ],
+      "skills_for": [
+        "network_session_analysis"
+      ],
+      "status": "selected"
+    },
+    {
+      "family": "usbdeview",
+      "retrieve_skills": [],
+      "skills": [
+        "usb_device_intrusion"
+      ],
+      "skills_for": [],
+      "status": "selected"
+    },
+    {
+      "family": "vol",
+      "retrieve_skills": [
+        "memory_process_analysis",
+        "evidence_acquisition_handling"
+      ],
+      "skills": [
+        "evidence_acquisition_handling",
+        "linux_compromise",
+        "macos_forensics",
+        "malware_analysis_triage",
+        "memory_process_analysis"
+      ],
+      "skills_for": [
+        "memory_process_analysis",
+        "evidence_acquisition_handling"
+      ],
+      "status": "selected"
+    },
+    {
+      "family": "wxtcmd",
+      "retrieve_skills": [],
+      "skills": [
+        "browser_artifact_analysis",
+        "execution_artifact_analysis"
+      ],
+      "skills_for": [],
+      "status": "selected"
+    },
+    {
+      "family": "yara",
+      "retrieve_skills": [],
+      "skills": [
+        "malware_analysis_triage"
+      ],
+      "skills_for": [],
+      "status": "selected"
+    },
+    {
+      "family": "zircolite",
+      "retrieve_skills": [
+        "windows_event_log_analysis"
+      ],
+      "skills": [
+        "windows_event_log_analysis"
+      ],
+      "skills_for": [
+        "windows_event_log_analysis"
+      ],
+      "status": "selected"
+    }
+  ]
+}
