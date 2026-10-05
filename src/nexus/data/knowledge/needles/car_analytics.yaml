@@ -1,444 +1,2195 @@
-# MITRE CAR (Cyber Analytics Repository) — WP 3.27c.
-# Structured detection logic with data model fields, pseudocode, and
-# ATT&CK mapping. Each analytic tells the scribe which fields to search
-# and what combinations indicate malice.
-
-version: 1
-description: >
-  MITRE CAR analytics — detection logic, data model fields, pseudocode,
-  and ATT&CK mapping for each technique. The missing link between
-  "what to search" (needles) and "what fields to search" (structured
-  detection).
-source: "https://car.mitre.org/"
-
+# WO-KL2b - MITRE CAR, imported from a pinned snapshot.
+# Generator: devtools/knowledge/car_import.py. Do not edit by hand.
+version: 2
+generated: '2026-10-05T07:50:52+00:00'
+generator: devtools/knowledge/car_import.py
+description: MITRE Cyber Analytics Repository, imported from the pinned snapshot. Do not edit by hand - re-run the importer.
+source: https://github.com/mitre-attack/car
+source_version: 1b922fe1527d956e222a99473472e594f10f610b
+source_key: analytics/*.yaml
+skipped: []
 packs:
-  # --- Process Execution ---
-  - analytic: "CAR-2014-11-004"
-    name: "Process Creation with Command Line"
-    technique: "T1059"
-    data_model: ["Image", "CommandLine", "ParentImage", "User", "ProcessId", "ProcessGuid"]
-    pseudocode: "process_create where CommandLine contains suspicious_flags"
-    needles: ["Image", "CommandLine", "ParentImage", "ProcessId"]
-    field_meanings:
-      Image: "Full path to the executable"
-      CommandLine: "Command line arguments passed to the process"
-      ParentImage: "Full path to the parent process executable"
-      User: "Security context (user account)"
-      ProcessId: "Process ID"
-      ProcessGuid: "Unique process GUID for correlation"
-    caveats:
-      - "CommandLine alone is weak; combine with ParentImage for parent-child context"
-      - "Legitimate admin tools use the same processes; require suspicious flags or unusual parents"
+- analytic: CAR-2013-01-002
+  name: Autorun Differences
+  technique: T1543
+  techniques:
+  - T1037
+  - T1037.001
+  - T1053
+  - T1053.005
+  - T1112
+  - T1543
+  - T1543.003
+  - T1546
+  - T1546.001
+  - T1546.003
+  - T1546.008
+  - T1546.010
+  - T1547
+  - T1547.001
+  - T1547.004
+  - T1547.010
+  - T1574
+  - T1574.007
+  - T1574.008
+  - T1574.009
+  - T1574.010
+  - T1574.011
+  tactics:
+  - TA0002
+  - TA0003
+  - TA0004
+  data_model: []
+  description: 'The Sysinternals tool [Autoruns](../sensors/autoruns) checks the registry and file system for known identify persistence mechanisms. It will output any tools identified, including built-in or added-on Microsoft functionality and third party software. Many of these locations are known by adversaries and used to obtain [Persistence](https://attack.mitre.org/tactics/TA0003). Running Autoruns periodically in an environment makes it possible to collect and monitor its output for differences, which may include the removal or addition of persistent tools. Depending on the persistence mechanism and location, legitimate software may be more likely to make changes than an adversary tool. Thus, this analytic may result in significant noise in a highly dynamic environment. While Autoruns is a convenient method to scan for programs using persistence mechanisms its scanning nature does not conform well to streaming based analytics. This analytic could be replaced with one that draws from
+    sensors that collect registry and file information if streaming analytics are desired.
 
-  - analytic: "CAR-2014-11-005"
-    name: "Process Termination"
-    technique: "T1562.001"
-    data_model: ["Image", "ProcessId", "ProcessGuid", "User", "ExitCode"]
-    pseudocode: "process_terminate where Image in security_tools"
-    needles: ["Image", "ProcessId", "ExitCode"]
-    field_meanings:
-      Image: "Full path to the terminated process"
-      ProcessId: "Process ID of terminated process"
-      User: "Security context"
-      ExitCode: "Exit code (0=normal, non-zero=error/kill)"
-    caveats:
-      - "Normal process termination is common; require security tool names or /f flag"
 
-  - analytic: "CAR-2014-11-007"
-    name: "Remote Thread Creation"
-    technique: "T1055"
-    data_model: ["SourceImage", "TargetImage", "SourceProcessId", "TargetProcessId", "ThreadId"]
-    pseudocode: "remote_thread_create where SourceImage != TargetImage"
-    needles: ["SourceImage", "TargetImage", "SourceProcessId", "TargetProcessId"]
-    field_meanings:
-      SourceImage: "Process that created the remote thread"
-      TargetImage: "Process that received the remote thread"
-      SourceProcessId: "PID of the source process"
-      TargetProcessId: "PID of the target process"
-    caveats:
-      - "Remote threads are used by legitimate tools (debuggers, profilers); require unsigned SourceImage or unusual TargetImage"
+    Utilizes the Sysinternals autoruns tool (ignoring validated Microsoft entries). Primarily not a detection analytic by itsel'
+  pseudocode: ''
+  source_key: analytics/CAR-2013-01-002.yaml
+- analytic: CAR-2013-01-003
+  name: SMB Events Monitoring
+  technique: T1039
+  techniques:
+  - T1021
+  - T1021.002
+  - T1039
+  tactics:
+  - TA0008
+  - TA0009
+  data_model:
+  - flow/message/dest_port
+  - flow/message/proto_info
+  description: '[Server Message Block](https://en.wikipedia.org/wiki/Server_Message Block) (SMB) is used by Windows to allow for file, pipe, and printer sharing over port 445/tcp. It allows for enumerating, and reading from and writing to file shares for a remote computer. Although it is heavily used by Windows servers for legitimate purposes and by users for file and printer sharing, many adversaries also use SMB to achieve [Lateral Movement](https://attack.mitre.org/tactics/TA0008). Looking at this activity more closely to obtain an adequate sense of situational awareness may make it possible to detect adversaries moving between hosts in a way that deviates from normal activity. Because SMB traffic is heavy in many environments, this analytic may be difficult to turn into something that can be used to quickly detect an APT. In some cases, it may make more sense to run this analytic in a forensic fashion. Looking through and filtering its output after an intrusion has been discovered may
+    be helpful in identifying the scope of compromise.
 
-  - analytic: "CAR-2014-11-008"
-    name: "Process Access"
-    technique: "T1003"
-    data_model: ["SourceImage", "TargetImage", "SourceProcessId", "TargetProcessId", "GrantedAccess", "CallTrace"]
-    pseudocode: "process_access where TargetImage == 'lsass.exe' and GrantedAccess contains '0x1010'"
-    needles: ["SourceImage", "TargetImage", "GrantedAccess", "CallTrace"]
-    field_meanings:
-      SourceImage: "Process requesting access"
-      TargetImage: "Process being accessed"
-      GrantedAccess: "Access rights requested (0x1010=VM_READ, 0x1410=QUERY_INFORMATION+VM_READ)"
-      CallTrace: "Call stack of the access request"
-    caveats:
-      - "EDR/AV legitimately access LSASS; require non-standard access rights or unsigned SourceImage"
 
-  # --- Authentication ---
-  - analytic: "CAR-2016-04-003"
-    name: "User Logon"
-    technique: "T1078"
-    data_model: ["EventID", "User", "LogonType", "SourceAddress", "DestinationAddress", "LogonProcess", "AuthenticationPackage", "Status"]
-    pseudocode: "logon where LogonType == 10 and SourceAddress not in known_hosts"
-    needles: ["4624", "4625", "4648", "4672", "4768", "4769", "4770", "4771", "4776"]
-    field_meanings:
-      EventID: "Windows event ID (4624=logon, 4625=failed, 4648=explicit credentials, 4672=special privileges)"
-      LogonType: "Type of logon (2=interactive, 3=network, 4=batch, 5=service, 7=unlock, 8=network cleartext, 9=new credentials, 10=remote interactive, 11=cached interactive)"
-      SourceAddress: "Source IP/hostname of the logon"
-      DestinationAddress: "Target IP/hostname"
-      LogonProcess: "Process that performed the logon (NTLM, Kerberos, Negotiate)"
-      AuthenticationPackage: "Authentication package used"
-      Status: "Logon status code"
-    caveats:
-      - "LogonType 10 (RDP) is common for admins; require unusual SourceAddress or time"
-      - "4625 alone is common; require pattern (multiple failures then success) or unusual source"
+    ### Output Description
 
-  - analytic: "CAR-2016-04-004"
-    name: "Account Management"
-    technique: "T1136"
-    data_model: ["EventID", "User", "TargetUser", "TargetDomain", "SourceAddress", "CallerProcess"]
-    pseudocode: "account_management where EventID in (4720, 4728, 4732, 4756)"
-    needles: ["4720", "4722", "4723", "4724", "4725", "4726", "4727", "4728", "4729", "4730", "4731", "4732", "4733", "4734", "4735", "4737", "4738", "4740", "4741", "4742", "4743", "4754", "4755", "4756", "4757", "4758", "4765", "4766", "4767", "4780", "4781", "4794", "4798", "4799"]
-    field_meanings:
-      EventID: "Account management event ID"
-      User: "Account that performed the action"
-      TargetUser: "Account that was modified"
-      TargetDomain: "Domain of the target account"
-      CallerProcess: "Process that performed the action"
-    caveats:
-      - "Account creation is common during provisioning; require unusual time, unusual caller, or rapid creation"
 
-  - analytic: "CAR-2016-04-005"
-    name: "Privilege Escalation"
-    technique: "T1078"
-    data_model: ["EventID", "User", "Privileges", "ProcessId", "ProcessName", "SourceAddress"]
-    pseudocode: "privilege_escalation where EventID == 4672 and Privileges contains sensitive_privileges"
-    needles: ["4672", "4673", "4674", "SeDebugPrivilege", "SeImpersonatePrivilege", "SeAssignPrimaryTokenPrivilege", "SeBackupPrivilege", "SeRestorePrivilege", "SeTakeOwnershipPrivilege", "SeLoadDriverPrivilege", "SeSystemtimePrivilege", "SeShutdownPrivilege", "SeAuditPrivilege", "SeChangeNotifyPrivilege", "SeUndockPrivilege", "SeIncreaseWorkingSetPrivilege", "SeTimeZonePrivilege", "SeCreateSymbolicLinkPrivilege", "SeDelegateSessionUserImpersonatePrivilege"]
-    field_meanings:
-      EventID: "Privilege use event ID (4672=special privileges assigned, 4673=privileged service called, 4674=privileged operation attempted)"
-      User: "Account that received the privileges"
-      Privileges: "List of privileges assigned"
-      ProcessId: "Process that requested the privileges"
-      ProcessName: "Name of the process"
-    caveats:
-      - "4672 is common for services; require unusual process names or privilege combinations"
+    The source, destination, content, and time of each event.'
+  pseudocode: 'flow = search Flow:Message
 
-  # --- Persistence ---
-  - analytic: "CAR-2014-11-001"
-    name: "Service Creation"
-    technique: "T1543.003"
-    data_model: ["EventID", "ServiceName", "ServiceFileName", "ServiceType", "ServiceStartType", "ServiceAccount", "ServiceDll"]
-    pseudocode: "service_create where ServiceFileName not in known_services"
-    needles: ["7045", "4697", "ServiceName", "ServiceFileName", "ImagePath", "ServiceStartType", "ServiceAccount"]
-    field_meanings:
-      EventID: "Service creation event ID (7045=system, 4697=security)"
-      ServiceName: "Name of the created service"
-      ServiceFileName: "Path to the service binary"
-      ServiceType: "Type of service (kernel driver, file system driver, etc.)"
-      ServiceStartType: "Start type (auto, demand, disabled)"
-      ServiceAccount: "Account the service runs as"
-      ServiceDll: "Service DLL path (for svchost services)"
-    caveats:
-      - "Service creation is common during software install; require unsigned binary or unusual path"
+    smb_events = filter flow where (dest_port == "445" and protocol == "smb")
 
-  - analytic: "CAR-2014-11-002"
-    name: "Registry Modification"
-    technique: "T1547.001"
-    data_model: ["EventID", "TargetObject", "Details", "ProcessName", "ProcessId", "User"]
-    pseudocode: "registry_event where TargetObject contains 'Run' and Details contains suspicious_binary"
-    needles: ["4657", "4656", "4663", "4660", "4661", "4662", "Run", "RunOnce", "Winlogon", "Userinit", "Shell", "StartupApproved", "RunMRU", "Start Menu\\Programs\\Startup"]
-    field_meanings:
-      EventID: "Registry event ID (4657=value modified, 4656=handle requested, 4663=access attempt, 4660=object deleted, 4661=handle requested, 4662=operation performed)"
-      TargetObject: "Registry key path"
-      Details: "Value name and data"
-      ProcessName: "Process that modified the registry"
-      ProcessId: "PID of the process"
-      User: "Account that performed the modification"
-    caveats:
-      - "Registry modification is common; require Run/RunOnce keys or suspicious binary paths"
+    smb_events.file_name = smb_events.proto_info.file_name
 
-  - analytic: "CAR-2014-11-003"
-    name: "File Creation"
-    technique: "T1059"
-    data_model: ["EventID", "TargetFilename", "ProcessName", "ProcessId", "User", "CreationUtcTime"]
-    pseudocode: "file_create where TargetFilename contains suspicious_extensions"
-    needles: ["4663", "4656", "11", "15", "TargetFilename", ".exe", ".dll", ".ps1", ".bat", ".cmd", ".vbs", ".js", ".hta", ".lnk", ".url", ".scf", ".inf", ".reg", ".msi", ".msp", ".mst", ".cab", ".iso", ".img", ".vhd", ".vhdx", ".zip", ".rar", ".7z", ".tar", ".gz"]
-    field_meanings:
-      EventID: "File creation event ID (4663=access, 4656=handle, 11=file created, 15=file stream created)"
-      TargetFilename: "Full path to the created file"
-      ProcessName: "Process that created the file"
-      ProcessId: "PID of the process"
-      CreationUtcTime: "UTC timestamp of file creation"
-    caveats:
-      - "File creation is constant; require suspicious extensions or unusual paths (temp, appdata, public)"
+    output smb_write'
+  source_key: analytics/CAR-2013-01-003.yaml
+- analytic: CAR-2013-02-003
+  name: Processes Spawning cmd.exe
+  technique: T1059
+  techniques:
+  - T1059
+  - T1059.003
+  tactics:
+  - TA0002
+  data_model:
+  - process/create/exe
+  - process/create/parent_exe
+  description: The Windows [Command Prompt](https://en.wikipedia.org/wiki/cmd.exe) (`cmd.exe`) is a utility that provides a command line interface to Windows operating systems. It provides the ability to run additional programs and also has several built-in commands such as `dir`, `copy`, `mkdir`, and `type`, as well as batch scripts (`.bat`). Typically, when a user runs a command prompt, the parent process is `explorer.exe` or another instance of the prompt. There may be automated programs, logon scripts, or administrative tools that launch instances of the command prompt in order to run scripts or other built-in commands. Spawning the process `cmd.exe` from certain parents may be more indicative of malice. For example, if Adobe Reader or Outlook launches a command shell, this may suggest that a malicious document has been loaded and should be investigated. Thus, by looking for abnormal parent processes of `cmd.exe`, it may be possible to detect adversaries.
+  pseudocode: 'process = search Process:Create
 
-  # --- Network ---
-  - analytic: "CAR-2014-11-006"
-    name: "Network Connection"
-    technique: "T1071"
-    data_model: ["EventID", "SourceIp", "DestinationIp", "SourcePort", "DestinationPort", "Protocol", "ProcessName", "ProcessId", "User"]
-    pseudocode: "network_connection where DestinationPort in suspicious_ports or DestinationIp in known_bad"
-    needles: ["5156", "5158", "3", "SourceIp", "DestinationIp", "SourcePort", "DestinationPort", "Protocol", "ProcessName"]
-    field_meanings:
-      EventID: "Network event ID (5156=connection allowed, 5158=bind, 3=network connection)"
-      SourceIp: "Source IP address"
-      DestinationIp: "Destination IP address"
-      SourcePort: "Source port"
-      DestinationPort: "Destination port"
-      Protocol: "Protocol (TCP, UDP, ICMP)"
-      ProcessName: "Process that initiated the connection"
-      ProcessId: "PID of the process"
-    caveats:
-      - "Network connections are constant; require unusual ports, known-bad IPs, or suspicious process names"
+    cmd = filter process where (exe == "cmd.exe")
 
-  - analytic: "CAR-2016-04-001"
-    name: "DNS Query"
-    technique: "T1071.004"
-    data_model: ["EventID", "QueryName", "QueryType", "QueryResult", "SourceIp", "ProcessName", "ProcessId"]
-    pseudocode: "dns_query where QueryName in known_bad_domains or QueryType in suspicious_types"
-    needles: ["22", "QueryName", "QueryType", "QueryResult", "SourceIp", "ProcessName"]
-    field_meanings:
-      EventID: "DNS event ID (22=query results)"
-      QueryName: "Domain name queried"
-      QueryType: "DNS record type (A, AAAA, CNAME, TXT, MX, NS, PTR, SRV)"
-      QueryResult: "DNS query result (IP addresses)"
-      SourceIp: "Source IP that made the query"
-      ProcessName: "Process that made the query"
-    caveats:
-      - "DNS queries are constant; require DGA patterns, known-bad domains, or TXT records (data exfil)"
+    output cmd'
+  source_key: analytics/CAR-2013-02-003.yaml
+- analytic: CAR-2013-02-008
+  name: Simultaneous Logins on a Host
+  technique: T1078
+  techniques:
+  - T1078
+  - T1078.002
+  - T1078.003
+  tactics:
+  - TA0001
+  data_model:
+  - user_session/login/user
+  - user_session/login/hostname
+  description: 'Multiple users logged into a single machine at the same time, or even within the same hour, do not typically occur in networks we have observed.
 
-  # --- File System ---
-  - analytic: "CAR-2016-04-002"
-    name: "File Access"
-    technique: "T1003"
-    data_model: ["EventID", "TargetFilename", "ProcessName", "ProcessId", "User", "AccessMask", "AccessList"]
-    pseudocode: "file_access where TargetFilename contains sensitive_files and AccessMask contains '0x2' (write)"
-    needles: ["4663", "4656", "4658", "4660", "4664", "4670", "4673", "4688", "TargetFilename", "AccessMask", "AccessList"]
-    field_meanings:
-      EventID: "File access event ID (4663=access, 4656=handle, 4658=handle closed, 4660=object deleted, 4664=hard link created, 4670=permissions changed, 4673=privileged service called)"
-      TargetFilename: "Full path to the accessed file"
-      ProcessName: "Process that accessed the file"
-      AccessMask: "Access mask (0x1=read, 0x2=write, 0x4=append, 0x10=delete, 0x20=read_control, 0x40=write_dac, 0x80=write_owner, 0x100=sync, 0x10000=generic_all, 0x20000=generic_execute, 0x40000=generic_write, 0x80000=generic_read)"
-      AccessList: "List of access types requested"
-    caveats:
-      - "File access is constant; require sensitive file paths (SAM, NTDS, SECURITY) or write access to system files"
 
-  # --- Driver / Module ---
-  - analytic: "CAR-2016-04-006"
-    name: "Driver Load"
-    technique: "T1068"
-    data_model: ["EventID", "ImageLoaded", "Signed", "Signature", "SignatureStatus", "ProcessId", "ProcessName"]
-    pseudocode: "driver_load where Signed == false or SignatureStatus != 'Valid'"
-    needles: ["6", "7", "ImageLoaded", "Signed", "Signature", "SignatureStatus"]
-    field_meanings:
-      EventID: "Driver load event ID (6=driver loaded, 7=module loaded)"
-      ImageLoaded: "Full path to the loaded driver/module"
-      Signed: "Whether the driver is signed"
-      Signature: "Signer name"
-      SignatureStatus: "Signature validation status"
-    caveats:
-      - "Driver loads are common; require unsigned drivers or suspicious paths (temp, appdata, user profile)"
+    Logon events are Windows Event Code 4624 for Windows Vista and above, 518 for pre-Vista. Logoff events are 4634 for Windows Vista and above, 538 for pre-Vista.
 
-  # --- Named Pipe ---
-  - analytic: "CAR-2016-04-007"
-    name: "Named Pipe"
-    technique: "T1071.001"
-    data_model: ["EventID", "PipeName", "ProcessName", "ProcessId", "User"]
-    pseudocode: "named_pipe where PipeName in suspicious_pipes"
-    needles: ["17", "18", "PipeName", "ProcessName"]
-    field_meanings:
-      EventID: "Named pipe event ID (17=pipe created, 18=pipe connected)"
-      PipeName: "Name of the named pipe"
-      ProcessName: "Process that created/connected the pipe"
-      ProcessId: "PID of the process"
-    caveats:
-      - "Named pipes are used by legitimate tools (SMB, RPC); require suspicious pipe names (psedsvc, psexesvc, csexec, remcom, paexec)"
+    Logon types 2, 3, 9 and 10 are of interest. For more details see the Logon Types table on Microsoft''s [Audit Logon Events](https://docs.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2003/cc787567(v=ws.10)) page.'
+  pseudocode: 'users_list = search UserSession:Login
 
-  # --- WMI ---
-  - analytic: "CAR-2016-04-008"
-    name: "WMI Event Subscription"
-    technique: "T1546.003"
-    data_model: ["EventID", "Namespace", "Name", "Query", "Consumer", "ProcessName", "ProcessId"]
-    pseudocode: "wmi_subscription where Consumer in suspicious_consumers"
-    needles: ["5861", "19", "20", "21", "Namespace", "Name", "Query", "Consumer", "__EventFilter", "__EventConsumer", "CommandLineEventConsumer", "ActiveScriptEventConsumer", "LogFileEventConsumer", "NTEventLogEventConsumer", "SMTPEventConsumer"]
-    field_meanings:
-      EventID: "WMI event ID (5861=permanent event subscription, 19=filter created, 20=consumer created, 21=consumer bound)"
-      Namespace: "WMI namespace (root\\subscription, root\\cimv2)"
-      Name: "Name of the filter/consumer"
-      Query: "WQL query for the filter"
-      Consumer: "Consumer type (CommandLineEventConsumer, ActiveScriptEventConsumer, etc.)"
-      ProcessName: "Process that created the subscription"
-      ProcessId: "PID of the process"
-    caveats:
-      - "WMI subscriptions are used by legitimate management tools; require CommandLineEventConsumer or ActiveScriptEventConsumer with suspicious commands"
+    users_grouped = group users_list by hostname
 
-  # --- Scheduled Task ---
-  - analytic: "CAR-2016-04-009"
-    name: "Scheduled Task"
-    technique: "T1053.005"
-    data_model: ["EventID", "TaskName", "TaskContent", "User", "ProcessName", "ProcessId"]
-    pseudocode: "scheduled_task where TaskContent contains suspicious_commands"
-    needles: ["4698", "4699", "4700", "4701", "4702", "106", "200", "201", "TaskName", "TaskContent", "User"]
-    field_meanings:
-      EventID: "Scheduled task event ID (4698=created, 4699=deleted, 4700=enabled, 4701=disabled, 4702=updated, 106=registered, 200=started, 201=completed)"
-      TaskName: "Name of the scheduled task"
-      TaskContent: "XML definition of the task (contains command, args, schedule)"
-      User: "Account that created the task"
-      ProcessName: "Process that created the task"
-      ProcessId: "PID of the process"
-    caveats:
-      - "Scheduled tasks are created by Windows and updaters; require non-Microsoft paths or suspicious commands in TaskContent"
+    users_grouped = from users_grouped select min(time) as earliest_time, max(time) as latest_time count(user) as user_count
 
-  # --- Process Injection ---
-  - analytic: "CAR-2016-04-010"
-    name: "Process Injection"
-    technique: "T1055"
-    data_model: ["EventID", "SourceImage", "TargetImage", "SourceProcessId", "TargetProcessId", "StartAddress", "StartModule", "StartFunction"]
-    pseudocode: "process_injection where SourceImage != TargetImage and StartAddress not in TargetImage"
-    needles: ["8", "10", "SourceImage", "TargetImage", "SourceProcessId", "TargetProcessId", "StartAddress", "StartModule", "StartFunction"]
-    field_meanings:
-      EventID: "Process injection event ID (8=create remote thread, 10=process access)"
-      SourceImage: "Process that injected the code"
-      TargetImage: "Process that received the code"
-      SourceProcessId: "PID of the source process"
-      TargetProcessId: "PID of the target process"
-      StartAddress: "Start address of the injected code"
-      StartModule: "Module containing the start address"
-      StartFunction: "Function at the start address"
-    caveats:
-      - "Process injection is used by legitimate tools (debuggers, AV); require unsigned SourceImage or unusual TargetImage"
+    multiple_logins = filter users_grouped where (latest_time - earliest_time <= 1 hour and user_count > 1)
 
-  # --- Token ---
-  - analytic: "CAR-2016-04-011"
-    name: "Token Manipulation"
-    technique: "T1134"
-    data_model: ["EventID", "SourceImage", "TargetImage", "SourceProcessId", "TargetProcessId", "SourceUser", "TargetUser", "LogonId"]
-    pseudocode: "token_manipulation where SourceUser != TargetUser"
-    needles: ["4648", "4672", "4703", "SourceImage", "TargetImage", "SourceUser", "TargetUser", "LogonId"]
-    field_meanings:
-      EventID: "Token event ID (4648=explicit credentials, 4672=special privileges, 4703=token user adjusted)"
-      SourceImage: "Process that manipulated the token"
-      TargetImage: "Process that received the token"
-      SourceUser: "Original user context"
-      TargetUser: "New user context"
-      LogonId: "Logon ID of the token"
-    caveats:
-      - "Token manipulation is used by legitimate tools (UAC, runas); require different SourceUser/TargetUser or unsigned SourceImage"
+    output multiple_logins'
+  source_key: analytics/CAR-2013-02-008.yaml
+- analytic: CAR-2013-02-012
+  name: User Logged in to Multiple Hosts
+  technique: T1078
+  techniques:
+  - T1078
+  - T1078.002
+  - T1078.003
+  tactics:
+  - TA0008
+  data_model: []
+  description: 'Most users use only one or two machines during the normal course of business. User accounts that log in to multiple machines, especially over a short period of time, may be compromised. Remote logins among multiple machines may be an indicator of [Lateral Movement](https://attack.mitre.org/tactics/TA0008).
 
-  # --- PowerShell ---
-  - analytic: "CAR-2016-04-012"
-    name: "PowerShell Script Block"
-    technique: "T1059.001"
-    data_model: ["EventID", "ScriptBlockText", "ScriptBlockId", "Path", "SequenceNumber", "User", "ProcessName", "ProcessId"]
-    pseudocode: "powershell_script where ScriptBlockText contains suspicious_functions"
-    needles: ["4104", "4103", "400", "600", "ScriptBlockText", "ScriptBlockId", "Path", "IEX", "Invoke-Expression", "DownloadString", "FromBase64String", "Invoke-Mimikatz", "Invoke-Shellcode", "Invoke-ReflectivePEInjection", "Invoke-DllInjection", "Invoke-PSInject", "Invoke-TokenManipulation", "Invoke-WmiMethod", "Invoke-Command", "Enter-PSSession", "New-PSSession", "Start-Process", "Start-Job", "Register-ScheduledJob", "Set-ExecutionPolicy", "Bypass", "Unrestricted", "RemoteSigned"]
-    field_meanings:
-      EventID: "PowerShell event ID (4104=script block, 4103=module logging, 400=engine state, 600=provider lifecycle)"
-      ScriptBlockText: "Full text of the script block"
-      ScriptBlockId: "Unique ID of the script block"
-      Path: "Path to the script file"
-      SequenceNumber: "Sequence number of the script block"
-      User: "Account that executed the script"
-      ProcessName: "Process that executed the script"
-      ProcessId: "PID of the process"
-    caveats:
-      - "Script block logging is verbose; require suspicious functions (IEX, DownloadString, Invoke-*) or encoded content"
 
-  # --- Registry ---
-  - analytic: "CAR-2016-04-013"
-    name: "Registry Value Set"
-    technique: "T1547.001"
-    data_model: ["EventID", "TargetObject", "Details", "ValueName", "ProcessName", "ProcessId", "User"]
-    pseudocode: "registry_value_set where TargetObject contains 'Run' and Details contains suspicious_binary"
-    needles: ["4657", "4656", "4663", "TargetObject", "Details", "ValueName", "Run", "RunOnce", "Winlogon", "Userinit", "Shell", "StartupApproved", "RunMRU", "Start Menu\\Programs\\Startup"]
-    field_meanings:
-      EventID: "Registry event ID (4657=value modified, 4656=handle requested, 4663=access attempt)"
-      TargetObject: "Registry key path"
-      Details: "Value data (the binary path or command)"
-      ValueName: "Name of the registry value"
-      ProcessName: "Process that set the value"
-      ProcessId: "PID of the process"
-      User: "Account that set the value"
-    caveats:
-      - "Registry value sets are common; require Run/RunOnce keys or suspicious binary paths in Details"
+    Certain users will likely appear as being logged into several machines and may need to be "whitelisted." Such users would include network admins or user names that are common to many hosts.
 
-  # --- Lateral Movement ---
-  - analytic: "CAR-2016-04-014"
-    name: "SMB Share Access"
-    technique: "T1021.002"
-    data_model: ["EventID", "ShareName", "SourceAddress", "DestinationAddress", "User", "ProcessName", "ProcessId", "AccessMask", "AccessList"]
-    pseudocode: "smb_access where ShareName in ('ADMIN$', 'C$', 'IPC$') and SourceAddress not in known_hosts"
-    needles: ["5140", "5145", "5142", "5143", "5144", "5145", "5168", "ShareName", "SourceAddress", "DestinationAddress", "ADMIN$", "C$", "IPC$", "print$", "netlogon", "sysvol"]
-    field_meanings:
-      EventID: "SMB share event ID (5140=share accessed, 5145=detailed share check, 5142=share added, 5143=share modified, 5144=share deleted, 5168=SPN check)"
-      ShareName: "Name of the accessed share"
-      SourceAddress: "Source IP that accessed the share"
-      DestinationAddress: "Target IP hosting the share"
-      User: "Account that accessed the share"
-      ProcessName: "Process that accessed the share"
-      AccessMask: "Access mask (read, write, delete)"
-      AccessList: "List of access types"
-    caveats:
-      - "ADMIN$/C$/IPC$ are common for admins; require unusual SourceAddress or account"
 
-  # --- Kerberos ---
-  - analytic: "CAR-2016-04-015"
-    name: "Kerberos Ticket"
-    technique: "T1558"
-    data_model: ["EventID", "TargetUserName", "TargetDomainName", "ServiceName", "TicketOptions", "TicketEncryptionType", "IpAddress", "Status"]
-    pseudocode: "kerberos_ticket where ServiceName in suspicious_services or TicketEncryptionType == '0x17' (RC4)"
-    needles: ["4768", "4769", "4770", "4771", "4776", "TargetUserName", "ServiceName", "TicketOptions", "TicketEncryptionType", "IpAddress", "krbtgt", "cifs", "host", "ldap", "http", "mssql", "wsman"]
-    field_meanings:
-      EventID: "Kerberos event ID (4768=TGT requested, 4769=service ticket requested, 4770=service ticket renewed, 4771=pre-auth failed, 4776=credential validation)"
-      TargetUserName: "Account that requested the ticket"
-      TargetDomainName: "Domain of the target account"
-      ServiceName: "Service principal name (SPN)"
-      TicketOptions: "Ticket options (forwardable, renewable, etc.)"
-      TicketEncryptionType: "Encryption type (0x17=RC4, 0x12=AES256)"
-      IpAddress: "IP address that requested the ticket"
-      Status: "Ticket request status"
-    caveats:
-      - "Kerberos tickets are constant; require RC4 encryption (0x17) or unusual SPNs"
+    ### Output Description
 
-  # --- AppLocker ---
-  - analytic: "CAR-2016-04-016"
-    name: "AppLocker"
-    technique: "T1218"
-    data_model: ["EventID", "FileName", "FilePath", "FileHash", "User", "PolicyName", "RuleId", "RuleName"]
-    pseudocode: "applocker where PolicyName == 'Denied' or RuleName in suspicious_rules"
-    needles: ["8004", "8005", "8006", "8007", "FileName", "FilePath", "FileHash", "PolicyName", "RuleId", "RuleName"]
-    field_meanings:
-      EventID: "AppLocker event ID (8004=denied, 8005=allowed, 8006=audit, 8007=packaged app denied)"
-      FileName: "Name of the file"
-      FilePath: "Path to the file"
-      FileHash: "Hash of the file"
-      User: "Account that ran the file"
-      PolicyName: "AppLocker policy name"
-      RuleId: "Rule ID"
-      RuleName: "Rule name"
-    caveats:
-      - "AppLocker events are informative; require Denied policy or suspicious file paths"
 
-  # --- Sysmon ---
-  - analytic: "CAR-2016-04-017"
-    name: "Sysmon Process Create"
-    technique: "T1059"
-    data_model: ["EventID", "Image", "CommandLine", "ParentImage", "ParentCommandLine", "User", "ProcessId", "ProcessGuid", "IntegrityLevel", "Hashes", "FileVersion", "Description", "Product", "Company", "OriginalFileName"]
-    pseudocode: "sysmon_process where Image in suspicious_processes or ParentImage in suspicious_parents"
-    needles: ["1", "Image", "CommandLine", "ParentImage", "ParentCommandLine", "User", "ProcessId", "ProcessGuid", "IntegrityLevel", "Hashes", "FileVersion", "Description", "Product", "Company", "OriginalFileName"]
-    field_meanings:
-      EventID: "Sysmon event ID (1=process create)"
-      Image: "Full path to the process executable"
-      CommandLine: "Command line arguments"
-      ParentImage: "Full path to the parent process"
-      ParentCommandLine: "Parent command line arguments"
-      User: "Security context"
-      ProcessId: "Process ID"
-      ProcessGuid: "Unique process GUID"
-      IntegrityLevel: "Process integrity level (Low, Medium, High, System)"
-      Hashes: "File hashes (MD5, SHA1, SHA256, IMPHASH)"
-      FileVersion: "File version"
-      Description: "File description"
-      Product: "Product name"
-      Company: "Company name"
-      OriginalFileName: "Original filename"
-    caveats:
-      - "Sysmon process create is verbose; require suspicious process names or unusual parent-child relationships"
+    User Name, Machines logged into, the earliest and latest times in which users were logged into the host, the type of logon, and logon ID.'
+  pseudocode: ''
+  source_key: analytics/CAR-2013-02-012.yaml
+- analytic: CAR-2013-03-001
+  name: Reg.exe called from Command Shell
+  technique: T1012
+  techniques:
+  - T1012
+  - T1112
+  - T1547
+  - T1547.001
+  - T1574
+  - T1574.011
+  tactics:
+  - TA0003
+  - TA0004
+  - TA0005
+  - TA0007
+  data_model:
+  - process/create/command_line
+  - process/create/hostname
+  - process/create/exe
+  - process/create/parent_exe
+  - process/create/pid
+  - process/create/ppid
+  description: 'Registry modifications are often essential in establishing persistence via known Windows mechanisms. Many legitimate modifications are done graphically via `regedit.exe` or by using the corresponding channels, or even calling the Registry APIs directly. The built-in utility `reg.exe` provides a [command-line interface](https://en.wikipedia.org/wiki/Command-line_interface) to the registry, so that queries and modifications can be performed from a shell, such as `cmd.exe`. When a user is responsible for these actions, the parent of `cmd.exe` will likely be `explorer.exe`. Occasionally, power users and administrators write scripts that do this behavior as well, but likely from a different process tree. These background scripts must be learned so they can be tuned out accordingly.
+
+
+    ### Output Description
+
+
+    The sequence of processes that resulted in `reg.exe` being started from a shell. That is, a hierarchy that looks like
+
+
+    -   `great-grand_parent.exe`
+
+    -   `grand_parent.exe`
+
+    -   `parent.exe`
+
+    -   `reg.exe`'
+  pseudocode: 'processes = search Process:Create
+
+    reg = filter processes where (exe == "reg.exe" and parent_exe == "cmd.exe")
+
+    cmd = filter processes where (exe == "cmd.exe" and parent_exe != "explorer.exe"")
+
+    reg_and_cmd = join (reg, cmd) where (reg.ppid == cmd.pid and reg.hostname == cmd.hostname)
+
+    output reg_and_cmd'
+  source_key: analytics/CAR-2013-03-001.yaml
+- analytic: CAR-2013-04-002
+  name: Quick execution of a series of suspicious commands
+  technique: T1087
+  techniques:
+  - T1003
+  - T1003.002
+  - T1007
+  - T1010
+  - T1012
+  - T1016
+  - T1018
+  - T1021
+  - T1021.002
+  - T1029
+  - T1033
+  - T1046
+  - T1049
+  - T1053
+  - T1053.002
+  - T1053.005
+  - T1057
+  - T1059
+  - T1059.005
+  - T1069
+  - T1069.001
+  - T1069.002
+  - T1082
+  - T1087
+  - T1087.001
+  - T1087.002
+  - T1098
+  - T1112
+  - T1518
+  - T1518.001
+  - T1543
+  - T1543.003
+  - T1562
+  - T1562.001
+  - T1562.006
+  - T1569
+  - T1569.002
+  - T1574
+  - T1574.011
+  tactics:
+  - TA0002
+  - TA0003
+  - TA0004
+  - TA0005
+  - TA0006
+  - TA0007
+  - TA0008
+  - TA0010
+  data_model:
+  - process/create/hostname
+  - process/create/ppid
+  - process/create/exe
+  description: "Certain commands are frequently used by malicious actors and infrequently used by normal users. By looking for execution of these commands in short periods of time, we can not only see when a malicious user was on the system but also get an idea of what they were doing.\n\n  Commands of interest:\n\n-   arp.exe\n-   at.exe\n-   attrib.exe\n-   cscript.exe\n-   dsquery.exe\n-   hostname.exe\n-   ipconfig.exe\n-   mimikatz.exe\n-   nbstat.exe\n-   net.exe\n-   netsh.exe\n-   nslookup.exe\n-   ping.exe\n-   quser.exe\n-   qwinsta.exe\n-   reg.exe\n-   runas.exe\n-   sc.exe\n-   schtasks.exe\n-   ssh.exe\n-   systeminfo.exe\n-   taskkill.exe\n-   telnet.exe\n-   tracert.exe\n-   wscript.exe\n-   xcopy.exe\n\n### Output Description\n\nThe host on which the commands were executed, the time of execution, and what commands were executed"
+  pseudocode: "processes = search Process:Create\nreg_processes = filter processes where (exe == \"arp.exe\" or exe == \"at.exe\" or exe == \"attrib.exe\"\n or exe == \"cscript.exe\" or exe == \"dsquery.exe\" or exe == \"hostname.exe\"\n or exe == \"ipconfig.exe\" or exe == \"mimikatz.exe\" or exe == \"nbstat.exe\"\n or exe == \"net.exe\" or exe == \"netsh.exe\" or exe == \"nslookup.exe\"\n or exe == \"ping.exe\" or exe == \"quser.exe\" or exe == \"qwinsta.exe\"\n or exe == \"reg.exe\" or exe == \"runas.exe\" or exe == \"sc.exe\"\n or exe == \"schtasks.exe\" or exe == \"ssh.exe\" or exe == \"systeminfo.exe\"\n or exe == \"taskkill.exe\" or exe == \"telnet.exe\" or exe == \"tracert.exe\"\n or exe == \"wscript.exe\" or exe == \"xcopy.exe\")\nreg_grouped = group reg by hostname, ppid where(max time between two events is 30 minutes)\noutput reg_grouped"
+  source_key: analytics/CAR-2013-04-002.yaml
+- analytic: CAR-2013-05-002
+  name: Suspicious Run Locations
+  technique: T1036
+  techniques:
+  - T1036
+  tactics:
+  - TA0005
+  data_model:
+  - process/create/image_path
+  description: 'In Windows, files should never execute out of certain directory locations. Any of these locations may exist for a variety of reasons, and executables may be present in the directory but should not execute. As a result, some defenders make the mistake of ignoring these directories and assuming that a process will never run from one. There are known TTPs that have taken advantage of this fact to go undetected. This fact should inform defenders to monitor these directories more closely, knowing that they should never contain running processes.
+
+
+    Monitors the directories
+
+
+    -   `*:\RECYCLER`
+
+    -   `*:\SystemVolumeInformation`
+
+    -   `%systemroot%\Tasks`
+
+    -   `%systemroot%\debug`'
+  pseudocode: "processes = search Process:Create\nsuspicious_locations = filter process where (\n image_path == \"*:\\RECYCLER\\*\" or\n image_path == \"*:\\SystemVolumeInformation\\*\" or\n image_path == \"%windir%\\Tasks\\*\" or\n image_path == \"%systemroot%\\debug\\*\"\n)\noutput suspicious_locations"
+  source_key: analytics/CAR-2013-05-002.yaml
+- analytic: CAR-2013-05-003
+  name: SMB Write Request
+  technique: T1570
+  techniques:
+  - T1021
+  - T1021.002
+  - T1078
+  - T1078.002
+  - T1078.003
+  - T1570
+  tactics:
+  - TA0005
+  - TA0008
+  data_model:
+  - flow/message/proto_info
+  - flow/message/dest_port
+  description: As described in [CAR-2013-01-003](../CAR-2013-01-003), SMB provides a means of remotely managing a file system. Adversaries often use SMB to move laterally to a host. SMB is commonly used to upload files. It may be used for staging in [Exfiltration](https://attack.mitre.org/tactics/TA0010) or as a [Lateral Movement](https://attack.mitre.org/tactics/TA0008) technique. Unlike SMB Reads, SMB Write requests typically require an additional level of access, resulting in less activity. Focusing on SMB Write activity narrows the field to find techniques that actively change remote hosts, instead of passively reading files.
+  pseudocode: 'flow = search Flow:Message
+
+    smb_write = filter flow where (dest_port == "445" and protocol == "smb.write")
+
+    smb_write.file_name = smb_write.proto_info.file_name
+
+    output smb_write'
+  source_key: analytics/CAR-2013-05-003.yaml
+- analytic: CAR-2013-05-004
+  name: Execution with AT
+  technique: T1053
+  techniques:
+  - T1053
+  - T1053.002
+  tactics:
+  - TA0002
+  - TA0003
+  - TA0004
+  data_model:
+  - process/create/command_line
+  - process/create/exe
+  description: 'In order to gain [persistence](https://attack.mitre.org/tactics/TA0003/), [privilege escalation](https://attack.mitre.org/tactics/TA0004/), or [remote execution](https://attack.mitre.org/tactics/TA0002/), an adversary may use the Windows built-in command AT (at.exe) to [schedule a command](https://attack.mitre.org/techniques/T1053/002) to be run at a specified time, date, and even host. This method has been used by adversaries and administrators alike. Its use may lead to detection of compromised hosts and compromised users if it is used to move laterally.
+
+    The built-in Windows tool schtasks.exe ([CAR-2013-08-001](../CAR-2013-08-001)) offers greater flexibility when creating, modifying, and enumerating tasks. For these reasons, schtasks.exe is more commonly used by administrators, tools/scripts, and power users.'
+  pseudocode: 'process = search Process:Create
+
+    at = filter process where (exe == "at.exe")
+
+    output at'
+  source_key: analytics/CAR-2013-05-004.yaml
+- analytic: CAR-2013-05-005
+  name: SMB Copy and Execution
+  technique: T1021
+  techniques:
+  - T1021
+  - T1021.002
+  - T1078
+  - T1078.002
+  - T1078.003
+  - T1570
+  tactics:
+  - TA0005
+  - TA0008
+  data_model:
+  - process/create/image_path
+  - process/create/proto_info
+  - process/create/hostname
+  description: 'An adversary needs to gain access to other hosts to move throughout an environment. In many cases, this is a twofold process. First, a file is remotely written to a host via an SMB share (detected by [CAR-2013-05-003](../CAR-2013-05-003)). Then, a variety of [Execution](https://attack.mitre.org/tactics/TA0002) techniques can be used to remotely establish execution of the file or script. To detect this behavior, look for files that are written to a host over SMB and then later run directly as a process or in the command line arguments. SMB File Writes and Remote Execution may happen normally in an environment, but the combination of the two behaviors is less frequent and more likely to indicate adversarial activity.
+
+
+    This can possibly extend to more copy protocols in order to widen its reach, or it could be tuned more finely to focus on specific program run locations (e.g. `%SYSTEMROOT%\system32`) to gain a higher detection rate.'
+  pseudocode: "process = search Process:Create\nsmb_write = run Analytic:CAR-2013-05-003\nremote_start = join (smb_write, process) where (\n smb_write.hostname == process.hostname and\n smb_write.file_path == process.image_path\n (smb_write.time < process.time)\n)\noutput remote_start"
+  source_key: analytics/CAR-2013-05-005.yaml
+- analytic: CAR-2013-05-009
+  name: Running executables with same hash and different names
+  technique: T1036
+  techniques:
+  - T1036
+  - T1036.003
+  tactics:
+  - TA0005
+  data_model:
+  - process/create/exe
+  - process/create/md5_hash
+  description: 'Executables are generally not renamed, thus a given hash of an executable should only have ever one name. Identifying instances where multiple process names share the same hash may find cases where tools are copied by attackers to different folders or hosts to [avoid detection](https://attack.mitre.org/tactics/TA0005).
+
+
+    Although this analytic was initially based on MD5 hashes, it is equally applicable to any hashing convention.
+
+
+    ### Output Description
+
+
+    A list of hashes and the different executables associated with each one'
+  pseudocode: index=__your_sysmon_index__ EventCode=1|stats dc(Hashes) as Num_Hashes values(Hashes) as "Hashes" by Image|where Num_Hashes > 1
+  source_key: analytics/CAR-2013-05-009.yaml
+- analytic: CAR-2013-07-001
+  name: Suspicious Arguments
+  technique: T1003
+  techniques:
+  - T1003
+  - T1003.001
+  - T1021
+  - T1105
+  tactics:
+  - TA0006
+  - TA0008
+  - TA0011
+  data_model:
+  - process/create/command_line
+  - process/create/exe
+  description: "Malicious actors may rename built-in commands or external tools, such as those provided by SysInternals, to better [blend in](https://attack.mitre.org/tactics/TA0005) with the environment. In those cases, the file path name is arbitrary and may blend in well with the background. If the arguments are closely inspected, it may be possible to infer what tools are running and understand what an adversary is doing. When any legitimate software shares the same command lines, it must be whitelisted according to the expected parameters.\n\nAny tool of interest with commonly known command line usage can be detecting by command line analysis. Known substrings of command lines include\n\n-   PuTTY\n-   port forwarding `-R * -pw`\n-   secure copy (scp) `-pw * * *@*`\n-   mimikatz `sekurlsa::`\n-   RAR `* -hp *`\n-   Archive`* a *`\n    Additionally, it may be useful to find IP addresses in the command line\n-   `\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}`\n    Logically this analytic\
+    \ makes use of [CAR-2014-03-005](../CAR-2014-03-005)."
+  pseudocode: 'process = search Process:Create
+
+    port_fwd = filter process where (command_line match "-R .* -pw")
+
+    scp = filter process where (command_line match "-pw .* .* .*@.*"
+
+    mimikatz = filter process where (command_line match "sekurlsa")
+
+    rar = filter process where (command_line match " -hp ")
+
+    archive = filter process where (command_line match ".* a .*")
+
+    ip_addr = filter process where (command_line match \d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})
+
+
+    output port_fwd, scp, mimikatz, rar, archive, ip_addr'
+  source_key: analytics/CAR-2013-07-001.yaml
+- analytic: CAR-2013-07-002
+  name: RDP Connection Detection
+  technique: T1021
+  techniques:
+  - T1021
+  - T1021.001
+  tactics:
+  - TA0008
+  data_model:
+  - flow/end/dest_port
+  - flow/start/dest_ip
+  - flow/start/dest_port
+  - flow/start/src_ip
+  description: 'The [Remote Desktop Protocol](https://attack.mitre.org/techniques/T1021/001) (RDP), built in to Microsoft operating systems, allows a user to remotely log in to the desktop of another host. It allows for interactive access of the running windows, and forwards key presses, mouse clicks, etc. Network administrators, power users, and end-users may use RDP for day-to-day operations. From an adversary''s perspective, RDP provides a means to [laterally move](https://attack.mitre.org/tactics/TA0008) to a new host. Determining which RDP connections correspond to adversary activity can be a difficult problem in highly dynamic environments, but will be useful in identifying the scope of a compromise.
+
+
+    Remote Desktop can be detected in several ways
+
+
+    -   Network connections to port 3389/tcp (assuming use of the default port)
+
+    -   Packet capture analysis
+
+    -   Windows security logs (Event ID 4624, 4634, 4647, 4778)
+
+    -   Detecting network connections from `mstsc.exe`
+
+    -   Execution of the process `rdpclip.exe`
+
+    -   Runs as the clipboard manager on the RDP target if clipboard sharing is enabled
+
+
+    ### Output Description
+
+
+    The time of the Connection, the source, the destination, and the user name used'
+  pseudocode: 'flow_start = search Flow:Start
+
+    flow_end = search Flow:End
+
+    rdp_start = filter flow_start where (port == "3389")
+
+    rdp_end = filter flow_start where (port == "3389")
+
+    rdp = group flow_start, flow_end by src_ip, src_port, dest_ip, dest_port
+
+    output rdp'
+  source_key: analytics/CAR-2013-07-002.yaml
+- analytic: CAR-2013-07-005
+  name: Command Line Usage of Archiving Software
+  technique: T1560
+  techniques:
+  - T1560
+  - T1560.001
+  tactics:
+  - TA0010
+  data_model:
+  - process/create/command_line
+  description: 'Before [exfiltrating data](https://attack.mitre.org/tactics/TA0010) that an adversary has [collected](https://attack.mitre.org/tactics/TA0009), it is very likely that a [compressed archive](https://attack.mitre.org/techniques/T1560) will be created, so that transfer times are minimized and fewer files are transmitted. There is variety between the tools used to compress data, but the command line usage and context of archiving tools, such as ZIP, RAR, and 7ZIP, should be monitored.
+
+
+    In addition to looking for RAR or 7z program names, command line usage of 7Zip or RAR can be detected with the flag usage of "`\* a \*`". This is helpful, as adversaries may change program names.'
+  pseudocode: 'processes = search Process:Create
+
+    rar_argument = filter processes where (command_line == "* a *")
+
+    output rar_argument'
+  source_key: analytics/CAR-2013-07-005.yaml
+- analytic: CAR-2013-08-001
+  name: Execution with schtasks
+  technique: T1053
+  techniques:
+  - T1053
+  - T1053.005
+  tactics:
+  - TA0003
+  data_model:
+  - process/create/exe
+  - process/create/command_line
+  description: The Windows built-in tool `schtasks.exe` provides the creation, modification, and running of [scheduled tasks](https://attack.mitre.org/techniques/T1053) on a local or remote computer. It is provided as a more flexible alternative to `at.exe`, described in [CAR-2013-05-004](../CAR-2013-05-004). Although used by adversaries, the tool is also legitimately used by administrators, scripts, and software configurations. The scheduled tasks tool can be used to gain [Persistence](https://attack.mitre.org/tactics/TA0003) and can be used in combination with a [Lateral Movement](https://attack.mitre.org/tactics/TA0008) technique to remotely gain [execution](https://attack.mitre.org/tactics/TA0002). Additionally, the command has parameters to specify the user and password responsible for creating the task, as well as the user and password combination that the task will run as. The `/s` flag specifies the remote system on which the task should be scheduled, usually indicating [Lateral
+    Movement](https://attack.mitre.org/tactics/TA0008).
+  pseudocode: 'process = search Process:Create
+
+    schtasks = filter process where (exe == "schtasks.exe")
+
+    output schtasks'
+  source_key: analytics/CAR-2013-08-001.yaml
+- analytic: CAR-2013-09-003
+  name: SMB Session Setups
+  technique: T1187
+  techniques:
+  - T1187
+  tactics:
+  - TA0006
+  data_model:
+  - flow/message/dest_port
+  - flow/message/proto_info
+  - flow/message/protocol
+  description: 'Account usage within SMB can be used to identify compromised credentials, and the hosts accessed with them.
+
+
+    This analytic monitors SMB activity that deals with user activity rather than file activity.'
+  pseudocode: 'flow = search Flow:Message
+
+    smb_setup = filter flow where (dest_port == 445 and protocol == smb.setup)
+
+    smb_setup.user = smb_write.proto_info.user_name
+
+    smb_setup.target_host = smb_write.proto_info.hostname
+
+    output smb_write'
+  source_key: analytics/CAR-2013-09-003.yaml
+- analytic: CAR-2013-09-005
+  name: Service Outlier Executables
+  technique: T1543
+  techniques:
+  - T1543
+  - T1543.003
+  tactics:
+  - TA0003
+  data_model:
+  - process/create/parent_image_path
+  description: New executables that are started as a service are suspicious. This analytic looks for anomalous service executables.
+  pseudocode: 'processes = search Process:Create
+
+    services = filter processes where (parent_image_path == "C:\Windows\System32\services.exe")
+
+    historic_services = filter services (where timestamp < now - 1 day AND timestamp > now - 1 day)
+
+    current_services = filter services (where timestamp >= now - 1 day)
+
+    new_services = historic_services - current_services
+
+    output new_services'
+  source_key: analytics/CAR-2013-09-005.yaml
+- analytic: CAR-2013-10-001
+  name: User Login Activity Monitoring
+  technique: T1021
+  techniques:
+  - T1021
+  - T1021.001
+  - T1078
+  - T1078.002
+  - T1078.003
+  tactics:
+  - TA0005
+  - TA0008
+  data_model: []
+  description: 'Monitoring logon and logoff events for hosts on the network is very important for situational awareness. This information can be used as an indicator of unusual activity as well as to corroborate activity seen elsewhere.
+
+
+    Could be applied to a number of different types of monitoring depending on what information is desired. Some use cases include monitoring for all remote connections and building login timelines for users.
+
+    Logon events are Windows Event Code 4624 for Windows Vista and above, 518 for pre-Vista. Logoff events are 4634 for Windows Vista and above, 538 for pre-Vista.
+
+
+    ### Output Description
+
+
+    The time of login events for distinct users on individual systems'
+  pseudocode: "logon_events = search User_Session:Login\nfiltered_logons = filter logon_events where (\n  user NOT IN TOP30(user))\noutput filtered_logons"
+  source_key: analytics/CAR-2013-10-001.yaml
+- analytic: CAR-2013-10-002
+  name: DLL Injection via Load Library
+  technique: T1055
+  techniques:
+  - T1055
+  - T1055.001
+  - T1548
+  - T1548.002
+  tactics:
+  - TA0004
+  - TA0005
+  data_model:
+  - thread/remote_create/src_pid
+  - thread/remote_create/start_function
+  description: 'Microsoft Windows allows for processes to remotely create threads within other processes of the same privilege level. This functionality is provided via the Windows API [CreateRemoteThread](https://msdn.microsoft.com/en-us/library/windows/desktop/ms682437.aspx). Both Windows and third-party software use this ability for legitimate purposes. For example, the Windows process [csrss.exe](https://en.wikipedia.org/wiki/Client/Server_Runtime_Subsystem) creates threads in programs to send signals to registered callback routines. Both adversaries and host-based security software use this functionality to [inject DLLs](https://attack.mitre.org/techniques/T1055), but for very different purposes. An adversary is likely to inject into a program to [evade defenses](https://attack.mitre.org/tactics/TA0005) or [bypass User Account Control](https://attack.mitre.org/techniques/T1548/002), but a security program might do this to gain increased monitoring of API calls. One of the most common
+    methods of [DLL Injection](https://attack.mitre.org/techniques/T1055) is through the Windows API [LoadLibrary](https://msdn.microsoft.com/en-us/library/windows/desktop/ms684175.aspx).
+
+
+    -   Allocate memory in the '
+  pseudocode: 'remote_thread = search Thread:RemoteCreate
+
+    remote_thread = filter (start_function == "LoadLibraryA" or start_function == "LoadLibraryW")
+
+    remote_thread = filter (src_image_path != "C:\Path\To\TrustedProgram.exe")
+
+
+    output remote_thread'
+  source_key: analytics/CAR-2013-10-002.yaml
+- analytic: CAR-2014-02-001
+  name: Service Binary Modifications
+  technique: T1543
+  techniques:
+  - T1543
+  - T1543.003
+  - T1569
+  - T1569.002
+  - T1574
+  - T1574.010
+  tactics:
+  - TA0002
+  - TA0003
+  - TA0004
+  data_model:
+  - file/create/file_path
+  - file/create/image_path
+  - process/create/image_path
+  - process/create/parent_exe
+  description: 'Adversaries may modify the binary file for an existing service to achieve [Persistence](https://attack.mitre.org/tactics/TA0003) while potentially [evading defenses](https://attack.mitre.org/tactics/TA0005). If a newly created or modified runs as a service, it may indicate APT activity. However, services are frequently installed by legitimate software. A well-tuned baseline is essential to differentiating between benign and malicious service modifications.
+
+
+    ### Output Description
+
+
+    The Service Name and approximate time in which changes occurred on each host'
+  pseudocode: "legitimate_installers = [\"C:\\windows\\system32\\msiexec.exe\", \"C:\\windows\\syswow64\\msiexec.exe\", ...]\n\nfile_change = search File:Create,Modify\nprocess = search Process:Create\nservice_process = filter processes where (parent_exe == \"services.exe\")\nmodified_service = join (search, filter) where (\n file_change.time < service_process.time and\n file_change.file_path == service_process.image_path\n)\n\nmodified_service = filter modified_service where (modified_service.file_change.image_path not in legitimate_installers)\noutput modified_service"
+  source_key: analytics/CAR-2014-02-001.yaml
+- analytic: CAR-2014-03-001
+  name: SMB Write Request - NamedPipes
+  technique: T1570
+  techniques:
+  - T1570
+  tactics:
+  - TA0008
+  data_model:
+  - flow/message/proto_info
+  - flow/start/dest_port
+  description: 'An SMB write can be an indicator of lateral movement, especially when combined with other information such as execution of that written file. Named pipes are a subset of SMB write requests. Named pipes such as msftewds may not be alarming; however others, such as lsarpc, may.
+
+
+    Monitoring SMB write requests still creates some noise, particulary with named pipes. As a result, SMB is now split between writing named pipes and writing other files.'
+  pseudocode: 'flow = search Flow:Message
+
+    smb_write = filter flow where (dest_port == "445" and protocol == "smb.write_pipe")
+
+    smb_write.pipe_name = smb_write.proto_info.pipe_name
+
+    output smb_write'
+  source_key: analytics/CAR-2014-03-001.yaml
+- analytic: CAR-2014-03-005
+  name: Remotely Launched Executables via Services
+  technique: T1543
+  techniques:
+  - T1543
+  - T1543.003
+  - T1569
+  - T1569.002
+  tactics:
+  - TA0002
+  - TA0003
+  data_model:
+  - flow/start/pid
+  - process/create/parent_exe
+  - process/create/pid
+  description: 'There are several ways to cause code to [execute](https://attack.mitre.org/tactics/TA0002) on a remote host. One of the most common methods is via the Windows [Service Control Manager](https://en.wikipedia.org/wiki/Service_Control_Manager) (SCM), which allows authorized users to remotely create and modify services. Several tools, such as [PsExec](https://attack.mitre.org/software/S0029), use this functionality.
+
+
+    When a client remotely communicates with the Service Control Manager, there are two observable behaviors. First, the client connects to the [RPC Endpoint Mapper](../CAR-2014-05-001) over 135/tcp. This handles authentication, and tells the client what port the endpoint—in this case the SCM—is listening on. Then, the client connects directly to the listening port on `services.exe`. If the request is to start an existing service with a known command line, the the SCM process will run the corresponding command.
+
+
+    This compound behavior can be detected by looking for `services.exe` receiving a network connection and immediately spawning a child process.'
+  pseudocode: "process = search Process:Create\nflow = search Flow:Start\nservice = filter process where (parent_exe == \"services.exe\")\nremote_start = join (flow, service ) where (\n flow.hostname == service.hostname and\n flow.pid == service.pid and\n (flow.time < service.time < flow.time + 1 second)\n)\noutput remote_start"
+  source_key: analytics/CAR-2014-03-005.yaml
+- analytic: CAR-2014-03-006
+  name: RunDLL32.exe monitoring
+  technique: T1218
+  techniques:
+  - T1218
+  - T1218.011
+  tactics:
+  - TA0005
+  data_model:
+  - process/create/exe
+  - process/create/command_line
+  description: Adversaries may find it necessary to use [Dyanamic-link Libraries](https://msdn.microsoft.com/en-us/library/windows/desktop/ms682589.aspx) (DLLs) to [evade defenses](https://attack.mitre.org/tactics/TA0005). One way these DLLs can be "executed" is through the use of the built-in Windows utility [RunDLL32](https://attack.mitre.org/techniques/T1218.011), which allows a user to execute code in a DLL, providing the name and optional arguments to an exported entry point. Windows uses RunDll32 legitimately in its normal operation, but with a proper baseline and understanding of the environment, monitoring its usage could be fruitful.
+  pseudocode: 'process = search Process:Create
+
+    rundll32 = filter process where (exe == "rundll32.exe")
+
+    output rundll32'
+  source_key: analytics/CAR-2014-03-006.yaml
+- analytic: CAR-2014-04-003
+  name: Powershell Execution
+  technique: T1059
+  techniques:
+  - T1059
+  - T1059.001
+  tactics:
+  - TA0002
+  - TA0005
+  data_model:
+  - process/create/exe
+  - process/create/parent_exe
+  description: '[PowerShell](https://attack.mitre.org/techniques/T1059/001/) is a scripting environment included with Windows that is used by both attackers and administrators. Execution of PowerShell scripts in most Windows versions is opaque and not typically secured by antivirus which makes using PowerShell an easy way to circumvent security measures. This analytic detects execution of PowerShell scripts.
+
+
+    Powershell can be used to hide monitored command line execution such as:
+
+    -   `net use`
+
+    -   `sc start`'
+  pseudocode: 'process = search Process:Create
+
+    powershell = filter process where (exe == "powershell.exe" AND parent_exe != "explorer.exe" )
+
+    output powershell'
+  source_key: analytics/CAR-2014-04-003.yaml
+- analytic: CAR-2014-05-001
+  name: RPC Activity
+  technique: T1021
+  techniques:
+  - T1021
+  - T1021.002
+  - T1021.003
+  - T1021.006
+  tactics:
+  - TA0008
+  data_model:
+  - flow/start/dest_port
+  - flow/start/src_port
+  description: 'Microsoft Windows uses its implementation of [Distributed Computing Environment/Remote Procedure Call](https://en.wikipedia.org/wiki/DCE/RPC) (DCE/RPC), which it calls [Microsoft RPC](https://en.wikipedia.org/wiki/Microsoft_RPC), to call certain APIs remotely.
+
+
+    A Remote Procedure Call is initiated by communicating to the RPC Endpoint Mapper, which exists as the Windows service RpcEptMapper and listens on the port 135/tcp. The endpoint mapper resolves a requested endpoint/interface and responds to the client with the port that the service is listening on. Since the RPC endpoints are assigned ports when the services start, these ports are dynamically assigned from 49152 to 65535. The connection to the endpoint mapper then terminates and the client program can communicate directly with the requested service.
+
+
+    RPC is a legitimate functionality of Windows that allows remote interaction with a variety of services. For a Windows environment to be properly configured, several programs use RPC to communicate legitimately with servers. The background and benign RPC activity may be enormous, but must be learned, especially peer-to-peer RPC between workstations, which is often indicative of [L'
+  pseudocode: "flows = search Flow:Start\nrpc_mapper = filter flows where (dest_port == 135)\nrpc_endpoint = filter flows where (dest_port >= 49152 and src_port >= 49152)\nrpc = join rpc_mapper, rpc_endpoint where (\n (rpc_mapper.time < rpc_endpoint.time < rpc_mapper.time + 2 seconds) and\n (rpc_mapper.src_ip == rpc_endpoint.src_ip and rpc_mapper.dest_ip == rpc_endpoint.dest_ip)\n)\noutput rpc"
+  source_key: analytics/CAR-2014-05-001.yaml
+- analytic: CAR-2014-05-002
+  name: Services launching Cmd
+  technique: T1543
+  techniques:
+  - T1543
+  - T1543.003
+  tactics:
+  - TA0003
+  - TA0004
+  data_model:
+  - process/create/exe
+  - process/create/parent_exe
+  description: 'Windows runs the [Service Control Manager](https://en.wikipedia.org/wiki/Service_Control_Manager) (SCM) within the process `services.exe`. Windows launches services as independent processes or DLL loads within a [svchost.exe](https://en.wikipedia.org/wiki/svchost.exe) group. To be a legitimate service, a process (or DLL) must have the appropriate service entry point [SvcMain](https://msdn.microsoft.com/en-us/library/windows/desktop/ms687414.aspx). If an application does not have the entry point, then it will timeout (default is 30 seconds) and the process will be killed.
+
+
+    To survive the timeout, [adversaries and red teams](https://www.operationblockbuster.com/wp-content/uploads/2016/02/Operation-Blockbuster-RAT-and-Staging-Report.pdf) can create services that direct to `cmd.exe` with the flag `/c`, followed by the desired command. The `/c` flag causes the command shell to run a command and immediately exit. As a result, the desired program will remain running and it will report an error starting the service. This analytic will catch that command prompt instance that is used to launch the actual malicious executable. Additionally, the children and descendants of services.exe will ru'
+  pseudocode: 'process = search Process:Create
+
+    cmd = filter process where (exe == "cmd.exe" and parent_exe == "services.exe")
+
+    output cmd'
+  source_key: analytics/CAR-2014-05-002.yaml
+- analytic: CAR-2014-07-001
+  name: Service Search Path Interception
+  technique: T1574
+  techniques:
+  - T1574
+  - T1574.009
+  tactics:
+  - TA0003
+  - TA0004
+  data_model:
+  - process/create/command_line
+  - process/create/image_path
+  - process/create/parent_exe
+  description: According to [ATT&CK](https://attack.mitre.org/), an adversary may [escalate privileges](https://attack.mitre.org/tactics/TA0004) by [intercepting the search path](https://attack.mitre.org/techniques/T1579/009) for legitimately installed services. As a result, Windows will launch the target executable instead of the desired binary and command line. This can be done when there are spaces in the binary path and the path is unquoted. Search path interception should never happen legitimately and will likely be the result of an adversary abusing a system misconfiguration. With a few regular expressions, it is possible to identify the execution of services with intercepted search paths.
+  pseudocode: 'process = search Process:Create
+
+    services = filter processes where (parent_exe == "services.exe")
+
+    unquoted_services = filter services where (command_line != "\"*" and command_line == "* *")
+
+    intercepted_service = filter unquoted_service where (image_path != "* *" and exe not in command_line)
+
+    output intercepted_service'
+  source_key: analytics/CAR-2014-07-001.yaml
+- analytic: CAR-2014-11-002
+  name: Outlier Parents of Cmd
+  technique: T1059
+  techniques:
+  - T1059
+  - T1059.003
+  tactics:
+  - TA0002
+  data_model:
+  - process/create/exe
+  - process/create/parent_exe
+  description: 'Many programs create command prompts as part of their normal operation including malware used by attackers. This analytic attempts to identify suspicious programs spawning `cmd.exe` by looking for programs that do not normally create `cmd.exe`.
+
+
+    While this analytic does not take the user into account, doing so could generate further interesting results.
+
+    It is very common for some programs to spawn cmd.exe as a subprocess, for example to run batch files or windows commands. However many process don’t routinely launch a command prompt – for example Microsoft Outlook. A command prompt being launched from a process that normally doesn’t launch command prompts could be the result of malicious code being injected into that process, or of an attacker replacing a legitimate program with a malicious one.
+
+
+
+    ### Output Description
+
+
+    The time and host the new process was started as well as its parent'
+  pseudocode: 'processes = search Process:Create
+
+    cmd = filter processes where (exe == "cmd.exe")
+
+    cmd = from cmd select parent_exe
+
+    historic_cmd = filter cmd (where timestamp < now - 1 day AND timestamp > now - 1 day)
+
+    current_cmd = filter cmd (where timestamp >= now - 1 day)
+
+    new_cmd = historic_cmd - current_cmd
+
+    output new_cmd'
+  source_key: analytics/CAR-2014-11-002.yaml
+- analytic: CAR-2014-11-003
+  name: Debuggers for Accessibility Applications
+  technique: T1546
+  techniques:
+  - T1546
+  - T1546.008
+  tactics:
+  - TA0003
+  - TA0004
+  data_model:
+  - process/create/command_line
+  - process/create/exe
+  description: 'The Windows Registry location `HKLM\Software\Microsoft\Windows NT\CurrentVersion\Image File Execution Options` allows for parameters to be set for applications during execution. One feature used by malicious actors is the "Debugger" option. When a key has this value enabled, a Debugging command line can be specified. Windows will launch the Debugging command line, and pass the original command line in as an argument. Adversaries can set a Debugger for [Accessibility Applications](https://attack.mitre.org/techniques/T1546/008). The analytic looks for the original command line as an argument to the Debugger. When the strings "sethc.exe", "utilman.exe", "osk.exe", "narrator.exe", and "Magnify.exe" are detected in the arguments, but not as the main executable, it is very likely that a Debugger is set.
+
+
+    This analytic could depend on the possibility of the known strings used as arguments for other applications used in the day-to-day environment. Although the chance of the string "sethc.exe" being used as an argument for another application is unlikely, it still is a possibility.'
+  pseudocode: 'process = search Process:Create
+
+    debuggers = filter process where (command_line match "$.* .*(sethc{{pipe}}utilman{{pipe}}osk{{pipe}}narrator{{pipe}}magnify)\.exe")
+
+    output debuggers'
+  source_key: analytics/CAR-2014-11-003.yaml
+- analytic: CAR-2014-11-004
+  name: Remote PowerShell Sessions
+  technique: T1059
+  techniques:
+  - T1021
+  - T1021.006
+  - T1059
+  - T1059.001
+  tactics:
+  - TA0002
+  - TA0008
+  data_model:
+  - process/create/exe
+  - process/create/parent_exe
+  description: 'According to [ATT&CK](https://attack.mitre.org/), [PowerShell](https://attack.mitre.org/techniques/T1059/001) can be used over WinRM to remotely run commands on a host. When a remote PowerShell session starts, svchost.exe executes wsmprovhost.exe
+
+
+    For this to work, certain registry keys must be set, and the WinRM service must be enabled. The PowerShell command `Enter-PSSession -ComputerName \<RemoteHost\>` creates a remote PowerShell session.'
+  pseudocode: 'process = search Process:Create
+
+    wsmprovhost = filter process where (exe == "wsmprovhost.exe" and parent_exe == "svchost.exe")'
+  source_key: analytics/CAR-2014-11-004.yaml
+- analytic: CAR-2014-11-005
+  name: Remote Registry
+  technique: T1112
+  techniques:
+  - T1112
+  tactics:
+  - TA0005
+  data_model:
+  - flow/message/dest_port
+  - flow/message/proto_info
+  description: 'An adversary can remotely [manipulate the registry](https://attack.mitre.org/techniques/T1112) of another machine if the RemoteRegistry service is enabled and valid credentials are obtained. While the registry is remotely accessed, it can be used to prepare a [Lateral Movement](https://attack.mitre.org/tactics/TA0008) technique, [discover](https://attack.mitre.org/tactics/TA0007) the configuration of a host, achieve [Persistence](https://attack.mitre.org/tactics/TA0003), or anything that aids an adversary in achieving the mission. Like most ATT&CK techniques, this behavior can be used legitimately, and the reliability of an analytic depends on the proper identification of the pre-existing legitimate behaviors. Although this behavior is disabled in many Windows configurations, it is possible to [remotely enable](https://attack.mitre.org/techniques/T1569/002) the RemoteRegistry service, which can be detected with [CAR-2014-03-005](../CAR-2014-03-005).
+
+
+    Remote access to the registry can be achieved via
+
+
+    -   Windows API function [RegConnectRegistry](https://msdn.microsoft.com/en-us/library/windows/desktop/ms724840.aspx)
+
+    -   command line via `reg.exe`
+
+    -   graphically via `regedit.exe`
+
+
+    '
+  pseudocode: 'flows = search Flow:Message
+
+    winreg = filter flows where (dest_port == 445 and proto_info.pipe == "WINREG")
+
+    winreg_modify = filter flows where (proto_info.function == "Create*" or proto_info.function == "SetValue*")
+
+
+    output winreg_modify'
+  source_key: analytics/CAR-2014-11-005.yaml
+- analytic: CAR-2014-11-006
+  name: Windows Remote Management (WinRM)
+  technique: T1021
+  techniques:
+  - T1021
+  - T1021.006
+  tactics:
+  - TA0008
+  data_model:
+  - flow/start/dest_port
+  description: When a [Windows Remote Management](https://attack.mitre.org/techniques/T1021/006) connection is opened, the client sends HTTP requests to port 5985 for HTTP or 5986 for HTTPS on the target host. Each HTTP(S) request to the URI "/wsman" is called, and other information is set in the headers. Depending on the operation, the HTTP method may vary (i.e., GET, POST, etc.). This analytic would detect Remote PowerShell, as well as other communications that rely on WinRM. Additionally, it outputs the executable on the client host, the connection information, and the hostname of the target host.
+  pseudocode: 'flow = search Flow:Start
+
+    winrm = filter flow where (dest_port == 5985)
+
+    winrm_s = filter flow where (dest_port == 5986)
+
+    output winrm, winrm_s'
+  source_key: analytics/CAR-2014-11-006.yaml
+- analytic: CAR-2014-11-007
+  name: Remote Windows Management Instrumentation (WMI) over RPC
+  technique: T1047
+  techniques:
+  - T1047
+  tactics:
+  - TA0002
+  data_model:
+  - flow/message/proto_info
+  description: 'As described in ATT&CK, an adversary can use [Windows Management Instrumentation](https://attack.mitre.org/techniques/T1047) (WMI) to view or manipulate objects on a remote host. It can be used to remotely edit configuration, start services, query files, and anything that can be done with a WMI class. When remote WMI requests are over RPC ([CAR-2014-05-001](../CAR-2014-05-001)), it connects to a DCOM interface within the RPC group netsvcs. To detect this activity, a sensor is needed at the network level that can decode RPC traffic or on the host where the communication can be detected more natively, such as [Event Tracing for Windows](https://msdn.microsoft.com/en-us/library/windows/desktop/bb968803.aspx). Using wireshark/tshark decoders, the WMI interfaces can be extracted so that WMI activity over RPC can be detected.
+
+
+    Although the description details how to detect remote WMI precisely, a decent estimate has been to look for the string RPCSS within the initial RPC connection on 135/tcp. It returns a superset of this activity, and will trigger on all DCOM-related services running within RPC, which is likely to also be activity that should be detected between hosts.
+
+    More about RPCS'
+  pseudocode: 'flows = search Flow:Message
+
+    wmi_flow = filter flows where (dest_port == 135 and proto_info.rpc_interface == "IRemUnknown2")
+
+    output wmi_flow'
+  source_key: analytics/CAR-2014-11-007.yaml
+- analytic: CAR-2014-11-008
+  name: Command Launched from WinLogon
+  technique: T1546
+  techniques:
+  - T1546
+  - T1546.008
+  tactics:
+  - TA0003
+  - TA0004
+  data_model:
+  - process/create/exe
+  - process/create/parent_exe
+  description: 'An adversary can use [accessibility features](https://attack.mitre.org/techniques/T1546/008) (Ease of Access), such as StickyKeys or Utilman, to launch a command shell from the logon screen and gain SYSTEM access. Since an adversary does not have physical access to the machine, this technique must be run within [Remote Desktop](https://attack.mitre.org/techniques/T1021/001). To prevent an adversary from getting to the login screen without first authenticating, Network-Level Authentication (NLA) must be enabled. If a debugger is set up for one of the accessibility features, then it will intercept the process launch of the feature and instead execute a new command line. This analytic looks for instances of `cmd.exe` or `powershell.exe` launched directly from the logon process, `winlogon.exe`. It should be used in tandem with [CAR-2014-11-003](../CAR-2014-11-003), which detects the accessibility programs in the command line.
+
+
+    Several accessibility programs can be run using the Ease of Access center
+
+
+    -   `sethc.exe` handles StickyKeys
+
+    -   `utilman.exe` is the Ease of Access menu
+
+    -   `osk.exe` runs the On-Screen Keyboard
+
+    -   `narrator.exe` reads screen text over audio
+
+    -   `magnify.exe` '
+  pseudocode: 'processes = search Process:Create
+
+    winlogon_cmd = filter processes where (parent_exe == "winlogon.exe" and exe == "cmd.exe")
+
+    output winlogon_cmd'
+  source_key: analytics/CAR-2014-11-008.yaml
+- analytic: CAR-2014-12-001
+  name: Remotely Launched Executables via WMI
+  technique: T1047
+  techniques:
+  - T1047
+  tactics:
+  - TA0002
+  data_model:
+  - flow/message/dest_port
+  - flow/message/proto_info
+  - flow/message/src_port
+  - process/create/command_line
+  - process/create/exe
+  - process/create/parent_exe
+  description: 'Adversaries can use [Windows Management Instrumentation (WMI)](https://attack.mitre.org/techniques/T1047) to move laterally by launching executables remotely. For adversaries to achieve this, they must open a WMI connection to a remote host. This RPC activity is currently detected by [CAR-2014-11-007](../CAR-2014-11-007). After the WMI connection has been initialized, a process can be remotely launched using the command: `wmic /node:"<hostname>" process call create "<command line>"`, which is detected via [CAR-2016-03-002](../CAR-2016-03-002).
+
+
+    This leaves artifacts at both a network (RPC) and process (command line) level. When wmic.exe (or the schtasks API) is used to remotely create processes, Windows uses RPC (135/tcp) to communicate with the the remote machine.
+
+
+    After RPC authenticates, the RPC endpoint mapper opens a high port connection, through which the schtasks Remote Procedure Call is actually implemented. With the right packet decoders, or by looking for certain byte streams in raw data, these functions can be identified.
+
+
+    When the command line is executed, it has the parent process of `C:\windows\system32\wbem\WmiPrvSE.exe`. This analytic looks for these two events happ'
+  pseudocode: "processes = search Process:Create\nwmi_children = filter processes where (parent_exe == \"wmiprvse.exe\")\n\nflows = search Flow:Message\nwmi_flow = filter flows where (src_port >= 49152 and dest_port >= 49152 and proto_info.rpc_interface == \"IRemUnknown2\")\n\nremote_wmi_process = join wmi_children, wmi_flow where (\n wmi_flow.time < wmi_children.time < wmi_flow.time + 1sec and\n wmi_flow.hostname == wmi_children.hostname\n)\n\noutput remote_wmi_process"
+  source_key: analytics/CAR-2014-12-001.yaml
+- analytic: CAR-2015-04-001
+  name: Remotely Scheduled Tasks via AT
+  technique: T1053
+  techniques:
+  - T1053
+  - T1053.002
+  tactics:
+  - TA0002
+  data_model:
+  - flow/message/proto_info
+  description: 'When AT.exe is used to remotely [schedule tasks](https://attack.mitre.org/techniques/T1053), Windows uses named pipes over [SMB](https://en.wikipedia.org/wiki/Server_Message_Block) to communicate with the API on the remote machine. After authentication over SMB, the Named Pipe "ATSVC" is opened, over which the JobAdd function is called. On the remote host, the job files are created by the Task Scheduler and follow the convention `C:\Windows\System32\AT<job\_id>`. Unlike [CAR-2013-05-004](../CAR-2013-05-004), this analytic specifically focuses on uses of AT that can be detected between hosts, indicating remotely gained [execution](https://attack.mitre.org/tactics/TA0002).
+
+
+    This pipe activity could be discovered with a network decoder, such as that in wireshark, that can inspect SMB traffic to identify the use of pipes. It could also be detected by looking for raw packet capture streams or from a custom sensor on the host that hooks the appropriate API functions. If no network or API level of visibility is possible, this traffic may inferred by looking at SMB connections over 445/tcp followed by the creation of files matching the pattern `C:\Windows\System32\AT\<job_id\>`.'
+  pseudocode: 'flows = search Flow:Message
+
+    at_proto = filter flows where (dest_port == 445 and proto_info.pipe == "ATSVC")
+
+    at_create = filter flows where (proto_info.function == "JobAdd")
+
+
+    output at_create'
+  source_key: analytics/CAR-2015-04-001.yaml
+- analytic: CAR-2015-04-002
+  name: Remotely Scheduled Tasks via Schtasks
+  technique: T1053
+  techniques:
+  - T1053
+  - T1053.005
+  tactics:
+  - TA0002
+  data_model:
+  - flow/message/dest_port
+  - flow/message/src_port
+  - flow/message/proto_info
+  description: 'An adversary can [move laterally](https://attack.mitre.org/tactics/TA0008) using the `schtasks` command to remotely [schedule tasks/jobs](https://attack.mitre.org/techniques/T1053). Although these events can be detected with command line analytics [CAR-2013-08-001](../CAR-2013-08-001), it is possible for an adversary to use the API directly, via the Task Scheduler GUI or with a scripting language such as [PowerShell](https://attack.mitre.org/techniques/T1059/001). In this cases, an additional source of data becomes necessary to detect adversarial behavior. When scheduled tasks are created remotely, Windows uses RPC (135/tcp) to communicate with the Task Scheduler on the remote machine. Once an RPC connection is established ([CAR-2014-05-001](../CAR-2014-05-001)), the client communicates with the Scheduled Tasks endpoint, which runs within the service group netsvcs. With packet capture and the right packet decoders or byte-stream based signatures, remote invocations of these
+    functions can be identified.
+
+
+    Certain strings can be identifiers of the schtasks, by looking up the interface UUID of ITaskSchedulerService in different formats
+
+
+    -   UUID `86d35949-83c9-4044-b424-db363231fd0c` ('
+  pseudocode: "flows = search Flow:Message\nschtasks_rpc = filter flows where (\n src_port >= 49152 and dest_port >= 49152 and\n proto_info.rpc_interface == \"ITaskSchedulerService\"\n)\n\noutput schtasks_rpc"
+  source_key: analytics/CAR-2015-04-002.yaml
+- analytic: CAR-2015-07-001
+  name: All Logins Since Last Boot
+  technique: ''
+  techniques: []
+  tactics: []
+  data_model:
+  - user_session/login/user
+  description: 'Once a credential dumper like [mimikatz](https://attack.mitre.org/software/S0002) runs, every user logged on since boot is potentially compromised, because the credentials were accessed via the memory of `lsass.exe`. When such an event occurs, this analytic will give the forensic context to identify compromised users. Those users could potentially be used in later events for additional logons.
+
+
+    The time field indicates the first and last time a system reported a user logged into a given system. This means that activity could be intermittent between the times given and should not be considered a duration.
+
+
+
+    ### Output Description
+
+
+    A list of hostnames and the users that had been logged into the system at some point after to the system''s last restart.'
+  pseudocode: 'input target_host
+
+    input event_time
+
+
+    all_boots = search SystemLogs:BootUp where (hostname == target_host and time < event_time)
+
+    boot_time = max(all_boots.time)
+
+
+    user_logins = search UserSession:Login
+
+    host_logins = filter user_logins where (hostname == target_host and boot_time < time < event_time)
+
+    compromised_accounts = unique(user_logins.user)
+
+
+    output users'
+  source_key: analytics/CAR-2015-07-001.yaml
+- analytic: CAR-2016-03-001
+  name: Host Discovery Commands
+  technique: T1087
+  techniques:
+  - T1007
+  - T1016
+  - T1033
+  - T1057
+  - T1069
+  - T1069.001
+  - T1069.002
+  - T1082
+  - T1087
+  - T1087.001
+  - T1087.002
+  tactics:
+  - TA0007
+  data_model:
+  - process/create/command_line
+  - process/create/exe
+  description: 'When entering on a host for the first time, an adversary may try to [discover](https://attack.mitre.org/tactics/TA0007) information about the host. There are several built-in Windows commands that can be used to learn about the software configurations, active users, administrators, and networking configuration. These commands should be monitored to identify when an adversary is learning information about the system and environment. The information returned may impact choices an adversary can make when [establishing persistence](https://attack.mitre.org/tactics/TA0003), [escalating privileges](https://attack.mitre.org/tactics/TA0004), or [moving laterally](https://attack.mitre.org/tactics/TA0008).
+
+
+    Because these commands are built in, they may be run frequently by power users or even by normal users. Thus, an analytic looking at this information should have well-defined white- or blacklists, and should consider looking at an anomaly detection approach, so that this information can be learned dynamically.
+
+
+    Within the built-in Windows Commands:
+
+
+    -   `hostname`
+
+    -   `ipconfig`
+
+    -   `net`
+
+    -   `quser`
+
+    -   `qwinsta`
+
+    -   `sc` with flags `query`, `queryex`, `qc`
+
+    -   `systeminfo`
+
+    -   `tasklist'
+  pseudocode: "process = search Process:Create\ninfo_command = filter process where (\n exe == \"hostname.exe\" or\n exe == \"ipconfig.exe\" or\n exe == \"net.exe\" or\n exe == \"quser.exe\" or\n exe == \"qwinsta.exe\" or\n exe == \"sc\" and (command_line match \" query\" or command_line match \" qc\")) or\n exe == \"systeminfo.exe\" or\n exe == \"tasklist.exe\" or\n exe == \"whoami.exe\"\n)\noutput info_command"
+  source_key: analytics/CAR-2016-03-001.yaml
+- analytic: CAR-2016-03-002
+  name: Create Remote Process via WMIC
+  technique: T1047
+  techniques:
+  - T1047
+  tactics:
+  - TA0002
+  data_model:
+  - process/create/exe
+  - process/create/command_line
+  description: 'Adversaries may use [Windows Management Instrumentation](https://attack.mitre.org/techniques/T1047) (WMI) to move laterally, by launching executables remotely.The analytic [CAR-2014-12-001](../CAR-2014-12-001) describes how to detect these processes with network traffic monitoring and process monitoring on the target host. However, if the command line utility `wmic.exe` is used on the source host, then it can additionally be detected on an analytic. The command line on the source host is constructed into something like `wmic.exe /node:"\<hostname\>" process call create "\<command line\>"`. It is possible to also connect via IP address, in which case the string `"\<hostname\>"` would instead look like `IP Address`.
+
+
+    Although this analytic was created after [CAR-2014-12-001](../CAR-2014-12-001), it is a much simpler (although more limited) approach. Processes can be created remotely via WMI in a few other ways, such as more direct API access or the built-in utility [PowerShell](https://attack.mitre.org/T1059/001).'
+  pseudocode: 'processes = search Process:Create
+
+    wmic = filter processes where (exe == "wmic.exe" and command_line == "* process call create *" and command_line == "* /node:*")
+
+    output wmic'
+  source_key: analytics/CAR-2016-03-002.yaml
+- analytic: CAR-2016-04-002
+  name: User Activity from Clearing Event Logs
+  technique: T1070
+  techniques:
+  - T1070
+  - T1070.001
+  tactics:
+  - TA0005
+  data_model:
+  - process/create/command_line
+  description: It is unlikely that event log data would be cleared during normal operations, and it is likely that malicious attackers may try to cover their tracks by clearing an event log. When an event log gets cleared, it is suspicious. 1. This is often done using `wevtutil`, a legitimate tool provided by Microsoft. This action interferes with event collection and notification, and may lead to a security event going undetected, thereby potentially leading to further compromise of the network. 2. Alerting when a `Clear Event Log` is generated could point to this intruder technique. Centrally collecting events has the added benefit of making it much harder for attackers to cover their tracks. Event Forwarding permits sources to forward multiple copies of a collected event to multiple collectors, thus enabling redundant event collection. Using a redundant event collection model can minimize the single point of failure risk. 3. Attackers may set the option of the sources of events with `Limit-EventLog
+    -LogName Security -OverflowAction DoNotOverwrite` to not delete old Evenlog when the .evtx is full. By default the Security Log size is configured with the minimum value of 20 480KB (~23 000 EventLo
+  pseudocode: '([log_name] == "Security" and [event_code] in [1100, 1102, 1104]) or
+
+    ([log_name] == "System" and [event_code] == 104)'
+  source_key: analytics/CAR-2016-04-002.yaml
+- analytic: CAR-2016-04-003
+  name: User Activity from Stopping Windows Defensive Services
+  technique: T1562
+  techniques:
+  - T1562
+  - T1562.001
+  tactics:
+  - TA0005
+  data_model: []
+  description: 'Spyware and malware remain a serious problem and Microsoft developed security services, Windows Defender and Windows Firewall, to combat this threat. In the event Windows Defender or Windows Firewall is turned off, administrators should correct the issue immediately to prevent the possibility of infection or further infection and investigate to determine if caused by crash or user manipulation.
+
+
+    Stopping services events are Windows Event Code 7036.'
+  pseudocode: 'log_name == "System" AND
+
+    event_code == "7036"
+
+    param1 in ["Windows Defender", "Windows Firewall"] AND
+
+    param2 == "stopped"'
+  source_key: analytics/CAR-2016-04-003.yaml
+- analytic: CAR-2016-04-004
+  name: Successful Local Account Login
+  technique: T1550
+  techniques:
+  - T1550
+  - T1550.002
+  tactics:
+  - TA0008
+  data_model: []
+  description: The successful use of [Pass The Hash](https://attack.mitre.org/techniques/T1550/002/) for lateral movement between workstations would trigger event ID 4624, with an event level of Information, from the security log. This behavior would be a LogonType of 3 using NTLM authentication where it is not a domain logon and not the ANONYMOUS LOGON account.
+  pseudocode: 'EventCode == 4624 and [target_user_name] != "ANONYMOUS LOGON" and
+
+    [authentication_package_name] == "NTLM"'
+  source_key: analytics/CAR-2016-04-004.yaml
+- analytic: CAR-2016-04-005
+  name: Remote Desktop Logon
+  technique: T1021
+  techniques:
+  - T1021
+  - T1021.001
+  tactics:
+  - TA0008
+  data_model: []
+  description: A remote desktop logon, through [RDP](https://attack.mitre.org/techniques/T1021/001), may be typical of a system administrator or IT support, but only from select workstations. Monitoring remote desktop logons and comparing to known/approved originating systems can detect lateral movement of an adversary.
+  pseudocode: '[EventCode] == 4624 and
+
+    [AuthenticationPackageName] == ''Negotiate'' and
+
+    [Severity] == "Information" and
+
+    [LogonType] == 10'
+  source_key: analytics/CAR-2016-04-005.yaml
+- analytic: CAR-2019-04-001
+  name: UAC Bypass
+  technique: T1548
+  techniques:
+  - T1548
+  - T1548.002
+  tactics:
+  - TA0005
+  data_model:
+  - process/create/image_path
+  - process/create/parent_image_path
+  - process/create/integrity_level
+  - process/create/user
+  - process/create/parent_command_line
+  description: Bypassing user account control (UAC Bypass) is generally done by piggybacking on a system process that has auto-escalate privileges. This analytic looks to detect those cases as described by the open-source [UACME](https://github.com/hfiref0x/UACME) tool.
+  pseudocode: 'index=_your_sysmon_index_ EventCode=1 IntegrityLevel=High|search (ParentCommandLine="\"c:\\windows\\system32\\dism.exe\"*""*.xml" AND Image!="c:\\users\\*\\appdata\\local\\temp\\*\\dismhost.exe") OR ParentImage=c:\\windows\\system32\\fodhelper.exe OR (CommandLine="\"c:\\windows\\system32\\wusa.exe\"*/quiet*" AND User!=NOT_TRANSLATED AND CurrentDirectory=c:\\windows\\system32\\ AND ParentImage!=c:\\windows\\explorer.exe) OR CommandLine="*.exe\"*cleanmgr.exe /autoclean*" OR (ParentImage="c:\\windows\\*dccw.exe" AND Image!="c:\\windows\\system32\\cttune.exe") OR Image="c:\\program files\\windows media player\\osk.exe" OR ParentImage="c:\\windows\\system32\\slui.exe"|eval PossibleTechniques=case(like(lower(ParentCommandLine),"%c:\\windows\\system32\\dism.exe%"), "UACME #23", like(lower(Image),"c:\\program files\\windows media player\\osk.exe"), "UACME #32", like(lower(ParentImage),"c:\\windows\\system32\\fodhelper.exe"),  "UACME #33", like(lower(CommandLine),"%.exe\"%cleanmgr.exe
+    /autoclean%"), "UACME #34", like(lower(Image),"c:\\windows\\system32\\wusa.exe"), "UACME #36", like(lower(ParentImage),"c:\\windows\\%dccw.exe"), "UACME #37", like(lower(ParentImage),"c:\\windows\\system32\\slui.exe"), "UACME #45")'
+  source_key: analytics/CAR-2019-04-001.yaml
+- analytic: CAR-2019-04-002
+  name: Generic Regsvr32
+  technique: T1218
+  techniques:
+  - T1218
+  - T1218.010
+  tactics:
+  - TA0005
+  data_model:
+  - process/create/exe
+  - process/create/parent_exe
+  - process/create/command_line
+  - process/create/image
+  - process/create/parent_image
+  description: Regsvr32 can be used to execute arbitrary code in the context of a Windows signed binary, which can be used to bypass application whitelisting. This analytic looks for suspicious usage of the tool. It's not likely that you'll get millions of hits, but it does occur during normal activity so some form of baselining would be necessary for this to be an alerting analytic. Alternatively, it can be used for hunt by looking for new or anomalous DLLs manually.
+  pseudocode: index=__your_sysmon_data__ EventCode=1 regsvr32.exe | search ParentImage="*regsvr32.exe" AND Image!="*regsvr32.exe*"
+  source_key: analytics/CAR-2019-04-002.yaml
+- analytic: CAR-2019-04-003
+  name: Squiblydoo
+  technique: T1218
+  techniques:
+  - T1218
+  - T1218.010
+  tactics:
+  - TA0005
+  data_model:
+  - process/create/exe
+  - process/create/command_line
+  description: 'Squiblydoo is a specific usage of regsvr32.dll to load a COM scriptlet directly from the internet and execute it in a way that bypasses application whitelisting. It can be seen by looking for regsvr32.exe executions that load the scrobj.dll (which execute the COM scriptlet) or, if that is too noisy, those that also load content directly via HTTP or HTTPS.
+
+
+    Squiblydoo was first written up by Casey Smith at Red Canary, though that blog post is no longer accessible.'
+  pseudocode: index=__your_sysmon_events__ EventCode=1 regsvr32.exe scrobj.dll | search Image="*regsvr32.exe"
+  source_key: analytics/CAR-2019-04-003.yaml
+- analytic: CAR-2019-04-004
+  name: Credential Dumping via Mimikatz
+  technique: T1003
+  techniques:
+  - T1003
+  - T1003.001
+  tactics:
+  - TA0006
+  data_model: []
+  description: 'Credential dumpers like Mimikatz can be loaded into memory and from there read data from another processes. This analytic looks for instances where processes are requesting specific permissions to read parts of the LSASS process in order to detect when credential dumping is occurring. One weakness is that all current implementations are “overtuned” to look for common access patterns used by Mimikatz.
+
+
+    *This requires information about process access, e.g. Sysmon Event ID 10. That currently doesn’t have a CAR data model mapping, since we currently lack any open/access actions for Processes. If this changes, we will update the data model requirements.*'
+  pseudocode: 'index=__your_sysmon_data__ EventCode=10
+
+    TargetImage="C:\\WINDOWS\\system32\\lsass.exe"
+
+    (GrantedAccess=0x1410 OR GrantedAccess=0x1010 OR GrantedAccess=0x1438 OR GrantedAccess=0x143a OR GrantedAccess=0x1418)
+
+    CallTrace="C:\\windows\\SYSTEM32\\ntdll.dll+*|C:\\windows\\System32\\KERNELBASE.dll+20edd|UNKNOWN(*)"
+
+    | table _time hostname user SourceImage GrantedAccess'
+  source_key: analytics/CAR-2019-04-004.yaml
+- analytic: CAR-2019-07-001
+  name: Access Permission Modification
+  technique: T1222
+  techniques:
+  - T1222
+  - T1222.001
+  - T1222.002
+  tactics:
+  - TA0005
+  data_model: []
+  description: 'Adversaries sometimes modify object access rights at the operating system level. There are varying motivations behind this action -  they may not want some files/objects to be changed on systems for persistence reasons and therefore provide admin only rights; also, they may want files to be accessible with lower levels of permissions.
+
+
+    Note - this analytic references file permissions, which are not currently in the CAR data model.'
+  pseudocode: 'log_name == "Security" AND
+
+    event_code == "4670" AND
+
+    object_type == "File" AND
+
+    subject_security_id != "NT AUTHORITY\SYSTEM"'
+  source_key: analytics/CAR-2019-07-001.yaml
+- analytic: CAR-2019-07-002
+  name: Lsass Process Dump via Procdump
+  technique: T1003
+  techniques:
+  - T1003
+  - T1003.001
+  tactics:
+  - TA0006
+  data_model:
+  - process/create/exe
+  - process/create/command_line
+  description: '[ProcDump](https://docs.microsoft.com/en-us/sysinternals/downloads/procdump) is a sysinternal command-line utility whose primary purpose is monitoring an application for CPU spikes and generating crash dumps during a spike that an administrator or developer can use to determine the cause of the spike.
+
+
+    ProcDump may be used to dump the memory space of lsass.exe to disk for processing with a credential access tool such as Mimikatz. This is performed by launching procdump.exe as a privileged user with command line options indicating that lsass.exe should be dumped to a file with an arbitrary name.
+
+
+    Note - the CAR data model currently does not support process access actions, so the pseudocode implementation is based around process creates.'
+  pseudocode: "processes = search Process:Create\nprocdump_lsass = filter processes where (\n  exe = \"procdump*.exe\"  and\n  command_line = \"*lsass*\")\noutput procdump_lsass"
+  source_key: analytics/CAR-2019-07-002.yaml
+- analytic: CAR-2019-08-001
+  name: Credential Dumping via Windows Task Manager
+  technique: T1003
+  techniques:
+  - T1003
+  - T1003.001
+  tactics:
+  - TA0006
+  data_model:
+  - file/create/file_name
+  - file/create/image_path
+  description: 'The Windows Task Manager may be used to dump the memory space of `lsass.exe` to disk for processing with a credential access tool such as Mimikatz. This is performed by launching Task Manager as a privileged user, selecting `lsass.exe`, and clicking "Create dump file". This saves a dump file to disk with a deterministic name that includes the name of the process being dumped.
+
+
+    This requires filesystem data to determine whether files have been created.'
+  pseudocode: "files = search File:Create\nlsass_dump = filter files where (\n  file_name = \"lsass*.dmp\"  and\n  image_path = \"C:\\Windows\\*\\taskmgr.exe\")\noutput lsass_dump"
+  source_key: analytics/CAR-2019-08-001.yaml
+- analytic: CAR-2019-08-002
+  name: Active Directory Dumping via NTDSUtil
+  technique: T1003
+  techniques:
+  - T1003
+  - T1003.003
+  tactics:
+  - TA0006
+  data_model:
+  - file/create/file_name
+  - file/create/image_path
+  description: 'The NTDSUtil tool may be used to dump a Microsoft Active Directory database to disk for processing with a credential access tool such as Mimikatz. This is performed by launching `ntdsutil.exe` as a privileged user with command line arguments indicating that media should be created for offline Active Directory installation and specifying a folder path. This process will create a copy of the Active Directory database, `ntds.dit`, to the specified folder path.
+
+
+    This requires filesystem data to determine whether files have been created.'
+  pseudocode: "files = search File:Create\nntds_dump = filter files where (\n  file_name = \"ntds.dit\"  and\n  image_path = \"*ntdsutil.exe\")\noutput ntds_dump"
+  source_key: analytics/CAR-2019-08-002.yaml
+- analytic: CAR-2020-04-001
+  name: Shadow Copy Deletion
+  technique: ''
+  techniques: []
+  tactics: []
+  data_model: []
+  description: This analytic has been deprecated in favor of [CAR-2021-01-009](/analytics/CAR-2021-01-009), which covers the same technique with some additional detections.
+  pseudocode: ''
+  source_key: analytics/CAR-2020-04-001.yaml
+- analytic: CAR-2020-05-001
+  name: MiniDump of LSASS
+  technique: T1003
+  techniques:
+  - T1003
+  - T1003.003
+  tactics:
+  - TA0006
+  data_model: []
+  description: 'This analytic detects the minidump variant of credential dumping where a process opens lsass.exe in order to extract credentials using the Win32 API call [MiniDumpWriteDump](https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/nf-minidumpapiset-minidumpwritedump). Tools like [SafetyKatz](https://github.com/GhostPack/SafetyKatz), [SafetyDump](https://github.com/m0rv4i/SafetyDump), and [Outflank-Dumpert](https://github.com/outflanknl/Dumpert) default to this variant and may be detected by this analytic, though keep in mind that not all options for using those tools will result in this specific behavior.
+
+
+    The analytic is based on a [Sigma analytic](https://github.com/NVISO-BE/sigma-public/blob/master/rules/windows/sysmon/sysmon_lsass_memdump.yml) contributed by Samir Bousseaden and written up in a [blog on MENASEC](https://blog.menasec.net/2019/02/threat-hunting-21-procdump-or-taskmgr.html). It looks for a call trace that includes either dbghelp.dll or dbgcore.dll, which export the relevant functions/permissions to perform the dump. It also detects using the Windows Task Manager (taskmgr.exe) to dump lsass, which is described in [CAR-2019-08-001](/analytics/CAR-2019-08-00'
+  pseudocode: index=__your_sysmon_index__ EventCode=10 TargetImage="C:\\windows\\system32\\lsass.exe" (CallTrace="*dbghelp.dll*" OR CallTrace="*dbgcore.dll*")| table _time host SourceProcessId SourceImage
+  source_key: analytics/CAR-2020-05-001.yaml
+- analytic: CAR-2020-05-003
+  name: Rare LolBAS Command Lines
+  technique: T1012
+  techniques:
+  - T1012
+  - T1112
+  - T1547
+  - T1547.001
+  - T1574
+  - T1574.011
+  tactics:
+  - TA0003
+  - TA0004
+  - TA0005
+  - TA0007
+  data_model: []
+  description: '[LoLBAS](https://lolbas-project.github.io/) are binaries and scripts that are built in to Windows, frequently are signed by Microsoft, and may be used by an attacker. Some LoLBAS are used very rarely and it might be possible to alert every time they''re used (this would depend on your environment), but many others are very common and can''t be simply alerted on.
+
+
+    This analytic takes all instances of LoLBAS execution and then looks for instances of command lines that are not normal in the environment. This can detect attackers (which will tend to need the binaries for something different than normal usage) but will also tend to have false positives.
+
+
+    The analytic needs to be tuned. The `1.5` in the query is the number of standard deviations away to look. It can be tuned up to filter out more noise and tuned down to get more results. This means it is probably best as a hunting analytic when you have analysts looking at the screen and able to tune the analytic up and down, because the threshold may not be stable for very long.
+
+
+    Note - this analytic is related to [CAR-2013-04-002](/analytics/CAR-2013-04-002), but differs by looking for a different set of binaries and also looking at stan'
+  pseudocode: 'processes = search Process:Create
+
+    lolbas_processes = filter processes where (exe = "At.exe" OR exe = "Atbroker.exe" OR exe = "Bash.exe" OR exe = "Bitsadmin.exe" OR exe = "Certutil.exe" OR exe = "Cmd.exe" OR exe = "Cmdkey.exe" OR exe = "Cmstp.exe" OR exe = "Control.exe" OR exe = "Csc.exe" OR exe = "Cscript.exe" OR exe = "Dfsvc.exe" OR exe = "Diskshadow.exe" OR exe = "Dnscmd.exe" OR exe = "Esentutl.exe" OR exe = "Eventvwr.exe" OR exe = "Expand.exe" OR exe = "Extexport.exe" OR exe = "Extrac32.exe" OR exe = "Findstr.exe" OR exe = "Forfiles.exe" OR exe = "Ftp.exe" OR exe = "Gpscript.exe" OR exe = "Hh.exe" OR exe = "Ie4uinit.exe" OR exe = "Ieexec.exe" OR exe = "Infdefaultinstall.exe" OR exe = "Installutil.exe" OR exe = "Jsc.exe" OR exe = "Makecab.exe" OR exe = "Mavinject.exe" OR exe = "Microsoft.Workflow.r.exe" OR exe = "Mmc.exe" OR exe = "Msbuild.exe" OR exe = "Msconfig.exe" OR exe = "Msdt.exe" OR exe = "Mshta.exe" OR exe = "Msiexec.exe" OR exe = "Odbcconf.exe" OR exe = "Pcalua.exe" OR exe = "Pcwrun.exe" OR exe = "Presentationhost.exe"
+    OR exe = "Print.exe" OR exe = "Reg.exe" OR exe = "Regasm.exe" OR exe = "Regedit.exe" OR exe = "Register-cimprovider.exe" OR exe = "Regsvcs.exe" OR exe = "Regsvr32.exe" OR exe = "Replace.exe" OR exe = "Rpcping.exe" OR exe = "Rundll32.exe" OR exe = "Runonce.exe" OR exe = "Runscripthelper.exe" OR exe = "Sc.exe" OR exe = "Schtasks.exe" OR exe = "Scriptrunner.exe" OR exe = "SyncAppvPublishingServer.exe" OR exe = "Tttracer.exe" OR exe = "Verclsid.exe" OR exe = "Wab.exe" OR exe = "Wmic.exe" OR exe = "Wscript.exe" OR exe = "Wsreset.exe" OR exe = "Xwizard.exe" OR exe = "Advpack.dll OR exe = "Comsvcs.dll OR exe = "Ieadvpack.dll OR exe = "Ieaframe.dll OR exe = "Mshtml.dll OR exe = "Pcwutl.dll OR exe = "Setupapi.dll OR exe = "Shdocvw.dll OR exe = "Shell32.dll OR exe = "Syssetup.dll OR exe = "Url.dll OR exe = "Zipfldr.dll OR exe = "Appvlp.exe" OR exe = "Bginfo.exe" OR exe = "Cdb.exe" OR exe = "csi.exe" OR exe = "Devtoolslauncher.exe" OR exe = "dnx.exe" OR exe = "Dxcap.exe" OR exe = "Excel.exe" OR
+    exe = "Mftrace.exe" OR exe = "Msdeploy.exe" OR exe = "msxsl.exe" OR exe = "Powerpnt.exe" OR exe = "rcsi.exe" OR exe = "Sqler.exe" OR exe = "Sqlps.exe" OR exe = "SQLToolsPS.exe" OR exe = "Squirrel.exe" OR exe = "te.exe" OR exe = "Tracker.exe" OR exe = "Update.exe" OR exe = "vsjitdebugger.exe" OR exe = "Winword.exe" OR exe = "Wsl.exe" OR exe = "CL_Mutexverifiers.ps1 OR exe = "CL_Invocation.ps1 OR exe = "Manage-bde.wsf OR exe = "Pubprn.vbs OR exe = "Slmgr.vbs OR exe = "Syncappvpublishingserver.vbs OR exe = "winrm.vbs OR exe = "Pester.bat)
+
+    process_count = count(lolbas_processes) by process
+
+    process_count_avg = average(process_count)
+
+    process_count_stdev = standard_deviation(process_count)
+
+    lower_bound = process_count_avg - stdev * 1.5
+
+    outliers = filter lolbas_processes where (process_count < lower_bound)
+
+    return outliers'
+  source_key: analytics/CAR-2020-05-003.yaml
+- analytic: CAR-2020-08-001
+  name: NTFS Alternate Data Stream Execution - System Utilities
+  technique: T1564
+  techniques:
+  - T1564
+  - T1564.004
+  tactics:
+  - TA0005
+  data_model:
+  - process/create/exe
+  - process/create/command_line
+  description: NTFS Alternate Data Streams (ADSs) may be used by adversaries as a means of evading security tools by storing malicious data or binaries in file attribute metadata. ADSs are also powerful because they can be directly executed by various Windows tools; accordingly, this analytic looks at common ways of executing ADSs using system utilities such as powershell.
+  pseudocode: 'processes = search Process:Create
+
+    ads_processes = filter processes where (
+
+    exe == "powershell.exe OR rundll32.exe OR wmic.exe OR wscript.exe OR cscript.exe" and command_line.matches("__some_regex__")
+
+    )
+
+    output ads_processes'
+  source_key: analytics/CAR-2020-08-001.yaml
+- analytic: CAR-2020-08-002
+  name: NTFS Alternate Data Stream Execution - LOLBAS
+  technique: T1564
+  techniques:
+  - T1564
+  - T1564.004
+  tactics:
+  - TA0005
+  data_model:
+  - process/create/exe
+  - process/create/command_line
+  description: NTFS Alternate Data Streams (ADSs) may be used by adversaries as a means of evading security tools by storing malicious data or binaries in file attribute metadata. ADSs are also powerful because their contents can be directly executed by various Windows tools; accordingly, this analytic looks at common ways of executing ADSs using Living off the Land Binaries and Scripts (LOLBAS).
+  pseudocode: 'processes = search Process:Create
+
+    ads_processes = filter processes where (
+
+    exe == "control.exe OR appvlp.exe OR cmd.exe OR ftp.exe OR bash.exe OR mavinject.exe OR bitsadmin.exe" and command_line.matches("__some_regex__")
+
+    )
+
+    output ads_processes'
+  source_key: analytics/CAR-2020-08-002.yaml
+- analytic: CAR-2020-09-001
+  name: Scheduled Task - FileAccess
+  technique: T1053
+  techniques:
+  - T1053
+  - T1053.005
+  tactics:
+  - TA0002
+  - TA0003
+  - TA0004
+  data_model:
+  - file/create/file_path
+  - file/create/image_path
+  description: In order to gain persistence, privilege escalation, or remote execution, an adversary may use the Windows Task Scheduler to schedule a command to be run at a specified time, date, and even host. Task Scheduler stores tasks as files in two locations - C:\Windows\Tasks (legacy) or C:\Windows\System32\Tasks. Accordingly, this analytic looks for the creation of task files in these two locations.
+  pseudocode: "files = search File:Create\ntask_files = filter files where (\n  (file_path = \"C:\\Windows\\System32\\Tasks\\*\" or file_path = \"C:\\Windows\\Tasks\\*\")  and\n  image_path != \"C:\\WINDOWS\\system32\\svchost.exe\")\noutput task_files"
+  source_key: analytics/CAR-2020-09-001.yaml
+- analytic: CAR-2020-09-002
+  name: Component Object Model Hijacking
+  technique: T1546
+  techniques:
+  - T1546
+  - T1546.015
+  tactics:
+  - TA0003
+  - TA0004
+  data_model:
+  - registry/add/key
+  - registry/remove/key
+  - registry/edit/key
+  description: Adversaries may establish persistence or escalate privileges by executing malicious content triggered by hijacked references to Component Object Model (COM) objects. This is typically done by replacing COM object registry entries under the HKEY_CURRENT_USER\Software\Classes\CLSID or HKEY_LOCAL_MACHINE\SOFTWARE\Classes\CLSID keys. Accordingly, this analytic looks for any changes under these keys.
+  pseudocode: "registry_keys = search (Registry:Create AND Registry:Remove AND Registry:Edit)\nclsid_keys = filter registry_keys where (\n  key = \"*\\Software\\Classes\\CLSID\\*\")\noutput clsid_keys"
+  source_key: analytics/CAR-2020-09-002.yaml
+- analytic: CAR-2020-09-003
+  name: Indicator Blocking - Driver Unloaded
+  technique: T1562
+  techniques:
+  - T1562
+  - T1562.006
+  tactics:
+  - TA0005
+  data_model:
+  - process/create/exe
+  - process/create/command_line
+  description: Adversaries may attempt to evade system defenses by unloading minifilter drivers used by host-based sensors such as Sysmon through the use of the fltmc command-line utility. Accordingly, this analytic looks for command-line invocations of this utility when used to unload minifilter drivers.
+  pseudocode: "processes = search Process:Create\nfltmc_processes = filter processes where (\n  exe = \"fltmc.exe\" AND command_line = \"*unload*\")\noutput fltmc_processes"
+  source_key: analytics/CAR-2020-09-003.yaml
+- analytic: CAR-2020-09-004
+  name: Credentials in Files & Registry
+  technique: T1552
+  techniques:
+  - T1552
+  - T1552.001
+  - T1552.002
+  tactics:
+  - TA0006
+  data_model:
+  - process/create/command_line
+  description: Adversaries may search the Windows Registry on compromised systems for insecurely stored credentials for credential access. This can be accomplished using the query functionality of the reg.exe system utility, by looking for keys and values that contain strings such as "password". In addition, adversaries may use toolkits such as [PowerSploit](https://powersploit.readthedocs.io/en/latest/) in order to dump credentials from various applications such as IIS.Accordingly, this analytic looks for invocations of reg.exe in this capacity as well as that of several powersploit modules with similar functionality.
+  pseudocode: "processes = search Process:Create\n  cred_processes = filter processes where (\n  command_line = \"*reg* query HKLM /f password /t REG_SZ /s*\" OR\n  command_line = \"reg* query HKCU /f password /t REG_SZ /s\" OR\n  command_line = \"*Get-UnattendedInstallFile*\" OR\n  command_line = \"*Get-Webconfig*\" OR\n  command_line = \"*Get-ApplicationHost*\" OR\n  command_line = \"*Get-SiteListPassword*\" OR\n  command_line = \"*Get-CachedGPPPassword*\" OR\n  command_line = \"*Get-RegistryAutoLogon*\")\noutput cred_processes"
+  source_key: analytics/CAR-2020-09-004.yaml
+- analytic: CAR-2020-09-005
+  name: AppInit DLLs
+  technique: T1546
+  techniques:
+  - T1546
+  - T1546.010
+  tactics:
+  - TA0003
+  - TA0004
+  data_model:
+  - registry/add/key
+  - registry/remove/key
+  - registry/edit/key
+  description: Adversaries may establish persistence and/or elevate privileges by executing malicious content triggered by AppInit DLLs loaded into processes. Dynamic-link libraries (DLLs) that are specified in the AppInit_DLLs value in the Registry keys `HKEY_LOCAL_MACHINE\Software\Microsoft\Windows NT\CurrentVersion\Windows` or `HKEY_LOCAL_MACHINE\Software\Wow6432Node\Microsoft\Windows NT\CurrentVersion\Windows` are loaded by user32.dll into every process that loads user32.dll. These values can be abused to obtain elevated privileges by causing a malicious DLL to be loaded and run in the context of separate processes. Accordingly, this analytic looks for modifications to these registry keys that may be indicative of this type of abuse.
+  pseudocode: "registry_keys = search (Registry:Create AND Registry:Remove AND Registry:Edit)\nappinit_keys = filter registry_keys where (\n  key = \"*\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Windows\\Appinit_Dlls\\*\" OR\n  key = \"*\\SOFTWARE\\\\Wow6432Node\\Microsoft\\Windows NT\\CurrentVersion\\Windows\\Appinit_Dlls\\*\"\"\n  )\noutput clsid_keys"
+  source_key: analytics/CAR-2020-09-005.yaml
+- analytic: CAR-2020-11-001
+  name: Boot or Logon Initialization Scripts
+  technique: T1037
+  techniques:
+  - T1037
+  - T1037.001
+  tactics:
+  - TA0003
+  - TA0008
+  data_model:
+  - process/create/command_line
+  - process/create/exe
+  - registry/add/key
+  - registry/edit/key
+  description: Adversaries may schedule software to run whenever a user logs into the system; this is done to establish persistence and sometimes for lateral movement. This trigger is established through the registry key HKEY_CURRENT_USER\Environment*UserInitMprLogonScript*. This signature looks edits to existing keys or creation of new keys in that path. Users purposefully adding benign scripts to this path will result in false positives; that case is rare, however. There are other ways of running a script at startup or login that are not covered in this signature. Note that this signature overlaps with the Windows Sysinternals Autoruns tool, which would also show changes to this registry path.
+  pseudocode: "processes = search Process:Create\nlogon_script_key_processes = filter processes where (\n  command_line = \"*reg*add*\\Environment*UserInitMprLogonScript\")\nregistry = search (Registry:Add OR Registry:Edit)\nregistry_logon_key_events = filter registry where (\n  key = \"*\\Environment*UserInitMprLogonScript\")\noutput (logon_script_key_processes, registry_logon_key_events)"
+  source_key: analytics/CAR-2020-11-001.yaml
+- analytic: CAR-2020-11-002
+  name: Local Network Sniffing
+  technique: T1040
+  techniques:
+  - T1040
+  tactics:
+  - TA0006
+  - TA0007
+  data_model:
+  - process/create/exe
+  - process/create/parent_exe
+  description: 'Adversaries may use a variety of tools to gain visibility on the current status of things on the network: which processes are listening on which ports, which services are running on other hosts, etc. This analytic looks for the names of the most common network sniffing tools. While this may be noisy on networks where sysadmins are using any of these tools on a regular basis, in most networks their use is noteworthy.'
+  pseudocode: "processes = search Process:Create\nsniffer_processes = filter processes where (\n  exe = \"tshark.exe\" OR\n  exe = \"windump.exe\" OR\n  (exe = \"logman.exe\" AND parent_exe exists AND parent_exe!=\"C:\\Program Files\\Windows Event Reporting\\Core\\EventReporting.AgentService.exe\") OR\n  exe = \"tcpdump.exe\" OR\n  exe = \"wprui.exe\" OR\n  exe = \"wpr.exe\" )\noutput sniffer_processes"
+  source_key: analytics/CAR-2020-11-002.yaml
+- analytic: CAR-2020-11-003
+  name: DLL Injection with Mavinject
+  technique: T1055
+  techniques:
+  - T1055
+  - T1055.001
+  tactics:
+  - TA0004
+  - TA0005
+  data_model:
+  - process/create/exe
+  - process/create/command_line
+  description: Injecting a malicious DLL into a process is a common adversary TTP. Although the ways of doing this are numerous, mavinject.exe is a commonly used tool for doing so because it roles up many of the necessary steps into one, and is available within Windows. Attackers may rename the executable, so we also use the common argument "INJECTRUNNING" as a related signature here. Whitelisting certain applications may be necessary to reduce noise for this analytic.
+  pseudocode: "processes = search Process:Create\nmavinject_processes = filter processes where (\n  exe = \"C:\\\\Windows\\\\SysWOW64\\\\mavinject.exe\" OR Image=\"C:\\\\Windows\\\\System32\\\\mavinject.exe\" OR command_line = \"*/INJECTRUNNING*\"\noutput mavinject_processes"
+  source_key: analytics/CAR-2020-11-003.yaml
+- analytic: CAR-2020-11-004
+  name: Processes Started From Irregular Parent
+  technique: T1055
+  techniques:
+  - T1055
+  - T1055.012
+  tactics:
+  - TA0005
+  data_model:
+  - process/create/exe
+  - process/create/parent_exe
+  description: Adversaries may start legitimate processes and then use their memory space to run malicious code. This analytic looks for common Windows processes that have been abused this way in the past; when the processes are started for this purpose they may not have the standard parent that we would expect. This list is not exhaustive, and it is possible for cyber actors to avoid this discepency. These signatures only work if Sysmon reports the parent process, which may not always be the case if the parent dies before sysmon processes the event.
+  pseudocode: "processes = search Process:Create\nmismatch_processes = filter processes where ( parent_exe exists AND\n  (exe=\"smss.exe\" AND (parent_exe!=\"smss.exe\" AND parent_exe!=\"System\") OR\n  (exe=\"csrss.exe\" AND (parent_exe!=\"smss.exe\" AND parent_exe!=\"svchost.exe\")) OR\n  (exe=\"wininit.exe\" AND parent_exe!=\"smss.exe\") OR\n  (exe=\"winlogon.exe\" AND parent_exe!=\"smss.exe\") OR\n  (exe=\"lsass.exe\" AND (parent_exe!=\"wininit.exe\" AND parent_exe!=\"winlogon.exe\")) OR\n  (exe=\"LogonUI.exe\" AND (parent_exe!=\"winlogon.exe\" AND parent_exe!=\"wininit.exe\")) OR\n  (exe=\"services.exe\" AND parent_exe!=\"wininit.exe\") OR\n  (exe=\"spoolsv.exe\" AND parent_exe!=\"services.exe\") OR\n  (exe=\"taskhost.exe\" AND (parent_exe!=\"services.exe\" AND parent_exe!=\"svchost.exe\")) OR\n  (exe=\"taskhostw.exe\" AND (parent_exe!=\"services.exe\" AND parent_exe!=\"svchost.exe\")) OR\n  (exe=\"userinit.exe\" AND (parent_exe!=\"dwm.exe\" AND parent_exe!=\"winlogon.exe\"))\noutput\
+    \ mismatch_processes"
+  source_key: analytics/CAR-2020-11-004.yaml
+- analytic: CAR-2020-11-005
+  name: Clear Powershell Console Command History
+  technique: T1070
+  techniques:
+  - T1070
+  - T1070.003
+  tactics:
+  - TA0005
+  data_model:
+  - process/create/exe
+  - process/create/command_line
+  description: Adversaries may attempt to conceal their tracks by deleting the history of commands run within the Powershell console, or turning off history saving to begin with. This analytic looks for several commands that would do this. This does not capture the event if it is done within the console itself; only commandline-based commands are detected. Note that the command to remove the history file directly may very a bit if the history file is not saved in the default path on a particular system.
+  pseudocode: "processes = search Process:Create\nclear_commands = filter processes where (\n  command_line =\"*rm (Get-PSReadlineOption).HistorySavePath*\" OR command_line=\"*del (Get-PSReadlineOption).HistorySavePath*\" OR command_line=\"*Set-PSReadlineOption –HistorySaveStyle SaveNothing*\" OR command_line=\"*Remove-Item (Get-PSReadlineOption).HistorySavePath*\")  OR command_linee=\"del*Microsoft\\Windows\\Powershell\\PSReadline\\ConsoleHost_history.txt\")\noutput clear_commands"
+  source_key: analytics/CAR-2020-11-005.yaml
+- analytic: CAR-2020-11-006
+  name: Local Permission Group Discovery
+  technique: T1069
+  techniques:
+  - T1069
+  - T1069.001
+  - T1069.002
+  tactics:
+  - TA0007
+  data_model:
+  - process/create/exe
+  - process/create/command_line
+  description: Cyber actors frequently enumerate local or domain permissions groups. The net utility is usually used for this purpose. This analytic looks for any instances of net.exe, which is not normally used for benign purposes, although system administrator actions may trigger false positives.
+  pseudocode: "processes = search Process:Create\nnet_processes = filter processes where (\n  exe = \"net.exe\" AND (\n  command_line=\"*net* user*\" OR\n  command_line=\"*net* group*\" OR\n  command_line=\"*net* localgroup*\" OR\n  command_line=\"*get-localgroup*\" OR\n  command_line=\"*get-ADPrincipalGroupMembership*\" )\noutput net_processes"
+  source_key: analytics/CAR-2020-11-006.yaml
+- analytic: CAR-2020-11-007
+  name: Network Share Connection Removal
+  technique: T1070
+  techniques:
+  - T1070
+  - T1070.005
+  tactics:
+  - TA0005
+  data_model:
+  - process/create/exe
+  - process/create/command_line
+  description: Adversaries may use network shares to exfliltrate date; they will then remove the shares to cover their tracks. This analytic looks for the removal of network shares via commandline, which is otherwise a rare event.
+  pseudocode: "processes = search Process:Create\ntarget_processes = filter processes where (\n  (exe=\"C:\\\\Windows\\\\System32\\\\net.exe\" AND command_line=\"*delete*\") OR\n  command_line=\"*Remove-SmbShare*\" OR\n  comman_line=\"*Remove-FileShare*\" )\noutput target_processes"
+  source_key: analytics/CAR-2020-11-007.yaml
+- analytic: CAR-2020-11-008
+  name: MSBuild and msxsl
+  technique: T1127
+  techniques:
+  - T1127
+  - T1127.001
+  tactics:
+  - TA0005
+  data_model:
+  - process/create/exe
+  - process/create/image_path
+  description: Trusted developer utilities such as MSBuild may be leveraged to run malicious code with elevated privileges. This analytic looks for any instances of msbuild.exe, which will execute any C# code placed within a given XML document; and msxsl.exe, which processes xsl transformation specifications for XML files and will execute a variaty of scripting languages contained within the XSL file. Both of these executables are rarely used outside of Visual Studio.
+  pseudocode: "processes = search Process:Create\ntarget_processes = filter processes where (\n  (exe=\"C:\\Program Files (x86)\\Microsoft Visual Studio\\*\\bin\\MSBuild.exe\" OR exe=\"C:\\Windows\\Microsoft.NET\\Framework*\\msbuild.exe\" OR exe=\"C:\\users\\*\\appdata\\roaming\\microsoft\\msxsl.exe\") AND\n  image_path!=\"*Microsoft Visual Studio*\")\noutput target_processes"
+  source_key: analytics/CAR-2020-11-008.yaml
+- analytic: CAR-2020-11-009
+  name: Compiled HTML Access
+  technique: T1218
+  techniques:
+  - T1218
+  - T1218.001
+  tactics:
+  - TA0005
+  data_model:
+  - process/create/exe
+  description: Adversaries may hide malicious code in .chm compiled HTML files. When these files are read, Windows uses the HTML help executable named hh.exe, which is the signature for this analytic.
+  pseudocode: 'processes = search Process:Create
+
+    target_processes = filter processes where (exe="C:\Windows\syswow64\hh.exe" OR exe="C:\Windows\system32\hh.exe")
+
+    output target_processes'
+  source_key: analytics/CAR-2020-11-009.yaml
+- analytic: CAR-2020-11-010
+  name: CMSTP
+  technique: T1218
+  techniques:
+  - T1218
+  - T1218.003
+  tactics:
+  - TA0005
+  data_model:
+  - process/create/exe
+  - process/create/src_ip
+  description: 'CMSTP.exe is the Microsoft Connection Manager Profile Installer, which can be leveraged to setup listeners that will receive and install malware from remote sources in trusted fashion.
+
+    When CMSTP.exe is seen in combination with an external connection, it is a good indication of this TTP.'
+  pseudocode: "processes = search Process:Create\ntarget_processes = filter processes where (\n  exe=\"C:\\Windows\\System32\\CMSTP.exe\" AND\n  src_ip NOT IN [10.0.0.0/8,192.168.0.0/16, 172.16.0.0/12] )\noutput target_processes"
+  source_key: analytics/CAR-2020-11-010.yaml
+- analytic: CAR-2020-11-011
+  name: Registry Edit from Screensaver
+  technique: T1546
+  techniques:
+  - T1546
+  - T1546.002
+  tactics:
+  - TA0003
+  - TA0004
+  data_model:
+  - registry/edit/key
+  - registry/add/key
+  description: Adversaries may use screensaver files to run malicious code. This analytic triggers on suspicious edits to the screensaver registry keys, which dictate which .scr file the screensaver runs.
+  pseudocode: "reg_events = search Registry:add or Registry:edit\nscr_reg_events = filter processes where (\n  key=\"*\\\\Software\\\\Policies\\\\Microsoft\\\\Windows\\\\Control Panel\\\\Desktop\\\\SCRNSAVE.EXE\" AND\noutput scr_reg_events"
+  source_key: analytics/CAR-2020-11-011.yaml
+- analytic: CAR-2021-01-001
+  name: Identifying Port Scanning Activity
+  technique: T1046
+  techniques:
+  - T1046
+  tactics:
+  - TA0007
+  data_model:
+  - flow/start/dest_ip
+  description: After compromising an initial machine, adversaries commonly attempt to laterally move across the network. The first step to attempt the lateral movement often involves conducting host identification, port and service scans on the internal network via the compromised machine using tools such as Nmap, Cobalt Strike, etc.
+  pseudocode: sourcetype='firewall_logs' dest_ip = 'internal_subnet' | stats dc(dest_port) as pcount by src_ip | where pcount >5
+  source_key: analytics/CAR-2021-01-001.yaml
+- analytic: CAR-2021-01-002
+  name: Unusually Long Command Line Strings
+  technique: T1059
+  techniques:
+  - T1059
+  tactics:
+  - TA0002
+  data_model:
+  - process/create/command_line
+  description: Often, after a threat actor gains access to a system, they will attempt to run some kind of malware to further infect the victim machine. These malware often have long command line strings, which could be a possible indicator of attack. Here, we use sysmon and Splunk to first find the average command string length and search for command strings that stretch over multiple lines, thus identifying anomalies and possibly malicious commands.
+  pseudocode: index=* sourcetype="xmlwineventlog" EventCode=4688  |eval cmd_len=len(CommandLine) | eventstats avg(cmd_len) as avg by host| stats max(cmd_len) as maxlen, values(avg) as avgperhost by host, CommandLine | where maxlen > 10*avgperhost
+  source_key: analytics/CAR-2021-01-002.yaml
+- analytic: CAR-2021-01-003
+  name: Clearing Windows Logs with Wevtutil
+  technique: T1070
+  techniques:
+  - T1070
+  - T1070.001
+  tactics:
+  - TA0005
+  data_model:
+  - process/create/command_line
+  description: In an attempt to clear traces after compromising a machine, threat actors often try to clear Windows Event logs. This is often done using “wevtutil”, a legitimate tool provided by Microsoft. This action interferes with event collection and notification, and may lead to a security event going undetected, thereby potentially leading to further compromise of the network.
+  pseudocode: index=__your_sysmon_index__ sourcetype= __your__windows__sysmon__sourcetype EventCode=1 Image=*wevtutil* CommandLine=*cl* (CommandLine=*System* OR CommandLine=*Security* OR CommandLine=*Setup* OR CommandLine=*Application*)
+  source_key: analytics/CAR-2021-01-003.yaml
+- analytic: CAR-2021-01-004
+  name: Unusual Child Process for Spoolsv.Exe or Connhost.Exe
+  technique: T1068
+  techniques:
+  - T1068
+  tactics:
+  - TA0004
+  data_model:
+  - process/create/command_line
+  description: After gaining initial access to a system, threat actors attempt to escalate privileges as they may be operating within a lower privileged process which does not allow them to access protected information or carry out tasks which require higher permissions. A common way of escalating privileges in a system is by externally invoking and exploiting spoolsv or connhost executables, both of which are legitimate Windows applications. This query searches for an invocation of either of these executables by a user, thus alerting us of any potentially malicious activity.
+  pseudocode: (index=__your_sysmon_index__ EventCode=1) (Image=C:\\Windows\\System32\\spoolsv.exe* OR Image=C:\\Windows\\System32\\conhost.exe) ParentImage = "C:\\Windows\\System32\\cmd.exe"
+  source_key: analytics/CAR-2021-01-004.yaml
+- analytic: CAR-2021-01-006
+  name: Unusual Child Process spawned using DDE exploit
+  technique: T1559
+  techniques:
+  - T1559
+  - T1559.002
+  tactics:
+  - TA0002
+  data_model:
+  - process/create/command_line
+  description: Adversaries may use Windows Dynamic Data Exchange (DDE) to execute arbitrary commands. DDE is a client-server protocol for one-time and/or continuous inter-process communication (IPC) between applications. Once a link is established, applications can autonomously exchange transactions consisting of strings, warm data links (notifications when a data item changes), hot data links (duplications of changes to a data item), and requests for command execution.
+  pseudocode: index = __your_sysmon__index__ (ParentImage="*excel.exe" OR ParentImage="*word.exe" OR ParentImage="*outlook.exe") Image="*.exe"
+  source_key: analytics/CAR-2021-01-006.yaml
+- analytic: CAR-2021-01-007
+  name: Detecting Tampering of Windows Defender Command Prompt
+  technique: T1562
+  techniques:
+  - T1562
+  - T1562.001
+  tactics:
+  - TA0005
+  data_model:
+  - process/create/command_line
+  description: In an attempt to avoid detection after compromising a machine, threat actors often try to disable Windows Defender. This is often done using “sc” [service control], a legitimate tool provided by Microsoft for managing services. This action interferes with event detection and may lead to a security event going undetected, thereby potentially leading to further compromise of the network.
+  pseudocode: index= __your_sysmon__index__ EventCode=1 Image = "C:\\Windows\\System32\\sc.exe"  | regex CommandLine="^sc\s*(config|stop|query)\sWinDefend$"
+  source_key: analytics/CAR-2021-01-007.yaml
+- analytic: CAR-2021-01-008
+  name: Disable UAC
+  technique: T1548
+  techniques:
+  - T1548
+  - T1548.002
+  tactics:
+  - TA0004
+  data_model:
+  - process/create/image_path
+  - process/create/command_line
+  description: Threat actors often, after compromising a machine, try to disable User Access Control (UAC) to escalate privileges. This is often done by changing the registry key for system policies using “reg.exe”, a legitimate tool provided by Microsoft for modifying the registry via command prompt or scripts. This action interferes with UAC and may enable a threat actor to escalate privileges on the compromised system, thereby allowing further exploitation of the system.
+  pseudocode: sourcetype = __your_sysmon_index__ ParentImage = "C:\\Windows\\System32\\cmd.exe" | where like(CommandLine,"reg.exe%HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System%REG_DWORD /d 0%")
+  source_key: analytics/CAR-2021-01-008.yaml
+- analytic: CAR-2021-01-009
+  name: Detecting Shadow Copy Deletion or Resize
+  technique: T1490
+  techniques:
+  - T1490
+  tactics:
+  - TA0040
+  data_model:
+  - process/create/command_line
+  description: After compromising a network of systems, threat actors often try to delete/resize Shadow Copy in an attempt to prevent administrators from restoring the systems to versions present before the attack. This is often done via vssadmin, a legitimate Windows tool to interact with shadow copies. This action is often employed by ransomware, may lead to a failure in recovering systems after an attack. The pseudo code detection focus on Windows Security and Sysmon process creation (4688 and 1). The use of wmic to delete shadow copy generates WMI-Activity Operationnal 5857 event and could generate 5858 (if the operation fails). These 2 EventIDs could be interesting when attackers use wmic without process creation and/or for forensics.
+  pseudocode: ((EventCode="4688" OR EventCode="1") (CommandLine="*vssadmin* *delete* *shadows*" OR CommandLine="*wmic* *shadowcopy* *delete*" OR CommandLine="*vssadmin* *resize* *shadowstorage*")) OR (EventCode="5857" ProviderName="MSVSS__PROVIDER") OR (EventCode="5858" Operation="*Win32_ShadowCopy*")
+  source_key: analytics/CAR-2021-01-009.yaml
+- analytic: CAR-2021-02-001
+  name: Webshell-Indicative Process Tree
+  technique: T1505
+  techniques:
+  - T1505
+  - T1505.003
+  tactics:
+  - TA0003
+  data_model:
+  - process/create/exe
+  - process/create/parent_exe
+  description: A web shell is a web script placed on an openly accessible web server to allow an adversary to use the server as a gatway in a network. As the shell operates, commands will be issued from within the web application into the broader server operating system. This analytic looks for host enumeration executables initiated by any web service that would not normally be executed within that environment.
+  pseudocode: "processes = search Process:Create\nsuspicious_processes = filter processes where (\n  (parent_exe == \"w3wp.exe\" OR\n   parent_exe == \"httpd.exe\" OR\n   parent_exe == \"tomcat*.exe\" OR\n   parent_exe == \"nginx.exe\" ) AND\n  (exe == \"cmd.exe\" OR\n   exe == \"powershell.exe\" OR\n   exe == \"net.exe\" OR\n   exe == \"whoami.exe\" OR\n   exe == \"hostname.exe\" OR\n   exe == \"systeminfo.exe\" OR\n   exe == \"ipconfig.exe) )\noutput suspicious_processes"
+  source_key: analytics/CAR-2021-02-001.yaml
+- analytic: CAR-2021-02-002
+  name: Get System Elevation
+  technique: T1548
+  techniques:
+  - T1548
+  tactics:
+  - TA0004
+  - TA0005
+  data_model:
+  - process/create/exe
+  - process/create/parent_exe
+  - process/create/command_line
+  - service/create/command_line
+  description: 'Cyber actors frequently escalate to the SYSTEM account after gaining entry to a Windows host, to enable them to carry out various attacks more effectively. Tools such as Meterpreter, Cobalt Strike, and Empire carry out automated steps to "Get System", which is the same as switching over to the System user account. Most of these tools utilize multiple techniques to try and attain SYSTEM: in the first technique, they create a named pipe and connects an instance of cmd.exe to it, which allows them to impersonate the security context of cmd.exe, which is SYSTEM. In the second technique, a malicious DLL is injected into a process that is running as SYSTEM; the injected DLL steals the SYSTEM token and applies it where necessary to escalate privileges. This analytic looks for both of these techniques.'
+  pseudocode: "processes = search Process\nsuspicious_processes = filter processes where (\n  (parent_image_path == C:\\Windows\\System32\\services.exe\" AND\n   image_path == \"C:\\Windows\\System32\\cmd.exe\" AND\n   command_line == \"*echo*\" AND\n   command_line == \"*\\pipe\\*\") OR\n  (image_path == \"C:\\Windows\\System32\\rundll32.exe\" AND\n   command_line == \"*,a /p:*\"))\noutput suspicious_processes"
+  source_key: analytics/CAR-2021-02-002.yaml
+- analytic: CAR-2021-04-001
+  name: Common Windows Process Masquerading
+  technique: T1036
+  techniques:
+  - T1036
+  - T1036.005
+  tactics:
+  - TA0005
+  data_model:
+  - process/create/exe
+  - process/create/image_path
+  - process/access/exe
+  - process/access/image_path
+  - process/terminate/exe
+  - process/terminate/image_path
+  description: '[Masquerading (T1036)](https://attack.mitre.org/techniques/T1036/) is defined by ATT&CK as follows:
+
+
+    "Masquerading occurs when the name or location of an object, legitimate or malicious, is manipulated or abused for the sake of evading defenses and observation. This may include manipulating file metadata, tricking users into misidentifying the file type, and giving legitimate task or service names."
+
+
+    Malware authors often use this technique to hide malicious executables behind legitimate Windows executable names (e.g. `lsass.exe`, `svchost.exe`, etc).
+
+
+    There are several sub-techniques, but this analytic focuses on [Match Legitimate Name or Location](https://attack.mitre.org/techniques/T1036/005/) only.
+
+
+    **Analytic Methodology**
+
+
+    With process monitoring, hunt for processes matching these criteria:
+
+
+    * process name is `svchost.exe`, `smss.exe`, `wininit.exe`, `taskhost.exe`, etc.
+
+    * process path is not `C:\Windows\System32\` or `C:\Windows\SysWow64\`
+
+
+    Examples (true positive):
+
+
+    `C:\Users\administrator\svchost.exe`
+
+
+    To make sure the rule doesn''t miss cases where the executable would be started from a sub-folder of these locations, the entire path is checked for the process path. The bel'
+  pseudocode: "processes = search Process:*\nsuspicious_processes = filter processes where (\n  (exe=svchost.exe AND (image_path!=\"C:\\\\Windows\\\\System32\\\\svchost.exe\" OR process_path!=\"C:\\\\Windows\\\\SysWow64\\\\svchost.exe\"))\n  OR (exe=smss.exe AND image_path!=\"C:\\\\Windows\\\\System32\\\\smss.exe\")\n  OR (exe=wininit.exe AND image_path!=\"C:\\\\Windows\\\\System32\\\\wininit.exe\")\n  OR (exe=taskhost.exe AND image_path!=\"C:\\\\Windows\\\\System32\\\\taskhost.exe\")\n  OR (exe=lasass.exe AND image_path!=\"C:\\\\Windows\\\\System32\\\\lsass.exe\")\n  OR (exe=winlogon.exe AND image_path!=\"C:\\\\Windows\\\\System32\\\\winlogon.exe\")\n  OR (exe=csrss.exe AND image_path!=\"C:\\\\Windows\\\\System32\\\\csrss.exe\")\n  OR (exe=services.exe AND image_path!=\"C:\\\\Windows\\\\System32\\\\services.exe\")\n  OR (exe=lsm.exe AND image_path!=\"C:\\\\Windows\\\\System32\\\\lsm.exe\")\n  OR (exe=explorer.exe AND image_path!=\"C:\\\\Windows\\\\explorer.exe\")\n  )\noutput suspicious_processes"
+  source_key: analytics/CAR-2021-04-001.yaml
+- analytic: CAR-2021-05-001
+  name: Attempt To Add Certificate To Untrusted Store
+  technique: T1553
+  techniques:
+  - T1553
+  - T1553.004
+  tactics:
+  - TA0005
+  data_model:
+  - process/create/exe
+  - process/create/command_line
+  description: Adversaries may add their own root certificate to the certificate store, to cause the web browser to trust that certificate and not display a security warning when it encounters the previously unseen certificate. This action may be the precursor to malicious activity.
+  pseudocode: '| tstats count min(_time) as firstTime values(Processes.process) as process max(_time) as lastTime from datamodel=Endpoint.Processes where Processes.process_name=*certutil* (Processes.process=*-addstore*) by Processes.parent_process Processes.process_name Processes.user'
+  source_key: analytics/CAR-2021-05-001.yaml
+- analytic: CAR-2021-05-002
+  name: Batch File Write to System32
+  technique: T1204
+  techniques:
+  - T1204
+  - T1204.002
+  tactics:
+  - TA0002
+  data_model:
+  - file/create/extension
+  - file/create/file_path
+  description: While batch files are not inherently malicious, it is uncommon to see them created after OS installation, especially in the Windows directory. This analytic looks for the suspicious activity of a batch file being created within the C:\Windows\System32 directory tree. There will be only occasional false positives due to administrator actions.
+  pseudocode: "files = search File:create\nbatch_files = filter files where (\n  extension =\".bat\" AND file_path = \"C:\\Windows\\system32*\" )\noutput batch_files"
+  source_key: analytics/CAR-2021-05-002.yaml
+- analytic: CAR-2021-05-003
+  name: BCDEdit Failure Recovery Modification
+  technique: T1490
+  techniques:
+  - T1490
+  tactics:
+  - TA0040
+  data_model:
+  - process/create/exe
+  - process/create/command_line
+  description: This search looks for flags passed to bcdedit.exe modifications to the built-in Windows error recovery boot configurations. This is typically used by ransomware to prevent recovery.
+  pseudocode: "processes = search Process:Create\nbcdedit_commands = filter processes where (\n  exe = \"C:\\Windows\\System32\\bcdedit.exe\" AND command_line=\"*recoveryenabled*\" )\noutput bcedit_commands"
+  source_key: analytics/CAR-2021-05-003.yaml
+- analytic: CAR-2021-05-004
+  name: BITS Job Persistence
+  technique: T1197
+  techniques:
+  - T1197
+  tactics:
+  - TA0003
+  - TA0005
+  data_model:
+  - process/create/exe
+  - process/create/command_line
+  description: The following query identifies Microsoft Background Intelligent Transfer Service utility `bitsadmin.exe` scheduling a BITS job to persist on an endpoint. The query identifies the parameters used to create, resume or add a file to a BITS job. Typically seen combined in a oneliner or ran in sequence. If identified, review the BITS job created and capture any files written to disk. It is possible for BITS to be used to upload files and this may require further network data analysis to identify. You can use `bitsadmin /list /verbose` to list out the jobs during investigation.
+  pseudocode: "processes = search Process:Create\nbitsadmin_commands = filter processes where (\n  exe =\"C:\\Windows\\System32\\bitsadmin.exe\" AND command_line includes one of [*create*, *addfile*, *setnotifyflags*, *setnotifycmdline*, *setminretrydelay*, *setcustomheaders*,*resume*])\noutput bitsadmin_commands"
+  source_key: analytics/CAR-2021-05-004.yaml
+- analytic: CAR-2021-05-005
+  name: BITSAdmin Download File
+  technique: T1197
+  techniques:
+  - T1105
+  - T1197
+  tactics:
+  - TA0003
+  - TA0005
+  - TA0011
+  data_model:
+  - process/create/exe
+  - process/create/command_line
+  description: The following query identifies Microsoft Background Intelligent Transfer Service utility `bitsadmin.exe` using the `transfer` parameter to download a remote object. In addition, look for `download` or `upload` on the command-line, the switches are not required to perform a transfer. Capture any files downloaded. Review the reputation of the IP or domain used. Typically once executed, a follow on command will be used to execute the dropped file. Note that the network connection or file modification events related will not spawn or create from `bitsadmin.exe`, but the artifacts will appear in a parallel process of `svchost.exe` with a command-line similar to `svchost.exe -k netsvcs -s BITS`. It's important to review all parallel and child processes to capture any behaviors and artifacts. In some suspicious and malicious instances, BITS jobs will be created. You can use `bitsadmin /list /verbose` to list out the jobs during investigation.
+  pseudocode: "processes = search Process:Create\nbitsadmin_commands = filter processes where (\n  exe =\"C:\\Windows\\System32\\bitsadmin.exe\" AND command_line = *transfer*)\noutput bitsadmin_commands"
+  source_key: analytics/CAR-2021-05-005.yaml
+- analytic: CAR-2021-05-006
+  name: CertUtil Download With URLCache and Split Arguments
+  technique: T1105
+  techniques:
+  - T1105
+  tactics:
+  - TA0011
+  data_model:
+  - process/create/exe
+  - process/create/command_line
+  description: Certutil.exe may download a file from a remote destination using `-urlcache`. This behavior does require a URL to be passed on the command-line. In addition, `-f` (force) and `-split` (Split embedded ASN.1 elements, and save to files) will be used. It is not entirely common for `certutil.exe` to contact public IP space. However, it is uncommon for `certutil.exe` to write files to world writeable paths.\ During triage, capture any files on disk and review. Review the reputation of the remote IP or domain in question.
+  pseudocode: "processes = search Process:Create\ncertutil_downloads = filter processes where (\n  exe =\"C:\\Windows\\System32\\certutil.exe\" AND command_line = *urlcache* AND command_line = *split*)\noutput certutil_downloads"
+  source_key: analytics/CAR-2021-05-006.yaml
+- analytic: CAR-2021-05-007
+  name: CertUtil Download With VerifyCtl and Split Arguments
+  technique: T1105
+  techniques:
+  - T1105
+  tactics:
+  - TA0011
+  data_model:
+  - process/create/exe
+  - process/create/command_line
+  description: Certutil.exe may download a file from a remote destination using `-VerifyCtl`. This behavior does require a URL to be passed on the command-line. In addition, `-f` (force) and `-split` (Split embedded ASN.1 elements, and save to files) will be used. It is not entirely common for `certutil.exe` to contact public IP space. \ During triage, capture any files on disk and review. Review the reputation of the remote IP or domain in question. Using `-VerifyCtl`, the file will either be written to the current working directory or `%APPDATA%\..\LocalLow\Microsoft\CryptnetUrlCache\Content\<hash>`.
+  pseudocode: "processes = search Process:Create\ncertutil_downloads = filter processes where (\n  exe = \"C:\\Windows\\System32\\certutil.exe\" AND command_line = *verifyctl* AND command_line = *split*)\noutput certutil_downloads"
+  source_key: analytics/CAR-2021-05-007.yaml
+- analytic: CAR-2021-05-008
+  name: Certutil exe certificate extraction
+  technique: T1606
+  techniques:
+  - T1606
+  - T1606.002
+  tactics:
+  - TA0006
+  data_model:
+  - process/create/exe
+  - process/create/command_line
+  description: This search looks for arguments to certutil.exe indicating the manipulation or extraction of Certificate. This certificate can then be used to sign new authentication tokens specially inside Federated environments such as Windows ADFS.
+  pseudocode: "processes = search Process:Create\ncertutil_downloads = filter processes where (\n  exe =”C:\\Windows\\System32\\certutil.exe” AND command_line = * -exportPFX * )\noutput certutil_downloads"
+  source_key: analytics/CAR-2021-05-008.yaml
+- analytic: CAR-2021-05-009
+  name: CertUtil With Decode Argument
+  technique: T1140
+  techniques:
+  - T1140
+  tactics:
+  - TA0005
+  data_model:
+  - process/create/exe
+  - process/create/command_line
+  description: CertUtil.exe may be used to `encode` and `decode` a file, including PE and script code. Encoding will convert a file to base64 with `-----BEGIN CERTIFICATE-----` and `-----END CERTIFICATE-----` tags. Malicious usage will include decoding a encoded file that was downloaded. Once decoded, it will be loaded by a parallel process. Note that there are two additional command switches that may be used - `encodehex` and `decodehex`. Similarly, the file will be encoded in HEX and later decoded for further execution. During triage, identify the source of the file being decoded. Review its contents or execution behavior for further analysis.
+  pseudocode: "processes = search Process:Create\ncertutil_downloads = filter processes where (\n  exe =”C:\\Windows\\System32\\certutil.exe” AND command_line = *decode* )\noutput certutil_downloads"
+  source_key: analytics/CAR-2021-05-009.yaml
+- analytic: CAR-2021-05-010
+  name: Create local admin accounts using net exe
+  technique: T1136
+  techniques:
+  - T1136
+  - T1136.001
+  tactics:
+  - TA0003
+  data_model:
+  - process/create/exe
+  - process/create/command_line
+  description: This search looks for the creation of local administrator accounts using net.exe.
+  pseudocode: "processes = search Process:Create\ncertutil_downloads = filter processes where (\n  (exe = C:\\Windows\\System32\\net.exe OR exe = C:\\Windows\\System32\\net1.exe ) AND (command_line = *localgroup* OR command_line = */add* OR command_line = *user* ))\noutput certutil_downloads"
+  source_key: analytics/CAR-2021-05-010.yaml
+- analytic: CAR-2021-05-011
+  name: Create Remote Thread into LSASS
+  technique: T1003
+  techniques:
+  - T1003
+  - T1003.001
+  tactics:
+  - TA0006
+  data_model:
+  - thread/remote_create
+  description: Actors may create a remote thread into the LSASS service as part of a workflow to dump credentials.
+  pseudocode: 'remote_threads = search Thread:remote_create
+
+    lsass_remote_create = filter remote_threads where "lsass" in raw event
+
+    output lsass_remote_create'
+  source_key: analytics/CAR-2021-05-011.yaml
+- analytic: CAR-2021-05-012
+  name: Create Service In Suspicious File Path
+  technique: T1569
+  techniques:
+  - T1569
+  - T1569.001
+  - T1569.002
+  tactics:
+  - TA0002
+  data_model:
+  - service/create/image_path
+  description: This detection is to identify a creation of "user mode service" where the service file path is located in non-common service folder in windows.
+  pseudocode: 'services = search Service:create
+
+    suspicious_services = filter services where image_path = "*\.exe" AND image_path does not contain ["C:\\Windows\\*", "%windir%\\*", "C:\\Program File*", "C:\\Programdata\\*", "%systemroot%\\*"] )
+
+    output suspicious_services'
+  source_key: analytics/CAR-2021-05-012.yaml
+- analytic: CAR-2021-11-001
+  name: Registry Edit with Creation of SafeDllSearchMode Key Set to 0
+  technique: T1574
+  techniques:
+  - T1112
+  - T1574
+  - T1574.001
+  tactics:
+  - TA0003
+  - TA0004
+  - TA0005
+  data_model:
+  - process/create/command_line
+  - registry/add/key
+  description: Detection of creation of registry key HKEY_LOCAL_MACHINE\System\CurrentControlSet\Control\Session Manager\SafeDllSearchMode. The key SafeDllSearchMode, if set to 0, will block the Windows mechanism for the search DLL order and adversaries may execute their own malicious dll.
+  pseudocode: 'processes = search Process:create
+
+    safe_dll_search_processes = filter processes where command_line CONTAINS("*SafeDllSearchMode*") AND ((command_line CONTAINS("*reg*") AND command_line CONTAINS("*add*") AND command_line CONTAINS("*/d*")) OR (command_line CONTAINS("*Set-ItemProperty*") AND command_line CONTAINS(*-value*)) OR ((command_line CONTAINS("*00000000*") AND command_line CONTAINS(*0*)))
+
+    reg_keys = search Registry:value_edit
+
+    safe_dll_reg_keys = filter reg_keys where value="SafeDllSearchMode" AND value_data="0"
+
+    output safe_dll_search_processes, safe_dll_reg_keys'
+  source_key: analytics/CAR-2021-11-001.yaml
+- analytic: CAR-2021-11-002
+  name: Registry Edit with Modification of Userinit, Shell or Notify
+  technique: T1547
+  techniques:
+  - T1112
+  - T1547
+  - T1547.004
+  tactics:
+  - TA0003
+  - TA0004
+  - TA0005
+  data_model:
+  - process/create/command_line
+  - registry/add/key
+  description: Detection of modification of the registry key values of `Notify`, `Userinit`, and `Shell` located in `HKEY_LOCAL_MACHINE\Software\Microsoft\Windows NT\CurrentVersion\Winlogon\` and `HKEY_LOCAL_USER\Software\Microsoft\Windows NT\CurrentVersion\Winlogon\`. When a user logs on, the Registry key values of `Notify`, `Userinit` and `Shell` are used to load dedicated Windows component. Attackers may insert malicious payload following the legitimate value to launch a malicious payload.
+  pseudocode: 'processes = search Process:create
+
+    logon_reg_processes = filter processes where command_line CONTAINS("*\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon*") AND (command_line CONTAINS("*Userinit*") OR command_line CONTAINS("*Shell*") OR command_line CONTAINS("*Notify*")) AND (((command_line CONTAINS("*reg*") OR command_line CONTAINS("*add*") OR command_line CONTAINS("*/d*")) OR (command_line CONTAINS("*Set-ItemProperty*") OR command_line CONTAINS("*New-ItemProperty*") OR command_line CONTAINS("*-value*"))))
+
+    reg_keys = search Registry:value_edit
+
+    logon_reg_keys = filter reg_keys where (value="Userinit" OR value="Shell" OR value="Notify")
+
+    output logon_reg_processes, logon_reg_keys'
+  source_key: analytics/CAR-2021-11-002.yaml
+- analytic: CAR-2021-12-001
+  name: Scheduled Task Creation or Modification Containing Suspicious Scripts, Extensions or User Writable Paths
+  technique: T1053
+  techniques:
+  - T1053
+  - T1053.005
+  tactics:
+  - TA0002
+  - TA0003
+  - TA0004
+  data_model:
+  - process/create/command_line
+  description: Detection of the creation or modification of Scheduled Tasks with a suspicious script, extension or user writable path. Attackers may create or modify Scheduled Tasks for the persistent execution of malicious code. This detection focuses at the same time on EventIDs 4688 and 1 with process creation (SCHTASKS) and EventID 4698, 4702 for Scheduled Task creation/modification event log.
+  pseudocode: 'processes = search Process:create
+
+    susp_tasks_processes = filter processes where command_line CONTAINS("*SCHTASKS*") AND (command_line CONTAINS("*/CREATE*") OR command_line CONTAINS("*/CHANGE*")) AND (command_line CONTAINS("*.cmd*") OR command_line CONTAINS("*.ps1*") OR command_line CONTAINS("*.vbs*") OR command_line CONTAINS("*.py*") OR command_line CONTAINS("*.js*") OR command_line CONTAINS("*.exe*") OR command_line CONTAINS("*.bat*") OR (command_line CONTAINS("*javascript*") OR command_line CONTAINS("*powershell*") OR command_line CONTAINS("*wmic*") OR command_line CONTAINS("*rundll32*") OR command_line CONTAINS("*cmd*") OR command_line CONTAINS("*cscript*") OR command_line CONTAINS("*wscript*") OR command_line CONTAINS("*regsvr32*") OR command_line CONTAINS("*mshta*") OR command_line CONTAINS("*bitsadmin*") OR command_line CONTAINS("*certutil*") OR command_line CONTAINS("*msiexec*") OR command_line CONTAINS("*javaw*") OR (command_line CONTAINS("*%APPDATA%*") OR command_line CONTAINS("*\\AppData\\Roaming*") OR command_line
+    CONTAINS("*%PUBLIC%*") OR command_line CONTAINS("*C:\\Users\\Public*") OR command_line CONTAINS("*%ProgramData%*") OR command_line CONTAINS("*C:\\ProgramData*") OR command_line CONTAINS("*%TEMP%*") OR command_line CONTAINS("*\\AppData\\Local\\Temp*") OR command_line CONTAINS("*\\Windows\\PLA\\System*") OR command_line CONTAINS("*\\tasks*") OR command_line CONTAINS("*\\Registration\\CRMLog*") OR command_line CONTAINS("*\\FxsTmp*") OR command_line CONTAINS("*\\spool\\drivers\\color*") OR command_line CONTAINS("*\\tracing*"))))
+
+    tasks = search Task:create
+
+    susp_tasks = filter tasks where (task_content CONTAINS("*.cmd*") OR task_content CONTAINS("*.ps1*") OR task_content CONTAINS("*.vbs*") OR task_content CONTAINS("*.py*") OR task_content CONTAINS("*.js*") OR task_content CONTAINS("*.exe*") OR task_content CONTAINS("*.bat*") OR (task_content CONTAINS("*javascript*") OR task_content CONTAINS("*powershell*") OR task_content CONTAINS("*wmic*") OR task_content CONTAINS("*rundll32*") OR task_content CONTAINS("*cmd*") OR task_content CONTAINS("*cscript*") OR task_content CONTAINS("*wscript*") OR task_content CONTAINS("*regsvr32*") OR task_content CONTAINS("*mshta*") OR task_content CONTAINS("*bitsadmin*") OR task_content CONTAINS("*certutil*") OR task_content CONTAINS("*msiexec*") OR task_content CONTAINS("*javaw*") OR (task_content CONTAINS("*%APPDATA%*") OR task_content CONTAINS("*\\AppData\\Roaming*") OR task_content CONTAINS("*%PUBLIC%*") OR task_content CONTAINS("*C:\\Users\\Public*") OR task_content CONTAINS("*%ProgramData%*") OR task_content
+    CONTAINS("*C:\\ProgramData*") OR task_content CONTAINS("*%TEMP%*") OR task_content CONTAINS("*\\AppData\\Local\\Temp*") OR task_content CONTAINS("*\\Windows\\PLA\\System*") OR task_content CONTAINS("*\\tasks*") OR task_content CONTAINS("*\\Registration\\CRMLog*") OR task_content CONTAINS("*\\FxsTmp*") OR task_content CONTAINS("*\\spool\\drivers\\color*") OR task_content CONTAINS("*\\tracing*"))))
+
+    output susp_tasks_processes, susp_tasks'
+  source_key: analytics/CAR-2021-12-001.yaml
+- analytic: CAR-2021-12-002
+  name: Modification of Default Startup Folder in the Registry Key 'Common Startup'
+  technique: T1547
+  techniques:
+  - T1112
+  - T1547
+  - T1547.001
+  tactics:
+  - TA0003
+  - TA0004
+  - TA0005
+  data_model:
+  - process/create/command_line
+  - registry/add/key
+  description: Detection of the modification of the registry key `Common Startup` located in `HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders\` and `HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders\`. When a user logs on, any files located in the Startup Folder are launched. Attackers may modify these folders with other files in order to evade detection set on these default folders. This detection focuses on EventIDs 4688 and 1 for process creation and EventID 4657 for the modification of the Registry Keys.
+  pseudocode: 'processes = search Process:create
+
+    logon_reg_processes = filter processes where (command_line CONTAINS("*reg*") AND command_line CONTAINS("*add*") AND command_line CONTAINS("*/d*") OR (command_line CONTAINS("*Set-ItemProperty*") AND command_line CONTAINS("*-value*")) AND command_line CONTAINS("*Common Startup*"))
+
+    reg_keys = search Registry:value_edit
+
+    logon_reg_keys = filter reg_keys where value="Common Startup"
+
+    output logon_reg_processes, logon_reg_keys'
+  source_key: analytics/CAR-2021-12-002.yaml
+- analytic: CAR-2022-03-001
+  name: Disable Windows Event Logging
+  technique: T1562
+  techniques:
+  - T1562
+  - T1562.002
+  tactics:
+  - TA0005
+  data_model:
+  - registry/value_edit/value
+  - process/create/command_line
+  description: 'Adversaries may disable Windows event logging to limit data that can be leveraged for detections and audits. Windows event logs record user and system activity such as login attempts, process creation, and much more. This data is used by security tools and analysts to generate detections. There are different ways to perform this attack.
+
+    1. The first one is to create the Registry Key `HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\MiniNt`. This action will not generate Security EventLog 4657 or Sysmon EventLog 13 because the value of the key remains empty. However, if an attacker uses powershell to perform this attack (and not cmd), a Security EventLog 4663 will be generated (but 4663 generates a lot of noise).
+
+    2. The second way is to disable the service EventLog (display name Windows Event Log). After disabed, attacker must reboot the system. The action of disabling or put in manual the service will modify the Registry Key value `HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\EventLog\start`, therefore Security EventLog 4657 or Sysmon EventLog 13 will be generated on the system.
+
+    3. The third way is linked with the second. By default, the EventLog service cannot be stoppe'
+  pseudocode: 'processes = search Process:create
+
+    susp_processes = filter processes where ((command_line CONTAINS("*New-Item*") OR command_line CONTAINS("*reg add*")) OR command_line CONTAINS("*MiniNt*")) OR (command_line CONTAINS("*Stop-Service*")AND command_line CONTAINS("*EventLog*")) OR (command_line CONTAINS("*EventLog*") AND (command_line CONTAINS("*Set-Service*") OR command_line CONTAINS("*reg add*") OR command_line CONTAINS("*Set-ItemProperty*") OR command_line CONTAINS("*New-ItemProperty*") OR command_line CONTAINS("*sc config*"))) OR (command_line CONTAINS("*auditpol*") AND (command_line CONTAINS("*/set*") OR command_line CONTAINS("*/clear*") OR command_line CONTAINS("*/revove*"))) OR ((command_line CONTAINS("*wevtutil*") AND (command_line CONTAINS("*sl*") OR command_line CONTAINS("*set-log*"))))
+
+    reg_keys = search Registry:value_edit
+
+    event_log_reg_keys = filter reg_keys where Key="*EventLog*" AND (value="Start" OR value="File" OR value="MaxSize")
+
+    output susp_processes, event_log_reg_keys'
+  source_key: analytics/CAR-2022-03-001.yaml

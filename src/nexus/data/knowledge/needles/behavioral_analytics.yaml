@@ -17,9 +17,7 @@
 # tests - a stale field name would make the analytic silently match nothing,
 # which reads as "no such behaviour" rather than "broken analytic".
 version: 1
-description: 'Behavioural analytics for the artifact families the rule engines do
-  not cover. Typed queries over registry columns, each citing a CAR analytic or ATT&CK
-  technique, so a lead can travel from a hit back to published detection logic.
+description: 'Behavioural analytics for the artifact families the rule engines do not cover. Typed queries over registry columns, each citing a CAR analytic or ATT&CK technique, so a lead can travel from a hit back to published detection logic.
 
   '
 source: MITRE CAR (car.mitre.org) as held in needles/car_analytics.yaml; ATT&CK Enterprise
@@ -35,16 +33,14 @@ packs:
   - pecmd
   - amcache
   citation:
-    type: car
-    id: CAR-2014-11-004
-    ref: https://car.mitre.org/analytics/CAR-2014-11-004/
+    type: authored
+    id: authored:ba-exec-user-writable
+    ref: ''
+    rationale: 'Authored for this product: expresses T1204.002, T1059 in this pack''s logic. Not derived from an external source.'
   techniques:
   - T1204.002
   - T1059
-  rationale: User-writable locations are where a downloaded payload lands. The DSL
-    has NO typed-field negation (`not path:\Windows` parses as a POSITIVE filter,
-    so it would invert the analytic), so this is deliberately a single positive term
-    and the system-tree exclusion is the examiner's next filter.
+  rationale: User-writable locations are where a downloaded payload lands. The DSL has NO typed-field negation (`not path:\Windows` parses as a POSITIVE filter, so it would invert the analytic), so this is deliberately a single positive term and the system-tree exclusion is the examiner's next filter.
   es:
     bool:
       filter:
@@ -61,9 +57,10 @@ packs:
   - evtxecmd
   - sysmon
   citation:
-    type: car
-    id: CAR-2014-11-003
-    ref: https://car.mitre.org/analytics/CAR-2014-11-003/
+    type: authored
+    id: authored:ba-exec-temp
+    ref: ''
+    rationale: 'Authored for this product: expresses T1059, T1204.002 in this pack''s logic. Not derived from an external source.'
   techniques:
   - T1059
   - T1204.002
@@ -83,13 +80,13 @@ packs:
   - amcache
   - sysmon
   citation:
-    type: car
-    id: CAR-2014-11-003
-    ref: https://car.mitre.org/analytics/CAR-2014-11-003/
+    type: authored
+    id: authored:ba-exec-programdata
+    ref: ''
+    rationale: 'Authored for this product: expresses T1059 in this pack''s logic. Not derived from an external source.'
   techniques:
   - T1059
-  rationale: ProgramData is world-writable and survives cleanup, so it is a common
-    staging root.
+  rationale: ProgramData is world-writable and survives cleanup, so it is a common staging root.
   es:
     bool:
       filter:
@@ -106,14 +103,14 @@ packs:
   - sysmon
   - prefetch
   citation:
-    type: car
-    id: CAR-2014-11-004
-    ref: https://car.mitre.org/analytics/CAR-2014-11-004/
+    type: authored
+    id: authored:ba-exec-script-host
+    ref: ''
+    rationale: 'Authored for this product: expresses T1059.005, T1218.005 in this pack''s logic. Not derived from an external source.'
   techniques:
   - T1059.005
   - T1218.005
-  rationale: A script host is normal; a script host pointed at a loose file is the
-    interesting shape.
+  rationale: A script host is normal; a script host pointed at a loose file is the interesting shape.
   es:
     bool:
       filter:
@@ -144,14 +141,14 @@ packs:
   - security
   - sysmon
   citation:
-    type: car
-    id: CAR-2016-04-012
-    ref: https://car.mitre.org/analytics/CAR-2016-04-012/
+    type: authored
+    id: authored:ba-exec-encoded-command
+    ref: ''
+    rationale: 'Authored for this product: expresses T1059.001, T1027 in this pack''s logic. Not derived from an external source.'
   techniques:
   - T1059.001
   - T1027
-  rationale: Encoding exists to defeat string inspection; pair with the decoded text,
-    not the flag alone.
+  rationale: Encoding exists to defeat string inspection; pair with the decoded text, not the flag alone.
   es:
     bool:
       filter:
@@ -182,14 +179,14 @@ packs:
   - security
   - sysmon
   citation:
-    type: car
-    id: CAR-2014-11-004
-    ref: https://car.mitre.org/analytics/CAR-2014-11-004/
+    type: authored
+    id: authored:ba-exec-lolbin-download
+    ref: ''
+    rationale: 'Authored for this product: expresses T1105, T1218 in this pack''s logic. Not derived from an external source.'
   techniques:
   - T1105
   - T1218
-  rationale: A signed system binary reaching the network is the canonical ingress
-    primitive.
+  rationale: A signed system binary reaching the network is the canonical ingress primitive.
   es:
     bool:
       filter:
@@ -226,12 +223,12 @@ packs:
   - security
   citation:
     type: car
-    id: CAR-2014-11-001
-    ref: https://car.mitre.org/analytics/CAR-2014-11-001/
+    id: CAR-2014-02-001
+    ref: https://car.mitre.org/analytics/CAR-2014-02-001/
+    title: Service Binary Modifications
   techniques:
   - T1543.003
-  rationale: A service is the strongest persistence on Windows; its ImagePath should
-    be a system or Program Files path.
+  rationale: A service is the strongest persistence on Windows; its ImagePath should be a system or Program Files path.
   es:
     bool:
       filter:
@@ -252,13 +249,13 @@ packs:
   - registry
   - recmd
   citation:
-    type: car
-    id: CAR-2014-11-001
-    ref: https://car.mitre.org/analytics/CAR-2014-11-001/
+    type: authored
+    id: authored:ba-persist-service-new
+    ref: ''
+    rationale: 'Authored for this product: expresses T1543.003 in this pack''s logic. Not derived from an external source.'
   techniques:
   - T1543.003
-  rationale: 7045 and 4697 are the service-install records; the path and signer decide
-    whether it matters.
+  rationale: 7045 and 4697 are the service-install records; the path and signer decide whether it matters.
   es:
     bool:
       filter:
@@ -281,13 +278,13 @@ packs:
   - NTUSER
   - evtxecmd
   citation:
-    type: car
-    id: CAR-2014-11-002
-    ref: https://car.mitre.org/analytics/CAR-2014-11-002/
+    type: authored
+    id: authored:ba-persist-run-usbable
+    ref: ''
+    rationale: 'Authored for this product: expresses T1547.001 in this pack''s logic. Not derived from an external source.'
   techniques:
   - T1547.001
-  rationale: The Run key is expected; a Run value whose target lives under AppData
-    is the anomaly.
+  rationale: The Run key is expected; a Run value whose target lives under AppData is the anomaly.
   es:
     bool:
       filter:
@@ -307,9 +304,10 @@ packs:
   - NTUSER
   - evtxecmd
   citation:
-    type: car
-    id: CAR-2014-11-002
-    ref: https://car.mitre.org/analytics/CAR-2014-11-002/
+    type: authored
+    id: authored:ba-persist-runonce
+    ref: ''
+    rationale: 'Authored for this product: expresses T1547.001 in this pack''s logic. Not derived from an external source.'
   techniques:
   - T1547.001
   rationale: RunOnce is usually installer traffic; correlate with the writing process.
@@ -329,13 +327,13 @@ packs:
   - security
   citation:
     type: car
-    id: CAR-2016-04-009
-    ref: https://car.mitre.org/analytics/CAR-2016-04-009/
+    id: CAR-2020-09-001
+    ref: https://car.mitre.org/analytics/CAR-2020-09-001/
+    title: Scheduled Task - FileAccess
   techniques:
   - T1053.005
   - T1059.001
-  rationale: A task is the cheapest durable execution; the action it runs is what
-    distinguishes it from Windows' own.
+  rationale: A task is the cheapest durable execution; the action it runs is what distinguishes it from Windows' own.
   es:
     bool:
       filter:
@@ -370,12 +368,12 @@ packs:
   - tasks
   citation:
     type: car
-    id: CAR-2016-04-009
-    ref: https://car.mitre.org/analytics/CAR-2016-04-009/
+    id: CAR-2015-04-002
+    ref: https://car.mitre.org/analytics/CAR-2015-04-002/
+    title: Remotely Scheduled Tasks via Schtasks
   techniques:
   - T1053.005
-  rationale: Hidden tasks do not appear in the console - a deliberate choice by whoever
-    made them.
+  rationale: Hidden tasks do not appear in the console - a deliberate choice by whoever made them.
   es:
     bool:
       filter:
@@ -392,9 +390,10 @@ packs:
   - sysmon
   - registry
   citation:
-    type: car
-    id: CAR-2016-04-008
-    ref: https://car.mitre.org/analytics/CAR-2016-04-008/
+    type: authored
+    id: authored:ba-persist-wmi-subscription
+    ref: ''
+    rationale: 'Authored for this product: expresses T1546.003 in this pack''s logic. Not derived from an external source.'
   techniques:
   - T1546.003
   rationale: WMI subscriptions survive reboot, leave no task, and are fileless.
@@ -413,8 +412,9 @@ packs:
   - evtxecmd
   citation:
     type: car
-    id: CAR-2014-11-003
-    ref: https://car.mitre.org/analytics/CAR-2014-11-003/
+    id: CAR-2021-12-002
+    ref: https://car.mitre.org/analytics/CAR-2021-12-002/
+    title: Modification of Default Startup Folder in the Registry Key 'Common Startup'
   techniques:
   - T1547.001
   rationale: Anything in Startup runs at logon; the folder is user-writable by design.
@@ -433,14 +433,13 @@ packs:
   - security
   - sysmon
   citation:
-    type: car
-    id: CAR-2014-11-008
-    ref: https://car.mitre.org/analytics/CAR-2014-11-008/
+    type: authored
+    id: authored:ba-cred-lsass-nonsystem
+    ref: ''
+    rationale: 'Authored for this product: expresses T1003.001 in this pack''s logic. Not derived from an external source.'
   techniques:
   - T1003.001
-  rationale: lsass is protected; any process referring to it outside the system image
-    is worth a look. Kept as a positive term because the DSL does not negate typed
-    fields - the non-system narrowing is a follow-on filter, not part of this query.
+  rationale: lsass is protected; any process referring to it outside the system image is worth a look. Kept as a positive term because the DSL does not negate typed fields - the non-system narrowing is a follow-on filter, not part of this query.
   es:
     bool:
       filter:
@@ -458,12 +457,12 @@ packs:
   - prefetch
   citation:
     type: car
-    id: CAR-2016-04-002
-    ref: https://car.mitre.org/analytics/CAR-2016-04-002/
+    id: CAR-2019-07-002
+    ref: https://car.mitre.org/analytics/CAR-2019-07-002/
+    title: Lsass Process Dump via Procdump
   techniques:
   - T1003.001
-  rationale: Credential-dump tooling runs from staging directories; the reference
-    is the tell, not the tool name.
+  rationale: Credential-dump tooling runs from staging directories; the reference is the tell, not the tool name.
   es:
     bool:
       filter:
@@ -482,13 +481,13 @@ packs:
   - evtxecmd
   - hayabusa
   citation:
-    type: car
-    id: CAR-2016-04-015
-    ref: https://car.mitre.org/analytics/CAR-2016-04-015/
+    type: authored
+    id: authored:ba-cred-dcsync-nondc
+    ref: ''
+    rationale: 'Authored for this product: expresses T1003.006 in this pack''s logic. Not derived from an external source.'
   techniques:
   - T1003.006
-  rationale: 4662 with the replication GUID from a non-DC subject is the canonical
-    DCSync shape.
+  rationale: 4662 with the replication GUID from a non-DC subject is the canonical DCSync shape.
   es:
     bool:
       filter:
@@ -505,9 +504,10 @@ packs:
   - evtxecmd
   - hayabusa
   citation:
-    type: car
-    id: CAR-2016-04-004
-    ref: https://car.mitre.org/analytics/CAR-2016-04-004/
+    type: authored
+    id: authored:ba-cred-new-local-admin
+    ref: ''
+    rationale: 'Authored for this product: expresses T1098, T1078.003 in this pack''s logic. Not derived from an external source.'
   techniques:
   - T1098
   - T1078.003
@@ -531,14 +531,14 @@ packs:
   - hayabusa
   - evtx
   citation:
-    type: car
-    id: CAR-2016-04-003
-    ref: https://car.mitre.org/analytics/CAR-2016-04-003/
+    type: authored
+    id: authored:ba-cred-logon-type3
+    ref: ''
+    rationale: 'Authored for this product: expresses T1021, T1078 in this pack''s logic. Not derived from an external source.'
   techniques:
   - T1021
   - T1078
-  rationale: Type 3 is normal for admin work and for lateral movement; the source
-    decides.
+  rationale: Type 3 is normal for admin work and for lateral movement; the source decides.
   es:
     bool:
       must:
@@ -568,12 +568,7 @@ packs:
               text.wc:
                 value: '*Logon Type: 3*'
                 case_insensitive: true
-  es_authored_reason: the Mode 1 compiler cannot express this against the registry
-    (field 'fields.logon_type.kw' (column 'logon_type') does not exist for declared
-    families ['chainsaw', 'deepbluecli', 'evtx', 'evtxecmd', 'hayabusa', 'ingest-evtx',
-    'ingest-evtxecmd', 'ingest-hayabusa', 'ingest-kape', 'ingest-security', 'powershell',
-    'security', 'sysmon', 'system', 'zircolite'] (column exists for ['ingest-scheduled_tasks']));
-    reviewed and kept by hand
+  es_authored_reason: the Mode 1 compiler cannot express this against the registry (field 'fields.logon_type.kw' (column 'logon_type') does not exist for declared families ['chainsaw', 'deepbluecli', 'evtx', 'evtxecmd', 'hayabusa', 'ingest-evtx', 'ingest-evtxecmd', 'ingest-hayabusa', 'ingest-kape', 'ingest-security', 'powershell', 'security', 'sysmon', 'system', 'zircolite'] (column exists for ['ingest-scheduled_tasks'])); reviewed and kept by hand
 - id: ba-cred-rdp-firstseen
   name: RDP session from a source not seen before
   families:
@@ -582,13 +577,13 @@ packs:
   - hayabusa
   - evtx
   citation:
-    type: car
-    id: CAR-2016-04-003
-    ref: https://car.mitre.org/analytics/CAR-2016-04-003/
+    type: authored
+    id: authored:ba-cred-rdp-firstseen
+    ref: ''
+    rationale: 'Authored for this product: expresses T1021.001 in this pack''s logic. Not derived from an external source.'
   techniques:
   - T1021.001
-  rationale: The first sighting of a source is the anomaly; the session itself may
-    be routine.
+  rationale: The first sighting of a source is the anomaly; the session itself may be routine.
   es:
     bool:
       must:
@@ -620,12 +615,7 @@ packs:
               text.wc:
                 value: '*Logon Type: 10*'
                 case_insensitive: true
-  es_authored_reason: the Mode 1 compiler cannot express this against the registry
-    (field 'fields.logon_type.kw' (column 'logon_type') does not exist for declared
-    families ['chainsaw', 'deepbluecli', 'evtx', 'evtxecmd', 'hayabusa', 'ingest-evtx',
-    'ingest-evtxecmd', 'ingest-hayabusa', 'ingest-kape', 'ingest-security', 'powershell',
-    'security', 'sysmon', 'system', 'zircolite'] (column exists for ['ingest-scheduled_tasks']));
-    reviewed and kept by hand
+  es_authored_reason: the Mode 1 compiler cannot express this against the registry (field 'fields.logon_type.kw' (column 'logon_type') does not exist for declared families ['chainsaw', 'deepbluecli', 'evtx', 'evtxecmd', 'hayabusa', 'ingest-evtx', 'ingest-evtxecmd', 'ingest-hayabusa', 'ingest-kape', 'ingest-security', 'powershell', 'security', 'sysmon', 'system', 'zircolite'] (column exists for ['ingest-scheduled_tasks'])); reviewed and kept by hand
 - id: ba-cred-kerberoast
   name: Service ticket requested with RC4
   families:
@@ -634,13 +624,13 @@ packs:
   - hayabusa
   - evtx
   citation:
-    type: car
-    id: CAR-2016-04-015
-    ref: https://car.mitre.org/analytics/CAR-2016-04-015/
+    type: authored
+    id: authored:ba-cred-kerberoast
+    ref: ''
+    rationale: 'Authored for this product: expresses T1558.003 in this pack''s logic. Not derived from an external source.'
   techniques:
   - T1558.003
-  rationale: RC4 service-ticket encryption is the roastable default; one request is
-    noise, many are not.
+  rationale: RC4 service-ticket encryption is the roastable default; one request is noise, many are not.
   es:
     bool:
       filter:
@@ -660,13 +650,13 @@ packs:
   - hayabusa
   - evtx
   citation:
-    type: car
-    id: CAR-2014-11-005
-    ref: https://car.mitre.org/analytics/CAR-2014-11-005/
+    type: authored
+    id: authored:ba-eva-log-cleared
+    ref: ''
+    rationale: 'Authored for this product: expresses T1070.001 in this pack''s logic. Not derived from an external source.'
   techniques:
   - T1070.001
-  rationale: 1102 is never routine on a server; it is the single highest-signal event
-    in this pack.
+  rationale: 1102 is never routine on a server; it is the single highest-signal event in this pack.
   es:
     bool:
       filter:
@@ -682,9 +672,10 @@ packs:
   - hayabusa
   - evtx
   citation:
-    type: car
-    id: CAR-2014-11-005
-    ref: https://car.mitre.org/analytics/CAR-2014-11-005/
+    type: authored
+    id: authored:ba-eva-audit-policy
+    ref: ''
+    rationale: 'Authored for this product: expresses T1562.002 in this pack''s logic. Not derived from an external source.'
   techniques:
   - T1562.002
   rationale: Turning auditing down is how a cleared log is made to stay quiet.
@@ -704,13 +695,13 @@ packs:
   - registry
   - recmd
   citation:
-    type: car
-    id: CAR-2014-11-005
-    ref: https://car.mitre.org/analytics/CAR-2014-11-005/
+    type: authored
+    id: authored:ba-eva-defender-exclusion
+    ref: ''
+    rationale: 'Authored for this product: expresses T1562.001 in this pack''s logic. Not derived from an external source.'
   techniques:
   - T1562.001
-  rationale: 'Exclusions are the tidier version of disabling: the product still runs
-    and still reports healthy.'
+  rationale: 'Exclusions are the tidier version of disabling: the product still runs and still reports healthy.'
   es:
     bool:
       should:
@@ -737,9 +728,10 @@ packs:
   - hayabusa
   - evtx
   citation:
-    type: car
-    id: CAR-2014-11-001
-    ref: https://car.mitre.org/analytics/CAR-2014-11-001/
+    type: authored
+    id: authored:ba-eva-service-stopped
+    ref: ''
+    rationale: 'Authored for this product: expresses T1562.001 in this pack''s logic. Not derived from an external source.'
   techniques:
   - T1562.001
   rationale: Services stop for patching too - the reason and the timing matter.
@@ -761,9 +753,10 @@ packs:
   - mftecmd
   - ntfs
   citation:
-    type: car
-    id: CAR-2014-11-003
-    ref: https://car.mitre.org/analytics/CAR-2014-11-003/
+    type: authored
+    id: authored:ba-eva-timestomp
+    ref: ''
+    rationale: 'Authored for this product: expresses T1070.006 in this pack''s logic. Not derived from an external source.'
   techniques:
   - T1070.006
   rationale: A payload older than the directory that contains it was back-dated.
@@ -781,11 +774,7 @@ packs:
             value: '*timestomp*'
             case_insensitive: true
       minimum_should_match: 1
-  es_authored_reason: the Mode 1 compiler cannot express this against the registry
-    (field 'fields.targetmodified.kw' (column 'targetmodified') does not exist for
-    declared families ['fls', 'ingest-kape', 'ingest-mft', 'ingest-mftecmd', 'ingest-ntfs',
-    'mft', 'mftecmd', 'mftecmd-i30', 'mftecmd-usn', 'ntfs'] (column exists for ['jlecmd',
-    'lecmd'])); reviewed and kept by hand
+  es_authored_reason: the Mode 1 compiler cannot express this against the registry (field 'fields.targetmodified.kw' (column 'targetmodified') does not exist for declared families ['fls', 'ingest-kape', 'ingest-mft', 'ingest-mftecmd', 'ingest-ntfs', 'mft', 'mftecmd', 'mftecmd-i30', 'mftecmd-usn', 'ntfs'] (column exists for ['jlecmd', 'lecmd'])); reviewed and kept by hand
 - id: ba-lat-smb-admin-share
   name: Administrative share accessed remotely
   families:
@@ -794,13 +783,13 @@ packs:
   - security
   - sysmon
   citation:
-    type: car
-    id: CAR-2016-04-014
-    ref: https://car.mitre.org/analytics/CAR-2016-04-014/
+    type: authored
+    id: authored:ba-lat-smb-admin-share
+    ref: ''
+    rationale: 'Authored for this product: expresses T1021.002 in this pack''s logic. Not derived from an external source.'
   techniques:
   - T1021.002
-  rationale: Admin shares are the lateral-movement transport; normal for management
-    tooling.
+  rationale: Admin shares are the lateral-movement transport; normal for management tooling.
   es:
     bool:
       filter:
@@ -816,14 +805,14 @@ packs:
   - hayabusa
   - evtx
   citation:
-    type: car
-    id: CAR-2014-11-001
-    ref: https://car.mitre.org/analytics/CAR-2014-11-001/
+    type: authored
+    id: authored:ba-lat-remote-service-create
+    ref: ''
+    rationale: 'Authored for this product: expresses T1021.002, T1543.003 in this pack''s logic. Not derived from an external source.'
   techniques:
   - T1021.002
   - T1543.003
-  rationale: 'psexec-shaped lateral movement: a service installed by something that
-    is not a patch cycle.'
+  rationale: 'psexec-shaped lateral movement: a service installed by something that is not a patch cycle.'
   es:
     bool:
       must:
@@ -849,12 +838,7 @@ packs:
               text.wc:
                 value: '*Service*'
                 case_insensitive: true
-  es_authored_reason: the Mode 1 compiler cannot express this against the registry
-    (field 'fields.logon_type.kw' (column 'logon_type') does not exist for declared
-    families ['chainsaw', 'deepbluecli', 'evtx', 'evtxecmd', 'hayabusa', 'ingest-evtx',
-    'ingest-evtxecmd', 'ingest-hayabusa', 'ingest-kape', 'ingest-system', 'powershell',
-    'security', 'sysmon', 'system', 'zircolite'] (column exists for ['ingest-scheduled_tasks']));
-    reviewed and kept by hand
+  es_authored_reason: the Mode 1 compiler cannot express this against the registry (field 'fields.logon_type.kw' (column 'logon_type') does not exist for declared families ['chainsaw', 'deepbluecli', 'evtx', 'evtxecmd', 'hayabusa', 'ingest-evtx', 'ingest-evtxecmd', 'ingest-hayabusa', 'ingest-kape', 'ingest-system', 'powershell', 'security', 'sysmon', 'system', 'zircolite'] (column exists for ['ingest-scheduled_tasks'])); reviewed and kept by hand
 - id: ba-lat-wmi-exec
   name: WMI used to start a process
   families:
@@ -863,13 +847,13 @@ packs:
   - security
   - sysmon
   citation:
-    type: car
-    id: CAR-2016-04-008
-    ref: https://car.mitre.org/analytics/CAR-2016-04-008/
+    type: authored
+    id: authored:ba-lat-wmi-exec
+    ref: ''
+    rationale: 'Authored for this product: expresses T1047 in this pack''s logic. Not derived from an external source.'
   techniques:
   - T1047
-  rationale: wmiprvse spawns children legitimately; the command line of the child
-    is what to read.
+  rationale: wmiprvse spawns children legitimately; the command line of the child is what to read.
   es:
     bool:
       filter:
@@ -885,14 +869,14 @@ packs:
   - security
   - sysmon
   citation:
-    type: car
-    id: CAR-2016-04-012
-    ref: https://car.mitre.org/analytics/CAR-2016-04-012/
+    type: authored
+    id: authored:ba-col-powershell-transcript
+    ref: ''
+    rationale: 'Authored for this product: expresses T1059.001, T1105 in this pack''s logic. Not derived from an external source.'
   techniques:
   - T1059.001
   - T1105
-  rationale: 4104 carries the deobfuscated text, so this is often the clearest view
-    of intent.
+  rationale: 4104 carries the deobfuscated text, so this is often the clearest view of intent.
   es:
     bool:
       filter:
@@ -923,14 +907,13 @@ packs:
   - ntfs
   - evtxecmd
   citation:
-    type: car
-    id: CAR-2014-11-003
-    ref: https://car.mitre.org/analytics/CAR-2014-11-003/
+    type: authored
+    id: authored:ba-col-archive-staging
+    ref: ''
+    rationale: 'Authored for this product: expresses T1560.001 in this pack''s logic. Not derived from an external source.'
   techniques:
   - T1560.001
-  rationale: 'Collection ends in an archive. Positive only: the DSL parses `not path:`
-    as a positive filter, so a system-tree exclusion here would have done the reverse
-    of its intent.'
+  rationale: 'Collection ends in an archive. Positive only: the DSL parses `not path:` as a positive filter, so a system-tree exclusion here would have done the reverse of its intent.'
   es:
     bool:
       filter:
@@ -958,13 +941,12 @@ packs:
   - sysmon
   citation:
     type: car
-    id: CAR-2014-11-004
-    ref: https://car.mitre.org/analytics/CAR-2014-11-004/
+    id: CAR-2016-03-002
+    ref: https://car.mitre.org/analytics/CAR-2016-03-002/
+    title: Create Remote Process via WMIC
   techniques:
   - T1047
-  rationale: WMI process creation via wmic.exe process call create or WMI Win32_Process.Create;
-    telemetry follows CAR-2014-11-004 (process creation with command line) - the WMI-spawned
-    child is a process-creation record carrying the WMI command line.
+  rationale: WMI process creation via wmic.exe process call create or WMI Win32_Process.Create; telemetry follows CAR-2014-11-004 (process creation with command line) - the WMI-spawned child is a process-creation record carrying the WMI command line.
   es:
     bool:
       should:
@@ -977,8 +959,7 @@ packs:
             value: '*Win32_Process*Create*'
             case_insensitive: true
       minimum_should_match: 1
-  es_text_only_reason: 'envelope text search: no registry column carries this mixed
-    evidence'
+  es_text_only_reason: 'envelope text search: no registry column carries this mixed evidence'
 - id: ba-pers-schtask-reg-mod
   name: Scheduled task creation or modification via registry or schtasks
   families:
@@ -988,13 +969,12 @@ packs:
   - sysmon
   citation:
     type: car
-    id: CAR-2016-04-009
-    ref: https://car.mitre.org/analytics/CAR-2016-04-009/
+    id: CAR-2015-04-002
+    ref: https://car.mitre.org/analytics/CAR-2015-04-002/
+    title: Remotely Scheduled Tasks via Schtasks
   techniques:
   - T1053.005
-  rationale: Scheduled task persistence via schtasks.exe /create or modifications
-    under Tree/Tasks registry; telemetry follows CAR-2016-04-009 (scheduled task),
-    the same technique T1053.005.
+  rationale: Scheduled task persistence via schtasks.exe /create or modifications under Tree/Tasks registry; telemetry follows CAR-2016-04-009 (scheduled task), the same technique T1053.005.
   es:
     bool:
       should:
@@ -1007,8 +987,7 @@ packs:
             value: '*Software\Microsoft\Windows NT\CurrentVersion\Schedule\TaskCache*'
             case_insensitive: true
       minimum_should_match: 1
-  es_text_only_reason: 'envelope text search: no registry column carries this mixed
-    evidence'
+  es_text_only_reason: 'envelope text search: no registry column carries this mixed evidence'
 - id: ba-c2-living-off-trusted-sites
   name: C2 and payload transfer via living off trusted sites
   families:
@@ -1016,14 +995,14 @@ packs:
   - sysmon
   - hayabusa
   citation:
-    type: sigma
-    id: sigma-c2-trusted-sites
-    ref: https://github.com/SigmaHQ/sigma/blob/master/rules/web/web_c2_discord_telegram.yml
+    type: authored
+    id: authored:ba-c2-living-off-trusted-sites
+    ref: ''
+    rationale: 'Authored for this product: expresses T1102.002, T1105 in this pack''s logic. Not derived from an external source.'
   techniques:
   - T1102.002
   - T1105
-  rationale: Network connections or command lines referencing trusted sites abused
-    for C2 or payload transfer.
+  rationale: Network connections or command lines referencing trusted sites abused for C2 or payload transfer.
   es:
     bool:
       should:
@@ -1044,8 +1023,7 @@ packs:
             value: '*ngrok*'
             case_insensitive: true
       minimum_should_match: 1
-  es_text_only_reason: 'envelope text search: no registry column carries this mixed
-    evidence'
+  es_text_only_reason: 'envelope text search: no registry column carries this mixed evidence'
 - id: ba-priv-printspooler-exploit
   name: Print Spooler driver exploitation (PrintNightmare)
   families:
@@ -1055,14 +1033,13 @@ packs:
   - sysmon
   citation:
     type: car
-    id: CAR-2016-04-006
-    ref: https://car.mitre.org/analytics/CAR-2016-04-006/
+    id: CAR-2021-01-004
+    ref: https://car.mitre.org/analytics/CAR-2021-01-004/
+    title: Unusual Child Process for Spoolsv.Exe or Connhost.Exe
   techniques:
   - T1068
   - T1547.012
-  rationale: spoolsv.exe loading unexpected drivers from spool\drivers or spawning
-    cmd/powershell; telemetry follows CAR-2016-04-006 (driver load), the same technique
-    T1068.
+  rationale: spoolsv.exe loading unexpected drivers from spool\drivers or spawning cmd/powershell; telemetry follows CAR-2016-04-006 (driver load), the same technique T1068.
   es:
     bool:
       should:
@@ -1079,8 +1056,7 @@ packs:
             value: '*spool\drivers*kernelbase.dll*'
             case_insensitive: true
       minimum_should_match: 1
-  es_text_only_reason: 'envelope text search: no registry column carries this mixed
-    evidence'
+  es_text_only_reason: 'envelope text search: no registry column carries this mixed evidence'
 - id: ba-cred-lsass-minidump-write
   name: LSASS memory dumping via MiniDumpWriteDump or comsvcs
   families:
@@ -1090,12 +1066,12 @@ packs:
   - security
   citation:
     type: car
-    id: CAR-2014-11-008
-    ref: https://car.mitre.org/analytics/CAR-2014-11-008/
+    id: CAR-2019-07-002
+    ref: https://car.mitre.org/analytics/CAR-2019-07-002/
+    title: Lsass Process Dump via Procdump
   techniques:
   - T1003.001
-  rationale: LSASS process memory dump via comsvcs.dll MiniDump, procdump, or rundll32;
-    telemetry follows CAR-2014-11-008 (process access), the parent technique T1003.
+  rationale: LSASS process memory dump via comsvcs.dll MiniDump, procdump, or rundll32; telemetry follows CAR-2014-11-008 (process access), the parent technique T1003.
   es:
     bool:
       should:
@@ -1112,5 +1088,4 @@ packs:
             value: '*procdump*lsass*'
             case_insensitive: true
       minimum_should_match: 1
-  es_text_only_reason: 'envelope text search: no registry column carries this mixed
-    evidence'
+  es_text_only_reason: 'envelope text search: no registry column carries this mixed evidence'
