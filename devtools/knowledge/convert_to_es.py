@@ -87,6 +87,42 @@ _EMPTY_FIELD = re.compile(r"^[a-z_][a-z0-9_]*:$", re.IGNORECASE)
 _DRIVE_PATH = re.compile(r"^[a-z]:[\\/]", re.IGNORECASE)
 _OR = re.compile(r"\s+OR\s+", re.IGNORECASE)
 
+#: WO-KR2c change 2: the steps whose `look_for` is an INVESTIGATION ORDER, not
+#: evidence to search. Each was a keyword search that fired on any row mentioning the
+#: word and counted as coverage - the R0' defect verbatim. They are reclassified as
+#: procedures: shown to agents, never executed, never counted.
+PROCEDURE_STEPS = frozenset({
+    "hash_on_acquire", "triage_first", "encryption_check", "backward_analysis",
+})
+
+PROCEDURE_REASON = (
+    "R0' defect: this step's look_for is an investigation ORDER (do X, then Y), not "
+    "evidence to search. It is shown to agents as a procedure and never executed, "
+    "so it cannot fire on noise and cannot count as coverage."
+)
+
+#: Every keyword the step's search carried, and why a keyword search was wrong.
+PROCEDURE_DROPPED = [
+    {"term": "sha256", "reason": "procedure verb, not evidence: hashing is what the "
+                                 "examiner does, not what is searched for"},
+    {"term": "md5", "reason": "procedure verb, not evidence"},
+    {"term": "hash", "reason": "procedure verb, not evidence"},
+    {"term": "kape", "reason": "names a tool the examiner runs, not a field value "
+                               "to search for"},
+    {"term": "triage", "reason": "procedure verb, not evidence"},
+    {"term": "bitlocker", "reason": "a pre-acquisition decision, not a search over "
+                                    "indexed evidence"},
+    {"term": "encryption", "reason": "procedure verb, not evidence"},
+    {"term": "encrypted", "reason": "procedure verb, not evidence"},
+    {"term": "rdp", "reason": "an entry vector named in the procedure, not a column "
+                              "value"},
+    {"term": "phish", "reason": "an entry vector named in the procedure"},
+    {"term": "msiexec", "reason": "an entry vector named in the procedure, not a "
+                                  "column value"},
+    {"term": "event_id 4624", "reason": "a real clue, but this step is the order of "
+                                        "investigation, not a search for it"},
+]
+
 
 def _wild(field: str, value: str) -> dict[str, Any]:
     return {"wildcard": {field: {"value": f"*{value}*", "case_insensitive": True}}}
@@ -95,6 +131,28 @@ def _wild(field: str, value: str) -> dict[str, Any]:
 def _column_kind(col: str, cols: dict[str, Any]) -> str:
     info = cols.get(col) or {}
     return str(info.get("type") or "")
+
+
+def _value_fits_column(col: str, value: str) -> bool:
+    """KL2d/KR2c rule 1: the value's kind must match the column's.
+
+    Delegates to `value_shape_guard`, which holds the WO's own table as data: an IP
+    column takes only IP-shaped values, a host only a hostname, a process column only
+    an image name. Protocols, product names, column names and tool/plugin names go to
+    `text.wc` instead - never an IP, port, host or process field.
+
+    A missing devtool must not break the converter, so failure means "yes, compatible"
+    and the step keeps its previous (shape-blind) answer, which the population check
+    catches later.
+    """
+    try:
+        _here = str(Path(__file__).resolve().parent)
+        if _here not in sys.path:
+            sys.path.insert(0, _here)
+        from value_shape_guard import compatible  # noqa: PLC0415
+    except Exception:  # noqa: BLE001
+        return True
+    return compatible(col, value)
 
 
 def _norm_key(value: str) -> str:
@@ -129,6 +187,23 @@ def _resolve_column(name: str, fams: list[str], cols: dict[str, Any]) -> str | N
         return None
     expanded = expand_families(fams)
     by_norm = {_norm_key(col): col for col in cols}
+
+    # KL2d: the per-family answer first. The pinned EvtxECmd maps and the importer
+    # lanes say which column this family ACTUALLY carries for this concept, so
+    # `Image` on an EVTX lane resolves to `ExecutableInfo`/`PayloadData*` and on an
+    # importer lane to `process_name`. Guessing from the name alone is what made a
+    # Sysmon rule resolve `CommandLine` to `command_line`, an importer-only column.
+    _here = str(Path(__file__).resolve().parent)
+    if _here not in sys.path:
+        sys.path.insert(0, _here)
+    try:
+        from sigma_family_fields import columns_for
+        for col in columns_for(name, expanded):
+            hit = cols.get(col)
+            if hit:
+                return col
+    except Exception:  # noqa: BLE001 - a missing devtool must not break the converter
+        pass
 
     # Prefer the column the caller literally named, then the known aliases:
     # `FileName` should resolve to `FileName` when that column exists for the
@@ -250,6 +325,15 @@ def _phrase_clause(
     ``_typed_clause``.
     """
     if pivot_col and _norm_key(pivot_col) not in {_norm_key(c) for c in _IDENTITY_COLUMNS}:
+        # KL2d / KR2c rule 1: the value's KIND must match the column's. "Modbus" is
+        # not an IP, "PLC log" is not a hostname, "pslist" is not a process - those
+        # belong in `text.wc`, with the reason recorded, exactly as the WO's table
+        # prescribes ("never an IP, port, host or process field; they go to text.wc").
+        if not _value_fits_column(pivot_col, phrase):
+            text_only.append(
+                f"{phrase}: value of the wrong kind for {pivot_col}; searched in text"
+            )
+            return _wild("text.wc", phrase)
         return _wild(_column_field(pivot_col, cols), phrase)
     text_only.append(
         f"{phrase}: free phrase; the step's pivot "
@@ -299,16 +383,12 @@ def build_es(
             else:
                 words.append(clean)
         if words:
-            parts.append(_phrase_clause(" ".join(words), pivot_col, cols, reasons))
+            phrase_part = _phrase_clause(" ".join(words), pivot_col, cols, reasons)
+            if phrase_part is not None:
+                parts.append(phrase_part)
         if not parts:
             continue
         branches.append(parts[0] if len(parts) == 1 else {"bool": {"must": parts}})
-
-    if not branches:
-        return {"match_all": {}}, dropped, reasons
-    if len(branches) == 1:
-        return branches[0], dropped, reasons
-    return {"bool": {"should": branches, "minimum_should_match": 1}}, dropped, reasons
 
     if not branches:
         return {"match_all": {}}, dropped, reasons
@@ -337,7 +417,7 @@ def convert_skills(check: bool = False) -> dict[str, Any]:
     """Rewrite every skill step's `es:` from its free `query`. Idempotent."""
     cols = load_field_registry()
     stats = {"steps": 0, "alternatives": 0, "dropped": 0, "text_only": 0, "changed": 0,
-             "authored": 0}
+             "authored": 0, "procedures": 0}
     for sf in sorted(SKILLS_DIR.glob("*.yaml")):
         data, header = _read_yaml(sf)
         req = data.get("requires") or {}
@@ -372,7 +452,20 @@ def convert_skills(check: bool = False) -> dict[str, Any]:
             stats["dropped"] += len(dropped)
             if reasons:
                 stats["text_only"] += 1
+            # WO-KR2c change 2: a procedure step has no `es:` by contract. Comparing
+            # it against a rebuilt keyword search would make `--check` demand the very
+            # thing the rule removes.
+            is_proc = step.get("name") in PROCEDURE_STEPS
             if check:
+                if is_proc:
+                    if step.get("es") is not None or step.get("kind") != "procedure" \
+                            or not step.get("procedure_reason") \
+                            or step.get("es_dropped") != PROCEDURE_DROPPED:
+                        raise SystemExit(
+                            f"{sf.name} / {step.get('name')}: procedure step is not "
+                            f"stored as a procedure - re-run without --check")
+                    stats["procedures"] += 1
+                    continue
                 if step.get("es") != es or bool(dropped) != bool(step.get("es_dropped")):
                     raise SystemExit(
                         f"{sf.name} / {step.get('name')}: stored es: disagrees with the "
@@ -389,6 +482,24 @@ def convert_skills(check: bool = False) -> dict[str, Any]:
                         dirty = True
                 elif key in step and step.pop(key) is not None:
                     dirty = True
+            # WO-KR2c change 2: PROCEDURE steps are not queries. A step whose
+            # `kind: procedure` is declared (in PROCEDURE_STEPS, with the reason a
+            # procedure is the honest description) has its `es:` REMOVED and gets
+            # `procedure_reason` + `es_dropped`, so it is shown to agents as a
+            # procedure, never executed, and never counted as coverage. Without this
+            # the converter would rebuild a keyword search for it, which is the R0'
+            # defect: those searches fire on noise and count as coverage.
+            if step.get("name") in PROCEDURE_STEPS:
+                step["kind"] = "procedure"
+                step["procedure_reason"] = PROCEDURE_REASON
+                if step.pop("es", None) is not None:
+                    dirty = True
+                if step.pop("es_text_only_reason", None) is not None:
+                    dirty = True
+                if step.get("es_dropped") != PROCEDURE_DROPPED:
+                    step["es_dropped"] = PROCEDURE_DROPPED
+                    dirty = True
+                stats["procedures"] += 1
             step.pop("dsl", None)
         if dirty and not check:
             stats["changed"] += 1

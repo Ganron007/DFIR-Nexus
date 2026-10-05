@@ -70,7 +70,7 @@ steps:
             value: '*filesystem*'
             case_insensitive: true
       - wildcard:
-          fields.host.kw:
+          text.wc:
             value: '*full file system*'
             case_insensitive: true
       minimum_should_match: 1
@@ -80,6 +80,8 @@ steps:
     - jsonl
     - sqlite
     - syslog
+  es_text_only_reason:
+  - 'full file system: value of the wrong kind for host; searched in text'
 - name: ios_backup_parse
   query: Manifest.plist OR Manifest.db OR IsEncrypted OR Info.plist
   look_for: 'iOS backup: Manifest.plist records IsEncrypted, Date, WasPasscodeSet;

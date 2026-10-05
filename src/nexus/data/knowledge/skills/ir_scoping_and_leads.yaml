@@ -80,7 +80,7 @@ steps:
             value: '*netstat*'
             case_insensitive: true
       - wildcard:
-          fields.process_name.kw:
+          text.wc:
             value: '*pslist*'
             case_insensitive: true
       - wildcard:
@@ -90,6 +90,8 @@ steps:
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'pslist: value of the wrong kind for process_name; searched in text'
 - name: build_timeline_around_lead
   query: file:mft OR file:evtx
   look_for: Anchor a timeline window around the lead's first-known activity, then

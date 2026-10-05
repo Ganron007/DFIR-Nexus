@@ -117,17 +117,47 @@ def _cols() -> dict[str, Any]:
     return load_field_registry()
 
 
-def _field_path(sigma_field: str, cols: dict[str, Any], families: list[str]) -> str | None:
-    """Our `fields.<name>[.kw]` for a Sigma field, or None when unmapped."""
+def _field_path(sigma_field: str, cols: dict[str, Any], families: list[str],
+                event_id: str = "", channel: str = "") -> str | None:
+    """Our `fields.<name>[.kw]` for a Sigma field, or None when unmapped.
+
+    KL2d: the answer is per family, which is the reviewer's diagnosis made concrete.
+    `Image` on an EVTX-analyser lane is the event's own generic column, while on an
+    importer lane it is the importer's `process_name`. Mapping `Image` ->
+    `process_name` for every family is what made 966/966 rules unable to match.
+    """
     from nexus.knowledge.query_validation import expand_families
 
-    name = FIELD_MAP.get(sigma_field)
     if sigma_field in ("EventID", "event_id", "eventid"):
         return "event_id"
+    expanded = expand_families(families)
+
+    # 1. the per-family answer from the pinned EvtxECmd maps / the importer lanes.
+    #    sigma_family_fields sits next to this file, so it is importable by name once
+    #    this module's own directory is on sys.path (it is not by default).
+    _here = str(Path(__file__).resolve().parent)
+    if _here not in sys.path:
+        sys.path.insert(0, _here)
+    from sigma_family_fields import _importer_lanes, columns_for
+    for col in columns_for(sigma_field, expanded, event_id=event_id, channel=channel):
+        info = cols.get(col)
+        if info is None:
+            continue
+        return f"fields.{col}.kw" if str(info.get("type")) == "text" else f"fields.{col}"
+
+    # 2. the registry-name fallback exists for a field the family map has no concept
+    #    for, or a column the registry spells differently. It is NOT allowed to answer
+    #    an EVTX lane: that is how `CommandLine` became `command_line` (an `ingest-*`
+    #    -only column) for a rule that names `evtxecmd`, which is the R0' defect. A
+    #    fallback answer for the EVTX lane must be a column the lane declares.
+    lanes = _importer_lanes()
+    evtx_lanes = {f.lower() for f in expanded} - lanes
+    if evtx_lanes:
+        return None
+    name = FIELD_MAP.get(sigma_field)
     if not name:
         return None
     wanted = re.sub(r"[^a-z0-9]", "", name.lower())
-    expanded = expand_families(families)
     for col, info in cols.items():
         if re.sub(r"[^a-z0-9]", "", col.lower()) != wanted:
             continue
@@ -170,19 +200,22 @@ def _clause(field: str, value: Any, modifiers: list[str]) -> dict[str, Any] | No
 
 
 def _item_clauses(item: Any, cols: dict[str, Any], families: list[str],
-                  counters: Counter) -> list[dict[str, Any]] | None:
+                  counters: Counter, event_id: str = "") -> list[dict[str, Any]] | None:
     """Clauses for one detection item. None means "this rule cannot be translated"."""
     from sigma.rule.detection import SigmaDetection, SigmaDetectionItem
 
     if isinstance(item, SigmaDetection):
-        inner = _detection_clauses(item, cols, families, counters)
+        inner = _detection_clauses(item, cols, families, counters, event_id=event_id)
         return None if inner is None else [inner]
 
     if not isinstance(item, SigmaDetectionItem):
         counters["unsupported_item"] += 1
         return None
     fields = item.field if isinstance(item.field, list) else [item.field]
-    field_paths = [_field_path(str(f), cols, families) for f in fields]
+    # The event id scopes the per-family answer, so a rule selecting Sysmon EID 1
+    # resolves `Image` to the columns THAT event's map names.
+    field_paths = [_field_path(str(f), cols, families, event_id=event_id)
+                   for f in fields]
     if any(p is None for p in field_paths):
         counters["skipped_no_field"] += 1
         return None
@@ -227,14 +260,14 @@ def _item_clauses(item: Any, cols: dict[str, Any], families: list[str],
 
 
 def _detection_clauses(detection: Any, cols: dict[str, Any], families: list[str],
-                       counters: Counter) -> dict[str, Any] | None:
+                       counters: Counter, event_id: str = "") -> dict[str, Any] | None:
     """A detection is an AND of its items; a list of maps inside one is an OR."""
     from sigma.rule.detection import SigmaDetection
 
     must: list[dict[str, Any]] = []
     should: list[dict[str, Any]] = []
     for item in detection.detection_items:
-        clauses = _item_clauses(item, cols, families, counters)
+        clauses = _item_clauses(item, cols, families, counters, event_id=event_id)
         if clauses is None:
             return None
         target = should if isinstance(item, SigmaDetection) else must
@@ -288,13 +321,15 @@ class _CondParser:
     """
 
     def __init__(self, tokens: list[str], detections: dict[str, Any], cols: dict[str, Any],
-                 families: list[str], counters: Counter) -> None:
+                 families: list[str], counters: Counter,
+                 event_id: str = "") -> None:
         self.tokens = tokens
         self.i = 0
         self.detections = detections
         self.cols = cols
         self.families = families
         self.counters = counters
+        self.event_id = event_id
 
     def peek(self) -> str:
         return self.tokens[self.i].lower() if self.i < len(self.tokens) else ""
@@ -369,12 +404,14 @@ class _CondParser:
         return None
 
     def _detection(self, name: str):
-        clause = _detection_clauses(self.detections[name], self.cols, self.families, self.counters)
+        clause = _detection_clauses(self.detections[name], self.cols, self.families,
+                                    self.counters, event_id=self.event_id)
         return clause
 
 
 def _builtin_condition(rule: Any, detections: dict[str, Any], cols: dict[str, Any],
-                       families: list[str], counters: Counter) -> dict[str, Any] | None:
+                       families: list[str], counters: Counter,
+                       event_id: str = "") -> dict[str, Any] | None:
     """The fallback for shapes the small parser does not cover.
 
     pySigma also resolves conditions itself; when the parser returns None this asks
@@ -398,12 +435,43 @@ def _builtin_condition(rule: Any, detections: dict[str, Any], cols: dict[str, An
     walk(resolved.parsed)
     if not names:
         return None
-    clauses = [_detection_clauses(detections[n], cols, families, counters) for n in set(names)]
+    clauses = [_detection_clauses(detections[n], cols, families, counters,
+                                  event_id=event_id) for n in set(names)]
     if any(c is None for c in clauses):
         return None
     if len(clauses) == 1:
         return clauses[0]
     return {"bool": {"must": clauses}}
+
+
+def _rule_event_id(rule: Any) -> str:
+    """The EventID a Sigma rule selects, as a string, when it names one.
+
+    A rule that selects `EventID: 1` is about Sysmon process creation, so the EVTX
+    lane's column answer is scoped to that event. Read from the rule's own detection
+    fields; a rule with no EventID selection gets "" (unscoped).
+    """
+    try:
+        for detection in (rule.detection.detections or {}).values():
+            items = getattr(detection, "detection_items", []) or []
+            for item in items:
+                fields = getattr(item, "field", None)
+                flist = fields if isinstance(fields, list) else [fields]
+                for f in flist:
+                    if str(f).lower() in ("eventid", "event_id", "eid"):
+                        value = getattr(item, "value", None)
+                        if value is None:
+                            continue
+                        vlist = value if isinstance(value, list) else [value]
+                        first = str(vlist[0]).strip()
+                        return first if first.isdigit() else ""
+    except Exception:  # noqa: BLE001 - a rule without a usable EventID is just unscoped
+        return ""
+    return ""
+
+
+def _rule_event_id_of(rule: Any) -> str:  # noqa: D103 - backwards-compat alias
+    return _rule_event_id(rule)
 
 
 def build() -> dict[str, Any]:
@@ -439,13 +507,18 @@ def build() -> dict[str, Any]:
                 continue
 
             detections = dict(rule.detection.detections)
+            # The rule's own event id scopes the per-family column answer, so
+            # `Image` in a Sysmon-EID-1 rule resolves to the columns THAT event's
+            # map names rather than every PayloadData slot in every map.
+            event_id = _rule_event_id(rule)
             es_query = None
             for condition_text in rule.detection.condition or []:
                 parser = _CondParser(_tokenize(str(condition_text)), detections, cols,
-                                     families, counters)
+                                     families, counters, event_id=event_id)
                 es_query = parser.parse()
                 if es_query is None:
-                    es_query = _builtin_condition(rule, detections, cols, families, counters)
+                    es_query = _builtin_condition(rule, detections, cols, families,
+                                                  counters, event_id=event_id)
                 if es_query is not None:
                     break
             if es_query is None:

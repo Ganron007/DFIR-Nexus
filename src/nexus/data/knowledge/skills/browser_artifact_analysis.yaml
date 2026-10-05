@@ -63,7 +63,7 @@ steps:
   corroborate: download time → MFT create time for the payload
   es:
     wildcard:
-      fields.file_path.kw:
+      fields.path.kw:
         value: '*download*'
         case_insensitive: true
   requires:

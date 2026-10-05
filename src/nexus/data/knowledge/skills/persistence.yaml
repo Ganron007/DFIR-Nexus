@@ -70,7 +70,7 @@ steps:
       - term:
           event_id: '7045'
       - wildcard:
-          text.wc:
+          fields.PayloadData2.kw:
             value: '*sc create*'
             case_insensitive: true
       - bool:
@@ -80,15 +80,12 @@ steps:
                 value: '*sc.exe*'
                 case_insensitive: true
           - wildcard:
-              text.wc:
+              fields.PayloadData2.kw:
                 value: '*create*'
                 case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'sc create: free phrase; the step''s pivot names no registry column'
-  - 'create: free phrase; the step''s pivot names no registry column'
 - name: scheduled_tasks
   query: schtasks /create OR 106 OR TaskScheduler
   look_for: Task registrations running as SYSTEM or on logon, especially with remote
@@ -98,24 +95,20 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          fields.PayloadData1.kw:
             value: '*schtasks /create*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.PayloadData1.kw:
             value: '*106*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.PayloadData1.kw:
             value: '*TaskScheduler*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'schtasks /create: free phrase; the step''s pivot names no registry column'
-  - '106: free phrase; the step''s pivot names no registry column'
-  - 'TaskScheduler: free phrase; the step''s pivot names no registry column'
 - name: wmi_subscription
   query: EventFilter CommandLineEventConsumer wmi
   look_for: 'WMI permanent event subscriptions: a __EventFilter + a consumer class
@@ -202,19 +195,16 @@ steps:
             value: '*ntshrui.dll*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.PayloadData2.kw:
             value: '*side-loading*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.PayloadData2.kw:
             value: '*WinSxS*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'side-loading: free phrase; the step''s pivot names no registry column'
-  - 'WinSxS: free phrase; the step''s pivot names no registry column'
 - name: task_persistence_case
   query: schtasks OR at.exe OR TaskScheduler
   look_for: Scheduled-task persistence stays dominant even in advanced intrusions
@@ -225,7 +215,7 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          fields.PayloadData1.kw:
             value: '*schtasks*'
             case_insensitive: true
       - wildcard:
@@ -233,15 +223,12 @@ steps:
             value: '*at.exe*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.PayloadData1.kw:
             value: '*TaskScheduler*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'schtasks: free phrase; the step''s pivot names no registry column'
-  - 'TaskScheduler: free phrase; the step''s pivot names no registry column'
 negative: No autostart writes, service installs, or task registrations → the attacker
   may rely on existing persistence or volatile-only presence.
 confidence_rules:

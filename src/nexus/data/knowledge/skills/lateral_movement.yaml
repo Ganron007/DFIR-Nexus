@@ -98,19 +98,16 @@ steps:
       - term:
           event_id: '7045'
       - wildcard:
-          text.wc:
+          fields.PayloadData4.kw:
             value: '*psexesvc*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.PayloadData4.kw:
             value: '*remcom*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'psexesvc: free phrase; the step''s pivot names no registry column'
-  - 'remcom: free phrase; the step''s pivot names no registry column'
 - name: winrm_execution
   query: winrm 5985 OR 5986 OR wsman
   look_for: WinRM listener traffic / process spawns under wsmprovhost.exe.
@@ -123,13 +120,13 @@ steps:
           - term:
               event_id: '5985'
           - wildcard:
-              fields.parent_process.kw:
+              fields.PayloadData2.kw:
                 value: '*winrm*'
                 case_insensitive: true
       - term:
           event_id: '5986'
       - wildcard:
-          fields.parent_process.kw:
+          fields.PayloadData2.kw:
             value: '*wsman*'
             case_insensitive: true
       minimum_should_match: 1
@@ -225,24 +222,20 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          fields.PayloadData1.kw:
             value: '*schtasks /s*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.PayloadData1.kw:
             value: '*106*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.PayloadData1.kw:
             value: '*140*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'schtasks /s: free phrase; the step''s pivot names no registry column'
-  - '106: free phrase; the step''s pivot names no registry column'
-  - '140: free phrase; the step''s pivot names no registry column'
 negative: No remote-logon/share/service/task artifacts from other hosts → this host
   was not a lateral-movement target in the window (or telemetry gap).
 confidence_rules:

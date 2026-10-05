@@ -109,24 +109,20 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          fields.ExecutableInfo.kw:
             value: '*\Temp\*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.ExecutableInfo.kw:
             value: '*\AppData\Local\Temp\*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.ExecutableInfo.kw:
             value: '*\Downloads\*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - '\Temp\: free phrase; the step''s pivot names no registry column'
-  - '\AppData\Local\Temp\: free phrase; the step''s pivot names no registry column'
-  - '\Downloads\: free phrase; the step''s pivot names no registry column'
 - name: process_injection_indicators
   query: CreateRemoteThread OR QueueUserAPC OR SetThreadContext
   look_for: Injection API sequences in process-access events.

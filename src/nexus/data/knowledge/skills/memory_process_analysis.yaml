@@ -47,7 +47,7 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.process_name.kw:
+          text.wc:
             value: '*pslist*'
             case_insensitive: true
       - wildcard:
@@ -70,6 +70,8 @@ steps:
     - memory
     - evtx
     - sysmon
+  es_text_only_reason:
+  - 'pslist: value of the wrong kind for process_name; searched in text'
 - name: hidden_process_check
   query: psxview OR psscan OR unlink
   look_for: 'Cross-view detection: psxview/psscan compares multiple enumeration methods
@@ -81,11 +83,11 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.process_name.kw:
+          text.wc:
             value: '*psxview*'
             case_insensitive: true
       - wildcard:
-          fields.process_name.kw:
+          text.wc:
             value: '*psscan*'
             case_insensitive: true
       - wildcard:
@@ -95,6 +97,9 @@ steps:
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'psxview: value of the wrong kind for process_name; searched in text'
+  - 'psscan: value of the wrong kind for process_name; searched in text'
 - name: injection_classification
   query: malfind OR VAD OR PAGE_EXECUTE_READWRITE
   look_for: 'malfind finds injected code via VAD anomalies — private PAGE_EXECUTE_READWRITE
@@ -106,7 +111,7 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.process_name.kw:
+          text.wc:
             value: '*malfind*'
             case_insensitive: true
       - wildcard:
@@ -120,6 +125,8 @@ steps:
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'malfind: value of the wrong kind for process_name; searched in text'
 - name: webshell_exec_chain
   query: w3wp.exe OR net.exe OR whoami.exe OR ipconfig.exe
   look_for: 'On web servers: w3wp.exe (IIS worker) spawning net.exe, whoami.exe, ipconfig.exe,

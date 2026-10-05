@@ -138,24 +138,20 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          fields.PayloadData4.kw:
             value: '*sc stop*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.PayloadData4.kw:
             value: '*net stop*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.PayloadData4.kw:
             value: '*service stop*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'sc stop: free phrase; the step''s pivot names no registry column'
-  - 'net stop: free phrase; the step''s pivot names no registry column'
-  - 'service stop: free phrase; the step''s pivot names no registry column'
 - name: crypto_process
   query: cipher /w OR diskcryptor OR vboxdrv
   look_for: Disk-encryption tool execution or crypto-loop patterns.
@@ -164,7 +160,7 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.process_name.kw:
+          text.wc:
             value: '*cipher /w*'
             case_insensitive: true
       - wildcard:
@@ -178,6 +174,8 @@ steps:
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'cipher /w: value of the wrong kind for process_name; searched in text'
 - name: backward_analysis
   query: rdp OR 4624 OR msiexec OR phish
   look_for: 'Work BACKWARD from impact: ransomware investigations begin at the ransomed/highest-activity
@@ -189,22 +187,37 @@ steps:
   pivot: IpAddress
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'rdp: free phrase; the step''s pivot names no registry column'
-  - 'msiexec: free phrase; the step''s pivot names no registry column'
-  - 'phish: free phrase; the step''s pivot names no registry column'
   kind: procedure
-  es_dropped:
-  - term: '*rdp*'
-    reason: an entry vector named in the procedure, not a column value
-  - term: '*phish*'
-    reason: an entry vector named in the procedure
-  - term: event_id 4624
-    reason: a real clue, but this step is the order of investigation, not a search
-      for it
   procedure_reason: 'R0'' defect: this step''s look_for is an investigation ORDER
     (do X, then Y), not evidence to search. It is shown to agents as a procedure and
     never executed, so it cannot fire on noise and cannot count as coverage.'
+  es_dropped:
+  - term: sha256
+    reason: 'procedure verb, not evidence: hashing is what the examiner does, not
+      what is searched for'
+  - term: md5
+    reason: procedure verb, not evidence
+  - term: hash
+    reason: procedure verb, not evidence
+  - term: kape
+    reason: names a tool the examiner runs, not a field value to search for
+  - term: triage
+    reason: procedure verb, not evidence
+  - term: bitlocker
+    reason: a pre-acquisition decision, not a search over indexed evidence
+  - term: encryption
+    reason: procedure verb, not evidence
+  - term: encrypted
+    reason: procedure verb, not evidence
+  - term: rdp
+    reason: an entry vector named in the procedure, not a column value
+  - term: phish
+    reason: an entry vector named in the procedure
+  - term: msiexec
+    reason: an entry vector named in the procedure, not a column value
+  - term: event_id 4624
+    reason: a real clue, but this step is the order of investigation, not a search
+      for it
 negative: No shadow deletion, recovery disable, or mass-encryption artifacts → impact
   phase not reached or aborted.
 confidence_rules:

@@ -215,35 +215,24 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.parent_process.kw:
-            value: '*explorer*'
+          fields.file_path.kw:
+            value: '*explorer.exe*'
             case_insensitive: true
       - wildcard:
-          fields.parent_process.kw:
-            value: '*outlook*'
-            case_insensitive: true
-      - wildcard:
-          fields.parent_process.kw:
-            value: '*winword*'
-            case_insensitive: true
-      - wildcard:
-          fields.process_name.kw:
+          fields.PayloadData2.kw:
             value: '*mshta*'
             case_insensitive: true
       - wildcard:
-          fields.process_name.kw:
+          fields.PayloadData2.kw:
             value: '*rundll32*'
             case_insensitive: true
       - wildcard:
-          fields.process_name.kw:
+          fields.PayloadData2.kw:
             value: '*powershell*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_fix_reason: 'R0'' defect 1: parent and child were inverted. The interpreters
-    are the CHILD and the launchers are the PARENT, so mshta/rundll32/powershell go
-    in `process_name` and explorer/outlook/winword in `parent_process`.'
 negative: No delivery artifact and no exec chain → the phish likely wasn't opened,
   was filtered, or the payload was blocked — a delivered-but-unopened phish is still
   reportable (user-awareness finding, not compromise).

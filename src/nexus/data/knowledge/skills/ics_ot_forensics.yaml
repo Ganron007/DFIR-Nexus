@@ -49,23 +49,27 @@ steps:
       should:
       - wildcard:
           text.wc:
-            value: '*modbus*'
+            value: '*Modbus*'
             case_insensitive: true
       - wildcard:
           text.wc:
-            value: '*dnp3*'
+            value: '*DNP3*'
             case_insensitive: true
       - wildcard:
           text.wc:
-            value: '*scada*'
+            value: '*SCADA*'
             case_insensitive: true
       - wildcard:
           text.wc:
-            value: '*plc*'
+            value: '*PLC*'
             case_insensitive: true
       - wildcard:
           text.wc:
             value: '*historian*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*Purdue*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
@@ -75,9 +79,13 @@ steps:
     - suricata
     - syslog
     - firewall
-  es_fix_reason: 'R0'' defect 2: industrial protocol names (Modbus/DNP3/PLC) are not
-    IP addresses, so they must not be searched in `dest_ip`. They are descriptive
-    text and are searched in the row text.'
+  es_text_only_reason:
+  - 'Modbus: value of the wrong kind for dest_ip; searched in text'
+  - 'DNP3: value of the wrong kind for dest_ip; searched in text'
+  - 'SCADA: value of the wrong kind for dest_ip; searched in text'
+  - 'PLC: value of the wrong kind for dest_ip; searched in text'
+  - 'historian: value of the wrong kind for dest_ip; searched in text'
+  - 'Purdue: value of the wrong kind for dest_ip; searched in text'
 - name: control_protocol_analysis
   query: Modbus OR function code OR write coil OR DNP3 OR S7comm
   look_for: 'In the pcap, decode control protocols and look for WRITE operations:
@@ -158,11 +166,11 @@ steps:
       should:
       - wildcard:
           text.wc:
-            value: '*plc log*'
+            value: '*PLC log*'
             case_insensitive: true
       - wildcard:
           text.wc:
-            value: '*hmi event*'
+            value: '*HMI event*'
             case_insensitive: true
       - wildcard:
           text.wc:
@@ -179,8 +187,12 @@ steps:
       minimum_should_match: 1
   requires:
     families: *id001
-  es_fix_reason: 'R0'' defect 5: ''PLC log''/''HMI event'' are descriptive text, not
-    host names, so they must not be searched in `host`. Moved to the row text.'
+  es_text_only_reason:
+  - 'PLC log: value of the wrong kind for host; searched in text'
+  - 'HMI event: value of the wrong kind for host; searched in text'
+  - 'alarm: value of the wrong kind for host; searched in text'
+  - 'controller: value of the wrong kind for host; searched in text'
+  - 'firmware: value of the wrong kind for host; searched in text'
 - name: historian_and_reports
   query: historian OR process data OR trend OR setpoint OR alarm history
   look_for: The historian holds process data (setpoints, valve states, alarms) that

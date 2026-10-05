@@ -63,11 +63,21 @@ def test_every_skill_step_has_a_stored_es_query(skills):
     """
     fields = catalog_fields()
     total = 0
+    procedures = 0
     problems: list[str] = []
     for skill in skills:
         records = step_records(skill, fields)
         total += len(records)
         for record in records:
+            # WO-KR2c change 2: a procedure step is shown as a procedure, never
+            # executed, and is not coverage - so "no es:" is its required state, not
+            # a defect.
+            if record.get("kind") == "procedure":
+                procedures += 1
+                if record["has_es"]:
+                    problems.append(f"{skill.get('skill')}/{record['name']}: "
+                                    "procedure step still carries es:")
+                continue
             if not record["has_es"]:
                 problems.append(f"{skill.get('skill')}/{record['name']}: no stored es:")
         problems += [f"{skill.get('skill')}: {p}" for p in validate_skill_dsl(skill, fields)]

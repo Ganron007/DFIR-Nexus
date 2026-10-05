@@ -45,7 +45,7 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.source_ip.kw:
+          text.wc:
             value: '*ESTABLISHED*'
             case_insensitive: true
       - wildcard:
@@ -53,7 +53,7 @@ steps:
             value: '*conn.log*'
             case_insensitive: true
       - wildcard:
-          fields.source_ip.kw:
+          text.wc:
             value: '*netstat*'
             case_insensitive: true
       minimum_should_match: 1
@@ -66,6 +66,9 @@ steps:
     - pcap
     - firewall
     - proxy
+  es_text_only_reason:
+  - 'ESTABLISHED: value of the wrong kind for dest_ip; searched in text'
+  - 'netstat: value of the wrong kind for dest_ip; searched in text'
 - name: byte_asymmetry
   query: bytes OR orig_bytes OR resp_bytes OR sent
   look_for: 'Byte asymmetry classifies the session: big-send/small-recv = exfil or
@@ -76,20 +79,30 @@ steps:
   es:
     bool:
       should:
-      - exists:
-          field: fields.ibyt
-      - exists:
-          field: fields.obyt
-      - exists:
-          field: fields.ipkt
-      - exists:
-          field: fields.opkt
+      - wildcard:
+          text.wc:
+            value: '*bytes*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*orig_bytes*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*resp_bytes*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*sent*'
+            case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_fix_reason: 'R0'' defect 3: ''bytes/orig_bytes/resp_bytes'' are COLUMN names,
-    not values, so searching them inside `source_ip` can never match. The step is
-    about a flow''s byte columns, so it asserts those columns exist instead.'
+  es_text_only_reason:
+  - 'bytes: value of the wrong kind for dest_ip; searched in text'
+  - 'orig_bytes: value of the wrong kind for dest_ip; searched in text'
+  - 'resp_bytes: value of the wrong kind for dest_ip; searched in text'
+  - 'sent: value of the wrong kind for dest_ip; searched in text'
 - name: long_duration_sessions
   query: duration OR long OR persistent
   look_for: Long-lived sessions to external IPs — interactive C2/webshell/ tunnel
@@ -100,20 +113,24 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.source_ip.kw:
+          text.wc:
             value: '*duration*'
             case_insensitive: true
       - wildcard:
-          fields.source_ip.kw:
+          text.wc:
             value: '*long*'
             case_insensitive: true
       - wildcard:
-          fields.source_ip.kw:
+          text.wc:
             value: '*persistent*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'duration: value of the wrong kind for dest_ip; searched in text'
+  - 'long: value of the wrong kind for dest_ip; searched in text'
+  - 'persistent: value of the wrong kind for dest_ip; searched in text'
 - name: port_protocol_mismatch
   query: 443 OR 80 OR 53 OR 3389
   look_for: 'Protocol/port incongruence: HTTP-shaped traffic on 443 that''s really
@@ -188,7 +205,7 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.dest_ip.kw:
+          text.wc:
             value: '*445*'
             case_insensitive: true
       - term:
@@ -196,16 +213,20 @@ steps:
       - term:
           event_id: '5985'
       - wildcard:
-          fields.dest_ip.kw:
+          text.wc:
             value: '*135*'
             case_insensitive: true
       - wildcard:
-          fields.dest_ip.kw:
+          text.wc:
             value: '*22*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - '445: value of the wrong kind for dest_ip; searched in text'
+  - '135: value of the wrong kind for dest_ip; searched in text'
+  - '22: value of the wrong kind for dest_ip; searched in text'
 negative: No anomalous sessions, asymmetric flows, or beacon patterns → network C2/exfil
   not evident. Encrypted channels still hide content — volume and timing analysis
   survives encryption, content inspection does not.

@@ -74,21 +74,37 @@ steps:
   corroborate: encrypted → live acquisition is mandatory, not optional
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'bitlocker: free phrase; the step''s pivot names no registry column'
-  - 'encryption: free phrase; the step''s pivot names no registry column'
-  - 'encrypted: free phrase; the step''s pivot names no registry column'
   kind: procedure
-  es_dropped:
-  - term: '*bitlocker*'
-    reason: a pre-acquisition decision, not a search over indexed evidence
-  - term: '*encryption*'
-    reason: procedure verb, not evidence
-  - term: '*encrypted*'
-    reason: procedure verb, not evidence
   procedure_reason: 'R0'' defect: this step''s look_for is an investigation ORDER
     (do X, then Y), not evidence to search. It is shown to agents as a procedure and
     never executed, so it cannot fire on noise and cannot count as coverage.'
+  es_dropped: &id002
+  - term: sha256
+    reason: 'procedure verb, not evidence: hashing is what the examiner does, not
+      what is searched for'
+  - term: md5
+    reason: procedure verb, not evidence
+  - term: hash
+    reason: procedure verb, not evidence
+  - term: kape
+    reason: names a tool the examiner runs, not a field value to search for
+  - term: triage
+    reason: procedure verb, not evidence
+  - term: bitlocker
+    reason: a pre-acquisition decision, not a search over indexed evidence
+  - term: encryption
+    reason: procedure verb, not evidence
+  - term: encrypted
+    reason: procedure verb, not evidence
+  - term: rdp
+    reason: an entry vector named in the procedure, not a column value
+  - term: phish
+    reason: an entry vector named in the procedure
+  - term: msiexec
+    reason: an entry vector named in the procedure, not a column value
+  - term: event_id 4624
+    reason: a real clue, but this step is the order of investigation, not a search
+      for it
 - name: triage_first
   query: file:kape OR triage
   look_for: Triage image (KAPE targets) — the high-value artifact subset (registry
@@ -99,14 +115,10 @@ steps:
   requires:
     families: *id001
   kind: procedure
-  es_dropped:
-  - term: '*kape*'
-    reason: names a tool the examiner runs, not a field value to search for
-  - term: '*triage*'
-    reason: procedure verb, not evidence
   procedure_reason: 'R0'' defect: this step''s look_for is an investigation ORDER
     (do X, then Y), not evidence to search. It is shown to agents as a procedure and
     never executed, so it cannot fire on noise and cannot count as coverage.'
+  es_dropped: *id002
 - name: write_blocked_disk
   query: write block OR tableau OR e01 OR raw image
   look_for: Dead-disk acquisition goes through a forensic write-blocker to E01/ raw
@@ -147,22 +159,11 @@ steps:
   pivot: SHA256
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'sha256: free phrase; the step''s pivot names no registry column'
-  - 'md5: free phrase; the step''s pivot names no registry column'
-  - 'hash: free phrase; the step''s pivot names no registry column'
   kind: procedure
-  es_dropped:
-  - term: '*sha256*'
-    reason: 'procedure verb, not evidence: hashing is what the examiner does, not
-      what is searched for'
-  - term: '*md5*'
-    reason: procedure verb, not evidence
-  - term: '*hash*'
-    reason: procedure verb, not evidence
   procedure_reason: 'R0'' defect: this step''s look_for is an investigation ORDER
     (do X, then Y), not evidence to search. It is shown to agents as a procedure and
     never executed, so it cannot fire on noise and cannot count as coverage.'
+  es_dropped: *id002
 - name: chain_of_custody
   query: custody OR seized OR collected
   look_for: 'Chain of custody from seizure onward — who collected, when, where, how

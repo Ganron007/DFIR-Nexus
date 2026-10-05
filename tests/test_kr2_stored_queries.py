@@ -85,6 +85,22 @@ def test_every_skill_step_has_valid_es_query():
         steps = skill.get("steps") or []
         total_steps += len(steps)
         for step in steps:
+            # WO-KR2c change 2: a step whose look_for is a PROCEDURE gets
+            # `kind: procedure`, no `es:`. It is shown to agents as a procedure and
+            # never executed, so it cannot fire on noise and cannot count as
+            # coverage. Only a search step must carry `es:`.
+            if step.get("kind") == "procedure":
+                assert "es" not in step, (
+                    f"Skill {sf.name} step {step.get('name')} is kind: procedure but "
+                    "still carries 'es:' - it would fire on noise and count as coverage"
+                )
+                assert step.get("procedure_reason"), (
+                    f"Skill {sf.name} step {step.get('name')} is a procedure with no "
+                    "procedure_reason")
+                assert step.get("es_dropped"), (
+                    f"Skill {sf.name} step {step.get('name')} is a procedure with no "
+                    "es_dropped record")
+                continue
             assert "es" in step, f"Skill {sf.name} step {step.get('name')} missing 'es:'"
             assert isinstance(step["es"], dict), f"Skill {sf.name} step {step.get('name')} 'es:' must be a dict"
             assert "dsl" not in step, f"Skill {sf.name} step {step.get('name')} has lingering 'dsl:'"

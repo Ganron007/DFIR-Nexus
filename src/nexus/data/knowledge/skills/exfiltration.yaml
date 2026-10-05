@@ -137,29 +137,24 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          fields.PayloadData2.kw:
             value: '*nslookup*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.PayloadData2.kw:
             value: '*dig*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.PayloadData2.kw:
             value: '*TXT record*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.PayloadData2.kw:
             value: '*dns*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'nslookup: free phrase; the step''s pivot names no registry column'
-  - 'dig: free phrase; the step''s pivot names no registry column'
-  - 'TXT record: free phrase; the step''s pivot names no registry column'
-  - 'dns: free phrase; the step''s pivot names no registry column'
 - name: large_outbound
   query: netstat -an OR BytesSent
   look_for: SRUM/netstat showing large BytesSent from unusual processes.

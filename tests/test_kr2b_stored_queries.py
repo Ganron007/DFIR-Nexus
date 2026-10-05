@@ -101,14 +101,32 @@ def _searchable_strings(node: object, out: list[str]) -> list[str]:
 
 
 def _alternative_present(alt: str, es_strings: list[str], dropped_text: str) -> bool:
-    """Whether one authored alternative survives in the stored query or a record."""
+    """Whether one authored alternative survives in the stored query or a record.
+
+    An alternative may be RE-PHRASED, not just transcribed. The R0' fixes move an
+    alternative to the field the evidence actually has, which legitimately changes its
+    spelling: `explorer.exe` becomes `parent_process:*explorer*` (the launcher, as the
+    parent), and `orig_bytes`/`resp_bytes` become assertions on the columns
+    `ibyt`/`obyt`. So a token matches when it, or its significant stem, appears - the
+    stem being the token without a file extension or a common suffix.
+
+    This deliberately does NOT accept "gone" as present: the term must still be
+    findable in the stored query or in the recorded `es_dropped`.
+    """
     for token in alt.replace('"', " ").split():
         if not _significant(token):
             continue
         # `file:history` is stored as a clause on `file` with the value `history`,
         # so the value - not the token as written - is what must appear.
-        for candidate in (token.lower(), token.split(":", 1)[-1].lower()):
-            if candidate and (any(candidate in s for s in es_strings) or candidate in dropped_text):
+        stems = {token.lower(), token.split(":", 1)[-1].lower()}
+        for candidate in list(stems):
+            stems.add(candidate.split(".", 1)[0])            # explorer.exe -> explorer
+            stems.add(candidate.split("-", 1)[0])
+            stems.add(candidate.rstrip("_"))
+            stems.add(candidate.replace("_", ""))
+        for candidate in stems:
+            if candidate and len(candidate) >= 3 and (
+                    any(candidate in s for s in es_strings) or candidate in dropped_text):
                 return True
     return False
 
@@ -212,6 +230,14 @@ def test_the_converter_builds_what_the_files_hold():
         # several different columns, which `build_es` (one column per alternative)
         # cannot express. The converter keeps it for the same reason.
         if str(step.get("es_authored_reason") or "").strip():
+            continue
+        # WO-KR2c change 2: a PROCEDURE step has no `es:` by contract, so there is
+        # nothing to rebuild - rebuilding one would re-introduce the keyword search
+        # the rule removes. The converter asserts its stored shape instead.
+        if step.get("kind") == "procedure" or step.get("name") in getattr(
+                conv, "PROCEDURE_STEPS", set()):
+            if step.get("es") is not None:
+                mismatches.append(f"{skill}/{step.get('name')}: procedure still has es:")
             continue
         fams = [str(f) for f in ((step.get("requires") or {}).get("families") or [])]
         es, dropped, _ = conv.build_es(

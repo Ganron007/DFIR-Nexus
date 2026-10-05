@@ -154,6 +154,10 @@ def step_records(
             "has_es": isinstance(es_query, dict) and bool(es_query),
             "pivot": str(step.get("pivot") or ""),
             "look_for": str(step.get("look_for") or ""),
+            # WO-KR2c change 2: a procedure step is shown as a procedure and never
+            # executed, so callers must not read its missing `es:` as a defect.
+            "kind": str(step.get("kind") or "search"),
+            "procedure_reason": str(step.get("procedure_reason") or ""),
         })
     return out
 
@@ -209,6 +213,11 @@ def validate_skill_dsl(
     """
     problems = list(validate_skill_steps(skill, available))
     for record in step_records(skill, available):
+        # WO-KR2c change 2: a `kind: procedure` step has no `es:` BY CONTRACT. It is
+        # shown to agents as a procedure, never executed, and does not count as
+        # coverage - which is the whole point of the reclassification.
+        if record.get("kind") == "procedure":
+            continue
         if not record["has_es"]:
             problems.append(
                 f"{record['name']}: no stored ES query - the step is not executable"

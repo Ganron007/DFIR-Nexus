@@ -41,11 +41,11 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.source_ip.kw:
+          text.wc:
             value: '*netstat*'
             case_insensitive: true
       - wildcard:
-          fields.source_ip.kw:
+          text.wc:
             value: '*ESTABLISHED*'
             case_insensitive: true
       minimum_should_match: 1
@@ -57,6 +57,9 @@ steps:
     - evtx
     - sysmon
     - powershell
+  es_text_only_reason:
+  - 'netstat: value of the wrong kind for source_ip; searched in text'
+  - 'ESTABLISHED: value of the wrong kind for source_ip; searched in text'
 - name: cobalt_beacon
   query: cobaltstrike OR beacon OR beacon.dll
   look_for: Cobalt Strike artifacts — beacon.dll in process, known C2 IPs.
@@ -65,11 +68,11 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          fields.ExecutableInfo.kw:
             value: '*cobaltstrike*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.ExecutableInfo.kw:
             value: '*beacon*'
             case_insensitive: true
       - wildcard:
@@ -79,9 +82,6 @@ steps:
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'cobaltstrike: free phrase; the step''s pivot names no registry column'
-  - 'beacon: free phrase; the step''s pivot names no registry column'
 - name: dga_domains
   query: dns QueryName OR nslookup
   look_for: Long random subdomains, non-standard TLDs, high-entropy names.
@@ -90,19 +90,16 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          fields.PayloadData2.kw:
             value: '*dns QueryName*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.PayloadData2.kw:
             value: '*nslookup*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'dns QueryName: free phrase; the step''s pivot names no registry column'
-  - 'nslookup: free phrase; the step''s pivot names no registry column'
 - name: dnscat_tunneling
   query: dnscat OR iodine OR dns2tcp
   look_for: DNS tunneling tool execution or TXT-record exfil patterns.
@@ -179,24 +176,20 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          fields.PayloadData2.kw:
             value: '*dns TXT*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.PayloadData2.kw:
             value: '*icmp*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.PayloadData2.kw:
             value: '*http POST*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'dns TXT: free phrase; the step''s pivot names no registry column'
-  - 'icmp: free phrase; the step''s pivot names no registry column'
-  - 'http POST: free phrase; the step''s pivot names no registry column'
 negative: No periodic external connections or C2 artifacts → implant likely dormant,
   destroyed, or using encrypted/unobserved channels.
 confidence_rules:
