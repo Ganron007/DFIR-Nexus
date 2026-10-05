@@ -393,7 +393,7 @@ class RegistryDB:
 
 CONTEXT_SCHEMA = """
 CREATE TABLE IF NOT EXISTS sources (name TEXT PRIMARY KEY, source_type TEXT NOT NULL, url TEXT, last_sync_time TEXT, last_sync_commit TEXT, record_count INTEGER DEFAULT 0, notes TEXT);
-CREATE TABLE IF NOT EXISTS lolbins (id INTEGER PRIMARY KEY, filename_lower TEXT NOT NULL UNIQUE, name TEXT, description TEXT, functions TEXT, expected_paths TEXT, mitre_techniques TEXT, detection TEXT, source_url TEXT);
+CREATE TABLE IF NOT EXISTS lolbins (id INTEGER PRIMARY KEY, filename_lower TEXT NOT NULL UNIQUE, name TEXT, description TEXT, functions TEXT, expected_paths TEXT, mitre_techniques TEXT, detection TEXT, source_url TEXT, platform TEXT);
 CREATE INDEX IF NOT EXISTS idx_lol_filename ON lolbins(filename_lower);
 CREATE TABLE IF NOT EXISTS hijackable_dlls (id INTEGER PRIMARY KEY, dll_name_lower TEXT NOT NULL, hijack_type TEXT, vulnerable_exe TEXT, vulnerable_exe_path TEXT, expected_paths TEXT, vendor TEXT, UNIQUE(dll_name_lower, vulnerable_exe));
 CREATE INDEX IF NOT EXISTS idx_hjk_dll ON hijackable_dlls(dll_name_lower);
@@ -430,80 +430,13 @@ INSERT OR IGNORE INTO suspicious_filenames (filename_pattern, tool_name, categor
     ('psexec.exe', 'sysinternals', 'lateral_movement', 'medium'),
     ('winpeas.exe', 'winpeas', 'privesc', 'high'),
     ('nc.exe', 'netcat', 'backdoor', 'high'),
-    ('chisel.exe', 'chisel', 'tunneling', 'high'),
-    ('anydesk.exe', 'anydesk', 'lotrmm', 'high'),
-    ('teamviewer.exe', 'teamviewer', 'lotrmm', 'high'),
-    ('rustdesk.exe', 'rustdesk', 'lotrmm', 'high'),
-    ('screenconnect.exe', 'screenconnect', 'lotrmm', 'high'),
-    ('connectwise.exe', 'connectwise', 'lotrmm', 'high'),
-    ('splashtop.exe', 'splashtop', 'lotrmm', 'high'),
-    ('atera.exe', 'atera', 'lotrmm', 'high'),
-    ('client32.exe', 'netsupport_manager', 'lotrmm', 'high'),
-    ('meshcentral.exe', 'meshcentral', 'lotrmm', 'high'),
-    ('action1.exe', 'action1', 'lotrmm', 'high'),
-    ('ninjaone.exe', 'ninjaone', 'lotrmm', 'high'),
-    ('logmein.exe', 'logmein', 'lotrmm', 'high'),
-    ('kaseya.exe', 'kaseya', 'lotrmm', 'high'),
-    ('parsec.exe', 'parsec', 'lotrmm', 'high'),
-    ('tightvnc.exe', 'tightvnc', 'lotrmm', 'high'),
-    ('vncviewer.exe', 'vncviewer', 'lotrmm', 'high'),
-    ('winvnc.exe', 'winvnc', 'lotrmm', 'high');
-INSERT OR IGNORE INTO vulnerable_drivers (filename_lower, sha256, vendor, product, cve, vulnerability_type, description) VALUES
-    ('gdrv.sys', '72f5d9471b40fd0e7da3c516315eeef39cb5867fb1b5e3f4ae6bc8ec5b53eb6e', 'GIGABYTE', 'GIGABYTE G-Service Driver', 'CVE-2018-19320', 'arbitrary_memory_read_write', 'Abused by RobbinHood ransomware for BYOVD kernel memory write'),
-    ('mhyprot2.sys', '046e25944111f182c1611a5b81a74e502c77f0a8253139366e604f5e714dd3ff', 'miHoYo', 'Genshin Impact Anti-Cheat', NULL, 'process_termination', 'Anti-cheat driver abused to bypass protections and kill AV/EDR processes'),
-    ('rtcore64.sys', '89fe837b0266016e7886a0b59b583416a206bb41209b5527a2eb17112003c27e', 'Micro-Star International', 'MSI Afterburner', 'CVE-2019-16098', 'arbitrary_memory_read_write', 'Direct hardware/MSR/physical memory read/write abused by BlackCat/ALPHV'),
-    ('dbutil_2_3.sys', '0296e2ce999e67c76352613a718e11516fe1b0efc3ffdb8918fc999dd76a73a5', 'Dell', 'Dell BIOS Verification Utility', 'CVE-2021-21551', 'arbitrary_kernel_read_write', 'Dell firmware update driver exposing arbitrary read/write IOCTLs'),
-    ('procexp.sys', 'e95759efc7dd3f1245041a998e154f8e5d95e0c5fa600a9fa93e2b26b38cbbab', 'Microsoft Sysinternals', 'Process Explorer Driver', NULL, 'protected_process_kill', 'Signed Sysinternals driver abused to terminate protected AV/EDR processes'),
-    ('asriom.sys', '171ebaaec854b7c3d707c576ee3b15ad39fb8fc5b161c56b77207604ad4bc231', 'ASRock', 'ASRock I/O Driver', 'CVE-2020-15368', 'arbitrary_memory_read_write', 'Signed hardware monitoring driver abused to execute unsigned code in kernel'),
-    ('enoise.sys', 'b44b8296eb4c029b4cf71eb52ae5da07c2a7db6d0a7a0b5b29f0e1f7c5e26b1c', 'E-Noise', 'E-Noise Hardware Access', NULL, 'kernel_memory_access', 'Abused in BYOVD campaigns to disable driver signature enforcement'),
-    ('kprocesshacker.sys', 'f8f01b0bca4cf7450fb6b4df3ea44e45c79be2533c37553f19e2bb9e3d93708c', 'Process Hacker', 'Process Hacker Kernel Driver', NULL, 'kernel_process_termination', 'Kernel driver abused by threat actors to manipulate processes and tokens'),
-    ('iqvw64e.sys', '29235e2c560cf8fc67c6eb234c9c193021f156d953a81a7b45f1b2f0a174c86a', 'Intel', 'Intel Network Adapter Diagnostic Driver', 'CVE-2015-2291', 'arbitrary_kernel_write', 'Signed Intel diagnostics driver abused by Turla and Slingshot for kernel execution'),
-    ('cpuz141.sys', '9c72e25a176882c3c9f285fb2b23a7bbec437c35f6ea5275e538f121d5a73e5a', 'CPUID', 'CPU-Z Driver', NULL, 'control_register_write', 'CPU monitoring driver abused to modify CR0/CR4 and kernel protections'),
-    ('speedfan.sys', 'fbe789ebf3044e13ec932fa5a7828e833486127be5188d3e91d8e11a3b3fa309', 'Almico', 'SpeedFan Monitoring Driver', 'CVE-2007-5633', 'arbitrary_memory_read_write', 'Signed hardware sensor driver allowing arbitrary kernel address read/write'),
-    ('atsiv.sys', '6ef8f20b411d51a66bebc2a9ab44cbbf8d2f232df6887556a3507851d7637db9', 'Linchpin Labs', 'Atsiv Loader Driver', NULL, 'unsigned_driver_load', 'Signed utility driver historically abused to load unsigned malicious drivers'),
-    ('zamguard64.sys', '4328328c70757d59fe575459392e2fb4208a0d2f091c782a6ea8808d4b8f5ee0', 'Zemana', 'Zemana AntiLogger Driver', 'CVE-2021-31728', 'process_termination', 'Abused by ransomware (ALPHV/BlackCat) to terminate security software');
-INSERT OR IGNORE INTO hijackable_dlls (dll_name_lower, hijack_type, vulnerable_exe, vulnerable_exe_path, expected_paths, vendor) VALUES
-    ('version.dll', 'search_order', '*', '*', '["C:\\\\Windows\\\\System32"]', 'Microsoft'),
-    ('cryptbase.dll', 'search_order', '*', '*', '["C:\\\\Windows\\\\System32"]', 'Microsoft'),
-    ('uxtheme.dll', 'search_order', '*', '*', '["C:\\\\Windows\\\\System32"]', 'Microsoft'),
-    ('dwmapi.dll', 'search_order', '*', '*', '["C:\\\\Windows\\\\System32"]', 'Microsoft'),
-    ('duser.dll', 'search_order', '*', '*', '["C:\\\\Windows\\\\System32"]', 'Microsoft'),
-    ('shcore.dll', 'search_order', '*', '*', '["C:\\\\Windows\\\\System32"]', 'Microsoft'),
-    ('wldp.dll', 'search_order', '*', '*', '["C:\\\\Windows\\\\System32"]', 'Microsoft'),
-    ('amsi.dll', 'search_order', '*', '*', '["C:\\\\Windows\\\\System32"]', 'Microsoft'),
-    ('dbghelp.dll', 'search_order', '*', '*', '["C:\\\\Windows\\\\System32"]', 'Microsoft');
-INSERT OR IGNORE INTO lots_domains (domain_lower, category, description, mitre_technique, source_url) VALUES
-    ('discordapp.com', 'c2_exfil', 'Discord CDN / Webhooks used for C2 and data exfiltration', 'T1102.002', 'https://lots-project.com'),
-    ('discord.com', 'c2_exfil', 'Discord Webhooks and bot API abused for C2 channels', 'T1102.002', 'https://lots-project.com'),
-    ('api.telegram.org', 'c2_exfil', 'Telegram Bot API leveraged for command-and-control and staging', 'T1102.002', 'https://lots-project.com'),
-    ('slack.com', 'c2_exfil', 'Slack API and incoming webhooks abused for interactive C2', 'T1102.002', 'https://lots-project.com'),
-    ('webhook.site', 'exfil', 'Webhook receiver service commonly abused for data staging and exfiltration', 'T1567.002', 'https://lots-project.com'),
-    ('transfer.sh', 'payload_delivery_exfil', 'Command-line file sharing service used for payload download and exfil', 'T1105', 'https://lots-project.com'),
-    ('file.io', 'payload_delivery_exfil', 'Ephemeral file sharing service abused for single-use payload retrieval', 'T1105', 'https://lots-project.com'),
-    ('pastebin.com', 'payload_staging', 'Public paste service used for payload hosting and dead-drop resolvers', 'T1102.001', 'https://lots-project.com'),
-    ('raw.githubusercontent.com', 'payload_delivery', 'GitHub raw content hosting scripts, staged tools, and secondary stages', 'T1105', 'https://lots-project.com'),
-    ('gist.githubusercontent.com', 'payload_delivery', 'GitHub Gist raw content abused for payload delivery', 'T1105', 'https://lots-project.com'),
-    ('ngrok.io', 'tunneling_c2', 'Reverse proxy tunnel service abused for ingress and C2 access', 'T1572', 'https://lots-project.com'),
-    ('ngrok-free.app', 'tunneling_c2', 'Free tier ngrok tunnel domain commonly observed in intrusion staging', 'T1572', 'https://lots-project.com'),
-    ('localtunnel.me', 'tunneling_c2', 'Reverse proxy tunnel service exposing internal ports to the internet', 'T1572', 'https://lots-project.com'),
-    ('trycloudflare.com', 'tunneling_c2', 'Cloudflare quick tunnel service abused for ephemeral C2 routing', 'T1572', 'https://lots-project.com');
-INSERT OR IGNORE INTO loobins (binary_name_lower, description, paths, functions, mitre_techniques, detection, source_url) VALUES
-    ('osascript', 'AppleScript and JXA execution utility used to run code and bypass controls', '["/usr/bin/osascript"]', '["execute", "bypass"]', '["T1059.002"]', 'Monitor process execution of osascript with arguments -e or piping script text', 'https://loobins.io/binaries/osascript/'),
-    ('dscl', 'Directory Service command line utility for user/group reconnaissance and privilege modification', '["/usr/bin/dscl"]', '["recon", "privesc"]', '["T1087.001"]', 'Look for dscl commands adding users to admin group or reading shadow hashes', 'https://loobins.io/binaries/dscl/'),
-    ('launchctl', 'Service management utility abused for persistence via launch daemons and launch agents', '["/bin/launchctl"]', '["execute", "persistence"]', '["T1543.001", "T1543.004"]', 'Alert on launchctl load / bootstrap from non-standard or user-writable locations', 'https://loobins.io/binaries/launchctl/'),
-    ('security', 'Keychain command-line utility abused to dump stored passwords and certificates', '["/usr/bin/security"]', '["credentials"]', '["T1555.001"]', 'Monitor security find-generic-password or dump-keychain commands', 'https://loobins.io/binaries/security/'),
-    ('csrutil', 'System Integrity Protection management tool used to inspect protection state', '["/usr/bin/csrutil"]', '["defense_evasion"]', '["T1562.001"]', 'Check for csrutil status execution during discovery phases', 'https://loobins.io/binaries/csrutil/'),
-    ('plutil', 'Property list utility abused to inspect or modify configuration and persistence plists', '["/usr/bin/plutil"]', '["defense_evasion", "persistence"]', '["T1647"]', 'Alert on plutil modifications to LaunchAgents or LaunchDaemons plists', 'https://loobins.io/binaries/plutil/'),
-    ('defaults', 'Read/write macOS preferences database; abused to disable Gatekeeper or security warnings', '["/usr/bin/defaults"]', '["defense_evasion", "recon"]', '["T1562.001"]', 'Watch for defaults write com.apple.LaunchServices LSQuarantine -bool NO', 'https://loobins.io/binaries/defaults/'),
-    ('tccutil', 'Manage Transparency, Consent, and Control database to manipulate app permissions', '["/usr/bin/tccutil"]', '["defense_evasion"]', '["T1562.001"]', 'Alert on tccutil reset commands from unusual parent processes', 'https://loobins.io/binaries/tccutil/'),
-    ('spctl', 'Gatekeeper security policy control utility abused to assess or disable Gatekeeper', '["/usr/sbin/spctl"]', '["defense_evasion"]', '["T1553.001"]', 'Monitor spctl --master-disable or assessment-disabling commands', 'https://loobins.io/binaries/spctl/'),
-    ('xattr', 'Extended attribute management utility abused to strip com.apple.quarantine attribute', '["/usr/bin/xattr"]', '["defense_evasion"]', '["T1553.001"]', 'Alert on xattr -d -r com.apple.quarantine executed on downloaded binaries', 'https://loobins.io/binaries/xattr/'),
-    ('scselect', 'Network setup location selector used during network discovery', '["/usr/sbin/scselect"]', '["recon"]', '["T1016"]', 'Unusual invocation of scselect by non-administrative users', 'https://loobins.io/binaries/scselect/'),
-    ('profiles', 'Install, remove, or view configuration profiles; abused for MDM enrollment and persistence', '["/usr/bin/profiles"]', '["persistence", "defense_evasion"]', '["T1176"]', 'Monitor profiles install -type configuration with non-standard payload certificates', 'https://loobins.io/binaries/profiles/'),
-    ('system_profiler', 'Detailed hardware/software configuration recon utility', '["/usr/sbin/system_profiler"]', '["recon"]', '["T1082"]', 'System profiler execution with extensive data types during initial intrusion stages', 'https://loobins.io/binaries/system_profiler/'),
-    ('curl', 'Command line download tool abused to fetch secondary payloads and exfiltrate data', '["/usr/bin/curl"]', '["download", "exfil"]', '["T1105", "T1567"]', 'Inspect curl piping directly to sh/bash or uploading to cloud storage endpoints', 'https://loobins.io/binaries/curl/'),
-    ('python3', 'Script interpreter used for custom backdoors, reverse shells, and post-exploitation', '["/usr/bin/python3"]', '["execute", "c2"]', '["T1059.006"]', 'Inspect python3 interactive reverse shell sockets or memory-injection scripts', 'https://loobins.io/binaries/python3/'),
-    ('ruby', 'Script interpreter capable of socket creation, command execution, and payload delivery', '["/usr/bin/ruby"]', '["execute"]', '["T1059"]', 'Monitor ruby execution with -e flags containing socket connections or system calls', 'https://loobins.io/binaries/ruby/');
+    ('chisel.exe', 'chisel', 'tunneling', 'high');
+-- The LOTL lists (LOLDrivers, HijackLibs, LOLRMM, LOTS, LOOBins) are NOT seeded
+-- here. They are imported from pinned snapshots by
+-- `devtools/knowledge/lotl_import.py` into
+-- `src/nexus/data/knowledge/lists/lotl.yaml`, and loaded by `load_lotl_lists()`
+-- below (WO-KL2b: ingest, don't type). The statements that used to stand here
+-- carried 13 drivers, 9 DLLs, 14 domains and 16 LOOBins typed by hand.
 INSERT OR IGNORE INTO expected_processes (process_name_lower, valid_parents, suspicious_parents, never_spawns_children, parent_exits, valid_paths, user_type, valid_users, min_instances, max_instances, per_session, required_args, source) VALUES
     ('smss.exe', '["System"]', '[]', 0, 0, '["C:\\\\Windows\\\\System32\\\\smss.exe"]', 'system', '["NT AUTHORITY\\\\SYSTEM"]', 1, 1, 0, NULL, 'SANS Hunt Evil'),
     ('csrss.exe', '["smss.exe"]', '[]', 0, 0, '["C:\\\\Windows\\\\System32\\\\csrss.exe"]', 'system', '["NT AUTHORITY\\\\SYSTEM"]', 1, NULL, 1, NULL, 'SANS Hunt Evil'),
@@ -543,6 +476,92 @@ INSERT OR IGNORE INTO windows_named_pipes (pipe_name, protocol, service_name, de
     ('ntsvcs', 'RPC', 'Plug and Play', 'MS-PNP');
 """
 
+#: WO-KL2b — the imported LOTL lists. Generated by
+#: `devtools/knowledge/lotl_import.py` from **pinned snapshots** of the upstream
+#: projects (a git commit SHA, or a retrieval date + file SHA-256 for the web
+#: source). Never edited by hand: re-run the importer. The hand-typed seeds this
+#: replaces carried 13 drivers, 9 DLLs, 17 RMM tools, 14 domains and 16 LOOBins.
+LOTL_LISTS_PATH = Path(__file__).resolve().parents[1] / "data" / "knowledge" / "lists" / "lotl.yaml"
+
+#: Imported source name -> the table its rows fill.
+LOTL_SOURCE_TABLE = {
+    "loldrivers": "vulnerable_drivers",
+    "hijacklibs": "hijackable_dlls",
+    "lolrmm": "suspicious_filenames",
+    "lots": "lots_domains",
+    "loobins": "loobins",
+    "lolbas": "lolbins",
+    "gtfobins": "lolbins",
+}
+
+
+def load_lotl_lists(conn: sqlite3.Connection, path: str | Path | None = None) -> dict[str, int]:
+    """Fill the LOTL tables from the imported lists. Idempotent.
+
+    The tables are filled **only** by this loader (WO-KL2b), so what a check sees is
+    what the pinned snapshot contains, with the source's version beside it. Returns
+    ``{source: row_count}``.
+    """
+    import yaml
+
+    target = Path(path) if path else LOTL_LISTS_PATH
+    if not target.is_file():
+        return {}
+    payload = yaml.safe_load(target.read_text(encoding="utf-8")) or {}
+    lists = payload.get("lists") or {}
+    sources = payload.get("sources") or {}
+    counts: dict[str, int] = {}
+
+    for name, rows in lists.items():
+        table = LOTL_SOURCE_TABLE.get(name)
+        if not table or not isinstance(rows, list):
+            continue
+        # Column names come from our own generated file; still filtered to the
+        # table's real columns so a stray key cannot break the INSERT.
+        known = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            cols = [c for c in row if c in known and c != "source_key"]
+            if not cols:
+                continue
+            placeholders = ",".join("?" for _ in cols)
+            conn.execute(
+                f"INSERT OR IGNORE INTO {table} ({','.join(cols)}) VALUES ({placeholders})",
+                [row[c] for c in cols],
+            )
+        counts[name] = len(rows)
+        prov = sources.get(name) or {}
+        version = str(prov.get("commit") or prov.get("sha256") or "")
+        conn.execute(
+            "INSERT INTO sources (name, source_type, url, last_sync_commit, record_count, notes) "
+            "VALUES (?,?,?,?,?,?) "
+            "ON CONFLICT(name) DO UPDATE SET url=excluded.url, "
+            "last_sync_commit=excluded.last_sync_commit, record_count=excluded.record_count, "
+            "notes=excluded.notes",
+            (name, "git" if prov.get("commit") else "web", prov.get("url"),
+             version, len(rows), "WO-KL2b import"),
+        )
+    conn.commit()
+    return counts
+
+
+def list_provenance(conn: sqlite3.Connection, source: str) -> dict[str, Any]:
+    """What a check reports for its list: `{name, version, count, url}`.
+
+    The WO's requirement: an "unknown" must read as *"not in LOLDrivers
+    @<version> (N samples)"*, so the examiner knows the list is real, current and
+    finite - not that the tool simply does not know the driver.
+    """
+    row = conn.execute(
+        "SELECT url, last_sync_commit, record_count FROM sources WHERE name = ?", (source,)
+    ).fetchone()
+    if not row:
+        return {"name": source, "version": "", "count": 0, "url": ""}
+    return {"name": source, "version": str(row[1] or ""), "count": int(row[2] or 0),
+            "url": str(row[0] or "")}
+
+
 
 class ContextDB:
     def __init__(self, db_path: str | Path, read_only: bool = True, cache_size: int = 10000):
@@ -569,6 +588,8 @@ class ContextDB:
 
     def init_schema(self):
         self.connect().executescript(CONTEXT_SCHEMA)
+        # WO-KL2b: the LOTL tables are filled only by the importer's output.
+        load_lotl_lists(self._conn)
         self._conn.commit()
 
     def check_lolbin(self, filename: str) -> dict | None:

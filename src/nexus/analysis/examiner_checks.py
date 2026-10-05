@@ -563,6 +563,25 @@ def deobfuscate_command(*, command: str) -> dict[str, Any]:
     return out
 
 
+def _list_provenance(context: Any, source: str) -> dict[str, Any]:
+    """The imported list's size and version, for the check's result (WO-KL2b).
+
+    An "unknown" must read as *"not in LOLDrivers @<commit> (2402 samples)"* — so
+    the examiner knows the list is real, current and finite, not that the tool
+    simply does not know the driver. Best-effort: an older DB that predates the
+    import reports an empty provenance rather than failing the check.
+    """
+    try:
+        conn = context.connect() if hasattr(context, "connect") else None
+        if conn is None:
+            return {}
+        from nexus.triage.db import list_provenance
+
+        return list_provenance(conn, source)
+    except Exception:  # noqa: BLE001 - provenance is a nicety, never a check failure
+        return {}
+
+
 def check_driver(
     context: Any,
     *,
@@ -604,6 +623,7 @@ def check_driver(
             "interpretation_constraint": (
                 "known vulnerable BYOVD driver - presence suggests privilege escalation or defense evasion"
             ),
+            "list": _list_provenance(context, "loldrivers"),
         }
     return {
         "driver_name": driver_name,
@@ -611,6 +631,7 @@ def check_driver(
         "found": False,
         "verdict": "UNKNOWN",
         "interpretation_constraint": UNKNOWN_CONSTRAINT,
+        "list": _list_provenance(context, "loldrivers"),
     }
 
 
@@ -637,12 +658,14 @@ def check_lots_domain(context: Any, *, domain: str) -> dict[str, Any]:
             "interpretation_constraint": (
                 "living off trusted sites - legitimate domain abused for C2 or exfiltration"
             ),
+            "list": _list_provenance(context, "lots"),
         }
     return {
         "domain": domain,
         "found": False,
         "verdict": "UNKNOWN",
         "interpretation_constraint": UNKNOWN_CONSTRAINT,
+        "list": _list_provenance(context, "lots"),
     }
 
 
@@ -671,12 +694,14 @@ def check_loobin(context: Any, *, binary_name: str) -> dict[str, Any]:
             "interpretation_constraint": (
                 "legitimate macOS binary abusable for living-off-the-land techniques"
             ),
+            "list": _list_provenance(context, "loobins"),
         }
     return {
         "binary_name": binary_name,
         "found": False,
         "verdict": "UNKNOWN",
         "interpretation_constraint": UNKNOWN_CONSTRAINT,
+        "list": _list_provenance(context, "loobins"),
     }
 
 
