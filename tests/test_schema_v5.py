@@ -59,7 +59,11 @@ def test_es_property_shapes():
 def test_mapping_body_is_schema_v5_with_explicit_fields():
     from nexus.langgraph.case_index import INDEX_SCHEMA_VERSION, _mapping_body
 
-    assert INDEX_SCHEMA_VERSION == 8  # v8: WO-17 - CSV records, not physical lines
+    # v8: WO-17 - CSV records, not physical lines.
+    # v9: WO-KM1 D34 - the importer's normalized columns are indexed. A v8 index
+    # silently omits them from every search, so the bump is load-bearing and an
+    # index built before it must be rebuilt.
+    assert INDEX_SCHEMA_VERSION == 9
     body = _mapping_body()
     assert body["settings"]["index.mapping.ignore_malformed"] is True
     assert body["settings"]["index.mapping.total_fields.limit"] >= 5000
