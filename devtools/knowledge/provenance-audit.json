@@ -1,0 +1,2356 @@
+[
+  {
+    "path": "artifacts/linux/auth_log.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/linux/bash_history.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/linux/crontab.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/linux/proc_filesystem.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/linux/ssh_artifacts.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/linux/syslog.yaml",
+    "kb": 1,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/linux/systemd_journal.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/linux/wtmp_utmp.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/activitiescache.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/alternate_data_streams.yaml",
+    "kb": 3,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/amcache.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/bam.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/bits_jobs.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/browser_history.yaml",
+    "kb": 4,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/defender_quarantine.yaml",
+    "kb": 3,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/digital_signatures.yaml",
+    "kb": 3,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/event_logs_defender.yaml",
+    "kb": 3,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/event_logs_firewall.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/event_logs_network_share.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/event_logs_powershell.yaml",
+    "kb": 4,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/event_logs_rdp.yaml",
+    "kb": 3,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/event_logs_security.yaml",
+    "kb": 4,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/event_logs_services.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/event_logs_sysmon.yaml",
+    "kb": 5,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/event_logs_system.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/event_logs_task_scheduler.yaml",
+    "kb": 3,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/event_logs_wmi.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/hayabusa_alerts.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/jump_lists.yaml",
+    "kb": 3,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/lnk_files.yaml",
+    "kb": 4,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/mft.yaml",
+    "kb": 5,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/mountpoints2.yaml",
+    "kb": 1,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/ntfs_i30.yaml",
+    "kb": 3,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/ntfs_logfile.yaml",
+    "kb": 3,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/ntfs_resident_data.yaml",
+    "kb": 3,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/powershell_transcripts.yaml",
+    "kb": 3,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/prefetch.yaml",
+    "kb": 4,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/psreadline.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/rdp_bitmap_cache.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/recycle_bin.yaml",
+    "kb": 3,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/registry_run_keys.yaml",
+    "kb": 5,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/registry_services.yaml",
+    "kb": 3,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/scheduled_tasks.yaml",
+    "kb": 4,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/setupapi.yaml",
+    "kb": 0,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/shellbags.yaml",
+    "kb": 3,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/shimcache.yaml",
+    "kb": 3,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/srum.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/thumbcache.yaml",
+    "kb": 1,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/ual.yaml",
+    "kb": 1,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/user_activity_mru.yaml",
+    "kb": 1,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/userassist.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/usn_journal.yaml",
+    "kb": 5,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/volatility_memory.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/volume_shadow_copies.yaml",
+    "kb": 3,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/wer.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "artifacts/windows/wmi_persistence.yaml",
+    "kb": 4,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "atlas/ATLAS.yaml",
+    "kb": 441,
+    "generated": true,
+    "prov": [
+      "version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "atlas/atlas_registry.yaml",
+    "kb": 172,
+    "generated": true,
+    "prov": [
+      "source",
+      "version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "attack/attack_registry.yaml",
+    "kb": 1619,
+    "generated": true,
+    "prov": [
+      "source",
+      "version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "attack/enterprise-attack.json",
+    "kb": 52573,
+    "generated": true,
+    "prov": [
+      "spec_version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "attack/ics-attack.json",
+    "kb": 3962,
+    "generated": true,
+    "prov": [
+      "spec_version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "attack/mobile-attack.json",
+    "kb": 5615,
+    "generated": true,
+    "prov": [
+      "spec_version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "attack_patterns.yaml",
+    "kb": 8,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "attack_patterns_external.yaml",
+    "kb": 7,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "attack_patterns_itm.yaml",
+    "kb": 7,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "det/cloud_attack.yaml",
+    "kb": 6,
+    "generated": true,
+    "prov": [
+      "source",
+      "version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "det/ics_ot.yaml",
+    "kb": 4,
+    "generated": true,
+    "prov": [
+      "source",
+      "version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "det/kernel_rootkit.yaml",
+    "kb": 4,
+    "generated": true,
+    "prov": [
+      "source",
+      "version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "det/maldev_evasion.yaml",
+    "kb": 5,
+    "generated": true,
+    "prov": [
+      "source",
+      "version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/anti_patterns.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/checklists/event_logs.yaml",
+    "kb": 0,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/checklists/filesystem.yaml",
+    "kb": 0,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/checklists/memory.yaml",
+    "kb": 0,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/checklists/registry.yaml",
+    "kb": 0,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/checkpoints.yaml",
+    "kb": 1,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/confidence.yaml",
+    "kb": 0,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/evidence_standards.yaml",
+    "kb": 0,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/evidence_template.yaml",
+    "kb": 0,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/framework/investigation_framework.yaml",
+    "kb": 8,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/guidance/corroboration.yaml",
+    "kb": 4,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/guidance/false_positives.yaml",
+    "kb": 1,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/guidance/tool_interpretation.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/playbooks/browser_forensics.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/playbooks/c2_beacon.yaml",
+    "kb": 1,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/playbooks/credential_access.yaml",
+    "kb": 4,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/playbooks/data_staging.yaml",
+    "kb": 3,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/playbooks/dns_anomaly.yaml",
+    "kb": 3,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/playbooks/email_compromise.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/playbooks/external_compromise.yaml",
+    "kb": 1,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/playbooks/file_deletion.yaml",
+    "kb": 3,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/playbooks/linux_forensics.yaml",
+    "kb": 4,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/playbooks/log_tampering.yaml",
+    "kb": 4,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/playbooks/malware_analysis.yaml",
+    "kb": 4,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/playbooks/memory_forensics.yaml",
+    "kb": 4,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/playbooks/phishing_analysis.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/playbooks/powershell_anomaly.yaml",
+    "kb": 4,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/playbooks/ransomware_impact.yaml",
+    "kb": 1,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/playbooks/rdp_bruteforce.yaml",
+    "kb": 1,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/playbooks/remote_access.yaml",
+    "kb": 5,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/playbooks/supertimeline.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/playbooks/suspicious_autorun.yaml",
+    "kb": 4,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/playbooks/suspicious_connection.yaml",
+    "kb": 3,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/playbooks/suspicious_execution.yaml",
+    "kb": 5,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/playbooks/timestomping.yaml",
+    "kb": 3,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/playbooks/unusual_logon.yaml",
+    "kb": 4,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/playbooks/usb_activity.yaml",
+    "kb": 4,
+    "generated": false,
+    "prov": [],
+    "ids": {
+      "sigma": 1
+    },
+    "err": ""
+  },
+  {
+    "path": "discipline/playbooks/user_activity.yaml",
+    "kb": 3,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/playbooks/webshell.yaml",
+    "kb": 1,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "discipline/rules.yaml",
+    "kb": 3,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "dsl/query_examples.yaml",
+    "kb": 2,
+    "generated": true,
+    "prov": [
+      "version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "field_profiles/volatility_windows.yaml",
+    "kb": 5,
+    "generated": true,
+    "prov": [
+      "source",
+      "version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "itm/insider-threat-matrix.json",
+    "kb": 17410,
+    "generated": true,
+    "prov": [
+      "itm_version",
+      "mitre_version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "itm/itm_registry.yaml",
+    "kb": 246,
+    "generated": true,
+    "prov": [
+      "mitre_version",
+      "source",
+      "version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "lists/lotl.yaml",
+    "kb": 2717,
+    "generated": true,
+    "prov": [
+      "generator",
+      "version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "mbc/mbc.json",
+    "kb": 2418,
+    "generated": true,
+    "prov": [
+      "spec_version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "mbc/mbc_registry.yaml",
+    "kb": 377,
+    "generated": true,
+    "prov": [
+      "source",
+      "version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "needles/atomic_red_team.yaml",
+    "kb": 11,
+    "generated": true,
+    "prov": [
+      "source",
+      "version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "needles/attack_needles.yaml",
+    "kb": 9,
+    "generated": true,
+    "prov": [
+      "source",
+      "version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "needles/behavioral_analytics.yaml",
+    "kb": 32,
+    "generated": true,
+    "prov": [
+      "source",
+      "version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "needles/car_analytics.yaml",
+    "kb": 131,
+    "generated": true,
+    "prov": [
+      "generator",
+      "source",
+      "source_version",
+      "version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "needles/cisa_kev.yaml",
+    "kb": 14,
+    "generated": true,
+    "prov": [
+      "source",
+      "version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "needles/external_needles.yaml",
+    "kb": 2,
+    "generated": true,
+    "prov": [
+      "source",
+      "version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "needles/generated_needles.yaml",
+    "kb": 163,
+    "generated": true,
+    "prov": [
+      "generator",
+      "version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "needles/incident_reports.yaml",
+    "kb": 8,
+    "generated": true,
+    "prov": [
+      "source",
+      "version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "needles/itm_needles.yaml",
+    "kb": 3,
+    "generated": true,
+    "prov": [
+      "source",
+      "version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "needles/lolbas.yaml",
+    "kb": 28,
+    "generated": true,
+    "prov": [
+      "source",
+      "version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "needles/misp_opencti.yaml",
+    "kb": 8,
+    "generated": true,
+    "prov": [
+      "source",
+      "version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "needles/ossem_events.yaml",
+    "kb": 20,
+    "generated": true,
+    "prov": [
+      "source",
+      "version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "needles/sigma_needles.yaml",
+    "kb": 4,
+    "generated": true,
+    "prov": [
+      "source",
+      "version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "needles/sysmon_configs.yaml",
+    "kb": 11,
+    "generated": true,
+    "prov": [
+      "source",
+      "version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "needles/threat_feeds.yaml",
+    "kb": 8,
+    "generated": true,
+    "prov": [
+      "source",
+      "version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "needles/vendor_guides.yaml",
+    "kb": 12,
+    "generated": true,
+    "prov": [
+      "source",
+      "version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "needles/yara_rules.yaml",
+    "kb": 9,
+    "generated": true,
+    "prov": [
+      "source",
+      "version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "plugins/volatility.yaml",
+    "kb": 8,
+    "generated": true,
+    "prov": [
+      "source",
+      "version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "skills/ad_credential_attacks.yaml",
+    "kb": 8,
+    "generated": true,
+    "prov": [
+      "source"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "skills/browser_artifact_analysis.yaml",
+    "kb": 7,
+    "generated": true,
+    "prov": [
+      "source"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "skills/c2_beaconing.yaml",
+    "kb": 7,
+    "generated": true,
+    "prov": [
+      "source"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "skills/cloud_identity_forensics.yaml",
+    "kb": 11,
+    "generated": true,
+    "prov": [
+      "source"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "skills/container_forensics.yaml",
+    "kb": 9,
+    "generated": true,
+    "prov": [
+      "source"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "skills/credential_access_lsass.yaml",
+    "kb": 6,
+    "generated": true,
+    "prov": [
+      "source"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "skills/credential_access_sam_ntds.yaml",
+    "kb": 5,
+    "generated": true,
+    "prov": [
+      "source"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "skills/defense_evasion.yaml",
+    "kb": 7,
+    "generated": true,
+    "prov": [
+      "source"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "skills/deleted_file_recovery.yaml",
+    "kb": 7,
+    "generated": true,
+    "prov": [
+      "source"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "skills/discovery_recon.yaml",
+    "kb": 7,
+    "generated": true,
+    "prov": [
+      "source"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "skills/email_phishing.yaml",
+    "kb": 9,
+    "generated": true,
+    "prov": [
+      "source"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "skills/evidence_acquisition_handling.yaml",
+    "kb": 8,
+    "generated": true,
+    "prov": [
+      "source"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "skills/execution_anomaly.yaml",
+    "kb": 8,
+    "generated": true,
+    "prov": [
+      "source"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "skills/execution_artifact_analysis.yaml",
+    "kb": 10,
+    "generated": true,
+    "prov": [
+      "source"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "skills/exfiltration.yaml",
+    "kb": 8,
+    "generated": true,
+    "prov": [
+      "source"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "skills/ics_ot_forensics.yaml",
+    "kb": 8,
+    "generated": true,
+    "prov": [
+      "source"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "skills/impact_ransomware.yaml",
+    "kb": 7,
+    "generated": true,
+    "prov": [
+      "source"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "skills/initial_access.yaml",
+    "kb": 8,
+    "generated": true,
+    "prov": [
+      "source"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "skills/ir_scoping_and_leads.yaml",
+    "kb": 8,
+    "generated": true,
+    "prov": [
+      "source"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "skills/lateral_movement.yaml",
+    "kb": 9,
+    "generated": true,
+    "prov": [
+      "source"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "skills/linux_compromise.yaml",
+    "kb": 8,
+    "generated": true,
+    "prov": [
+      "source"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "skills/lnk_jumplist_analysis.yaml",
+    "kb": 7,
+    "generated": true,
+    "prov": [
+      "source"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "skills/log_clearing.yaml",
+    "kb": 6,
+    "generated": true,
+    "prov": [
+      "source"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "skills/macos_forensics.yaml",
+    "kb": 10,
+    "generated": true,
+    "prov": [
+      "source"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "skills/malware_analysis_triage.yaml",
+    "kb": 11,
+    "generated": true,
+    "prov": [
+      "source"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "skills/memory_process_analysis.yaml",
+    "kb": 8,
+    "generated": true,
+    "prov": [
+      "source"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "skills/mft_file_activity.yaml",
+    "kb": 7,
+    "generated": true,
+    "prov": [
+      "source"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "skills/mobile_forensics.yaml",
+    "kb": 10,
+    "generated": true,
+    "prov": [
+      "source"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "skills/network_session_analysis.yaml",
+    "kb": 7,
+    "generated": true,
+    "prov": [
+      "source"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "skills/persistence.yaml",
+    "kb": 9,
+    "generated": true,
+    "prov": [
+      "source"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "skills/powershell_abuse.yaml",
+    "kb": 7,
+    "generated": true,
+    "prov": [
+      "source"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "skills/registry_artifact_analysis.yaml",
+    "kb": 9,
+    "generated": true,
+    "prov": [
+      "source"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "skills/timeline_construction.yaml",
+    "kb": 7,
+    "generated": true,
+    "prov": [
+      "source"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "skills/usb_device_intrusion.yaml",
+    "kb": 9,
+    "generated": true,
+    "prov": [
+      "source"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "skills/webshell_investigation.yaml",
+    "kb": 8,
+    "generated": true,
+    "prov": [
+      "source"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "skills/windows_data_hiding.yaml",
+    "kb": 9,
+    "generated": true,
+    "prov": [
+      "source"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "skills/windows_event_log_analysis.yaml",
+    "kb": 7,
+    "generated": true,
+    "prov": [
+      "source"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "sources/attack_techniques.yaml",
+    "kb": 175,
+    "generated": true,
+    "prov": [
+      "source",
+      "version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "sources/cisa_kev.yaml",
+    "kb": 319,
+    "generated": true,
+    "prov": [
+      "source",
+      "version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "sources/gtfobins.yaml",
+    "kb": 44,
+    "generated": true,
+    "prov": [
+      "source",
+      "version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "sources/lolbas.yaml",
+    "kb": 103,
+    "generated": true,
+    "prov": [
+      "source",
+      "version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "sources/sigma_rules.yaml",
+    "kb": 972,
+    "generated": true,
+    "prov": [
+      "source",
+      "version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "sources/sysmon_events.yaml",
+    "kb": 7,
+    "generated": true,
+    "prov": [
+      "source",
+      "version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "sources/velociraptor_artifacts.yaml",
+    "kb": 176,
+    "generated": true,
+    "prov": [
+      "source",
+      "version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "sources/wadcoms.yaml",
+    "kb": 47,
+    "generated": true,
+    "prov": [
+      "source",
+      "version"
+    ],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/analysis/bitsparser.yaml",
+    "kb": 0,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/analysis/bmc_tools.yaml",
+    "kb": 0,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/analysis/browserparser.yaml",
+    "kb": 0,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/analysis/deepbluecli.yaml",
+    "kb": 0,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/analysis/events-ripper.yaml",
+    "kb": 0,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/analysis/kstrike.yaml",
+    "kb": 0,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/analysis/leveldb.yaml",
+    "kb": 0,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/analysis/logfileparser.yaml",
+    "kb": 0,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/analysis/ntfslogtracker.yaml",
+    "kb": 0,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/analysis/thumbcache.yaml",
+    "kb": 0,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/analysis/thumbcache_viewer.yaml",
+    "kb": 0,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/analysis/usbdeview.yaml",
+    "kb": 0,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/analysis/zircolite.yaml",
+    "kb": 0,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/browser/hindsight.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/carving/photorec.yaml",
+    "kb": 1,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/file_analysis/7z.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/file_analysis/bulk_extractor.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/file_analysis/esedbexport.yaml",
+    "kb": 0,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/file_analysis/exiftool.yaml",
+    "kb": 3,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/hashing/hashdeep.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/hashing/ssdeep.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/imaging/dc3dd.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/imaging/ewfacquire.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/imaging/ewfmount.yaml",
+    "kb": 1,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/imaging/vshadowinfo.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/imaging/vshadowmount.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/logs/logparser.yaml",
+    "kb": 1,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/malware/1768_cobalt.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/malware/capa.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/malware/densityscout.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/malware/get_injectedthreadex.yaml",
+    "kb": 0,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/malware/handle.yaml",
+    "kb": 0,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/malware/hollows_hunter.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/malware/maldump.yaml",
+    "kb": 1,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/malware/moneta.yaml",
+    "kb": 1,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/malware/sigcheck.yaml",
+    "kb": 4,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/malware/strings_tool.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/malware/yara.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/mcp/check_file.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/mcp/check_process_tree.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/mcp/search.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/mcp/search_threat_intel.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/memory/dumpit.yaml",
+    "kb": 1,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/memory/memprocfs.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/memory/procdump.yaml",
+    "kb": 0,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/memory/winpmem.yaml",
+    "kb": 1,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/network/tshark.yaml",
+    "kb": 3,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/network/zeek.yaml",
+    "kb": 3,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/persistence/autorunsc.yaml",
+    "kb": 4,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/registry/regripper.yaml",
+    "kb": 4,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/sleuthkit/blkls.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/sleuthkit/fls.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/sleuthkit/icat.yaml",
+    "kb": 1,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/sleuthkit/mmls.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/system/arp.yaml",
+    "kb": 0,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/system/certutil.yaml",
+    "kb": 0,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/system/dns.yaml",
+    "kb": 0,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/system/ipconfig.yaml",
+    "kb": 0,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/system/net.yaml",
+    "kb": 0,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/system/netstat.yaml",
+    "kb": 0,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/system/route.yaml",
+    "kb": 0,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/system/sc.yaml",
+    "kb": 0,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/system/schtasks.yaml",
+    "kb": 0,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/system/systeminfo.yaml",
+    "kb": 0,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/system/tasklist.yaml",
+    "kb": 0,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/system/whoami.yaml",
+    "kb": 0,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/timeline/chainsaw.yaml",
+    "kb": 0,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/timeline/hayabusa.yaml",
+    "kb": 4,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/timeline/mactime.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/timeline/plaso.yaml",
+    "kb": 3,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/timeline/psort.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/timeline/suzaku.yaml",
+    "kb": 1,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/triage/appcompat_processor.yaml",
+    "kb": 1,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/triage/cylr.yaml",
+    "kb": 1,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/triage/kape.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/volatility/volatility3.yaml",
+    "kb": 5,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/zimmerman/amcacheparser.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/zimmerman/appcompatcacheparser.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/zimmerman/bstrings.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/zimmerman/evtxecmd.yaml",
+    "kb": 3,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/zimmerman/jlecmd.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/zimmerman/lecmd.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/zimmerman/mftecmd.yaml",
+    "kb": 3,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/zimmerman/pecmd.yaml",
+    "kb": 3,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/zimmerman/rbcmd.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/zimmerman/recmd.yaml",
+    "kb": 3,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/zimmerman/sbecmd.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/zimmerman/sqlecmd.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/zimmerman/srumecmd.yaml",
+    "kb": 3,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  },
+  {
+    "path": "tools/zimmerman/wxtcmd.yaml",
+    "kb": 2,
+    "generated": false,
+    "prov": [],
+    "ids": {},
+    "err": ""
+  }
+]
