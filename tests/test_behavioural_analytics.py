@@ -122,16 +122,6 @@ def test_the_validator_refuses_a_negated_typed_filter():
     assert any("not field:value" in p or "POSITIVE filter" in p or "missing es" in p for p in problems), problems
 
 
-def test_negation_is_honoured_helper():
-    from nexus.analysis.behavioural_analytics import negation_is_honoured
-
-    assert negation_is_honoured("file_path:AppData") is True
-    assert negation_is_honoured("not path:\\Windows") is False
-    assert negation_is_honoured("file_path:AppData and not path:\\Windows") is False
-    # A plain text term is fine - that is the one negation the DSL does honour.
-    assert negation_is_honoured('process_name:cmd.exe and "not malware"') is True
-
-
 def test_a_user_writable_execution_matches_without_any_tool_name():
     analytic = next(a for a in analytics() if a["id"] == "ba-exec-user-writable")
     assert matches_record(analytic, {

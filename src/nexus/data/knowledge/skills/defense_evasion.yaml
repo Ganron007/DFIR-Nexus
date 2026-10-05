@@ -36,10 +36,21 @@ steps:
     DisableAntiSpyware.
   pivot: CommandLine
   es:
-    wildcard:
-      fields.command_line.kw:
-        value: '*Set-MpPreference*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.command_line.kw:
+            value: '*Set-MpPreference -DisableRealtimeMonitoring*'
+            case_insensitive: true
+      - wildcard:
+          fields.command_line.kw:
+            value: '*sc stop windefend*'
+            case_insensitive: true
+      - wildcard:
+          fields.command_line.kw:
+            value: '*DisableAntiSpyware*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: &id001
     - evtx
@@ -60,10 +71,21 @@ steps:
     (masqueraded files get created later → distant record numbers — sort MFTECmd output
     by record number, not just time)
   es:
-    wildcard:
-      fields.FileName.kw:
-        value: '*timestomp*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.file_path.kw:
+            value: '*timestomp*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*-M*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*Copy-Item -Destination*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: masquerading
@@ -72,10 +94,25 @@ steps:
     — masquerading.
   pivot: Image
   es:
-    wildcard:
-      text.wc:
-        value: '*svchost.exe*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.file_path.kw:
+            value: '*svchost.exe*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*smss.exe*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*csrss.exe*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*lsass.exe*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: process_injection
@@ -83,10 +120,25 @@ steps:
   look_for: Cross-process memory/thread APIs in Sysmon 8 (CreateRemoteThread).
   pivot: SourceImage
   es:
-    wildcard:
-      fields.process_name.kw:
-        value: '*CreateRemoteThread*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.process_name.kw:
+            value: '*CreateRemoteThread*'
+            case_insensitive: true
+      - wildcard:
+          fields.process_name.kw:
+            value: '*VirtualAllocEx*'
+            case_insensitive: true
+      - wildcard:
+          fields.process_name.kw:
+            value: '*WriteProcessMemory*'
+            case_insensitive: true
+      - wildcard:
+          fields.process_name.kw:
+            value: '*inject*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: etw_tamper
@@ -94,10 +146,21 @@ steps:
   look_for: ETW provider tampering — unregister/delete or patch.
   pivot: CommandLine
   es:
-    wildcard:
-      fields.command_line.kw:
-        value: '*EtwEventWrite*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.command_line.kw:
+            value: '*EtwEventWrite*'
+            case_insensitive: true
+      - wildcard:
+          fields.command_line.kw:
+            value: '*EtwUnregister*'
+            case_insensitive: true
+      - wildcard:
+          fields.command_line.kw:
+            value: '*logman delete*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: amsi_patch
@@ -105,12 +168,33 @@ steps:
   look_for: In-memory AMSI patching — patch bytes in PowerShell process memory.
   corroborate: suspicious script block follows
   es:
-    wildcard:
-      text.wc:
-        value: '*amsi.dll*'
-        case_insensitive: true
+    bool:
+      should:
+      - bool:
+          must:
+          - wildcard:
+              fields.file_path.kw:
+                value: '*amsi.dll*'
+                case_insensitive: true
+          - wildcard:
+              text.wc:
+                value: '*patch*'
+                case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*AmsiScanBuffer*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*amsiInitFailed*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'patch: free phrase; the step''s pivot names no registry column'
+  - 'AmsiScanBuffer: free phrase; the step''s pivot names no registry column'
+  - 'amsiInitFailed: free phrase; the step''s pivot names no registry column'
 negative: No security-tool tampering or masquerading → defense evasion not evident;
   check for LOLBin-only approach or signed-tool abuse.
 confidence_rules:

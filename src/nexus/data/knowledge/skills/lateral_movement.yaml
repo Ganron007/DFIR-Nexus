@@ -38,10 +38,19 @@ steps:
     remote IpAddress; 4648 explicit-credential use.
   pivot: IpAddress
   es:
-    wildcard:
-      text.wc:
-        value: '*4624*'
-        case_insensitive: true
+    bool:
+      should:
+      - bool:
+          must:
+          - term:
+              event_id: '4624'
+          - wildcard:
+              text.wc:
+                value: '*10*'
+                case_insensitive: true
+      - term:
+          event_id: '4648'
+      minimum_should_match: 1
   requires:
     families: &id001
     - evtx
@@ -50,38 +59,80 @@ steps:
     - hayabusa
     - services
     - scheduled_tasks
+  es_text_only_reason:
+  - '10: free phrase; the step''s pivot names no registry column'
 - name: admin_share_access
   query: ADMIN$ OR C$ OR IPC$
   look_for: 5140/5145 share access to ADMIN$/C$/IPC$ from a non-admin host.
   pivot: SourceAddress
   es:
-    wildcard:
-      text.wc:
-        value: '*ADMIN$*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*ADMIN$*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*C$*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*IPC$*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'ADMIN$: free phrase; the step''s pivot names no registry column'
+  - 'C$: free phrase; the step''s pivot names no registry column'
+  - 'IPC$: free phrase; the step''s pivot names no registry column'
 - name: remote_service_create
   query: 7045 OR psexesvc OR remcom
   look_for: Service Control Manager 7045 service installs (psexesvc, remcom, random
     8-char names) — remote exec via service.
   pivot: ServiceName
   es:
-    wildcard:
-      text.wc:
-        value: '*7045*'
-        case_insensitive: true
+    bool:
+      should:
+      - term:
+          event_id: '7045'
+      - wildcard:
+          text.wc:
+            value: '*psexesvc*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*remcom*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'psexesvc: free phrase; the step''s pivot names no registry column'
+  - 'remcom: free phrase; the step''s pivot names no registry column'
 - name: winrm_execution
   query: winrm 5985 OR 5986 OR wsman
   look_for: WinRM listener traffic / process spawns under wsmprovhost.exe.
   pivot: ParentImage
   es:
-    wildcard:
-      fields.parent_process.kw:
-        value: '*winrm*'
-        case_insensitive: true
+    bool:
+      should:
+      - bool:
+          must:
+          - term:
+              event_id: '5985'
+          - wildcard:
+              fields.parent_process.kw:
+                value: '*winrm*'
+                case_insensitive: true
+      - term:
+          event_id: '5986'
+      - wildcard:
+          fields.parent_process.kw:
+            value: '*wsman*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: rdp_sessions
@@ -92,12 +143,21 @@ steps:
     — profile the whole chain, not one ID.
   pivot: IpAddress
   es:
-    wildcard:
-      text.wc:
-        value: '*TerminalServices*'
-        case_insensitive: true
+    bool:
+      should:
+      - term:
+          event_id: '4778'
+      - term:
+          event_id: '4779'
+      - wildcard:
+          text.wc:
+            value: '*TerminalServices*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'TerminalServices: free phrase; the step''s pivot names no registry column'
 - name: ual_client_access
   query: current.mdb OR user access logging OR sum.mdb
   look_for: 'User Access Logging (Windows Server 2012+ default; C:\Windows\System32\LogFiles\SUM\current.mdb
@@ -107,12 +167,27 @@ steps:
   pivot: ClientIP
   corroborate: UAL identity ↔ 4624 TargetUserName from the same client IP
   es:
-    wildcard:
-      text.wc:
-        value: '*current.mdb*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*current.mdb*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*user access logging*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*sum.mdb*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'current.mdb: free phrase; the step''s pivot names no registry column'
+  - 'user access logging: free phrase; the step''s pivot names no registry column'
+  - 'sum.mdb: free phrase; the step''s pivot names no registry column'
 - name: interactive_artifacts
   query: user profile OR C:\Users\ OR ProfileImagePath
   look_for: 'Interactive-access artifacts that outlive log events: a new user profile
@@ -121,23 +196,53 @@ steps:
     hands-on activity.'
   corroborate: profile-creation timestamp vs 4624/log-clearing window
   es:
-    wildcard:
-      text.wc:
-        value: '*ProfileImagePath*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*user profile*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*C:\Users\*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*ProfileImagePath*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'user profile: free phrase; the step''s pivot names no registry column'
+  - 'C:\Users\: free phrase; the step''s pivot names no registry column'
+  - 'ProfileImagePath: free phrase; the step''s pivot names no registry column'
 - name: remote_scheduled_task
   query: schtasks /s OR 106 OR 140
   look_for: Remote scheduled task registration (SchRpc 106) or schtasks /s.
   pivot: TaskName
   es:
-    wildcard:
-      text.wc:
-        value: '*/s*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*schtasks /s*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*106*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*140*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'schtasks /s: free phrase; the step''s pivot names no registry column'
+  - '106: free phrase; the step''s pivot names no registry column'
+  - '140: free phrase; the step''s pivot names no registry column'
 negative: No remote-logon/share/service/task artifacts from other hosts → this host
   was not a lateral-movement target in the window (or telemetry gap).
 confidence_rules:

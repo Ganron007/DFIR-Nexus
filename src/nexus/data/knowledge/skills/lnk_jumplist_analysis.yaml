@@ -36,10 +36,17 @@ steps:
   pivot: TargetPath
   corroborate: LNK create-time ≈ first access; modify-time ≈ last access of the target
   es:
-    wildcard:
-      fields.file_path.kw:
-        value: '*.lnk*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          file:
+            value: '*lnk*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*.lnk*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: &id001
     - lecmd
@@ -57,8 +64,8 @@ steps:
   corroborate: volume serial matches a USB device in MountedDevices → delivery vector
   es:
     wildcard:
-      fields.MachineID.kw:
-        value: '*file:lnk*'
+      file:
+        value: '*lnk*'
         case_insensitive: true
   requires:
     families: *id001
@@ -69,10 +76,35 @@ steps:
     Invoice.lnk = interpreter target + encoded payload.
   pivot: Arguments
   es:
-    wildcard:
-      fields.Arguments.kw:
-        value: '*powershell*'
-        case_insensitive: true
+    bool:
+      should:
+      - bool:
+          must:
+          - wildcard:
+              file:
+                value: '*lnk*'
+                case_insensitive: true
+          - wildcard:
+              fields.Arguments.kw:
+                value: '*powershell*'
+                case_insensitive: true
+      - wildcard:
+          fields.Arguments.kw:
+            value: '*cmd*'
+            case_insensitive: true
+      - wildcard:
+          fields.Arguments.kw:
+            value: '*mshta*'
+            case_insensitive: true
+      - wildcard:
+          fields.Arguments.kw:
+            value: '*rundll32*'
+            case_insensitive: true
+      - wildcard:
+          fields.Arguments.kw:
+            value: '*wscript*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: automatic_destinations
@@ -82,10 +114,17 @@ steps:
     + access time; the list bounds what the user did inside each application.'
   pivot: TargetPath
   es:
-    wildcard:
-      fields.file_path.kw:
-        value: '*file:automaticdestinations*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          file:
+            value: '*automaticdestinations*'
+            case_insensitive: true
+      - wildcard:
+          file:
+            value: '*jlecmd*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: custom_destinations
@@ -96,8 +135,8 @@ steps:
   pivot: TargetPath
   es:
     wildcard:
-      fields.file_path.kw:
-        value: '*file:customdestinations*'
+      file:
+        value: '*customdestinations*'
         case_insensitive: true
   requires:
     families: *id001
@@ -107,10 +146,29 @@ steps:
     check creation time vs intrusion window and the target's legitimacy.
   pivot: TargetPath
   es:
-    wildcard:
-      fields.file_path.kw:
-        value: '*menu\programs\startup*'
-        case_insensitive: true
+    bool:
+      should:
+      - bool:
+          must:
+          - wildcard:
+              file:
+                value: '*lnk*'
+                case_insensitive: true
+          - wildcard:
+              fields.file_path.kw:
+                value: '*startup*'
+                case_insensitive: true
+      - bool:
+          must:
+          - wildcard:
+              file:
+                value: '*lnk*'
+                case_insensitive: true
+          - wildcard:
+              fields.file_path.kw:
+                value: '*start menu\programs\startup*'
+                case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 negative: Empty Recent/jumplist output usually means a per-user artifact gap (the

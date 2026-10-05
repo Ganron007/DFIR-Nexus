@@ -38,10 +38,17 @@ steps:
   pivot: RemoteAddress
   corroborate: connection-size uniformity + interval variance analysis
   es:
-    wildcard:
-      fields.source_ip.kw:
-        value: '*ESTABLISHED*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.source_ip.kw:
+            value: '*netstat*'
+            case_insensitive: true
+      - wildcard:
+          fields.source_ip.kw:
+            value: '*ESTABLISHED*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: &id001
     - netstat
@@ -55,32 +62,67 @@ steps:
   look_for: Cobalt Strike artifacts — beacon.dll in process, known C2 IPs.
   pivot: Image
   es:
-    wildcard:
-      text.wc:
-        value: '*cobaltstrike*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*cobaltstrike*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*beacon*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*beacon.dll*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'cobaltstrike: free phrase; the step''s pivot names no registry column'
+  - 'beacon: free phrase; the step''s pivot names no registry column'
 - name: dga_domains
   query: dns QueryName OR nslookup
   look_for: Long random subdomains, non-standard TLDs, high-entropy names.
   pivot: QueryName
   es:
-    wildcard:
-      text.wc:
-        value: '*QueryName*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*dns QueryName*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*nslookup*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'dns QueryName: free phrase; the step''s pivot names no registry column'
+  - 'nslookup: free phrase; the step''s pivot names no registry column'
 - name: dnscat_tunneling
   query: dnscat OR iodine OR dns2tcp
   look_for: DNS tunneling tool execution or TXT-record exfil patterns.
   pivot: CommandLine
   es:
-    wildcard:
-      fields.command_line.kw:
-        value: '*dnscat*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.command_line.kw:
+            value: '*dnscat*'
+            case_insensitive: true
+      - wildcard:
+          fields.command_line.kw:
+            value: '*iodine*'
+            case_insensitive: true
+      - wildcard:
+          fields.command_line.kw:
+            value: '*dns2tcp*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: proxy_pac
@@ -88,10 +130,21 @@ steps:
   look_for: Proxy settings that redirect traffic through attacker infra.
   pivot: ValueName
   es:
-    wildcard:
-      fields.registry_value.kw:
-        value: '*ProxyServer*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.registry_value.kw:
+            value: '*proxy*'
+            case_insensitive: true
+      - wildcard:
+          fields.registry_value.kw:
+            value: '*pac file*'
+            case_insensitive: true
+      - wildcard:
+          fields.registry_value.kw:
+            value: '*ProxyServer*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: smb_beacon
@@ -99,12 +152,22 @@ steps:
   look_for: Named-pipe creation/connection for SMB-beacon implants.
   pivot: PipeName
   es:
-    wildcard:
-      text.wc:
-        value: '*\\.\pipe\*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*\\.\pipe\*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*named pipe*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - '\\.\pipe\: free phrase; the step''s pivot names no registry column'
+  - 'named pipe: free phrase; the step''s pivot names no registry column'
 - name: carrier_protocols
   query: dns TXT OR icmp OR http POST
   look_for: 'Beacon carriers beyond HTTP/S: DNS TXT/NULL queries at intervals, ICMP
@@ -113,12 +176,27 @@ steps:
     destination.'
   pivot: QueryName
   es:
-    wildcard:
-      text.wc:
-        value: '*dns*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*dns TXT*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*icmp*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*http POST*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'dns TXT: free phrase; the step''s pivot names no registry column'
+  - 'icmp: free phrase; the step''s pivot names no registry column'
+  - 'http POST: free phrase; the step''s pivot names no registry column'
 negative: No periodic external connections or C2 artifacts → implant likely dormant,
   destroyed, or using encrypted/unobserved channels.
 confidence_rules:

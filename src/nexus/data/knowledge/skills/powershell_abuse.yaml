@@ -31,10 +31,21 @@ steps:
     strings in CommandLine.
   pivot: CommandLine
   es:
-    wildcard:
-      fields.command_line.kw:
-        value: '*-encodedcommand*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.command_line.kw:
+            value: '*-enc*'
+            case_insensitive: true
+      - wildcard:
+          fields.command_line.kw:
+            value: '*-encodedcommand*'
+            case_insensitive: true
+      - wildcard:
+          fields.command_line.kw:
+            value: '*FromBase64String*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: &id001
     - powershell
@@ -48,10 +59,33 @@ steps:
   look_for: Net.WebClient DownloadString / IEX cradle patterns.
   pivot: CommandLine
   es:
-    wildcard:
-      fields.command_line.kw:
-        value: '*DownloadString*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.command_line.kw:
+            value: '*DownloadString*'
+            case_insensitive: true
+      - wildcard:
+          fields.command_line.kw:
+            value: '*DownloadFile*'
+            case_insensitive: true
+      - wildcard:
+          fields.command_line.kw:
+            value: '*Invoke-WebRequest*'
+            case_insensitive: true
+      - wildcard:
+          fields.command_line.kw:
+            value: '*iwr*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*curl.exe*'
+            case_insensitive: true
+      - wildcard:
+          fields.command_line.kw:
+            value: '*wget*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: script_block_4104
@@ -60,10 +94,8 @@ steps:
     credential, bypass, amsi strings).
   pivot: ScriptBlockText
   es:
-    wildcard:
-      fields.command_line.kw:
-        value: '*4104*'
-        case_insensitive: true
+    term:
+      event_id: '4104'
   requires:
     families: *id001
 - name: amsi_bypass
@@ -71,33 +103,74 @@ steps:
   look_for: AMSI patch/bypass strings in script blocks or command lines.
   corroborate: subsequent suspicious 4104 content
   es:
-    wildcard:
-      text.wc:
-        value: '*amsiInitFailed*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*amsiInitFailed*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*amsi.dll*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*AmsiUtils*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'amsiInitFailed: free phrase; the step''s pivot names no registry column'
+  - 'AmsiUtils: free phrase; the step''s pivot names no registry column'
 - name: powershell_downgrade
   query: powershell -version 2 OR -Version 2.0
   look_for: -Version 2 downgrade (bypasses script-block logging).
   pivot: CommandLine
   es:
-    wildcard:
-      fields.command_line.kw:
-        value: '*powershell*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.command_line.kw:
+            value: '*powershell -version 2*'
+            case_insensitive: true
+      - wildcard:
+          fields.command_line.kw:
+            value: '*-Version 2.0*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: suspicious_modules
   query: Invoke-Mimikatz OR PowerSploit OR PowerView OR Invoke-Expression
   look_for: Offensive framework/module names in script blocks or args.
   es:
-    wildcard:
-      text.wc:
-        value: '*Invoke-Mimikatz*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*Invoke-Mimikatz*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*PowerSploit*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*PowerView*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*Invoke-Expression*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'Invoke-Mimikatz: free phrase; the step''s pivot names no registry column'
+  - 'PowerSploit: free phrase; the step''s pivot names no registry column'
+  - 'PowerView: free phrase; the step''s pivot names no registry column'
+  - 'Invoke-Expression: free phrase; the step''s pivot names no registry column'
 - name: transcription_artifacts
   query: transcript OR Start-Transcript OR .ps1
   look_for: PowerShell transcription/console-history artifacts — ConsoleHost_history.txt
@@ -107,10 +180,21 @@ steps:
   corroborate: history file content vs 4104 script blocks — gaps indicate disabled
     logging
   es:
-    wildcard:
-      fields.file_path.kw:
-        value: '*transcript*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.file_path.kw:
+            value: '*transcript*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*Start-Transcript*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*.ps1*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 negative: No encoded commands, cradles, or suspicious script blocks → PowerShell abuse

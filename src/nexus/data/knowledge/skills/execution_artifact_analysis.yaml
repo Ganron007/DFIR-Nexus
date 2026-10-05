@@ -55,8 +55,8 @@ steps:
     modules
   es:
     wildcard:
-      text.wc:
-        value: '*file:prefetch*'
+      file:
+        value: '*prefetch*'
         case_insensitive: true
   requires:
     families: &id001
@@ -81,12 +81,57 @@ steps:
   pivot: ExecutableFileName
   corroborate: parent process from Sysmon EID 1 or Security 4688 in the same window
   es:
-    wildcard:
-      text.wc:
-        value: '*file:prefetch*'
-        case_insensitive: true
+    bool:
+      should:
+      - bool:
+          must:
+          - wildcard:
+              file:
+                value: '*prefetch*'
+                case_insensitive: true
+          - wildcard:
+              text.wc:
+                value: '*rundll32*'
+                case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*mshta*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*powershell*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*regsvr32*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*cmd.exe*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*wmic*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*bitsadmin*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*certutil*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'rundll32: free phrase; the step''s pivot names no registry column'
+  - 'mshta: free phrase; the step''s pivot names no registry column'
+  - 'powershell: free phrase; the step''s pivot names no registry column'
+  - 'regsvr32: free phrase; the step''s pivot names no registry column'
+  - 'wmic: free phrase; the step''s pivot names no registry column'
+  - 'bitsadmin: free phrase; the step''s pivot names no registry column'
+  - 'certutil: free phrase; the step''s pivot names no registry column'
 - name: shimcache_existence
   query: file:shimcache OR file:appcompat
   look_for: ShimCache (SYSTEM\ControlSet001\Control\Session Manager\AppCompatCache)
@@ -96,10 +141,17 @@ steps:
   pivot: FilePath
   corroborate: M-time anomaly vs MFT $FN timestamps exposes timestomped binaries
   es:
-    wildcard:
-      fields.file_path.kw:
-        value: '*file:shimcache*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          file:
+            value: '*shimcache*'
+            case_insensitive: true
+      - wildcard:
+          file:
+            value: '*appcompat*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: amcache_lineage
@@ -113,8 +165,8 @@ steps:
     first run
   es:
     wildcard:
-      text.wc:
-        value: '*file:amcache*'
+      file:
+        value: '*amcache*'
         case_insensitive: true
   requires:
     families: *id001
@@ -126,12 +178,26 @@ steps:
   pivot: FullPath
   corroborate: map the SID to a username via ProfileList/SAM to attribute execution
   es:
-    wildcard:
-      text.wc:
-        value: '*bam\State*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          file:
+            value: '*bam*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*bam\State*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*UserSettings*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'bam\State: free phrase; the step''s pivot names no registry column'
+  - 'UserSettings: free phrase; the step''s pivot names no registry column'
 - name: userassist_gui
   query: userassist
   look_for: NTUSER\Software\Microsoft\Windows\CurrentVersion\Explorer\UserAssist tracks
@@ -155,8 +221,8 @@ steps:
   corroborate: network-table bytes confirm data-mover tools actually transferred
   es:
     wildcard:
-      fields.AppId.kw:
-        value: '*file:srum*'
+      file:
+        value: '*srum*'
         case_insensitive: true
   requires:
     families: *id001
@@ -167,10 +233,17 @@ steps:
     for GUI-launched programs. New but reliable.
   pivot: FilePath
   es:
-    wildcard:
-      fields.file_path.kw:
-        value: '*PCAAppLaunchDIC*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          file:
+            value: '*pca*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*PCAAppLaunchDIC*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: muicache_gui
@@ -184,15 +257,24 @@ steps:
         case_insensitive: true
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'muicache: free phrase; the step''s pivot names no registry column'
 - name: windows_timeline
   query: file:activit OR file:wxtcmd
   look_for: Windows Timeline (ActivitiesCache.db via WxTCmd) — per-user app usage
     with focus duration; bridges execution to what the user was doing.
   es:
-    wildcard:
-      text.wc:
-        value: '*file:activit*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          file:
+            value: '*activit*'
+            case_insensitive: true
+      - wildcard:
+          file:
+            value: '*wxtcmd*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 negative: No execution artifacts for a binary does not prove it never ran — Prefetch

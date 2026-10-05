@@ -54,10 +54,29 @@ steps:
   pivot: sourceIPAddress
   corroborate: the actor's IP/User-Agent also appears in another provider's logs
   es:
-    wildcard:
-      text.wc:
-        value: '*CloudTrail*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*CloudTrail*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*AuditLog*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*signin*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*SignInLogs*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*eventName*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: &id001
     - azure
@@ -66,6 +85,12 @@ steps:
     - elastic
     - splunk
     - syslog
+  es_text_only_reason:
+  - 'CloudTrail: free phrase; the step''s pivot names no registry column'
+  - 'AuditLog: free phrase; the step''s pivot names no registry column'
+  - 'signin: free phrase; the step''s pivot names no registry column'
+  - 'SignInLogs: free phrase; the step''s pivot names no registry column'
+  - 'eventName: free phrase; the step''s pivot names no registry column'
 - name: unusual_authentication
   query: impossible travel OR MFA OR conditional access OR failed signin OR unfamiliar
   look_for: 'Flag authentication anomalies: impossible travel, MFA fatigue/prompt
@@ -75,12 +100,37 @@ steps:
   pivot: userPrincipalName
   corroborate: the same session IP performs a privileged operation minutes later
   es:
-    wildcard:
-      text.wc:
-        value: '*impossible*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*impossible travel*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*MFA*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*conditional access*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*failed signin*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*unfamiliar*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'impossible travel: free phrase; the step''s pivot names no registry column'
+  - 'MFA: free phrase; the step''s pivot names no registry column'
+  - 'conditional access: free phrase; the step''s pivot names no registry column'
+  - 'failed signin: free phrase; the step''s pivot names no registry column'
+  - 'unfamiliar: free phrase; the step''s pivot names no registry column'
 - name: persistence_and_credentials
   query: CreateAccessKey OR AddServicePrincipal OR consent OR ApplicationPassword
     OR role assignment
@@ -91,12 +141,37 @@ steps:
   pivot: requestParameters.userName
   corroborate: the new principal/credential is used later from the attacker IP
   es:
-    wildcard:
-      text.wc:
-        value: '*CreateAccessKey*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*CreateAccessKey*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*AddServicePrincipal*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*consent*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*ApplicationPassword*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*role assignment*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'CreateAccessKey: free phrase; the step''s pivot names no registry column'
+  - 'AddServicePrincipal: free phrase; the step''s pivot names no registry column'
+  - 'consent: free phrase; the step''s pivot names no registry column'
+  - 'ApplicationPassword: free phrase; the step''s pivot names no registry column'
+  - 'role assignment: free phrase; the step''s pivot names no registry column'
 - name: data_access_and_exfil
   query: GetObject OR ListBuckets OR ShareFile OR DownloadFile OR mailItemsAccessed
   look_for: 'Determine what was touched: S3 GetObject/ListBuckets (and PublicAccessBlock
@@ -107,12 +182,37 @@ steps:
   corroborate: matching egress flow to a file-sharing/cloud destination in network
     logs
   es:
-    wildcard:
-      text.wc:
-        value: '*GetObject*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*GetObject*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*ListBuckets*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*ShareFile*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*DownloadFile*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*mailItemsAccessed*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'GetObject: free phrase; the step''s pivot names no registry column'
+  - 'ListBuckets: free phrase; the step''s pivot names no registry column'
+  - 'ShareFile: free phrase; the step''s pivot names no registry column'
+  - 'DownloadFile: free phrase; the step''s pivot names no registry column'
+  - 'mailItemsAccessed: free phrase; the step''s pivot names no registry column'
 - name: audit_coverage_check
   query: retention OR region OR logging disabled OR StopLogging OR PurgeLogs
   look_for: 'Check whether the attacker degraded evidence: CloudTrail StopLogging/
@@ -121,12 +221,37 @@ steps:
     events can take 15-30+ minutes to appear.'
   pivot: eventName
   es:
-    wildcard:
-      text.wc:
-        value: '*retention*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*retention*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*region*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*logging disabled*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*StopLogging*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*PurgeLogs*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'retention: free phrase; the step''s pivot names no registry column'
+  - 'region: free phrase; the step''s pivot names no registry column'
+  - 'logging disabled: free phrase; the step''s pivot names no registry column'
+  - 'StopLogging: free phrase; the step''s pivot names no registry column'
+  - 'PurgeLogs: free phrase; the step''s pivot names no registry column'
 negative: No anomalous authentication, no new principal/credential/consent, and no
   unusual resource access in the audit trail → no cloud identity compromise in the
   retained window. Audit retention and provider latency limit this conclusion — state

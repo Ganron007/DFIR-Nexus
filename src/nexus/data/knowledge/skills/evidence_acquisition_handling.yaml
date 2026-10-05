@@ -36,15 +36,35 @@ steps:
     pull power, don''t shut down.'
   pivot: ImagePath
   es:
-    wildcard:
-      text.wc:
-        value: '*memory*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*memory*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*hiberfil*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*pagefile*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*crash*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: &id001
     - vol
     - kape
     - ingest
+  es_text_only_reason:
+  - 'memory: free phrase; the step''s pivot names no registry column'
+  - 'hiberfil: free phrase; the step''s pivot names no registry column'
+  - 'pagefile: free phrase; the step''s pivot names no registry column'
+  - 'crash: free phrase; the step''s pivot names no registry column'
 - name: encryption_check
   query: bitlocker OR encryption OR encrypted
   look_for: Before pulling power, check for drive encryption — an encrypted disk acquired
@@ -53,12 +73,27 @@ steps:
     it.
   corroborate: encrypted → live acquisition is mandatory, not optional
   es:
-    wildcard:
-      text.wc:
-        value: '*bitlocker*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*bitlocker*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*encryption*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*encrypted*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'bitlocker: free phrase; the step''s pivot names no registry column'
+  - 'encryption: free phrase; the step''s pivot names no registry column'
+  - 'encrypted: free phrase; the step''s pivot names no registry column'
 - name: triage_first
   query: file:kape OR triage
   look_for: Triage image (KAPE targets) — the high-value artifact subset (registry
@@ -67,10 +102,17 @@ steps:
     evidence.
   pivot: TargetPath
   es:
-    wildcard:
-      fields.file_path.kw:
-        value: '*file:kape*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          file:
+            value: '*kape*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*triage*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: write_blocked_disk
@@ -79,12 +121,32 @@ steps:
     — the acquisition log (tool, settings, start/finish times) is part of the evidence
     record, not an afterthought.
   es:
-    wildcard:
-      text.wc:
-        value: '*write*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*write block*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*tableau*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*e01*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*raw image*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'write block: free phrase; the step''s pivot names no registry column'
+  - 'tableau: free phrase; the step''s pivot names no registry column'
+  - 'e01: free phrase; the step''s pivot names no registry column'
+  - 'raw image: free phrase; the step''s pivot names no registry column'
 - name: hash_on_acquire
   query: sha256 OR md5 OR hash
   look_for: Hash the image immediately after acquisition (SHA-256 preferred) and again
@@ -92,12 +154,27 @@ steps:
     is what makes it a 'forensic copy'.
   pivot: SHA256
   es:
-    wildcard:
-      text.wc:
-        value: '*sha256*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*sha256*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*md5*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*hash*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'sha256: free phrase; the step''s pivot names no registry column'
+  - 'md5: free phrase; the step''s pivot names no registry column'
+  - 'hash: free phrase; the step''s pivot names no registry column'
 - name: chain_of_custody
   query: custody OR seized OR collected
   look_for: 'Chain of custody from seizure onward — who collected, when, where, how
@@ -105,12 +182,27 @@ steps:
     prove this evidence is the same bits you took?'
   corroborate: custody gaps are attackable in court regardless of technical quality
   es:
-    wildcard:
-      text.wc:
-        value: '*collected*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*custody*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*seized*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*collected*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'custody: free phrase; the step''s pivot names no registry column'
+  - 'seized: free phrase; the step''s pivot names no registry column'
+  - 'collected: free phrase; the step''s pivot names no registry column'
 negative: Missing acquisition records (no hash, no custody log, no tool version) doesn't
   make analysis wrong — it makes it unverifiable. Flag provenance gaps explicitly
   in the report rather than implying verification.

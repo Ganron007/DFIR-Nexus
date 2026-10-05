@@ -57,6 +57,8 @@ steps:
     - mftecmd
     - mft
     - hayabusa
+  es_text_only_reason:
+  - 'usbstor: free phrase; the step''s pivot names no registry column'
 - name: vid_pid_device_class
   query: enum\usb OR vid_ OR pid_
   look_for: Enum\USB\<VID_xxxx&PID_xxxx> — vendor/product IDs resolve make/model (lookup
@@ -64,12 +66,27 @@ steps:
     a keyboard-emulating HID (BadUSB/Rubber Ducky).
   pivot: FriendlyName
   es:
-    wildcard:
-      text.wc:
-        value: '*enum\usb*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*enum\usb*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*vid_*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*pid_*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'enum\usb: free phrase; the step''s pivot names no registry column'
+  - 'vid_: free phrase; the step''s pivot names no registry column'
+  - 'pid_: free phrase; the step''s pivot names no registry column'
 - name: mounteddevices_guid_letter
   query: mounteddevices
   look_for: SYSTEM\MountedDevices — search each \??\Volume{GUID} and \DosDevices\
@@ -83,6 +100,8 @@ steps:
         case_insensitive: true
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'mounteddevices: free phrase; the step''s pivot names no registry column'
 - name: volume_label
   query: wpdbusenum OR windows portable devices OR friendlyname
   look_for: Enum\SWD\WPDBUSENUM and SOFTWARE\Microsoft\Windows Portable Devices\ Devices
@@ -90,12 +109,27 @@ steps:
     device to known media or a named toolkit.
   pivot: FriendlyName
   es:
-    wildcard:
-      text.wc:
-        value: '*wpdbusenum*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*wpdbusenum*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*windows portable devices*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*friendlyname*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'wpdbusenum: free phrase; the step''s pivot names no registry column'
+  - 'windows portable devices: free phrase; the step''s pivot names no registry column'
+  - 'friendlyname: free phrase; the step''s pivot names no registry column'
 - name: setupapi_first_connect
   query: file:setupapi
   look_for: 'C:\Windows\inf\setupapi.dev.log — search the serial number: the entry
@@ -104,8 +138,8 @@ steps:
   pivot: iSerialNumber
   es:
     wildcard:
-      text.wc:
-        value: '*file:setupapi*'
+      file:
+        value: '*setupapi*'
         case_insensitive: true
   requires:
     families: *id001
@@ -117,10 +151,15 @@ steps:
   pivot: SerialNumber
   corroborate: event 20001 time + Security 4624 session → attribution
   es:
-    wildcard:
-      text.wc:
-        value: '*20001*'
-        case_insensitive: true
+    bool:
+      should:
+      - term:
+          event_id: '20001'
+      - term:
+          event_id: '20003'
+      - term:
+          event_id: '10000'
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: mountpoints2_user
@@ -136,6 +175,8 @@ steps:
         case_insensitive: true
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'mountpoints2: free phrase; the step''s pivot names no registry column'
 - name: emdmgmt_volserial
   query: emdmgmt
   look_for: SOFTWARE\Microsoft\WindowsNT\CurrentVersion\EMDMgmt — the volume serial
@@ -148,6 +189,8 @@ steps:
         case_insensitive: true
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'emdmgmt: free phrase; the step''s pivot names no registry column'
 - name: files_to_device
   query: file:mft .lnk OR file:usn
   look_for: After the drive letter is known, query MFT/USN/LNK for the letter's path
@@ -155,10 +198,23 @@ steps:
     exfil action this whole procedure exists to prove.
   pivot: TargetPath
   es:
-    wildcard:
-      fields.file_path.kw:
-        value: '*.lnk*'
-        case_insensitive: true
+    bool:
+      should:
+      - bool:
+          must:
+          - wildcard:
+              file:
+                value: '*mft*'
+                case_insensitive: true
+          - wildcard:
+              fields.file_path.kw:
+                value: '*.lnk*'
+                case_insensitive: true
+      - wildcard:
+          file:
+            value: '*usn*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 negative: No USBSTOR entries in the window means no new mass-storage device was attached

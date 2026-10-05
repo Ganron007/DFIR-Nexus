@@ -45,10 +45,25 @@ steps:
   corroborate: failed-login burst from IP X followed by accepted login = credential
     attack path
   es:
-    wildcard:
-      fields.user.kw:
-        value: '*auth.log*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.file_path.kw:
+            value: '*auth.log*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*secure*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*Failed password*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*Accepted*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: &id001
     - linux
@@ -57,6 +72,10 @@ steps:
     - journal
     - bash
     - memory
+  es_text_only_reason:
+  - 'secure: free phrase; the step''s pivot is an identity column'
+  - 'Failed password: free phrase; the step''s pivot is an identity column'
+  - 'Accepted: free phrase; the step''s pivot is an identity column'
 - name: shell_history
   query: history OR .bash_history OR $HISTFILE
   look_for: 'Shell history shows intent — but know its documented limits: $HISTFILE
@@ -66,10 +85,21 @@ steps:
   pivot: FileName
   corroborate: history entries ↔ auth.log session ↔ file-timestamp corroboration
   es:
-    wildcard:
-      fields.file_path.kw:
-        value: '*.bash_history*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.file_path.kw:
+            value: '*history*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*.bash_history*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*$HISTFILE*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: persistence_mechanisms
@@ -80,10 +110,25 @@ steps:
     additions.'
   pivot: FileName
   es:
-    wildcard:
-      fields.file_path.kw:
-        value: '*.timer*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.file_path.kw:
+            value: '*cron*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*systemd*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*.timer*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*ExecStart*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: account_anomalies
@@ -93,12 +138,32 @@ steps:
     ends.
   pivot: user
   es:
-    wildcard:
-      fields.user.kw:
-        value: '*/etc/passwd*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*passwd*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*/etc/passwd*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*sudoers*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*useradd*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'passwd: free phrase; the step''s pivot is an identity column'
+  - '/etc/passwd: free phrase; the step''s pivot is an identity column'
+  - 'sudoers: free phrase; the step''s pivot is an identity column'
+  - 'useradd: free phrase; the step''s pivot is an identity column'
 - name: process_memory_check
   query: pslist OR malfind OR /proc OR kmem
   look_for: 'Linux memory analysis: Linux.PsList/Linux.MalFind for process enumeration
@@ -106,10 +171,25 @@ steps:
     memfd, or injected regions.'
   pivot: ProcessName
   es:
-    wildcard:
-      fields.process_name.kw:
-        value: '*/proc*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.process_name.kw:
+            value: '*pslist*'
+            case_insensitive: true
+      - wildcard:
+          fields.process_name.kw:
+            value: '*malfind*'
+            case_insensitive: true
+      - wildcard:
+          fields.process_name.kw:
+            value: '*/proc*'
+            case_insensitive: true
+      - wildcard:
+          fields.process_name.kw:
+            value: '*kmem*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: log_integrity
@@ -119,12 +199,32 @@ steps:
     numbering and journal integrity.'
   corroborate: gap between last-clean and first-new log entries
   es:
-    wildcard:
-      text.wc:
-        value: '*log*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*log cleared*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*journald*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*syslog*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*auditd*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'log cleared: free phrase; the step''s pivot names no registry column'
+  - 'journald: free phrase; the step''s pivot names no registry column'
+  - 'syslog: free phrase; the step''s pivot names no registry column'
+  - 'auditd: free phrase; the step''s pivot names no registry column'
 negative: 'No auth anomalies, persistence artifacts, or history evidence → Linux compromise
   not evident in collected telemetry. Note: minimal installs and containers ship sparse
   logging — absence may be configuration, not cleanliness.'

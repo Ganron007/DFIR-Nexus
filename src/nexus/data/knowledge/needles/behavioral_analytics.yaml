@@ -46,7 +46,12 @@ packs:
     so it would invert the analytic), so this is deliberately a single positive term
     and the system-tree exclusion is the examiner's next filter.
   es:
-    match_all: {}
+    bool:
+      filter:
+      - wildcard:
+          fields.file_path.kw:
+            value: '*AppData*'
+            case_insensitive: true
 - id: ba-exec-temp
   name: Execution from a temporary directory
   families:
@@ -64,7 +69,12 @@ packs:
   - T1204.002
   rationale: A binary whose first execution is from a temp path had no install step.
   es:
-    match_all: {}
+    bool:
+      filter:
+      - wildcard:
+          fields.file_path.kw:
+            value: '*Temp*'
+            case_insensitive: true
 - id: ba-exec-programdata
   name: Execution from ProgramData
   families:
@@ -81,7 +91,12 @@ packs:
   rationale: ProgramData is world-writable and survives cleanup, so it is a common
     staging root.
   es:
-    match_all: {}
+    bool:
+      filter:
+      - wildcard:
+          fields.file_path.kw:
+            value: '*ProgramData*'
+            case_insensitive: true
 - id: ba-exec-script-host
   name: Script host executing a script
   families:
@@ -100,7 +115,27 @@ packs:
   rationale: A script host is normal; a script host pointed at a loose file is the
     interesting shape.
   es:
-    match_all: {}
+    bool:
+      filter:
+      - bool:
+          should:
+          - term:
+              fields.process_name.kw:
+                value: wscript.exe
+                case_insensitive: true
+          - term:
+              fields.process_name.kw:
+                value: cscript.exe
+                case_insensitive: true
+          - term:
+              fields.process_name.kw:
+                value: mshta.exe
+                case_insensitive: true
+          minimum_should_match: 1
+      - wildcard:
+          fields.command_line.kw:
+            value: '*.js*'
+            case_insensitive: true
 - id: ba-exec-encoded-command
   name: Encoded or hidden command line
   families:
@@ -118,7 +153,27 @@ packs:
   rationale: Encoding exists to defeat string inspection; pair with the decoded text,
     not the flag alone.
   es:
-    match_all: {}
+    bool:
+      filter:
+      - bool:
+          should:
+          - term:
+              fields.command_line.kw:
+                value: -enc
+                case_insensitive: true
+          - term:
+              fields.command_line.kw:
+                value: -EncodedCommand
+                case_insensitive: true
+          - term:
+              fields.command_line.kw:
+                value: -nop
+                case_insensitive: true
+          - term:
+              fields.command_line.kw:
+                value: -noprofile
+                case_insensitive: true
+          minimum_should_match: 1
 - id: ba-exec-lolbin-download
   name: LOLBin used to fetch a remote payload
   families:
@@ -136,7 +191,31 @@ packs:
   rationale: A signed system binary reaching the network is the canonical ingress
     primitive.
   es:
-    match_all: {}
+    bool:
+      filter:
+      - bool:
+          should:
+          - term:
+              fields.process_name.kw:
+                value: certutil.exe
+                case_insensitive: true
+          - term:
+              fields.process_name.kw:
+                value: bitsadmin.exe
+                case_insensitive: true
+          - term:
+              fields.process_name.kw:
+                value: curl.exe
+                case_insensitive: true
+          - term:
+              fields.process_name.kw:
+                value: msiexec.exe
+                case_insensitive: true
+          minimum_should_match: 1
+      - wildcard:
+          fields.command_line.kw:
+            value: '*http*'
+            case_insensitive: true
 - id: ba-persist-service-temp
   name: Service binary in a user-writable path
   families:
@@ -154,7 +233,16 @@ packs:
   rationale: A service is the strongest persistence on Windows; its ImagePath should
     be a system or Program Files path.
   es:
-    match_all: {}
+    bool:
+      filter:
+      - wildcard:
+          fields.registry_key.kw:
+            value: '*Services*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*AppData*'
+            case_insensitive: true
 - id: ba-persist-service-new
   name: Service created or its ImagePath changed
   families:
@@ -172,7 +260,19 @@ packs:
   rationale: 7045 and 4697 are the service-install records; the path and signer decide
     whether it matters.
   es:
-    match_all: {}
+    bool:
+      filter:
+      - bool:
+          should:
+          - term:
+              event_id:
+                value: '7045'
+                case_insensitive: true
+          - term:
+              event_id:
+                value: '4697'
+                case_insensitive: true
+          minimum_should_match: 1
 - id: ba-persist-run-usbable
   name: Run key pointing at a user-writable path
   families:
@@ -189,7 +289,16 @@ packs:
   rationale: The Run key is expected; a Run value whose target lives under AppData
     is the anomaly.
   es:
-    match_all: {}
+    bool:
+      filter:
+      - wildcard:
+          fields.registry_key.kw:
+            value: '*Run*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*AppData*'
+            case_insensitive: true
 - id: ba-persist-runonce
   name: RunOnce key written
   families:
@@ -205,7 +314,12 @@ packs:
   - T1547.001
   rationale: RunOnce is usually installer traffic; correlate with the writing process.
   es:
-    match_all: {}
+    bool:
+      filter:
+      - wildcard:
+          fields.registry_key.kw:
+            value: '*RunOnce*'
+            case_insensitive: true
 - id: ba-persist-task-script-host
   name: Scheduled task running a script host or encoded command
   families:
@@ -223,7 +337,33 @@ packs:
   rationale: A task is the cheapest durable execution; the action it runs is what
     distinguishes it from Windows' own.
   es:
-    match_all: {}
+    bool:
+      filter:
+      - exists:
+          field: fields.task_uri.kw
+      - bool:
+          should:
+          - term:
+              fields.command_line.kw:
+                value: powershell
+                case_insensitive: true
+          - term:
+              fields.command_line.kw:
+                value: wscript
+                case_insensitive: true
+          - term:
+              fields.command_line.kw:
+                value: cscript
+                case_insensitive: true
+          - term:
+              fields.command_line.kw:
+                value: mshta
+                case_insensitive: true
+          - term:
+              fields.command_line.kw:
+                value: -enc
+                case_insensitive: true
+          minimum_should_match: 1
 - id: ba-persist-task-hidden
   name: Scheduled task hidden or authored out of band
   families:
@@ -237,7 +377,12 @@ packs:
   rationale: Hidden tasks do not appear in the console - a deliberate choice by whoever
     made them.
   es:
-    match_all: {}
+    bool:
+      filter:
+      - wildcard:
+          fields.registry_key.kw:
+            value: '*TaskCache*'
+            case_insensitive: true
 - id: ba-persist-wmi-subscription
   name: WMI event subscription persistence
   families:
@@ -254,7 +399,12 @@ packs:
   - T1546.003
   rationale: WMI subscriptions survive reboot, leave no task, and are fileless.
   es:
-    match_all: {}
+    bool:
+      filter:
+      - wildcard:
+          fields.registry_key.kw:
+            value: '*Subscription*'
+            case_insensitive: true
 - id: ba-persist-startup-folder
   name: Startup folder executable
   families:
@@ -269,7 +419,12 @@ packs:
   - T1547.001
   rationale: Anything in Startup runs at logon; the folder is user-writable by design.
   es:
-    match_all: {}
+    bool:
+      filter:
+      - wildcard:
+          fields.file_path.kw:
+            value: '*Startup*'
+            case_insensitive: true
 - id: ba-cred-lsass-nonsystem
   name: Non-system process accessing lsass
   families:
@@ -287,7 +442,12 @@ packs:
     is worth a look. Kept as a positive term because the DSL does not negate typed
     fields - the non-system narrowing is a follow-on filter, not part of this query.
   es:
-    match_all: {}
+    bool:
+      filter:
+      - wildcard:
+          fields.command_line.kw:
+            value: '*lsass*'
+            case_insensitive: true
 - id: ba-cred-lsass-path
   name: lsass referenced from a user-writable path
   families:
@@ -305,7 +465,16 @@ packs:
   rationale: Credential-dump tooling runs from staging directories; the reference
     is the tell, not the tool name.
   es:
-    match_all: {}
+    bool:
+      filter:
+      - wildcard:
+          fields.command_line.kw:
+            value: '*lsass*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*AppData*'
+            case_insensitive: true
 - id: ba-cred-dcsync-nondc
   name: Replication rights used off a domain controller
   families:
@@ -321,7 +490,14 @@ packs:
   rationale: 4662 with the replication GUID from a non-DC subject is the canonical
     DCSync shape.
   es:
-    match_all: {}
+    bool:
+      filter:
+      - wildcard:
+          event_id:
+            value: '*4662*'
+            case_insensitive: true
+      - exists:
+          field: fields.user.kw
 - id: ba-cred-new-local-admin
   name: Account added to the local administrators group
   families:
@@ -337,7 +513,16 @@ packs:
   - T1078.003
   rationale: Privilege that did not exist before; compare against a change record.
   es:
-    match_all: {}
+    bool:
+      filter:
+      - wildcard:
+          event_id:
+            value: '*4732*'
+            case_insensitive: true
+      - wildcard:
+          fields.command_line.kw:
+            value: '*Administrators*'
+            case_insensitive: true
 - id: ba-cred-logon-type3
   name: Network logon to a workstation
   families:
@@ -383,6 +568,12 @@ packs:
               text.wc:
                 value: '*Logon Type: 3*'
                 case_insensitive: true
+  es_authored_reason: the Mode 1 compiler cannot express this against the registry
+    (field 'fields.logon_type.kw' (column 'logon_type') does not exist for declared
+    families ['chainsaw', 'deepbluecli', 'evtx', 'evtxecmd', 'hayabusa', 'ingest-evtx',
+    'ingest-evtxecmd', 'ingest-hayabusa', 'ingest-kape', 'ingest-security', 'powershell',
+    'security', 'sysmon', 'system', 'zircolite'] (column exists for ['ingest-scheduled_tasks']));
+    reviewed and kept by hand
 - id: ba-cred-rdp-firstseen
   name: RDP session from a source not seen before
   families:
@@ -429,6 +620,12 @@ packs:
               text.wc:
                 value: '*Logon Type: 10*'
                 case_insensitive: true
+  es_authored_reason: the Mode 1 compiler cannot express this against the registry
+    (field 'fields.logon_type.kw' (column 'logon_type') does not exist for declared
+    families ['chainsaw', 'deepbluecli', 'evtx', 'evtxecmd', 'hayabusa', 'ingest-evtx',
+    'ingest-evtxecmd', 'ingest-hayabusa', 'ingest-kape', 'ingest-security', 'powershell',
+    'security', 'sysmon', 'system', 'zircolite'] (column exists for ['ingest-scheduled_tasks']));
+    reviewed and kept by hand
 - id: ba-cred-kerberoast
   name: Service ticket requested with RC4
   families:
@@ -445,7 +642,16 @@ packs:
   rationale: RC4 service-ticket encryption is the roastable default; one request is
     noise, many are not.
   es:
-    match_all: {}
+    bool:
+      filter:
+      - wildcard:
+          event_id:
+            value: '*4769*'
+            case_insensitive: true
+      - wildcard:
+          fields.command_line.kw:
+            value: '*0x17*'
+            case_insensitive: true
 - id: ba-eva-log-cleared
   name: Security log cleared
   families:
@@ -462,7 +668,12 @@ packs:
   rationale: 1102 is never routine on a server; it is the single highest-signal event
     in this pack.
   es:
-    match_all: {}
+    bool:
+      filter:
+      - wildcard:
+          event_id:
+            value: '*1102*'
+            case_insensitive: true
 - id: ba-eva-audit-policy
   name: Audit policy changed
   families:
@@ -478,7 +689,12 @@ packs:
   - T1562.002
   rationale: Turning auditing down is how a cleared log is made to stay quiet.
   es:
-    match_all: {}
+    bool:
+      filter:
+      - wildcard:
+          event_id:
+            value: '*4719*'
+            case_insensitive: true
 - id: ba-eva-defender-exclusion
   name: Defender protection disabled or exclusions added
   families:
@@ -498,15 +714,21 @@ packs:
   es:
     bool:
       should:
+      - bool:
+          should:
+          - match_phrase:
+              text: Defender
+          - wildcard:
+              text.wc:
+                value: '*defender*'
+                case_insensitive: true
+          minimum_should_match: 1
+      minimum_should_match: 1
+      filter:
       - wildcard:
           fields.registry_key.kw:
-            value: '*Windows Defender*'
+            value: '*Windows*'
             case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*Windows Defender*'
-            case_insensitive: true
-      minimum_should_match: 1
 - id: ba-eva-service-stopped
   name: Security service stopped
   families:
@@ -522,7 +744,16 @@ packs:
   - T1562.001
   rationale: Services stop for patching too - the reason and the timing matter.
   es:
-    match_all: {}
+    bool:
+      filter:
+      - wildcard:
+          event_id:
+            value: '*7036*'
+            case_insensitive: true
+      - wildcard:
+          fields.command_line.kw:
+            value: '*stopped*'
+            case_insensitive: true
 - id: ba-eva-timestomp
   name: File timestamps inconsistent with the directory
   families:
@@ -550,6 +781,11 @@ packs:
             value: '*timestomp*'
             case_insensitive: true
       minimum_should_match: 1
+  es_authored_reason: the Mode 1 compiler cannot express this against the registry
+    (field 'fields.targetmodified.kw' (column 'targetmodified') does not exist for
+    declared families ['fls', 'ingest-kape', 'ingest-mft', 'ingest-mftecmd', 'ingest-ntfs',
+    'mft', 'mftecmd', 'mftecmd-i30', 'mftecmd-usn', 'ntfs'] (column exists for ['jlecmd',
+    'lecmd'])); reviewed and kept by hand
 - id: ba-lat-smb-admin-share
   name: Administrative share accessed remotely
   families:
@@ -566,7 +802,12 @@ packs:
   rationale: Admin shares are the lateral-movement transport; normal for management
     tooling.
   es:
-    match_all: {}
+    bool:
+      filter:
+      - wildcard:
+          fields.command_line.kw:
+            value: '*ADMIN$*'
+            case_insensitive: true
 - id: ba-lat-remote-service-create
   name: Service created by a remote logon
   families:
@@ -608,6 +849,12 @@ packs:
               text.wc:
                 value: '*Service*'
                 case_insensitive: true
+  es_authored_reason: the Mode 1 compiler cannot express this against the registry
+    (field 'fields.logon_type.kw' (column 'logon_type') does not exist for declared
+    families ['chainsaw', 'deepbluecli', 'evtx', 'evtxecmd', 'hayabusa', 'ingest-evtx',
+    'ingest-evtxecmd', 'ingest-hayabusa', 'ingest-kape', 'ingest-system', 'powershell',
+    'security', 'sysmon', 'system', 'zircolite'] (column exists for ['ingest-scheduled_tasks']));
+    reviewed and kept by hand
 - id: ba-lat-wmi-exec
   name: WMI used to start a process
   families:
@@ -624,7 +871,12 @@ packs:
   rationale: wmiprvse spawns children legitimately; the command line of the child
     is what to read.
   es:
-    match_all: {}
+    bool:
+      filter:
+      - wildcard:
+          fields.parent_process.kw:
+            value: '*wmiprvse.exe*'
+            case_insensitive: true
 - id: ba-col-powershell-transcript
   name: PowerShell script block logging with a download or exec
   families:
@@ -642,7 +894,27 @@ packs:
   rationale: 4104 carries the deobfuscated text, so this is often the clearest view
     of intent.
   es:
-    match_all: {}
+    bool:
+      filter:
+      - wildcard:
+          event_id:
+            value: '*4104*'
+            case_insensitive: true
+      - bool:
+          should:
+          - term:
+              fields.command_line.kw:
+                value: DownloadString
+                case_insensitive: true
+          - term:
+              fields.command_line.kw:
+                value: IEX
+                case_insensitive: true
+          - term:
+              fields.command_line.kw:
+                value: FromBase64String
+                case_insensitive: true
+          minimum_should_match: 1
 - id: ba-col-archive-staging
   name: Archive created in a staging directory
   families:
@@ -660,7 +932,23 @@ packs:
     as a positive filter, so a system-tree exclusion here would have done the reverse
     of its intent.'
   es:
-    match_all: {}
+    bool:
+      filter:
+      - bool:
+          should:
+          - term:
+              fields.file_path.kw:
+                value: .zip
+                case_insensitive: true
+          - term:
+              fields.file_path.kw:
+                value: .7z
+                case_insensitive: true
+          - term:
+              fields.file_path.kw:
+                value: .rar
+                case_insensitive: true
+          minimum_should_match: 1
 - id: ba-lat-wmi-process-create
   name: Process creation via WMI command execution
   families:
@@ -675,19 +963,22 @@ packs:
   techniques:
   - T1047
   rationale: WMI process creation via wmic.exe process call create or WMI Win32_Process.Create;
-    telemetry follows CAR-2014-11-004 (process creation with command line) - the WMI-spawned child is a process-creation record carrying the WMI command line.
+    telemetry follows CAR-2014-11-004 (process creation with command line) - the WMI-spawned
+    child is a process-creation record carrying the WMI command line.
   es:
     bool:
       should:
       - wildcard:
           text.wc:
-            value: "*wmic*process*create*"
+            value: '*wmic*process*create*'
             case_insensitive: true
       - wildcard:
           text.wc:
-            value: "*Win32_Process*Create*"
+            value: '*Win32_Process*Create*'
             case_insensitive: true
       minimum_should_match: 1
+  es_text_only_reason: 'envelope text search: no registry column carries this mixed
+    evidence'
 - id: ba-pers-schtask-reg-mod
   name: Scheduled task creation or modification via registry or schtasks
   families:
@@ -701,20 +992,23 @@ packs:
     ref: https://car.mitre.org/analytics/CAR-2016-04-009/
   techniques:
   - T1053.005
-  rationale: Scheduled task persistence via schtasks.exe /create or modifications under Tree/Tasks registry;
-    telemetry follows CAR-2016-04-009 (scheduled task), the same technique T1053.005.
+  rationale: Scheduled task persistence via schtasks.exe /create or modifications
+    under Tree/Tasks registry; telemetry follows CAR-2016-04-009 (scheduled task),
+    the same technique T1053.005.
   es:
     bool:
       should:
       - wildcard:
           text.wc:
-            value: "*schtasks*/create*"
+            value: '*schtasks*/create*'
             case_insensitive: true
       - wildcard:
           text.wc:
-            value: "*Software\\Microsoft\\Windows NT\\CurrentVersion\\Schedule\\TaskCache*"
+            value: '*Software\Microsoft\Windows NT\CurrentVersion\Schedule\TaskCache*'
             case_insensitive: true
       minimum_should_match: 1
+  es_text_only_reason: 'envelope text search: no registry column carries this mixed
+    evidence'
 - id: ba-c2-living-off-trusted-sites
   name: C2 and payload transfer via living off trusted sites
   families:
@@ -728,27 +1022,30 @@ packs:
   techniques:
   - T1102.002
   - T1105
-  rationale: Network connections or command lines referencing trusted sites abused for C2 or payload transfer.
+  rationale: Network connections or command lines referencing trusted sites abused
+    for C2 or payload transfer.
   es:
     bool:
       should:
       - wildcard:
           text.wc:
-            value: "*discordapp.com*"
+            value: '*discordapp.com*'
             case_insensitive: true
       - wildcard:
           text.wc:
-            value: "*api.telegram.org*"
+            value: '*api.telegram.org*'
             case_insensitive: true
       - wildcard:
           text.wc:
-            value: "*webhook.site*"
+            value: '*webhook.site*'
             case_insensitive: true
       - wildcard:
           text.wc:
-            value: "*ngrok*"
+            value: '*ngrok*'
             case_insensitive: true
       minimum_should_match: 1
+  es_text_only_reason: 'envelope text search: no registry column carries this mixed
+    evidence'
 - id: ba-priv-printspooler-exploit
   name: Print Spooler driver exploitation (PrintNightmare)
   families:
@@ -763,24 +1060,27 @@ packs:
   techniques:
   - T1068
   - T1547.012
-  rationale: spoolsv.exe loading unexpected drivers from spool\drivers or spawning cmd/powershell;
-    telemetry follows CAR-2016-04-006 (driver load), the same technique T1068.
+  rationale: spoolsv.exe loading unexpected drivers from spool\drivers or spawning
+    cmd/powershell; telemetry follows CAR-2016-04-006 (driver load), the same technique
+    T1068.
   es:
     bool:
       should:
       - wildcard:
           text.wc:
-            value: "*spoolsv*cmd.exe*"
+            value: '*spoolsv*cmd.exe*'
             case_insensitive: true
       - wildcard:
           text.wc:
-            value: "*spoolsv*powershell.exe*"
+            value: '*spoolsv*powershell.exe*'
             case_insensitive: true
       - wildcard:
           text.wc:
-            value: "*spool\\drivers*kernelbase.dll*"
+            value: '*spool\drivers*kernelbase.dll*'
             case_insensitive: true
       minimum_should_match: 1
+  es_text_only_reason: 'envelope text search: no registry column carries this mixed
+    evidence'
 - id: ba-cred-lsass-minidump-write
   name: LSASS memory dumping via MiniDumpWriteDump or comsvcs
   families:
@@ -801,15 +1101,16 @@ packs:
       should:
       - wildcard:
           text.wc:
-            value: "*comsvcs*MiniDump*"
+            value: '*comsvcs*MiniDump*'
             case_insensitive: true
       - wildcard:
           text.wc:
-            value: "*MiniDumpWriteDump*lsass*"
+            value: '*MiniDumpWriteDump*lsass*'
             case_insensitive: true
       - wildcard:
           text.wc:
-            value: "*procdump*lsass*"
+            value: '*procdump*lsass*'
             case_insensitive: true
       minimum_should_match: 1
-
+  es_text_only_reason: 'envelope text search: no registry column carries this mixed
+    evidence'

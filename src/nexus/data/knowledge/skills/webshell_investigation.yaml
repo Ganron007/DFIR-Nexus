@@ -41,10 +41,25 @@ steps:
   corroborate: child commands match recon/lateral patterns (net, whoami, ipconfig,
     arp, sc)
   es:
-    wildcard:
-      fields.parent_process.kw:
-        value: '*w3wp.exe*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.file_path.kw:
+            value: '*w3wp.exe*'
+            case_insensitive: true
+      - wildcard:
+          fields.parent_process.kw:
+            value: '*httpd*'
+            case_insensitive: true
+      - wildcard:
+          fields.parent_process.kw:
+            value: '*nginx*'
+            case_insensitive: true
+      - wildcard:
+          fields.parent_process.kw:
+            value: '*php-cgi*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: &id001
     - iis
@@ -64,10 +79,29 @@ steps:
   pivot: URI
   corroborate: POST time to page X ↔ w3wp child-process time ± seconds
   es:
-    wildcard:
-      fields.path.kw:
-        value: '*.aspx*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.path.kw:
+            value: '*POST*'
+            case_insensitive: true
+      - wildcard:
+          fields.path.kw:
+            value: '*.aspx*'
+            case_insensitive: true
+      - wildcard:
+          fields.path.kw:
+            value: '*.php*'
+            case_insensitive: true
+      - wildcard:
+          fields.path.kw:
+            value: '*200*'
+            case_insensitive: true
+      - wildcard:
+          fields.path.kw:
+            value: '*upload*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: webroot_file_writes
@@ -79,10 +113,29 @@ steps:
   corroborate: file creation ↔ first POST in access log ↔ first exec event = deployment
     timeline
   es:
-    wildcard:
-      fields.FileName.kw:
-        value: '*.aspx*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.file_path.kw:
+            value: '*inetpub*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*wwwroot*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*.aspx*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*.ashx*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*.jsp*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: upload_vector
@@ -92,10 +145,25 @@ steps:
     the app-vuln window before the file write.
   pivot: URI
   es:
-    wildcard:
-      fields.path.kw:
-        value: '*filewrite*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.path.kw:
+            value: '*upload*'
+            case_insensitive: true
+      - wildcard:
+          fields.path.kw:
+            value: '*PUT*'
+            case_insensitive: true
+      - wildcard:
+          fields.path.kw:
+            value: '*MOVE*'
+            case_insensitive: true
+      - wildcard:
+          fields.path.kw:
+            value: '*filewrite*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: in_memory_detection
@@ -105,10 +173,21 @@ steps:
     that leave no webroot artifact.'
   pivot: ProcessName
   es:
-    wildcard:
-      fields.process_name.kw:
-        value: '*w3wp*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.process_name.kw:
+            value: '*w3wp*'
+            case_insensitive: true
+      - wildcard:
+          fields.process_name.kw:
+            value: '*aspx*'
+            case_insensitive: true
+      - wildcard:
+          fields.process_name.kw:
+            value: '*webshell*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: post_exploit_chain
@@ -118,10 +197,29 @@ steps:
     is the textbook sequence.
   pivot: CommandLine
   es:
-    wildcard:
-      fields.command_line.kw:
-        value: '*net.exe*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.file_path.kw:
+            value: '*net.exe*'
+            case_insensitive: true
+      - wildcard:
+          fields.command_line.kw:
+            value: '*whoami*'
+            case_insensitive: true
+      - wildcard:
+          fields.command_line.kw:
+            value: '*ipconfig*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*sc.exe*'
+            case_insensitive: true
+      - wildcard:
+          fields.command_line.kw:
+            value: '*certutil*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 negative: 'Clean worker-process trees + no rogue-page POSTs + no webroot writes →

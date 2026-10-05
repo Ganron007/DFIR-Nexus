@@ -46,16 +46,36 @@ steps:
   corroborate: a container image digest matches a pulled-from-unknown-registry image
     in host history
   es:
-    wildcard:
-      text.wc:
-        value: '*docker*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*docker ps*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*docker image ls*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*docker info*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*crictl*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: &id001
     - sysdig
     - syslog
     - csv
     - jsonl
+  es_text_only_reason:
+  - 'docker ps: free phrase; the step''s pivot names no registry column'
+  - 'docker image ls: free phrase; the step''s pivot names no registry column'
+  - 'docker info: free phrase; the step''s pivot names no registry column'
+  - 'crictl: free phrase; the step''s pivot names no registry column'
 - name: overlay_layer_diff
   query: overlay2 OR upperdir OR diff OR lowerdir OR merged
   look_for: A container's writes live in the overlay upperdir (diff/) under Docker
@@ -66,10 +86,29 @@ steps:
   corroborate: the same file hash appears in the image layer history or a network
     download
   es:
-    wildcard:
-      fields.file_path.kw:
-        value: '*overlay2*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.file_path.kw:
+            value: '*overlay2*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*upperdir*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*diff*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*lowerdir*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*merged*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: container_logs
@@ -80,12 +119,37 @@ steps:
     for exec and network syscalls.'
   pivot: container_id
   es:
-    wildcard:
-      text.wc:
-        value: '*json-file*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*json-file*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*docker logs*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*stdout*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*stderr*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*journallog*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'json-file: free phrase; the step''s pivot names no registry column'
+  - 'docker logs: free phrase; the step''s pivot names no registry column'
+  - 'stdout: free phrase; the step''s pivot names no registry column'
+  - 'stderr: free phrase; the step''s pivot names no registry column'
+  - 'journallog: free phrase; the step''s pivot names no registry column'
 - name: exec_and_escape
   query: docker exec OR kubectl exec OR privileged OR hostPath OR CAP_SYS_ADMIN
   look_for: 'Trace `docker exec`/`kubectl exec` (host or K8s audit log) and look for
@@ -95,10 +159,29 @@ steps:
   pivot: CommandLine
   corroborate: host auditd shows the process running outside the container cgroup
   es:
-    wildcard:
-      fields.command_line.kw:
-        value: '*privileged*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.command_line.kw:
+            value: '*docker exec*'
+            case_insensitive: true
+      - wildcard:
+          fields.command_line.kw:
+            value: '*kubectl exec*'
+            case_insensitive: true
+      - wildcard:
+          fields.command_line.kw:
+            value: '*privileged*'
+            case_insensitive: true
+      - wildcard:
+          fields.command_line.kw:
+            value: '*hostPath*'
+            case_insensitive: true
+      - wildcard:
+          fields.command_line.kw:
+            value: '*CAP_SYS_ADMIN*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: k8s_api_audit
@@ -110,12 +193,36 @@ steps:
   pivot: user.username
   corroborate: the service account token was used from an unexpected source IP
   es:
-    wildcard:
-      text.wc:
-        value: '*audit.log*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*kubelet*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*audit.log*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*serviceaccount*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*secrets*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*pod create*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'kubelet: free phrase; the step''s pivot names no registry column'
+  - 'serviceaccount: free phrase; the step''s pivot names no registry column'
+  - 'secrets: free phrase; the step''s pivot names no registry column'
+  - 'pod create: free phrase; the step''s pivot names no registry column'
 negative: No unexpected images, no privileged/hostPath workload, clean overlay diff,
   and no auditd/audit-log escape events → the container boundary held for the captured
   window. Containers are ephemeral — a removed container leaves only the host-side

@@ -39,10 +39,16 @@ steps:
     target (cmd/powershell/mshta/rundll32 children).
   pivot: LocalPath
   es:
-    wildcard:
-      fields.LocalPath.kw:
-        value: '*.lnk*'
-        case_insensitive: true
+    bool:
+      must:
+      - wildcard:
+          fields.file_path.kw:
+            value: '*.lnk*'
+            case_insensitive: true
+      - wildcard:
+          fields.LocalPath.kw:
+            value: '*invoice document shortcut*'
+            case_insensitive: true
   requires:
     families: &id001
     - lnk
@@ -60,10 +66,23 @@ steps:
     (install success) near the suspected window.
   pivot: CommandLine
   es:
-    wildcard:
-      fields.command_line.kw:
-        value: '*/i*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.command_line.kw:
+            value: '*msiexec /i*'
+            case_insensitive: true
+      - bool:
+          must:
+          - wildcard:
+              fields.file_path.kw:
+                value: '*.msi*'
+                case_insensitive: true
+          - wildcard:
+              fields.command_line.kw:
+                value: '*MsiInstaller*'
+                case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: chm_execution
@@ -71,10 +90,17 @@ steps:
   look_for: hh.exe spawning cmd/powershell — CHM Shortcut-object abuse.
   pivot: ParentImage
   es:
-    wildcard:
-      fields.parent_process.kw:
-        value: '*hh.exe*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.file_path.kw:
+            value: '*hh.exe*'
+            case_insensitive: true
+      - wildcard:
+          fields.parent_process.kw:
+            value: '*.chm*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: html_smuggling_download
@@ -82,21 +108,41 @@ steps:
   look_for: Browser download of an HTML file followed by a new .exe/.dll write.
   pivot: URL
   es:
-    wildcard:
-      text.wc:
-        value: '*.html*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*.html download FromCache*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*browser*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - '.html download FromCache: free phrase; the step''s pivot names no registry column'
+  - 'browser: free phrase; the step''s pivot names no registry column'
+  es_dropped:
+  - term: 'blob:'
+    reason: field filter with no value
 - name: motw_mark
   query: Zone.Identifier Mark-of-the-Web OR ZoneId=3
   look_for: Zone.Identifier ADS on downloaded files (ZoneId=3 = internet).
   pivot: FileName
   es:
-    wildcard:
-      fields.FileName.kw:
-        value: '*Zone.Identifier*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.file_path.kw:
+            value: '*Zone.Identifier Mark-of-the-Web*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*ZoneId=3*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: office_spawns
@@ -104,10 +150,31 @@ steps:
   look_for: Office binaries spawning script interpreters — macro execution.
   pivot: ParentImage
   es:
-    wildcard:
-      fields.parent_process.kw:
-        value: '*winword.exe*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.file_path.kw:
+            value: '*winword.exe*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*excel.exe*'
+            case_insensitive: true
+      - bool:
+          must:
+          - wildcard:
+              fields.file_path.kw:
+                value: '*powerpnt.exe*'
+                case_insensitive: true
+          - wildcard:
+              fields.file_path.kw:
+                value: '*cmd.exe*'
+                case_insensitive: true
+          - wildcard:
+              fields.file_path.kw:
+                value: '*powershell.exe*'
+                case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: child_process_anomaly
@@ -115,10 +182,39 @@ steps:
   look_for: Script interpreters parented by explorer.exe near payload arrival.
   pivot: CommandLine
   es:
-    wildcard:
-      fields.command_line.kw:
-        value: '*explorer.exe*'
-        case_insensitive: true
+    bool:
+      should:
+      - bool:
+          must:
+          - wildcard:
+              fields.file_path.kw:
+                value: '*explorer.exe*'
+                case_insensitive: true
+          - wildcard:
+              fields.file_path.kw:
+                value: '*cmd.exe*'
+                case_insensitive: true
+      - bool:
+          must:
+          - wildcard:
+              fields.file_path.kw:
+                value: '*explorer.exe*'
+                case_insensitive: true
+          - wildcard:
+              fields.file_path.kw:
+                value: '*powershell.exe*'
+                case_insensitive: true
+      - bool:
+          must:
+          - wildcard:
+              fields.file_path.kw:
+                value: '*explorer.exe*'
+                case_insensitive: true
+          - wildcard:
+              fields.file_path.kw:
+                value: '*mshta.exe*'
+                case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: iab_vector_check
@@ -129,12 +225,34 @@ steps:
     credentials (valid-account logon with no payload artifact at all).'
   corroborate: external-IP logon preceding first malicious activity by hours/days
   es:
-    wildcard:
-      text.wc:
-        value: '*rdp*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*rdp*'
+            case_insensitive: true
+      - term:
+          event_id: '4625'
+      - wildcard:
+          text.wc:
+            value: '*edge*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*vpn*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*exchange*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'rdp: free phrase; the step''s pivot names no registry column'
+  - 'edge: free phrase; the step''s pivot names no registry column'
+  - 'vpn: free phrase; the step''s pivot names no registry column'
+  - 'exchange: free phrase; the step''s pivot names no registry column'
 negative: No LNK/MSI/CHM artifacts and no office-spawn chains → initial access likely
   arrived through a different vector (exposed service, creds, drive-by).
 confidence_rules:

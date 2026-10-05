@@ -36,10 +36,21 @@ steps:
   look_for: Shadow-copy deletion — the canonical ransomware anti-recovery move.
   pivot: CommandLine
   es:
-    wildcard:
-      fields.command_line.kw:
-        value: '*shadowstorage*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.command_line.kw:
+            value: '*vssadmin delete shadows*'
+            case_insensitive: true
+      - wildcard:
+          fields.command_line.kw:
+            value: '*vssadmin resize shadowstorage*'
+            case_insensitive: true
+      - wildcard:
+          fields.command_line.kw:
+            value: '*wmic shadowcopy delete*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: &id001
     - evtx
@@ -53,10 +64,21 @@ steps:
   look_for: bcdedit disabling recovery/bootstatus — prevents safe-mode recovery.
   pivot: CommandLine
   es:
-    wildcard:
-      fields.command_line.kw:
-        value: '*/set*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.command_line.kw:
+            value: '*bcdedit /set*'
+            case_insensitive: true
+      - wildcard:
+          fields.command_line.kw:
+            value: '*bootstatuspolicy*'
+            case_insensitive: true
+      - wildcard:
+          fields.command_line.kw:
+            value: '*recoveryenabled no*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: backup_kill
@@ -64,10 +86,17 @@ steps:
   look_for: wbadmin catalog deletion — removes backup inventory.
   pivot: CommandLine
   es:
-    wildcard:
-      fields.command_line.kw:
-        value: '*wbadmin*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.command_line.kw:
+            value: '*wbadmin delete catalog*'
+            case_insensitive: true
+      - wildcard:
+          fields.command_line.kw:
+            value: '*backup delete*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: mass_encryption
@@ -76,10 +105,29 @@ steps:
     with high write rates.
   pivot: FileName
   es:
-    wildcard:
-      fields.FileName.kw:
-        value: '*.encrypted*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.file_path.kw:
+            value: '*.encrypted*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*.locked*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*.crypt*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*readme*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*ransom*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: service_stop
@@ -87,21 +135,47 @@ steps:
   look_for: Mass service stops (database, backup, AV) before encryption.
   pivot: ServiceName
   es:
-    wildcard:
-      text.wc:
-        value: '*sc*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*sc stop*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*net stop*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*service stop*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'sc stop: free phrase; the step''s pivot names no registry column'
+  - 'net stop: free phrase; the step''s pivot names no registry column'
+  - 'service stop: free phrase; the step''s pivot names no registry column'
 - name: crypto_process
   query: cipher /w OR diskcryptor OR vboxdrv
   look_for: Disk-encryption tool execution or crypto-loop patterns.
   pivot: ProcessName
   es:
-    wildcard:
-      fields.process_name.kw:
-        value: '*/w*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.process_name.kw:
+            value: '*cipher /w*'
+            case_insensitive: true
+      - wildcard:
+          fields.process_name.kw:
+            value: '*diskcryptor*'
+            case_insensitive: true
+      - wildcard:
+          fields.process_name.kw:
+            value: '*vboxdrv*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: backward_analysis
@@ -114,12 +188,29 @@ steps:
     → initial access on the earliest-affected host
   pivot: IpAddress
   es:
-    wildcard:
-      text.wc:
-        value: '*rdp*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*rdp*'
+            case_insensitive: true
+      - term:
+          event_id: '4624'
+      - wildcard:
+          text.wc:
+            value: '*msiexec*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*phish*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'rdp: free phrase; the step''s pivot names no registry column'
+  - 'msiexec: free phrase; the step''s pivot names no registry column'
+  - 'phish: free phrase; the step''s pivot names no registry column'
 negative: No shadow deletion, recovery disable, or mass-encryption artifacts → impact
   phase not reached or aborted.
 confidence_rules:

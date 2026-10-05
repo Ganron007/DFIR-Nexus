@@ -31,10 +31,8 @@ steps:
     the gap in preceding events.
   pivot: SubjectUserName
   es:
-    wildcard:
-      fields.user.kw:
-        value: '*1102*'
-        case_insensitive: true
+    term:
+      event_id: '1102'
   requires:
     families: &id001
     - evtx
@@ -48,20 +46,29 @@ steps:
   pivot: SubjectUserName
   es:
     wildcard:
-      fields.user.kw:
+      text.wc:
         value: '*104*'
         case_insensitive: true
   requires:
     families: *id001
+  es_text_only_reason:
+  - '104: free phrase; the step''s pivot is an identity column'
 - name: wevtutil_execution
   query: wevtutil cl OR wevtutil clear-log
   look_for: wevtutil cl <log> executions in process creation / prefetch.
   pivot: CommandLine
   es:
-    wildcard:
-      fields.command_line.kw:
-        value: '*clear-log*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.command_line.kw:
+            value: '*wevtutil cl*'
+            case_insensitive: true
+      - wildcard:
+          fields.command_line.kw:
+            value: '*wevtutil clear-log*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: audit_policy_change
@@ -69,10 +76,19 @@ steps:
   look_for: auditpol clearing or 4719 audit-policy change events.
   pivot: CommandLine
   es:
-    wildcard:
-      fields.command_line.kw:
-        value: '*/clear*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.command_line.kw:
+            value: '*auditpol /clear*'
+            case_insensitive: true
+      - wildcard:
+          fields.command_line.kw:
+            value: '*auditpol /set*'
+            case_insensitive: true
+      - term:
+          event_id: '4719'
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: sysmon_tamper
@@ -80,22 +96,53 @@ steps:
   look_for: Sysmon service stop/delete — blinds telemetry collection.
   corroborate: gap in Sysmon event sequence
   es:
-    wildcard:
-      text.wc:
-        value: '*sysmon.exe*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*Sysmon service stopped*'
+            case_insensitive: true
+      - bool:
+          must:
+          - wildcard:
+              fields.file_path.kw:
+                value: '*sysmon.exe*'
+                case_insensitive: true
+          - wildcard:
+              text.wc:
+                value: '*delete*'
+                case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*sc stop sysmon*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'Sysmon service stopped: free phrase; the step''s pivot names no registry column'
+  - 'delete: free phrase; the step''s pivot names no registry column'
+  - 'sc stop sysmon: free phrase; the step''s pivot names no registry column'
 - name: usn_journal_delete
   query: fsutil usn deletejournal OR usn delete
   look_for: USN journal deletion (destroys file-change history).
   es:
-    wildcard:
-      text.wc:
-        value: '*deletejournal*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*fsutil usn deletejournal*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*usn delete*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'fsutil usn deletejournal: free phrase; the step''s pivot names no registry column'
+  - 'usn delete: free phrase; the step''s pivot names no registry column'
 - name: surviving_artifacts
   query: prefetch OR shimcache OR amcache OR $LogFile
   look_for: Anti-forensics cannot fully destroy all references — after a log clear,
@@ -106,10 +153,25 @@ steps:
     logs = targeted clearing
   pivot: FileName
   es:
-    wildcard:
-      fields.file_path.kw:
-        value: '*shimcache*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.file_path.kw:
+            value: '*prefetch*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*shimcache*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*amcache*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*$LogFile*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 negative: No 1102/104 events and no wevtutil/auditpol execution → logs were not cleared

@@ -50,10 +50,29 @@ steps:
   corroborate: snapshot timestamp predates the suspected cleanup, preserving deleted
     evidence
   es:
-    wildcard:
-      fields.FileName.kw:
-        value: '*apfs-fuse*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.filename.kw:
+            value: '*apfs-fuse*'
+            case_insensitive: true
+      - wildcard:
+          fields.filename.kw:
+            value: '*mount*'
+            case_insensitive: true
+      - wildcard:
+          fields.filename.kw:
+            value: '*dmg*'
+            case_insensitive: true
+      - wildcard:
+          fields.filename.kw:
+            value: '*e01*'
+            case_insensitive: true
+      - wildcard:
+          fields.filename.kw:
+            value: '*diskutil*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: &id001
     - plaso
@@ -70,10 +89,25 @@ steps:
   pivot: process
   corroborate: log entries match file-creation and network flow timestamps
   es:
-    wildcard:
-      fields.Process.kw:
-        value: '*.tracev3*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.Process.kw:
+            value: '*.tracev3*'
+            case_insensitive: true
+      - wildcard:
+          fields.Process.kw:
+            value: '*log show*'
+            case_insensitive: true
+      - wildcard:
+          fields.Process.kw:
+            value: '*unifiedlog*'
+            case_insensitive: true
+      - wildcard:
+          fields.Process.kw:
+            value: '*UNIFIEDLOGS*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: launchd_persistence
@@ -86,12 +120,32 @@ steps:
   corroborate: the binary the plist launches also appears in quarantine or the unified
     log executions
   es:
-    wildcard:
-      text.wc:
-        value: '*LaunchAgents*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*LaunchAgents*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*LaunchDaemons*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*RunAtLoad*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*KeepAlive*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'LaunchAgents: free phrase; the step''s pivot names no registry column'
+  - 'LaunchDaemons: free phrase; the step''s pivot names no registry column'
+  - 'RunAtLoad: free phrase; the step''s pivot names no registry column'
+  - 'KeepAlive: free phrase; the step''s pivot names no registry column'
 - name: quarantine_and_gatekeeper
   query: QUARANTINE OR LastGKReject OR com.apple.quarantine OR Gatekeeper
   look_for: Quarantine V2 databases + Gatekeeper reject records show what was downloaded,
@@ -101,10 +155,25 @@ steps:
   pivot: FileName
   corroborate: download origin matches a browser-history or proxy entry
   es:
-    wildcard:
-      fields.FileName.kw:
-        value: '*QUARANTINE*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.filename.kw:
+            value: '*QUARANTINE*'
+            case_insensitive: true
+      - wildcard:
+          fields.filename.kw:
+            value: '*LastGKReject*'
+            case_insensitive: true
+      - wildcard:
+          fields.filename.kw:
+            value: '*com.apple.quarantine*'
+            case_insensitive: true
+      - wildcard:
+          fields.filename.kw:
+            value: '*Gatekeeper*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: tcc_privacy_abuse
@@ -115,12 +184,31 @@ steps:
     flow that granted them.
   pivot: client
   es:
-    wildcard:
-      text.wc:
-        value: '*TCC.db*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.filename.kw:
+            value: '*TCC.db*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*kTCCService*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*Accessibility*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*ScreenCapture*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'kTCCService: free phrase; the step''s pivot names no registry column'
+  - 'Accessibility: free phrase; the step''s pivot names no registry column'
+  - 'ScreenCapture: free phrase; the step''s pivot names no registry column'
 - name: user_activity_artifacts
   query: zsh_history OR bash_history OR TERMSESSIONS OR SAFARI OR Spotlight
   look_for: 'Reconstruct user/attacker activity: shell history (zsh/bash), Terminal
@@ -129,10 +217,29 @@ steps:
     state window titles.'
   pivot: value
   es:
-    wildcard:
-      fields.value.kw:
-        value: '*zsh_history*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.value.kw:
+            value: '*zsh_history*'
+            case_insensitive: true
+      - wildcard:
+          fields.value.kw:
+            value: '*bash_history*'
+            case_insensitive: true
+      - wildcard:
+          fields.value.kw:
+            value: '*TERMSESSIONS*'
+            case_insensitive: true
+      - wildcard:
+          fields.value.kw:
+            value: '*SAFARI*'
+            case_insensitive: true
+      - wildcard:
+          fields.value.kw:
+            value: '*Spotlight*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 negative: Mounted APFS shows no launchd modification, no quarantine override, no suspicious

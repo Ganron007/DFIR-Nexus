@@ -37,10 +37,33 @@ steps:
     = per-user behavior. Missing hives bound what the registry can answer.
   pivot: KeyPath
   es:
-    wildcard:
-      fields.KeyPath.kw:
-        value: '*file:ntuser*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          file:
+            value: '*ntuser*'
+            case_insensitive: true
+      - wildcard:
+          file:
+            value: '*usrclass*'
+            case_insensitive: true
+      - wildcard:
+          file:
+            value: '*system*'
+            case_insensitive: true
+      - wildcard:
+          file:
+            value: '*software*'
+            case_insensitive: true
+      - wildcard:
+          file:
+            value: '*sam*'
+            case_insensitive: true
+      - wildcard:
+          file:
+            value: '*security*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: &id001
     - recmd
@@ -54,12 +77,21 @@ steps:
   pivot: AbsolutePath
   corroborate: a shellbag for a staging dir before payload mtime shows recon-before-drop
   es:
-    wildcard:
-      text.wc:
-        value: '*file:shellbag*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*bagmru*'
+            case_insensitive: true
+      - wildcard:
+          file:
+            value: '*shellbag*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'bagmru: free phrase; the step''s pivot names no registry column'
 - name: comdlg32_mru
   query: opensavepidlmru OR lastvisitedpidlmru OR comdlg32
   look_for: ComDlg32 OpenSavePidlMRU (files via open/save dialogs) and LastVisitedPidlMRU
@@ -67,10 +99,21 @@ steps:
     what application.
   pivot: ValueName
   es:
-    wildcard:
-      fields.ValueName.kw:
-        value: '*opensavepidlmru*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.ValueName.kw:
+            value: '*opensavepidlmru*'
+            case_insensitive: true
+      - wildcard:
+          fields.ValueName.kw:
+            value: '*lastvisitedpidlmru*'
+            case_insensitive: true
+      - wildcard:
+          fields.ValueName.kw:
+            value: '*comdlg32*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: recent_and_typed
@@ -81,10 +124,25 @@ steps:
     hard to attribute to automation.
   pivot: ValueName
   es:
-    wildcard:
-      fields.ValueName.kw:
-        value: '*recentdocs*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.ValueName.kw:
+            value: '*recentdocs*'
+            case_insensitive: true
+      - wildcard:
+          fields.ValueName.kw:
+            value: '*runmru*'
+            case_insensitive: true
+      - wildcard:
+          fields.ValueName.kw:
+            value: '*typedpaths*'
+            case_insensitive: true
+      - wildcard:
+          fields.ValueName.kw:
+            value: '*wordwheelquery*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: services_and_drivers
@@ -95,22 +153,46 @@ steps:
   pivot: ImagePath
   corroborate: service last-write ≈ intrusion window + matching Security 7045
   es:
-    wildcard:
-      text.wc:
-        value: '*file:system*'
-        case_insensitive: true
+    bool:
+      should:
+      - bool:
+          must:
+          - wildcard:
+              file:
+                value: '*system*'
+                case_insensitive: true
+          - wildcard:
+              text.wc:
+                value: '*services*'
+                case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*currentcontrolset\services*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'services: free phrase; the step''s pivot names no registry column'
+  - 'currentcontrolset\services: free phrase; the step''s pivot names no registry
+    column'
 - name: run_and_autostart
   query: currentversion\run OR runonce
   look_for: HKLM/HKCU Run, RunOnce, RunOnceEx, Policies\Explorer\Run — autostart values
     pointing to user-writable or temp paths; check both hives.
   pivot: ValueName
   es:
-    wildcard:
-      fields.ValueName.kw:
-        value: '*currentversion\run*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.ValueName.kw:
+            value: '*currentversion\run*'
+            case_insensitive: true
+      - wildcard:
+          fields.ValueName.kw:
+            value: '*runonce*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: installed_software
@@ -119,12 +201,29 @@ steps:
     tools appearing here (or conspicuously absent) frame what "normal" software looks
     like on this host.
   es:
-    wildcard:
-      text.wc:
-        value: '*file:software*'
-        case_insensitive: true
+    bool:
+      should:
+      - bool:
+          must:
+          - wildcard:
+              file:
+                value: '*software*'
+                case_insensitive: true
+          - wildcard:
+              text.wc:
+                value: '*uninstall*'
+                case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*microsoft\windows\currentversion\uninstall*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'uninstall: free phrase; the step''s pivot names no registry column'
+  - 'microsoft\windows\currentversion\uninstall: free phrase; the step''s pivot names
+    no registry column'
 - name: sam_local_accounts
   query: file:sam
   look_for: SAM domains/users — local account RIDs, creation times, group membership;
@@ -132,8 +231,8 @@ steps:
   pivot: RelativeID
   es:
     wildcard:
-      text.wc:
-        value: '*file:sam*'
+      file:
+        value: '*sam*'
         case_insensitive: true
   requires:
     families: *id001

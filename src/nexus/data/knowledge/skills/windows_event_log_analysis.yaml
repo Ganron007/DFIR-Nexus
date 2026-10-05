@@ -45,10 +45,30 @@ steps:
   corroborate: creator-process trees reveal the launch chain (who spawned the suspicious
     child)
   es:
-    wildcard:
-      fields.command_line.kw:
-        value: '*family:evtx*'
-        case_insensitive: true
+    bool:
+      should:
+      - term:
+          event_id: '4688'
+      - bool:
+          must:
+          - term:
+              event_id: '1'
+          - terms:
+              family:
+              - chainsaw
+              - deepbluecli
+              - evtx
+              - evtxecmd
+              - hayabusa
+              - ingest-evtx
+              - ingest-hayabusa
+              - ingest-kape
+              - powershell
+              - security
+              - sysmon
+              - system
+              - zircolite
+      minimum_should_match: 1
   requires:
     families: &id001
     - evtx
@@ -66,10 +86,13 @@ steps:
   pivot: IpAddress
   corroborate: type-3/type-10 logons from unexpected sources precede lateral movement
   es:
-    wildcard:
-      text.wc:
-        value: '*4624*'
-        case_insensitive: true
+    bool:
+      should:
+      - term:
+          event_id: '4624'
+      - term:
+          event_id: '4625'
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: explicit_credentials
@@ -79,10 +102,8 @@ steps:
     + source host identify the pivot direction.
   pivot: AccountName
   es:
-    wildcard:
-      fields.User.kw:
-        value: '*4648*'
-        case_insensitive: true
+    term:
+      event_id: '4648'
   requires:
     families: *id001
 - name: kerberos_activity
@@ -92,10 +113,17 @@ steps:
     NTLM validation on the DC.
   pivot: ServiceName
   es:
-    wildcard:
-      text.wc:
-        value: '*4768*'
-        case_insensitive: true
+    bool:
+      should:
+      - term:
+          event_id: '4768'
+      - term:
+          event_id: '4769'
+      - term:
+          event_id: '4771'
+      - term:
+          event_id: '4776'
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: share_access
@@ -105,10 +133,13 @@ steps:
     identifies the lateral origin.
   pivot: ShareName
   es:
-    wildcard:
-      fields.path.kw:
-        value: '*5140*'
-        case_insensitive: true
+    bool:
+      should:
+      - term:
+          event_id: '5140'
+      - term:
+          event_id: '5145'
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: task_and_service
@@ -118,10 +149,17 @@ steps:
     or remote-exec scaffolding.
   pivot: ServiceName
   es:
-    wildcard:
-      text.wc:
-        value: '*4698*'
-        case_insensitive: true
+    bool:
+      should:
+      - term:
+          event_id: '4698'
+      - term:
+          event_id: '4702'
+      - term:
+          event_id: '7045'
+      - term:
+          event_id: '7036'
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: audit_tampering
@@ -131,10 +169,15 @@ steps:
     that ran it.
   pivot: Channel
   es:
-    wildcard:
-      fields.Channel.kw:
-        value: '*1102*'
-        case_insensitive: true
+    bool:
+      should:
+      - term:
+          event_id: '1102'
+      - wildcard:
+          fields.Channel.kw:
+            value: '*104*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: account_management
@@ -143,10 +186,19 @@ steps:
     group, 4738 changed — attacker account scaffolding and privilege escalation.
   pivot: TargetUserName
   es:
-    wildcard:
-      fields.user.kw:
-        value: '*4720*'
-        case_insensitive: true
+    bool:
+      should:
+      - term:
+          event_id: '4720'
+      - term:
+          event_id: '4722'
+      - term:
+          event_id: '4726'
+      - term:
+          event_id: '4732'
+      - term:
+          event_id: '4738'
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: sysmon_core
@@ -157,10 +209,15 @@ steps:
     present.
   pivot: EventID
   es:
-    wildcard:
-      fields.EventID:
-        value: '*family:sysmon*'
-        case_insensitive: true
+    terms:
+      family:
+      - evtx
+      - evtxecmd
+      - hayabusa
+      - ingest-hayabusa
+      - ingest-kape
+      - ingest-sysmon
+      - sysmon
   requires:
     families: *id001
 negative: Empty event-log windows mean either no activity or a logging/collection

@@ -39,10 +39,17 @@ steps:
   pivot: FileName
   corroborate: owning SID identifies which user deleted it
   es:
-    wildcard:
-      fields.FileName.kw:
-        value: '*file:rbcmd*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          file:
+            value: '*rbcmd*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*$i*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: &id001
     - rbcmd
@@ -59,10 +66,16 @@ steps:
     parent path to state what directory lost the file.
   pivot: FileName
   es:
-    wildcard:
-      fields.FileName.kw:
-        value: '*file:usn*'
-        case_insensitive: true
+    bool:
+      must:
+      - wildcard:
+          file:
+            value: '*usn*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*delete*'
+            case_insensitive: true
   requires:
     families: *id001
 - name: i30_slack_names
@@ -73,8 +86,8 @@ steps:
   pivot: FileName
   es:
     wildcard:
-      fields.FileName.kw:
-        value: '*file:i30*'
+      file:
+        value: '*i30*'
         case_insensitive: true
   requires:
     families: *id001
@@ -87,8 +100,8 @@ steps:
   corroborate: resident-data recovery yields small scripts/configs intact
   es:
     wildcard:
-      fields.FileName.kw:
-        value: '*file:mft*'
+      file:
+        value: '*mft*'
         case_insensitive: true
   requires:
     families: *id001
@@ -98,12 +111,25 @@ steps:
     until the index rebuilds; proves existence AND content snippets even when MFT/USN
     are exhausted.
   es:
-    wildcard:
-      text.wc:
-        value: '*windows.db*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.file_path.kw:
+            value: '*windows.db*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*windows.edb*'
+            case_insensitive: true
+      - wildcard:
+          file:
+            value: '*search*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'windows.edb: free phrase; the step''s pivot names no registry column'
 - name: lnk_ghost_targets
   query: file:lnk OR .lnk
   look_for: LNK files outlive their targets — a .lnk in Recent proves the target path
@@ -111,10 +137,17 @@ steps:
     the last-access window.
   pivot: TargetPath
   es:
-    wildcard:
-      fields.file_path.kw:
-        value: '*.lnk*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          file:
+            value: '*lnk*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*.lnk*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: shadow_copies
@@ -123,12 +156,27 @@ steps:
     enumerate vssadmin/vssadmin list shadows age vs the delete window before concluding
     content is unrecoverable.
   es:
-    wildcard:
-      text.wc:
-        value: '*Information*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*vss*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*shadow*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*System Volume Information*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'vss: free phrase; the step''s pivot names no registry column'
+  - 'shadow: free phrase; the step''s pivot names no registry column'
+  - 'System Volume Information: free phrase; the step''s pivot names no registry column'
 - name: secure_delete_tools
   query: sdelete OR cipher /w OR bcwipe OR file_wipe
   look_for: Execution of wiping tools (sdelete, cipher /w, BCWipe) — prefetch/ execution
@@ -136,10 +184,25 @@ steps:
     it so.
   pivot: CommandLine
   es:
-    wildcard:
-      fields.command_line.kw:
-        value: '*/w*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.command_line.kw:
+            value: '*sdelete*'
+            case_insensitive: true
+      - wildcard:
+          fields.command_line.kw:
+            value: '*cipher /w*'
+            case_insensitive: true
+      - wildcard:
+          fields.command_line.kw:
+            value: '*bcwipe*'
+            case_insensitive: true
+      - wildcard:
+          fields.command_line.kw:
+            value: '*file_wipe*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 negative: No Recycle Bin entries and no $I30 residue in the target path means either

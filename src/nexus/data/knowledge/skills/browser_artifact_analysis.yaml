@@ -40,8 +40,8 @@ steps:
   pivot: URL
   es:
     wildcard:
-      text.wc:
-        value: '*file:history*'
+      file:
+        value: '*history*'
         case_insensitive: true
   requires:
     families: &id001
@@ -72,20 +72,35 @@ steps:
     Rarely attacker-produced by automation.'
   pivot: Term
   es:
-    wildcard:
-      text.wc:
-        value: '*keyword_search_terms*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*search terms*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*keyword_search_terms*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*wordwheelquery*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'search terms: free phrase; the step''s pivot names no registry column'
+  - 'keyword_search_terms: free phrase; the step''s pivot names no registry column'
+  - 'wordwheelquery: free phrase; the step''s pivot names no registry column'
 - name: cookies_and_auth
   query: file:cookies
   look_for: Network\Cookies SQLite — visited domains + session-cookie presence; proves
     account usage on webmail/cloud consoles even without history.
   es:
     wildcard:
-      text.wc:
-        value: '*file:cookies*'
+      file:
+        value: '*cookies*'
         case_insensitive: true
   requires:
     families: *id001
@@ -96,8 +111,8 @@ steps:
     are stale.
   es:
     wildcard:
-      text.wc:
-        value: '*file:cache*'
+      file:
+        value: '*cache*'
         case_insensitive: true
   requires:
     families: *id001
@@ -107,8 +122,8 @@ steps:
     on; frequently retains pages already cleared from history.'
   es:
     wildcard:
-      text.wc:
-        value: '*file:sessions*'
+      file:
+        value: '*sessions*'
         case_insensitive: true
   requires:
     families: *id001
@@ -118,21 +133,63 @@ steps:
     vectors; match visits to the exfil/delivery window.
   pivot: URL
   es:
-    wildcard:
-      text.wc:
-        value: '*mail.*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*mail.*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*outlook*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*gmail*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*drive.google*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*dropbox*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*mega.nz*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*wetransfer*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'mail.: free phrase; the step''s pivot names no registry column'
+  - 'outlook: free phrase; the step''s pivot names no registry column'
+  - 'gmail: free phrase; the step''s pivot names no registry column'
+  - 'drive.google: free phrase; the step''s pivot names no registry column'
+  - 'dropbox: free phrase; the step''s pivot names no registry column'
+  - 'mega.nz: free phrase; the step''s pivot names no registry column'
+  - 'wetransfer: free phrase; the step''s pivot names no registry column'
 - name: thumbs_media
   query: file:thumbcache OR thumbs.db
   look_for: Thumbcache/thumbs.db — thumbnail residue proves image/media files existed
     in browsed folders even after deletion.
   es:
-    wildcard:
-      text.wc:
-        value: '*file:thumbcache*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          file:
+            value: '*thumbcache*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*thumbs.db*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: autoplay_browserless
@@ -141,8 +198,8 @@ steps:
     and per-site permissions attackers alter for persistence.
   es:
     wildcard:
-      text.wc:
-        value: '*file:preferences*'
+      file:
+        value: '*preferences*'
         case_insensitive: true
   requires:
     families: *id001

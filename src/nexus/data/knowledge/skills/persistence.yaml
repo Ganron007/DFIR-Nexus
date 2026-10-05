@@ -36,10 +36,21 @@ steps:
     user-writable or temp paths.
   pivot: ValueName
   es:
-    wildcard:
-      fields.ValueName.kw:
-        value: '*\Run*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.ValueName.kw:
+            value: '*\Run*'
+            case_insensitive: true
+      - wildcard:
+          fields.ValueName.kw:
+            value: '*\RunOnce*'
+            case_insensitive: true
+      - wildcard:
+          fields.ValueName.kw:
+            value: '*\RunOnceEx CurrentVersion\Run*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: &id001
     - registry
@@ -54,24 +65,57 @@ steps:
     or with non-standard binaries.
   pivot: ImagePath
   es:
-    wildcard:
-      text.wc:
-        value: '*sc.exe*'
-        case_insensitive: true
+    bool:
+      should:
+      - term:
+          event_id: '7045'
+      - wildcard:
+          text.wc:
+            value: '*sc create*'
+            case_insensitive: true
+      - bool:
+          must:
+          - wildcard:
+              fields.file_path.kw:
+                value: '*sc.exe*'
+                case_insensitive: true
+          - wildcard:
+              text.wc:
+                value: '*create*'
+                case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'sc create: free phrase; the step''s pivot names no registry column'
+  - 'create: free phrase; the step''s pivot names no registry column'
 - name: scheduled_tasks
   query: schtasks /create OR 106 OR TaskScheduler
   look_for: Task registrations running as SYSTEM or on logon, especially with remote
     or hidden actions.
   pivot: TaskName
   es:
-    wildcard:
-      text.wc:
-        value: '*/create*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*schtasks /create*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*106*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*TaskScheduler*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'schtasks /create: free phrase; the step''s pivot names no registry column'
+  - '106: free phrase; the step''s pivot names no registry column'
+  - 'TaskScheduler: free phrase; the step''s pivot names no registry column'
 - name: wmi_subscription
   query: EventFilter CommandLineEventConsumer wmi
   look_for: 'WMI permanent event subscriptions: a __EventFilter + a consumer class
@@ -86,7 +130,7 @@ steps:
   es:
     wildcard:
       fields.command_line.kw:
-        value: '*EventFilter*'
+        value: '*EventFilter CommandLineEventConsumer wmi*'
         case_insensitive: true
   requires:
     families: *id001
@@ -95,10 +139,21 @@ steps:
   look_for: Debugger hijacks on common binaries (sethc, utilman, osk).
   pivot: KeyPath
   es:
-    wildcard:
-      fields.KeyPath.kw:
-        value: '*Execution*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.KeyPath.kw:
+            value: '*Image File Execution Options*'
+            case_insensitive: true
+      - wildcard:
+          fields.KeyPath.kw:
+            value: '*IFEO*'
+            case_insensitive: true
+      - wildcard:
+          fields.KeyPath.kw:
+            value: '*SilentProcessExit*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: startup_folder_lnk
@@ -106,10 +161,23 @@ steps:
   look_for: LNK files dropped into Startup folders (lnk family + mft/usn).
   pivot: FileName
   es:
-    wildcard:
-      fields.file_path.kw:
-        value: '*Menu\Programs\Startup*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.file_path.kw:
+            value: '*Startup*'
+            case_insensitive: true
+      - bool:
+          must:
+          - wildcard:
+              fields.file_path.kw:
+                value: '*.lnk*'
+                case_insensitive: true
+          - wildcard:
+              fields.file_path.kw:
+                value: '*Start Menu\Programs\Startup*'
+                case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: dll_hijack
@@ -123,12 +191,30 @@ steps:
   corroborate: unsigned DLL beside a signed exe, or exe+dll pair in a non-standard
     dir
   es:
-    wildcard:
-      text.wc:
-        value: '*fxsst.dll*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.file_path.kw:
+            value: '*fxsst.dll*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*ntshrui.dll*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*side-loading*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*WinSxS*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'side-loading: free phrase; the step''s pivot names no registry column'
+  - 'WinSxS: free phrase; the step''s pivot names no registry column'
 - name: task_persistence_case
   query: schtasks OR at.exe OR TaskScheduler
   look_for: Scheduled-task persistence stays dominant even in advanced intrusions
@@ -136,12 +222,26 @@ steps:
     + TaskScheduler operational logs catch what registry-only sweeps miss.
   pivot: TaskName
   es:
-    wildcard:
-      text.wc:
-        value: '*at.exe*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*schtasks*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*at.exe*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*TaskScheduler*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'schtasks: free phrase; the step''s pivot names no registry column'
+  - 'TaskScheduler: free phrase; the step''s pivot names no registry column'
 negative: No autostart writes, service installs, or task registrations → the attacker
   may rely on existing persistence or volatile-only presence.
 confidence_rules:

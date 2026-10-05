@@ -40,10 +40,21 @@ steps:
     conn_state, service label.'
   pivot: RemoteAddress
   es:
-    wildcard:
-      fields.source_ip.kw:
-        value: '*ESTABLISHED*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.source_ip.kw:
+            value: '*ESTABLISHED*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*conn.log*'
+            case_insensitive: true
+      - wildcard:
+          fields.source_ip.kw:
+            value: '*netstat*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: &id001
     - netstat
@@ -61,10 +72,25 @@ steps:
   pivot: RemoteAddress
   corroborate: byte profile + destination + interval = session class
   es:
-    wildcard:
-      fields.source_ip.kw:
-        value: '*orig_bytes*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.source_ip.kw:
+            value: '*bytes*'
+            case_insensitive: true
+      - wildcard:
+          fields.source_ip.kw:
+            value: '*orig_bytes*'
+            case_insensitive: true
+      - wildcard:
+          fields.source_ip.kw:
+            value: '*resp_bytes*'
+            case_insensitive: true
+      - wildcard:
+          fields.source_ip.kw:
+            value: '*sent*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: long_duration_sessions
@@ -74,10 +100,21 @@ steps:
     to rare destinations.
   pivot: RemoteAddress
   es:
-    wildcard:
-      fields.source_ip.kw:
-        value: '*persistent*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.source_ip.kw:
+            value: '*duration*'
+            case_insensitive: true
+      - wildcard:
+          fields.source_ip.kw:
+            value: '*long*'
+            case_insensitive: true
+      - wildcard:
+          fields.source_ip.kw:
+            value: '*persistent*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: port_protocol_mismatch
@@ -87,12 +124,29 @@ steps:
     labels vs port reveal the lie.'
   pivot: RemotePort
   es:
-    wildcard:
-      text.wc:
-        value: '*443*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*443*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*80*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*53*'
+            case_insensitive: true
+      - term:
+          event_id: '3389'
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - '443: free phrase; the step''s pivot names no registry column'
+  - '80: free phrase; the step''s pivot names no registry column'
+  - '53: free phrase; the step''s pivot names no registry column'
 - name: dns_tunnel_volume
   query: dns OR query OR TXT OR NULL
   look_for: 'DNS tunneling profile: query VOLUME per host (tunnels need thousands),
@@ -100,12 +154,32 @@ steps:
     query counts — tunnels are statistical outliers.'
   pivot: QueryName
   es:
-    wildcard:
-      text.wc:
-        value: '*dns*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*dns*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*query*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*TXT*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*NULL*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'dns: free phrase; the step''s pivot names no registry column'
+  - 'query: free phrase; the step''s pivot names no registry column'
+  - 'TXT: free phrase; the step''s pivot names no registry column'
+  - 'NULL: free phrase; the step''s pivot names no registry column'
 - name: lateral_flows
   query: 445 OR 3389 OR 5985 OR 135 OR 22
   look_for: 'Internal lateral flows: SMB 445, RDP 3389, WinRM 5985/5986, RPC 135,
@@ -114,10 +188,25 @@ steps:
   pivot: DestIp
   corroborate: matching 4624 type-3/10 on the destination host
   es:
-    wildcard:
-      fields.dest_ip.kw:
-        value: '*445*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.dest_ip.kw:
+            value: '*445*'
+            case_insensitive: true
+      - term:
+          event_id: '3389'
+      - term:
+          event_id: '5985'
+      - wildcard:
+          fields.dest_ip.kw:
+            value: '*135*'
+            case_insensitive: true
+      - wildcard:
+          fields.dest_ip.kw:
+            value: '*22*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 negative: No anomalous sessions, asymmetric flows, or beacon patterns → network C2/exfil

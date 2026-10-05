@@ -44,10 +44,25 @@ steps:
   pivot: ProcessName
   corroborate: parent/child chain — process exists but parentage impossible = inject/DCOM
   es:
-    wildcard:
-      fields.process_name.kw:
-        value: '*explorer.exe*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.process_name.kw:
+            value: '*pslist*'
+            case_insensitive: true
+      - wildcard:
+          fields.process_name.kw:
+            value: '*pstree*'
+            case_insensitive: true
+      - wildcard:
+          fields.process_name.kw:
+            value: '*svchost*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*explorer.exe*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: &id001
     - vol
@@ -63,10 +78,21 @@ steps:
     so absence from the tree alone is not proof — corroborate with psscan.'
   pivot: ProcessName
   es:
-    wildcard:
-      fields.process_name.kw:
-        value: '*psxview*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.process_name.kw:
+            value: '*psxview*'
+            case_insensitive: true
+      - wildcard:
+          fields.process_name.kw:
+            value: '*psscan*'
+            case_insensitive: true
+      - wildcard:
+          fields.process_name.kw:
+            value: '*unlink*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: injection_classification
@@ -77,10 +103,21 @@ steps:
     or process doppelganging. Each leaves different VAD/PEB residue.'
   pivot: ProcessName
   es:
-    wildcard:
-      fields.process_name.kw:
-        value: '*PAGE_EXECUTE_READWRITE*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.process_name.kw:
+            value: '*malfind*'
+            case_insensitive: true
+      - wildcard:
+          fields.process_name.kw:
+            value: '*VAD*'
+            case_insensitive: true
+      - wildcard:
+          fields.process_name.kw:
+            value: '*PAGE_EXECUTE_READWRITE*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: webshell_exec_chain
@@ -91,10 +128,25 @@ steps:
   pivot: ParentImage
   corroborate: IIS logs showing POSTs to the rogue page in the same window
   es:
-    wildcard:
-      fields.parent_process.kw:
-        value: '*w3wp.exe*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.file_path.kw:
+            value: '*w3wp.exe*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*net.exe*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*whoami.exe*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*ipconfig.exe*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: credential_material
@@ -104,10 +156,25 @@ steps:
     proves theft disk artifacts miss.'
   pivot: ProcessName
   es:
-    wildcard:
-      fields.process_name.kw:
-        value: '*lsass.exe*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.file_path.kw:
+            value: '*lsass.exe*'
+            case_insensitive: true
+      - wildcard:
+          fields.process_name.kw:
+            value: '*mimikatz*'
+            case_insensitive: true
+      - wildcard:
+          fields.process_name.kw:
+            value: '*wdigest*'
+            case_insensitive: true
+      - wildcard:
+          fields.process_name.kw:
+            value: '*sekurlsa*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: dump_for_analysis
@@ -116,10 +183,25 @@ steps:
     analysis — the dump is evidence, record its hash and the source PID/offset.
   pivot: ProcessName
   es:
-    wildcard:
-      fields.process_name.kw:
-        value: '*.dmp*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.process_name.kw:
+            value: '*procdump*'
+            case_insensitive: true
+      - wildcard:
+          fields.process_name.kw:
+            value: '*memdump*'
+            case_insensitive: true
+      - wildcard:
+          fields.process_name.kw:
+            value: '*.dmp*'
+            case_insensitive: true
+      - wildcard:
+          fields.process_name.kw:
+            value: '*dlldump*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 negative: Clean tree + no VAD anomalies + no cross-view gaps → memory shows no active

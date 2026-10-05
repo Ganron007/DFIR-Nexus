@@ -50,10 +50,29 @@ steps:
   corroborate: a file present in a VSS snapshot but absent from the live volume proves
     deletion
   es:
-    wildcard:
-      fields.FileName.kw:
-        value: '*shadowcopy*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.file_path.kw:
+            value: '*vssadmin*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*shadowcopy*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*vsc*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*\\?\GLOBALROOT*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*plaso*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: &id001
     - mftecmd
@@ -70,10 +89,21 @@ steps:
     NTFS host.'
   pivot: FileName
   es:
-    wildcard:
-      fields.FileName.kw:
-        value: '*GLOBALROOT*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.file_path.kw:
+            value: '*GLOBALROOT*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*HarddiskVolumeShadowCopy*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*shadow copy mount*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: alternate_data_streams
@@ -85,10 +115,25 @@ steps:
   pivot: FileName
   corroborate: the ADS content hash matches a known payload on disk or in memory
   es:
-    wildcard:
-      fields.FileName.kw:
-        value: '*Alternate*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.file_path.kw:
+            value: '*Alternate Data Stream*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*:Zone.Identifier*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*$DATA*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*stream*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: recycle_bin_artifacts
@@ -99,10 +144,25 @@ steps:
   pivot: FileName
   corroborate: the deleted file's hash matches a payload found in prefetch/Sysmon
   es:
-    wildcard:
-      fields.FileName.kw:
-        value: '*RECYCLE.BIN*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.file_path.kw:
+            value: '*$I*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*$R*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*RECYCLE.BIN*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*recycle*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: timestomp_detection
@@ -115,12 +175,34 @@ steps:
   corroborate: USN journal or $LogFile shows the file was written after its claimed
     $SI time
   es:
-    wildcard:
-      fields.FileName.kw:
-        value: '*$STANDARD_INFORMATION*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.file_path.kw:
+            value: '*$SI*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*$FN*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*$STANDARD_INFORMATION*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*0x10*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*0x30*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - '0x10: no typed column for a hex mask in these families'
+  - '0x30: no typed column for a hex mask in these families'
 - name: usn_and_journal_gaps
   query: $UsnJrnl OR USN OR $LogFile OR journal
   look_for: USN journal ($UsnJrnl:$J) records create/delete/rename/data-change — gaps
@@ -128,10 +210,25 @@ steps:
     against the MFT. This dates activity and exposes cleanup.
   pivot: FileName
   es:
-    wildcard:
-      fields.FileName.kw:
-        value: '*$UsnJrnl*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.file_path.kw:
+            value: '*$UsnJrnl*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*USN*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*$LogFile*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*journal*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 negative: No shadow copies, no ADS, empty/absent Recycle Bin, consistent $SI/$FN timestamps,

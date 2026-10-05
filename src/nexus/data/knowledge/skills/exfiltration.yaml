@@ -35,10 +35,29 @@ steps:
   look_for: Archive tool runs with staging paths; large new archives in mft/usn.
   pivot: CommandLine
   es:
-    wildcard:
-      fields.command_line.kw:
-        value: '*rar.exe*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.file_path.kw:
+            value: '*rar.exe*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*7z.exe*'
+            case_insensitive: true
+      - wildcard:
+          fields.command_line.kw:
+            value: '*Compress-Archive*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*.rar*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*.7z*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: &id001
     - evtx
@@ -53,10 +72,25 @@ steps:
   look_for: New directories under %TEMP%/%ProgramData% collecting files.
   pivot: Path
   es:
-    wildcard:
-      fields.path.kw:
-        value: '*staging*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.path.kw:
+            value: '*staging*'
+            case_insensitive: true
+      - wildcard:
+          fields.path.kw:
+            value: '*exfil*'
+            case_insensitive: true
+      - wildcard:
+          fields.path.kw:
+            value: '*collect*'
+            case_insensitive: true
+      - wildcard:
+          fields.path.kw:
+            value: '*loot*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: cloud_upload
@@ -64,32 +98,84 @@ steps:
   look_for: Browser hits / netstat flows to upload-friendly services.
   pivot: URL
   es:
-    wildcard:
-      text.wc:
-        value: '*mega.nz*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*mega.nz*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*dropbox*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*drive.google*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*pastebin*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*transfer.sh*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'mega.nz: free phrase; the step''s pivot names no registry column'
+  - 'dropbox: free phrase; the step''s pivot names no registry column'
+  - 'drive.google: free phrase; the step''s pivot names no registry column'
+  - 'pastebin: free phrase; the step''s pivot names no registry column'
+  - 'transfer.sh: free phrase; the step''s pivot names no registry column'
 - name: dns_tunneling
   query: nslookup OR dig OR TXT record OR dns
   look_for: High-volume DNS queries with long/random subdomains.
   pivot: QueryName
   es:
-    wildcard:
-      text.wc:
-        value: '*nslookup*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*nslookup*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*dig*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*TXT record*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*dns*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'nslookup: free phrase; the step''s pivot names no registry column'
+  - 'dig: free phrase; the step''s pivot names no registry column'
+  - 'TXT record: free phrase; the step''s pivot names no registry column'
+  - 'dns: free phrase; the step''s pivot names no registry column'
 - name: large_outbound
   query: netstat -an OR BytesSent
   look_for: SRUM/netstat showing large BytesSent from unusual processes.
   pivot: AppName
   es:
-    wildcard:
-      fields.name.kw:
-        value: '*BytesSent*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.name.kw:
+            value: '*netstat -an*'
+            case_insensitive: true
+      - wildcard:
+          fields.name.kw:
+            value: '*BytesSent*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: ftp_exfil
@@ -97,10 +183,25 @@ steps:
   look_for: FTP/SFTP command-line transfers to external IPs.
   pivot: CommandLine
   es:
-    wildcard:
-      fields.command_line.kw:
-        value: '*ftp.exe*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.file_path.kw:
+            value: '*ftp.exe*'
+            case_insensitive: true
+      - wildcard:
+          fields.command_line.kw:
+            value: '*sftp*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*scp.exe*'
+            case_insensitive: true
+      - wildcard:
+          fields.command_line.kw:
+            value: '*pscp*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: bitsadmin_transfer
@@ -109,10 +210,17 @@ steps:
     many proxy controls and survives reboots.
   pivot: CommandLine
   es:
-    wildcard:
-      fields.command_line.kw:
-        value: '*bitsadmin*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.command_line.kw:
+            value: '*bitsadmin*'
+            case_insensitive: true
+      - wildcard:
+          fields.command_line.kw:
+            value: '*Start-BitsTransfer*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: theft_sequence
@@ -124,12 +232,32 @@ steps:
   corroborate: archive creation timestamp vs outbound-flow window vs last file access
     times
   es:
-    wildcard:
-      text.wc:
-        value: '*rar*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*rar*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*7z*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*zip*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*copy*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'rar: free phrase; the step''s pivot names no registry column'
+  - '7z: free phrase; the step''s pivot names no registry column'
+  - 'zip: free phrase; the step''s pivot names no registry column'
+  - 'copy: free phrase; the step''s pivot names no registry column'
 negative: No archive creation, staging dirs, or large outbound flows → exfiltration
   not evident; check for in-place destruction (ransomware) instead.
 confidence_rules:

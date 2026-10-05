@@ -129,20 +129,7 @@ def validate_pack(
 
         es = item.get("es")
         if es is None:
-            # Fallback check if legacy dsl was passed in test
-            if "dsl" in item:
-                from nexus.analysis.behavioural_analytics import negation_is_honoured
-
-                dsl = str(item.get("dsl") or "")
-                if not negation_is_honoured(dsl):
-                    problems.append(
-                        f"{where}: uses `not field:value`, which the DSL parses as a "
-                        "POSITIVE filter - the analytic would assert the opposite; "
-                        "express the exclusion as a follow-on filter instead"
-                    )
-                problems.append(f"{where}: missing es (has legacy dsl)")
-            else:
-                problems.append(f"{where}: missing es")
+            problems.append(f"{where}: missing es")
         else:
             es_problems = validate_stored_query(
                 es, declared_families=families, citation=item.get("citation")
@@ -283,68 +270,16 @@ def _es_clause_matches(clause: dict[str, Any], record: dict[str, Any]) -> bool:
 
 
 def matches_record(analytic: dict[str, Any], record: dict[str, Any]) -> bool:
-    """Whether *record* satisfies *analytic*'s query.
+    """Whether *record* satisfies *analytic*'s stored ES query.
 
-    Evaluates the stored ES query (`es:`) against the in-memory record.
+    ES query JSON only (WO-KR2b). The Mode 1 query parser is not imported here: a
+    stored query is ES query JSON, and an analytic without an `es:` matches nothing
+    rather than falling back to a syntax this layer does not speak.
     """
     es = (analytic or {}).get("es")
     if isinstance(es, dict) and es:
         return _es_clause_matches(es, record)
-
-    # Legacy dsl fallback
-    dsl = str((analytic or {}).get("dsl") or "").strip()
-    if not dsl or not record:
-        return False
-    from nexus.langgraph.query_dsl import parse_query
-
-    parsed = parse_query(dsl)
-
-    def _norm(name: str) -> str:
-        return str(name or "").replace("_", "").replace(" ", "").lower()
-
-    lowered = {_norm(k): v for k, v in record.items()}
-
-    def _has(name: str) -> bool:
-        value = lowered.get(_norm(name))
-        return value is not None and str(value).strip() != ""
-
-    def _text(name: str) -> str:
-        return str(lowered.get(_norm(name)) or "")
-
-    for filt in parsed.filters:
-        op = str(filt.get("op") or "contains")
-        if op == "exists":
-            if not _has(str(filt.get("value") or "")):
-                return False
-            continue
-        name = str(filt.get("name") or "")
-        if op == "in":
-            values = [str(v).lower() for v in (filt.get("values") or [])]
-            if _text(name).lower() not in values:
-                return False
-        elif op == "eq":
-            if _text(name).lower() != str(filt.get("value") or "").lower():
-                return False
-        else:  # contains
-            needle = str(filt.get("value") or "").lower()
-            if needle and needle not in _text(name).lower():
-                return False
-    for term in parsed.not_terms:
-        needle = str(term).lower()
-        if any(needle in str(v).lower() for v in lowered.values()):
-            return False
-    return True
-
-
-def negation_is_honoured(dsl: str) -> bool:
-    """Whether *dsl* contains a `not field:` term the parser will ignore."""
-    return _re_negated(dsl) is None
-
-
-def _re_negated(dsl: str):
-    import re
-
-    return re.search(r"\bnot\s+[A-Za-z_][\w.\-]*\s*:", str(dsl or ""))
+    return False
 
 
 def analytics_for(

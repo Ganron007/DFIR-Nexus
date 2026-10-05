@@ -3,12 +3,14 @@
 A skill in this repo is a *method*: a trigger, a list of steps, a negative rule
 and caveats. Three things were missing for an examiner to trust it:
 
-* **A typed query per step.** Steps carried a free-text `query` only
+* **A stored ES query per step.** Steps carried a free-text `query` only
   (252 of 252), so a step could not be executed against the index and its result
-  could not be recorded. `dsl_for_step` supplies the typed form (an authored
-  `dsl:` when present, otherwise derived from the step's `pivot` and its query
-  text) and `validate_skill_dsl` proves every one parses against the registry.
-  The free-text `query` stays for display.
+  could not be recorded. Each step now carries an `es:` (ES query JSON, built by
+  `devtools/knowledge/convert_to_es.py` under WO-KR2b, which keeps every
+  OR-alternative) and `validate_skill_dsl` proves every one validates against the
+  registry. The free-text `query` stays for display. **Mode 1's query syntax is
+  not a storage format** (backbone 4k.5.5): no reader in this module imports
+  `query_dsl`, and `dsl_for_step` is gone.
 * **A declaration of what the skill needs.** No skill declared `requires`
   (0 of 37), so a skill whose evidence was absent still presented itself as
   applicable. `derive_requires` computes `{families, lanes}` and
@@ -134,110 +136,20 @@ def resolve_field(pivot: str, available: Iterable[str] | None = None) -> str:
     return ""
 
 
-def _first_needle(query: str) -> str:
-    """The most specific-looking token of a free-text query.
-
-    Skips the boolean glue words an authored query uses ("OR", "and"), the very
-    short tokens that would match everything, and any token containing a colon
-    that is not already a typed `field:value` filter - a bare term with a colon
-    would be read as an unknown field and refused.
-    """
-    glue = {"or", "and", "not", "the", "a", "an"}
-    best = ""
-    for token in str(query or "").replace('"', " ").split():
-        clean = token.strip(",;()[]")
-        if not clean or clean.lower() in glue:
-            continue
-        if ":" in clean and not _looks_like_typed(clean):
-            continue
-        # Prefer a dotted name, a path fragment or a hex mask over a bare word.
-        score = (("." in clean) or ("\\" in clean) or ("/" in clean)
-                 or clean.lower().startswith("0x") or (len(clean) > 8))
-        if score:
-            return clean
-        if not best:
-            best = clean
-    return best
-
-
-def dsl_for_step(step: dict[str, Any], available: Iterable[str] | None = None) -> str:
-    """The typed query for a step.
-
-    An authored ``dsl:`` wins. Otherwise, in order:
-
-    1. the step's ``pivot`` resolved to a registry column, with the first
-       distinctive token of ``query`` as the value;
-    2. when there is no usable pivot, a **bare text term** from the query. A bare
-       term is a valid DSL form (it becomes an OR term searched across the
-       document), so the step is executable rather than blocked - and the
-       free-text ``query`` remains for display either way.
-    """
-    authored = str((step or {}).get("dsl") or "").strip()
-    if authored:
-        return authored
-    value = _first_needle(str((step or {}).get("query") or ""))
-    pivot = str((step or {}).get("pivot") or "").strip()
-    field = resolve_field(pivot, available)
-    # A resolved column containing a space (`Source Address`) cannot be emitted as
-    # `field:value` - the DSL would read it as the field after the space. Fall
-    # back to a bare term rather than emitting a query that means something else.
-    if field and " " in field:
-        field = ""
-    if field and value:
-        if value.lower() in ("any", "*"):
-            return f"exists:{field}"
-        return f"{field}:{value}"
-    if not value:
-        return ""
-    # The query may already be typed: `file:cookies`, `eventid:1102`. `file` and
-    # the other core envelope columns are legitimate filters, so accept the term
-    # as written rather than refusing it for containing a colon.
-    if _looks_like_typed(value):
-        return value
-    return value if _is_bare_term_safe(value) else ""
-
-
-#: Core envelope columns the DSL accepts on every case.
-_CORE_ENVELOPE = frozenset({
-    "family", "file", "host", "user", "event", "eventid", "event_id", "line",
-    "computer", "machine",
-})
-
-
-def _looks_like_typed(value: str) -> bool:
-    """Whether a token is already a usable `field:value` filter."""
-    if ":" not in value:
-        return False
-    head = value.split(":", 1)[0].strip().lower()
-    return bool(head) and head.replace("-", "_") in _CORE_ENVELOPE
-
-
-def _is_bare_term_safe(value: str) -> bool:
-    """Whether a token can be a bare DSL term.
-
-    A term with a colon would be read as a `field:value` filter and rejected as
-    an unknown field, so those are not safe to emit bare.
-    """
-    return ":" not in value and bool(value.strip())
-
-
 def step_records(
     skill: dict[str, Any],
     available: Iterable[str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Every step with its typed query and whether that query is usable."""
+    """Every step with its stored ES query and whether that query is usable."""
     out: list[dict[str, Any]] = []
     for index, step in enumerate((skill or {}).get("steps") or []):
         if not isinstance(step, dict):
             continue
-        dsl = dsl_for_step(step, available)
         es_query = step.get("es")
         out.append({
             "index": index,
             "name": str(step.get("name") or f"step{index + 1}"),
             "query": str(step.get("query") or ""),
-            "dsl": dsl,
-            "has_dsl": bool(dsl),
             "es": es_query,
             "has_es": isinstance(es_query, dict) and bool(es_query),
             "pivot": str(step.get("pivot") or ""),
@@ -289,36 +201,18 @@ def validate_skill_dsl(
     skill: dict[str, Any],
     available: Iterable[str] | None = None,
 ) -> list[str]:
-    """Every problem with a skill's step queries (empty == all usable)."""
-    from nexus.langgraph.query_dsl import QuerySyntaxError, parse_query
+    """Every problem with a skill's stored queries (empty == all usable).
 
+    The name is kept for its callers. Since WO-KR2b it checks **only** the stored
+    ES queries: the Mode 1 query parser is not imported here, because a stored
+    query is ES query JSON and no stored-knowledge reader speaks Mode 1's syntax.
+    """
     problems = list(validate_skill_steps(skill, available))
-
-    known = {_norm(c): str(c) for c in (available or [])} or None
     for record in step_records(skill, available):
-        if not record["has_dsl"] and not record["has_es"]:
+        if not record["has_es"]:
             problems.append(
-                f"{record['name']}: no typed query - pivot "
-                f"{record['pivot']!r} is not a known field, or the query has no value"
+                f"{record['name']}: no stored ES query - the step is not executable"
             )
-            continue
-        if record["has_dsl"]:
-            try:
-                parsed = parse_query(record["dsl"])
-            except QuerySyntaxError as exc:
-                problems.append(f"{record['name']}: dsl does not parse: {exc}")
-                continue
-            if known is not None:
-                for filt in parsed.filters:
-                    if str(filt.get("op") or "") == "exists":
-                        named = _norm(filt.get("value")) or ""
-                    else:
-                        named = _norm(filt.get("name")) or ""
-                    if named and named not in known:
-                        problems.append(
-                            f"{record['name']}: field {filt.get('name') or filt.get('value')!r} "
-                            "is not in the registry"
-                        )
     return problems
 
 
@@ -445,8 +339,8 @@ def run_skill_steps(
 
     results: list[dict[str, Any]] = []
     for record in step_records(skill, available):
-        query_payload = record.get("es") if record.get("has_es") else record.get("dsl")
-        has_query = bool(record.get("has_es") or record.get("has_dsl"))
+        query_payload = record.get("es")
+        has_query = bool(record.get("has_es"))
         if not has_query:
             results.append({**record, "result": "not_applicable",
                             "reason": "no typed query for this step"})

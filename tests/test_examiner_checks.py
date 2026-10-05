@@ -393,9 +393,11 @@ def test_mode2_records_steps_not_applicable_rather_than_false_none():
         assert summary.get("not_applicable", 0) > 0, summary
         for step in record.get("steps") or []:
             assert step["result"] == "not_applicable"
-            # The reason must name the separation, not just "no searcher".
-            assert "Mode 1 DSL" in step["reason"], step["reason"]
-            assert "Elasticsearch directly" in step["reason"], step["reason"]
+            # A step now HAS a stored ES query; the only thing missing is the
+            # executor (WO-KR3). The old reason claimed the surface could not
+            # speak the query, which became false at the KR2b re-conversion.
+            assert "WO-KR3" in step["reason"], step["reason"]
+            assert "Mode 1 DSL" not in step["reason"], step["reason"]
 
 
 def test_the_skill_step_searcher_contract_is_the_surface_language():

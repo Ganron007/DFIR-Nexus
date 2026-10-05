@@ -1,0 +1,41 @@
+# WO-KR2b - the behavioural analytics' AUTHORED queries, pinned.
+#
+# Recovered from the revision before KR2 deleted the `dsl:` keys, so the stored
+# `es:` can be regenerated reproducibly and a reviewer can read what each analytic
+# was authored to say. Design time only: nothing in src/nexus reads this file.
+#
+# Regenerate with: python devtools/knowledge/pin_analytics_source.py
+source_rev: 81c0cc1^
+source_path: src/nexus/data/knowledge/needles/behavioral_analytics.yaml
+queries:
+  ba-exec-user-writable: file_path:AppData
+  ba-exec-temp: file_path:Temp
+  ba-exec-programdata: file_path:ProgramData
+  ba-exec-script-host: process_name:in:(wscript.exe,cscript.exe,mshta.exe) and command_line:.js
+  ba-exec-encoded-command: command_line:in:(-enc,-EncodedCommand,-nop,-noprofile)
+  ba-exec-lolbin-download: process_name:in:(certutil.exe,bitsadmin.exe,curl.exe,msiexec.exe) and command_line:http
+  ba-persist-service-temp: registry_key:Services and file_path:AppData
+  ba-persist-service-new: eventid:in:(7045,4697)
+  ba-persist-run-usbable: registry_key:Run and file_path:AppData
+  ba-persist-runonce: registry_key:RunOnce
+  ba-persist-task-script-host: exists:task_uri and command_line:in:(powershell,wscript,cscript,mshta,-enc)
+  ba-persist-task-hidden: registry_key:TaskCache
+  ba-persist-wmi-subscription: registry_key:Subscription
+  ba-persist-startup-folder: file_path:Startup
+  ba-cred-lsass-nonsystem: command_line:lsass
+  ba-cred-lsass-path: command_line:lsass and file_path:AppData
+  ba-cred-dcsync-nondc: eventid:4662 and exists:user
+  ba-cred-new-local-admin: eventid:4732 and command_line:Administrators
+  ba-cred-logon-type3: eventid:4624 and logon_type:3
+  ba-cred-rdp-firstseen: eventid:in:(4624,4778) and logon_type:10 and exists:source_ip
+  ba-cred-kerberoast: eventid:4769 and command_line:0x17
+  ba-eva-log-cleared: eventid:1102
+  ba-eva-audit-policy: eventid:4719
+  ba-eva-defender-exclusion: registry_key:Windows Defender
+  ba-eva-service-stopped: eventid:7036 and command_line:stopped
+  ba-eva-timestomp: exists:file_path and exists:targetmodified
+  ba-lat-smb-admin-share: command_line:ADMIN$
+  ba-lat-remote-service-create: eventid:7045 and logon_type:3
+  ba-lat-wmi-exec: parent_process:wmiprvse.exe
+  ba-col-powershell-transcript: eventid:4104 and command_line:in:(DownloadString,IEX,FromBase64String)
+  ba-col-archive-staging: file_path:in:(.zip,.7z,.rar)

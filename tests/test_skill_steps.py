@@ -9,6 +9,7 @@ The work order's four tests, made real:
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -23,7 +24,6 @@ from nexus.analysis.skill_steps import (
     citation_grade,
     declared_requires,
     derive_requires,
-    dsl_for_step,
     methodology_only,
     run_skill_steps,
     step_records,
@@ -51,15 +51,15 @@ def skills() -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# every step has a typed query that parses
+# every step has a stored ES query that validates
 # ---------------------------------------------------------------------------
 
-def test_every_skill_step_has_a_typed_query(skills):
+def test_every_skill_step_has_a_stored_es_query(skills):
     """The work order's first test, over the whole catalog.
 
-    Measured before this landed: 0 of 252 steps carried a `dsl:`. Now every one
-    resolves - an authored dsl, a pivot-derived field filter, or a bare term -
-    and every one parses against the registry.
+    Measured before KR2: 0 of 252 steps carried a query the index could run. Every
+    step now carries an `es:` (WO-KR2b), and `validate_skill_dsl` proves it
+    validates against the registry - the fields and the citation included.
     """
     fields = catalog_fields()
     total = 0
@@ -68,37 +68,27 @@ def test_every_skill_step_has_a_typed_query(skills):
         records = step_records(skill, fields)
         total += len(records)
         for record in records:
-            if not record["has_dsl"]:
-                problems.append(f"{skill.get('skill')}/{record['name']}: no typed query")
+            if not record["has_es"]:
+                problems.append(f"{skill.get('skill')}/{record['name']}: no stored es:")
         problems += [f"{skill.get('skill')}: {p}" for p in validate_skill_dsl(skill, fields)]
     assert total >= 250, f"only {total} steps found - the catalog did not load"
     assert problems == [], "\n".join(problems[:12])
 
 
-def test_a_pivot_resolves_to_a_real_column_or_is_reported():
-    """A pivot naming a real column produces `column:value`; one that does not
-    must still yield a usable query rather than a silent empty string."""
-    exact = dsl_for_step({"pivot": "KeyPath", "query": "Run svchost"}, {"KeyPath"})
-    assert exact.startswith("KeyPath:"), exact
-
-    # An unknown pivot still yields a bare term - the step stays executable.
-    bare = dsl_for_step({"pivot": "NoSuchField", "query": "localtime"}, {"KeyPath"})
-    assert bare and ":" not in bare, bare
-
-    # A column name containing a space cannot be emitted as `field:value`: the
-    # DSL would read the field after the space, so it falls back to a bare term.
-    spaced = dsl_for_step({"pivot": "SourceAddress", "query": "10.0.0.9"},
-                          {"Source Address"})
-    assert " " not in spaced.split(":")[0], spaced
+def test_a_step_without_a_stored_query_is_reported_not_silently_skipped():
+    """`validate_skill_dsl` names a step that has no `es:`."""
+    skill = {"skill": "fixture", "steps": [{"name": "no-query", "query": "x"}]}
+    problems = validate_skill_dsl(skill, ["KeyPath"])
+    assert any("no stored ES query" in p for p in problems), problems
 
 
-def test_an_authored_dsl_wins_over_derivation():
-    step = {"pivot": "CommandLine", "query": "mimikatz", "dsl": "command_line:lsass"}
-    assert dsl_for_step(step, {"command_line"}) == "command_line:lsass"
-
-
-def test_a_step_with_no_query_yields_nothing_rather_than_a_match_all():
-    assert dsl_for_step({"pivot": "KeyPath", "query": ""}, {"KeyPath"}) == ""
+def test_step_records_expose_no_mode1_dsl_field(skills):
+    """WO-KR2b: `step_records` carries no `dsl`/`has_dsl` - the leftovers are gone."""
+    records = step_records(skills[0], catalog_fields())
+    assert records
+    for record in records:
+        assert "dsl" not in record, sorted(record)
+        assert "has_dsl" not in record, sorted(record)
 
 
 # ---------------------------------------------------------------------------
@@ -171,14 +161,14 @@ def test_a_run_records_hit_none_and_not_applicable():
     skill = {
         "skill": "s", "trigger": {"families": ["evtx"]},
         "steps": [
-            {"name": "has_hits", "pivot": "CommandLine", "query": "mimikatz"},
-            {"name": "no_hits", "pivot": "CommandLine", "query": "nosuchtoken"},
-            {"name": "no_query", "pivot": "CommandLine", "query": ""},
+            {"name": "has_hits", "es": {"wildcard": {"text.wc": {"value": "*mimikatz*"}}}},
+            {"name": "no_hits", "es": {"wildcard": {"text.wc": {"value": "*nosuchtoken*"}}}},
+            {"name": "no_es"},
         ],
     }
 
-    def searcher(dsl, _limit):
-        return {"count": 3 if "mimikatz" in dsl else 0}
+    def searcher(query, _limit):
+        return {"count": 3 if "mimikatz" in json.dumps(query) else 0}
 
     out = run_skill_steps(skill, es_search=searcher, available={"command_line"},
                           case_families=["evtx"])
@@ -188,7 +178,7 @@ def test_a_run_records_hit_none_and_not_applicable():
     assert by_name["has_hits"]["hits"] == 3
     assert by_name["no_hits"]["result"] == "none"
     assert "matched no rows" in by_name["no_hits"]["reason"]
-    assert by_name["no_query"]["result"] == "not_applicable"
+    assert by_name["no_es"]["result"] == "not_applicable"
     assert out["summary"]["hit"] == 1
     assert out["summary"]["none"] == 1
     assert out["summary"]["not_applicable"] == 1
@@ -197,7 +187,7 @@ def test_a_run_records_hit_none_and_not_applicable():
 def test_without_a_searcher_every_step_is_not_applicable_never_none():
     """A step that could not run must never be recorded as having found nothing."""
     skill = {"skill": "s", "trigger": {"families": ["evtx"]},
-             "steps": [{"name": "a", "pivot": "CommandLine", "query": "lsass"}]}
+             "steps": [{"name": "a", "es": {"wildcard": {"text.wc": {"value": "*lsass*"}}}}]}
     out = run_skill_steps(skill, es_search=None, available={"command_line"},
                           case_families=["evtx"])
     assert [step["result"] for step in out["steps"]] == ["not_applicable"]
@@ -207,19 +197,17 @@ def test_without_a_searcher_every_step_is_not_applicable_never_none():
 
 def test_a_failing_step_does_not_lose_the_others():
     skill = {"skill": "s", "trigger": {"families": ["evtx"]},
-             "steps": [{"name": "boom", "pivot": "CommandLine", "query": "a"},
-                       {"name": "ok", "pivot": "CommandLine", "query": "b"}]}
+             "steps": [{"name": "boom", "es": {"wildcard": {"text.wc": {"value": "*aaa*"}}}},
+                       {"name": "ok", "es": {"wildcard": {"text.wc": {"value": "*bbb*"}}}}]}
 
-    def searcher(dsl, _limit):
-        # Match the VALUE, not the field name - "command_line" itself contains
-        # an "a", which made both steps raise and the test pass for the wrong
+    def searcher(query, _limit):
+        # Key off the VALUE, not the field name - "text.wc" itself could contain
+        # the marker, which made both steps raise and the test pass for the wrong
         # reason before this was fixed.
-        if dsl.endswith(":aaa"):
+        if "aaa" in json.dumps(query):
             raise RuntimeError("index exploded")
         return {"count": 1}
 
-    skill["steps"] = [{"name": "boom", "pivot": "CommandLine", "query": "aaa"},
-                      {"name": "ok", "pivot": "CommandLine", "query": "bbb"}]
     out = run_skill_steps(skill, es_search=searcher, available={"command_line"},
                           case_families=["evtx"])
     by_name = {step["name"]: step for step in out["steps"]}

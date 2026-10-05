@@ -981,9 +981,12 @@ def _record_skill_steps(
     applicable step and record the outcome, so a step that could not run is never
     read as a step that found nothing.
 
-    On **this** surface (Mode 2/3, ES-only) no step is run, and each is recorded
-    `not_applicable` with the reason — a step's `dsl:` is Mode 1's query language,
-    which this surface does not speak (backbone 4k.5.5). See the block below.
+    **This surface still runs nothing** - the executor is WO-KR3, not yet wired -
+    so each step is recorded `not_applicable` with that reason. What changed at
+    KR2b: a step now **has** a stored `es:` query, so the reason can no longer say
+    "the step's query is Mode 1 DSL". That was true before the re-conversion and
+    false after it; recording it would have told the examiner a step was
+    unexecutable when the only thing missing was the executor.
     `max_queries` is retained only so the signature is unchanged. Set
     `NEXUS_SKILL_STEP_RECORD=0` to skip recording entirely.
     """
@@ -991,24 +994,15 @@ def _record_skill_steps(
         return []
     if not order.skill_refs:
         return []
-    # Mode 2/3 use ES directly; the typed DSL is Mode 1 only (backbone 4k.5.5:
-    # "the Mode 2/3 agent surface is ES-only. The typed DSL lives in the MCP tools
-    # for Mode 1 / deterministic paths - never here"). A step's `dsl:` is therefore
-    # a Mode 1 artefact and must not be handed to `es_search`, which takes ES query
-    # JSON: an earlier version did exactly that, the searcher swallowed the
-    # ESQueryError and returned 0, and EVERY step was recorded `none` ("ran, found
-    # nothing") - nine false negatives on a nine-step skill.
-    #
-    # So each step is recorded `not_applicable` with the reason, which is honest and
-    # cheap. Per-step execution on this surface would need a step form authored as an
-    # ES query for that purpose, not a translation of Mode 1's DSL.
+    # Mode 2/3 use ES directly (backbone 4k.5.5): the agent surface takes ES query
+    # JSON, and a step's stored `es:` is exactly that. The executor has not been
+    # wired here yet - that is WO-KR3, which runs the stored queries in the lead
+    # builder for every mode - so the honest record is "not wired yet", not "this
+    # surface cannot speak the query".
 
     from nexus.analysis.skill_steps import run_skill_steps
 
-    reason = (
-        "the step's query is Mode 1 DSL; this mode queries Elasticsearch directly "
-        "(backbone 4k.5.5), so the step is not run here"
-    )
+    reason = "stored queries execute in the lead builder (WO-KR3), not wired yet"
     by_id = _skill_lookup()
     out: list[dict[str, Any]] = []
     for ref in order.skill_refs:

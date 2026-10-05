@@ -47,10 +47,33 @@ steps:
   pivot: device
   corroborate: acquisition tier is sufficient for the specific question being asked
   es:
-    wildcard:
-      fields.host.kw:
-        value: '*filesystem*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.host.kw:
+            value: '*adb*'
+            case_insensitive: true
+      - wildcard:
+          fields.host.kw:
+            value: '*backup*'
+            case_insensitive: true
+      - wildcard:
+          fields.host.kw:
+            value: '*AFU*'
+            case_insensitive: true
+      - wildcard:
+          fields.host.kw:
+            value: '*logical*'
+            case_insensitive: true
+      - wildcard:
+          fields.host.kw:
+            value: '*filesystem*'
+            case_insensitive: true
+      - wildcard:
+          fields.host.kw:
+            value: '*full file system*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: &id001
     - csv
@@ -66,12 +89,31 @@ steps:
   pivot: relativePath
   corroborate: a Manifest.db entry with no on-device file = deleted data
   es:
-    wildcard:
-      text.wc:
-        value: '*Manifest.plist*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*Manifest.plist*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*Manifest.db*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*IsEncrypted*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*Info.plist*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'Manifest.plist: free phrase; the step''s pivot names no registry column'
+  - 'IsEncrypted: free phrase; the step''s pivot names no registry column'
+  - 'Info.plist: free phrase; the step''s pivot names no registry column'
 - name: app_databases
   query: sqlite3 OR sms.db OR CallHistory OR WhatsApp OR location OR cookies
   look_for: 'App SQLite databases are the evidence: SMS/MMS (sms.db), call history,
@@ -81,12 +123,41 @@ steps:
   pivot: ZPHONE or value
   corroborate: a message/contact also appears in a second app or the cloud backup
   es:
-    wildcard:
-      text.wc:
-        value: '*sms.db*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*sqlite3*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*sms.db*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*CallHistory*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*WhatsApp*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*location*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*cookies*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'sqlite3: free phrase; the step''s pivot names no registry column'
+  - 'CallHistory: free phrase; the step''s pivot names no registry column'
+  - 'WhatsApp: free phrase; the step''s pivot names no registry column'
+  - 'location: free phrase; the step''s pivot names no registry column'
+  - 'cookies: free phrase; the step''s pivot names no registry column'
 - name: androidx_and_artifacts
   query: ANDROID_MEDIA OR /data/data OR shared_prefs OR apk OR package
   look_for: 'Android: /data/data/<package>/ holds app databases and shared_prefs;
@@ -95,12 +166,37 @@ steps:
     are high-signal.'
   pivot: package_name
   es:
-    wildcard:
-      text.wc:
-        value: '*ANDROID_MEDIA*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*ANDROID_MEDIA*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*/data/data*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*shared_prefs*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*apk*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*package*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'ANDROID_MEDIA: free phrase; the step''s pivot names no registry column'
+  - '/data/data: free phrase; the step''s pivot names no registry column'
+  - 'shared_prefs: free phrase; the step''s pivot names no registry column'
+  - 'apk: free phrase; the step''s pivot names no registry column'
+  - 'package: free phrase; the step''s pivot names no registry column'
 - name: deleted_and_cloud
   query: deleted OR free pages OR WAL OR cloud backup OR iCloud OR Drive
   look_for: 'Recover deleted records from SQLite free pages/WAL (mobile forensic tools)
@@ -109,12 +205,42 @@ steps:
     absence is not overstated.'
   pivot: record
   es:
-    wildcard:
-      text.wc:
-        value: '*deleted*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*deleted*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*free pages*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*WAL*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*cloud backup*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*iCloud*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*Drive*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'deleted: free phrase; the step''s pivot names no registry column'
+  - 'free pages: free phrase; the step''s pivot names no registry column'
+  - 'WAL: free phrase; the step''s pivot names no registry column'
+  - 'cloud backup: free phrase; the step''s pivot names no registry column'
+  - 'iCloud: free phrase; the step''s pivot names no registry column'
+  - 'Drive: free phrase; the step''s pivot names no registry column'
 negative: No relevant app data, no deleted records recovered, and no cloud sync for
   the window → the device shows no evidence for the question. This is bounded by the
   acquisition tier and app retention — a logical/backup acquisition cannot see deleted

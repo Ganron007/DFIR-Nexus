@@ -40,8 +40,8 @@ steps:
     date B before building anything. Unscoped timelines drown the examiner.'
   es:
     wildcard:
-      text.wc:
-        value: '*file:mft*'
+      file:
+        value: '*mft*'
         case_insensitive: true
   requires:
     families: &id001
@@ -61,10 +61,32 @@ steps:
     the activity). Choose your first pivots from the lead, not by browsing rows.
   pivot: TimeCreated
   es:
-    wildcard:
-      fields.TimeCreated:
-        value: '*family:evtx*'
-        case_insensitive: true
+    bool:
+      should:
+      - bool:
+          must:
+          - terms:
+              family:
+              - chainsaw
+              - deepbluecli
+              - evtx
+              - evtxecmd
+              - hayabusa
+              - ingest-evtx
+              - ingest-hayabusa
+              - ingest-kape
+              - powershell
+              - security
+              - sysmon
+              - system
+              - zircolite
+          - term:
+              event_id: '4624'
+      - term:
+          event_id: '4688'
+      - term:
+          event_id: '1102'
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: choose_process
@@ -73,10 +95,21 @@ steps:
     predict the data needed; super-timeline (log2timeline over ALL parsers) when you
     cannot. Triage cases usually start filesystem and graduate.
   es:
-    wildcard:
-      text.wc:
-        value: '*file:bodyfile*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          file:
+            value: '*mft*'
+            case_insensitive: true
+      - wildcard:
+          file:
+            value: '*bodyfile*'
+            case_insensitive: true
+      - wildcard:
+          file:
+            value: '*fls*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: merge_mft_into_plaso
@@ -87,10 +120,17 @@ steps:
     registry + browser + the entire file system in one sorted stream.'
   corroborate: psort -o l2tcsv with a date filter produces the review CSV
   es:
-    wildcard:
-      text.wc:
-        value: '*file:plaso*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          file:
+            value: '*mft*'
+            case_insensitive: true
+      - wildcard:
+          file:
+            value: '*plaso*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: filter_reduction
@@ -99,10 +139,19 @@ steps:
     Filter by the pivot window first, then by source type (USB events, file-opened,
     program-executed), then by tag. You analyze a fraction, never the whole stream.
   es:
-    wildcard:
-      text.wc:
-        value: '*family:hayabusa*'
-        case_insensitive: true
+    terms:
+      family:
+      - chainsaw
+      - deepbluecli
+      - evtx
+      - evtxecmd
+      - hayabusa
+      - ingest-hayabusa
+      - ingest-kape
+      - security
+      - sysmon
+      - system
+      - zircolite
   requires:
     families: *id001
 - name: context_of_evidence
@@ -112,10 +161,17 @@ steps:
     in context of its neighbors in the same minute, not alone.'
   corroborate: adjacent rows within ±minutes usually reveal the action chain
   es:
-    wildcard:
-      text.wc:
-        value: '*file:evtx*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          file:
+            value: '*evtx*'
+            case_insensitive: true
+      - wildcard:
+          file:
+            value: '*browser*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: tag_and_export
@@ -126,8 +182,8 @@ steps:
   pivot: FileName
   es:
     wildcard:
-      fields.FileName.kw:
-        value: '*file:timeline*'
+      file:
+        value: '*timeline*'
         case_insensitive: true
   requires:
     families: *id001

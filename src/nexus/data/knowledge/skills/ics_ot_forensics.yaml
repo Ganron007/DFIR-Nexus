@@ -45,10 +45,33 @@ steps:
   pivot: DestinationIp
   corroborate: a new IT-side host talks directly to a PLC on the control port
   es:
-    wildcard:
-      fields.dest_ip.kw:
-        value: '*historian*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.dest_ip.kw:
+            value: '*Modbus*'
+            case_insensitive: true
+      - wildcard:
+          fields.dest_ip.kw:
+            value: '*DNP3*'
+            case_insensitive: true
+      - wildcard:
+          fields.dest_ip.kw:
+            value: '*SCADA*'
+            case_insensitive: true
+      - wildcard:
+          fields.dest_ip.kw:
+            value: '*PLC*'
+            case_insensitive: true
+      - wildcard:
+          fields.dest_ip.kw:
+            value: '*historian*'
+            case_insensitive: true
+      - wildcard:
+          fields.dest_ip.kw:
+            value: '*Purdue*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: &id001
     - wireshark
@@ -65,12 +88,37 @@ steps:
   pivot: function_code
   corroborate: the write coincides with a physical process anomaly or operator alarm
   es:
-    wildcard:
-      text.wc:
-        value: '*Modbus*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*Modbus*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*function code*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*write coil*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*DNP3*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*S7comm*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'Modbus: free phrase; the step''s pivot names no registry column'
+  - 'function code: free phrase; the step''s pivot names no registry column'
+  - 'write coil: free phrase; the step''s pivot names no registry column'
+  - 'DNP3: free phrase; the step''s pivot names no registry column'
+  - 'S7comm: free phrase; the step''s pivot names no registry column'
 - name: engineering_workstation
   query: engineering workstation OR project file OR plc program OR download
   look_for: 'The engineering workstation is the crown jewel: project files, PLC program
@@ -78,10 +126,25 @@ steps:
     new/tampered project files, USB use, and remote access (VPN/RDP) into the OT network.'
   pivot: FileName
   es:
-    wildcard:
-      fields.file_path.kw:
-        value: '*engineering*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.file_path.kw:
+            value: '*engineering workstation*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*project file*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*plc program*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*download*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: plc_hmi_evidence
@@ -92,10 +155,29 @@ steps:
     and document what is not recoverable.'
   pivot: device
   es:
-    wildcard:
-      fields.host.kw:
-        value: '*controller*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.host.kw:
+            value: '*PLC log*'
+            case_insensitive: true
+      - wildcard:
+          fields.host.kw:
+            value: '*HMI event*'
+            case_insensitive: true
+      - wildcard:
+          fields.host.kw:
+            value: '*alarm*'
+            case_insensitive: true
+      - wildcard:
+          fields.host.kw:
+            value: '*controller*'
+            case_insensitive: true
+      - wildcard:
+          fields.host.kw:
+            value: '*firmware*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: historian_and_reports
@@ -105,10 +187,29 @@ steps:
     trends against the protocol writes and physical reports.
   pivot: tag
   es:
-    wildcard:
-      fields.tags.kw:
-        value: '*historian*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.tags.kw:
+            value: '*historian*'
+            case_insensitive: true
+      - wildcard:
+          fields.tags.kw:
+            value: '*process data*'
+            case_insensitive: true
+      - wildcard:
+          fields.tags.kw:
+            value: '*trend*'
+            case_insensitive: true
+      - wildcard:
+          fields.tags.kw:
+            value: '*setpoint*'
+            case_insensitive: true
+      - wildcard:
+          fields.tags.kw:
+            value: '*alarm history*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 negative: No unauthorized control writes, no new assets across zones, PLC program

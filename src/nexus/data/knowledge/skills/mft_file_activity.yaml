@@ -40,8 +40,8 @@ steps:
   pivot: FileName
   es:
     wildcard:
-      fields.FileName.kw:
-        value: '*file:mft*'
+      file:
+        value: '*mft*'
         case_insensitive: true
   requires:
     families: &id001
@@ -60,8 +60,8 @@ steps:
   corroborate: rename chains (OldName→NewName) expose extension-swap staging
   es:
     wildcard:
-      fields.FileName.kw:
-        value: '*file:usn*'
+      file:
+        value: '*usn*'
         case_insensitive: true
   requires:
     families: *id001
@@ -74,10 +74,17 @@ steps:
   pivot: FileName
   corroborate: residue timestamp + USN delete reason pins the deletion window
   es:
-    wildcard:
-      fields.FileName.kw:
-        value: '*file:i30*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          file:
+            value: '*i30*'
+            case_insensitive: true
+      - wildcard:
+          fields.filename.kw:
+            value: '*$i30*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: alternate_data_streams
@@ -87,10 +94,21 @@ steps:
     code executed on the host.
   pivot: ZoneId
   es:
-    wildcard:
-      text.wc:
-        value: '*zone.identifier*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.ZoneIdContents.kw:
+            value: '*zone.identifier*'
+            case_insensitive: true
+      - wildcard:
+          file:
+            value: '*ads*'
+            case_insensitive: true
+      - wildcard:
+          fields.ZoneIdContents.kw:
+            value: '*\:$*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: timestomp_si_fn
@@ -103,10 +121,27 @@ steps:
   corroborate: the stomped M-time is what ShimCache recorded — pair with appcompat
     rows
   es:
-    wildcard:
-      fields.FileName.kw:
-        value: '*.exe*'
-        case_insensitive: true
+    bool:
+      should:
+      - bool:
+          must:
+          - wildcard:
+              file:
+                value: '*mft*'
+                case_insensitive: true
+          - wildcard:
+              fields.filename.kw:
+                value: '*.exe*'
+                case_insensitive: true
+      - wildcard:
+          fields.filename.kw:
+            value: '*.dll*'
+            case_insensitive: true
+      - wildcard:
+          fields.filename.kw:
+            value: '*.ps1*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: logfile_detail
@@ -117,8 +152,8 @@ steps:
   pivot: FileName
   es:
     wildcard:
-      fields.FileName.kw:
-        value: '*file:logfile*'
+      file:
+        value: '*logfile*'
         case_insensitive: true
   requires:
     families: *id001
@@ -128,10 +163,27 @@ steps:
     tell when an artifact was born/copied; a .pf record deleted but still in MFT proves
     prefetch existed and was removed.
   es:
-    wildcard:
-      text.wc:
-        value: '*.pf*'
-        case_insensitive: true
+    bool:
+      should:
+      - bool:
+          must:
+          - wildcard:
+              file:
+                value: '*mft*'
+                case_insensitive: true
+          - wildcard:
+              fields.filename.kw:
+                value: '*.pf*'
+                case_insensitive: true
+      - wildcard:
+          fields.filename.kw:
+            value: '*.evtx*'
+            case_insensitive: true
+      - wildcard:
+          fields.filename.kw:
+            value: '*.lnk*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 negative: Empty MFT/USN output means the metafiles were not parsed or not collected

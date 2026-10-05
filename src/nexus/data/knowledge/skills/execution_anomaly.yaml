@@ -34,10 +34,17 @@ steps:
     binaries in user-writable paths.
   pivot: ExecutableName
   es:
-    wildcard:
-      fields.ExecutableName.kw:
-        value: '*.exe*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.ExecutableName.kw:
+            value: '*prefetch amcache unsigned*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*.exe*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: &id001
     - prefetch
@@ -55,7 +62,7 @@ steps:
   es:
     wildcard:
       fields.command_line.kw:
-        value: '*installutil*'
+        value: '*rundll32 regsvr32 mshta wscript cscript msbuild installutil regasm*'
         case_insensitive: true
   requires:
     families: *id001
@@ -65,10 +72,33 @@ steps:
     child-process chains.
   pivot: ParentImage
   es:
-    wildcard:
-      fields.parent_process.kw:
-        value: '*winword.exe*'
-        case_insensitive: true
+    bool:
+      should:
+      - bool:
+          must:
+          - wildcard:
+              fields.file_path.kw:
+                value: '*winword.exe*'
+                case_insensitive: true
+          - wildcard:
+              fields.file_path.kw:
+                value: '*cmd.exe*'
+                case_insensitive: true
+      - bool:
+          must:
+          - wildcard:
+              fields.file_path.kw:
+                value: '*excel.exe*'
+                case_insensitive: true
+          - wildcard:
+              fields.file_path.kw:
+                value: '*powershell.exe*'
+                case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*wscript.exe*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: temp_exec
@@ -76,21 +106,47 @@ steps:
   look_for: Executables running from temp/download paths — dropper pattern.
   pivot: Image
   es:
-    wildcard:
-      text.wc:
-        value: '*\Temp\*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*\Temp\*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*\AppData\Local\Temp\*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*\Downloads\*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - '\Temp\: free phrase; the step''s pivot names no registry column'
+  - '\AppData\Local\Temp\: free phrase; the step''s pivot names no registry column'
+  - '\Downloads\: free phrase; the step''s pivot names no registry column'
 - name: process_injection_indicators
   query: CreateRemoteThread OR QueueUserAPC OR SetThreadContext
   look_for: Injection API sequences in process-access events.
   pivot: SourceImage
   es:
-    wildcard:
-      fields.process_name.kw:
-        value: '*CreateRemoteThread*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.process_name.kw:
+            value: '*CreateRemoteThread*'
+            case_insensitive: true
+      - wildcard:
+          fields.process_name.kw:
+            value: '*QueueUserAPC*'
+            case_insensitive: true
+      - wildcard:
+          fields.process_name.kw:
+            value: '*SetThreadContext*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: renamed_system_binary
@@ -98,12 +154,32 @@ steps:
   look_for: System process names executing from non-System32 paths.
   corroborate: prefetch/amcache entry in user-writable path
   es:
-    wildcard:
-      text.wc:
-        value: '*svchost*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*svchost*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*smss*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*csrss*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*wininit*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'svchost: free phrase; the step''s pivot names no registry column'
+  - 'smss: free phrase; the step''s pivot names no registry column'
+  - 'csrss: free phrase; the step''s pivot names no registry column'
+  - 'wininit: free phrase; the step''s pivot names no registry column'
 - name: artifact_cross_validation
   query: prefetch OR shimcache OR amcache OR bam OR userassist OR srum
   look_for: 'No single artifact is proof — cross-validate execution claims across
@@ -114,12 +190,42 @@ steps:
   corroborate: same binary appearing in prefetch AND amcache AND bam = robust execution
     evidence
   es:
-    wildcard:
-      text.wc:
-        value: '*shimcache*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*prefetch*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*shimcache*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*amcache*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*bam*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*userassist*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*srum*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'prefetch: free phrase; the step''s pivot names no registry column'
+  - 'shimcache: free phrase; the step''s pivot names no registry column'
+  - 'amcache: free phrase; the step''s pivot names no registry column'
+  - 'bam: free phrase; the step''s pivot names no registry column'
+  - 'userassist: free phrase; the step''s pivot names no registry column'
+  - 'srum: free phrase; the step''s pivot names no registry column'
 negative: No unsigned binaries or suspicious parentage → execution was clean; the
   compromise may be living-off-the-land only or in memory.
 confidence_rules:

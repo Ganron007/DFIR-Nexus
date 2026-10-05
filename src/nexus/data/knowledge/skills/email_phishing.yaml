@@ -44,10 +44,29 @@ steps:
     used.'
   pivot: Received
   es:
-    wildcard:
-      text.wc:
-        value: '*return-path*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*spf*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*dkim*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*dmarc*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*received*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*return-path*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: &id001
     - email
@@ -58,6 +77,12 @@ steps:
     - prefetch
     - lnk
     - mft
+  es_text_only_reason:
+  - 'spf: free phrase; the step''s pivot names no registry column'
+  - 'dkim: free phrase; the step''s pivot names no registry column'
+  - 'dmarc: free phrase; the step''s pivot names no registry column'
+  - 'received: free phrase; the step''s pivot names no registry column'
+  - 'return-path: free phrase; the step''s pivot names no registry column'
 - name: header_chain
   query: 'Received: OR X-Originating OR message-id'
   look_for: 'Walk the Received: chain bottom-up (originating MTA → hops → your gateway)
@@ -65,12 +90,25 @@ steps:
     HELO/hostnames expose relays.'
   pivot: Received
   es:
-    wildcard:
-      text.wc:
-        value: '*X-Originating*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*X-Originating*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*message-id*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'X-Originating: free phrase; the step''s pivot names no registry column'
+  - 'message-id: free phrase; the step''s pivot names no registry column'
+  es_dropped:
+  - term: 'Received:'
+    reason: field filter with no value
 - name: url_extraction
   query: http OR https OR click OR link
   look_for: Extract every URL — display text vs href mismatches, punycode/ homoglyph
@@ -78,12 +116,32 @@ steps:
     the payload is gone.
   pivot: URL
   es:
-    wildcard:
-      text.wc:
-        value: '*http*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          text.wc:
+            value: '*http*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*https*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*click*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*link*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'http: free phrase; the step''s pivot names no registry column'
+  - 'https: free phrase; the step''s pivot names no registry column'
+  - 'click: free phrase; the step''s pivot names no registry column'
+  - 'link: free phrase; the step''s pivot names no registry column'
 - name: attachment_triage
   query: attachment OR .iso OR .lnk OR .docm OR .html OR .zip
   look_for: 'Attachment class decides the risk: ISO/IMG (MOTW bypass → mounts as drive),
@@ -92,10 +150,33 @@ steps:
     record the payload chain.'
   pivot: FileName
   es:
-    wildcard:
-      fields.FileName.kw:
-        value: '*attachment*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.file_path.kw:
+            value: '*attachment*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*.iso*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*.lnk*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*.docm*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*.html*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*.zip*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: delivery_artifact
@@ -107,10 +188,21 @@ steps:
   corroborate: email-received time ↔ file-write time ↔ execution time = complete delivery
     chain
   es:
-    wildcard:
-      fields.FileName.kw:
-        value: '*Zone.Identifier*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.file_path.kw:
+            value: '*Zone.Identifier*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*downloads*'
+            case_insensitive: true
+      - wildcard:
+          fields.file_path.kw:
+            value: '*attachment*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 - name: execution_chain
@@ -120,10 +212,25 @@ steps:
     confirm the binary ran.
   pivot: ParentImage
   es:
-    wildcard:
-      fields.parent_process.kw:
-        value: '*explorer.exe*'
-        case_insensitive: true
+    bool:
+      should:
+      - wildcard:
+          fields.file_path.kw:
+            value: '*explorer.exe*'
+            case_insensitive: true
+      - wildcard:
+          fields.parent_process.kw:
+            value: '*mshta*'
+            case_insensitive: true
+      - wildcard:
+          fields.parent_process.kw:
+            value: '*rundll32*'
+            case_insensitive: true
+      - wildcard:
+          fields.parent_process.kw:
+            value: '*powershell*'
+            case_insensitive: true
+      minimum_should_match: 1
   requires:
     families: *id001
 negative: No delivery artifact and no exec chain → the phish likely wasn't opened,
