@@ -210,7 +210,14 @@ def suggest_field(catalog: dict[str, dict[str, Any]] | None, name: str, n: int =
 
 
 def field_catalog_block(case_dir: str | Path | None, cap: int = 150) -> str:
-    """Compact prompt block: typed columns the case actually holds."""
+    """Compact prompt block: typed columns the case actually holds.
+
+    D35 (WO-KM1 item 2): this block must not present **declared** columns as
+    **present**. The ES mapping types every registry column, so a block built from it
+    says "only these columns exist" while including columns this case never filled -
+    and a model that queries one reads "matched nothing". The block is therefore
+    built from what the case's documents actually carry.
+    """
     if not case_dir:
         return ""
     try:
@@ -234,7 +241,8 @@ def field_catalog_block(case_dir: str | Path | None, cap: int = 150) -> str:
     body = ", ".join(columns[:cap])
     extra = "" if len(columns) <= cap else f" (+{len(columns) - cap} more via es_fields)"
     return (
-        "CASE FIELD CATALOG (only these columns exist; typed):\n"
+        "CASE FIELD CATALOG (the columns this index is TYPED for; a column this "
+        "case never filled matches nothing - check populated_columns first):\n"
         f"  core: {', '.join(core)}\n"
         f"  parsed: {body}{extra}\n"
         "Operators: field:value (contains), field:=value (exact), field:!=value, "

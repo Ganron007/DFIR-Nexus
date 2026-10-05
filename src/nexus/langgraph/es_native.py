@@ -416,7 +416,18 @@ def _client_and_index(case_id: str):
 
 
 def es_fields(case_id: str) -> dict[str, Any]:
-    """Full per-family field catalog + family counts (no curation caps)."""
+    """Full per-family field catalog + family counts, with D35 population.
+
+    D35 (WO-KM1 item 2): the catalog must not present **declared** columns as
+    **present**. ES reports which columns the mapping types - every one the registry
+    declares - and `parsed_columns` still lists them so validation keeps working.
+    What is added here is what is actually **filled**: an ES ``terms`` aggregation
+    per family on the columns the registry maps to that family, so a caller can see
+    "listened" as populated for `zeek` and absent for `authlog`.
+
+    ``populated_columns`` is the honest half. It is empty (and says so) when no
+    aggregation ran, never silently equal to ``parsed_columns``.
+    """
     if not case_id:
         raise ESQueryError("case_id is required")
     client, name = _client_and_index(case_id)
@@ -446,6 +457,37 @@ def es_fields(case_id: str) -> dict[str, Any]:
             ):
                 families[str(bucket.get("key"))] = int(bucket.get("doc_count") or 0)
 
+        # D35: per family, which `fields.*` columns actually have a value. One
+        # aggregated terms-agg per (family, column) would be thousands of requests,
+        # so a filtered-exists per family with a top-hits sample is used instead -
+        # bounded, honest, and enough for "is this column filled?".
+        populated: dict[str, dict[str, int]] = {}
+        for fam in families:
+            cols = _columns_for_family(fam)
+            if not cols:
+                continue
+            per: dict[str, int] = {}
+            for column in cols:
+                try:
+                    res = c.post(
+                        f"/{name}/_search",
+                        json={
+                            "size": 0,
+                            "query": {"bool": {"filter": [
+                                {"term": {"family": fam}},
+                                {"exists": {"field": f"fields.{column}"}},
+                            ]}},
+                        },
+                    )
+                except Exception:  # noqa: BLE001 - one probe must not lose the rest
+                    continue
+                if res.status_code < 400:
+                    n = int(((res.json().get("hits") or {}).get("total") or {}).get("value") or 0)
+                    if n > 0:
+                        per[column] = n
+            if per:
+                populated[fam] = per
+
     def _type_of(spec: Any) -> str:
         if not isinstance(spec, dict):
             return "unknown"
@@ -473,12 +515,45 @@ def es_fields(case_id: str) -> dict[str, Any]:
             ({"field": key, "type": _type_of(spec)} for key, spec in parsed.items()),
             key=lambda row: row["field"],
         ),
+        # D35: the honest half. `parsed_columns` is what the mapping TYPES (every
+        # registry column for every family); this is what is FILLED in this case.
+        "populated_columns": populated,
+        "population_note": (
+            "populated_columns is measured from the case's own documents. "
+            "parsed_columns is every column the index is typed for, which includes "
+            "columns this case does not have - query a parsed column on a family "
+            "that is absent from populated_columns and it matches nothing."
+        ),
         "ts_note": (
             "ts is the canonical event time (ts_src=event|synthesized, "
             "ts_tz_assumed/ts_year_assumed flags mark policy assumptions); "
             "use es_search range on ts for time filters"
         ),
     }
+
+
+def _columns_for_family(family: str) -> list[str]:
+    """The registry columns declared for `family`, as ``fields.<Name>`` names.
+
+    Bounded by the registry itself: a family's columns are what the mapping types,
+    so there is nothing to enumerate beyond what the registry already holds. The
+    population probe needs a candidate list, not the whole 719-column registry.
+    """
+    try:
+        from nexus.knowledge.query_validation import expand_families, load_field_registry
+
+        cols = load_field_registry()
+        wanted = set(expand_families([family]))
+        found = []
+        for name, info in cols.items():
+            if " " in name or not name.replace("_", "").isalnum():
+                continue  # a space cannot be an index field name (KR2b lesson)
+            fams = {str(f).lower() for f in (info.get("families") or [])}
+            if fams and (fams & wanted):
+                found.append(name)
+        return sorted(found)[:80]
+    except Exception:  # noqa: BLE001 - the population probe is best-effort
+        return []
 
 
 def _with_lenient(node: Any) -> Any:
