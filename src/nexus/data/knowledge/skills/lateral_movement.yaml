@@ -98,16 +98,19 @@ steps:
       - term:
           event_id: '7045'
       - wildcard:
-          fields.PayloadData4.kw:
+          text.wc:
             value: '*psexesvc*'
             case_insensitive: true
       - wildcard:
-          fields.PayloadData4.kw:
+          text.wc:
             value: '*remcom*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'psexesvc: free phrase; the step''s pivot names no registry column'
+  - 'remcom: free phrase; the step''s pivot names no registry column'
 - name: winrm_execution
   query: winrm 5985 OR 5986 OR wsman
   look_for: WinRM listener traffic / process spawns under wsmprovhost.exe.
@@ -120,18 +123,21 @@ steps:
           - term:
               event_id: '5985'
           - wildcard:
-              fields.PayloadData2.kw:
+              text.wc:
                 value: '*winrm*'
                 case_insensitive: true
       - term:
           event_id: '5986'
       - wildcard:
-          fields.PayloadData2.kw:
+          text.wc:
             value: '*wsman*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'winrm: free phrase; the step''s pivot names no registry column'
+  - 'wsman: free phrase; the step''s pivot names no registry column'
 - name: rdp_sessions
   query: 4778 OR 4779 OR TerminalServices
   look_for: RDP session connect/reconnect events with foreign source hosts. The TerminalServices-LocalSessionManager
@@ -222,20 +228,24 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.PayloadData1.kw:
+          text.wc:
             value: '*schtasks /s*'
             case_insensitive: true
       - wildcard:
-          fields.PayloadData1.kw:
+          text.wc:
             value: '*106*'
             case_insensitive: true
       - wildcard:
-          fields.PayloadData1.kw:
+          text.wc:
             value: '*140*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'schtasks /s: free phrase; the step''s pivot names no registry column'
+  - '106: free phrase; the step''s pivot names no registry column'
+  - '140: free phrase; the step''s pivot names no registry column'
 negative: No remote-logon/share/service/task artifacts from other hosts → this host
   was not a lateral-movement target in the window (or telemetry gap).
 confidence_rules:

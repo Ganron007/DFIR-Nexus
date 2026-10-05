@@ -1,28 +1,28 @@
 {
   "corpus": "Evidence-files\\ES-Mapping\\_population\\_case-39112",
   "counts": {
-    "analytic_cannot_match": 548,
+    "analytic_cannot_match": 563,
     "analytic_partial": 9,
     "analytic_populated": 11,
-    "analytic_typed": 568,
-    "skill_step_cannot_match": 85,
-    "skill_step_partial": 31,
-    "skill_step_populated": 137,
-    "skill_step_typed": 253
+    "analytic_typed": 583,
+    "skill_step_cannot_match": 50,
+    "skill_step_partial": 35,
+    "skill_step_populated": 164,
+    "skill_step_typed": 249
   },
   "counts_extra": {
-    "analytic_cannot_match": 548,
+    "analytic_cannot_match": 563,
     "analytic_partial": 9,
     "analytic_populated": 11,
-    "analytic_typed": 568,
-    "skill_step_cannot_match": 85,
-    "skill_step_partial": 31,
-    "skill_step_populated": 137,
-    "skill_step_typed": 253
+    "analytic_typed": 583,
+    "skill_step_cannot_match": 50,
+    "skill_step_partial": 35,
+    "skill_step_populated": 164,
+    "skill_step_typed": 249
   },
   "counts_summary": {
-    "cannot_match_corpus_absent": 23,
-    "cannot_match_wrong_field": 610
+    "cannot_match_corpus_absent": 20,
+    "cannot_match_wrong_field": 593
   },
   "family_docs": {
     "abuseipdb": 24,
@@ -60,38 +60,6 @@
   },
   "note": "A row is 'cannot_match' when every column its positive clauses reference is unfilled for the declared families. 'partial' names the columns that are unfilled. A cannot_match row carries `cause`: `wrong_field` when a declared family IS in the corpus and still does not fill the column, `corpus_absent` when no declared family is staged so the column is unmeasurable. Reporting absence as a defect would only hide the real one.",
   "rows": [
-    {
-      "cause": "wrong_field",
-      "columns": [
-        "command_line"
-      ],
-      "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
-        "zircolite"
-      ],
-      "families": [
-        "chainsaw",
-        "deepbluecli",
-        "evtx",
-        "evtxecmd",
-        "hayabusa",
-        "ingest-evtx",
-        "ingest-hayabusa",
-        "ingest-kape",
-        "ingest-security",
-        "ingest-sysmon",
-        "powershell",
-        "security",
-        "sysmon",
-        "system",
-        "zircolite"
-      ],
-      "id": "enum_pre_attack",
-      "kind": "skill_step",
-      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
-      "status": "cannot_match"
-    },
     {
       "columns": [
         "file",
@@ -176,46 +144,6 @@
     {
       "cause": "wrong_field",
       "columns": [
-        "command_line"
-      ],
-      "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
-        "hindsight",
-        "zircolite"
-      ],
-      "families": [
-        "browser",
-        "chainsaw",
-        "deepbluecli",
-        "dns",
-        "evtx",
-        "evtxecmd",
-        "hayabusa",
-        "hindsight",
-        "ingest-browser",
-        "ingest-dns",
-        "ingest-evtx",
-        "ingest-hayabusa",
-        "ingest-kape",
-        "ingest-netstat",
-        "ingest-powershell",
-        "ingest-sysmon",
-        "netstat",
-        "powershell",
-        "security",
-        "sysmon",
-        "system",
-        "zircolite"
-      ],
-      "id": "dnscat_tunneling",
-      "kind": "skill_step",
-      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
-      "status": "cannot_match"
-    },
-    {
-      "cause": "wrong_field",
-      "columns": [
         "registry_value"
       ],
       "declared_families_in_corpus": [
@@ -249,29 +177,6 @@
         "zircolite"
       ],
       "id": "proxy_pac",
-      "kind": "skill_step",
-      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
-      "status": "cannot_match"
-    },
-    {
-      "cause": "wrong_field",
-      "columns": [
-        "executableinfo"
-      ],
-      "declared_families_in_corpus": [
-        "syslog"
-      ],
-      "families": [
-        "csv",
-        "ingest-csv",
-        "ingest-jsonl",
-        "ingest-sysdig",
-        "ingest-syslog",
-        "jsonl",
-        "sysdig",
-        "syslog"
-      ],
-      "id": "container_inventory",
       "kind": "skill_step",
       "reason": "none of the columns it references holds a value in the population corpus for the declared families",
       "status": "cannot_match"
@@ -340,15 +245,9 @@
       ]
     },
     {
-      "cause": "wrong_field",
       "columns": [
-        "command_line",
-        "file_path"
-      ],
-      "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
-        "zircolite"
+        "file_path",
+        "text.wc"
       ],
       "families": [
         "chainsaw",
@@ -369,8 +268,11 @@
       ],
       "id": "dump_tool_execution",
       "kind": "skill_step",
-      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
-      "status": "cannot_match"
+      "reason": "some referenced columns are not filled for these families",
+      "status": "partial",
+      "unfilled_columns": [
+        "file_path"
+      ]
     },
     {
       "cause": "wrong_field",
@@ -400,94 +302,6 @@
         "zircolite"
       ],
       "id": "dump_file_artifacts",
-      "kind": "skill_step",
-      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
-      "status": "cannot_match"
-    },
-    {
-      "cause": "wrong_field",
-      "columns": [
-        "command_line"
-      ],
-      "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
-        "zircolite"
-      ],
-      "families": [
-        "chainsaw",
-        "deepbluecli",
-        "evtx",
-        "evtxecmd",
-        "fls",
-        "hayabusa",
-        "ingest-evtx",
-        "ingest-hayabusa",
-        "ingest-kape",
-        "ingest-mft",
-        "ingest-registry",
-        "ingest-security",
-        "ingest-sysmon",
-        "ingest-windows_registry",
-        "mft",
-        "mftecmd",
-        "mftecmd-i30",
-        "mftecmd-usn",
-        "ntfs",
-        "ntuser",
-        "powershell",
-        "recmd",
-        "registry",
-        "security",
-        "sysmon",
-        "system",
-        "zircolite"
-      ],
-      "id": "vss_shadow_copy",
-      "kind": "skill_step",
-      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
-      "status": "cannot_match"
-    },
-    {
-      "cause": "wrong_field",
-      "columns": [
-        "command_line"
-      ],
-      "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
-        "zircolite"
-      ],
-      "families": [
-        "chainsaw",
-        "deepbluecli",
-        "evtx",
-        "evtxecmd",
-        "fls",
-        "hayabusa",
-        "ingest-evtx",
-        "ingest-hayabusa",
-        "ingest-kape",
-        "ingest-mft",
-        "ingest-registry",
-        "ingest-security",
-        "ingest-sysmon",
-        "ingest-windows_registry",
-        "mft",
-        "mftecmd",
-        "mftecmd-i30",
-        "mftecmd-usn",
-        "ntfs",
-        "ntuser",
-        "powershell",
-        "recmd",
-        "registry",
-        "security",
-        "sysmon",
-        "system",
-        "zircolite"
-      ],
-      "id": "sam_reg_export",
       "kind": "skill_step",
       "reason": "none of the columns it references holds a value in the population corpus for the declared families",
       "status": "cannot_match"
@@ -532,97 +346,6 @@
         "zircolite"
       ],
       "id": "ntds_copy",
-      "kind": "skill_step",
-      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
-      "status": "cannot_match"
-    },
-    {
-      "cause": "wrong_field",
-      "columns": [
-        "command_line"
-      ],
-      "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
-        "zircolite"
-      ],
-      "families": [
-        "chainsaw",
-        "deepbluecli",
-        "evtx",
-        "evtxecmd",
-        "fls",
-        "hayabusa",
-        "ingest-evtx",
-        "ingest-hayabusa",
-        "ingest-kape",
-        "ingest-mft",
-        "ingest-registry",
-        "ingest-security",
-        "ingest-sysmon",
-        "ingest-windows_registry",
-        "mft",
-        "mftecmd",
-        "mftecmd-i30",
-        "mftecmd-usn",
-        "ntfs",
-        "ntuser",
-        "powershell",
-        "recmd",
-        "registry",
-        "security",
-        "sysmon",
-        "system",
-        "zircolite"
-      ],
-      "id": "ntds_ifm_path",
-      "kind": "skill_step",
-      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
-      "status": "cannot_match"
-    },
-    {
-      "cause": "wrong_field",
-      "columns": [
-        "command_line"
-      ],
-      "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
-        "zircolite"
-      ],
-      "families": [
-        "chainsaw",
-        "deepbluecli",
-        "evtx",
-        "evtxecmd",
-        "fls",
-        "hayabusa",
-        "ingest-evtx",
-        "ingest-hayabusa",
-        "ingest-kape",
-        "ingest-mft",
-        "ingest-powershell",
-        "ingest-prefetch",
-        "ingest-registry",
-        "ingest-sysmon",
-        "ingest-windows_registry",
-        "mft",
-        "mftecmd",
-        "mftecmd-i30",
-        "mftecmd-usn",
-        "ntfs",
-        "ntuser",
-        "pecmd",
-        "powershell",
-        "prefetch",
-        "recmd",
-        "registry",
-        "security",
-        "sysmon",
-        "system",
-        "zircolite"
-      ],
-      "id": "defender_disable",
       "kind": "skill_step",
       "reason": "none of the columns it references holds a value in the population corpus for the declared families",
       "status": "cannot_match"
@@ -764,53 +487,6 @@
         "zircolite"
       ],
       "id": "process_injection",
-      "kind": "skill_step",
-      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
-      "status": "cannot_match"
-    },
-    {
-      "cause": "wrong_field",
-      "columns": [
-        "command_line"
-      ],
-      "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
-        "zircolite"
-      ],
-      "families": [
-        "chainsaw",
-        "deepbluecli",
-        "evtx",
-        "evtxecmd",
-        "fls",
-        "hayabusa",
-        "ingest-evtx",
-        "ingest-hayabusa",
-        "ingest-kape",
-        "ingest-mft",
-        "ingest-powershell",
-        "ingest-prefetch",
-        "ingest-registry",
-        "ingest-sysmon",
-        "ingest-windows_registry",
-        "mft",
-        "mftecmd",
-        "mftecmd-i30",
-        "mftecmd-usn",
-        "ntfs",
-        "ntuser",
-        "pecmd",
-        "powershell",
-        "prefetch",
-        "recmd",
-        "registry",
-        "security",
-        "sysmon",
-        "system",
-        "zircolite"
-      ],
-      "id": "etw_tamper",
       "kind": "skill_step",
       "reason": "none of the columns it references holds a value in the population corpus for the declared families",
       "status": "cannot_match"
@@ -1002,50 +678,9 @@
       ]
     },
     {
-      "cause": "wrong_field",
       "columns": [
-        "command_line"
-      ],
-      "declared_families_in_corpus": [
-        "rbcmd"
-      ],
-      "families": [
-        "fls",
-        "ingest-fls",
-        "ingest-kape",
-        "ingest-mft",
-        "ingest-mftecmd",
-        "ingest-rbcmd",
-        "ingest-recmd",
-        "ingest-registry",
-        "ingest-usn",
-        "ingest-windows_registry",
-        "mft",
-        "mftecmd",
-        "mftecmd-i30",
-        "mftecmd-usn",
-        "ntfs",
-        "ntuser",
-        "rbcmd",
-        "recmd",
-        "registry",
-        "usn"
-      ],
-      "id": "secure_delete_tools",
-      "kind": "skill_step",
-      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
-      "status": "cannot_match"
-    },
-    {
-      "cause": "wrong_field",
-      "columns": [
-        "command_line",
-        "file_path"
-      ],
-      "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
-        "zircolite"
+        "file_path",
+        "text.wc"
       ],
       "families": [
         "chainsaw",
@@ -1071,230 +706,11 @@
       ],
       "id": "whoami_chains",
       "kind": "skill_step",
-      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
-      "status": "cannot_match"
-    },
-    {
-      "cause": "wrong_field",
-      "columns": [
-        "command_line"
-      ],
-      "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
-        "zircolite"
-      ],
-      "families": [
-        "chainsaw",
-        "cmd",
-        "deepbluecli",
-        "evtx",
-        "evtxecmd",
-        "hayabusa",
-        "ingest-cmd",
-        "ingest-evtx",
-        "ingest-hayabusa",
-        "ingest-kape",
-        "ingest-powershell",
-        "ingest-prefetch",
-        "ingest-sysmon",
-        "pecmd",
-        "powershell",
-        "prefetch",
-        "security",
-        "sysmon",
-        "system",
-        "zircolite"
-      ],
-      "id": "net_commands",
-      "kind": "skill_step",
-      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
-      "status": "cannot_match"
-    },
-    {
-      "cause": "wrong_field",
-      "columns": [
-        "command_line"
-      ],
-      "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
-        "zircolite"
-      ],
-      "families": [
-        "chainsaw",
-        "cmd",
-        "deepbluecli",
-        "evtx",
-        "evtxecmd",
-        "hayabusa",
-        "ingest-cmd",
-        "ingest-evtx",
-        "ingest-hayabusa",
-        "ingest-kape",
-        "ingest-powershell",
-        "ingest-prefetch",
-        "ingest-sysmon",
-        "pecmd",
-        "powershell",
-        "prefetch",
-        "security",
-        "sysmon",
-        "system",
-        "zircolite"
-      ],
-      "id": "system_info",
-      "kind": "skill_step",
-      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
-      "status": "cannot_match"
-    },
-    {
-      "cause": "wrong_field",
-      "columns": [
-        "command_line"
-      ],
-      "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
-        "zircolite"
-      ],
-      "families": [
-        "chainsaw",
-        "cmd",
-        "deepbluecli",
-        "evtx",
-        "evtxecmd",
-        "hayabusa",
-        "ingest-cmd",
-        "ingest-evtx",
-        "ingest-hayabusa",
-        "ingest-kape",
-        "ingest-powershell",
-        "ingest-prefetch",
-        "ingest-sysmon",
-        "pecmd",
-        "powershell",
-        "prefetch",
-        "security",
-        "sysmon",
-        "system",
-        "zircolite"
-      ],
-      "id": "ipconfig_route",
-      "kind": "skill_step",
-      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
-      "status": "cannot_match"
-    },
-    {
-      "cause": "wrong_field",
-      "columns": [
-        "command_line"
-      ],
-      "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
-        "zircolite"
-      ],
-      "families": [
-        "chainsaw",
-        "cmd",
-        "deepbluecli",
-        "evtx",
-        "evtxecmd",
-        "hayabusa",
-        "ingest-cmd",
-        "ingest-evtx",
-        "ingest-hayabusa",
-        "ingest-kape",
-        "ingest-powershell",
-        "ingest-prefetch",
-        "ingest-sysmon",
-        "pecmd",
-        "powershell",
-        "prefetch",
-        "security",
-        "sysmon",
-        "system",
-        "zircolite"
-      ],
-      "id": "domain_enum",
-      "kind": "skill_step",
-      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
-      "status": "cannot_match"
-    },
-    {
-      "cause": "wrong_field",
-      "columns": [
-        "command_line"
-      ],
-      "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
-        "zircolite"
-      ],
-      "families": [
-        "chainsaw",
-        "cmd",
-        "deepbluecli",
-        "evtx",
-        "evtxecmd",
-        "hayabusa",
-        "ingest-cmd",
-        "ingest-evtx",
-        "ingest-hayabusa",
-        "ingest-kape",
-        "ingest-powershell",
-        "ingest-prefetch",
-        "ingest-sysmon",
-        "pecmd",
-        "powershell",
-        "prefetch",
-        "security",
-        "sysmon",
-        "system",
-        "zircolite"
-      ],
-      "id": "session_file_enum",
-      "kind": "skill_step",
-      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
-      "status": "cannot_match"
-    },
-    {
-      "cause": "wrong_field",
-      "columns": [
-        "command_line"
-      ],
-      "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
-        "zircolite"
-      ],
-      "families": [
-        "chainsaw",
-        "cmd",
-        "deepbluecli",
-        "evtx",
-        "evtxecmd",
-        "hayabusa",
-        "ingest-cmd",
-        "ingest-evtx",
-        "ingest-hayabusa",
-        "ingest-kape",
-        "ingest-powershell",
-        "ingest-prefetch",
-        "ingest-sysmon",
-        "pecmd",
-        "powershell",
-        "prefetch",
-        "security",
-        "sysmon",
-        "system",
-        "zircolite"
-      ],
-      "id": "tasklist_scan",
-      "kind": "skill_step",
-      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
-      "status": "cannot_match"
+      "reason": "some referenced columns are not filled for these families",
+      "status": "partial",
+      "unfilled_columns": [
+        "file_path"
+      ]
     },
     {
       "cause": "wrong_field",
@@ -1399,16 +815,9 @@
       "status": "cannot_match"
     },
     {
-      "cause": "wrong_field",
       "columns": [
         "file_path",
-        "parent_process"
-      ],
-      "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
-        "lecmd",
-        "zircolite"
+        "text.wc"
       ],
       "families": [
         "chainsaw",
@@ -1447,13 +856,16 @@
       ],
       "id": "execution_chain",
       "kind": "skill_step",
-      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
-      "status": "cannot_match"
+      "reason": "some referenced columns are not filled for these families",
+      "status": "partial",
+      "unfilled_columns": [
+        "file_path"
+      ]
     },
     {
       "cause": "corpus_absent",
       "columns": [
-        "payloaddata2"
+        "text.wc"
       ],
       "declared_families_in_corpus": [],
       "families": [
@@ -1487,71 +899,7 @@
         "memory",
         "vol"
       ],
-      "id": "encryption_check",
-      "kind": "skill_step",
-      "reason": "none of the columns it references holds a value in the population corpus for the declared families; no declared family is staged here",
-      "status": "cannot_match"
-    },
-    {
-      "cause": "corpus_absent",
-      "columns": [
-        "file",
-        "file_path"
-      ],
-      "declared_families_in_corpus": [],
-      "families": [
-        "ingest",
-        "ingest-ingest",
-        "ingest-kape",
-        "ingest-vol",
-        "ingest-volatility",
-        "kape",
-        "memory",
-        "vol"
-      ],
-      "id": "triage_first",
-      "kind": "skill_step",
-      "reason": "none of the columns it references holds a value in the population corpus for the declared families; no declared family is staged here",
-      "status": "cannot_match"
-    },
-    {
-      "cause": "corpus_absent",
-      "columns": [
-        "text.wc"
-      ],
-      "declared_families_in_corpus": [],
-      "families": [
-        "ingest",
-        "ingest-ingest",
-        "ingest-kape",
-        "ingest-vol",
-        "ingest-volatility",
-        "kape",
-        "memory",
-        "vol"
-      ],
       "id": "write_blocked_disk",
-      "kind": "skill_step",
-      "reason": "none of the columns it references holds a value in the population corpus for the declared families; no declared family is staged here",
-      "status": "cannot_match"
-    },
-    {
-      "cause": "corpus_absent",
-      "columns": [
-        "text.wc"
-      ],
-      "declared_families_in_corpus": [],
-      "families": [
-        "ingest",
-        "ingest-ingest",
-        "ingest-kape",
-        "ingest-vol",
-        "ingest-volatility",
-        "kape",
-        "memory",
-        "vol"
-      ],
-      "id": "hash_on_acquire",
       "kind": "skill_step",
       "reason": "none of the columns it references holds a value in the population corpus for the declared families; no declared family is staged here",
       "status": "cannot_match"
@@ -1620,53 +968,6 @@
       "unfilled_columns": [
         "executablename"
       ]
-    },
-    {
-      "cause": "wrong_field",
-      "columns": [
-        "command_line"
-      ],
-      "declared_families_in_corpus": [
-        "amcache",
-        "chainsaw",
-        "deepbluecli",
-        "zircolite"
-      ],
-      "families": [
-        "amcache",
-        "appcompat",
-        "chainsaw",
-        "deepbluecli",
-        "evtx",
-        "evtxecmd",
-        "fls",
-        "hayabusa",
-        "ingest-amcache",
-        "ingest-appcompat",
-        "ingest-evtx",
-        "ingest-hayabusa",
-        "ingest-kape",
-        "ingest-mft",
-        "ingest-pecmd",
-        "ingest-prefetch",
-        "ingest-sysmon",
-        "mft",
-        "mftecmd",
-        "mftecmd-i30",
-        "mftecmd-usn",
-        "ntfs",
-        "pecmd",
-        "powershell",
-        "prefetch",
-        "security",
-        "sysmon",
-        "system",
-        "zircolite"
-      ],
-      "id": "lolbin_abuse",
-      "kind": "skill_step",
-      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
-      "status": "cannot_match"
     },
     {
       "cause": "wrong_field",
@@ -1769,16 +1070,9 @@
       "status": "cannot_match"
     },
     {
-      "cause": "wrong_field",
       "columns": [
-        "command_line",
-        "file_path"
-      ],
-      "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
-        "hindsight",
-        "zircolite"
+        "file_path",
+        "text.wc"
       ],
       "families": [
         "browser",
@@ -1814,8 +1108,11 @@
       ],
       "id": "archive_creation",
       "kind": "skill_step",
-      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
-      "status": "cannot_match"
+      "reason": "some referenced columns are not filled for these families",
+      "status": "partial",
+      "unfilled_columns": [
+        "file_path"
+      ]
     },
     {
       "cause": "wrong_field",
@@ -1866,16 +1163,9 @@
       "status": "cannot_match"
     },
     {
-      "cause": "wrong_field",
       "columns": [
-        "command_line",
-        "file_path"
-      ],
-      "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
-        "hindsight",
-        "zircolite"
+        "file_path",
+        "text.wc"
       ],
       "families": [
         "browser",
@@ -1911,56 +1201,11 @@
       ],
       "id": "ftp_exfil",
       "kind": "skill_step",
-      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
-      "status": "cannot_match"
-    },
-    {
-      "cause": "wrong_field",
-      "columns": [
-        "command_line"
-      ],
-      "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
-        "hindsight",
-        "zircolite"
-      ],
-      "families": [
-        "browser",
-        "chainsaw",
-        "deepbluecli",
-        "evtx",
-        "evtxecmd",
-        "fls",
-        "hayabusa",
-        "hindsight",
-        "ingest-browser",
-        "ingest-evtx",
-        "ingest-hayabusa",
-        "ingest-kape",
-        "ingest-mft",
-        "ingest-netstat",
-        "ingest-powershell",
-        "ingest-prefetch",
-        "ingest-sysmon",
-        "mft",
-        "mftecmd",
-        "mftecmd-i30",
-        "mftecmd-usn",
-        "netstat",
-        "ntfs",
-        "pecmd",
-        "powershell",
-        "prefetch",
-        "security",
-        "sysmon",
-        "system",
-        "zircolite"
-      ],
-      "id": "bitsadmin_transfer",
-      "kind": "skill_step",
-      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
-      "status": "cannot_match"
+      "reason": "some referenced columns are not filled for these families",
+      "status": "partial",
+      "unfilled_columns": [
+        "file_path"
+      ]
     },
     {
       "cause": "wrong_field",
@@ -1985,144 +1230,6 @@
         "zeek"
       ],
       "id": "historian_and_reports",
-      "kind": "skill_step",
-      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
-      "status": "cannot_match"
-    },
-    {
-      "cause": "wrong_field",
-      "columns": [
-        "command_line"
-      ],
-      "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
-        "zircolite"
-      ],
-      "families": [
-        "chainsaw",
-        "deepbluecli",
-        "evtx",
-        "evtxecmd",
-        "fls",
-        "hayabusa",
-        "ingest-evtx",
-        "ingest-hayabusa",
-        "ingest-kape",
-        "ingest-mft",
-        "ingest-prefetch",
-        "ingest-services",
-        "ingest-sysmon",
-        "ingest-usn",
-        "ingest-windows_services",
-        "mft",
-        "mftecmd",
-        "mftecmd-i30",
-        "mftecmd-usn",
-        "ntfs",
-        "pecmd",
-        "powershell",
-        "prefetch",
-        "security",
-        "services",
-        "sysmon",
-        "system",
-        "usn",
-        "zircolite"
-      ],
-      "id": "shadow_delete",
-      "kind": "skill_step",
-      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
-      "status": "cannot_match"
-    },
-    {
-      "cause": "wrong_field",
-      "columns": [
-        "command_line"
-      ],
-      "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
-        "zircolite"
-      ],
-      "families": [
-        "chainsaw",
-        "deepbluecli",
-        "evtx",
-        "evtxecmd",
-        "fls",
-        "hayabusa",
-        "ingest-evtx",
-        "ingest-hayabusa",
-        "ingest-kape",
-        "ingest-mft",
-        "ingest-prefetch",
-        "ingest-services",
-        "ingest-sysmon",
-        "ingest-usn",
-        "ingest-windows_services",
-        "mft",
-        "mftecmd",
-        "mftecmd-i30",
-        "mftecmd-usn",
-        "ntfs",
-        "pecmd",
-        "powershell",
-        "prefetch",
-        "security",
-        "services",
-        "sysmon",
-        "system",
-        "usn",
-        "zircolite"
-      ],
-      "id": "bcdedit_recovery",
-      "kind": "skill_step",
-      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
-      "status": "cannot_match"
-    },
-    {
-      "cause": "wrong_field",
-      "columns": [
-        "command_line"
-      ],
-      "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
-        "zircolite"
-      ],
-      "families": [
-        "chainsaw",
-        "deepbluecli",
-        "evtx",
-        "evtxecmd",
-        "fls",
-        "hayabusa",
-        "ingest-evtx",
-        "ingest-hayabusa",
-        "ingest-kape",
-        "ingest-mft",
-        "ingest-prefetch",
-        "ingest-services",
-        "ingest-sysmon",
-        "ingest-usn",
-        "ingest-windows_services",
-        "mft",
-        "mftecmd",
-        "mftecmd-i30",
-        "mftecmd-usn",
-        "ntfs",
-        "pecmd",
-        "powershell",
-        "prefetch",
-        "security",
-        "services",
-        "sysmon",
-        "system",
-        "usn",
-        "zircolite"
-      ],
-      "id": "backup_kill",
       "kind": "skill_step",
       "reason": "none of the columns it references holds a value in the population corpus for the declared families",
       "status": "cannot_match"
@@ -2271,110 +1378,6 @@
     },
     {
       "columns": [
-        "command_line",
-        "file_path"
-      ],
-      "families": [
-        "amcache",
-        "browser",
-        "chainsaw",
-        "deepbluecli",
-        "evtx",
-        "evtxecmd",
-        "fls",
-        "hayabusa",
-        "hindsight",
-        "ingest-amcache",
-        "ingest-browser",
-        "ingest-evtx",
-        "ingest-hayabusa",
-        "ingest-jumplist",
-        "ingest-kape",
-        "ingest-lnk",
-        "ingest-mft",
-        "ingest-prefetch",
-        "ingest-sysmon",
-        "ingest-usn",
-        "jlecmd",
-        "jumplist",
-        "lecmd",
-        "lnk",
-        "mft",
-        "mftecmd",
-        "mftecmd-i30",
-        "mftecmd-usn",
-        "ntfs",
-        "pecmd",
-        "powershell",
-        "prefetch",
-        "security",
-        "sysmon",
-        "system",
-        "usn",
-        "zircolite"
-      ],
-      "id": "msi_execution",
-      "kind": "skill_step",
-      "reason": "some referenced columns are not filled for these families",
-      "status": "partial",
-      "unfilled_columns": [
-        "command_line"
-      ]
-    },
-    {
-      "columns": [
-        "file_path",
-        "parent_process"
-      ],
-      "families": [
-        "amcache",
-        "browser",
-        "chainsaw",
-        "deepbluecli",
-        "evtx",
-        "evtxecmd",
-        "fls",
-        "hayabusa",
-        "hindsight",
-        "ingest-amcache",
-        "ingest-browser",
-        "ingest-evtx",
-        "ingest-hayabusa",
-        "ingest-jumplist",
-        "ingest-kape",
-        "ingest-lnk",
-        "ingest-mft",
-        "ingest-prefetch",
-        "ingest-sysmon",
-        "ingest-usn",
-        "jlecmd",
-        "jumplist",
-        "lecmd",
-        "lnk",
-        "mft",
-        "mftecmd",
-        "mftecmd-i30",
-        "mftecmd-usn",
-        "ntfs",
-        "pecmd",
-        "powershell",
-        "prefetch",
-        "security",
-        "sysmon",
-        "system",
-        "usn",
-        "zircolite"
-      ],
-      "id": "chm_execution",
-      "kind": "skill_step",
-      "reason": "some referenced columns are not filled for these families",
-      "status": "partial",
-      "unfilled_columns": [
-        "parent_process"
-      ]
-    },
-    {
-      "columns": [
         "process_name",
         "text.wc"
       ],
@@ -2415,41 +1418,6 @@
       "status": "partial",
       "unfilled_columns": [
         "process_name"
-      ]
-    },
-    {
-      "columns": [
-        "event_id",
-        "parent_process"
-      ],
-      "families": [
-        "chainsaw",
-        "deepbluecli",
-        "evtx",
-        "evtxecmd",
-        "hayabusa",
-        "ingest-evtx",
-        "ingest-hayabusa",
-        "ingest-kape",
-        "ingest-scheduled_tasks",
-        "ingest-security",
-        "ingest-services",
-        "ingest-sysmon",
-        "ingest-windows_services",
-        "powershell",
-        "scheduled_tasks",
-        "security",
-        "services",
-        "sysmon",
-        "system",
-        "zircolite"
-      ],
-      "id": "winrm_execution",
-      "kind": "skill_step",
-      "reason": "some referenced columns are not filled for these families",
-      "status": "partial",
-      "unfilled_columns": [
-        "parent_process"
       ]
     },
     {
@@ -2549,74 +1517,6 @@
       "status": "partial",
       "unfilled_columns": [
         "file_path"
-      ]
-    },
-    {
-      "cause": "wrong_field",
-      "columns": [
-        "command_line"
-      ],
-      "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
-        "zircolite"
-      ],
-      "families": [
-        "chainsaw",
-        "deepbluecli",
-        "evtx",
-        "evtxecmd",
-        "hayabusa",
-        "ingest-evtx",
-        "ingest-hayabusa",
-        "ingest-kape",
-        "ingest-security",
-        "ingest-services",
-        "ingest-sysmon",
-        "ingest-windows_services",
-        "powershell",
-        "security",
-        "services",
-        "sysmon",
-        "system",
-        "zircolite"
-      ],
-      "id": "wevtutil_execution",
-      "kind": "skill_step",
-      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
-      "status": "cannot_match"
-    },
-    {
-      "columns": [
-        "command_line",
-        "event_id"
-      ],
-      "families": [
-        "chainsaw",
-        "deepbluecli",
-        "evtx",
-        "evtxecmd",
-        "hayabusa",
-        "ingest-evtx",
-        "ingest-hayabusa",
-        "ingest-kape",
-        "ingest-security",
-        "ingest-services",
-        "ingest-sysmon",
-        "ingest-windows_services",
-        "powershell",
-        "security",
-        "services",
-        "sysmon",
-        "system",
-        "zircolite"
-      ],
-      "id": "audit_policy_change",
-      "kind": "skill_step",
-      "reason": "some referenced columns are not filled for these families",
-      "status": "partial",
-      "unfilled_columns": [
-        "command_line"
       ]
     },
     {
@@ -2862,12 +1762,9 @@
       "status": "cannot_match"
     },
     {
-      "cause": "wrong_field",
       "columns": [
-        "field"
-      ],
-      "declared_families_in_corpus": [
-        "capa"
+        "meta.version",
+        "text.wc"
       ],
       "families": [
         "capa",
@@ -2875,53 +1772,10 @@
       ],
       "id": "capa_capabilities",
       "kind": "skill_step",
-      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
-      "status": "cannot_match"
-    },
-    {
-      "columns": [
-        "command_line",
-        "file_path"
-      ],
-      "families": [
-        "chainsaw",
-        "deepbluecli",
-        "evtx",
-        "evtxecmd",
-        "fls",
-        "hayabusa",
-        "ingest-evtx",
-        "ingest-hayabusa",
-        "ingest-kape",
-        "ingest-mft",
-        "ingest-prefetch",
-        "ingest-sandbox",
-        "ingest-strings",
-        "ingest-volatility",
-        "memory",
-        "mft",
-        "mftecmd",
-        "mftecmd-i30",
-        "mftecmd-usn",
-        "ntfs",
-        "pecmd",
-        "powershell",
-        "prefetch",
-        "sandbox",
-        "security",
-        "strings",
-        "sysmon",
-        "system",
-        "vol",
-        "volatility",
-        "zircolite"
-      ],
-      "id": "document_and_script_analysis",
-      "kind": "skill_step",
       "reason": "some referenced columns are not filled for these families",
       "status": "partial",
       "unfilled_columns": [
-        "command_line"
+        "meta.version"
       ]
     },
     {
@@ -3542,50 +2396,9 @@
       "status": "cannot_match"
     },
     {
-      "cause": "wrong_field",
       "columns": [
-        "command_line"
-      ],
-      "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
-        "zircolite"
-      ],
-      "families": [
-        "chainsaw",
-        "deepbluecli",
-        "evtx",
-        "evtxecmd",
-        "hayabusa",
-        "ingest-evtx",
-        "ingest-hayabusa",
-        "ingest-kape",
-        "ingest-powershell",
-        "ingest-prefetch",
-        "ingest-sysmon",
-        "pecmd",
-        "powershell",
-        "prefetch",
-        "security",
-        "sysmon",
-        "system",
-        "zircolite"
-      ],
-      "id": "encoded_commands",
-      "kind": "skill_step",
-      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
-      "status": "cannot_match"
-    },
-    {
-      "cause": "wrong_field",
-      "columns": [
-        "command_line",
-        "file_path"
-      ],
-      "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
-        "zircolite"
+        "file_path",
+        "text.wc"
       ],
       "families": [
         "chainsaw",
@@ -3609,8 +2422,11 @@
       ],
       "id": "download_cradles",
       "kind": "skill_step",
-      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
-      "status": "cannot_match"
+      "reason": "some referenced columns are not filled for these families",
+      "status": "partial",
+      "unfilled_columns": [
+        "file_path"
+      ]
     },
     {
       "columns": [
@@ -3644,41 +2460,6 @@
       "unfilled_columns": [
         "file_path"
       ]
-    },
-    {
-      "cause": "wrong_field",
-      "columns": [
-        "command_line"
-      ],
-      "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
-        "zircolite"
-      ],
-      "families": [
-        "chainsaw",
-        "deepbluecli",
-        "evtx",
-        "evtxecmd",
-        "hayabusa",
-        "ingest-evtx",
-        "ingest-hayabusa",
-        "ingest-kape",
-        "ingest-powershell",
-        "ingest-prefetch",
-        "ingest-sysmon",
-        "pecmd",
-        "powershell",
-        "prefetch",
-        "security",
-        "sysmon",
-        "system",
-        "zircolite"
-      ],
-      "id": "powershell_downgrade",
-      "kind": "skill_step",
-      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
-      "status": "cannot_match"
     },
     {
       "cause": "wrong_field",
@@ -3800,7 +2581,7 @@
       "cause": "corpus_absent",
       "columns": [
         "file",
-        "payloaddata2"
+        "text.wc"
       ],
       "declared_families_in_corpus": [],
       "families": [
@@ -3924,15 +2705,9 @@
       ]
     },
     {
-      "cause": "wrong_field",
       "columns": [
         "file_path",
-        "parent_process"
-      ],
-      "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
-        "zircolite"
+        "text.wc"
       ],
       "families": [
         "apache",
@@ -3971,8 +2746,11 @@
       ],
       "id": "worker_process_exec",
       "kind": "skill_step",
-      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
-      "status": "cannot_match"
+      "reason": "some referenced columns are not filled for these families",
+      "status": "partial",
+      "unfilled_columns": [
+        "file_path"
+      ]
     },
     {
       "cause": "wrong_field",
@@ -4075,15 +2853,9 @@
       "status": "cannot_match"
     },
     {
-      "cause": "wrong_field",
       "columns": [
-        "command_line",
-        "file_path"
-      ],
-      "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
-        "zircolite"
+        "file_path",
+        "text.wc"
       ],
       "families": [
         "apache",
@@ -4122,8 +2894,11 @@
       ],
       "id": "post_exploit_chain",
       "kind": "skill_step",
-      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
-      "status": "cannot_match"
+      "reason": "some referenced columns are not filled for these families",
+      "status": "partial",
+      "unfilled_columns": [
+        "file_path"
+      ]
     },
     {
       "cause": "wrong_field",
@@ -6939,6 +5714,39 @@
     {
       "cause": "wrong_field",
       "columns": [
+        "payloaddata2",
+        "payloaddata6"
+      ],
+      "declared_families_in_corpus": [
+        "chainsaw",
+        "deepbluecli",
+        "zircolite"
+      ],
+      "families": [
+        "chainsaw",
+        "deepbluecli",
+        "evtx",
+        "evtxecmd",
+        "hayabusa",
+        "ingest-evtxecmd",
+        "ingest-hayabusa",
+        "ingest-kape",
+        "ingest-security",
+        "ingest-sysmon",
+        "powershell",
+        "security",
+        "sysmon",
+        "system",
+        "zircolite"
+      ],
+      "id": "sigma-18988e1b-9087-4f8a-82fe-0414dce49878",
+      "kind": "analytic",
+      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
+      "status": "cannot_match"
+    },
+    {
+      "cause": "wrong_field",
+      "columns": [
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
@@ -7643,6 +6451,40 @@
         "zircolite"
       ],
       "id": "sigma-28208707-fe31-437f-9a7f-4b1108b94d2e",
+      "kind": "analytic",
+      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
+      "status": "cannot_match"
+    },
+    {
+      "cause": "wrong_field",
+      "columns": [
+        "executableinfo",
+        "payloaddata2",
+        "payloaddata6"
+      ],
+      "declared_families_in_corpus": [
+        "chainsaw",
+        "deepbluecli",
+        "zircolite"
+      ],
+      "families": [
+        "chainsaw",
+        "deepbluecli",
+        "evtx",
+        "evtxecmd",
+        "hayabusa",
+        "ingest-evtxecmd",
+        "ingest-hayabusa",
+        "ingest-kape",
+        "ingest-security",
+        "ingest-sysmon",
+        "powershell",
+        "security",
+        "sysmon",
+        "system",
+        "zircolite"
+      ],
+      "id": "sigma-285b85b1-a555-4095-8652-a8a4106af63f",
       "kind": "analytic",
       "reason": "none of the columns it references holds a value in the population corpus for the declared families",
       "status": "cannot_match"
@@ -9838,6 +8680,39 @@
     {
       "cause": "wrong_field",
       "columns": [
+        "payloaddata2",
+        "payloaddata6"
+      ],
+      "declared_families_in_corpus": [
+        "chainsaw",
+        "deepbluecli",
+        "zircolite"
+      ],
+      "families": [
+        "chainsaw",
+        "deepbluecli",
+        "evtx",
+        "evtxecmd",
+        "hayabusa",
+        "ingest-evtxecmd",
+        "ingest-hayabusa",
+        "ingest-kape",
+        "ingest-security",
+        "ingest-sysmon",
+        "powershell",
+        "security",
+        "sysmon",
+        "system",
+        "zircolite"
+      ],
+      "id": "sigma-49f2f17b-b4c8-4172-a68b-d5bf95d05130",
+      "kind": "analytic",
+      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
+      "status": "cannot_match"
+    },
+    {
+      "cause": "wrong_field",
+      "columns": [
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
@@ -11227,6 +10102,39 @@
     {
       "cause": "wrong_field",
       "columns": [
+        "payloaddata2",
+        "payloaddata6"
+      ],
+      "declared_families_in_corpus": [
+        "chainsaw",
+        "deepbluecli",
+        "zircolite"
+      ],
+      "families": [
+        "chainsaw",
+        "deepbluecli",
+        "evtx",
+        "evtxecmd",
+        "hayabusa",
+        "ingest-evtxecmd",
+        "ingest-hayabusa",
+        "ingest-kape",
+        "ingest-security",
+        "ingest-sysmon",
+        "powershell",
+        "security",
+        "sysmon",
+        "system",
+        "zircolite"
+      ],
+      "id": "sigma-5e6a80c8-2d45-4633-9ef4-fa2671a39c5c",
+      "kind": "analytic",
+      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
+      "status": "cannot_match"
+    },
+    {
+      "cause": "wrong_field",
+      "columns": [
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
@@ -11349,6 +10257,39 @@
         "zircolite"
       ],
       "id": "sigma-60936b49-fca0-4f32-993d-7415edcf9a5d",
+      "kind": "analytic",
+      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
+      "status": "cannot_match"
+    },
+    {
+      "cause": "wrong_field",
+      "columns": [
+        "payloaddata2",
+        "payloaddata6"
+      ],
+      "declared_families_in_corpus": [
+        "chainsaw",
+        "deepbluecli",
+        "zircolite"
+      ],
+      "families": [
+        "chainsaw",
+        "deepbluecli",
+        "evtx",
+        "evtxecmd",
+        "hayabusa",
+        "ingest-evtxecmd",
+        "ingest-hayabusa",
+        "ingest-kape",
+        "ingest-security",
+        "ingest-sysmon",
+        "powershell",
+        "security",
+        "sysmon",
+        "system",
+        "zircolite"
+      ],
+      "id": "sigma-60bfeac3-0d35-4302-8efb-1dd16f715bc6",
       "kind": "analytic",
       "reason": "none of the columns it references holds a value in the population corpus for the declared families",
       "status": "cannot_match"
@@ -12747,6 +11688,40 @@
     {
       "cause": "wrong_field",
       "columns": [
+        "executableinfo",
+        "payloaddata2",
+        "payloaddata6"
+      ],
+      "declared_families_in_corpus": [
+        "chainsaw",
+        "deepbluecli",
+        "zircolite"
+      ],
+      "families": [
+        "chainsaw",
+        "deepbluecli",
+        "evtx",
+        "evtxecmd",
+        "hayabusa",
+        "ingest-evtxecmd",
+        "ingest-hayabusa",
+        "ingest-kape",
+        "ingest-security",
+        "ingest-sysmon",
+        "powershell",
+        "security",
+        "sysmon",
+        "system",
+        "zircolite"
+      ],
+      "id": "sigma-744a188b-0415-4792-896f-11ddb0588dbc",
+      "kind": "analytic",
+      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
+      "status": "cannot_match"
+    },
+    {
+      "cause": "wrong_field",
+      "columns": [
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
@@ -13322,6 +12297,39 @@
         "zircolite"
       ],
       "id": "sigma-7b4f794b-590a-4ad4-ba18-7964a2832205",
+      "kind": "analytic",
+      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
+      "status": "cannot_match"
+    },
+    {
+      "cause": "wrong_field",
+      "columns": [
+        "executableinfo",
+        "payloaddata6"
+      ],
+      "declared_families_in_corpus": [
+        "chainsaw",
+        "deepbluecli",
+        "zircolite"
+      ],
+      "families": [
+        "chainsaw",
+        "deepbluecli",
+        "evtx",
+        "evtxecmd",
+        "hayabusa",
+        "ingest-evtxecmd",
+        "ingest-hayabusa",
+        "ingest-kape",
+        "ingest-security",
+        "ingest-sysmon",
+        "powershell",
+        "security",
+        "sysmon",
+        "system",
+        "zircolite"
+      ],
+      "id": "sigma-7b582f1a-b318-4c6a-bf4e-66fe49bf55a5",
       "kind": "analytic",
       "reason": "none of the columns it references holds a value in the population corpus for the declared families",
       "status": "cannot_match"
@@ -14321,6 +13329,39 @@
         "zircolite"
       ],
       "id": "sigma-85d23b42-9a9d-4f8f-b3d7-d2733c1d58f5",
+      "kind": "analytic",
+      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
+      "status": "cannot_match"
+    },
+    {
+      "cause": "wrong_field",
+      "columns": [
+        "executableinfo",
+        "payloaddata6"
+      ],
+      "declared_families_in_corpus": [
+        "chainsaw",
+        "deepbluecli",
+        "zircolite"
+      ],
+      "families": [
+        "chainsaw",
+        "deepbluecli",
+        "evtx",
+        "evtxecmd",
+        "hayabusa",
+        "ingest-evtxecmd",
+        "ingest-hayabusa",
+        "ingest-kape",
+        "ingest-security",
+        "ingest-sysmon",
+        "powershell",
+        "security",
+        "sysmon",
+        "system",
+        "zircolite"
+      ],
+      "id": "sigma-8823e85d-31d8-473e-b7f4-92da070f0fc6",
       "kind": "analytic",
       "reason": "none of the columns it references holds a value in the population corpus for the declared families",
       "status": "cannot_match"
@@ -15810,6 +14851,39 @@
     {
       "cause": "wrong_field",
       "columns": [
+        "payloaddata2",
+        "payloaddata6"
+      ],
+      "declared_families_in_corpus": [
+        "chainsaw",
+        "deepbluecli",
+        "zircolite"
+      ],
+      "families": [
+        "chainsaw",
+        "deepbluecli",
+        "evtx",
+        "evtxecmd",
+        "hayabusa",
+        "ingest-evtxecmd",
+        "ingest-hayabusa",
+        "ingest-kape",
+        "ingest-security",
+        "ingest-sysmon",
+        "powershell",
+        "security",
+        "sysmon",
+        "system",
+        "zircolite"
+      ],
+      "id": "sigma-99c8be4f-3087-4f9f-9c24-8c7e257b442e",
+      "kind": "analytic",
+      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
+      "status": "cannot_match"
+    },
+    {
+      "cause": "wrong_field",
+      "columns": [
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
@@ -17265,6 +16339,40 @@
     {
       "cause": "wrong_field",
       "columns": [
+        "executableinfo",
+        "payloaddata2",
+        "payloaddata6"
+      ],
+      "declared_families_in_corpus": [
+        "chainsaw",
+        "deepbluecli",
+        "zircolite"
+      ],
+      "families": [
+        "chainsaw",
+        "deepbluecli",
+        "evtx",
+        "evtxecmd",
+        "hayabusa",
+        "ingest-evtxecmd",
+        "ingest-hayabusa",
+        "ingest-kape",
+        "ingest-security",
+        "ingest-sysmon",
+        "powershell",
+        "security",
+        "sysmon",
+        "system",
+        "zircolite"
+      ],
+      "id": "sigma-aa2efee7-34dd-446e-8a37-40790a66efd7",
+      "kind": "analytic",
+      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
+      "status": "cannot_match"
+    },
+    {
+      "cause": "wrong_field",
+      "columns": [
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
@@ -17809,6 +16917,38 @@
         "zircolite"
       ],
       "id": "sigma-b27077d6-23e6-45d2-81a0-e2b356eea5fd",
+      "kind": "analytic",
+      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
+      "status": "cannot_match"
+    },
+    {
+      "cause": "wrong_field",
+      "columns": [
+        "payloaddata6"
+      ],
+      "declared_families_in_corpus": [
+        "chainsaw",
+        "deepbluecli",
+        "zircolite"
+      ],
+      "families": [
+        "chainsaw",
+        "deepbluecli",
+        "evtx",
+        "evtxecmd",
+        "hayabusa",
+        "ingest-evtxecmd",
+        "ingest-hayabusa",
+        "ingest-kape",
+        "ingest-security",
+        "ingest-sysmon",
+        "powershell",
+        "security",
+        "sysmon",
+        "system",
+        "zircolite"
+      ],
+      "id": "sigma-b2ddd389-f676-4ac4-845a-e00781a48e5f",
       "kind": "analytic",
       "reason": "none of the columns it references holds a value in the population corpus for the declared families",
       "status": "cannot_match"
@@ -19299,6 +18439,39 @@
     {
       "cause": "wrong_field",
       "columns": [
+        "executableinfo",
+        "payloaddata2"
+      ],
+      "declared_families_in_corpus": [
+        "chainsaw",
+        "deepbluecli",
+        "zircolite"
+      ],
+      "families": [
+        "chainsaw",
+        "deepbluecli",
+        "evtx",
+        "evtxecmd",
+        "hayabusa",
+        "ingest-evtxecmd",
+        "ingest-hayabusa",
+        "ingest-kape",
+        "ingest-security",
+        "ingest-sysmon",
+        "powershell",
+        "security",
+        "sysmon",
+        "system",
+        "zircolite"
+      ],
+      "id": "sigma-caa06de8-fdef-4c91-826a-7f9e163eef4b",
+      "kind": "analytic",
+      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
+      "status": "cannot_match"
+    },
+    {
+      "cause": "wrong_field",
+      "columns": [
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
@@ -19324,6 +18497,39 @@
         "zircolite"
       ],
       "id": "sigma-cad1fe90-2406-44dc-bd03-59d0b58fe722",
+      "kind": "analytic",
+      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
+      "status": "cannot_match"
+    },
+    {
+      "cause": "wrong_field",
+      "columns": [
+        "executableinfo",
+        "payloaddata2"
+      ],
+      "declared_families_in_corpus": [
+        "chainsaw",
+        "deepbluecli",
+        "zircolite"
+      ],
+      "families": [
+        "chainsaw",
+        "deepbluecli",
+        "evtx",
+        "evtxecmd",
+        "hayabusa",
+        "ingest-evtxecmd",
+        "ingest-hayabusa",
+        "ingest-kape",
+        "ingest-security",
+        "ingest-sysmon",
+        "powershell",
+        "security",
+        "sysmon",
+        "system",
+        "zircolite"
+      ],
+      "id": "sigma-cbb9e3d1-2386-4e59-912e-62f1484f7a89",
       "kind": "analytic",
       "reason": "none of the columns it references holds a value in the population corpus for the declared families",
       "status": "cannot_match"
@@ -20650,6 +19856,39 @@
     {
       "cause": "wrong_field",
       "columns": [
+        "payloaddata2",
+        "payloaddata6"
+      ],
+      "declared_families_in_corpus": [
+        "chainsaw",
+        "deepbluecli",
+        "zircolite"
+      ],
+      "families": [
+        "chainsaw",
+        "deepbluecli",
+        "evtx",
+        "evtxecmd",
+        "hayabusa",
+        "ingest-evtxecmd",
+        "ingest-hayabusa",
+        "ingest-kape",
+        "ingest-security",
+        "ingest-sysmon",
+        "powershell",
+        "security",
+        "sysmon",
+        "system",
+        "zircolite"
+      ],
+      "id": "sigma-e52cb31c-10ed-4aea-bcb7-593c9f4a315b",
+      "kind": "analytic",
+      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
+      "status": "cannot_match"
+    },
+    {
+      "cause": "wrong_field",
+      "columns": [
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
@@ -21481,6 +20720,39 @@
         "zircolite"
       ],
       "id": "sigma-f37b4bce-49d0-4087-9f5b-58bffda77316",
+      "kind": "analytic",
+      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
+      "status": "cannot_match"
+    },
+    {
+      "cause": "wrong_field",
+      "columns": [
+        "executableinfo",
+        "payloaddata2"
+      ],
+      "declared_families_in_corpus": [
+        "chainsaw",
+        "deepbluecli",
+        "zircolite"
+      ],
+      "families": [
+        "chainsaw",
+        "deepbluecli",
+        "evtx",
+        "evtxecmd",
+        "hayabusa",
+        "ingest-evtxecmd",
+        "ingest-hayabusa",
+        "ingest-kape",
+        "ingest-security",
+        "ingest-sysmon",
+        "powershell",
+        "security",
+        "sysmon",
+        "system",
+        "zircolite"
+      ],
+      "id": "sigma-f4bbd493-b796-416e-bbf2-121235348529",
       "kind": "analytic",
       "reason": "none of the columns it references holds a value in the population corpus for the declared families",
       "status": "cannot_match"

@@ -219,20 +219,24 @@ steps:
             value: '*explorer.exe*'
             case_insensitive: true
       - wildcard:
-          fields.PayloadData2.kw:
+          text.wc:
             value: '*mshta*'
             case_insensitive: true
       - wildcard:
-          fields.PayloadData2.kw:
+          text.wc:
             value: '*rundll32*'
             case_insensitive: true
       - wildcard:
-          fields.PayloadData2.kw:
+          text.wc:
             value: '*powershell*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'mshta: free phrase; the step''s pivot names no registry column'
+  - 'rundll32: free phrase; the step''s pivot names no registry column'
+  - 'powershell: free phrase; the step''s pivot names no registry column'
 negative: No delivery artifact and no exec chain → the phish likely wasn't opened,
   was filtered, or the payload was blocked — a delivered-but-unopened phish is still
   reportable (user-awareness finding, not compromise).

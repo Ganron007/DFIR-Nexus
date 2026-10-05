@@ -69,7 +69,7 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.command_line.kw:
+          text.wc:
             value: '*msiexec /i*'
             case_insensitive: true
       - bool:
@@ -79,12 +79,15 @@ steps:
                 value: '*.msi*'
                 case_insensitive: true
           - wildcard:
-              fields.command_line.kw:
+              text.wc:
                 value: '*MsiInstaller*'
                 case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'msiexec /i: free phrase; the step''s pivot names no registry column'
+  - 'MsiInstaller: free phrase; the step''s pivot names no registry column'
 - name: chm_execution
   query: hh.exe OR .chm
   look_for: hh.exe spawning cmd/powershell — CHM Shortcut-object abuse.
@@ -97,12 +100,14 @@ steps:
             value: '*hh.exe*'
             case_insensitive: true
       - wildcard:
-          fields.PayloadData2.kw:
+          text.wc:
             value: '*.chm*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - '.chm: free phrase; the step''s pivot names no registry column'
 - name: html_smuggling_download
   query: '.html blob: download FromCache OR browser'
   look_for: Browser download of an HTML file followed by a new .exe/.dll write.

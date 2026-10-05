@@ -39,15 +39,15 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.command_line.kw:
+          text.wc:
             value: '*Set-MpPreference -DisableRealtimeMonitoring*'
             case_insensitive: true
       - wildcard:
-          fields.command_line.kw:
+          text.wc:
             value: '*sc stop windefend*'
             case_insensitive: true
       - wildcard:
-          fields.command_line.kw:
+          text.wc:
             value: '*DisableAntiSpyware*'
             case_insensitive: true
       minimum_should_match: 1
@@ -59,6 +59,11 @@ steps:
     - prefetch
     - mft
     - registry
+  es_text_only_reason:
+  - 'Set-MpPreference -DisableRealtimeMonitoring: free phrase; the step''s pivot names
+    no registry column'
+  - 'sc stop windefend: free phrase; the step''s pivot names no registry column'
+  - 'DisableAntiSpyware: free phrase; the step''s pivot names no registry column'
 - name: timestomp
   query: timestomp OR -M " OR Copy-Item -Destination
   look_for: 'Timestomp tool runs or timestamp manipulation — detect via the FOR508
@@ -149,20 +154,24 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.command_line.kw:
+          text.wc:
             value: '*EtwEventWrite*'
             case_insensitive: true
       - wildcard:
-          fields.command_line.kw:
+          text.wc:
             value: '*EtwUnregister*'
             case_insensitive: true
       - wildcard:
-          fields.command_line.kw:
+          text.wc:
             value: '*logman delete*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'EtwEventWrite: free phrase; the step''s pivot names no registry column'
+  - 'EtwUnregister: free phrase; the step''s pivot names no registry column'
+  - 'logman delete: free phrase; the step''s pivot names no registry column'
 - name: amsi_patch
   query: amsi.dll patch OR AmsiScanBuffer OR amsiInitFailed
   look_for: In-memory AMSI patching — patch bytes in PowerShell process memory.

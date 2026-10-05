@@ -280,6 +280,49 @@ def columns_for(field: str, families: list[str],
     return _only_populated(out, fams, profile)
 
 
+def _concept_for(field: str) -> str | None:
+    """What a field NAMES, or None when the concept table has no entry for it.
+
+    A caller uses this to tell "the family map considered this field and found no
+    column for it" (a real defect) from "the family map has no concept for this field"
+    (no opinion, so the registry-name lookup still applies).
+    """
+    return SIGMA_CONCEPT.get(field)
+
+
+def _alias_wide(families) -> set[str]:
+    """Every alias spelling of the declared families (the runtime's names)."""
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+        from nexus.knowledge.skills import family_names
+        out: set[str] = set()
+        for f in families:
+            out |= {str(x).lower() for x in family_names(f)}
+        return out
+    except Exception:  # noqa: BLE001
+        return {str(f).lower() for f in families}
+
+
+def _registry_fills(column: str, family: str) -> bool:
+    """Whether the registry records `family` as filling `column`.
+
+    Used only to decide whether an UNMEASURED lane could fill the candidate, so an
+    unmeasured family that carries no such column (email, eml, mft) cannot authorise
+    it while `evtxecmd` can.
+    """
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+        from nexus.knowledge.query_validation import load_field_registry
+        cols = load_field_registry()
+    except Exception:  # noqa: BLE001
+        return False
+    info = cols.get(column) or {}
+    fams = {str(f).lower() for f in (info.get("families") or [])}
+    if not fams:
+        return False
+    return str(family).lower() in fams
+
+
 def _only_populated(candidates: list[str], fams: set[str],
                     profile: dict[str, set[str]]) -> list[str]:
     """Keep a candidate when ANY declared family fills it - not every one.
@@ -303,14 +346,33 @@ def _only_populated(candidates: list[str], fams: set[str],
         return candidates
     known = {f for f in fams if f in profile}
     if known:
+        # The profile is authoritative for the families it holds: if one of them
+        # fills the candidate, keep it. That is what stops `execution_chain`'s
+        # `ParentImage` resolving to a `PayloadData*` column for a step whose only
+        # staged lanes (chainsaw, deepbluecli) fill `Event Data` and nothing else.
         keep = [c for c in candidates
                 if any(str(c).lower() in profile.get(f, set()) for f in known)]
         if keep:
             return keep
-        # no measured family fills any candidate. Fall through to the registry rather
-        # than returning [] outright: the profile may simply have staged a narrow
-        # subset of the rule's lanes (as it does here - chainsaw/zircolite but not
-        # evtxecmd/hayabusa), and dropping the answer would skip the whole rule.
+        # None of the measured lanes fills any candidate. Two cases, opposite
+        # actions:
+        #
+        #  * a rule that DECLARES an unmeasured lane which the registry says DOES
+        #    fill the candidate (`evtxecmd` for `PayloadData*`) is correct but
+        #    unmeasurable here, so it falls through and the population check reports
+        #    it `corpus_absent`. Returning [] here skipped 1767/1767 Sigma rules.
+        #  * a rule that declares no such lane has picked a column none of its
+        #    families has, so the answer is [] and it falls back to `text.wc` with a
+        #    recorded reason - the R0' defect, which is what the profile measures.
+        #
+        # "Could fill it" means the registry names the candidate for that family, not
+        # merely that the family is unmeasured: `email`, `eml` and `mft` are unmeasured
+        # too, and they carry no `PayloadData*`, so they must not authorise it.
+        declared = {str(f).lower() for f in fams}
+        declared |= {str(f).lower() for f in _alias_wide(fams)}
+        if not any(_registry_fills(c, f) for f in declared - known
+                   for c in candidates):
+            return []
     try:
         sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
         from nexus.knowledge.query_validation import load_field_registry

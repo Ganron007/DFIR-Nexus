@@ -61,11 +61,14 @@ steps:
   pivot: CommandLine
   es:
     wildcard:
-      fields.command_line.kw:
+      text.wc:
         value: '*rundll32 regsvr32 mshta wscript cscript msbuild installutil regasm*'
         case_insensitive: true
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'rundll32 regsvr32 mshta wscript cscript msbuild installutil regasm: free phrase;
+    the step''s pivot names no registry column'
 - name: suspicious_parentage
   query: winword.exe cmd.exe OR excel.exe powershell.exe OR wscript.exe
   look_for: Office/browser binaries spawning cmd/powershell/wscript — macro or exploit
@@ -109,20 +112,24 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.ExecutableInfo.kw:
+          text.wc:
             value: '*\Temp\*'
             case_insensitive: true
       - wildcard:
-          fields.ExecutableInfo.kw:
+          text.wc:
             value: '*\AppData\Local\Temp\*'
             case_insensitive: true
       - wildcard:
-          fields.ExecutableInfo.kw:
+          text.wc:
             value: '*\Downloads\*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - '\Temp\: free phrase; the step''s pivot names no registry column'
+  - '\AppData\Local\Temp\: free phrase; the step''s pivot names no registry column'
+  - '\Downloads\: free phrase; the step''s pivot names no registry column'
 - name: process_injection_indicators
   query: CreateRemoteThread OR QueueUserAPC OR SetThreadContext
   look_for: Injection API sequences in process-access events.

@@ -182,8 +182,17 @@ def _resolve_column(name: str, fams: list[str], cols: dict[str, Any]) -> str | N
     family, which 0c asks for ("choose the column from the declared family's own
     mapped columns first"), and it prefers a populated candidate over a declared one
     when the population profile can tell them apart.
+
+    A **registry placeholder** never resolves. `rules.<rule>.meta.attack` and
+    `matches[][].value` describe a nested shape, not a column the index emits, so a
+    clause naming one can never match - the R0' `capa_capabilities` defect verbatim:
+    "`exists` on `fields.rules.<rule>.meta.attack`, with the literal placeholder
+    `<rule>`".
     """
     if not name:
+        return None
+    # a template placeholder or a multi-level path is not a resolvable column
+    if "<" in name or ">" in name or "[]" in name:
         return None
     expanded = expand_families(fams)
     by_norm = {_norm_key(col): col for col in cols}
@@ -193,17 +202,39 @@ def _resolve_column(name: str, fams: list[str], cols: dict[str, Any]) -> str | N
     # `Image` on an EVTX lane resolves to `ExecutableInfo`/`PayloadData*` and on an
     # importer lane to `process_name`. Guessing from the name alone is what made a
     # Sysmon rule resolve `CommandLine` to `command_line`, an importer-only column.
+    #
+    # The ALIAS-WIDE set is passed, not just the declared one, so a lane the case
+    # index really emits (`chainsaw` for `evtx`) is also considered - which is what
+    # makes the population profile able to say "no lane I measured fills that".
     _here = str(Path(__file__).resolve().parent)
     if _here not in sys.path:
         sys.path.insert(0, _here)
     try:
-        from sigma_family_fields import columns_for
-        for col in columns_for(name, expanded):
-            hit = cols.get(col)
-            if hit:
-                return col
+        from sigma_family_fields import _alias_wide, _concept_for, _importer_lanes, columns_for
+
+        hit = None
+        for col in columns_for(name, sorted(set(fams) | _alias_wide(fams))):
+            if col in cols:
+                hit = col
+                break
+        if hit:
+            return hit
     except Exception:  # noqa: BLE001 - a missing devtool must not break the converter
         pass
+
+    # KL2d, part 2: the family map found nothing for a field it HAS a concept for,
+    # so no declared lane has that column. The registry-name fallback must not fire -
+    # that is the exact leak that made `CommandLine` resolve to `command_line` (an
+    # `ingest-*`-only column) for a rule naming `evtxecmd`, and `ParentImage` to
+    # `PayloadData2` for a step whose staged lanes fill only `Event Data`/`Computer`.
+    #
+    # The narrow condition matters: a field with NO concept (so the map says nothing
+    # either way) still goes through the name lookup, which is why only 248 rather
+    # than all 253 steps fall to text.
+    lanes = _importer_lanes()
+    evtx_lanes = {str(f).lower() for f in expanded} - lanes
+    if evtx_lanes and _concept_for(name) is not None:
+        return None
 
     # Prefer the column the caller literally named, then the known aliases:
     # `FileName` should resolve to `FileName` when that column exists for the
@@ -334,12 +365,55 @@ def _phrase_clause(
                 f"{phrase}: value of the wrong kind for {pivot_col}; searched in text"
             )
             return _wild("text.wc", phrase)
+        # KR2c / R0' defect 7: a command that must name a registry HIVE has to carry
+        # the hive name. `reg save` always names one, so `reg save sam` - what the
+        # authored query wrote - is never what the real command produces.
+        if _is_command_with_hive(phrase):
+            text_only.append(
+                f"{phrase}: expanded to name the hive the command reads"
+            )
+            return _wild(_column_field(pivot_col, cols),
+                         _expand_hive_command(phrase))
+        # KR2c / R0' defect 8: a unit-file keyword is not part of a PATH.
+        # `ExecStart`/`OnCalendar` live in a systemd unit's contents, so they belong
+        # in the row text; the file column holds the unit file's path.
+        if _is_unit_file_keyword(phrase):
+            text_only.append(
+                f"{phrase}: unit-file keyword, not a path; searched in text"
+            )
+            return _wild("text.wc", phrase)
         return _wild(_column_field(pivot_col, cols), phrase)
     text_only.append(
         f"{phrase}: free phrase; the step's pivot "
         f"{'is an identity column' if pivot_col else 'names no registry column'}"
     )
     return _wild("text.wc", phrase)
+
+
+#: `reg save` is the command whose value is meaningless without a hive. The R0' sample
+#: found the step searched `*reg save sam*`, which the real command never emits.
+_HIVE_COMMAND = re.compile(r"^reg\s+save\s+(?P<hive>sam|system|security)\b", re.I)
+
+#: A systemd unit-file keyword is not part of a path, so it is not a `file_path` value.
+_UNIT_FILE_KEYWORD = re.compile(r"\b(ExecStart|OnCalendar|ExecStop|WantedBy)\b")
+
+
+def _is_command_with_hive(phrase: str) -> bool:
+    return bool(_HIVE_COMMAND.match(str(phrase or "").strip()))
+
+
+def _expand_hive_command(phrase: str) -> str:
+    """`reg save sam` -> `reg save *\\sam` so the clause names the hive."""
+    m = _HIVE_COMMAND.match(str(phrase or "").strip())
+    if not m:
+        return phrase
+    hive = m.group("hive").lower()
+    rest = str(phrase).strip()[m.end():]
+    return f"reg save *\\{hive}{' ' + rest.strip() if rest.strip() else ''}"
+
+
+def _is_unit_file_keyword(phrase: str) -> bool:
+    return bool(_UNIT_FILE_KEYWORD.search(str(phrase or "")))
 
 
 def build_es(

@@ -46,7 +46,7 @@ steps:
             value: '*7z.exe*'
             case_insensitive: true
       - wildcard:
-          fields.command_line.kw:
+          text.wc:
             value: '*Compress-Archive*'
             case_insensitive: true
       - wildcard:
@@ -67,6 +67,8 @@ steps:
     - powershell
     - prefetch
     - mft
+  es_text_only_reason:
+  - 'Compress-Archive: free phrase; the step''s pivot names no registry column'
 - name: staging_dirs
   query: staging OR exfil OR collect OR loot
   look_for: New directories under %TEMP%/%ProgramData% collecting files.
@@ -137,24 +139,29 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.PayloadData2.kw:
+          text.wc:
             value: '*nslookup*'
             case_insensitive: true
       - wildcard:
-          fields.PayloadData2.kw:
+          text.wc:
             value: '*dig*'
             case_insensitive: true
       - wildcard:
-          fields.PayloadData2.kw:
+          text.wc:
             value: '*TXT record*'
             case_insensitive: true
       - wildcard:
-          fields.PayloadData2.kw:
+          text.wc:
             value: '*dns*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'nslookup: free phrase; the step''s pivot names no registry column'
+  - 'dig: free phrase; the step''s pivot names no registry column'
+  - 'TXT record: free phrase; the step''s pivot names no registry column'
+  - 'dns: free phrase; the step''s pivot names no registry column'
 - name: large_outbound
   query: netstat -an OR BytesSent
   look_for: SRUM/netstat showing large BytesSent from unusual processes.
@@ -185,7 +192,7 @@ steps:
             value: '*ftp.exe*'
             case_insensitive: true
       - wildcard:
-          fields.command_line.kw:
+          text.wc:
             value: '*sftp*'
             case_insensitive: true
       - wildcard:
@@ -193,12 +200,15 @@ steps:
             value: '*scp.exe*'
             case_insensitive: true
       - wildcard:
-          fields.command_line.kw:
+          text.wc:
             value: '*pscp*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'sftp: free phrase; the step''s pivot names no registry column'
+  - 'pscp: free phrase; the step''s pivot names no registry column'
 - name: bitsadmin_transfer
   query: bitsadmin OR Start-BitsTransfer
   look_for: BITS transfers to external URLs — living-off-the-land exfil that bypasses
@@ -208,16 +218,19 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.command_line.kw:
+          text.wc:
             value: '*bitsadmin*'
             case_insensitive: true
       - wildcard:
-          fields.command_line.kw:
+          text.wc:
             value: '*Start-BitsTransfer*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'bitsadmin: free phrase; the step''s pivot names no registry column'
+  - 'Start-BitsTransfer: free phrase; the step''s pivot names no registry column'
 - name: theft_sequence
   query: rar OR 7z OR zip OR copy
   look_for: 'Answer "did the attacker steal data" as a SEQUENCE, not a single event:

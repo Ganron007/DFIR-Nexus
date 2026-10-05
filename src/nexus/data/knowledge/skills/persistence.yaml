@@ -70,7 +70,7 @@ steps:
       - term:
           event_id: '7045'
       - wildcard:
-          fields.PayloadData2.kw:
+          text.wc:
             value: '*sc create*'
             case_insensitive: true
       - bool:
@@ -80,12 +80,15 @@ steps:
                 value: '*sc.exe*'
                 case_insensitive: true
           - wildcard:
-              fields.PayloadData2.kw:
+              text.wc:
                 value: '*create*'
                 case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'sc create: free phrase; the step''s pivot names no registry column'
+  - 'create: free phrase; the step''s pivot names no registry column'
 - name: scheduled_tasks
   query: schtasks /create OR 106 OR TaskScheduler
   look_for: Task registrations running as SYSTEM or on logon, especially with remote
@@ -95,20 +98,24 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.PayloadData1.kw:
+          text.wc:
             value: '*schtasks /create*'
             case_insensitive: true
       - wildcard:
-          fields.PayloadData1.kw:
+          text.wc:
             value: '*106*'
             case_insensitive: true
       - wildcard:
-          fields.PayloadData1.kw:
+          text.wc:
             value: '*TaskScheduler*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'schtasks /create: free phrase; the step''s pivot names no registry column'
+  - '106: free phrase; the step''s pivot names no registry column'
+  - 'TaskScheduler: free phrase; the step''s pivot names no registry column'
 - name: wmi_subscription
   query: EventFilter CommandLineEventConsumer wmi
   look_for: 'WMI permanent event subscriptions: a __EventFilter + a consumer class
@@ -122,11 +129,14 @@ steps:
     Sysmon process-create
   es:
     wildcard:
-      fields.command_line.kw:
+      text.wc:
         value: '*EventFilter CommandLineEventConsumer wmi*'
         case_insensitive: true
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'EventFilter CommandLineEventConsumer wmi: free phrase; the step''s pivot names
+    no registry column'
 - name: image_file_execution_options
   query: Image File Execution Options OR IFEO OR SilentProcessExit
   look_for: Debugger hijacks on common binaries (sethc, utilman, osk).
@@ -195,16 +205,19 @@ steps:
             value: '*ntshrui.dll*'
             case_insensitive: true
       - wildcard:
-          fields.PayloadData2.kw:
+          text.wc:
             value: '*side-loading*'
             case_insensitive: true
       - wildcard:
-          fields.PayloadData2.kw:
+          text.wc:
             value: '*WinSxS*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'side-loading: free phrase; the step''s pivot names no registry column'
+  - 'WinSxS: free phrase; the step''s pivot names no registry column'
 - name: task_persistence_case
   query: schtasks OR at.exe OR TaskScheduler
   look_for: Scheduled-task persistence stays dominant even in advanced intrusions
@@ -215,7 +228,7 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.PayloadData1.kw:
+          text.wc:
             value: '*schtasks*'
             case_insensitive: true
       - wildcard:
@@ -223,12 +236,15 @@ steps:
             value: '*at.exe*'
             case_insensitive: true
       - wildcard:
-          fields.PayloadData1.kw:
+          text.wc:
             value: '*TaskScheduler*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'schtasks: free phrase; the step''s pivot names no registry column'
+  - 'TaskScheduler: free phrase; the step''s pivot names no registry column'
 negative: No autostart writes, service installs, or task registrations → the attacker
   may rely on existing persistence or volatile-only presence.
 confidence_rules:

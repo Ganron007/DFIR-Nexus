@@ -68,11 +68,11 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.ExecutableInfo.kw:
+          text.wc:
             value: '*cobaltstrike*'
             case_insensitive: true
       - wildcard:
-          fields.ExecutableInfo.kw:
+          text.wc:
             value: '*beacon*'
             case_insensitive: true
       - wildcard:
@@ -82,6 +82,9 @@ steps:
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'cobaltstrike: free phrase; the step''s pivot names no registry column'
+  - 'beacon: free phrase; the step''s pivot names no registry column'
 - name: dga_domains
   query: dns QueryName OR nslookup
   look_for: Long random subdomains, non-standard TLDs, high-entropy names.
@@ -90,16 +93,19 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.PayloadData2.kw:
+          text.wc:
             value: '*dns QueryName*'
             case_insensitive: true
       - wildcard:
-          fields.PayloadData2.kw:
+          text.wc:
             value: '*nslookup*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'dns QueryName: free phrase; the step''s pivot names no registry column'
+  - 'nslookup: free phrase; the step''s pivot names no registry column'
 - name: dnscat_tunneling
   query: dnscat OR iodine OR dns2tcp
   look_for: DNS tunneling tool execution or TXT-record exfil patterns.
@@ -108,20 +114,24 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.command_line.kw:
+          text.wc:
             value: '*dnscat*'
             case_insensitive: true
       - wildcard:
-          fields.command_line.kw:
+          text.wc:
             value: '*iodine*'
             case_insensitive: true
       - wildcard:
-          fields.command_line.kw:
+          text.wc:
             value: '*dns2tcp*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'dnscat: free phrase; the step''s pivot names no registry column'
+  - 'iodine: free phrase; the step''s pivot names no registry column'
+  - 'dns2tcp: free phrase; the step''s pivot names no registry column'
 - name: proxy_pac
   query: proxy OR pac file OR ProxyServer
   look_for: Proxy settings that redirect traffic through attacker infra.
@@ -176,20 +186,24 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.PayloadData2.kw:
+          text.wc:
             value: '*dns TXT*'
             case_insensitive: true
       - wildcard:
-          fields.PayloadData2.kw:
+          text.wc:
             value: '*icmp*'
             case_insensitive: true
       - wildcard:
-          fields.PayloadData2.kw:
+          text.wc:
             value: '*http POST*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'dns TXT: free phrase; the step''s pivot names no registry column'
+  - 'icmp: free phrase; the step''s pivot names no registry column'
+  - 'http POST: free phrase; the step''s pivot names no registry column'
 negative: No periodic external connections or C2 artifacts → implant likely dormant,
   destroyed, or using encrypted/unobserved channels.
 confidence_rules:

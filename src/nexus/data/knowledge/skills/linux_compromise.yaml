@@ -125,12 +125,14 @@ steps:
             value: '*.timer*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*ExecStart*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'ExecStart: unit-file keyword, not a path; searched in text'
 - name: account_anomalies
   query: passwd OR /etc/passwd OR sudoers OR useradd
   look_for: /etc/passwd for unexpected accounts (UID 0 backdoor users), sudoers modifications,
