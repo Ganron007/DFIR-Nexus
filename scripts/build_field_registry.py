@@ -147,7 +147,10 @@ def _parse_catalog(path: Path) -> dict | None:
         m = re.match(r"^([A-Za-z_][\w.]*)\s*:\s*(.*?)\s*$", stripped)
         if m and current is not None:
             key = m.group(1).lower()
-            if key in {"name", "es_type", "type", "plugin"}:
+            # WO-KR2c 0a: role and example are the meaning. `PayloadData1` is a user
+            # on a Security 4624 and something else on a PowerShell 4100; the role
+            # says which, and the example is a real value the mapping observed.
+            if key in {"name", "es_type", "type", "plugin", "role", "example"}:
                 current[key] = m.group(2).strip().strip('"')
             continue
     if current and current.get("name") and current.get("es_type"):
@@ -186,22 +189,118 @@ def load_rows() -> tuple[dict[str, dict[str, str]], list[str]]:
     return families, skipped
 
 
-def merge(families: dict[str, dict[str, str]]) -> tuple[dict[str, dict], list[dict]]:
+def load_roles() -> dict[str, dict[str, dict[str, str]]]:
+    """Per family, each column's `role` and `example` from the same catalog.
+
+    WO-KR2c 0a: the build dropped meaning. The role says what a column IS
+    ("record_id", "ts", "event_id") and the example is a real value; a stored query
+    aimed at the right one needs both, because `PayloadData1` means something
+    different per event and `Image`/`ImageFileName` are not the same field.
+
+    Returned as **per family**, keyed `family -> column -> meta`, so the merge can
+    attach the meta to every family that declares it - a flat `column -> meta` map
+    would silently keep only the last family that carried the column.
+    """
+    roles: dict[str, dict[str, dict[str, str]]] = {}
+    for path in sorted(SRC_DIR.glob("*.yaml")):
+        stem = path.stem
+        if stem in SKIP_STEMS:
+            continue
+        doc = _parse_catalog(path)
+        if doc is None or doc.get("obsolete") or doc.get("blocked"):
+            continue
+        if doc.get("validated") is False or doc.get("no_fields"):
+            continue
+        fam: dict[str, dict[str, str]] = {}
+        for entry in doc.get("fields") or []:
+            name = str(entry.get("name") or "").strip()
+            if not name or name.startswith("_") or not _usable_name(name):
+                continue
+            meta: dict[str, str] = {}
+            role = str(entry.get("role") or "").strip()
+            example = str(entry.get("example") or "").strip()
+            if role:
+                meta["role"] = role[:200]
+            if example:
+                meta["example"] = example[:120]
+            if meta:
+                fam[name] = meta
+        if fam:
+            roles[stem] = fam
+    return roles
+
+
+def load_population() -> dict[str, set[str]]:
+    """column -> the families whose documents actually filled it (WO-KM1 item 3).
+
+    Read from `_population.json`, the mechanical profile run over the population
+    corpus. `families` stays the declared set; this is the populated one, and
+    forbidden item 11 says a claim of validity must be shown on populated fields.
+    """
+    import json
+
+    prof = SRC_DIR / "_population.json"
+    if not prof.is_file():
+        return {}
+    data = json.loads(prof.read_text(encoding="utf-8")) or {}
+    out: dict[str, set[str]] = {}
+    for family, body in (data.get("families") or {}).items():
+        cols = body.get("columns") if isinstance(body, dict) else {}
+        for column, info in (cols or {}).items():
+            if column == "__text__":
+                continue
+            if int((info or {}).get("filled") or 0) > 0:
+                out.setdefault(str(column).lower(), set()).add(str(family).lower())
+    return out
+
+
+def merge(
+    families: dict[str, dict[str, str]],
+    roles: dict[str, dict[str, dict[str, str]]] | None = None,
+    populated: dict[str, set[str]] | None = None,
+) -> tuple[dict[str, dict], list[dict]]:
     by_name: dict[str, dict] = {}
     conflicts: list[dict] = []
-    for fam, cols in families.items():
+    for fam, cols in (families or {}).items():
+        fam_roles = (roles or {}).get(fam) or {}
         for name, ctype in cols.items():
-            row = by_name.setdefault(name, {"types": set(), "families": []})
+            row = by_name.setdefault(name, {"types": set(), "families": [], "meta": {}})
             row["types"].add(ctype)
             row["families"].append(fam)
+            # The role says what the column IS. Different families legitimately use
+            # one name differently (Emsys's ProcessId vs Sysmon's EventID), so the
+            # roles are merged onto the one entry per column; when they differ the
+            # entry says so rather than pretending a single meaning.
+            src = fam_roles.get(name)
+            if not isinstance(src, dict) or not src.get("role"):
+                continue
+            label = str(src["role"])[:200]
+            prior = row["meta"].get("role")
+            if prior and prior != label:
+                row["meta"]["role"] = f"varies: {prior} / {label}"[:200]
+            else:
+                row["meta"]["role"] = label
+            if src.get("example") and not row["meta"].get("example"):
+                row["meta"]["example"] = str(src["example"])[:120]
     out: dict[str, dict] = {}
     for name, row in sorted(by_name.items()):
         merged, conflict = _unify(name, set(row["types"]))
-        out[name] = {
+        entry = {
             "type": merged,
             "families": sorted(row["families"]),
             "observed_types": sorted(row["types"]),
         }
+        # WO-KR2c 0a: carry role/example so a stored query can pick the column that
+        # MEANS the right thing (`PayloadData1` is a user on 4624, not on 4100).
+        if row.get("meta"):
+            if row["meta"].get("role"):
+                entry["role"] = row["meta"]["role"][:200]
+            if row["meta"].get("example"):
+                entry["example"] = row["meta"]["example"][:120]
+        # WO-KM1 item 3: what real documents filled, beside what is declared.
+        if name.lower() in (populated or {}):
+            entry["populated_in"] = sorted(populated[name.lower()])
+        out[name] = entry
         if conflict:
             conflicts.append({
                 "name": name,
@@ -218,8 +317,13 @@ def main() -> int:
     args = ap.parse_args()
 
     families, skipped = load_rows()
-    columns, conflicts = merge(families)
+    roles = load_roles()
+    populated = load_population()
+    columns, conflicts = merge(families, roles, populated)
+    with_role = sum(1 for r in columns.values() if r.get("role"))
+    with_pop = sum(1 for r in columns.values() if r.get("populated_in"))
     print(f"families: {len(families)}   merged columns: {len(columns)}   conflicts: {len(conflicts)}")
+    print(f"carried role/example: {with_role}   populated_in: {with_pop}")
     for c in conflicts[:25]:
         print(f"  {c['name']!r}: {c['observed']} -> {c['resolved']}  [{', '.join(c['families'])}]")
     if len(conflicts) > 25:
@@ -247,9 +351,10 @@ def main() -> int:
             "families": len(families),
             "columns": len(columns),
             "conflicts": len(conflicts),
+            "columns_with_role": with_role,
+            "columns_populated": with_pop,
         },
-        "columns": {name: {"type": r["type"], "families": r["families"]}
-                    for name, r in columns.items()},
+        "columns": columns,
         "conflicts": conflicts,
         "families": {fam: cols for fam, cols in sorted(families.items())},
     }
