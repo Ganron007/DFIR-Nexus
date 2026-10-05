@@ -4,6 +4,7 @@ known_good.db: File/service/task/autorun baselines from VanillaWindowsReference
 context.db: LOLBins, vulnerable drivers, process rules, named pipes, suspicious patterns
 """
 
+import contextlib
 import json
 import logging
 import sqlite3
@@ -722,10 +723,8 @@ class ContextDB:
             result = dict(row)
             for field in ("paths", "functions", "mitre_techniques"):
                 if result.get(field):
-                    try:
+                    with contextlib.suppress(json.JSONDecodeError):
                         result[field] = json.loads(result[field])
-                    except json.JSONDecodeError:
-                        pass
             return result
         return None
 
