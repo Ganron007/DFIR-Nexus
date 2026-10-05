@@ -36,7 +36,16 @@ CAR_PACK_PATH = (
     / "car_analytics.yaml"
 )
 
-#: Where every analytic's citation must come from. External by construction:
+#: WO-KL2b: the rules translated from the pinned SigmaHQ snapshot by
+#: `devtools/knowledge/sigma_import.py`. A separate file from the hand-curated pack
+#: so the generated set can be regenerated without touching the authored one.
+SIGMA_PACK_PATH = (
+    Path(__file__).resolve().parents[1] / "data" / "knowledge" / "needles"
+    / "sigma_analytics.yaml"
+)
+
+#: Every pack the product loads when no explicit path is given.
+PACK_PATHS = (PACK_PATH, SIGMA_PACK_PATH)
 #: no term in this pack may be derived from a K1 or GATE-H sample (WO-K4).
 PROVENANCE = "external: MITRE CAR + ATT&CK; no sample-derived terms"
 
@@ -62,12 +71,22 @@ def load_pack(path: Path | str | None = None) -> dict[str, Any]:
 def analytics(path: Path | str | None = None) -> list[dict[str, Any]]:
     """Every valid analytic, in file order.
 
-    Failing items are not loaded and the rejection is logged.
+    With no `path`, **every** pack in `PACK_PATHS` is loaded (the hand-curated
+    behavioural pack and the SigmaHQ-derived one). An explicit `path` loads just
+    that file, which the tests use. Failing items are not loaded and the rejection
+    is logged.
     """
-    raw_items = [a for a in (load_pack(path).get("packs") or []) if isinstance(a, dict)]
+    paths: tuple[Path | str | None, ...] = (path,) if path else PACK_PATHS
+    raw_items: list[dict[str, Any]] = []
+    for one in paths:
+        raw_items.extend(a for a in (load_pack(one).get("packs") or []) if isinstance(a, dict))
+
     valid: list[dict[str, Any]] = []
+    seen: set[str] = set()
     for item in raw_items:
         ident = str(item.get("id") or "").strip()
+        if ident and ident in seen:
+            continue  # the same id twice in the loaded set would double-count
         es = item.get("es")
         fams = item.get("families") or []
         cite = item.get("citation")
@@ -78,6 +97,8 @@ def analytics(path: Path | str | None = None) -> list[dict[str, Any]]:
         if problems:
             log.warning("Analytic %s rejected: %s", ident, "; ".join(problems))
             continue
+        if ident:
+            seen.add(ident)
         valid.append(item)
     return valid
 

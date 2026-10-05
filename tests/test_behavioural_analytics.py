@@ -60,7 +60,15 @@ def test_every_analytic_cites_something_we_hold():
 
 
 def test_every_analytic_declares_families_and_techniques():
-    for item in analytics():
+    """The hand-curated pack's hygiene, checked over that pack alone.
+
+    Scoped with an explicit path on purpose: `analytics()` also loads the
+    generated SigmaHQ pack (WO-KL2b), where a rule legitimately carries no ATT&CK
+    tag, and this assertion is about the authored pack.
+    """
+    from nexus.analysis.behavioural_analytics import PACK_PATH
+
+    for item in analytics(str(PACK_PATH)):
         assert item.get("families"), item.get("id")
         assert item.get("techniques"), item.get("id")
         for tech in item["techniques"]:
@@ -133,9 +141,16 @@ def test_a_user_writable_execution_matches_without_any_tool_name():
 
 
 def test_no_analytic_depends_on_a_tool_name_string():
-    """A name-keyed analytic would be defeated by a rebuild - the point of K4."""
+    """A name-keyed analytic would be defeated by a rebuild - the point of K4.
+
+    Scoped to the hand-curated pack: a rules file translated from SigmaHQ is
+    *expected* to name the tool its authors wrote the rule for, and changing that
+    would misrepresent the upstream rule.
+    """
+    from nexus.analysis.behavioural_analytics import PACK_PATH
+
     banned = ("mimikatz", "rubeus", "cobalt", "beacon", "meterpreter", "psexec")
-    for item in analytics():
+    for item in analytics(str(PACK_PATH)):
         query_str = str(item.get("es") or "").lower()
         for word in banned:
             assert word not in query_str, f"{item['id']} keys on the tool name {word!r}"
