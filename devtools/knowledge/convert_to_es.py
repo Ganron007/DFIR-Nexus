@@ -293,7 +293,8 @@ def _write_yaml(path: Path, data: dict[str, Any], header: list[str]) -> None:
 def convert_skills(check: bool = False) -> dict[str, Any]:
     """Rewrite every skill step's `es:` from its free `query`. Idempotent."""
     cols = load_field_registry()
-    stats = {"steps": 0, "alternatives": 0, "dropped": 0, "text_only": 0, "changed": 0}
+    stats = {"steps": 0, "alternatives": 0, "dropped": 0, "text_only": 0, "changed": 0,
+             "authored": 0}
     for sf in sorted(SKILLS_DIR.glob("*.yaml")):
         data, header = _read_yaml(sf)
         req = data.get("requires") or {}
@@ -306,6 +307,23 @@ def convert_skills(check: bool = False) -> dict[str, Any]:
             stats["steps"] += 1
             step_fams = [str(f) for f in ((step.get("requires") or {}).get("families") or fams)]
             query = str(step.get("query") or "")
+
+            # A hand-authored query the converter cannot express is kept, exactly as
+            # the analytics keep theirs: `es_authored_reason` records why, and the
+            # step is validated rather than rebuilt. Without this, a step whose real
+            # query needs clauses over several DIFFERENT columns (the capa step asks
+            # about the capability name, its ATT&CK mapping and its MBC mapping in one
+            # `should`) would be silently replaced by a weaker single-column query.
+            if str(step.get("es_authored_reason") or "").strip():
+                stats["authored"] += 1
+                es = step.get("es")
+                if not isinstance(es, dict) or not es:
+                    raise SystemExit(
+                        f"{sf.name} / {step.get('name')}: marked authored but has no `es:`")
+                if not str(step.get("es_text_only_reason") or "").strip():
+                    stats["text_only"] += 1
+                continue
+
             es, dropped, reasons = build_es(query, step_fams, str(step.get("pivot") or ""), cols)
             stats["alternatives"] += len(_OR.split(query)) if query.strip() else 0
             stats["dropped"] += len(dropped)
@@ -453,6 +471,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"skill steps : {skill_stats['steps']} "
           f"({skill_stats['alternatives']} alternatives, "
           f"{skill_stats['dropped']} dropped with a reason, "
+          f"{skill_stats['authored']} hand-authored, "
           f"{skill_stats['text_only']} text-only)"
           + ("" if args.check else f", {skill_stats['changed']} file(s) rewritten"))
     print(f"analytics   : {an_stats['analytics']} "

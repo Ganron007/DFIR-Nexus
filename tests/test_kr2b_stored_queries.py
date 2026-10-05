@@ -208,6 +208,11 @@ def test_the_converter_builds_what_the_files_hold():
     cols = conv.load_field_registry()
     mismatches: list[str] = []
     for skill, step in _steps():
+        # A hand-authored step is validated, not rebuilt: its query needs clauses over
+        # several different columns, which `build_es` (one column per alternative)
+        # cannot express. The converter keeps it for the same reason.
+        if str(step.get("es_authored_reason") or "").strip():
+            continue
         fams = [str(f) for f in ((step.get("requires") or {}).get("families") or [])]
         es, dropped, _ = conv.build_es(
             str(step.get("query") or ""), fams, str(step.get("pivot") or ""), cols)
