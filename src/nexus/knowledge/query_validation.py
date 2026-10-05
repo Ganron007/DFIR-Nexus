@@ -180,10 +180,16 @@ def validate_stored_query(
     declared_families: Iterable[str] | None = None,
     citation: Any = None,
     registry_columns: dict[str, Any] | None = None,
+    require_populated: bool = False,
 ) -> list[str]:
     """Validate a stored knowledge query against criteria (a), (b), (c).
 
     Returns a list of error strings. Empty list indicates full validity.
+
+    ``require_populated`` (WO-KR2c 0b) also rejects a column that is *declared* for
+    the item's families but only *populated* for others - the case where a stored
+    query matches nothing and reads "ran, found nothing". Off by default, because a
+    column the population corpus never sampled is unsampled, not invalid.
     """
     problems: list[str] = []
 
@@ -250,6 +256,25 @@ def validate_stored_query(
                     f"field {field_path!r} (column {raw_col!r}) does not exist for declared "
                     f"families {sorted(fams_expanded)} (column exists for {sorted(col_fams)})"
                 )
+            # WO-KR2c 0b: declared is not the same as populated. `families` is what
+            # the catalog DECLARES for the column - which is how
+            # `expand_families` makes `process_name` look valid for `evtxecmd` by
+            # expanding into `ingest-hayabusa`/`ingest-kape`, whose importers
+            # assign those slots but whose rows never reach the index. This check
+            # is on demand (``require_populated=True``) because an unsampled family
+            # is not an invalid one: the population profile covers only the
+            # corpus, so absence of a sample is not evidence of absence.
+            if require_populated:
+                pop_fams = {
+                    str(f).lower() for f in (col_info.get("populated_in") or [])
+                }
+                if pop_fams and not (pop_fams & fams_expanded):
+                    problems.append(
+                        f"field {field_path!r} (column {raw_col!r}) is declared for "
+                        f"{sorted(col_fams)[:4]} but the population profile shows it filled "
+                        f"only for {sorted(pop_fams)} - it matches nothing for "
+                        f"{sorted(fams_expanded)[:4]}"
+                    )
 
     # (c) Has a citation
     if citation is None:
