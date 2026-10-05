@@ -41,20 +41,18 @@ PLAN: dict[str, list[str]] = {
     "timeline_construction": ["mactime"],
     # NetFlow (`nfdump`) and tshark flow exports are the same session data.
     "network_session_analysis": ["nfdump", "tshark-flows"],
-    # Scanning/marking a sample: entropy and rules. `capa` is NOT here: no step in
-    # this skill investigates behavioural capabilities, and declaring it would claim
-    # coverage the skill does not have (it stays uncovered and visible, below).
-    "malware_analysis_triage": ["densityscout", "yara"],
+    # Scanning/marking a sample: capabilities, entropy, rules. `capa` was declared
+    # only after the step that reads its output existed (`capa_capabilities`).
+    "malware_analysis_triage": ["capa", "densityscout", "yara"],
     # USB device history.
     "usb_device_intrusion": ["usbdeview"],
 }
 
 #: Deliberately NOT declared - a family with no step that investigates it. Declaring
-#: one would be the "made to look good" pattern R0 warned about.
+#: one would be the "made to look good" pattern R0 warned about. `capa` was here for
+#: one pass and left it when `capa_capabilities` gave the skill a real step.
 UNCOVERED = {
     "logfileparser": "generic log parser; no skill analyses the family itself",
-    "capa": "no skill investigates behavioural capabilities (malware_analysis_triage "
-            "covers entropy and rules, not capabilities) - a step is owed, not assumed",
 }
 
 

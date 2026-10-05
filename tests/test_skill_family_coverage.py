@@ -31,7 +31,7 @@ DECLARED = {
     "mft_file_activity": ["mftecmd-i30", "mftecmd-usn"],
     "timeline_construction": ["mactime"],
     "network_session_analysis": ["nfdump", "tshark-flows"],
-    "malware_analysis_triage": ["densityscout", "yara"],
+    "malware_analysis_triage": ["capa", "densityscout", "yara"],
     "usb_device_intrusion": ["usbdeview"],
 }
 
@@ -40,7 +40,6 @@ DECLARED = {
 #: than being declared (that would be the "made to look good" pattern).
 UNCOVERED = {
     "logfileparser": "generic log parser; no skill analyses the family itself",
-    "capa": "no skill investigates behavioural capabilities",
 }
 
 
@@ -102,18 +101,16 @@ def test_the_skills_declare_the_families_they_already_analyse():
 
 
 def test_coverage_is_at_least_the_measured_improvement():
-    """The measured result: 16 -> 30 of 61, with two families left out on purpose.
+    """The measured result: 16 -> 31 of 61, with one family left out on purpose.
 
     Pinned as a floor rather than an exact number, so adding coverage is welcome and
-    losing it fails. (`capa` was declared in a first pass and then removed: no step
-    in `malware_analysis_triage` investigates behavioural capabilities, so the
-    declaration claimed coverage the skill did not have.)
+    losing it fails.
     """
     fams = _registry_families()
     cov = _covered()
     assert len(fams) >= 60, f"only {len(fams)} registry families - did the registry load?"
     covered = len(fams & cov)
-    assert covered >= 30, f"coverage fell to {covered} of {len(fams)}"
+    assert covered >= 31, f"coverage fell to {covered} of {len(fams)}"
 
 
 def test_the_only_uncovered_real_family_is_the_documented_one():
