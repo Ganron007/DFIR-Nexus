@@ -13,6 +13,7 @@ trigger:
   families:
   - recmd
   - registry
+  - sbecmd
   keywords:
   - registry
   - hive

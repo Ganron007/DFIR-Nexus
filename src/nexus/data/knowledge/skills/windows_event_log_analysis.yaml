@@ -17,6 +17,8 @@ trigger:
   - suzaku
   - security
   - sysmon
+  - deepbluecli
+  - zircolite
   keywords:
   - evtx
   - event log

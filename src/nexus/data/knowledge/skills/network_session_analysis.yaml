@@ -16,6 +16,8 @@ trigger:
   - pcap
   - firewall
   - proxy
+  - nfdump
+  - tshark-flows
   keywords:
   - connection
   - session

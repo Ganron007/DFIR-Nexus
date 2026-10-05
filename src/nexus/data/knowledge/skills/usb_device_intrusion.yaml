@@ -19,6 +19,7 @@ trigger:
   - mftecmd
   - mft
   - hayabusa
+  - usbdeview
   keywords:
   - usb
   - usbstor

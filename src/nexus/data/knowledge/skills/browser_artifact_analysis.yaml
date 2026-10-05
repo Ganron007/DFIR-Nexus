@@ -15,6 +15,9 @@ trigger:
   - mftecmd
   - evtx
   - powershell
+  - hindsight
+  - sqlecmd
+  - thumbcache
   keywords:
   - browser
   - history
