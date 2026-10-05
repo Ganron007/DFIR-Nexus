@@ -166,6 +166,8 @@ def build(corpus: Path, es: str = "") -> dict[str, Any]:
         for column, n in cols.items():
             if column != "__text__" and n > 0:
                 filled_by[column.lower()].add(fam.lower())
+    # the families the corpus actually holds documents for
+    present = {fam.lower() for fam in family_docs}
 
     rows: list[dict[str, Any]] = []
     counts = Counter()
@@ -188,12 +190,22 @@ def build(corpus: Path, es: str = "") -> dict[str, Any]:
                     if not (filled_by.get(c, set()) & fams)]
         if len(unfilled) == len(columns):
             counts[f"{kind}_cannot_match"] += 1
+            # WHY it cannot match decides whether it is a defect. A query is only a
+            # wrong-field defect when a declared family IS in the corpus and still
+            # does not fill the column; if no declared family is staged, the column
+            # is unmeasurable and the row is corpus absence, which must not be
+            # reported as a defect (the R0' defect would only be escaped, not fixed).
+            declared_present = sorted(set(fams) & present)
             rows.append({
                 "kind": kind, "id": ident,
                 "families": sorted(fams),
                 "columns": columns, "status": "cannot_match",
+                "declared_families_in_corpus": declared_present,
+                "cause": ("wrong_field" if declared_present else "corpus_absent"),
                 "reason": ("none of the columns it references holds a value in the "
-                           "population corpus for the declared families"),
+                           "population corpus for the declared families"
+                           + ("; no declared family is staged here" if not declared_present
+                              else "")),
             })
         elif unfilled:
             counts[f"{kind}_partial"] += 1
@@ -210,9 +222,18 @@ def build(corpus: Path, es: str = "") -> dict[str, Any]:
         "corpus": str(corpus.relative_to(REPO)) if corpus.is_relative_to(REPO) else str(corpus),
         "note": ("A row is 'cannot_match' when every column its positive clauses "
                  "reference is unfilled for the declared families. 'partial' names "
-                 "the columns that are unfilled. The corpus is the operator's "
-                 "representative corpus, so a family it does not hold shows as "
-                 "unfilled - that is a corpus fact, recorded, not hidden."),
+                 "the columns that are unfilled. A cannot_match row carries `cause`: "
+                 "`wrong_field` when a declared family IS in the corpus and still "
+                 "does not fill the column, `corpus_absent` when no declared family "
+                 "is staged so the column is unmeasurable. Reporting absence as a "
+                 "defect would only hide the real one."),
+        "counts_extra": counts,
+        "counts_summary": {
+            "cannot_match_wrong_field": len([r for r in rows
+                                            if r.get("cause") == "wrong_field"]),
+            "cannot_match_corpus_absent": len([r for r in rows
+                                             if r.get("cause") == "corpus_absent"]),
+        },
         "family_docs": dict(sorted(family_docs.items(), key=lambda kv: -kv[1])),
         "counts": dict(counts),
         "rows": rows,

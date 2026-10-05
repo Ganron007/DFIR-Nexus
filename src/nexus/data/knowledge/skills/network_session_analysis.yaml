@@ -76,25 +76,20 @@ steps:
   es:
     bool:
       should:
-      - wildcard:
-          fields.source_ip.kw:
-            value: '*bytes*'
-            case_insensitive: true
-      - wildcard:
-          fields.source_ip.kw:
-            value: '*orig_bytes*'
-            case_insensitive: true
-      - wildcard:
-          fields.source_ip.kw:
-            value: '*resp_bytes*'
-            case_insensitive: true
-      - wildcard:
-          fields.source_ip.kw:
-            value: '*sent*'
-            case_insensitive: true
+      - exists:
+          field: fields.ibyt
+      - exists:
+          field: fields.obyt
+      - exists:
+          field: fields.ipkt
+      - exists:
+          field: fields.opkt
       minimum_should_match: 1
   requires:
     families: *id001
+  es_fix_reason: 'R0'' defect 3: ''bytes/orig_bytes/resp_bytes'' are COLUMN names,
+    not values, so searching them inside `source_ip` can never match. The step is
+    about a flow''s byte columns, so it asserts those columns exist instead.'
 - name: long_duration_sessions
   query: duration OR long OR persistent
   look_for: Long-lived sessions to external IPs — interactive C2/webshell/ tunnel

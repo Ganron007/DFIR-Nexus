@@ -126,11 +126,23 @@ steps:
             case_insensitive: true
       - wildcard:
           fields.file_path.kw:
-            value: '*ExecStart*'
+            value: '*rc.local*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*execstart*'
+            case_insensitive: true
+      - wildcard:
+          text.wc:
+            value: '*oncalendar*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_fix_reason: 'R0'' defect 8: `ExecStart` is a unit-file KEYWORD, not part of a
+    path. The unit file''s path (cron/systemd/.timer/rc.local) stays in `file_path`;
+    `ExecStart` and `OnCalendar` - the step''s own trigger words - move to the row
+    text.'
 - name: account_anomalies
   query: passwd OR /etc/passwd OR sudoers OR useradd
   look_for: /etc/passwd for unexpected accounts (UID 0 backdoor users), sudoers modifications,
@@ -174,24 +186,28 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.process_name.kw:
+          text.wc:
             value: '*pslist*'
             case_insensitive: true
       - wildcard:
-          fields.process_name.kw:
+          text.wc:
             value: '*malfind*'
             case_insensitive: true
       - wildcard:
-          fields.process_name.kw:
+          text.wc:
             value: '*/proc*'
             case_insensitive: true
       - wildcard:
-          fields.process_name.kw:
-            value: '*kmem*'
+          text.wc:
+            value: '*memfd*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_fix_reason: 'R0'' defect 4: pslist/malfind are Volatility PLUGIN names and /proc
+    is a region, not a process called pslist. They are content, not `process_name`
+    values. `memfd` replaces the mis-filed `*kmem*` - the fileless path the step''s
+    own `look_for` names.'
 - name: log_integrity
   query: log cleared OR journald OR syslog OR auditd
   look_for: 'Anti-forensics on Linux: truncated log files, journald vacuumed, auditd

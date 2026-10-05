@@ -72,28 +72,23 @@ steps:
     preserves everything. Magnet Encrypted Disk Detector or manage-bde status answers
     it.
   corroborate: encrypted → live acquisition is mandatory, not optional
-  es:
-    bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*bitlocker*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*encryption*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*encrypted*'
-            case_insensitive: true
-      minimum_should_match: 1
   requires:
     families: *id001
   es_text_only_reason:
   - 'bitlocker: free phrase; the step''s pivot names no registry column'
   - 'encryption: free phrase; the step''s pivot names no registry column'
   - 'encrypted: free phrase; the step''s pivot names no registry column'
+  kind: procedure
+  es_dropped:
+  - term: '*bitlocker*'
+    reason: a pre-acquisition decision, not a search over indexed evidence
+  - term: '*encryption*'
+    reason: procedure verb, not evidence
+  - term: '*encrypted*'
+    reason: procedure verb, not evidence
+  procedure_reason: 'R0'' defect: this step''s look_for is an investigation ORDER
+    (do X, then Y), not evidence to search. It is shown to agents as a procedure and
+    never executed, so it cannot fire on noise and cannot count as coverage.'
 - name: triage_first
   query: file:kape OR triage
   look_for: Triage image (KAPE targets) — the high-value artifact subset (registry
@@ -101,20 +96,17 @@ steps:
     a multi-terabyte disk image isn't feasible. Triage ≠ lesser evidence — it's prioritized
     evidence.
   pivot: TargetPath
-  es:
-    bool:
-      should:
-      - wildcard:
-          file:
-            value: '*kape*'
-            case_insensitive: true
-      - wildcard:
-          fields.file_path.kw:
-            value: '*triage*'
-            case_insensitive: true
-      minimum_should_match: 1
   requires:
     families: *id001
+  kind: procedure
+  es_dropped:
+  - term: '*kape*'
+    reason: names a tool the examiner runs, not a field value to search for
+  - term: '*triage*'
+    reason: procedure verb, not evidence
+  procedure_reason: 'R0'' defect: this step''s look_for is an investigation ORDER
+    (do X, then Y), not evidence to search. It is shown to agents as a procedure and
+    never executed, so it cannot fire on noise and cannot count as coverage.'
 - name: write_blocked_disk
   query: write block OR tableau OR e01 OR raw image
   look_for: Dead-disk acquisition goes through a forensic write-blocker to E01/ raw
@@ -153,28 +145,24 @@ steps:
     at verification — acquisition hash vs verification hash proving the copy is intact
     is what makes it a 'forensic copy'.
   pivot: SHA256
-  es:
-    bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*sha256*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*md5*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*hash*'
-            case_insensitive: true
-      minimum_should_match: 1
   requires:
     families: *id001
   es_text_only_reason:
   - 'sha256: free phrase; the step''s pivot names no registry column'
   - 'md5: free phrase; the step''s pivot names no registry column'
   - 'hash: free phrase; the step''s pivot names no registry column'
+  kind: procedure
+  es_dropped:
+  - term: '*sha256*'
+    reason: 'procedure verb, not evidence: hashing is what the examiner does, not
+      what is searched for'
+  - term: '*md5*'
+    reason: procedure verb, not evidence
+  - term: '*hash*'
+    reason: procedure verb, not evidence
+  procedure_reason: 'R0'' defect: this step''s look_for is an investigation ORDER
+    (do X, then Y), not evidence to search. It is shown to agents as a procedure and
+    never executed, so it cannot fire on noise and cannot count as coverage.'
 - name: chain_of_custody
   query: custody OR seized OR collected
   look_for: 'Chain of custody from seizure onward — who collected, when, where, how

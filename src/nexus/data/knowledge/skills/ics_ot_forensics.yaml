@@ -48,28 +48,24 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.dest_ip.kw:
-            value: '*Modbus*'
+          text.wc:
+            value: '*modbus*'
             case_insensitive: true
       - wildcard:
-          fields.dest_ip.kw:
-            value: '*DNP3*'
+          text.wc:
+            value: '*dnp3*'
             case_insensitive: true
       - wildcard:
-          fields.dest_ip.kw:
-            value: '*SCADA*'
+          text.wc:
+            value: '*scada*'
             case_insensitive: true
       - wildcard:
-          fields.dest_ip.kw:
-            value: '*PLC*'
+          text.wc:
+            value: '*plc*'
             case_insensitive: true
       - wildcard:
-          fields.dest_ip.kw:
+          text.wc:
             value: '*historian*'
-            case_insensitive: true
-      - wildcard:
-          fields.dest_ip.kw:
-            value: '*Purdue*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
@@ -79,6 +75,9 @@ steps:
     - suricata
     - syslog
     - firewall
+  es_fix_reason: 'R0'' defect 2: industrial protocol names (Modbus/DNP3/PLC) are not
+    IP addresses, so they must not be searched in `dest_ip`. They are descriptive
+    text and are searched in the row text.'
 - name: control_protocol_analysis
   query: Modbus OR function code OR write coil OR DNP3 OR S7comm
   look_for: 'In the pcap, decode control protocols and look for WRITE operations:
@@ -158,28 +157,30 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.host.kw:
-            value: '*PLC log*'
+          text.wc:
+            value: '*plc log*'
             case_insensitive: true
       - wildcard:
-          fields.host.kw:
-            value: '*HMI event*'
+          text.wc:
+            value: '*hmi event*'
             case_insensitive: true
       - wildcard:
-          fields.host.kw:
+          text.wc:
             value: '*alarm*'
             case_insensitive: true
       - wildcard:
-          fields.host.kw:
+          text.wc:
             value: '*controller*'
             case_insensitive: true
       - wildcard:
-          fields.host.kw:
+          text.wc:
             value: '*firmware*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_fix_reason: 'R0'' defect 5: ''PLC log''/''HMI event'' are descriptive text, not
+    host names, so they must not be searched in `host`. Moved to the row text.'
 - name: historian_and_reports
   query: historian OR process data OR trend OR setpoint OR alarm history
   look_for: The historian holds process data (setpoints, valve states, alarms) that

@@ -187,30 +187,24 @@ steps:
   corroborate: first ransom-note write time → work backward through lateral movement
     → initial access on the earliest-affected host
   pivot: IpAddress
-  es:
-    bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*rdp*'
-            case_insensitive: true
-      - term:
-          event_id: '4624'
-      - wildcard:
-          text.wc:
-            value: '*msiexec*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*phish*'
-            case_insensitive: true
-      minimum_should_match: 1
   requires:
     families: *id001
   es_text_only_reason:
   - 'rdp: free phrase; the step''s pivot names no registry column'
   - 'msiexec: free phrase; the step''s pivot names no registry column'
   - 'phish: free phrase; the step''s pivot names no registry column'
+  kind: procedure
+  es_dropped:
+  - term: '*rdp*'
+    reason: an entry vector named in the procedure, not a column value
+  - term: '*phish*'
+    reason: an entry vector named in the procedure
+  - term: event_id 4624
+    reason: a real clue, but this step is the order of investigation, not a search
+      for it
+  procedure_reason: 'R0'' defect: this step''s look_for is an investigation ORDER
+    (do X, then Y), not evidence to search. It is shown to agents as a procedure and
+    never executed, so it cannot fire on noise and cannot count as coverage.'
 negative: No shadow deletion, recovery disable, or mass-encryption artifacts → impact
   phase not reached or aborted.
 confidence_rules:
