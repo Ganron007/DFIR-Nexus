@@ -76,7 +76,14 @@ WILDCARD_IGNORE_ABOVE = 32766
 # 8: WO-17 - delimited files are indexed by CSV record (a quoted newline is
 # one doc; line = the record's starting physical line). Doc counts change for
 # every multi-line-cell CSV; the mismatch triggers the same rebuild.
-INDEX_SCHEMA_VERSION = 8
+# 8 = typed fields.* from the field registry + structured host/user/event_id.
+# 9 = D34 (WO-KM1 item 1): the importer's normalized columns (process_name,
+#     process_id, parent_process, command_line, file_path, file_hash_*,
+#     registry_key, registry_value, action) are indexed as fields AND in the
+#     row text. A bump is required, not cosmetic: an index built at v8 silently
+#     omits those columns from every search, and this is exactly what the
+#     reviewer proved with a mimikatz command line that could not be found.
+INDEX_SCHEMA_VERSION = 9
 
 _MAX_INDEX_FIELDS = 24
 # JSON-family artifacts are line records (NDJSON/JSONL), never delimited tables.
@@ -652,6 +659,26 @@ def iter_index_doc_batches(
                 "user", "source_ip", "source_port", "dest_ip", "dest_port",
                 "protocol", "description",
                 "ts_synthesized", "ts_year_assumed",
+            ):
+                value = record.get(key_name)
+                if value not in (None, "", []):
+                    art_fields[key_name] = str(value)[:_MAX_INDEX_FIELD_VALUE]
+            # D34 (WO-KM1 item 1): the importer's normalized columns. They were
+            # computed by the importer and stored in ``raw``, but only the
+            # envelope above reached the index - so an artifact's process,
+            # command line, parent, file path, hashes and registry key were
+            # neither a field nor text. An examiner searching ``mimikatz`` in a
+            # command line got nothing, which contradicts 4k.2 "index
+            # everything". Every one of these goes in BOTH as a ``fields.*``
+            # value (so it filters exactly) and in the row text (so a plain
+            # full-text search finds it).
+            #
+            # ``process_id`` is an int in the schema; the index types these as
+            # keyword/date only, so it is projected as text like the rest.
+            for key_name in (
+                "process_name", "process_id", "parent_process", "command_line",
+                "file_path", "file_hash_md5", "file_hash_sha1",
+                "file_hash_sha256", "registry_key", "registry_value", "action",
             ):
                 value = record.get(key_name)
                 if value not in (None, "", []):

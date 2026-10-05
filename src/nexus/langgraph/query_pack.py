@@ -670,6 +670,22 @@ def render_ingest_row(d: dict[str, Any], max_len: int = _MAX_LINE) -> str:
         # event time in the evidence rows themselves.
         "ts_synthesized=true" if d.get("ts_synthesized") else "",
         "ts_year_assumed=true" if d.get("ts_year_assumed") else "",
+        # D34 (WO-KM1 item 1): the importer's normalized columns, projected into
+        # the row text as well as into ``fields.*``. Volatility and AmCache put
+        # the process name into the description, which is why those used to
+        # survive; everything else - command lines, parents, hashes, registry
+        # keys - was invisible to a full-text search.
+        f"process={d['process_name']}" if d.get("process_name") else "",
+        f"pid={d['process_id']}" if d.get("process_id") not in (None, "") else "",
+        f"parent={d['parent_process']}" if d.get("parent_process") else "",
+        f"cmd={d['command_line']}" if d.get("command_line") else "",
+        f"file={d['file_path']}" if d.get("file_path") else "",
+        f"md5={d['file_hash_md5']}" if d.get("file_hash_md5") else "",
+        f"sha1={d['file_hash_sha1']}" if d.get("file_hash_sha1") else "",
+        f"sha256={d['file_hash_sha256']}" if d.get("file_hash_sha256") else "",
+        f"regkey={d['registry_key']}" if d.get("registry_key") else "",
+        f"regvalue={d['registry_value']}" if d.get("registry_value") else "",
+        f"action={d['action']}" if d.get("action") else "",
     ]
     return " ".join(p for p in parts if p).strip()[:max_len]
 
