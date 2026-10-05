@@ -108,6 +108,22 @@ def _resolve_column(name: str, fams: list[str], cols: dict[str, Any]) -> str | N
     Pivot values are written as column names (`CommandLine`, `TargetUserName`) while
     the registry uses its own spelling (`command_line`), so matching is on a
     normalised key and consults `PIVOT_FIELDS` for the known aliases.
+
+    WO-KR2c 0b/0c: a candidate is chosen only when it is **populated** for the
+    step's families, not merely declared. `families` is what the catalog declares,
+    and `expand_families` widens `evtxecmd` into `ingest-hayabusa`/`ingest-kape`,
+    whose shared 32-column schema makes the importer slots look valid for EVTX -
+    while nothing fills them there. So the candidate order is:
+
+      1. the column the caller literally named, populated for these families;
+      2. the aliases, populated for these families;
+      3. the column the caller literally named;
+      4. the aliases.
+
+    That keeps `FileName` resolving to `FileName` when it is a real column for the
+    family, which 0c asks for ("choose the column from the declared family's own
+    mapped columns first"), and it prefers a populated candidate over a declared one
+    when the population profile can tell them apart.
     """
     if not name:
         return None
@@ -117,17 +133,44 @@ def _resolve_column(name: str, fams: list[str], cols: dict[str, Any]) -> str | N
     # Prefer the column the caller literally named, then the known aliases:
     # `FileName` should resolve to `FileName` when that column exists for the
     # families, not to its `file_path` alias.
-    candidates: list[str] = [name]
-    candidates.extend(PIVOT_FIELDS.get(_norm_key(name), ()))
+    aliases = PIVOT_FIELDS.get(_norm_key(name), ())
+    named = by_norm.get(_norm_key(name))
+    lit: list[str] = [named] if named else []
+    pop_lit: list[str] = [named] if _populated_for(named, cols, expanded) else []
+    pop_al: list[str] = []
+    plain_al: list[str] = []
 
-    for cand in candidates:
+    for cand in aliases:
         col = by_norm.get(_norm_key(cand))
         if not col:
             continue
-        col_fams = {str(f).lower() for f in ((cols.get(col) or {}).get("families") or [])}
-        if not col_fams or (col_fams & expanded):
-            return col
+        if _populated_for(col, cols, expanded):
+            pop_al.append(col)
+        else:
+            plain_al.append(col)
+
+    for pool in (pop_lit, pop_al, lit, plain_al):
+        for col in pool:
+            col_fams = {str(f).lower() for f in ((cols.get(col) or {}).get("families") or [])}
+            if not col_fams or (col_fams & expanded):
+                return col
     return None
+
+
+def _populated_for(column: str | None, cols: dict[str, Any], fams: set[str]) -> bool:
+    """Whether the registry says `column` is filled for any of `fams`.
+
+    An empty `populated_in` is NOT a negative answer - it means the population
+    corpus never sampled the column, and unsampled is not invalid. This is checked
+    first so the ordering never rejects an unprofiled column.
+    """
+    if not column:
+        return False
+    info = cols.get(column) or {}
+    populated = {str(f).lower() for f in (info.get("populated_in") or [])}
+    if not populated:
+        return False
+    return bool(populated & fams)
 
 
 def _column_field(col: str, cols: dict[str, Any]) -> str:
