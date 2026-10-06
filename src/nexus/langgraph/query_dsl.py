@@ -60,7 +60,10 @@ _MAX_AND = 12
 _MAX_NOT = 12
 _MAX_REGEX = 120
 
-_TOKEN_RE = re.compile(r'[A-Za-z_][A-Za-z0-9_]*:"[^"]*"|"[^"]*"|\S+')
+# WO-CS1: a dotted field name (`ecs.process.command_line`) must be a token, in both
+# the quoted (`ecs.process.name:"x"`) and the unquoted form. The dot is allowed in
+# the name; the value may be quoted or bare.
+_TOKEN_RE = re.compile(r'[A-Za-z_][A-Za-z0-9_.]*:"[^"]*"|"[^"]*"|\S+')
 # Reject nested quantifiers like (a+)+ or (ab*){2,} — classic ReDoS shapes.
 _DANGEROUS_RE = re.compile(r"\([^()]*[+*][^()]*\)\s*[+*{]")
 

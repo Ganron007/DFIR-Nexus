@@ -74,7 +74,37 @@ def _es_catalog(case_id: str) -> dict[str, dict[str, Any]]:
             "path": f"fields.{key}",
             "families": [],
         }
+    # WO-CS1: the common `ecs.*` fields are queryable too, so Mode 1's DSL validates
+    # them (unknown field = hard error). A nested ecs object has no flat mapping
+    # entry, so the names come from the map's own destinations (a known set).
+    try:
+        from nexus.langgraph.ecs_normalize import load_ecs_map
+
+        emap = load_ecs_map()
+        for table in (emap.get("family_columns") or {}).values():
+            if isinstance(table, dict):
+                for dst in table.values():
+                    _add_ecs_entry(out, str(dst))
+        for per_event in (emap.get("winlog_event_data") or {}).values():
+            if isinstance(per_event, dict):
+                for dst in per_event.values():
+                    _add_ecs_entry(out, str(dst))
+    except Exception:  # noqa: BLE001 - catalog is best-effort
+        pass
     return out
+
+
+def _add_ecs_entry(out: dict[str, dict[str, Any]], dst: str) -> None:
+    if not dst.startswith("ecs.") or "*" in dst:
+        return
+    out[dst.lower()] = {
+        "name": dst,
+        "type": "keyword",
+        "has_kw": False,
+        "path": dst,
+        "families": [],
+        "ecs": True,
+    }
 
 
 def _sample_type(value: str) -> str:
@@ -209,6 +239,49 @@ def suggest_field(catalog: dict[str, dict[str, Any]] | None, name: str, n: int =
     )
 
 
+def _populated_ecs(case_id: str, cap: int = 200) -> list[str]:
+    """The `ecs.*` field names this case's documents actually fill (WO-CS1 item 5).
+
+    One `filters`/`exists` probe per declared ecs field would be many requests; a
+    terms aggregation over a keyword mirror is not available, so the list is read
+    from the index mapping AND verified with one `exists`-per-field aggregation on a
+    bounded sample of fields (the declared set is the ecs_map's own destinations).
+    """
+    try:
+        from nexus.langgraph.ecs_normalize import load_ecs_map
+        from nexus.langgraph.es_native import _client_and_index
+    except Exception:  # noqa: BLE001
+        return []
+    emap = load_ecs_map()
+    if not emap:
+        return []
+    declared: set[str] = set()
+    for table in (emap.get("family_columns") or {}).values():
+        if isinstance(table, dict):
+            for dst in table.values():
+                declared.add(str(dst))
+    for per_event in (emap.get("winlog_event_data") or {}).values():
+        if isinstance(per_event, dict):
+            declared.update(str(d) for d in per_event.values())
+    declared = {d for d in declared if d.startswith("ecs.") and "*" not in d
+                and "event_data" not in d}
+    if not declared:
+        return []
+    fields = sorted(declared)[:cap]
+    try:
+        client, name = _client_and_index(case_id)
+        filters = {f: {"exists": {"field": f}} for f in fields}
+        with client() as c:
+            res = c.post(f"/{name}/_search",
+                         json={"size": 0, "aggs": {"ecs": {"filters": {"filters": filters}}}})
+        if res.status_code >= 400:
+            return []
+        buckets = ((res.json().get("aggregations") or {}).get("ecs") or {}).get("buckets") or {}
+        return [f for f, b in buckets.items() if int((b or {}).get("doc_count") or 0) > 0]
+    except Exception:  # noqa: BLE001
+        return []
+
+
 def field_catalog_block(case_dir: str | Path | None, cap: int = 150) -> str:
     """Compact prompt block: the columns this case's documents actually FILL.
 
@@ -232,14 +305,21 @@ def field_catalog_block(case_dir: str | Path | None, cap: int = 150) -> str:
         "field:in:(a,b), exists:field. Unknown field names are rejected."
     )
 
-    # D35 item 2: populated columns, per family present. Populated only.
+    # D35 item 2 + WO-CS1 item 5: populated columns, per family present, led by the
+    # common `ecs.*` fields the WO wants preferred for cross-source questions.
     fam_lines: list[str] = []
+    ecs_lines: list[str] = []
     used = 0
     try:
         from nexus.langgraph.es_native import es_fields
 
         fields = es_fields(Path(case_dir).name)
         populated = fields.get("populated_columns") or {}
+        ecs_pop = _populated_ecs(Path(case_dir).name)
+        if ecs_pop:
+            sample = ", ".join(sorted(ecs_pop)[:cap])
+            extra = "" if len(ecs_pop) <= cap else f" (+{len(ecs_pop) - cap} more)"
+            ecs_lines.append(f"  ecs.*: {sample}{extra}")
         for fam in sorted((fields.get("families") or {}).keys()):
             cols = sorted(populated.get(fam) or {})
             if not cols:
@@ -252,14 +332,15 @@ def field_catalog_block(case_dir: str | Path | None, cap: int = 150) -> str:
     except Exception:  # noqa: BLE001 - fall back to the case's own files
         fam_lines = []
 
-    if fam_lines:
-        return (
-            "CASE FIELD CATALOG (columns populated by a family PRESENT in this case; "
-            "a column absent here is not filled in this case - do not query it):\n"
-            f"  core: {', '.join(core)}\n"
-            + "\n".join(fam_lines) + "\n"
-            + operators
-        )
+    if ecs_lines or fam_lines:
+        head = ("CASE FIELD CATALOG (columns populated by a family PRESENT in this case; "
+                "a column absent here is not filled in this case - do not query it):\n")
+        if ecs_lines:
+            head += ("COMMON FIELDS (ecs.*) - prefer these for cross-source questions; "
+                     "use fields.<tool column> for tool-specific detail:\n"
+                     + "\n".join(ecs_lines) + "\n")
+        head += ("PER-FAMILY TOOL COLUMNS:\n" + "\n".join(fam_lines) + "\n" if fam_lines else "")
+        return head + operators
 
     # No ES (CSV-only / not yet indexed): fall back to the columns the case's own
     # parsed files carry, which is equally case-honest.
