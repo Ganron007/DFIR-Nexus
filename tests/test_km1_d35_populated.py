@@ -97,3 +97,53 @@ def test_the_prompt_block_no_longer_claims_only_declared_columns_exist():
 
     block = field_catalog_block('CASE-KM1-D35') or ""
     assert "only these columns exist" not in block, block[:200]
+
+
+@pytest.mark.skipif(not _es_url(), reason="NEXUS_ES_URL is not configured")
+def test_block_lists_chainsaw_event_data_as_populated(tmp_path):
+    """D35 item 2: on a chainsaw case, `Event Data` is listed as populated."""
+    url = _es_url()
+    os.environ['NEXUS_ES_URL'] = url
+    from nexus.langgraph.case_index import index_case, index_name
+    from nexus.langgraph.field_catalog import field_catalog_block
+
+    case = tmp_path / "CASE-D35-CHAINSAW"
+    (case / "extractions" / "chainsaw").mkdir(parents=True)
+    src = REPO / "Evidence-files/ES-Mapping/outputs/chainsaw/sigma.csv"
+    dest = case / "extractions" / "chainsaw" / "sigma.csv"
+    if src.is_file():
+        dest.write_bytes(src.read_bytes())
+    else:
+        dest.write_text("Event Data,Computer,Event ID\n" + "a: b,host,1\n" * 5,
+                        encoding="utf-8")
+    index_case(case)
+    try:
+        block = field_catalog_block(case.name)
+        assert "Event Data" in block, block[:400]
+        assert "chainsaw" in block, block[:400]
+    finally:
+        with contextlib.suppress(urllib.error.URLError, OSError):
+            urllib.request.urlopen(urllib.request.Request(
+                f"{url}/{index_name(case.name)}", method='DELETE'), timeout=15).read()
+
+
+@pytest.mark.skipif(not _es_url(), reason="NEXUS_ES_URL is not configured")
+def test_block_has_no_evtxecmd_column_on_a_cloudtrail_only_case(tmp_path):
+    """D35 item 2: a CloudTrail-only case must not be told an EvtxECmd column exists."""
+    url = _es_url()
+    os.environ['NEXUS_ES_URL'] = url
+    from nexus.langgraph.case_index import index_case, index_name
+    from nexus.langgraph.field_catalog import field_catalog_block
+
+    case = tmp_path / "CASE-D35-CT"
+    (case / "ingest").mkdir(parents=True)
+    (case / "ingest" / "artifacts.jsonl").write_text(AUTHLOG_LINE + "\n", encoding="utf-8")
+    index_case(case)
+    try:
+        block = field_catalog_block(case.name)
+        assert "PayloadData1" not in block, block[:400]
+        assert "ImageFileName" not in block, block[:400]
+    finally:
+        with contextlib.suppress(urllib.error.URLError, OSError):
+            urllib.request.urlopen(urllib.request.Request(
+                f"{url}/{index_name(case.name)}", method='DELETE'), timeout=15).read()

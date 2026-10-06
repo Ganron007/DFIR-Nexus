@@ -210,27 +210,65 @@ def suggest_field(catalog: dict[str, dict[str, Any]] | None, name: str, n: int =
 
 
 def field_catalog_block(case_dir: str | Path | None, cap: int = 150) -> str:
-    """Compact prompt block: typed columns the case actually holds.
+    """Compact prompt block: the columns this case's documents actually FILL.
 
-    D35 (WO-KM1 item 2): this block must not present **declared** columns as
-    **present**. The ES mapping types every registry column, so a block built from it
-    says "only these columns exist" while including columns this case never filled -
-    and a model that queries one reads "matched nothing". The block is therefore
-    built from what the case's documents actually carry.
+    D35 (WO-KM1 item 2, finished by R0F item 2): the block must never present
+    **declared** columns as present. The ES mapping types every registry column, so
+    a block built from it names columns this case never filled (a CloudTrail case
+    would be told `PayloadData1` exists) and a model that queries one reads "matched
+    nothing". The block is therefore built from ``es_fields``' ``populated_columns``,
+    **per family present in the case** - and never from the declared mapping.
     """
     if not case_dir:
-        return ""
-    try:
-        catalog = case_field_catalog(case_dir)
-    except Exception:  # noqa: BLE001
-        return ""
-    if not catalog:
         return ""
     core = [
         "family:keyword", "file:keyword", "line:integer", "text:text",
         "host:keyword", "user:keyword", "event_id:keyword",
         "ts:date (canonical UTC; ts_src/ts_precision flags)",
     ]
+    operators = (
+        "Operators: field:value (contains), field:=value (exact), field:!=value, "
+        "field:>n / >=n / <n / <=n (numeric/date), field:a..b (range), "
+        "field:in:(a,b), exists:field. Unknown field names are rejected."
+    )
+
+    # D35 item 2: populated columns, per family present. Populated only.
+    fam_lines: list[str] = []
+    used = 0
+    try:
+        from nexus.langgraph.es_native import es_fields
+
+        fields = es_fields(Path(case_dir).name)
+        populated = fields.get("populated_columns") or {}
+        for fam in sorted((fields.get("families") or {}).keys()):
+            cols = sorted(populated.get(fam) or {})
+            if not cols:
+                continue
+            shown = [f"fields.{c}" for c in cols[:max(0, cap - used)]]
+            used += len(shown)
+            fam_lines.append(f"  {fam}: {', '.join(shown)}")
+            if used >= cap:
+                break
+    except Exception:  # noqa: BLE001 - fall back to the case's own files
+        fam_lines = []
+
+    if fam_lines:
+        return (
+            "CASE FIELD CATALOG (columns populated by a family PRESENT in this case; "
+            "a column absent here is not filled in this case - do not query it):\n"
+            f"  core: {', '.join(core)}\n"
+            + "\n".join(fam_lines) + "\n"
+            + operators
+        )
+
+    # No ES (CSV-only / not yet indexed): fall back to the columns the case's own
+    # parsed files carry, which is equally case-honest.
+    try:
+        catalog = case_field_catalog(case_dir)
+    except Exception:  # noqa: BLE001
+        return ""
+    if not catalog:
+        return ""
     columns = [
         f"{entry['name']}:{entry['type']}"
         for low, entry in sorted(catalog.items())
@@ -241,11 +279,8 @@ def field_catalog_block(case_dir: str | Path | None, cap: int = 150) -> str:
     body = ", ".join(columns[:cap])
     extra = "" if len(columns) <= cap else f" (+{len(columns) - cap} more via es_fields)"
     return (
-        "CASE FIELD CATALOG (the columns this index is TYPED for; a column this "
-        "case never filled matches nothing - check populated_columns first):\n"
+        "CASE FIELD CATALOG (the columns this case's parsed files carry):\n"
         f"  core: {', '.join(core)}\n"
         f"  parsed: {body}{extra}\n"
-        "Operators: field:value (contains), field:=value (exact), field:!=value, "
-        "field:>n / >=n / <n / <=n (numeric/date), field:a..b (range), "
-        "field:in:(a,b), exists:field. Unknown field names are rejected."
+        + operators
     )

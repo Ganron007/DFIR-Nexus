@@ -457,34 +457,41 @@ def es_fields(case_id: str) -> dict[str, Any]:
             ):
                 families[str(bucket.get("key"))] = int(bucket.get("doc_count") or 0)
 
-        # D35: per family, which `fields.*` columns actually have a value. One
-        # aggregated terms-agg per (family, column) would be thousands of requests,
-        # so a filtered-exists per family with a top-hits sample is used instead -
-        # bounded, honest, and enough for "is this column filled?".
+        # D35 (item 2): per family, which `fields.*` columns actually have a value.
+        # ONE ES request per family: a `filters` aggregation with one `exists`
+        # filter per column. The previous per-column request loop was O(columns)
+        # round-trips per family (hundreds), and quoted names with spaces must be
+        # sent verbatim (a spaced field path is valid; verified).
         populated: dict[str, dict[str, int]] = {}
         for fam in families:
             cols = _columns_for_family(fam)
             if not cols:
                 continue
-            per: dict[str, int] = {}
-            for column in cols:
-                try:
-                    res = c.post(
-                        f"/{name}/_search",
-                        json={
-                            "size": 0,
-                            "query": {"bool": {"filter": [
-                                {"term": {"family": fam}},
-                                {"exists": {"field": f"fields.{column}"}},
-                            ]}},
-                        },
-                    )
-                except Exception:  # noqa: BLE001 - one probe must not lose the rest
-                    continue
-                if res.status_code < 400:
-                    n = int(((res.json().get("hits") or {}).get("total") or {}).get("value") or 0)
-                    if n > 0:
-                        per[column] = n
+            filters: dict[str, Any] = {
+                column: {"exists": {"field": f"fields.{column}"}} for column in cols
+            }
+            try:
+                res = c.post(
+                    f"/{name}/_search",
+                    json={
+                        "size": 0,
+                        "query": {"term": {"family": fam}},
+                        "aggs": {"pop": {"filters": {"filters": filters}}},
+                    },
+                )
+            except Exception:  # noqa: BLE001 - one family must not lose the rest
+                continue
+            if res.status_code >= 400:
+                continue
+            buckets = (
+                ((res.json().get("aggregations") or {}).get("pop") or {}).get("buckets")
+                or {}
+            )
+            per = {
+                column: int((bucket or {}).get("doc_count") or 0)
+                for column, bucket in buckets.items()
+                if int((bucket or {}).get("doc_count") or 0) > 0
+            }
             if per:
                 populated[fam] = per
 
@@ -535,9 +542,10 @@ def es_fields(case_id: str) -> dict[str, Any]:
 def _columns_for_family(family: str) -> list[str]:
     """The registry columns declared for `family`, as ``fields.<Name>`` names.
 
-    Bounded by the registry itself: a family's columns are what the mapping types,
-    so there is nothing to enumerate beyond what the registry already holds. The
-    population probe needs a candidate list, not the whole 719-column registry.
+    WO-R0F item 2 (D35): no space/punctuation skip and no 80-column cut. ES indexes
+    every column name verbatim (a spaced name like ``Event Data`` is a valid field
+    path — verified), so dropping spaced/punctuated columns silently lost them from
+    the population measurement.
     """
     try:
         from nexus.knowledge.query_validation import expand_families, load_field_registry
@@ -546,12 +554,10 @@ def _columns_for_family(family: str) -> list[str]:
         wanted = set(expand_families([family]))
         found = []
         for name, info in cols.items():
-            if " " in name or not name.replace("_", "").isalnum():
-                continue  # a space cannot be an index field name (KR2b lesson)
             fams = {str(f).lower() for f in (info.get("families") or [])}
             if fams and (fams & wanted):
                 found.append(name)
-        return sorted(found)[:80]
+        return sorted(found)
     except Exception:  # noqa: BLE001 - the population probe is best-effort
         return []
 
