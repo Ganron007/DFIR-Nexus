@@ -501,6 +501,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  skipped {len(placed['skipped'])} unreadable file(s)")
     print(f"  evtxecmd (Channel|EventId) slots: {len(evtx)}")
     print(f"  written: {OUT.relative_to(REPO)}  ({OUT.stat().st_size // 1024} KB)")
+    # WO-CS1b item 5 (R0″F item 1b(5)): ONE importer store. The workdir copy is
+    # transient; remove it so only `_population/_ingest/artifacts.jsonl` remains.
+    import shutil as _sh2
+    for leftover in args.corpus.glob("_case*"):
+        try:
+            _sh2.rmtree(leftover)
+        except (PermissionError, OSError):
+            print(f"  could not remove transient {leftover.name}")
     return 0
 
 

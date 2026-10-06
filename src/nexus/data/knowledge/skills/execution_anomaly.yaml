@@ -41,7 +41,7 @@ steps:
             value: '*prefetch amcache unsigned*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*.exe*'
             case_insensitive: true
       minimum_should_match: 1
@@ -54,9 +54,6 @@ steps:
     - pecmd
     - mft
     - appcompat
-  es_text_only_reason:
-  - '.exe: a file name token; no populated ecs.file.path for these families, searched
-    in text'
 - name: lolbin_abuse
   query: rundll32 regsvr32 mshta wscript cscript msbuild installutil regasm
   look_for: LOLBin execution with unexpected arguments or parents — rundll32 with
@@ -80,41 +77,30 @@ steps:
       - bool:
           must:
           - wildcard:
-              text.wc:
+              ecs.file.path:
                 value: '*winword.exe*'
                 case_insensitive: true
           - wildcard:
-              text.wc:
+              ecs.file.path:
                 value: '*cmd.exe*'
                 case_insensitive: true
       - bool:
           must:
           - wildcard:
-              text.wc:
+              ecs.file.path:
                 value: '*excel.exe*'
                 case_insensitive: true
           - wildcard:
-              text.wc:
+              ecs.file.path:
                 value: '*powershell.exe*'
                 case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*wscript.exe*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'winword.exe: a file name token; no populated ecs.file.path for these families,
-    searched in text'
-  - 'cmd.exe: a file name token; no populated ecs.file.path for these families, searched
-    in text'
-  - 'excel.exe: a file name token; no populated ecs.file.path for these families,
-    searched in text'
-  - 'powershell.exe: a file name token; no populated ecs.file.path for these families,
-    searched in text'
-  - 'wscript.exe: a file name token; no populated ecs.file.path for these families,
-    searched in text'
 - name: temp_exec
   query: \Temp\ OR \AppData\Local\Temp\ OR \Downloads\
   look_for: Executables running from temp/download paths — dropper pattern.

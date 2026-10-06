@@ -192,6 +192,30 @@ def car_citation_ids(path: Path | str | None = None) -> set[str]:
     return out
 
 
+def _resolve_record_field(record: dict[str, Any], fpath: str) -> str:
+    """The value of `fpath` in an in-memory record.
+
+    WO-CS1b: an `ecs.<a>.<b>` path resolves against the record's flat dotted keys
+    (a real index row carries `ecs` as a nested object, so both shapes are tried).
+    """
+    if fpath.startswith("ecs."):
+        node: Any = record
+        for part in fpath.split("."):
+            node = node.get(part) if isinstance(node, dict) else None
+            if node is None:
+                break
+        if node is None:
+            node = record.get(fpath)
+        return "" if node is None else str(node)
+    raw_name = fpath.removeprefix("fields.")
+    if raw_name.endswith(".kw"):
+        raw_name = raw_name[:-3]
+    norm = str(raw_name or "").replace("_", "").replace("-", "").replace(" ", "").lower()
+    lowered = {str(k).replace("_", "").replace("-", "").replace(" ", "").lower(): v
+               for k, v in record.items()}
+    return str(lowered.get(norm) or "")
+
+
 def _es_clause_matches(clause: dict[str, Any], record: dict[str, Any]) -> bool:
     """Evaluate whether an in-memory record matches an ES query clause."""
     import fnmatch
@@ -202,7 +226,6 @@ def _es_clause_matches(clause: dict[str, Any], record: dict[str, Any]) -> bool:
     def _norm(name: str) -> str:
         return str(name or "").replace("_", "").replace("-", "").replace(" ", "").lower()
 
-    lowered = {_norm(k): v for k, v in record.items()}
     all_text = " ".join(str(v) for v in record.values()).lower()
 
     for op, spec in clause.items():
@@ -217,10 +240,7 @@ def _es_clause_matches(clause: dict[str, Any], record: dict[str, Any]) -> bool:
                 if fpath in ("text", "text.wc"):
                     target_val = all_text
                 else:
-                    raw_name = fpath.removeprefix("fields.")
-                    if raw_name.endswith(".kw"):
-                        raw_name = raw_name[:-3]
-                    target_val = str(lowered.get(_norm(raw_name)) or "")
+                    target_val = _resolve_record_field(record, fpath)
 
                 val = val_spec.get("value") if isinstance(val_spec, dict) else val_spec
                 val_str = str(val or "").strip().lower()
@@ -245,20 +265,14 @@ def _es_clause_matches(clause: dict[str, Any], record: dict[str, Any]) -> bool:
                 if fpath in ("text", "text.wc"):
                     target_val = all_text
                 else:
-                    raw_name = fpath.removeprefix("fields.")
-                    if raw_name.endswith(".kw"):
-                        raw_name = raw_name[:-3]
-                    target_val = str(lowered.get(_norm(raw_name)) or "").lower()
+                    target_val = _resolve_record_field(record, fpath).lower()
                 val_set = {str(v).strip().lower() for v in vals}
                 if target_val not in val_set:
                     return False
             return True
         if op == "exists":
             fpath = str(spec.get("field") or "") if isinstance(spec, dict) else ""
-            raw_name = fpath.removeprefix("fields.")
-            if raw_name.endswith(".kw"):
-                raw_name = raw_name[:-3]
-            v = lowered.get(_norm(raw_name))
+            v = _resolve_record_field(record, fpath)
             return v is not None and str(v).strip() != ""
         if op == "bool":
             if not isinstance(spec, dict):

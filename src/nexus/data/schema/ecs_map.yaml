@@ -9,8 +9,10 @@
 # all stay exactly as they are. `ecs.*` is added beside them.
 #
 # Provenance: this is OUR schema design (authored), but every source name in it
-# must exist in a real source - `tests/test_cs1_ecs_normalize.py` checks each
-# against the pinned `evtxecmd_maps.yaml` or the operator's `es_mappings/<tool>.yaml`.
+# must exist in a real source. `tests/test_cs1b_map_sources.py` checks each
+# `family_columns` source against the family's ES-Mapping catalog, and each EVTX
+# EventData name against the real Payload of a verbatim row
+# (`tests/fixtures/cs1b_evtx_real_rows.csv`, public sample).
 #
 # Transforms are limited to: splitting a path into name/directory/extension,
 # parsing `Hashes=` lists, and lower-casing keyword copies. No value invention.

@@ -51,7 +51,7 @@ packs:
     bool:
       filter:
       - wildcard:
-          fields.file_path.kw:
+          ecs.file.path:
             value: '*AppData*'
             case_insensitive: true
 - id: ba-exec-temp
@@ -76,7 +76,7 @@ packs:
     bool:
       filter:
       - wildcard:
-          fields.file_path.kw:
+          ecs.file.path:
             value: '*Temp*'
             case_insensitive: true
 - id: ba-exec-programdata
@@ -141,7 +141,7 @@ packs:
                 case_insensitive: true
           minimum_should_match: 1
       - wildcard:
-          fields.command_line.kw:
+          ecs.process.command_line:
             value: '*.js*'
             case_insensitive: true
 - id: ba-exec-encoded-command
@@ -168,19 +168,19 @@ packs:
       - bool:
           should:
           - term:
-              fields.command_line.kw:
+              ecs.process.command_line:
                 value: -enc
                 case_insensitive: true
           - term:
-              fields.command_line.kw:
+              ecs.process.command_line:
                 value: -EncodedCommand
                 case_insensitive: true
           - term:
-              fields.command_line.kw:
+              ecs.process.command_line:
                 value: -nop
                 case_insensitive: true
           - term:
-              fields.command_line.kw:
+              ecs.process.command_line:
                 value: -noprofile
                 case_insensitive: true
           minimum_should_match: 1
@@ -225,7 +225,7 @@ packs:
                 case_insensitive: true
           minimum_should_match: 1
       - wildcard:
-          fields.command_line.kw:
+          ecs.process.command_line:
             value: '*http*'
             case_insensitive: true
 - id: ba-persist-service-temp
@@ -249,11 +249,11 @@ packs:
     bool:
       filter:
       - wildcard:
-          fields.registry_key.kw:
+          ecs.registry.path:
             value: '*Services*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          ecs.file.path:
             value: '*AppData*'
             case_insensitive: true
 - id: ba-persist-service-new
@@ -309,11 +309,11 @@ packs:
     bool:
       filter:
       - wildcard:
-          fields.registry_key.kw:
+          ecs.registry.path:
             value: '*Run*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          ecs.file.path:
             value: '*AppData*'
             case_insensitive: true
 - id: ba-persist-runonce
@@ -336,7 +336,7 @@ packs:
     bool:
       filter:
       - wildcard:
-          fields.registry_key.kw:
+          ecs.registry.path:
             value: '*RunOnce*'
             case_insensitive: true
 - id: ba-persist-task-script-host
@@ -364,23 +364,23 @@ packs:
       - bool:
           should:
           - term:
-              fields.command_line.kw:
+              ecs.process.command_line:
                 value: powershell
                 case_insensitive: true
           - term:
-              fields.command_line.kw:
+              ecs.process.command_line:
                 value: wscript
                 case_insensitive: true
           - term:
-              fields.command_line.kw:
+              ecs.process.command_line:
                 value: cscript
                 case_insensitive: true
           - term:
-              fields.command_line.kw:
+              ecs.process.command_line:
                 value: mshta
                 case_insensitive: true
           - term:
-              fields.command_line.kw:
+              ecs.process.command_line:
                 value: -enc
                 case_insensitive: true
           minimum_should_match: 1
@@ -425,7 +425,7 @@ packs:
     bool:
       filter:
       - wildcard:
-          fields.registry_key.kw:
+          ecs.registry.path:
             value: '*Subscription*'
             case_insensitive: true
 - id: ba-persist-startup-folder
@@ -446,7 +446,7 @@ packs:
     bool:
       filter:
       - wildcard:
-          fields.file_path.kw:
+          ecs.file.path:
             value: '*Startup*'
             case_insensitive: true
 - id: ba-cred-lsass-nonsystem
@@ -471,7 +471,7 @@ packs:
     bool:
       filter:
       - wildcard:
-          fields.command_line.kw:
+          ecs.process.command_line:
             value: '*lsass*'
             case_insensitive: true
 - id: ba-cred-lsass-path
@@ -495,11 +495,11 @@ packs:
     bool:
       filter:
       - wildcard:
-          fields.command_line.kw:
+          ecs.process.command_line:
             value: '*lsass*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          ecs.file.path:
             value: '*AppData*'
             case_insensitive: true
 - id: ba-cred-dcsync-nondc
@@ -551,7 +551,7 @@ packs:
             value: '*4732*'
             case_insensitive: true
       - wildcard:
-          fields.command_line.kw:
+          ecs.process.command_line:
             value: '*Administrators*'
             case_insensitive: true
 - id: ba-cred-logon-type3
@@ -574,39 +574,15 @@ packs:
     decides.
   es:
     bool:
-      must:
-      - bool:
-          should:
-          - term:
-              fields.EventID: 4624
-          - term:
-              fields.EventId: 4624
-          - term:
-              event_id: '4624'
-      - bool:
-          should:
-          - wildcard:
-              fields.Details.kw:
-                value: '*Logon Type: 3*'
-                case_insensitive: true
-          - wildcard:
-              fields.Payload.kw:
-                value: '*LogonType*3*'
-                case_insensitive: true
-          - wildcard:
-              fields.PayloadData1.kw:
-                value: '*3*'
-                case_insensitive: true
-          - wildcard:
-              text.wc:
-                value: '*Logon Type: 3*'
-                case_insensitive: true
-  es_authored_reason: the Mode 1 compiler cannot express this against the registry
-    (field 'fields.logon_type.kw' (column 'logon_type') does not exist for declared
-    families ['chainsaw', 'deepbluecli', 'evtx', 'evtxecmd', 'hayabusa', 'ingest-evtx',
-    'ingest-evtxecmd', 'ingest-hayabusa', 'ingest-kape', 'ingest-security', 'powershell',
-    'security', 'sysmon', 'system', 'zircolite'] (column exists for ['ingest-scheduled_tasks']));
-    reviewed and kept by hand
+      filter:
+      - wildcard:
+          event_id:
+            value: '*4624*'
+            case_insensitive: true
+      - wildcard:
+          ecs.winlog.logon.type:
+            value: '*3*'
+            case_insensitive: true
 - id: ba-cred-rdp-firstseen
   name: RDP session from a source not seen before
   families:
@@ -626,41 +602,24 @@ packs:
     be routine.
   es:
     bool:
-      must:
+      filter:
       - bool:
           should:
-          - terms:
-              fields.EventID:
-              - 4624
-              - 4778
-          - terms:
-              fields.EventId:
-              - 4624
-              - 4778
-          - terms:
+          - term:
               event_id:
-              - '4624'
-              - '4778'
-      - bool:
-          should:
-          - wildcard:
-              fields.Details.kw:
-                value: '*Logon Type: 10*'
+                value: '4624'
                 case_insensitive: true
-          - wildcard:
-              fields.Payload.kw:
-                value: '*LogonType*10*'
+          - term:
+              event_id:
+                value: '4778'
                 case_insensitive: true
-          - wildcard:
-              text.wc:
-                value: '*Logon Type: 10*'
-                case_insensitive: true
-  es_authored_reason: the Mode 1 compiler cannot express this against the registry
-    (field 'fields.logon_type.kw' (column 'logon_type') does not exist for declared
-    families ['chainsaw', 'deepbluecli', 'evtx', 'evtxecmd', 'hayabusa', 'ingest-evtx',
-    'ingest-evtxecmd', 'ingest-hayabusa', 'ingest-kape', 'ingest-security', 'powershell',
-    'security', 'sysmon', 'system', 'zircolite'] (column exists for ['ingest-scheduled_tasks']));
-    reviewed and kept by hand
+          minimum_should_match: 1
+      - wildcard:
+          ecs.winlog.logon.type:
+            value: '*10*'
+            case_insensitive: true
+      - exists:
+          field: fields.source_ip.kw
 - id: ba-cred-kerberoast
   name: Service ticket requested with RC4
   families:
@@ -686,7 +645,7 @@ packs:
             value: '*4769*'
             case_insensitive: true
       - wildcard:
-          fields.command_line.kw:
+          ecs.process.command_line:
             value: '*0x17*'
             case_insensitive: true
 - id: ba-eva-log-cleared
@@ -769,7 +728,7 @@ packs:
       minimum_should_match: 1
       filter:
       - wildcard:
-          fields.registry_key.kw:
+          ecs.registry.path:
             value: '*Windows*'
             case_insensitive: true
 - id: ba-eva-service-stopped
@@ -796,7 +755,7 @@ packs:
             value: '*7036*'
             case_insensitive: true
       - wildcard:
-          fields.command_line.kw:
+          ecs.process.command_line:
             value: '*stopped*'
             case_insensitive: true
 - id: ba-eva-timestomp
@@ -854,7 +813,7 @@ packs:
     bool:
       filter:
       - wildcard:
-          fields.command_line.kw:
+          ecs.process.command_line:
             value: '*ADMIN$*'
             case_insensitive: true
 - id: ba-lat-remote-service-create
@@ -877,35 +836,15 @@ packs:
     is not a patch cycle.'
   es:
     bool:
-      must:
-      - bool:
-          should:
-          - term:
-              fields.EventID: 7045
-          - term:
-              fields.EventId: 7045
-          - term:
-              event_id: '7045'
-      - bool:
-          should:
-          - wildcard:
-              fields.Details.kw:
-                value: '*7045*'
-                case_insensitive: true
-          - wildcard:
-              fields.Payload.kw:
-                value: '*7045*'
-                case_insensitive: true
-          - wildcard:
-              text.wc:
-                value: '*Service*'
-                case_insensitive: true
-  es_authored_reason: the Mode 1 compiler cannot express this against the registry
-    (field 'fields.logon_type.kw' (column 'logon_type') does not exist for declared
-    families ['chainsaw', 'deepbluecli', 'evtx', 'evtxecmd', 'hayabusa', 'ingest-evtx',
-    'ingest-evtxecmd', 'ingest-hayabusa', 'ingest-kape', 'ingest-system', 'powershell',
-    'security', 'sysmon', 'system', 'zircolite'] (column exists for ['ingest-scheduled_tasks']));
-    reviewed and kept by hand
+      filter:
+      - wildcard:
+          event_id:
+            value: '*7045*'
+            case_insensitive: true
+      - wildcard:
+          ecs.winlog.logon.type:
+            value: '*3*'
+            case_insensitive: true
 - id: ba-lat-wmi-exec
   name: WMI used to start a process
   families:
@@ -958,15 +897,15 @@ packs:
       - bool:
           should:
           - term:
-              fields.command_line.kw:
+              ecs.process.command_line:
                 value: DownloadString
                 case_insensitive: true
           - term:
-              fields.command_line.kw:
+              ecs.process.command_line:
                 value: IEX
                 case_insensitive: true
           - term:
-              fields.command_line.kw:
+              ecs.process.command_line:
                 value: FromBase64String
                 case_insensitive: true
           minimum_should_match: 1
@@ -994,15 +933,15 @@ packs:
       - bool:
           should:
           - term:
-              fields.file_path.kw:
+              ecs.file.path:
                 value: .zip
                 case_insensitive: true
           - term:
-              fields.file_path.kw:
+              ecs.file.path:
                 value: .7z
                 case_insensitive: true
           - term:
-              fields.file_path.kw:
+              ecs.file.path:
                 value: .rar
                 case_insensitive: true
           minimum_should_match: 1

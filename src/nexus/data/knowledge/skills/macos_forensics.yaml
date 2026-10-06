@@ -53,23 +53,23 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*apfs-fuse*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*mount*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*dmg*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*e01*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*diskutil*'
             case_insensitive: true
       minimum_should_match: 1
@@ -80,12 +80,6 @@ steps:
     - memory
     - mft
     - browser
-  es_text_only_reason:
-  - 'apfs-fuse: file-path pivot; no populated ecs.file.path, searched in text'
-  - 'mount: file-path pivot; no populated ecs.file.path, searched in text'
-  - 'dmg: file-path pivot; no populated ecs.file.path, searched in text'
-  - 'e01: file-path pivot; no populated ecs.file.path, searched in text'
-  - 'diskutil: file-path pivot; no populated ecs.file.path, searched in text'
 - name: unified_log
   query: .tracev3 OR log show OR unifiedlog OR UNIFIEDLOGS
   look_for: 'The Apple Unified Log (.tracev3 via mac_apt UNIFIEDLOGS, or `log show`)
@@ -164,30 +158,24 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*QUARANTINE*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*LastGKReject*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*com.apple.quarantine*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*Gatekeeper*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'QUARANTINE: file-path pivot; no populated ecs.file.path, searched in text'
-  - 'LastGKReject: file-path pivot; no populated ecs.file.path, searched in text'
-  - 'com.apple.quarantine: file-path pivot; no populated ecs.file.path, searched in
-    text'
-  - 'Gatekeeper: file-path pivot; no populated ecs.file.path, searched in text'
 - name: tcc_privacy_abuse
   query: TCC.db OR kTCCService OR Accessibility OR ScreenCapture
   look_for: TCC.db records which apps were granted camera/mic/screen/full-disk/ Accessibility
@@ -199,7 +187,7 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*TCC.db*'
             case_insensitive: true
       - wildcard:
@@ -218,8 +206,6 @@ steps:
   requires:
     families: *id001
   es_text_only_reason:
-  - 'TCC.db: a file name token; no populated ecs.file.path for these families, searched
-    in text'
   - 'kTCCService: free phrase; the step''s pivot names no registry column'
   - 'Accessibility: free phrase; the step''s pivot names no registry column'
   - 'ScreenCapture: free phrase; the step''s pivot names no registry column'

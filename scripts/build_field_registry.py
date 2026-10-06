@@ -353,6 +353,11 @@ def _add_ecs_columns(columns: dict[str, dict], populated: dict[str, set[str]]) -
     for name, fams in sorted((populated or {}).items()):
         if not name.startswith("ecs."):
             continue
+        # WO-CS1b: the `ecs.winlog.event_data.*` names are dynamic (hundreds, one
+        # per event), so they are NOT registry entries - the DSL accepts them
+        # without a catalog entry and the query validator treats them as dynamic.
+        if ".winlog.event_data." in name:
+            continue
         columns[name] = {
             "type": "keyword",
             "families": [],
@@ -389,7 +394,12 @@ def main() -> int:
         prior_cols = set(prior.get("columns") or {})
         prior_fams = set(prior.get("families") or {})
         for name in sorted(prior_cols - set(columns)):
-            removals.append({"kind": "column", "name": name, "reason": ""})
+            # WO-CS1b: the dynamic `ecs.winlog.event_data.*` names are intentionally
+            # not registry entries (an unbounded, per-event set); their removal is
+            # self-explaining, not a silent drop.
+            reason = ("dynamic per-event name, not a registry column (WO-CS1b)"
+                      if ".winlog.event_data." in name else "")
+            removals.append({"kind": "column", "name": name, "reason": reason})
         for fam in sorted(prior_fams - set(families)):
             removals.append({"kind": "family", "name": fam, "reason": ""})
     unexcused = [r for r in removals if not r.get("reason")]

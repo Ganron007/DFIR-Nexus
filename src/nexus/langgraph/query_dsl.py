@@ -342,11 +342,14 @@ def _maybe_filter(q: ParsedQuery, name_raw: str, value: str,
             + (f" — did you mean {', '.join(hints)}?" if hints else "")
         )
     resolved = (entry or {}).get("name", name)
+    # WO-CS1: an `ecs.*` name is already a top-level index path; it must never be
+    # rewritten to `fields.ecs.*` when no catalog entry exists.
+    default_path = name if low.startswith("ecs.") else f"fields.{resolved}"
     q.filters.append({
         "name": low,
         "resolved": resolved,
         "type": (entry or {}).get("type", ""),
-        "path": (entry or {}).get("path") or f"fields.{resolved}",
+        "path": (entry or {}).get("path") or default_path,
         "has_kw": bool((entry or {}).get("has_kw", True)),
         "op": op,
         **payload,

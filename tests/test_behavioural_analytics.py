@@ -88,9 +88,10 @@ def test_a_renamed_tool_is_caught_by_behaviour_and_not_by_its_name():
     """
     analytic = next(a for a in analytics() if a["id"] == "ba-cred-lsass-nonsystem")
     renamed = {
-        "User": "CORP\\alice",
-        "CommandLine": r"C:\Users\alice\AppData\Local\Temp\svc32.exe --lsass",
-        "Path": r"C:\Users\alice\AppData\Local\Temp\svc32.exe",
+        "ecs": {
+            "user": {"name": r"CORP\alice"},
+            "process": {"command_line": r"C:\Users\alice\AppData\Local\Temp\svc32.exe --lsass"},
+        },
     }
     assert "mimikatz" not in str(renamed).lower()
     assert matches_record(analytic, renamed) is True
@@ -108,8 +109,10 @@ def test_the_negative_term_actually_excludes_the_system_case():
     analytic = next(a for a in analytics() if a["id"] == "ba-cred-lsass-nonsystem")
     assert "not " not in str(analytic.get("es")), analytic.get("es")
     system = {
-        "User": "NT AUTHORITY\\SYSTEM",
-        "CommandLine": r"C:\Windows\System32\svchost.exe --lsass",
+        "ecs": {
+            "user": {"name": r"NT AUTHORITY\SYSTEM"},
+            "process": {"command_line": r"C:\Windows\System32\svchost.exe --lsass"},
+        },
     }
     # It matches on the behaviour (a reference to lsass); narrowing by user is the
     # next filter, deliberately not folded into a term the DSL cannot negate.
@@ -132,9 +135,10 @@ def test_the_validator_refuses_a_negated_typed_filter():
 
 def test_a_user_writable_execution_matches_without_any_tool_name():
     analytic = next(a for a in analytics() if a["id"] == "ba-exec-user-writable")
+    # WO-CS1b: the analytic now queries the common `ecs.file.path` (a real index
+    # row carries ecs as a nested document).
     assert matches_record(analytic, {
-        "FilePath": r"C:\Users\bob\AppData\Roaming\task.exe",
-        "Path": r"C:\Users\bob\AppData\Roaming",
+        "ecs": {"file": {"path": r"C:\Users\bob\AppData\Roaming\task.exe"}},
     })
     # No system-tree term is folded in (see the validator test above).
     assert "not " not in str(analytic.get("es"))

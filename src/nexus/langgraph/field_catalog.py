@@ -239,30 +239,33 @@ def suggest_field(catalog: dict[str, dict[str, Any]] | None, name: str, n: int =
     )
 
 
-def _populated_ecs(case_id: str, cap: int = 200) -> list[str]:
-    """The `ecs.*` field names this case's documents actually fill (WO-CS1 item 5).
+def _populated_ecs(case_id: str, cap: int = 200) -> dict[str, str]:
+    """`ecs.*` field -> one sample value, for fields this case actually fills.
 
-    One `filters`/`exists` probe per declared ecs field would be many requests; a
-    terms aggregation over a keyword mirror is not available, so the list is read
-    from the index mapping AND verified with one `exists`-per-field aggregation on a
-    bounded sample of fields (the declared set is the ecs_map's own destinations).
+    WO-CS1 item 5 / CS1b item 6: the catalog shows a sample value per `ecs` field.
+    One `filters`/`exists` aggregation finds the populated fields, then one bounded
+    query per field reads a sample value.
     """
     try:
         from nexus.langgraph.ecs_normalize import load_ecs_map
         from nexus.langgraph.es_native import _client_and_index
     except Exception:  # noqa: BLE001
-        return []
+        return {}
     emap = load_ecs_map()
     if not emap:
-        return []
+        return {}
     declared: set[str] = set()
     for table in (emap.get("family_columns") or {}).values():
         if isinstance(table, dict):
             for dst in table.values():
                 declared.add(str(dst))
-    for per_event in (emap.get("winlog_event_data") or {}).values():
-        if isinstance(per_event, dict):
-            declared.update(str(d) for d in per_event.values())
+    # winlog_event_data is keyed by channel -> event_id -> {name: dst}
+    for channels in (emap.get("winlog_event_data") or {}).values():
+        if not isinstance(channels, dict):
+            continue
+        for per_event in channels.values():
+            if isinstance(per_event, dict):
+                declared.update(str(d) for d in per_event.values())
     declared = {d for d in declared if d.startswith("ecs.") and "*" not in d
                 and "event_data" not in d}
     if not declared:
@@ -274,12 +277,32 @@ def _populated_ecs(case_id: str, cap: int = 200) -> list[str]:
         with client() as c:
             res = c.post(f"/{name}/_search",
                          json={"size": 0, "aggs": {"ecs": {"filters": {"filters": filters}}}})
-        if res.status_code >= 400:
-            return []
-        buckets = ((res.json().get("aggregations") or {}).get("ecs") or {}).get("buckets") or {}
-        return [f for f, b in buckets.items() if int((b or {}).get("doc_count") or 0) > 0]
+            if res.status_code >= 400:
+                return {}
+            buckets = ((res.json().get("aggregations") or {}).get("ecs") or {}).get("buckets") or {}
+            present = [f for f, b in buckets.items() if int((b or {}).get("doc_count") or 0) > 0]
+            # WO-CS1b item 6: one sample value per populated ecs field, so the LLM
+            # sees what a field actually holds (the WO asks for this).
+            samples: dict[str, str] = {}
+            for f in present:
+                sres = c.post(f"/{name}/_search", json={
+                    "size": 1, "_source": [f],
+                    "query": {"exists": {"field": f}},
+                })
+                if sres.status_code >= 400:
+                    samples[f] = ""
+                    continue
+                hits = ((sres.json().get("hits") or {}).get("hits")) or []
+                if hits:
+                    node: Any = hits[0].get("_source") or {}
+                    for part in f.split("."):
+                        node = node.get(part) if isinstance(node, dict) else None
+                    samples[f] = str(node)[:80] if node is not None else ""
+                else:
+                    samples[f] = ""
+        return samples
     except Exception:  # noqa: BLE001
-        return []
+        return {}
 
 
 def field_catalog_block(case_dir: str | Path | None, cap: int = 150) -> str:
@@ -317,9 +340,15 @@ def field_catalog_block(case_dir: str | Path | None, cap: int = 150) -> str:
         populated = fields.get("populated_columns") or {}
         ecs_pop = _populated_ecs(Path(case_dir).name)
         if ecs_pop:
-            sample = ", ".join(sorted(ecs_pop)[:cap])
+            # WO-CS1b item 6: show one sample value per ecs field.
+            entries = []
+            for f in sorted(ecs_pop):
+                s = ecs_pop[f]
+                entries.append(f"{f} (e.g. {s[:40]})" if s else f)
+                if len(entries) >= cap:
+                    break
             extra = "" if len(ecs_pop) <= cap else f" (+{len(ecs_pop) - cap} more)"
-            ecs_lines.append(f"  ecs.*: {sample}{extra}")
+            ecs_lines.append(f"  {', '.join(entries)}{extra}")
         for fam in sorted((fields.get("families") or {}).keys()):
             cols = sorted(populated.get(fam) or {})
             if not cols:

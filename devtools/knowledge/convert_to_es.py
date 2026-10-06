@@ -280,9 +280,78 @@ CONCEPT_TO_ECS: dict[str, tuple[str, str]] = {
     "sourceip": ("ecs.source.ip", "term"),
     "destinationip": ("ecs.destination.ip", "term"),
     "eventid": ("ecs.event.code", "term"),
+    "logontype": ("ecs.winlog.logon.type", "term"),
     "service": ("ecs.service.name", "wildcard"),
     "hash": ("ecs.file.hash.sha256", "term"),
 }
+
+
+#: WO-CS1b item 5: a per-tool COLUMN's concept, so a compiled analytic's
+#: `fields.<col>` can be rewritten to the common `ecs.*` field when the population
+#: profile vouches for it for one of the analytic's families. Tool columns stay only
+#: where no `ecs` equivalent exists.
+COLUMN_TO_ECS: dict[str, str] = {
+    "process_name": "ecs.process.name",
+    "imagename": "ecs.process.name",
+    "commandline": "ecs.process.command_line",
+    "command_line": "ecs.process.command_line",
+    "parentimage": "ecs.process.parent.executable",
+    "parentprocess": "ecs.process.parent.name",
+    "parent_process": "ecs.process.parent.name",
+    "file_path": "ecs.file.path",
+    "filepath": "ecs.file.path",
+    "filename": "ecs.file.name",
+    "targetfilename": "ecs.file.path",
+    "registry_key": "ecs.registry.path",
+    "registrykey": "ecs.registry.path",
+    "keypath": "ecs.registry.path",
+    "registry_value": "ecs.registry.value",
+    "user": "ecs.user.name",
+    "username": "ecs.user.name",
+    "targetusername": "ecs.user.target.name",
+    "subjectusername": "ecs.user.name",
+    "source_ip": "ecs.source.ip",
+    "ipaddress": "ecs.source.ip",
+    "dest_ip": "ecs.destination.ip",
+    "destinationip": "ecs.destination.ip",
+    "event_id": "ecs.event.code",
+    "eventid": "ecs.event.code",
+    "logon_type": "ecs.winlog.logon.type",
+    "logontype": "ecs.winlog.logon.type",
+    "service_name": "ecs.service.name",
+    "servicename": "ecs.service.name",
+    "file_hash_sha256": "ecs.file.hash.sha256",
+    "sha256": "ecs.file.hash.sha256",
+}
+
+
+def ecs_rewrite(es: dict[str, Any] | None, fams: list[str]) -> dict[str, Any]:
+    """Rewrite `fields.<col>` to its common `ecs.*` field where the profile vouches.
+
+    Recurses the whole ES query. A tool column stays when it has no `ecs` concept or
+    the profile does not populate that ecs field for the given families.
+    """
+    if not isinstance(es, dict):
+        return es
+    out: dict[str, Any] = {}
+    for key, value in es.items():
+        if key.startswith("fields."):
+            base = key[len("fields."):]
+            strip = base.split(".")[0] if "." in base else base
+            concept = COLUMN_TO_ECS.get(strip.lower())
+            if concept and _ecs_populated_for(fams, concept):
+                # an ECS string field is keyword-based (no `.kw` subfield)
+                new_key = concept
+                out[new_key] = value
+                continue
+            out[key] = value
+        elif isinstance(value, dict):
+            out[key] = ecs_rewrite(value, fams)
+        elif isinstance(value, list):
+            out[key] = [ecs_rewrite(v, fams) if isinstance(v, dict) else v for v in value]
+        else:
+            out[key] = value
+    return out
 
 
 def concept_ecs_field(pivot: str) -> tuple[str, str] | None:
@@ -724,6 +793,9 @@ def convert_analytics(check: bool = False) -> dict[str, Any]:
 
         if ident in authored:
             es = ast_to_es(parse_query(authored[ident]))
+            # WO-CS1b item 5: route the compiled analytic's concept columns to the
+            # common `ecs.*` fields where the profile populates them for this family.
+            es = ecs_rewrite(es, fams)
             problems = validate_stored_query(es, declared_families=fams, citation=cite)
             if problems:
                 # The compiler cannot express this one with the registry's columns
