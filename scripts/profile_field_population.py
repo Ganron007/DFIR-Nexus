@@ -341,7 +341,9 @@ def absent_families(case_dir: Path, profiled: set[str] | None = None) -> dict[st
 
     pats = ("*.csv", "*.txt", "*.json", "*.jsonl", "*.log",
             "*.csv.gz", "*.txt.gz", "*.json.gz", "*.jsonl.gz", "*.log.gz")
-    scannable = {p.removeprefix("*.") for p in pats}
+    # Keep the DOT: `Path.suffix` returns ".csv", so an undotted set made every
+    # family's files read as "unscannable" (the false usbdeview reason, item 1b(2)).
+    scannable = {p[len("*"):] for p in pats}
 
     out: dict[str, dict[str, Any]] = {}
     for fam in sorted(registry - profiled):
@@ -362,8 +364,7 @@ def absent_families(case_dir: Path, profiled: set[str] | None = None) -> dict[st
             reason = ("the corpus stages samples for this family, but the index scan "
                       "yielded no rows for it (empty or non-conforming output)")
         else:
-            reason = ("no sample for this family is staged in the operator's "
-                      "ES-Mapping corpus, so it is unmeasured")
+            reason = ("absent: no file in outputs/ or MAPPING.md S3")
         out[fam] = {"reason": reason, "staged_samples": len(present)}
     return out
 
@@ -418,7 +419,9 @@ def main(argv: list[str] | None = None) -> int:
     # profiled case, or the profile reports every importer column absent and KR2c's
     # population gate then rejects every stored query aimed at them. `_layout` only
     # handles `extractions/`, so install the ingest store here and keep it across
-    # runs: the store is rebuilt by `stage_ingest_columns.py`, not by this profile.
+    # runs: the store is real importer output built by the corpus runner
+    # (`Docs/internal/r0f-item1/run_importers_all.py`), kept at the stable
+    # `_population/_ingest/artifacts.jsonl` home.
     ingest_store = _install_ingest_store(args.corpus, workdir)
     if ingest_store:
         print(f"  ingest store: {ingest_store}")
