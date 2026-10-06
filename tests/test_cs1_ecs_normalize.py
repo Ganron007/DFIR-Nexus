@@ -172,6 +172,58 @@ def test_ecs_real_path_queries_hit(tmp_path):
 
 
 @pytest.mark.skipif(not _es_url(), reason="NEXUS_ES_URL is not configured")
+def test_index_size_and_time_reported(tmp_path):
+    """WO-CS1 acceptance: report index size + indexing time (growth is acceptable)."""
+    url = _es_url()
+    os.environ["NEXUS_ES_URL"] = url
+    import time
+
+    from nexus.langgraph.case_index import index_case, index_name
+
+    case = _case(tmp_path)
+    t0 = time.time()
+    index_case(case)
+    elapsed = time.time() - t0
+    name = index_name(case.name)
+    try:
+        r = urllib.request.Request(f"{url}/{name}/_stats/store",
+                                   headers={"Content-Type": "application/json"})
+        store = json.loads(urllib.request.urlopen(r, timeout=15).read())
+        size = ((store.get("indices") or {}).get(name) or {}).get("total", {}).get(
+            "store", {}).get("size_in_bytes")
+        assert isinstance(size, int) and size > 0
+        print(f"\n  CS1 index size: {size} bytes; indexing time: {elapsed:.2f}s")
+    finally:
+        with contextlib.suppress(urllib.error.URLError, OSError):
+            urllib.request.urlopen(urllib.request.Request(
+                f"{url}/{name}", method="DELETE"), timeout=15).read()
+
+
+@pytest.mark.skipif(not _es_url(), reason="NEXUS_ES_URL is not configured")
+def test_catalog_leads_with_ecs(tmp_path):
+    """WO-CS1 acceptance: on a temp case, ecs.* is listed first, populated only."""
+    url = _es_url()
+    os.environ["NEXUS_ES_URL"] = url
+    from nexus.langgraph.case_index import index_case, index_name
+    from nexus.langgraph.field_catalog import field_catalog_block, invalidate_catalog
+
+    case = _case(tmp_path)
+    index_case(case)
+    invalidate_catalog(case.name)
+    try:
+        block = field_catalog_block(case.name)
+        assert "COMMON FIELDS (ecs.*)" in block, block[:300]
+        # the ecs section precedes the per-family tool columns
+        assert block.index("ecs.*") < block.index("PER-FAMILY TOOL COLUMNS")
+        # populated only: a field this case does not fill is not offered
+        assert "ecs.destination.ip" not in block
+    finally:
+        with contextlib.suppress(urllib.error.URLError, OSError):
+            urllib.request.urlopen(urllib.request.Request(
+                f"{url}/{index_name(case.name)}", method="DELETE"), timeout=15).read()
+
+
+@pytest.mark.skipif(not _es_url(), reason="NEXUS_ES_URL is not configured")
 def test_nothing_lost_without_ecs(tmp_path):
     """The doc without `ecs` equals the schema-9 doc (additive, not replacing)."""
     url = _es_url()
