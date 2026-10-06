@@ -355,6 +355,13 @@ def _phrase_clause(
     account search is written as a typed ``user:name`` token, handled by
     ``_typed_clause``.
     """
+    # Content fixes that apply wherever the clause lands. The R0' defect is the
+    # CONTENT, not the column: `reg save sam` is never a real command line, and
+    # `ExecStart` is never part of a path. Both are fixed here, BEFORE the column
+    # decision, so a step whose families resolve to no typed column still gets the
+    # right search text instead of the authored (unmatchable) one.
+    if _is_command_with_hive(phrase):
+        return _wild("text.wc", _with_hive(phrase, text_only))
     if pivot_col and _norm_key(pivot_col) not in {_norm_key(c) for c in _IDENTITY_COLUMNS}:
         # KL2d / KR2c rule 1: the value's KIND must match the column's. "Modbus" is
         # not an IP, "PLC log" is not a hostname, "pslist" is not a process - those
@@ -365,15 +372,6 @@ def _phrase_clause(
                 f"{phrase}: value of the wrong kind for {pivot_col}; searched in text"
             )
             return _wild("text.wc", phrase)
-        # KR2c / R0' defect 7: a command that must name a registry HIVE has to carry
-        # the hive name. `reg save` always names one, so `reg save sam` - what the
-        # authored query wrote - is never what the real command produces.
-        if _is_command_with_hive(phrase):
-            text_only.append(
-                f"{phrase}: expanded to name the hive the command reads"
-            )
-            return _wild(_column_field(pivot_col, cols),
-                         _expand_hive_command(phrase))
         # KR2c / R0' defect 8: a unit-file keyword is not part of a PATH.
         # `ExecStart`/`OnCalendar` live in a systemd unit's contents, so they belong
         # in the row text; the file column holds the unit file's path.
@@ -393,7 +391,6 @@ def _phrase_clause(
 #: `reg save` is the command whose value is meaningless without a hive. The R0' sample
 #: found the step searched `*reg save sam*`, which the real command never emits.
 _HIVE_COMMAND = re.compile(r"^reg\s+save\s+(?P<hive>sam|system|security)\b", re.I)
-
 #: A systemd unit-file keyword is not part of a path, so it is not a `file_path` value.
 _UNIT_FILE_KEYWORD = re.compile(r"\b(ExecStart|OnCalendar|ExecStop|WantedBy)\b")
 
@@ -414,6 +411,23 @@ def _expand_hive_command(phrase: str) -> str:
 
 def _is_unit_file_keyword(phrase: str) -> bool:
     return bool(_UNIT_FILE_KEYWORD.search(str(phrase or "")))
+
+
+def _with_hive(phrase: str, text_only: list[str]) -> str:
+    """Expand a hive-reading command so the term names the hive.
+
+    `reg save` always names a hive (`reg save HKLM\\sam ...`), so the bare `reg save sam`
+    the authored query writes is never what the real command produces. Whether the
+    clause lands on `command_line` or `text.wc` depends on the families, so the
+    expansion applies on both paths - it is the CONTENT that was wrong, not the column.
+    """
+    m = _HIVE_COMMAND.match(str(phrase or "").strip())
+    if not m:
+        return phrase
+    text_only.append(f"{phrase}: expanded to name the hive the command reads")
+    hive = m.group("hive").lower()
+    rest = str(phrase).strip()[m.end():]
+    return f"reg save *\\{hive}{' ' + rest.strip() if rest.strip() else ''}"
 
 
 def build_es(

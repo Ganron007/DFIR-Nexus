@@ -34,11 +34,20 @@ def _registry() -> dict:
     return load_field_registry()
 
 
-def test_the_importer_slots_are_declared_for_families_that_never_fill_them():
-    """The reviewer's measurement, stated as a property of the registry.
+def test_declared_families_alone_are_not_the_gate():
+    """The reviewer's measurement, restated against the measured profile.
 
     This is why `families` alone cannot be the gate: a declared family list is wide
-    enough to cover the whole ingest schema.
+    enough to cover the whole ingest schema. `command_line` declares ~30 `ingest-*`
+    families, so a query naming it validates for almost any case - and then matches
+    nothing, which is the silent zero KR2c exists to stop.
+
+    The original version of this test asserted `populated_in` was EMPTY. That was true
+    of the profile as it then stood, which had staged no importer rows at all - so it
+    asserted the ABSENCE of a corpus, not the property it meant to. With the importer
+    lane staged (KR2c item 4) the profile now measures 13 families that genuinely fill
+    `command_line`, which is exactly why the gate is `populated_in` and not `families`:
+    the two answer different questions, and only one of them is measured.
     """
     cols = _registry()
     info = cols.get("command_line") or {}
@@ -46,8 +55,29 @@ def test_the_importer_slots_are_declared_for_families_that_never_fill_them():
     assert declared, "command_line declares no families"
     # `evtxecmd` reaches command_line only through the importer expansion.
     assert any(f.startswith("ingest-") for f in declared), sorted(declared)[:4]
-    # ... and nothing in the population profile fills it.
-    assert not (info.get("populated_in") or []), info.get("populated_in")
+    populated = {str(f).lower() for f in (info.get("populated_in") or [])}
+    # The declared set is wide; the measured set is narrow. THAT gap is the finding:
+    # a query naming `command_line` validates for a family the profile never filled.
+    # Compare on the same spelling - `families` uses the registry's `ingest-*` form
+    # and `populated_in` the runtime's own name, so normalise through the alias table.
+    from nexus.knowledge.skills import family_names
+
+    populated_wide = {spelling for f in populated for spelling in family_names(f)}
+    # Of the declared families, which does the profile actually vouch for?
+    declared_populated = {d for d in declared
+                          if family_names(d) & populated_wide}
+    assert declared_populated, (
+        "no declared family is vouched for by the profile - is the importer lane "
+        "staged in the population profile?")
+    assert declared_populated < declared, (
+        "the profile vouches for every declared family, so `populated_in` adds nothing "
+        f"over `families` and the gate cannot tell a measured column from a declared "
+        f"one: vouched={sorted(declared_populated)}")
+    # and the EVTX-analyser lanes the Sigma pack declares are NOT among them.
+    evtx_lanes = {"evtxecmd", "hayabusa", "chainsaw", "zircolite", "deepbluecli"}
+    assert not (populated & evtx_lanes), (
+        "an EVTX-analyser lane fills command_line, which contradicts the reviewer's "
+        "measurement - re-check the population profile")
 
 
 def test_the_default_gate_still_accepts_a_declared_query():

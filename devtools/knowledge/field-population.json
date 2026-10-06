@@ -1,12 +1,12 @@
 {
-  "corpus": "Evidence-files\\ES-Mapping\\_population\\_case-39112",
+  "corpus": "Evidence-files\\ES-Mapping\\_population\\_case",
   "counts": {
     "analytic_cannot_match": 563,
     "analytic_partial": 9,
     "analytic_populated": 11,
     "analytic_typed": 583,
-    "skill_step_cannot_match": 50,
-    "skill_step_partial": 35,
+    "skill_step_cannot_match": 52,
+    "skill_step_partial": 33,
     "skill_step_populated": 164,
     "skill_step_typed": 249
   },
@@ -15,27 +15,22 @@
     "analytic_partial": 9,
     "analytic_populated": 11,
     "analytic_typed": 583,
-    "skill_step_cannot_match": 50,
-    "skill_step_partial": 35,
+    "skill_step_cannot_match": 52,
+    "skill_step_partial": 33,
     "skill_step_populated": 164,
     "skill_step_typed": 249
   },
   "counts_summary": {
-    "cannot_match_corpus_absent": 20,
-    "cannot_match_wrong_field": 593
+    "cannot_match_corpus_absent": 21,
+    "cannot_match_wrong_field": 594
   },
   "family_docs": {
-    "abuseipdb": 24,
     "amcache": 16,
-    "auditd": 10,
-    "authlog": 12,
-    "azure": 30,
+    "auditd": 4,
+    "authlog": 4,
+    "azure": 4,
     "bash_history": 4,
-    "capa": 8060,
-    "chainsaw": 22868,
-    "cloudtrail": 106,
-    "deepbluecli": 3784,
-    "densityscout": 40,
+    "cloudtrail": 4,
     "hindsight": 582,
     "lecmd": 502,
     "misp": 22,
@@ -46,7 +41,7 @@
     "scheduled_tasks": 4,
     "splunk": 4,
     "suricata": 10,
-    "suzaku": 13792,
+    "suzaku": 13836,
     "syslog": 4,
     "thehive": 26,
     "tshark": 1308,
@@ -60,6 +55,52 @@
   },
   "note": "A row is 'cannot_match' when every column its positive clauses reference is unfilled for the declared families. 'partial' names the columns that are unfilled. A cannot_match row carries `cause`: `wrong_field` when a declared family IS in the corpus and still does not fill the column, `corpus_absent` when no declared family is staged so the column is unmeasurable. Reporting absence as a defect would only hide the real one.",
   "rows": [
+    {
+      "cause": "wrong_field",
+      "columns": [
+        "path"
+      ],
+      "declared_families_in_corpus": [
+        "hindsight",
+        "lecmd",
+        "zircolite"
+      ],
+      "families": [
+        "browser",
+        "chainsaw",
+        "deepbluecli",
+        "evtx",
+        "evtxecmd",
+        "fls",
+        "hayabusa",
+        "hindsight",
+        "ingest-browser",
+        "ingest-evtx",
+        "ingest-hayabusa",
+        "ingest-kape",
+        "ingest-lecmd",
+        "ingest-mftecmd",
+        "ingest-powershell",
+        "ingest-wxtcmd",
+        "lecmd",
+        "lnk",
+        "mft",
+        "mftecmd",
+        "mftecmd-i30",
+        "mftecmd-usn",
+        "ntfs",
+        "powershell",
+        "security",
+        "sysmon",
+        "system",
+        "wxtcmd",
+        "zircolite"
+      ],
+      "id": "download_lineage",
+      "kind": "skill_step",
+      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
+      "status": "cannot_match"
+    },
     {
       "columns": [
         "file",
@@ -147,8 +188,6 @@
         "registry_value"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "hindsight",
         "zircolite"
       ],
@@ -188,8 +227,6 @@
         "process_name"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -280,8 +317,6 @@
         "file_path"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -312,8 +347,6 @@
         "file_path"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -356,8 +389,6 @@
         "file_path"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -403,8 +434,6 @@
         "file_path"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -450,8 +479,6 @@
         "process_name"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -718,8 +745,6 @@
         "file_path"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "lecmd",
         "zircolite"
       ],
@@ -769,8 +794,6 @@
         "file_path"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "lecmd",
         "zircolite"
       ],
@@ -976,8 +999,6 @@
       ],
       "declared_families_in_corpus": [
         "amcache",
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -1012,59 +1033,6 @@
         "zircolite"
       ],
       "id": "process_injection_indicators",
-      "kind": "skill_step",
-      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
-      "status": "cannot_match"
-    },
-    {
-      "cause": "wrong_field",
-      "columns": [
-        "valuename"
-      ],
-      "declared_families_in_corpus": [
-        "amcache",
-        "chainsaw",
-        "deepbluecli",
-        "zircolite"
-      ],
-      "families": [
-        "amcache",
-        "appcompat",
-        "chainsaw",
-        "deepbluecli",
-        "evtx",
-        "evtxecmd",
-        "hayabusa",
-        "ingest-amcache",
-        "ingest-appcompat",
-        "ingest-evtx",
-        "ingest-hayabusa",
-        "ingest-kape",
-        "ingest-pecmd",
-        "ingest-powershell",
-        "ingest-prefetch",
-        "ingest-recmd",
-        "ingest-security",
-        "ingest-srum",
-        "ingest-srumecmd",
-        "ingest-sysmon",
-        "ingest-windows_registry",
-        "ingest-wxtcmd",
-        "ntuser",
-        "pecmd",
-        "powershell",
-        "prefetch",
-        "recmd",
-        "registry",
-        "security",
-        "srum",
-        "srumecmd",
-        "sysmon",
-        "system",
-        "wxtcmd",
-        "zircolite"
-      ],
-      "id": "userassist_gui",
       "kind": "skill_step",
       "reason": "none of the columns it references holds a value in the population corpus for the declared families",
       "status": "cannot_match"
@@ -1117,11 +1085,55 @@
     {
       "cause": "wrong_field",
       "columns": [
+        "path"
+      ],
+      "declared_families_in_corpus": [
+        "hindsight",
+        "zircolite"
+      ],
+      "families": [
+        "browser",
+        "chainsaw",
+        "deepbluecli",
+        "evtx",
+        "evtxecmd",
+        "fls",
+        "hayabusa",
+        "hindsight",
+        "ingest-browser",
+        "ingest-evtx",
+        "ingest-hayabusa",
+        "ingest-kape",
+        "ingest-mft",
+        "ingest-netstat",
+        "ingest-powershell",
+        "ingest-prefetch",
+        "ingest-sysmon",
+        "mft",
+        "mftecmd",
+        "mftecmd-i30",
+        "mftecmd-usn",
+        "netstat",
+        "ntfs",
+        "pecmd",
+        "powershell",
+        "prefetch",
+        "security",
+        "sysmon",
+        "system",
+        "zircolite"
+      ],
+      "id": "staging_dirs",
+      "kind": "skill_step",
+      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
+      "status": "cannot_match"
+    },
+    {
+      "cause": "wrong_field",
+      "columns": [
         "name"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "hindsight",
         "zircolite"
       ],
@@ -1240,8 +1252,6 @@
         "file_path"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -1558,8 +1568,6 @@
         "file_path"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -1583,41 +1591,6 @@
         "zircolite"
       ],
       "id": "surviving_artifacts",
-      "kind": "skill_step",
-      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
-      "status": "cannot_match"
-    },
-    {
-      "cause": "wrong_field",
-      "columns": [
-        "filename"
-      ],
-      "declared_families_in_corpus": [
-        "hindsight",
-        "syslog"
-      ],
-      "families": [
-        "browser",
-        "fls",
-        "hindsight",
-        "ingest-browser",
-        "ingest-kape",
-        "ingest-memory",
-        "ingest-mft",
-        "ingest-plaso",
-        "ingest-syslog",
-        "ingest-volatility",
-        "memory",
-        "mft",
-        "mftecmd",
-        "mftecmd-i30",
-        "mftecmd-usn",
-        "ntfs",
-        "plaso",
-        "syslog",
-        "vol"
-      ],
-      "id": "image_mount_apfs",
       "kind": "skill_step",
       "reason": "none of the columns it references holds a value in the population corpus for the declared families",
       "status": "cannot_match"
@@ -1660,75 +1633,6 @@
     {
       "cause": "wrong_field",
       "columns": [
-        "filename"
-      ],
-      "declared_families_in_corpus": [
-        "hindsight",
-        "syslog"
-      ],
-      "families": [
-        "browser",
-        "fls",
-        "hindsight",
-        "ingest-browser",
-        "ingest-kape",
-        "ingest-memory",
-        "ingest-mft",
-        "ingest-plaso",
-        "ingest-syslog",
-        "ingest-volatility",
-        "memory",
-        "mft",
-        "mftecmd",
-        "mftecmd-i30",
-        "mftecmd-usn",
-        "ntfs",
-        "plaso",
-        "syslog",
-        "vol"
-      ],
-      "id": "quarantine_and_gatekeeper",
-      "kind": "skill_step",
-      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
-      "status": "cannot_match"
-    },
-    {
-      "columns": [
-        "filename",
-        "text.wc"
-      ],
-      "families": [
-        "browser",
-        "fls",
-        "hindsight",
-        "ingest-browser",
-        "ingest-kape",
-        "ingest-memory",
-        "ingest-mft",
-        "ingest-plaso",
-        "ingest-syslog",
-        "ingest-volatility",
-        "memory",
-        "mft",
-        "mftecmd",
-        "mftecmd-i30",
-        "mftecmd-usn",
-        "ntfs",
-        "plaso",
-        "syslog",
-        "vol"
-      ],
-      "id": "tcc_privacy_abuse",
-      "kind": "skill_step",
-      "reason": "some referenced columns are not filled for these families",
-      "status": "partial",
-      "unfilled_columns": [
-        "filename"
-      ]
-    },
-    {
-      "cause": "wrong_field",
-      "columns": [
         "value"
       ],
       "declared_families_in_corpus": [
@@ -1762,21 +1666,20 @@
       "status": "cannot_match"
     },
     {
+      "cause": "corpus_absent",
       "columns": [
         "meta.version",
         "text.wc"
       ],
+      "declared_families_in_corpus": [],
       "families": [
         "capa",
         "ingest-capa"
       ],
       "id": "capa_capabilities",
       "kind": "skill_step",
-      "reason": "some referenced columns are not filled for these families",
-      "status": "partial",
-      "unfilled_columns": [
-        "meta.version"
-      ]
+      "reason": "none of the columns it references holds a value in the population corpus for the declared families; no declared family is staged here",
+      "status": "cannot_match"
     },
     {
       "columns": [
@@ -1894,8 +1797,6 @@
         "file_path"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -1933,8 +1834,6 @@
         "process_name"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -1971,8 +1870,6 @@
         "process_name"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -2315,8 +2212,6 @@
         "valuename"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "scheduled_tasks",
         "zircolite"
       ],
@@ -2358,8 +2253,6 @@
         "keypath"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "scheduled_tasks",
         "zircolite"
       ],
@@ -2467,8 +2360,6 @@
         "file_path"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -2755,11 +2646,57 @@
     {
       "cause": "wrong_field",
       "columns": [
+        "path"
+      ],
+      "declared_families_in_corpus": [
+        "zircolite"
+      ],
+      "families": [
+        "apache",
+        "chainsaw",
+        "deepbluecli",
+        "evtx",
+        "evtxecmd",
+        "fls",
+        "hayabusa",
+        "iis",
+        "ingest-apache",
+        "ingest-evtx",
+        "ingest-hayabusa",
+        "ingest-iis",
+        "ingest-kape",
+        "ingest-memory",
+        "ingest-mft",
+        "ingest-sysmon",
+        "ingest-usn",
+        "ingest-volatility",
+        "ingest-weblogs",
+        "memory",
+        "mft",
+        "mftecmd",
+        "mftecmd-i30",
+        "mftecmd-usn",
+        "ntfs",
+        "powershell",
+        "security",
+        "sysmon",
+        "system",
+        "usn",
+        "vol",
+        "weblogs",
+        "zircolite"
+      ],
+      "id": "access_log_correlation",
+      "kind": "skill_step",
+      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
+      "status": "cannot_match"
+    },
+    {
+      "cause": "wrong_field",
+      "columns": [
         "file_path"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -2805,11 +2742,57 @@
     {
       "cause": "wrong_field",
       "columns": [
+        "path"
+      ],
+      "declared_families_in_corpus": [
+        "zircolite"
+      ],
+      "families": [
+        "apache",
+        "chainsaw",
+        "deepbluecli",
+        "evtx",
+        "evtxecmd",
+        "fls",
+        "hayabusa",
+        "iis",
+        "ingest-apache",
+        "ingest-evtx",
+        "ingest-hayabusa",
+        "ingest-iis",
+        "ingest-kape",
+        "ingest-memory",
+        "ingest-mft",
+        "ingest-sysmon",
+        "ingest-usn",
+        "ingest-volatility",
+        "ingest-weblogs",
+        "memory",
+        "mft",
+        "mftecmd",
+        "mftecmd-i30",
+        "mftecmd-usn",
+        "ntfs",
+        "powershell",
+        "security",
+        "sysmon",
+        "system",
+        "usn",
+        "vol",
+        "weblogs",
+        "zircolite"
+      ],
+      "id": "upload_vector",
+      "kind": "skill_step",
+      "reason": "none of the columns it references holds a value in the population corpus for the declared families",
+      "status": "cannot_match"
+    },
+    {
+      "cause": "wrong_field",
+      "columns": [
         "process_name"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -2906,8 +2889,6 @@
         "file_path"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -2952,8 +2933,6 @@
         "file_path"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -2998,8 +2977,6 @@
         "file_path"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -3044,8 +3021,6 @@
         "file_path"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -3134,8 +3109,6 @@
         "file_path"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -3181,8 +3154,6 @@
         "process_name"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -3216,8 +3187,6 @@
         "command_line"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -3249,8 +3218,6 @@
         "process_name"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -3282,8 +3249,6 @@
         "registry_key"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -3320,8 +3285,6 @@
         "registry_key"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -3357,8 +3320,6 @@
         "registry_key"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -3395,8 +3356,6 @@
         "field"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -3446,8 +3405,6 @@
         "registry_key"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -3486,8 +3443,6 @@
         "file_path"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "lecmd",
         "zircolite"
       ],
@@ -3521,8 +3476,6 @@
         "command_line"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -3554,8 +3507,6 @@
         "file_path"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -3838,8 +3789,6 @@
         "command_line"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -3904,8 +3853,6 @@
         "parent_process"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -3966,8 +3913,6 @@
         "file_path"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -4006,8 +3951,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -4039,8 +3982,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -4072,8 +4013,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -4104,8 +4043,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -4136,8 +4073,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -4168,8 +4103,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -4201,8 +4134,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -4233,8 +4164,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -4265,8 +4194,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -4297,8 +4224,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -4329,8 +4254,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -4362,8 +4285,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -4394,8 +4315,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -4426,8 +4345,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -4458,8 +4375,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -4490,8 +4405,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -4523,8 +4436,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -4555,8 +4466,6 @@
         "executableinfo"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -4588,8 +4497,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -4620,8 +4527,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -4652,8 +4557,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -4684,8 +4587,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -4717,8 +4618,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -4749,8 +4648,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -4781,8 +4678,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -4813,8 +4708,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -4845,8 +4738,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -4877,8 +4768,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -4910,8 +4799,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -4942,8 +4829,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -4974,8 +4859,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -5007,8 +4890,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -5039,8 +4920,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -5071,8 +4950,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -5104,8 +4981,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -5136,8 +5011,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -5168,8 +5041,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -5201,8 +5072,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -5234,8 +5103,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -5266,8 +5133,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -5298,8 +5163,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -5331,8 +5194,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -5364,8 +5225,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -5396,8 +5255,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -5428,8 +5285,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -5460,8 +5315,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -5492,8 +5345,6 @@
         "executableinfo"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -5524,8 +5375,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -5556,8 +5405,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -5588,8 +5435,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -5620,8 +5465,6 @@
         "executableinfo"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -5653,8 +5496,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -5685,8 +5526,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -5718,8 +5557,6 @@
         "payloaddata6"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -5750,8 +5587,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -5782,8 +5617,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -5815,8 +5648,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -5847,8 +5678,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -5879,8 +5708,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -5911,8 +5738,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -5943,8 +5768,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -5976,8 +5799,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -6009,8 +5830,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -6042,8 +5861,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -6074,8 +5891,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -6107,8 +5922,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -6140,8 +5953,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -6172,8 +5983,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -6204,8 +6013,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -6236,8 +6043,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -6268,8 +6073,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -6300,8 +6103,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -6332,8 +6133,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -6365,8 +6164,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -6397,8 +6194,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -6429,8 +6224,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -6463,8 +6256,6 @@
         "payloaddata6"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -6495,8 +6286,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -6527,8 +6316,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -6559,8 +6346,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -6591,8 +6376,6 @@
         "executableinfo"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -6624,8 +6407,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -6656,8 +6437,6 @@
         "executableinfo"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -6688,8 +6467,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -6721,8 +6498,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -6753,8 +6528,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -6785,8 +6558,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -6817,8 +6588,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -6849,8 +6618,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -6882,8 +6649,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -6914,8 +6679,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -6946,8 +6709,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -6979,8 +6740,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -7011,8 +6770,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -7044,8 +6801,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -7076,8 +6831,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -7108,8 +6861,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -7140,8 +6891,6 @@
         "executableinfo"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -7172,8 +6921,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -7204,8 +6951,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -7236,8 +6981,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -7268,8 +7011,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -7300,8 +7041,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -7332,8 +7071,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -7364,8 +7101,6 @@
         "executableinfo"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -7396,8 +7131,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -7428,8 +7161,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -7460,8 +7191,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -7492,8 +7221,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -7524,8 +7251,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -7556,8 +7281,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -7588,8 +7311,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -7620,8 +7341,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -7652,8 +7371,6 @@
         "executableinfo"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -7684,8 +7401,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -7716,8 +7431,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -7748,8 +7461,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -7780,8 +7491,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -7812,8 +7521,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -7844,8 +7551,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -7876,8 +7581,6 @@
         "executableinfo"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -7908,8 +7611,6 @@
         "executableinfo"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -7940,8 +7641,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -7972,8 +7671,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -8005,8 +7702,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -8038,8 +7733,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -8070,8 +7763,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -8102,8 +7793,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -8134,8 +7823,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -8166,8 +7853,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -8198,8 +7883,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -8231,8 +7914,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -8263,8 +7944,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -8295,8 +7974,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -8327,8 +8004,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -8360,8 +8035,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -8392,8 +8065,6 @@
         "executableinfo"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -8424,8 +8095,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -8456,8 +8125,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -8488,8 +8155,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -8520,8 +8185,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -8553,8 +8216,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -8586,8 +8247,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -8618,8 +8277,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -8651,8 +8308,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -8684,8 +8339,6 @@
         "payloaddata6"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -8716,8 +8369,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -8748,8 +8399,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -8780,8 +8429,6 @@
         "executableinfo"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -8812,8 +8459,6 @@
         "executableinfo"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -8845,8 +8490,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -8878,8 +8521,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -8910,8 +8551,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -8942,8 +8581,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -8974,8 +8611,6 @@
         "executableinfo"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -9006,8 +8641,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -9039,8 +8672,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -9072,8 +8703,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -9104,8 +8733,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -9136,8 +8763,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -9168,8 +8793,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -9200,8 +8823,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -9232,8 +8853,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -9264,8 +8883,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -9297,8 +8914,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -9330,8 +8945,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -9363,8 +8976,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -9395,8 +9006,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -9427,8 +9036,6 @@
         "executableinfo"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -9459,8 +9066,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -9492,8 +9097,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -9524,8 +9127,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -9556,8 +9157,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -9589,8 +9188,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -9622,8 +9219,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -9655,8 +9250,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -9687,8 +9280,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -9719,8 +9310,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -9751,8 +9340,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -9783,8 +9370,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -9816,8 +9401,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -9848,8 +9431,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -9880,8 +9461,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -9912,8 +9491,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -9945,8 +9522,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -9977,8 +9552,6 @@
         "executableinfo"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -10009,8 +9582,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -10041,8 +9612,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -10073,8 +9642,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -10106,8 +9673,6 @@
         "payloaddata6"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -10138,8 +9703,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -10170,8 +9733,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -10203,8 +9764,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -10235,8 +9794,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -10268,8 +9825,6 @@
         "payloaddata6"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -10301,8 +9856,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -10333,8 +9886,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -10366,8 +9917,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -10398,8 +9947,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -10430,8 +9977,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -10462,8 +10007,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -10495,8 +10038,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -10527,8 +10068,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -10560,8 +10099,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -10592,8 +10129,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -10624,8 +10159,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -10656,8 +10189,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -10689,8 +10220,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -10721,8 +10250,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -10753,8 +10280,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -10785,8 +10310,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -10817,8 +10340,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -10849,8 +10370,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -10882,8 +10401,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -10915,8 +10432,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -10947,8 +10462,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -10980,8 +10493,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -11013,8 +10524,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -11046,8 +10555,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -11078,8 +10585,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -11110,8 +10615,6 @@
         "executableinfo"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -11142,8 +10645,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -11174,8 +10675,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -11207,8 +10706,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -11239,8 +10736,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -11271,8 +10766,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -11303,8 +10796,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -11335,8 +10826,6 @@
         "executableinfo"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -11367,8 +10856,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -11400,8 +10887,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -11432,8 +10917,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -11464,8 +10947,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -11497,8 +10978,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -11529,8 +11008,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -11562,8 +11039,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -11595,8 +11070,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -11627,8 +11100,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -11659,8 +11130,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -11693,8 +11162,6 @@
         "payloaddata6"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -11725,8 +11192,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -11758,8 +11223,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -11791,8 +11254,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -11823,8 +11284,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -11855,8 +11314,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -11887,8 +11344,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -11919,8 +11374,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -11951,8 +11404,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -11983,8 +11434,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -12015,8 +11464,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -12047,8 +11494,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -12079,8 +11524,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -12113,8 +11556,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -12145,8 +11586,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -12177,8 +11616,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -12210,8 +11647,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -12243,8 +11678,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -12275,8 +11708,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -12308,8 +11739,6 @@
         "payloaddata6"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -12340,8 +11769,6 @@
         "executableinfo"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -12373,8 +11800,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -12405,8 +11830,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -12437,8 +11860,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -12469,8 +11890,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -12502,8 +11921,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -12534,8 +11951,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -12566,8 +11981,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -12598,8 +12011,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -12630,8 +12041,6 @@
         "executableinfo"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -12662,8 +12071,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -12694,8 +12101,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -12726,8 +12131,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -12758,8 +12161,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -12790,8 +12191,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -12822,8 +12221,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -12855,8 +12252,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -12888,8 +12283,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -12920,8 +12313,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -12953,8 +12344,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -12985,8 +12374,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -13017,8 +12404,6 @@
         "executableinfo"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -13049,8 +12434,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -13081,8 +12464,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -13113,8 +12494,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -13146,8 +12525,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -13179,8 +12556,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -13211,8 +12586,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -13243,8 +12616,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -13275,8 +12646,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -13307,8 +12676,6 @@
         "executableinfo"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -13340,8 +12707,6 @@
         "payloaddata6"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -13373,8 +12738,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -13405,8 +12768,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -13438,8 +12799,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -13471,8 +12830,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -13503,8 +12860,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -13536,8 +12891,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -13568,8 +12921,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -13600,8 +12951,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -13632,8 +12981,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -13665,8 +13012,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -13697,8 +13042,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -13729,8 +13072,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -13761,8 +13102,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -13793,8 +13132,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -13825,8 +13162,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -13857,8 +13192,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -13889,8 +13222,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -13921,8 +13252,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -13954,8 +13283,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -13986,8 +13313,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -14019,8 +13344,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -14051,8 +13374,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -14083,8 +13404,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -14115,8 +13434,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -14148,8 +13465,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -14180,8 +13495,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -14212,8 +13525,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -14244,8 +13555,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -14276,8 +13585,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -14308,8 +13615,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -14340,8 +13645,6 @@
         "executableinfo"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -14373,8 +13676,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -14405,8 +13706,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -14437,8 +13736,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -14469,8 +13766,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -14501,8 +13796,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -14533,8 +13826,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -14565,8 +13856,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -14597,8 +13886,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -14629,8 +13916,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -14661,8 +13946,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -14693,8 +13976,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -14726,8 +14007,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -14758,8 +14037,6 @@
         "executableinfo"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -14790,8 +14067,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -14822,8 +14097,6 @@
         "executableinfo"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -14855,8 +14128,6 @@
         "payloaddata6"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -14887,8 +14158,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -14919,8 +14188,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -14952,8 +14219,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -14985,8 +14250,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -15017,8 +14280,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -15050,8 +14311,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -15082,8 +14341,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -15114,8 +14371,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -15146,8 +14401,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -15178,8 +14431,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -15210,8 +14461,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -15243,8 +14492,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -15275,8 +14522,6 @@
         "executableinfo"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -15307,8 +14552,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -15340,8 +14583,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -15372,8 +14613,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -15405,8 +14644,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -15438,8 +14675,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -15471,8 +14706,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -15503,8 +14736,6 @@
         "executableinfo"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -15535,8 +14766,6 @@
         "executableinfo"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -15567,8 +14796,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -15600,8 +14827,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -15632,8 +14857,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -15664,8 +14887,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -15696,8 +14917,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -15728,8 +14947,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -15760,8 +14977,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -15793,8 +15008,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -15825,8 +15038,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -15858,8 +15069,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -15890,8 +15099,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -15922,8 +15129,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -15954,8 +15159,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -15986,8 +15189,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -16019,8 +15220,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -16051,8 +15250,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -16084,8 +15281,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -16116,8 +15311,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -16148,8 +15341,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -16181,8 +15372,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -16213,8 +15402,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -16245,8 +15432,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -16277,8 +15462,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -16310,8 +15493,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -16344,8 +15525,6 @@
         "payloaddata6"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -16376,8 +15555,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -16409,8 +15586,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -16441,8 +15616,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -16473,8 +15646,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -16505,8 +15676,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -16538,8 +15707,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -16570,8 +15737,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -16602,8 +15767,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -16634,8 +15797,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -16667,8 +15828,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -16700,8 +15859,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -16732,8 +15889,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -16765,8 +15920,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -16798,8 +15951,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -16830,8 +15981,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -16862,8 +16011,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -16895,8 +16042,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -16927,8 +16072,6 @@
         "payloaddata6"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -16960,8 +16103,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -16992,8 +16133,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -17024,8 +16163,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -17056,8 +16193,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -17089,8 +16224,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -17121,8 +16254,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -17153,8 +16284,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -17185,8 +16314,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -17217,8 +16344,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -17249,8 +16374,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -17281,8 +16404,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -17313,8 +16434,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -17345,8 +16464,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -17377,8 +16494,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -17409,8 +16524,6 @@
         "executableinfo"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -17442,8 +16555,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -17475,8 +16586,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -17507,8 +16616,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -17539,8 +16646,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -17571,8 +16676,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -17603,8 +16706,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -17635,8 +16736,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -17667,8 +16766,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -17699,8 +16796,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -17732,8 +16827,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -17764,8 +16857,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -17796,8 +16887,6 @@
         "executableinfo"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -17828,8 +16917,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -17860,8 +16947,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -17892,8 +16977,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -17924,8 +17007,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -17956,8 +17037,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -17988,8 +17067,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -18020,8 +17097,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -18053,8 +17128,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -18086,8 +17159,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -18118,8 +17189,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -18150,8 +17219,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -18183,8 +17250,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -18215,8 +17280,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -18248,8 +17311,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -18280,8 +17341,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -18312,8 +17371,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -18345,8 +17402,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -18377,8 +17432,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -18410,8 +17463,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -18443,8 +17494,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -18475,8 +17524,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -18508,8 +17555,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -18540,8 +17585,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -18572,8 +17615,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -18605,8 +17646,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -18637,8 +17676,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -18669,8 +17706,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -18701,8 +17736,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -18733,8 +17766,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -18765,8 +17796,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -18797,8 +17826,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -18829,8 +17856,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -18861,8 +17886,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -18893,8 +17916,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -18925,8 +17946,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -18957,8 +17976,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -18989,8 +18006,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -19021,8 +18036,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -19053,8 +18066,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -19085,8 +18096,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -19118,8 +18127,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -19150,8 +18157,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -19182,8 +18187,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -19215,8 +18218,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -19247,8 +18248,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -19279,8 +18278,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -19311,8 +18308,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -19344,8 +18339,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -19376,8 +18369,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -19408,8 +18399,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -19440,8 +18429,6 @@
         "executableinfo"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -19472,8 +18459,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -19504,8 +18489,6 @@
         "executableinfo"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -19537,8 +18520,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -19570,8 +18551,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -19602,8 +18581,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -19635,8 +18612,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -19667,8 +18642,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -19699,8 +18672,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -19731,8 +18702,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -19763,8 +18732,6 @@
         "executableinfo"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -19795,8 +18762,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -19827,8 +18792,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -19860,8 +18823,6 @@
         "payloaddata6"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -19892,8 +18853,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -19924,8 +18883,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -19956,8 +18913,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -19988,8 +18943,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -20020,8 +18973,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -20052,8 +19003,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -20084,8 +19033,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -20117,8 +19064,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -20149,8 +19094,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -20181,8 +19124,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -20213,8 +19154,6 @@
         "executableinfo"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -20245,8 +19184,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -20278,8 +19215,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -20311,8 +19246,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -20343,8 +19276,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -20375,8 +19306,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -20408,8 +19337,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -20441,8 +19368,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -20473,8 +19398,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -20505,8 +19428,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -20537,8 +19458,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -20570,8 +19489,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -20602,8 +19519,6 @@
         "executableinfo"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -20634,8 +19549,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -20666,8 +19579,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -20698,8 +19609,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -20731,8 +19640,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -20763,8 +19670,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -20795,8 +19700,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -20827,8 +19730,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -20860,8 +19761,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -20893,8 +19792,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -20925,8 +19822,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -20957,8 +19852,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -20989,8 +19882,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -21021,8 +19912,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -21054,8 +19943,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -21087,8 +19974,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -21119,8 +20004,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -21151,8 +20034,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -21183,8 +20064,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -21215,8 +20094,6 @@
         "executableinfo"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -21247,8 +20124,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -21280,8 +20155,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -21313,8 +20186,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -21346,8 +20217,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -21378,8 +20247,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -21411,8 +20278,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -21443,8 +20308,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -21476,8 +20339,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -21508,8 +20369,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -21540,8 +20399,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -21572,8 +20429,6 @@
         "payloaddata5"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -21604,8 +20459,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [
@@ -21637,8 +20490,6 @@
         "payloaddata2"
       ],
       "declared_families_in_corpus": [
-        "chainsaw",
-        "deepbluecli",
         "zircolite"
       ],
       "families": [

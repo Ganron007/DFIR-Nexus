@@ -65,11 +65,24 @@ def _layout(corpus: Path, case_dir: Path) -> dict[str, int]:
 
     staged = json.loads((corpus / "_staged.json").read_text(encoding="utf-8")) \
         if (corpus / "_staged.json").exists() else {"families": {}}
-    # The indexer scans only these extensions (query_pack.iter_extraction_files).
-    # Staging an `.evtx` or `.bin` here would put raw binary in a place designed
-    # for parsed rows, which is both useless for the profile and untruthful about
-    # what the index receives.
-    SCANNED = {".csv", ".txt", ".json", ".jsonl", ".log"}
+    # The extensions the index can scan, derived from the indexer's OWN pattern list
+    # rather than typed here: a narrower list silently drops a family the index would
+    # have read and reports it as "no sample", and a wider list claims a family is
+    # covered that the runtime cannot read. Both are the same silent gap in opposite
+    # directions.
+    #
+    # The set is built as SUFFIXES WITH THE DOT (`.csv`), because `Path.suffix`
+    # includes it - `"csv" in SCANNED` is never true for a file named `x.csv`, which
+    # is how this once placed 0 of 115 files while printing a confident skip list.
+    pats = (
+        "*.csv", "*.txt", "*.json", "*.jsonl", "*.log",
+        "*.csv.gz", "*.txt.gz", "*.json.gz", "*.jsonl.gz", "*.log.gz",
+    )
+    scannable = {p[len("*"):] for p in pats}          # '*.csv.gz' -> '.csv.gz'
+    # a `.gz` file is scanned via its double suffix ('.json.gz'); `.suffix` only
+    # returns '.gz', so the inner extension decides.
+    SCANNED = scannable | {s.rsplit(".", 1)[0] for s in scannable if s.count(".") > 1
+                           } | {".gz"}
     placed = 0
     skipped: list[str] = []
     for family, paths in staged.get("families", {}).items():
@@ -95,6 +108,32 @@ def _layout(corpus: Path, case_dir: Path) -> dict[str, int]:
                 continue
             placed += 1
     return {"placed": placed, "skipped": skipped}
+
+def _install_ingest_store(corpus: Path, case_dir: Path) -> str:
+    """Put the importer lane inside the profiled case, if one is staged.
+
+    `case_index.iter_index_docs` reads `case_dir/ingest/artifacts.jsonl` for the
+    importer lane; `_layout` only copies into `extractions/`. Without this the
+    profile measures a corpus with no importer rows at all, so every one of the 11
+    D34 columns reads "not populated" - which is what made an earlier run report
+    25,787 documents and drop the 51k the WO's acceptance expects.
+
+    Returns a one-line report, or "" when there is nothing to install.
+    """
+    import shutil
+
+    dest = case_dir / "ingest" / "artifacts.jsonl"
+    if dest.is_file():
+        return f"{dest.stat().st_size:,} bytes (already staged)"
+    # the store the KR2c item-4 staging script writes, one level up
+    for candidate in (corpus / "_case" / "ingest" / "artifacts.jsonl",
+                      corpus.parent / "_case" / "ingest" / "artifacts.jsonl",
+                      corpus / "ingest" / "artifacts.jsonl"):
+        if candidate.is_file():
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(candidate, dest)
+            return f"{dest.stat().st_size:,} bytes from {candidate.name}"
+    return ""
 
 
 def profile(case_dir: Path) -> dict[str, Any]:
@@ -171,6 +210,89 @@ def profile_evtx_detail(case_dir: Path) -> dict[str, Any]:
     return detail
 
 
+def absent_families(case_dir: Path, profiled: set[str] | None = None) -> dict[str, dict[str, Any]]:
+    """WO-KM1 acceptance: every registry family the corpus does NOT cover, with a reason.
+
+    "A family or event type with no sample ... is recorded as absent, with the reason.
+    Do not search for another sample; tell the operator."
+
+    So the profile must name every family the registry declares. A family is absent
+    because the corpus stages no file the index can scan for it - which is a fact
+    about the corpus, recorded, not hidden. An earlier profile simply omitted the 35
+    families it had no sample for, which reads as "no sample" only to someone who
+    already knows the registry; the acceptance clause asks for it to say so.
+
+    The staging manifest's own `absent` block is folded in, because that is the
+    operator's record of why a family has no sample ("the staged output is not
+    present"), and re-deriving a reason locally would contradict it.
+
+    `profiled` is the set the `profile()` pass already collected, so the corpus is not
+    scanned a second time - it is ~51k documents.
+    """
+    from nexus.knowledge.query_validation import load_field_registry
+
+    manifest = case_dir.parent / "_staged.json"
+    manifest_families: dict[str, list[str]] = {}
+    manifest_absent: dict[str, str] = {}
+    if manifest.is_file():
+        raw = json.loads(manifest.read_text(encoding="utf-8"))
+        manifest_families = raw.get("families") or {}
+        manifest_absent = raw.get("absent") or {}
+
+    staged: dict[str, list[str]] = {}
+    for fam, rels in manifest_families.items():
+        paths = [str(p) for p in (rels or []) if Path(p).is_file()]
+        if paths:
+            staged[fam] = paths
+
+    cols = load_field_registry()
+    registry: set[str] = set()
+    for info in cols.values():
+        for f in (info.get("families") or []):
+            low = str(f).lower()
+            registry.add(low[7:] if low.startswith("ingest-") else low)
+
+    profiled = set()
+    if profiled:
+        # `profile()` already scanned the corpus; reuse its families.
+        profiled = {str(f).lower() for f in profiled}
+    else:
+        from nexus.langgraph.case_index import iter_index_docs
+
+        for doc in iter_index_docs(case_dir):
+            fam = str(doc.get("family") or "")
+            if fam:
+                profiled.add(fam.lower())
+
+    pats = ("*.csv", "*.txt", "*.json", "*.jsonl", "*.log",
+            "*.csv.gz", "*.txt.gz", "*.json.gz", "*.jsonl.gz", "*.log.gz")
+    scannable = {p.removeprefix("*.") for p in pats}
+
+    out: dict[str, dict[str, Any]] = {}
+    for fam in sorted(registry - profiled):
+        if fam in manifest_absent:
+            out[fam] = {"reason": manifest_absent[fam], "staged_samples": 0,
+                        "source": "the staging manifest's own absent record"}
+            continue
+        paths = [Path(p) for p in (staged.get(fam) or [])]
+        present = [p for p in paths if p.is_file()]
+        suffixes = {p.suffix.lower() for p in present}
+        unscannable = sorted(x for x in suffixes if x not in scannable)
+        if present and len(unscannable) == len(suffixes):
+            reason = (f"the corpus stages {len(present)} sample(s), but none is a "
+                      f"format the index scans "
+                      f"({', '.join(x or 'no-extension' for x in unscannable[:4])}); "
+                      f"the tool's parsed output has not been run into the corpus")
+        elif present:
+            reason = ("the corpus stages samples for this family, but the index scan "
+                      "yielded no rows for it (empty or non-conforming output)")
+        else:
+            reason = ("no sample for this family is staged in the operator's "
+                      "ES-Mapping corpus, so it is unmeasured")
+        out[fam] = {"reason": reason, "staged_samples": len(present)}
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--corpus", type=Path, default=CORPUS)
@@ -184,32 +306,67 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     workdir = args.workdir or (args.corpus / "_case")
-    if workdir.exists():
-        import shutil as _sh
+    # Stale workdirs from a killed run must not be reused: the earlier code only
+    # `rmtree`d the default `_case`, so a `_case-<pid>` left behind by a timed-out run
+    # made `mkdir` fail with FileExistsError and the profile never ran at all. Try
+    # several names and report which one it used, rather than dying.
+    import shutil as _sh
 
+    for candidate in [workdir] + [args.corpus / f"_case-{os.getpid()}-{n}"
+                                  for n in range(5)]:
+        if candidate.exists():
+            try:
+                _sh.rmtree(candidate)
+            except (PermissionError, OSError):
+                continue
         try:
-            _sh.rmtree(workdir)
-        except (PermissionError, OSError):
-            # a stale run can leave a file open elsewhere; a fresh name still lets
-            # the profile run and the reason is reported rather than swallowed.
-            workdir = args.corpus / f"_case-{os.getpid()}"
-    workdir.mkdir(parents=True)
+            candidate.mkdir(parents=True)
+            workdir = candidate
+            break
+        except FileExistsError:
+            continue
+    else:
+        print(f"could not create any workdir under {args.corpus} - a stale case dir is "
+              f"locked by another process", file=sys.stderr)
+        return 2
+    # Clean up the leftovers this run did not need, so a repeat run does not find
+    # them again. Best-effort: a locked one is reported, not swallowed.
+    for stale in args.corpus.glob("_case*"):
+        if stale != workdir and stale.is_dir():
+            try:
+                _sh.rmtree(stale)
+            except (PermissionError, OSError) as exc:
+                print(f"  could not remove stale {stale.name}: "
+                      f"{type(exc).__name__}")
     placed = _layout(args.corpus, workdir)
+    # The importer lane (KR2c item 4's `ingest/artifacts.jsonl`) must be inside the
+    # profiled case, or the profile reports every importer column absent and KR2c's
+    # population gate then rejects every stored query aimed at them. `_layout` only
+    # handles `extractions/`, so install the ingest store here and keep it across
+    # runs: the store is rebuilt by `stage_ingest_columns.py`, not by this profile.
+    ingest_store = _install_ingest_store(args.corpus, workdir)
+    if ingest_store:
+        print(f"  ingest store: {ingest_store}")
     if not placed["placed"]:
         print("no corpus files were placed; is the corpus staged?", file=sys.stderr)
         return 2
 
     result = profile(workdir)
     evtx = profile_evtx_detail(workdir)
+    absent = absent_families(workdir, set(result["families"]))
     placed = _layout(args.corpus, workdir)
     payload = {
         "generator": "scripts/profile_field_population.py",
-        "corpus": str(args.corpus),
+        "corpus": args.corpus,
         "note": ("Documents as the index receives them, per family as the index names it. "
                  "A column listed here is populated on real evidence; a registry column "
-                 "not listed is declared, not populated."),
+                 "not listed is declared, not populated. `absent_families` names every "
+                 "registry family the corpus does not cover, with the reason - a family "
+                 "absent from this profile is not silently 'no sample', it is recorded "
+                 "as absent."),
         "families": result["families"],
         "evtxecmd_generic_columns": evtx,
+        "absent_families": absent,
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(payload, indent=2, sort_keys=True, default=str), encoding="utf-8")

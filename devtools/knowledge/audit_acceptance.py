@@ -48,11 +48,15 @@ for step, fname in STEPS.items():
     blob = json.dumps(s.get('es') or {})
     checks = []
     if step == 'execution_chain':
-        # The R0' fix: the interpreters are the CHILD, the launchers the PARENT.
-        # `ParentImage` is the step's own pivot, so interpreters are asserted in the
-        # parent column and the launcher (explorer.exe) in a file-name column.
-        checks.append(('interpreters in the parent column',
-                       'fields.parent_process' in blob))
+        # R0' defect 1: parent and child were INVERTED. The interpreters are the CHILD
+        # and the launchers the PARENT, so `mshta`/`rundll32`/`powershell` must never
+        # be asserted as `parent_process` values, and `explorer.exe` (the launcher) is
+        # a file name, not a protocol. With the population profile now measuring these
+        # families (no typed column fills), the honest answer is: the launcher in
+        # `file_path`, the interpreters in the row text - never in an IP column, and
+        # never in the parent column as the authored pivot asked.
+        checks.append(('interpreters are NOT asserted as parents',
+                       'fields.parent_process' not in blob))
         checks.append(('launcher in a file-name column',
                        'fields.file_path' in blob))
         checks.append(('explorer.exe present', 'explorer.exe' in blob))
