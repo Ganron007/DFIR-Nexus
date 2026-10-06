@@ -177,7 +177,12 @@ def main() -> int:
             continue
         dest_dir = CORPUS / fam
         dest_dir.mkdir(parents=True, exist_ok=True)
-        dest = dest_dir / f"{src.stem[:48]}-sample{src.suffix.lower()}"
+        # The file must be named so the INDEX derives `fam` from it. `_family()` prefers
+        # a name hint over the directory: `…_SrumECmd_AppResourceUseInfo_Output-sample.csv`
+        # was derived as `srum` and `chrome-history-sample.log` as `lecmd`, so those two
+        # samples were read as the wrong families and their real families never profiled.
+        # A `<family>-sample` prefix is the one spelling the hint cannot override.
+        dest = dest_dir / f"{fam}-sample{src.suffix.lower()}"
         n = cap_rows(src, dest)
         fams[fam] = [str(dest)]
         man_absent.pop(fam, None)

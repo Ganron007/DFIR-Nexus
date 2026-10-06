@@ -120,8 +120,13 @@ def raw_rows(family: str) -> tuple[list[dict[str, str]], list[Path]]:
                         continue
                     if str(d.get("source") or "").lower() != str(family).lower():
                         continue
+                    # Only the columns the INDEX projects. `str(None)` is "None", a
+                    # non-empty string, so a naive `{str(k): str(v)}` made every
+                    # unpopulated field look filled - `volatility/process_name` read
+                    # 8 against the profile's 4, because the 4 rows without a process
+                    # became the value "None".
                     out.append({str(k): str(v) for k, v in d.items()
-                                if k != "id"})
+                                if k != "id" and v not in (None, "", [], {})})
             files.append(ingest)
         except OSError:
             pass

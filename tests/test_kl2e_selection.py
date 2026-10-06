@@ -97,3 +97,49 @@ def test_zeek_plus_suricata_still_prefers_the_network_skill():
     """KL2e 2: the combination keeps the network skill, not only the OT skill."""
     got = [str(s.get("skill")) for s in skills_for({"zeek", "suricata"})]
     assert "network_session_analysis" in got, got
+
+
+#: Skills whose subject is another platform or another artifact class. An EVTX-only case
+#: is not a USB intrusion, not a phone and not an email investigation, so none may
+#: surface on event-log evidence alone.
+_NOISE_SKILLS = {"usb_device_intrusion", "usb_device_analysis", "email_phishing",
+                 "mobile_forensics", "macos_forensics", "browser_artifact_analysis"}
+
+#: Every EVTX lane family the corpus now stages. The corpus grew from 33 to 47 families
+#: after the original acceptance was measured, so the negative is asserted at the new
+#: size rather than at the size it first passed.
+_EVTX_FAMILIES = ("evtx", "security", "sysmon", "hayabusa", "chainsaw", "zircolite",
+                  "deepbluecli", "evtxecmd", "suzaku")
+
+
+@pytest.mark.parametrize("family", _EVTX_FAMILIES)
+@pytest.mark.parametrize("surface", [skills_for, retrieve_skills])
+def test_evtx_only_case_selects_no_other_platform_skill(family, surface):
+    """KL2e acceptance: the EVTX-only noise case still selects no USB/mobile/email skill.
+
+    The two-family rule is what keeps this true. Adding families to the population
+    corpus cannot be allowed to loosen it, so every EVTX lane family is checked on both
+    selection surfaces.
+    """
+    got = {str(s.get("skill")) for s in surface({family})}
+    leak = sorted(got & _NOISE_SKILLS)
+    assert not leak, f"{surface.__name__}({{{family!r}}}) leaked {leak}"
+    # and the event-log skill IS selected, so a broken gate cannot pass by selecting
+    # nothing at all
+    assert "windows_event_log_analysis" in got, got
+
+
+@pytest.mark.parametrize("pair", [("evtx", "security"), ("security", "sysmon"),
+                                  ("evtx", "hayabusa"), ("sysmon", "hayabusa")])
+@pytest.mark.parametrize("surface", [skills_for, retrieve_skills])
+def test_two_evtx_families_surface_the_evtx_analysis_skills(pair, surface):
+    """Two EVTX families is the signal for the event-log analysis skills.
+
+    The positive half of the same rule: a combination IS meant to surface hypotheses,
+    so the gate rejecting everything would also be a failure.
+    """
+    got = {str(s.get("skill")) for s in surface(set(pair))}
+    assert got & {"ad_credential_attacks", "lsass_credential_access",
+                  "execution_artifact_analysis", "lateral_movement",
+                  "log_clearing"}, sorted(got)
+    assert not (got & _NOISE_SKILLS), sorted(got & _NOISE_SKILLS)

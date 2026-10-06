@@ -87,11 +87,23 @@ _STOP = frozenset(
     }
 )
 _FAMILY_HINTS = (
-    "hayabusa", "suzaku", "chainsaw", "evtxecmd", "evtx", "pecmd", "prefetch", "jlecmd", "lecmd",
-    "sbecmd", "rbcmd", "srum", "srumecmd", "recmd", "mftecmd", "amcache",
+    "hayabusa", "suzaku", "chainsaw", "evtxecmd", "evtx", "pecmd", "prefetch", "jlecmd",
+    "lecmd", "sbecmd", "rbcmd", "srumecmd", "srum", "recmd", "mftecmd", "amcache",
     "appcompat", "wxtcmd", "bits", "vol", "fls", "setupapi", "bmc-tools",
-    "plaso", "log2timeline", "psort",
+    "plaso", "log2timeline", "psort", "sqlecmd",
 )
+# `_family()` returns the FIRST hint that appears in the relative path, so this order is
+# part of the contract, not a preference. `srum` used to precede `srumecmd`, which meant
+# every path containing "srumecmd" resolved to `srum` - SrumECmd's own evidence was
+# indexed as a different family, so `srumecmd` could never be population-measured. A hint
+# that is a PREFIX of another must come after it. The pairs below are the ones that
+# collide today; the rest of the order is unchanged, because reordering all of them would
+# silently re-attribute families nobody asked about.
+_PREFIX_COLLISIONS = {"srum": "srumecmd", "lecmd": "sqlecmd"}
+_FAMILY_HINTS = tuple(
+    h for h in _FAMILY_HINTS if not (h in _PREFIX_COLLISIONS
+                                    and _PREFIX_COLLISIONS[h] in _FAMILY_HINTS)
+) + tuple(_PREFIX_COLLISIONS)
 _SCAN_FIRST = (
     "hayabusa", "suzaku", "chainsaw", "evtxecmd", "evtx", "pecmd", "prefetch", "amcache",
     "appcompat", "recmd", "mftecmd-usn", "usn",

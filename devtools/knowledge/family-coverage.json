@@ -402,7 +402,32 @@
       "status": "selected"
     }
   ],
-  "note": "KL2e: coverage measured as RUNTIME SELECTION. For each real family, `skills_for` and `retrieve_skills` are called with that family alone, and the skills whose SUBJECT it is are recorded. A family with no skill is listed with a reason rather than counted as covered, which is the R0' defect: a coverage number built from declarations would have claimed a family is covered while the runtime selected nothing.",
+  "note": "KL2e: coverage measured as RUNTIME SELECTION. For each real family, `skills_for` and `retrieve_skills` are called with that family alone, and the skills whose SUBJECT it is are recorded. A family with no skill is listed with a reason rather than counted as covered, which is the R0' defect: a coverage number built from declarations would have claimed a family is covered while the runtime selected nothing. `profiled_families` is the set the population profile measures, so growing the corpus extends the coverage claim rather than silently leaving it behind.",
+  "profiled_families": [
+    {
+      "family": "srum",
+      "retrieve_skills": [],
+      "skills": [
+        "execution_artifact_analysis"
+      ],
+      "skills_for": [],
+      "status": "selected"
+    },
+    {
+      "family": "tshark",
+      "retrieve_skills": [
+        "network_session_analysis"
+      ],
+      "skills": [
+        "ics_ot_forensics",
+        "network_session_analysis"
+      ],
+      "skills_for": [
+        "network_session_analysis"
+      ],
+      "status": "selected"
+    }
+  ],
   "tool_families": [
     {
       "family": "appcompat",

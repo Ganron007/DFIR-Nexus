@@ -121,6 +121,32 @@ def main() -> int:
             counts["no_skill"] += 1
         tool_rows.append(row)
 
+    # and every family the population PROFILE measures - the corpus grew from 33 to 47
+    # families with KM1 item 5, and a coverage report that still enumerates only the
+    # importer schema's sources silently stops checking the ones just added.
+    import json as _json
+
+    prof_path = REPO / "Evidence-files" / "ES-Mapping" / "es_mappings" / "_population.json"
+    profiled: set[str] = set()
+    if prof_path.is_file():
+        body = _json.loads(prof_path.read_text(encoding="utf-8"))
+        profiled = {str(f).lower() for f in (body.get("families") or {})}
+    profiled -= set(importer_sources) | set(PLATFORM_EXPORTS) | set(TI_FEEDS)
+    profiled -= tool_fams
+
+    profiled_rows = []
+    for fam in sorted(profiled):
+        hitting = sorted(n for n, subj in subject.items()
+                         if family_names(fam) & subj)
+        row = {"family": fam,
+               "status": "selected" if hitting else "no_skill",
+               "skills": hitting[:5],
+               "skills_for": [s.get("skill") for s in skills_for({fam})],
+               "retrieve_skills": [s.get("skill") for s in retrieve_skills({fam})]}
+        if not hitting:
+            counts["no_skill"] += 1
+        profiled_rows.append(row)
+
     result = {
         "note": ("KL2e: coverage measured as RUNTIME SELECTION. For each real family, "
                  "`skills_for` and `retrieve_skills` are called with that family "
@@ -128,22 +154,28 @@ def main() -> int:
                  "with no skill is listed with a reason rather than counted as "
                  "covered, which is the R0' defect: a coverage number built from "
                  "declarations would have claimed a family is covered while the "
-                 "runtime selected nothing."),
+                 "runtime selected nothing. `profiled_families` is the set the "
+                 "population profile measures, so growing the corpus extends the "
+                 "coverage claim rather than silently leaving it behind."),
         "excluded_feeds": TI_FEEDS,
         "excluded_platformexports": PLATFORM_EXPORTS,
         "counts": counts,
         "importer_families": rows,
         "tool_families": tool_rows,
+        "profiled_families": profiled_rows,
     }
     OUT.write_text(json.dumps(result, indent=2, sort_keys=True), encoding="utf-8")
     print(f"  importer families: {len(rows)}  selected={counts['selected']} "
           f"no_skill={counts['no_skill']}")
     print(f"  tool families    : {len(tool_rows)}")
-    print(f"  written: {OUT.relative_to(REPO)}")
+    print(f"  profiled families: {len(profiled_rows)}  (those the population profile "
+          f"measures, checked at the current corpus size)")
     no_imp = [r['family'] for r in rows if r['status'] == 'no_skill']
     no_tool = [r['family'] for r in tool_rows if r['status'] == 'no_skill']
+    no_prof = [r['family'] for r in profiled_rows if r['status'] == 'no_skill']
     print(f"\n  importer families with no skill ({len(no_imp)}): {no_imp}")
     print(f"  tool families with no skill ({len(no_tool)}): {no_tool}")
+    print(f"  profiled families with no skill ({len(no_prof)}): {no_prof}")
     return 0
 
 
