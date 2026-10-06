@@ -675,7 +675,86 @@ def es_search(
         # Honesty: the query matched truthfully, but these should/must_not refs
         # can never match — surfaced instead of silently behaving as no-ops.
         result["failed_terms_optional"] = optional_failed
+    # WO-CS1 item 5: a query that matched nothing and names a field NOT populated
+    # in this case returns that fact, with the families that do fill it, so the LLM
+    # can correct itself instead of reading "not found" as "not present".
+    if total == 0:
+        note = _unpopulated_field_note(case_id, query)
+        if note:
+            result["field_population_note"] = note
     return result
+
+
+def _unpopulated_field_note(case_id: str, query: dict[str, Any]) -> str:
+    """Explain a zero-hit query that named a field this case does not fill.
+
+    Returns "" when the named fields are populated (so a zero is a real zero) or
+    when it cannot be certain. Never raises.
+    """
+    try:
+        from nexus.knowledge.query_validation import load_field_registry
+
+        refs = _field_refs(query)
+        if not refs:
+            return ""
+        registry = load_field_registry()
+        populated: dict[str, set[str]] = {}
+        fills: dict[str, set[str]] = {}
+        for ref in refs:
+            rel = ref[len("fields."):] if ref.startswith("fields.") else ref
+            base = rel[:-3] if rel.endswith(".kw") else rel
+            info = (registry.get(base) or registry.get(base.lower())
+                    or registry.get(base.upper()) or {})
+            filled = {str(f).lower() for f in (info.get("populated_in") or [])}
+            fams = {str(f).lower() for f in (info.get("families") or [])}
+            populated[ref] = filled
+            fills[ref] = fams
+        if not any(populated.values()):
+            return ""
+        client, name = _client_and_index(case_id)
+        with client() as c:
+            agg = c.post(f"/{name}/_search", json={
+                "size": 0,
+                "aggs": {"fams": {"terms": {"field": "family", "size": 200}}},
+            })
+        case_fams: set[str] = set()
+        if agg.status_code < 400:
+            for b in ((agg.json().get("aggregations") or {}).get("fams") or {}).get("buckets") or []:
+                case_fams.add(str(b.get("key")).lower())
+        lines: list[str] = []
+        for ref in refs:
+            filled = populated[ref]
+            if filled and not (filled & case_fams):
+                who = ", ".join(sorted(fills[ref])[:6]) or "other families"
+                lines.append(
+                    f"{ref} is not populated by any family in this case "
+                    f"(filled by: {who})")
+        return "; ".join(lines)
+    except Exception:  # noqa: BLE001 - feedback is best-effort, never fatal
+        return ""
+
+
+def _field_refs(query: dict[str, Any]) -> list[str]:
+    """Every `fields.*` / `ecs.*` field named in a query (best-effort walk).
+
+    A field is a KEY whose value is the clause (`{"wildcard": {"fields.x.kw": {...}}}`)
+    or a string (`{"term": {"fields.x": "v"}}`), so both shapes are collected.
+    """
+    out: set[str] = set()
+
+    def walk(node: Any) -> None:
+        if isinstance(node, dict):
+            for k, v in node.items():
+                if (k.startswith("fields.") or k.startswith("ecs.")) and isinstance(
+                        v, (dict, str)):
+                    out.add(k)
+                walk(v)
+        elif isinstance(node, list):
+            for item in node:
+                walk(item)
+
+    walk(query)
+    return sorted(out)
 
 
 def es_aggregate(case_id: str, aggs: dict[str, Any], query: dict[str, Any] | None = None,

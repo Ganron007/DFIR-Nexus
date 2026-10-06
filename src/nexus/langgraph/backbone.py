@@ -115,6 +115,12 @@ def tool_contracts_block(mode: int = 2, *, include_external: bool = True) -> str
         "You investigate through these READ-ONLY tools only (you cannot mutate case state):",
         "- es_mappings(case_id) — per-case field catalog: families, row counts, typed core fields, every parsed column. Call this first when you need to know where the data is.",
         "- es_search(case_id, query, size, sort, search_after) — allowlisted Elasticsearch query JSON (bool/term/terms/range/match/match_phrase/multi_match/wildcard/exists/prefix/match_all); exact total + next_search_after for full enumeration; use a range clause on ts for time filters and fields.<Name>/fields.<Name>.kw for parsed columns.",
+        "  FIELD CHOICE (WO-CS1): prefer ecs.* for cross-source questions "
+        "(ecs.process.command_line, ecs.user.name, ecs.source.ip, ecs.file.path, "
+        "ecs.registry.path, ecs.process.executable, ecs.host.name); use "
+        "ecs.winlog.event_data.<Name> for Windows event fields (TargetUserName, "
+        "LogonType, Image, CommandLine, ...); use fields.<tool column> for "
+        "tool-specific detail. The catalog lists the ecs.* fields THIS case fills.",
         "- es_aggregate(case_id, aggs, query) — terms/date_histogram/cardinality/composite/min/max/avg; composite returns `next_after_key` for complete bucket enumeration. Use it for counts, distributions and completeness checks.",
         "- sample_rows(case_id, family, field, value, n) — representative raw rows spread over time; context, never evidence.",
         "- rag_search(query, top_k, source, technique, platform) — semantic methodology/detection knowledge; methodology, never evidence.",
