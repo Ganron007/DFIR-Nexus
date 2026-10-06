@@ -36,16 +36,12 @@ CAR_PACK_PATH = (
     / "car_analytics.yaml"
 )
 
-#: WO-KL2b: the rules translated from the pinned SigmaHQ snapshot by
-#: `devtools/knowledge/sigma_import.py`. A separate file from the hand-curated pack
-#: so the generated set can be regenerated without touching the authored one.
-SIGMA_PACK_PATH = (
-    Path(__file__).resolve().parents[1] / "data" / "knowledge" / "needles"
-    / "sigma_analytics.yaml"
-)
-
 #: Every pack the product loads when no explicit path is given.
-PACK_PATHS = (PACK_PATH, SIGMA_PACK_PATH)
+#: WO-R0F item 4: the translated SigmaHQ pack is REMOVED. Sigma detection is what
+#: Hayabusa and Chainsaw do in the lane (their detections are indexed and become
+#: leads); our own translation re-implemented detection, against the product
+#: principle. The hand pack is the only analytics pack.
+PACK_PATHS = (PACK_PATH,)
 #: no term in this pack may be derived from a K1 or GATE-H sample (WO-K4).
 PROVENANCE = "external: MITRE CAR + ATT&CK; no sample-derived terms"
 
@@ -71,10 +67,9 @@ def load_pack(path: Path | str | None = None) -> dict[str, Any]:
 def analytics(path: Path | str | None = None) -> list[dict[str, Any]]:
     """Every valid analytic, in file order.
 
-    With no `path`, **every** pack in `PACK_PATHS` is loaded (the hand-curated
-    behavioural pack and the SigmaHQ-derived one). An explicit `path` loads just
-    that file, which the tests use. Failing items are not loaded and the rejection
-    is logged.
+    With no `path`, every pack in `PACK_PATHS` is loaded (the hand-curated
+    behavioural pack). An explicit `path` loads just that file, which the tests
+    use. Failing items are not loaded and the rejection is logged.
     """
     paths: tuple[Path | str | None, ...] = (path,) if path else PACK_PATHS
     raw_items: list[dict[str, Any]] = []

@@ -123,21 +123,18 @@ steps:
           - term:
               event_id: '5985'
           - wildcard:
-              text.wc:
+              fields.parent_process.kw:
                 value: '*winrm*'
                 case_insensitive: true
       - term:
           event_id: '5986'
       - wildcard:
-          text.wc:
+          fields.parent_process.kw:
             value: '*wsman*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'winrm: free phrase; the step''s pivot names no registry column'
-  - 'wsman: free phrase; the step''s pivot names no registry column'
 - name: rdp_sessions
   query: 4778 OR 4779 OR TerminalServices
   look_for: RDP session connect/reconnect events with foreign source hosts. The TerminalServices-LocalSessionManager

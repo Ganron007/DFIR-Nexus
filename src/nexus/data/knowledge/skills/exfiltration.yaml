@@ -46,7 +46,7 @@ steps:
             value: '*7z.exe*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*Compress-Archive*'
             case_insensitive: true
       - wildcard:
@@ -72,7 +72,6 @@ steps:
     moves it to ecs.file.path), searched in text'
   - '7z.exe: a file name token; the value-shape file_path route is removed (WO-CS1
     moves it to ecs.file.path), searched in text'
-  - 'Compress-Archive: free phrase; the step''s pivot names no registry column'
   - '.rar: a file name token; the value-shape file_path route is removed (WO-CS1 moves
     it to ecs.file.path), searched in text'
   - '.7z: a file name token; the value-shape file_path route is removed (WO-CS1 moves
@@ -200,7 +199,7 @@ steps:
             value: '*ftp.exe*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*sftp*'
             case_insensitive: true
       - wildcard:
@@ -208,7 +207,7 @@ steps:
             value: '*scp.exe*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*pscp*'
             case_insensitive: true
       minimum_should_match: 1
@@ -217,10 +216,8 @@ steps:
   es_text_only_reason:
   - 'ftp.exe: a file name token; the value-shape file_path route is removed (WO-CS1
     moves it to ecs.file.path), searched in text'
-  - 'sftp: free phrase; the step''s pivot names no registry column'
   - 'scp.exe: a file name token; the value-shape file_path route is removed (WO-CS1
     moves it to ecs.file.path), searched in text'
-  - 'pscp: free phrase; the step''s pivot names no registry column'
 - name: bitsadmin_transfer
   query: bitsadmin OR Start-BitsTransfer
   look_for: BITS transfers to external URLs — living-off-the-land exfil that bypasses
@@ -230,19 +227,16 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*bitsadmin*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*Start-BitsTransfer*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'bitsadmin: free phrase; the step''s pivot names no registry column'
-  - 'Start-BitsTransfer: free phrase; the step''s pivot names no registry column'
 - name: theft_sequence
   query: rar OR 7z OR zip OR copy
   look_for: 'Answer "did the attacker steal data" as a SEQUENCE, not a single event:

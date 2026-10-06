@@ -131,14 +131,11 @@ steps:
     Sysmon process-create
   es:
     wildcard:
-      text.wc:
+      fields.command_line.kw:
         value: '*EventFilter CommandLineEventConsumer wmi*'
         case_insensitive: true
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'EventFilter CommandLineEventConsumer wmi: free phrase; the step''s pivot names
-    no registry column'
 - name: image_file_execution_options
   query: Image File Execution Options OR IFEO OR SilentProcessExit
   look_for: Debugger hijacks on common binaries (sethc, utilman, osk).

@@ -39,15 +39,15 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*vssadmin delete shadows*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*vssadmin resize shadowstorage*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*wmic shadowcopy delete*'
             case_insensitive: true
       minimum_should_match: 1
@@ -59,11 +59,6 @@ steps:
     - usn
     - prefetch
     - services
-  es_text_only_reason:
-  - 'vssadmin delete shadows: free phrase; the step''s pivot names no registry column'
-  - 'vssadmin resize shadowstorage: free phrase; the step''s pivot names no registry
-    column'
-  - 'wmic shadowcopy delete: free phrase; the step''s pivot names no registry column'
 - name: bcdedit_recovery
   query: bcdedit /set OR bootstatuspolicy OR recoveryenabled no
   look_for: bcdedit disabling recovery/bootstatus — prevents safe-mode recovery.
@@ -72,24 +67,20 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*bcdedit /set*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*bootstatuspolicy*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*recoveryenabled no*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'bcdedit /set: free phrase; the step''s pivot names no registry column'
-  - 'bootstatuspolicy: free phrase; the step''s pivot names no registry column'
-  - 'recoveryenabled no: free phrase; the step''s pivot names no registry column'
 - name: backup_kill
   query: wbadmin delete catalog OR backup delete
   look_for: wbadmin catalog deletion — removes backup inventory.
@@ -98,19 +89,16 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*wbadmin delete catalog*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*backup delete*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'wbadmin delete catalog: free phrase; the step''s pivot names no registry column'
-  - 'backup delete: free phrase; the step''s pivot names no registry column'
 - name: mass_encryption
   query: .encrypted OR .locked OR .crypt OR readme OR ransom
   look_for: Mass file renames to ransom extensions; readme/ransom-note files in mft/usn

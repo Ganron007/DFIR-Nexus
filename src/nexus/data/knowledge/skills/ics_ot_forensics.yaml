@@ -80,12 +80,12 @@ steps:
     - syslog
     - firewall
   es_text_only_reason:
-  - 'Modbus: free phrase; the step''s pivot names no registry column'
-  - 'DNP3: free phrase; the step''s pivot names no registry column'
-  - 'SCADA: free phrase; the step''s pivot names no registry column'
-  - 'PLC: free phrase; the step''s pivot names no registry column'
-  - 'historian: free phrase; the step''s pivot names no registry column'
-  - 'Purdue: free phrase; the step''s pivot names no registry column'
+  - 'Modbus: value of the wrong kind for dest_ip; searched in text'
+  - 'DNP3: value of the wrong kind for dest_ip; searched in text'
+  - 'SCADA: value of the wrong kind for dest_ip; searched in text'
+  - 'PLC: value of the wrong kind for dest_ip; searched in text'
+  - 'historian: value of the wrong kind for dest_ip; searched in text'
+  - 'Purdue: value of the wrong kind for dest_ip; searched in text'
 - name: control_protocol_analysis
   query: Modbus OR function code OR write coil OR DNP3 OR S7comm
   look_for: 'In the pcap, decode control protocols and look for WRITE operations:

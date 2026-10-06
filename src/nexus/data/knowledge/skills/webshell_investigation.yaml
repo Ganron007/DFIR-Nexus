@@ -48,15 +48,15 @@ steps:
             value: '*w3wp.exe*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.parent_process.kw:
             value: '*httpd*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.parent_process.kw:
             value: '*nginx*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.parent_process.kw:
             value: '*php-cgi*'
             case_insensitive: true
       minimum_should_match: 1
@@ -73,9 +73,6 @@ steps:
   es_text_only_reason:
   - 'w3wp.exe: a file name token; the value-shape file_path route is removed (WO-CS1
     moves it to ecs.file.path), searched in text'
-  - 'httpd: free phrase; the step''s pivot names no registry column'
-  - 'nginx: free phrase; the step''s pivot names no registry column'
-  - 'php-cgi: free phrase; the step''s pivot names no registry column'
 - name: access_log_correlation
   query: POST OR .aspx OR .php OR 200 OR upload
   look_for: 'IIS/Apache access logs: POSTs to a single page from one/few source IPs,
@@ -221,11 +218,11 @@ steps:
             value: '*net.exe*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*whoami*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*ipconfig*'
             case_insensitive: true
       - wildcard:
@@ -233,7 +230,7 @@ steps:
             value: '*sc.exe*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*certutil*'
             case_insensitive: true
       minimum_should_match: 1
@@ -242,11 +239,8 @@ steps:
   es_text_only_reason:
   - 'net.exe: a file name token; the value-shape file_path route is removed (WO-CS1
     moves it to ecs.file.path), searched in text'
-  - 'whoami: free phrase; the step''s pivot names no registry column'
-  - 'ipconfig: free phrase; the step''s pivot names no registry column'
   - 'sc.exe: a file name token; the value-shape file_path route is removed (WO-CS1
     moves it to ecs.file.path), searched in text'
-  - 'certutil: free phrase; the step''s pivot names no registry column'
 negative: 'Clean worker-process trees + no rogue-page POSTs + no webroot writes →
   webshell unlikely on this server. Caveat: memory-only webshells and framework-integrated
   backdoors (evil IIS modules, ISAPI filters) leave no page-file artifact — check

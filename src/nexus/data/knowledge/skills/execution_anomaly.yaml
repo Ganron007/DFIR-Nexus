@@ -64,14 +64,11 @@ steps:
   pivot: CommandLine
   es:
     wildcard:
-      text.wc:
+      fields.command_line.kw:
         value: '*rundll32 regsvr32 mshta wscript cscript msbuild installutil regasm*'
         case_insensitive: true
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'rundll32 regsvr32 mshta wscript cscript msbuild installutil regasm: free phrase;
-    the step''s pivot names no registry column'
 - name: suspicious_parentage
   query: winword.exe cmd.exe OR excel.exe powershell.exe OR wscript.exe
   look_for: Office/browser binaries spawning cmd/powershell/wscript — macro or exploit

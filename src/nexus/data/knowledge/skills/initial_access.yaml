@@ -72,7 +72,7 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*msiexec /i*'
             case_insensitive: true
       - bool:
@@ -82,17 +82,15 @@ steps:
                 value: '*.msi*'
                 case_insensitive: true
           - wildcard:
-              text.wc:
+              fields.command_line.kw:
                 value: '*MsiInstaller*'
                 case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
   es_text_only_reason:
-  - 'msiexec /i: free phrase; the step''s pivot names no registry column'
   - '.msi: a file name token; the value-shape file_path route is removed (WO-CS1 moves
     it to ecs.file.path), searched in text'
-  - 'MsiInstaller: free phrase; the step''s pivot names no registry column'
 - name: chm_execution
   query: hh.exe OR .chm
   look_for: hh.exe spawning cmd/powershell — CHM Shortcut-object abuse.
@@ -105,7 +103,7 @@ steps:
             value: '*hh.exe*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.parent_process.kw:
             value: '*.chm*'
             case_insensitive: true
       minimum_should_match: 1
@@ -114,7 +112,6 @@ steps:
   es_text_only_reason:
   - 'hh.exe: a file name token; the value-shape file_path route is removed (WO-CS1
     moves it to ecs.file.path), searched in text'
-  - '.chm: free phrase; the step''s pivot names no registry column'
 - name: html_smuggling_download
   query: '.html blob: download FromCache OR browser'
   look_for: Browser download of an HTML file followed by a new .exe/.dll write.

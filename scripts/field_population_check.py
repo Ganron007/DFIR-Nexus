@@ -101,8 +101,7 @@ def _load_analytics() -> list[tuple[str, dict[str, Any]]]:
     import yaml
 
     out = []
-    for name in ("needles/behavioral_analytics.yaml",
-                 "needles/sigma_analytics.yaml"):
+    for name in ("needles/behavioral_analytics.yaml",):
         path = KNOWLEDGE / name
         if not path.is_file():
             continue

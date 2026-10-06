@@ -239,15 +239,15 @@ steps:
             value: '*explorer.exe*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.parent_process.kw:
             value: '*mshta*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.parent_process.kw:
             value: '*rundll32*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.parent_process.kw:
             value: '*powershell*'
             case_insensitive: true
       minimum_should_match: 1
@@ -256,9 +256,6 @@ steps:
   es_text_only_reason:
   - 'explorer.exe: a file name token; the value-shape file_path route is removed (WO-CS1
     moves it to ecs.file.path), searched in text'
-  - 'mshta: free phrase; the step''s pivot names no registry column'
-  - 'rundll32: free phrase; the step''s pivot names no registry column'
-  - 'powershell: free phrase; the step''s pivot names no registry column'
 negative: No delivery artifact and no exec chain → the phish likely wasn't opened,
   was filtered, or the payload was blocked — a delivered-but-unopened phish is still
   reportable (user-awareness finding, not compromise).

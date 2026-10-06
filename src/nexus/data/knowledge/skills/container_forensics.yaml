@@ -173,34 +173,28 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*docker exec*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*kubectl exec*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*privileged*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*hostPath*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*CAP_SYS_ADMIN*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'docker exec: free phrase; the step''s pivot names no registry column'
-  - 'kubectl exec: free phrase; the step''s pivot names no registry column'
-  - 'privileged: free phrase; the step''s pivot names no registry column'
-  - 'hostPath: free phrase; the step''s pivot names no registry column'
-  - 'CAP_SYS_ADMIN: free phrase; the step''s pivot names no registry column'
 - name: k8s_api_audit
   query: kubelet OR audit.log OR serviceaccount OR secrets OR pod create
   look_for: 'Kubernetes audit logs (kube-apiserver audit.log) show who did what: service-account

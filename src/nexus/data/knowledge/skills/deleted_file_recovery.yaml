@@ -198,29 +198,24 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*sdelete*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*cipher /w*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*bcwipe*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*file_wipe*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'sdelete: free phrase; the step''s pivot names no registry column'
-  - 'cipher /w: free phrase; the step''s pivot names no registry column'
-  - 'bcwipe: free phrase; the step''s pivot names no registry column'
-  - 'file_wipe: free phrase; the step''s pivot names no registry column'
 negative: No Recycle Bin entries and no $I30 residue in the target path means either
   the file was deleted perma (Shift+Del/CLI del) — which still leaves USN reasons
   — or the volume's artifacts were not collected. State which layer was actually checked.

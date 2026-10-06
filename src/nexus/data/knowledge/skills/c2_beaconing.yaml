@@ -116,24 +116,20 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*dnscat*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*iodine*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*dns2tcp*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'dnscat: free phrase; the step''s pivot names no registry column'
-  - 'iodine: free phrase; the step''s pivot names no registry column'
-  - 'dns2tcp: free phrase; the step''s pivot names no registry column'
 - name: proxy_pac
   query: proxy OR pac file OR ProxyServer
   look_for: Proxy settings that redirect traffic through attacker infra.

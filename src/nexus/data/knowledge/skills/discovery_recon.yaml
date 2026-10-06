@@ -43,11 +43,11 @@ steps:
             value: '*whoami.exe*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*whoami /all*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*whoami /priv*'
             case_insensitive: true
       minimum_should_match: 1
@@ -61,8 +61,6 @@ steps:
   es_text_only_reason:
   - 'whoami.exe: a file name token; the value-shape file_path route is removed (WO-CS1
     moves it to ecs.file.path), searched in text'
-  - 'whoami /all: free phrase; the step''s pivot names no registry column'
-  - 'whoami /priv: free phrase; the step''s pivot names no registry column'
 - name: net_commands
   query: net user OR net group OR net localgroup OR net view OR net share
   look_for: net user/group/localgroup/view/share — internal user and share enumeration.
@@ -71,34 +69,28 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*net user*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*net group*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*net localgroup*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*net view*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*net share*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'net user: free phrase; the step''s pivot names no registry column'
-  - 'net group: free phrase; the step''s pivot names no registry column'
-  - 'net localgroup: free phrase; the step''s pivot names no registry column'
-  - 'net view: free phrase; the step''s pivot names no registry column'
-  - 'net share: free phrase; the step''s pivot names no registry column'
 - name: system_info
   query: systeminfo OR hostname OR ver
   look_for: systeminfo/hostname — basic host recon.
@@ -107,24 +99,20 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*systeminfo*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*hostname*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*ver*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'systeminfo: free phrase; the step''s pivot names no registry column'
-  - 'hostname: free phrase; the step''s pivot names no registry column'
-  - 'ver: free phrase; the step''s pivot names no registry column'
 - name: ipconfig_route
   query: ipconfig /all OR route print OR arp -a
   look_for: Network config discovery — routing/ARP table dumps.
@@ -133,24 +121,20 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*ipconfig /all*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*route print*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*arp -a*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'ipconfig /all: free phrase; the step''s pivot names no registry column'
-  - 'route print: free phrase; the step''s pivot names no registry column'
-  - 'arp -a: free phrase; the step''s pivot names no registry column'
 - name: domain_enum
   query: nltest /dclist OR dsquery OR net group "Domain Admins"
   look_for: Domain-controller listing and privileged-group enumeration.
@@ -159,24 +143,20 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*nltest /dclist*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*dsquery*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*net group Domain Admins*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'nltest /dclist: free phrase; the step''s pivot names no registry column'
-  - 'dsquery: free phrase; the step''s pivot names no registry column'
-  - 'net group Domain Admins: free phrase; the step''s pivot names no registry column'
 - name: session_file_enum
   query: net session OR net file OR quser OR qwinsta
   look_for: 'Session/share enumeration — net session, net file, quser/qwinsta. EIR''s
@@ -187,29 +167,24 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*net session*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*net file*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*quser*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*qwinsta*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'net session: free phrase; the step''s pivot names no registry column'
-  - 'net file: free phrase; the step''s pivot names no registry column'
-  - 'quser: free phrase; the step''s pivot names no registry column'
-  - 'qwinsta: free phrase; the step''s pivot names no registry column'
 - name: tasklist_scan
   query: tasklist OR tasklist /svc OR qprocess
   look_for: Process/service enumeration for target identification.
@@ -218,24 +193,20 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*tasklist*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*tasklist /svc*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*qprocess*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'tasklist: free phrase; the step''s pivot names no registry column'
-  - 'tasklist /svc: free phrase; the step''s pivot names no registry column'
-  - 'qprocess: free phrase; the step''s pivot names no registry column'
 negative: No recon-command artifacts → the attacker may have used a C2 implant with
   built-in discovery (no shell commands) or skipped enumeration.
 confidence_rules:

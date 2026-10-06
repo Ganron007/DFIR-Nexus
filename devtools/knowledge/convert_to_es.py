@@ -205,44 +205,10 @@ def _resolve_column(name: str, fams: list[str], cols: dict[str, Any]) -> str | N
     expanded = expand_families(fams)
     by_norm = {_norm_key(col): col for col in cols}
 
-    # KL2d: the per-family answer first. The pinned EvtxECmd maps and the importer
-    # lanes say which column this family ACTUALLY carries for this concept, so
-    # `Image` on an EVTX lane resolves to `ExecutableInfo`/`PayloadData*` and on an
-    # importer lane to `process_name`. Guessing from the name alone is what made a
-    # Sysmon rule resolve `CommandLine` to `command_line`, an importer-only column.
-    #
-    # The ALIAS-WIDE set is passed, not just the declared one, so a lane the case
-    # index really emits (`chainsaw` for `evtx`) is also considered - which is what
-    # makes the population profile able to say "no lane I measured fills that".
-    _here = str(Path(__file__).resolve().parent)
-    if _here not in sys.path:
-        sys.path.insert(0, _here)
-    try:
-        from sigma_family_fields import _alias_wide, _concept_for, _importer_lanes, columns_for
-
-        hit = None
-        for col in columns_for(name, sorted(set(fams) | _alias_wide(fams))):
-            if col in cols:
-                hit = col
-                break
-        if hit:
-            return hit
-    except Exception:  # noqa: BLE001 - a missing devtool must not break the converter
-        pass
-
-    # KL2d, part 2: the family map found nothing for a field it HAS a concept for,
-    # so no declared lane has that column. The registry-name fallback must not fire -
-    # that is the exact leak that made `CommandLine` resolve to `command_line` (an
-    # `ingest-*`-only column) for a rule naming `evtxecmd`, and `ParentImage` to
-    # `PayloadData2` for a step whose staged lanes fill only `Event Data`/`Computer`.
-    #
-    # The narrow condition matters: a field with NO concept (so the map says nothing
-    # either way) still goes through the name lookup, which is why only 248 rather
-    # than all 253 steps fall to text.
-    lanes = _importer_lanes()
-    evtx_lanes = {str(f).lower() for f in expanded} - lanes
-    if evtx_lanes and _concept_for(name) is not None:
-        return None
+    # WO-R0F item 4: the KL2d family-map resolution (which lived in the deleted
+    # `sigma_family_fields.py`) is gone. Until WO-CS1 item 7 routes stored queries to
+    # the common `ecs.*` fields, resolution is by the name the caller used plus the
+    # known aliases, preferring a column the population profile says is populated.
 
     # Prefer the column the caller literally named, then the known aliases:
     # `FileName` should resolve to `FileName` when that column exists for the

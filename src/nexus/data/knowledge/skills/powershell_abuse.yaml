@@ -34,15 +34,15 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*-enc*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*-encodedcommand*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*FromBase64String*'
             case_insensitive: true
       minimum_should_match: 1
@@ -53,10 +53,6 @@ steps:
     - sysmon
     - prefetch
     - hayabusa
-  es_text_only_reason:
-  - '-enc: free phrase; the step''s pivot names no registry column'
-  - '-encodedcommand: free phrase; the step''s pivot names no registry column'
-  - 'FromBase64String: free phrase; the step''s pivot names no registry column'
 - name: download_cradles
   query: DownloadString OR DownloadFile OR Invoke-WebRequest OR iwr OR curl.exe OR
     wget
@@ -66,19 +62,19 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*DownloadString*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*DownloadFile*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*Invoke-WebRequest*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*iwr*'
             case_insensitive: true
       - wildcard:
@@ -86,20 +82,15 @@ steps:
             value: '*curl.exe*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*wget*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
   es_text_only_reason:
-  - 'DownloadString: free phrase; the step''s pivot names no registry column'
-  - 'DownloadFile: free phrase; the step''s pivot names no registry column'
-  - 'Invoke-WebRequest: free phrase; the step''s pivot names no registry column'
-  - 'iwr: free phrase; the step''s pivot names no registry column'
   - 'curl.exe: a file name token; the value-shape file_path route is removed (WO-CS1
     moves it to ecs.file.path), searched in text'
-  - 'wget: free phrase; the step''s pivot names no registry column'
 - name: script_block_4104
   query: '4104'
   look_for: PowerShell 4104 script-block logging — suspicious code content (invoke,
@@ -145,19 +136,16 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*powershell -version 2*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*-Version 2.0*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'powershell -version 2: free phrase; the step''s pivot names no registry column'
-  - '-Version 2.0: free phrase; the step''s pivot names no registry column'
 - name: suspicious_modules
   query: Invoke-Mimikatz OR PowerSploit OR PowerView OR Invoke-Expression
   look_for: Offensive framework/module names in script blocks or args.

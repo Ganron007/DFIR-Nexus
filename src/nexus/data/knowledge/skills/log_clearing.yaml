@@ -61,19 +61,16 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*wevtutil cl*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*wevtutil clear-log*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'wevtutil cl: free phrase; the step''s pivot names no registry column'
-  - 'wevtutil clear-log: free phrase; the step''s pivot names no registry column'
 - name: audit_policy_change
   query: auditpol /clear OR auditpol /set OR 4719
   look_for: auditpol clearing or 4719 audit-policy change events.
@@ -82,11 +79,11 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*auditpol /clear*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.command_line.kw:
             value: '*auditpol /set*'
             case_insensitive: true
       - term:
@@ -94,9 +91,6 @@ steps:
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'auditpol /clear: free phrase; the step''s pivot names no registry column'
-  - 'auditpol /set: free phrase; the step''s pivot names no registry column'
 - name: sysmon_tamper
   query: Sysmon service stopped OR sysmon.exe delete OR sc stop sysmon
   look_for: Sysmon service stop/delete — blinds telemetry collection.
