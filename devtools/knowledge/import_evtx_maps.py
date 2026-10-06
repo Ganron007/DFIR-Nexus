@@ -96,20 +96,23 @@ def build() -> dict[str, Any]:
                 continue
             template = str(item.get("PropertyValue") or "").strip()
             values = [v for v in (item.get("Values") or []) if isinstance(v, dict)]
-            columns[name] = {
-                "template": template,
-                # Every XPath the map resolves, plus its refine regex, so the template
-                # is not a guess but the parser's own extraction. This used to be
-                # `values[:4]`, which silently truncated the list: Security 4742's
-                # `PayloadData2` resolves 20 XPaths and only 4 were recorded, so a
-                # consumer reading the sources would conclude the others did not exist.
-                # The R0'' map check found it by comparing counts against the pinned
-                # file. The size is bounded by the source itself, not by a guess.
-                "sources": [
-                    {"xpath": str(v.get("Value") or ""), "refine": str(v.get("Refine") or "")}
-                    for v in values
-                ],
-            }
+            sources = [
+                {"xpath": str(v.get("Value") or ""), "refine": str(v.get("Refine") or "")}
+                for v in values
+            ]
+            # WO-R0F item 6: KEEP duplicate properties. Sysmon 1 names `UserName`
+            # twice - `ParentUser: %ParentUser%` and `%User%` - and collapsing them to
+            # a dict (last wins) silently dropped the ParentUser template. `variants`
+            # holds every occurrence, in source order, so nothing is lost; the flat
+            # `template`/`sources` stay as the primary (last) occurrence for existing
+            # consumers.
+            entry = columns.get(name)
+            if entry is None:
+                entry = {"template": template, "sources": sources, "variants": []}
+                columns[name] = entry
+            entry["variants"].append({"template": template, "sources": sources})
+            entry["template"] = template
+            entry["sources"] = sources
         entries.append({
             "channel": channel,
             "provider": provider,

@@ -125,3 +125,25 @@ def test_ten_random_entries_match_the_snapshot(imported_pack):
                 if entry["columns"][column].get("template") != template:
                     bad.append(f"{entry['source_key']}.{column}: template differs")
     assert bad == [], "\n".join(bad)
+
+
+def test_duplicate_properties_are_kept_as_a_list(imported_pack):
+    """WO-R0F item 6: Sysmon 1 names `UserName` twice; keep both, not last-wins.
+
+    The source has `ParentUser: %ParentUser%` and `%User%`, and collapsing them to
+    a dict dropped the ParentUser template silently.
+    """
+    packs = imported_pack.get("packs") or []
+    sysmon1 = next(
+        (p for p in packs
+         if str(p.get("event_id")) == "1" and "Sysmon" in str(p.get("channel"))),
+        None)
+    assert sysmon1, "Sysmon event 1 entry missing"
+    un = (sysmon1.get("columns") or {}).get("UserName") or {}
+    variants = un.get("variants") or []
+    assert len(variants) >= 2, f"UserName variants lost: {un}"
+    templates = [v.get("template") for v in variants]
+    assert any("ParentUser" in str(t) for t in templates), templates
+    assert any(t == "%User%" for t in templates), templates
+    # the flat primary is the last occurrence (unchanged for existing consumers)
+    assert un.get("template") == templates[-1]
