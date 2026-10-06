@@ -32,9 +32,14 @@ import yaml
 REPO = Path(__file__).resolve().parents[2]
 OUT = REPO / "src" / "nexus" / "data" / "schema" / "evtxecmd_maps.yaml"
 
-#: The generic columns the WO names.
+#: The generic columns the WO names. `Username` is spelled BOTH ways across the source:
+#: `UserName` in 150 files and `Username` in 4. Matching only the WO's spelling silently
+#: dropped the column from those 4 entries - found by the R0'' map check, which compares
+#: an imported entry against its pinned file and saw `Username` present in the source and
+#: missing from ours.
 GENERIC = ("PayloadData1", "PayloadData2", "PayloadData3", "PayloadData4",
            "PayloadData5", "PayloadData6", "ExecutableInfo", "UserName", "RemoteHost")
+GENERIC_ALIASES = {"Username": "UserName"}
 
 
 def _snapshots() -> Path:
@@ -85,17 +90,24 @@ def build() -> dict[str, Any]:
             if not isinstance(item, dict):
                 continue
             name = str(item.get("Property") or "").strip()
+            # the source's own spelling, normalised to the WO's: `Username` -> `UserName`
+            name = GENERIC_ALIASES.get(name, name)
             if name not in GENERIC:
                 continue
             template = str(item.get("PropertyValue") or "").strip()
             values = [v for v in (item.get("Values") or []) if isinstance(v, dict)]
             columns[name] = {
                 "template": template,
-                # the XPath the map resolves and the refinement regex, so the
-                # template is not a guess but the parser's own extraction
+                # Every XPath the map resolves, plus its refine regex, so the template
+                # is not a guess but the parser's own extraction. This used to be
+                # `values[:4]`, which silently truncated the list: Security 4742's
+                # `PayloadData2` resolves 20 XPaths and only 4 were recorded, so a
+                # consumer reading the sources would conclude the others did not exist.
+                # The R0'' map check found it by comparing counts against the pinned
+                # file. The size is bounded by the source itself, not by a guess.
                 "sources": [
                     {"xpath": str(v.get("Value") or ""), "refine": str(v.get("Refine") or "")}
-                    for v in values[:4]
+                    for v in values
                 ],
             }
         entries.append({

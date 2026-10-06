@@ -126,4 +126,15 @@ print('      (a staged-but-unscannable family is recorded with that reason rathe
       'than searched for elsewhere)')
 
 print()
+print("=== the reviewer's own R0'' check: 10 profile entries vs raw tool output, "
+      "5 map entries vs the pinned source ===")
+
+for tool, label in (("audit_reviewer_r0.py", "10 profile entries vs raw tool output"),
+                    ("audit_reviewer_maps.py", "5 map entries vs the pinned source")):
+    r = subprocess.run([sys.executable, str(Path(__file__).resolve().parent / tool)],
+                       capture_output=True, text=True)
+    tail = [line for line in (r.stdout or "").strip().splitlines() if line.strip()]
+    good = r.returncode == 0 and tail and "True" in tail[-1]
+    check(label, good, tail[-1][:70] if tail else "no output")
+print()
 print('  KM1 ACCEPTANCE ALL PASS:', _ok)

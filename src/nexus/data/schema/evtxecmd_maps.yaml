@@ -1,7 +1,7 @@
 # WO-KL1b - EvtxECmd maps, imported from a pinned snapshot.
 # Generator: devtools/knowledge/import_evtx_maps.py. Do not edit by hand.
 version: 1
-generated: '2026-10-05T16:08:08+00:00'
+generated: '2026-10-06T06:44:18+00:00'
 generator: devtools/knowledge/import_evtx_maps.py
 description: EvtxECmd maps imported from a pinned snapshot. A generic column's template is what the map resolves, so its meaning is per (Channel, EventId) - not a single per-column example.
 source: https://github.com/EricZimmerman/evtx
@@ -138,6 +138,11 @@ packs:
   description: Citrix user session started
   source_key: Application_Citrix-Desktop-Service_1027.map
   columns:
+    UserName:
+      template: 'Target: %user%'
+      sources:
+      - xpath: /Event/EventData/Data
+        refine: ^.*(?=, )
     PayloadData1:
       template: 'SessionID: %SessionID%'
       sources:
@@ -1539,6 +1544,12 @@ packs:
         refine: ''
       - xpath: /Event/EventData/Data[@Name="wHour"]
         refine: ''
+      - xpath: /Event/EventData/Data[@Name="wMinute"]
+        refine: ''
+      - xpath: /Event/EventData/Data[@Name="wSecond"]
+        refine: ''
+      - xpath: /Event/EventData/Data[@Name="wMilliseconds"]
+        refine: ''
     PayloadData2:
       template: 'wDayOfWeek: %wDayOfWeek%'
       sources:
@@ -2583,6 +2594,11 @@ packs:
   description: Reopen failed
   source_key: Microsoft-Windows-SMBServer-Operational_Microsoft-Windows-SMBServer_1016.map
   columns:
+    UserName:
+      template: '%UserName%'
+      sources:
+      - xpath: /Event/UserData/EventData/UserName
+        refine: ''
     RemoteHost:
       template: 'ClientName: %ClientName%'
       sources:
@@ -2655,6 +2671,11 @@ packs:
   description: File system operation has taken longer than expected
   source_key: Microsoft-Windows-SMBServer-Operational_Microsoft-Windows-SMBServer_1020.map
   columns:
+    UserName:
+      template: '%UserName%'
+      sources:
+      - xpath: /Event/UserData/EventData/UserName
+        refine: ''
     RemoteHost:
       template: 'ClientName: %ClientName%'
       sources:
@@ -5986,6 +6007,11 @@ packs:
       sources:
       - xpath: /Event/EventData/Data[@Name="ModifyingApplication"]
         refine: ''
+    UserName:
+      template: '%ModifyingUser%'
+      sources:
+      - xpath: /Event/EventData/Data[@Name="ModifyingUser"]
+        refine: ''
     PayloadData1:
       template: 'SettingValue: %SettingValue%'
       sources:
@@ -7861,6 +7887,34 @@ packs:
         refine: ''
       - xpath: /Event/EventData/Data[@Name="HomeDirectory"]
         refine: ''
+      - xpath: /Event/EventData/Data[@Name="HomePath"]
+        refine: ''
+      - xpath: /Event/EventData/Data[@Name="ScriptPath"]
+        refine: ''
+      - xpath: /Event/EventData/Data[@Name="ProfilePath"]
+        refine: ''
+      - xpath: /Event/EventData/Data[@Name="UserWorkstations"]
+        refine: ''
+      - xpath: /Event/EventData/Data[@Name="PasswordLastSet"]
+        refine: ''
+      - xpath: /Event/EventData/Data[@Name="AccountExpires"]
+        refine: ''
+      - xpath: /Event/EventData/Data[@Name="PrimaryGroupId"]
+        refine: ''
+      - xpath: /Event/EventData/Data[@Name="AllowedToDelegateTo"]
+        refine: ''
+      - xpath: /Event/EventData/Data[@Name="OldUacValue"]
+        refine: ''
+      - xpath: /Event/EventData/Data[@Name="NewUacValue"]
+        refine: ''
+      - xpath: /Event/EventData/Data[@Name="UserAccountControl"]
+        refine: ''
+      - xpath: /Event/EventData/Data[@Name="UserParameters"]
+        refine: ''
+      - xpath: /Event/EventData/Data[@Name="SidHistory"]
+        refine: ''
+      - xpath: /Event/EventData/Data[@Name="LogonHours"]
+        refine: ''
 - channel: Security
   provider: Microsoft-Windows-Security-Auditing
   event_id: '4740'
@@ -7962,6 +8016,38 @@ packs:
       - xpath: /Event/EventData/Data[@Name="UserPrincipalName"]
         refine: ''
       - xpath: /Event/EventData/Data[@Name="HomeDirectory"]
+        refine: ''
+      - xpath: /Event/EventData/Data[@Name="HomePath"]
+        refine: ''
+      - xpath: /Event/EventData/Data[@Name="ScriptPath"]
+        refine: ''
+      - xpath: /Event/EventData/Data[@Name="ProfilePath"]
+        refine: ''
+      - xpath: /Event/EventData/Data[@Name="UserWorkstations"]
+        refine: ''
+      - xpath: /Event/EventData/Data[@Name="PasswordLastSet"]
+        refine: ''
+      - xpath: /Event/EventData/Data[@Name="AccountExpires"]
+        refine: ''
+      - xpath: /Event/EventData/Data[@Name="PrimaryGroupId"]
+        refine: ''
+      - xpath: /Event/EventData/Data[@Name="AllowedToDelegateTo"]
+        refine: ''
+      - xpath: /Event/EventData/Data[@Name="OldUacValue"]
+        refine: ''
+      - xpath: /Event/EventData/Data[@Name="NewUacValue"]
+        refine: ''
+      - xpath: /Event/EventData/Data[@Name="UserAccountControl"]
+        refine: ''
+      - xpath: /Event/EventData/Data[@Name="UserParameters"]
+        refine: ''
+      - xpath: /Event/EventData/Data[@Name="SidHistory"]
+        refine: ''
+      - xpath: /Event/EventData/Data[@Name="LogonHours"]
+        refine: ''
+      - xpath: /Event/EventData/Data[@Name="DnsHostName"]
+        refine: ''
+      - xpath: /Event/EventData/Data[@Name="ServicePrincipalNames"]
         refine: ''
 - channel: Security
   provider: Microsoft-Windows-Security-Auditing
