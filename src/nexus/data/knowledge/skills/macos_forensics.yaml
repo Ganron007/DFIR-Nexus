@@ -53,23 +53,23 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.file_path.kw:
+          fields.filename.kw:
             value: '*apfs-fuse*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          fields.filename.kw:
             value: '*mount*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          fields.filename.kw:
             value: '*dmg*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          fields.filename.kw:
             value: '*e01*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          fields.filename.kw:
             value: '*diskutil*'
             case_insensitive: true
       minimum_should_match: 1
@@ -158,19 +158,19 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.file_path.kw:
+          fields.filename.kw:
             value: '*QUARANTINE*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          fields.filename.kw:
             value: '*LastGKReject*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          fields.filename.kw:
             value: '*com.apple.quarantine*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          fields.filename.kw:
             value: '*Gatekeeper*'
             case_insensitive: true
       minimum_should_match: 1
@@ -187,7 +187,7 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.file_path.kw:
+          fields.filename.kw:
             value: '*TCC.db*'
             case_insensitive: true
       - wildcard:

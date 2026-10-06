@@ -207,7 +207,7 @@ steps:
   pivot: ValueName
   es:
     wildcard:
-      fields.registry_value.kw:
+      fields.ValueName.kw:
         value: '*userassist*'
         case_insensitive: true
   requires:

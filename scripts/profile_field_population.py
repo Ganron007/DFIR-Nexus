@@ -49,6 +49,53 @@ def _sanitize(value: Any) -> str:
     return text
 
 
+def _population_resident(src: Path, family: str) -> bool:
+    """Whether a manifest path already sits inside `_population/<family>/`.
+
+    `stage_missing_family_samples.py` stages each sample there, and the indexer derives
+    the family from the path, so those files are read where they stand. Copying them into
+    the workdir as well counted every column twice.
+    """
+    parts = [str(q).lower() for q in src.parts]
+    return "_population" in parts and str(family).lower() in parts
+
+
+def _same_bytes_present(src: Path, target: Path) -> bool:
+    """Whether an identical copy of `src` is already in `target`.
+
+    The same sample can arrive under two names - the staging script's
+    `<name>-sample.csv` and the profile's `2-<name>-sample.csv`. Comparing a size and a
+    hash catches the twin without reading every file's full contents.
+
+    The source's OWN directory is excluded: `stage_missing_family_samples.py` leaves each
+    sample at `_population/<family>/`, and the loop that calls this copies manifest paths
+    into `_case*/extractions/<family>/` - so without the exclusion every file compares
+    equal to itself and nothing is ever placed (0 of 133, which silently shrank the
+    profile to the ingest lane only).
+    """
+    import hashlib
+
+    src_dir = src.resolve().parent
+    try:
+        size = src.stat().st_size
+        digest = hashlib.sha256(src.read_bytes()).hexdigest()
+    except (PermissionError, OSError):
+        return False
+    for existing in target.rglob("*"):
+        if not existing.is_file():
+            continue
+        try:
+            if existing.resolve().parent == src_dir:
+                continue  # the source itself
+            if existing.stat().st_size != size:
+                continue
+            if hashlib.sha256(existing.read_bytes()).hexdigest() == digest:
+                return True
+        except (PermissionError, OSError):
+            continue
+    return False
+
+
 def _layout(corpus: Path, case_dir: Path) -> dict[str, int]:
     """Place every corpus file where an index scan would find it, under its family.
 
@@ -88,7 +135,21 @@ def _layout(corpus: Path, case_dir: Path) -> dict[str, int]:
     for family, paths in staged.get("families", {}).items():
         for rel in paths:
             src = Path(rel)
-            if not src.is_file() or src.suffix.lower() not in SCANNED:
+            if not src.is_file():
+                skipped.append(f"{src.name} (missing)")
+                continue
+            # A manifest path that already lives under `_population/<family>/` is placed
+            # by the staging script, and `_family()` derives the same family from that
+            # path - the index reads it where it stands. Copying it into the workdir
+            # would count every column twice.
+            if _population_resident(src, family):
+                # The staging script leaves these at `_population/<family>/`, and the
+                # indexer derives the family from the path - so they are readable where
+                # they stand, but only if the case dir can see them. `_layout` is what
+                # builds the profiled case, so it must copy them in; skipping them made
+                # the profile collapse from 47 families to 13.
+                pass
+            elif src.suffix.lower() not in SCANNED:
                 skipped.append(f"{src.name} ({src.suffix.lower() or 'no-ext'})")
                 continue
             # The indexer derives the family from the path (`_family()`), so the
@@ -97,6 +158,12 @@ def _layout(corpus: Path, case_dir: Path) -> dict[str, int]:
             target = case_dir / "extractions" / family
             target.mkdir(parents=True, exist_ok=True)
             final = target / src.name
+            # An identical file already staged is a DUPLICATE, not a second source. The
+            # name check catches the `2-<name>` twin; the byte check catches a sample
+            # staged under a different name. Both once let every column count twice.
+            if final.is_file() or _same_bytes_present(src, target):
+                skipped.append(f"{src.name} (already staged)")
+                continue
             n = 1
             while final.exists():
                 n += 1
