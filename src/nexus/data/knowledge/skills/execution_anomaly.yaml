@@ -55,8 +55,8 @@ steps:
     - mft
     - appcompat
   es_text_only_reason:
-  - '.exe: a file name token; the value-shape file_path route is removed (WO-CS1 moves
-    it to ecs.file.path), searched in text'
+  - '.exe: a file name token; no populated ecs.file.path for these families, searched
+    in text'
 - name: lolbin_abuse
   query: rundll32 regsvr32 mshta wscript cscript msbuild installutil regasm
   look_for: LOLBin execution with unexpected arguments or parents — rundll32 with
@@ -105,16 +105,16 @@ steps:
   requires:
     families: *id001
   es_text_only_reason:
-  - 'winword.exe: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
-  - 'cmd.exe: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
-  - 'excel.exe: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
-  - 'powershell.exe: a file name token; the value-shape file_path route is removed
-    (WO-CS1 moves it to ecs.file.path), searched in text'
-  - 'wscript.exe: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
+  - 'winword.exe: a file name token; no populated ecs.file.path for these families,
+    searched in text'
+  - 'cmd.exe: a file name token; no populated ecs.file.path for these families, searched
+    in text'
+  - 'excel.exe: a file name token; no populated ecs.file.path for these families,
+    searched in text'
+  - 'powershell.exe: a file name token; no populated ecs.file.path for these families,
+    searched in text'
+  - 'wscript.exe: a file name token; no populated ecs.file.path for these families,
+    searched in text'
 - name: temp_exec
   query: \Temp\ OR \AppData\Local\Temp\ OR \Downloads\
   look_for: Executables running from temp/download paths — dropper pattern.
@@ -149,15 +149,15 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.process_name.kw:
+          ecs.process.name:
             value: '*CreateRemoteThread*'
             case_insensitive: true
       - wildcard:
-          fields.process_name.kw:
+          ecs.process.name:
             value: '*QueueUserAPC*'
             case_insensitive: true
       - wildcard:
-          fields.process_name.kw:
+          ecs.process.name:
             value: '*SetThreadContext*'
             case_insensitive: true
       minimum_should_match: 1

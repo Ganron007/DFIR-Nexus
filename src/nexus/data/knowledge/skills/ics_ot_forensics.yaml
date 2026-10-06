@@ -155,14 +155,11 @@ steps:
   requires:
     families: *id001
   es_text_only_reason:
-  - 'engineering workstation: file-path pivot; the value-shape route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
-  - 'project file: file-path pivot; the value-shape route is removed (WO-CS1 moves
-    it to ecs.file.path), searched in text'
-  - 'plc program: file-path pivot; the value-shape route is removed (WO-CS1 moves
-    it to ecs.file.path), searched in text'
-  - 'download: file-path pivot; the value-shape route is removed (WO-CS1 moves it
-    to ecs.file.path), searched in text'
+  - 'engineering workstation: file-path pivot; no populated ecs.file.path, searched
+    in text'
+  - 'project file: file-path pivot; no populated ecs.file.path, searched in text'
+  - 'plc program: file-path pivot; no populated ecs.file.path, searched in text'
+  - 'download: file-path pivot; no populated ecs.file.path, searched in text'
 - name: plc_hmi_evidence
   query: PLC log OR HMI event OR alarm OR controller OR firmware
   look_for: 'Collect from devices where possible: PLC program/hash and diagnostic

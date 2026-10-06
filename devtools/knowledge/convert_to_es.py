@@ -253,6 +253,68 @@ def _populated_for(column: str | None, cols: dict[str, Any], fams: set[str]) -> 
     return bool(populated & fams)
 
 
+#: WO-CS1 item 7: the ~15-row concept table. A typed clause moves to the common
+#: `ecs.*` field, so a stored query no longer names a per-tool column. A typed
+#: clause is kept only when its `ecs` field is populated for one of the step's
+#: families (checked against the re-profiled population incl. ecs.*); everything
+#: else goes to `text.wc` with a reason.
+CONCEPT_TO_ECS: dict[str, tuple[str, str]] = {
+    # concept            (ecs field,                 clause kind: term|wildcard)
+    "process": ("ecs.process.name", "wildcard"),
+    "processname": ("ecs.process.name", "wildcard"),
+    "commandline": ("ecs.process.command_line", "wildcard"),
+    "parent": ("ecs.process.parent.executable", "wildcard"),
+    "parentimage": ("ecs.process.parent.executable", "wildcard"),
+    "parentprocess": ("ecs.process.parent.executable", "wildcard"),
+    "file": ("ecs.file.path", "wildcard"),
+    "filename": ("ecs.file.path", "wildcard"),
+    "filepath": ("ecs.file.path", "wildcard"),
+    "path": ("ecs.file.path", "wildcard"),
+    "targetpath": ("ecs.file.path", "wildcard"),
+    "registry": ("ecs.registry.path", "wildcard"),
+    "registrykey": ("ecs.registry.path", "wildcard"),
+    "user": ("ecs.user.name", "term"),
+    "username": ("ecs.user.name", "term"),
+    "targetuser": ("ecs.user.target.name", "term"),
+    "targetusername": ("ecs.user.target.name", "term"),
+    "sourceip": ("ecs.source.ip", "term"),
+    "destinationip": ("ecs.destination.ip", "term"),
+    "eventid": ("ecs.event.code", "term"),
+    "service": ("ecs.service.name", "wildcard"),
+    "hash": ("ecs.file.hash.sha256", "term"),
+}
+
+
+def concept_ecs_field(pivot: str) -> tuple[str, str] | None:
+    """The (ecs field, clause kind) for a pivot's concept, or None."""
+    return CONCEPT_TO_ECS.get(_norm(pivot))
+
+
+def _ecs_populated_for(fams: list[str], ecs_field: str) -> bool:
+    """Whether a population profile vouches for `ecs_field` on any of `fams`.
+
+    WO-CS1 item 7: a typed clause is kept only if its `ecs` field is populated for
+    one of the step's families in the real-run profile. No profile data -> False
+    (an unsampled field is not vouched for; the clause goes to text with a reason).
+    """
+    try:
+        from nexus.knowledge.query_validation import load_field_registry
+
+        reg = load_field_registry()
+    except Exception:  # noqa: BLE001
+        return False
+    info = reg.get(ecs_field) or reg.get(ecs_field.lower()) or {}
+    populated = {str(f).lower() for f in (info.get("populated_in") or [])}
+    if not populated:
+        return False
+    wanted = {str(f).lower() for f in (fams or [])}
+    return bool(populated & wanted) or not wanted
+
+
+def _norm(value: Any) -> str:
+    return str(value or "").strip().lower().replace("_", "").replace("-", "").replace(" ", "")
+
+
 def _column_field(col: str, cols: dict[str, Any]) -> str:
     """`fields.<col>` for a keyword column, `fields.<col>.kw` for a text one."""
     return f"fields.{col}" if _column_kind(col, cols) != "text" else f"fields.{col}.kw"
@@ -306,21 +368,22 @@ def _typed_clause(
         text_only.append(f"{tok}: no typed column for a hex mask in these families")
         return _wild("text.wc", tok)
 
-    # R0F item 3: the value-shape route that sent an extension-bearing token to a
-    # file-path column is DELETED. Matching a file by its name-shaped text resulted
-    # in clauses on `file_path`/`FileName` that the population gate flags as
-    # populated-for-other-families (the "file_path gate leaks" R0" defect). Until
-    # WO-CS1 routes this to `ecs.file.path`, the token goes to `text.wc` with a
-    # reason, so the clause can never fire on the wrong column.
+    # R0F item 3 deleted the value-shape file-path route. WO-CS1 item 7 restores a
+    # file-name token's typed clause, but on the COMMON field: `ecs.file.path`. It is
+    # kept only when a population check can vouch for it; the caller verifies.
+    ecs_file = concept_ecs_field("filepath")
+    if ecs_file and _ecs_populated_for(fams, ecs_file[0]):
+        return _wild(ecs_file[0], tok)
     text_only.append(
-        f"{tok}: a file name token; the value-shape file_path route is removed "
-        f"(WO-CS1 moves it to ecs.file.path), searched in text"
+        f"{tok}: a file name token; no populated ecs.file.path for these families, "
+        f"searched in text"
     )
     return _wild("text.wc", tok)
 
 
 def _phrase_clause(
     phrase: str, pivot_col: str | None, cols: dict[str, Any], text_only: list[str],
+    fams: list[str] | None = None,
 ) -> dict[str, Any]:
     """One clause for the words of an alternative, kept as a phrase.
 
@@ -341,14 +404,18 @@ def _phrase_clause(
     # right search text instead of the authored (unmatchable) one.
     if _is_command_with_hive(phrase):
         return _wild("text.wc", _with_hive(phrase, text_only))
-    # R0F item 3: the pivot's route to a file-path column is DELETED - a free phrase
-    # is never a path just because the pivot names one (that was the value-shape
-    # route the R0" review flagged as leaking). Until WO-CS1 routes paths to
-    # `ecs.file.path`, a file-path pivot's phrase goes to `text.wc` with a reason.
+    # WO-CS1 item 7: route the pivot's concept to the COMMON `ecs.*` field when the
+    # population profile vouches for it for this step's families. This replaces the
+    # per-tool column routing (the rest of KR2c's field routing).
+    if pivot_col:
+        concept = concept_ecs_field(_norm_key(pivot_col)) or concept_ecs_field(pivot_col)
+        if concept and _ecs_populated_for(fams or [], concept[0]):
+            return _wild(concept[0], phrase)
+    # R0F item 3: the pivot's route to a per-tool file-path column is DELETED - a
+    # free phrase is never a path just because the pivot names one.
     if pivot_col and _norm_key(pivot_col) in FILE_PATH_COLUMNS:
         text_only.append(
-            f"{phrase}: file-path pivot; the value-shape route is removed "
-            f"(WO-CS1 moves it to ecs.file.path), searched in text"
+            f"{phrase}: file-path pivot; no populated ecs.file.path, searched in text"
         )
         return _wild("text.wc", phrase)
     if pivot_col and _norm_key(pivot_col) not in {_norm_key(c) for c in _IDENTITY_COLUMNS}:
@@ -460,7 +527,7 @@ def build_es(
             else:
                 words.append(clean)
         if words:
-            phrase_part = _phrase_clause(" ".join(words), pivot_col, cols, reasons)
+            phrase_part = _phrase_clause(" ".join(words), pivot_col, cols, reasons, fams)
             if phrase_part is not None:
                 parts.append(phrase_part)
         if not parts:

@@ -180,18 +180,14 @@ steps:
   requires:
     families: *id001
   es_text_only_reason:
-  - 'attachment: file-path pivot; the value-shape route is removed (WO-CS1 moves it
-    to ecs.file.path), searched in text'
-  - '.iso: file-path pivot; the value-shape route is removed (WO-CS1 moves it to ecs.file.path),
-    searched in text'
-  - '.lnk: a file name token; the value-shape file_path route is removed (WO-CS1 moves
-    it to ecs.file.path), searched in text'
-  - '.docm: file-path pivot; the value-shape route is removed (WO-CS1 moves it to
-    ecs.file.path), searched in text'
-  - '.html: file-path pivot; the value-shape route is removed (WO-CS1 moves it to
-    ecs.file.path), searched in text'
-  - '.zip: a file name token; the value-shape file_path route is removed (WO-CS1 moves
-    it to ecs.file.path), searched in text'
+  - 'attachment: file-path pivot; no populated ecs.file.path, searched in text'
+  - '.iso: file-path pivot; no populated ecs.file.path, searched in text'
+  - '.lnk: a file name token; no populated ecs.file.path for these families, searched
+    in text'
+  - '.docm: file-path pivot; no populated ecs.file.path, searched in text'
+  - '.html: file-path pivot; no populated ecs.file.path, searched in text'
+  - '.zip: a file name token; no populated ecs.file.path for these families, searched
+    in text'
 - name: delivery_artifact
   query: Zone.Identifier OR downloads OR attachment
   look_for: 'Host-side proof of delivery: Zone.Identifier ADS on the dropped file
@@ -219,12 +215,9 @@ steps:
   requires:
     families: *id001
   es_text_only_reason:
-  - 'Zone.Identifier: file-path pivot; the value-shape route is removed (WO-CS1 moves
-    it to ecs.file.path), searched in text'
-  - 'downloads: file-path pivot; the value-shape route is removed (WO-CS1 moves it
-    to ecs.file.path), searched in text'
-  - 'attachment: file-path pivot; the value-shape route is removed (WO-CS1 moves it
-    to ecs.file.path), searched in text'
+  - 'Zone.Identifier: file-path pivot; no populated ecs.file.path, searched in text'
+  - 'downloads: file-path pivot; no populated ecs.file.path, searched in text'
+  - 'attachment: file-path pivot; no populated ecs.file.path, searched in text'
 - name: execution_chain
   query: explorer.exe OR mshta OR rundll32 OR powershell
   look_for: Did the user execute it? Child processes of explorer.exe (double- click)
@@ -254,8 +247,8 @@ steps:
   requires:
     families: *id001
   es_text_only_reason:
-  - 'explorer.exe: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
+  - 'explorer.exe: a file name token; no populated ecs.file.path for these families,
+    searched in text'
 negative: No delivery artifact and no exec chain → the phish likely wasn't opened,
   was filtered, or the payload was blocked — a delivered-but-unopened phish is still
   reportable (user-awareness finding, not compromise).

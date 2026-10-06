@@ -89,12 +89,10 @@ steps:
   requires:
     families: *id001
   es_text_only_reason:
-  - 'timestomp: file-path pivot; the value-shape route is removed (WO-CS1 moves it
-    to ecs.file.path), searched in text'
-  - '-M: file-path pivot; the value-shape route is removed (WO-CS1 moves it to ecs.file.path),
-    searched in text'
-  - 'Copy-Item -Destination: file-path pivot; the value-shape route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
+  - 'timestomp: file-path pivot; no populated ecs.file.path, searched in text'
+  - '-M: file-path pivot; no populated ecs.file.path, searched in text'
+  - 'Copy-Item -Destination: file-path pivot; no populated ecs.file.path, searched
+    in text'
 - name: masquerading
   query: svchost.exe OR smss.exe OR csrss.exe OR lsass.exe
   look_for: System process names in non-standard paths (%TEMP%, user dirs, wrong parentage)
@@ -123,14 +121,14 @@ steps:
   requires:
     families: *id001
   es_text_only_reason:
-  - 'svchost.exe: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
-  - 'smss.exe: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
-  - 'csrss.exe: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
-  - 'lsass.exe: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
+  - 'svchost.exe: a file name token; no populated ecs.file.path for these families,
+    searched in text'
+  - 'smss.exe: a file name token; no populated ecs.file.path for these families, searched
+    in text'
+  - 'csrss.exe: a file name token; no populated ecs.file.path for these families,
+    searched in text'
+  - 'lsass.exe: a file name token; no populated ecs.file.path for these families,
+    searched in text'
 - name: process_injection
   query: CreateRemoteThread OR VirtualAllocEx OR WriteProcessMemory OR inject
   look_for: Cross-process memory/thread APIs in Sysmon 8 (CreateRemoteThread).
@@ -208,8 +206,8 @@ steps:
   requires:
     families: *id001
   es_text_only_reason:
-  - 'amsi.dll: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
+  - 'amsi.dll: a file name token; no populated ecs.file.path for these families, searched
+    in text'
   - 'patch: free phrase; the step''s pivot names no registry column'
   - 'AmsiScanBuffer: free phrase; the step''s pivot names no registry column'
   - 'amsiInitFailed: free phrase; the step''s pivot names no registry column'

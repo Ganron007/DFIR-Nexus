@@ -114,8 +114,8 @@ steps:
     families: *id001
   es_text_only_reason:
   - 'Manifest.plist: free phrase; the step''s pivot names no registry column'
-  - 'Manifest.db: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
+  - 'Manifest.db: a file name token; no populated ecs.file.path for these families,
+    searched in text'
   - 'IsEncrypted: free phrase; the step''s pivot names no registry column'
   - 'Info.plist: free phrase; the step''s pivot names no registry column'
 - name: app_databases
@@ -158,8 +158,8 @@ steps:
     families: *id001
   es_text_only_reason:
   - 'sqlite3: free phrase; the step''s pivot names no registry column'
-  - 'sms.db: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
+  - 'sms.db: a file name token; no populated ecs.file.path for these families, searched
+    in text'
   - 'CallHistory: free phrase; the step''s pivot names no registry column'
   - 'WhatsApp: free phrase; the step''s pivot names no registry column'
   - 'location: free phrase; the step''s pivot names no registry column'

@@ -121,8 +121,8 @@ steps:
     families: *id001
   es_text_only_reason:
   - 'Sysmon service stopped: free phrase; the step''s pivot names no registry column'
-  - 'sysmon.exe: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
+  - 'sysmon.exe: a file name token; no populated ecs.file.path for these families,
+    searched in text'
   - 'delete: free phrase; the step''s pivot names no registry column'
   - 'sc stop sysmon: free phrase; the step''s pivot names no registry column'
 - name: usn_journal_delete
@@ -177,14 +177,10 @@ steps:
   requires:
     families: *id001
   es_text_only_reason:
-  - 'prefetch: file-path pivot; the value-shape route is removed (WO-CS1 moves it
-    to ecs.file.path), searched in text'
-  - 'shimcache: file-path pivot; the value-shape route is removed (WO-CS1 moves it
-    to ecs.file.path), searched in text'
-  - 'amcache: file-path pivot; the value-shape route is removed (WO-CS1 moves it to
-    ecs.file.path), searched in text'
-  - '$LogFile: file-path pivot; the value-shape route is removed (WO-CS1 moves it
-    to ecs.file.path), searched in text'
+  - 'prefetch: file-path pivot; no populated ecs.file.path, searched in text'
+  - 'shimcache: file-path pivot; no populated ecs.file.path, searched in text'
+  - 'amcache: file-path pivot; no populated ecs.file.path, searched in text'
+  - '$LogFile: file-path pivot; no populated ecs.file.path, searched in text'
 negative: No 1102/104 events and no wevtutil/auditpol execution → logs were not cleared
   on this host; look for logging-gap explanations instead (service stop, forwarding
   failure).

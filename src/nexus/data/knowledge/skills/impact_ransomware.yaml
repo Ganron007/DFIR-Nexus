@@ -131,16 +131,11 @@ steps:
   requires:
     families: *id001
   es_text_only_reason:
-  - '.encrypted: file-path pivot; the value-shape route is removed (WO-CS1 moves it
-    to ecs.file.path), searched in text'
-  - '.locked: file-path pivot; the value-shape route is removed (WO-CS1 moves it to
-    ecs.file.path), searched in text'
-  - '.crypt: file-path pivot; the value-shape route is removed (WO-CS1 moves it to
-    ecs.file.path), searched in text'
-  - 'readme: file-path pivot; the value-shape route is removed (WO-CS1 moves it to
-    ecs.file.path), searched in text'
-  - 'ransom: file-path pivot; the value-shape route is removed (WO-CS1 moves it to
-    ecs.file.path), searched in text'
+  - '.encrypted: file-path pivot; no populated ecs.file.path, searched in text'
+  - '.locked: file-path pivot; no populated ecs.file.path, searched in text'
+  - '.crypt: file-path pivot; no populated ecs.file.path, searched in text'
+  - 'readme: file-path pivot; no populated ecs.file.path, searched in text'
+  - 'ransom: file-path pivot; no populated ecs.file.path, searched in text'
 - name: service_stop
   query: sc stop OR net stop OR service stop
   look_for: Mass service stops (database, backup, AV) before encryption.

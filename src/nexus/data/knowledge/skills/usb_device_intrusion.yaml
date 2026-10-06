@@ -208,7 +208,7 @@ steps:
                 value: '*mft*'
                 case_insensitive: true
           - wildcard:
-              text.wc:
+              ecs.file.path:
                 value: '*.lnk*'
                 case_insensitive: true
       - wildcard:
@@ -218,9 +218,6 @@ steps:
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - '.lnk: a file name token; the value-shape file_path route is removed (WO-CS1 moves
-    it to ecs.file.path), searched in text'
 negative: No USBSTOR entries in the window means no new mass-storage device was attached
   — but a previously-installed device can still have been used; check MountedDevices/EMDMgmt
   against the session window before closing. setupapi and 20001 mark first-ever connect

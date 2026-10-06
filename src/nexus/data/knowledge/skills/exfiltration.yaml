@@ -68,14 +68,14 @@ steps:
     - prefetch
     - mft
   es_text_only_reason:
-  - 'rar.exe: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
-  - '7z.exe: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
-  - '.rar: a file name token; the value-shape file_path route is removed (WO-CS1 moves
-    it to ecs.file.path), searched in text'
-  - '.7z: a file name token; the value-shape file_path route is removed (WO-CS1 moves
-    it to ecs.file.path), searched in text'
+  - 'rar.exe: a file name token; no populated ecs.file.path for these families, searched
+    in text'
+  - '7z.exe: a file name token; no populated ecs.file.path for these families, searched
+    in text'
+  - '.rar: a file name token; no populated ecs.file.path for these families, searched
+    in text'
+  - '.7z: a file name token; no populated ecs.file.path for these families, searched
+    in text'
 - name: staging_dirs
   query: staging OR exfil OR collect OR loot
   look_for: New directories under %TEMP%/%ProgramData% collecting files.
@@ -214,10 +214,10 @@ steps:
   requires:
     families: *id001
   es_text_only_reason:
-  - 'ftp.exe: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
-  - 'scp.exe: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
+  - 'ftp.exe: a file name token; no populated ecs.file.path for these families, searched
+    in text'
+  - 'scp.exe: a file name token; no populated ecs.file.path for these families, searched
+    in text'
 - name: bitsadmin_transfer
   query: bitsadmin OR Start-BitsTransfer
   look_for: BITS transfers to external URLs — living-off-the-land exfil that bypasses

@@ -61,8 +61,8 @@ steps:
     - jumplist
     - browser
   es_text_only_reason:
-  - '.lnk: a file name token; the value-shape file_path route is removed (WO-CS1 moves
-    it to ecs.file.path), searched in text'
+  - '.lnk: a file name token; no populated ecs.file.path for these families, searched
+    in text'
 - name: msi_execution
   query: msiexec /i OR .msi MsiInstaller
   look_for: msiexec executions of unsigned/downloaded MSIs; MsiInstaller events 11707
@@ -89,8 +89,8 @@ steps:
   requires:
     families: *id001
   es_text_only_reason:
-  - '.msi: a file name token; the value-shape file_path route is removed (WO-CS1 moves
-    it to ecs.file.path), searched in text'
+  - '.msi: a file name token; no populated ecs.file.path for these families, searched
+    in text'
 - name: chm_execution
   query: hh.exe OR .chm
   look_for: hh.exe spawning cmd/powershell — CHM Shortcut-object abuse.
@@ -110,8 +110,8 @@ steps:
   requires:
     families: *id001
   es_text_only_reason:
-  - 'hh.exe: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
+  - 'hh.exe: a file name token; no populated ecs.file.path for these families, searched
+    in text'
 - name: html_smuggling_download
   query: '.html blob: download FromCache OR browser'
   look_for: Browser download of an HTML file followed by a new .exe/.dll write.
@@ -155,10 +155,9 @@ steps:
   requires:
     families: *id001
   es_text_only_reason:
-  - 'Zone.Identifier Mark-of-the-Web: file-path pivot; the value-shape route is removed
-    (WO-CS1 moves it to ecs.file.path), searched in text'
-  - 'ZoneId=3: file-path pivot; the value-shape route is removed (WO-CS1 moves it
-    to ecs.file.path), searched in text'
+  - 'Zone.Identifier Mark-of-the-Web: file-path pivot; no populated ecs.file.path,
+    searched in text'
+  - 'ZoneId=3: file-path pivot; no populated ecs.file.path, searched in text'
 - name: office_spawns
   query: winword.exe OR excel.exe OR powerpnt.exe cmd.exe powershell.exe
   look_for: Office binaries spawning script interpreters — macro execution.
@@ -192,16 +191,16 @@ steps:
   requires:
     families: *id001
   es_text_only_reason:
-  - 'winword.exe: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
-  - 'excel.exe: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
-  - 'powerpnt.exe: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
-  - 'cmd.exe: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
-  - 'powershell.exe: a file name token; the value-shape file_path route is removed
-    (WO-CS1 moves it to ecs.file.path), searched in text'
+  - 'winword.exe: a file name token; no populated ecs.file.path for these families,
+    searched in text'
+  - 'excel.exe: a file name token; no populated ecs.file.path for these families,
+    searched in text'
+  - 'powerpnt.exe: a file name token; no populated ecs.file.path for these families,
+    searched in text'
+  - 'cmd.exe: a file name token; no populated ecs.file.path for these families, searched
+    in text'
+  - 'powershell.exe: a file name token; no populated ecs.file.path for these families,
+    searched in text'
 - name: child_process_anomaly
   query: explorer.exe cmd.exe OR explorer.exe powershell.exe OR explorer.exe mshta.exe
   look_for: Script interpreters parented by explorer.exe near payload arrival.
@@ -243,18 +242,18 @@ steps:
   requires:
     families: *id001
   es_text_only_reason:
-  - 'explorer.exe: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
-  - 'cmd.exe: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
-  - 'explorer.exe: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
-  - 'powershell.exe: a file name token; the value-shape file_path route is removed
-    (WO-CS1 moves it to ecs.file.path), searched in text'
-  - 'explorer.exe: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
-  - 'mshta.exe: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
+  - 'explorer.exe: a file name token; no populated ecs.file.path for these families,
+    searched in text'
+  - 'cmd.exe: a file name token; no populated ecs.file.path for these families, searched
+    in text'
+  - 'explorer.exe: a file name token; no populated ecs.file.path for these families,
+    searched in text'
+  - 'powershell.exe: a file name token; no populated ecs.file.path for these families,
+    searched in text'
+  - 'explorer.exe: a file name token; no populated ecs.file.path for these families,
+    searched in text'
+  - 'mshta.exe: a file name token; no populated ecs.file.path for these families,
+    searched in text'
 - name: iab_vector_check
   query: rdp OR 4625 OR edge OR vpn OR exchange
   look_for: 'If no user-execution artifact explains entry, check the four dominant

@@ -63,7 +63,7 @@ steps:
   corroborate: download time → MFT create time for the payload
   es:
     wildcard:
-      fields.path.kw:
+      ecs.file.path:
         value: '*download*'
         case_insensitive: true
   requires:
@@ -189,15 +189,12 @@ steps:
             value: '*thumbcache*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*thumbs.db*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'thumbs.db: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
 - name: autoplay_browserless
   query: file:preferences
   look_for: Preferences JSON — homepage/search-engine hijacks, extension install state,

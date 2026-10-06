@@ -47,7 +47,7 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          ecs.source.ip:
             value: '*ESTABLISHED*'
             case_insensitive: true
       - wildcard:
@@ -55,7 +55,7 @@ steps:
             value: '*conn.log*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.source.ip:
             value: '*netstat*'
             case_insensitive: true
       minimum_should_match: 1
@@ -69,10 +69,8 @@ steps:
     - firewall
     - proxy
   es_text_only_reason:
-  - 'ESTABLISHED: value of the wrong kind for source_ip; searched in text'
-  - 'conn.log: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
-  - 'netstat: value of the wrong kind for source_ip; searched in text'
+  - 'conn.log: a file name token; no populated ecs.file.path for these families, searched
+    in text'
 - name: byte_asymmetry
   query: bytes OR orig_bytes OR resp_bytes OR sent
   look_for: 'Byte asymmetry classifies the session: big-send/small-recv = exfil or
@@ -84,29 +82,24 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          ecs.source.ip:
             value: '*bytes*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.source.ip:
             value: '*orig_bytes*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.source.ip:
             value: '*resp_bytes*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.source.ip:
             value: '*sent*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'bytes: value of the wrong kind for source_ip; searched in text'
-  - 'orig_bytes: value of the wrong kind for source_ip; searched in text'
-  - 'resp_bytes: value of the wrong kind for source_ip; searched in text'
-  - 'sent: value of the wrong kind for source_ip; searched in text'
 - name: long_duration_sessions
   query: duration OR long OR persistent
   look_for: Long-lived sessions to external IPs — interactive C2/webshell/ tunnel
@@ -117,24 +110,20 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          ecs.source.ip:
             value: '*duration*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.source.ip:
             value: '*long*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.source.ip:
             value: '*persistent*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'duration: value of the wrong kind for source_ip; searched in text'
-  - 'long: value of the wrong kind for source_ip; searched in text'
-  - 'persistent: value of the wrong kind for source_ip; searched in text'
 - name: port_protocol_mismatch
   query: 443 OR 80 OR 53 OR 3389
   look_for: 'Protocol/port incongruence: HTTP-shaped traffic on 443 that''s really

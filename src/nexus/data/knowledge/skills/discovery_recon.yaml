@@ -59,8 +59,8 @@ steps:
     - prefetch
     - cmd
   es_text_only_reason:
-  - 'whoami.exe: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
+  - 'whoami.exe: a file name token; no populated ecs.file.path for these families,
+    searched in text'
 - name: net_commands
   query: net user OR net group OR net localgroup OR net view OR net share
   look_for: net user/group/localgroup/view/share — internal user and share enumeration.

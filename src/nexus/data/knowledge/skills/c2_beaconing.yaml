@@ -85,8 +85,8 @@ steps:
   es_text_only_reason:
   - 'cobaltstrike: free phrase; the step''s pivot names no registry column'
   - 'beacon: free phrase; the step''s pivot names no registry column'
-  - 'beacon.dll: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
+  - 'beacon.dll: a file name token; no populated ecs.file.path for these families,
+    searched in text'
 - name: dga_domains
   query: dns QueryName OR nslookup
   look_for: Long random subdomains, non-standard TLDs, high-entropy names.

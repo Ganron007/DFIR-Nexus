@@ -71,8 +71,8 @@ steps:
     - evtx
     - sysmon
   es_text_only_reason:
-  - 'explorer.exe: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
+  - 'explorer.exe: a file name token; no populated ecs.file.path for these families,
+    searched in text'
 - name: hidden_process_check
   query: psxview OR psscan OR unlink
   look_for: 'Cross-view detection: psxview/psscan compares multiple enumeration methods
@@ -153,14 +153,14 @@ steps:
   requires:
     families: *id001
   es_text_only_reason:
-  - 'w3wp.exe: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
-  - 'net.exe: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
-  - 'whoami.exe: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
-  - 'ipconfig.exe: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
+  - 'w3wp.exe: a file name token; no populated ecs.file.path for these families, searched
+    in text'
+  - 'net.exe: a file name token; no populated ecs.file.path for these families, searched
+    in text'
+  - 'whoami.exe: a file name token; no populated ecs.file.path for these families,
+    searched in text'
+  - 'ipconfig.exe: a file name token; no populated ecs.file.path for these families,
+    searched in text'
 - name: credential_material
   query: lsass.exe OR mimikatz OR wdigest OR sekurlsa
   look_for: 'Credential material lives in memory: lsass.exe injected threads, unexpected
@@ -190,8 +190,8 @@ steps:
   requires:
     families: *id001
   es_text_only_reason:
-  - 'lsass.exe: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
+  - 'lsass.exe: a file name token; no populated ecs.file.path for these families,
+    searched in text'
 - name: dump_for_analysis
   query: procdump OR memdump OR .dmp OR dlldump
   look_for: Suspicious processes get dumped (procdump/memdump/dlldump) for string/YARA/decompile

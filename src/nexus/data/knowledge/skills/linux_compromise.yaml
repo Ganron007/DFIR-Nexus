@@ -7,8 +7,6 @@
 skill: linux_compromise
 title: Linux compromise — auth logs, persistence, history, systemd
 platform: linux
-# WO-R0F item 5 (KL2e): a single-source auditd/authlog/syslog case must select this
-# skill — those are its subject evidence.
 primary_families:
 - auditd
 - authlog
@@ -59,15 +57,15 @@ steps:
             value: '*auth.log*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.user.name:
             value: '*secure*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.user.name:
             value: '*Failed password*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.user.name:
             value: '*Accepted*'
             case_insensitive: true
       minimum_should_match: 1
@@ -80,11 +78,8 @@ steps:
     - bash
     - memory
   es_text_only_reason:
-  - 'auth.log: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
-  - 'secure: free phrase; the step''s pivot is an identity column'
-  - 'Failed password: free phrase; the step''s pivot is an identity column'
-  - 'Accepted: free phrase; the step''s pivot is an identity column'
+  - 'auth.log: a file name token; no populated ecs.file.path for these families, searched
+    in text'
 - name: shell_history
   query: history OR .bash_history OR $HISTFILE
   look_for: 'Shell history shows intent — but know its documented limits: $HISTFILE
@@ -112,12 +107,9 @@ steps:
   requires:
     families: *id001
   es_text_only_reason:
-  - 'history: file-path pivot; the value-shape route is removed (WO-CS1 moves it to
-    ecs.file.path), searched in text'
-  - '.bash_history: file-path pivot; the value-shape route is removed (WO-CS1 moves
-    it to ecs.file.path), searched in text'
-  - '$HISTFILE: file-path pivot; the value-shape route is removed (WO-CS1 moves it
-    to ecs.file.path), searched in text'
+  - 'history: file-path pivot; no populated ecs.file.path, searched in text'
+  - '.bash_history: file-path pivot; no populated ecs.file.path, searched in text'
+  - '$HISTFILE: file-path pivot; no populated ecs.file.path, searched in text'
 - name: persistence_mechanisms
   query: cron OR systemd OR .timer OR ExecStart
   look_for: 'Linux persistence: crontab files (per-user spool + /etc/cron.*), systemd
@@ -148,14 +140,10 @@ steps:
   requires:
     families: *id001
   es_text_only_reason:
-  - 'cron: file-path pivot; the value-shape route is removed (WO-CS1 moves it to ecs.file.path),
-    searched in text'
-  - 'systemd: file-path pivot; the value-shape route is removed (WO-CS1 moves it to
-    ecs.file.path), searched in text'
-  - '.timer: file-path pivot; the value-shape route is removed (WO-CS1 moves it to
-    ecs.file.path), searched in text'
-  - 'ExecStart: file-path pivot; the value-shape route is removed (WO-CS1 moves it
-    to ecs.file.path), searched in text'
+  - 'cron: file-path pivot; no populated ecs.file.path, searched in text'
+  - 'systemd: file-path pivot; no populated ecs.file.path, searched in text'
+  - '.timer: file-path pivot; no populated ecs.file.path, searched in text'
+  - 'ExecStart: file-path pivot; no populated ecs.file.path, searched in text'
 - name: account_anomalies
   query: passwd OR /etc/passwd OR sudoers OR useradd
   look_for: /etc/passwd for unexpected accounts (UID 0 backdoor users), sudoers modifications,
@@ -166,29 +154,24 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          ecs.user.name:
             value: '*passwd*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.user.name:
             value: '*/etc/passwd*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.user.name:
             value: '*sudoers*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.user.name:
             value: '*useradd*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'passwd: free phrase; the step''s pivot is an identity column'
-  - '/etc/passwd: free phrase; the step''s pivot is an identity column'
-  - 'sudoers: free phrase; the step''s pivot is an identity column'
-  - 'useradd: free phrase; the step''s pivot is an identity column'
 - name: process_memory_check
   query: pslist OR malfind OR /proc OR kmem
   look_for: 'Linux memory analysis: Linux.PsList/Linux.MalFind for process enumeration
@@ -199,29 +182,24 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          ecs.process.name:
             value: '*pslist*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.process.name:
             value: '*malfind*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.process.name:
             value: '*/proc*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.process.name:
             value: '*kmem*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'pslist: value of the wrong kind for process_name; searched in text'
-  - 'malfind: value of the wrong kind for process_name; searched in text'
-  - '/proc: value of the wrong kind for process_name; searched in text'
-  - 'kmem: value of the wrong kind for process_name; searched in text'
 - name: log_integrity
   query: log cleared OR journald OR syslog OR auditd
   look_for: 'Anti-forensics on Linux: truncated log files, journald vacuumed, auditd

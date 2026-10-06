@@ -224,10 +224,22 @@ def validate_stored_query(
     for field_path in referenced:
         if field_path in CORE_ENVELOPE_FIELDS:
             continue
+        # WO-CS1: `ecs.*` is the common namespace, accepted alongside `fields.*`.
+        if field_path.startswith("ecs."):
+            raw_ecs = field_path
+            if raw_ecs.endswith((".kw", ".wc", ".text", ".keyword")):
+                raw_ecs = raw_ecs.rsplit(".", 1)[0]
+            if raw_ecs in cols or raw_ecs.lower() in cols:
+                continue
+            # an event_data name is dynamic (not in the registry); accept it.
+            if ".winlog.event_data." in field_path:
+                continue
+            problems.append(f"unknown ecs field {field_path!r}")
+            continue
         if not field_path.startswith("fields."):
             problems.append(
                 f"unsupported non-envelope field {field_path!r} — must be envelope "
-                "(family, ts, text, host, file) or start with 'fields.'"
+                "(family, ts, text, host, file), start with 'fields.', or be an ecs.* field"
             )
             continue
 

@@ -83,15 +83,12 @@ steps:
             value: '*i30*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*$i30*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - '$i30: file-path pivot; the value-shape route is removed (WO-CS1 moves it to ecs.file.path),
-    searched in text'
 - name: alternate_data_streams
   query: zone.identifier OR file:ads OR \:$
   look_for: ADS on records — Zone.Identifier marks files downloaded from the internet/email
@@ -135,27 +132,20 @@ steps:
                 value: '*mft*'
                 case_insensitive: true
           - wildcard:
-              text.wc:
+              ecs.file.path:
                 value: '*.exe*'
                 case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*.dll*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*.ps1*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - '.exe: a file name token; the value-shape file_path route is removed (WO-CS1 moves
-    it to ecs.file.path), searched in text'
-  - '.dll: a file name token; the value-shape file_path route is removed (WO-CS1 moves
-    it to ecs.file.path), searched in text'
-  - '.ps1: a file name token; the value-shape file_path route is removed (WO-CS1 moves
-    it to ecs.file.path), searched in text'
 - name: logfile_detail
   query: file:logfile
   look_for: $LogFile — lowest-level NTFS transaction log (hours to ~1 day). Fills
@@ -184,27 +174,20 @@ steps:
                 value: '*mft*'
                 case_insensitive: true
           - wildcard:
-              text.wc:
+              ecs.file.path:
                 value: '*.pf*'
                 case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*.evtx*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*.lnk*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - '.pf: a file name token; the value-shape file_path route is removed (WO-CS1 moves
-    it to ecs.file.path), searched in text'
-  - '.evtx: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
-  - '.lnk: a file name token; the value-shape file_path route is removed (WO-CS1 moves
-    it to ecs.file.path), searched in text'
 negative: Empty MFT/USN output means the metafiles were not parsed or not collected
   — file-system-layer absence is almost always a collection gap, never proof a file
   did not exist. Fall back to fls/TIMELINE bodyfiles and LNK residue.

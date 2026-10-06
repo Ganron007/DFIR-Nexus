@@ -8,7 +8,6 @@ skill: persistence
 title: Persistence — registry run keys, services, scheduled tasks, WMI
 description: Detect mechanisms that survive reboot — autostart registry keys, new
   services, scheduled tasks, WMI event subscriptions.
-# WO-R0F item 5 (KL2e): a single-source scheduled_tasks case must select this skill.
 primary_families:
 - scheduled_tasks
 trigger:
@@ -91,8 +90,8 @@ steps:
     families: *id001
   es_text_only_reason:
   - 'sc create: free phrase; the step''s pivot names no registry column'
-  - 'sc.exe: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
+  - 'sc.exe: a file name token; no populated ecs.file.path for these families, searched
+    in text'
   - 'create: free phrase; the step''s pivot names no registry column'
 - name: scheduled_tasks
   query: schtasks /create OR 106 OR TaskScheduler
@@ -134,7 +133,7 @@ steps:
     Sysmon process-create
   es:
     wildcard:
-      fields.command_line.kw:
+      ecs.process.command_line:
         value: '*EventFilter CommandLineEventConsumer wmi*'
         case_insensitive: true
   requires:
@@ -186,12 +185,11 @@ steps:
   requires:
     families: *id001
   es_text_only_reason:
-  - 'Startup: file-path pivot; the value-shape route is removed (WO-CS1 moves it to
-    ecs.file.path), searched in text'
-  - '.lnk: a file name token; the value-shape file_path route is removed (WO-CS1 moves
-    it to ecs.file.path), searched in text'
-  - 'Start Menu\Programs\Startup: file-path pivot; the value-shape route is removed
-    (WO-CS1 moves it to ecs.file.path), searched in text'
+  - 'Startup: file-path pivot; no populated ecs.file.path, searched in text'
+  - '.lnk: a file name token; no populated ecs.file.path for these families, searched
+    in text'
+  - 'Start Menu\Programs\Startup: file-path pivot; no populated ecs.file.path, searched
+    in text'
 - name: dll_hijack
   query: fxsst.dll OR ntshrui.dll OR side-loading OR WinSxS
   look_for: 'DLL-hijack persistence classes: search-order hijack (malicious DLL ahead
@@ -225,10 +223,10 @@ steps:
   requires:
     families: *id001
   es_text_only_reason:
-  - 'fxsst.dll: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
-  - 'ntshrui.dll: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
+  - 'fxsst.dll: a file name token; no populated ecs.file.path for these families,
+    searched in text'
+  - 'ntshrui.dll: a file name token; no populated ecs.file.path for these families,
+    searched in text'
   - 'side-loading: free phrase; the step''s pivot names no registry column'
   - 'WinSxS: free phrase; the step''s pivot names no registry column'
 - name: task_persistence_case
@@ -257,8 +255,8 @@ steps:
     families: *id001
   es_text_only_reason:
   - 'schtasks: free phrase; the step''s pivot names no registry column'
-  - 'at.exe: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
+  - 'at.exe: a file name token; no populated ecs.file.path for these families, searched
+    in text'
   - 'TaskScheduler: free phrase; the step''s pivot names no registry column'
 negative: No autostart writes, service installs, or task registrations → the attacker
   may rely on existing persistence or volatile-only presence.

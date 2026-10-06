@@ -204,6 +204,19 @@ def _install_ingest_store(corpus: Path, case_dir: Path) -> str:
     return ""
 
 
+def _flatten_ecs(ecs: dict[str, Any], prefix: str = "ecs"):
+    """Yield (dotted_name, value) leaves of an ecs sub-document."""
+    for key, value in (ecs or {}).items():
+        name = f"{prefix}.{key}"
+        if isinstance(value, dict):
+            yield from _flatten_ecs(value, name)
+        elif isinstance(value, list):
+            for item in value:
+                yield name, item
+        else:
+            yield name, value
+
+
 def profile(case_dir: Path, stats: dict[str, Any] | None = None) -> dict[str, Any]:
     from nexus.langgraph.case_index import iter_index_docs
 
@@ -236,6 +249,21 @@ def profile(case_dir: Path, stats: dict[str, Any] | None = None) -> dict[str, An
                 sample = _sanitize(value)
                 if sample and sample not in bucket["samples"]:
                     bucket["samples"].append(sample)
+        # WO-CS1: measure the common `ecs.*` fields too, flattened to dotted names
+        # so a stored query's concept routing can be checked against real population.
+        ecs = doc.get("ecs") if isinstance(doc.get("ecs"), dict) else None
+        if ecs:
+            for name, value in _flatten_ecs(ecs):
+                if value in (None, "", [], {}):
+                    continue
+                bucket = per_family[fam][name]
+                bucket["filled"] += 1
+                bucket["rows"] += 1
+                bucket["distinct"].add(str(value))
+                if len(bucket["samples"]) < SAMPLES_PER_COLUMN:
+                    sample = _sanitize(value)
+                    if sample and sample not in bucket["samples"]:
+                        bucket["samples"].append(sample)
         # the row text is a column too: it is what a full-text search matches
         text = str(doc.get("text") or "")
         if text:

@@ -71,8 +71,8 @@ steps:
     - usn
     - memory
   es_text_only_reason:
-  - 'w3wp.exe: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
+  - 'w3wp.exe: a file name token; no populated ecs.file.path for these families, searched
+    in text'
 - name: access_log_correlation
   query: POST OR .aspx OR .php OR 200 OR upload
   look_for: 'IIS/Apache access logs: POSTs to a single page from one/few source IPs,
@@ -142,16 +142,11 @@ steps:
   requires:
     families: *id001
   es_text_only_reason:
-  - 'inetpub: file-path pivot; the value-shape route is removed (WO-CS1 moves it to
-    ecs.file.path), searched in text'
-  - 'wwwroot: file-path pivot; the value-shape route is removed (WO-CS1 moves it to
-    ecs.file.path), searched in text'
-  - '.aspx: file-path pivot; the value-shape route is removed (WO-CS1 moves it to
-    ecs.file.path), searched in text'
-  - '.ashx: file-path pivot; the value-shape route is removed (WO-CS1 moves it to
-    ecs.file.path), searched in text'
-  - '.jsp: file-path pivot; the value-shape route is removed (WO-CS1 moves it to ecs.file.path),
-    searched in text'
+  - 'inetpub: file-path pivot; no populated ecs.file.path, searched in text'
+  - 'wwwroot: file-path pivot; no populated ecs.file.path, searched in text'
+  - '.aspx: file-path pivot; no populated ecs.file.path, searched in text'
+  - '.ashx: file-path pivot; no populated ecs.file.path, searched in text'
+  - '.jsp: file-path pivot; no populated ecs.file.path, searched in text'
 - name: upload_vector
   query: upload OR PUT OR MOVE OR filewrite
   look_for: How did it get there? Exploited upload functionality, WebDAV PUT, vulnerable
@@ -237,10 +232,10 @@ steps:
   requires:
     families: *id001
   es_text_only_reason:
-  - 'net.exe: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
-  - 'sc.exe: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
+  - 'net.exe: a file name token; no populated ecs.file.path for these families, searched
+    in text'
+  - 'sc.exe: a file name token; no populated ecs.file.path for these families, searched
+    in text'
 negative: 'Clean worker-process trees + no rogue-page POSTs + no webroot writes →
   webshell unlikely on this server. Caveat: memory-only webshells and framework-integrated
   backdoors (evil IIS modules, ISAPI filters) leave no page-file artifact — check

@@ -53,23 +53,23 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*vssadmin*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*shadowcopy*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*vsc*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*\\?\GLOBALROOT*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*plaso*'
             case_insensitive: true
       minimum_should_match: 1
@@ -81,17 +81,6 @@ steps:
     - registry
     - evtx
     - usn
-  es_text_only_reason:
-  - 'vssadmin: file-path pivot; the value-shape route is removed (WO-CS1 moves it
-    to ecs.file.path), searched in text'
-  - 'shadowcopy: file-path pivot; the value-shape route is removed (WO-CS1 moves it
-    to ecs.file.path), searched in text'
-  - 'vsc: file-path pivot; the value-shape route is removed (WO-CS1 moves it to ecs.file.path),
-    searched in text'
-  - '\\?\GLOBALROOT: file-path pivot; the value-shape route is removed (WO-CS1 moves
-    it to ecs.file.path), searched in text'
-  - 'plaso: file-path pivot; the value-shape route is removed (WO-CS1 moves it to
-    ecs.file.path), searched in text'
 - name: shadow_copy_restore
   query: GLOBALROOT OR HarddiskVolumeShadowCopy OR shadow copy mount
   look_for: 'Mount read-only via \\?\GLOBALROOT\Device\HarddiskVolumeShadowCopyN and
@@ -103,27 +92,20 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*GLOBALROOT*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*HarddiskVolumeShadowCopy*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*shadow copy mount*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'GLOBALROOT: file-path pivot; the value-shape route is removed (WO-CS1 moves it
-    to ecs.file.path), searched in text'
-  - 'HarddiskVolumeShadowCopy: file-path pivot; the value-shape route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
-  - 'shadow copy mount: file-path pivot; the value-shape route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
 - name: alternate_data_streams
   query: Alternate Data Stream OR :Zone.Identifier OR $DATA OR stream
   look_for: 'ADS hide data beside a file: `dir /r` and MFTECmd show named $DATA attributes
@@ -136,33 +118,24 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*Alternate Data Stream*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*:Zone.Identifier*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*$DATA*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*stream*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'Alternate Data Stream: file-path pivot; the value-shape route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
-  - ':Zone.Identifier: file-path pivot; the value-shape route is removed (WO-CS1 moves
-    it to ecs.file.path), searched in text'
-  - '$DATA: file-path pivot; the value-shape route is removed (WO-CS1 moves it to
-    ecs.file.path), searched in text'
-  - 'stream: file-path pivot; the value-shape route is removed (WO-CS1 moves it to
-    ecs.file.path), searched in text'
 - name: recycle_bin_artifacts
   query: $I OR $R OR RECYCLE.BIN OR recycle
   look_for: 'The Recycle Bin stores $I<id> (original path + deletion time + size)
@@ -174,33 +147,24 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*$I*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*$R*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*RECYCLE.BIN*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*recycle*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - '$I: file-path pivot; the value-shape route is removed (WO-CS1 moves it to ecs.file.path),
-    searched in text'
-  - '$R: file-path pivot; the value-shape route is removed (WO-CS1 moves it to ecs.file.path),
-    searched in text'
-  - 'RECYCLE.BIN: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
-  - 'recycle: file-path pivot; the value-shape route is removed (WO-CS1 moves it to
-    ecs.file.path), searched in text'
 - name: timestomp_detection
   query: $SI OR $FN OR $STANDARD_INFORMATION OR 0x10 OR 0x30
   look_for: 'Timestomping: $STANDARD_INFORMATION ($SI, modifiable) earlier than or
@@ -214,15 +178,15 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*$SI*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*$FN*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*$STANDARD_INFORMATION*'
             case_insensitive: true
       - wildcard:
@@ -237,12 +201,6 @@ steps:
   requires:
     families: *id001
   es_text_only_reason:
-  - '$SI: file-path pivot; the value-shape route is removed (WO-CS1 moves it to ecs.file.path),
-    searched in text'
-  - '$FN: file-path pivot; the value-shape route is removed (WO-CS1 moves it to ecs.file.path),
-    searched in text'
-  - '$STANDARD_INFORMATION: file-path pivot; the value-shape route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
   - '0x10: no typed column for a hex mask in these families'
   - '0x30: no typed column for a hex mask in these families'
 - name: usn_and_journal_gaps
@@ -255,33 +213,24 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*$UsnJrnl*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*USN*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*$LogFile*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          ecs.file.path:
             value: '*journal*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - '$UsnJrnl: file-path pivot; the value-shape route is removed (WO-CS1 moves it
-    to ecs.file.path), searched in text'
-  - 'USN: file-path pivot; the value-shape route is removed (WO-CS1 moves it to ecs.file.path),
-    searched in text'
-  - '$LogFile: file-path pivot; the value-shape route is removed (WO-CS1 moves it
-    to ecs.file.path), searched in text'
-  - 'journal: file-path pivot; the value-shape route is removed (WO-CS1 moves it to
-    ecs.file.path), searched in text'
 negative: No shadow copies, no ADS, empty/absent Recycle Bin, consistent $SI/$FN timestamps,
   and an intact USN journal → no evidence of hidden or destroyed data on this volume
   for the retained window. A missing USN journal or absent shadow copies is itself

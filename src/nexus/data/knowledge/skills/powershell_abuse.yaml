@@ -89,8 +89,8 @@ steps:
   requires:
     families: *id001
   es_text_only_reason:
-  - 'curl.exe: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
+  - 'curl.exe: a file name token; no populated ecs.file.path for these families, searched
+    in text'
 - name: script_block_4104
   query: '4104'
   look_for: PowerShell 4104 script-block logging — suspicious code content (invoke,
@@ -125,8 +125,8 @@ steps:
     families: *id001
   es_text_only_reason:
   - 'amsiInitFailed: free phrase; the step''s pivot names no registry column'
-  - 'amsi.dll: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
+  - 'amsi.dll: a file name token; no populated ecs.file.path for these families, searched
+    in text'
   - 'AmsiUtils: free phrase; the step''s pivot names no registry column'
 - name: powershell_downgrade
   query: powershell -version 2 OR -Version 2.0
@@ -203,12 +203,10 @@ steps:
   requires:
     families: *id001
   es_text_only_reason:
-  - 'transcript: file-path pivot; the value-shape route is removed (WO-CS1 moves it
-    to ecs.file.path), searched in text'
-  - 'Start-Transcript: file-path pivot; the value-shape route is removed (WO-CS1 moves
-    it to ecs.file.path), searched in text'
-  - '.ps1: a file name token; the value-shape file_path route is removed (WO-CS1 moves
-    it to ecs.file.path), searched in text'
+  - 'transcript: file-path pivot; no populated ecs.file.path, searched in text'
+  - 'Start-Transcript: file-path pivot; no populated ecs.file.path, searched in text'
+  - '.ps1: a file name token; no populated ecs.file.path for these families, searched
+    in text'
 negative: No encoded commands, cradles, or suspicious script blocks → PowerShell abuse
   unlikely; check cmd/wscript/mshta/python instead.
 confidence_rules:

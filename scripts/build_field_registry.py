@@ -343,6 +343,25 @@ def merge(
     return out, conflicts
 
 
+def _add_ecs_columns(columns: dict[str, dict], populated: dict[str, set[str]]) -> None:
+    """Add every populated `ecs.*` field as a registry entry (WO-CS1 item 7).
+
+    The `ecs.*` fields are a separate namespace from `fields.*`. They are registry
+    entries so a stored query's concept routing (`_ecs_populated_for`) can consult
+    `populated_in` for them.
+    """
+    for name, fams in sorted((populated or {}).items()):
+        if not name.startswith("ecs."):
+            continue
+        columns[name] = {
+            "type": "keyword",
+            "families": [],
+            "observed_types": ["keyword"],
+            "populated_in": sorted(fams),
+            "ecs": True,
+        }
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--report", action="store_true", help="print conflicts, do not write")
@@ -353,6 +372,10 @@ def main() -> int:
     populated = load_population()
     supplement, required_families = load_supplement()
     columns, conflicts = merge(families, roles, populated, supplement)
+    # WO-CS1 item 7: the common `ecs.*` fields also carry populated_in (measured on
+    # the real-run corpus), so a stored query's concept routing can be checked. They
+    # are a separate namespace, added after the registry merge.
+    _add_ecs_columns(columns, populated)
 
     # WO-R0F item 8: a regeneration that REMOVES a column or a required family
     # fails, unless the removal is listed with a reason. The check compares the

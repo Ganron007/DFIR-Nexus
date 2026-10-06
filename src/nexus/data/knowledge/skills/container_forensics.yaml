@@ -112,16 +112,11 @@ steps:
   requires:
     families: *id001
   es_text_only_reason:
-  - 'overlay2: file-path pivot; the value-shape route is removed (WO-CS1 moves it
-    to ecs.file.path), searched in text'
-  - 'upperdir: file-path pivot; the value-shape route is removed (WO-CS1 moves it
-    to ecs.file.path), searched in text'
-  - 'diff: file-path pivot; the value-shape route is removed (WO-CS1 moves it to ecs.file.path),
-    searched in text'
-  - 'lowerdir: file-path pivot; the value-shape route is removed (WO-CS1 moves it
-    to ecs.file.path), searched in text'
-  - 'merged: file-path pivot; the value-shape route is removed (WO-CS1 moves it to
-    ecs.file.path), searched in text'
+  - 'overlay2: file-path pivot; no populated ecs.file.path, searched in text'
+  - 'upperdir: file-path pivot; no populated ecs.file.path, searched in text'
+  - 'diff: file-path pivot; no populated ecs.file.path, searched in text'
+  - 'lowerdir: file-path pivot; no populated ecs.file.path, searched in text'
+  - 'merged: file-path pivot; no populated ecs.file.path, searched in text'
 - name: container_logs
   query: json-file OR docker logs OR stdout OR stderr OR journallog
   look_for: 'Container logs (Logging Driver json-file → /var/lib/docker/containers/
@@ -231,8 +226,8 @@ steps:
     families: *id001
   es_text_only_reason:
   - 'kubelet: free phrase; the step''s pivot names no registry column'
-  - 'audit.log: a file name token; the value-shape file_path route is removed (WO-CS1
-    moves it to ecs.file.path), searched in text'
+  - 'audit.log: a file name token; no populated ecs.file.path for these families,
+    searched in text'
   - 'serviceaccount: free phrase; the step''s pivot names no registry column'
   - 'secrets: free phrase; the step''s pivot names no registry column'
   - 'pod create: free phrase; the step''s pivot names no registry column'
