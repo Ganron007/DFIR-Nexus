@@ -524,6 +524,7 @@ def iter_index_doc_batches(
         "docs_capped": False,
         "families_capped": [],
         "files_capped": 0,
+        "capped_files": [],
         "large_files_skipped": 0,
     }
     seen: set[str] = set()
@@ -643,6 +644,9 @@ def iter_index_doc_batches(
                         break
                     if _MAX_DOCS_PER_FILE and data_rows > _MAX_DOCS_PER_FILE:
                         caps["files_capped"] += 1
+                        caps.setdefault("capped_files", []).append(
+                            {"file": _index_rel(path, root), "cap": _MAX_DOCS_PER_FILE,
+                             "rows_kept": data_rows - 1})
                         break
                     if _add(path, root, fam, i, line, row_fields):
                         family_counts[fam] = family_counts.get(fam, 0) + 1

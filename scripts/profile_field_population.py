@@ -204,7 +204,7 @@ def _install_ingest_store(corpus: Path, case_dir: Path) -> str:
     return ""
 
 
-def profile(case_dir: Path) -> dict[str, Any]:
+def profile(case_dir: Path, stats: dict[str, Any] | None = None) -> dict[str, Any]:
     from nexus.langgraph.case_index import iter_index_docs
 
     per_family: dict[str, dict[str, dict[str, Any]]] = defaultdict(lambda: defaultdict(
@@ -214,7 +214,7 @@ def profile(case_dir: Path) -> dict[str, Any]:
 
     _n = 0
     _t0 = __import__("time").time()
-    for doc in iter_index_docs(case_dir):
+    for doc in iter_index_docs(case_dir, stats=stats):
         fam = str(doc.get("family") or "")
         if not fam:
             continue
@@ -256,7 +256,8 @@ def profile(case_dir: Path) -> dict[str, Any]:
                 "samples": c["samples"],
             }
         families[fam] = {"docs": docs, "columns": cols}
-    return {"docs": dict(totals), "families": families}
+    return {"docs": dict(totals), "families": families,
+            "capped_files": (stats or {}).get("capped_files", [])}
 
 
 def profile_evtx_detail(case_dir: Path) -> dict[str, Any]:
@@ -425,10 +426,16 @@ def main(argv: list[str] | None = None) -> int:
         print("no corpus files were placed; is the corpus staged?", file=sys.stderr)
         return 2
 
-    result = profile(workdir)
+    scan_stats: dict[str, Any] = {}
+    result = profile(workdir, stats=scan_stats)
     evtx = profile_evtx_detail(workdir)
     absent = absent_families(workdir, set(result["families"]))
     placed = _layout(args.corpus, workdir)
+    # WO-R0F item 1: "a row cap is allowed only if it is recorded per file."
+    # The cap is NEXUS_INDEX_PER_FILE_CAP (0 = unlimited); every file that hit it
+    # is listed with the cap and the rows kept, so the truncation is never silent.
+    import os as _os
+    row_cap = int(_os.environ.get("NEXUS_INDEX_PER_FILE_CAP", "0") or 0)
     payload = {
         "generator": "scripts/profile_field_population.py",
         "corpus": args.corpus,
@@ -441,6 +448,16 @@ def main(argv: list[str] | None = None) -> int:
         "families": result["families"],
         "evtxecmd_generic_columns": evtx,
         "absent_families": absent,
+        "row_cap_per_file": {
+            "cap": row_cap,
+            "applied": bool(row_cap),
+            "capped_files": result.get("capped_files", []),
+            "note": ("Every file streamed with a per-file row cap of "
+                     f"{row_cap}; each file that exceeded it is listed in capped_files "
+                     "with the rows kept. Recorded per file (WO-R0F item 1)."
+                     if row_cap else
+                     "No row cap: every row of every file was streamed."),
+        },
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(payload, indent=2, sort_keys=True, default=str), encoding="utf-8")
