@@ -48,7 +48,7 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*auth.log*'
             case_insensitive: true
       - wildcard:
@@ -73,6 +73,8 @@ steps:
     - bash
     - memory
   es_text_only_reason:
+  - 'auth.log: a file name token; the value-shape file_path route is removed (WO-CS1
+    moves it to ecs.file.path), searched in text'
   - 'secure: free phrase; the step''s pivot is an identity column'
   - 'Failed password: free phrase; the step''s pivot is an identity column'
   - 'Accepted: free phrase; the step''s pivot is an identity column'
@@ -88,20 +90,27 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*history*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*.bash_history*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*$HISTFILE*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'history: file-path pivot; the value-shape route is removed (WO-CS1 moves it to
+    ecs.file.path), searched in text'
+  - '.bash_history: file-path pivot; the value-shape route is removed (WO-CS1 moves
+    it to ecs.file.path), searched in text'
+  - '$HISTFILE: file-path pivot; the value-shape route is removed (WO-CS1 moves it
+    to ecs.file.path), searched in text'
 - name: persistence_mechanisms
   query: cron OR systemd OR .timer OR ExecStart
   look_for: 'Linux persistence: crontab files (per-user spool + /etc/cron.*), systemd
@@ -113,15 +122,15 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*cron*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*systemd*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*.timer*'
             case_insensitive: true
       - wildcard:
@@ -132,7 +141,14 @@ steps:
   requires:
     families: *id001
   es_text_only_reason:
-  - 'ExecStart: unit-file keyword, not a path; searched in text'
+  - 'cron: file-path pivot; the value-shape route is removed (WO-CS1 moves it to ecs.file.path),
+    searched in text'
+  - 'systemd: file-path pivot; the value-shape route is removed (WO-CS1 moves it to
+    ecs.file.path), searched in text'
+  - '.timer: file-path pivot; the value-shape route is removed (WO-CS1 moves it to
+    ecs.file.path), searched in text'
+  - 'ExecStart: file-path pivot; the value-shape route is removed (WO-CS1 moves it
+    to ecs.file.path), searched in text'
 - name: account_anomalies
   query: passwd OR /etc/passwd OR sudoers OR useradd
   look_for: /etc/passwd for unexpected accounts (UID 0 backdoor users), sudoers modifications,

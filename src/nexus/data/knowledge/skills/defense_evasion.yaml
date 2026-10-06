@@ -79,20 +79,27 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*timestomp*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*-M*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*Copy-Item -Destination*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'timestomp: file-path pivot; the value-shape route is removed (WO-CS1 moves it
+    to ecs.file.path), searched in text'
+  - '-M: file-path pivot; the value-shape route is removed (WO-CS1 moves it to ecs.file.path),
+    searched in text'
+  - 'Copy-Item -Destination: file-path pivot; the value-shape route is removed (WO-CS1
+    moves it to ecs.file.path), searched in text'
 - name: masquerading
   query: svchost.exe OR smss.exe OR csrss.exe OR lsass.exe
   look_for: System process names in non-standard paths (%TEMP%, user dirs, wrong parentage)
@@ -102,24 +109,33 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*svchost.exe*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*smss.exe*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*csrss.exe*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*lsass.exe*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'svchost.exe: a file name token; the value-shape file_path route is removed (WO-CS1
+    moves it to ecs.file.path), searched in text'
+  - 'smss.exe: a file name token; the value-shape file_path route is removed (WO-CS1
+    moves it to ecs.file.path), searched in text'
+  - 'csrss.exe: a file name token; the value-shape file_path route is removed (WO-CS1
+    moves it to ecs.file.path), searched in text'
+  - 'lsass.exe: a file name token; the value-shape file_path route is removed (WO-CS1
+    moves it to ecs.file.path), searched in text'
 - name: process_injection
   query: CreateRemoteThread OR VirtualAllocEx OR WriteProcessMemory OR inject
   look_for: Cross-process memory/thread APIs in Sysmon 8 (CreateRemoteThread).
@@ -182,7 +198,7 @@ steps:
       - bool:
           must:
           - wildcard:
-              fields.file_path.kw:
+              text.wc:
                 value: '*amsi.dll*'
                 case_insensitive: true
           - wildcard:
@@ -201,6 +217,8 @@ steps:
   requires:
     families: *id001
   es_text_only_reason:
+  - 'amsi.dll: a file name token; the value-shape file_path route is removed (WO-CS1
+    moves it to ecs.file.path), searched in text'
   - 'patch: free phrase; the step''s pivot names no registry column'
   - 'AmsiScanBuffer: free phrase; the step''s pivot names no registry column'
   - 'amsiInitFailed: free phrase; the step''s pivot names no registry column'

@@ -153,32 +153,45 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*attachment*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*.iso*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*.lnk*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*.docm*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*.html*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*.zip*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'attachment: file-path pivot; the value-shape route is removed (WO-CS1 moves it
+    to ecs.file.path), searched in text'
+  - '.iso: file-path pivot; the value-shape route is removed (WO-CS1 moves it to ecs.file.path),
+    searched in text'
+  - '.lnk: a file name token; the value-shape file_path route is removed (WO-CS1 moves
+    it to ecs.file.path), searched in text'
+  - '.docm: file-path pivot; the value-shape route is removed (WO-CS1 moves it to
+    ecs.file.path), searched in text'
+  - '.html: file-path pivot; the value-shape route is removed (WO-CS1 moves it to
+    ecs.file.path), searched in text'
+  - '.zip: a file name token; the value-shape file_path route is removed (WO-CS1 moves
+    it to ecs.file.path), searched in text'
 - name: delivery_artifact
   query: Zone.Identifier OR downloads OR attachment
   look_for: 'Host-side proof of delivery: Zone.Identifier ADS on the dropped file
@@ -191,20 +204,27 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*Zone.Identifier*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*downloads*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*attachment*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'Zone.Identifier: file-path pivot; the value-shape route is removed (WO-CS1 moves
+    it to ecs.file.path), searched in text'
+  - 'downloads: file-path pivot; the value-shape route is removed (WO-CS1 moves it
+    to ecs.file.path), searched in text'
+  - 'attachment: file-path pivot; the value-shape route is removed (WO-CS1 moves it
+    to ecs.file.path), searched in text'
 - name: execution_chain
   query: explorer.exe OR mshta OR rundll32 OR powershell
   look_for: Did the user execute it? Child processes of explorer.exe (double- click)
@@ -215,7 +235,7 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*explorer.exe*'
             case_insensitive: true
       - wildcard:
@@ -234,6 +254,8 @@ steps:
   requires:
     families: *id001
   es_text_only_reason:
+  - 'explorer.exe: a file name token; the value-shape file_path route is removed (WO-CS1
+    moves it to ecs.file.path), searched in text'
   - 'mshta: free phrase; the step''s pivot names no registry column'
   - 'rundll32: free phrase; the step''s pivot names no registry column'
   - 'powershell: free phrase; the step''s pivot names no registry column'

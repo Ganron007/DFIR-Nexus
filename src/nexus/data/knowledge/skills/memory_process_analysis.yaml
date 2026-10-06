@@ -47,19 +47,19 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          fields.ImageFileName.kw:
             value: '*pslist*'
             case_insensitive: true
       - wildcard:
-          fields.process_name.kw:
+          fields.ImageFileName.kw:
             value: '*pstree*'
             case_insensitive: true
       - wildcard:
-          fields.process_name.kw:
+          fields.ImageFileName.kw:
             value: '*svchost*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*explorer.exe*'
             case_insensitive: true
       minimum_should_match: 1
@@ -71,7 +71,8 @@ steps:
     - evtx
     - sysmon
   es_text_only_reason:
-  - 'pslist: value of the wrong kind for process_name; searched in text'
+  - 'explorer.exe: a file name token; the value-shape file_path route is removed (WO-CS1
+    moves it to ecs.file.path), searched in text'
 - name: hidden_process_check
   query: psxview OR psscan OR unlink
   look_for: 'Cross-view detection: psxview/psscan compares multiple enumeration methods
@@ -83,23 +84,20 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          fields.ImageFileName.kw:
             value: '*psxview*'
             case_insensitive: true
       - wildcard:
-          text.wc:
+          fields.ImageFileName.kw:
             value: '*psscan*'
             case_insensitive: true
       - wildcard:
-          fields.process_name.kw:
+          fields.ImageFileName.kw:
             value: '*unlink*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'psxview: value of the wrong kind for process_name; searched in text'
-  - 'psscan: value of the wrong kind for process_name; searched in text'
 - name: injection_classification
   query: malfind OR VAD OR PAGE_EXECUTE_READWRITE
   look_for: 'malfind finds injected code via VAD anomalies — private PAGE_EXECUTE_READWRITE
@@ -111,22 +109,20 @@ steps:
     bool:
       should:
       - wildcard:
-          text.wc:
+          fields.ImageFileName.kw:
             value: '*malfind*'
             case_insensitive: true
       - wildcard:
-          fields.process_name.kw:
+          fields.ImageFileName.kw:
             value: '*VAD*'
             case_insensitive: true
       - wildcard:
-          fields.process_name.kw:
+          fields.ImageFileName.kw:
             value: '*PAGE_EXECUTE_READWRITE*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'malfind: value of the wrong kind for process_name; searched in text'
 - name: webshell_exec_chain
   query: w3wp.exe OR net.exe OR whoami.exe OR ipconfig.exe
   look_for: 'On web servers: w3wp.exe (IIS worker) spawning net.exe, whoami.exe, ipconfig.exe,
@@ -138,24 +134,33 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*w3wp.exe*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*net.exe*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*whoami.exe*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*ipconfig.exe*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'w3wp.exe: a file name token; the value-shape file_path route is removed (WO-CS1
+    moves it to ecs.file.path), searched in text'
+  - 'net.exe: a file name token; the value-shape file_path route is removed (WO-CS1
+    moves it to ecs.file.path), searched in text'
+  - 'whoami.exe: a file name token; the value-shape file_path route is removed (WO-CS1
+    moves it to ecs.file.path), searched in text'
+  - 'ipconfig.exe: a file name token; the value-shape file_path route is removed (WO-CS1
+    moves it to ecs.file.path), searched in text'
 - name: credential_material
   query: lsass.exe OR mimikatz OR wdigest OR sekurlsa
   look_for: 'Credential material lives in memory: lsass.exe injected threads, unexpected
@@ -166,24 +171,27 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*lsass.exe*'
             case_insensitive: true
       - wildcard:
-          fields.process_name.kw:
+          fields.ImageFileName.kw:
             value: '*mimikatz*'
             case_insensitive: true
       - wildcard:
-          fields.process_name.kw:
+          fields.ImageFileName.kw:
             value: '*wdigest*'
             case_insensitive: true
       - wildcard:
-          fields.process_name.kw:
+          fields.ImageFileName.kw:
             value: '*sekurlsa*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'lsass.exe: a file name token; the value-shape file_path route is removed (WO-CS1
+    moves it to ecs.file.path), searched in text'
 - name: dump_for_analysis
   query: procdump OR memdump OR .dmp OR dlldump
   look_for: Suspicious processes get dumped (procdump/memdump/dlldump) for string/YARA/decompile
@@ -193,19 +201,19 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.process_name.kw:
+          fields.ImageFileName.kw:
             value: '*procdump*'
             case_insensitive: true
       - wildcard:
-          fields.process_name.kw:
+          fields.ImageFileName.kw:
             value: '*memdump*'
             case_insensitive: true
       - wildcard:
-          fields.process_name.kw:
+          fields.ImageFileName.kw:
             value: '*.dmp*'
             case_insensitive: true
       - wildcard:
-          fields.process_name.kw:
+          fields.ImageFileName.kw:
             value: '*dlldump*'
             case_insensitive: true
       minimum_should_match: 1

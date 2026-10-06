@@ -43,7 +43,7 @@ steps:
             value: '*lnk*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*.lnk*'
             case_insensitive: true
       minimum_should_match: 1
@@ -55,6 +55,9 @@ steps:
     - jumplist
     - mftecmd
     - recent
+  es_text_only_reason:
+  - '.lnk: a file name token; the value-shape file_path route is removed (WO-CS1 moves
+    it to ecs.file.path), searched in text'
 - name: lnk_source_attribution
   query: file:lnk
   look_for: LNK internals carry the creating machine's identifiers — NetBIOS name,
@@ -155,7 +158,7 @@ steps:
                 value: '*lnk*'
                 case_insensitive: true
           - wildcard:
-              fields.file_path.kw:
+              text.wc:
                 value: '*startup*'
                 case_insensitive: true
       - bool:
@@ -165,12 +168,17 @@ steps:
                 value: '*lnk*'
                 case_insensitive: true
           - wildcard:
-              fields.file_path.kw:
+              text.wc:
                 value: '*start menu\programs\startup*'
                 case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'startup: file-path pivot; the value-shape route is removed (WO-CS1 moves it to
+    ecs.file.path), searched in text'
+  - 'start menu\programs\startup: file-path pivot; the value-shape route is removed
+    (WO-CS1 moves it to ecs.file.path), searched in text'
 negative: Empty Recent/jumplist output usually means a per-user artifact gap (the
   profile wasn't collected or the user never opened files via Explorer) — CLI-launched
   and service-run files leave no LNK trail at all.

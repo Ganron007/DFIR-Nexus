@@ -120,28 +120,39 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*.encrypted*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*.locked*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*.crypt*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*readme*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*ransom*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - '.encrypted: file-path pivot; the value-shape route is removed (WO-CS1 moves it
+    to ecs.file.path), searched in text'
+  - '.locked: file-path pivot; the value-shape route is removed (WO-CS1 moves it to
+    ecs.file.path), searched in text'
+  - '.crypt: file-path pivot; the value-shape route is removed (WO-CS1 moves it to
+    ecs.file.path), searched in text'
+  - 'readme: file-path pivot; the value-shape route is removed (WO-CS1 moves it to
+    ecs.file.path), searched in text'
+  - 'ransom: file-path pivot; the value-shape route is removed (WO-CS1 moves it to
+    ecs.file.path), searched in text'
 - name: service_stop
   query: sc stop OR net stop OR service stop
   look_for: Mass service stops (database, backup, AV) before encryption.
@@ -208,6 +219,14 @@ steps:
     (do X, then Y), not evidence to search. It is shown to agents as a procedure and
     never executed, so it cannot fire on noise and cannot count as coverage.'
   es_dropped:
+  - term: rdp
+    reason: 'procedure step: shown to agents, never executed'
+  - term: '4624'
+    reason: 'procedure step: shown to agents, never executed'
+  - term: msiexec
+    reason: 'procedure step: shown to agents, never executed'
+  - term: phish
+    reason: 'procedure step: shown to agents, never executed'
   - term: sha256
     reason: 'procedure verb, not evidence: hashing is what the examiner does, not
       what is searched for'
@@ -225,12 +244,6 @@ steps:
     reason: procedure verb, not evidence
   - term: encrypted
     reason: procedure verb, not evidence
-  - term: rdp
-    reason: an entry vector named in the procedure, not a column value
-  - term: phish
-    reason: an entry vector named in the procedure
-  - term: msiexec
-    reason: an entry vector named in the procedure, not a column value
   - term: event_id 4624
     reason: a real clue, but this step is the order of investigation, not a search
       for it

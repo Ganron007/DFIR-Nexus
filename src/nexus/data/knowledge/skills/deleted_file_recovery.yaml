@@ -46,7 +46,7 @@ steps:
             value: '*rbcmd*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*$i*'
             case_insensitive: true
       minimum_should_match: 1
@@ -59,6 +59,9 @@ steps:
     - fls
     - recmd
     - registry
+  es_text_only_reason:
+  - '$i: file-path pivot; the value-shape route is removed (WO-CS1 moves it to ecs.file.path),
+    searched in text'
 - name: usn_delete_reasons
   query: file:usn delete
   look_for: USN journal Delete/Close+Delete reasons with the file reference number
@@ -73,11 +76,14 @@ steps:
             value: '*usn*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*delete*'
             case_insensitive: true
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'delete: file-path pivot; the value-shape route is removed (WO-CS1 moves it to
+    ecs.file.path), searched in text'
 - name: i30_slack_names
   query: file:i30
   look_for: $I30 slack residue — filename + size + full timestamp set for files whose
@@ -114,7 +120,7 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*windows.db*'
             case_insensitive: true
       - wildcard:
@@ -129,6 +135,8 @@ steps:
   requires:
     families: *id001
   es_text_only_reason:
+  - 'windows.db: a file name token; the value-shape file_path route is removed (WO-CS1
+    moves it to ecs.file.path), searched in text'
   - 'windows.edb: free phrase; the step''s pivot names no registry column'
 - name: lnk_ghost_targets
   query: file:lnk OR .lnk
@@ -144,12 +152,15 @@ steps:
             value: '*lnk*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*.lnk*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - '.lnk: a file name token; the value-shape file_path route is removed (WO-CS1 moves
+    it to ecs.file.path), searched in text'
 - name: shadow_copies
   query: vss OR shadow OR System Volume Information
   look_for: Volume Shadow Copies — pre-deletion snapshots may retain the file intact;

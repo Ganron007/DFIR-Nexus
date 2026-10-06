@@ -106,7 +106,7 @@ steps:
             value: '*regsvr32*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*cmd.exe*'
             case_insensitive: true
       - wildcard:
@@ -129,6 +129,8 @@ steps:
   - 'mshta: free phrase; the step''s pivot names no registry column'
   - 'powershell: free phrase; the step''s pivot names no registry column'
   - 'regsvr32: free phrase; the step''s pivot names no registry column'
+  - 'cmd.exe: a file name token; the value-shape file_path route is removed (WO-CS1
+    moves it to ecs.file.path), searched in text'
   - 'wmic: free phrase; the step''s pivot names no registry column'
   - 'bitsadmin: free phrase; the step''s pivot names no registry column'
   - 'certutil: free phrase; the step''s pivot names no registry column'
@@ -240,12 +242,15 @@ steps:
             value: '*pca*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*PCAAppLaunchDIC*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'PCAAppLaunchDIC: file-path pivot; the value-shape route is removed (WO-CS1 moves
+    it to ecs.file.path), searched in text'
 - name: muicache_gui
   query: muicache
   look_for: UsrClass MuiCache — per-user evidence of GUI execution; confirms the binary

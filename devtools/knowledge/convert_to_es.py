@@ -93,6 +93,14 @@ _OR = re.compile(r"\s+OR\s+", re.IGNORECASE)
 #: procedures: shown to agents, never executed, never counted.
 PROCEDURE_STEPS = frozenset({
     "hash_on_acquire", "triage_first", "encryption_check", "backward_analysis",
+    "chain_of_custody",
+})
+
+#: Columns that hold a FILE PATH. R0F item 3 deletes the value-shape route that sent
+#: an extension-bearing token or a pivot to one of these by shape; until WO-CS1 moves
+#: the routing to `ecs.file.path`, such a clause goes to `text.wc` with a reason.
+FILE_PATH_COLUMNS = frozenset({
+    "filepath", "filename", "targetfilename", "targetpath", "absolutepath",
 })
 
 PROCEDURE_REASON = (
@@ -332,11 +340,16 @@ def _typed_clause(
         text_only.append(f"{tok}: no typed column for a hex mask in these families")
         return _wild("text.wc", tok)
 
-    # A name with an extension lives in a file-name column when there is one.
-    col = _resolve_column("FileName", fams, cols) or pivot_col
-    if col and _norm_key(col) not in {_norm_key(c) for c in _IDENTITY_COLUMNS}:
-        return _wild(_column_field(col, cols), tok)
-    text_only.append(f"{tok}: no file-name column resolves for these families")
+    # R0F item 3: the value-shape route that sent an extension-bearing token to a
+    # file-path column is DELETED. Matching a file by its name-shaped text resulted
+    # in clauses on `file_path`/`FileName` that the population gate flags as
+    # populated-for-other-families (the "file_path gate leaks" R0" defect). Until
+    # WO-CS1 routes this to `ecs.file.path`, the token goes to `text.wc` with a
+    # reason, so the clause can never fire on the wrong column.
+    text_only.append(
+        f"{tok}: a file name token; the value-shape file_path route is removed "
+        f"(WO-CS1 moves it to ecs.file.path), searched in text"
+    )
     return _wild("text.wc", tok)
 
 
@@ -362,6 +375,16 @@ def _phrase_clause(
     # right search text instead of the authored (unmatchable) one.
     if _is_command_with_hive(phrase):
         return _wild("text.wc", _with_hive(phrase, text_only))
+    # R0F item 3: the pivot's route to a file-path column is DELETED - a free phrase
+    # is never a path just because the pivot names one (that was the value-shape
+    # route the R0" review flagged as leaking). Until WO-CS1 routes paths to
+    # `ecs.file.path`, a file-path pivot's phrase goes to `text.wc` with a reason.
+    if pivot_col and _norm_key(pivot_col) in FILE_PATH_COLUMNS:
+        text_only.append(
+            f"{phrase}: file-path pivot; the value-shape route is removed "
+            f"(WO-CS1 moves it to ecs.file.path), searched in text"
+        )
+        return _wild("text.wc", phrase)
     if pivot_col and _norm_key(pivot_col) not in {_norm_key(c) for c in _IDENTITY_COLUMNS}:
         # KL2d / KR2c rule 1: the value's KIND must match the column's. "Modbus" is
         # not an IP, "PLC log" is not a hostname, "pslist" is not a process - those
@@ -546,9 +569,19 @@ def convert_skills(check: bool = False) -> dict[str, Any]:
             is_proc = step.get("name") in PROCEDURE_STEPS
             if check:
                 if is_proc:
+                    expected_alt = [
+                        {"term": alt.strip(), "reason": "procedure step: shown to "
+                                                        "agents, never executed"}
+                        for alt in _OR.split(str(step.get("query") or ""))
+                        if alt.strip()
+                    ]
+                    expected_proc = expected_alt + [
+                        d for d in PROCEDURE_DROPPED
+                        if d["term"] not in {a["term"] for a in expected_alt}
+                    ]
                     if step.get("es") is not None or step.get("kind") != "procedure" \
                             or not step.get("procedure_reason") \
-                            or step.get("es_dropped") != PROCEDURE_DROPPED:
+                            or step.get("es_dropped") != expected_proc:
                         raise SystemExit(
                             f"{sf.name} / {step.get('name')}: procedure step is not "
                             f"stored as a procedure - re-run without --check")
@@ -584,8 +617,23 @@ def convert_skills(check: bool = False) -> dict[str, Any]:
                     dirty = True
                 if step.pop("es_text_only_reason", None) is not None:
                     dirty = True
-                if step.get("es_dropped") != PROCEDURE_DROPPED:
-                    step["es_dropped"] = PROCEDURE_DROPPED
+                # es_dropped must account for THIS step's own free-query
+                # alternatives (KR2b (a): no alternative disappears unrecorded),
+                # then the standard procedure verbs. Using one fixed list for every
+                # step lost a step's real alternatives (chain_of_custody: custody/
+                # seized/collected).
+                alt_dropped = [
+                    {"term": alt.strip(), "reason": "procedure step: shown to agents, "
+                                                    "never executed"}
+                    for alt in _OR.split(str(step.get("query") or ""))
+                    if alt.strip()
+                ]
+                proc_dropped = alt_dropped + [
+                    d for d in PROCEDURE_DROPPED
+                    if d["term"] not in {a["term"] for a in alt_dropped}
+                ]
+                if step.get("es_dropped") != proc_dropped:
+                    step["es_dropped"] = proc_dropped
                     dirty = True
                 stats["procedures"] += 1
             step.pop("dsl", None)

@@ -78,31 +78,40 @@ steps:
   procedure_reason: 'R0'' defect: this step''s look_for is an investigation ORDER
     (do X, then Y), not evidence to search. It is shown to agents as a procedure and
     never executed, so it cannot fire on noise and cannot count as coverage.'
-  es_dropped: &id002
-  - term: sha256
+  es_dropped:
+  - term: bitlocker
+    reason: 'procedure step: shown to agents, never executed'
+  - term: encryption
+    reason: 'procedure step: shown to agents, never executed'
+  - term: encrypted
+    reason: 'procedure step: shown to agents, never executed'
+  - &id002
+    term: sha256
     reason: 'procedure verb, not evidence: hashing is what the examiner does, not
       what is searched for'
-  - term: md5
+  - &id003
+    term: md5
     reason: procedure verb, not evidence
-  - term: hash
+  - &id004
+    term: hash
     reason: procedure verb, not evidence
-  - term: kape
+  - &id005
+    term: kape
     reason: names a tool the examiner runs, not a field value to search for
-  - term: triage
+  - &id010
+    term: triage
     reason: procedure verb, not evidence
-  - term: bitlocker
-    reason: a pre-acquisition decision, not a search over indexed evidence
-  - term: encryption
-    reason: procedure verb, not evidence
-  - term: encrypted
-    reason: procedure verb, not evidence
-  - term: rdp
+  - &id006
+    term: rdp
     reason: an entry vector named in the procedure, not a column value
-  - term: phish
+  - &id007
+    term: phish
     reason: an entry vector named in the procedure
-  - term: msiexec
+  - &id008
+    term: msiexec
     reason: an entry vector named in the procedure, not a column value
-  - term: event_id 4624
+  - &id009
+    term: event_id 4624
     reason: a real clue, but this step is the order of investigation, not a search
       for it
 - name: triage_first
@@ -118,7 +127,28 @@ steps:
   procedure_reason: 'R0'' defect: this step''s look_for is an investigation ORDER
     (do X, then Y), not evidence to search. It is shown to agents as a procedure and
     never executed, so it cannot fire on noise and cannot count as coverage.'
-  es_dropped: *id002
+  es_dropped:
+  - term: file:kape
+    reason: 'procedure step: shown to agents, never executed'
+  - term: triage
+    reason: 'procedure step: shown to agents, never executed'
+  - *id002
+  - *id003
+  - *id004
+  - *id005
+  - &id011
+    term: bitlocker
+    reason: a pre-acquisition decision, not a search over indexed evidence
+  - &id012
+    term: encryption
+    reason: procedure verb, not evidence
+  - &id013
+    term: encrypted
+    reason: procedure verb, not evidence
+  - *id006
+  - *id007
+  - *id008
+  - *id009
 - name: write_blocked_disk
   query: write block OR tableau OR e01 OR raw image
   look_for: Dead-disk acquisition goes through a forensic write-blocker to E01/ raw
@@ -163,35 +193,53 @@ steps:
   procedure_reason: 'R0'' defect: this step''s look_for is an investigation ORDER
     (do X, then Y), not evidence to search. It is shown to agents as a procedure and
     never executed, so it cannot fire on noise and cannot count as coverage.'
-  es_dropped: *id002
+  es_dropped:
+  - term: sha256
+    reason: 'procedure step: shown to agents, never executed'
+  - term: md5
+    reason: 'procedure step: shown to agents, never executed'
+  - term: hash
+    reason: 'procedure step: shown to agents, never executed'
+  - *id005
+  - *id010
+  - *id011
+  - *id012
+  - *id013
+  - *id006
+  - *id007
+  - *id008
+  - *id009
 - name: chain_of_custody
   query: custody OR seized OR collected
   look_for: 'Chain of custody from seizure onward — who collected, when, where, how
     stored, every transfer. Courts and clients both ask the same question: can you
     prove this evidence is the same bits you took?'
   corroborate: custody gaps are attackable in court regardless of technical quality
-  es:
-    bool:
-      should:
-      - wildcard:
-          text.wc:
-            value: '*custody*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*seized*'
-            case_insensitive: true
-      - wildcard:
-          text.wc:
-            value: '*collected*'
-            case_insensitive: true
-      minimum_should_match: 1
   requires:
     families: *id001
-  es_text_only_reason:
-  - 'custody: free phrase; the step''s pivot names no registry column'
-  - 'seized: free phrase; the step''s pivot names no registry column'
-  - 'collected: free phrase; the step''s pivot names no registry column'
+  kind: procedure
+  procedure_reason: 'R0'' defect: this step''s look_for is an investigation ORDER
+    (do X, then Y), not evidence to search. It is shown to agents as a procedure and
+    never executed, so it cannot fire on noise and cannot count as coverage.'
+  es_dropped:
+  - term: custody
+    reason: 'procedure step: shown to agents, never executed'
+  - term: seized
+    reason: 'procedure step: shown to agents, never executed'
+  - term: collected
+    reason: 'procedure step: shown to agents, never executed'
+  - *id002
+  - *id003
+  - *id004
+  - *id005
+  - *id010
+  - *id011
+  - *id012
+  - *id013
+  - *id006
+  - *id007
+  - *id008
+  - *id009
 negative: Missing acquisition records (no hash, no custody log, no tool version) doesn't
   make analysis wrong — it makes it unverifiable. Flag provenance gaps explicitly
   in the report rather than implying verification.

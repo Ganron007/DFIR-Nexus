@@ -42,7 +42,7 @@ steps:
     bool:
       must:
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*.lnk*'
             case_insensitive: true
       - wildcard:
@@ -60,6 +60,9 @@ steps:
     - amcache
     - jumplist
     - browser
+  es_text_only_reason:
+  - '.lnk: a file name token; the value-shape file_path route is removed (WO-CS1 moves
+    it to ecs.file.path), searched in text'
 - name: msi_execution
   query: msiexec /i OR .msi MsiInstaller
   look_for: msiexec executions of unsigned/downloaded MSIs; MsiInstaller events 11707
@@ -75,7 +78,7 @@ steps:
       - bool:
           must:
           - wildcard:
-              fields.file_path.kw:
+              text.wc:
                 value: '*.msi*'
                 case_insensitive: true
           - wildcard:
@@ -87,6 +90,8 @@ steps:
     families: *id001
   es_text_only_reason:
   - 'msiexec /i: free phrase; the step''s pivot names no registry column'
+  - '.msi: a file name token; the value-shape file_path route is removed (WO-CS1 moves
+    it to ecs.file.path), searched in text'
   - 'MsiInstaller: free phrase; the step''s pivot names no registry column'
 - name: chm_execution
   query: hh.exe OR .chm
@@ -96,7 +101,7 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*hh.exe*'
             case_insensitive: true
       - wildcard:
@@ -107,6 +112,8 @@ steps:
   requires:
     families: *id001
   es_text_only_reason:
+  - 'hh.exe: a file name token; the value-shape file_path route is removed (WO-CS1
+    moves it to ecs.file.path), searched in text'
   - '.chm: free phrase; the step''s pivot names no registry column'
 - name: html_smuggling_download
   query: '.html blob: download FromCache OR browser'
@@ -140,16 +147,21 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*Zone.Identifier Mark-of-the-Web*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*ZoneId=3*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'Zone.Identifier Mark-of-the-Web: file-path pivot; the value-shape route is removed
+    (WO-CS1 moves it to ecs.file.path), searched in text'
+  - 'ZoneId=3: file-path pivot; the value-shape route is removed (WO-CS1 moves it
+    to ecs.file.path), searched in text'
 - name: office_spawns
   query: winword.exe OR excel.exe OR powerpnt.exe cmd.exe powershell.exe
   look_for: Office binaries spawning script interpreters — macro execution.
@@ -158,30 +170,41 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*winword.exe*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*excel.exe*'
             case_insensitive: true
       - bool:
           must:
           - wildcard:
-              fields.file_path.kw:
+              text.wc:
                 value: '*powerpnt.exe*'
                 case_insensitive: true
           - wildcard:
-              fields.file_path.kw:
+              text.wc:
                 value: '*cmd.exe*'
                 case_insensitive: true
           - wildcard:
-              fields.file_path.kw:
+              text.wc:
                 value: '*powershell.exe*'
                 case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'winword.exe: a file name token; the value-shape file_path route is removed (WO-CS1
+    moves it to ecs.file.path), searched in text'
+  - 'excel.exe: a file name token; the value-shape file_path route is removed (WO-CS1
+    moves it to ecs.file.path), searched in text'
+  - 'powerpnt.exe: a file name token; the value-shape file_path route is removed (WO-CS1
+    moves it to ecs.file.path), searched in text'
+  - 'cmd.exe: a file name token; the value-shape file_path route is removed (WO-CS1
+    moves it to ecs.file.path), searched in text'
+  - 'powershell.exe: a file name token; the value-shape file_path route is removed
+    (WO-CS1 moves it to ecs.file.path), searched in text'
 - name: child_process_anomaly
   query: explorer.exe cmd.exe OR explorer.exe powershell.exe OR explorer.exe mshta.exe
   look_for: Script interpreters parented by explorer.exe near payload arrival.
@@ -192,36 +215,49 @@ steps:
       - bool:
           must:
           - wildcard:
-              fields.file_path.kw:
+              text.wc:
                 value: '*explorer.exe*'
                 case_insensitive: true
           - wildcard:
-              fields.file_path.kw:
+              text.wc:
                 value: '*cmd.exe*'
                 case_insensitive: true
       - bool:
           must:
           - wildcard:
-              fields.file_path.kw:
+              text.wc:
                 value: '*explorer.exe*'
                 case_insensitive: true
           - wildcard:
-              fields.file_path.kw:
+              text.wc:
                 value: '*powershell.exe*'
                 case_insensitive: true
       - bool:
           must:
           - wildcard:
-              fields.file_path.kw:
+              text.wc:
                 value: '*explorer.exe*'
                 case_insensitive: true
           - wildcard:
-              fields.file_path.kw:
+              text.wc:
                 value: '*mshta.exe*'
                 case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'explorer.exe: a file name token; the value-shape file_path route is removed (WO-CS1
+    moves it to ecs.file.path), searched in text'
+  - 'cmd.exe: a file name token; the value-shape file_path route is removed (WO-CS1
+    moves it to ecs.file.path), searched in text'
+  - 'explorer.exe: a file name token; the value-shape file_path route is removed (WO-CS1
+    moves it to ecs.file.path), searched in text'
+  - 'powershell.exe: a file name token; the value-shape file_path route is removed
+    (WO-CS1 moves it to ecs.file.path), searched in text'
+  - 'explorer.exe: a file name token; the value-shape file_path route is removed (WO-CS1
+    moves it to ecs.file.path), searched in text'
+  - 'mshta.exe: a file name token; the value-shape file_path route is removed (WO-CS1
+    moves it to ecs.file.path), searched in text'
 - name: iab_vector_check
   query: rdp OR 4625 OR edge OR vpn OR exchange
   look_for: 'If no user-execution artifact explains entry, check the four dominant

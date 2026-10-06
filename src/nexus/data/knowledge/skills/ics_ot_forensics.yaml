@@ -136,24 +136,33 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*engineering workstation*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*project file*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*plc program*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*download*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'engineering workstation: file-path pivot; the value-shape route is removed (WO-CS1
+    moves it to ecs.file.path), searched in text'
+  - 'project file: file-path pivot; the value-shape route is removed (WO-CS1 moves
+    it to ecs.file.path), searched in text'
+  - 'plc program: file-path pivot; the value-shape route is removed (WO-CS1 moves
+    it to ecs.file.path), searched in text'
+  - 'download: file-path pivot; the value-shape route is removed (WO-CS1 moves it
+    to ecs.file.path), searched in text'
 - name: plc_hmi_evidence
   query: PLC log OR HMI event OR alarm OR controller OR firmware
   look_for: 'Collect from devices where possible: PLC program/hash and diagnostic

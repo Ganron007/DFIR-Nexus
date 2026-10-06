@@ -82,7 +82,7 @@ steps:
             value: '*iwr*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*curl.exe*'
             case_insensitive: true
       - wildcard:
@@ -97,6 +97,8 @@ steps:
   - 'DownloadFile: free phrase; the step''s pivot names no registry column'
   - 'Invoke-WebRequest: free phrase; the step''s pivot names no registry column'
   - 'iwr: free phrase; the step''s pivot names no registry column'
+  - 'curl.exe: a file name token; the value-shape file_path route is removed (WO-CS1
+    moves it to ecs.file.path), searched in text'
   - 'wget: free phrase; the step''s pivot names no registry column'
 - name: script_block_4104
   query: '4104'
@@ -120,7 +122,7 @@ steps:
             value: '*amsiInitFailed*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*amsi.dll*'
             case_insensitive: true
       - wildcard:
@@ -132,6 +134,8 @@ steps:
     families: *id001
   es_text_only_reason:
   - 'amsiInitFailed: free phrase; the step''s pivot names no registry column'
+  - 'amsi.dll: a file name token; the value-shape file_path route is removed (WO-CS1
+    moves it to ecs.file.path), searched in text'
   - 'AmsiUtils: free phrase; the step''s pivot names no registry column'
 - name: powershell_downgrade
   query: powershell -version 2 OR -Version 2.0
@@ -196,20 +200,27 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*transcript*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*Start-Transcript*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*.ps1*'
             case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'transcript: file-path pivot; the value-shape route is removed (WO-CS1 moves it
+    to ecs.file.path), searched in text'
+  - 'Start-Transcript: file-path pivot; the value-shape route is removed (WO-CS1 moves
+    it to ecs.file.path), searched in text'
+  - '.ps1: a file name token; the value-shape file_path route is removed (WO-CS1 moves
+    it to ecs.file.path), searched in text'
 negative: No encoded commands, cradles, or suspicious script blocks → PowerShell abuse
   unlikely; check cmd/wscript/mshta/python instead.
 confidence_rules:

@@ -76,7 +76,7 @@ steps:
       - bool:
           must:
           - wildcard:
-              fields.file_path.kw:
+              text.wc:
                 value: '*sc.exe*'
                 case_insensitive: true
           - wildcard:
@@ -88,6 +88,8 @@ steps:
     families: *id001
   es_text_only_reason:
   - 'sc create: free phrase; the step''s pivot names no registry column'
+  - 'sc.exe: a file name token; the value-shape file_path route is removed (WO-CS1
+    moves it to ecs.file.path), searched in text'
   - 'create: free phrase; the step''s pivot names no registry column'
 - name: scheduled_tasks
   query: schtasks /create OR 106 OR TaskScheduler
@@ -167,22 +169,29 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*Startup*'
             case_insensitive: true
       - bool:
           must:
           - wildcard:
-              fields.file_path.kw:
+              text.wc:
                 value: '*.lnk*'
                 case_insensitive: true
           - wildcard:
-              fields.file_path.kw:
+              text.wc:
                 value: '*Start Menu\Programs\Startup*'
                 case_insensitive: true
       minimum_should_match: 1
   requires:
     families: *id001
+  es_text_only_reason:
+  - 'Startup: file-path pivot; the value-shape route is removed (WO-CS1 moves it to
+    ecs.file.path), searched in text'
+  - '.lnk: a file name token; the value-shape file_path route is removed (WO-CS1 moves
+    it to ecs.file.path), searched in text'
+  - 'Start Menu\Programs\Startup: file-path pivot; the value-shape route is removed
+    (WO-CS1 moves it to ecs.file.path), searched in text'
 - name: dll_hijack
   query: fxsst.dll OR ntshrui.dll OR side-loading OR WinSxS
   look_for: 'DLL-hijack persistence classes: search-order hijack (malicious DLL ahead
@@ -197,11 +206,11 @@ steps:
     bool:
       should:
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*fxsst.dll*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*ntshrui.dll*'
             case_insensitive: true
       - wildcard:
@@ -216,6 +225,10 @@ steps:
   requires:
     families: *id001
   es_text_only_reason:
+  - 'fxsst.dll: a file name token; the value-shape file_path route is removed (WO-CS1
+    moves it to ecs.file.path), searched in text'
+  - 'ntshrui.dll: a file name token; the value-shape file_path route is removed (WO-CS1
+    moves it to ecs.file.path), searched in text'
   - 'side-loading: free phrase; the step''s pivot names no registry column'
   - 'WinSxS: free phrase; the step''s pivot names no registry column'
 - name: task_persistence_case
@@ -232,7 +245,7 @@ steps:
             value: '*schtasks*'
             case_insensitive: true
       - wildcard:
-          fields.file_path.kw:
+          text.wc:
             value: '*at.exe*'
             case_insensitive: true
       - wildcard:
@@ -244,6 +257,8 @@ steps:
     families: *id001
   es_text_only_reason:
   - 'schtasks: free phrase; the step''s pivot names no registry column'
+  - 'at.exe: a file name token; the value-shape file_path route is removed (WO-CS1
+    moves it to ecs.file.path), searched in text'
   - 'TaskScheduler: free phrase; the step''s pivot names no registry column'
 negative: No autostart writes, service installs, or task registrations → the attacker
   may rely on existing persistence or volatile-only presence.
