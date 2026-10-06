@@ -20,6 +20,7 @@ from urllib.parse import urlparse
 
 log = logging.getLogger(__name__)
 
+from nexus.langgraph.ecs_normalize import normalize
 from nexus.langgraph.match_site import classify_matched_terms
 from nexus.langgraph.path_sanitize import (
     machine_roots,
@@ -84,12 +85,19 @@ WILDCARD_IGNORE_ABOVE = 32766
 #     row text. A bump is required, not cosmetic: an index built at v8 silently
 #     omits those columns from every search, and this is exactly what the
 #     reviewer proved with a mimikatz command line that could not be found.
-INDEX_SCHEMA_VERSION = 9
+# 10 = WO-CS1: a pure `normalize(family, fields, record)` adds `doc["ecs"]` - one
+#     ECS field set per row (mapped in `data/schema/ecs_map.yaml`), ADDED beside the
+#     per-tool columns. Nothing is removed, so an unnormalized doc equals the
+#     schema-9 doc (the "nothing lost" acceptance).
+INDEX_SCHEMA_VERSION = 10
 
 _MAX_INDEX_FIELDS = 24
 # JSON-family artifacts are line records (NDJSON/JSONL), never delimited tables.
 _JSON_RECORD_SUFFIXES = (".json", ".jsonl", ".ndjson")
 _MAX_INDEX_FIELD_VALUE = 300
+# WO-CS1: the EvtxECmd `Payload` JSON is parsed structurally (all EventData names
+# become ecs.winlog.event_data.*), so it must not be cut at the generic value limit.
+_MAX_PAYLOAD_FIELD_VALUE = 65536
 
 # ES rejects monolithic term scans ("Query rewrite failed: too many clauses"):
 # every needle expands to 2-3 clauses (match_phrase + fields.* multi_match +
@@ -333,7 +341,12 @@ def iter_record_rows(fh, delimiter: str = ",", *, max_lines: int | None = None,
 def _fields_from_values(header: list[str], values: list[str]) -> dict[str, str]:
     out: dict[str, str] = {}
     for name, value in list(zip(header, values, strict=False))[:_MAX_INDEX_FIELDS]:
-        v = str(value).strip()[:_MAX_INDEX_FIELD_VALUE]
+        # WO-CS1: `Payload` is the EvtxECmd JSON blob; truncating it at 300 chars
+        # breaks the parse, so every Windows typed field (target user, logon type,
+        # image name) is lost. It is parsed structurally, not stored as a value, so
+        # it keeps more room.
+        limit = _MAX_PAYLOAD_FIELD_VALUE if str(name) == "Payload" else _MAX_INDEX_FIELD_VALUE
+        v = str(value).strip()[:limit]
         if v and not str(name).startswith("_"):
             out[str(name)] = v
     return out
@@ -587,6 +600,11 @@ def iter_index_doc_batches(
                 doc["user"] = user.lower()[:120]
             if event:
                 doc["event_id"] = str(event)[:40]
+        # WO-CS1: one common ECS field set, ADDED beside the per-tool columns.
+        # Never replaces `text`/`fields`; an unnormalized doc equals the schema-9 doc.
+        ecs = normalize(fam, fields, None)
+        if ecs:
+            doc["ecs"] = ecs
         # 4k.4: parsed time columns first (TimeCreated/ts/…), then row text;
         # offsets honored, naive == UTC (flagged), syslog year flagged.
         ts_info = extract_event_ts(text, fields, year_hint=year_hint)
@@ -824,7 +842,37 @@ def _mapping_body() -> dict[str, Any]:
                             "fields": {"kw": {"type": "keyword", "ignore_above": 1024}},
                         },
                     }
-                }
+                },
+                {
+                    # WO-CS1: an ECS event-data name (`ecs.winlog.event_data.<Name>`)
+                    # is keyword + wildcard so it filters exactly and searches by pattern.
+                    "ecs_event_data_strings": {
+                        "path_match": "ecs.winlog.event_data.*",
+                        "match_mapping_type": "string",
+                        "mapping": {
+                            "type": "keyword",
+                            "ignore_above": 4096,
+                            "fields": {"wc": {"type": "wildcard", "ignore_above": WILDCARD_IGNORE_ABOVE}},
+                        },
+                    }
+                },
+                {
+                    # WO-CS1: remaining ECS strings are keyword (so `term` and
+                    # `wildcard` work on the base name the WO's acceptance names),
+                    # with a `text` subfield for a phrase query.
+                    "ecs_strings": {
+                        "path_match": "ecs.*",
+                        "match_mapping_type": "string",
+                        "mapping": {
+                            "type": "keyword",
+                            "ignore_above": 4096,
+                            "fields": {
+                                "wc": {"type": "wildcard", "ignore_above": WILDCARD_IGNORE_ABOVE},
+                                "text": {"type": "text"},
+                            },
+                        },
+                    }
+                },
             ],
             "properties": {
                 "case_id": {"type": "keyword"},
@@ -847,6 +895,8 @@ def _mapping_body() -> dict[str, Any]:
                 "ts_tz_assumed": {"type": "boolean"},
                 "ts_year_assumed": {"type": "boolean"},
                 "fields": fields_spec,
+                # WO-CS1: the common ECS field set, added beside the tool columns.
+                "ecs": {"type": "object", "dynamic": True},
             },
         },
     }

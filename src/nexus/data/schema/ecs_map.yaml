@@ -1,0 +1,202 @@
+# WO-CS1 — the ECS field map (one common schema at index time, additive).
+#
+# DESIGN (decided in the WO; do not re-open): every source is mapped to one field
+# set under the `ecs.*` prefix, so the LLM and every stored query can ask a
+# cross-source question without knowing per-tool column names. Windows event
+# fields stay as `ecs.winlog.event_data.<Name>`.
+#
+# ADDITIVE: `text`, the core envelope, every `fields.<tool column>` and `Payload`
+# all stay exactly as they are. `ecs.*` is added beside them.
+#
+# Provenance: this is OUR schema design (authored), but every source name in it
+# must exist in a real source - `tests/test_cs1_ecs_normalize.py` checks each
+# against the pinned `evtxecmd_maps.yaml` or the operator's `es_mappings/<tool>.yaml`.
+#
+# Transforms are limited to: splitting a path into name/directory/extension,
+# parsing `Hashes=` lists, and lower-casing keyword copies. No value invention.
+
+version: 1
+
+# ── Windows EVTX: common fields derived from EventData names, per event id ──
+# `from` names an EventData @Name; the value is copied to the ECS field.
+# Every name used must appear in that event's xpaths in evtxecmd_maps.yaml.
+winlog_event_data:
+  # Security
+  "4624":
+    TargetUserName: ecs.user.target.name
+    TargetDomainName: ecs.user.target.domain
+    SubjectUserName: ecs.user.name
+    LogonType: ecs.winlog.logon.type
+    IpAddress: ecs.source.ip
+    IpPort: ecs.source.port
+    WorkstationName: ecs.host.name
+  "4625":
+    TargetUserName: ecs.user.target.name
+    TargetDomainName: ecs.user.target.domain
+    LogonType: ecs.winlog.logon.type
+    IpAddress: ecs.source.ip
+    IpPort: ecs.source.port
+  "4688":
+    NewProcessName: ecs.process.executable
+    CommandLine: ecs.process.command_line
+    ParentProcessName: ecs.process.parent.executable
+    NewProcessId: ecs.process.pid
+    SubjectUserName: ecs.user.name
+  "4672":
+    SubjectUserName: ecs.user.name
+    SubjectDomainName: ecs.user.domain
+  "7045":
+    ServiceName: ecs.service.name
+    ImagePath: ecs.process.executable
+    StartType: ecs.service.start_type
+  "4104":
+    ScriptBlockText: ecs.winlog.event_data.ScriptBlockText
+  # Sysmon
+  "1":
+    Image: ecs.process.executable
+    CommandLine: ecs.process.command_line
+    ParentImage: ecs.process.parent.executable
+    ParentCommandLine: ecs.process.parent.command_line
+    ProcessId: ecs.process.pid
+    ParentProcessId: ecs.process.parent.pid
+    OriginalFileName: ecs.process.pe.original_file_name
+    Hashes: ecs.process.hash
+    User: ecs.user.name
+  "3":
+    SourceIp: ecs.source.ip
+    SourcePort: ecs.source.port
+    DestinationIp: ecs.destination.ip
+    DestinationPort: ecs.destination.port
+    Protocol: ecs.network.transport
+    Image: ecs.process.executable
+  "11":
+    TargetFilename: ecs.file.path
+    Image: ecs.process.executable
+  "12":
+    TargetObject: ecs.registry.path
+    Image: ecs.process.executable
+  "13":
+    TargetObject: ecs.registry.path
+    Details: ecs.registry.data.strings
+    Image: ecs.process.executable
+  "22":
+    QueryName: ecs.dns.question.name
+    Image: ecs.process.executable
+
+# ── Column -> ECS field, per tool family (from the operator's ES-Mapping) ──
+# `transform` (optional): path_split | hash_list | lower.
+family_columns:
+  pecmd:
+    ExecutableName: ecs.process.name
+    ExecutablePath: ecs.file.path
+    Hash: ecs.process.hash
+    RunCount: ecs.process.run_count
+  mftecmd:
+    # WO-CS1: ParentPath + FileName combine into the full path (join), so a
+    # `ecs.file.path` wildcard matches. The name/directory/extension split derives
+    # from the joined path.
+    ParentPath: ecs.file.path
+    FileName: ecs.file.path
+    FileSize: ecs.file.size
+    Extension: ecs.file.extension
+    Created0x10: ecs.file.created
+    LastModified0x10: ecs.file.modified
+  mftecmd-i30:
+    FileName: ecs.file.name
+    CreatedOn: ecs.file.created
+  recmd:
+    KeyPath: ecs.registry.path
+    ValueName: ecs.registry.value
+    ValueData: ecs.registry.data.strings
+    HivePath: ecs.file.path
+  amcache:
+    Path: ecs.file.path
+    SHA1: ecs.file.hash.sha1
+    Name: ecs.file.name
+  lecmd:
+    TargetPath: ecs.file.path
+    SourceFile: ecs.file.name
+  jlecmd:
+    TargetPath: ecs.file.path
+    Name: ecs.file.name
+  sbecmd:
+    AbsolutePath: ecs.file.path
+    Name: ecs.file.name
+  rbcmd:
+    FileName: ecs.file.name
+    FilePath: ecs.file.path
+  sqlecmd:
+    URL: ecs.url.full
+    Name: ecs.file.name
+  wxtcmd:
+    Executable: ecs.process.executable
+    DisplayText: ecs.winlog.event_data.DisplayText
+  evtxecmd:
+    Channel: ecs.winlog.channel
+    EventId: ecs.event.code
+    Provider: ecs.event.provider
+    RecordNumber: ecs.winlog.record_id
+    Computer: ecs.host.name
+    UserName: ecs.user.name
+  hayabusa:
+    RuleTitle: ecs.rule.name
+    RuleID: ecs.rule.id
+    Level: ecs.rule.level
+    EventID: ecs.event.code
+    Computer: ecs.host.name
+    Channel: ecs.winlog.channel
+    RecordID: ecs.winlog.record_id
+  chainsaw:
+    Event ID: ecs.event.code
+    Computer: ecs.host.name
+  # vol (Volatility) pslist/netscan
+  vol:
+    ImageFileName: ecs.process.name
+    PID: ecs.process.pid
+    PPID: ecs.process.parent.pid
+    Process: ecs.process.name
+    Args: ecs.process.command_line
+    ForeignAddr: ecs.destination.ip
+    ForeignPort: ecs.destination.port
+    LocalAddr: ecs.source.ip
+    LocalPort: ecs.source.port
+  plaso:
+    data_type: ecs.event.action
+    message: ecs.winlog.event_data.message
+    timestamp: ecs.event.created
+  suzaku:
+    eventName: ecs.event.action
+    sourceIPAddress: ecs.source.ip
+    userIdentity_arn: ecs.user.name
+    userAgent: ecs.user_agent.original
+    awsRegion: ecs.cloud.region
+  # importer normalized slots (raw artifact records)
+  ingest:
+    process_name: ecs.process.name
+    command_line: ecs.process.command_line
+    parent_process: ecs.process.parent.name
+    file_path: ecs.file.path
+    file_hash_md5: ecs.file.hash.md5
+    file_hash_sha1: ecs.file.hash.sha1
+    file_hash_sha256: ecs.file.hash.sha256
+    registry_key: ecs.registry.path
+    registry_value: ecs.registry.value
+    source_ip: ecs.source.ip
+    source_port: ecs.source.port
+    dest_ip: ecs.destination.ip
+    dest_port: ecs.destination.port
+    user: ecs.user.name
+    host: ecs.host.name
+    process_id: ecs.process.pid
+
+# ── Fields that must be keyword-typed with a wildcard subfield ──
+# (command lines and paths are searched by wildcard).
+keyword_with_wildcard:
+  - ecs.process.command_line
+  - ecs.process.parent.command_line
+  - ecs.file.path
+  - ecs.file.directory
+  - ecs.registry.path
+  - ecs.registry.data.strings
+  - ecs.process.executable
+  - ecs.process.parent.executable
