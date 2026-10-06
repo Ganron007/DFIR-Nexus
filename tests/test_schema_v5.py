@@ -64,7 +64,9 @@ def test_mapping_body_is_schema_v5_with_explicit_fields():
     # silently omits them from every search, so the bump is load-bearing and an
     # index built before it must be rebuilt.
     # v10: WO-CS1 - the common `ecs.*` field set is added at index time (additive).
-    assert INDEX_SCHEMA_VERSION == 10
+    # v11: WO-CS1b item 1 (D37) - the column-count/value caps that dropped
+    # EvtxECmd's Payload are raised, so Windows EventData reaches the index.
+    assert INDEX_SCHEMA_VERSION == 11
     body = _mapping_body()
     assert body["settings"]["index.mapping.ignore_malformed"] is True
     assert body["settings"]["index.mapping.total_fields.limit"] >= 5000

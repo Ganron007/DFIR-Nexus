@@ -89,15 +89,25 @@ WILDCARD_IGNORE_ABOVE = 32766
 #     ECS field set per row (mapped in `data/schema/ecs_map.yaml`), ADDED beside the
 #     per-tool columns. Nothing is removed, so an unnormalized doc equals the
 #     schema-9 doc (the "nothing lost" acceptance).
-INDEX_SCHEMA_VERSION = 10
+# 11 = WO-CS1b item 1 (D37): the column-count cap dropped EvtxECmd's `Payload`
+#     (27 columns, Payload LAST), so no EventData or derived `ecs` field was ever
+#     produced. The cap is raised past the widest real output (JLECmd: 43) and the
+#     per-value cap from 300 to 4096; event_data.ScriptBlockText may reach 32 KB.
+INDEX_SCHEMA_VERSION = 11
 
-_MAX_INDEX_FIELDS = 24
+#: Keep every column of the widest real tool output (JLECmd has 43). Not a cap in
+#: practice - the registry types the columns, and the index holds all families.
+_MAX_INDEX_FIELDS = 96
 # JSON-family artifacts are line records (NDJSON/JSONL), never delimited tables.
 _JSON_RECORD_SUFFIXES = (".json", ".jsonl", ".ndjson")
-_MAX_INDEX_FIELD_VALUE = 300
+# D37: 300 cut real values (a 4624 Payload is ~1,326 chars). 4096 keeps a real row's
+# values whole; the keyword subfield's ignore_above still bounds the keyword copy.
+_MAX_INDEX_FIELD_VALUE = 4096
 # WO-CS1: the EvtxECmd `Payload` JSON is parsed structurally (all EventData names
 # become ecs.winlog.event_data.*), so it must not be cut at the generic value limit.
 _MAX_PAYLOAD_FIELD_VALUE = 65536
+#: One EventData value may be a whole PowerShell script block; the WO allows 32 KB.
+_MAX_EVENT_DATA_VALUE = 32768
 
 # ES rejects monolithic term scans ("Query rewrite failed: too many clauses"):
 # every needle expands to 2-3 clauses (match_phrase + fields.* multi_match +
@@ -339,16 +349,32 @@ def iter_record_rows(fh, delimiter: str = ",", *, max_lines: int | None = None,
 
 
 def _fields_from_values(header: list[str], values: list[str]) -> dict[str, str]:
+    """Parsed columns for one row, at FULL value length (WO-CS1b item 1 / D37).
+
+    No per-value truncation here: `normalize()` must read the full parsed row
+    before any storage cap, or a 1,326-char EvtxECmd `Payload` is cut and no
+    EventData is produced. The storage cap is applied in `_add` when it builds
+    `doc["fields"]`, not at parse time.
+    """
     out: dict[str, str] = {}
     for name, value in list(zip(header, values, strict=False))[:_MAX_INDEX_FIELDS]:
-        # WO-CS1: `Payload` is the EvtxECmd JSON blob; truncating it at 300 chars
-        # breaks the parse, so every Windows typed field (target user, logon type,
-        # image name) is lost. It is parsed structurally, not stored as a value, so
-        # it keeps more room.
-        limit = _MAX_PAYLOAD_FIELD_VALUE if str(name) == "Payload" else _MAX_INDEX_FIELD_VALUE
-        v = str(value).strip()[:limit]
+        v = str(value).strip()
         if v and not str(name).startswith("_"):
             out[str(name)] = v
+    return out
+
+
+def _cap_field_values(fields: dict[str, str] | None) -> dict[str, str]:
+    """Apply the storage value cap to a field map (WO-CS1b item 1 / D37).
+
+    `normalize()` reads the full map; `doc["fields"]` keeps the capped copy. The
+    storage cap is `_MAX_INDEX_FIELD_VALUE` (4,096), except EvtxECmd's `Payload`
+    JSON which keeps up to `_MAX_PAYLOAD_FIELD_VALUE` (it is parsed structurally).
+    """
+    out: dict[str, str] = {}
+    for k, v in (fields or {}).items():
+        limit = _MAX_PAYLOAD_FIELD_VALUE if str(k) == "Payload" else _MAX_INDEX_FIELD_VALUE
+        out[str(k)] = str(v)[:limit]
     return out
 
 
@@ -590,21 +616,27 @@ def iter_index_doc_batches(
             "text": text,
         }
         if fields:
-            fields = sanitize_field_map(fields, case_dir, roots=sanitize_roots,
-                                        family=fam)
-            host, user, event = _host_user_event(fields)
-            doc["fields"] = fields
+            # WO-CS1b item 1 (D37): the field map is sanitized at full length; the
+            # ECS normalization reads THAT (a 1,326-char EvtxECmd Payload must reach
+            # it whole). The storage cap is applied only to `doc["fields"]` below.
+            full_fields = sanitize_field_map(fields, case_dir, roots=sanitize_roots,
+                                             family=fam)
+            host, user, event = _host_user_event(full_fields)
+            doc["fields"] = _cap_field_values(full_fields)
             if host:
                 doc["host"] = host.lower()[:120]
             if user:
                 doc["user"] = user.lower()[:120]
             if event:
                 doc["event_id"] = str(event)[:40]
-        # WO-CS1: one common ECS field set, ADDED beside the per-tool columns.
-        # Never replaces `text`/`fields`; an unnormalized doc equals the schema-9 doc.
-        ecs = normalize(fam, fields, None)
-        if ecs:
-            doc["ecs"] = ecs
+            # WO-CS1: one common ECS field set, ADDED beside the per-tool columns.
+            ecs = normalize(fam, full_fields, None)
+            if ecs:
+                doc["ecs"] = ecs
+        else:
+            ecs = normalize(fam, fields, None)
+            if ecs:
+                doc["ecs"] = ecs
         # 4k.4: parsed time columns first (TimeCreated/ts/…), then row text;
         # offsets honored, naive == UTC (flagged), syslog year flagged.
         ts_info = extract_event_ts(text, fields, year_hint=year_hint)

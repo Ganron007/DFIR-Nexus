@@ -20,79 +20,82 @@ version: 1
 # ── Windows EVTX: common fields derived from EventData names, per event id ──
 # `from` names an EventData @Name; the value is copied to the ECS field.
 # Every name used must appear in that event's xpaths in evtxecmd_maps.yaml.
+# WO-CS1b item 2: keyed by (channel, event id), so Sysmon's 1/3/11/13 apply only
+# to the Sysmon channel and Security's 4624 only to Security.
 winlog_event_data:
-  # Security
-  "4624":
-    TargetUserName: ecs.user.target.name
-    TargetDomainName: ecs.user.target.domain
-    SubjectUserName: ecs.user.name
-    LogonType: ecs.winlog.logon.type
-    IpAddress: ecs.source.ip
-    IpPort: ecs.source.port
-    WorkstationName: ecs.host.name
-  "4625":
-    TargetUserName: ecs.user.target.name
-    TargetDomainName: ecs.user.target.domain
-    LogonType: ecs.winlog.logon.type
-    IpAddress: ecs.source.ip
-    IpPort: ecs.source.port
-  "4688":
-    NewProcessName: ecs.process.executable
-    CommandLine: ecs.process.command_line
-    ParentProcessName: ecs.process.parent.executable
-    NewProcessId: ecs.process.pid
-    SubjectUserName: ecs.user.name
-  "4672":
-    SubjectUserName: ecs.user.name
-    SubjectDomainName: ecs.user.domain
-  "7045":
-    ServiceName: ecs.service.name
-    ImagePath: ecs.process.executable
-    StartType: ecs.service.start_type
-  "4104":
-    ScriptBlockText: ecs.winlog.event_data.ScriptBlockText
-  # Sysmon
-  "1":
-    Image: ecs.process.executable
-    CommandLine: ecs.process.command_line
-    ParentImage: ecs.process.parent.executable
-    ParentCommandLine: ecs.process.parent.command_line
-    ProcessId: ecs.process.pid
-    ParentProcessId: ecs.process.parent.pid
-    OriginalFileName: ecs.process.pe.original_file_name
-    Hashes: ecs.process.hash
-    User: ecs.user.name
-  "3":
-    SourceIp: ecs.source.ip
-    SourcePort: ecs.source.port
-    DestinationIp: ecs.destination.ip
-    DestinationPort: ecs.destination.port
-    Protocol: ecs.network.transport
-    Image: ecs.process.executable
-  "11":
-    TargetFilename: ecs.file.path
-    Image: ecs.process.executable
-  "12":
-    TargetObject: ecs.registry.path
-    Image: ecs.process.executable
-  "13":
-    TargetObject: ecs.registry.path
-    Details: ecs.registry.data.strings
-    Image: ecs.process.executable
-  "22":
-    QueryName: ecs.dns.question.name
-    Image: ecs.process.executable
+  Security:
+    "4624":
+      TargetUserName: ecs.user.target.name
+      TargetDomainName: ecs.user.target.domain
+      SubjectUserName: ecs.user.name
+      LogonType: ecs.winlog.logon.type
+      IpAddress: ecs.source.ip
+      IpPort: ecs.source.port
+      WorkstationName: ecs.host.name
+    "4625":
+      TargetUserName: ecs.user.target.name
+      TargetDomainName: ecs.user.target.domain
+      LogonType: ecs.winlog.logon.type
+      IpAddress: ecs.source.ip
+      IpPort: ecs.source.port
+    "4688":
+      NewProcessName: ecs.process.executable
+      CommandLine: ecs.process.command_line
+      NewProcessId: ecs.process.pid
+      SubjectUserName: ecs.user.name
+      # real 4688 has no ParentProcessName; the parent comes from the row's own
+      # ProcessId field only on the modern form, so it is not mapped.
+  System:
+    "7045":
+      ServiceName: ecs.service.name
+      ImagePath: ecs.process.executable
+      StartType: ecs.service.start_type
+  Microsoft-Windows-PowerShell/Operational:
+    "4104":
+      ScriptBlockText: ecs.winlog.event_data.ScriptBlockText
+      Path: ecs.process.executable
+  Microsoft-Windows-Sysmon/Operational:
+    "1":
+      Image: ecs.process.executable
+      CommandLine: ecs.process.command_line
+      ParentImage: ecs.process.parent.executable
+      ParentCommandLine: ecs.process.parent.command_line
+      ProcessId: ecs.process.pid
+      ParentProcessId: ecs.process.parent.pid
+      OriginalFileName: ecs.process.pe.original_file_name
+      Hashes: ecs.process.hash
+      User: ecs.user.name
+    "3":
+      SourceIp: ecs.source.ip
+      SourcePort: ecs.source.port
+      DestinationIp: ecs.destination.ip
+      DestinationPort: ecs.destination.port
+      Protocol: ecs.network.transport
+      Image: ecs.process.executable
+    "11":
+      TargetFilename: ecs.file.path
+      Image: ecs.process.executable
+    "12":
+      TargetObject: ecs.registry.path
+      Image: ecs.process.executable
+    "13":
+      TargetObject: ecs.registry.path
+      Details: ecs.registry.data.strings
+      Image: ecs.process.executable
 
 # ── Column -> ECS field, per tool family (from the operator's ES-Mapping) ──
 # `transform` (optional): path_split | hash_list | lower.
 family_columns:
   pecmd:
+    # WO-CS1b item 3: PECmd `Hash` is the prefetch PATH hash, not a file hash, so
+    # it is removed as a source. `ExecutablePath` does not exist in real PECmd
+    # output - the executable is `ExecutableName`, and its full path is derived
+    # from the prefetch `Directories` + name only for display, so it is not mapped.
     ExecutableName: ecs.process.name
-    ExecutablePath: ecs.file.path
-    Hash: ecs.process.hash
     RunCount: ecs.process.run_count
+    LastRun: ecs.file.modified
   mftecmd:
-    # WO-CS1: ParentPath + FileName combine into the full path (join), so a
+    # ParentPath + FileName combine into the full path (join), so a
     # `ecs.file.path` wildcard matches. The name/directory/extension split derives
     # from the joined path.
     ParentPath: ecs.file.path
@@ -101,36 +104,48 @@ family_columns:
     Extension: ecs.file.extension
     Created0x10: ecs.file.created
     LastModified0x10: ecs.file.modified
-  mftecmd-i30:
-    FileName: ecs.file.name
-    CreatedOn: ecs.file.created
   recmd:
     KeyPath: ecs.registry.path
     ValueName: ecs.registry.value
     ValueData: ecs.registry.data.strings
-    HivePath: ecs.file.path
-  amcache:
-    Path: ecs.file.path
-    SHA1: ecs.file.hash.sha1
-    Name: ecs.file.name
+    # HivePath is a provenance column the sanitizer replaces with `<source>`;
+    # it is removed as a source so no ecs field can hold `<source>`.
+    # AmcacheParser CSV output (Path/SHA1/Name) is NOT mapped: the corpus stages no
+    # AmcacheParser output (only the raw hive -> `ingest-amcache` slots), so those
+    # columns are unverifiable (WO-CS1b item 3: remove dead entries).
   lecmd:
-    TargetPath: ecs.file.path
-    SourceFile: ecs.file.name
+    # WO-CS1b item 3: real LECmd columns. `SourceFile` is provenance (the parser's
+    # input path, replaced with `<source>`), so it is not a source. A LNK's target
+    # is `LocalPath` / `NetworkPath` / `RelativePath`, and `TargetIDAbsolutePath`
+    # is the resolved target.
+    TargetIDAbsolutePath: ecs.file.path
+    LocalPath: ecs.file.path
+    RelativePath: ecs.file.path
+    NetworkPath: ecs.file.path
   jlecmd:
-    TargetPath: ecs.file.path
-    Name: ecs.file.name
+    # Real JLECmd columns. `TargetIDAbsolutePath` / `LocalPath` are the target.
+    TargetIDAbsolutePath: ecs.file.path
+    LocalPath: ecs.file.path
+    RelativePath: ecs.file.path
+    CommonPath: ecs.file.path
   sbecmd:
     AbsolutePath: ecs.file.path
-    Name: ecs.file.name
   rbcmd:
-    FileName: ecs.file.name
-    FilePath: ecs.file.path
+    # WO-CS1b item 3: `FileName` is the full original path, so it is `ecs.file.path`
+    # (the name/directory split derives from it). There is no `FilePath` column.
+    FileName: ecs.file.path
   sqlecmd:
+    # Real SQLECmd column is `URL` (browser history); `Name` is not one.
     URL: ecs.url.full
-    Name: ecs.file.name
   wxtcmd:
     Executable: ecs.process.executable
     DisplayText: ecs.winlog.event_data.DisplayText
+  appcompat:
+    # WO-CS1b item 3: AppCompatCacheParser output (was unmapped). `Path` is the
+    # executed file; `LastModifiedTimeUTC` its last write.
+    Path: ecs.file.path
+    LastModifiedTimeUTC: ecs.file.modified
+
   evtxecmd:
     Channel: ecs.winlog.channel
     EventId: ecs.event.code
@@ -149,6 +164,10 @@ family_columns:
   chainsaw:
     Event ID: ecs.event.code
     Computer: ecs.host.name
+    Event.System.Provider: ecs.event.provider
+    Record ID: ecs.winlog.record_id
+    # `Event Data` is parsed by `normalize` into ecs.winlog.event_data.<key>
+    # (WO-CS1b item 3); it is not a plain field copy.
   # vol (Volatility) pslist/netscan
   vol:
     ImageFileName: ecs.process.name
@@ -161,15 +180,27 @@ family_columns:
     LocalAddr: ecs.source.ip
     LocalPort: ecs.source.port
   plaso:
-    data_type: ecs.event.action
-    message: ecs.winlog.event_data.message
-    timestamp: ecs.event.created
+    # WO-CS1b item 3: the real plaso l2tcsv columns (date/time/user/host/filename/
+    # desc/source), not the invented data_type/message.
+    filename: ecs.file.path
+    user: ecs.user.name
+    host: ecs.host.name
+    desc: ecs.winlog.event_data.desc
+    source: ecs.event.provider
   suzaku:
-    eventName: ecs.event.action
-    sourceIPAddress: ecs.source.ip
-    userIdentity_arn: ecs.user.name
-    userAgent: ecs.user_agent.original
-    awsRegion: ecs.cloud.region
+    # WO-CS1b item 3: the real suzaku M365/AWS CSV columns (Timestamp, EventName,
+    # SrcIP, UserAgent, UserName, AWS-Region), not the invented eventName/
+    # sourceIPAddress/userIdentity_arn.
+    EventName: ecs.event.action
+    SrcIP: ecs.source.ip
+    UserName: ecs.user.name
+    UserAgent: ecs.user_agent.original
+    AWS-Region: ecs.cloud.region
+    RuleTitle: ecs.rule.name
+    RuleID: ecs.rule.id
+    Level: ecs.rule.level
+    EventID: ecs.event.code
+    Timestamp: ecs.event.created
   # importer normalized slots (raw artifact records)
   ingest:
     process_name: ecs.process.name

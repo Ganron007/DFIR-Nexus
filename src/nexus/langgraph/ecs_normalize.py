@@ -152,9 +152,24 @@ def normalize(
     ev = _parse_payload(payload)
     if ev:
         for name, value in ev.items():
-            _set(ecs, f"ecs.winlog.event_data.{name}", str(value)[:4096])
+            # WO-CS1b item 1: an event_data value keeps up to 4,096 chars; a
+            # PowerShell script block may keep up to 32 KB.
+            limit = 32768 if name == "ScriptBlockText" else 4096
+            _set(ecs, f"ecs.winlog.event_data.{name}", str(value)[:limit])
         event_id = str(fields.get("EventId") or fields.get("EventID") or "").strip()
-        per_event = (emap.get("winlog_event_data") or {}).get(event_id) or {}
+        channel = str(
+            fields.get("Channel") or fields.get("Provider")
+            or fields.get("SourceName") or ""
+        ).strip()
+        # WO-CS1b item 2: the table is keyed by (channel or provider, event ID), so
+        # Sysmon's "1"/"3"/"11" apply only to the Sysmon channel, Security's 4624
+        # only to Security. The legacy event-id-only bucket is a fallback.
+        winlog_table = emap.get("winlog_event_data") or {}
+        per_event = (
+            (winlog_table.get(channel) or {}).get(event_id)
+            or winlog_table.get(event_id)
+            or {}
+        )
         for name, dst in per_event.items():
             if name in ev:
                 _apply_mapped(ecs, dst, ev[name])
@@ -182,6 +197,15 @@ def normalize(
         joined = "\\".join(p.rstrip("\\/") for p in file_path_parts if p)
         if joined:
             _apply_mapped(ecs, "ecs.file.path", joined)
+
+    # 2b. WO-CS1b item 3: Chainsaw's `Event Data` is `key: value` lines; Zircolite's
+    #     detection rows carry EventData columns. Both become
+    #     ecs.winlog.event_data.<Name>.
+    if fam == "chainsaw":
+        for name, value in _parse_chainsaw_event_data(fields.get("Event Data")).items():
+            _set(ecs, f"ecs.winlog.event_data.{name}", str(value)[:4096])
+    if fam == "zircolite":
+        _zircolite_event_data(ecs, fields, record)
 
     # 3. Core envelope always present.
     for key, dst in (("family", "ecs.event.dataset"), ("host", "ecs.host.name"),
@@ -222,6 +246,44 @@ def _apply_mapped(ecs: dict[str, Any], dst: str, value: Any) -> None:
             _set(ecs, k, v)
         return
     _set(ecs, dst, str(value)[:4096])
+
+
+def _parse_chainsaw_event_data(value: Any) -> dict[str, str]:
+    """Chainsaw `Event Data` is `key: value` lines (one per line)."""
+    out: dict[str, str] = {}
+    for line in str(value or "").splitlines():
+        line = line.strip()
+        if not line or ":" not in line:
+            continue
+        key, _, val = line.partition(":")
+        key = key.strip()
+        val = val.strip().strip("'\"")
+        if key:
+            out[key] = val
+    return out
+
+
+def _zircolite_event_data(ecs: dict[str, Any], fields: dict[str, Any],
+                          record: dict[str, Any]) -> None:
+    """Zircolite detection rows: EventData columns -> ecs.winlog.event_data.*.
+
+    A Zircolite row is a rule match with a `matches` list; each match carries the
+    event's own fields. Any field the row already holds that is not a rule column
+    is treated as event data (the same rule Chainsaw's parser follows).
+    """
+    rule_cols = {"title", "id", "description", "sigmafile", "sigma", "rule_level",
+                 "tags", "count", "matches"}
+    matches = record.get("matches") if isinstance(record, dict) else None
+    if isinstance(matches, list):
+        for m in matches[:1]:
+            if isinstance(m, dict):
+                for k, v in m.items():
+                    if v not in (None, "", [], {}):
+                        _set(ecs, f"ecs.winlog.event_data.{k}", str(v)[:4096])
+    for k, v in fields.items():
+        if str(k).lower() in rule_cols or k in ("Event Data",):
+            continue
+        _set(ecs, f"ecs.winlog.event_data.{k}", str(v)[:4096])
 
 
 def _flatten_hashes(ecs: dict[str, Any]) -> dict[str, Any]:
