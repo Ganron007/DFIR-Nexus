@@ -155,13 +155,25 @@ def _cached_roots(
     return tuple(_build_machine_roots(Path(case_str) if case_str else None))
 
 
+@lru_cache(maxsize=64)
+def _resolved_str(path_str: str) -> str:
+    """Memoized ``Path.resolve()`` — see ``machine_roots``.
+
+    Root cause fix (WO-R0F item 1): ``machine_roots`` is called per field per row
+    during indexing, and its ``Path(case_dir).resolve()`` runs a Windows ``realpath``
+    syscall each time. On a 50k+ document scan that is millions of filesystem calls,
+    which hung the profiler. The resolve only depends on the path string, so cache it.
+    """
+    return str(Path(path_str).resolve())
+
+
 def machine_roots(case_dir: Path | None = None) -> list[tuple[str, str]]:
     """(normalized prefix, label) pairs, longest first, refusing root paths.
 
     Cached on the case path plus the evidence registry's mtime/size so per-row
     scans do not re-read ``evidence.json``; a new registration invalidates.
     """
-    case_str = str(Path(case_dir).resolve()) if case_dir else ""
+    case_str = _resolved_str(str(case_dir)) if case_dir else ""
     mtime_ns = 0
     size = 0
     if case_str:
@@ -253,8 +265,10 @@ def sanitize_field_map(
         return {}
     out: dict[str, str] = {}
     for k, v in fields.items():
-        if _is_source_column(family, str(k)):
-            out[str(k)] = "<source>" if str(v or "").strip() else str(v or "")
+        key = str(k)
+        if _is_source_column(family, key):
+            val = str(v or "")
+            out[key] = "<source>" if val.strip() else val
         else:
-            out[str(k)] = sanitize_machine_paths(str(v), case_dir, roots)
+            out[key] = sanitize_machine_paths(str(v), case_dir, roots)
     return out

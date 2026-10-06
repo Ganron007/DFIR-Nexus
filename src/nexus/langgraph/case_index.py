@@ -22,6 +22,7 @@ log = logging.getLogger(__name__)
 
 from nexus.langgraph.match_site import classify_matched_terms
 from nexus.langgraph.path_sanitize import (
+    machine_roots,
     sanitize_field_map,
     sanitize_row_text,
 )
@@ -437,23 +438,32 @@ def _record_fields(line: str) -> dict[str, str]:
     return out
 
 
-def _pick_field(fields: dict[str, str], keys: tuple[str, ...]) -> str:
-    """First non-empty field value whose column name matches (case-insensitive)."""
-    wanted = set(keys)
+def _pick_field(fields: dict[str, str], keys: frozenset[str]) -> str:
+    """First non-empty field value whose column name matches (case-insensitive).
+
+    ``keys`` is a prebuilt frozenset of lowercased names (module constant), so the
+    hot path allocates nothing per call and the name match is a single set lookup
+    rather than a per-field ``.lower()`` + membership scan (WO-R0F item 1: this ran
+    3x per row across millions of rows).
+    """
     for name, value in fields.items():
-        if name.lower() in wanted and value:
+        if value and name.lower() in keys:
             return str(value)
     return ""
 
 
+_HOST_KEYS = frozenset(("computer", "computername", "host", "hostname"))
+_USER_KEYS = frozenset((
+    "user", "username", "userid", "account", "accountname",
+    "targetuser", "sourceuser", "user_name",
+))
+_EVENT_KEYS = frozenset(("eventid", "event_id", "eventcode"))
+
+
 def _host_user_event(fields: dict[str, str]) -> tuple[str, str, str]:
-    host = _pick_field(fields, ("computer", "computername", "host", "hostname"))
-    user = _pick_field(
-        fields,
-        ("user", "username", "userid", "account", "accountname",
-         "targetuser", "sourceuser", "user_name"),
-    )
-    event = _pick_field(fields, ("eventid", "event_id", "eventcode"))
+    host = _pick_field(fields, _HOST_KEYS)
+    user = _pick_field(fields, _USER_KEYS)
+    event = _pick_field(fields, _EVENT_KEYS)
     return host, user, event
 
 
@@ -525,6 +535,10 @@ def iter_index_doc_batches(
     total = 0
     stop = False
     year_hint = _case_year_hint(case_dir)
+    # Compute the machine-path roots ONCE per scan (not per field per row).
+    # `sanitize_field_map` re-resolves them otherwise — a Windows realpath syscall
+    # per field hung the profiler on large corpora (WO-R0F item 1).
+    sanitize_roots = machine_roots(case_dir)
     ts_cov: dict[str, dict[str, int]] = {}
 
     def _cov(fam: str) -> dict[str, int]:
@@ -541,7 +555,8 @@ def iter_index_doc_batches(
         # metadata, never evidence text. Replace those values outright and
         # normalize remaining machine prefixes (raw files untouched).
         text = sanitize_row_text(
-            line.strip()[:_MAX_LINE], fields, case_dir, family=fam
+            line.strip()[:_MAX_LINE], fields, case_dir, roots=sanitize_roots,
+            family=fam
         )
         key = hashlib.sha1(
             f"{fam}\x00{path}\x00{i}\x00{text}".encode("utf-8", "replace")
@@ -561,7 +576,8 @@ def iter_index_doc_batches(
             "text": text,
         }
         if fields:
-            fields = sanitize_field_map(fields, case_dir, family=fam)
+            fields = sanitize_field_map(fields, case_dir, roots=sanitize_roots,
+                                        family=fam)
             host, user, event = _host_user_event(fields)
             doc["fields"] = fields
             if host:

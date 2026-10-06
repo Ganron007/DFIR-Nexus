@@ -60,40 +60,28 @@ def _population_resident(src: Path, family: str) -> bool:
     return "_population" in parts and str(family).lower() in parts
 
 
-def _same_bytes_present(src: Path, target: Path) -> bool:
-    """Whether an identical copy of `src` is already in `target`.
+def _stream_digest(path: Path) -> tuple[int, str] | None:
+    """(size, sha256) of `path`, hashed in fixed-size chunks.
 
-    The same sample can arrive under two names - the staging script's
-    `<name>-sample.csv` and the profile's `2-<name>-sample.csv`. Comparing a size and a
-    hash catches the twin without reading every file's full contents.
-
-    The source's OWN directory is excluded: `stage_missing_family_samples.py` leaves each
-    sample at `_population/<family>/`, and the loop that calls this copies manifest paths
-    into `_case*/extractions/<family>/` - so without the exclusion every file compares
-    equal to itself and nothing is ever placed (0 of 133, which silently shrank the
-    profile to the ingest lane only).
+    Root cause fix (WO-R0F item 1): the previous dedup called ``src.read_bytes()``,
+    which loads a whole file into memory to hash it - a 1.7 GB EvtxECmd CSV was a
+    1.7 GB allocation, and it was O(n^2) (each file hashed and compared against every
+    already-placed file). On the 6,822-file corpus (incl. 6,450 bmc-tools + multi-GB
+    CSVs) that hung the profiler. This streams the hash (constant memory) and the
+    caller keeps a digest SET, so dedup is O(n) overall. Same semantics - catches the
+    `2-<name>` twin and a sample staged under a different name - without the cost.
     """
     import hashlib
 
-    src_dir = src.resolve().parent
     try:
-        size = src.stat().st_size
-        digest = hashlib.sha256(src.read_bytes()).hexdigest()
+        size = path.stat().st_size
+        h = hashlib.sha256()
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+        return size, h.hexdigest()
     except (PermissionError, OSError):
-        return False
-    for existing in target.rglob("*"):
-        if not existing.is_file():
-            continue
-        try:
-            if existing.resolve().parent == src_dir:
-                continue  # the source itself
-            if existing.stat().st_size != size:
-                continue
-            if hashlib.sha256(existing.read_bytes()).hexdigest() == digest:
-                return True
-        except (PermissionError, OSError):
-            continue
-    return False
+        return None
 
 
 def _layout(corpus: Path, case_dir: Path) -> dict[str, int]:
@@ -132,6 +120,9 @@ def _layout(corpus: Path, case_dir: Path) -> dict[str, int]:
                            } | {".gz"}
     placed = 0
     skipped: list[str] = []
+    # O(n) dedup: one (size, sha256) per placed file. A source matching any entry is
+    # a byte-identical twin (the `2-<name>` copy, or a sample under a different name).
+    placed_digests: dict[tuple[int, str], str] = {}
     for family, paths in staged.get("families", {}).items():
         for rel in paths:
             src = Path(rel)
@@ -159,10 +150,14 @@ def _layout(corpus: Path, case_dir: Path) -> dict[str, int]:
             target.mkdir(parents=True, exist_ok=True)
             final = target / src.name
             # An identical file already staged is a DUPLICATE, not a second source. The
-            # name check catches the `2-<name>` twin; the byte check catches a sample
+            # name check catches the `2-<name>` twin; the digest check catches a sample
             # staged under a different name. Both once let every column count twice.
-            if final.is_file() or _same_bytes_present(src, target):
+            if final.is_file():
                 skipped.append(f"{src.name} (already staged)")
+                continue
+            src_key = _stream_digest(src)
+            if src_key is not None and src_key in placed_digests:
+                skipped.append(f"{src.name} (byte-identical to {placed_digests[src_key]})")
                 continue
             n = 1
             while final.exists():
@@ -174,6 +169,8 @@ def _layout(corpus: Path, case_dir: Path) -> dict[str, int]:
                 skipped.append(f"{src.name}: {type(exc).__name__}")
                 continue
             placed += 1
+            if src_key is not None:
+                placed_digests[src_key] = f"{family}/{src.name}"
     return {"placed": placed, "skipped": skipped}
 
 def _install_ingest_store(corpus: Path, case_dir: Path) -> str:
@@ -215,10 +212,16 @@ def profile(case_dir: Path) -> dict[str, Any]:
     totals = Counter()
     family_docs: dict[str, int] = Counter()
 
+    _n = 0
+    _t0 = __import__("time").time()
     for doc in iter_index_docs(case_dir):
         fam = str(doc.get("family") or "")
         if not fam:
             continue
+        _n += 1
+        if _n % 50000 == 0:
+            _el = __import__("time").time() - _t0
+            print(f"  ... {_n:,} docs, {_n / _el:,.0f} docs/sec", flush=True)
         family_docs[fam] += 1
         totals[fam] += 1
         fields = doc.get("fields") if isinstance(doc.get("fields"), dict) else {}
