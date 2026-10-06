@@ -26,8 +26,11 @@ INGEST_SRC = REPO / "Evidence-files" / "ES-Mapping" / "_population" / "_case-391
 
 
 def main() -> int:
-    # The KR2c store was built under `_case-39112`, which the profile's stale-dir
-    # sweep removed. Rebuild it the same way `stage_ingest_columns.py` did.
+    # Rebuild the importer store, then place it at a STABLE path inside the corpus so
+    # a stale-workdir sweep cannot remove it. It used to live at
+    # `_population/_case-39112/ingest/artifacts.jsonl`, which the profile's own cleanup
+    # deletes on the next run - so the importer lane silently vanished from the profile
+    # (33 -> 26 families) and every D34 column read "not populated".
     builder = REPO / "devtools" / "knowledge" / "stage_ingest_columns.py"
     if not builder.is_file():
         print(f"  !! {builder.relative_to(REPO)} missing")
@@ -37,23 +40,26 @@ def main() -> int:
     r = subprocess.run([sys.executable, str(builder)], cwd=str(REPO),
                        capture_output=True, text=True)
     if r.returncode != 0:
-        print("  !!" , r.stderr[-300:])
+        print("  !!", (r.stderr or r.stdout)[-300:])
         return 2
     for line in r.stdout.strip().splitlines():
         print("   ", line)
 
-    # Now place that store inside the profile's workdir so `_layout` + the profile see
-    # the importer lane. It is an ingest store, not an extraction, which is exactly
-    # where the indexer looks for it (`case_dir / 'ingest' / 'artifacts.jsonl'`).
-    for case in sorted(CORPUS.glob("_case*")):
-        if case.is_dir() and (case / "ingest" / "artifacts.jsonl").is_file():
-            continue
-        dest = case / "ingest" / "artifacts.jsonl"
-        if INGEST_SRC.is_file():
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(INGEST_SRC, dest)
-            print(f"  staged ingest store into {case.name}/ingest/artifacts.jsonl "
-                  f"({dest.stat().st_size:,} bytes)")
+    # The builder writes under the KR2c case dir; copy it to the corpus's stable home.
+    src = CORPUS / "_case-39112" / "ingest" / "artifacts.jsonl"
+    if not src.is_file():
+        # a previous run may have left it at the case dir the population check uses
+        for cand in CORPUS.glob("_case*/ingest/artifacts.jsonl"):
+            src = cand
+            break
+    if not src.is_file():
+        print("  !! the builder produced no ingest store to install")
+        return 2
+    stable = CORPUS / "_ingest" / "artifacts.jsonl"
+    stable.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(src, stable)
+    print(f"  stable copy: {stable.relative_to(REPO)}  "
+          f"({stable.stat().st_size:,} bytes)")
     return 0
 
 

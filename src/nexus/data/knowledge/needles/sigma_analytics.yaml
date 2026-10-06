@@ -1,7 +1,7 @@
 # WO-KL2b - SigmaHQ rules translated by program into ES query JSON.
 # Generator: devtools/knowledge/sigma_import.py. Do not edit by hand.
 version: 1
-generated: '2026-10-06T01:35:07+00:00'
+generated: '2026-10-06T05:45:21+00:00'
 generator: devtools/knowledge/sigma_import.py
 note: SigmaHQ rules translated by program into ES query JSON. Do not edit by hand - re-run the importer. A rule whose fields do not map to our registry is skipped, never guessed.
 source: https://github.com/SigmaHQ/sigma

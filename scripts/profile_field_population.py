@@ -125,8 +125,12 @@ def _install_ingest_store(corpus: Path, case_dir: Path) -> str:
     dest = case_dir / "ingest" / "artifacts.jsonl"
     if dest.is_file():
         return f"{dest.stat().st_size:,} bytes (already staged)"
-    # the store the KR2c item-4 staging script writes, one level up
-    for candidate in (corpus / "_case" / "ingest" / "artifacts.jsonl",
+    # The STABLE home for the importer lane. It must not live under `_case*`: the
+    # profile cleans stale workdirs before each run, and when the store was found only
+    # at `_population/_case-39112/...` a cleanup removed the importer lane entirely -
+    # 33 profiled families dropped to 26 and every D34 column read "not populated".
+    for candidate in (corpus / "_ingest" / "artifacts.jsonl",
+                      corpus / "_case" / "ingest" / "artifacts.jsonl",
                       corpus.parent / "_case" / "ingest" / "artifacts.jsonl",
                       corpus / "ingest" / "artifacts.jsonl"):
         if candidate.is_file():
