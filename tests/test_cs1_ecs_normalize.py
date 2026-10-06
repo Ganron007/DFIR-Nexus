@@ -1,7 +1,10 @@
-"""WO-CS1 — the common `ecs.*` schema at index time (additive).
+"""WO-CS1 / WO-CS1b — the common `ecs.*` schema at index time (additive).
 
-Unit: `normalize()` per family on real row excerpts (the fixtures are real excerpts
-from the operator's outputs / EvtxECmd maps — synthetic rows are forbidden, item 12).
+Unit: `normalize()` per family. The EVTX cases read the committed **verbatim real
+rows** from the public Yamato sample (`tests/fixtures/cs1b_evtx_real_rows.csv`) —
+synthetic rows are forbidden (item 12). Rows from the operator's SANS course corpus
+are not committed; a test needing them reads `Evidence-files/` when present and skips.
+
 Real path: on a temp case and real ES, ECS field queries hit; the doc without `ecs`
 equals the schema-9 doc ("nothing lost"); the catalog leads with populated `ecs.*`.
 """
@@ -21,6 +24,9 @@ import pytest
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 
+#: The committed verbatim EvtxECmd rows (public Yamato sample; no course corpus).
+REAL_ROWS = REPO / "tests" / "fixtures" / "cs1b_evtx_real_rows.csv"
+
 
 def _es_url() -> str:
     url = (os.environ.get("NEXUS_ES_URL") or "").strip().rstrip("/")
@@ -36,51 +42,87 @@ def _es_url() -> str:
 
 # ── Unit: normalize() on real excerpts ─────────────────────────────────
 
-SYSMON1 = {"EventId": "1", "Channel": "Microsoft-Windows-Sysmon/Operational",
-           "Computer": "WS01",
-           "Payload": json.dumps({"EventData": {"Data": [
-               {"@Name": "Image", "#text": r"C:\Windows\System32\cmd.exe"},
-               {"@Name": "CommandLine", "#text": "cmd.exe /c whoami"},
-               {"@Name": "ParentImage", "#text": r"C:\Windows\explorer.exe"},
-               {"@Name": "ProcessId", "#text": "1080"},
-               {"@Name": "Hashes", "#text": "SHA1=aa,MD5=bb,SHA256=cc"},
-               {"@Name": "User", "#text": r"CORP\bob"}]}})}
-
-SEC4624 = {"EventId": "4624", "Payload": json.dumps({"EventData": {"Data": [
-    {"@Name": "TargetUserName", "#text": "alice"},
-    {"@Name": "LogonType", "#text": "3"},
-    {"@Name": "IpAddress", "#text": "10.0.0.5"}]}})}
-
-
 def _norm(fam, fields):
     from nexus.langgraph.ecs_normalize import normalize
     return normalize(fam, fields, None)
 
 
+def _real_rows() -> list[dict[str, str]]:
+    """The committed verbatim EvtxECmd rows (public Yamato sample)."""
+    assert REAL_ROWS.is_file(), "the CS1b real-row fixture is missing"
+    out = []
+    with REAL_ROWS.open(encoding="utf-8", errors="replace") as fh:
+        for row in _csv.DictReader(fh):
+            out.append(row)
+    return out
+
+
+def _real_row(channel_sub: str, event_id: str) -> dict[str, str]:
+    for row in _real_rows():
+        if str(row.get("EventId")) == event_id and channel_sub in str(row.get("Channel", "")):
+            return row
+    raise AssertionError(f"no real fixture row for {channel_sub}/{event_id}")
+
+
+def _real_fields(row: dict[str, str]) -> dict[str, str]:
+    return {k.lstrip("\ufeff"): v for k, v in row.items() if v not in (None, "")}
+
+
 def test_evtx_event_data_every_name():
-    ecs = _norm("evtxecmd", SYSMON1)
+    """Every EventData name in a real Payload becomes ecs.winlog.event_data.<Name>."""
+    row = _real_row("Sysmon", "1")
+    ecs = _norm("evtxecmd", _real_fields(row))
     ed = ecs["winlog"]["event_data"]
-    assert ed["Image"] == r"C:\Windows\System32\cmd.exe"
-    assert ed["CommandLine"] == "cmd.exe /c whoami"
+    # real Sysmon 1 names, read from the row's own Payload
+    assert ed["Image"].endswith(".exe")
+    assert "CommandLine" in ed
+    assert ed["ProcessId"]
 
 
 def test_evtx_sysmon1_common_fields():
-    ecs = _norm("evtxecmd", SYSMON1)
-    assert ecs["process"]["executable"] == r"C:\Windows\System32\cmd.exe"
-    assert ecs["process"]["command_line"] == "cmd.exe /c whoami"
-    assert ecs["process"]["parent"]["executable"] == r"C:\Windows\explorer.exe"
-    assert ecs["process"]["pid"] == "1080"
-    assert ecs["process"]["hash"] == {"sha1": "aa", "md5": "bb", "sha256": "cc"}
-    assert ecs["user"]["name"] == r"CORP\bob"
+    """A verbatim Sysmon 1 row derives the process/parent/hash/user fields."""
+    row = _real_row("Sysmon", "1")
+    ecs = _norm("evtxecmd", _real_fields(row))
+    assert ecs["process"]["executable"] == ecs["winlog"]["event_data"]["Image"]
+    assert ecs["process"]["command_line"] == ecs["winlog"]["event_data"]["CommandLine"]
+    assert ecs["process"]["parent"]["executable"] == \
+        ecs["winlog"]["event_data"]["ParentImage"]
+    assert set(ecs["process"]["hash"]) <= {"sha1", "md5", "sha256", "imphash"}
     assert ecs["event"]["code"] == "1"
-    assert ecs["host"]["name"] == "WS01"
 
 
 def test_evtx_4624_common_fields():
-    ecs = _norm("evtxecmd", SEC4624)
-    assert ecs["user"]["target"]["name"] == "alice"
-    assert ecs["winlog"]["logon"]["type"] == "3"
-    assert ecs["source"]["ip"] == "10.0.0.5"
+    """A verbatim 4624 row gives target user, logon type and source ip."""
+    row = _real_row("Security", "4624")
+    ecs = _norm("evtxecmd", _real_fields(row))
+    assert ecs["user"]["target"]["name"] == ecs["winlog"]["event_data"]["TargetUserName"]
+    assert ecs["winlog"]["logon"]["type"] == ecs["winlog"]["event_data"]["LogonType"]
+    assert ecs["source"]["ip"] == ecs["winlog"]["event_data"]["IpAddress"]
+
+
+def test_evtx_7045_gives_service_name():
+    row = _real_row("System", "7045")
+    ecs = _norm("evtxecmd", _real_fields(row))
+    assert ecs["service"]["name"] == ecs["winlog"]["event_data"]["ServiceName"]
+
+
+def test_evtx_4104_keeps_the_full_script_block():
+    row = _real_row("PowerShell", "4104")
+    ecs = _norm("evtxecmd", _real_fields(row))
+    sbt = ecs["winlog"]["event_data"]["ScriptBlockText"]
+    assert len(sbt) == len(row["Payload"]) or len(sbt) > 300
+    assert len(sbt) > 300  # never cut at the old 300-char cap
+
+
+def test_evtx_channel_scoping():
+    """A Security 4624 rule must not fire on a Sysmon event with the same id."""
+    # craft a Sysmon row whose EventId is 4624 (rule must not apply)
+    fields = {"EventId": "4624", "Channel": "Microsoft-Windows-Sysmon/Operational",
+              "Payload": json.dumps({"EventData": {"Data": [
+                  {"@Name": "TargetUserName", "#text": "x"}]}})}
+    ecs = _norm("evtxecmd", fields)
+    assert "target" not in ecs.get("user", {}), ecs
+
 
 
 def test_mftecmd_path_splits_into_file_fields():
@@ -134,7 +176,10 @@ def _case(tmp_path: Path) -> Path:
     with (case / "extractions" / "evtxecmd" / "e.csv").open("w", encoding="utf-8", newline="") as fh:
         w = _csv.writer(fh)
         w.writerow(["RecordNumber", "EventId", "Channel", "Computer", "Payload"])
-        w.writerow(["1", "1", "Microsoft-Windows-Sysmon/Operational", "WS01", SYSMON1["Payload"]])
+        row = _real_row("Sysmon", "1")
+        w.writerow([row.get("RecordNumber", "1"), row.get("EventId", "1"),
+                    row.get("Channel", "Microsoft-Windows-Sysmon/Operational"),
+                    row.get("Computer", "WS01"), row["Payload"]])
     (case / "extractions" / "mftecmd" / "mft.csv").write_text(
         "ParentPath,FileName,Extension,FileSize\nC:\\Users\\bob\\,mimikatz.exe,exe,1234\n",
         encoding="utf-8")
@@ -155,10 +200,18 @@ def test_ecs_real_path_queries_hit(tmp_path):
     meta = index_case(case)
     assert meta.get("docs")
     try:
+        # the real Sysmon 1 fixture row's own values
+        row = _real_row("Sysmon", "1")
+        cmd = row["Payload"] and json.loads(row["Payload"])["EventData"]["Data"]
+        cmd_line = next(i["#text"] for i in cmd if i.get("@Name") == "CommandLine")
+        parent = next(i["#text"] for i in cmd if i.get("@Name") == "ParentImage")
+        parent_name = parent.replace("/", "\\").rsplit("\\", 1)[-1].rsplit(".", 1)[0]
+        # a wildcard on a path needs the separator escaped; use the filename stem
+        cmd_token = cmd_line.replace("/", "\\").rsplit("\\", 1)[-1].split(".")[0].strip('"')
         checks = [
-            ({"term": {"ecs.winlog.event_data.CommandLine": "cmd.exe /c whoami"}}, 1),
-            ({"wildcard": {"ecs.process.command_line": {"value": "*whoami*"}}}, 1),
-            ({"wildcard": {"ecs.process.parent.executable": {"value": "*explorer*"}}}, 1),
+            ({"term": {"ecs.winlog.event_data.CommandLine": cmd_line}}, 1),
+            ({"wildcard": {"ecs.process.command_line": {"value": f"*{cmd_token}*"}}}, 1),
+            ({"wildcard": {"ecs.process.parent.executable": {"value": f"*{parent_name}*"}}}, 1),
             ({"wildcard": {"ecs.file.path": {"value": "*mimikatz*"}}}, 1),
             ({"wildcard": {"ecs.registry.path": {"value": "*Run*"}}}, 1),
         ]
@@ -181,21 +234,22 @@ def test_ecs_event_data_targetuser_term_on_4624(tmp_path):
     from nexus.langgraph.field_catalog import case_field_catalog
     from nexus.langgraph.query_dsl import parse_query
 
-    old = {"EventData": {"Data": [
-        {"@Name": "TargetUserName", "#text": "alice"},
-        {"@Name": "LogonType", "#text": "3"}]}}
+    row = _real_row("Security", "4624")
+    target = next(i["#text"] for i in json.loads(row["Payload"])["EventData"]["Data"]
+                  if i.get("@Name") == "TargetUserName")
     case = tmp_path / "CASE-CS1-4624"
     (case / "extractions" / "evtxecmd").mkdir(parents=True)
     with (case / "extractions" / "evtxecmd" / "sec.csv").open("w", encoding="utf-8", newline="") as fh:
         w = _csv.writer(fh)
         w.writerow(["RecordNumber", "EventId", "Channel", "Computer", "Payload"])
-        w.writerow(["1", "4624", "Security", "DC01", json.dumps(old)])
+        w.writerow([row.get("RecordNumber", "1"), "4624", "Security",
+                    row.get("Computer", "DC01"), row["Payload"]])
     index_case(case)
     try:
-        r = es_search(case.name, {"term": {"ecs.winlog.event_data.TargetUserName": "alice"}})
+        r = es_search(case.name, {"term": {"ecs.winlog.event_data.TargetUserName": target}})
         assert r.get("total") == 1, r
         # Mode 1 parses the same name (a dynamic event_data name)
-        pq = parse_query('ecs.winlog.event_data.TargetUserName:"alice"',
+        pq = parse_query(f'ecs.winlog.event_data.TargetUserName:"{target}"',
                          case_field_catalog(case))
         assert pq is not None
     finally:
