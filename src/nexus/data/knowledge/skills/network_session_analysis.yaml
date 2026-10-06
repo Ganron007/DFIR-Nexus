@@ -18,6 +18,8 @@ trigger:
   - proxy
   - nfdump
   - tshark-flows
+  - suricata
+  - wireshark
   keywords:
   - connection
   - session
@@ -270,3 +272,5 @@ primary_families:
 - netstat
 - tshark-flows
 - nfdump
+- suricata
+- wireshark

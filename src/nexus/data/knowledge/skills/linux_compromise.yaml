@@ -7,6 +7,12 @@
 skill: linux_compromise
 title: Linux compromise — auth logs, persistence, history, systemd
 platform: linux
+# WO-R0F item 5 (KL2e): a single-source auditd/authlog/syslog case must select this
+# skill — those are its subject evidence.
+primary_families:
+- auditd
+- authlog
+- syslog
 description: 'Investigate a Linux host: authentication logs (auth.log/secure, binary
   utmp/wtmp/btmp), shell-history forensics with its documented limits, systemd/cron
   persistence, unexpected accounts, and memory-resident malware via Linux.MalFind.'
@@ -18,6 +24,7 @@ trigger:
   - journal
   - bash
   - memory
+  - auditd
   keywords:
   - linux
   - ssh
