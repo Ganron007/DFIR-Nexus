@@ -1,0 +1,43 @@
+# WO-R0F item 8 — field-registry supplement (documented, merged by the build).
+#
+# WHY THIS FILE EXISTS
+# The shipped `field_registry.yaml` is generated from `Evidence-files/ES-Mapping/
+# es_mappings/*.yaml` (the operator's validated tool-run catalog). That tree is
+# evidence and is not part of the repo, so a family alias the product relies on
+# cannot live there. `f98698b` regenerated the registry from a corpus that no
+# longer declared it and silently dropped the `tasks` family alias and the
+# `registration_date` column — which broke
+# `test_timeline_events.py::test_task_xml_registration_time_is_registry_typed`.
+#
+# This file is the durable, reviewable place for those declarations: the build
+# reads it (`load_supplement`) and merges it AFTER the catalog, so its columns and
+# families survive any regeneration. It is NOT hand-editing the generated file.
+#
+# `registration_date` is the task XML's own `<RegistrationInfo><Date>` field; the
+# runtime names the family `tasks` (see the timeline builder), so both spellings
+# are declared. `task_registration_date` is the projected column the index emits;
+# it must carry the same `tasks` family.
+
+version: 1
+note: >-
+  Product-required family aliases the evidence catalog cannot carry. Merged by
+  scripts/build_field_registry.py after the catalog rows.
+
+# column -> {type, families}. `families` is the DECLARED set; `populated_in` is
+# still measured from the real-run corpus and is never stated here.
+columns:
+  registration_date:
+    type: date
+    families:
+      - ingest-scheduled_tasks
+      - tasks
+  task_registration_date:
+    type: date
+    families:
+      - ingest-scheduled_tasks
+      - tasks
+
+# Families this supplement guarantees exist in the registry, with a reason. The
+# build check fails if a regeneration would remove one of these without a reason.
+required_families:
+  tasks: "the timeline builder names the task-XML family `tasks` (date_columns_for)"

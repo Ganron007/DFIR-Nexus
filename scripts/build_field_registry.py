@@ -25,6 +25,7 @@ import re
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -230,6 +231,25 @@ def load_roles() -> dict[str, dict[str, dict[str, str]]]:
     return roles
 
 
+def load_supplement() -> tuple[dict[str, dict[str, Any]], dict[str, str]]:
+    """Product-required columns/families the evidence catalog cannot carry (item 8).
+
+    Returns ``(columns, required_families)`` from
+    ``src/nexus/data/schema/field_registry_supplement.yaml``. This is the durable
+    home for declarations the generated registry must keep - the evidence tree is
+    not in the repo, so `f98698b` silently dropped the `tasks` alias and
+    `registration_date` and broke `test_task_xml_registration_time_is_registry_typed`.
+    The build merges this AFTER the catalog rows, so any regeneration keeps them.
+    """
+    path = OUT.parent / "field_registry_supplement.yaml"
+    if not path.is_file():
+        return {}, {}
+    doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    cols = doc.get("columns") if isinstance(doc.get("columns"), dict) else {}
+    req = doc.get("required_families") if isinstance(doc.get("required_families"), dict) else {}
+    return cols, {str(k): str(v) for k, v in req.items()}
+
+
 def load_population() -> dict[str, set[str]]:
     """column -> the families whose documents actually filled it (WO-KM1 item 3).
 
@@ -258,6 +278,7 @@ def merge(
     families: dict[str, dict[str, str]],
     roles: dict[str, dict[str, dict[str, str]]] | None = None,
     populated: dict[str, set[str]] | None = None,
+    supplement: dict[str, dict[str, Any]] | None = None,
 ) -> tuple[dict[str, dict], list[dict]]:
     by_name: dict[str, dict] = {}
     conflicts: list[dict] = []
@@ -282,12 +303,23 @@ def merge(
                 row["meta"]["role"] = label
             if src.get("example") and not row["meta"].get("example"):
                 row["meta"]["example"] = str(src["example"])[:120]
+    # WO-R0F item 8: the supplement merges AFTER the catalog, so a declaration the
+    # product requires survives any regeneration (a dropped column here is the
+    # `f98698b` regression). Its types/families are unioned, never replacing.
+    for name, spec in (supplement or {}).items():
+        if not isinstance(spec, dict):
+            continue
+        row = by_name.setdefault(name, {"types": set(), "families": [], "meta": {}})
+        if spec.get("type"):
+            row["types"].add(_norm_type(str(spec["type"])))
+        for fam in spec.get("families") or []:
+            row["families"].append(str(fam))
     out: dict[str, dict] = {}
     for name, row in sorted(by_name.items()):
         merged, conflict = _unify(name, set(row["types"]))
         entry = {
             "type": merged,
-            "families": sorted(row["families"]),
+            "families": sorted(set(row["families"])),
             "observed_types": sorted(row["types"]),
         }
         # WO-KR2c 0a: carry role/example so a stored query can pick the column that
@@ -319,7 +351,40 @@ def main() -> int:
     families, skipped = load_rows()
     roles = load_roles()
     populated = load_population()
-    columns, conflicts = merge(families, roles, populated)
+    supplement, required_families = load_supplement()
+    columns, conflicts = merge(families, roles, populated, supplement)
+
+    # WO-R0F item 8: a regeneration that REMOVES a column or a required family
+    # fails, unless the removal is listed with a reason. The check compares the
+    # newly-built set with the file on disk.
+    removals: list[dict[str, str]] = []
+    if OUT.is_file():
+        try:
+            prior = yaml.safe_load(OUT.read_text(encoding="utf-8")) or {}
+        except Exception:  # noqa: BLE001
+            prior = {}
+        prior_cols = set(prior.get("columns") or {})
+        prior_fams = set(prior.get("families") or {})
+        for name in sorted(prior_cols - set(columns)):
+            removals.append({"kind": "column", "name": name, "reason": ""})
+        for fam in sorted(prior_fams - set(families)):
+            removals.append({"kind": "family", "name": fam, "reason": ""})
+    unexcused = [r for r in removals if not r.get("reason")]
+    # A required family must be present as a column's family (that is how
+    # date_columns_for resolves it). It is satisfied by the supplement's columns.
+    present_fams = {f for r in columns.values() for f in (r.get("families") or [])}
+    for fam, reason in required_families.items():
+        if fam not in families and fam not in present_fams:
+            unexcused.append({"kind": "required_family", "name": fam,
+                              "reason": f"required but missing: {reason}"})
+    if unexcused and not args.report:
+        print("BUILD CHECK FAILED: a regeneration would remove:", file=sys.stderr)
+        for r in unexcused[:20]:
+            print(f"  {r['kind']} {r['name']} (no reason)", file=sys.stderr)
+        print("Add it to src/nexus/data/schema/field_registry_supplement.yaml or "
+              "record the removal with a reason.", file=sys.stderr)
+        return 3
+
     with_role = sum(1 for r in columns.values() if r.get("role"))
     with_pop = sum(1 for r in columns.values() if r.get("populated_in"))
     print(f"families: {len(families)}   merged columns: {len(columns)}   conflicts: {len(conflicts)}")
