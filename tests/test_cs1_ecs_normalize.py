@@ -172,6 +172,39 @@ def test_ecs_real_path_queries_hit(tmp_path):
 
 
 @pytest.mark.skipif(not _es_url(), reason="NEXUS_ES_URL is not configured")
+def test_ecs_event_data_targetuser_term_on_4624(tmp_path):
+    """WO-CS1 acceptance: ecs.winlog.event_data.TargetUserName term hits a 4624 row."""
+    url = _es_url()
+    os.environ["NEXUS_ES_URL"] = url
+    from nexus.langgraph.case_index import index_case, index_name
+    from nexus.langgraph.es_native import es_search
+    from nexus.langgraph.field_catalog import case_field_catalog
+    from nexus.langgraph.query_dsl import parse_query
+
+    old = {"EventData": {"Data": [
+        {"@Name": "TargetUserName", "#text": "alice"},
+        {"@Name": "LogonType", "#text": "3"}]}}
+    case = tmp_path / "CASE-CS1-4624"
+    (case / "extractions" / "evtxecmd").mkdir(parents=True)
+    with (case / "extractions" / "evtxecmd" / "sec.csv").open("w", encoding="utf-8", newline="") as fh:
+        w = _csv.writer(fh)
+        w.writerow(["RecordNumber", "EventId", "Channel", "Computer", "Payload"])
+        w.writerow(["1", "4624", "Security", "DC01", json.dumps(old)])
+    index_case(case)
+    try:
+        r = es_search(case.name, {"term": {"ecs.winlog.event_data.TargetUserName": "alice"}})
+        assert r.get("total") == 1, r
+        # Mode 1 parses the same name (a dynamic event_data name)
+        pq = parse_query('ecs.winlog.event_data.TargetUserName:"alice"',
+                         case_field_catalog(case))
+        assert pq is not None
+    finally:
+        with contextlib.suppress(urllib.error.URLError, OSError):
+            urllib.request.urlopen(urllib.request.Request(
+                f"{url}/{index_name(case.name)}", method="DELETE"), timeout=15).read()
+
+
+@pytest.mark.skipif(not _es_url(), reason="NEXUS_ES_URL is not configured")
 def test_index_size_and_time_reported(tmp_path):
     """WO-CS1 acceptance: report index size + indexing time (growth is acceptable)."""
     url = _es_url()

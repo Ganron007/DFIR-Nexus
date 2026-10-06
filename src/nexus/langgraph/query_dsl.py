@@ -323,6 +323,11 @@ def _maybe_filter(q: ParsedQuery, name_raw: str, value: str,
         from nexus.langgraph.field_catalog import resolve_field
 
         entry = resolve_field(catalog, low)
+        # WO-CS1: an `ecs.winlog.event_data.<Name>` field is dynamic (every event
+        # has its own names), so it is accepted without a catalog entry.
+        if entry is None and low.startswith("ecs.winlog.event_data.") and len(name) > 24:
+            entry = {"name": name, "type": "keyword", "has_kw": True,
+                     "path": name, "ecs": True}
     if entry is None and low in _CORE_TYPED:
         target, core_type = _CORE_TYPED[low]
         entry = {"name": target, "type": core_type, "has_kw": False,
