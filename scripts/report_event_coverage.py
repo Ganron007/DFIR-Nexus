@@ -19,14 +19,22 @@ from __future__ import annotations
 import argparse
 import collections
 import csv
-import io
 import json
+import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 CORPUS_EV = REPO / "Evidence-files" / "ES-Mapping" / "evidence" / "evtx"
-PARSED = next(iter(sorted((REPO / "Evidence-files" / "ES-Mapping" / "outputs" / "evtxecmd")
-                          .glob("*.csv"))), None)
+# Every EvtxECmd output in the corpus, newest first. The Sysmon lane writes to
+# `outputs/evtxecmd-sysmon/` (stage_sysmon_real_lane.py); the general lane to
+# `outputs/evtxecmd/`. Taking the newest of BOTH means the report reflects the corpus as
+# it actually stands: when the Sysmon lane is staged, its 22 (Channel, EventId) slots are
+# present and must not still be reported absent.
+PARSED = next(iter(sorted(
+    list((REPO / "Evidence-files" / "ES-Mapping" / "outputs" / "evtxecmd").glob("*.csv"))
+    + list((REPO / "Evidence-files" / "ES-Mapping" / "outputs" / "evtxecmd-sysmon")
+           .glob("*.csv")),
+    key=lambda p: p.stat().st_mtime)), None)
 OUT = REPO / "Evidence-files" / "ES-Mapping" / "es_mappings" / "_event_coverage.json"
 
 #: Event types KR2c's field-choice table depends on. A stored query targeting
@@ -42,12 +50,18 @@ REQUIRED_EVENTS = {
 }
 
 
-def scan(csv_path: Path | None) -> dict:
+def scan(csv_paths) -> dict:
     pairs: collections.Counter = collections.Counter()
     channels: collections.Counter = collections.Counter()
     files: list[str] = []
-    if csv_path and csv_path.is_file():
-        with io.open(csv_path, encoding="utf-8-sig", errors="replace") as fh:
+    if csv_paths is None:
+        csv_paths = [PARSED] if PARSED else []
+    elif isinstance(csv_paths, Path):
+        csv_paths = [csv_paths]
+    for csv_path in csv_paths:
+        if not (csv_path and Path(csv_path).is_file()):
+            continue
+        with open(csv_path, encoding="utf-8-sig", errors="replace") as fh:
             rows = list(csv.reader(fh))
         hdr = [h.strip().lower() for h in rows[0]]
         i_ev = hdr.index("eventid") if "eventid" in hdr else None
@@ -61,8 +75,8 @@ def scan(csv_path: Path | None) -> dict:
                 if ch or ev:
                     pairs[(ch, ev)] += 1
                     channels[ch] += 1
-        files.append(str(csv_path.name))
-    elif CORPUS_EV.is_dir():
+        files.append(str(Path(csv_path).name))
+    if not files and CORPUS_EV.is_dir():
         files = [p.name for p in sorted(CORPUS_EV.rglob("*.evtx"))]
 
     absent: dict[str, str] = {}
@@ -93,9 +107,23 @@ def scan(csv_path: Path | None) -> dict:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--parsed-csv", type=Path, default=PARSED)
+    ap.add_argument("--parsed-csv", type=Path, action="append",
+                    default=None,
+                    help="an EvtxECmd output CSV to scan; repeatable. Defaults to "
+                         "every CSV the corpus's lanes have produced, so the report "
+                         "is the UNION of what is actually staged")
     args = ap.parse_args()
-    result = scan(args.parsed_csv)
+    csvs = args.parsed_csv or sorted(
+        list((REPO / "Evidence-files" / "ES-Mapping" / "outputs" / "evtxecmd")
+             .glob("*.csv"))
+        + list((REPO / "Evidence-files" / "ES-Mapping" / "outputs" / "evtxecmd-sysmon")
+               .glob("*.csv")),
+        key=lambda p: p.stat().st_mtime)
+    if not csvs:
+        print("  no EvtxECmd output CSV found - run report_event_coverage's "
+              "upstream lane first", file=sys.stderr)
+        return 2
+    result = scan(csvs)
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(result, indent=2, sort_keys=True), encoding="utf-8")
 
