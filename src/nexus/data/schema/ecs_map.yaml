@@ -84,6 +84,10 @@ winlog_event_data:
       TargetObject: ecs.registry.path
       Details: ecs.registry.data.strings
       Image: ecs.process.executable
+    "22":
+      # WO-CS1c item 3: restored (was dropped); both xpaths are in the pinned map.
+      QueryName: ecs.dns.question.name
+      Image: ecs.process.executable
 
 # ── Column -> ECS field, per tool family (from the operator's ES-Mapping) ──
 # `transform` (optional): path_split | hash_list | lower.
@@ -97,9 +101,10 @@ family_columns:
     RunCount: ecs.process.run_count
     LastRun: ecs.file.modified
   mftecmd:
-    # ParentPath + FileName combine into the full path (join), so a
-    # `ecs.file.path` wildcard matches. The name/directory/extension split derives
-    # from the joined path.
+    # WO-CS1c item 2: "join" is an EXPLICIT per-family transform (ParentPath +
+    # FileName make the full path). Every other family takes the FIRST non-empty
+    # path column in the declared order - never a join.
+    __path_transform__: join
     ParentPath: ecs.file.path
     FileName: ecs.file.path
     FileSize: ecs.file.size
@@ -116,19 +121,16 @@ family_columns:
     # AmcacheParser output (only the raw hive -> `ingest-amcache` slots), so those
     # columns are unverifiable (WO-CS1b item 3: remove dead entries).
   lecmd:
-    # WO-CS1b item 3: real LECmd columns. `SourceFile` is provenance (the parser's
-    # input path, replaced with `<source>`), so it is not a source. A LNK's target
-    # is `LocalPath` / `NetworkPath` / `RelativePath`, and `TargetIDAbsolutePath`
-    # is the resolved target.
-    TargetIDAbsolutePath: ecs.file.path
+    # WO-CS1c item 2: FIRST non-empty in this order (never a join — the reviewer
+    # saw `Unmapped GUID: ...\C:\Users\...` from joining). `SourceFile` is
+    # provenance (replaced with `<source>`), so it is not a source.
     LocalPath: ecs.file.path
-    RelativePath: ecs.file.path
     NetworkPath: ecs.file.path
-  jlecmd:
-    # Real JLECmd columns. `TargetIDAbsolutePath` / `LocalPath` are the target.
     TargetIDAbsolutePath: ecs.file.path
+  jlecmd:
+    # WO-CS1c item 2: FIRST non-empty in this order (never a join).
     LocalPath: ecs.file.path
-    RelativePath: ecs.file.path
+    TargetIDAbsolutePath: ecs.file.path
     CommonPath: ecs.file.path
   sbecmd:
     AbsolutePath: ecs.file.path

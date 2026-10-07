@@ -36,15 +36,28 @@ def load_ecs_map() -> dict[str, Any]:
     return doc if isinstance(doc, dict) else {}
 
 
-def _set(doc: dict[str, Any], path: str, value: Any) -> None:
+#: Per-value caps (WO-CS1c item 1): a PowerShell script block may keep 32 KB; other
+#: event_data values 4,096; everything else 4,096.
+MAX_SCRIPT_BLOCK = 32768
+MAX_EVENT_DATA = 4096
+MAX_GENERIC = 4096
+
+
+def _set(doc: dict[str, Any], path: str, value: Any, limit: int | None = None) -> None:
     """Set a dotted path, creating intermediate dicts. Empty/None is skipped.
 
+    WO-CS1c item 6: a `-` placeholder (EvtxECmd's empty marker, e.g. a 4624 with
+    no IpAddress) is treated as empty, so `ecs.source.ip` never holds `-`.
     The map's destinations are written with the `ecs.` prefix (`ecs.process.name`)
     because that is how a query names them; the stored sub-document IS the part
     under `ecs`, so the leading `ecs.` is stripped here.
     """
-    if value in (None, "", [], {}):
+    if value in (None, "", [], {}, "-"):
         return
+    if isinstance(value, str) and value.strip() == "-":
+        return
+    if isinstance(value, str) and limit:
+        value = value[:limit]
     if path.startswith("ecs."):
         path = path[len("ecs."):]
     parts = path.split(".")
@@ -92,9 +105,6 @@ def _parse_payload(payload: Any) -> dict[str, Any]:
     return out
 
 
-_HASH_SPLIT = re.compile(r"[=:]")
-
-
 def _parse_hashes(value: Any) -> dict[str, str]:
     """`SHA1=..,MD5=..,SHA256=..` -> {sha1:.., md5:.., sha256:..} (lowercased)."""
     out: dict[str, str] = {}
@@ -132,6 +142,44 @@ def _split_pieces(path_doc: dict[str, Any], dst: str) -> dict[str, Any]:
     }
 
 
+def _parse_chainsaw_event_data(value: Any) -> dict[str, str]:
+    """Chainsaw `Event Data` is `key: value` lines (one per line)."""
+    out: dict[str, str] = {}
+    for line in str(value or "").splitlines():
+        line = line.strip()
+        if not line or ":" not in line:
+            continue
+        key, _, val = line.partition(":")
+        key = key.strip()
+        val = val.strip().strip("'\"")
+        if key:
+            out[key] = val
+    return out
+
+
+def _zircolite_event_data(ecs: dict[str, Any], fields: dict[str, Any],
+                          record: dict[str, Any]) -> None:
+    """Zircolite detection rows: EventData columns -> ecs.winlog.event_data.*.
+
+    A Zircolite row is a rule match with a `matches` list; each match carries the
+    event's own fields. Any field the row already holds that is not a rule column
+    is treated as event data.
+    """
+    rule_cols = {"title", "id", "description", "sigmafile", "sigma", "rule_level",
+                 "tags", "count", "matches"}
+    matches = record.get("matches") if isinstance(record, dict) else None
+    if isinstance(matches, list):
+        for m in matches[:1]:
+            if isinstance(m, dict):
+                for k, v in m.items():
+                    if v not in (None, "", [], {}):
+                        _set(ecs, f"ecs.winlog.event_data.{k}", str(v)[:MAX_EVENT_DATA])
+    for k, v in fields.items():
+        if str(k).lower() in rule_cols or k in ("Event Data",):
+            continue
+        _set(ecs, f"ecs.winlog.event_data.{k}", str(v)[:MAX_EVENT_DATA])
+
+
 def normalize(
     family: str,
     fields: dict[str, Any] | None,
@@ -152,10 +200,10 @@ def normalize(
     ev = _parse_payload(payload)
     if ev:
         for name, value in ev.items():
-            # WO-CS1b item 1: an event_data value keeps up to 4,096 chars; a
-            # PowerShell script block may keep up to 32 KB.
-            limit = 32768 if name == "ScriptBlockText" else 4096
-            _set(ecs, f"ecs.winlog.event_data.{name}", str(value)[:limit])
+            # WO-CS1c item 1: a PowerShell script block keeps up to 32 KB (a real
+            # 4104 carries 20,411 chars); other event_data values 4,096.
+            limit = MAX_SCRIPT_BLOCK if name == "ScriptBlockText" else MAX_EVENT_DATA
+            _set(ecs, f"ecs.winlog.event_data.{name}", value, limit=limit)
         event_id = str(fields.get("EventId") or fields.get("EventID") or "").strip()
         channel = str(
             fields.get("Channel") or fields.get("Provider")
@@ -163,38 +211,36 @@ def normalize(
         ).strip()
         # WO-CS1b item 2: the table is keyed by (channel or provider, event ID), so
         # Sysmon's "1"/"3"/"11" apply only to the Sysmon channel, Security's 4624
-        # only to Security. The legacy event-id-only bucket is a fallback.
+        # only to Security.
         winlog_table = emap.get("winlog_event_data") or {}
-        per_event = (
-            (winlog_table.get(channel) or {}).get(event_id)
-            or winlog_table.get(event_id)
-            or {}
-        )
+        per_event = (winlog_table.get(channel) or {}).get(event_id) or {}
         for name, dst in per_event.items():
             if name in ev:
                 _apply_mapped(ecs, dst, ev[name])
 
-    # 2. Column -> ECS for this family, plus the importer slot table. The slots
-    #    (process_name, command_line, file_path, ...) are uniquely named, so they
-    #    are applied against `fields` whether the row came from an importer or a
-    #    tool - the index projects them into `fields.*` either way.
+    # 2. Column -> ECS for this family, plus the importer slot table.
     tables = emap.get("family_columns") or {}
+    fam_table = tables.get(fam) if isinstance(tables.get(fam), dict) else {}
+    path_transform = str(fam_table.get("__path_transform__") or "first")
+    ingest_table = tables.get("ingest") if isinstance(tables.get("ingest"), dict) else {}
+
     file_path_parts: list[str] = []
-    for table_name in (fam, "ingest"):
-        table = tables.get(table_name)
-        if not isinstance(table, dict):
-            continue
+    for table in (fam_table, ingest_table):
         for column, dst in table.items():
-            if column not in fields:
+            if str(column).startswith("__") or column not in fields:
                 continue
             if dst == "ecs.file.path":
-                # A path column is a PART here (ParentPath + FileName); collect and
-                # join below so a single wildcard matches the full path.
+                # WO-CS1c item 2: "join" is an explicit per-family transform
+                # (MFTECmd ParentPath + FileName). Every other family takes the
+                # FIRST non-empty path column in the declared order.
                 file_path_parts.append(str(fields[column]))
                 continue
             _apply_mapped(ecs, dst, fields[column])
     if file_path_parts:
-        joined = "\\".join(p.rstrip("\\/") for p in file_path_parts if p)
+        if path_transform == "join":
+            joined = "\\".join(p.rstrip("\\/") for p in file_path_parts if p)
+        else:
+            joined = next((p for p in file_path_parts if p.strip()), "")
         if joined:
             _apply_mapped(ecs, "ecs.file.path", joined)
 
@@ -203,7 +249,7 @@ def normalize(
     #     ecs.winlog.event_data.<Name>.
     if fam == "chainsaw":
         for name, value in _parse_chainsaw_event_data(fields.get("Event Data")).items():
-            _set(ecs, f"ecs.winlog.event_data.{name}", str(value)[:4096])
+            _set(ecs, f"ecs.winlog.event_data.{name}", value, limit=MAX_EVENT_DATA)
     if fam == "zircolite":
         _zircolite_event_data(ecs, fields, record)
 
@@ -245,47 +291,11 @@ def _apply_mapped(ecs: dict[str, Any], dst: str, value: Any) -> None:
         for k, v in _split_pieces(pieces, base).items():
             _set(ecs, k, v)
         return
-    _set(ecs, dst, str(value)[:4096])
-
-
-def _parse_chainsaw_event_data(value: Any) -> dict[str, str]:
-    """Chainsaw `Event Data` is `key: value` lines (one per line)."""
-    out: dict[str, str] = {}
-    for line in str(value or "").splitlines():
-        line = line.strip()
-        if not line or ":" not in line:
-            continue
-        key, _, val = line.partition(":")
-        key = key.strip()
-        val = val.strip().strip("'\"")
-        if key:
-            out[key] = val
-    return out
-
-
-def _zircolite_event_data(ecs: dict[str, Any], fields: dict[str, Any],
-                          record: dict[str, Any]) -> None:
-    """Zircolite detection rows: EventData columns -> ecs.winlog.event_data.*.
-
-    A Zircolite row is a rule match with a `matches` list; each match carries the
-    event's own fields. Any field the row already holds that is not a rule column
-    is treated as event data (the same rule Chainsaw's parser follows).
-    """
-    rule_cols = {"title", "id", "description", "sigmafile", "sigma", "rule_level",
-                 "tags", "count", "matches"}
-    matches = record.get("matches") if isinstance(record, dict) else None
-    if isinstance(matches, list):
-        for m in matches[:1]:
-            if isinstance(m, dict):
-                for k, v in m.items():
-                    if v not in (None, "", [], {}):
-                        _set(ecs, f"ecs.winlog.event_data.{k}", str(v)[:4096])
-    for k, v in fields.items():
-        if str(k).lower() in rule_cols or k in ("Event Data",):
-            continue
-        _set(ecs, f"ecs.winlog.event_data.{k}", str(v)[:4096])
+    # WO-CS1c item 1: a script block keeps up to 32 KB, everything else 4,096.
+    limit = MAX_SCRIPT_BLOCK if dst.endswith(".ScriptBlockText") else MAX_GENERIC
+    _set(ecs, dst, value, limit=limit)
 
 
 def _flatten_hashes(ecs: dict[str, Any]) -> dict[str, Any]:
-    """Convert `{...: {"hash": {...}}}` nothing - hashes are already flat dicts."""
+    """Hash targets are already parsed into flat `{algo: hash}` dicts; no-op."""
     return ecs

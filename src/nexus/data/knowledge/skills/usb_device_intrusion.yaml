@@ -10,15 +10,23 @@ description: 'The FOR500 eight-step device chain: identify the device in USBSTOR
   and System.evtx 20001, then attribute the user via MountPoints2 and correlate file
   copies to the drive letter.'
 trigger:
+  # WO-CS1c item 4 (third round): USB evidence is the REGISTRY/SetupAPI artifacts
+  # (USBSTOR, MountedDevices, MountPoints2, setupapi.dev.log) — the event-log
+  # families are only ever a CORROBORATION inside a step, not the skill's subject.
+  # Listing them here made any EVTX case match 2+ families and surface this skill
+  # (the standard EVTX set selected it on every run). primary_families keeps the
+  # selector honest: a registry/recmd/setupapi hit IS this skill's subject.
   families:
   - recmd
   - registry
   - setupapi
-  - evtx
-  - evtxecmd
   - mftecmd
   - mft
-  - hayabusa
+  - usbdeview
+  primary_families:
+  - recmd
+  - registry
+  - setupapi
   - usbdeview
   keywords:
   - usb
