@@ -47,6 +47,7 @@ MCP connection:
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import json
 import logging
@@ -56,6 +57,8 @@ from datetime import UTC, datetime
 from operator import add
 from pathlib import Path
 from typing import Annotated, Any, TypedDict
+
+from nexus.langgraph.tool_call import call_timeout, call_tool
 
 log = logging.getLogger(__name__)
 
@@ -693,18 +696,24 @@ async def register_evidence(state: InvestigationState, tools: dict) -> dict:
         step_log = [f"Reusing case {case_id} (no new INC id)"]
         activate = tools.get("case_activate")
         if activate:
-            act = _parse_tool_result(await activate.ainvoke({"case_id": case_id}))
+            act = _parse_tool_result(
+                await call_tool(activate, {"case_id": case_id}, label="case_activate")
+            )
             if act.get("error"):
                 step_log.append(f"case_activate warning: {act.get('error')}")
             else:
                 step_log.append(f"Activated existing case {case_id}")
     else:
         case_id = f"INC-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}"
-        result = _parse_tool_result(await case_tool.ainvoke({
-            "name": case_name,
-            "description": case_desc,
-            "case_id": case_id,
-        }))
+        result = _parse_tool_result(await call_tool(
+            case_tool,
+            {
+                "name": case_name,
+                "description": case_desc,
+                "case_id": case_id,
+            },
+            label="case_init",
+        ))
         if result.get("error"):
             return {"error": f"case_init failed: {result['error']}"}
 
@@ -723,10 +732,14 @@ async def register_evidence(state: InvestigationState, tools: dict) -> dict:
     sift_init = tools.get("_sift_case_init")
     sift_activate = tools.get("_sift_case_activate")
     if existing and sift_activate:
-        act = _parse_tool_result(await sift_activate.ainvoke({"case_id": case_id}))
+        act = _parse_tool_result(
+            await call_tool(sift_activate, {"case_id": case_id}, label="case_activate(sift)")
+        )
         if act.get("error") and sift_init:
-            mirror = _parse_tool_result(await sift_init.ainvoke({
-                "name": case_name,
+            mirror = _parse_tool_result(await call_tool(
+                sift_init,
+                {
+                    "name": case_name,
                 "description": case_desc,
                 "case_id": case_id,
             }))
@@ -734,24 +747,36 @@ async def register_evidence(state: InvestigationState, tools: dict) -> dict:
                 step_log.append(f"SIFT case mirror warning: {mirror.get('error')}")
             else:
                 step_log.append(f"Case {case_id} mirrored on SIFT")
-                act = _parse_tool_result(await sift_activate.ainvoke({"case_id": case_id}))
+                act = _parse_tool_result(
+                    await call_tool(
+                        sift_activate, {"case_id": case_id}, label="case_activate(sift)"
+                    )
+                )
         if act.get("error"):
             step_log.append(f"SIFT case_activate warning: {act.get('error')}")
         else:
             step_log.append(f"Case {case_id} activated on SIFT")
     elif sift_init:
-        mirror = _parse_tool_result(await sift_init.ainvoke({
-            "name": case_name,
-            "description": case_desc,
-            "case_id": case_id,
-        }))
+        mirror = _parse_tool_result(await call_tool(
+            sift_init,
+            {
+                "name": case_name,
+                "description": case_desc,
+                "case_id": case_id,
+            },
+            label="case_init(sift)",
+        ))
         if mirror.get("error"):
             step_log.append(f"SIFT case mirror warning: {mirror.get('error')}")
             log.warning("SIFT case_init mirror failed: %s", mirror.get("error"))
         else:
             step_log.append(f"Case {case_id} mirrored on SIFT")
             if sift_activate:
-                act = _parse_tool_result(await sift_activate.ainvoke({"case_id": case_id}))
+                act = _parse_tool_result(
+                    await call_tool(
+                        sift_activate, {"case_id": case_id}, label="case_activate(sift)"
+                    )
+                )
                 if act.get("error"):
                     step_log.append(f"SIFT case_activate warning: {act.get('error')}")
                 else:
@@ -771,10 +796,14 @@ async def register_evidence(state: InvestigationState, tools: dict) -> dict:
         for p in paths:
             if not p:
                 continue
-            ev_result = _parse_tool_result(await ev_tool.ainvoke({
-                "path": p,
-                "description": "Evidence for automated investigation",
-            }))
+            ev_result = _parse_tool_result(await call_tool(
+                ev_tool,
+                {
+                    "path": p,
+                    "description": "Evidence for automated investigation",
+                },
+                label="evidence_register",
+            ))
             aid = ev_result.get("audit_id") or ev_result.get("sha256", "")
             if aid:
                 audit_ids.append(aid)
@@ -819,7 +848,9 @@ async def scope(state: InvestigationState, tools: dict, model) -> dict:
 
     if suggest_tool:
         try:
-            suggestions = await suggest_tool.ainvoke({"artifact_type": "evtx"})
+            suggestions = await call_tool(
+                suggest_tool, {"artifact_type": "evtx"}, label="suggest_tools"
+            )
             if isinstance(suggestions, list):
                 for s in suggestions[:5]:
                     log.info("Suggested tool: %s", s.get("name", ""))
@@ -833,7 +864,7 @@ async def scope(state: InvestigationState, tools: dict, model) -> dict:
             or f"investigation guidance for case {case_id}"
         )
         with contextlib.suppress(Exception):
-            await rag_tool.ainvoke({"query": rag_q[:400]})
+            await call_tool(rag_tool, {"query": rag_q[:400]}, label="forensic_rag_search")
         host_ctx = str(ctx.get("host") or "").strip()
         if host_ctx and host_ctx not in hosts:
             hosts.append(host_ctx)
@@ -1044,7 +1075,9 @@ async def ensure_rag_ready(state: InvestigationState, tools: dict) -> dict:
     status: dict = {}
     if status_tool:
         try:
-            status = _parse_tool_result(await status_tool.ainvoke({}))
+            status = _parse_tool_result(
+                await call_tool(status_tool, {}, label="forensic_rag_status")
+            )
         except Exception as exc:  # noqa: BLE001
             return {"error": f"forensic_rag_status failed: {exc}"}
     if search_tool:
@@ -1053,13 +1086,19 @@ async def ensure_rag_ready(state: InvestigationState, tools: dict) -> dict:
                 "Windows host triage EVTX prefetch SRUM LNK Amcache methodology",
                 "insider threat data staging cloud sync removable media SRUM",
             ):
-                warm = _parse_tool_result(await search_tool.ainvoke({
-                    "query": query,
-                    "top_k": 5,
-                }))
+                warm = _parse_tool_result(await call_tool(
+                    search_tool,
+                    {
+                        "query": query,
+                        "top_k": 5,
+                    },
+                    label="forensic_rag_search",
+                ))
                 notes.append(str(warm.get("results") or warm)[:2000])
             if status_tool:
-                status = _parse_tool_result(await status_tool.ainvoke({}))
+                status = _parse_tool_result(
+                    await call_tool(status_tool, {}, label="forensic_rag_status")
+                )
         except Exception as exc:  # noqa: BLE001
             return {"error": f"RAG warmup search failed: {exc}"}
     if str(status.get("status") or "").lower() in ("unavailable", "error", "not_initialized"):
@@ -1092,7 +1131,9 @@ async def load_existing_case(state: InvestigationState, tools: dict) -> dict:
     activate = tools.get("case_activate")
     step_log = []
     if activate:
-        act = _parse_tool_result(await activate.ainvoke({"case_id": case_id}))
+        act = _parse_tool_result(
+            await call_tool(activate, {"case_id": case_id}, label="case_activate")
+        )
         if act.get("error"):
             step_log.append(f"case_activate warning: {act.get('error')}")
         else:
@@ -1708,7 +1749,9 @@ async def interpret(state: InvestigationState, tools: dict, model) -> dict:
             tool = tools.get(name)
             if tool is None:
                 return {"error": f"tool {name} not available"}
-            return _parse_tool_result(await tool.ainvoke(payload))
+            return _parse_tool_result(
+                await call_tool(tool, payload, label=name)
+            )
 
         try:
             from nexus.langgraph.interpret_loop import run_interpret_loop
@@ -2190,7 +2233,9 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
                 linked = set()
         payload = _finding_tool_payload(candidate, trail, linked_ids=linked)
         try:
-            result = _parse_tool_result(await finding_tool.ainvoke(payload))
+            result = _parse_tool_result(
+                await call_tool(finding_tool, payload, label="record_finding")
+            )
         except Exception as e:
             errors.append(str(e))
             return
@@ -2224,12 +2269,16 @@ async def stage_findings(state: InvestigationState, tools: dict, model=None) -> 
                 if not ts:
                     continue
                 try:
-                    result = _parse_tool_result(await timeline_tool.ainvoke({
-                        "timestamp": ts,
-                        "description": c.get("observation", c.get("title", ""))[:500],
-                        "event_type": c.get("type", "execution"),
-                        "host": c.get("host", ""),
-                    }))
+                    result = _parse_tool_result(await call_tool(
+                        timeline_tool,
+                        {
+                            "timestamp": ts,
+                            "description": c.get("observation", c.get("title", ""))[:500],
+                            "event_type": c.get("type", "execution"),
+                            "host": c.get("host", ""),
+                        },
+                        label="record_timeline_event",
+                    ))
                     if result.get("event_id"):
                         timeline_ids.append(result["event_id"])
                 except Exception as e:
@@ -2668,7 +2717,20 @@ async def _load_mcp_tools(config: dict[str, dict]) -> dict[str, Any]:
     for server_name, server_cfg in config.items():
         client = MultiServerMCPClient({server_name: server_cfg})
         try:
-            tools_list = await client.get_tools()
+            # Handshake (initialize + tools/list) is bounded: an unresponsive
+            # server must fail the load, not hang the pipeline before any
+            # evidence is read. The run then reports a real reason.
+            tools_list = await asyncio.wait_for(
+                client.get_tools(),
+                timeout=call_timeout(None),
+            )
+        except TimeoutError:
+            log.error(
+                "MCP tool load from %s timed out after %.0fs — server not answering",
+                server_name,
+                call_timeout(None),
+            )
+            continue
         except Exception as exc:  # noqa: BLE001
             log.error("Failed loading MCP tools from %s: %s", server_name, exc)
             continue

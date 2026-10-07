@@ -30,6 +30,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from nexus.langgraph.tool_call import call_tool
+
 log = logging.getLogger(__name__)
 
 
@@ -2436,7 +2438,9 @@ async def _align_remote_active_case(activate_tool, case_id: str) -> str:
         )
         return ""
     try:
-        raw = await activate_tool.ainvoke({"case_id": case_id})
+        raw = await call_tool(
+            activate_tool, {"case_id": case_id}, label="case_activate"
+        )
         # MCP returns a content list; the payload is JSON in its text part.
         payload = raw
         if isinstance(payload, list):
@@ -3057,13 +3061,17 @@ async def run_tool_lane(
     rag_notes: list[str] = []
     if rag_tool:
         try:
-            rag = parse_result(await rag_tool.ainvoke({
-                "query": (
-                    "Windows host forensic triage methodology: event logs, "
-                    "prefetch, amcache, shimcache, SRUM, MFT, browser history, "
-                    "memory volatility process list cmdline"
-                ),
-            }))
+            rag = parse_result(await call_tool(
+                rag_tool,
+                {
+                    "query": (
+                        "Windows host forensic triage methodology: event logs, "
+                        "prefetch, amcache, shimcache, SRUM, MFT, browser history, "
+                        "memory volatility process list cmdline"
+                    ),
+                },
+                label="forensic_rag_search",
+            ))
             snippet = str(rag.get("answer") or rag.get("results") or rag)[:800]
             if snippet:
                 rag_notes.append(snippet)
@@ -3265,12 +3273,20 @@ async def run_tool_lane(
                 _finish("SKIP", job.reason, reason=job.reason)
                 return
             try:
-                raw = await win_tool.ainvoke({
-                    "command": job.argv,
-                    "purpose": job.purpose,
-                    "timeout": job.timeout,
-                    "save_output": True,
-                })
+                # The declared timeout is the tool's own subprocess budget. The
+                # round-trip budget bounds the transport as well, so a dead MCP
+                # server fails this job instead of hanging the lane forever.
+                raw = await call_tool(
+                    win_tool,
+                    {
+                        "command": job.argv,
+                        "purpose": job.purpose,
+                        "timeout": job.timeout,
+                        "save_output": True,
+                    },
+                    timeout=job.timeout,
+                    label=f"run_windows_command({job.tool})",
+                )
                 result = parse_result(raw)
             except Exception as exc:  # noqa: BLE001
                 job.reason = str(exc)
@@ -3284,11 +3300,16 @@ async def run_tool_lane(
                 return
             cmd = " ".join(shlex.quote(a) for a in job.argv)
             try:
-                raw = await sift_tool.ainvoke({
-                    "command": cmd,
-                    "purpose": job.purpose,
-                    "timeout": job.timeout,
-                })
+                raw = await call_tool(
+                    sift_tool,
+                    {
+                        "command": cmd,
+                        "purpose": job.purpose,
+                        "timeout": job.timeout,
+                    },
+                    timeout=job.timeout,
+                    label=f"run_command({job.tool})",
+                )
                 result = parse_result(raw)
             except Exception as exc:  # noqa: BLE001
                 job.reason = str(exc)
@@ -3456,18 +3477,23 @@ async def run_tool_lane(
     pending_vol = [j for j in sift_jobs if j.tool == "vol" and j.status == "PENDING"]
     if pending_vol and sift_tool:
         try:
-            raw = await sift_tool.ainvoke({
-                "command": "vol -h",
-                "purpose": "Volatility plugin list",
-                "timeout": 120,
-                # A usage banner is not case evidence: persisting it put a
-                # 522-row `vol -h` capture in the case on the D12 lane run.
-                "save_output": False,
-                # The plugin list starts at ~21 KB, past the 10 KB reply slice,
-                # so a slice-only probe reads the banner and never the list
-                # (measured on the D12 lane run).
-                "full_output": True,
-            })
+            raw = await call_tool(
+                sift_tool,
+                {
+                    "command": "vol -h",
+                    "purpose": "Volatility plugin list",
+                    "timeout": 120,
+                    # A usage banner is not case evidence: persisting it put a
+                    # 522-row `vol -h` capture in the case on the D12 lane run.
+                    "save_output": False,
+                    # The plugin list starts at ~21 KB, past the 10 KB reply slice,
+                    # so a slice-only probe reads the banner and never the list
+                    # (measured on the D12 lane run).
+                    "full_output": True,
+                },
+                timeout=120,
+                label="run_command(vol -h)",
+            )
             parsed = parse_result(raw)
             # ``data`` is the reply body run_command returns; the other keys are
             # accepted for other tools' shapes. Reading only ("stdout",
