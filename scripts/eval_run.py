@@ -130,6 +130,21 @@ def leak_guard(case_dir: Path, manifest_path: Path) -> list[str]:
     for path in case_dir.rglob("*"):
         if not path.is_file():
             continue
+        # `.md.gz` is a compressed llm_context (D39): the audit must still be
+        # scannable, so gzip is read, not skipped.
+        if path.suffix.lower() == ".gz":
+            try:
+                import gzip
+
+                with gzip.open(path, "rt", encoding="utf-8", errors="replace") as fh:
+                    text = fh.read()
+            except OSError:
+                continue
+            for needle in needles:
+                if needle and needle in text:
+                    hits.append(f"{path.relative_to(case_dir)} contains {needle!r}")
+                    break
+            continue
         if path.suffix.lower() not in {".md", ".json", ".jsonl", ".txt", ".yaml", ".yml"}:
             continue
         try:

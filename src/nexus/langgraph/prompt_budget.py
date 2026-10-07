@@ -188,12 +188,38 @@ def persist_context(
 
 
 def _prune_contexts(out_dir: Path) -> None:
+    """Compress the oldest contexts past the cap — NEVER delete them (D39).
+
+    Deleting them destroyed the audit of what the model was given: SC1 lost
+    every Mode 1 context to this, so the utilization audit (KA1) could not be
+    read from the case afterwards and the cause was invisible. The reviewer
+    found it at R1 and the WO's rule is explicit: "If disk use matters, compress;
+    never delete."
+    """
     try:
         files = sorted(out_dir.glob("*.md"))
-        for path in files[:-_MAX_PERSISTED_CONTEXTS]:
-            path.unlink(missing_ok=True)
+        stale = files[:-_MAX_PERSISTED_CONTEXTS]
+        for path in stale:
+            _compress_context(path)
     except OSError:
         pass
+
+
+def _compress_context(path: Path) -> None:
+    """gzip a context file and remove the plain one. Idempotent."""
+    if path.suffix != ".md":
+        return
+    target = path.with_suffix(".md.gz")
+    try:
+        if not target.exists():
+            import gzip
+
+            with path.open("rb") as src, gzip.open(target, "wb") as dst:
+                dst.write(src.read())
+        path.unlink(missing_ok=True)
+    except OSError as exc:
+        # Never lose the audit to a failed compression: leave the plain file.
+        log.debug("context compression failed for %s: %s", path, exc)
 
 
 def log_usage(name: str, report: dict[str, Any], *, model: str = "") -> None:
