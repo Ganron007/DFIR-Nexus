@@ -2812,6 +2812,59 @@ def inherit_evidence_paths(
     return _case_evidence_paths(case_id) or evidence_paths
 
 
+def _unfinished_reason(result: Any) -> str:
+    """Why a finished graph produced no completed run, or "" when it did.
+
+    A node can return ``{"error": ...}`` without raising. The graph then ends
+    normally while the run record is never finalized, so the manifest reads
+    ``running`` for a run that is over. The node's own error is the reason.
+    """
+    state = result if isinstance(result, dict) else {}
+    if state.get("report_path"):
+        return ""
+    error = str(state.get("error") or "").strip()
+    if error:
+        return error[:400]
+    drafts = state.get("draft_finding_ids") or []
+    return (
+        "run ended without a report"
+        + (f" ({len(drafts)} draft finding(s) staged)" if drafts else
+           " and staged no findings")
+    )
+
+
+def _finalize_died(initial: InvestigationState | dict, exc: BaseException) -> None:
+    """Record a run that raised, so it never reads `running` afterwards."""
+    state = initial if isinstance(initial, dict) else {}
+    try:
+        from nexus.config import settings
+        from nexus.langgraph.pipeline_runs import finalize_run, resolve_run
+
+        case_dir = settings.cases_root / str(state.get("case_id") or "")
+        run = resolve_run(case_dir, run_id=str(state.get("run_id") or ""))
+        finalize_run(run, "failed", f"{type(exc).__name__}: {exc}"[:400])
+    except Exception:  # noqa: BLE001 — status bookkeeping must not mask the error
+        log.exception("could not finalize a run that died")
+
+
+def _finalize_if_unfinished(initial: InvestigationState | dict, result: Any) -> None:
+    """Record a run that ended without a report, naming the node's error."""
+    reason = _unfinished_reason(result)
+    if not reason:
+        return
+    state = initial if isinstance(initial, dict) else {}
+    try:
+        from nexus.config import settings
+        from nexus.langgraph.pipeline_runs import finalize_run, resolve_run
+
+        case_dir = settings.cases_root / str(state.get("case_id") or "")
+        run = resolve_run(case_dir, run_id=str(state.get("run_id") or ""))
+        finalize_run(run, "failed", reason)
+        log.error("Run ended without a report: %s", reason)
+    except Exception:  # noqa: BLE001
+        log.exception("could not finalize an unfinished run")
+
+
 async def run_pipeline(
     evidence_path: str = "",
     resume: bool = False,
@@ -2923,13 +2976,24 @@ async def run_pipeline(
     )
     try:
         result = await compiled.ainvoke(initial, config=cfg)
-    except Exception as exc:
+    except BaseException as exc:
+        # A run that dies must not be left reading `running`. Without this the
+        # manifest stayed `running` with no reason, no report and no findings,
+        # and the next reader could not tell a crash from an in-flight run
+        # (SC1, 2026-10-07). `BaseException` so a cancellation is recorded too;
+        # `finalize_run` is idempotent and never raises out of here.
         emit_stage(initial, "pipeline", "error", str(exc)[:200])
+        _finalize_died(initial, exc)
         raise
     emit_stage(
         initial, "pipeline", "done",
         f"drafts={len(result.get('draft_finding_ids') or [])}" if isinstance(result, dict) else "",
     )
+    # The graph reached the end but may still have failed after the tool lane:
+    # a node that returned `{"error": ...}` instead of raising, with no report
+    # written, leaves the same `running` record. Record it as failed with the
+    # node's own reason rather than reporting a completed run that has nothing.
+    _finalize_if_unfinished(initial, result)
 
     result_state = result if isinstance(result, dict) else {}
     log.info("Pipeline complete")
