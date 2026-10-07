@@ -20,6 +20,10 @@ from typing import Any
 
 MODE_SCHEME = 2
 CANONICAL_MODES = (1, 2, 3)
+#: Spellings of "already canonical" that are not numbers. The codebase writes
+#: `mode_scheme: canonical`, so a numeric-only parse treated its own output as
+#: legacy (see `resolve_stored_mode`).
+_CANONICAL_SCHEME_NAMES = {"canonical", "v2", "2", "mode-scheme-2"}
 LEGACY_MODE_ALIASES: dict[int, int] = {1: 1, 2: 1, 3: 2, 4: 3}
 
 _MODE_MAP: dict[int, dict[str, Any]] = {
@@ -70,14 +74,25 @@ def canonical_for_write(raw: Any) -> int | None:
 def resolve_stored_mode(raw: Any, scheme: Any = None) -> int | None:
     """Canonical mode for a stored CASE.yaml value, respecting ``mode_scheme``.
 
-    ``scheme >= MODE_SCHEME`` means the value is already canonical; anything
-    else (missing/legacy) goes through the alias table.
+    ``scheme >= MODE_SCHEME`` — or the literal ``"canonical"``/``"v2"`` — means the
+    value is already canonical; anything else (missing/legacy) goes through the
+    alias table.
+
+    Parsing only the numeric form was a live defect: `mode_scheme: canonical`
+    (the string this codebase itself writes) fell through to the LEGACY table,
+    where 2→1, so a canonical Mode 2 read as Mode 1. The mode-segregation guard
+    could therefore never tell Mode 1 from Mode 2, and the CLI let every mode run
+    on one case (WO-R1F item 3).
     """
     value = _int_or_none(raw)
     if value is None:
         return None
-    marker = _int_or_none(scheme) or 0
-    if marker >= MODE_SCHEME:
+    marker = _int_or_none(scheme)
+    canonical_scheme = (
+        (marker is not None and marker >= MODE_SCHEME)
+        or str(scheme or "").strip().lower() in _CANONICAL_SCHEME_NAMES
+    )
+    if canonical_scheme:
         return value if value in CANONICAL_MODES else LEGACY_MODE_ALIASES.get(value)
     return LEGACY_MODE_ALIASES.get(value) or (
         value if value in CANONICAL_MODES else None)

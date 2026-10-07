@@ -252,23 +252,28 @@ def _wrong_mode_error(case_dir: Path, expected: int):
     Unset mode is left alone so older cases without a stored mode still run.
     A stored mode is the segregation boundary: a Mode 1 case cannot start a
     Mode 2 or Mode 3 run, and the reverse.
-    """
-    stored = _stored_case_mode(case_dir)
-    if stored is None or stored == expected:
-        return None
-    from nexus.langgraph.mode_mapping import mode_label
 
-    return JSONResponse(
-        {
-            "error": (
-                f"This case is {mode_label(stored)}. "
-                f"That action belongs to {mode_label(expected)}."
-            ),
-            "case_mode": stored,
-            "expected_mode": expected,
-        },
-        status_code=409,
-    )
+    The rule itself lives in `nexus.case.mode_guard`, shared with the CLI — the
+    CLI not consulting it is why all three modes ran on one case (WO-R1F item 3).
+    """
+    from nexus.case.mode_guard import ModeConflictError, check_mode
+
+    stored = _stored_case_mode(case_dir)
+    try:
+        check_mode(case_dir, expected)
+    except ModeConflictError as exc:
+        from nexus.langgraph.mode_mapping import mode_label
+
+        return JSONResponse(
+            {
+                "error": str(exc),
+                "case_mode": exc.stored,
+                "expected_mode": exc.expected,
+                "stored_label": mode_label(stored) if stored is not None else "",
+            },
+            status_code=409,
+        )
+    return None
 
 
 def _lane_gate_error(case_dir: Path):
