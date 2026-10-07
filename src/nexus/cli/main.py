@@ -697,10 +697,26 @@ def pipeline(
     resolved_mode = mode or None
     if cid and not resolved_mode:
         resolved_mode = "interpret"
+    if not cid and (case or "").strip():
+        # `--case` given a CASE DIRECTORY is a run ON that case, not new evidence.
+        # Without this the run took the create path, minted `INC-<ts>` and named
+        # it "LangGraph Investigation - <id>" — a second case for evidence that
+        # already belongs to one (WO-R1F step 0c: a pipeline run on
+        # CASE-D6B93BF1 created INC-20261007063311). Resolve the id and reuse.
+        _p = Path(case).expanduser()
+        if _p.is_dir() and (_p / "CASE.yaml").is_file():
+            cid = _p.name
+            if not resolved_mode:
+                resolved_mode = "interpret"
+            typer.echo(
+                f"--case is an existing case directory ({cid}); "
+                "running on that case instead of creating a new one."
+            )
+    if cid:
         if not (case or "").strip():
             typer.echo(f"Interpret from existing case {cid} (no re-parse)")
-    elif cid:
-        typer.echo(f"Reusing case {cid} in mode {resolved_mode}")
+        else:
+            typer.echo(f"Reusing case {cid} in mode {resolved_mode}")
     elif resolved_mode in {"interpret", "from_case", "from-case"} and not cid:
         typer.echo("interpret mode needs --from-case <case_id>", err=True)
         raise typer.Exit(1)

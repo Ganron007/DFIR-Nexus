@@ -200,6 +200,52 @@ def _delete_case_indexes(case_ids: list[str]) -> str:
         return f"ES index cleanup skipped ({type(exc).__name__})"
 
 
+@app.command("delete")
+def delete_case(
+    case_id: str = typer.Argument(..., help="Case ID to delete"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation"),
+):
+    """Delete ONE case: folder (clearing read-only), DB rows and ES indexes.
+
+    `case clean` wipes every ``CASE-*`` folder and the whole DB; it ignores
+    ``INC-*``, leaves the ES indexes behind, and cannot remove read-only
+    evidence copies. This removes one case, reports each part separately, and
+    exits non-zero if any part did not go — so an orphan is never reported as
+    cleaned (WO-R1F step 0b).
+    """
+    import contextlib
+
+    from nexus.case.cleanup import delete_case_data
+    from nexus.config import settings
+
+    case_id = (case_id or "").strip()
+    if not case_id:
+        typer.echo("A case ID is required.", err=True)
+        raise typer.Exit(2)
+    if not yes and not typer.confirm(
+        f"Delete {case_id}: its folder, its DB rows and its ES indexes?"
+    ):
+        typer.echo("Aborted.")
+        raise typer.Exit(1)
+
+    # One implementation, shared with scripts/prune_cases.py — the two had
+    # drifted and that is how orphans accumulated (WO-R1F step 0b).
+    res = delete_case_data(case_id, cases_root=settings.cases_root)
+
+    if _get_active_case_id() == case_id:
+        with contextlib.suppress(OSError):
+            _ACTIVE_CASE_FILE.write_text("")
+        res.add("active pointer", True, "cleared")
+
+    for part, good, detail in res.parts:
+        mark = "OK  " if good else "FAIL"
+        typer.echo(f"  {mark} {part}: {detail}", err=not good)
+    if not res.ok:
+        typer.echo(f"{case_id}: NOT fully deleted — see FAIL above.", err=True)
+        raise typer.Exit(1)
+    typer.echo(f"{case_id}: deleted (folder, DB rows, ES indexes).")
+
+
 @app.command()
 def activate(case_id: str = typer.Argument(..., help="Case ID to activate")):
     """Activate an existing case."""
