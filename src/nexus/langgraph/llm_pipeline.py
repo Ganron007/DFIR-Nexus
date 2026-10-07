@@ -2847,11 +2847,33 @@ def _finalize_died(initial: InvestigationState | dict, exc: BaseException) -> No
         log.exception("could not finalize a run that died")
 
 
-def _finalize_if_unfinished(initial: InvestigationState | dict, result: Any) -> None:
-    """Record a run that ended without a report, naming the node's error."""
+async def _finalize_if_unfinished(
+    initial: InvestigationState | dict,
+    result: Any,
+    *,
+    compiled: Any = None,
+    cfg: dict | None = None,
+) -> None:
+    """Record a run that ended without a report, naming the node's error.
+
+    A run **paused at the approval interrupt** legitimately has no report yet -
+    `generate_report` runs after approval - so a graph with a next node is
+    waiting, not failed. Only a graph with nothing left to run is unfinished.
+    """
     reason = _unfinished_reason(result)
     if not reason:
         return
+    if compiled is not None and cfg is not None:
+        try:
+            snapshot = await compiled.aget_state(cfg)
+        except Exception:  # noqa: BLE001 — a state read must not mask the run
+            snapshot = None
+        next_nodes = list(getattr(snapshot, "next", ()) or ()) if snapshot else []
+        if next_nodes:
+            log.info(
+                "Run paused at %s (no report yet) — not finalizing", next_nodes[0]
+            )
+            return
     state = initial if isinstance(initial, dict) else {}
     try:
         from nexus.config import settings
@@ -2993,7 +3015,7 @@ async def run_pipeline(
     # a node that returned `{"error": ...}` instead of raising, with no report
     # written, leaves the same `running` record. Record it as failed with the
     # node's own reason rather than reporting a completed run that has nothing.
-    _finalize_if_unfinished(initial, result)
+    await _finalize_if_unfinished(initial, result, compiled=compiled, cfg=cfg)
 
     result_state = result if isinstance(result, dict) else {}
     log.info("Pipeline complete")
