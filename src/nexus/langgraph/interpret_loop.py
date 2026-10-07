@@ -384,6 +384,17 @@ async def run_interpret_loop(
         "examiner's focus if one is given.\n"
         "- No prose outside the JSON."
     )
+    field_sheet = ""
+    try:
+        from nexus.langgraph.field_catalog import field_sheet_block
+        from nexus.langgraph.query_normalize import query_protocol_block
+
+        sheet = field_sheet_block(case_dir)
+        if sheet:
+            field_sheet = "\n" + sheet + "\n"
+    except Exception:  # noqa: BLE001 — a prompt extra must never break the loop
+        field_sheet = ""
+    orient_system = orient_system + field_sheet + "\n" + query_protocol_block()
     packed = _packed("interpret-orient", [
         (1, "examiner_intake", intake_block),
     ])

@@ -614,7 +614,7 @@ def _seat_with_model(
     audit: Any = None,
 ) -> dict[str, Any]:
     from nexus.langgraph.context_loop import LoopBudget, run_context_loop
-    from nexus.modes.multi_role import role_for
+    from nexus.modes.multi_role import _investigative_extras, role_for
 
     role_name = str(spawn.get("role") or "evidence")
     try:
@@ -652,7 +652,8 @@ def _seat_with_model(
         f"Family: {family or '(cross-family)'}. Why you were spawned: {spawn.get('why') or ''}\n"
         f"{skill_block}\n"
         f"Board so far:\n{board_digest}\n\n"
-        'Return JSON {"claims":[{"entity_type":"...","entity_value":"...",'
+        + _investigative_extras(case_dir)
+        + 'Return JSON {"claims":[{"entity_type":"...","entity_value":"...",'
         '"claim_kind":"presence|absence|attribution|time_order","polarity":"affirm|deny",'
         '"value":"...","audit_ids":["..."],"confidence":"LOW|MEDIUM|HIGH",'
         '"confidence_justification":"..."}],"open_questions":["..."]}. '

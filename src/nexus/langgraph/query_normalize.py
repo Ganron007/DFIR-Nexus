@@ -699,3 +699,32 @@ def corrected_example(reason: str) -> str:
     example**, so the model's next attempt can succeed.
     """
     return f"{reason}. Correct shape — {QUERY_RULES}"
+
+
+#: Three worked examples, exactly as the model must write them (WO-R1F item 2b).
+#: Measured in SC1's recorded calls: the protocol showed `"args":{...}` and never
+#: one complete, correct `es_search` call, so the model invented the shape.
+_WORKED_EXAMPLES = (
+    "WORKED EXAMPLES (write them exactly like this):\n"
+    "1. a filtered search:\n"
+    '{"tool_calls":[{"tool":"es_search","args":{'
+    '"query":{"bool":{"must":['
+    '{"term":{"ecs.winlog.event_data.TargetUserName":"admin"}},'
+    '{"range":{"ts":{"gte":"2023-01-24"}}}]}},'
+    '"sort":[{"ts":"asc"}],"size":50},"why":"..."}]}\n'
+    "2. a terms aggregation:\n"
+    '{"tool_calls":[{"tool":"es_aggregate","args":{'
+    '"aggs":{"by_host":{"terms":{"field":"host","size":50}}},'
+    '"query":{"match_all":{}}},"why":"..."}]}\n'
+    "3. an EventData wildcard:\n"
+    '{"tool_calls":[{"tool":"es_search","args":{'
+    '"query":{"wildcard":{"ecs.winlog.event_data.CommandLine":'
+    '{"value":"*EncodedCommand*"}}},"size":25},"why":"..."}]}\n'
+    "THREE RULES: `query` is a JSON object, `sort` is a list, and there is ONE "
+    "top-level clause (combine with bool)."
+)
+
+
+def query_protocol_block() -> str:
+    """The three rules plus three worked examples, for every investigative prompt."""
+    return f"ES QUERY PROTOCOL\n{QUERY_RULES}\n{_WORKED_EXAMPLES}"

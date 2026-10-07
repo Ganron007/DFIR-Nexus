@@ -305,6 +305,63 @@ def _populated_ecs(case_id: str, cap: int = 200) -> dict[str, str]:
         return {}
 
 
+def field_sheet_block(case_dir: str | Path | None, *, cap_bytes: int = 4096) -> str:
+    """A COMPACT case field sheet for every investigative prompt (WO-R1F item 2b).
+
+    Measured in SC1's recorded model calls: the per-case field catalog appeared in
+    **0 of 91 calls**. The model had to call `es_mappings` and digest hundreds of
+    columns, so it guessed names and 27% of its queries were rejected.
+
+    This is deliberately small (≤ ``cap_bytes``) so it can go in every prompt:
+    the populated `ecs.*` fields with one real sample value each, plus each
+    family's most useful columns. The full catalog stays one `es_mappings` call
+    away. Never raises; an unindexed case yields "".
+    """
+    if not case_dir:
+        return ""
+    try:
+        from nexus.langgraph.es_native import es_fields
+
+        fields = es_fields(Path(case_dir).name)
+    except Exception:  # noqa: BLE001
+        return ""
+    populated = fields.get("populated_columns") or {}
+    ecs_pop = {}
+    try:
+        ecs_pop = _populated_ecs(Path(case_dir).name)
+    except Exception:  # noqa: BLE001
+        ecs_pop = {}
+
+    lines: list[str] = []
+    if ecs_pop:
+        entries = []
+        for field_name in sorted(ecs_pop):
+            sample = str(ecs_pop[field_name] or "")[:32]
+            entries.append(f"{field_name} (e.g. {sample})" if sample else field_name)
+            if sum(len(e) + 2 for e in entries) > cap_bytes // 3:
+                break
+        lines.append("ecs.* (populated, with a real sample): " + "; ".join(entries))
+    families = sorted((fields.get("families") or {}).keys())
+    budget = cap_bytes - sum(len(line) + 1 for line in lines)
+    for fam in families:
+        cols = sorted(populated.get(fam) or {})
+        if not cols:
+            continue
+        handful = ", ".join(f"fields.{c}" for c in cols[:10])
+        line = f"{fam}: {handful}"
+        if len(line) + 1 > budget:
+            break
+        lines.append(line)
+        budget -= len(line) + 1
+    if not lines:
+        return ""
+    text = (
+        "CASE FIELD SHEET (columns FILLED in this case; a name absent here is not "
+        "filled — call es_mappings for the full list):\n" + "\n".join(lines)
+    )
+    return text[:cap_bytes]
+
+
 def field_catalog_block(case_dir: str | Path | None, cap: int = 150) -> str:
     """Compact prompt block: the columns this case's documents actually FILL.
 

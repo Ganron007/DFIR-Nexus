@@ -107,6 +107,33 @@ _STOPWORDS = {
 }
 
 
+def _investigative_extras(case_dir: Path) -> str:
+    """The case field sheet + the ES query protocol, for every worker prompt.
+
+    WO-R1F item 2b: measured in SC1, the per-case field catalog appeared in 0 of
+    91 model calls, so the model guessed column names and a quarter of its queries
+    were rejected. Both blocks are small (the sheet is capped at 4 KB) and are
+    added to every investigative prompt — Mode 1's loop, every Mode 2 role and
+    every Mode 3 seat.
+    """
+    out = ""
+    try:
+        from nexus.langgraph.field_catalog import field_sheet_block
+
+        sheet = field_sheet_block(case_dir)
+        if sheet:
+            out += sheet + "\n\n"
+    except Exception:  # noqa: BLE001 — a prompt extra must never break a run
+        pass
+    try:
+        from nexus.langgraph.query_normalize import query_protocol_block
+
+        out += query_protocol_block() + "\n\n"
+    except Exception:  # noqa: BLE001
+        pass
+    return out
+
+
 def _question_keywords(question: str, limit: int = 12) -> list[str]:
     """Cheap keyword extraction for skill retrieval (no model call)."""
     words = re.findall(r"[a-zA-Z0-9_\-]{4,}", str(question or "").lower())
@@ -1124,7 +1151,8 @@ def run_work_order(
         f"Negative-evidence rule: {order.negative_evidence_rule}\n"
         + skill_block
         + f"Run context: {work_context}\n\n"
-        "Return the role JSON object as the final answer. Use the read-only "
+        + _investigative_extras(case_dir)
+        + "Return the role JSON object as the final answer. Use the read-only "
         "tools; never claim evidence you did not retrieve."
     )
     sink.emit(new_event(
