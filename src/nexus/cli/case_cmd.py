@@ -462,8 +462,18 @@ def intake_case(
     extras: str = typer.Option("", "--extras", help="chrome_profiles,drivefs,email,usb_serial"),
     playbooks: str = typer.Option("", "--playbooks"),
     query_extra: str = typer.Option("", "--query-extra", help="Persistent N4 needles"),
+    set_by: str = typer.Option(
+        "operator", "--set-by",
+        help="Who set this intake: operator (default) or agent",
+    ),
 ):
-    """Update N1 intake on CASE.yaml (does not re-parse)."""
+    """Update N1 intake on CASE.yaml (does not re-parse).
+
+    Records **who set it** (WO-R1F item 6): an intake the agent inferred is not
+    the same evidence as one the examiner wrote, and the run record must say
+    which. `--set-by agent` is for the agent's own inference path; the CLI
+    defaults to `operator` because a human typed the command.
+    """
     from nexus.langgraph.case_intake import persist_case_intake
 
     case_dir = _case_dir(case_id)
@@ -487,6 +497,8 @@ def intake_case(
                 "query_extra ignored: path-like / schema-label values are not "
                 "needles (they match every row and pollute the scan)."
             )
+    if ctx:
+        ctx["set_by"] = "agent" if str(set_by).strip().lower() == "agent" else "operator"
     written = persist_case_intake(case_dir, ctx)
     typer.echo(f"Intake fields: {', '.join(written) or '(none)'}")
 

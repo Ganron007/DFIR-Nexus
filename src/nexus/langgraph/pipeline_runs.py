@@ -280,6 +280,20 @@ def resolve_tools_extractions(case_dir: Path, run_id: str = "") -> Path:
         run = resolve_run(case_dir, "tools", run_id)
     except ValueError:
         run = None
+
+    # When no explicit run was asked for, the NEWEST run with data is the lane
+    # that actually ran. Following the pointer chain first landed on a stale run
+    # (SC1: the pointer chain reached the 07:55 run while the 09:41 lane run —
+    # 425 OK rows — held the real output), which blinded the family census.
+    if not run_id.strip():
+        runs_dir = case_dir / "runs"
+        if runs_dir.is_dir():
+            for candidate in sorted(
+                runs_dir.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True,
+            ):
+                if candidate.is_dir() and _run_dir_has_data(candidate):
+                    return candidate / "extractions"
+
     seen: set[str] = set()
     while run is not None and run.run_id not in seen:
         seen.add(run.run_id)

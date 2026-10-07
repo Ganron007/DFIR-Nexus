@@ -216,7 +216,7 @@ def load_case_intake(case_dir: Path) -> dict[str, str]:
         for k, v in nested.items():
             if v is not None and str(v).strip():
                 out[str(k)] = str(v).strip()
-    for k in ("question", "window", "subjects", "hypothesis", "playbooks", "notes"):
+    for k in ("question", "window", "subjects", "hypothesis", "playbooks", "notes", "set_by"):
         if k not in out and loaded.get(k):
             out[k] = str(loaded[k]).strip()
     return out
@@ -454,6 +454,36 @@ def playbook_strong_terms_for_families(families: set[str] | list[str] | None) ->
     from nexus.knowledge.needle_terms import filter_scannable
 
     return filter_scannable(_dedupe(out))
+
+
+def _present_families(case_dir: Path) -> list[str]:
+    """This case's evidence families, from its own tool-run ledger.
+
+    WO-R1F item 6: with no playbooks, the needle packs are chosen from the
+    families the evidence actually holds. Read from the ledger (the record of
+    what parsed), never by guessing from a directory listing.
+    """
+    import json
+
+    from nexus.langgraph.pipeline_runs import resolve_tools_extractions
+
+    ledger_path = resolve_tools_extractions(Path(case_dir)) / "_tool_lane_ledger.json"
+    if not ledger_path.is_file():
+        return []
+    try:
+        rows = json.loads(ledger_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    fams: list[str] = []
+    for row in rows if isinstance(rows, list) else []:
+        if not isinstance(row, dict):
+            continue
+        if str(row.get("status") or "").upper() != "OK":
+            continue
+        family = str(row.get("tool") or "").strip().lower()
+        if family and family not in fams:
+            fams.append(family)
+    return fams
 
 
 def collect_query_terms(intake: dict[str, str] | None) -> list[str]:
@@ -1872,6 +1902,21 @@ def build_query_pack_markdown(
     intake = intake if intake is not None else load_case_intake(case_dir)
     terms = collect_query_terms(intake)
     pb_terms = collect_playbook_query_terms(intake)
+    # WO-R1F item 6: with NO playbooks, choose the needle packs from the case's
+    # own evidence families, so a bare "Compromise suspected." still scans for
+    # something. An empty `playbooks` is the ordinary state for that intake.
+    derived_from_families: list[str] = []
+    if not str(intake.get("playbooks") or "").strip():
+        try:
+            families_present = _present_families(case_dir)
+            derived_from_families = _dedupe(
+                playbook_strong_terms_for_families(families_present)
+                + playbook_terms_for_families(families_present)
+            )
+        except Exception:  # noqa: BLE001 — a derivation must not break the pack
+            derived_from_families = []
+        if derived_from_families:
+            pb_terms = _dedupe([*pb_terms, *derived_from_families])
     window = parse_intake_window(intake)
     pack_stats: dict[str, Any] = {}
     hits, backend = n4_hits(
@@ -1902,6 +1947,15 @@ def build_query_pack_markdown(
         f"(parsed={window[0].isoformat() if window[0] else 'none'} … "
         f"{window[1].isoformat() if window[1] else 'none'})",
         f"- playbooks: {intake.get('playbooks') or '(none)'}",
+        f"- intake set by: {intake.get('set_by') or '(unrecorded)'}",
+        (
+            f"- needle packs auto-chosen from the case's families "
+            f"({len(derived_from_families)} terms): "
+            f"{', '.join(derived_from_families[:20])}"
+            + (" …" if len(derived_from_families) > 20 else "")
+            if derived_from_families
+            else "- needle packs: from the playbooks above"
+        ),
         f"- terms ({len(terms)}): {', '.join(terms[:40])}"
         + (" …" if len(terms) > 40 else ""),
         f"- backend: `{backend}` (elasticsearch when NEXUS_ES_URL is up and this case is indexed; else CSV pack)",

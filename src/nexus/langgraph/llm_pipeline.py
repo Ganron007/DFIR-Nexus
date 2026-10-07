@@ -286,7 +286,7 @@ def _format_case_context(ctx: dict[str, str] | None) -> str:
     keys = (
         "name", "description", "hypothesis", "notes", "host",
         "timezone", "window", "subjects", "known_good", "question", "playbooks", "extras",
-        "query_extra",
+        "query_extra", "set_by",
     )
     if not any(str(ctx.get(k) or "").strip() for k in keys):
         return (
