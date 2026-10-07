@@ -349,7 +349,7 @@ ROLES: dict[str, AgentRole] = {
       "correlation": AgentRole(
           name="correlation",
           description="Cross-family entity/temporal corroboration.",
-          tools=("es_search", "es_aggregate", "sample_rows", "run_record",
+          tools=("es_mappings", "es_search", "es_aggregate", "sample_rows", "run_record",
                  "check_file", "check_process_tree", "check_service", "check_hash",
                  "check_autorun", "analyze_filename_triage", "check_lolbin",
                  "deobfuscate_command"),
@@ -364,7 +364,7 @@ ROLES: dict[str, AgentRole] = {
     "pattern": AgentRole(
         name="pattern",
         description="ITM/ATT&CK/ATLAS/MBC pattern matching.",
-        tools=("es_search", "es_aggregate", "run_record", "rag_search"),
+        tools=("es_mappings", "es_search", "es_aggregate", "run_record", "rag_search"),
         system_prompt=(
             "You are the pattern agent. Match the evidence against the case's "
             "framework registries (ITM/ATT&CK/ATLAS/MBC) through rag_search, "
@@ -377,7 +377,7 @@ ROLES: dict[str, AgentRole] = {
     "verifier": AgentRole(
         name="verifier",
         description="Adversarial refutation of candidate findings.",
-        tools=("es_search", "es_aggregate", "sample_rows", "run_record",
+        tools=("es_mappings", "es_search", "es_aggregate", "sample_rows", "run_record",
                "rag_search"),
         system_prompt=(
             "You are the verifier. For EACH candidate finding, re-check its "
@@ -391,7 +391,7 @@ ROLES: dict[str, AgentRole] = {
     "synthesis": AgentRole(
         name="synthesis",
         description="Case narrative + DRAFT candidate findings.",
-        tools=("es_aggregate", "sample_rows", "run_record", "rag_search"),
+        tools=("es_mappings", "es_aggregate", "sample_rows", "run_record", "rag_search"),
         system_prompt=(
             "You are the synthesis agent. Build the investigation narrative "
             "from the verified notes only, and propose DRAFT candidate findings "

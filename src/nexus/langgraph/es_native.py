@@ -70,7 +70,6 @@ def _check_bool(body: dict, depth: int) -> None:
         for clause in clauses:
             validate_query(clause, depth + 1)
 
-
 def validate_query(body: Any, depth: int = 0) -> None:
     """Allowlist recursive ES query JSON (no scripts, no cross-index, no writes)."""
     if not isinstance(body, dict) or not body:
@@ -120,7 +119,15 @@ def validate_query(body: Any, depth: int = 0) -> None:
             if bound in spec and not isinstance(spec[bound], (str, int, float)):
                 raise ESQueryError(f"range {bound} must be a string or number")
     elif key == "exists":
-        if not isinstance(value, dict) or not isinstance(value.get("field"), str):
+        if not isinstance(value, dict):
+            raise ESQueryError("exists requires {field: name}")
+        # `exists` supports only `field`; `missing`/`boost` are written by models
+        # and are not valid there — the normalizer drops them, and this is the
+        # backstop for a caller that bypasses it.
+        unknown = set(value) - {"field"}
+        if unknown:
+            raise ESQueryError(f"unsupported exists options: {sorted(unknown)}")
+        if not isinstance(value.get("field"), str):
             raise ESQueryError("exists requires {field: name}")
     elif key == "multi_match":
         if not isinstance(value, dict) or not isinstance(value.get("query"), str):
@@ -170,8 +177,17 @@ _DATE_ES = {"date", "date_nanos"}
 _BOOL_ES = {"boolean"}
 
 
+def _field_types(case_id: str) -> dict[str, str]:
+    """field path -> ES type, plus this index's own keyword sub-fields.
+
+    ``_mapping_field_types`` walks ``.fields`` already, so a ``text`` field's
+    ``.kw`` appears as its own entry — which is exactly what the normalizer needs
+    to decide whether it can offer a keyword sub-field.
+    """
+    return _mapping_field_types(case_id)
+
+
 def _mapping_field_types(case_id: str) -> dict[str, str]:
-    """field path -> ES type for this case index (cached 60 s)."""
     import time
 
     now = time.monotonic()
@@ -592,9 +608,24 @@ def es_search(
     sort: list[Any] | None = None,
     search_after: list[Any] | None = None,
 ) -> dict[str, Any]:
-    """One allowlisted ES search; exact totals and a labelled next cursor."""
+    """One allowlisted ES search; exact totals and a labelled next cursor.
+
+    The body is **normalized first** (WO-R1F item 2): an LLM writes a JSON-string
+    query, a string sort, several top-level clauses or plain ECS names, and ES
+    rejects all four. Every rewrite is reported under ``normalized`` — the
+    operator's rule is "accept and normalize; never fail silently".
+    """
+    from nexus.langgraph.query_normalize import (
+        normalize_query,
+        normalize_sort,
+    )
+
     if not case_id:
         raise ESQueryError("case_id is required")
+    types = _field_types(case_id)
+    query, q_notes = normalize_query(query, field_types=types)
+    sort, s_notes = normalize_sort(sort, types)
+    notes = [*q_notes, *s_notes]
     validate_query(query)
     fatal, optional_failed = failed_field_refs_detail(case_id, query)
     if fatal:
@@ -671,6 +702,9 @@ def es_search(
         "backend": "elasticsearch",
         "hits": hits,
     }
+    if notes:
+        # "Never fail silently": every rewrite of the caller's body is reported.
+        result["normalized"] = notes
     if optional_failed:
         # Honesty: the query matched truthfully, but these should/must_not refs
         # can never match — surfaced instead of silently behaving as no-ops.
@@ -759,18 +793,41 @@ def _field_refs(query: dict[str, Any]) -> list[str]:
 
 def es_aggregate(case_id: str, aggs: dict[str, Any], query: dict[str, Any] | None = None,
                  *, size: int = 0) -> dict[str, Any]:
-    """ES-native aggregation with composite paging support."""
+    """ES-native aggregation with composite paging support.
+
+    Normalized first, like `es_search`: a JSON-string `aggs`, a plain agg field
+    name or a `text` field without its `.kw` are all shapes an LLM writes and ES
+    rejects.
+    """
+    from nexus.langgraph.query_normalize import normalize_aggs, normalize_query
+
     if not case_id:
         raise ESQueryError("case_id is required")
+    types = _field_types(case_id)
+    aggs, a_notes = normalize_aggs(aggs, types)
+    notes = list(a_notes)
+    if query is not None:
+        query, q_notes = normalize_query(query, field_types=types)
+        notes.extend(q_notes)
     validate_aggs(aggs)
     if query is not None:
         validate_query(query)
         failed = failed_field_refs(case_id, query)
         if failed:
-            raise ESQueryError(
-                "aggregation query references fields that cannot match: "
-                + ", ".join(f"{f['field']} ({f['reason']})" for f in failed[:5])
-            )
+            # Same honesty rule as `es_search`: a query that cannot match is a
+            # degraded result that SAYS SO, not an exception the model cannot act
+            # on. Raising here was the 1 remaining replay failure on an
+            # `unknown_field`; `es_search` already returns the degraded shape.
+            return {
+                "case_id": case_id,
+                "backend": "elasticsearch",
+                "error": "aggregation query references fields that cannot match: "
+                         + ", ".join(f"{f['field']} ({f['reason']})" for f in failed[:5]),
+                "degraded": True,
+                "failed_terms": failed,
+                "aggregations": {},
+                **({"normalized": notes} if notes else {}),
+            }
     body: dict[str, Any] = {
         "size": max(0, min(int(size or 0), 10)),
         "track_total_hits": True,
@@ -795,6 +852,7 @@ def es_aggregate(case_id: str, aggs: dict[str, Any], query: dict[str, Any] | Non
         "took_ms": data.get("took"),
         "aggregations": out,
         "next_after_key": next_key,
+        **({"normalized": notes} if notes else {}),
     }
 
 
