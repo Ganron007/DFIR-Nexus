@@ -603,6 +603,18 @@ async def run_interpret_loop(
         except Exception as exc:  # noqa: BLE001 — extra pass is best-effort
             log.warning("reconcile extra pass failed: %s", exc)
 
+    # The final findings reply is the one artifact that says WHY a loop that
+    # confirmed its hypotheses emitted no findings - a model that answered in
+    # prose, an empty array, a malformed array, or a candidate missing a key.
+    # Without it `findings_emitted: 0` is unverifiable, and the caller can only
+    # log "emitted no findings" and fall back (SC1, 2026-10-07: four hypotheses
+    # confirmed on real evidence, 0 findings, no way to see what came back).
+    _persist_round(case_dir, "findings-final", {
+        "raw": raw_findings,
+        "chars": len(raw_findings or ""),
+        "candidates_parsed": len(candidates),
+        "reconciliation_addressed": len(checklist.get("addressed") or []),
+    })
     _persist_round(case_dir, "summary", {
         "rounds_requested": rounds_total,
         "rounds_run": rounds_run,
