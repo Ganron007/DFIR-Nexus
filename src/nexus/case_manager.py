@@ -103,6 +103,62 @@ def _hash_evidence_path(path: Path) -> tuple[str, int, int]:
     return manifest.hexdigest(), count, total_bytes
 
 
+def _duplicate_key(finding: dict) -> tuple[str, tuple[str, ...]]:
+    """The identity of a finding for duplicate detection.
+
+    Title (normalized) + the ordered set of its evidence lines. Two DRAFTs with
+    the same title AND the same evidence are the same finding proposed again;
+    the same title with different evidence is a different finding (a re-run that
+    found more), and is kept.
+    """
+    title = " ".join(str(finding.get("title") or "").split()).lower()
+    evidence = tuple(sorted(
+        " ".join(str(e.get("detail") or e).split()).lower()
+        for e in (finding.get("evidence") or [])
+        if e
+    ))
+    return title, evidence
+
+
+def _find_duplicate_draft(findings: list[dict], finding: dict) -> dict | None:
+    """An existing DRAFT with the same title and evidence, or None.
+
+    Only DRAFTs are considered: an APPROVED finding is the examiner's decision,
+    and a rejected one is a decision too — neither is a duplicate to link to.
+    """
+    key = _duplicate_key(finding)
+    if not key[0]:
+        return None
+    for existing in findings:
+        if str(existing.get("status") or "").upper() != "DRAFT":
+            continue
+        if _duplicate_key(existing) == key:
+            return existing
+    return None
+
+
+def _append_lineage(existing: dict, finding: dict) -> None:
+    """Append a re-proposal's run id to the existing DRAFT's lineage."""
+    run_id = str(finding.get("run_id") or "").strip()
+    if not run_id:
+        return
+    run_ids = [str(r) for r in (existing.get("run_ids") or []) if r]
+    if str(existing.get("run_id") or "") and str(existing["run_id"]) not in run_ids:
+        run_ids.insert(0, str(existing["run_id"]))
+    if run_id not in run_ids:
+        run_ids.append(run_id)
+    existing["run_ids"] = run_ids
+    # Keep the single-valued field as the FIRST run that raised it, so a report
+    # says where the finding came from rather than where it was last seen.
+    existing.setdefault("run_id", run_id)
+    calls = list(existing.get("input_call_ids") or [])
+    for call in (finding.get("input_call_ids") or []):
+        if call not in calls:
+            calls.append(call)
+    if calls:
+        existing["input_call_ids"] = calls
+
+
 def _next_seq(items: list[dict], id_field: str, prefix: str, examiner: str) -> int:
     pattern = f"{prefix}-{examiner}-"
     max_num = 0
@@ -371,6 +427,28 @@ class CaseManager:
                 else self.examiner)
 
         findings = self._load_findings(case_dir)
+        # WO-R1F item 4: no duplicate staging. A finding identical in title and
+        # evidence to an existing DRAFT is the SAME finding proposed again (a
+        # re-run, a second mode, the same mode twice) — link to it and append the
+        # run id to its lineage instead of minting a second copy. SC1 was staged
+        # four times over this way, which makes every count and every report wrong.
+        duplicate = _find_duplicate_draft(findings, finding)
+        if duplicate is not None:
+            _append_lineage(duplicate, finding)
+            finding_id = str(duplicate.get("id") or "")
+            self._save_findings(case_dir, findings)
+            return {
+                "status": "DUPLICATE",
+                "finding_id": finding_id,
+                "duplicate": True,
+                "linked_to": finding_id,
+                "run_id": str(finding.get("run_id") or ""),
+                "lineage": list(duplicate.get("run_ids") or []),
+                "note": (
+                    "identical title and evidence to an existing DRAFT — linked "
+                    "instead of staging a second copy (WO-R1F item 4)"
+                ),
+            }
         seq = _next_seq(findings, "id", "F", exam)
         finding_id = _global_unique_finding_id(
             f"F-{exam}-{seq:03d}", case_dir.name
@@ -386,7 +464,7 @@ class CaseManager:
                               "itm_stage", "itm_objects", "evidence", "severity",
                               "technique_ids", "scribe_source",                               "examiner_selected",
                               "provenance", "verifier",
-                              "run_id", "input_call_ids", "source"}}
+                              "run_id", "run_ids", "input_call_ids", "source"}}
         if sanitized.get("host"):
             sanitized["host"] = str(sanitized["host"])[:200]
         if sanitized.get("affected_account"):
