@@ -92,12 +92,15 @@ def test_evtx_sysmon1_common_fields():
 
 
 def test_evtx_4624_common_fields():
-    """A verbatim 4624 row gives target user, logon type and source ip."""
+    """A verbatim 4624 row gives target user + logon type; a `-` IpAddress is empty."""
     row = _real_row("Security", "4624")
     ecs = _norm("evtxecmd", _real_fields(row))
     assert ecs["user"]["target"]["name"] == ecs["winlog"]["event_data"]["TargetUserName"]
     assert ecs["winlog"]["logon"]["type"] == ecs["winlog"]["event_data"]["LogonType"]
-    assert ecs["source"]["ip"] == ecs["winlog"]["event_data"]["IpAddress"]
+    # WO-CS1c item 6: this real row's IpAddress is `-` (a local SYSTEM logon), so
+    # neither event_data.IpAddress nor ecs.source.ip holds the placeholder.
+    assert "source" not in ecs, ecs.get("source")
+    assert "IpAddress" not in ecs["winlog"]["event_data"]
 
 
 def test_evtx_7045_gives_service_name():

@@ -70,6 +70,8 @@ def test_every_family_column_exists_in_that_familys_catalog():
             # do not fail - the reviewer's demand is that a NAMED source exists.
             continue
         for column in table:
+            if str(column).startswith("__"):
+                continue  # a transform declaration, not a column
             if column not in cols:
                 problems.append(f"{fam}.{column} not in {cat_fam} catalog")
     assert problems == [], "\n".join(problems)
