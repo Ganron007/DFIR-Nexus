@@ -2510,6 +2510,29 @@ REGISTRY_PLUGINS = frozenset({
 EMPTY_OUTPUT_FAIL_MARKER = "exited cleanly but produced no output file"
 
 
+#: Tools that can legitimately parse an artifact and find ZERO entries. Each
+#: value is the set of phrases the tool prints when it examined the artifact and
+#: it held nothing; any one of them, with no output file written, is a zero
+#: result rather than an unparsed one.
+#:
+#: A tool absent from this table that writes nothing stays **FAIL** — an OK row
+#: with no output is a silent coverage gap, and that default does not move. The
+#: entries here are the tools whose own capture proves the artifact is empty.
+_EMPTY_OUTPUT_MARKERS: dict[str, tuple[str, ...]] = {
+    "thumbcache_viewer": ("there are no more entries",),
+    # "Found 0 files" (a directory of a supported type with nothing in it) and
+    # "Processed 0 out of 0 files" (the summary line). Both appear together; the
+    # pair means no .lnk was present, not that LECmd failed. Measured on the
+    # SC1 run: the Administrator profile's Recent folder holds only the
+    # Auto/CustomDestinations subdirectories and desktop.ini.
+    "lecmd": ("found 0 files", "processed 0 out of 0 files"),
+    # Every map whose IdentityQuery matched found nothing, so SQLECmd writes no
+    # CSV. A map that *had* rows writes its file and never reaches this branch,
+    # so the phrase can only appear here when the result set is genuinely empty.
+    "sqlecmd": ("did not return any results",),
+}
+
+
 def _job_row_count(job: ToolJob) -> int:
     """Rows in a completed job's output. 0 when nothing is readable.
 
@@ -3700,10 +3723,47 @@ _OUTPUT_FLAGS = frozenset(
 )
 _NAMED_OUTPUT_FLAGS = frozenset({"--csvf", "--jsonf"})
 
+#: Windows-style `<tool>.exe /flag:<path>` switches that name an output file or
+#: directory. NirSoft tools use these (`usbdeview /scomma:<file>`,
+#: `/stext:<file>`), and they are not matched by the `--flag value` form above —
+#: so a job that wrote its file was judged by "did the directory gain a file"
+#: instead of "did the file this job named appear". Measured on the SC1 run:
+#: USBDeview wrote a 540-byte header row to `usb.csv` (proving the hive WAS
+#: read) and the lane still recorded FAIL.
+_WINDOWS_SWITCH_OUTPUT = frozenset({
+    "scomma", "stab", "shtml", "sxml", "sjson", "stext", "scsv",
+    "save", "out", "output",
+})
+
 
 def _flag(value: object) -> str:
     """Lower-cased argv entry for flag comparisons."""
     return str(value).lower()
+
+
+def _windows_switch_output_paths(argv: list[str]) -> list[Path]:
+    """Paths named by Windows-style ``/flag:<path>`` output switches.
+
+    Both spellings occur, sometimes in the same argv: ``/scomma:<path>`` (colon,
+    what the USB job was built with) and ``/scomma <path>`` (the same tool when
+    the planner separates flag and value). NirSoft switches use ``/``, so they
+    are outside the ``--flag value`` form and were never matched.
+    """
+    out: list[Path] = []
+    for index, raw in enumerate(argv):
+        text = str(raw)
+        if not text.startswith("/"):
+            continue
+        name, sep, value = text[1:].partition(":")
+        if name.lower() not in _WINDOWS_SWITCH_OUTPUT:
+            continue
+        if sep and value:
+            out.append(Path(value))
+        elif not sep and index + 1 < len(argv):
+            nxt = str(argv[index + 1])
+            if nxt and not nxt.startswith("/"):
+                out.append(Path(nxt))
+    return out
 
 
 def _structured_output_present(job: ToolJob) -> bool:
@@ -3905,6 +3965,11 @@ def _output_dirs_of(job: ToolJob) -> list[Path]:
             cand = Path(arg.split(":", 1)[1])
             if cand.is_dir():
                 out.append(cand)
+    # `<tool>.exe /scomma:<file>` and friends: the file is the job's own
+    # product, not a directory, so the snapshot must watch its parent.
+    for target in _windows_switch_output_paths(argv):
+        parent = target.parent if target.suffix else target
+        out.append(parent)
     return out
 
 
@@ -3982,6 +4047,13 @@ def _produced_expected_output(job: ToolJob) -> bool:
                         produced = True
     if produced:
         return True
+    # Windows-style `/scomma:<file>` switches name this job's own output file.
+    # A file that exists and holds more than a header row is real output; a
+    # header-only file (the header line, then nothing) is a zero-result, which
+    # the caller reports through the empty-output path, not as success.
+    for target in _windows_switch_output_paths(argv):
+        if target.is_file():
+            return target.stat().st_size > 0
     # Tools that write into a directory given positionally in the argv.
     for arg in argv:
         if arg.startswith("-"):
@@ -4069,15 +4141,6 @@ def _promote_sift_pull(sift_dir: Path) -> list[str]:
     return promoted
 
 
-#: Tool stdout markers proving the artifact holds zero entries. An empty cache
-#: is not a parse failure; FAIL would block the evidence gate for nothing
-#: (found by sweep R10: thumbcache_custom_stream.db parses to "There are no
-#: more entries." and writes no report).
-_EMPTY_OUTPUT_MARKERS = {
-    "thumbcache_viewer": "there are no more entries",
-}
-
-
 def _empty_output_status(
     job: ToolJob, result: dict | None = None
 ) -> tuple[str, str]:
@@ -4089,25 +4152,27 @@ def _empty_output_status(
     `optional_output` (BitsParser on a job-less queue) - both record SKIP with
     an honest reason instead.
     """
-    marker = _EMPTY_OUTPUT_MARKERS.get(job.tool)
-    if marker and result is not None:
+    markers = _EMPTY_OUTPUT_MARKERS.get(job.tool)
+    if markers and result is not None:
+        # Two sources, because the capture reaches us two ways: the tool result
+        # carries a saved *path* (Windows jobs) or the text itself. A marker
+        # that is only in the file the tool wrote would be missed by reading
+        # the result alone - and that file is the tool's own testimony about
+        # what it examined.
         text = " ".join(
             str(result.get(key) or "")
             for key in ("stdout", "stderr", "captured_text", "output", "text")
-        ).lower()
-        if marker not in text:
-            # The MCP tool result carries the capture PATH, not its text.
-            saved = str(result.get("output_saved_to") or "").strip()
-            if saved:
-                with contextlib.suppress(OSError):
-                    text += " " + Path(saved).read_text(
-                        encoding="utf-8", errors="replace"
-                    )[:8192].lower()
-        if marker in text:
+        )
+        saved = str(result.get("output_saved_to") or job.output_saved_to or "").strip()
+        if saved:
+            with contextlib.suppress(OSError):
+                text += " " + Path(saved).read_text(encoding="utf-8", errors="replace")
+        lowered = text.lower()
+        if any(marker in lowered for marker in markers):
             return (
                 "SKIP",
                 f"{job.tool} parsed the artifact and found zero entries "
-                "(empty cache, not unparsed)",
+                "(empty artifact, not unparsed)",
             )
     if job.optional_output:
         return (

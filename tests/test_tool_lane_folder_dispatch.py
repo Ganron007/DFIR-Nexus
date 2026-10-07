@@ -164,6 +164,90 @@ def test_empty_thumbcache_marker_read_from_saved_capture(tmp_path):
     assert status == "SKIP"
 
 
+def test_lecmd_zero_lnk_files_is_a_skip_not_a_fail():
+    """LECmd over a Recent folder with no .lnk is a zero result, not unparsed.
+
+    Measured on SC1: the Administrator profile's Recent folder holds only the
+    Auto/CustomDestinations subdirectories and desktop.ini, and LECmd reports
+    "Found 0 files". The lane recorded FAIL and blocked the evidence gate.
+    """
+    from nexus.langgraph.tool_lane import ToolJob, _empty_output_status
+
+    job = ToolJob(
+        host="windows",
+        tool="lecmd",
+        argv=["-d", r"H:\C\Users\Administrator\...\Recent"],
+        purpose="Recent LNK files",
+    )
+    capture = (
+        "LECmd version 2026.5.0\n\n"
+        "Warning: Administrator privileges not found!\n\n"
+        "Looking for lnk files in H:\\C\\Users\\Administrator\\...\\Recent\n\n"
+        "Found 0 files\n\nProcessed 0 out of 0 files in 0.0000 seconds\n"
+    )
+    status, reason = _empty_output_status(job, {"stdout": capture})
+    assert status == "SKIP", reason
+    # A run that examined lnk files and produced no CSV is still a failure.
+    status2, _ = _empty_output_status(job, {"stdout": "Processed 12 out of 12 files"})
+    assert status2 == "FAIL"
+
+
+def test_sqlecmd_zero_results_is_a_skip_not_a_fail():
+    """SQLECmd writes no CSV when every identity check matched nothing."""
+    from nexus.langgraph.tool_lane import ToolJob, _empty_output_status
+
+    job = ToolJob(
+        host="windows",
+        tool="sqlecmd",
+        argv=["-f", r"H:\C\...\Edge\User Data\Default\History"],
+        purpose="Browser SQLite",
+    )
+    capture = (
+        "SQLECmd version 2026.5.0\n\nMaps loaded: 93\n"
+        "Processing H:\\C\\...\\History...\n"
+        "\tFor map w/ description Chromium Browser History, got value 1 "
+        "from IdentityQuery, but expected 2. Queries will not be processed!\n"
+        "\t Chromium Browser History did not return any results. CSV will not be saved\n"
+        "\nProcessed 1 file in 0.3242 seconds\n"
+    )
+    status, reason = _empty_output_status(job, {"stdout": capture})
+    assert status == "SKIP", reason
+
+
+def test_usbdeview_output_detected_from_scomma_switch(tmp_path):
+    """USBDeview names its file with `/scomma:<path>`, not `--csv`.
+
+    Measured on SC1: USBDeview wrote a 540-byte header row to `usb.csv`,
+    proving the SYSTEM hive was read, and the lane still recorded FAIL
+    ("expected a file under the --csv target") because the switch was unknown.
+    """
+    from nexus.langgraph.tool_lane import ToolJob, _produced_expected_output
+
+    out = tmp_path / "usb.csv"
+    for argv in (
+        [f"/scomma:{out}", "/AddExportHeaderLine", "1"],
+        ["/scomma", str(out), "/AddExportHeaderLine", "1"],
+    ):
+        out.write_text("Device Name,Description\n", encoding="utf-8")
+        job = ToolJob(host="windows", tool="usbdeview", argv=argv, purpose="USB")
+        assert _produced_expected_output(job) is True, argv
+    # A switch that names no file must not count as output.
+    bare = ToolJob(host="windows", tool="usbdeview", argv=["/scomma"], purpose="USB")
+    assert _produced_expected_output(bare) is False
+
+
+def test_scomma_switch_output_dir_is_watched(tmp_path):
+    """The before/after snapshot must see the directory the switch writes into."""
+    from nexus.langgraph.tool_lane import ToolJob, _output_dirs_of
+
+    target = tmp_path / "usb.csv"
+    job = ToolJob(
+        host="windows", tool="usbdeview",
+        argv=[f"/scomma:{target}"], purpose="USB",
+    )
+    assert tmp_path in _output_dirs_of(job)
+
+
 def test_srum_folder_plans_the_database_only(tmp_path, monkeypatch):
     import nexus.langgraph.tool_lane as lane
 
