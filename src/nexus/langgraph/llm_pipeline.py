@@ -2856,24 +2856,26 @@ async def _finalize_if_unfinished(
 ) -> None:
     """Record a run that ended without a report, naming the node's error.
 
-    A run **paused at the approval interrupt** legitimately has no report yet -
-    `generate_report` runs after approval - so a graph with a next node is
-    waiting, not failed. Only a graph with nothing left to run is unfinished.
+    Two shapes end here, and they are not the same:
+
+    * **Paused at the approval interrupt** — `ainvoke` RETURNS at
+      `interrupt_before=["await_approval"]`, so the run has staged its findings
+      and is waiting for the examiner. That is the designed boundary, not a
+      failure: recorded `interrupted` (the vocabulary's "ended without
+      completing") with the node it waits on, never `failed`.
+    * **A node returned `{"error": ...}`** instead of raising, leaving a run
+      that is over with nothing to show. Recorded `failed` with that error.
     """
     reason = _unfinished_reason(result)
     if not reason:
         return
+    pending: list[str] = []
     if compiled is not None and cfg is not None:
         try:
             snapshot = await compiled.aget_state(cfg)
         except Exception:  # noqa: BLE001 — a state read must not mask the run
             snapshot = None
-        next_nodes = list(getattr(snapshot, "next", ()) or ()) if snapshot else []
-        if next_nodes:
-            log.info(
-                "Run paused at %s (no report yet) — not finalizing", next_nodes[0]
-            )
-            return
+        pending = list(getattr(snapshot, "next", ()) or ()) if snapshot else []
     state = initial if isinstance(initial, dict) else {}
     try:
         from nexus.config import settings
@@ -2881,6 +2883,16 @@ async def _finalize_if_unfinished(
 
         case_dir = settings.cases_root / str(state.get("case_id") or "")
         run = resolve_run(case_dir, run_id=str(state.get("run_id") or ""))
+        if pending:
+            drafts = len(state.get("draft_finding_ids") or (result or {}).get(
+                "draft_finding_ids") or [])
+            finalize_run(
+                run, "interrupted",
+                f"awaiting approval at {pending[0]}"
+                + (f" ({drafts} DRAFT finding(s) staged)" if drafts else ""),
+            )
+            log.info("Run paused at %s awaiting approval — not failed", pending[0])
+            return
         finalize_run(run, "failed", reason)
         log.error("Run ended without a report: %s", reason)
     except Exception:  # noqa: BLE001
