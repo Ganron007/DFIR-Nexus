@@ -2833,6 +2833,28 @@ def _unfinished_reason(result: Any) -> str:
     )
 
 
+def _final_state(initial: InvestigationState | dict, result: Any) -> dict:
+    """The state a finalize must read: where the nodes left the run id.
+
+    ``initial`` is built by ``make_initial_state`` with ``run_id=""`` — the id is
+    minted later, in ``register_evidence`` (tools) or ``load_existing_case``
+    (interpret). Finalizing from ``initial`` therefore resolved the WRONG run:
+    with an empty id, ``_run_to_finalize`` falls back to the newest run, which
+    is a *previous* run while the current one is still being written. The
+    approval pause was logged while the paused run stayed `running` and some
+    older run was stamped instead (SC1, 2026-10-07).
+
+    Prefer the returned state's values, then the initial state's, so a node's
+    own ``run_id``/``run_dir`` wins.
+    """
+    merged = dict(initial) if isinstance(initial, dict) else {}
+    if isinstance(result, dict):
+        for key in ("run_id", "run_dir", "case_id"):
+            if result.get(key):
+                merged[key] = result[key]
+    return merged
+
+
 def _run_to_finalize(state: InvestigationState | dict) -> Any:
     """The run record a finalize call must touch.
 
@@ -2867,15 +2889,34 @@ def _run_to_finalize(state: InvestigationState | dict) -> Any:
     raise ValueError(f"no run found to finalize in {case_dir.name}")
 
 
-def _finalize_died(initial: InvestigationState | dict, exc: BaseException) -> None:
+async def _finalize_died(
+    initial: InvestigationState | dict,
+    exc: BaseException,
+    *,
+    compiled: Any = None,
+    cfg: dict | None = None,
+) -> None:
     """Record a run that raised, so it never reads `running` afterwards."""
     try:
         from nexus.langgraph.pipeline_runs import finalize_run
 
-        run = _run_to_finalize(initial)
+        state = initial
+        if compiled is not None and cfg is not None:
+            snapshot = await _snapshot(compiled, cfg)
+            if snapshot is not None:
+                state = _final_state(initial, getattr(snapshot, "values", None))
+        run = _run_to_finalize(state)
         finalize_run(run, "failed", f"{type(exc).__name__}: {exc}"[:400])
     except Exception:  # noqa: BLE001 — status bookkeeping must not mask the error
         log.exception("could not finalize a run that died")
+
+
+async def _snapshot(compiled: Any, cfg: dict) -> Any:
+    """The graph's current snapshot, or None."""
+    try:
+        return await compiled.aget_state(cfg)
+    except Exception:  # noqa: BLE001 — a state read must not mask the run
+        return None
 
 
 async def _finalize_if_unfinished(
@@ -2902,12 +2943,9 @@ async def _finalize_if_unfinished(
         return
     pending: list[str] = []
     if compiled is not None and cfg is not None:
-        try:
-            snapshot = await compiled.aget_state(cfg)
-        except Exception:  # noqa: BLE001 — a state read must not mask the run
-            snapshot = None
+        snapshot = await _snapshot(compiled, cfg)
         pending = list(getattr(snapshot, "next", ()) or ()) if snapshot else []
-    state = initial if isinstance(initial, dict) else {}
+    state = _final_state(initial, result)
     try:
         from nexus.langgraph.pipeline_runs import finalize_run
 
@@ -3046,7 +3084,7 @@ async def run_pipeline(
         # (SC1, 2026-10-07). `BaseException` so a cancellation is recorded too;
         # `finalize_run` is idempotent and never raises out of here.
         emit_stage(initial, "pipeline", "error", str(exc)[:200])
-        _finalize_died(initial, exc)
+        await _finalize_died(initial, exc, compiled=compiled, cfg=cfg)
         raise
     emit_stage(
         initial, "pipeline", "done",
@@ -3056,7 +3094,9 @@ async def run_pipeline(
     # a node that returned `{"error": ...}` instead of raising, with no report
     # written, leaves the same `running` record. Record it as failed with the
     # node's own reason rather than reporting a completed run that has nothing.
-    await _finalize_if_unfinished(initial, result, compiled=compiled, cfg=cfg)
+    await _finalize_if_unfinished(
+        _final_state(initial, result), result, compiled=compiled, cfg=cfg
+    )
 
     result_state = result if isinstance(result, dict) else {}
     log.info("Pipeline complete")
