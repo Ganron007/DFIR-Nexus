@@ -674,8 +674,15 @@ def _seat_with_model(
         terminal_keys=("claims",),
     )
     entry = _fallback_entry(spawn, superstep)
-    entry["claims"] = _parse_claims(str(loop.get("reply") or ""))
+    reply_text = str(loop.get("reply") or "")
+    entry["claims"] = _parse_claims(reply_text)
     entry["open_questions"] = []
+    # What the seat actually returned, capped. Without it the board records only
+    # the *spawn reason* when a seat produces no claims, so "the model answered
+    # in prose / returned an empty object" and "the seat never ran" are
+    # indistinguishable after the fact - which is what made SC1 Mode 3's empty
+    # board undiagnosable from the run record (2026-10-07).
+    entry["reply_excerpt"] = " ".join(reply_text.split())[:600]
     # How the seat finished. `model_error` is the structured signal that the
     # model never answered - the difference between a seat that legitimately
     # found nothing and a seat that never ran, which look identical from an empty
