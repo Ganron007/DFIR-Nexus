@@ -501,25 +501,45 @@ def _force_answer(
     question: str,
     observations: list[dict[str, Any]],
     call_chars: int,
+    terminal_keys: tuple[str, ...] = (),
 ) -> str:
     """One final answer-only model call when the tool rounds are exhausted.
 
     Tool use is disabled for this call: the model must synthesize from the
     observations already collected. This is what turns "more retrieval until
     timeout" into an actual answer with an honest statement of what remains.
+
+    When the caller declared ``terminal_keys``, the terminal OBJECT is what is
+    asked for and returned — not a prose answer. Honouring the schema only on
+    the no-tool-call branch left every seat whose rounds exhausted returning
+    ``{"answer": …}``: `_parse_claims` then found no claims, the board carried
+    none, no disputes could form, and the run settled with 0 candidates while
+    reporting `completed` (SC1 Mode 3, 2026-10-07).
     """
     obs = _observations_block(observations)
     if call_chars > 0:
         obs = obs[:call_chars]
-    user = (
-        f"Question: {question}\n\n"
-        "OBSERVATIONS ALREADY COLLECTED THIS TURN:\n"
-        f"{obs}\n\n"
-        "Return ONLY JSON: {\"answer\":\"...\"}. Do NOT call tools. "
-        "Answer from the observations above; use compact markdown; end with "
-        "what remains unchecked. If the observations are insufficient, say so "
-        "explicitly rather than inventing evidence."
-    )
+    if terminal_keys:
+        keys = ", ".join(f'"{k}"' for k in terminal_keys)
+        user = (
+            f"Question: {question}\n\n"
+            "OBSERVATIONS ALREADY COLLECTED THIS TURN:\n"
+            f"{obs}\n\n"
+            f"Return ONLY a JSON object containing {keys}. No prose, no fence, "
+            "no commentary outside the JSON. Build it from the observations "
+            "above; if they are insufficient, return the object with empty/"
+            "explicit entries rather than inventing evidence."
+        )
+    else:
+        user = (
+            f"Question: {question}\n\n"
+            "OBSERVATIONS ALREADY COLLECTED THIS TURN:\n"
+            f"{obs}\n\n"
+            'Return ONLY JSON: {"answer":"..."}. Do NOT call tools. '
+            "Answer from the observations above; use compact markdown; end with "
+            "what remains unchecked. If the observations are insufficient, say so "
+            "explicitly rather than inventing evidence."
+        )
     try:
         raw = _call_model(model, [
             {"role": "system", "content": base_system},
@@ -530,6 +550,8 @@ def _force_answer(
         return ""
     parsed = _parse_loop_json(raw)
     if parsed:
+        if terminal_keys and any(key in parsed for key in terminal_keys):
+            return _clip(json.dumps(parsed, default=str, sort_keys=True), call_chars)
         answer = parsed.get("answer") or parsed.get("reply")
         if isinstance(answer, str) and answer.strip():
             return _clip(answer.strip(), call_chars)
@@ -917,6 +939,7 @@ def run_context_loop(
             question=question,
             observations=observations,
             call_chars=budget.call_chars,
+            terminal_keys=terminal_keys,
         )
         if forced:
             reply = forced

@@ -269,6 +269,79 @@ def test_context_loop_force_answer_after_tool_rounds(tmp_path, monkeypatch):
     assert result["tool_calls"]
 
 
+def test_forced_answer_honours_terminal_keys(tmp_path, monkeypatch):
+    """A seat whose tool rounds exhaust must still return its terminal OBJECT.
+
+    Measured on SC1 Mode 3 (2026-10-07): all four seats ended `answer_text` /
+    `answer_forced` with prose. `_parse_claims` found no claims, the board
+    carried none, no disputes could form, and the run settled with 0 candidates
+    while reporting `completed`. `terminal_keys` was honoured only on the
+    no-tool-call branch, so the forced path asked for `{"answer": ...}` and the
+    seat's schema was never requested.
+    """
+    from nexus.langgraph.context_loop import LoopBudget, run_context_loop
+
+    case = _case(tmp_path)
+    calls: list[dict[str, Any]] = []
+    _fake_backbone(monkeypatch, calls)
+    model = _ScriptedModel([
+        {"tool_calls": [{
+            "tool": "es_search",
+            "args": {"query": {"match_phrase": {"text": "sdelete"}}},
+            "why": "find rows",
+        }]},
+        # The forced call returns the terminal object, not an answer.
+        {"claims": [{"entity_type": "process", "entity_value": "cmd.exe",
+                     "claim_kind": "presence", "polarity": "affirm",
+                     "value": "seen in pstree", "audit_ids": ["a1"],
+                     "confidence": "LOW",
+                     "confidence_justification": "one source"}]},
+    ])
+    result = run_context_loop(
+        case_dir=case,
+        case_id="CASE-LOOP",
+        question="Seat with a claims schema",
+        model=model,
+        budget=LoopBudget(rounds=1, seconds=30.0, calls=4),
+        audit=AuditWriter("nexus", audit_dir=case / "audit"),
+        terminal_keys=("claims",),
+    )
+    assert result["finish_reason"] == "answer_forced"
+    assert result["partial"] is False
+    from nexus.modes.multi_agent import _parse_claims
+
+    claims = _parse_claims(str(result["reply"]))
+    assert len(claims) == 1, result["reply"]
+    assert claims[0]["entity_value"] == "cmd.exe"
+
+
+def test_forced_answer_without_terminal_keys_is_unchanged(tmp_path, monkeypatch):
+    """No terminal schema declared → the answer envelope is still the product."""
+    from nexus.langgraph.context_loop import LoopBudget, run_context_loop
+
+    case = _case(tmp_path)
+    calls: list[dict[str, Any]] = []
+    _fake_backbone(monkeypatch, calls)
+    model = _ScriptedModel([
+        {"tool_calls": [{
+            "tool": "es_search",
+            "args": {"query": {"match_phrase": {"text": "x"}}},
+            "why": "find",
+        }]},
+        {"answer": "Prose answer, no schema requested."},
+    ])
+    result = run_context_loop(
+        case_dir=case,
+        case_id="CASE-LOOP",
+        question="Plain answer",
+        model=model,
+        budget=LoopBudget(rounds=1, seconds=30.0, calls=4),
+        audit=AuditWriter("nexus", audit_dir=case / "audit"),
+    )
+    assert result["finish_reason"] == "answer_forced"
+    assert "Prose answer" in result["reply"]
+
+
 def test_context_loop_repairs_trailing_comma_tool_call(tmp_path, monkeypatch):
     from nexus.langgraph.context_loop import run_context_loop
 
