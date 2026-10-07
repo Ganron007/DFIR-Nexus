@@ -96,6 +96,47 @@ def test_interpret_run_references_tools_parent(tmp_path: Path):
 
 
 
+def test_run_to_finalize_prefers_the_pipelines_own_run(tmp_path: Path, monkeypatch):
+    """A finalize must never guess a mode and hit the wrong run.
+
+    SC1 (2026-10-07): `run_id` is empty in the initial state - it is minted in
+    `load_existing_case`/`register_evidence` - so `resolve_run(run_id="")` fell
+    back to the ACTIVE RUN FOR A MODE, and with no mode passed it defaulted to
+    `tools`. The interpret run it was meant to record stayed `running` while the
+    tool lane was finalized instead.
+    """
+    from nexus.config import settings
+    from nexus.langgraph.llm_pipeline import _run_to_finalize
+    from nexus.langgraph.pipeline_runs import create_run, finalize_run, load_manifest
+
+    case_dir = tmp_path / "CASE-001"
+    case_dir.mkdir()
+    monkeypatch.setattr(settings, "cases_root", tmp_path)
+
+    tools_run = create_run(case_dir, "tools", ["C:/evidence/pack"])
+    finalize_run(tools_run, "completed")
+    interpret_run = create_run(
+        case_dir, "interpret", ["C:/evidence/pack"], parent_run_id=tools_run.run_id
+    )
+
+    # The state as the graph carries it: run_id empty, run_dir set by the node.
+    run = _run_to_finalize({"case_id": "CASE-001", "run_id": "",
+                            "run_dir": str(interpret_run.path)})
+    assert run.run_id == interpret_run.run_id
+    assert run.mode == "interpret"
+
+    # With neither id nor dir, the newest run wins — still never a defaulted mode.
+    newest = _run_to_finalize({"case_id": "CASE-001", "run_id": ""})
+    assert newest.run_id == interpret_run.run_id
+
+    # An explicit run_id is honoured verbatim.
+    explicit = _run_to_finalize({"case_id": "CASE-001",
+                                 "run_id": tools_run.run_id})
+    assert explicit.run_id == tools_run.run_id
+
+    assert load_manifest(tools_run.path)["status"] == "completed"
+
+
 def test_directory_evidence_registration_is_hashed_and_idempotent(tmp_path: Path, monkeypatch):
     from nexus.case_manager import CaseManager
 

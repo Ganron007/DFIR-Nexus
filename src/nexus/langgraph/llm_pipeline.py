@@ -2833,15 +2833,46 @@ def _unfinished_reason(result: Any) -> str:
     )
 
 
+def _run_to_finalize(state: InvestigationState | dict) -> Any:
+    """The run record a finalize call must touch.
+
+    The graph's initial state carries ``run_id = ""``; the id is minted in
+    ``load_existing_case`` (interpret) or ``register_evidence``. Resolving with
+    ``run_id=""`` therefore falls back to the ACTIVE RUN FOR A MODE, and passing
+    no mode defaults to ``tools`` — which finalized the *tool lane* while the
+    interpret run it was meant to record stayed `running` (SC1, 2026-10-07, the
+    first version of this fix).
+
+    So: prefer the run this pipeline actually created (``run_dir``), then the
+    state's ``run_id``, then the newest run by mtime rather than a defaulted
+    mode. Never guess a mode.
+    """
+    from nexus.config import settings
+    from nexus.langgraph.pipeline_runs import _load_run, resolve_run
+
+    st = state if isinstance(state, dict) else {}
+    case_dir = settings.cases_root / str(st.get("case_id") or "")
+    rid = str(st.get("run_id") or "").strip()
+    if rid:
+        return resolve_run(case_dir, run_id=rid)
+    run_dir = str(st.get("run_dir") or "").strip()
+    if run_dir:
+        return _load_run(case_dir, Path(run_dir).name)
+    runs = case_dir / "runs"
+    if runs.is_dir():
+        dirs = [d for d in runs.iterdir() if d.is_dir()]
+        if dirs:
+            newest = max(dirs, key=lambda d: d.stat().st_mtime)
+            return _load_run(case_dir, newest.name)
+    raise ValueError(f"no run found to finalize in {case_dir.name}")
+
+
 def _finalize_died(initial: InvestigationState | dict, exc: BaseException) -> None:
     """Record a run that raised, so it never reads `running` afterwards."""
-    state = initial if isinstance(initial, dict) else {}
     try:
-        from nexus.config import settings
-        from nexus.langgraph.pipeline_runs import finalize_run, resolve_run
+        from nexus.langgraph.pipeline_runs import finalize_run
 
-        case_dir = settings.cases_root / str(state.get("case_id") or "")
-        run = resolve_run(case_dir, run_id=str(state.get("run_id") or ""))
+        run = _run_to_finalize(initial)
         finalize_run(run, "failed", f"{type(exc).__name__}: {exc}"[:400])
     except Exception:  # noqa: BLE001 — status bookkeeping must not mask the error
         log.exception("could not finalize a run that died")
@@ -2878,11 +2909,9 @@ async def _finalize_if_unfinished(
         pending = list(getattr(snapshot, "next", ()) or ()) if snapshot else []
     state = initial if isinstance(initial, dict) else {}
     try:
-        from nexus.config import settings
-        from nexus.langgraph.pipeline_runs import finalize_run, resolve_run
+        from nexus.langgraph.pipeline_runs import finalize_run
 
-        case_dir = settings.cases_root / str(state.get("case_id") or "")
-        run = resolve_run(case_dir, run_id=str(state.get("run_id") or ""))
+        run = _run_to_finalize(state)
         if pending:
             drafts = len(state.get("draft_finding_ids") or (result or {}).get(
                 "draft_finding_ids") or [])
