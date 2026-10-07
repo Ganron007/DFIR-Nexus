@@ -276,18 +276,48 @@ def _wanted_fields(known: set[str]) -> list[tuple[str, str]]:
     return out
 
 
-# ---------------------------------------------------------------------------
-# lead kinds
-# ---------------------------------------------------------------------------
+#: Rarity is only meaningful on **execution artifacts' executable paths**.
+#: Unscoped, "appears once" is dominated by app identifiers — on SC1 the top
+#: leads were `Microsoft.WindowsCalculator_…`, `com.squirrel.slack.slack` and
+#: `Microsoft.Office.OUTLOOK.EXE.15`, which are noise, and they outranked every
+#: real detection (WO-R1F item 1: "restrict rarity to execution artifacts'
+#: executable paths"). A value is kept only when it looks like a path to a
+#: program; feed/container identifiers are dropped.
+_EXEC_SUFFIXES = (
+    ".exe", ".dll", ".sys", ".scr", ".com", ".bat", ".cmd", ".ps1",
+    ".vbs", ".js", ".jar", ".msi", ".cpl", ".hta", ".lnk",
+)
+
+
+def _is_executable_path(value: str) -> bool:
+    """True when *value* names a program rather than an app id or a bare name."""
+    text = (value or "").strip().strip('"')
+    if not text:
+        return False
+    lowered = text.lower()
+    # A path, or a bare file name with a program extension. `Microsoft.Windows
+    # Calculator_8wekyb3d8bbwe!App` and `com.squirrel.slack.slack` match neither.
+    looks_like_path = "\\" in text or "/" in text
+    has_exec_ext = lowered.endswith(_EXEC_SUFFIXES)
+    if has_exec_ext:
+        return True
+    # A path with no extension is still an execution artifact location.
+    return looks_like_path and "." not in lowered.rsplit("\\", 1)[-1].rsplit("/", 1)[-1]
+
 
 def rarity_leads(probe: Any, known: set[str], case_dir: Path) -> list[Lead]:
     out: list[Lead] = []
     for name, label in _wanted_fields(known):
+        # Only the executable concept is a program path; the others (account,
+        # service, task) are not, so keep their values as they are.
+        exec_only = label == "executable"
         result = probe.aggregate(field=name, top=RARITY_TOP, match_all=True, with_spans=True)
         for span in _spans(result):
             value = str(span.get("value") or "").strip()
             count = int(span.get("count") or 0)
             if not value or count <= 0 or count > RARITY_MAX_HITS:
+                continue
+            if exec_only and not _is_executable_path(value):
                 continue
             out.append(Lead(
                 kind="rarity",
@@ -478,9 +508,16 @@ def build_leads(
             log.error("lead builder failed: %s: %s", type(exc).__name__, exc)
             failed.append(f"{type(exc).__name__}: {exc}")
 
-    # Stable order: strongest first, then by kind and subject so two runs over
-    # the same index produce byte-identical output.
-    leads.sort(key=lambda lead: (-lead.score, lead.kind, lead.subject))
+    # Stable order: rule-engine detections first, then strongest score, then kind
+    # and subject so two runs over the same index produce byte-identical output.
+    # A crit/high detection must never be outranked by a heuristic lead
+    # (WO-R1F item 1) — the probe asserts it.
+    leads.sort(key=lambda lead: (
+        0 if lead.kind == "rule_engine" else 1,
+        -lead.score,
+        lead.kind,
+        lead.subject,
+    ))
 
     if write:
         try:

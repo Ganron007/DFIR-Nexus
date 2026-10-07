@@ -29,7 +29,13 @@ _ENTITY_TOP_N = 8
 # "top entities" and not evidence files — Mode 1 shows a labelled summary of
 # them instead of dumping system paths into the entity list.
 _ENTITY_CONTENT_PATH_TYPES = frozenset({"windows_path", "posix_path"})
-_ALERT_LEVELS = {"critical", "high"}
+#: The levels that make a row an "alert". `crit` is Hayabusa's spelling for its
+#: top level — omitting it here dropped all 27 critical detections out of the
+#: digest's alert surface, which is what Mode 1 reconciles (WO-R1F item 1; the
+#: same `crit` miss as `rule_leads._LEVEL_SCORE`).
+_ALERT_LEVELS = {"critical", "crit", "high"}
+#: Levels that sort above `high`, in order.
+_ALERT_LEVEL_RANK = {"critical": 0, "crit": 0, "high": 1}
 _ALERT_FAMILY_HINTS = (
     "hayabusa", "zircolite", "deepblue", "sigma",
     # imported network/agent detections (ingest artifact store)
@@ -738,7 +744,9 @@ def case_briefing(case_dir: Path, *, limit: int = 1200) -> dict[str, Any]:
         alert_hits.append(h)
     pairs = sorted(
         zip(alerts, alert_hits, strict=False),
-        key=lambda p: (0 if p[0]["level"] == "critical" else 1, p[0]["time"]),
+        # Rank BEFORE capping/ordering, so a `crit` row is never pushed below a
+        # `high` one by file order (WO-R1F items 1 and 7d).
+        key=lambda p: (_ALERT_LEVEL_RANK.get(p[0]["level"], 2), p[0]["time"]),
     )
     alerts = [a for a, _h in pairs]
     alert_hits = [h for _a, h in pairs]

@@ -105,6 +105,136 @@ def test_both_engines_combine_and_rank_strongest_first(tmp_path):
     assert {lead.family for lead in leads} == {"hayabusa", "chainsaw"}
 
 
+def test_hayabusa_crit_scores_top_and_is_aggregated_per_rule(tmp_path: Path):
+    """WO-R1F item 1 — the root cause of the Mode 2/3 miss.
+
+    Hayabusa spells its top level `crit`; it was absent from the score map, so
+    every critical detection scored like an unknown level. And one lead was
+    emitted per ROW, so a rule firing 27 times flooded the list. Both together
+    meant a run with 27 crit detections had none of them lead.
+    """
+    from nexus.analysis.rule_leads import hayabusa_leads
+
+    case = tmp_path / "CASE-CRIT"
+    ext = case / "runs" / "RUN-1" / "extractions" / "hayabusa"
+    ext.mkdir(parents=True)
+    with (ext / "evtx-timeline.csv").open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(HAYABUSA_HEADER)
+        # One rule, five rows, spelled `crit`; and one lower rule.
+        for i in range(5):
+            writer.writerow([f"2026-01-01 00:0{i}:00", "Defender Alert (Severe)", "crit",
+                             "WS01", "Defender", 1116, i, "Behavior:Win32/CobaltStrike.E!sms",
+                             "", "crit-rule"])
+        writer.writerow(["2026-01-01 00:10:00", "Some Noise", "info", "WS01", "System",
+                         1, 9, "routine", "", "noise"])
+
+    leads = hayabusa_leads(case)
+    assert len(leads) == 2, [lead.subject for lead in leads]   # one per RULE
+    top = leads[0]
+    assert top.subject == "Defender Alert (Severe)"
+    assert top.score == 1.0, top.score                          # `crit` is the top level
+    assert top.extra["level"] == "crit"
+    assert top.extra["count"] == 5                              # rows aggregated
+    assert top.extra["crit_high"] is True
+    assert len(top.rows) <= 5                                   # capped samples
+    assert top.rows[0]["file"].endswith("evtx-timeline.csv")
+
+
+def test_unknown_level_is_scored_low_and_reported_once(tmp_path: Path, caplog):
+    """A new spelling must be visible, not silently scored at the bottom."""
+    import logging
+
+    from nexus.analysis import rule_leads as rl
+
+    rl._UNKNOWN_LEVELS_SEEN.clear()
+    case = tmp_path / "CASE-UNK"
+    ext = case / "runs" / "RUN-1" / "extractions" / "hayabusa"
+    ext.mkdir(parents=True)
+    with (ext / "evtx-timeline.csv").open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(HAYABUSA_HEADER)
+        for i in range(3):
+            writer.writerow([f"2026-01-01 00:0{i}:00", "Odd Rule", "weird", "WS01",
+                             "System", 1, i, "x", "", "odd"])
+    with caplog.at_level(logging.WARNING, logger="nexus.analysis.rule_leads"):
+        leads = rl.hayabusa_leads(case)
+    assert leads[0].score == 0.3                     # scored low, not crashed
+    mentions = [r for r in caplog.records if "weird" in r.getMessage()]
+    assert len(mentions) == 1, "an unknown level is reported once, by name"
+
+
+def test_rule_engine_leads_merge_the_same_rule_across_engines(tmp_path: Path):
+    """The same Sigma rule fires in both engines — that is one lead, not two."""
+    case = tmp_path / "CASE-MERGE"
+    ext = case / "runs" / "RUN-1" / "extractions"
+    (ext / "hayabusa").mkdir(parents=True)
+    (ext / "chainsaw").mkdir(parents=True)
+    with (ext / "hayabusa" / "evtx-timeline.csv").open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(HAYABUSA_HEADER)
+        writer.writerow(["2026-01-01 00:00:00", "DPAPI Domain Master Key Backup Attempt",
+                         "med", "WS01", "Security", 4692, 1, "backup", "", "d-1"])
+    with (ext / "chainsaw" / "sigma.csv").open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(CHAINSAW_HEADER)
+        writer.writerow(["2026-01-01T00:00:00Z", "DPAPI Domain Master Key Backup Attempt",
+                         "C:/evtx/a.evtx", 1, "Microsoft-Windows-Security", 4692, 1,
+                         "WS01", "x"])
+
+    leads = rule_engine_leads(case)
+    assert len(leads) == 1, [lead.subject for lead in leads]
+    lead = leads[0]
+    assert lead.extra["level"] == "med"                 # the strongest level wins
+    assert set(lead.extra["engines"]) == {"hayabusa", "chainsaw"}
+    assert lead.extra["count"] == 1                     # max, not the sum (double-count)
+    assert "seen by" in lead.detail
+
+
+def test_all_crit_rules_outrank_every_other_lead_kind(tmp_path: Path):
+    """A crit detection must never be outranked by a heuristic lead."""
+    from nexus.analysis.leads import build_leads
+
+    case = tmp_path / "CASE-RANK"
+    ext = case / "runs" / "RUN-1" / "extractions" / "hayabusa"
+    (ext / "hayabusa").mkdir(parents=True)
+    with (ext / "evtx-timeline.csv").open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(HAYABUSA_HEADER)
+        writer.writerow(["2026-01-01 00:00:00", "Defender Alert (Severe)", "crit",
+                         "WS01", "Defender", 1116, 1, "CobaltStrike", "", "c-1"])
+    (case / "analysis").mkdir(parents=True, exist_ok=True)
+
+    class _Probe:
+        def aggregate(self, **_kw):
+            return {"top": [{"value": "System\\reg.exe", "count": 1}]}
+
+        def observed_calls(self, **_kw):
+            return []
+
+        def process_check(self, **_kw):
+            return {}
+
+    leads = build_leads(case, probe=_Probe(), known_fields={"Executable"},
+                        write=False)
+    kinds = [lead.kind for lead in leads]
+    assert kinds and kinds[0] == "rule_engine", kinds
+    assert leads[0].score == 1.0
+    # A rarity lead (score 1.0 on a single occurrence) must still sort after it.
+    rarity = [lead for lead in leads if lead.kind == "rarity"]
+    assert rarity, kinds
+    assert rarity[0].score == 1.0, rarity[0].score
+
+
+def test_ruleset_note_counts_crit_high(tmp_path: Path):
+    from nexus.analysis.rule_leads import ruleset_note
+
+    case = _case_with_rule_output(tmp_path)
+    note = ruleset_note(case)
+    assert note["rules"] == note["detections"]
+    assert note["crit_high_rules"] == 1          # Log Cleared (high)
+
+
 def test_ruleset_note_reports_what_actually_ran(tmp_path):
     case = _case_with_rule_output(tmp_path)
     note = ruleset_note(case)

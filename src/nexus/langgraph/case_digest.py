@@ -184,6 +184,7 @@ def build_case_digest(case_dir: Path, brief: dict[str, Any] | None = None) -> di
         "signal_map": _signal_map(case_dir, brief),
         "scan_stats": brief.get("scan_stats") or {},
         "alerts": brief.get("alerts") or [],
+        "top_leads": _top_leads(case_dir),
         "entities": brief.get("entities") or {},
         "entity_spans": _entity_spans(case_dir),
         "timeline": _timeline(case_dir),
@@ -192,6 +193,42 @@ def build_case_digest(case_dir: Path, brief: dict[str, Any] | None = None) -> di
         "scan_truncated": brief.get("scan_truncated", False),
         "backend": brief.get("backend", ""),
     }
+
+
+def _top_leads(case_dir, *, limit: int = 40) -> list[dict[str, Any]]:
+    """The case's top leads, for every mode to see the same signals.
+
+    WO-R1F item 1: "Every mode gets the same top leads." Mode 2's director and
+    Mode 3's supervisor already read the leads file; this puts the same top
+    ``limit`` into the digest, so Mode 1's orient prompt and every Mode 3 seat
+    get them too. Never raises — a case that has not built leads yields [].
+    """
+    path = Path(case_dir) / "analysis" / "leads.jsonl"
+    if not path.is_file():
+        return []
+    out: list[dict[str, Any]] = []
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                lead = json.loads(line)
+            except ValueError:
+                continue
+            out.append({
+                "kind": str(lead.get("kind") or ""),
+                "subject": str(lead.get("subject") or ""),
+                "detail": str(lead.get("detail") or "")[:300],
+                "score": lead.get("score") or 0.0,
+                "level": str((lead.get("extra") or {}).get("level") or ""),
+                "engine": str((lead.get("extra") or {}).get("engine") or ""),
+                "crit_high": bool((lead.get("extra") or {}).get("crit_high")),
+            })
+            if len(out) >= limit:
+                break
+    except OSError:
+        return []
+    return out
 
 
 def _ts_coverage(case_dir) -> dict[str, dict[str, int]]:
@@ -336,6 +373,16 @@ def render_digest_markdown(digest: dict[str, Any]) -> str:
                 f"- [{str(a.get('level', '')).upper()}] {a.get('family', '')} · "
                 f"{a.get('title', '')} · {a.get('host', '')} {a.get('time', '')}"
             )
+    top_leads = digest.get("top_leads") or []
+    if top_leads:
+        # The same top leads every mode is handed (WO-R1F item 1). Severity is
+        # explicit so a crit detection is never read as one lead among many.
+        lines.append("")
+        lines.append(f"## Top leads ({len(top_leads)})")
+        for lead in top_leads[:40]:
+            lvl = str(lead.get("level") or "").upper()
+            tag = f"[{lvl}] " if lvl else ""
+            lines.append(f"- {tag}{lead.get('subject', '')}: {lead.get('detail', '')}")
     entities = digest.get("entities") or {}
     spans = digest.get("entity_spans") or {}
     if entities:
