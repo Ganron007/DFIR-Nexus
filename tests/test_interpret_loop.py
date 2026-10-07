@@ -168,6 +168,64 @@ def test_loop_does_not_pack_digest_twice(tmp_path):
         assert packed.count("# Digest\nTEXT-MARKER") == 1
 
 
+def test_findings_corrective_retry_recovers_a_malformed_reply(tmp_path):
+    """A findings reply that carries the keys but parses to nothing is a
+    formatting failure, and it discards everything the loop verified.
+
+    SC1 Mode 1 mode: four hypotheses confirmed on real evidence, 0 findings -
+    because the findings call came back unparseable. One bounded retry recovers
+    it; a legitimate "no findings" reply is NOT retried.
+    """
+    from nexus.langgraph.interpret_loop import run_interpret_loop
+
+    malformed = '[{"title": "CobaltStrike", "observation": "beacon",},]'
+    good = _findings_all_addressed()
+    model = ScriptedModel([
+        _orientation(), _verify_settled(), malformed, good,
+    ])
+    result = asyncio.run(run_interpret_loop(
+        case_dir=tmp_path, case_id="CASE-TEST", model=model,
+        state={"case_context": {"interpret_rounds": "1"}},
+        digest=_digest(), digest_md="# Digest\nMimikatz detected ...",
+        sections=[(1, "query_pack", "family:hayabusa ...")],
+        execute=FakeExecutor(),
+    ))
+    assert result["findings_emitted"] == 3, result
+
+    record = json.loads(
+        (tmp_path / "analysis" / "interpret_rounds" / "findings-final.json")
+        .read_text(encoding="utf-8")
+    )
+    assert record["corrective_retry_used"] is True
+    assert record["candidates_parsed"] == 3
+    assert record["chars"] > 0
+
+
+def test_findings_without_keys_is_not_retried(tmp_path):
+    """Prose ("no evidence of compromise") is a legitimate empty result."""
+    from nexus.langgraph.interpret_loop import run_interpret_loop
+
+    model = ScriptedModel([
+        _orientation(), _verify_settled(),
+        "I could not find evidence of compromise on this host.",
+    ])
+    result = asyncio.run(run_interpret_loop(
+        case_dir=tmp_path, case_id="CASE-TEST", model=model,
+        state={"case_context": {"interpret_rounds": "1"}},
+        digest=_digest(), digest_md="# Digest\nMimikatz detected ...",
+        sections=[(1, "query_pack", "family:hayabusa ...")],
+        execute=FakeExecutor(),
+    ))
+    assert result["findings_emitted"] == 0
+    record = json.loads(
+        (tmp_path / "analysis" / "interpret_rounds" / "findings-final.json")
+        .read_text(encoding="utf-8")
+    )
+    assert record["corrective_retry_used"] is False
+    # The prose reply is kept, so the outcome is still inspectable.
+    assert "could not find" in record["raw"]
+
+
 def test_loop_early_stop_and_artifacts(tmp_path):
     model = ScriptedModel([_orientation(), _verify_settled(), _findings_all_addressed()])
     execute = FakeExecutor()

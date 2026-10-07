@@ -281,6 +281,20 @@ async def _call_model(model: Any, messages: list[dict[str, str]]) -> str:
     return str(getattr(response, "content", response))
 
 
+def _looks_like_findings_json(text: str) -> bool:
+    """True when a reply is *shaped* like findings but did not parse to any.
+
+    Distinguishes a formatting failure from a legitimate "no findings": the
+    former carries the finding keys, the latter does not. Only the former is
+    worth a corrective retry.
+    """
+    blob = (text or "").lower()
+    if not blob.strip():
+        return False
+    keys = ('"title"', '"observation"', '"interpretation"', '"confidence"')
+    return sum(1 for key in keys if key in blob) >= 2
+
+
 def _persist_round(case_dir: Path, name: str, payload: dict[str, Any]) -> None:
     try:
         out = Path(case_dir) / "analysis" / "interpret_rounds"
@@ -557,6 +571,11 @@ async def run_interpret_loop(
         (2, "verification_notes", notes_block),
     ]
     packed = _packed("interpret-reconcile", reconcile_extra)
+    # Keep the packing stats so the corrective retry's persisted context carries
+    # the same completeness header as every other stage.
+    _, packed_report = pack_sections(
+        [(0, "case_digest", digest_md), *reconcile_extra], window=ctx_window
+    )
     raw_findings = await _call_model(model, [
         {"role": "system", "content": findings_system},
         {"role": "user", "content": packed + "\n\nEmit the findings JSON array."},
@@ -569,6 +588,39 @@ async def run_interpret_loop(
         return parse_hunt_candidates([{"role": "assistant", "content": text}])
 
     candidates = _candidates(raw_findings)
+    # A reply that parses to zero candidates but LOOKS like findings JSON (it
+    # carries the keys) is a formatting failure, not "no findings" - and it
+    # discards everything this loop verified. One corrective retry, bounded to
+    # one, asking only for well-formed JSON. A reply with none of the keys
+    # (prose, "I could not find...") is a legitimate empty result and is NOT
+    # retried.
+    correct_used = False
+    if not candidates and _looks_like_findings_json(raw_findings):
+        correct_used = True
+        log.warning("Findings reply carried findings keys but parsed to 0 — one corrective retry")
+        try:
+            persist_context(
+                case_dir, "interpret-findings-corrective", packed, packed_report,
+                meta={"case_id": case_id},
+            )
+            corrected = await _call_model(model, [
+                {"role": "system", "content": findings_system},
+                {
+                    "role": "user",
+                    "content": (
+                        packed
+                        + "\n\nYour previous reply could not be parsed as findings. "
+                        "Return ONLY a well-formed JSON array. No prose, no fence, "
+                        "no trailing commas. If nothing is supportable, return []."
+                    ),
+                },
+            ])
+            candidates = _candidates(corrected)
+            if candidates:
+                raw_findings = corrected
+        except Exception as exc:  # noqa: BLE001 — the retry is best-effort
+            log.warning("findings corrective retry failed: %s", exc)
+
     checklist = reconciliation_checklist(digest, candidates)
     unaddressed_final = checklist.get("unaddressed") or []
 
@@ -613,6 +665,7 @@ async def run_interpret_loop(
         "raw": raw_findings,
         "chars": len(raw_findings or ""),
         "candidates_parsed": len(candidates),
+        "corrective_retry_used": correct_used,
         "reconciliation_addressed": len(checklist.get("addressed") or []),
     })
     _persist_round(case_dir, "summary", {
