@@ -17,7 +17,7 @@ import json
 import logging
 import os
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any, TypedDict
@@ -778,6 +778,13 @@ def _seat_with_model(
     # found nothing and a seat that never ran, which look identical from an empty
     # claim list and must not be reported the same way.
     entry["finish_reason"] = str(loop.get("finish_reason") or "")
+    # The seat's REAL tool-call count, from its own loop (item 7b's "add a real
+    # tool-call budget"). Summed at the run level; without it the run cannot say
+    # how much work it did or what the budget stopped.
+    try:
+        entry["tool_calls_used"] = len(loop.get("tool_calls") or [])
+    except (TypeError, ValueError):
+        entry["tool_calls_used"] = 0
     # Return the procedures this seat was given. Without them the run record
     # cannot say which documented method produced its claims, so "did the agent
     # follow a procedure or improvise" is unanswerable from the case afterwards
@@ -836,6 +843,256 @@ def _absence_for_record(case_dir: Path) -> dict[str, Any]:
         return {}
 
 
+def _open_agenda(
+    case_dir: Path,
+    board: list[dict[str, Any]],
+    state: Mapping[str, Any],
+) -> dict[str, Any]:
+    """What still needs investigating, from the board (WO-R1F item 7b).
+
+    The four sources the WO names:
+
+    * (a) seats' ``open_questions`` — "I need X checked" must reach someone;
+    * (b) unexplained crit/high leads and digest items;
+    * (c) **pivots on new entities** — a beacon process implies its persistence,
+      parent, network and credential activity;
+    * (d) disputes (handled by the caller's redispatch branch).
+
+    Pure over its inputs plus the case's lead file, so a scripted model can drive
+    it. Empty agenda == everything dispositioned.
+    """
+    questions: list[str] = []
+    for entry in board:
+        for q in entry.get("open_questions") or []:
+            text = " ".join(str(q).split())
+            if text and text not in questions:
+                questions.append(text)
+
+    dispositioned = _dispositioned_keys(board)
+    crit_leads: list[dict[str, Any]] = []
+    try:
+        from nexus.analysis.leads import read_leads
+
+        for lead in read_leads(case_dir):
+            extra = lead.get("extra") or {}
+            if not extra.get("crit_high"):
+                continue
+            key = _norm_key(lead.get("subject"))
+            if key and key not in dispositioned:
+                crit_leads.append(lead)
+    except Exception:  # noqa: BLE001 — an agenda must never break the run
+        crit_leads = []
+
+    pivots = _pivot_entities(board, state)
+    return {
+        "questions": questions,
+        "crit_leads": crit_leads,
+        "pivots": pivots,
+    }
+
+
+#: Entity types worth a follow-up seat when first seen (item 7b (c)).
+_PIVOT_ENTITIES = {
+    "process": "its parent, persistence and network activity",
+    "domain": "name resolution and the processes that contacted it",
+    "ipv4": "the processes that connected and what they transferred",
+    "registry": "what wrote it and what it launches",
+    "service": "what installed it and under which account",
+    "user": "how the account was used and from where",
+}
+
+
+def _pivot_entities(
+    board: list[dict[str, Any]],
+    state: Mapping[str, Any],
+) -> list[dict[str, str]]:
+    """Entities raised on the board that no later seat picked up."""
+    claimed: set[tuple[str, str]] = set()
+    for entry in board:
+        for claim in entry.get("claims") or []:
+            key = _claim_key(claim)
+            if key:
+                claimed.add((key[0], key[1]))
+    seen: set[tuple[str, str]] = set()
+    out: list[dict[str, str]] = []
+    for entry in board:
+        for claim in entry.get("claims") or []:
+            key = _claim_key(claim)
+            if not key:
+                continue
+            etype, evalue, _kind = key
+            look = (etype, evalue)
+            if look in seen or etype not in _PIVOT_ENTITIES:
+                continue
+            seen.add(look)
+            out.append({
+                "entity_type": etype,
+                "entity_value": evalue,
+                "why": _PIVOT_ENTITIES[etype],
+            })
+    del claimed
+    return out
+
+
+def _norm_key(value: Any) -> str:
+    return " ".join(str(value or "").split()).lower()
+
+
+def _dispositioned_keys(board: list[dict[str, Any]]) -> set[str]:
+    """Lead/entity keys the board has already disposed of.
+
+    A lead is dispositioned when a claim names it, a verifier refuted it, or an
+    explicit gap entry names it — the three ways the WO allows.
+    """
+    keys: set[str] = set()
+    for entry in board:
+        for claim in entry.get("claims") or []:
+            key = _claim_key(claim)
+            if key:
+                keys.add(key[1])
+                keys.add(key[0])
+        for verdict in entry.get("verdicts") or []:
+            keys.add(_norm_key(verdict.get("subject") or verdict.get("title")))
+        for gap in entry.get("coverage_gaps") or []:
+            keys.add(_norm_key(gap))
+    return {k for k in keys if k}
+
+
+def _spawns_for_agenda(
+    agenda: dict[str, Any],
+    board: list[dict[str, Any]],
+    *,
+    max_agents: int,
+    question: str,
+    superstep: int,
+    indexed: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    """Seats for the open agenda, strongest first (item 7b).
+
+    Order: unexplained crit/high leads (a hypothesis seat each) -> open questions
+    -> pivots. Correlation and pattern seats run only from superstep 2, on a
+    non-empty board, and are appended last so they never crowd out the work.
+    """
+    spawns: list[dict[str, Any]] = []
+    taken: set[str] = set()
+
+    for lead in (agenda.get("crit_leads") or [])[:max_agents]:
+        subject = str(lead.get("subject") or "")
+        key = _norm_key(subject)
+        if not key or key in taken:
+            continue
+        taken.add(key)
+        spawns.append({
+            "role": "evidence",
+            "family": str(lead.get("family") or ""),
+            "why": f"unexplained {str((lead.get('extra') or {}).get('level') or '')} lead",
+            "question": f"{question}\nInvestigate the lead: {subject}",
+            "lead": subject,
+        })
+
+    for text in agenda.get("questions") or []:
+        if len(spawns) >= max_agents:
+            break
+        key = _norm_key(text)[:80]
+        if not key or key in taken:
+            continue
+        taken.add(key)
+        spawns.append({
+            "role": "evidence",
+            "family": "",
+            "why": "open question from a seat",
+            "question": f"{question}\nA seat asked: {text}",
+        })
+
+    for pivot in agenda.get("pivots") or []:
+        if len(spawns) >= max_agents:
+            break
+        evalue = str(pivot.get("entity_value") or "")
+        key = _norm_key(evalue)
+        if not key or key in taken:
+            continue
+        taken.add(key)
+        spawns.append({
+            "role": "correlation" if superstep >= 2 else "evidence",
+            "family": "",
+            "why": f"pivot on {pivot.get('entity_type')} {evalue}",
+            "question": (
+                f"{question}\nPivot on {pivot.get('entity_type')} {evalue}: "
+                f"check {pivot.get('why')}"
+            ),
+        })
+
+    # Correlation/pattern only from superstep 2, on a non-empty board: they exist
+    # to cross-examine what the evidence seats reported.
+    if superstep >= 2 and board and len(spawns) < max_agents:
+        have = {str(s.get("role") or "") for s in spawns}
+        if "correlation" not in have:
+            spawns.append({
+                "role": "correlation", "family": "",
+                "why": "cross-family corroboration on the board",
+                "question": question,
+            })
+        if len(spawns) < max_agents and "pattern" not in have:
+            spawns.append({
+                "role": "pattern", "family": "",
+                "why": "framework pattern matching on the board",
+                "question": question,
+            })
+    return spawns[:max_agents]
+
+
+def _unverified_claims(board: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Accepted claims on the board with no verifier verdict yet (item 7b).
+
+    A verifier verdict names its subject (``subject`` or ``title``); a claim whose
+    entity is already judged has been cross-examined and is not re-queued.
+    """
+    judged: set[str] = set()
+    for entry in board:
+        for verdict in entry.get("verdicts") or []:
+            key = _norm_key(verdict.get("subject") or verdict.get("title"))
+            if key:
+                judged.add(key)
+    out: list[dict[str, Any]] = []
+    for entry in board:
+        for claim in entry.get("claims") or []:
+            key = _claim_key(claim)
+            if not key:
+                continue
+            if key[1] in judged:
+                continue
+            out.append(claim)
+    return out
+
+
+def _verifier_spawn(
+    claims: list[dict[str, Any]],
+    *,
+    question: str,
+    superstep: int,
+) -> dict[str, Any] | None:
+    """The verifier seat for claims not yet cross-examined (item 7b).
+
+    Reuses Mode 2's adversarial verifier role (`ROLES["verifier"]`).
+    """
+    if not claims:
+        return None
+    subjects = []
+    for claim in claims[:12]:
+        key = _claim_key(claim)
+        if key:
+            subjects.append(f"{key[0]}={key[1]}")
+    return {
+        "role": "verifier",
+        "family": "",
+        "why": f"verify {len(claims)} new claim(s) from superstep {superstep}",
+        "question": (
+            f"{question}\nRe-check these claims and classify each confirmed / "
+            f"inferred / refuted: {', '.join(subjects) or '(see the board)'}"
+        ),
+    }
+
+
 def run_mode3(
     case_dir: Path,
     question: str,
@@ -858,6 +1115,16 @@ def run_mode3(
     ready = elasticsearch_ready() if es_ok is None else bool(es_ok)
     from nexus.langgraph.lane_gate import coverage_snapshot
 
+    # WO-R1F item 7b budgets: up to 6 seats per superstep (ceiling 10) and up to
+    # 10 supersteps. `NEXUS_MODE3_MAX_AGENTS` counts SEATS, which is what it is
+    # named for; the tool-call budget is a separate, real counter.
+    max_agents = _env_int("NEXUS_MODE3_MAX_AGENTS", 6, low=2, high=10)
+    max_steps = _env_int("NEXUS_MODE3_MAX_SUPERSTEPS", 10, low=1, high=20)
+    max_calls = _env_int("NEXUS_MODE3_MAX_CALLS", 120, low=1, high=400)
+    # The WO's wall-clock budget (default 4 h) is enforced by the caller's own
+    # time budget; this records it so the run states what stopped it.
+    wall_seconds = float(_env_int("NEXUS_MODE3_SECONDS", 14400, low=30, high=28800))
+
     record: dict[str, Any] = {
         "run_id": run_id,
         "case_id": case_dir.name,
@@ -872,6 +1139,16 @@ def run_mode3(
         "narrative": "",
         "superstep": 0,
         "product_mode": "multi-agent",
+        # WO-R1F item 7b: the budgets the run actually used, named honestly —
+        # seats (not "calls"), tool calls, supersteps and the wall-clock ceiling.
+        "budgets": {
+            "max_seats_per_superstep": max_agents,
+            "max_supersteps": max_steps,
+            "max_seats": max_calls,
+            "wall_seconds": wall_seconds,
+            "seats_used": 0,
+            "tool_calls_used": 0,
+        },
         "evidence_coverage": coverage_snapshot(case_dir),
         # WO-K8/WO-K7: the Mode 3 record carries the layer state and the absence
         # statement too (D30), so an ablation number can be read against what was
@@ -900,9 +1177,9 @@ def run_mode3(
     # polling and the SSE tail all see the record from superstep 0.
     _persist(case_dir, run_id, record)
 
-    max_agents = _env_int("NEXUS_MODE3_MAX_AGENTS", 4, low=2, high=8)
-    max_steps = _env_int("NEXUS_MODE3_MAX_SUPERSTEPS", 6, low=1, high=12)
-    max_calls = _env_int("NEXUS_MODE3_MAX_CALLS", 120, low=1, high=400)
+    # WO-R1F item 7b budgets: up to 6 seats per superstep (ceiling 10) and up to
+    # 10 supersteps. `NEXUS_MODE3_MAX_AGENTS` counts SEATS, which is what it is
+    # named for; the tool-call budget is a separate, real counter.
     settle_k = _env_int("NEXUS_MODE3_SETTLE_SUPERSTEPS", 2, low=1, high=6)
     # settled whenever `superstep >= 1 and not disputes`, so a first superstep
     # whose seats happened not to collide ended the investigation at one round:
@@ -953,7 +1230,13 @@ def run_mode3(
             log.debug("mode3 index_mappings failed", exc_info=True)
             indexed = []
 
-    calls_used = {"n": 0}
+    # The counter is SEATS, and it is named so (WO-R1F item 7b): the old name
+    # claimed to count tool calls while counting seats, so "120 calls" was a
+    # budget nobody could reason about. `max_calls` is the seat budget; each
+    # seat's own LoopBudget bounds its tool calls, and the seat reports the count
+    # it actually used.
+    seats_used = {"n": 0}
+    tool_calls_used = {"n": 0}
 
     def _halted() -> str:
         flags = read_controls(case_dir, run_id)
@@ -968,7 +1251,7 @@ def run_mode3(
         step = int(state.get("superstep") or 0) + 1
         if halt:
             return {"status": halt, "superstep": step, "spawns": []}
-        if step > max_steps or calls_used["n"] >= max_calls:
+        if step > max_steps or seats_used["n"] >= max_calls:
             return {"status": "capped", "superstep": step, "spawns": []}
         steering = read_mode3_steering(case_dir, run_id)
         seen = int(state.get("steering_seen") or 0)
@@ -982,6 +1265,42 @@ def run_mode3(
             ))
         disputes = state.get("disputes") or []
         used = int(state.get("redispatch_used") or 0)
+        # WO-R1F item 7b: the supervisor RE-PLANS every superstep from the board —
+        # seats' open questions, unexplained crit/high leads and digest items,
+        # pivots on new entities, and disputes. The old shape spawned only on
+        # `step == 1` (or fresh steering) and otherwise returned `settled`, so a
+        # "2 superstep" run was one wave of <= 4 seats and a stop.
+        board = state.get("board") or []
+        agenda = _open_agenda(case_dir, board, state)
+        if agenda and step <= max_steps:
+            spawns = _spawns_for_agenda(
+                agenda, board, max_agents=max_agents, question=question,
+                superstep=step, indexed=indexed,
+            )
+            if spawns:
+                # WO-R1F item 7b: a verifier seat runs each superstep on that
+                # superstep's new claims, reusing Mode 2's adversarial verifier
+                # role. Refuted claims are excluded (settled_candidates).
+                verifier = _verifier_spawn(
+                    _unverified_claims(board), question=question, superstep=step,
+                )
+                if verifier and len(spawns) < max_agents:
+                    spawns.append(verifier)
+                sink.emit(new_event(
+                    run_id, "supervisor.replan", actor="supervisor",
+                    detail=f"{len(spawns)} seat(s) from the open agenda",
+                    data={
+                        "open_questions": len(agenda.get("questions") or []),
+                        "open_crit_leads": len(agenda.get("crit_leads") or []),
+                        "pivots": len(agenda.get("pivots") or []),
+                        "disputes": len(disputes),
+                        "superstep": step,
+                    },
+                ))
+                return {
+                    "spawns": spawns, "superstep": step, "status": "running",
+                    "steering_seen": len(steering),
+                }
         if disputes and used < max_redispatch and int(state.get("quiet") or 0) < settle_k:
             spawns = []
             for dispute in disputes:
@@ -1061,9 +1380,9 @@ def run_mode3(
     def seat(payload: dict[str, Any]) -> dict[str, Any]:
         spawn = payload.get("spawn") or {}
         step = int(payload.get("superstep") or 1)
-        if calls_used["n"] >= max_calls:
+        if seats_used["n"] >= max_calls:
             return {"board": []}
-        calls_used["n"] += 1
+        seats_used["n"] += 1
         if seat_fn is not None:
             entry = seat_fn(spawn, [], step)
         elif model is not None:
@@ -1083,6 +1402,8 @@ def run_mode3(
             if isinstance(claim, dict) and not accept_claim(claim):
                 kept.append(claim)
         entry["claims"] = kept
+        with contextlib.suppress(TypeError, ValueError):
+            tool_calls_used["n"] += int(entry.get("tool_calls_used") or 0)
         return {"board": [entry]}
 
     def join(state: Mode3State) -> dict[str, Any]:
@@ -1096,11 +1417,30 @@ def run_mode3(
         quiet = quiet + 1 if fp == list(state.get("last_fp") or []) else 0
         status = str(state.get("status") or "running")
         step_no = int(state.get("superstep") or 0)
-        if status != "capped" and (
-            (disputes and quiet >= settle_k)
-            or (not disputes and step_no >= min_supersteps)
-        ):
-            status = "settled"
+        # WO-R1F item 7b's stop rule: stop when every crit/high lead and every
+        # digest item has a disposition (a claim, refuted, or an explicit gap)
+        # AND no open question remains — or when the budget ends. NEVER on "the
+        # board was quiet", which is what made a 2-superstep run look complete.
+        agenda = _open_agenda(case_dir, board, state)
+        open_items = (
+            len(agenda.get("questions") or [])
+            + len(agenda.get("crit_leads") or [])
+            + len(agenda.get("pivots") or [])
+        )
+        stop_rule = ""
+        if status not in {"capped", "stopped", "paused"}:
+            if step_no >= max_steps:
+                status, stop_rule = "capped", "budget: max supersteps"
+            elif not disputes and open_items == 0 and step_no >= min_supersteps:
+                status, stop_rule = "settled", "every lead and question dispositioned"
+            elif disputes and quiet >= settle_k:
+                status, stop_rule = "settled", "disputes settled"
+        if stop_rule:
+            sink.emit(new_event(
+                run_id, "join.stop_rule", actor="join", detail=stop_rule,
+                data={"superstep": step_no, "open_items": open_items,
+                      "disputes": len(disputes)},
+            ))
         # Settling is a claim that the investigation is done, so record which
         # roles actually contributed. A run where only evidence seats ever ran has
         # not cross-examined anything, and saying so is the point.
@@ -1206,7 +1546,11 @@ def run_mode3(
         stop_reason = "settled"
     elif status == "capped":
         status = "completed"
-        stop_reason = "run_cap"
+        stop_reason = (
+            "budget: max supersteps"
+            if int(final.get("superstep") or 0) >= max_steps
+            else "budget: tool-call budget"
+        )
     elif status == "stopped":
         stop_reason = "examiner_stop"
     elif status == "paused":
@@ -1242,6 +1586,12 @@ def run_mode3(
         "board": list(final.get("board") or []),
         "disputes": list(final.get("disputes") or []),
         "superstep": int(final.get("superstep") or 0),
+        # The counters the run actually reached (item 7b).
+        "budgets": {
+            **dict(record.get("budgets") or {}),
+            "seats_used": int(seats_used["n"]),
+            "tool_calls_used": int(tool_calls_used["n"]),
+        },
         "completed_at": _now() if status != "paused" else "",
     })
     if status == "paused":

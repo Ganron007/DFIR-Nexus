@@ -108,7 +108,9 @@ def test_mode3_dead_model_fails_rather_than_settling():
 
 def test_mode3_capped_and_stopped_paths_are_untouched():
     src = AGENT.read_text(encoding="utf-8")
-    assert 'stop_reason = "run_cap"' in src
+    # WO-R1F item 7b: a capped run names WHICH budget stopped it, not "run_cap".
+    assert 'stop_reason = (\n            "budget: max supersteps"' in src
+    assert '"budget: tool-call budget"' in src
     assert 'stop_reason = "examiner_stop"' in src
     assert 'stop_reason = "paused"' in src
 
