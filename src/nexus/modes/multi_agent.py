@@ -596,10 +596,51 @@ def _parse_claims(text: str) -> list[dict[str, Any]]:
         parsed = json.loads(text[start:end + 1])
     except json.JSONDecodeError:
         return []
-    claims = parsed.get("claims") if isinstance(parsed, dict) else None
-    if not isinstance(claims, list):
+    return _claims_from_object(parsed)
+
+
+#: Keys a seat has been observed to use instead of `claims` (WO-R1F item 7).
+#: Measured on SC1: a seat answered `{"notes": [...]}` — a real answer, lost
+#: because the key differed by one word.
+_CLAIM_ALTERNATES = ("notes", "findings", "observations", "claims")
+
+
+def _claims_from_object(parsed: Any) -> list[dict[str, Any]]:
+    """Claims from a parsed reply, accepting the known alternate keys."""
+    if not isinstance(parsed, dict):
         return []
-    return [item for item in claims if isinstance(item, dict)]
+    for key in _CLAIM_ALTERNATES:
+        claims = parsed.get(key)
+        if isinstance(claims, list):
+            return [item for item in claims if isinstance(item, dict)]
+    return []
+
+
+def _has_claims_key(text: str) -> bool:
+    """True when the reply carries any of the accepted claim keys."""
+    return any(f'"{key}"' in str(text or "") for key in _CLAIM_ALTERNATES)
+
+
+def _claim_is_coverage_only(claim: dict[str, Any]) -> bool:
+    """A claim that only says "tool X parsed N records" is COVERAGE (item 7).
+
+    It is not a finding: it describes the parser, not the evidence. It goes to
+    the coverage report instead — otherwise every seat's first inventory
+    statement becomes a candidate and the board fills with noise.
+    """
+    import re
+
+    entity = str(claim.get("entity_value") or "").strip().lower()
+    value = str(claim.get("value") or "").strip().lower()
+    blob = f"{entity} {value}"
+    if not blob.strip():
+        return False
+    parsed = re.search(r"\bparsed\b", blob)
+    if not parsed:
+        return False
+    # "parsed N records/rows/files/entries" with no behavioural content.
+    return bool(re.search(r"\bparsed\s+\d[\d,]*\s+"
+                          r"(record|row|file|entr|event|hit|item|line)", blob))
 
 
 def _seat_with_model(
@@ -613,7 +654,7 @@ def _seat_with_model(
     superstep: int,
     audit: Any = None,
 ) -> dict[str, Any]:
-    from nexus.langgraph.context_loop import LoopBudget, run_context_loop
+    from nexus.langgraph.context_loop import LoopBudget, _call_model, run_context_loop
     from nexus.modes.multi_role import _investigative_extras, role_for
 
     role_name = str(spawn.get("role") or "evidence")
@@ -677,6 +718,54 @@ def _seat_with_model(
     entry = _fallback_entry(spawn, superstep)
     reply_text = str(loop.get("reply") or "")
     entry["claims"] = _parse_claims(reply_text)
+    # WO-R1F item 7: when the reply carries NO claim key at all, ONE corrective
+    # re-prompt asks for the schema. Measured on SC1: a seat answered
+    # `{"notes": [...]}` — and the alternates are accepted in `_parse_claims`, so
+    # this fires only for a reply with none of them (prose, or a wrong key).
+    if (
+        not entry["claims"]
+        and reply_text.strip()
+        and not _has_claims_key(reply_text)
+        and str(loop.get("finish_reason") or "") not in ("model_error", "empty_model")
+    ):
+        try:
+            corrected = _call_model(
+                model,
+                [
+                    {"role": "system", "content": role.system_prompt},
+                    {
+                        "role": "user",
+                        "content": (
+                            question
+                            + "\n\nYour previous reply had no claims. Return ONLY "
+                            'JSON: {"claims":[{"entity_type":"...",'
+                            '"entity_value":"...",'
+                            '"claim_kind":"presence|absence|attribution|time_order",'
+                            '"polarity":"affirm|deny","value":"...",'
+                            '"audit_ids":["..."],"confidence":"LOW|MEDIUM|HIGH",'
+                            '"confidence_justification":"..."}],'
+                            '"open_questions":["..."]}. If nothing is supportable, '
+                            'return {"claims": [], "open_questions": ["..."]}.'
+                        ),
+                    },
+                ],
+            )
+            if corrected.strip():
+                entry["claims"] = _parse_claims(corrected)
+                entry["corrective_retry_used"] = True
+                entry["reply_excerpt"] = " ".join(str(corrected).split())[:600]
+        except Exception as exc:  # noqa: BLE001 — the retry is best-effort
+            log.warning("seat corrective re-prompt failed: %s", exc)
+    # Item 7: a claim that only says "tool X parsed N records" is COVERAGE, not
+    # a finding. Split it out so the board holds evidence, not parser inventory.
+    kept: list[dict[str, Any]] = []
+    entry["coverage_only"] = []
+    for claim in entry["claims"]:
+        if _claim_is_coverage_only(claim):
+            entry["coverage_only"].append(claim)
+        else:
+            kept.append(claim)
+    entry["claims"] = kept
     entry["open_questions"] = []
     # What the seat actually returned, capped. Without it the board records only
     # the *spawn reason* when a seat produces no claims, so "the model answered
