@@ -134,6 +134,91 @@ def _investigative_extras(case_dir: Path) -> str:
     return out
 
 
+def _digest_summary(brief: dict[str, Any], *, limit: int = 2400) -> str:
+    """The digest summary a Mode 2 worker is handed (WO-R1F item 7c).
+
+    The same strongest signals Mode 1 reconciles: the alert surface and the top
+    leads. Capped so it fits every worker prompt. Never raises on a thin brief.
+    """
+    if not isinstance(brief, dict):
+        return ""
+    lines: list[str] = []
+    alerts = brief.get("alerts") or []
+    if alerts:
+        lines.append(f"ALERT SURFACE ({len(alerts)} crit/high):")
+        for alert in alerts[:20]:
+            lines.append(
+                f"- [{str(alert.get('level') or '').upper()}] "
+                f"{alert.get('family', '')} · {alert.get('title', '')} · "
+                f"{alert.get('host', '')} {alert.get('time', '')}"
+            )
+    leads = brief.get("top_leads") or []
+    if leads:
+        lines.append(f"TOP LEADS ({len(leads)}):")
+        for lead in leads[:20]:
+            level = str((lead.get("extra") or {}).get("level") or "").upper()
+            tag = f"[{level}] " if level else ""
+            lines.append(f"- {tag}{lead.get('subject', '')}: "
+                         f"{str(lead.get('detail') or '')[:160]}")
+    if not lines:
+        return ""
+    return ("CASE DIGEST SUMMARY (the strongest signals this case holds; every "
+            "mode is given the same ones):\n" + "\n".join(lines))[:limit]
+
+
+def _replan_inputs(state: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """A worker's open questions and new pivot entities (WO-R1F item 7c).
+
+    Read from the results already on the state — the same `parsed` bodies the
+    assess node counts. Questions already answered by a later worker are dropped,
+    and an entity a later worker already used is not pivoted on twice.
+    """
+    questions: list[str] = []
+    entities: list[str] = []
+    answered: set[str] = set()
+    seen_entities: set[str] = set()
+    for result in state.get("results") or []:
+        parsed = result.get("parsed") or {}
+        if not isinstance(parsed, dict):
+            continue
+        for q in parsed.get("next_questions") or []:
+            text = " ".join(str(q).split())
+            if text:
+                questions.append(text)
+        # Entities a worker named: in the explicit `entities` list or in its
+        # candidate findings' host/account fields.
+        for ent in parsed.get("entities") or []:
+            text = " ".join(str(ent).split())
+            if text:
+                entities.append(text)
+        for cand in (parsed.get("candidate_findings") or parsed.get("findings") or []):
+            if not isinstance(cand, dict):
+                continue
+            for key in ("host", "affected_account"):
+                text = " ".join(str(cand.get(key) or "").split())
+                if text:
+                    entities.append(text)
+        for note in parsed.get("notes") or []:
+            if isinstance(note, dict) and note.get("statement"):
+                answered.add(" ".join(str(note["statement"]).split()).lower())
+    # A question is answered when a note's statement mentions it.
+    open_q: list[str] = []
+    for q in questions:
+        low = q.lower()
+        if any(low in statement or statement in low for statement in answered):
+            continue
+        if q not in open_q:
+            open_q.append(q)
+    pivots: list[str] = []
+    for ent in entities:
+        key = ent.lower()
+        if key in seen_entities:
+            continue
+        seen_entities.add(key)
+        pivots.append(ent)
+    return open_q[:8], pivots[:8]
+
+
 def _question_keywords(question: str, limit: int = 12) -> list[str]:
     """Cheap keyword extraction for skill retrieval (no model call)."""
     words = re.findall(r"[a-zA-Z0-9_\-]{4,}", str(question or "").lower())
@@ -1130,6 +1215,9 @@ def run_work_order(
     started = time.monotonic()
 
     work_context = _pack(json.dumps(context or {}, default=str), case_dir)
+    # WO-R1F item 7c: the digest summary this run built reaches every worker.
+    work_context_digest = _pack(str(context.get("digest_summary") or "")
+                                if isinstance(context, dict) else "", case_dir)
     skill_block = _pack(_skill_procedure_block(order), case_dir)
     shared = mode2_loop_budget(case_dir)
     budget = LoopBudget(
@@ -1151,6 +1239,7 @@ def run_work_order(
         f"Negative-evidence rule: {order.negative_evidence_rule}\n"
         + skill_block
         + f"Run context: {work_context}\n\n"
+        + (str(work_context_digest) + "\n\n" if work_context_digest else "")
         + _investigative_extras(case_dir)
         + "Return the role JSON object as the final answer. Use the read-only "
         "tools; never claim evidence you did not retrieve."
@@ -1559,16 +1648,24 @@ def run_mode2(
     # audit can answer for the needles this run's claims were drawn from
     # instead of "unknown". Best-effort by design: a briefing failure must
     # not take the run down.
+    #
+    # WO-R1F item 7c: the briefing's DIGEST SUMMARY now reaches every worker. The
+    # old code built it and threw it away (only an event was emitted), so the
+    # strongest signals the digest carries - the alert surface and the top leads -
+    # never reached a Mode 2 seat while they did reach Mode 1.
     try:
         from nexus.langgraph.briefing import case_briefing
 
         brief = case_briefing(case_dir)
+        state["digest_summary"] = _digest_summary(brief)
         sink.emit(new_event(
             run_id, "briefing.ready", actor="system",
             detail=f"{brief.get('scanned_needles', 0)} needle(s) scanned",
-            data={"signal_map": bool((brief.get("artifacts") or {}).get("signal_map_csv"))},
+            data={"signal_map": bool((brief.get("artifacts") or {}).get("signal_map_csv")),
+                  "alerts": len(brief.get("alerts") or [])},
         ))
     except Exception as exc:  # noqa: BLE001
+        state["digest_summary"] = ""
         sink.emit(new_event(
             run_id, "briefing.failed", actor="system", detail=str(exc)[:200],
         ))
@@ -1662,6 +1759,8 @@ def run_mode2(
             ],
             "steering": read_steering(case_dir, run_id),
             "examiner_feedback": state.get("examiner_feedback") or {},
+            # WO-R1F item 7c: the digest summary reaches every worker.
+            "digest_summary": state.get("digest_summary") or "",
         }
         result = run_work_order(
             order, case_dir=case_dir, model=model, run_id=run_id,
@@ -1755,7 +1854,12 @@ def run_mode2(
         used = int(state.get("followup_rounds") or 0)
         limit = int(state.get("followups_limit") or 0)
         needs = classes & {"refuted", "inferred"}
-        if not needs or used >= limit:
+        # WO-R1F item 7c: a worker's `next_questions` and any NEW PIVOT ENTITY it
+        # surfaced must become new orders too. Before this, follow-ups came only
+        # from refuted/inferred verdicts, so "I need X checked" reached no one and
+        # the director could never re-plan from what a worker actually found.
+        next_questions, pivots = _replan_inputs(state)
+        if (not needs and not next_questions and not pivots) or used >= limit:
             state["status"] = "assessed"
             _persist_state(case_dir, run_id, state)
             return state
@@ -1766,7 +1870,11 @@ def run_mode2(
         inferred = [str(v.get("title") or "(untitled)")
                     for v in verdicts
                     if str(v.get("class") or "").lower() == "inferred"]
-        role = "correlation" if (inferred or not refuted) else "evidence"
+        role = (
+            "evidence"
+            if (refuted or next_questions or pivots) and not inferred
+            else ("correlation" if (inferred or not refuted) else "evidence")
+        )
         priority = (
             ("es_search", "es_aggregate", "sample_rows", "run_record")
             if role == "evidence"
@@ -1786,6 +1894,14 @@ def run_mode2(
                 "INFERRED candidates — corroborate with an independent "
                 "family/audit run to escalate, or show the inference is not "
                 "supported: " + "; ".join(inferred[:6]) + ".")
+        if next_questions:
+            task_parts.append(
+                "OPEN QUESTIONS from earlier workers — answer each or state why "
+                "it cannot be answered: " + "; ".join(next_questions[:6]) + ".")
+        if pivots:
+            task_parts.append(
+                "NEW ENTITIES to pivot on — check their parentage, persistence, "
+                "network and credential activity: " + "; ".join(pivots[:6]) + ".")
         task_parts.append(
             "Use new queries, not a re-run of the same query. If nothing new "
             "exists, say so explicitly and cite run_record.")
