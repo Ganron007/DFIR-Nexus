@@ -153,8 +153,29 @@ def test_http_log_config_writes_file(tmp_path):
     import logging.config
 
     cfg = http_log_config(tmp_path)
+    # `http_log_config` declares the `nexus` logger with `propagate: false`, which
+    # survives the test: every later `caplog` assertion on a ``nexus.*`` logger
+    # then sees zero records, because caplog reads the root's handler and nothing
+    # propagates to it. That is how
+    # test_rule_leads.py::test_unknown_level_is_scored_low_and_reported_once came
+    # to assert `0 == 1` on a WARNING that had really been emitted.
+    # Snapshot and restore every logger the config touches, including
+    # `propagate` (the part a handler reset does not undo).
+    _touched = ("nexus", "uvicorn", "uvicorn.error", "uvicorn.access")
+    _saved = {
+        name: (logging.getLogger(name).propagate, logging.getLogger(name).level)
+        for name in _touched
+    }
     logging.config.dictConfig(cfg)
-    logging.getLogger("uvicorn.access").info("test access line")
-    logs = list(tmp_path.glob("nexus-http-*.log"))
-    assert logs
-    assert "test access line" in logs[0].read_text(encoding="utf-8")
+    try:
+        logging.getLogger("uvicorn.access").info("test access line")
+        logs = list(tmp_path.glob("nexus-http-*.log"))
+        assert logs
+        assert "test access line" in logs[0].read_text(encoding="utf-8")
+    finally:
+        for name, (propagate, level) in _saved.items():
+            logger = logging.getLogger(name)
+            logger.propagate = propagate
+            logger.handlers = []
+            if isinstance(level, int):
+                logger.setLevel(level)
