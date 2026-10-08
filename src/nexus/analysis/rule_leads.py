@@ -128,6 +128,9 @@ def _lead_from_rule(rule: dict[str, Any]) -> Lead:
     tag = rule.get("attack_ids") or []
     if tag:
         extra["attack_ids"] = list(tag)
+        # The NAME, not just the id (item 8). A reader should not have to look a
+        # bare `T1059.001` up.
+        extra["attack_names"] = attack_technique_names(tag)
     first, last, hosts = extra["first"], extra["last"], extra["hosts"]
     span = ""
     if first or last:
@@ -144,7 +147,7 @@ def _lead_from_rule(rule: dict[str, Any]) -> Lead:
             + f" — {count} occurrence(s)"
             + (f" on {', '.join(hosts[:3])}" if hosts else "")
             + span
-            + (f"; ATT&CK {', '.join(tag)}" if tag else "")
+            + (f"; ATT&CK {', '.join(extra.get('attack_names') or tag)}" if tag else "")
         ),
         rows=tuple(rule.get("samples") or ()),
         audit_ids=(),
@@ -169,6 +172,37 @@ def _attack_ids_from_tags(raw: Any) -> list[str]:
         if tid not in seen:
             seen.append(tid)
     return seen
+
+
+def attack_technique_names(ids: list[str] | tuple[str, ...] | None) -> list[str]:
+    """`T1059.001` -> `T1059.001 PowerShell` (WO-R1F item 8).
+
+    The WO asks for the ATT&CK technique NAME on a rule-engine lead, not just the
+    id. Names come from the shipped registry; an unresolvable id is returned as
+    the bare id rather than a guess.
+    """
+    out: list[str] = []
+    names: dict[str, str] = {}
+    try:
+        from nexus.knowledge.loader import get_attack_techniques
+
+        for entry in get_attack_techniques():
+            tid = str(
+                entry.get("technique") or entry.get("id")
+                or entry.get("technique_id") or ""
+            ).upper()
+            label = str(entry.get("name") or entry.get("title") or "")
+            if tid and label and tid not in names:
+                names[tid] = label
+    except Exception:  # noqa: BLE001 — the registry is optional at this layer
+        names = {}
+    for raw in ids or []:
+        tid = str(raw or "").strip().upper()
+        if not tid:
+            continue
+        label = names.get(tid) or names.get(tid.split(".")[0]) or ""
+        out.append(f"{tid} {label}".strip())
+    return out
 
 
 def hayabusa_leads(case_dir: Path | str, *, limit: int = DEFAULT_RULE_LIMIT) -> list[Lead]:

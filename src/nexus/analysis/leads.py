@@ -458,6 +458,143 @@ def _rule_engine_leads(case_dir: Path) -> list[Lead]:
     return rule_engine_leads(case_dir)
 
 
+def behavioural_analytics_leads(
+    case_dir: Path | str,
+    *,
+    probe: Any = None,
+    limit: int = 200,
+) -> list[Lead]:
+    """Matches from the hand behavioural-analytic pack, as leads (item 8).
+
+    Each analytic carries an ``es`` clause set; the pack is deterministic
+    knowledge, so running it is too. An analytic that MATCHES becomes a lead — its
+    hits then reach every mode through the lead list (item 1), which is what
+    "knowledge reaches every mode" means functionally.
+
+    The clause is executed through the SAME normalized ES surface every other
+    caller uses (`es_native.es_search`, item 2), so an analytic's query is
+    subject to the same rewrites and reporting. `probe` is the test seam; without
+    one the case's own index is used. Never raises.
+    """
+    out: list[Lead] = []
+    try:
+        from nexus.analysis.behavioural_analytics import analytics_for
+    except Exception as exc:  # noqa: BLE001
+        log.debug("behavioural analytics unavailable: %s", exc)
+        return []
+
+    # The families this case actually holds, so an analytic whose families are
+    # absent is not run (and does not report a false zero).
+    try:
+        from nexus.langgraph.query_pack import _present_families
+
+        families = _present_families(Path(case_dir))
+    except Exception:  # noqa: BLE001 — an unknown case still gets every analytic
+        families = []
+    try:
+        pack = analytics_for(families)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("behavioural analytics pack unreadable: %s", exc)
+        return []
+
+    for analytic in pack[:limit]:
+        name = str(analytic.get("name") or analytic.get("id") or "").strip()
+        clause = analytic.get("es")
+        if not name or not isinstance(clause, dict) or not clause:
+            continue
+        try:
+            count = _analytic_match_count(case_dir, clause, probe=probe)
+        except Exception as exc:  # noqa: BLE001 — one analytic must not lose the rest
+            log.debug("analytic %s failed: %s", name, exc)
+            continue
+        if count <= 0:
+            continue
+        techniques = [str(t) for t in (analytic.get("techniques") or []) if t]
+        out.append(Lead(
+            kind="behavioral_analytic",
+            subject=name,
+            family="behavioural analytics",
+            detail=(
+                f"behavioural analytic matched {count} row(s): "
+                f"{str(analytic.get('rationale') or '')[:160]}"
+            ),
+            rows=({"analytic": str(analytic.get("id") or name), "count": count,
+                   "techniques": techniques},),
+            audit_ids=(),
+            # Above a heuristic lead, below a crit/high detection.
+            score=0.95,
+            extra={
+                "analytic": str(analytic.get("id") or name),
+                "count": count,
+                "techniques": techniques,
+                "citation": analytic.get("citation") or {},
+            },
+        ))
+    return out
+
+
+def _analytic_match_count(
+    case_dir: Path | str,
+    clause: dict[str, Any],
+    *,
+    probe: Any = None,
+) -> int:
+    """How many indexed rows an analytic's clause matches.
+
+    Prefers the case's ES index (exact total, no scan); falls back to counting
+    over the parsed rows the case already holds when ES is not available, so an
+    unindexed case still gets analytics rather than silence.
+    """
+    if probe is not None:
+        if hasattr(probe, "count_analytic"):
+            return int(probe.count_analytic(clause) or 0)
+        if hasattr(probe, "analytic_hits"):
+            return len(probe.analytic_hits(clause) or [])
+    case_id = Path(case_dir).name
+    try:
+        from nexus.langgraph.es_native import es_search
+
+        result = es_search(case_id, clause, size=1)
+        if result.get("degraded"):
+            return 0
+        return int(result.get("total") or 0)
+    except Exception:  # noqa: BLE001 — ES down: count over the case's own rows
+        return _count_analytic_csv(Path(case_dir), clause)
+
+
+def _count_analytic_csv(case_dir: Path, clause: dict[str, Any]) -> int:
+    """Count an analytic's matches over the case's own parsed rows."""
+    import json
+
+    from nexus.analysis.behavioural_analytics import matches_record
+    from nexus.langgraph.pipeline_runs import resolve_tools_extractions
+
+    total = 0
+    base = resolve_tools_extractions(case_dir)
+    if not base.is_dir():
+        return 0
+    analytic = {"es": clause}
+    for path in base.rglob("*.jsonl"):
+        try:
+            with path.open(encoding="utf-8", errors="replace") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        row = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    try:
+                        if matches_record(analytic, row):
+                            total += 1
+                    except Exception:  # noqa: BLE001
+                        continue
+        except OSError:
+            continue
+    return total
+
+
 def build_leads(
     case_dir: Path | str,
     *,
@@ -496,6 +633,11 @@ def build_leads(
         ])
     if active["rules"]["enabled"]:
         builders.append(lambda: _rule_engine_leads(case_dir))
+    if active.get("analytics", {}).get("enabled"):
+        # WO-R1F item 8: EXECUTE the hand behavioural analytics once, so their
+        # hits become leads and therefore reach every mode through the lead list.
+        # They were a layer NAME with nothing running them.
+        builders.append(lambda: behavioural_analytics_leads(case_dir, probe=probe))
 
     for builder in builders:
         try:

@@ -385,6 +385,7 @@ async def run_interpret_loop(
         "- No prose outside the JSON."
     )
     field_sheet = ""
+    skill_block = ""
     try:
         from nexus.langgraph.field_catalog import field_sheet_block
         from nexus.langgraph.query_normalize import query_protocol_block
@@ -394,7 +395,38 @@ async def run_interpret_loop(
             field_sheet = "\n" + sheet + "\n"
     except Exception:  # noqa: BLE001 — a prompt extra must never break the loop
         field_sheet = ""
-    orient_system = orient_system + field_sheet + "\n" + query_protocol_block()
+    # WO-R1F item 8: the skill procedures selected for this case's families reach
+    # Mode 1's interpret, as they already reach Mode 2's roles (and Mode 3's seats).
+    try:
+        from nexus.modes.multi_role import (
+            WorkOrder,
+            _retrieve_skill_refs,
+            _skill_procedure_block,
+        )
+
+        families = []
+        try:
+            from nexus.langgraph.query_pack import _present_families
+
+            families = _present_families(case_dir)
+        except Exception:  # noqa: BLE001
+            families = []
+        refs = _retrieve_skill_refs(
+            families or None,
+            [w for w in str(intake.get("question") or "").split() if len(w) > 3][:12],
+            limit=8,
+        )
+        if refs:
+            block = _skill_procedure_block(WorkOrder(
+                order_id="interpret", role="evidence", task="", skill_refs=refs,
+            ))
+            if block:
+                skill_block = "\n" + block + "\n"
+    except Exception:  # noqa: BLE001
+        skill_block = ""
+    orient_system = (
+        orient_system + field_sheet + skill_block + "\n" + query_protocol_block()
+    )
     packed = _packed("interpret-orient", [
         (1, "examiner_intake", intake_block),
     ])
