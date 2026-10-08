@@ -126,6 +126,14 @@ def _lead_from_rule(rule: dict[str, Any]) -> Lead:
         "crit_high": level in CRIT_HIGH_LEVELS,
     }
     tag = rule.get("attack_ids") or []
+    if not tag:
+        # Neither engine emits MITRE columns, so attribute from the rule's own
+        # text against the case's technique needles (item 8).
+        tag = _techniques_for_rule_text(
+            f"{rule.get('subject') or ''} {rule.get('detail') or ''} "
+            + " ".join(str(s.get("details") or "") for s in (rule.get("samples") or ())),
+            str(rule.get("family") or ""),
+        )
     if tag:
         extra["attack_ids"] = list(tag)
         # The NAME, not just the id (item 8). A reader should not have to look a
@@ -172,6 +180,45 @@ def _attack_ids_from_tags(raw: Any) -> list[str]:
         if tid not in seen:
             seen.append(tid)
     return seen
+
+
+def _techniques_for_rule_text(text: str, family: str = "") -> list[str]:
+    """ATT&CK ids whose needles appear in a rule's title/detail (item 8).
+
+    Hayabusa and Chainsaw emit NO MITRE columns (measured: their CSVs carry none),
+    so the id cannot be read off the row. The case's own `attack_needles.yaml`
+    maps each technique to the strings that evidence it and the families it
+    applies to — so a rule whose text contains a technique's needle, for a family
+    that technique covers, is attributed that technique.
+
+    Conservative by construction: attribution needs a needle hit AND a family
+    match, and the ids come from the shipped registry rather than a guess.
+    """
+    blob = str(text or "").lower()
+    fam = str(family or "").lower()
+    if not blob:
+        return []
+    out: list[str] = []
+    try:
+        from nexus.knowledge.loader import get_attack_needles
+
+        entries = get_attack_needles()
+    except Exception:  # noqa: BLE001 — attribution is best-effort
+        return []
+    for entry in entries:
+        tid = str(entry.get("technique") or "").upper()
+        if not tid or tid in out:
+            continue
+        families = {str(f).lower() for f in (entry.get("families") or [])}
+        if fam and families and fam not in families:
+            continue
+        needles = [str(n).lower() for n in (entry.get("needles") or [])]
+        # The long, distinctive needles carry the signal; a 3-char token like
+        # "-enc" would attribute PowerShell to half the case.
+        strong = [n for n in needles if len(n) >= 6]
+        if any(n in blob for n in strong):
+            out.append(tid)
+    return out[:4]
 
 
 def attack_technique_names(ids: list[str] | tuple[str, ...] | None) -> list[str]:

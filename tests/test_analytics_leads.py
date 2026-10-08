@@ -29,6 +29,36 @@ def test_analytics_that_match_become_leads(tmp_path: Path):
     assert isinstance(leads, list)
 
 
+def test_techniques_are_attributed_from_rule_text_and_family():
+    """Neither engine emits MITRE columns, so attribution reads the rule text."""
+    from nexus.analysis.rule_leads import _techniques_for_rule_text
+
+    assert "T1059.001" in _techniques_for_rule_text(
+        "powershell -nop -exec bypass -encodedcommand ZgBvAG8A", "hayabusa"
+    )
+    assert "T1003.001" in _techniques_for_rule_text(
+        "procdump dumped lsass", "hayabusa"
+    )
+    # A rule with no technique's needle attributes nothing.
+    assert _techniques_for_rule_text("Windows Firewall exception deleted", "hayabusa") == []
+
+
+def test_technique_attribution_respects_the_family():
+    from nexus.analysis.rule_leads import _techniques_for_rule_text
+
+    # `hayabusa` is not in this analytic's family list, so no attribution.
+    assert _techniques_for_rule_text(
+        "powershell -encodedcommand x", "an-unrelated-family"
+    ) == []
+
+
+def test_a_short_needle_does_not_attribute_a_whole_case():
+    """`-enc` is 4 chars and would match half the case; only >= 6-char needles."""
+    from nexus.analysis.rule_leads import _techniques_for_rule_text
+
+    assert _techniques_for_rule_text("enc something", "hayabusa") == []
+
+
 def test_attack_technique_names_resolve_and_never_guess():
     """Item 8: the NAME on the lead, and no invented name for an unknown id."""
     from nexus.analysis.rule_leads import attack_technique_names
