@@ -306,6 +306,21 @@ def seed_demo_case(
             artifacts=[{"type": "audit", "audit_id": a, "value": a, "source": ""} for a in ids],
             case_dir=case_dir,
         )
+        if result.get("status") == "DUPLICATE":
+            # WO-R1F item 4: a finding identical to an existing DRAFT is linked
+            # to it, not staged a second time. For the seeder that IS the finding,
+            # so resolve it and carry on. Accepting only "STAGED" here made every
+            # RE-SEED of the demo case fail, because the second seed's first finding
+            # is identical to the first seed's.
+            fid = result["finding_id"]
+            findings = json.loads((case_dir / "findings.json").read_text(encoding="utf-8"))
+            linked = next((f for f in findings if f["id"] == fid), None)
+            if linked is not None:
+                return linked
+            log.warning(
+                "demo finding linked to %s but it is not in findings.json", fid
+            )
+            return None
         if result.get("status") != "STAGED":
             log.warning("demo finding not staged (%s): %s", title, result.get("error"))
             return None
@@ -314,9 +329,26 @@ def seed_demo_case(
         return next((f for f in findings if f["id"] == fid), None)
 
     staged: list[dict[str, Any]] = []
+    staged_titles: list[str] = []
 
-    staged.append(_stage(
-        title="Encoded PowerShell Command Execution on WS01 Beachhead",
+    def _append_staged(title: str, entry: dict[str, Any] | None) -> None:
+        """Append a staged finding, never ``None``.
+
+        ``_stage`` already logs a finding that failed to stage. Appending ``None``
+        anyway turned that recoverable warning into a ``TypeError`` three hundred
+        lines later, where the report renderer indexed ``f["id"]`` of a ``None``.
+        Skip it here, where the cause is known.
+        """
+        staged_titles.append(title)
+        if entry is None:
+            log.warning("skipping demo finding that did not stage: %s", title)
+            return
+        staged.append(entry)
+
+    _append_staged(
+        "Encoded PowerShell Command Execution on WS01 Beachhead",
+        _stage(
+            title="Encoded PowerShell Command Execution on WS01 Beachhead",
         observation=(
             "Event ID 4688 records powershell.exe invoked with an encoded "
             "command containing a web download cradle, user analyst_t1 on "
@@ -339,8 +371,10 @@ def seed_demo_case(
         examiner_selected=True,
     ))
 
-    staged.append(_stage(
-        title="Kerberos Ticket Requests Consistent with Overpass-the-Hash",
+    _append_staged(
+        "Kerberos Ticket Requests Consistent with Overpass-the-Hash",
+        _stage(
+            title="Kerberos Ticket Requests Consistent with Overpass-the-Hash",
         observation=(
             "Repetitive Kerberos TGS traffic from 192.168.77.62 toward the "
             "DC followed failed logons for Administrator."
