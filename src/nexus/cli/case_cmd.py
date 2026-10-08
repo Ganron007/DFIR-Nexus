@@ -462,6 +462,10 @@ def intake_case(
     extras: str = typer.Option("", "--extras", help="chrome_profiles,drivefs,email,usb_serial"),
     playbooks: str = typer.Option("", "--playbooks"),
     query_extra: str = typer.Option("", "--query-extra", help="Persistent N4 needles"),
+    interpret_rounds: int = typer.Option(
+        0, "--interpret-rounds",
+        help="Mode 1 interpretation rounds (0 = default; WO-R1F item 7d)",
+    ),
     set_by: str = typer.Option(
         "operator", "--set-by",
         help="Who set this intake: operator (default) or agent",
@@ -497,6 +501,10 @@ def intake_case(
                 "query_extra ignored: path-like / schema-label values are not "
                 "needles (they match every row and pollute the scan)."
             )
+    if interpret_rounds:
+        # WO-R1F item 7d: "allow the examiner to raise [the rounds] in intake."
+        # Clamped to the loop's own range so an odd value cannot break a run.
+        ctx["interpret_rounds"] = str(max(1, min(int(interpret_rounds), 5)))
     if ctx:
         ctx["set_by"] = "agent" if str(set_by).strip().lower() == "agent" else "operator"
     written = persist_case_intake(case_dir, ctx)

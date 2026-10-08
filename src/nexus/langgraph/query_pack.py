@@ -943,12 +943,39 @@ def iter_extraction_files(
     return out
 
 
+def _severity_rank(hit: dict[str, Any]) -> int:
+    """0 for a crit/high detection row, 1 otherwise (WO-R1F item 7d).
+
+    The 400-hit cap was flagged TRUNCATED on SC1 and a crit detection sat below
+    the cut. A rule-engine row that fired at crit/high is the strongest signal
+    the case has, so it ranks above every generic needle row and is never the
+    thing that gets cut.
+    """
+    level = str(
+        hit.get("level")
+        or (hit.get("fields") or {}).get("Level")
+        or (hit.get("fields") or {}).get("level")
+        or ""
+    ).strip().lower()
+    if level in {"crit", "critical", "high"}:
+        return 0
+    # Rule-engine families: a detection row outranks a keyword row.
+    family = str(hit.get("family") or "").lower()
+    if family in {"hayabusa", "chainsaw", "zircolite", "deepbluecli"}:
+        return 0
+    return 1
+
+
 def finalize_hits(
     hits: list[dict[str, Any]],
     terms: list[str],
     priority_terms: list[str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Same ranking/cap used by the CSV pack and the Elasticsearch backend."""
+    """Same ranking/cap used by the CSV pack and the Elasticsearch backend.
+
+    Severity ranks BEFORE the keyword rank, so a crit/high detection survives the
+    cap (item 7d); the keyword rank then orders what remains.
+    """
     strong = _strong_set(priority_terms if priority_terms is not None else terms)
 
     def _rank(h: dict[str, Any]) -> int:
@@ -958,12 +985,28 @@ def finalize_hits(
         return _hit_rank([str(t).strip() for t in matched if str(t).strip()], strong)
 
     ranked = sorted(hits, key=lambda h: (
+        _severity_rank(h),
         _rank(h),
         h.get("family") or "",
         h.get("file") or "",
         int(h.get("line") or 0),
     ))
-    return ranked[:_MAX_HITS_TOTAL]
+    kept = ranked[:_MAX_HITS_TOTAL]
+    # Record what the cap cut, and whether anything crit/high was among it, so the
+    # pack can say WHICH strongest rows were dropped instead of a bare
+    # "TRUNCATED" (item 7d). Attached to the first row so it travels with the
+    # list through both backends without changing the return type.
+    if len(ranked) > _MAX_HITS_TOTAL:
+        dropped = ranked[_MAX_HITS_TOTAL:]
+        dropped_severe = [
+            f"{h.get('family')}:{h.get('file')}:{h.get('line')}"
+            for h in dropped if _severity_rank(h) == 0
+        ][:10]
+        if kept:
+            kept[0] = dict(kept[0])
+            kept[0]["_cap_dropped_total"] = len(dropped)
+            kept[0]["_cap_dropped_severe"] = dropped_severe
+    return kept
 
 
 def _case_index_is_empty(case_dir: Path) -> bool:
@@ -1980,6 +2023,22 @@ def build_query_pack_markdown(
             + ". Do not treat them as exact.\n"
         )
     parts.append(f"## Hits ({len(hits)}, cap {_MAX_HITS_TOTAL})\n")
+    # WO-R1F item 7d: when the cap cut rows, say WHICH strongest rows were
+    # dropped. A bare "TRUNCATED" left the reader unable to tell whether a crit
+    # detection had been thrown away (it had, on SC1).
+    if hits and hits[0].get("_cap_dropped_total"):
+        severe = hits[0].get("_cap_dropped_severe") or []
+        parts.append(
+            f"> CAP: {hits[0]['_cap_dropped_total']} row(s) below the cut. "
+            + (
+                f"**{len(severe)} crit/high row(s) were among them: "
+                + ", ".join(severe)
+                + ".**"
+                if severe
+                else "None of them was crit/high — the strongest signals are here."
+            )
+            + "\n"
+        )
     if not hits:
         parts.append(
             "_No rows matched query terms. Do not invent findings. "

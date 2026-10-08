@@ -43,6 +43,11 @@ INTAKE_KEYS = (
     "sift_disk_image",
     "sift_disk_offset",
     "sift_required",
+    # WO-R1F items 6/7d: who set the intake, and how many interpretation rounds
+    # the examiner asked for. Without these in the whitelist, `persist_case_intake`
+    # silently dropped them and the CLI flag appeared to do nothing.
+    "set_by",
+    "interpret_rounds",
 )
 
 
