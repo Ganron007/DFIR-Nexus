@@ -414,6 +414,29 @@ _DESIGN_MODE_RULES = (
 # Model selection
 # ---------------------------------------------------------------------------
 
+# What get_model actually built, so a run record can name the model that was
+# called instead of re-deriving it from the environment (D48). The second
+# parser disagreed with the first: 36c's three modes ran on two models and the
+# records did not show it.
+_BUILT_MODEL: dict[str, str] = {"provider": "none", "model": "none"}
+
+
+def built_model_record() -> dict[str, str]:
+    """Provider and model of the last model `get_model` built.
+
+    This is the only source for a run record's ``model`` field. A value of
+    ``none`` means no model was built in this process, which is different from
+    "a model ran" — a deterministic (no-LLM) run records it, and a run that
+    never built one is not read as having used a model.
+    """
+    return dict(_BUILT_MODEL)
+
+
+def _record_built_model(provider: str, model: str) -> None:
+    _BUILT_MODEL["provider"] = provider or "none"
+    _BUILT_MODEL["model"] = model or "none"
+
+
 def get_model(model_name: str = ""):
     """Create the LLM instance from the NEXUS_LLM_* configuration.
 
@@ -426,6 +449,9 @@ def get_model(model_name: str = ""):
       NEXUS_LLM_REASONING  optional reasoning effort passthrough
 
     Legacy NEXUS_MODEL="provider/model" prefix routing still works.
+
+    The provider and model of the object it returns are recorded (D48), so
+    ``built_model_record()`` always names what was actually constructed.
     """
     _load_dotenv()
 
@@ -440,7 +466,9 @@ def get_model(model_name: str = ""):
         legacy = os.environ.get("NEXUS_MODEL", "")
         if legacy.startswith("openai/"):
             from langchain_openai import ChatOpenAI
-            return ChatOpenAI(model=legacy[len("openai/"):] or "gpt-4o")
+            built = legacy[len("openai/"):] or "gpt-4o"
+            _record_built_model("openai", built)
+            return ChatOpenAI(model=built)
         if legacy.startswith("ollama/"):
             try:
                 from langchain_ollama import ChatOllama
@@ -448,10 +476,15 @@ def get_model(model_name: str = ""):
                 raise RuntimeError(
                     "langchain-ollama not installed — run: pip install langchain-ollama"
                 ) from None
-            return ChatOllama(model=legacy[len("ollama/"):])
+            built = legacy[len("ollama/"):]
+            _record_built_model("ollama", built)
+            return ChatOllama(model=built)
         if legacy:
             from langchain_anthropic import ChatAnthropic
+            _record_built_model("anthropic", legacy)
             return ChatAnthropic(model=legacy)
+        # No model configured. The run record must not claim one ran (D48).
+        _record_built_model("none", "none")
         raise RuntimeError(
             "No LLM configured. Create a .env with NEXUS_LLM_MODEL (plus "
             "NEXUS_LLM_BASE_URL / NEXUS_LLM_API_KEY for hosted providers), "
@@ -463,6 +496,7 @@ def get_model(model_name: str = ""):
         kwargs: dict[str, Any] = {}
         if api_key:
             kwargs["api_key"] = api_key
+        _record_built_model("anthropic", model)
         return ChatAnthropic(model=model, **kwargs)
 
     if provider == "ollama" and not base_url:
@@ -472,6 +506,7 @@ def get_model(model_name: str = ""):
             raise RuntimeError(
                 "langchain-ollama not installed — run: pip install langchain-ollama"
             ) from None
+        _record_built_model("ollama", model)
         return ChatOllama(model=model)
 
     # Default: any OpenAI-compatible endpoint (StepFun, OpenAI, LiteLLM,
@@ -503,12 +538,13 @@ def get_model(model_name: str = ""):
         )
         if openai_like:
             kwargs["extra_body"] = {"reasoning_effort": reasoning}
-    model = ChatOpenAI(**kwargs)
+    built = ChatOpenAI(**kwargs)
+    _record_built_model(provider or "openai-compatible", model)
     from nexus.llm.egress import attach_egress, egress_required
 
     if egress_required(base_url):
-        return attach_egress(model)
-    return model
+        return attach_egress(built)
+    return built
 
 
 # ---------------------------------------------------------------------------

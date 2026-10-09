@@ -47,14 +47,25 @@ def _now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
 
-def _recorded_model() -> dict[str, str]:
-    """The configured LLM, for the run record (36c: R2 must know which ran).
+def _recorded_model(model: Any = None) -> dict[str, str]:
+    """The LLM this run actually called, for the run record.
 
-    Reads the same env the model is built from (`NEXUS_LLM_MODEL` /
-    `NEXUS_LLM_PROVIDER` / legacy `NEXUS_MODEL`). A run with no model
-    configured records `"none"` — the deterministic path is a real path and
-    must be distinguishable from "a model ran".
+    D48: this used to read the environment, so the record could name one model
+    while the seats called another — 36c ran its three modes on two models and
+    the records did not show it. The record is now derived from the object that
+    ran: when a caller passes a model in, that object's own name is used;
+    otherwise it is read from what `get_model` built.
+
+    A run with no model records ``none`` — the deterministic path is a real
+    path and must be distinguishable from "a model ran".
     """
+    name = str(getattr(model, "model_name", "") or getattr(model, "model", "") or "").strip()
+    if name:
+        provider = (
+            str(getattr(model, "provider", "") or "").strip().lower()
+            or "openai-compatible"
+        )
+        return {"provider": provider, "model": name}
     from nexus.langgraph.pipeline_runs import configured_model
 
     return configured_model()
@@ -1971,10 +1982,11 @@ def run_mode3(
     record["lead_dispositions"] = lead_dispositions
     record["blocked_leads"] = blocked_leads
 
-    # 36c: the run record carries the configured model, so R2 knows which one
-    # ran. Read from the same env the model was built from; a deterministic
-    # (no-model) run records "none".
-    record["model"] = _recorded_model()
+    # 36c: the run record carries the model that ran, so R2 knows which one
+    # produced the findings. Derived from the object the seats called (D48), so
+    # the record cannot disagree with the run; a deterministic (no-model) run
+    # records "none".
+    record["model"] = _recorded_model(model)
 
     record.update({
         "status": status,

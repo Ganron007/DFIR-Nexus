@@ -207,7 +207,14 @@ class _Content:
 
 
 class _ScriptedSeatModel:
-    """invoke() model. Terminal JSON, so the real seat loop stops on round 1."""
+    """invoke() model. Terminal JSON, so the real seat loop stops on round 1.
+
+    ``model_name`` is the identity the run record reads (D48), so it carries
+    one the way a real LangChain chat model does.
+    """
+
+    model_name = "scripted-seat"
+    provider = "test"
 
     def invoke(self, messages):
         blob = "\n".join(str(m.get("content") or "") for m in messages)

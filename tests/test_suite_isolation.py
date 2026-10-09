@@ -114,6 +114,77 @@ def test_a_popped_key_is_refilled_by_the_env_reload():
             os.environ["NEXUS_ES_URL"] = saved
 
 
+def test_the_run_record_names_the_model_that_was_built():
+    """D48 — the model record cannot disagree with the model called.
+
+    `configured_model()` used to be a second `.env` parser beside `get_model`,
+    so a run record could name one model while the seats called another; 36c
+    ran its three modes on two models and the records did not show it. The
+    record is now read from what `get_model` built.
+    """
+    if os.environ.get("NEXUS_TESTS_LIVE_LLM") == "1":
+        pytest.skip("live-LLM mode requested")
+    from nexus.langgraph import llm_pipeline as lp
+    from nexus.langgraph.pipeline_runs import configured_model
+
+    saved = lp.built_model_record()
+    try:
+        lp._BUILT_MODEL.update({"provider": "none", "model": "none"})
+        assert configured_model() == {"provider": "none", "model": "none"}, (
+            "a run that never built a model must not read as 'a model ran'"
+        )
+
+        # An explicit model name is the caller pinning one model for a run; it
+        # overrides every environment source, and that is what gets recorded.
+        built = lp.get_model("pinned-model-for-this-test")
+        recorded = configured_model()
+        assert recorded["model"] == "pinned-model-for-this-test", (
+            f"record={recorded!r} built={built.model_name!r}"
+        )
+        assert recorded["provider"] not in ("", "none"), recorded
+
+        # A second build moves the record with it, so two runs on one process
+        # cannot both claim the same model.
+        lp.get_model("a-different-model")
+        assert configured_model()["model"] == "a-different-model", (
+            "the record must follow the model actually built, not the first one"
+        )
+    finally:
+        lp._BUILT_MODEL.update(saved)
+
+
+def test_a_refused_build_records_no_model():
+    """D48 — refusing to build must not leave a stale model on the record.
+
+    A caller that retries after a failure must not record the model from the
+    attempt before it, and a deterministic (no-LLM) run must record 'none'.
+    """
+    if os.environ.get("NEXUS_TESTS_LIVE_LLM") == "1":
+        pytest.skip("live-LLM mode requested")
+    from nexus.langgraph import llm_pipeline as lp
+    from nexus.langgraph.pipeline_runs import configured_model
+
+    saved = lp.built_model_record()
+    saved_keys = {k: os.environ.get(k) for k in
+                  ("NEXUS_LLM_MODEL", "NEXUS_MODEL", "NEXUS_LLM_PROVIDER")}
+    try:
+        lp._BUILT_MODEL.update({"provider": "none", "model": "none"})
+        for key in saved_keys:
+            os.environ[key] = ""
+        with pytest.raises(RuntimeError):
+            lp.get_model("")
+        assert configured_model() == {"provider": "none", "model": "none"}, (
+            "a refused build must record 'none', not the model from an earlier attempt"
+        )
+    finally:
+        lp._BUILT_MODEL.update(saved)
+        for key, value in saved_keys.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
 def test_the_script_guard_reports_only_real_changes():
     """The script suites' guard (V9) is the only protection they have.
 
