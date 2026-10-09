@@ -803,6 +803,11 @@ async def register_evidence(state: InvestigationState, tools: dict) -> dict:
                     "description": "Evidence for automated investigation",
                 },
                 label="evidence_register",
+                # A content hash of a multi-GB image or triage tree is the
+                # tool's work. The 300s control-call budget killed it on
+                # rd01 (evidence_register, tool budget none) before the lane
+                # planned a single parser.
+                timeout=_evidence_register_budget(p),
             ))
             aid = ev_result.get("audit_id") or ev_result.get("sha256", "")
             if aid:
@@ -2790,6 +2795,29 @@ def _case_evidence_paths(case_id: str) -> list[str]:
         except OSError:
             continue
     return out
+
+
+def _evidence_register_budget(path: str) -> float:
+    """Seconds to content-hash this path, at a slow-disk floor of 20 MB/s.
+
+    ``call_tool`` applies the 300s control budget when a call declares none.
+    Hashing ``rd01-memory.img`` (5.3 GB) or the triage tree does not finish
+    in that window, so the pipeline raised ToolCallTimeout and never reached
+    the parsers.
+    """
+    p = Path(path)
+    nbytes = 0
+    try:
+        if p.is_file():
+            nbytes = p.stat().st_size
+        elif p.is_dir():
+            for child in p.rglob("*"):
+                if child.is_file():
+                    nbytes += child.stat().st_size
+    except OSError:
+        nbytes = 0
+    seconds = nbytes / (20 * 1024 * 1024) + 180.0
+    return max(300.0, min(seconds, 6 * 3600.0))
 
 
 def inherit_evidence_paths(

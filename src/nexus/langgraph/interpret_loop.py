@@ -711,7 +711,10 @@ async def run_interpret_loop(
         "corrective_retry_used": correct_used,
         "reconciliation_addressed": len(checklist.get("addressed") or []),
     })
+    from nexus.langgraph.pipeline_runs import configured_model
+
     _persist_round(case_dir, "summary", {
+        "model": configured_model(),
         "rounds_requested": rounds_total,
         "rounds_run": rounds_run,
         "stop_reason": stop_reason,

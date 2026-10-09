@@ -16,6 +16,54 @@ from uuid import uuid4
 _RUN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{1,95}$")
 
 
+def configured_model() -> dict[str, str]:
+    """Provider and model name the process will actually call.
+
+    36c requires this on every run record so a later review knows which
+    model produced the findings. Reads the same env ``get_model`` uses,
+    including a ``.env`` that has not yet been exported into the process.
+    Existing environment variables win. The file is not copied into
+    ``os.environ`` (that would leak the operator key into unrelated tests).
+    """
+    file_vals: dict[str, str] = {}
+    for candidate in (Path.cwd() / ".env", Path(__file__).resolve().parents[3] / ".env"):
+        if not candidate.is_file():
+            continue
+        try:
+            lines = candidate.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key:
+                file_vals[key] = value
+        break
+
+    def _val(name: str) -> str:
+        if name in os.environ:
+            return str(os.environ.get(name) or "")
+        return file_vals.get(name, "")
+
+    provider = _val("NEXUS_LLM_PROVIDER").lower()
+    model = _val("NEXUS_LLM_MODEL").strip()
+    if not model:
+        legacy = _val("NEXUS_MODEL").strip()
+        if legacy:
+            if "/" in legacy:
+                provider = provider or legacy.split("/", 1)[0].lower()
+                model = legacy.split("/", 1)[1]
+            else:
+                model = legacy
+    if not model:
+        return {"provider": "none", "model": "none"}
+    return {"provider": provider or "openai-compatible", "model": model}
+
+
 @dataclass(frozen=True)
 class PipelineRun:
     run_id: str
@@ -162,6 +210,7 @@ def create_run(
         "completed_at": "",
         "previous_active_run_id": previous_active,
         "layers": layers,
+        "model": configured_model(),
     })
     pointers[mode] = rid
     pointers[pointer_key] = rid

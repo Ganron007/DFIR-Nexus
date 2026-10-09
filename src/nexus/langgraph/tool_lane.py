@@ -2271,11 +2271,17 @@ def _plan_gap_parsers(
             d = extractions / "deepbluecli"
             d.mkdir(parents=True, exist_ok=True)
             for evtx in evtx_files:
+                try:
+                    nbytes = evtx.stat().st_size
+                except OSError:
+                    nbytes = 0
+                # A flat 300s killed Security.evtx (115 MB, 280s when the host
+                # was idle, timeout under load). Scale from the file size.
                 add(
                     "deepbluecli",
                     ["deepbluecli", str(evtx), str(d / f"{evtx.stem}.json")],
                     f"DeepBlueCLI attack patterns ({evtx.name})",
-                    300,
+                    timeout_for_bytes(nbytes, base=300, per_mb=30, cap=3600),
                 )
         else:
             skip("deepbluecli", "no .evtx files found for DeepBlueCLI")

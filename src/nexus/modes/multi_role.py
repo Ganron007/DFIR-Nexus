@@ -301,19 +301,32 @@ def skill_role(skill_id: str) -> str:
 
 
 def _retrieve_skill_refs(
-    families: list[str], keywords: list[str], limit: int = 3,
+    families: list[str],
+    keywords: list[str],
+    limit: int = 3,
+    techniques: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Ranked skill provenance for a work order (M3.2).
 
     Returns ``[{skill, title, version, score, why, citations, mitre}]`` —
     the exact procedure version an agent may follow. A failure to load skills
     degrades to no skills, never to invented steps.
+
+    WO-R1F-M3 item 6: when a lead hypothesis seat carries the lead's ATT&CK
+    technique ids (`techniques`), skills are ranked by those techniques first,
+    so the seat follows the procedure for the lead's own behaviour, not just
+    the family's. Without `techniques` the ranking falls back to family +
+    keywords as before.
     """
     try:
         from nexus.knowledge.skills import retrieve_skills
 
         refs = retrieve_skills(
-            families=families, keywords=keywords, limit=limit)
+            families=families,
+            keywords=keywords,
+            techniques=techniques,
+            limit=limit,
+        )
         for ref in refs:
             try:
                 ref["role"] = skill_role(str(ref.get("skill") or ""))
@@ -1609,6 +1622,9 @@ def run_mode2(
         "converged_no_new_evidence": False,
         "examiner_feedback": {},
     }
+    from nexus.langgraph.pipeline_runs import configured_model
+
+    state["model"] = configured_model()
     state_path = case_dir / _MODE2_DIR / f"{run_id}.json"
     if resume and state_path.is_file():
         try:

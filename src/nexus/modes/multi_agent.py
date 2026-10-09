@@ -47,6 +47,19 @@ def _now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
 
+def _recorded_model() -> dict[str, str]:
+    """The configured LLM, for the run record (36c: R2 must know which ran).
+
+    Reads the same env the model is built from (`NEXUS_LLM_MODEL` /
+    `NEXUS_LLM_PROVIDER` / legacy `NEXUS_MODEL`). A run with no model
+    configured records `"none"` — the deterministic path is a real path and
+    must be distinguishable from "a model ran".
+    """
+    from nexus.langgraph.pipeline_runs import configured_model
+
+    return configured_model()
+
+
 def _env_int(name: str, default: int, *, low: int, high: int) -> int:
     try:
         value = int(os.environ.get(name, "") or default)
@@ -313,10 +326,31 @@ def settled_candidates(
     excluded from staging and, when ``case_dir`` is given, recorded as a
     negative-space event (an audited non-finding). Without ``case_dir`` this
     stays a pure function.
+
+    WO-R1F-M3 item 2: a claim the **verifier refuted** is likewise excluded,
+    and recorded as negative space when ``case_dir`` is given.
     """
     open_keys = {
         (d["entity_type"], d["entity_value"], d["claim_kind"]) for d in disputes
     }
+    # WO-R1F-M3 item 2: the verifier's refuted subjects, so a refuted claim
+    # never becomes a candidate. The verifier's subject is
+    # "<entity_type>=<entity_value>", so the claim's entity_value is what
+    # matters; refuted subjects are normalised the same way.
+    refuted: set[str] = set()
+    confirmed: dict[str, str] = {}
+    for entry in board:
+        for verdict in entry.get("verdicts") or []:
+            raw = str(verdict.get("subject") or "")
+            if not raw:
+                continue
+            evalue = _norm_key(raw.split("=", 1)[1]) if "=" in raw else _norm_key(raw)
+            cls = str(verdict.get("class") or "").lower()
+            if evalue:
+                if cls == "refuted":
+                    refuted.add(evalue)
+                elif cls == "confirmed":
+                    confirmed.setdefault(evalue, str(verdict.get("basis") or ""))
     candidates: list[dict[str, Any]] = []
     gaps = [f"unresolved {d['entity_value']} {d['claim_kind']}" for d in disputes]
     for entry in board:
@@ -328,6 +362,22 @@ def settled_candidates(
                 gaps.append(reason)
                 continue
             key = _claim_key(claim)
+            # WO-R1F-M3 item 2: a verifier-refuted claim is excluded and
+            # recorded as negative space (the refutation is the result, not
+            # an open finding).
+            if key and key[1] in refuted:
+                if case_dir is not None:
+                    with contextlib.suppress(Exception):
+                        from nexus.analysis.negative_space import record
+                        record(
+                            case_dir, "refuted",
+                            f"{claim.get('entity_value') or '?'} "
+                            f"{claim.get('claim_kind') or '?'}",
+                            "the verifier refuted this claim; "
+                            "it was excluded from staging",
+                            refs=list(_audit_ids(claim)),
+                        )
+                continue
             if key in open_keys:
                 # WO-A7: the board contradicted this claim, so it never
                 # becomes a finding - record the refutation (audit ids as refs).
@@ -348,6 +398,11 @@ def settled_candidates(
             value = str(claim.get("value") or "").strip()
             kind = str(claim.get("claim_kind") or "")
             entity = str(claim.get("entity_value") or "")
+            # WO-R1F-M3 item 2: carry the verifier's confirmed basis onto the
+            # candidate so the examiner can see the corroboration.
+            verifier_basis = confirmed.get(key[1]) if key else None
+            if verifier_basis:
+                justification = f"{justification}\nVerifier: {verifier_basis}"
             from nexus.analysis.titles import claim_title
 
             candidates.append({
@@ -599,6 +654,47 @@ def _parse_claims(text: str) -> list[dict[str, Any]]:
     return _claims_from_object(parsed)
 
 
+def _parse_seat_fields(text: str) -> dict[str, Any]:
+    """Parse open_questions, lead_disposition and verdicts from a seat reply.
+
+    Root cause (WO-R1F-M3 items 1/2/3): _parse_claims only read the claims
+    key, so a reply's open_questions / lead_disposition / verdicts were
+    dropped and entry["open_questions"] was reset to [] at multi_agent.py:770.
+    """
+    start, end = text.find("{"), text.rfind("}")
+    if start == -1 or end <= start:
+        return {}
+    try:
+        parsed = json.loads(text[start:end + 1])
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    out: dict[str, Any] = {}
+    raw_q = parsed.get("open_questions")
+    if isinstance(raw_q, list):
+        out["open_questions"] = [str(item).strip() for item in raw_q if str(item).strip()]
+    raw_disp = parsed.get("lead_disposition")
+    if isinstance(raw_disp, dict):
+        out["lead_disposition"] = {
+            "lead": str(raw_disp.get("lead") or ""),
+            "status": str(raw_disp.get("status") or "insufficient"),
+            "basis": str(raw_disp.get("basis") or "")[:400],
+        }
+    raw_verdicts = parsed.get("verdicts")
+    if isinstance(raw_verdicts, list):
+        out["verdicts"] = [
+            {
+                "subject": str(v.get("subject") or ""),
+                "class": str(v.get("class") or "inferred"),
+                "basis": str(v.get("basis") or "")[:400],
+                "audit_ids": [str(a) for a in (v.get("audit_ids") or []) if str(a)],
+            }
+            for v in raw_verdicts if isinstance(v, dict)
+        ]
+    return out
+
+
 #: Keys a seat has been observed to use instead of `claims` (WO-R1F item 7).
 #: Measured on SC1: a seat answered `{"notes": [...]}` — a real answer, lost
 #: because the key differed by one word.
@@ -676,9 +772,17 @@ def _seat_with_model(
         data={"role": role_name, "family": family, "superstep": superstep,
               "why": spawn.get("why") or "", "question": objective},
     ))
+    # WO-R1F-M3 item 6: a lead hypothesis seat runs the procedures for the
+    # lead's own ATT&CK technique (item 8's attribution), not just the
+    # family's. `spawn` carries the lead dict (via `_spawns_for_agenda`),
+    # whose `extra.attack_ids` names the techniques; otherwise the domain's
+    # skills are used as today.
+    lead_extra = spawn.get("lead_extra") or {}
+    techniques = [str(t) for t in (lead_extra.get("attack_ids") or []) if t]
     skill_refs = _retrieve_skill_refs(
         [family] if family else [],
         _question_keywords(objective),
+        techniques=techniques,
         limit=8,
     )
     skill_block = _skill_procedure_block(WorkOrder(
@@ -688,18 +792,41 @@ def _seat_with_model(
         family=family,
         skill_refs=skill_refs,
     ))
-    question = (
-        f"You are the {role_name} seat. Examiner objective: {objective}\n"
-        f"Family: {family or '(cross-family)'}. Why you were spawned: {spawn.get('why') or ''}\n"
-        f"{skill_block}\n"
-        f"Board so far:\n{board_digest}\n\n"
-        + _investigative_extras(case_dir)
-        + 'Return JSON {"claims":[{"entity_type":"...","entity_value":"...",'
-        '"claim_kind":"presence|absence|attribution|time_order","polarity":"affirm|deny",'
-        '"value":"...","audit_ids":["..."],"confidence":"LOW|MEDIUM|HIGH",'
-        '"confidence_justification":"..."}],"open_questions":["..."]}. '
-        "Every claim needs an audit_id from a tool call. Do not attribute an actor."
-    )
+    # WO-R1F-M3 item 2: the verifier seat returns `verdicts`, not `claims`.
+    # Use the right terminal key, or the loop never recognises the reply and
+    # the verdicts are lost (the original defect in this seat path).
+    is_verifier = role_name == "verifier"
+    terminal_keys = ("verdicts",) if is_verifier else ("claims",)
+    if is_verifier:
+        question = (
+            f"You are the {role_name} seat. Examiner objective: {objective}\n"
+            f"{skill_block}\n"
+            f"Board so far:\n{board_digest}\n\n"
+            + _investigative_extras(case_dir)
+            + 'Return JSON {"verdicts":[{"subject":"<entity_type>=<entity_value>",'
+            '"class":"confirmed|inferred|refuted","basis":"one clause",'
+            '"audit_ids":["..."]}]}. '
+            "A refuted verdict must name the counter-evidence (audit_ids required). "
+            "Do not attribute an actor."
+        )
+    else:
+        question = (
+            f"You are the {role_name} seat. Examiner objective: {objective}\n"
+            f"Family: {family or '(cross-family)'}. Why you were spawned: {spawn.get('why') or ''}\n"
+            f"{skill_block}\n"
+            f"Board so far:\n{board_digest}\n\n"
+            + _investigative_extras(case_dir)
+            + 'Return JSON {"claims":[{"entity_type":"...","entity_value":"...",'
+            '"claim_kind":"presence|absence|attribution|time_order","polarity":"affirm|deny",'
+            '"value":"...","audit_ids":["..."],"confidence":"LOW|MEDIUM|HIGH",'
+            '"confidence_justification":"..."}],"open_questions":["..."]}. '
+            + (
+                'When investigating a lead, also return '
+                '"lead_disposition":{"lead":"<subject>","status":"'
+                'supported|refuted|benign|insufficient","basis":"one clause"}. '
+            ) if spawn.get("lead") else ""
+            + "Every claim needs an audit_id from a tool call. Do not attribute an actor."
+        )
     rounds = _env_int("NEXUS_MODE3_ROUNDS", 24, low=1, high=80)
     calls = _env_int("NEXUS_MODE3_CALLS", 48, low=1, high=200)
     seconds = float(_env_int("NEXUS_MODE3_SECONDS", 1800, low=30, high=7200))
@@ -713,17 +840,26 @@ def _seat_with_model(
         budget=LoopBudget(rounds=rounds, seconds=seconds, calls=calls, call_chars=budget_chars(case_window(case_dir))),
         audit=audit,
         allowed_tools=role.tools,
-        terminal_keys=("claims",),
+        terminal_keys=terminal_keys,
     )
     entry = _fallback_entry(spawn, superstep)
     reply_text = str(loop.get("reply") or "")
     entry["claims"] = _parse_claims(reply_text)
+    # WO-R1F-M3 items 1, 2, 3: parse the full reply object once, so open_questions,
+    # lead_disposition and verdicts are all available to the entry (and to the
+    # corrective retry below, which used to re-prompt on a lead reply that had
+    # already returned a disposition).
+    fields_parsed = _parse_seat_fields(reply_text)
     # WO-R1F item 7: when the reply carries NO claim key at all, ONE corrective
     # re-prompt asks for the schema. Measured on SC1: a seat answered
     # `{"notes": [...]}` — and the alternates are accepted in `_parse_claims`, so
     # this fires only for a reply with none of them (prose, or a wrong key).
+    # A verifier seat never returns claims, so the corrective retry only applies
+    # to non-verifier seats that returned nothing usable.
     if (
-        not entry["claims"]
+        not is_verifier
+        and not entry["claims"]
+        and not fields_parsed.get("lead_disposition")
         and reply_text.strip()
         and not _has_claims_key(reply_text)
         and str(loop.get("finish_reason") or "") not in ("model_error", "empty_model")
@@ -752,6 +888,9 @@ def _seat_with_model(
             )
             if corrected.strip():
                 entry["claims"] = _parse_claims(corrected)
+                corrected_fields = _parse_seat_fields(corrected)
+                if corrected_fields.get("lead_disposition"):
+                    entry["lead_disposition"] = corrected_fields["lead_disposition"]
                 entry["corrective_retry_used"] = True
                 entry["reply_excerpt"] = " ".join(str(corrected).split())[:600]
         except Exception as exc:  # noqa: BLE001 — the retry is best-effort
@@ -766,7 +905,21 @@ def _seat_with_model(
         else:
             kept.append(claim)
     entry["claims"] = kept
-    entry["open_questions"] = []
+    # WO-R1F-M3 items 1, 2, 3: the reply's open_questions, lead_disposition and
+    # verdicts were all being dropped here (open_questions hard-reset to [] and
+    # the other two never read). Root cause: only `_parse_claims` ran, which
+    # returns the claims list alone. `_parse_seat_fields` reads the full object.
+    fields = _parse_seat_fields(reply_text)
+    if is_verifier:
+        # The verifier's terminal key is `verdicts`; its claims list is empty by
+        # design. Parse the verdicts from the same reply object.
+        entry["verdicts"] = fields.get("verdicts", [])
+        entry["open_questions"] = fields.get("open_questions", [])
+        entry["lead_disposition"] = fields.get("lead_disposition")
+    else:
+        entry["open_questions"] = fields.get("open_questions", [])
+        entry["lead_disposition"] = fields.get("lead_disposition")
+        entry["verdicts"] = fields.get("verdicts", [])
     # What the seat actually returned, capped. Without it the board records only
     # the *spawn reason* when a seat produces no claims, so "the model answered
     # in prose / returned an empty object" and "the seat never ran" are
@@ -812,6 +965,10 @@ class Mode3State(TypedDict, total=False):
     last_fp: list[str]
     disputes: list[dict[str, Any]]
     steering_seen: int
+    # WO-R1F-M3 item 4: pivots and open questions already investigated, so a
+    # consumed pivot or an answered question is not re-queued next superstep.
+    consumed_pivots: list[dict[str, Any]]
+    answered_questions: list[str]
 
 
 class _LockedSink:
@@ -860,13 +1017,28 @@ def _open_agenda(
 
     Pure over its inputs plus the case's lead file, so a scripted model can drive
     it. Empty agenda == everything dispositioned.
+
+    WO-R1F-M3: consumed items are tracked in ``state`` so a pivot or question
+    that has already been investigated is not re-queued (item 4, "pivots
+    consumed"), which is what lets the stop rule actually terminate.
     """
+    consumed_pivots = {
+        (_norm_key(p.get("entity_type")), _norm_key(p.get("entity_value")))
+        for p in (state.get("consumed_pivots") or [])
+        if isinstance(p, dict)
+    }
+    answered_questions = {
+        _norm_key(q) for q in (state.get("answered_questions") or [])
+    }
     questions: list[str] = []
     for entry in board:
         for q in entry.get("open_questions") or []:
             text = " ".join(str(q).split())
-            if text and text not in questions:
-                questions.append(text)
+            if not text or text in questions:
+                continue
+            if _norm_key(text) in answered_questions:
+                continue
+            questions.append(text)
 
     dispositioned = _dispositioned_keys(board)
     crit_leads: list[dict[str, Any]] = []
@@ -884,6 +1056,14 @@ def _open_agenda(
         crit_leads = []
 
     pivots = _pivot_entities(board, state)
+    # Pivots already consumed in a previous superstep are dropped (item 4):
+    # a pivot seat that already ran on this entity does not re-queue it.
+    if consumed_pivots:
+        pivots = [
+            p for p in pivots
+            if (_norm_key(p.get("entity_type")), _norm_key(p.get("entity_value")))
+            not in consumed_pivots
+        ]
     return {
         "questions": questions,
         "crit_leads": crit_leads,
@@ -941,8 +1121,19 @@ def _norm_key(value: Any) -> str:
 def _dispositioned_keys(board: list[dict[str, Any]]) -> set[str]:
     """Lead/entity keys the board has already disposed of.
 
-    A lead is dispositioned when a claim names it, a verifier refuted it, or an
-    explicit gap entry names it — the three ways the WO allows.
+    A lead is dispositioned when a claim names it, a verifier refuted it, an
+    explicit gap entry names it, or a lead disposition entry records it —
+    the four ways the WO allows.
+
+    WO-R1F-M3 item 3: a ``lead_disposition`` entry (from a hypothesis seat)
+    disposes its named lead. This is what makes "never re-spawn the same
+    lead" work: once a lead seat has run and returned a disposition (even
+    "insufficient"), the lead's subject key is dispositioned and the agenda
+    does not queue it again.
+
+    NOTE: `entry["lead"]` (the spawn's lead subject) is NOT a disposition on
+    its own — the seat ran but may have found nothing. Only an explicit
+    `lead_disposition` or a claim naming the subject counts.
     """
     keys: set[str] = set()
     for entry in board:
@@ -952,9 +1143,19 @@ def _dispositioned_keys(board: list[dict[str, Any]]) -> set[str]:
                 keys.add(key[1])
                 keys.add(key[0])
         for verdict in entry.get("verdicts") or []:
-            keys.add(_norm_key(verdict.get("subject") or verdict.get("title")))
+            raw = str(verdict.get("subject") or verdict.get("title") or "")
+            if raw:
+                keys.add(_norm_key(raw.split("=", 1)[1]) if "=" in raw else _norm_key(raw))
         for gap in entry.get("coverage_gaps") or []:
             keys.add(_norm_key(gap))
+        # WO-R1F-M3 item 3: the lead a hypothesis seat disposed. Only an
+        # explicit `lead_disposition` dict counts — the mere fact that a seat
+        # ran on a lead (`entry["lead"]`) is not a disposition.
+        disp = entry.get("lead_disposition")
+        if isinstance(disp, dict):
+            dlead = str(disp.get("lead") or "").strip()
+            if dlead:
+                keys.add(_norm_key(dlead))
     return {k for k in keys if k}
 
 
@@ -972,6 +1173,11 @@ def _spawns_for_agenda(
     Order: unexplained crit/high leads (a hypothesis seat each) -> open questions
     -> pivots. Correlation and pattern seats run only from superstep 2, on a
     non-empty board, and are appended last so they never crowd out the work.
+
+    WO-R1F-M3 items 3/4/5: a lead seat carries its lead dict and its
+    `extra` (for the technique-based skills, item 6); a pivot seat marks the
+    pivot entity so it is recorded as consumed; superstep 1 keeps room for
+    the present domain families alongside the lead seats.
     """
     spawns: list[dict[str, Any]] = []
     taken: set[str] = set()
@@ -982,12 +1188,14 @@ def _spawns_for_agenda(
         if not key or key in taken:
             continue
         taken.add(key)
+        lead_extra = dict(lead.get("extra") or {})
         spawns.append({
             "role": "evidence",
             "family": str(lead.get("family") or ""),
-            "why": f"unexplained {str((lead.get('extra') or {}).get('level') or '')} lead",
+            "why": f"unexplained {str(lead_extra.get('level') or '')} lead",
             "question": f"{question}\nInvestigate the lead: {subject}",
             "lead": subject,
+            "lead_extra": lead_extra,
         })
 
     for text in agenda.get("questions") or []:
@@ -1020,6 +1228,11 @@ def _spawns_for_agenda(
                 f"{question}\nPivot on {pivot.get('entity_type')} {evalue}: "
                 f"check {pivot.get('why')}"
             ),
+            # item 4: the pivot entity this seat is expected to consume.
+            "pivot_entity": {
+                "entity_type": str(pivot.get("entity_type") or ""),
+                "entity_value": evalue,
+            },
         })
 
     # Correlation/pattern only from superstep 2, on a non-empty board: they exist
@@ -1038,21 +1251,65 @@ def _spawns_for_agenda(
                 "why": "framework pattern matching on the board",
                 "question": question,
             })
+
+    # WO-R1F-M3 item 5: on the FIRST superstep, keep room for the present
+    # domain families (memory when `vol` exists, event logs, file system, ...)
+    # alongside the lead seats. The domains take at most half the seats; the
+    # lead seats above always come first, so a strong crit lead is never
+    # crowded out. Families already covered by a lead seat's own family are
+    # not re-spawned as domains — that would duplicate work.
+    if superstep == 1 and indexed:
+        lead_families = {
+            str(s.get("family") or "").lower().strip()
+            for s in spawns if str(s.get("family") or "").strip()
+        }
+        domains = []
+        for name, _rows in indexed:
+            low = str(name or "").lower().strip()
+            if not low:
+                continue
+            if low in lead_families:
+                continue
+            if low in {"correlation", "pattern"}:
+                continue
+            domains.append(low)
+        # At most half the seats go to domains; the remaining seats stay with
+        # the lead/question/pivot seats that came first.
+        cap = max(1, max_agents // 2)
+        # Free up room: pop the weakest tail seats (never the first lead seats)
+        # until there are `cap` free slots, then fill them with domains.
+        free = max(0, cap)
+        while len(spawns) > (max_agents - free):
+            spawns.pop()
+            free = min(free, cap)  # one seat freed, one domain will fill it
+        for added, domain in enumerate(domains):
+            if added >= cap or len(spawns) >= max_agents:
+                break
+            spawns.append({
+                "role": "evidence",
+                "family": domain,
+                "why": f"domain seat for the indexed {domain} family",
+                "question": question,
+            })
     return spawns[:max_agents]
 
 
 def _unverified_claims(board: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Accepted claims on the board with no verifier verdict yet (item 7b).
 
-    A verifier verdict names its subject (``subject`` or ``title``); a claim whose
-    entity is already judged has been cross-examined and is not re-queued.
+    A verifier verdict names its subject as ``"<entity_type>=<entity_value>"``
+    (the format the verifier prompt asks for); a claim whose entity value is
+    already judged has been cross-examined and is not re-queued.
     """
     judged: set[str] = set()
     for entry in board:
         for verdict in entry.get("verdicts") or []:
-            key = _norm_key(verdict.get("subject") or verdict.get("title"))
-            if key:
-                judged.add(key)
+            raw = str(verdict.get("subject") or verdict.get("title") or "")
+            if "=" in raw:
+                # "<etype>=<value>": the claim key's value half is what matters.
+                judged.add(_norm_key(raw.split("=", 1)[1]))
+            elif raw:
+                judged.add(_norm_key(raw))
     out: list[dict[str, Any]] = []
     for entry in board:
         for claim in entry.get("claims") or []:
@@ -1272,9 +1529,25 @@ def run_mode3(
         # "2 superstep" run was one wave of <= 4 seats and a stop.
         board = state.get("board") or []
         agenda = _open_agenda(case_dir, board, state)
-        if agenda and step <= max_steps:
+        # A returned agenda dict is never empty of keys, so `if agenda` was
+        # always true and domain seats (item 5) preempted steering and the
+        # model supervisor on a case with no open leads. Enter this path only
+        # when something is actually open.
+        has_agenda = bool(
+            (agenda.get("questions") or [])
+            or (agenda.get("crit_leads") or [])
+            or (agenda.get("pivots") or [])
+        )
+        if has_agenda and step <= max_steps:
+            # The verifier has to run on claims already on the board. Lead and
+            # domain seats fill `max_agents` exactly, so appending afterwards
+            # never happened and refuted claims stayed candidates (probe:
+            # verifier seats=0). Hold one seat back when there is something
+            # to cross-examine.
+            unverified = _unverified_claims(board)
+            seat_budget = max_agents - (1 if unverified else 0)
             spawns = _spawns_for_agenda(
-                agenda, board, max_agents=max_agents, question=question,
+                agenda, board, max_agents=max(1, seat_budget), question=question,
                 superstep=step, indexed=indexed,
             )
             if spawns:
@@ -1282,7 +1555,7 @@ def run_mode3(
                 # superstep's new claims, reusing Mode 2's adversarial verifier
                 # role. Refuted claims are excluded (settled_candidates).
                 verifier = _verifier_spawn(
-                    _unverified_claims(board), question=question, superstep=step,
+                    unverified, question=question, superstep=step,
                 )
                 if verifier and len(spawns) < max_agents:
                     spawns.append(verifier)
@@ -1402,6 +1675,11 @@ def run_mode3(
             if isinstance(claim, dict) and not accept_claim(claim):
                 kept.append(claim)
         entry["claims"] = kept
+        # WO-R1F-M3 item 3: record which lead this seat was spawned for, so a
+        # seat that returns no claims still disposes its lead (the disposition
+        # is the fact that it was investigated, even when it found nothing).
+        if spawn.get("lead"):
+            entry["lead"] = str(spawn.get("lead") or "")
         with contextlib.suppress(TypeError, ValueError):
             tool_calls_used["n"] += int(entry.get("tool_calls_used") or 0)
         return {"board": [entry]}
@@ -1473,7 +1751,39 @@ def run_mode3(
                 run_id, "dispute.opened", actor="join",
                 detail=f"{dispute['entity_value']} {dispute['claim_kind']}",
             ))
-        return {"disputes": disputes, "quiet": quiet, "last_fp": fp, "status": status}
+        # WO-R1F-M3 item 4: record which pivots and open questions this
+        # superstep's seats consumed, so the next superstep does not re-queue
+        # them. The spawn dicts that ran are on `state["spawns"]`.
+        consumed = [
+            p for p in (state.get("consumed_pivots") or []) if isinstance(p, dict)
+        ]
+        seen_pivots = {
+            (_norm_key(p.get("entity_type")), _norm_key(p.get("entity_value")))
+            for p in consumed
+        }
+        for spawn in state.get("spawns") or []:
+            pentity = spawn.get("pivot_entity")
+            if isinstance(pentity, dict):
+                key = (_norm_key(pentity.get("entity_type")),
+                       _norm_key(pentity.get("entity_value")))
+                if key not in seen_pivots:
+                    consumed.append(dict(pentity))
+                    seen_pivots.add(key)
+        answered = list(state.get("answered_questions") or [])
+        answered_seen = {_norm_key(q) for q in answered}
+        for spawn in state.get("spawns") or []:
+            question_text = str(spawn.get("question") or "")
+            marker = "A seat asked: "
+            if marker in question_text:
+                qtext = question_text.split(marker, 1)[1].splitlines()[0].strip()
+                key = _norm_key(qtext)[:80]
+                if key and key not in answered_seen:
+                    answered.append(qtext)
+                    answered_seen.add(key)
+        return {
+            "disputes": disputes, "quiet": quiet, "last_fp": fp, "status": status,
+            "consumed_pivots": consumed, "answered_questions": answered,
+        }
 
     def after_join(state: Mode3State) -> str:
         status = str(state.get("status") or "")
@@ -1576,6 +1886,45 @@ def run_mode3(
                 "citations": list(ref.get("citations") or [])[:6],
             })
     record["skills_used"] = used
+
+    # WO-R1F-M3 item 3: aggregate the per-seat lead dispositions into the run
+    # record. Every crit/high lead that got a hypothesis seat is here, with
+    # the status the seat returned — so "the run record dispositions every
+    # crit/high lead" is checkable from the record itself. The key is the
+    # original lead subject (as it appears in leads.jsonl), matching the
+    # probe's `l.get("subject") not in disp` check.
+    lead_dispositions: dict[str, dict[str, Any]] = {}
+    for entry in (final.get("board") or []):
+        if not isinstance(entry, dict):
+            continue
+        disp = entry.get("lead_disposition")
+        spawn_lead = str(entry.get("lead") or "").strip()
+        if isinstance(disp, dict) and (disp.get("lead") or spawn_lead):
+            subject = str(disp.get("lead") or spawn_lead).strip()
+            if subject and subject not in lead_dispositions:
+                lead_dispositions[subject] = {
+                    "status": str(disp.get("status") or "insufficient"),
+                    "basis": str(disp.get("basis") or "")[:400],
+                    "agent_id": entry.get("agent_id"),
+                    "lead": subject,
+                }
+        elif spawn_lead:
+            # A lead seat ran and returned no explicit disposition: the honest
+            # status is "insufficient" (investigated, nothing to report), which
+            # is what the WO means by "insufficient becomes an explicit gap".
+            if spawn_lead not in lead_dispositions:
+                lead_dispositions[spawn_lead] = {
+                    "status": "insufficient",
+                    "basis": "lead seat returned no disposition",
+                    "agent_id": entry.get("agent_id"),
+                    "lead": spawn_lead,
+                }
+    record["lead_dispositions"] = lead_dispositions
+
+    # 36c: the run record carries the configured model, so R2 knows which one
+    # ran. Read from the same env the model was built from; a deterministic
+    # (no-model) run records "none".
+    record["model"] = _recorded_model()
 
     record.update({
         "status": status,

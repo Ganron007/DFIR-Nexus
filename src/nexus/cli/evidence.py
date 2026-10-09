@@ -83,29 +83,16 @@ def register(
         typer.echo(f"Path not found: {path}", err=True)
         raise typer.Exit(1)
 
-    sha256 = hashlib.sha256()
-    if fpath.is_dir():
-        sha256.update(str(fpath.resolve()).encode())
-        n = 0
-        for child in sorted(fpath.rglob("*")):
-            if not child.is_file():
-                continue
-            rel = str(child.relative_to(fpath)).encode()
-            sha256.update(rel)
-            sha256.update(str(child.stat().st_size).encode())
-            n += 1
-            if n >= 400:
-                break
-        digest = sha256.hexdigest()
-        size = n
-        size_label = f"{n} files (dir fingerprint)"
-    else:
-        with open(fpath, "rb") as f:
-            for chunk in iter(lambda: f.read(65536), b""):
-                sha256.update(chunk)
-        digest = sha256.hexdigest()
-        size = fpath.stat().st_size
-        size_label = f"{size:,} bytes"
+    from nexus.case.evidence_service import hash_evidence_path
+
+    # Same content hash the pipeline's evidence_register uses. A 400-file
+    # fingerprint does not match that hash, so a later register raises
+    # "content changed" on evidence that did not change.
+    digest, count, total_bytes = hash_evidence_path(fpath.resolve())
+    size_label = (
+        f"{count} files, {total_bytes:,} bytes"
+        if fpath.is_dir() else f"{total_bytes:,} bytes"
+    )
 
     mgr = _get_sqlite_mgr()
     from nexus.audit import resolve_examiner

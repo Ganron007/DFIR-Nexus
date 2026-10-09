@@ -53,17 +53,6 @@ def _claim(entity: str, audit: str = "audit-1") -> dict:
     }
 
 
-def _crit_lead() -> dict:
-    return {
-        "kind": "rule_engine",
-        "subject": "Defender Alert (Severe)",
-        "family": "hayabusa",
-        "detail": "Hayabusa crit detection: Defender Alert (Severe) - 10 occurrence(s)",
-        "score": 1.0,
-        "extra": {"engine": "hayabusa", "level": "crit", "crit_high": True},
-    }
-
-
 def test_wave_two_is_spawned_from_wave_ones_open_questions(tmp_path, monkeypatch):
     """The old shape spawned only at step 1 and then returned `settled`."""
     from nexus.modes.multi_agent import run_mode3
@@ -135,8 +124,18 @@ def test_a_crit_lead_keeps_the_run_open(tmp_path, monkeypatch):
             "open_questions": [],
         }
 
+    # The lead has to come from the lane output. Briefing rebuilds leads.jsonl
+    # from the Hayabusa CSV, so a hand-written leads file does not survive.
+    case = _case(tmp_path)
+    hayabusa = case / "runs" / "RUN-1" / "extractions" / "hayabusa"
+    hayabusa.mkdir(parents=True)
+    (hayabusa / "evtx-timeline.csv").write_text(
+        "RuleTitle,RuleID,Level,Computer,Timestamp,Details\n"
+        "Defender Alert (Severe),r1,crit,RD01,2026-01-01T00:00:00Z,x\n",
+        encoding="utf-8",
+    )
     record = run_mode3(
-        _case(tmp_path, leads=[_crit_lead()]), "compromise suspected",
+        case, "compromise suspected",
         families=[("hayabusa", 10)], seat_fn=seat, es_ok=True,
     )
     # The crit lead is never dispositioned, so the run must hit the BUDGET, not
@@ -200,3 +199,158 @@ def test_run_record_names_its_budgets_and_real_tool_calls(tmp_path):
     assert "wall_seconds" in budgets
     assert budgets["seats_used"] >= 1
     assert budgets["tool_calls_used"] >= 3
+
+
+class _Content:
+    def __init__(self, content: str) -> None:
+        self.content = content
+
+
+class _ScriptedSeatModel:
+    """invoke() model. Terminal JSON, so the real seat loop stops on round 1."""
+
+    def invoke(self, messages):
+        blob = "\n".join(str(m.get("content") or "") for m in messages)
+        if "verifier seat" in blob or "Re-check these claims" in blob:
+            body = {
+                "verdicts": [
+                    {
+                        "subject": "process=notepad.exe",
+                        "class": "refuted",
+                        "basis": "no such process in the image",
+                        "audit_ids": ["audit-v"],
+                    },
+                    {
+                        "subject": "process=beacon.exe",
+                        "class": "confirmed",
+                        "basis": "named by the detection",
+                        "audit_ids": ["audit-v"],
+                    },
+                ]
+            }
+        elif "Investigate the lead:" in blob:
+            body = {
+                "claims": [_claim("beacon.exe"), _claim("notepad.exe")],
+                "open_questions": ["How did beacon.exe persist?"],
+                "lead_disposition": {
+                    "lead": "Defender Alert (Severe)",
+                    "status": "supported",
+                    "basis": "crit detection names beacon.exe",
+                },
+            }
+        elif "A seat asked:" in blob or "Pivot on" in blob:
+            body = {"claims": [], "open_questions": []}
+        else:
+            body = {"claims": [_claim("rd01-host", audit="audit-d")], "open_questions": []}
+            body["claims"][0]["entity_type"] = "host"
+            body["claims"][0]["entity_value"] = "rd01"
+        return _Content(json.dumps(body))
+
+
+def test_seat_with_model_keeps_questions_disposition_and_verdicts(tmp_path, monkeypatch):
+    """WO-R1F-M3 items 1-3 and 6 on the production seat, not seat_fn."""
+    from nexus.modes.multi_agent import _seat_with_model
+
+    monkeypatch.setenv("NEXUS_MODE3_ROUNDS", "2")
+    monkeypatch.setenv("NEXUS_MODE3_CALLS", "4")
+    monkeypatch.setenv("NEXUS_MODE3_SECONDS", "60")
+    case = _case(tmp_path)
+    model = _ScriptedSeatModel()
+
+    class _Sink:
+        def emit(self, event):
+            return None
+
+    lead = _seat_with_model(
+        {
+            "role": "evidence",
+            "family": "hayabusa",
+            "why": "unexplained crit lead",
+            "question": "Compromise suspected.\nInvestigate the lead: Defender Alert (Severe)",
+            "lead": "Defender Alert (Severe)",
+            "lead_extra": {"attack_ids": ["T1059.001"], "level": "crit"},
+        },
+        case_dir=case,
+        model=model,
+        run_id="M3-real-seat",
+        sink=_Sink(),
+        board_digest="(empty)",
+        superstep=1,
+    )
+    assert lead["open_questions"] == ["How did beacon.exe persist?"]
+    assert lead["lead_disposition"]["lead"] == "Defender Alert (Severe)"
+    assert lead["lead_disposition"]["status"] == "supported"
+    assert {c["entity_value"] for c in lead["claims"]} == {"beacon.exe", "notepad.exe"}
+    assert isinstance(lead["skill_refs"], list)
+
+    verifier = _seat_with_model(
+        {
+            "role": "verifier",
+            "family": "",
+            "why": "verify new claims",
+            "question": "Re-check these claims",
+        },
+        case_dir=case,
+        model=model,
+        run_id="M3-real-seat",
+        sink=_Sink(),
+        board_digest="beacon.exe",
+        superstep=1,
+    )
+    classes = {v["subject"]: v["class"] for v in verifier["verdicts"]}
+    assert classes.get("process=notepad.exe") == "refuted"
+    assert classes.get("process=beacon.exe") == "confirmed"
+
+
+def test_run_mode3_real_seat_path(tmp_path, monkeypatch):
+    """Full graph with a scripted model and no seat_fn (items 4, 5, 7)."""
+    from nexus.modes.multi_agent import run_mode3
+
+    monkeypatch.setenv("NEXUS_MODE3_ROUNDS", "2")
+    monkeypatch.setenv("NEXUS_MODE3_CALLS", "4")
+    monkeypatch.setenv("NEXUS_MODE3_SECONDS", "60")
+    monkeypatch.setenv("NEXUS_MODE3_MAX_SUPERSTEPS", "6")
+    monkeypatch.setenv("NEXUS_MODE3_MAX_AGENTS", "6")
+    monkeypatch.setenv("NEXUS_LLM_MODEL", "scripted-seat")
+    monkeypatch.setenv("NEXUS_LLM_PROVIDER", "test")
+
+    case = _case(tmp_path)
+    hayabusa = case / "runs" / "RUN-1" / "extractions" / "hayabusa"
+    hayabusa.mkdir(parents=True)
+    (hayabusa / "evtx-timeline.csv").write_text(
+        "RuleTitle,RuleID,Level,Computer,Timestamp,Details,MitreTactics\n"
+        "Defender Alert (Severe),r1,crit,RD01,2026-01-01T00:00:00Z,beacon.exe,T1059\n",
+        encoding="utf-8",
+    )
+
+    record = run_mode3(
+        case,
+        "Compromise suspected.",
+        model=_ScriptedSeatModel(),
+        families=[("hayabusa", 10), ("vol", 20)],
+        es_ok=True,
+    )
+    families = {str(e.get("family") or "") for e in record["board"]}
+    assert "vol" in families, families
+    assert "Defender Alert (Severe)" in record["lead_dispositions"]
+    assert record["lead_dispositions"]["Defender Alert (Severe)"]["status"] == "supported"
+    questions = [
+        e for e in record["board"]
+        if "A seat asked:" in str(e.get("note") or "")
+        or "open question" in str(e.get("note") or "")
+        or any("beacon.exe persist" in q for q in (e.get("open_questions") or []))
+    ]
+    # The open question is kept on the lead seat; a later seat is spawned from it.
+    assert any(
+        "How did beacon.exe persist?" in (e.get("open_questions") or [])
+        for e in record["board"]
+    )
+    assert any("open question" in str(e.get("note") or "") for e in record["board"]) or questions
+    roles = {e.get("role") for e in record["board"]}
+    assert "verifier" in roles
+    blob = json.dumps(record["candidates"])
+    assert "beacon.exe" in blob
+    assert "notepad.exe" not in blob
+    assert record["stop_reason"] == "settled" or "settled" in str(record["stop_reason"])
+    assert int(record["superstep"]) < 6
+    assert record["model"] == {"provider": "test", "model": "scripted-seat"}
