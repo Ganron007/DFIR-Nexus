@@ -87,6 +87,15 @@ def test_playbook_hints_email_compromise():
 
 
 def test_persist_case_intake(tmp_path: Path):
+    """Only what the examiner set is stored (WO-R2F item 6 / D45).
+
+    This test used to assert `"data_staging" in written["playbooks"]` — i.e. that
+    the product derived a playbook from the word "insider" and wrote it beside
+    `set_by: operator`. That is the defect the reviewer found on SC1, so the
+    assertion is inverted: the hypothesis is stored verbatim, and the derived
+    playbook is not. Selection still happens at runtime
+    (`extra_playbook_names`, asserted above).
+    """
     case_dir = tmp_path / "INC-1"
     case_dir.mkdir()
     (case_dir / "CASE.yaml").write_text("case_id: INC-1\nname: t\n", encoding="utf-8")
@@ -96,10 +105,13 @@ def test_persist_case_intake(tmp_path: Path):
         "hypothesis": "insider",
     })
     assert written["timezone"] == "UTC"
-    assert "data_staging" in written["playbooks"]
+    assert written["hypothesis"] == "insider"
+    assert "playbooks" not in written
     text = (case_dir / "CASE.yaml").read_text(encoding="utf-8")
     assert "intake:" in text
     assert "timezone: UTC" in text
+    assert "hypothesis: insider" in text
+    assert "data_staging" not in text
 
 
 def test_prefetch_related_tools_is_pecmd():

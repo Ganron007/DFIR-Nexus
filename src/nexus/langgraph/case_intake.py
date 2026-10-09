@@ -93,7 +93,16 @@ def extra_playbook_names(ctx: dict[str, Any] | None) -> list[str]:
 
 
 def persist_case_intake(case_dir: Path, ctx: dict[str, Any] | None) -> dict[str, str]:
-    """Merge intake fields into CASE.yaml. Returns the written intake dict."""
+    """Merge intake fields into CASE.yaml. Returns the written intake dict.
+
+    WO-R2F item 6 (D45): only what the examiner set is stored. The product used
+    to derive playbooks from the hypothesis keywords and write them into
+    `CASE.yaml` beside `set_by: operator` — the reviewer found 7 hunt playbooks
+    in SC1's intake after 36c had said "no playbooks", so the file misrepresented
+    who decided what. Playbook *selection* stays a runtime act: `tool_context`
+    and the hunt node call `extra_playbook_names` on the live context and get
+    the same names without them ever being attributed to the examiner.
+    """
     import yaml
 
     ctx = ctx or {}
@@ -106,12 +115,14 @@ def persist_case_intake(case_dir: Path, ctx: dict[str, Any] | None) -> dict[str,
             meta = loaded
             if isinstance(meta.get("intake"), dict):
                 intake = {str(k): str(v) for k, v in meta["intake"].items() if v is not None}
+    # A case written before this fix carries the derived list. Merging alone
+    # would keep it forever, so the stored value is dropped unless the examiner
+    # re-supplies it in THIS call — the only way a playbook enters the file.
+    if not str(ctx.get("playbooks") or "").strip():
+        intake.pop("playbooks", None)
     for k in INTAKE_KEYS:
         if str(ctx.get(k) or "").strip():
             intake[k] = str(ctx.get(k)).strip()
-    playbooks = extra_playbook_names({**intake, **ctx})
-    if playbooks:
-        intake["playbooks"] = ",".join(playbooks)
     if not intake:
         return {}
     meta["intake"] = intake

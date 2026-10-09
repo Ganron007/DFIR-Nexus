@@ -104,6 +104,21 @@ _FAMILY_HINTS = tuple(
     h for h in _FAMILY_HINTS if not (h in _PREFIX_COLLISIONS
                                     and _PREFIX_COLLISIONS[h] in _FAMILY_HINTS)
 ) + tuple(_PREFIX_COLLISIONS)
+# The tools the lane runs (`tool_lane.py` `add("<tool>", ...)`). A promoted stdout
+# capture is named `{tool}-{stem}-{digest}.txt` by `_promote_stdout` and lands at the
+# extraction ROOT, where `path.parent.name` is the literal "extractions". This list
+# is what `_family()` consults to recover the tool from that name, so the census
+# reports one family per tool instead of one per file (D44). It is deliberately
+# NOT the same list as `_FAMILY_HINTS`: a hint matches a substring of the whole
+# relative path, which is the wrong rule for a filename prefix.
+_TOOL_FAMILIES = (
+    "amcacheparser", "appcompatcacheparser", "bitsparser", "bmc-tools",
+    "capa", "chainsaw", "deepbluecli", "densityscout", "evtxecmd", "hayabusa",
+    "hindsight", "jlecmd", "kstrike", "lecmd", "logfileparser", "mftecmd",
+    "pecmd", "rbcmd", "recmd", "regripper", "sbecmd", "schtasks", "sigcheck",
+    "sqlecmd", "srumecmd", "strings", "suzaku", "thumbcache_viewer",
+    "usbdeview", "wxtcmd", "yara", "zircolite",
+)
 _SCAN_FIRST = (
     "hayabusa", "suzaku", "chainsaw", "evtxecmd", "evtx", "pecmd", "prefetch", "amcache",
     "appcompat", "recmd", "mftecmd-usn", "usn",
@@ -534,6 +549,28 @@ def _family(path: Path, root: Path) -> str:
     for hint in _FAMILY_HINTS:
         if hint in rel:
             return hint
+    # A promoted stdout capture is named `{tool}-{stem}-{digest}.txt` by
+    # `_promote_stdout` (tool_lane.py:4080) and lands at the extraction root, so
+    # `path.parent.name` is the literal "extractions". Falling back to that made
+    # every sidecar its own pseudo-family: the reviewer counted 148 families on
+    # SC1 where there are 24 (D44), 120 of them `extractions` holding
+    # `deepbluecli-<channel>-<hash>.txt`. The tool prefix IS the family.
+    stem = path.stem.lower()
+    for tool in _TOOL_FAMILIES:
+        if stem == tool or stem.startswith(tool + "-"):
+            return tool
+    # A tool that writes a per-run subdirectory (LogFileParser's
+    # `LogFile_<timestamp>\`, bmc-tools' tile dirs) leaves its own name in the
+    # PATH, not in the file name. `path.parent.name` is then the timestamp, so
+    # the fallback minted another pseudo-family per run. Walk the path
+    # components from the outside in and take the first one a tool owns.
+    parts = [p for p in rel.split("/") if p and p not in {"extractions", "runs"}]
+    for part in reversed(parts[:-1] if parts[-1] == path.name.lower() else parts):
+        if part in _TOOL_FAMILIES:
+            return part
+        for tool in _TOOL_FAMILIES:
+            if part.startswith(tool + "-"):
+                return tool
     return path.parent.name.lower() or "other"
 
 
