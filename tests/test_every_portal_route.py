@@ -9,9 +9,14 @@ Contracts asserted per route class:
 
 * **open** - answers regardless of the case's mode, because it is mode-agnostic
   by design (`/cases`, `/mode-mapping`, `/system/health`, setup, fs browsing).
-* **mode-owned** - answers only for a case in its own mode; a foreign-mode case is
-  refused with 409, and no case at all is 404. A mode-owned route that answers on
-  the wrong case is the segregation hole this exists to catch.
+* **mode-owned** - a route registered under a mode's prefix. WO-1C (operator
+  decision D5 = C, 2026-10-09) removed the per-case mode *boundary*: all three
+  modes run on one case, in any order, so a mode-owned route must answer for a
+  case in **any** mode. The contract that replaced the boundary is:
+    - it answers (never 500, never 403) on a case in every mode;
+    - it still refuses (409) while another analysis run is live on that case,
+      which is the one writer-race guard that survived;
+    - with no case at all it is 404.
 * every route - never 500 on a well-formed request. A crash is not a validation
   error, and a 500 in an API is an unhandled path.
 """
@@ -35,7 +40,7 @@ def route_table() -> list[dict]:
         if not isinstance(node, ast.Call):
             continue
         fname = getattr(node.func, "id", None) or getattr(node.func, "attr", None)
-        if fname not in {"Route", "_mode_route", "_mode_guarded"}:
+        if fname not in {"Route", "_mode_route"}:
             continue
         if not node.args or not isinstance(node.args[0], ast.Constant):
             continue
@@ -53,7 +58,7 @@ def route_table() -> list[dict]:
             return ""
 
         method = ""
-        if fname in {"_mode_route", "_mode_guarded"} and len(node.args) > 2:
+        if fname == "_mode_route" and len(node.args) > 2:
             method = _first_method(node.args[2])
         for kw in node.keywords:
             if kw.arg == "methods":
@@ -61,7 +66,10 @@ def route_table() -> list[dict]:
         rows.append({
             "path": path,
             "handler": handler,
-            "mode_owned": fname != "Route",
+            # WO-1C: `_mode_route` no longer wraps a mode boundary - it is a
+            # registration point only. "mode-owned" now means "registered under
+            # a mode's prefix", which is what the contract below is about.
+            "mode_owned": fname == "_mode_route",
             "method": (method or "GET").upper(),
         })
     seen: dict[tuple[str, str], dict] = {}
@@ -78,7 +86,7 @@ OPEN = [r for r in TABLE if not r["mode_owned"]]
 def test_the_table_is_the_whole_surface():
     """Sanity: the enumeration found a real route table, not an empty parse."""
     assert len(TABLE) >= 90, f"only {len(TABLE)} routes found"
-    assert len(MODE_OWNED) == 32, f"{len(MODE_OWNED)} mode-owned routes, expected 32"
+    assert len(MODE_OWNED) >= 32, f"{len(MODE_OWNED)} mode-owned routes, expected >= 32"
     assert all(r["path"].startswith("/portal/api/") for r in TABLE)
 
 
@@ -124,30 +132,43 @@ def cases(client):
 
 
 # ---------------------------------------------------------------------------
-# every mode-owned route refuses a foreign-mode case
+# every mode-owned route answers for a case in EVERY mode (D5 = C)
 # ---------------------------------------------------------------------------
 
-def _foreign_mode_case_ok(client, cases, mode):
-    other = "2" if mode == "1" else "1"
-    return cases[other]
-
-
 @pytest.mark.parametrize("route", MODE_OWNED, ids=lambda r: f"{r['method']} {r['path']}")
-def test_mode_owned_route_refuses_a_foreign_mode_case(client, cases, route):
-    """A route owned by mode N must not act on a case that is not mode N.
+def test_mode_owned_route_answers_for_every_mode(client, cases, route):
+    """A mode-owned route must answer for a case in any mode (WO-1C, D5 = C).
 
-    This is the segregation boundary, and the assertion is deliberately on the
-    *status* rather than the body: any answer that is not a refusal is a hole.
+    One case, three modes: the case does the evidence work once and every mode
+    is an analysis run on it. A 409 that names a *mode* is the old boundary
+    reasserting itself; a 409 from the busy-case guard is the correct, still-live
+    refusal. With a fresh case there is no live run, so nothing may 409.
     """
     mode = re.search(r"/mode(\d)/", route["path"]).group(1)
-    foreign = _foreign_mode_case_ok(client, cases, mode)
-    r = client.request(route["method"], route["path"],
-                       json={"case_id": foreign}, headers={"X-Nexus-Case": foreign})
-    assert r.status_code in (409, 404), (
-        f"{route['method']} {route['path']} answered {r.status_code} for a "
-        f"mode-{('2' if mode == '1' else '1')} case; expected 409 or 404. "
-        f"Body: {r.text[:200]}"
-    )
+    for case_mode, cid in cases.items():
+        r = client.request(route["method"], route["path"],
+                           json={"case_id": cid}, headers={"X-Nexus-Case": cid})
+        assert r.status_code != 500, (
+            f"{route['method']} {route['path']} crashed on a mode-{case_mode} case: "
+            f"{r.text[:300]}"
+        )
+        assert r.status_code != 403, (
+            f"{route['method']} {route['path']} refused a mode-{case_mode} case: {r.text[:200]}"
+        )
+        assert r.status_code != 409, (
+            f"{route['method']} {route['path']} returned 409 on a quiet mode-{case_mode} "
+            f"case (no live run) - the per-case mode boundary must be gone: {r.text[:200]}"
+        )
+        # A 404 is legitimate when it names a missing *domain object* ("no Mode 2
+        # run found") and illegitimate when it means the case itself could not be
+        # resolved - that would let this test pass without exercising the route.
+        if r.status_code == 404:
+            why = (r.text or "").lower()
+            assert "no case" not in why, (
+                f"{route['method']} {route['path']} could not resolve a mode-{case_mode} "
+                f"case: {r.text[:200]}"
+            )
+            assert why.strip(), f"{route['method']} {route['path']} 404 with no reason given"
 
 
 @pytest.mark.parametrize("route", MODE_OWNED, ids=lambda r: f"{r['method']} {r['path']}")
@@ -158,50 +179,6 @@ def test_mode_owned_route_never_500s_with_no_case(client, cases, route):
         f"{route['method']} {route['path']} crashed with no case: {r.text[:300]}"
     )
 
-
-# ---------------------------------------------------------------------------
-# mode-owned routes answer for their own case
-# ---------------------------------------------------------------------------
-
-_READ_ONLY_SUFFIXES = ("/status", "/events", "/board", "/ledger")
-_KNOWN_EMPTY_OK = {
-    # These legitimately have nothing to report before a run exists.
-    404: ("no run", "no Mode 3 run", "run_id not found", "not found"),
-}
-
-
-@pytest.mark.parametrize("route", MODE_OWNED, ids=lambda r: f"{r['method']} {r['path']}")
-def test_mode_owned_route_does_not_500_for_its_own_case(client, cases, route):
-    """On its own case the route must answer - 200, or a documented 4xx.
-
-    A 404 'no run yet' is a correct answer to 'show me the run'. A 500 is not an
-    answer, and neither is a 403 for a case the caller owns.
-    """
-    mode = re.search(r"/mode(\d)/", route["path"]).group(1)
-    cid = cases[mode]
-    r = client.request(route["method"], route["path"],
-                       json={"case_id": cid}, headers={"X-Nexus-Case": cid})
-    assert r.status_code != 500, (
-        f"{route['method']} {route['path']} crashed on its own mode-{mode} case: "
-        f"{r.text[:300]}"
-    )
-    assert r.status_code != 403, (
-        f"{route['method']} {route['path']} refused the case's own mode: {r.text[:200]}"
-    )
-    # A 404 is legitimate when it names a missing *domain object* ("no Mode 2
-    # run found") and illegitimate when it means the case itself could not be
-    # resolved - that would let this test pass without exercising the route.
-    if r.status_code == 404:
-        why = (r.text or "").lower()
-        assert "case" not in why or "no case" not in why, (
-            f"{route['method']} {route['path']} could not resolve its own case: {r.text[:200]}"
-        )
-        assert why.strip(), f"{route['method']} {route['path']} 404 with no reason given"
-
-
-# ---------------------------------------------------------------------------
-# open routes
-# ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("route", OPEN, ids=lambda r: f"{r['method']} {r['path']}")
 def test_open_route_never_500s(client, cases, route):

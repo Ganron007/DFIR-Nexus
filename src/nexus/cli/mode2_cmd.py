@@ -107,19 +107,10 @@ def run(
     output: Path = typer.Option(None, "--output", help="Write the run record JSON"),
 ):
     """Run the supervised Mode 2 (multi-role) investigation, streaming agent events."""
-    from nexus.case.mode_guard import ModeConflictError, check_mode
     from nexus.langgraph.lane_gate import gate_message, lane_gate_blocked
     from nexus.modes.multi_role import run_mode2
 
     case_dir = _case_dir(case)
-    # WO-R1F item 3: one mode per case. The API enforced it; the CLI did not, so
-    # all three modes ran on one case (SC1). Checked BEFORE the gate so the mode
-    # answer is the first thing an operator sees.
-    try:
-        check_mode(case_dir, 2)
-    except ModeConflictError as exc:
-        typer.echo(str(exc), err=True)
-        raise typer.Exit(1) from None
     gated = lane_gate_blocked(case_dir)
     if gated:
         typer.echo(gate_message(gated))

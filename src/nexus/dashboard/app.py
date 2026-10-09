@@ -225,55 +225,46 @@ def _sealed_case_error(case_id: str):
     return None
 
 
-def _stored_case_mode(case_dir: Path) -> int | None:
-    """Canonical investigation mode from CASE.yaml, or None when unset."""
-    import yaml
+def _busy_run_error(case_dir: Path):
+    """409 while another analysis run is already running on this case.
 
-    case_yaml = Path(case_dir) / "CASE.yaml"
-    if not case_yaml.is_file():
-        return None
-    try:
-        meta = yaml.safe_load(case_yaml.read_text(encoding="utf-8")) or {}
-    except Exception:  # noqa: BLE001
-        return None
-    if not isinstance(meta, dict):
-        return None
-    from nexus.langgraph.mode_mapping import resolve_stored_mode
+    WO-1C item 2: a case may run any mode, but only ONE analysis run at a time
+    per case. The old rule (one mode per case, enforced by ``mode_guard``) is
+    gone — D5 = C says all three modes run on one case, in any order the
+    examiner picks. What remains is the writer race: staging two runs at once
+    would interleave writes into findings.json.
 
-    raw = meta.get("investigation_mode") or ""
-    if not raw:
-        return None
-    return resolve_stored_mode(raw, meta.get("mode_scheme"))
-
-
-def _wrong_mode_error(case_dir: Path, expected: int):
-    """409 when this case was opened in a different mode.
-
-    Unset mode is left alone so older cases without a stored mode still run.
-    A stored mode is the segregation boundary: a Mode 1 case cannot start a
-    Mode 2 or Mode 3 run, and the reverse.
-
-    The rule itself lives in `nexus.case.mode_guard`, shared with the CLI — the
-    CLI not consulting it is why all three modes ran on one case (WO-R1F item 3).
+    Read from the run records themselves (``running`` status), not from a lock
+    file, so a crashed process cannot wedge a case forever: a record left
+    ``running`` is reaped at server startup.
     """
-    from nexus.case.mode_guard import ModeConflictError, check_mode
-
-    stored = _stored_case_mode(case_dir)
-    try:
-        check_mode(case_dir, expected)
-    except ModeConflictError as exc:
-        from nexus.langgraph.mode_mapping import mode_label
-
-        return JSONResponse(
-            {
-                "error": str(exc),
-                "case_mode": exc.stored,
-                "expected_mode": exc.expected,
-                "stored_label": mode_label(stored) if stored is not None else "",
-            },
-            status_code=409,
-        )
-    return None
+    running: list[dict[str, str]] = []
+    for sub, prefix in (("mode2_runs", "M2-"), ("mode3_runs", "M3-")):
+        d = case_dir / "analysis" / sub
+        if not d.is_dir():
+            continue
+        for rec in sorted(d.glob(f"{prefix}*.json")):
+            try:
+                loaded = json.loads(rec.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if isinstance(loaded, dict) and loaded.get("status") == "running":
+                running.append({
+                    "run_id": str(loaded.get("run_id") or rec.stem),
+                    "status": "running",
+                })
+    if not running:
+        return None
+    return JSONResponse(
+        {
+            "error": (
+                "another analysis run is already running on this case — "
+                "wait for it to finish, or stop it, before starting another."
+            ),
+            "running_runs": running,
+        },
+        status_code=409,
+    )
 
 
 def _lane_gate_error(case_dir: Path):
@@ -312,9 +303,11 @@ def _lane_gate_error(case_dir: Path):
     )
 
 
-#: Canonical mode -> the route family that belongs to it. Used by
-#: :func:`_mode_route` so every mode-owned endpoint is guarded at registration
-#: instead of relying on each handler to remember.
+#: Canonical mode -> the route family that belongs to it. Kept as bookkeeping
+#: for ``_mode_route``; WO-1C item 1 removed the per-case mode boundary
+#: (D5 = C: any mode may run on any case, in any order), so no route is guarded
+#: by it any more. The guard that remains is the one-analysis-run-at-a-time
+#: check in ``_busy_run_error``, applied by the run-starting handlers.
 _MODE_ROUTE_OWNERS: dict[str, int] = {
     "/portal/api/mode1/": 1,
     "/portal/api/mode2/": 2,
@@ -322,45 +315,8 @@ _MODE_ROUTE_OWNERS: dict[str, int] = {
 }
 
 
-def _mode_guarded(expected: int, handler):
-    """Wrap a portal handler with the per-case mode boundary.
-
-    Applied at route registration so a new mode endpoint cannot ship unguarded
-    by omission — the defect this replaces was 27 endpoints that each had to opt
-    in individually, and 22 of them did not.
-
-    Resolution mirrors the handlers themselves (``X-Nexus-Case`` /
-    ``?case_id=`` / active-case pointer). With no case resolved the wrapper
-    stands aside and lets the handler produce its own 404, so
-    "no active case" keeps reporting the way it always has.
-    """
-
-    async def _guarded(request):
-        case_dir = _get_case_dir(request)
-        if case_dir is not None:
-            wrong = _wrong_mode_error(case_dir, expected)
-            if wrong is not None:
-                return wrong
-        return await handler(request)
-
-    _guarded.__name__ = getattr(handler, "__name__", "handler")
-    return _guarded
-
-
 def _mode_route(path: str, handler, methods: list[str]):
-    """Register a mode-owned route behind the mode boundary.
-
-    The owning mode is derived from the path prefix. An unrecognised prefix is
-    registered unguarded on purpose: the mapping read
-    (``/portal/api/mode-mapping``) is mode-agnostic by design.
-    """
-    expected = 0
-    for prefix, mode in _MODE_ROUTE_OWNERS.items():
-        if path.startswith(prefix):
-            expected = mode
-            break
-    if expected:
-        handler = _mode_guarded(expected, handler)
+    """Register a mode-owned route (kept as one registration point)."""
     return Route(path, handler, methods=methods)
 
 
@@ -3144,7 +3100,7 @@ async def api_mode1_full_run(request):
     sealed = _sealed_case_error(case_dir.name)
     if sealed:
         return sealed
-    wrong = _wrong_mode_error(case_dir, 1)
+    wrong = _busy_run_error(case_dir)
     if wrong:
         return wrong
     gated = _lane_gate_error(case_dir)
@@ -3561,7 +3517,7 @@ async def api_mode1_chat(request):
     sealed = _sealed_case_error(case_dir.name)
     if sealed:
         return sealed
-    wrong = _wrong_mode_error(case_dir, 1)
+    wrong = _busy_run_error(case_dir)
     if wrong:
         return wrong
     gated = _lane_gate_error(case_dir)
@@ -5075,59 +5031,28 @@ async def api_pipeline_run(request):
     # previous signal map are stale once it starts.
     _invalidate_briefing_directions(case_dir)
 
-    # Mode 2/3 hard-gate: the LLM works against the N3 Elasticsearch index, so
-    # a case processed while ES is down would silently run on the CSV pack and
-    # leave the index empty — hollow agent run. Refuse before any work starts.
+    # ES is mandatory for the LLM stages (coverage/design); the lane alone can
+    # still produce CSVs. WO-1C item 1 removed the per-case mode whitelist - any
+    # pipeline mode may run on any case, and `investigation_mode` is only the
+    # UI default pick. What remains is the one-analysis-run-at-a-time check.
     import yaml
-    case_mode_raw: Any = ""
-    case_mode_scheme: Any = None
+
     case_yaml = case_dir / "CASE.yaml"
-    if case_yaml.is_file():
-        try:
-            _meta = yaml.safe_load(case_yaml.read_text(encoding="utf-8")) or {}
-            if isinstance(_meta, dict):
-                case_mode_raw = _meta.get("investigation_mode") or ""
-                case_mode_scheme = _meta.get("mode_scheme")
-        except Exception:
-            case_mode_raw = ""
-    from nexus.langgraph.mode_mapping import resolve_stored_mode
-
-    case_mode = (
-        resolve_stored_mode(case_mode_raw, case_mode_scheme)
-        if case_mode_raw else None
-    )
-    # Final three modes: 1 LLM (lane + LLM stages), 2 multi-role, 3 multi-agent.
-    _allowed_by_case_mode = {
-        1: {"tools", "interpret", "coverage"},
-        2: {"tools", "interpret"},
-        3: {"tools", "interpret"},
-    }
-    if case_mode and pipeline_mode not in _allowed_by_case_mode.get(case_mode, set()):
-        return JSONResponse(
-            {"error": (
-                f"pipeline mode {pipeline_mode!r} does not belong to Mode {case_mode} "
-                "— create a new case in that mode from the same evidence."
-            )},
-            status_code=409,
-        )
-
-    # ES is mandatory for the agentic depths (2/3) and for the LLM stages
-    # (coverage/design); the lane alone can still produce CSVs on Mode 1.
-    requires_es = case_mode in (2, 3) or pipeline_mode in ("coverage", "design")
+    requires_es = pipeline_mode in ("coverage", "design")
     if requires_es:
         from nexus.langgraph.case_index import es_available
 
         if not (os.environ.get("NEXUS_ES_URL") or "").strip():
             return JSONResponse({
                 "error": (
-                    f"Mode {case_mode or '?'} / {pipeline_mode} requires Elasticsearch — set "
+                    f"pipeline mode {pipeline_mode!r} requires Elasticsearch — set "
                     "NEXUS_ES_URL so parsed evidence lands in the N3 index the LLM queries."
                 )
             }, status_code=409)
         if not es_available():
             return JSONResponse({
                 "error": (
-                    f"Mode {case_mode or '?'} / {pipeline_mode} requires Elasticsearch — "
+                    f"pipeline mode {pipeline_mode!r} requires Elasticsearch — "
                     "NEXUS_ES_URL is set but the cluster is unreachable. Start ES and retry."
                 )
             }, status_code=409)
@@ -7228,7 +7153,7 @@ async def api_mode3_run(request):
     sealed = _sealed_case_error(case_dir.name)
     if sealed:
         return sealed
-    wrong = _wrong_mode_error(case_dir, 3)
+    wrong = _busy_run_error(case_dir)
     if wrong:
         return wrong
     gated = _lane_gate_error(case_dir)
@@ -7517,7 +7442,7 @@ async def api_mode2_run_plan(request):
     sealed = _sealed_case_error(case_dir.name)
     if sealed:
         return sealed
-    wrong = _wrong_mode_error(case_dir, 2)
+    wrong = _busy_run_error(case_dir)
     if wrong:
         return wrong
     gated = _lane_gate_error(case_dir)
@@ -7572,7 +7497,7 @@ async def api_mode2_run(request):
     sealed = _sealed_case_error(case_dir.name)
     if sealed:
         return sealed
-    wrong = _wrong_mode_error(case_dir, 2)
+    wrong = _busy_run_error(case_dir)
     if wrong:
         return wrong
     gated = _lane_gate_error(case_dir)

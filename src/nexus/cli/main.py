@@ -712,22 +712,10 @@ def pipeline(
                 f"--case is an existing case directory ({cid}); "
                 "running on that case instead of creating a new one."
             )
-    # WO-R1F item 3: one mode per case. `interpret`/`coverage`/`design` are all
-    # Mode 1, so a case opened in any of them refuses a Mode 2/3 run and vice
-    # versa. Checked here so the CLI and the API share one rule.
-    if cid:
-        from nexus.case.mode_guard import ModeConflictError, check_mode
-        from nexus.config import settings as _settings
-
-        _mode_number = {"interpret": 1, "coverage": 1, "design": 1}.get(
-            str(resolved_mode or "")
-        )
-        if _mode_number is not None:
-            try:
-                check_mode(_settings.cases_root / cid, _mode_number)
-            except ModeConflictError as exc:
-                typer.echo(str(exc), err=True)
-                raise typer.Exit(1) from None
+    # WO-1C item 1: a case is no longer locked to one mode (D5 = C). Any mode
+    # can run on any case; each run is its own analysis run with its own id,
+    # record and model. `investigation_mode` in CASE.yaml is now only the UI's
+    # default picker value.
     if cid:
         if not (case or "").strip():
             typer.echo(f"Interpret from existing case {cid} (no re-parse)")
