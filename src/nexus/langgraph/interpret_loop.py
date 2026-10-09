@@ -70,6 +70,119 @@ def _resolve_rounds(state: Mapping[str, Any], case_dir: Path, explicit: int | No
     return max(1, min(int(value), 5))
 
 
+def _lead_key(value: Any) -> str:
+    """Normalized lead subject — the same key Mode 3 disposes on
+    (``multi_agent._norm_key``)."""
+    return " ".join(str(value or "").split()).lower()
+
+
+def _crit_high_leads(digest: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """The digest's crit/high leads, in digest order.
+
+    WO-R1F item 1 hands every mode the same ``top_leads``; this reads the same
+    list so Mode 1's settle rule and Mode 3's disposition contract key on
+    identical subjects. A lead with ``crit_high`` false and a level below
+    ``high`` is not gating.
+    """
+    out: list[dict[str, Any]] = []
+    for lead in digest.get("leads") or digest.get("top_leads") or []:
+        if not isinstance(lead, Mapping):
+            continue
+        level = str(lead.get("level") or "").strip().lower()
+        crit_high = bool(lead.get("crit_high")) or level in ("crit", "critical", "high")
+        if not crit_high:
+            continue
+        subject = str(lead.get("subject") or "").strip()
+        if not subject:
+            continue
+        out.append({
+            "subject": subject,
+            "kind": str(lead.get("kind") or ""),
+            "level": level or "high",
+            "detail": str(lead.get("detail") or "")[:200],
+        })
+    return out
+
+
+def _undispositioned_crit_leads(
+    digest: Mapping[str, Any],
+    notes: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Crit/high leads with no disposition that cites their own rows.
+
+    The contract is Mode 3's (``multi_agent._dispositioned_keys``): a lead is
+    dispositioned when a verification note names its subject **and** carries
+    evidence text, when the note's status is ``confirmed``/``refuted``/
+    ``partial`` with a family, or when an explicit coverage gap names it. A
+    bare ``{"hypothesis": ..., "status": "unknown"}`` with no evidence and no
+    family is not a disposition — that is exactly the hole D47 found.
+    """
+    if not digest.get("leads") and not digest.get("top_leads"):
+        return []
+    dispositions: list[dict[str, Any]] = []
+    for note in notes or []:
+        hypothesis = str(note.get("hypothesis") or "")
+        evidence = str(note.get("evidence") or "").strip()
+        status = str(note.get("status") or "").strip().lower()
+        if not hypothesis:
+            continue
+        # A note that names the subject and cites rows is a disposition.
+        if evidence and status in ("confirmed", "refuted", "partial", "unknown"):
+            dispositions.append(note)
+            continue
+        # "insufficient"/"unknown" with no rows is a disposition ONLY when it
+        # states a reason in the hypothesis text (e.g. "no rows for X").
+        if status in ("refuted", "insufficient") and hypothesis:
+            dispositions.append(note)
+    blob_parts = [
+        f"{str(n.get('hypothesis') or '')} {str(n.get('evidence') or '')} "
+        f"{str(n.get('family') or '')}"
+        for n in dispositions
+    ]
+    blob = " ".join(blob_parts).lower()
+    out: list[dict[str, Any]] = []
+    for lead in _crit_high_leads(digest):
+        subject = _lead_key(lead["subject"])
+        if not subject:
+            continue
+        if subject in blob:
+            continue
+        # The subject may appear as an FQDN/short-name pair, or as the
+        # basename of a path (`C:\Tools\x.exe` vs `x.exe`).
+        candidates = {subject}
+        if "." in subject:
+            candidates.add(subject.split(".", 1)[0])
+        for token in re.split(r"[\\/]", subject):
+            if len(token) >= 3:
+                candidates.add(token)
+        if any(c in blob for c in candidates):
+            continue
+        out.append(lead)
+    return out
+
+
+def _replan_for_leads(leads: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Plan items that pull the rows for each undispositioned crit/high lead.
+
+    One item per lead, capped at the plan-item limit, so the next round gathers
+    the evidence the settle rule demands instead of ending without it.
+    """
+    items: list[dict[str, Any]] = []
+    for lead in leads[:_MAX_PLAN_ITEMS]:
+        subject = str(lead["subject"])
+        needle = subject.split("\\")[-1].split("/")[-1]
+        items.append({
+            "kind": "sample",
+            "family": "",
+            "field": "",
+            "value": needle,
+            "n": 8,
+            "why": f"WO-R2F item 7: crit/high lead {subject!r} has no "
+                   f"disposition citing rows",
+        })
+    return items
+
+
 def _parse_json_blob(text: str) -> Any:
     """Tolerant JSON extraction: whole content, fenced blocks, or first blob."""
     if not text:
@@ -579,9 +692,32 @@ async def run_interpret_loop(
             "round": round_no, "kind": "notes", "notes": notes,
             "next": next_plan["items"],
         })
-        if not next_plan["items"]:
+        # WO-R2F item 7 (D47): a round may stop `settled` only when every
+        # crit/high lead has a disposition that cites its own rows — the same
+        # contract Mode 3 enforces through `_dispositioned_keys`
+        # (multi_agent.py:1135). Previously the loop settled the moment the
+        # model planned no further queries, so a critical lead whose rows were
+        # never pulled ended the round loop and the finding that followed was
+        # written without any evidence for it.
+        undispositioned = _undispositioned_crit_leads(digest, notes_all)
+        if not next_plan["items"] and not undispositioned:
             stop_reason = "settled"
             break
+        if not next_plan["items"] and round_no >= rounds_total:
+            stop_reason = "rounds_exhausted"
+            break
+        if not next_plan["items"]:
+            # The model is done planning but crit/high leads are still open.
+            # Plan the evidence for them explicitly rather than letting the
+            # loop die with them unverified.
+            stop_reason = "settled"
+            current_items = _replan_for_leads(undispositioned)
+            _persist_round(case_dir, f"round-{round_no}-lead-replan", {
+                "round": round_no, "kind": "lead_replan",
+                "undispositioned": [lead["subject"] for lead in undispositioned],
+                "items": current_items,
+            })
+            continue
         current_items = next_plan["items"]
 
     evidence_block = "\n\n".join(evidence_blocks) or "(no rows returned)"

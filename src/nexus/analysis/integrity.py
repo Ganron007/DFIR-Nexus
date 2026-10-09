@@ -317,7 +317,7 @@ def sanitize_entity_mentions(
     case_dir=None,
     resolver=None,
 ) -> dict[str, Any]:
-    """Nullify and flag every entity a finding names that its own rows do not.
+    """Flag every entity a finding names that its own rows do not.
 
     The asymmetry with Modes 2 and 3 is structural, not a prompt problem. Both
     agent runtimes put every candidate through ``accept_claim`` (FD-001..007)
@@ -327,11 +327,18 @@ def sanitize_entity_mentions(
     interpretation named ``msmpeng.exe`` while all eleven of its evidence rows
     were ``PwSh Engine Started`` - PowerShell only.
 
-    The remedy follows the rule 10.4 already sets for timestamps: **nullify and
-    flag, never reject.** A mention that does not resolve might be a negative
-    one ("this is not msmpeng.exe"), and rejecting a correct finding over a
-    phrase would be worse than flagging it. So the unsupported mention is
-    removed from the narrative, recorded, and the examiner sees both.
+    The remedy follows the rule 10.4 already sets for timestamps: **flag, never
+    reject and never rewrite.** A mention that does not resolve might be a
+    negative one ("this is not msmpeng.exe"), and rejecting a correct finding
+    over a phrase would be worse than flagging it. WO-R2F item 7 (D47) closed
+    the earlier version of this function: it used to *replace* the mention
+    inside ``title`` / ``observation`` / ``interpretation`` in place
+    (``integrity.py:366-374``), which rewrote the model's own words, and the
+    replacement markers then nested when one pass replaced a substring of an
+    earlier pass's marker. Both are gone. The finding's text is left exactly as
+    staged, every unsupported entity is reported in ``unsupported`` with the
+    field it came from, and ``enforce_submission_integrity`` writes them into
+    the finding's ``integrity_notes`` for the examiner to judge.
 
     ``resolver`` is the optional live-index hook. Without it this returns
     ``unknown`` rather than guessing - a check with no input is not a pass.
@@ -339,9 +346,9 @@ def sanitize_entity_mentions(
     rows_blob = _evidence_blob(finding)
     if not rows_blob.strip():
         return {"checked": False, "reason": "finding carries no evidence rows",
-                "unsupported": [], "nullified": []}
+                "unsupported": [], "notes": []}
 
-    from nexus.analysis.cross_mode import _entities
+    from nexus.analysis.cross_mode import _entities, _entity_in_blob
 
     found: list[dict[str, Any]] = []
     for field in _NARRATIVE_FIELDS:
@@ -349,7 +356,7 @@ def sanitize_entity_mentions(
         if not isinstance(value, str) or not value.strip():
             continue
         for etype, entity in _entities(value):
-            if entity in rows_blob:
+            if _entity_in_blob(entity, rows_blob):
                 continue
             if resolver is not None and resolver(entity):
                 continue
@@ -357,28 +364,23 @@ def sanitize_entity_mentions(
                           "entity": entity, "value": value})
 
     if not found:
-        return {"checked": True, "reason": "", "unsupported": [], "nullified": []}
+        return {"checked": True, "reason": "", "unsupported": [], "notes": []}
 
-    nullified: list[dict[str, Any]] = []
-    by_field: dict[str, list[str]] = {}
-    for item in found:
-        by_field.setdefault(item["field"], []).append(item["entity"])
-    for field, entities in by_field.items():
-        text = str(finding.get(field) or "")
-        kept = text
-        for entity in sorted(set(entities), key=len, reverse=True):
-            for form in {entity, entity.title(), entity.upper()}:
-                if form and form in kept:
-                    kept = kept.replace(form, f"[{entity}: unsupported by the cited rows]")
-        if kept != text:
-            finding[field] = kept
-            nullified.append({"field": field, "entities": sorted(set(entities))})
+    # WO-R2F item 7 (D47): record, never rewrite. The finding's narrative fields
+    # are the model's words and stay byte-identical; each unsupported mention
+    # becomes one `integrity_notes` line naming the field, the entity and the
+    # fact that the cited rows do not contain it.
+    notes = [
+        f"entity mention unsupported by the cited rows: {item['field']} named "
+        f"{item['entity']} ({item['entity_type']})"
+        for item in found
+    ]
 
     return {
         "checked": True,
         "reason": "",
         "unsupported": found,
-        "nullified": nullified,
+        "notes": notes,
     }
 
 
@@ -421,14 +423,13 @@ def enforce_submission_integrity(
             f"({item['reason']}) - implausible value cleared, not used as evidence"
         )
 
-    for item in entities.get("nullified") or ():
-        listed = ", ".join(item["entities"][:6])
-        warnings.append(
-            f"entity mention nullified: {item['field']} named {listed}, which the cited "
-            f"rows do not contain. The mention was marked rather than the finding being "
-            f"rejected - a negative mention ('this is not X') is legitimate, and the "
-            f"examiner decides."
-        )
+    # WO-R2F item 7 (D47): the finding's narrative is never rewritten, so the
+    # unsupported mentions live here as `integrity_notes` the examiner reads
+    # next to the untouched text. A negative mention ("this is not X") is
+    # legitimate, which is why these are notes rather than rejections.
+    for note in entities.get("notes") or ():
+        warnings.append(note + " - the mention was flagged rather than the "
+                            "finding being rejected; the examiner decides.")
 
     return {
         "ok": not errors,
@@ -437,4 +438,7 @@ def enforce_submission_integrity(
         "citations": citations,
         "timestamps": timestamps,
         "entities": entities,
+        "integrity_notes": [
+            *(entities.get("notes") or ()),
+        ],
     }

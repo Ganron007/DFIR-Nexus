@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -334,6 +336,268 @@ def test_loop_tool_error_does_not_kill_round(tmp_path):
     )
     assert rounds["entries"][0]["error"] == "no active case"
     assert summary["rounds_run"] == 1
+
+
+# ── D47 (WO-R2F item 7): the settle rule and staged severity ─────────────
+
+
+def _digest_with_crit_leads() -> dict[str, Any]:
+    """A digest whose crit/high leads must each get a disposition."""
+    return {
+        "alerts": [
+            {"level": "high", "title": "Mimikatz detected", "host": "ws01"},
+            {"level": "critical", "title": "Ransomware note", "host": "ws01"},
+        ],
+        "signal_map": {"with_hits": [{"needle": "psexec", "hits": 9}]},
+        "scope": {"explicitly_absent": ["memory images"]},
+        "leads": [
+            {"kind": "rule_engine", "subject": "mimikatz.exe", "level": "critical",
+             "detail": "mimikatz 3 hits", "crit_high": True},
+            {"kind": "rule_engine", "subject": "ransomware", "level": "high",
+             "detail": "ransomware 3 hits", "crit_high": True},
+        ],
+    }
+
+
+def _seed_leads(tmp_path, digest) -> None:
+    """Write the real leads.jsonl the digest's crit/high leads come from."""
+    (tmp_path / "analysis").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "analysis" / "leads.jsonl").write_text(
+        "\n".join(json.dumps({
+            "kind": lead["kind"], "subject": lead["subject"],
+            "family": "hayabusa", "detail": lead["detail"], "score": 9.0,
+            "rows": [], "audit_ids": [],
+            "extra": {"crit_high": True, "level": lead["level"],
+                      "engine": "hayabusa", "count": 3},
+        }) for lead in digest["leads"]) + "\n",
+        encoding="utf-8",
+    )
+
+
+def test_a_crit_lead_without_a_disposition_blocks_settle(tmp_path):
+    """D47: a round that plans no further queries may NOT settle while a
+    crit/high lead has no disposition citing its own rows."""
+    _seed_leads(tmp_path, _digest_with_crit_leads())
+    # The model tries to settle on round 1; only H1 (mimikatz) has a
+    # disposition with evidence, so the `ransomware` crit lead is open.
+    settled = json.dumps({
+        "notes": [{"hypothesis": "H1", "status": "confirmed",
+                   "evidence": "hayabusa row 2024-01-01 ws01 mimikatz",
+                   "family": "hayabusa"}],
+        "next": [],
+    })
+    model = ScriptedModel([
+        _orientation(), settled, settled, settled, _findings_all_addressed(),
+    ])
+    execute = FakeExecutor()
+    result = asyncio.run(run_interpret_loop(
+        case_dir=tmp_path, case_id="CASE-TEST", model=model,
+        state={"case_context": {"interpret_rounds": "3"}},
+        digest=_digest_with_crit_leads(), digest_md="# Digest",
+        sections=[(1, "query_pack", "family:hayabusa ...")], execute=execute,
+    ))
+    # It did not settle on round 1: the open crit lead forced another round.
+    assert result["rounds_run"] > 1
+    assert result["stop_reason"] != "settled" or result["rounds_run"] >= 3
+    # The evidence for the open lead was actually pulled, not just claimed.
+    pulled = " ".join(
+        str(payload.get("value") or payload.get("dsl") or "")
+        for _name, payload in execute.calls
+    )
+    assert "ransomware" in pulled
+
+
+def test_a_dispositioned_crit_lead_lets_the_loop_settle(tmp_path):
+    """The mirror: once every crit lead is dispositioned, the early stop works."""
+    _seed_leads(tmp_path, _digest_with_crit_leads())
+    settled = json.dumps({
+        "notes": [
+            {"hypothesis": "H1", "status": "confirmed",
+             "evidence": "hayabusa row 2024-01-01 ws01 mimikatz",
+             "family": "hayabusa"},
+            {"hypothesis": "H2", "status": "confirmed",
+             "evidence": "hayabusa row 2024-01-02 ws01 ransomware note",
+             "family": "hayabusa"},
+        ],
+        "next": [],
+    })
+    model = ScriptedModel([_orientation(), settled, _findings_all_addressed()])
+    result = asyncio.run(run_interpret_loop(
+        case_dir=tmp_path, case_id="CASE-TEST", model=model,
+        state={"case_context": {"interpret_rounds": "3"}},
+        digest=_digest_with_crit_leads(), digest_md="# Digest",
+        sections=[], execute=FakeExecutor(),
+    ))
+    assert result["stop_reason"] == "settled"
+    assert result["rounds_run"] == 1
+
+
+def test_undispositioned_crit_leads_ignores_a_bare_unknown_note(tmp_path):
+    """A note with no evidence text is not a disposition — the D47 hole."""
+    from nexus.langgraph.interpret_loop import _undispositioned_crit_leads
+
+    leads = [{"subject": "ransomware", "level": "high", "crit_high": True}]
+    digest = {"leads": leads}
+    bare = [{"hypothesis": "H2 ransomware", "status": "unknown", "evidence": ""}]
+    assert _undispositioned_crit_leads(digest, bare) == [
+        {"subject": "ransomware", "kind": "", "level": "high", "detail": ""}
+    ]
+    with_rows = [{
+        "hypothesis": "H2 ransomware", "status": "confirmed",
+        "evidence": "hayabusa row ws01 ransomware", "family": "hayabusa",
+    }]
+    assert _undispositioned_crit_leads(digest, with_rows) == []
+
+
+def test_finding_tool_payload_carries_severity():
+    """D47: every staged Mode 1 DRAFT has a severity (7/7 were empty)."""
+    from nexus.langgraph.llm_pipeline import _finding_tool_payload
+
+    payload = _finding_tool_payload({
+        "title": "Mimikatz detected on ws01", "observation": "credential dumping",
+        "interpretation": "credential theft", "confidence": "HIGH",
+        "confidence_justification": "two artifacts",
+        "audit_ids": ["n4_query-test-20260918-001"],
+        "severity": "critical",
+    }, trail=[], linked_ids=set())
+    assert payload["severity"] == "CRITICAL"
+    # An absent or bogus severity stays absent rather than inventing one.
+    assert _finding_tool_payload({"title": "x"}, [], set())["severity"] == ""
+    assert _finding_tool_payload(
+        {"title": "x", "severity": "bogus"}, [], set()
+    )["severity"] == ""
+
+
+def test_record_finding_mcp_tool_accepts_severity(tmp_path, monkeypatch):
+    """D47: the MCP tool signature carries severity, so the payload is not
+    silently dropped on the way to CaseManager. Driven through the REAL
+    CaseManager and a REAL case, so the stored DRAFT is what is asserted."""
+    from nexus.config import settings
+    from nexus.tools.forensic import register_tools
+
+    cases_root = tmp_path / "cases"
+    cases_root.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("NEXUS_CASES_ROOT", str(cases_root))
+    monkeypatch.setenv("NEXUS_DATA_ROOT", str(tmp_path / "data"))
+    monkeypatch.setenv("NEXUS_ACTIVE_CASE_FILE", str(tmp_path / "active_case"))
+
+    from nexus.case import CaseManager as SqlCM
+
+    sql = SqlCM(settings.cases_root / "cases.db")
+    try:
+        case = sql.create_case("Severity Case", created_by="tester")
+    finally:
+        sql.close()
+    case_dir = settings.cases_root / case.id
+
+    audit_dir = case_dir / "audit"
+    audit_dir.mkdir(parents=True, exist_ok=True)
+    audit_id = "nexus-severity-tst-20261009-001"
+    with (audit_dir / "audit_log.jsonl").open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps({"audit_id": audit_id, "tool": "es_search",
+                             "source": "mcp"}) + "\n")
+
+    # The MCP tool resolves its case through the global active-case pointer
+    # (NEXUS_ACTIVE_CASE_FILE), so the pointer is written the way the product
+    # writes it. This case was created for this test, so no unrelated case is
+    # flipped.
+    active = Path(os.environ["NEXUS_ACTIVE_CASE_FILE"])
+    active.parent.mkdir(parents=True, exist_ok=True)
+    active.write_text(str(case_dir), encoding="utf-8")
+
+    registry: dict[str, Any] = {}
+
+    class _ToolDecorator:
+        def __call__(self, fn):
+            registry[fn.__name__] = fn
+            return fn
+
+    class _Server:
+        def tool(self, *args, **kwargs):
+            return _ToolDecorator()
+
+    class _Audit:
+        def log(self, **kwargs):
+            return None
+
+    register_tools(_Server(), _Audit())
+    assert "record_finding" in registry
+    result = registry["record_finding"](
+        title="Mimikatz detected on ws01",
+        observation="credential dumping",
+        interpretation="credential theft",
+        severity="critical",
+        audit_ids=[audit_id],
+    )
+    assert result.get("status") in ("STAGED", "VALIDATION_FAILED"), result
+    staged = json.loads((case_dir / "findings.json").read_text(encoding="utf-8"))
+    assert staged, staged
+    assert staged[0].get("severity") == "critical"
+
+
+def test_staged_finding_records_unsupported_entities_in_integrity_notes(
+    tmp_path, monkeypatch,
+):
+    """D47: the narrative is never rewritten; the unsupported mention lands in
+    integrity_notes on the stored DRAFT."""
+    from nexus.case_manager import CaseManager as FlatCM
+    from nexus.config import settings
+
+    cases_root = tmp_path / "cases"
+    cases_root.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("NEXUS_CASES_ROOT", str(cases_root))
+    monkeypatch.setenv("NEXUS_DATA_ROOT", str(tmp_path / "data"))
+    monkeypatch.setenv("NEXUS_ACTIVE_CASE_FILE", str(tmp_path / "active_case"))
+
+    from nexus.case import CaseManager as SqlCM
+
+    sql = SqlCM(settings.cases_root / "cases.db")
+    try:
+        case = sql.create_case("Entity Note Case", created_by="tester")
+    finally:
+        sql.close()
+    case_dir = settings.cases_root / case.id
+
+    audit_dir = case_dir / "audit"
+    audit_dir.mkdir(parents=True, exist_ok=True)
+    audit_id = "nexus-entity-note-20261009-001"
+    with (audit_dir / "audit_log.jsonl").open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps({"audit_id": audit_id, "tool": "es_search",
+                             "source": "mcp"}) + "\n")
+
+    observation = (
+        "powershell.exe ran from C:\\Program Files\\Asset Management\\tool.exe "
+        "on host ws01.cadre.local while msmpeng.exe was not running."
+    )
+    rows = [{
+        "time": "2020-11-02T18:38:46",
+        "source": "hayabusa/evtx-timeline.csv",
+        "artifact": "hayabusa/evtx-timeline.csv",
+        "detail": "RuleTitle: Potentially Malicious PwSh - powershell.exe -EncodedCommand",
+        "loc": "hayabusa/evtx-timeline.csv:41",
+        "fields": {"EventId": "4104"},
+    }]
+    result = FlatCM().record_finding({
+        "title": "suspicious script block",
+        "observation": observation,
+        "interpretation": "encoded command execution",
+        "confidence": "LOW",
+        "confidence_justification": "single family",
+        "audit_ids": [audit_id],
+        "evidence": rows,
+    }, case_dir=case_dir)
+    assert result["status"] == "STAGED", result
+    entry = json.loads((case_dir / "findings.json").read_text(encoding="utf-8"))[0]
+    # The narrative is byte-identical to what was staged.
+    assert entry["observation"] == observation
+    assert "unsupported by the cited rows" not in entry["observation"]
+    # The unsupported mentions are recorded for the examiner.
+    notes = "\n".join(entry.get("integrity_notes") or [])
+    assert "msmpeng.exe" in notes
+    # A Windows path with spaces is ONE entity and is matched, not truncated.
+    assert "c:\\program" not in notes.replace(
+        "c:\\program files\\asset management\\tool.exe", ""
+    )
 
 
 def test_rounds_endpoint_reads_artifacts(tmp_path):

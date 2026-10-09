@@ -57,6 +57,33 @@ _FILE_EXTENSIONS = frozenset({
     "bak", "tmp", "ini", "cfg", "conf", "htm", "html", "md", "py", "pl",
 })
 
+# Private-lab / internal TLDs that are not public suffixes. The CADRE lab runs
+# `.cadre.local`, `.range.local`, `.corp.local` and friends, and an FQDN like
+# `ws01.cadre.local` is a host the index holds. Without these labels every
+# lab hostname was dropped as "not a domain" and the entity check silently
+# skipped it. Merged into the public-suffix-ish list below.
+_PRIVATE_TLDS = frozenset({
+    "local", "localdomain", "lan", "intranet", "internal", "corp", "home",
+    "cadre", "range", "ad", "test", "lab", "domain",
+})
+
+# A Windows path segment may contain spaces (`C:\Program Files\...`). The old
+# `[^\s,;"']+` pattern stopped at the first space and truncated
+# `C:\Program Files\Asset Management\tool.exe` to `c:\program`, which then
+# never matched the row's full path and produced a phantom "unsupported
+# entity" on the real case's evidence.
+#
+# Two alternatives, in order:
+#   1. a path whose final component carries an extension — directory segments
+#      may contain spaces, the final component may not, so the path cannot
+#      swallow the prose that follows it;
+#   2. a contiguous path with no whitespace at all (a bare directory such as
+#      `C:\Windows\Temp`, or any single-token path).
+_WIN_PATH = re.compile(
+    r"\b([A-Za-z]:\\(?:[^\\\r\n<>|*?\":]+\\)*[^\\\s]*\.[A-Za-z0-9]{1,8})"
+    r"|(\b[A-Za-z]:\\[^\s,;\"'<>|*?]+)"
+    r"|(\\\\[^\s,;\"'<>|*?]+\\[^\s,;\"'<>|*?]+)"
+)
 _ENTITY_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("process", re.compile(r"\b([A-Za-z0-9_.\-]{3,}\.exe)\b", re.I)),
     ("domain", re.compile(r"\b((?:[a-z0-9](?:[a-z0-9\-]{0,61}[a-z0-9])?\.)+[a-z]{2,})\b", re.I)),
@@ -65,7 +92,7 @@ _ENTITY_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("sha1", re.compile(r"\b([0-9a-f]{40})\b", re.I)),
     ("registry_key", re.compile(r"\b((?:HKEY_[A-Z_]+|HKLM|HKCU|HKU|Software)\\[^\s,;\"']{3,})", re.I)),
     ("user", re.compile(r"\b([A-Za-z0-9._\-]{2,}\\Users\\[A-Za-z0-9._\-]+)\b", re.I)),
-    ("file", re.compile(r"\b([A-Za-z]:\\[^\s,;\"'<>|]{4,}|[^\s,;\"']{3,}\\(?:\d{4}\.[A-Za-z]{2,3}))\b")),
+    ("file", _WIN_PATH),
     ("url", re.compile(r"\b(https?://[^\s,;\"'<>]{6,})", re.I)),
 )
 
@@ -92,7 +119,7 @@ _TLDS = frozenset({
     "ni", "bo", "py", "uy", "ec", "jm", "tt", "in", "cn", "jp", "kr", "tw",
     "hk", "sg", "my", "th", "vn", "ph", "id", "bn", "lk", "np", "mm", "kh",
     "la", "mn", "ge", "am", "az",
-})
+}) | _PRIVATE_TLDS
 
 # Claim kinds, matching the multi-agent board's vocabulary.
 _CLAIM_KINDS = {"observation", "interpretation", "temporal", "network", "persistence", "attribution"}
@@ -127,7 +154,10 @@ def _entities(text: str) -> list[tuple[str, str]]:
     claimed: set[str] = set()
     for etype, pat in _ENTITY_PATTERNS:
         for m in pat.finditer(text or ""):
-            val = m.group(1).strip().strip('".,;')
+            val = next((g for g in m.groups() if g), None)
+            if val is None:
+                continue
+            val = val.strip().strip('".,;')
             if len(val) < 3:
                 continue
             key = val.lower()
@@ -143,6 +173,33 @@ def _entities(text: str) -> list[tuple[str, str]]:
             claimed.add(key)
             out.append((etype, key))
     return out
+
+
+def _entity_in_blob(entity: str, blob: str) -> bool:
+    """True when ``blob`` (the finding's own evidence rows, lowercased) names
+    ``entity`` — including the FQDN / short-name pair.
+
+    WO-R2F item 7 (D47): "an FQDN matches its short name when the index holds
+    both forms." A finding written as ``ws01.cadre.local`` against rows that
+    say ``ws01`` (and the reverse) was flagged as unsupported, which is a false
+    positive on the exact lab data this product runs against. The equivalence
+    is deliberately narrow: only the left-most label of a multi-label domain
+    participates, and only in this direction, so a check that previously failed
+    on a genuinely absent host still fails.
+    """
+    if not entity or not blob:
+        return False
+    if entity in blob:
+        return True
+    if "." not in entity:
+        # Short name written in the finding, FQDN in the rows.
+        return re.search(rf"\b{re.escape(entity)}\.[A-Za-z]{{2,}}\b", blob) is not None
+    # FQDN written in the finding, short name in the rows. `ws01.cadre.local`
+    # matches rows naming `ws01`; `a.b.corp.local` matches rows naming `a`.
+    short = entity.split(".", 1)[0]
+    if short and len(short) >= 3:
+        return re.search(rf"\b{re.escape(short)}\b", blob) is not None
+    return False
 
 
 def _audit_ids(claim: dict[str, Any]) -> list[str]:

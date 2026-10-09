@@ -604,6 +604,15 @@ class CaseManager:
                 f"timestamp nullified: {n['field']} ({n['reason']})"
                 for n in integrity["timestamps"]["nullified"]
             )
+        # WO-R2F item 7 (D47): unsupported entity mentions are recorded here,
+        # never written back into title/observation/interpretation.
+        if integrity.get("integrity_notes"):
+            entry.setdefault("integrity_notes", []).extend(
+                integrity["integrity_notes"]
+            )
+            # integrity_notes feeds content_hash (it is not in
+            # _HASH_EXCLUDE_KEYS), so the seal is recomputed after appending.
+            entry["content_hash"] = _compute_content_hash(entry)
         # Check provenance BEFORE saving - reject findings with no audit trail
         provenance = self._score_provenance(entry, case_dir)
         if provenance.get("summary") == "NONE" or provenance.get("none"):

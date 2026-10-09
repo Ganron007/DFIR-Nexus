@@ -2015,6 +2015,14 @@ def _finding_tool_payload(
     conf = str(candidate.get("confidence") or "MEDIUM").upper()
     if conf not in {"HIGH", "LOW", "MEDIUM", "SPECULATIVE"}:
         conf = "MEDIUM"
+    # WO-R2F item 7 (D47): Mode 1 staged 7/7 DRAFTs with an empty severity
+    # because this payload never carried one, even though the candidate did.
+    # `CaseManager.record_finding` stores `severity` (case_manager.py:549) and
+    # Modes 2/3 stage with the same vocabulary (multi_role.py:855), so the
+    # gap was in this mapping alone. Same vocabulary, same default shape.
+    severity = str(candidate.get("severity") or "").strip().upper()
+    if severity not in {"LOW", "MEDIUM", "HIGH", "CRITICAL", "INFO"}:
+        severity = ""
     payload = {
         "title": str(candidate.get("title") or "Untitled finding")[:200],
         "observation": str(
@@ -2030,6 +2038,7 @@ def _finding_tool_payload(
             candidate.get("confidence_justification")
             or "Grounded in MCP tool audit_ids from this investigation."
         )[:2000],
+        "severity": severity,
         "finding_type": ftype if ftype in {
             "finding", "execution", "persistence", "attribution", "exclusion",
             "conclusion", "network", "lateral", "auth", "file", "registry", "other",

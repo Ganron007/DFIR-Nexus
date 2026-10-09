@@ -31,6 +31,7 @@ def register_tools(server: FastMCP, audit: AuditWriter):
         interpretation: str = "",
         confidence: str = "MEDIUM",
         confidence_justification: str = "",
+        severity: str = "",
         finding_type: str = "",
         artifacts: list[dict] | None = None,
         host: str = "",
@@ -71,6 +72,11 @@ def register_tools(server: FastMCP, audit: AuditWriter):
             finding_data["confidence"] = confidence.upper()
         if confidence_justification:
             finding_data["confidence_justification"] = confidence_justification
+        # WO-R2F item 7 (D47): severity reaches the manager only through this
+        # explicit parameter — an extra payload key alone is dropped by the
+        # tool signature, which is why Mode 1 staged empty severities.
+        if severity:
+            finding_data["severity"] = severity.strip().upper()
         if finding_type:
             finding_data["type"] = finding_type
         else:
@@ -116,7 +122,8 @@ def register_tools(server: FastMCP, audit: AuditWriter):
 
         if result.get("status") in ("STAGED", "VALIDATION_FAILED"):
             audit.log(tool="record_finding",
-                      params={"title": title, "confidence": confidence},
+                      params={"title": title, "confidence": confidence,
+                              "severity": finding_data.get("severity", "")},
                       result_summary=result)
 
         return result
