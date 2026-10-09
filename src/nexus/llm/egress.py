@@ -294,13 +294,40 @@ class _StreamRestorer:
         return deanonymize(remainder, self._mapping) if remainder else ""
 
 
-def _active_case_dir() -> Path | None:
+#: The per-call binding the context loop publishes. A module-level attribute
+#: would be shared by every thread and every concurrent seat, which is exactly
+#: the cross-case leak this replaces, so it is thread-local.
+_egress_binding = threading.local()
+
+
+def bind_egress_case(case_dir: Path | str | None) -> None:
+    """Bind this thread's LLM calls to ``case_dir`` (None clears the binding)."""
+    _egress_binding.case_dir = str(case_dir) if case_dir else None
+
+
+def _bound_case_dir() -> Path | None:
+    """The case this model's calls belong to.
+
+    WO-R2F item 1 (D41): an **in-process** run binds its own case, so the
+    token map is written into the run's case, not into whatever case the
+    examiner happens to have active. ``bind_egress_case`` publishes that
+    binding; only an unbound model falls back to the global active-case
+    pointer, which is the right answer for a one-off CLI call with no run.
+    """
+    bound = getattr(_egress_binding, "case_dir", None)
+    if bound:
+        return Path(bound)
     try:
         from nexus.case_manager import CaseManager
 
         return CaseManager().require_active_case()
     except Exception:  # noqa: BLE001 — no case means an in-memory token map
         return None
+
+
+def _active_case_dir() -> Path | None:
+    """Backwards-compatible name: the case this model's calls belong to."""
+    return _bound_case_dir()
 
 
 def _iter_generations(result):

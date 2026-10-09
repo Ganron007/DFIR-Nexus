@@ -4,10 +4,14 @@ The LLM (and any MCP client) reaches a case's evidence ONLY through these
 tools: per-case N4 queries over the ES index (or the CSV pack), bounded
 aggregations over the result set, and the index/vocabulary description.
 
-**Case gating is absolute** (operator directive 2026-09-14): an empty
-``case_id`` resolves to the active case; an explicit ``case_id`` must MATCH
-the active case — any other id is refused, so an agent can never touch a
-different case's evidence. ``validate_case_id`` blocks traversal.
+**Case gating** (operator directive 2026-09-14, revised by WO-R2F item 1 / D41):
+an external MCP caller that binds nothing is gated to the active case — an
+explicit ``case_id`` must MATCH it, so an agent can never touch a different
+case's evidence, and ``validate_case_id`` blocks traversal. An **in-process**
+caller (the Mode 1/2/3 backbone and the context loop) passes its run's own
+``case_dir``; that binding is validated against the configured ``cases_root``
+and is used directly, so a run reads its own case even while the examiner has
+activated another one. See ``_resolve_active_case``.
 
 Aggregation results are CONTEXT, never evidence (FD-001): a finding still
 requires audit_id-backed hits. Every call is audit-logged; responses carry
@@ -40,11 +44,50 @@ _TS_KEYS = ("TimeCreated", "Timestamp", "EventTime", "LastRun", "LastVisitTime",
 _TS_RE = re.compile(r"\d{4}-\d{2}-\d{2}[T ](\d{2})?")
 
 
-def _resolve_active_case(case_id: str) -> tuple[Path | None, str]:
-    """Active case only — the strictest reading of the operator's gating.
+def _resolve_active_case(case_id: str, case_dir: Path | str | None = None) -> tuple[Path | None, str]:
+    """Resolve the case a tool call is bound to.
+
+    Two callers, two contracts:
+
+    * **In-process (backbone / context loop / Mode 1-3)** — the caller passes
+      the run's own ``case_dir`` (WO-R2F item 1, D41). The case is validated
+      against the configured ``cases_root`` and returned directly. The global
+      active-case pointer is NOT consulted, because a run must read its own
+      case even when the examiner has since activated a different one (36c:
+      every Mode 3 seat was refused with "case_id 'X' is not the active case
+      ('Y')", none of the refusals were audited, and the run still settled).
+      The caller may not choose the root: a ``case_dir`` outside ``cases_root``
+      is refused, so a path cannot be smuggled in (third-eye R02).
+    * **External MCP caller that binds nothing** — no ``case_dir`` is given,
+      the active-case pointer is resolved and an explicit ``case_id`` must
+      match it (operator directive 2026-09-14).
 
     Returns ``(case_dir, error)``; exactly one is falsy.
     """
+    if case_dir is not None:
+        # WO-R2F item 1 (D41): an explicit run binding wins, validated against
+        # the configured cases_root. Never the global pointer.
+        from nexus.config import settings
+
+        resolved = Path(case_dir)
+        problem = validate_case_id(resolved.name)
+        if problem:
+            return None, problem
+        if resolved.parent != settings.cases_root:
+            return None, (
+                f"case_dir {resolved} is outside the configured cases_root "
+                f"({settings.cases_root}) — an in-process call may only bind a "
+                "case that lives there"
+            )
+        if not (resolved / "CASE.yaml").is_file():
+            return None, f"case {resolved.name!r} is not a case directory"
+        if case_id and case_id != resolved.name:
+            return None, (
+                f"case_id {case_id!r} does not match the bound case "
+                f"{resolved.name!r}"
+            )
+        return resolved, ""
+
     if case_id:
         problem = validate_case_id(case_id)
         if problem:

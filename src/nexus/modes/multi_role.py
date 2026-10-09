@@ -720,6 +720,52 @@ def _backfill_audit_ids(
     return filled
 
 
+def _cited_call_rows(case_dir: Path, audit_ids: list[str]) -> list[dict[str, Any]]:
+    """The case's audit-log entries for the cited calls (WO-R2F item 3).
+
+    A verdict or candidate cites audit ids. Whether that citation is evidence
+    can only be answered by the case's own audit trail: it records
+    ``result_summary.total`` / ``result_summary.returned`` per call, so a call
+    that found nothing is visible as such. An id with no entry is unknown, not
+    empty.
+    """
+    wanted = [str(a or "").strip() for a in (audit_ids or []) if str(a or "").strip()]
+    if not wanted:
+        return []
+    try:
+        entries = AuditWriter("nexus", audit_dir=Path(case_dir) / "audit").get_entries(
+            Path(case_dir))
+    except Exception:  # noqa: BLE001 — an unreadable log must not crash a run
+        return []
+    by_id = {str(e.get("audit_id") or ""): e for e in entries if e.get("audit_id")}
+    return [by_id[a] for a in wanted if a in by_id]
+
+
+def _zero_hit_citation(case_dir: Path, audit_ids: list[str]) -> bool:
+    """True when EVERY cited call is known to the audit log and returned 0 rows.
+
+    This is the positive control a refutation needs. "The parser ran and the
+    query returned nothing" is negative evidence; "I looked and got 0 hits" on a
+    lookup that could not resolve the row is a FAILED LOOKUP, and on SC1 it
+    became a refutation of two critical Hayabusa detections whose rows were in
+    the index all along. Unknown ids are not zero hits — they are unverifiable.
+    """
+    rows = _cited_call_rows(case_dir, audit_ids)
+    if not rows or len(rows) != len({str(a) for a in (audit_ids or []) if str(a or "").strip()}):
+        return False
+    for entry in rows:
+        summary = entry.get("result_summary") or {}
+        if not isinstance(summary, dict):
+            return False
+        total = summary.get("total")
+        returned = summary.get("returned")
+        if total is None and returned is None:
+            return False
+        if int(total or 0) > 0 or int(returned or 0) > 0:
+            return False
+    return True
+
+
 def _normalise_evidence(
     candidate: dict[str, Any], *, source: str = "mode2",
 ) -> list[dict[str, Any]]:
@@ -1603,6 +1649,7 @@ def run_mode2(
         "verdicts": [],
         "narrative": "",
         "candidates": [],
+        "dispositions": [],
         "gaps": [],
         "coverage": {},
         "evidence_coverage": coverage_snapshot(case_dir),
@@ -1832,6 +1879,31 @@ def run_mode2(
         # audit_ids inherits them from the candidate it names, so a confirmed
         # claim cannot lose its evidence linkage before synthesis.
         _backfill_audit_ids(list(state.get("verdicts") or []), candidates)
+        # WO-R2F item 3 (D42): a refutation needs a positive control. A verdict
+        # that claims "refuted" while every call it cites returned 0 rows is not
+        # a refutation - it is a lookup that found nothing, which on SC1 turned
+        # two critical Hayabusa detections into "not supported by retrieved
+        # evidence" while their rows were in the index. Downgrade it to
+        # ``unverifiable`` and keep the basis, so the claim survives to
+        # synthesis instead of being silently discarded as refuted.
+        for verdict in state.get("verdicts") or []:
+            if str(verdict.get("class") or "").strip().lower() != "refuted":
+                continue
+            ids = _candidate_audit_ids(verdict)
+            if not ids or not _zero_hit_citation(case_dir, ids):
+                continue
+            verdict["class"] = "unverifiable"
+            verdict["downgraded_from"] = "refuted"
+            verdict["basis"] = (
+                str(verdict.get("basis") or "").strip()
+                + " [downgraded: the cited call(s) returned 0 rows, which is a "
+                "failed lookup, not negative evidence]"
+            ).strip()
+            sink.emit(new_event(
+                run_id, "verify.downgraded", actor="verifier",
+                detail=str(verdict.get("title") or "")[:160],
+                data={"audit_ids": ids},
+            ))
         state["status"] = "verified"
         _persist_state(case_dir, run_id, state)
         sink.emit(new_event(
@@ -2007,6 +2079,51 @@ def run_mode2(
                 state.get("verdicts") or [],
                 candidates,
             )
+            # WO-R2F item 3 (D42): a final candidate whose only citations are
+            # calls that returned 0 rows is not a finding. On SC1 synthesis
+            # staged "Cobalt Strike ... not supported by retrieved evidence" as
+            # a finding; the cited call had found nothing, so the claim was
+            # evidence-free and its own wording was the finding. Move it to the
+            # dispositions/gaps record so the run still reports the attempt
+            # without certifying it as a result.
+            findings: list[dict[str, Any]] = []
+            zero_only: list[dict[str, Any]] = []
+            for cand in state.get("candidates") or []:
+                if not isinstance(cand, dict):
+                    continue
+                ids = _candidate_audit_ids(cand)
+                if ids and _zero_hit_citation(case_dir, ids):
+                    zero_only.append(cand)
+                else:
+                    findings.append(cand)
+            if zero_only:
+                state["candidates"] = findings
+                dispositions = list(state.get("dispositions") or [])
+                dispositions.extend([{
+                    "title": str(c.get("title") or ""),
+                    "outcome": "unverifiable",
+                    "reason": (
+                        "every cited tool call returned 0 rows - a failed "
+                        "lookup is not negative evidence, and no finding is "
+                        "staged from it"
+                    ),
+                    "audit_ids": _candidate_audit_ids(c),
+                } for c in zero_only])
+                state["dispositions"] = dispositions
+                gaps = list(state.get("gaps") or [])
+                gaps.extend([
+                    f"unverifiable candidate recorded, not staged as a finding: "
+                    f"{str(c.get('title') or '')[:160]} (cited call returned 0 rows)"
+                    for c in zero_only
+                ])
+                state["gaps"] = gaps
+                sink.emit(new_event(
+                    run_id, "synthesis.zero_hit_only", actor="synthesis",
+                    detail=f"{len(zero_only)} candidate(s) citing only zero-hit "
+                           "call(s) recorded as dispositions, not findings",
+                    data={"titles": [str(c.get("title") or "")[:120]
+                                     for c in zero_only]},
+                ))
 
             # Record which procedures this run actually used. Skills are injected
             # into each work order's prompt, but nothing said which ones - so

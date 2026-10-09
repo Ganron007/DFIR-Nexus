@@ -75,6 +75,14 @@ _TOOL_ARGS: dict[str, set[str]] = {
     "check_loobin": {"binary_name"},
 }
 
+#: The tools that read the case's indexed evidence. A turn that called one of
+#: these "attempted evidence": it is a different state from a turn that read no
+#: evidence and from a turn that never called a tool at all. See the
+#: ``evidence_attempted`` / ``evidence_read`` pair in ``run_context_loop``.
+_EVIDENCE_TOOLS: frozenset[str] = frozenset({
+    "es_mappings", "es_search", "es_aggregate", "sample_rows", "run_record",
+})
+
 
 @dataclass(frozen=True)
 class LoopBudget:
@@ -391,6 +399,36 @@ def _result_summary(name: str, result: dict[str, Any]) -> dict[str, Any]:
     return {"keys": sorted(result.keys())[:20]}
 
 
+def _call_read_evidence(name: str, result: dict[str, Any]) -> bool:
+    """True when this tool call returned evidence rows.
+
+    A call is evidence only when it succeeded AND carried rows. A refusal
+    ("case_id ... is not the active case"), an ES failure and a genuine
+    zero-hit search are all indistinguishable to a seat that only sees a
+    returned dict, and all three were being treated as "I checked, nothing
+    there" — which is how a blind run dispositioned 11 crit/high leads
+    (36c Mode 3, reviewer probe check 6).
+    """
+    if not isinstance(result, dict):
+        return False
+    if result.get("error"):
+        return False
+    if result.get("degraded"):
+        return False
+    if name == "es_search":
+        return bool(result.get("hits"))
+    if name == "es_aggregate":
+        return bool(result.get("aggregations"))
+    if name == "es_mappings":
+        # The catalog is schema, not evidence rows.
+        return False
+    if name == "sample_rows":
+        return bool(result.get("hits") or result.get("rows"))
+    if name == "run_record":
+        return False
+    return False
+
+
 def _append_tool_observation(
     *,
     tool_calls: list[dict[str, Any]],
@@ -415,6 +453,11 @@ def _append_tool_observation(
         "audit_id": audit_id,
         "elapsed_ms": round(elapsed_ms, 1),
         "summary": summary,
+        # Whether this call actually returned evidence rows. A call that was
+        # refused, failed or returned 0 rows is not evidence, and a seat or
+        # work order whose every call is in that state must not disposition
+        # anything (WO-R2F item 2).
+        "read_evidence": _call_read_evidence(name, result),
     }
     tool_calls.append(record)
     if name == "es_search":
@@ -647,6 +690,13 @@ def run_context_loop(
     budget = budget or load_loop_budget()
     case_id = case_id or case_dir.name
     audit = audit or AuditWriter("nexus", audit_dir=case_dir / "audit")
+    # WO-R2F item 1 (D41): bind this thread's LLM calls to the run's case, so
+    # the egress token map is written into the run's case rather than into the
+    # globally active one. Cleared on the way out so a pooled thread cannot
+    # carry a binding into a later run on a different case.
+    from nexus.llm.egress import bind_egress_case
+
+    bind_egress_case(case_dir)
     turn_id = uuid4().hex[:12]
     deadline = started + budget.seconds
 
@@ -873,7 +923,12 @@ def run_context_loop(
                 continue
             payload = dict(clean_args)
             if name in ("es_mappings", "es_search", "es_aggregate", "sample_rows", "run_record"):
+                # WO-R2F item 1 (D41): bind the call to THIS run's case. The
+                # id alone is gated against the global active case, which is
+                # how 36c's Mode 3 seats were all refused while another case
+                # was active.
                 payload["case_id"] = case_id
+                payload["case_dir"] = case_dir
             call_key = json.dumps(
                 {"tool": name, "args": clean_args}, sort_keys=True, default=str)
             if call_key in seen_call_keys:
@@ -966,6 +1021,26 @@ def run_context_loop(
         )
 
     elapsed_ms = round((time.monotonic() - started) * 1000, 1)
+    bind_egress_case(None)
+    # WO-R2F item 2: did this turn read any evidence at all? Counted from the
+    # calls themselves, so a turn whose every call was refused or zero-hit says
+    # so instead of letting the seat infer "checked, nothing there".
+    #
+    # ``evidence_attempted`` is the separate fact that any evidence tool was
+    # CALLED. A refused call and a call the model never made are different
+    # states: the first is a blind seat that must not disposition anything
+    # (36c Mode 3, reviewer probe check 6), the second is a seat that worked
+    # from its own knowledge and still has to record what it found. Collapsing
+    # them made every seat that answered without calling a tool "blocked",
+    # which dropped all 11 crit/high lead dispositions from the run record.
+    evidence_calls = [
+        c for c in tool_calls
+        if str(c.get("tool") or "") in _EVIDENCE_TOOLS
+    ]
+    evidence_attempted = bool(evidence_calls)
+    evidence_read = bool(all_hits) or any(
+        bool(c.get("read_evidence")) for c in evidence_calls
+    )
     audit_id = audit.log(
         tool="context_loop",
         params={"case_id": case_id, "task": task, "question": question[:200],
@@ -975,6 +1050,8 @@ def run_context_loop(
             "tool_calls": len(tool_calls),
             "duplicate_calls": duplicate_calls,
             "hits": len(all_hits),
+            "evidence_attempted": evidence_attempted,
+            "evidence_read": evidence_read,
             "partial": partial,
             "finish_reason": finish_reason,
         },
@@ -990,6 +1067,8 @@ def run_context_loop(
         "duplicate_calls": duplicate_calls,
         "partial": partial,
         "partial_reason": finish_reason if partial else "",
+        "evidence_attempted": evidence_attempted,
+        "evidence_read": evidence_read,
         "finish_reason": finish_reason,
         "turn_id": turn_id,
         "audit_id": audit_id,

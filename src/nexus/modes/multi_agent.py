@@ -931,6 +931,20 @@ def _seat_with_model(
     # found nothing and a seat that never ran, which look identical from an empty
     # claim list and must not be reported the same way.
     entry["finish_reason"] = str(loop.get("finish_reason") or "")
+    # WO-R2F item 2: whether this seat actually read evidence rows. A seat that
+    # CALLED an evidence tool and got nothing back (refused, failed or zero-hit)
+    # is blind and must not disposition a lead, and the run must not settle on
+    # a board of such seats (reviewer probe checks 5 and 6).
+    #
+    # A seat that never called an evidence tool is NOT blind: it worked from
+    # the briefing and its own knowledge, and its lead dispositions are its
+    # honest work. Blocking those too dropped every crit/high lead from the run
+    # record and failed the mode3 probe's "the run record dispositions every
+    # crit/high lead" check.
+    entry["evidence_read"] = bool(loop.get("evidence_read"))
+    entry["evidence_attempted"] = bool(loop.get("evidence_attempted"))
+    if entry["evidence_attempted"] and not entry["evidence_read"]:
+        entry["blocked"] = "no evidence call returned rows"
     # The seat's REAL tool-call count, from its own loop (item 7b's "add a real
     # tool-call budget"). Summed at the run level; without it the run cannot say
     # how much work it did or what the budget stopped.
@@ -1841,6 +1855,16 @@ def run_mode3(
     _model_dead = bool(_seats) and all(
         str(e.get("finish_reason") or "") == "model_error" for e in _seats
     )
+    # WO-R2F item 2: a seat that CALLED an evidence tool and got nothing back
+    # (refused, failed or zero-hit) is blocked. A seat that never called one is
+    # not blind - it worked from its briefing. See ``evidence_attempted``.
+    _blocked_seats = [
+        e for e in _seats
+        if e.get("evidence_attempted")
+        and not e.get("evidence_read", True)
+        and str(e.get("finish_reason") or "")
+    ]
+    _no_evidence_read = bool(_seats) and len(_blocked_seats) == len(_seats)
     _dead_model = _model_dead
     if _dead_model and status in ("settled", "completed"):
         status = "failed"
@@ -1850,6 +1874,17 @@ def run_mode3(
         # Set `error` as well as `stop_reason`: a consumer reading only `error`
         # would otherwise see a failed run with no reason on it. Mode 2 sets both
         # and the two runtimes should not disagree about what a failure looks like.
+        record["error"] = stop_reason
+    elif _no_evidence_read and status in ("settled", "completed", "capped"):
+        # WO-R2F item 2: a run in which no seat read a single evidence row has
+        # not investigated anything, whatever the graph's stop rule says. In 36c
+        # every seat call was refused, the run hit the superstep budget, and the
+        # record read `completed / budget: max supersteps`.
+        status = "failed"
+        stop_reason = (
+            f"no evidence read: {len(_seats)} seat(s) ran and none returned "
+            f"rows ({len(_blocked_seats)} blocked by a refused or empty evidence call)"
+        )
         record["error"] = stop_reason
     elif status == "settled":
         status = "completed"
@@ -1894,11 +1929,25 @@ def run_mode3(
     # original lead subject (as it appears in leads.jsonl), matching the
     # probe's `l.get("subject") not in disp` check.
     lead_dispositions: dict[str, dict[str, Any]] = {}
+    blocked_leads: list[str] = []
     for entry in (final.get("board") or []):
         if not isinstance(entry, dict):
             continue
         disp = entry.get("lead_disposition")
         spawn_lead = str(entry.get("lead") or "").strip()
+        # WO-R2F item 2: a seat that CALLED an evidence tool and read nothing
+        # dispositions nothing. Its leads stay open, and the run record says
+        # which seats were blocked — in 36c eleven crit/high leads were
+        # dispositioned "insufficient" by a seat whose every es_search had been
+        # refused. A seat that never called an evidence tool is not blind: its
+        # disposition is its honest work from the briefing.
+        seat_blocked = bool(entry.get("evidence_attempted")) and not bool(
+            entry.get("evidence_read", True)
+        )
+        if seat_blocked and spawn_lead and spawn_lead not in blocked_leads:
+            blocked_leads.append(spawn_lead)
+        if seat_blocked:
+            continue
         if isinstance(disp, dict) and (disp.get("lead") or spawn_lead):
             subject = str(disp.get("lead") or spawn_lead).strip()
             if subject and subject not in lead_dispositions:
@@ -1920,6 +1969,7 @@ def run_mode3(
                     "lead": spawn_lead,
                 }
     record["lead_dispositions"] = lead_dispositions
+    record["blocked_leads"] = blocked_leads
 
     # 36c: the run record carries the configured model, so R2 knows which one
     # ran. Read from the same env the model was built from; a deterministic

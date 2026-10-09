@@ -91,12 +91,84 @@ def _newest_runs(case_dir: Path) -> list[Path]:
 
 
 def _csv_rows(path: Path):
-    """Rows from a lane CSV, tolerant of the multi-line quoted fields both tools emit."""
+    """Rows from a lane CSV, tolerant of the multi-line quoted fields both tools emit.
+
+    Each yielded row carries ``_line`` (the record's first physical line, 1-based)
+    and ``_raw`` (the record's original text with quoting preserved). Those are
+    what make the row addressable in the index: `case_index` ids a document by
+    ``sha1(family \0 file \0 line \0 text)``, where ``text`` is the sanitized raw
+    line. A lead that cannot be turned into that id cannot be fetched back by any
+    mode, which is how a failed lookup used to become a refutation (WO-R2F item 3).
+    """
     try:
         with path.open("r", encoding="utf-8", errors="replace", newline="") as fh:
-            yield from csv.DictReader(fh)
+            for row, start, raw in _csv_records(fh):
+                row["_line"] = start
+                row["_raw"] = raw
+                yield row
     except (OSError, csv.Error) as exc:
         log.debug("rule-engine CSV unreadable (%s): %s", path, exc)
+
+
+def _csv_records(fh):
+    """``(row, first_physical_line, raw_record_text)`` per CSV record.
+
+    Uses the indexer's own reader so a quoted newline is ONE record and the
+    line number is that record's first physical line - exactly the ``line`` the
+    indexed document carries. Reimplementing the reader here would drift from
+    `iter_record_rows` the first time one of them changed.
+    """
+    from nexus.langgraph.case_index import iter_record_rows
+
+    header: list[str] | None = None
+    for start, raw, cells in iter_record_rows(fh):
+        if header is None:
+            if cells is None:
+                return  # not a CSV we can key; no header to map through
+            header = [str(c or "").strip().lstrip("﻿").strip('"') for c in cells]
+            continue
+        if cells is None:
+            # WO-22 fallback row: no reliable columns, so the detection fields
+            # are unavailable. Still yield it - the raw text is what the index
+            # stored, so the id remains computable.
+            yield {}, start, raw
+            continue
+        row = {name: ("" if value is None else str(value))
+               for name, value in zip(header, cells, strict=False)}
+        yield row, start, raw
+
+
+def _doc_id(path: Path, root: Path, family: str, line: int, raw: str) -> str:
+    """The ES ``_id`` of the indexed document for one extraction row.
+
+    Must equal `case_index._bulk_ndjson`'s hash exactly or the lookup misses:
+    ``sha1(family \0 file-relative-to-root \0 line \0 sanitized-text)``, where
+    ``text`` is the sanitized raw record line truncated to the index line cap.
+    """
+    import hashlib
+
+    from nexus.langgraph.case_index import _MAX_LINE, _index_rel
+    from nexus.langgraph.path_sanitize import sanitize_row_text
+
+    case_dir = root.parent.parent
+    text = sanitize_row_text(
+        str(raw or "").strip()[:_MAX_LINE], None, case_dir, family=family,
+    )
+    return hashlib.sha1(
+        f"{family}\x00{_index_rel(path, root)}\x00{line}\x00{text}".encode(
+            "utf-8", "replace")
+    ).hexdigest()
+
+
+def _rule_extraction_root(run: Path) -> Path:
+    """The root `case_index` used for this family's files.
+
+    `iter_extraction_files` returns ``(path, root, family)`` where root is the
+    extractions dir (or ``sift/extractions`` / the case ingest dir). The rule
+    engines live under ``<run>/extractions``, so that is the root whose
+    relative path the doc id is keyed on.
+    """
+    return run / "extractions"
 
 
 def _trim(value: Any, limit: int = 300) -> str:
@@ -262,6 +334,7 @@ def hayabusa_leads(case_dir: Path | str, *, limit: int = DEFAULT_RULE_LIMIT) -> 
         base = run / "extractions" / "hayabusa"
         if not base.is_dir():
             continue
+        root = _rule_extraction_root(run)
         for path in sorted(base.glob("*.csv")):
             for row in _csv_rows(path):
                 title = _trim(row.get("RuleTitle"), 160)
@@ -320,6 +393,11 @@ def hayabusa_leads(case_dir: Path | str, *, limit: int = DEFAULT_RULE_LIMIT) -> 
                         "details": _trim(row.get("Details"), 300),
                         "file": str(path),
                         "line": row.get("_line") or "",
+                        "doc_id": _doc_id(
+                            path, root, "hayabusa",
+                            int(row.get("_line") or 0),
+                            row.get("_raw") or "",
+                        ),
                     })
         if by_rule:
             break  # the newest run that has output is the one that ran
@@ -338,6 +416,7 @@ def chainsaw_leads(case_dir: Path | str, *, limit: int = DEFAULT_RULE_LIMIT) -> 
         base = run / "extractions" / "chainsaw"
         if not base.is_dir():
             continue
+        root = _rule_extraction_root(run)
         for path in sorted(base.glob("*.csv")):
             for row in _csv_rows(path):
                 title = _trim(row.get("detections"), 160)
@@ -378,6 +457,11 @@ def chainsaw_leads(case_dir: Path | str, *, limit: int = DEFAULT_RULE_LIMIT) -> 
                         "count": _trim(row.get("count"), 12),
                         "file": str(path),
                         "line": row.get("_line") or "",
+                        "doc_id": _doc_id(
+                            path, root, "chainsaw",
+                            int(row.get("_line") or 0),
+                            row.get("_raw") or "",
+                        ),
                     })
         if by_rule:
             break

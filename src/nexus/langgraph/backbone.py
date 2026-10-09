@@ -167,14 +167,41 @@ def _es_call(
     tool_label: str = "",
     **kwargs: Any,
 ) -> dict[str, Any]:
-    """ES-native backbone call: active-case gated, audited, ES-required."""
+    """ES-native backbone call: case-bound, audited, ES-required.
+
+    WO-R2F item 1 (D41): the caller passes the run's own ``case_dir``; the
+    global active-case pointer is not consulted, so a run reads its own case
+    while the examiner has another one active. The case-id-only path (no
+    ``case_dir``) keeps the external MCP contract — the active case, and an
+    explicit id must match it.
+
+    Every attempt is audited, including a refused binding: at R2 a refused
+    call left no audit row at all, so "every seat was refused" was invisible
+    in the audit log and the run still reported `completed`.
+    """
     import time as _time
 
     from nexus.langgraph import es_native
     from nexus.tools.evidence_index import _resolve_active_case
 
-    case_dir, err = _resolve_active_case(str(kwargs.pop("case_id", "") or ""))
+    bound_dir = kwargs.pop("case_dir", None)
+    case_dir, err = _resolve_active_case(
+        str(kwargs.pop("case_id", "") or ""), bound_dir)
     if err or case_dir is None:
+        # A refused call is still an attempted action. Without this row the
+        # audit log showed 0 es_search calls for a run whose seats were all
+        # refused (36c Mode 3), which is what made the failure undiagnosable.
+        if audit is not None:
+            with contextlib.suppress(Exception):
+                audit.log(
+                    tool=tool_label or name,
+                    params={"case_id": str(kwargs.get("case_id") or
+                                           (Path(bound_dir).name if bound_dir else "")),
+                            "refused": True},
+                    result_summary={"error": (err or "no case bound")[:300]},
+                    elapsed_ms=0.0,
+                    extra={"canonical_tool": name} if tool_label and tool_label != name else None,
+                )
         return {"error": err or "no active case"}
     started = _time.monotonic()
     fn = getattr(es_native, name)
