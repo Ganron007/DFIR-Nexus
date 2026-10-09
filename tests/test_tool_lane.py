@@ -87,10 +87,14 @@ def test_plan_sift_requires_root(monkeypatch):
     monkeypatch.delenv("NEXUS_SIFT_TRIAGE_ROOT", raising=False)
     monkeypatch.delenv("NEXUS_SIFT_SKIP_PLASO", raising=False)
     monkeypatch.delenv("NEXUS_SIFT_PLASO", raising=False)
+    monkeypatch.delenv("NEXUS_SIFT_MEMORY_FILE", raising=False)
     jobs = plan_sift_triage("")
     assert jobs[0].status == "SKIP"
+    # D46: a bare root schedules no Volatility 3 job. Memory needs a declared
+    # image (caller, env or the evidence registry); inventing one is the defect.
     jobs2 = plan_sift_triage("/home/sansforensics/Evidence-files/pack")
-    assert any(j.tool == "vol" and j.status == "PENDING" for j in jobs2)
+    assert any(j.tool == "vol" and j.status == "SKIP" for j in jobs2)
+    assert not any(j.tool == "vol" and j.status == "PENDING" for j in jobs2)
     assert not any(j.tool == "fls" for j in jobs2)
     assert not any(j.tool == "log2timeline" and j.status == "PENDING" for j in jobs2)
 
@@ -99,12 +103,12 @@ def test_plan_sift_no_full_tree_plaso(monkeypatch):
     monkeypatch.delenv("NEXUS_SIFT_E01", raising=False)
     monkeypatch.delenv("NEXUS_SIFT_SKIP_PLASO", raising=False)
     monkeypatch.delenv("NEXUS_SIFT_PLASO", raising=False)
+    monkeypatch.delenv("NEXUS_SIFT_MEMORY_FILE", raising=False)
     jobs = plan_sift_triage(
         "/home/sansforensics/Evidence-files/pack",
         triage_root="/mnt/windows_mount/C",
     )
     tools = {j.tool for j in jobs if j.status == "PENDING"}
-    assert "vol" in tools
     assert "log2timeline" not in tools
     assert "psort" not in tools
     assert "fls" not in tools
@@ -278,8 +282,17 @@ def test_sift_jobs_for_lane_mcp_without_root_is_honest_skip():
 def test_sift_jobs_for_lane_with_root_schedules_vol(monkeypatch):
     monkeypatch.delenv("NEXUS_SIFT_E01", raising=False)
     monkeypatch.delenv("NEXUS_SIFT_PLASO", raising=False)
+    monkeypatch.delenv("NEXUS_SIFT_MEMORY_FILE", raising=False)
     jobs = sift_jobs_for_lane("/evidence/pack", has_sift_mcp=True)
-    assert any(j.tool == "vol" and j.status == "PENDING" for j in jobs)
+    # D46: memory is never scheduled from a guessed path. A declared image does
+    # schedule it - the registry hands the examiner's own image to the lane.
+    assert any(j.tool == "vol" and j.status == "SKIP" for j in jobs)
+    assert not any(j.tool == "vol" and j.status == "PENDING" for j in jobs)
+    with_declared = sift_jobs_for_lane(
+        "/evidence/pack", has_sift_mcp=True,
+        memory_file="/evidence/pack/memory/target-memory.raw",
+    )
+    assert any(j.tool == "vol" and j.status == "PENDING" for j in with_declared)
 
 
 def test_bmc_skips_zero_byte_only_tiles(tmp_path: Path, monkeypatch):
@@ -404,7 +417,8 @@ def test_apply_prior_ok_rerun_env_disables(tmp_path: Path, monkeypatch):
     assert jobs[0].status == "PENDING"
 
 
-def test_plan_sift_memory_file_overrides_default(monkeypatch):
+def test_plan_sift_memory_file_is_used_and_no_default_exists(monkeypatch):
+    """D46: the memory path comes from the caller or the registry, never src."""
     monkeypatch.delenv("NEXUS_SIFT_MEMORY_FILE", raising=False)
     monkeypatch.delenv("NEXUS_SIFT_E01", raising=False)
     monkeypatch.delenv("NEXUS_SIFT_PLASO", raising=False)
@@ -412,18 +426,34 @@ def test_plan_sift_memory_file_overrides_default(monkeypatch):
         "/mnt/srl_rd01",
         memory_file="/mnt/srl_rd01/memory/rd01-memory.img",
     )
-    vol = next(j for j in jobs if j.tool == "vol")
-    assert "/mnt/srl_rd01/memory/rd01-memory.img" in vol.argv
-    assert "Rocba-Memory.raw" not in vol.argv
+    vol = [j for j in jobs if j.tool == "vol" and j.status == "PENDING"]
+    assert vol
+    assert any("/mnt/srl_rd01/memory/rd01-memory.img" in a for j in vol for a in j.argv)
+
+    # Nothing is declared: an honest SKIP row, and no invented path anywhere.
+    jobs_none = plan_sift_triage("/mnt/srl_rd01")
+    skip = [j for j in jobs_none if j.tool == "vol" and j.status == "SKIP"]
+    assert skip and "No memory image declared" in skip[0].reason
+    assert not any(j.tool == "vol" and j.status == "PENDING" for j in jobs_none)
+    for j in jobs_none:
+        for a in j.argv:
+            assert "rd01-memory.img" not in a and "Rocba-Memory.raw" not in a
 
 
-def test_plan_sift_rocba_root_keeps_rocba_dump(monkeypatch):
+def test_plan_sift_no_memory_declared_still_plans_disk_and_plaso(monkeypatch):
+    """A missing memory image must not silently drop the other SIFT jobs."""
     monkeypatch.delenv("NEXUS_SIFT_MEMORY_FILE", raising=False)
     monkeypatch.delenv("NEXUS_SIFT_E01", raising=False)
     monkeypatch.delenv("NEXUS_SIFT_PLASO", raising=False)
-    jobs = plan_sift_triage("/home/sansforensics/Evidence-files/rocba-500")
-    vol = next(j for j in jobs if j.tool == "vol")
-    assert any("Rocba-Memory.raw" in a for a in vol.argv)
+    monkeypatch.setenv("NEXUS_SIFT_PLASO", "1")
+    jobs = plan_sift_triage(
+        "/mnt/evidence",
+        disk_image="/mnt/evidence/disk.dd",
+    )
+    pending = {j.tool for j in jobs if j.status == "PENDING"}
+    assert "mmls" in pending and "fls" in pending
+    assert "log2timeline" in pending and "psort" in pending
+    assert any(j.tool == "vol" and j.status == "SKIP" for j in jobs)
 
 
 def test_copy_text_skips_existing_readonly(tmp_path: Path):

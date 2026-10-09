@@ -2743,6 +2743,122 @@ def scale_memory_timeout(floor: int, image_bytes: int | None) -> int:
     return int(floor * scale)
 
 
+#: Memory-image signatures, read from the file rather than from its name.
+#: A name tells you what the acquirer decided to call the file; the format
+#: header tells you what Volatility 3 can actually open, and those two have
+#: disagreed in every case where it mattered (a renamed raw dump, a crash dump
+#: saved as `.bin`, a hibernation file). Source: the Volatility 3 symbol /
+#: layer writers that accept these formats - `ELF64` for Linux LIME/AVML,
+#: `MDMP`/`PAGEDUMP`/`PAGEDU64` for Windows crash/hibernation, `VmSS`/`VmCore`
+#: for VMware saved state, `EWF` for E01, `QFI\xfb` for QEMU qcow2, `KDMV` for
+#: VMWare sparse, and `conectix`/`vhdx` for virtual disks.
+_MEMORY_MAGICS: tuple[bytes, ...] = (
+    b"MDMP",           # Windows minidump / crash dump (windows.crashdump)
+    b"PAGEDUMP",       # Windows 32-bit hibernation file (hibernation file)
+    b"PAGEDU64",       # Windows 64-bit hibernation file
+    b"VmSS",           # VMware saved-state (.vmss)
+    b"VmCore",         # VMware checkpoint (.vmem)
+    b"EWF",            # Expert Witness Format (E01)
+    b"QFI\xfb",        # QEMU qcow2
+    b"KDMV",           # VMware sparse (vmdk monolithic sparse)
+    b"conectix",       # Microsoft VHD
+    b"vhdx",           # Microsoft VHDX
+    b"\x7fELF",        # Linux LIME / AVML (elf64 core)
+    b"LiME",           # LIME marker after the ELF header
+)
+
+#: Extensions that name a memory image. Used ONLY as a tie-breaker when the
+#: header is unreadable (a path that does not exist yet, a remote path): the
+#: format header always wins when it can be read, because a name is a claim
+#: and a header is a fact.
+_MEMORY_SUFFIXES = {
+    ".img", ".raw", ".mem", ".vmem", ".vmss", ".vmsn", ".dmp", ".dump",
+    ".lime", ".avml", ".hiberfil", ".core", ".bin",
+}
+
+#: Below this size a "memory image" is a fragment or a text export, and
+#: Volatility 3 will reject it with a symbol-table error that reads like a
+#: tooling fault. The reviewer's coverage filter uses the same 512 MiB floor.
+_MEMORY_MIN_BYTES = 512 * 1024 * 1024
+
+
+def memory_image_kind(path: Path | str) -> str:
+    """Classify a file as a memory image, from the file, never from its name.
+
+    Returns one of:
+
+    * ``""`` — not a memory image.
+    * ``"header"`` — a recognised format header, so Volatility 3 can open it.
+    * ``"suffix"`` — a memory-looking name with no readable header (remote
+      path, missing file, or a header this list does not carry). The jobs are
+      still scheduled, because refusing them would silently drop evidence.
+
+    The size floor applies to the ``suffix`` verdict only: an unreadable name
+    alone is not evidence of an image, and a 4 KB ``.mem`` is usually a
+    leftover. A recognised header is accepted at any size.
+    """
+    p = Path(str(path))
+    suffix = p.suffix.lower()
+    try:
+        size = p.stat().st_size
+    except OSError:
+        size = 0
+    try:
+        with open(p, "rb") as fh:
+            head = fh.read(16)
+    except OSError:
+        head = b""
+    if head:
+        # A LIME image is ELF with the marker at a fixed offset past the
+        # header; the ELF magic alone is enough to route it.
+        for magic in _MEMORY_MAGICS:
+            if head.startswith(magic):
+                return "header"
+    if suffix in _MEMORY_SUFFIXES and (size >= _MEMORY_MIN_BYTES or size == 0):
+        # size == 0 means the path is not readable here (remote host), so the
+        # name is the only signal available and it is not a reason to drop it.
+        return "suffix"
+    return ""
+
+
+def registered_memory_images(case_dir: Path) -> list[dict[str, Any]]:
+    """The examiner's registered memory images, from the evidence registry.
+
+    Only **original** registered items are returned: a derived tool output
+    (``kind == "tool_extraction"``) is the lane's own stdout and is never
+    evidence the examiner registered (D57). SC1's registry held 1,127 items
+    and most were exactly that, which is why a reconciliation over the raw
+    list cannot tell the examiner's evidence from the lane's own output.
+    """
+    from nexus.case.evidence_service import list_evidence
+
+    out: list[dict[str, Any]] = []
+    try:
+        rows = list_evidence(Path(case_dir))
+    except Exception as exc:  # noqa: BLE001 — planning must not die on a registry
+        log.debug("registered evidence unreadable (%s): %s", case_dir, exc)
+        return out
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if str(row.get("kind") or "") == "tool_extraction":
+            continue
+        raw = str(row.get("path") or "").strip()
+        if not raw:
+            continue
+        kind = memory_image_kind(raw)
+        if not kind:
+            continue
+        out.append({
+            "path": raw,
+            "kind": kind,
+            "name": Path(raw).name,
+            "registered_at": str(row.get("registered_at") or ""),
+            "host": str(row.get("host") or ""),
+        })
+    return out
+
+
 def mark_missing_vol_plugins(jobs: list[ToolJob], available: set[str]) -> list[ToolJob]:
     """WO-A9: a plugin the host does not have is SKIP, not FAIL.
 
@@ -2818,13 +2934,28 @@ def plan_sift_triage(
         ))
         return jobs
 
-    # Memory: env / intake, then a conventional file under the named root.
+    # Memory: the examiner's declared file, or the SIFT root's own env. There is
+    # deliberately NO default file name: a hard-coded "the memory is at
+    # <root>/memory/<name>" both invented a path that may not exist and hid the
+    # cases where no image is there at all (WO-R2F item 4 / D46). When neither
+    # is given, the caller's registered-evidence reconciliation supplies the
+    # image; with nothing to schedule the job is an honest SKIP below.
     mem = (memory_file or "").strip() or os.environ.get("NEXUS_SIFT_MEMORY_FILE", "").strip()
-    if not mem:
-        if "rocba" in root.lower():
-            mem = f"{root}/memory/Rocba-Memory.raw"
-        else:
-            mem = f"{root}/memory/rd01-memory.img"
+    if mem and not memory_image_kind(mem):
+        # A declared path that is not a memory image is a declaration error, not
+        # a reason to run Volatility 3 against a text file.
+        jobs.append(ToolJob(
+            host="sift",
+            tool="vol",
+            argv=[],
+            purpose=f"Volatility3 {Path(mem).name}",
+            status="SKIP",
+            reason=(
+                f"declared memory file {mem} is not a recognised memory image "
+                "(no memory format header and no memory file extension)"
+            ),
+        ))
+        mem = ""
     profile = (sift_os or os.environ.get("NEXUS_SIFT_OS", "")).strip().lower()
     if profile == "linux":
         plugins = (
@@ -2850,31 +2981,50 @@ def plan_sift_triage(
             ("windows.ldrmodules", 7200),
             ("windows.psxview", 7200),
         )
-    image_bytes = _local_file_bytes(mem)
-    for plugin, floor in plugins:
+    if not mem:
+        # No image was declared and none is named in the environment. That is a
+        # fact about this case, not a hole to paper over with a guessed path:
+        # emit the SKIP so the gate and the completeness table show it, and keep
+        # planning the rest (disk / plaso / E01) — one missing input must not
+        # silently drop the other jobs on the same lane.
         jobs.append(ToolJob(
             host="sift",
             tool="vol",
-            argv=["vol", "-f", mem, "-r", "jsonl", plugin],
-            purpose=f"Volatility3 {plugin}",
-            timeout=scale_memory_timeout(floor, image_bytes),
+            argv=[],
+            purpose="Volatility3 memory",
+            status="SKIP",
+            reason=(
+                "No memory image declared — set NEXUS_SIFT_MEMORY_FILE or "
+                "case_context.sift_memory_file, or register the image as "
+                "evidence so the lane reconciles it"
+            ),
         ))
-    if profile != "linux":
-        for key, label in (
-            (r"Software\Microsoft\Windows\CurrentVersion\Run", "Run"),
-            (r"Software\Microsoft\Windows\CurrentVersion\RunOnce", "RunOnce"),
-            (r"System\CurrentControlSet\Services", "Services"),
-        ):
+    else:
+        image_bytes = _local_file_bytes(mem)
+        for plugin, floor in plugins:
             jobs.append(ToolJob(
                 host="sift",
                 tool="vol",
-                argv=[
-                    "vol", "-f", mem, "-r", "jsonl",
-                    "windows.registry.printkey", "--key", key,
-                ],
-                purpose=f"Volatility3 registry.printkey {label}",
-                timeout=scale_memory_timeout(3600, image_bytes),
+                argv=["vol", "-f", mem, "-r", "jsonl", plugin],
+                purpose=f"Volatility3 {plugin}",
+                timeout=scale_memory_timeout(floor, image_bytes),
             ))
+        if profile != "linux":
+            for key, label in (
+                (r"Software\Microsoft\Windows\CurrentVersion\Run", "Run"),
+                (r"Software\Microsoft\Windows\CurrentVersion\RunOnce", "RunOnce"),
+                (r"System\CurrentControlSet\Services", "Services"),
+            ):
+                jobs.append(ToolJob(
+                    host="sift",
+                    tool="vol",
+                    argv=[
+                        "vol", "-f", mem, "-r", "jsonl",
+                        "windows.registry.printkey", "--key", key,
+                    ],
+                    purpose=f"Volatility3 registry.printkey {label}",
+                    timeout=scale_memory_timeout(3600, image_bytes),
+                ))
 
     # Filesystem timeline: MFTECmd --body (Windows) → TSK mactime (SIFT),
     # injected in run_tool_lane after the bodyfile is pushed. Full-tree
@@ -3600,7 +3750,15 @@ async def run_tool_lane(
     try:
         from nexus.langgraph.lane_gate import write_lane_gate
 
-        gate = write_lane_gate(case_dir, run_id, ledger)
+        # WO-R2F item 4 (D43/D46/D57): the gate reconciles what the EXAMINER
+        # registered (original items only - the lane's own derived outputs are
+        # filtered out) against the jobs that actually ran. A registered memory
+        # image with no memory job is unprocessed evidence and blocks the gate,
+        # instead of reporting `clear` under the "never skip evidence" rule.
+        registered = registered_memory_images(case_dir)
+        gate = write_lane_gate(
+            case_dir, run_id, ledger, registered_evidence=registered,
+        )
         if gate.get("status") == "blocked":
             summary = (
                 f"{summary} - EVIDENCE GATE BLOCKED: {gate.get('blocked_count')} "

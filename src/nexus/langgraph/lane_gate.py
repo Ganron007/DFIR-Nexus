@@ -66,6 +66,58 @@ def _key(item: dict[str, Any]) -> tuple[str, str]:
     return (str(item.get("tool") or ""), str(item.get("purpose") or ""))
 
 
+#: How a registered memory image is planned (WO-R2F item 4 / D43). A memory
+#: image is not a Windows artifact: the Windows lane only ever sees extracted
+#: files, so the image itself reaches the index through Volatility 3 (or
+#: MemProcFS) on a host that can open it. If no such job ran, the image is
+#: unprocessed evidence and the gate must say so instead of reporting `clear`.
+_MEMORY_JOB_TOOLS = ("vol", "volatility", "memprocfs")
+
+
+def _registered_evidence_gaps(
+    registered: list[dict[str, Any]],
+    ledger: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Registered items the lane never planned a job for (D43).
+
+    Each returned row is an ``unprocessed`` entry, so the gate blocks and the
+    examiner sees which evidence was dropped and why. A registered memory image
+    with no ``vol`` / ``memprocfs`` job in the ledger is the canonical case:
+    SC1's three registries all held ``rd01-memory.img``, not one ``vol`` job
+    ran, and ``lane_gate.json`` read ``clear``.
+    """
+    gaps: list[dict[str, Any]] = []
+    for item in registered:
+        if not isinstance(item, dict):
+            continue
+        path = str(item.get("path") or "").strip()
+        name = str(item.get("name") or Path(path).name if path else "").strip()
+        kind = str(item.get("kind") or "").strip()
+        # Only a memory image has a planner that can be absent this way. Every
+        # other registered item is planned by the Windows / SIFT / network
+        # lanes, which the ledger already accounts for.
+        if kind not in ("header", "suffix", "memory"):
+            continue
+        planned = [
+            row for row in ledger
+            if str(row.get("tool") or "").strip().lower() in _MEMORY_JOB_TOOLS
+        ]
+        if not planned:
+            gaps.append({
+                "tool": "vol",
+                "purpose": f"memory image {name}",
+                "reason": (
+                    f"registered evidence {path or name} is a memory image and "
+                    "the lane planned no memory job (Volatility 3 / MemProcFS); "
+                    "declare sift_memory_file or register the image where the "
+                    "SIFT lane can read it"
+                )[:300],
+                "registered_evidence": path,
+                "evidence_kind": "memory",
+            })
+    return gaps
+
+
 def _is_sift_row(row: dict[str, Any]) -> bool:
     """A SIFT-host row.
 
@@ -240,12 +292,21 @@ def write_lane_gate(
     ledger: list[dict[str, Any]],
     *,
     ts: str | None = None,
+    registered_evidence: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Persist the gate after a tool-lane pass. Unprocessed = FAIL rows.
 
     Examiner skips from the previous gate survive here only for items that are
     *still* unprocessed; an item that now parses simply disappears from the
     unprocessed list and any stale skip for it is dropped.
+
+    ``registered_evidence`` is the examiner's ORIGINAL registered items (never
+    the lane's own derived outputs, D57). Any item that no job in the ledger
+    addressed is unprocessed evidence, which is exactly what D43 was: a memory
+    image in the registry, no ``vol`` job anywhere, and a gate that said
+    ``clear`` under its own "never skip evidence processing" rule. The gate
+    audits the evidence that was **registered**, not only the jobs that were
+    **planned**.
     """
     prior = read_lane_gate(case_dir)
     # Rows that mean the *evidence* was not examined. Two kinds, kept apart:
@@ -272,6 +333,11 @@ def write_lane_gate(
             unprocessed.append(_pending_entry(row))
         elif state == "skipped":
             not_applicable.append(_pending_entry(row))
+    # WO-R2F item 4 (D43): reconcile what the EXAMINER registered against the
+    # jobs the lane actually ran. An item that produced no job is unprocessed
+    # evidence even though every planned job succeeded.
+    unregistered_gaps = _registered_evidence_gaps(registered_evidence or [], ledger)
+    unprocessed.extend(unregistered_gaps)
     # `not_applicable` is listed so the examiner can see it and, if the pass
     # processed nothing, settle the gate deliberately rather than hit a dead end.
     still_bad = (

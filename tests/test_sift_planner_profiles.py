@@ -27,9 +27,23 @@ def _vol_plugins(jobs: list) -> list[str]:
     ]
 
 
-def test_linux_profile_selects_linux_plugins(monkeypatch):
+def _memory_image(tmp_path) -> str:
+    """A small but genuine memory image: the MDMP header Volatility 3 opens.
+
+    D46 recognises memory from the FILE, so a test fixture must carry a real
+    format header - a 64-byte ``.raw`` is a text export and is correctly
+    refused.
+    """
+    image = tmp_path / "mem.raw"
+    image.write_bytes(b"MDMP" + b"x" * 60)
+    return str(image)
+
+
+def test_linux_profile_selects_linux_plugins(monkeypatch, tmp_path):
     monkeypatch.delenv("NEXUS_SIFT_OS", raising=False)
-    jobs = plan_sift_triage("/evidence/608", sift_os="linux")
+    jobs = plan_sift_triage(
+        "/evidence/608", sift_os="linux", memory_file=_memory_image(tmp_path),
+    )
     plugins = _vol_plugins(jobs)
     assert "linux.pslist" in plugins
     assert "linux.bash" in plugins
@@ -37,9 +51,11 @@ def test_linux_profile_selects_linux_plugins(monkeypatch):
     assert not any(p.startswith("windows.") for p in plugins)
 
 
-def test_default_profile_stays_windows(monkeypatch):
+def test_default_profile_stays_windows(monkeypatch, tmp_path):
     monkeypatch.delenv("NEXUS_SIFT_OS", raising=False)
-    plugins = _vol_plugins(plan_sift_triage("/evidence/pack"))
+    plugins = _vol_plugins(
+        plan_sift_triage("/evidence/pack", memory_file=_memory_image(tmp_path))
+    )
     assert plugins and all(p.startswith("windows.") for p in plugins)
     for required in (
         "windows.pstree", "windows.psscan", "windows.dlllist",
@@ -52,9 +68,7 @@ def test_default_profile_stays_windows(monkeypatch):
 
 def test_memory_timeout_scales_with_image_size(tmp_path, monkeypatch):
     monkeypatch.delenv("NEXUS_SIFT_OS", raising=False)
-    image = tmp_path / "mem.raw"
-    image.write_bytes(b"x" * 64)
-    small = plan_sift_triage(str(tmp_path), memory_file=str(image))
+    small = plan_sift_triage(str(tmp_path), memory_file=_memory_image(tmp_path))
     pslist = next(j for j in small if vol_plugin_name(j.argv) == "windows.pslist")
     assert pslist.timeout == 3600
     assert scale_memory_timeout(3600, 4 * (1 << 30)) == 14400
@@ -68,14 +82,19 @@ def test_memory_timeout_scales_with_image_size(tmp_path, monkeypatch):
     assert all("--key" in j.argv for j in keys)
     listed = parse_vol_plugin_names("plugins: windows.pslist windows.malfind linux.bash")
     assert listed == {"windows.pslist", "windows.malfind", "linux.bash"}
+    # D46: with no image at all, nothing is scheduled. An empty plugin set
+    # must not resurrect a guessed path (mark_missing_vol_plugins no-ops).
     untouched = plan_sift_triage("/evidence/pack")
     mark_missing_vol_plugins(untouched, set())
-    assert all(j.status == "PENDING" for j in untouched if j.tool == "vol")
+    assert not any(j.tool == "vol" and j.status == "PENDING" for j in untouched)
+    assert any(j.tool == "vol" and j.status == "SKIP" for j in untouched)
 
 
-def test_missing_vol_plugin_is_skip_not_fail(monkeypatch):
+def test_missing_vol_plugin_is_skip_not_fail(monkeypatch, tmp_path):
     monkeypatch.delenv("NEXUS_SIFT_OS", raising=False)
-    jobs = plan_sift_triage("/evidence/pack")
+    jobs = plan_sift_triage(
+        "/evidence/pack", memory_file=_memory_image(tmp_path),
+    )
     mark_missing_vol_plugins(jobs, {"windows.info", "windows.pslist"})
     skipped = [j for j in jobs if j.tool == "vol" and j.status == "SKIP"]
     assert skipped
@@ -84,9 +103,11 @@ def test_missing_vol_plugin_is_skip_not_fail(monkeypatch):
     assert any(vol_plugin_name(j.argv) == "windows.pslist" and j.status == "PENDING" for j in jobs)
 
 
-def test_env_profile_is_read_when_param_absent(monkeypatch):
+def test_env_profile_is_read_when_param_absent(monkeypatch, tmp_path):
     monkeypatch.setenv("NEXUS_SIFT_OS", "linux")
-    plugins = _vol_plugins(plan_sift_triage("/evidence/608"))
+    plugins = _vol_plugins(
+        plan_sift_triage("/evidence/608", memory_file=_memory_image(tmp_path))
+    )
     assert "linux.pslist" in plugins and not any(p.startswith("windows.") for p in plugins)
 
 
@@ -276,7 +297,7 @@ def test_disk_offset_reaches_fls(monkeypatch):
     assert mmls.argv == ["mmls", "/evidence/608/disk.img"]
 
 
-def test_vol_jobs_use_the_json_renderer(monkeypatch):
+def test_vol_jobs_use_the_json_renderer(monkeypatch, tmp_path):
     """vol.yaml maps the JSON renderer; text captures are scratch.
 
     WO-15: the renderer is ``jsonl`` - the ``json`` renderer emits one pretty
@@ -284,7 +305,9 @@ def test_vol_jobs_use_the_json_renderer(monkeypatch):
     host: ``vol -h`` lists ``pretty, json, jsonl, arrow, parquet``).
     """
     monkeypatch.delenv("NEXUS_SIFT_OS", raising=False)
-    jobs = plan_sift_triage("/evidence/608", sift_os="linux")
+    jobs = plan_sift_triage(
+        "/evidence/608", sift_os="linux", memory_file=_memory_image(tmp_path),
+    )
     vol_jobs = [j for j in jobs if j.tool == "vol"]
     assert vol_jobs
     for j in vol_jobs:
