@@ -293,6 +293,11 @@ def _run_committed(run_dir: Path) -> bool:
         return False
 
 
+# Runs already reported as not completed in this process. The resolver runs on every
+# lookup while a lane is still running, so the warning is logged once per run.
+_INCOMPLETE_RUNS_WARNED: set[str] = set()
+
+
 def resolve_tools_extractions(case_dir: Path, run_id: str = "") -> Path:
     """Extractions of the active tools run, following reuse chains.
 
@@ -335,8 +340,11 @@ def resolve_tools_extractions(case_dir: Path, run_id: str = "") -> Path:
                     return candidate / "extractions"
             for candidate in ordered:
                 if candidate.is_dir() and _run_dir_has_data(candidate):
-                    log.warning("no completed tools run has data; resolving %s, "
-                                "which did not complete", candidate.name)
+                    warned_key = str(candidate)
+                    if warned_key not in _INCOMPLETE_RUNS_WARNED:
+                        _INCOMPLETE_RUNS_WARNED.add(warned_key)
+                        log.warning("no completed tools run has data; resolving %s, "
+                                    "which did not complete", candidate.name)
                     return candidate / "extractions"
 
     seen: set[str] = set()
